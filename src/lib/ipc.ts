@@ -187,6 +187,10 @@ export const summaryGet = (sessionId: string, ensure: boolean) =>
 export const diagnoseBuildPrompt = (targetSessionId: string) =>
 	invoke<string>("diagnose_build_prompt", { targetSessionId });
 
+/** Send through the backend so busy sessions receive follow-up prompts. */
+export const dispatchPrompt = (sessionId: string, prompt: string) =>
+	invoke<void>("dispatch_prompt", { sessionId, prompt });
+
 // ---- D — backlog ----
 
 export const backlogList = () => invoke<BacklogItem[]>("backlog_list");
@@ -218,8 +222,9 @@ export const mobileStop = () => invoke<void>("mobile_stop");
 
 export const mobileStatus = () => invoke<MobileStatus>("mobile_status");
 
-export const mobileCreatePairing = () =>
-	invoke<PairingInfo>("mobile_create_pairing");
+/** Generate a pairing link using the public tunnel URL when requested. */
+export const mobileCreatePairing = (viaTunnel = false) =>
+	invoke<PairingInfo>("mobile_create_pairing", { viaTunnel });
 
 export const mobileRevokeAll = () => invoke<void>("mobile_revoke_all");
 

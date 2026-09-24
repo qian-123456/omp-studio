@@ -1,29 +1,79 @@
 //! [D] Smart todo queue, system detection, supervisor, summaries, diagnose.
-//! Cross-module API per docs/ARCHITECTURE.md §9 — stubbed at scaffold time.
-#![allow(dead_code, unused_variables)]
+//! Cross-module API per docs/ARCHITECTURE.md §9.
 
 pub mod commands;
+pub mod detect;
+pub mod diagnose;
+pub mod omp;
+pub mod sessions;
+pub mod store;
+pub mod summary;
+pub mod supervisor;
+pub mod transcript;
 
-use crate::contracts::{Todo, TodoCounts};
-use crate::state::AppState;
+use tauri::Emitter as _;
 
-/// System-detection bus subscriber + summary refresh loop.
-pub fn init(state: AppState) {}
+use crate::contracts::{Todo, TodoCounts, TodoKind, TodoStatus};
+use crate::state::{AppEvent, AppState};
+
+/// System-detection bus subscriber, reconcile loop and summary refresh loop.
+pub fn init(state: AppState) {
+    detect::spawn(state.clone());
+    summary::spawn_refresh(state);
+}
+
+fn visibility(state: &AppState) -> (bool, bool) {
+    let s = state.settings.read();
+    (s.system_detection, s.supervisor_enabled)
+}
 
 pub async fn list(state: &AppState, include_closed: bool) -> Vec<Todo> {
-    Vec::new()
+    let (sys, sup) = visibility(state);
+    store::list(&state.db.lock(), include_closed, sys, sup).unwrap_or_default()
 }
 
 /// `action`: "done" | "ignore".
 pub async fn act(state: &AppState, id: &str, action: &str) -> Result<(), String> {
-    Err("not implemented".to_string())
+    let status = match action {
+        "done" => TodoStatus::Done,
+        "ignore" => TodoStatus::Ignored,
+        other => return Err(format!("unknown action: {other}")),
+    };
+    let todo = {
+        let db = state.db.lock();
+        let todo = store::get(&db, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "待办不存在".to_string())?;
+        store::set_status(&db, id, status).map_err(|e| e.to_string())?;
+        todo
+    };
+    // Completing a Review todo == accepting the session (A reacts to the event).
+    if status == TodoStatus::Done && todo.kind == TodoKind::Review {
+        if let Some(sid) = todo.session_id {
+            state.emit(AppEvent::SessionAccepted { session_id: sid });
+        }
+    }
+    notify_changed(state);
+    Ok(())
 }
 
 pub async fn counts(state: &AppState) -> TodoCounts {
-    TodoCounts::default()
+    counts_sync(state)
+}
+
+pub fn counts_sync(state: &AppState) -> TodoCounts {
+    let (sys, sup) = visibility(state);
+    store::counts(&state.db.lock(), sys, sup)
 }
 
 /// Latest compaction summary, cached row, or (if `ensure`) generate one.
 pub async fn summary(state: &AppState, session_id: &str, ensure: bool) -> Option<String> {
-    None
+    summary::get(state, session_id, ensure).await
+}
+
+/// Emit `todos:changed` (frontend) + `AppEvent::TodosChanged` (bus).
+pub fn notify_changed(state: &AppState) {
+    let counts = counts_sync(state);
+    let _ = state.app.emit("todos:changed", counts);
+    state.emit(AppEvent::TodosChanged);
 }

@@ -58,7 +58,14 @@ mod tests {
 
     #[test]
     fn all_templates_load() {
-        for t in [SIDE_CHAT, CONTEXT_ROUTE, SUMMARY, SUPERVISOR, DIAGNOSE, BACKLOG_DISPATCH] {
+        for t in [
+            SIDE_CHAT,
+            CONTEXT_ROUTE,
+            SUMMARY,
+            SUPERVISOR,
+            DIAGNOSE,
+            BACKLOG_DISPATCH,
+        ] {
             assert!(t.len() > 50);
         }
     }

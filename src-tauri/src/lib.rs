@@ -12,6 +12,7 @@ mod paths;
 mod prompts;
 mod rpc;
 mod services;
+mod settings;
 mod state;
 mod terminal;
 mod todos;
@@ -32,12 +33,7 @@ async fn save_settings(
     state: tauri::State<'_, AppState>,
     settings: Settings,
 ) -> Result<Settings, String> {
-    {
-        let db = state.db.lock();
-        db::save_settings(&db, &settings)?;
-    }
-    *state.settings.write() = settings.clone();
-    Ok(settings)
+    settings::save(&state, settings).await
 }
 
 #[tauri::command]
@@ -65,14 +61,14 @@ pub fn run() {
             let state = AppState::new(app.handle().clone(), conn, settings);
             app.manage(state.clone());
 
-            // Module background tasks (§9); stubs do nothing at scaffold time.
+            // Register event consumers before catalog and process producers start.
+            todos::init(state.clone());
+            backlog::init(state.clone());
+            notify::init(state.clone());
             catalog::init(state.clone());
             rpc::init(state.clone());
             git::init(state.clone());
             services::init(state.clone());
-            todos::init(state.clone());
-            backlog::init(state.clone());
-            notify::init(state.clone());
             mobile::init(state.clone());
             terminal::init(state.clone());
             Ok(())
@@ -128,6 +124,7 @@ pub fn run() {
             todos::commands::supervisor_refresh,
             todos::commands::summary_get,
             todos::commands::diagnose_build_prompt,
+            todos::commands::dispatch_prompt,
             // D — backlog
             backlog::commands::backlog_list,
             backlog::commands::backlog_add,
@@ -152,6 +149,22 @@ pub fn run() {
             terminal::commands::term_open_session,
             terminal::commands::install_status_extension_globally,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                terminal::pty::close_all();
+                mobile::tunnel::stop();
+                // Preserve worktrees and autostart settings; stop only app-owned processes.
+                let runs = git::tm::list();
+                std::thread::scope(|scope| {
+                    for run in runs {
+                        scope.spawn(move || {
+                            let _ = git::tm::stop(&run.id, false);
+                        });
+                    }
+                });
+                tauri::async_runtime::block_on(rpc::shutdown());
+            }
+        });
 }

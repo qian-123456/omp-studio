@@ -39,3 +39,11 @@ parking_lot = "0.12"
 regex = "1"
 tracing = "0.1"
 portable-pty = "0.9"
+libc = "0.2.189"
+sha2 = "0.10"
+getrandom = "0.3"
+futures-util = "0.3"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

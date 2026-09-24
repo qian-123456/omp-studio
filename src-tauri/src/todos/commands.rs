@@ -1,5 +1,4 @@
 //! [D] Tauri commands: todos + supervisor + summaries + diagnose (§7).
-#![allow(dead_code, unused_variables)]
 
 use crate::contracts::{Todo, TodoCounts};
 use crate::state::AppState;
@@ -29,7 +28,7 @@ pub async fn todos_counts(state: tauri::State<'_, AppState>) -> Result<TodoCount
 
 #[tauri::command]
 pub async fn supervisor_refresh(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    Err("not implemented".to_string())
+    crate::todos::supervisor::refresh(&state).await
 }
 
 #[tauri::command]
@@ -46,5 +45,16 @@ pub async fn diagnose_build_prompt(
     state: tauri::State<'_, AppState>,
     target_session_id: String,
 ) -> Result<String, String> {
-    Err("not implemented".to_string())
+    crate::todos::diagnose::build_prompt(&state, &target_session_id).await
+}
+
+/// [D, added] Send a prompt to a session via `rpc::send_prompt` (ensure_live + prompt /
+/// followUp when streaming). Used by diagnose, backlog dispatch and suggestion actions.
+#[tauri::command]
+pub async fn dispatch_prompt(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    text: String,
+) -> Result<(), String> {
+    crate::rpc::send_prompt(&state, &session_id, &text).await
 }

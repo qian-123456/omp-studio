@@ -148,8 +148,7 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
     // 8. Global shortcut: allow empty string to disable; otherwise parse via Shortcut API
     let shortcut = settings.quick_capture_shortcut.trim();
     if !shortcut.is_empty() {
-        Shortcut::from_str(shortcut)
-            .map_err(|e| format!("快捷键格式无效 \"{shortcut}\": {e}"))?;
+        Shortcut::from_str(shortcut).map_err(|e| format!("快捷键格式无效 \"{shortcut}\": {e}"))?;
     }
 
     Ok(())
@@ -173,7 +172,10 @@ fn validate_hostname(host: &str) -> Result<(), String> {
 
     // Reject URLs with schemes
     if host.contains("://") {
-        return Err("公网域名不能包含协议前缀 (如 https://)，请输入纯域名 (例如 tunnel.example.com)".to_string());
+        return Err(
+            "公网域名不能包含协议前缀 (如 https://)，请输入纯域名 (例如 tunnel.example.com)"
+                .to_string(),
+        );
     }
 
     // Reject paths, ports, query params, fragments, userinfo
@@ -262,10 +264,12 @@ mod tests {
 
     #[test]
     fn test_validate_tunnel_modes() {
-        let mut settings = Settings::default();
+        let mut settings = Settings {
+            tunnel_mode: "off".to_string(),
+            ..Default::default()
+        };
 
         // "off" and "quick" valid with defaults
-        settings.tunnel_mode = "off".to_string();
         assert!(validate(&settings).is_ok());
 
         settings.tunnel_mode = "quick".to_string();
@@ -279,9 +283,11 @@ mod tests {
 
     #[test]
     fn test_validate_mobile_port() {
-        let mut settings = Settings::default();
+        let mut settings = Settings {
+            mobile_port: 0,
+            ..Default::default()
+        };
 
-        settings.mobile_port = 0;
         let err = validate(&settings).unwrap_err();
         assert!(err.contains("移动端端口号不能为 0"));
 
@@ -291,48 +297,74 @@ mod tests {
 
     #[test]
     fn test_validate_omp_binary_and_model_blank() {
-        let mut settings = Settings::default();
+        let mut settings = Settings {
+            omp_binary: "".to_string(),
+            ..Default::default()
+        };
 
-        settings.omp_binary = "".to_string();
-        assert!(validate(&settings).unwrap_err().contains("OMP 可执行文件路径不能为空"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("OMP 可执行文件路径不能为空"));
 
         settings.omp_binary = "   ".to_string();
-        assert!(validate(&settings).unwrap_err().contains("OMP 可执行文件路径不能为空"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("OMP 可执行文件路径不能为空"));
         settings.omp_binary = "omp".to_string();
 
         settings.supervisor_model = "".to_string();
-        assert!(validate(&settings).unwrap_err().contains("模型名称不能为空"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("模型名称不能为空"));
 
         settings.supervisor_model = "  \t ".to_string();
-        assert!(validate(&settings).unwrap_err().contains("模型名称不能为空"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("模型名称不能为空"));
     }
 
     #[test]
     fn test_validate_process_args_nul_and_newlines() {
-        let mut settings = Settings::default();
+        let mut settings = Settings {
+            omp_binary: "omp\0test".to_string(),
+            ..Default::default()
+        };
 
-        settings.omp_binary = "omp\0test".to_string();
-        assert!(validate(&settings).unwrap_err().contains("不能包含空字符 (NUL) 或换行符"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("不能包含空字符 (NUL) 或换行符"));
 
         settings.omp_binary = "omp\narg".to_string();
-        assert!(validate(&settings).unwrap_err().contains("不能包含空字符 (NUL) 或换行符"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("不能包含空字符 (NUL) 或换行符"));
 
         settings.omp_binary = "omp\rarg".to_string();
-        assert!(validate(&settings).unwrap_err().contains("不能包含空字符 (NUL) 或换行符"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("不能包含空字符 (NUL) 或换行符"));
         settings.omp_binary = "omp".to_string();
 
         settings.supervisor_model = "smol\0".to_string();
-        assert!(validate(&settings).unwrap_err().contains("不能包含空字符 (NUL) 或换行符"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("不能包含空字符 (NUL) 或换行符"));
 
         settings.supervisor_model = "smol\n".to_string();
-        assert!(validate(&settings).unwrap_err().contains("不能包含空字符 (NUL) 或换行符"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("不能包含空字符 (NUL) 或换行符"));
         settings.supervisor_model = "smol".to_string();
 
         settings.tunnel_name = Some("my\0tunnel".to_string());
-        assert!(validate(&settings).unwrap_err().contains("不能包含空字符 (NUL) 或换行符"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("不能包含空字符 (NUL) 或换行符"));
 
         settings.tunnel_name = Some("my\ntunnel".to_string());
-        assert!(validate(&settings).unwrap_err().contains("不能包含空字符 (NUL) 或换行符"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("不能包含空字符 (NUL) 或换行符"));
 
         settings.tunnel_name = Some("-option-flag".to_string());
         assert!(validate(&settings).unwrap_err().contains("不能以 '-' 开头"));
@@ -340,22 +372,30 @@ mod tests {
 
     #[test]
     fn test_validate_named_tunnel_requirements() {
-        let mut settings = Settings::default();
-        settings.tunnel_mode = "named".to_string();
+        let mut settings = Settings {
+            tunnel_mode: "named".to_string(),
+            ..Default::default()
+        };
 
         // Missing both
         settings.tunnel_name = None;
         settings.tunnel_hostname = None;
-        assert!(validate(&settings).unwrap_err().contains("必须配置隧道名称"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("必须配置隧道名称"));
 
         // Name only
         settings.tunnel_name = Some("my-tunnel".to_string());
-        assert!(validate(&settings).unwrap_err().contains("必须配置公网域名"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("必须配置公网域名"));
 
         // Blank name
         settings.tunnel_name = Some("  ".to_string());
         settings.tunnel_hostname = Some("tunnel.example.com".to_string());
-        assert!(validate(&settings).unwrap_err().contains("必须配置隧道名称"));
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("必须配置隧道名称"));
 
         // Valid named tunnel
         settings.tunnel_name = Some("my-tunnel".to_string());
@@ -377,7 +417,10 @@ mod tests {
             "tunnel.example.com.",
         ] {
             settings.tunnel_hostname = Some(valid.to_string());
-            assert!(validate(&settings).is_ok(), "Expected valid hostname: {valid}");
+            assert!(
+                validate(&settings).is_ok(),
+                "Expected valid hostname: {valid}"
+            );
         }
 
         // Invalid hostname inputs: URL schemes, paths, options, special chars
@@ -393,7 +436,7 @@ mod tests {
             ("user@example.com", "不能包含 '@'"),
             ("my domain.com", "不能包含空白字符"),
             ("example..com", "不能包含连续的点号"),
-            ("-example.com", "不能以连字符 '-' 开头或结尾"),
+            ("-example.com", "不能以 '-' 开头"),
             ("example-.com", "不能以连字符 '-' 开头或结尾"),
             ("exam_ple.com", "包含非法字符"),
         ];
@@ -410,10 +453,12 @@ mod tests {
 
     #[test]
     fn test_validate_quick_capture_shortcut() {
-        let mut settings = Settings::default();
+        let mut settings = Settings {
+            quick_capture_shortcut: "".to_string(),
+            ..Default::default()
+        };
 
         // Empty string / whitespace opt-out
-        settings.quick_capture_shortcut = "".to_string();
         assert!(validate(&settings).is_ok());
 
         settings.quick_capture_shortcut = "   ".to_string();

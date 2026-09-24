@@ -1,8 +1,223 @@
-/** [D] Top-right capsule: todo counts + subagent strip. Placeholder. */
+import { Bot, ChevronRight, ListTodo, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useLive } from "../../stores/live";
+import { useUi } from "../../stores/ui";
+import { useSettings } from "../settings/store";
+import { TodoRow } from "./TodoRow";
+import { splitTodos, subagentCounts } from "./logic";
+import { startTodos, useTodos } from "./store";
+
 export function TopCapsule() {
+	const settings = useSettings((s) => s.settings);
+	const loadSettings = useSettings((s) => s.load);
+
+	const todos = useTodos((s) => s.todos);
+	const counts = useTodos((s) => s.counts);
+
+	const selectedSessionId = useUi((s) => s.selectedSessionId);
+	const setCenter = useUi((s) => s.setCenter);
+
+	const live = useLive((s) =>
+		selectedSessionId ? s.sessions[selectedSessionId] : undefined,
+	);
+
+	const [openTodoPopover, setOpenTodoPopover] = useState(false);
+	const [openSubPopover, setOpenSubPopover] = useState(false);
+
+	const containerRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		startTodos();
+		void loadSettings();
+	}, [loadSettings]);
+
+	// Close popovers on click outside
+	useEffect(() => {
+		const handleClickOutside = (e: MouseEvent) => {
+			if (
+				containerRef.current &&
+				!containerRef.current.contains(e.target as Node)
+			) {
+				setOpenTodoPopover(false);
+				setOpenSubPopover(false);
+			}
+		};
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, []);
+
+	if (settings && !settings.capsuleVisible) {
+		return null;
+	}
+
+	const subagents = live?.subagents ?? {};
+	const subCounts = subagentCounts(subagents);
+	const hasSubagents = Object.keys(subagents).length > 0;
+	const { open: openTodos } = splitTodos(todos);
+
 	return (
-		<div className="rounded-full border border-neutral-700 bg-neutral-800/60 px-3 py-1 text-xs text-neutral-400">
-			待处理 0/0
+		<div ref={containerRef} className="relative flex items-center gap-1.5">
+			{/* Main Capsule Pill */}
+			<div className="flex items-center rounded-full border border-neutral-700/80 bg-neutral-800/80 p-0.5 text-xs shadow-sm">
+				{/* Todo Queue Button Segment */}
+				<button
+					type="button"
+					onClick={() => {
+						setOpenTodoPopover(!openTodoPopover);
+						setOpenSubPopover(false);
+					}}
+					className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium transition-colors ${
+						openTodoPopover
+							? "bg-neutral-700 text-neutral-100"
+							: "text-neutral-300 hover:bg-neutral-700/60 hover:text-neutral-100"
+					}`}
+				>
+					<span
+						className={`h-2 w-2 rounded-full ${
+							counts.open > 0 ? "bg-amber-400 animate-pulse" : "bg-neutral-500"
+						}`}
+					/>
+					<ListTodo className="h-3.5 w-3.5 text-neutral-400" />
+					<span>
+						待处理{" "}
+						<strong className="text-amber-400 font-semibold">
+							{counts.open}
+						</strong>
+						/{counts.total}
+					</span>
+				</button>
+
+				{/* Subagent Strip Segment (when active session has subagents) */}
+				{hasSubagents && (
+					<>
+						<div className="h-3.5 w-[1px] bg-neutral-700" />
+						<button
+							type="button"
+							onClick={() => {
+								setOpenSubPopover(!openSubPopover);
+								setOpenTodoPopover(false);
+							}}
+							className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium transition-colors ${
+								openSubPopover
+									? "bg-neutral-700 text-neutral-100"
+									: "text-neutral-300 hover:bg-neutral-700/60 hover:text-neutral-100"
+							}`}
+							title="查看当前会话的子任务状态"
+						>
+							<Bot className="h-3.5 w-3.5 text-violet-400" />
+							<span>子任务</span>
+							{subCounts.running > 0 && (
+								<span className="rounded bg-sky-500/20 px-1 py-0.2 text-[10px] text-sky-300">
+									{subCounts.running} 运行
+								</span>
+							)}
+							{subCounts.done > 0 && (
+								<span className="rounded bg-emerald-500/20 px-1 py-0.2 text-[10px] text-emerald-300">
+									{subCounts.done} 完成
+								</span>
+							)}
+							{subCounts.failed > 0 && (
+								<span className="rounded bg-rose-500/20 px-1 py-0.2 text-[10px] text-rose-300">
+									{subCounts.failed} 失败
+								</span>
+							)}
+						</button>
+					</>
+				)}
+			</div>
+
+			{/* Todo Popover Dropdown */}
+			{openTodoPopover && (
+				<div className="absolute right-0 top-full z-50 mt-2 w-96 rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-2xl">
+					<div className="mb-2 flex items-center justify-between border-b border-neutral-800 pb-2">
+						<div className="text-xs font-semibold text-neutral-200">
+							待处理队列 ({openTodos.length})
+						</div>
+						<button
+							type="button"
+							onClick={() => {
+								setOpenTodoPopover(false);
+								setCenter("home");
+							}}
+							className="inline-flex items-center gap-1 text-[11px] text-amber-400 hover:underline"
+						>
+							<span>查看完整待办</span>
+							<ChevronRight className="h-3 w-3" />
+						</button>
+					</div>
+
+					<div className="max-h-80 space-y-2 overflow-y-auto pr-0.5">
+						{openTodos.length === 0 ? (
+							<div className="py-6 text-center text-xs text-neutral-500">
+								暂无待处理待办
+							</div>
+						) : (
+							openTodos.slice(0, 5).map((t, idx) => (
+								<TodoRow
+									key={t.id}
+									todo={t}
+									isMostUrgent={idx === 0}
+									compact
+								/>
+							))
+						)}
+					</div>
+				</div>
+			)}
+
+			{/* Subagents Popover Dropdown */}
+			{openSubPopover && (
+				<div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-2xl">
+					<div className="mb-2 flex items-center justify-between border-b border-neutral-800 pb-2">
+						<div className="text-xs font-semibold text-neutral-200">
+							子任务列表 ({Object.keys(subagents).length})
+						</div>
+						<button
+							type="button"
+							onClick={() => setOpenSubPopover(false)}
+							className="text-neutral-500 hover:text-neutral-300"
+						>
+							<X className="h-3.5 w-3.5" />
+						</button>
+					</div>
+
+					<div className="max-h-72 space-y-1.5 overflow-y-auto">
+						{Object.entries(subagents).map(([id, sub]) => {
+							const agent =
+								typeof sub.agent === "string" && sub.agent ? sub.agent : null;
+							const task = typeof sub.task === "string" ? sub.task : "";
+							return (
+								<div
+									key={id}
+									className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-2 text-xs"
+								>
+									<div className="flex items-center justify-between">
+										<span className="font-medium text-neutral-200">
+											{agent || sub.label || id}
+										</span>
+										<span
+											className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+												sub.status === "running"
+													? "bg-sky-500/20 text-sky-300"
+													: sub.status === "done" || sub.status === "completed"
+														? "bg-emerald-500/20 text-emerald-300"
+														: "bg-neutral-800 text-neutral-400"
+											}`}
+										>
+											{sub.status || "未知"}
+										</span>
+									</div>
+									{task && (
+										<div className="mt-1 line-clamp-2 text-[11px] text-neutral-400">
+											{task}
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

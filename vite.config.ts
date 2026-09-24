@@ -1,17 +1,20 @@
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 // https://vite.dev/config/
 export default defineConfig({
 	plugins: [react(), tailwindcss()],
+	test: {
+		include: ["src/**/*.test.{ts,tsx}"],
+	},
 	// Tauri expects a fixed dev port and fails if it is taken.
 	clearScreen: false,
 	server: {
 		port: 1420,
 		strictPort: true,
 		watch: {
-			ignored: ["**/src-tauri/**"],
+			ignored: ["**/src-tauri/**", "**/.worktrees/**"],
 		},
 	},
 	build: {

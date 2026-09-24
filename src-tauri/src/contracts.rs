@@ -37,7 +37,7 @@ pub enum PendingKind {
     Interrupted,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitBadge {
     pub branch: Option<String>,
@@ -45,7 +45,7 @@ pub struct GitBadge {
     pub worktree: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResultBadge {
     /// "test" | "build"
