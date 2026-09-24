@@ -34,3 +34,8 @@ pub async fn pending_ui(state: &AppState, session_id: &str) -> Vec<PendingUiRequ
 pub fn is_live(session_id: &str) -> bool {
     false
 }
+
+/// Close stdin, wait ≤5s, then kill. Used by terminal view (E) and idle suspend.
+pub async fn stop(state: &AppState, session_id: &str) -> Result<(), String> {
+    Err("not implemented".to_string())
+}

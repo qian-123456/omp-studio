@@ -365,6 +365,7 @@ pub async fn rpc::ui_respond(state: &AppState, session_id: &str, response: serde
 pub async fn rpc::ensure_live(state: &AppState, session_id: &str) -> Result<LiveSessionInfo, String>;
 pub async fn rpc::pending_ui(state: &AppState, session_id: &str) -> Vec<PendingUiRequest>;
 pub fn rpc::is_live(session_id: &str) -> bool;
+pub async fn rpc::stop(state: &AppState, session_id: &str) -> Result<(), String>; // E uses it before terminal view
 pub fn rpc::init(state: AppState);       // idle-suspend loop
 // git (C)
 pub fn git::badge(cwd: &Path) -> Option<GitBadge>;                   // fast (cached ≤5s)
