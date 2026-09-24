@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+	--font-sans:
+		-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+		"Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body,
+#root {
+	height: 100%;
+}
+
+body {
+	font-size: 13px;
+	background-color: var(--color-neutral-950);
+	color: var(--color-neutral-200);
+	-webkit-font-smoothing: antialiased;
+	user-select: none;
+}
+
+/* Text inside content panes stays selectable. */
+main,
+aside {
+	user-select: text;
+}
+
+[data-tauri-drag-region] {
+	user-select: none;
+}

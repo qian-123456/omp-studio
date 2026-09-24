@@ -1,0 +1,3 @@
+modelRoles:
+  default: devin/swe-2:max
+  task: google-antigravity/gemini-3.8-flash:high
