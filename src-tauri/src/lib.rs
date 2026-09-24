@@ -9,6 +9,7 @@ mod git;
 mod mobile;
 mod notify;
 mod paths;
+mod prompts;
 mod rpc;
 mod services;
 mod state;

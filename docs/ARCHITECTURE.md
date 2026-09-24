@@ -47,7 +47,7 @@ src-tauri/src/
   mobile/           LAN HTTP server, pairing, QR, SSE, cloudflared tunnel              [E]
   terminal/         PTY sessions                                                       [E]
 src-tauri/mobile/index.html   mobile web app (single file, vanilla JS)                 [E]
-src-tauri/prompts/*.md        LLM prompt templates, loaded with include_str!           [D, B]
+src-tauri/prompts/*.md + src/prompts.rs  prompt templates + render() ({{var}}, {{#if var}}..{{/if}}) [LEAD]
 extension/omp-workspace-status.ts   OMP status-report extension (§8)                   [E]
 
 src/
