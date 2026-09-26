@@ -16,6 +16,7 @@ import type {
 	LiveSessionInfo,
 	MobileStatus,
 	Model,
+	OmpConfigListResult,
 	PairingInfo,
 	PathCheck,
 	PendingUiRequest,
@@ -253,6 +254,16 @@ export const backlogBuildPrompt = (id: string) =>
 // ---- D — notify ----
 
 export const notifyTest = () => invoke<void>("notify_test");
+
+// ---- D — settings (OMP config bridge) ----
+
+export const ompConfigList = () => invoke<OmpConfigListResult>("omp_config_list");
+
+export const ompConfigSet = (key: string, value: string) =>
+	invoke<void>("omp_config_set", { key, value });
+
+export const ompConfigReset = (key: string) =>
+	invoke<void>("omp_config_reset", { key });
 
 // ---- E — mobile / tunnel ----
 

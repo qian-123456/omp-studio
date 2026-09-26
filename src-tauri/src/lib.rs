@@ -188,6 +188,10 @@ pub fn run() {
             backlog::commands::backlog_build_prompt,
             // D — notify
             notify::commands::notify_test,
+            // D — settings (OMP config bridge)
+            settings::omp_config_list,
+            settings::omp_config_set,
+            settings::omp_config_reset,
             // E — mobile + tunnel
             mobile::commands::mobile_start,
             mobile::commands::mobile_stop,

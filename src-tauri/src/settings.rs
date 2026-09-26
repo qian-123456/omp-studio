@@ -4,7 +4,10 @@
 //! before persisting to SQLite and updating in-memory AppState.
 
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::sync::Mutex;
+
+use serde::Serialize;
 
 use crate::contracts::Settings;
 use crate::db;
@@ -151,12 +154,59 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
         Shortcut::from_str(shortcut).map_err(|e| format!("快捷键格式无效 \"{shortcut}\": {e}"))?;
     }
 
+    // 9. Supervisor interval: sanity cap at one week; 0 = manual only.
+    if settings.supervisor_interval_minutes > 7 * 24 * 60 {
+        return Err("监工触发间隔不能超过 10080 分钟 (7 天)".to_string());
+    }
+
+    // 10. Notification quiet hours: "HH:MM", both bounds set together.
+    match (&settings.notify_quiet_from, &settings.notify_quiet_to) {
+        (Some(from), Some(to)) => {
+            validate_hhmm(from).map_err(|e| format!("免打扰开始时间无效：{e}"))?;
+            validate_hhmm(to).map_err(|e| format!("免打扰结束时间无效：{e}"))?;
+        }
+        (Some(_), None) | (None, Some(_)) => {
+            return Err("免打扰时段需要同时设置开始与结束时间".to_string());
+        }
+        (None, None) => {}
+    }
+
+    // 11. Default model for new sessions (eventually passed as --model).
+    if let Some(model) = &settings.new_session_model {
+        let trimmed = model.trim();
+        if has_nul_or_newline(model) {
+            return Err("新会话默认模型不能包含空字符 (NUL) 或换行符".to_string());
+        }
+        if !trimmed.is_empty() && trimmed.starts_with('-') {
+            return Err("新会话默认模型不能以 '-' 开头（防止选项参数注入）".to_string());
+        }
+    }
+
     Ok(())
 }
 
 /// Checks whether a string contains NUL, LF, or CR characters.
 fn has_nul_or_newline(s: &str) -> bool {
     s.bytes().any(|b| b == 0 || b == b'\n' || b == b'\r')
+}
+
+/// Validates a "HH:MM" 24-hour clock time string.
+fn validate_hhmm(s: &str) -> Result<(), String> {
+    let bad = || format!("需要 HH:MM 格式的 24 小时制时间 (当前 \"{s}\")");
+    let mut parts = s.split(':');
+    let (Some(h), Some(m), None) = (parts.next(), parts.next(), parts.next()) else {
+        return Err(bad());
+    };
+    if h.len() != 2 || m.len() != 2 {
+        return Err(bad());
+    }
+    let (Ok(hh), Ok(mm)) = (h.parse::<u32>(), m.parse::<u32>()) else {
+        return Err(bad());
+    };
+    if hh > 23 || mm > 59 {
+        return Err(bad());
+    }
+    Ok(())
 }
 
 /// Validates that a hostname is a syntactically valid DNS hostname and not an arbitrary URL or CLI option.
@@ -233,6 +283,223 @@ fn validate_hostname(host: &str) -> Result<(), String> {
         }
     }
 
+    Ok(())
+}
+
+// ---- OMP config bridge (`omp config list/set/reset`, §7 D) ----
+
+/// Timeout for one `omp config` invocation.
+const OMP_CONFIG_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// One `omp config list --json` entry, parsed defensively.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpConfigEntry {
+    pub key: String,
+    /// Current effective value; None when unset. Omitted by omp for credentials.
+    pub value: Option<serde_json::Value>,
+    /// "boolean" | "number" | "string" | "enum" | "array" | "record".
+    pub value_type: String,
+    pub description: String,
+    /// Credential field: omp masks the value; the UI renders a write-only input.
+    pub redacted: bool,
+}
+
+/// Result of `omp config list --json`; `found: false` means the omp binary
+/// was missing or the command failed (`error` carries the reason).
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpConfigListResult {
+    pub found: bool,
+    pub entries: Vec<OmpConfigEntry>,
+    pub error: Option<String>,
+}
+
+/// Raw JSON shape of one `omp config list --json` entry.
+#[derive(Debug, Default, serde::Deserialize)]
+struct RawOmpConfigEntry {
+    #[serde(default)]
+    value: Option<serde_json::Value>,
+    #[serde(default, rename = "type")]
+    value_type: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    redacted: bool,
+}
+
+/// Parses `omp config list --json` output: `{ key: { value, type, description, redacted } }`.
+/// Skips entries that are not objects; missing fields fall back to sensible defaults.
+fn parse_omp_config_list(json: &str) -> Vec<OmpConfigEntry> {
+    let Ok(map) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(json) else {
+        return Vec::new();
+    };
+    let mut entries = Vec::new();
+    for (key, raw) in map {
+        let Ok(entry) = serde_json::from_value::<RawOmpConfigEntry>(raw) else {
+            continue;
+        };
+        entries.push(OmpConfigEntry {
+            key,
+            value: entry.value,
+            value_type: entry
+                .value_type
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| "string".to_string()),
+            description: entry.description.unwrap_or_default(),
+            redacted: entry.redacted,
+        });
+    }
+    entries.sort_by(|a, b| a.key.cmp(&b.key));
+    entries
+}
+
+/// Validates a config key: schema paths are dot-separated identifiers.
+fn validate_config_key(key: &str) -> Result<(), String> {
+    if key.is_empty() {
+        return Err("配置键不能为空".to_string());
+    }
+    if has_nul_or_newline(key) {
+        return Err("配置键不能包含空字符 (NUL) 或换行符".to_string());
+    }
+    if key.starts_with('-') {
+        return Err("配置键不能以 '-' 开头（防止选项参数注入）".to_string());
+    }
+    if !key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    {
+        return Err("配置键只能包含字母、数字、点号、连字符或下划线".to_string());
+    }
+    Ok(())
+}
+
+/// Validates a config value before handing it to `omp config set`.
+fn validate_config_value(key: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err("值不能为空，如需恢复默认请使用重置".to_string());
+    }
+    if has_nul_or_newline(value) {
+        return Err(format!("配置 {key} 的值不能包含空字符 (NUL) 或换行符"));
+    }
+    if value.starts_with('-') {
+        return Err(format!(
+            "配置 {key} 的值不能以 '-' 开头（防止选项参数注入）"
+        ));
+    }
+    Ok(())
+}
+
+/// Resolves the configured omp binary against the augmented PATH.
+fn omp_exe(state: &AppState) -> (std::path::PathBuf, String) {
+    let bin = state.settings.read().omp_binary.clone();
+    let path = crate::todos::omp::augmented_path();
+    let exe = crate::todos::omp::resolve_binary(&bin, &path);
+    (exe, path)
+}
+
+/// Runs `omp config <args...>` without a shell and returns trimmed stdout.
+async fn run_omp_config(
+    exe: &std::path::Path,
+    path_env: &str,
+    args: &[&str],
+) -> Result<String, String> {
+    let mut cmd = tokio::process::Command::new(exe);
+    cmd.args(["config"])
+        .args(args)
+        .env("PATH", path_env)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("无法启动 {}：{e}", exe.display()))?;
+    let out = tokio::time::timeout(OMP_CONFIG_TIMEOUT, child.wait_with_output())
+        .await
+        .map_err(|_| "omp config 超时".to_string())?
+        .map_err(|e| format!("omp config 执行失败：{e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let tail: String = stderr
+            .chars()
+            .rev()
+            .take(400)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        return Err(format!("omp config 失败 ({}): {}", out.status, tail.trim()));
+    }
+    Ok(stdout)
+}
+
+/// `omp_config_list` (§7 D): snapshot of OMP's own settings schema + current values.
+#[tauri::command]
+pub async fn omp_config_list(
+    state: tauri::State<'_, AppState>,
+) -> Result<OmpConfigListResult, String> {
+    let (exe, path) = omp_exe(&state);
+    if !exe.is_file() {
+        return Ok(OmpConfigListResult {
+            found: false,
+            entries: Vec::new(),
+            error: Some(format!(
+                "未找到 OMP 命令行程序 \"{}\"",
+                state.settings.read().omp_binary
+            )),
+        });
+    }
+    match run_omp_config(&exe, &path, &["list", "--json"]).await {
+        Ok(stdout) => Ok(OmpConfigListResult {
+            found: true,
+            entries: parse_omp_config_list(&stdout),
+            error: None,
+        }),
+        Err(e) => Ok(OmpConfigListResult {
+            found: false,
+            entries: Vec::new(),
+            error: Some(e),
+        }),
+    }
+}
+
+/// `omp_config_set` (§7 D): writes one key to OMP's global config via `omp config set`.
+#[tauri::command]
+pub async fn omp_config_set(
+    state: tauri::State<'_, AppState>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    validate_config_key(&key)?;
+    validate_config_value(&key, &value)?;
+    let (exe, path) = omp_exe(&state);
+    if !exe.is_file() {
+        return Err(format!(
+            "未找到 OMP 命令行程序 \"{}\"",
+            state.settings.read().omp_binary
+        ));
+    }
+    run_omp_config(&exe, &path, &["set", &key, &value]).await?;
+    Ok(())
+}
+
+/// `omp_config_reset` (§7 D): restores one key's schema default via `omp config reset`.
+#[tauri::command]
+pub async fn omp_config_reset(
+    state: tauri::State<'_, AppState>,
+    key: String,
+) -> Result<(), String> {
+    validate_config_key(&key)?;
+    let (exe, path) = omp_exe(&state);
+    if !exe.is_file() {
+        return Err(format!(
+            "未找到 OMP 命令行程序 \"{}\"",
+            state.settings.read().omp_binary
+        ));
+    }
+    run_omp_config(&exe, &path, &["reset", &key]).await?;
     Ok(())
 }
 
@@ -480,5 +747,172 @@ mod tests {
 
         settings.quick_capture_shortcut = "Ctrl++".to_string();
         assert!(validate(&settings).unwrap_err().contains("快捷键格式无效"));
+    }
+
+    #[test]
+    fn test_validate_supervisor_interval_cap() {
+        let mut settings = Settings {
+            supervisor_interval_minutes: 30,
+            ..Default::default()
+        };
+        assert!(validate(&settings).is_ok());
+
+        settings.supervisor_interval_minutes = 0; // manual only
+        assert!(validate(&settings).is_ok());
+
+        settings.supervisor_interval_minutes = 7 * 24 * 60;
+        assert!(validate(&settings).is_ok());
+
+        settings.supervisor_interval_minutes = 7 * 24 * 60 + 1;
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("不能超过 10080 分钟"));
+    }
+
+    #[test]
+    fn test_validate_quiet_hours() {
+        let mut settings = Settings::default();
+        assert!(validate(&settings).is_ok());
+
+        settings.notify_quiet_from = Some("23:00".to_string());
+        settings.notify_quiet_to = Some("07:30".to_string());
+        assert!(validate(&settings).is_ok());
+
+        // Both None is fine, but only one set is rejected.
+        settings.notify_quiet_to = None;
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("同时设置开始与结束时间"));
+
+        settings.notify_quiet_to = Some("7:30".to_string());
+        settings.notify_quiet_from = None;
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("同时设置开始与结束时间"));
+
+        // Format errors
+        settings.notify_quiet_from = Some("24:00".to_string());
+        settings.notify_quiet_to = Some("07:30".to_string());
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("免打扰开始时间无效"));
+
+        settings.notify_quiet_from = Some("ab:cd".to_string());
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("免打扰开始时间无效"));
+
+        settings.notify_quiet_from = Some("23:00".to_string());
+        settings.notify_quiet_to = Some("07:60".to_string());
+        assert!(validate(&settings)
+            .unwrap_err()
+            .contains("免打扰结束时间无效"));
+    }
+
+    #[test]
+    fn test_validate_new_session_model() {
+        let mut settings = Settings::default();
+        assert!(validate(&settings).is_ok());
+
+        settings.new_session_model = Some("gpt-5.6-sol".to_string());
+        assert!(validate(&settings).is_ok());
+
+        settings.new_session_model = Some("".to_string());
+        assert!(validate(&settings).is_ok());
+
+        settings.new_session_model = Some("bad\nmodel".to_string());
+        assert!(validate(&settings).unwrap_err().contains("新会话默认模型"));
+
+        settings.new_session_model = Some("--yolo".to_string());
+        assert!(validate(&settings).unwrap_err().contains("不能以 '-' 开头"));
+    }
+
+    #[test]
+    fn test_parse_omp_config_list_fixture() {
+        let fixture = r#"{
+            "setupVersion": { "value": 2, "type": "number", "description": "" },
+            "autoResume": { "value": false, "type": "boolean",
+                "description": "Automatically resume the most recent session" },
+            "shellPath": { "type": "string", "description": "" },
+            "power.sleepPrevention": { "value": "idle", "type": "enum",
+                "description": "Prevent the system sleeping." },
+            "extensions": { "value": [], "type": "array", "description": "" },
+            "auth.broker.token": { "type": "string", "description": "", "redacted": true },
+            "modelRoles": { "value": { "smol": "m1" }, "type": "record", "description": "" },
+            "broken": "not-an-object",
+            "untyped": { "value": "x" }
+        }"#;
+        let entries = parse_omp_config_list(fixture);
+        assert_eq!(entries.len(), 8);
+        let get = |k: &str| entries.iter().find(|e| e.key == k).unwrap();
+
+        let v = get("setupVersion");
+        assert_eq!(v.value_type, "number");
+        assert_eq!(v.value.as_ref().and_then(|x| x.as_i64()), Some(2));
+        assert!(!v.redacted);
+
+        // Unset entry: no value, still listed.
+        let shell = get("shellPath");
+        assert_eq!(shell.value_type, "string");
+        assert!(shell.value.is_none());
+
+        // Credential entry: value omitted by omp, redacted flag set.
+        let token = get("auth.broker.token");
+        assert!(token.redacted);
+        assert!(token.value.is_none());
+
+        // Missing/blank type falls back to "string"; non-object entries skipped.
+        assert_eq!(get("untyped").value_type, "string");
+        assert!(get("modelRoles").value.is_some());
+        assert!(entries.iter().all(|e| e.key != "broken"));
+
+        // Sorted output.
+        let sorted = entries.iter().map(|e| e.key.as_str()).collect::<Vec<_>>();
+        let mut expected = sorted.clone();
+        expected.sort_unstable();
+        assert_eq!(sorted, expected);
+    }
+
+    #[test]
+    fn test_parse_omp_config_list_garbage() {
+        assert!(parse_omp_config_list("").is_empty());
+        assert!(parse_omp_config_list("not json at all").is_empty());
+        assert!(parse_omp_config_list("[]").is_empty());
+    }
+
+    #[test]
+    fn test_validate_config_key() {
+        assert!(validate_config_key("autoResume").is_ok());
+        assert!(validate_config_key("power.sleepPrevention").is_ok());
+        assert!(validate_config_key("providers.openai-codex.codeMode").is_ok());
+
+        assert!(validate_config_key("").is_err());
+        assert!(validate_config_key("bad\nkey").is_err());
+        assert!(validate_config_key("-flag").is_err());
+        assert!(validate_config_key("key with space").is_err());
+        assert!(validate_config_key("key;rm -rf").is_err());
+        assert!(validate_config_key("键").is_err());
+    }
+
+    #[test]
+    fn test_validate_config_value() {
+        assert!(validate_config_value("k", "hello world").is_ok());
+        assert!(validate_config_value("k", "true").is_ok());
+        assert!(validate_config_value("k", "{\"a\":1}").is_ok());
+
+        assert!(validate_config_value("k", "").is_err());
+        assert!(validate_config_value("k", "line\nbreak").is_err());
+        assert!(validate_config_value("k", "nul\0byte").is_err());
+        assert!(validate_config_value("k", "-x").is_err());
+    }
+
+    #[test]
+    fn test_validate_hhmm() {
+        for ok in ["00:00", "23:59", "07:30"] {
+            assert!(validate_hhmm(ok).is_ok(), "expected valid: {ok}");
+        }
+        for bad in ["", "7:30", "07:30:00", "24:00", "23:60", "ab:cd", "07-30"] {
+            assert!(validate_hhmm(bad).is_err(), "expected invalid: {bad}");
+        }
     }
 }
