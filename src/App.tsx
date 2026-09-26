@@ -29,6 +29,7 @@ import { TodoHome } from "./features/todos/TodoHome";
 import { TodoPanel } from "./features/todos/TodoPanel";
 import { TopCapsule } from "./features/todos/TopCapsule";
 import { type RightTab, useUi } from "./stores/ui";
+import { ThemeMenu } from "./components/ThemeMenu";
 
 const RIGHT_TABS: { id: RightTab; label: string }[] = [
 	{ id: "sidechat", label: "侧聊" },
@@ -133,6 +134,7 @@ export default function App() {
 				{navBtn("settings", "设置", <SettingsIcon size={14} />)}
 				<div className="flex-1" data-tauri-drag-region />
 				<TopCapsule />
+				<ThemeMenu />
 				<button
 					type="button"
 					onClick={toggleRight}

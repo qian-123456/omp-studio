@@ -6,6 +6,409 @@
 		"Helvetica Neue", Arial, sans-serif;
 }
 
+/*
+ * Theme engine (modeled on omp-web).
+ *
+ * Every Tailwind color token the app uses is aliased onto semantic CSS
+ * variables (--bg, --accent, --status-*, ...). The variables are redefined
+ * per theme on html[data-theme="…"], so switching themes restyles the whole
+ * app without touching component classes. Derived shades use color-mix()
+ * against --bg / --text so tints adapt automatically to light and dark
+ * palettes. The default "ompws" palette reproduces the previous look
+ * (neutral grays + amber accent + indigo interactive accent).
+ */
+@theme inline {
+	/* neutral — structural ramp */
+	--color-neutral-950: var(--bg);
+	--color-neutral-900: var(--bg-panel);
+	--color-neutral-800: var(--bg-hover);
+	--color-neutral-700: var(--bg-selected);
+	--color-neutral-600: color-mix(in srgb, var(--bg-selected) 50%, var(--text-dim));
+	--color-neutral-500: var(--text-dim);
+	--color-neutral-400: var(--text-muted);
+	--color-neutral-300: color-mix(in srgb, var(--text-muted) 55%, var(--text));
+	--color-neutral-200: var(--text);
+	--color-neutral-100: var(--text);
+
+	/* amber — primary brand accent */
+	--color-amber-950: color-mix(in srgb, var(--accent) 20%, var(--bg));
+	--color-amber-900: color-mix(in srgb, var(--accent) 30%, var(--bg));
+	--color-amber-800: color-mix(in srgb, var(--accent) 42%, var(--bg));
+	--color-amber-700: color-mix(in srgb, var(--accent) 58%, var(--bg));
+	--color-amber-600: color-mix(in srgb, var(--accent) 85%, black);
+	--color-amber-500: var(--accent);
+	--color-amber-400: var(--accent);
+	--color-amber-300: var(--accent-hover);
+	--color-amber-200: color-mix(in srgb, var(--accent-hover) 60%, var(--text));
+	--color-amber-100: color-mix(in srgb, var(--accent-hover) 35%, var(--text));
+
+	/* indigo / purple / violet — secondary (interactive) accent */
+	--color-indigo-950: color-mix(in srgb, var(--accent-strong) 20%, var(--bg));
+	--color-indigo-900: color-mix(in srgb, var(--accent-strong) 30%, var(--bg));
+	--color-indigo-800: color-mix(in srgb, var(--accent-strong) 42%, var(--bg));
+	--color-indigo-700: color-mix(in srgb, var(--accent-strong) 58%, var(--bg));
+	--color-indigo-600: color-mix(in srgb, var(--accent-strong) 92%, black);
+	--color-indigo-500: var(--accent-strong);
+	--color-indigo-400: color-mix(in srgb, var(--accent-strong) 72%, var(--text));
+	--color-indigo-300: color-mix(in srgb, var(--accent-strong) 55%, var(--text));
+	--color-indigo-200: color-mix(in srgb, var(--accent-strong) 38%, var(--text));
+	--color-indigo-100: color-mix(in srgb, var(--accent-strong) 25%, var(--text));
+	--color-purple-300: color-mix(in srgb, var(--accent-strong) 55%, var(--text));
+	--color-purple-400: color-mix(in srgb, var(--accent-strong) 72%, var(--text));
+	--color-purple-500: var(--accent-strong);
+	--color-purple-600: color-mix(in srgb, var(--accent-strong) 92%, black);
+	--color-purple-700: color-mix(in srgb, var(--accent-strong) 58%, var(--bg));
+	--color-purple-800: color-mix(in srgb, var(--accent-strong) 42%, var(--bg));
+	--color-purple-900: color-mix(in srgb, var(--accent-strong) 30%, var(--bg));
+	--color-purple-950: color-mix(in srgb, var(--accent-strong) 20%, var(--bg));
+	--color-violet-300: color-mix(in srgb, var(--accent-strong) 55%, var(--text));
+	--color-violet-400: color-mix(in srgb, var(--accent-strong) 72%, var(--text));
+	--color-violet-500: var(--accent-strong);
+	--color-violet-600: color-mix(in srgb, var(--accent-strong) 92%, black);
+
+	/* emerald / teal — success */
+	--color-emerald-200: color-mix(in srgb, var(--status-success) 50%, var(--text));
+	--color-emerald-300: color-mix(in srgb, var(--status-success) 68%, var(--text));
+	--color-emerald-400: var(--status-success);
+	--color-emerald-500: var(--status-success);
+	--color-emerald-600: color-mix(in srgb, var(--status-success) 82%, black);
+	--color-emerald-700: color-mix(in srgb, var(--status-success) 58%, var(--bg));
+	--color-emerald-800: color-mix(in srgb, var(--status-success) 42%, var(--bg));
+	--color-emerald-900: color-mix(in srgb, var(--status-success) 30%, var(--bg));
+	--color-emerald-950: color-mix(in srgb, var(--status-success) 20%, var(--bg));
+	--color-teal-300: color-mix(in srgb, var(--status-success) 68%, var(--text));
+	--color-teal-400: var(--status-success);
+	--color-teal-500: color-mix(in srgb, var(--status-success) 82%, black);
+
+	/* rose / red / pink — error / danger */
+	--color-rose-100: color-mix(in srgb, var(--status-error) 35%, var(--text));
+	--color-rose-200: color-mix(in srgb, var(--status-error) 50%, var(--text));
+	--color-rose-300: color-mix(in srgb, var(--status-error) 68%, var(--text));
+	--color-rose-400: var(--status-error);
+	--color-rose-500: var(--status-error);
+	--color-rose-600: color-mix(in srgb, var(--status-error) 82%, black);
+	--color-rose-800: color-mix(in srgb, var(--status-error) 42%, var(--bg));
+	--color-rose-900: color-mix(in srgb, var(--status-error) 30%, var(--bg));
+	--color-rose-950: color-mix(in srgb, var(--status-error) 20%, var(--bg));
+	--color-red-200: color-mix(in srgb, var(--status-error) 50%, var(--text));
+	--color-red-300: color-mix(in srgb, var(--status-error) 68%, var(--text));
+	--color-red-400: var(--status-error);
+	--color-red-500: var(--status-error);
+	--color-red-800: color-mix(in srgb, var(--status-error) 42%, var(--bg));
+	--color-red-900: color-mix(in srgb, var(--status-error) 30%, var(--bg));
+	--color-red-950: color-mix(in srgb, var(--status-error) 20%, var(--bg));
+	--color-pink-400: color-mix(in srgb, var(--status-error) 72%, var(--text));
+
+	/* orange / yellow — warning */
+	--color-orange-300: color-mix(in srgb, var(--status-warning) 68%, var(--text));
+	--color-orange-400: var(--status-warning);
+	--color-orange-500: color-mix(in srgb, var(--status-warning) 82%, black);
+	--color-orange-600: color-mix(in srgb, var(--status-warning) 58%, var(--bg));
+	--color-yellow-300: color-mix(in srgb, var(--status-warning) 68%, var(--text));
+	--color-yellow-400: var(--status-warning);
+	--color-yellow-500: color-mix(in srgb, var(--status-warning) 82%, black);
+
+	/* sky / blue / cyan — info / renamed */
+	--color-sky-200: color-mix(in srgb, var(--status-renamed) 50%, var(--text));
+	--color-sky-300: color-mix(in srgb, var(--status-renamed) 68%, var(--text));
+	--color-sky-400: var(--status-renamed);
+	--color-sky-500: color-mix(in srgb, var(--status-renamed) 82%, black);
+	--color-sky-600: color-mix(in srgb, var(--status-renamed) 58%, var(--bg));
+	--color-sky-950: color-mix(in srgb, var(--status-renamed) 20%, var(--bg));
+	--color-blue-500: color-mix(in srgb, var(--status-renamed) 82%, black);
+	--color-blue-600: color-mix(in srgb, var(--status-renamed) 58%, var(--bg));
+	--color-cyan-400: var(--status-renamed);
+}
+
+/*
+ * Theme palettes. The :root block is the default "ompws" theme; the others
+ * are ported from omp-web's palettes (same semantic variable names).
+ */
+:root {
+	--bg: #0a0a0a;
+	--bg-panel: #171717;
+	--bg-hover: #262626;
+	--bg-selected: #404040;
+	--border: #404040;
+	--text: #f5f5f5;
+	--text-muted: #a3a3a3;
+	--text-dim: #737373;
+	--accent: #f59e0b;
+	--accent-strong: #564cf9;
+	--accent-hover: #fbbf24;
+	--status-error: #ef4444;
+	--status-success: #34d399;
+	--status-warning: #fbbf24;
+	--status-renamed: #38bdf8;
+
+	/* Chat typography, controlled by the font-size setting (data-font-size). */
+	--chat-font-size: 13px;
+	--chat-line-height: 1.7;
+	--chat-code-font-size: 12px;
+	--chat-user-font-size: 13px;
+}
+
+html[data-theme="omp"] {
+	--bg: #000;
+	--bg-panel: #0a0a0c;
+	--bg-hover: #141417;
+	--bg-selected: #1c1c21;
+	--border: #232329;
+	--text: #f5f5f5;
+	--text-muted: #c9c9d1;
+	--text-dim: #8e8e96;
+	--accent: #ec5bab;
+	--accent-strong: #ad2674;
+	--accent-hover: #f483bb;
+	--status-error: #ff9b92;
+	--status-success: #7dd8a8;
+	--status-warning: #f0c36a;
+	--status-renamed: #7ca8ff;
+}
+
+html[data-theme="dark"] {
+	--bg: #1b1916;
+	--bg-panel: #231f1b;
+	--bg-hover: #2b2721;
+	--bg-selected: #332e26;
+	--border: #38322b;
+	--text: #ebe6dc;
+	--text-muted: #a39b8e;
+	--text-dim: #938c81;
+	--accent: #e07b54;
+	--accent-strong: #c2542e;
+	--accent-hover: #e89371;
+	--status-error: #ff8a80;
+	--status-success: #69d5a5;
+	--status-warning: #f0c36a;
+	--status-renamed: #7ca8ff;
+}
+
+html[data-theme="dracula"] {
+	--bg: #282a36;
+	--bg-panel: #21222c;
+	--bg-hover: #343746;
+	--bg-selected: #44475a;
+	--border: #44475a;
+	--text: #f8f8f2;
+	--text-muted: #b4b8d0;
+	--text-dim: #6272a4;
+	--accent: #ff79c6;
+	--accent-strong: #bd93f9;
+	--accent-hover: #ffa2d8;
+	--status-error: #f55;
+	--status-success: #50fa7b;
+	--status-warning: #ffb86c;
+	--status-renamed: #8be9fd;
+}
+
+html[data-theme="harbor"] {
+	--bg: #1b1b1b;
+	--bg-panel: #242424;
+	--bg-hover: #2e2e2e;
+	--bg-selected: #383838;
+	--border: #3d3d3d;
+	--text: #efebdc;
+	--text-muted: #c0b8a0;
+	--text-dim: #817f68;
+	--accent: #e75a50;
+	--accent-strong: #d2483e;
+	--accent-hover: #f0736a;
+	--status-error: #f44336;
+	--status-success: #77838a;
+	--status-warning: #e1ce98;
+	--status-renamed: #e58980;
+}
+
+html[data-theme="one-dark-pro"] {
+	--bg: #282c34;
+	--bg-panel: #21252b;
+	--bg-hover: #2c313c;
+	--bg-selected: #3e4451;
+	--border: #3a3f4b;
+	--text: #abb2bf;
+	--text-muted: #8b94a5;
+	--text-dim: #5c6370;
+	--accent: #61afef;
+	--accent-strong: #4d8cd6;
+	--accent-hover: #7ec7ff;
+	--status-error: #e06c75;
+	--status-success: #98c379;
+	--status-warning: #e5c07b;
+	--status-renamed: #61afef;
+}
+
+html[data-theme="rose-pine"] {
+	--bg: #191724;
+	--bg-panel: #1f1d2e;
+	--bg-hover: #26233a;
+	--bg-selected: #403d52;
+	--border: #393552;
+	--text: #e0def4;
+	--text-muted: #908caa;
+	--text-dim: #6e6a86;
+	--accent: #ebbcba;
+	--accent-strong: #c4a7e7;
+	--accent-hover: #f2cecc;
+	--status-error: #eb6f92;
+	--status-success: #9ccfd8;
+	--status-warning: #f6c177;
+	--status-renamed: #c4a7e7;
+}
+
+html[data-theme="catppuccin-mocha"] {
+	--bg: #1e1e2e;
+	--bg-panel: #181825;
+	--bg-hover: #262638;
+	--bg-selected: #313244;
+	--border: #45475a;
+	--text: #cdd6f4;
+	--text-muted: #a6adc8;
+	--text-dim: #6c7086;
+	--accent: #cba6f7;
+	--accent-strong: #b4befe;
+	--accent-hover: #d8bcf9;
+	--status-error: #f38ba8;
+	--status-success: #a6e3a1;
+	--status-warning: #f9e2af;
+	--status-renamed: #89b4fa;
+}
+
+html[data-theme="gruvbox-dark"] {
+	--bg: #282828;
+	--bg-panel: #1d2021;
+	--bg-hover: #32302f;
+	--bg-selected: #3c3836;
+	--border: #504945;
+	--text: #ebdbb2;
+	--text-muted: #bdae93;
+	--text-dim: #928374;
+	--accent: #fe8019;
+	--accent-strong: #d65d0e;
+	--accent-hover: #ff9c42;
+	--status-error: #fb4934;
+	--status-success: #b8bb26;
+	--status-warning: #fabd2f;
+	--status-renamed: #83a598;
+}
+
+html[data-theme="nord"] {
+	--bg: #2e3440;
+	--bg-panel: #272c36;
+	--bg-hover: #3b4252;
+	--bg-selected: #434c5e;
+	--border: #4c566a;
+	--text: #eceff4;
+	--text-muted: #d8dee9;
+	--text-dim: #8892b0;
+	--accent: #88c0d0;
+	--accent-strong: #5e81ac;
+	--accent-hover: #9bd6e6;
+	--status-error: #bf616a;
+	--status-success: #a3be8c;
+	--status-warning: #ebcb8b;
+	--status-renamed: #81a1c1;
+}
+
+html[data-theme="tokyo-night"] {
+	--bg: #1a1b26;
+	--bg-panel: #16161e;
+	--bg-hover: #24283b;
+	--bg-selected: #283457;
+	--border: #2f354d;
+	--text: #c0caf5;
+	--text-muted: #9aa5ce;
+	--text-dim: #565f89;
+	--accent: #7aa2f7;
+	--accent-strong: #567ecc;
+	--accent-hover: #8db4ff;
+	--status-error: #f7768e;
+	--status-success: #9ece6a;
+	--status-warning: #e0af68;
+	--status-renamed: #7dcfff;
+}
+
+html[data-theme="light"] {
+	--bg: #faf9f6;
+	--bg-panel: #f2f0ea;
+	--bg-hover: #eae7df;
+	--bg-selected: #e5e0d4;
+	--border: #e2ddd2;
+	--text: #2b2823;
+	--text-muted: #69635a;
+	--text-dim: #6a6458;
+	--accent: #b03e22;
+	--accent-strong: #b03e22;
+	--accent-hover: #96331b;
+	--status-error: #b42318;
+	--status-success: #18794e;
+	--status-warning: #8a5a00;
+	--status-renamed: #2563eb;
+}
+
+html[data-theme="one-light"] {
+	--bg: #fafafa;
+	--bg-panel: #f0f0f0;
+	--bg-hover: #e5e5e6;
+	--bg-selected: #dbdbdc;
+	--border: #dcdcdc;
+	--text: #383a42;
+	--text-muted: #696c77;
+	--text-dim: #a0a1a7;
+	--accent: #2f65d9;
+	--accent-strong: #2f65d9;
+	--accent-hover: #1e4fb8;
+	--status-error: #e45649;
+	--status-success: #50a14f;
+	--status-warning: #c18401;
+	--status-renamed: #4078f2;
+}
+
+html[data-theme="catppuccin-latte"] {
+	--bg: #eff1f5;
+	--bg-panel: #e6e9ef;
+	--bg-hover: #dce0e8;
+	--bg-selected: #ccd0da;
+	--border: #bcc0cc;
+	--text: #4c4f69;
+	--text-muted: #65687e;
+	--text-dim: #8c8fa1;
+	--accent: #1e66f5;
+	--accent-strong: #1e66f5;
+	--accent-hover: #04a5e5;
+	--status-error: #d20f39;
+	--status-success: #40a02b;
+	--status-warning: #df8e1d;
+	--status-renamed: #1e66f5;
+}
+
+html[data-theme="rose-pine-dawn"] {
+	--bg: #faf4ed;
+	--bg-panel: #fffaf3;
+	--bg-hover: #f2e9e1;
+	--bg-selected: #dfdad9;
+	--border: #cecacd;
+	--text: #575279;
+	--text-muted: #6e6a86;
+	--text-dim: #9893a5;
+	--accent: #286983;
+	--accent-strong: #286983;
+	--accent-hover: #1f5469;
+	--status-error: #b4637a;
+	--status-success: #286983;
+	--status-warning: #ea9d34;
+	--status-renamed: #907aa9;
+}
+
+/* Follow the OS scheme while the theme choice is "system". */
+html[data-mode="dark"] {
+	color-scheme: dark;
+}
+
+html[data-mode="light"] {
+	color-scheme: light;
+}
+
 html,
 body,
 #root {
@@ -14,10 +417,22 @@ body,
 
 body {
 	font-size: 13px;
-	background-color: var(--color-neutral-950);
-	color: var(--color-neutral-200);
+	background-color: var(--bg);
+	color: var(--text);
 	-webkit-font-smoothing: antialiased;
 	user-select: none;
+}
+
+/* Selection uses the theme accent. */
+::selection {
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
+	color: var(--text);
+}
+
+/* Global accessible focus ring for keyboard navigation. */
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
 }
 
 /* Text inside content panes stays selectable. */
@@ -28,4 +443,63 @@ aside {
 
 [data-tauri-drag-region] {
 	user-select: none;
+}
+
+/* Theme-aware scrollbars. */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in srgb, var(--text) 15%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--text) 15%, transparent);
+	border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: color-mix(in srgb, var(--text) 30%, transparent);
+}
+
+/* Chat font-size presets (settings → 外观). */
+html[data-font-size="sm"] {
+	--chat-font-size: 12px;
+	--chat-line-height: 1.65;
+	--chat-code-font-size: 11px;
+	--chat-user-font-size: 12px;
+}
+
+html[data-font-size="lg"] {
+	--chat-font-size: 15px;
+	--chat-line-height: 1.7;
+	--chat-code-font-size: 13.5px;
+	--chat-user-font-size: 15px;
+}
+
+html[data-font-size="xl"] {
+	--chat-font-size: 17px;
+	--chat-line-height: 1.75;
+	--chat-code-font-size: 15px;
+	--chat-user-font-size: 17px;
+}
+
+/* Overall UI density presets (settings → 外观). */
+html[data-ui-scale="compact"] {
+	zoom: 0.9;
+}
+
+html[data-ui-scale="comfortable"] {
+	zoom: 1.1;
+}
+
+html[data-ui-scale="large"] {
+	zoom: 1.2;
 }

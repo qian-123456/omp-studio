@@ -126,7 +126,7 @@ function ItemRow({
 		case "user":
 			return (
 				<div className="flex justify-end">
-					<div className="max-w-[85%] whitespace-pre-wrap rounded-lg bg-indigo-950/60 px-3 py-1.5 text-[13px] text-neutral-100">
+					<div className="max-w-[85%] whitespace-pre-wrap rounded-lg bg-indigo-950/60 px-3 py-1.5 text-[length:var(--chat-user-font-size)] text-neutral-100">
 						{item.text}
 					</div>
 				</div>

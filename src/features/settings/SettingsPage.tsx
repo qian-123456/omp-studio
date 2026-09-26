@@ -2,6 +2,8 @@ import {
 	Bell,
 	Bot,
 	Download,
+	Monitor,
+	Palette,
 	RefreshCw,
 	Settings as SettingsIcon,
 	Sliders,
@@ -13,8 +15,21 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Settings } from "../../lib/contracts";
+import {
+	FONT_SIZES,
+	THEMES,
+	UI_SCALES,
+	setFontSize,
+	setTheme,
+	setUiScale,
+	useFontSize,
+	useThemeChoice,
+	useUiScale,
+	type ThemeChoice,
+} from "../../lib/theme";
 import { installStatusExtensionGlobally, notifyTest } from "../../lib/ipc";
 import { MobilePanel } from "../mobile/MobilePanel";
+import { useUi } from "../../stores/ui";
 import { useSettings } from "./store";
 
 export function SettingsPage() {
@@ -29,6 +44,18 @@ export function SettingsPage() {
 	const [extInstallResult, setExtInstallResult] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<string>("general");
 	const [saveNotice, setSaveNotice] = useState<string | null>(null);
+	const pendingSection = useUi((s) => s.settingsSection);
+	const themeChoice = useThemeChoice();
+	const fontSize = useFontSize();
+	const uiScale = useUiScale();
+
+	// When opened via "更多外观设置…", land on the requested section.
+	useEffect(() => {
+		if (pendingSection) {
+			setActiveSection(pendingSection);
+			useUi.setState({ settingsSection: null });
+		}
+	}, [pendingSection]);
 
 	useEffect(() => {
 		void loadSettings();
@@ -82,6 +109,7 @@ export function SettingsPage() {
 
 	const sections = [
 		{ id: "general", label: "通用", icon: Sliders },
+		{ id: "appearance", label: "外观", icon: Palette },
 		{ id: "todos", label: "待办与监工", icon: Sparkles },
 		{ id: "sessions", label: "会话", icon: Bot },
 		{ id: "notifications", label: "通知", icon: Bell },
@@ -180,6 +208,131 @@ export function SettingsPage() {
 										}
 										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-0"
 									/>
+								</div>
+							</div>
+						</div>
+					)}
+
+					{/* 2. Appearance */}
+					{activeSection === "appearance" && (
+						<div className="space-y-6">
+							<div>
+								<h2 className="text-sm font-semibold text-neutral-100">外观</h2>
+								<p className="text-xs text-neutral-500">主题、聊天字号与界面密度</p>
+							</div>
+
+							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+								<div>
+									<div className="text-xs font-medium text-neutral-200">主题</div>
+									<div className="mt-1 text-[11px] text-neutral-500">
+										选择界面配色；「跟随系统」按系统明暗设置自动切换
+									</div>
+									<div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+										{THEMES.map((t) => {
+											const active = themeChoice === t.id;
+											return (
+												<button
+													key={t.id}
+													type="button"
+													onClick={() => setTheme(t.id as ThemeChoice)}
+													className={`rounded-lg border p-2 text-left transition-colors ${
+														active
+															? "border-amber-500"
+															: "border-neutral-700/60 hover:border-neutral-600"
+													}`}
+												>
+													<span
+														className="block h-10 w-full overflow-hidden rounded border border-black/20"
+														style={{ backgroundColor: t.swatch.bg }}
+														aria-hidden
+													>
+														<span
+															className="mt-1 ml-1 block h-3 w-9 rounded-sm"
+															style={{ backgroundColor: t.swatch.panel }}
+														>
+															<span
+																className="mt-1 ml-1 block h-1.5 w-4 rounded-full"
+																style={{ backgroundColor: t.swatch.accent }}
+															/>
+														</span>
+													</span>
+													<span className="mt-1.5 flex items-center gap-1 text-[11px] text-neutral-300">
+														<span className="truncate">{t.name}</span>
+														{active && (
+															<span
+																className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
+																aria-hidden
+															/>
+														)}
+													</span>
+												</button>
+											);
+										})}
+									</div>
+									<button
+										type="button"
+										onClick={() => setTheme("system")}
+										className={`mt-2 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors ${
+											themeChoice === "system"
+												? "border-amber-500 text-neutral-100"
+												: "border-neutral-700/60 text-neutral-300 hover:border-neutral-600 hover:text-neutral-100"
+										}`}
+									>
+										<Monitor className="h-3.5 w-3.5" />
+										<span>跟随系统</span>
+									</button>
+								</div>
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<div className="text-xs font-medium text-neutral-200">聊天字号</div>
+									<div className="mt-1 text-[11px] text-neutral-500">
+										会话消息正文的文字大小
+									</div>
+									<div className="mt-2 inline-flex rounded-lg border border-neutral-700 p-0.5">
+										{FONT_SIZES.map((f) => {
+											const active = fontSize === f.id;
+											return (
+												<button
+													key={f.id}
+													type="button"
+													onClick={() => setFontSize(f.id)}
+													className={`rounded-md px-3 py-1 text-xs transition-colors ${
+														active
+															? "bg-neutral-800 text-neutral-100"
+															: "text-neutral-400 hover:text-neutral-200"
+													}`}
+												>
+													{f.name}
+												</button>
+											);
+										})}
+									</div>
+								</div>
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<div className="text-xs font-medium text-neutral-200">界面密度</div>
+									<div className="mt-1 text-[11px] text-neutral-500">
+										整体界面的缩放程度
+									</div>
+									<div className="mt-2 inline-flex rounded-lg border border-neutral-700 p-0.5">
+										{UI_SCALES.map((s) => {
+											const active = uiScale === s.id;
+											return (
+												<button
+													key={s.id}
+													type="button"
+													onClick={() => setUiScale(s.id)}
+													className={`rounded-md px-3 py-1 text-xs transition-colors ${
+														active
+															? "bg-neutral-800 text-neutral-100"
+															: "text-neutral-400 hover:text-neutral-200"
+													}`}
+												>
+													{s.name}
+												</button>
+											);
+										})}
+									</div>
 								</div>
 							</div>
 						</div>

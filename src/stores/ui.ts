@@ -13,6 +13,8 @@ export interface UiState {
 	docPath: string | null;
 	rightTab: RightTab;
 	rightOpen: boolean;
+	/** Settings section to show when the settings view opens (e.g. from the theme menu). */
+	settingsSection: string | null;
 	sessionViewMode: Record<string, "chat" | "terminal">;
 	modal: { name: string; props: Record<string, unknown> } | null;
 	selectSession(id: string | null): void;
@@ -20,6 +22,7 @@ export interface UiState {
 	setCenter(v: CenterView): void;
 	setRightTab(t: RightTab): void;
 	toggleRight(): void;
+	openSettings(section?: string): void;
 	setSessionViewMode(id: string, m: "chat" | "terminal"): void;
 	openModal(name: string, props?: Record<string, unknown>): void;
 	closeModal(): void;
@@ -31,6 +34,7 @@ export const useUi = create<UiState>((set) => ({
 	docPath: null,
 	rightTab: "todos",
 	rightOpen: true,
+	settingsSection: null,
 	sessionViewMode: {},
 	modal: null,
 	selectSession: (id) =>
@@ -42,6 +46,8 @@ export const useUi = create<UiState>((set) => ({
 	setCenter: (v) => set({ centerView: v }),
 	setRightTab: (t) => set({ rightTab: t, rightOpen: true }),
 	toggleRight: () => set((s) => ({ rightOpen: !s.rightOpen })),
+	openSettings: (section) =>
+		set({ centerView: "settings", settingsSection: section ?? null }),
 	setSessionViewMode: (id, m) =>
 		set((s) => ({ sessionViewMode: { ...s.sessionViewMode, [id]: m } })),
 	openModal: (name, props = {}) => set({ modal: { name, props } }),
