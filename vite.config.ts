@@ -11,7 +11,7 @@ export default defineConfig({
 	// Tauri expects a fixed dev port and fails if it is taken.
 	clearScreen: false,
 	server: {
-		port: 1420,
+		port: 1421,
 		strictPort: true,
 		watch: {
 			ignored: ["**/src-tauri/**", "**/.worktrees/**"],

@@ -303,6 +303,9 @@ pub struct OmpConfigEntry {
     pub description: String,
     /// Credential field: omp masks the value; the UI renders a write-only input.
     pub redacted: bool,
+    /// Official settings tab from `omp config list` human output
+    /// (appearance/context/…); keys missing there fall back to "internal".
+    pub tab: String,
 }
 
 /// Result of `omp config list --json`; `found: false` means the omp binary
@@ -330,7 +333,11 @@ struct RawOmpConfigEntry {
 
 /// Parses `omp config list --json` output: `{ key: { value, type, description, redacted } }`.
 /// Skips entries that are not objects; missing fields fall back to sensible defaults.
-fn parse_omp_config_list(json: &str) -> Vec<OmpConfigEntry> {
+/// `tabs` maps a key to its official settings tab (from `parse_omp_config_tabs`).
+fn parse_omp_config_list(
+    json: &str,
+    tabs: &std::collections::HashMap<String, String>,
+) -> Vec<OmpConfigEntry> {
     let Ok(map) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(json) else {
         return Vec::new();
     };
@@ -340,6 +347,10 @@ fn parse_omp_config_list(json: &str) -> Vec<OmpConfigEntry> {
             continue;
         };
         entries.push(OmpConfigEntry {
+            tab: tabs
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| "internal".to_string()),
             key,
             value: entry.value,
             value_type: entry
@@ -352,6 +363,43 @@ fn parse_omp_config_list(json: &str) -> Vec<OmpConfigEntry> {
     }
     entries.sort_by(|a, b| a.key.cmp(&b.key));
     entries
+}
+
+/// Parses `omp config list` (human) output into a key → tab map.
+/// Format: `[tabname]` headers at column 0, entries indented exactly two spaces
+/// as `key = value (type)`. Later duplicates keep their first tab; lines that do
+/// not look like a schema key are ignored.
+fn parse_omp_config_tabs(human: &str) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let mut current: Option<String> = None;
+    for line in human.lines() {
+        let line = line.trim_end();
+        if let Some(tab) = line
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
+            if !tab.is_empty() {
+                current = Some(tab.to_string());
+            }
+            continue;
+        }
+        let (Some(tab), true) = (&current, line.starts_with("  ") && !line.starts_with("   "))
+        else {
+            continue;
+        };
+        let Some((key, _)) = line.trim_start().split_once(" = ") else {
+            continue;
+        };
+        let key = key.trim();
+        let looks_like_key = !key.is_empty()
+            && key
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_');
+        if looks_like_key && !map.contains_key(key) {
+            map.insert(key.to_string(), tab.clone());
+        }
+    }
+    map
 }
 
 /// Validates a config key: schema paths are dot-separated identifiers.
@@ -451,12 +499,22 @@ pub async fn omp_config_list(
             )),
         });
     }
-    match run_omp_config(&exe, &path, &["list", "--json"]).await {
-        Ok(stdout) => Ok(OmpConfigListResult {
-            found: true,
-            entries: parse_omp_config_list(&stdout),
-            error: None,
-        }),
+    // Official tab grouping lives only in the human listing; values come from --json.
+    let (json_res, human_res) = tokio::join!(
+        run_omp_config(&exe, &path, &["list", "--json"]),
+        run_omp_config(&exe, &path, &["list"]),
+    );
+    match json_res {
+        Ok(stdout) => {
+            let tabs = human_res
+                .map(|human| parse_omp_config_tabs(&human))
+                .unwrap_or_default();
+            Ok(OmpConfigListResult {
+                found: true,
+                entries: parse_omp_config_list(&stdout, &tabs),
+                error: None,
+            })
+        }
         Err(e) => Ok(OmpConfigListResult {
             found: false,
             entries: Vec::new(),
@@ -842,7 +900,9 @@ mod tests {
             "broken": "not-an-object",
             "untyped": { "value": "x" }
         }"#;
-        let entries = parse_omp_config_list(fixture);
+        let mut tabs = std::collections::HashMap::new();
+        tabs.insert("power.sleepPrevention".to_string(), "internal".to_string());
+        let entries = parse_omp_config_list(fixture, &tabs);
         assert_eq!(entries.len(), 8);
         let get = |k: &str| entries.iter().find(|e| e.key == k).unwrap();
 
@@ -850,6 +910,10 @@ mod tests {
         assert_eq!(v.value_type, "number");
         assert_eq!(v.value.as_ref().and_then(|x| x.as_i64()), Some(2));
         assert!(!v.redacted);
+
+        // Tab comes from the human listing; keys missing there fall back to "internal".
+        assert_eq!(get("power.sleepPrevention").tab, "internal");
+        assert_eq!(get("setupVersion").tab, "internal");
 
         // Unset entry: no value, still listed.
         let shell = get("shellPath");
@@ -875,9 +939,10 @@ mod tests {
 
     #[test]
     fn test_parse_omp_config_list_garbage() {
-        assert!(parse_omp_config_list("").is_empty());
-        assert!(parse_omp_config_list("not json at all").is_empty());
-        assert!(parse_omp_config_list("[]").is_empty());
+        let no_tabs = std::collections::HashMap::new();
+        assert!(parse_omp_config_list("", &no_tabs).is_empty());
+        assert!(parse_omp_config_list("not json at all", &no_tabs).is_empty());
+        assert!(parse_omp_config_list("[]", &no_tabs).is_empty());
     }
 
     #[test]
@@ -914,5 +979,36 @@ mod tests {
         for bad in ["", "7:30", "07:30:00", "24:00", "23:60", "ab:cd", "07-30"] {
             assert!(validate_hhmm(bad).is_err(), "expected invalid: {bad}");
         }
+    }
+
+    #[test]
+    fn test_parse_omp_config_tabs() {
+        let human = "Settings:\n\n[appearance]\n  theme.dark = dark (string)\n  symbolPreset = unicode (unicode|nerd|ascii)\n\n[model]\n  temperature = 1.0 (number)\n  very.deep.key = x (string)\n\n[providers]\n  providers.anthropic.apiKey = ******** (string)\n";
+        let tabs = parse_omp_config_tabs(human);
+        assert_eq!(
+            tabs.get("theme.dark").map(String::as_str),
+            Some("appearance")
+        );
+        assert_eq!(
+            tabs.get("symbolPreset").map(String::as_str),
+            Some("appearance")
+        );
+        assert_eq!(tabs.get("temperature").map(String::as_str), Some("model"));
+        assert_eq!(tabs.get("very.deep.key").map(String::as_str), Some("model"));
+        // Redacted credentials still carry their tab.
+        assert_eq!(
+            tabs.get("providers.anthropic.apiKey").map(String::as_str),
+            Some("providers")
+        );
+        assert_eq!(tabs.len(), 5);
+    }
+
+    #[test]
+    fn test_parse_omp_config_tabs_garbage_lines() {
+        // Deeper-indented continuation lines and column-0 noise must not become keys.
+        let human = "[model]\n  temperature = 1.0 (number)\n      wrapped continuation\nSettings: noise\n  not a schema key = 1\n  key-without-value\n";
+        let tabs = parse_omp_config_tabs(human);
+        assert_eq!(tabs.len(), 1);
+        assert!(tabs.contains_key("temperature"));
     }
 }

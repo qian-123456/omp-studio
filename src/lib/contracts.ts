@@ -359,6 +359,8 @@ export interface OmpConfigEntry {
 	description: string;
 	/** Credential field: write-only in the UI. */
 	redacted: boolean;
+	/** Official settings tab from `omp config list` (appearance/context/…). */
+	tab: string;
 }
 
 /** Result of `omp config list --json`; found=false on missing binary / failure. */
