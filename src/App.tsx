@@ -38,6 +38,7 @@ import { TodoPanel } from "./features/todos/TodoPanel";
 import { TopCapsule } from "./features/todos/TopCapsule";
 import { startTodos, useTodos } from "./features/todos/store";
 import { destroySessionTerminal } from "./features/terminal/terminalRegistry";
+import { TerminalDrawer } from "./features/terminal/TerminalDrawer";
 import { onServicesChanged, onSessionsRemoved } from "./lib/events";
 import { gitSummary, servicesList } from "./lib/ipc";
 import type { PairingInfo, SessionStatus } from "./lib/contracts";
@@ -828,6 +829,8 @@ export default function App() {
 			<BottomBar />
 			{/* Global notifications stack */}
 			<Toaster />
+			{/* Global bottom-drawer terminal (Codex-style overlay) */}
+			<TerminalDrawer />
 
 			{/* Mobile QR Pairing modal */}
 			{qrPairing && (
