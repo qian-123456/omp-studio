@@ -2,6 +2,8 @@ import {
 	ArrowLeft,
 	Bell,
 	Bot,
+	ChevronDown,
+	ChevronRight,
 	Download,
 	FileDown,
 	FileUp,
@@ -19,7 +21,7 @@ import {
 	VolumeX,
 	Wrench,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { Settings } from "../../lib/contracts";
@@ -39,6 +41,8 @@ import { ThemePicker } from "../../components/ThemePicker";
 import { MobilePanel } from "../mobile/MobilePanel";
 import { DEFAULT_SETTINGS, useSettings } from "./store";
 import { OmpConfigSection } from "./OmpConfigSection";
+import { useOmpConfigStore } from "./ompConfigStore";
+import { groupByOmpTab } from "./ompConfigTabs";
 import { ProviderPanel } from "../providers/ProviderPanel";
 
 interface ToggleProps {
@@ -103,6 +107,15 @@ export function SettingsPage() {
 	const [installingExt, setInstallingExt] = useState(false);
 	const [extInstallResult, setExtInstallResult] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<string>("general");
+
+	// OMP 配置: official tab selection lives in the left nav as a second level.
+	const [ompTab, setOmpTab] = useState<string>("all");
+	const ompEntries = useOmpConfigStore((s) => s.entries);
+	const loadOmpConfig = useOmpConfigStore((s) => s.load);
+	useEffect(() => {
+		if (activeSection === "ompconfig") void loadOmpConfig();
+	}, [activeSection, loadOmpConfig]);
+	const ompGroups = useMemo(() => groupByOmpTab(ompEntries), [ompEntries]);
 	const [saveNotice, setSaveNotice] = useState<string | null>(null);
 	const pendingSection = useUi((s) => s.settingsSection);
 	const fontSize = useFontSize();
@@ -407,20 +420,63 @@ export function SettingsPage() {
 					{sections.map((sec) => {
 						const Icon = sec.icon;
 						const isActive = activeSection === sec.id;
+						const isOmp = sec.id === "ompconfig";
 						return (
-							<button
-								key={sec.id}
-								type="button"
-								onClick={() => setActiveSection(sec.id)}
-								className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
-									isActive
-										? "bg-neutral-800 text-neutral-100"
-										: "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
-								}`}
-							>
-								<Icon className="h-3.5 w-3.5" />
-								<span>{sec.label}</span>
-							</button>
+							<div key={sec.id}>
+								<button
+									type="button"
+									onClick={() => setActiveSection(sec.id)}
+									className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
+										isActive
+											? "bg-neutral-800 text-neutral-100"
+											: "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
+									}`}
+								>
+									<Icon className="h-3.5 w-3.5" />
+									<span>{sec.label}</span>
+									{isOmp &&
+										(isActive ? (
+											<ChevronDown className="ml-auto h-3 w-3 shrink-0 text-neutral-500" />
+										) : (
+											<ChevronRight className="ml-auto h-3 w-3 shrink-0 text-neutral-600" />
+										))}
+								</button>
+								{isOmp && isActive && ompGroups.length > 0 && (
+									<div className="mt-1 space-y-0.5 pl-4">
+										<button
+											type="button"
+											onClick={() => setOmpTab("all")}
+											className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors ${
+												ompTab === "all"
+													? "bg-neutral-800/80 font-medium text-amber-300"
+													: "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+											}`}
+										>
+											<span>全部</span>
+											<span className="text-[10px] text-neutral-600">
+												{ompEntries.length}
+											</span>
+										</button>
+										{ompGroups.map((g) => (
+											<button
+												key={g.id}
+												type="button"
+												onClick={() => setOmpTab(g.id)}
+												className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors ${
+													ompTab === g.id
+														? "bg-neutral-800/80 font-medium text-amber-300"
+														: "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+												}`}
+											>
+												<span>{g.label}</span>
+												<span className="text-[10px] text-neutral-600">
+													{g.entries.length}
+												</span>
+											</button>
+										))}
+									</div>
+								)}
+							</div>
 						);
 					})}
 				</nav>
@@ -856,7 +912,7 @@ export function SettingsPage() {
 									读写 omp 自身的全局配置（~/.omp/agent/config.yml），与 workbench 设置相互独立
 								</p>
 							</div>
-							<OmpConfigSection />
+							<OmpConfigSection activeTab={ompTab} onTabChange={setOmpTab} />
 						</div>
 					)}
 

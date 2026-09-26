@@ -1,4 +1,3 @@
-import clsx from "clsx";
 import {
 	AlertTriangle,
 	Check,
@@ -12,12 +11,13 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { OmpConfigEntry, OmpConfigListResult } from "../../lib/contracts";
+import type { OmpConfigEntry } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
-import { ompConfigList, ompConfigReset, ompConfigSet } from "../../lib/ipc";
+import { ompConfigReset, ompConfigSet } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
-import { groupByOmpTab, groupByPrefix } from "./ompConfigTabs";
+import { useOmpConfigStore } from "./ompConfigStore";
+import { OMP_TAB_ORDER, groupByOmpTab, groupByPrefix } from "./ompConfigTabs";
 
 const TYPE_BADGE: Record<string, string> = {
 	boolean: "bg-emerald-500/15 text-emerald-300",
@@ -379,62 +379,54 @@ function PrefixEntryList({
 	);
 }
 
-/** Settings section bridging to OMP's own config system (`omp config list/set/reset`). */
-export function OmpConfigSection() {
-	const [result, setResult] = useState<OmpConfigListResult | null>(null);
-	const [loading, setLoading] = useState(true);
+/**
+ * Settings panel bridging to OMP's own config system (`omp config list/set/reset`).
+ * Category (official OMP tab) selection lives in the settings left nav and is
+ * controlled from outside; "all" renders every tab as a collapsible section.
+ */
+export function OmpConfigSection({
+	activeTab,
+	onTabChange,
+}: {
+	activeTab: string;
+	onTabChange: (tab: string) => void;
+}) {
+	const entries = useOmpConfigStore((s) => s.entries);
+	const loading = useOmpConfigStore((s) => s.loading);
+	const loaded = useOmpConfigStore((s) => s.loaded);
+	const error = useOmpConfigStore((s) => s.error);
+	const load = useOmpConfigStore((s) => s.load);
+
 	const [query, setQuery] = useState("");
-	const [activeTab, setActiveTab] = useState<string>("all");
-	const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-	const [reloadTick, setReloadTick] = useState(0);
+	const [collapsed, setCollapsed] = useState<Set<string>>(
+		() => new Set(OMP_TAB_ORDER),
+	);
 
 	useEffect(() => {
-		let alive = true;
-		setLoading(true);
-		ompConfigList()
-			.then((r) => {
-				if (alive) setResult(r);
-			})
-			.catch((e) => {
-				if (alive) {
-					setResult({ found: false, entries: [], error: errMsg(e) });
-				}
-			})
-			.finally(() => {
-				if (alive) setLoading(false);
-			});
-		return () => {
-			alive = false;
-		};
-	}, [reloadTick]);
+		void load();
+	}, [load]);
 
-	const allGroups = useMemo(
-		() => groupByOmpTab(result?.entries ?? []),
-		[result],
-	);
-	const countByTab = useMemo(() => {
-		const counts = new Map<string, number>([["all", result?.entries.length ?? 0]]);
-		for (const g of allGroups) counts.set(g.id, g.entries.length);
-		return counts;
-	}, [allGroups, result]);
-
+	const allGroups = useMemo(() => groupByOmpTab(entries), [entries]);
 	const searching = query.trim().length > 0;
+
 	const filtered = useMemo(() => {
 		const q = query.trim().toLowerCase();
-		const entries = result?.entries ?? [];
 		if (!q) return entries;
 		return entries.filter(
 			(e) =>
 				e.key.toLowerCase().includes(q) || e.description.toLowerCase().includes(q),
 		);
-	}, [result, query]);
+	}, [entries, query]);
 
 	const visibleGroups = useMemo(() => {
 		const groups = groupByOmpTab(filtered);
-		return activeTab === "all"
-			? groups
-			: groups.filter((g) => g.id === activeTab);
+		return activeTab === "all" ? groups : groups.filter((g) => g.id === activeTab);
 	}, [filtered, activeTab]);
+
+	const activeLabel =
+		activeTab === "all"
+			? "全部"
+			: (allGroups.find((g) => g.id === activeTab)?.label ?? activeTab);
 
 	const toggleGroup = (group: string) => {
 		setCollapsed((prev) => {
@@ -450,10 +442,10 @@ export function OmpConfigSection() {
 
 	const handleChanged = () => {
 		// Re-list so edited values (and booleans in other rows) stay in sync with omp.
-		setReloadTick((t) => t + 1);
+		void load(true);
 	};
 
-	if (loading) {
+	if (loading && !loaded) {
 		return (
 			<div className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-xs text-neutral-500">
 				<RefreshCw className="h-4 w-4 animate-spin" />
@@ -462,7 +454,7 @@ export function OmpConfigSection() {
 		);
 	}
 
-	if (result && !result.found) {
+	if (error && !loaded) {
 		return (
 			<div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-center">
 				<AlertTriangle className="mx-auto mb-2 h-6 w-6 text-amber-500/70" />
@@ -470,7 +462,7 @@ export function OmpConfigSection() {
 					无法读取 OMP 配置
 				</div>
 				<div className="mx-auto mt-1 max-w-md break-all text-[11px] text-neutral-500">
-					{result.error ?? "未知错误"}
+					{error}
 				</div>
 				<div className="mx-auto mt-2 max-w-md text-[11px] text-neutral-500">
 					请确认本机已安装 omp，并在 系统设置 → 高级 → OMP 命令行程序
@@ -478,7 +470,7 @@ export function OmpConfigSection() {
 				</div>
 				<button
 					type="button"
-					onClick={() => setReloadTick((t) => t + 1)}
+					onClick={() => void load(true)}
 					className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
 				>
 					<RefreshCw className="h-3.5 w-3.5" />
@@ -497,12 +489,12 @@ export function OmpConfigSection() {
 						type="text"
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
-						placeholder="搜索配置键或说明..."
+						placeholder={`在 ${activeLabel} 中搜索配置键或说明...`}
 						className="w-full rounded-lg border border-neutral-700 bg-neutral-950 py-1.5 pl-8 pr-3 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 					/>
 				</div>
 				<span className="shrink-0 text-[11px] text-neutral-500">
-					{filtered.length}/{result?.entries.length ?? 0} 项
+					{filtered.length}/{entries.length} 项
 				</span>
 				<button
 					type="button"
@@ -512,43 +504,6 @@ export function OmpConfigSection() {
 				>
 					<RefreshCw className="h-3.5 w-3.5" />
 				</button>
-			</div>
-
-			{/* Official OMP settings tabs as category chips */}
-			<div className="flex flex-wrap gap-1.5">
-				<button
-					type="button"
-					onClick={() => setActiveTab("all")}
-					className={clsx(
-						"inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
-						activeTab === "all"
-							? "border-amber-500/50 bg-amber-500/15 text-amber-300"
-							: "border-neutral-700/70 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200",
-					)}
-				>
-					<span>全部</span>
-					<span className="text-[10px] text-neutral-500">
-						{countByTab.get("all") ?? 0}
-					</span>
-				</button>
-				{allGroups.map((g) => (
-					<button
-						key={g.id}
-						type="button"
-						onClick={() => setActiveTab(g.id)}
-						className={clsx(
-							"inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
-							activeTab === g.id
-								? "border-amber-500/50 bg-amber-500/15 text-amber-300"
-								: "border-neutral-700/70 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200",
-						)}
-					>
-						<span>{g.label}</span>
-						<span className="text-[10px] text-neutral-500">
-							{g.entries.length}
-						</span>
-					</button>
-				))}
 			</div>
 
 			{visibleGroups.length === 0 ? (
@@ -570,7 +525,7 @@ export function OmpConfigSection() {
 									onClick={() =>
 										activeTab === "all"
 											? toggleGroup(group.id)
-											: setActiveTab("all")
+											: onTabChange("all")
 									}
 									className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left"
 								>
