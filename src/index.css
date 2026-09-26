@@ -436,6 +436,42 @@ html[data-theme="sakura"] {
 	--status-renamed: #3a6fd8;
 }
 
+html[data-theme="glacier"] {
+	--bg: #f6fafc;
+	--bg-panel: #ecf3f8;
+	--bg-hover: #e2edf4;
+	--bg-selected: #d4e3ee;
+	--border: #d8e6ef;
+	--text: #1f3a4d;
+	--text-muted: #56738a;
+	--text-dim: #8aa4b5;
+	--accent: #0d94bd;
+	--accent-strong: #0a7699;
+	--accent-hover: #3bb0d6;
+	--status-error: #cf4a56;
+	--status-success: #2e9e63;
+	--status-warning: #b07a12;
+	--status-renamed: #4f5fd8;
+}
+
+html[data-theme="lavender"] {
+	--bg: #f8f6fc;
+	--bg-panel: #f0ecf8;
+	--bg-hover: #e8e2f4;
+	--bg-selected: #dcd2ee;
+	--border: #ded4f0;
+	--text: #38304f;
+	--text-muted: #6b6288;
+	--text-dim: #9a92b5;
+	--accent: #7c5cd6;
+	--accent-strong: #6344b8;
+	--accent-hover: #9a7ce8;
+	--status-error: #c9486b;
+	--status-success: #2e8f5e;
+	--status-warning: #a87814;
+	--status-renamed: #2f7fc4;
+}
+
 html[data-theme="light"] {
 	--bg: #faf9f6;
 	--bg-panel: #f2f0ea;
@@ -542,6 +578,96 @@ html[data-theme="github-light"] {
 	--status-success: #1a7f37;
 	--status-warning: #9a6700;
 	--status-renamed: #8250df;
+}
+
+html[data-theme="nord-light"] {
+	--bg: #eceff4;
+	--bg-panel: #e5e9f0;
+	--bg-hover: #dce1ea;
+	--bg-selected: #d1d8e4;
+	--border: #d5dae4;
+	--text: #2e3440;
+	--text-muted: #4f5b70;
+	--text-dim: #7b88a1;
+	--accent: #5e81ac;
+	--accent-strong: #4d6f9c;
+	--accent-hover: #7d9fc4;
+	--status-error: #b3515c;
+	--status-success: #6f9f50;
+	--status-warning: #a9822a;
+	--status-renamed: #4d7fb0;
+}
+
+html[data-theme="tokyo-night-light"] {
+	--bg: #e1e2e7;
+	--bg-panel: #d4d6e4;
+	--bg-hover: #c8ccdd;
+	--bg-selected: #bcc1d6;
+	--border: #c3c8da;
+	--text: #37527f;
+	--text-muted: #7481a6;
+	--text-dim: #8990b3;
+	--accent: #2e7de9;
+	--accent-strong: #1e67c8;
+	--accent-hover: #5a97f0;
+	--status-error: #d84a78;
+	--status-success: #4f9a6b;
+	--status-warning: #966c22;
+	--status-renamed: #007196;
+}
+
+html[data-theme="ayu-light"] {
+	--bg: #fafafa;
+	--bg-panel: #f3f4f6;
+	--bg-hover: #e9eaee;
+	--bg-selected: #dfe1e8;
+	--border: #e2e4e9;
+	--text: #5c6166;
+	--text-muted: #868d96;
+	--text-dim: #a6adb5;
+	--accent: #f0821e;
+	--accent-strong: #c96a10;
+	--accent-hover: #ffa14d;
+	--status-error: #d64f44;
+	--status-success: #6ca029;
+	--status-warning: #bb851a;
+	--status-renamed: #2f88c4;
+}
+
+html[data-theme="gruvbox-light"] {
+	--bg: #fbf1c7;
+	--bg-panel: #f1e6c2;
+	--bg-hover: #e8dcab;
+	--bg-selected: #ddd0a3;
+	--border: #dccfa4;
+	--text: #3c3836;
+	--text-muted: #7c6f64;
+	--text-dim: #928374;
+	--accent: #d65d0e;
+	--accent-strong: #b54e08;
+	--accent-hover: #ef7c2e;
+	--status-error: #cc241d;
+	--status-success: #7f8f12;
+	--status-warning: #b07d13;
+	--status-renamed: #458588;
+}
+
+html[data-theme="everforest-light"] {
+	--bg: #fdf6e3;
+	--bg-panel: #f4f0d5;
+	--bg-hover: #ece7c5;
+	--bg-selected: #e0dab0;
+	--border: #e2dcbc;
+	--text: #5c6a72;
+	--text-muted: #808f85;
+	--text-dim: #939f91;
+	--accent: #8da101;
+	--accent-strong: #718a04;
+	--accent-hover: #a5bd2c;
+	--status-error: #d64c48;
+	--status-success: #8da101;
+	--status-warning: #dfa000;
+	--status-renamed: #35a77c;
 }
 
 /* Follow the OS scheme while the theme choice is "system". */

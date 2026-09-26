@@ -128,6 +128,18 @@ export const THEMES: ThemeDef[] = [
 		swatch: { bg: "#fdf4f6", panel: "#f9eaee", accent: "#d6336c", text: "#472b36" },
 	},
 	{
+		id: "glacier",
+		name: "冰川",
+		dark: false,
+		swatch: { bg: "#f6fafc", panel: "#ecf3f8", accent: "#0d94bd", text: "#1f3a4d" },
+	},
+	{
+		id: "lavender",
+		name: "薰衣草",
+		dark: false,
+		swatch: { bg: "#f8f6fc", panel: "#f0ecf8", accent: "#7c5cd6", text: "#38304f" },
+	},
+	{
 		id: "light",
 		name: "Light",
 		dark: false,
@@ -162,6 +174,36 @@ export const THEMES: ThemeDef[] = [
 		name: "GitHub Light",
 		dark: false,
 		swatch: { bg: "#ffffff", panel: "#f6f8fa", accent: "#0969da", text: "#25292e" },
+	},
+	{
+		id: "nord-light",
+		name: "Nord Light",
+		dark: false,
+		swatch: { bg: "#eceff4", panel: "#e5e9f0", accent: "#5e81ac", text: "#2e3440" },
+	},
+	{
+		id: "tokyo-night-light",
+		name: "Tokyo Night Light",
+		dark: false,
+		swatch: { bg: "#e1e2e7", panel: "#d4d6e4", accent: "#2e7de9", text: "#3760bf" },
+	},
+	{
+		id: "ayu-light",
+		name: "Ayu Light",
+		dark: false,
+		swatch: { bg: "#fafafa", panel: "#f3f4f6", accent: "#f0821e", text: "#5c6166" },
+	},
+	{
+		id: "gruvbox-light",
+		name: "Gruvbox Light",
+		dark: false,
+		swatch: { bg: "#fbf1c7", panel: "#ebdbb2", accent: "#d65d0e", text: "#3c3836" },
+	},
+	{
+		id: "everforest-light",
+		name: "Everforest Light",
+		dark: false,
+		swatch: { bg: "#fdf6e3", panel: "#f4f0d5", accent: "#8da101", text: "#5c6a72" },
 	},
 ];
 
