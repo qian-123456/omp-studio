@@ -170,7 +170,7 @@ function MarkdownLink({
 
 export function Markdown({ text }: { text: string }) {
 	return (
-		<div className="prose-sm max-w-none text-[13px] leading-relaxed text-neutral-200 [&_code]:rounded [&_code]:bg-neutral-800 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[12px] [&_blockquote]:border-l-2 [&_blockquote]:border-neutral-700 [&_blockquote]:pl-3 [&_blockquote]:text-neutral-400">
+		<div className="prose-sm max-w-none leading-relaxed text-neutral-200 text-[length:var(--chat-font-size)] [&_code]:rounded [&_code]:bg-neutral-800 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[length:var(--chat-code-font-size)] [&_blockquote]:border-l-2 [&_blockquote]:border-neutral-700 [&_blockquote]:pl-3 [&_blockquote]:text-neutral-400">
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
 				rehypePlugins={[rehypeHighlight]}

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 @theme {
 	--font-sans:
 		-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
@@ -8,10 +9,677 @@
 		"Courier New", monospace;
 }
 
-/* Force dark UI scheme so native scrollbars, form controls, pickers and
-   date inputs render dark instead of the default light/white. */
-html {
+/*
+ * Theme engine (modeled on omp-web).
+ *
+ * Every Tailwind color token the app uses is aliased onto semantic CSS
+ * variables (--bg, --accent, --status-*, ...). The variables are redefined
+ * per theme on html[data-theme="…"], so switching themes restyles the whole
+ * app without touching component classes. Derived shades use color-mix()
+ * against --bg / --text so tints adapt automatically to light and dark
+ * palettes. The default "ompws" palette reproduces the previous look
+ * (neutral grays + amber accent + indigo interactive accent).
+ */
+@theme inline {
+	/* neutral — structural ramp */
+	--color-neutral-950: var(--bg);
+	--color-neutral-900: var(--bg-panel);
+	--color-neutral-800: var(--bg-hover);
+	--color-neutral-700: var(--bg-selected);
+	--color-neutral-600: color-mix(in srgb, var(--bg-selected) 50%, var(--text-dim));
+	--color-neutral-500: var(--text-dim);
+	--color-neutral-400: var(--text-muted);
+	--color-neutral-300: color-mix(in srgb, var(--text-muted) 55%, var(--text));
+	--color-neutral-200: var(--text);
+	--color-neutral-100: var(--text);
+
+	/* amber — primary brand accent */
+	--color-amber-950: color-mix(in srgb, var(--accent) 20%, var(--bg));
+	--color-amber-900: color-mix(in srgb, var(--accent) 30%, var(--bg));
+	--color-amber-800: color-mix(in srgb, var(--accent) 42%, var(--bg));
+	--color-amber-700: color-mix(in srgb, var(--accent) 58%, var(--bg));
+	--color-amber-600: color-mix(in srgb, var(--accent) 85%, black);
+	--color-amber-500: var(--accent);
+	--color-amber-400: var(--accent);
+	--color-amber-300: var(--accent-hover);
+	--color-amber-200: color-mix(in srgb, var(--accent-hover) 60%, var(--text));
+	--color-amber-100: color-mix(in srgb, var(--accent-hover) 35%, var(--text));
+
+	/* indigo / purple / violet — secondary (interactive) accent */
+	--color-indigo-950: color-mix(in srgb, var(--accent-strong) 20%, var(--bg));
+	--color-indigo-900: color-mix(in srgb, var(--accent-strong) 30%, var(--bg));
+	--color-indigo-800: color-mix(in srgb, var(--accent-strong) 42%, var(--bg));
+	--color-indigo-700: color-mix(in srgb, var(--accent-strong) 58%, var(--bg));
+	--color-indigo-600: color-mix(in srgb, var(--accent-strong) 92%, black);
+	--color-indigo-500: var(--accent-strong);
+	--color-indigo-400: color-mix(in srgb, var(--accent-strong) 72%, var(--text));
+	--color-indigo-300: color-mix(in srgb, var(--accent-strong) 55%, var(--text));
+	--color-indigo-200: color-mix(in srgb, var(--accent-strong) 38%, var(--text));
+	--color-indigo-100: color-mix(in srgb, var(--accent-strong) 25%, var(--text));
+	--color-purple-300: color-mix(in srgb, var(--accent-strong) 55%, var(--text));
+	--color-purple-400: color-mix(in srgb, var(--accent-strong) 72%, var(--text));
+	--color-purple-500: var(--accent-strong);
+	--color-purple-600: color-mix(in srgb, var(--accent-strong) 92%, black);
+	--color-purple-700: color-mix(in srgb, var(--accent-strong) 58%, var(--bg));
+	--color-purple-800: color-mix(in srgb, var(--accent-strong) 42%, var(--bg));
+	--color-purple-900: color-mix(in srgb, var(--accent-strong) 30%, var(--bg));
+	--color-purple-950: color-mix(in srgb, var(--accent-strong) 20%, var(--bg));
+	--color-violet-300: color-mix(in srgb, var(--accent-strong) 55%, var(--text));
+	--color-violet-400: color-mix(in srgb, var(--accent-strong) 72%, var(--text));
+	--color-violet-500: var(--accent-strong);
+	--color-violet-600: color-mix(in srgb, var(--accent-strong) 92%, black);
+
+	/* emerald / teal — success */
+	--color-emerald-200: color-mix(in srgb, var(--status-success) 50%, var(--text));
+	--color-emerald-300: color-mix(in srgb, var(--status-success) 68%, var(--text));
+	--color-emerald-400: var(--status-success);
+	--color-emerald-500: var(--status-success);
+	--color-emerald-600: color-mix(in srgb, var(--status-success) 82%, black);
+	--color-emerald-700: color-mix(in srgb, var(--status-success) 58%, var(--bg));
+	--color-emerald-800: color-mix(in srgb, var(--status-success) 42%, var(--bg));
+	--color-emerald-900: color-mix(in srgb, var(--status-success) 30%, var(--bg));
+	--color-emerald-950: color-mix(in srgb, var(--status-success) 20%, var(--bg));
+	--color-teal-300: color-mix(in srgb, var(--status-success) 68%, var(--text));
+	--color-teal-400: var(--status-success);
+	--color-teal-500: color-mix(in srgb, var(--status-success) 82%, black);
+
+	/* rose / red / pink — error / danger */
+	--color-rose-100: color-mix(in srgb, var(--status-error) 35%, var(--text));
+	--color-rose-200: color-mix(in srgb, var(--status-error) 50%, var(--text));
+	--color-rose-300: color-mix(in srgb, var(--status-error) 68%, var(--text));
+	--color-rose-400: var(--status-error);
+	--color-rose-500: var(--status-error);
+	--color-rose-600: color-mix(in srgb, var(--status-error) 82%, black);
+	--color-rose-800: color-mix(in srgb, var(--status-error) 42%, var(--bg));
+	--color-rose-900: color-mix(in srgb, var(--status-error) 30%, var(--bg));
+	--color-rose-950: color-mix(in srgb, var(--status-error) 20%, var(--bg));
+	--color-red-200: color-mix(in srgb, var(--status-error) 50%, var(--text));
+	--color-red-300: color-mix(in srgb, var(--status-error) 68%, var(--text));
+	--color-red-400: var(--status-error);
+	--color-red-500: var(--status-error);
+	--color-red-800: color-mix(in srgb, var(--status-error) 42%, var(--bg));
+	--color-red-900: color-mix(in srgb, var(--status-error) 30%, var(--bg));
+	--color-red-950: color-mix(in srgb, var(--status-error) 20%, var(--bg));
+	--color-pink-400: color-mix(in srgb, var(--status-error) 72%, var(--text));
+
+	/* orange / yellow — warning */
+	--color-orange-300: color-mix(in srgb, var(--status-warning) 68%, var(--text));
+	--color-orange-400: var(--status-warning);
+	--color-orange-500: color-mix(in srgb, var(--status-warning) 82%, black);
+	--color-orange-600: color-mix(in srgb, var(--status-warning) 58%, var(--bg));
+	--color-yellow-300: color-mix(in srgb, var(--status-warning) 68%, var(--text));
+	--color-yellow-400: var(--status-warning);
+	--color-yellow-500: color-mix(in srgb, var(--status-warning) 82%, black);
+
+	/* sky / blue / cyan — info / renamed */
+	--color-sky-200: color-mix(in srgb, var(--status-renamed) 50%, var(--text));
+	--color-sky-300: color-mix(in srgb, var(--status-renamed) 68%, var(--text));
+	--color-sky-400: var(--status-renamed);
+	--color-sky-500: color-mix(in srgb, var(--status-renamed) 82%, black);
+	--color-sky-600: color-mix(in srgb, var(--status-renamed) 58%, var(--bg));
+	--color-sky-950: color-mix(in srgb, var(--status-renamed) 20%, var(--bg));
+	--color-blue-500: color-mix(in srgb, var(--status-renamed) 82%, black);
+	--color-blue-600: color-mix(in srgb, var(--status-renamed) 58%, var(--bg));
+	--color-cyan-400: var(--status-renamed);
+}
+
+/*
+ * Theme palettes. The :root block is the default "ompws" theme; the others
+ * are ported from omp-web's palettes (same semantic variable names).
+ */
+:root {
+	--bg: #0a0a0a;
+	--bg-panel: #171717;
+	--bg-hover: #262626;
+	--bg-selected: #404040;
+	--border: #404040;
+	--text: #f5f5f5;
+	--text-muted: #a3a3a3;
+	--text-dim: #737373;
+	--accent: #f59e0b;
+	--accent-strong: #564cf9;
+	--accent-hover: #fbbf24;
+	--status-error: #ef4444;
+	--status-success: #34d399;
+	--status-warning: #fbbf24;
+	--status-renamed: #38bdf8;
+
+	/* Chat typography, controlled by the font-size setting (data-font-size). */
+	--chat-font-size: 13px;
+	--chat-line-height: 1.7;
+	--chat-code-font-size: 12px;
+	--chat-user-font-size: 13px;
+}
+
+html[data-theme="omp"] {
+	--bg: #000;
+	--bg-panel: #0a0a0c;
+	--bg-hover: #141417;
+	--bg-selected: #1c1c21;
+	--border: #232329;
+	--text: #f5f5f5;
+	--text-muted: #c9c9d1;
+	--text-dim: #8e8e96;
+	--accent: #ec5bab;
+	--accent-strong: #ad2674;
+	--accent-hover: #f483bb;
+	--status-error: #ff9b92;
+	--status-success: #7dd8a8;
+	--status-warning: #f0c36a;
+	--status-renamed: #7ca8ff;
+}
+
+html[data-theme="dark"] {
+	--bg: #1b1916;
+	--bg-panel: #231f1b;
+	--bg-hover: #2b2721;
+	--bg-selected: #332e26;
+	--border: #38322b;
+	--text: #ebe6dc;
+	--text-muted: #a39b8e;
+	--text-dim: #938c81;
+	--accent: #e07b54;
+	--accent-strong: #c2542e;
+	--accent-hover: #e89371;
+	--status-error: #ff8a80;
+	--status-success: #69d5a5;
+	--status-warning: #f0c36a;
+	--status-renamed: #7ca8ff;
+}
+
+html[data-theme="dracula"] {
+	--bg: #282a36;
+	--bg-panel: #21222c;
+	--bg-hover: #343746;
+	--bg-selected: #44475a;
+	--border: #44475a;
+	--text: #f8f8f2;
+	--text-muted: #b4b8d0;
+	--text-dim: #6272a4;
+	--accent: #ff79c6;
+	--accent-strong: #bd93f9;
+	--accent-hover: #ffa2d8;
+	--status-error: #f55;
+	--status-success: #50fa7b;
+	--status-warning: #ffb86c;
+	--status-renamed: #8be9fd;
+}
+
+html[data-theme="harbor"] {
+	--bg: #1b1b1b;
+	--bg-panel: #242424;
+	--bg-hover: #2e2e2e;
+	--bg-selected: #383838;
+	--border: #3d3d3d;
+	--text: #efebdc;
+	--text-muted: #c0b8a0;
+	--text-dim: #817f68;
+	--accent: #e75a50;
+	--accent-strong: #d2483e;
+	--accent-hover: #f0736a;
+	--status-error: #f44336;
+	--status-success: #77838a;
+	--status-warning: #e1ce98;
+	--status-renamed: #e58980;
+}
+
+html[data-theme="one-dark-pro"] {
+	--bg: #282c34;
+	--bg-panel: #21252b;
+	--bg-hover: #2c313c;
+	--bg-selected: #3e4451;
+	--border: #3a3f4b;
+	--text: #abb2bf;
+	--text-muted: #8b94a5;
+	--text-dim: #5c6370;
+	--accent: #61afef;
+	--accent-strong: #4d8cd6;
+	--accent-hover: #7ec7ff;
+	--status-error: #e06c75;
+	--status-success: #98c379;
+	--status-warning: #e5c07b;
+	--status-renamed: #61afef;
+}
+
+html[data-theme="rose-pine"] {
+	--bg: #191724;
+	--bg-panel: #1f1d2e;
+	--bg-hover: #26233a;
+	--bg-selected: #403d52;
+	--border: #393552;
+	--text: #e0def4;
+	--text-muted: #908caa;
+	--text-dim: #6e6a86;
+	--accent: #ebbcba;
+	--accent-strong: #c4a7e7;
+	--accent-hover: #f2cecc;
+	--status-error: #eb6f92;
+	--status-success: #9ccfd8;
+	--status-warning: #f6c177;
+	--status-renamed: #c4a7e7;
+}
+
+html[data-theme="catppuccin-mocha"] {
+	--bg: #1e1e2e;
+	--bg-panel: #181825;
+	--bg-hover: #262638;
+	--bg-selected: #313244;
+	--border: #45475a;
+	--text: #cdd6f4;
+	--text-muted: #a6adc8;
+	--text-dim: #6c7086;
+	--accent: #cba6f7;
+	--accent-strong: #b4befe;
+	--accent-hover: #d8bcf9;
+	--status-error: #f38ba8;
+	--status-success: #a6e3a1;
+	--status-warning: #f9e2af;
+	--status-renamed: #89b4fa;
+}
+
+html[data-theme="gruvbox-dark"] {
+	--bg: #282828;
+	--bg-panel: #1d2021;
+	--bg-hover: #32302f;
+	--bg-selected: #3c3836;
+	--border: #504945;
+	--text: #ebdbb2;
+	--text-muted: #bdae93;
+	--text-dim: #928374;
+	--accent: #fe8019;
+	--accent-strong: #d65d0e;
+	--accent-hover: #ff9c42;
+	--status-error: #fb4934;
+	--status-success: #b8bb26;
+	--status-warning: #fabd2f;
+	--status-renamed: #83a598;
+}
+
+html[data-theme="nord"] {
+	--bg: #2e3440;
+	--bg-panel: #272c36;
+	--bg-hover: #3b4252;
+	--bg-selected: #434c5e;
+	--border: #4c566a;
+	--text: #eceff4;
+	--text-muted: #d8dee9;
+	--text-dim: #8892b0;
+	--accent: #88c0d0;
+	--accent-strong: #5e81ac;
+	--accent-hover: #9bd6e6;
+	--status-error: #bf616a;
+	--status-success: #a3be8c;
+	--status-warning: #ebcb8b;
+	--status-renamed: #81a1c1;
+}
+
+html[data-theme="tokyo-night"] {
+	--bg: #1a1b26;
+	--bg-panel: #16161e;
+	--bg-hover: #24283b;
+	--bg-selected: #283457;
+	--border: #2f354d;
+	--text: #c0caf5;
+	--text-muted: #9aa5ce;
+	--text-dim: #565f89;
+	--accent: #7aa2f7;
+	--accent-strong: #567ecc;
+	--accent-hover: #8db4ff;
+	--status-error: #f7768e;
+	--status-success: #9ece6a;
+	--status-warning: #e0af68;
+	--status-renamed: #7dcfff;
+}
+
+html[data-theme="kanagawa"] {
+	--bg: #1f1f28;
+	--bg-panel: #16161d;
+	--bg-hover: #2a2a37;
+	--bg-selected: #363649;
+	--border: #363649;
+	--text: #dcd7ba;
+	--text-muted: #98968b;
+	--text-dim: #727169;
+	--accent: #7aa89f;
+	--accent-strong: #5d857c;
+	--accent-hover: #93c2b9;
+	--status-error: #e46876;
+	--status-success: #98bb6c;
+	--status-warning: #c0a36e;
+	--status-renamed: #7fb4ca;
+}
+
+html[data-theme="everforest"] {
+	--bg: #2b3339;
+	--bg-panel: #1e2327;
+	--bg-hover: #343f44;
+	--bg-selected: #3d484d;
+	--border: #414b52;
+	--text: #d3c6aa;
+	--text-muted: #9da9a0;
+	--text-dim: #7a8478;
+	--accent: #a7c080;
+	--accent-strong: #87a15e;
+	--accent-hover: #bdd39c;
+	--status-error: #e67e80;
+	--status-success: #a7c080;
+	--status-warning: #dbbc7f;
+	--status-renamed: #7fbbb3;
+}
+
+html[data-theme="night-owl"] {
+	--bg: #011627;
+	--bg-panel: #01111d;
+	--bg-hover: #0e2d47;
+	--bg-selected: #1d3b53;
+	--border: #143752;
+	--text: #d6deeb;
+	--text-muted: #8aa4c4;
+	--text-dim: #5f7e9e;
+	--accent: #c792ea;
+	--accent-strong: #9d63d0;
+	--accent-hover: #dcb0f4;
+	--status-error: #f07178;
+	--status-success: #addb67;
+	--status-warning: #ffcb8b;
+	--status-renamed: #7fdbca;
+}
+
+html[data-theme="ayu-dark"] {
+	--bg: #0b0e14;
+	--bg-panel: #0d1017;
+	--bg-hover: #161b24;
+	--bg-selected: #1d2430;
+	--border: #1a212e;
+	--text: #bfbdb6;
+	--text-muted: #8a9199;
+	--text-dim: #626a73;
+	--accent: #ff9940;
+	--accent-strong: #e0822e;
+	--accent-hover: #ffb35c;
+	--status-error: #ef6b73;
+	--status-success: #aad94c;
+	--status-warning: #e6b450;
+	--status-renamed: #39bae6;
+}
+
+html[data-theme="solarized-dark"] {
+	--bg: #002b36;
+	--bg-panel: #073642;
+	--bg-hover: #0e4653;
+	--bg-selected: #175464;
+	--border: #134a59;
+	--text: #93a1a1;
+	--text-muted: #7b9194;
+	--text-dim: #586e75;
+	--accent: #2aa198;
+	--accent-strong: #1f7d75;
+	--accent-hover: #48c3b8;
+	--status-error: #e0554d;
+	--status-success: #97b23c;
+	--status-warning: #d0a423;
+	--status-renamed: #3d9be0;
+}
+
+html[data-theme="sakura"] {
+	--bg: #fdf4f6;
+	--bg-panel: #f9eaee;
+	--bg-hover: #f3e0e6;
+	--bg-selected: #ecd2da;
+	--border: #eed5dd;
+	--text: #472b36;
+	--text-muted: #86606f;
+	--text-dim: #b08b98;
+	--accent: #d6336c;
+	--accent-strong: #b02559;
+	--accent-hover: #e77ba1;
+	--status-error: #c23545;
+	--status-success: #2e9e63;
+	--status-warning: #ad6b0a;
+	--status-renamed: #3a6fd8;
+}
+
+html[data-theme="glacier"] {
+	--bg: #f6fafc;
+	--bg-panel: #ecf3f8;
+	--bg-hover: #e2edf4;
+	--bg-selected: #d4e3ee;
+	--border: #d8e6ef;
+	--text: #1f3a4d;
+	--text-muted: #56738a;
+	--text-dim: #8aa4b5;
+	--accent: #0d94bd;
+	--accent-strong: #0a7699;
+	--accent-hover: #3bb0d6;
+	--status-error: #cf4a56;
+	--status-success: #2e9e63;
+	--status-warning: #b07a12;
+	--status-renamed: #4f5fd8;
+}
+
+html[data-theme="lavender"] {
+	--bg: #f8f6fc;
+	--bg-panel: #f0ecf8;
+	--bg-hover: #e8e2f4;
+	--bg-selected: #dcd2ee;
+	--border: #ded4f0;
+	--text: #38304f;
+	--text-muted: #6b6288;
+	--text-dim: #9a92b5;
+	--accent: #7c5cd6;
+	--accent-strong: #6344b8;
+	--accent-hover: #9a7ce8;
+	--status-error: #c9486b;
+	--status-success: #2e8f5e;
+	--status-warning: #a87814;
+	--status-renamed: #2f7fc4;
+}
+
+html[data-theme="light"] {
+	--bg: #faf9f6;
+	--bg-panel: #f2f0ea;
+	--bg-hover: #eae7df;
+	--bg-selected: #e5e0d4;
+	--border: #e2ddd2;
+	--text: #2b2823;
+	--text-muted: #69635a;
+	--text-dim: #6a6458;
+	--accent: #b03e22;
+	--accent-strong: #b03e22;
+	--accent-hover: #96331b;
+	--status-error: #b42318;
+	--status-success: #18794e;
+	--status-warning: #8a5a00;
+	--status-renamed: #2563eb;
+}
+
+html[data-theme="one-light"] {
+	--bg: #fafafa;
+	--bg-panel: #f0f0f0;
+	--bg-hover: #e5e5e6;
+	--bg-selected: #dbdbdc;
+	--border: #dcdcdc;
+	--text: #383a42;
+	--text-muted: #696c77;
+	--text-dim: #a0a1a7;
+	--accent: #2f65d9;
+	--accent-strong: #2f65d9;
+	--accent-hover: #1e4fb8;
+	--status-error: #e45649;
+	--status-success: #50a14f;
+	--status-warning: #c18401;
+	--status-renamed: #4078f2;
+}
+
+html[data-theme="catppuccin-latte"] {
+	--bg: #eff1f5;
+	--bg-panel: #e6e9ef;
+	--bg-hover: #dce0e8;
+	--bg-selected: #ccd0da;
+	--border: #bcc0cc;
+	--text: #4c4f69;
+	--text-muted: #65687e;
+	--text-dim: #8c8fa1;
+	--accent: #1e66f5;
+	--accent-strong: #1e66f5;
+	--accent-hover: #04a5e5;
+	--status-error: #d20f39;
+	--status-success: #40a02b;
+	--status-warning: #df8e1d;
+	--status-renamed: #1e66f5;
+}
+
+html[data-theme="rose-pine-dawn"] {
+	--bg: #faf4ed;
+	--bg-panel: #fffaf3;
+	--bg-hover: #f2e9e1;
+	--bg-selected: #dfdad9;
+	--border: #cecacd;
+	--text: #575279;
+	--text-muted: #6e6a86;
+	--text-dim: #9893a5;
+	--accent: #286983;
+	--accent-strong: #286983;
+	--accent-hover: #1f5469;
+	--status-error: #b4637a;
+	--status-success: #286983;
+	--status-warning: #ea9d34;
+	--status-renamed: #907aa9;
+}
+
+html[data-theme="solarized-light"] {
+	--bg: #fdf6e3;
+	--bg-panel: #eee8d5;
+	--bg-hover: #e6dfc6;
+	--bg-selected: #d8cfb1;
+	--border: #d5cdae;
+	--text: #4f5d66;
+	--text-muted: #74888e;
+	--text-dim: #96a5a5;
+	--accent: #268bd2;
+	--accent-strong: #1a6eb2;
+	--accent-hover: #4aa3e0;
+	--status-error: #cb3b2e;
+	--status-success: #778f0b;
+	--status-warning: #a07f06;
+	--status-renamed: #2aa198;
+}
+
+html[data-theme="github-light"] {
+	--bg: #ffffff;
+	--bg-panel: #f6f8fa;
+	--bg-hover: #eff2f5;
+	--bg-selected: #e4e9ee;
+	--border: #d7dde3;
+	--text: #25292e;
+	--text-muted: #59636e;
+	--text-dim: #8b959e;
+	--accent: #0969da;
+	--accent-strong: #0550ae;
+	--accent-hover: #2f81f7;
+	--status-error: #cf222e;
+	--status-success: #1a7f37;
+	--status-warning: #9a6700;
+	--status-renamed: #8250df;
+}
+
+html[data-theme="nord-light"] {
+	--bg: #eceff4;
+	--bg-panel: #e5e9f0;
+	--bg-hover: #dce1ea;
+	--bg-selected: #d1d8e4;
+	--border: #d5dae4;
+	--text: #2e3440;
+	--text-muted: #4f5b70;
+	--text-dim: #7b88a1;
+	--accent: #5e81ac;
+	--accent-strong: #4d6f9c;
+	--accent-hover: #7d9fc4;
+	--status-error: #b3515c;
+	--status-success: #6f9f50;
+	--status-warning: #a9822a;
+	--status-renamed: #4d7fb0;
+}
+
+html[data-theme="tokyo-night-light"] {
+	--bg: #e1e2e7;
+	--bg-panel: #d4d6e4;
+	--bg-hover: #c8ccdd;
+	--bg-selected: #bcc1d6;
+	--border: #c3c8da;
+	--text: #37527f;
+	--text-muted: #7481a6;
+	--text-dim: #8990b3;
+	--accent: #2e7de9;
+	--accent-strong: #1e67c8;
+	--accent-hover: #5a97f0;
+	--status-error: #d84a78;
+	--status-success: #4f9a6b;
+	--status-warning: #966c22;
+	--status-renamed: #007196;
+}
+
+html[data-theme="ayu-light"] {
+	--bg: #fafafa;
+	--bg-panel: #f3f4f6;
+	--bg-hover: #e9eaee;
+	--bg-selected: #dfe1e8;
+	--border: #e2e4e9;
+	--text: #5c6166;
+	--text-muted: #868d96;
+	--text-dim: #a6adb5;
+	--accent: #f0821e;
+	--accent-strong: #c96a10;
+	--accent-hover: #ffa14d;
+	--status-error: #d64f44;
+	--status-success: #6ca029;
+	--status-warning: #bb851a;
+	--status-renamed: #2f88c4;
+}
+
+html[data-theme="gruvbox-light"] {
+	--bg: #fbf1c7;
+	--bg-panel: #f1e6c2;
+	--bg-hover: #e8dcab;
+	--bg-selected: #ddd0a3;
+	--border: #dccfa4;
+	--text: #3c3836;
+	--text-muted: #7c6f64;
+	--text-dim: #928374;
+	--accent: #d65d0e;
+	--accent-strong: #b54e08;
+	--accent-hover: #ef7c2e;
+	--status-error: #cc241d;
+	--status-success: #7f8f12;
+	--status-warning: #b07d13;
+	--status-renamed: #458588;
+}
+
+html[data-theme="everforest-light"] {
+	--bg: #fdf6e3;
+	--bg-panel: #f4f0d5;
+	--bg-hover: #ece7c5;
+	--bg-selected: #e0dab0;
+	--border: #e2dcbc;
+	--text: #5c6a72;
+	--text-muted: #808f85;
+	--text-dim: #939f91;
+	--accent: #8da101;
+	--accent-strong: #718a04;
+	--accent-hover: #a5bd2c;
+	--status-error: #d64c48;
+	--status-success: #8da101;
+	--status-warning: #dfa000;
+	--status-renamed: #35a77c;
+}
+
+/* Follow the OS scheme while the theme choice is "system". */
+html[data-mode="dark"] {
 	color-scheme: dark;
+}
+
+html[data-mode="light"] {
+	color-scheme: light;
 }
 
 html,
@@ -22,23 +690,29 @@ body,
 
 body {
 	font-size: 13px;
-	background-color: var(--color-neutral-950);
-	color: var(--color-neutral-200);
+	background-color: var(--bg);
+	color: var(--text);
 	-webkit-font-smoothing: antialiased;
 	user-select: none;
 }
-/* Text selection in amber brand accent */
+
+/* Selection uses the theme accent. */
 ::selection {
-	background: rgba(245, 158, 11, 0.3);
-	color: #ffffff;
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
+	color: var(--text);
 }
 
-/* Global accessible focus ring for keyboard navigation */
+/* Global accessible focus ring for keyboard navigation. */
 :focus-visible {
-	outline: 2px solid var(--color-amber-500, #f59e0b);
+	outline: 2px solid var(--accent);
 	outline-offset: 1px;
 }
 
+/* Native form controls follow the theme accent. */
+input[type="checkbox"],
+input[type="radio"] {
+	accent-color: var(--accent);
+}
 
 /* Text inside content panes, dialogs, popovers, code and inputs stays selectable. */
 main,
@@ -58,14 +732,12 @@ textarea {
 	user-select: none;
 }
 
-/* Dark mode custom scrollbars */
+/* Theme-aware scrollbars. */
 * {
 	scrollbar-width: thin;
-	scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+	scrollbar-color: color-mix(in srgb, var(--text) 15%, transparent) transparent;
 }
 
-/* WebKit / Safari (WKWebView) — needs the classic ::-webkit-scrollbar rules
-   plus `color-scheme: dark` above for the root/overlay scrollbar. */
 ::-webkit-scrollbar {
 	width: 6px;
 	height: 6px;
@@ -76,12 +748,47 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-	background: rgba(255, 255, 255, 0.15);
+	background: color-mix(in srgb, var(--text) 15%, transparent);
 	border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: rgba(255, 255, 255, 0.3);
+	background: color-mix(in srgb, var(--text) 30%, transparent);
+}
+
+/* Chat font-size presets (settings → 外观). */
+html[data-font-size="sm"] {
+	--chat-font-size: 12px;
+	--chat-line-height: 1.65;
+	--chat-code-font-size: 11px;
+	--chat-user-font-size: 12px;
+}
+
+html[data-font-size="lg"] {
+	--chat-font-size: 15px;
+	--chat-line-height: 1.7;
+	--chat-code-font-size: 13.5px;
+	--chat-user-font-size: 15px;
+}
+
+html[data-font-size="xl"] {
+	--chat-font-size: 17px;
+	--chat-line-height: 1.75;
+	--chat-code-font-size: 15px;
+	--chat-user-font-size: 17px;
+}
+
+/* Overall UI density presets (settings → 外观). */
+html[data-ui-scale="compact"] {
+	zoom: 0.9;
+}
+
+html[data-ui-scale="comfortable"] {
+	zoom: 1.1;
+}
+
+html[data-ui-scale="large"] {
+	zoom: 1.2;
 }
 
 /* Utility to completely hide scrollbar while preserving scrollability */

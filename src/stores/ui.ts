@@ -75,6 +75,8 @@ export interface UiState {
 	sidebarOpen: boolean;
 	sidebarWidth: number;
 	sessionViewMode: Record<string, "chat" | "terminal">;
+	/** Settings section to show when the settings view opens (e.g. from the theme menu). */
+	settingsSection: string | null;
 	modal: { name: string; props: Record<string, unknown> } | null;
 	selectSession(id: string | null): void;
 	setSelectedIds(ids: Set<string> | string[]): void;
@@ -83,6 +85,7 @@ export interface UiState {
 	returnToSession(): void;
 	openDoc(path: string): void;
 	setCenter(v: CenterView): void;
+	openSettings(section?: string): void;
 	setRightTab(t: RightTab | null): void;
 	toggleRight(): void;
 	setRightOpen(open: boolean): void;
@@ -108,6 +111,7 @@ export const useUi = create<UiState>((set) => ({
 	sidebarOpen: readBool(STORAGE_KEYS.sidebarOpen, true),
 	sidebarWidth: readNumber(STORAGE_KEYS.sidebarWidth, 280, 180, 600),
 	sessionViewMode: {},
+	settingsSection: null,
 	modal: null,
 	selectSession: (id) => {
 		if (id) writeStorage(STORAGE_KEYS.lastSession, id);
@@ -145,6 +149,8 @@ export const useUi = create<UiState>((set) => ({
 		}),
 	openDoc: (path) => set({ docPath: path, centerView: "doc" }),
 	setCenter: (v) => set({ centerView: v }),
+	openSettings: (section) =>
+		set({ centerView: "settings", settingsSection: section ?? null }),
 	setRightTab: (t) => {
 		if (t) {
 			writeStorage(STORAGE_KEYS.rightTab, t);

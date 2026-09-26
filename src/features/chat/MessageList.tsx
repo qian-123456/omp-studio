@@ -360,7 +360,7 @@ function ItemRow({
 			const userText = item.text ?? "";
 			return (
 				<div className="group relative flex flex-col items-end">
-					<div className="max-w-[85%] rounded-lg bg-indigo-950/60 px-3 py-1.5 text-[13px] text-neutral-100 shadow-sm">
+					<div className="max-w-[85%] rounded-lg bg-indigo-950/60 px-3 py-1.5 text-[length:var(--chat-user-font-size)] text-neutral-100 shadow-sm">
 						<Markdown text={userText} />
 					</div>
 					<div className="mt-1 flex items-center gap-1 rounded border border-neutral-700/80 bg-neutral-900/95 px-1 py-0.5 text-[10px] shadow opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
