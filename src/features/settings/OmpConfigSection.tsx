@@ -376,9 +376,14 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 export function OmpConfigSection({
 	activeTab,
 	onTabChange,
+	activeGroupName,
+	onGroupChange,
 }: {
 	activeTab: string;
 	onTabChange: (tab: string) => void;
+	/** Schema sub-group (Theme / Composer / …); null shows the whole tab. */
+	activeGroupName: string | null;
+	onGroupChange: (group: string | null) => void;
 }) {
 	const entries = useOmpConfigStore((s) => s.entries);
 	const loading = useOmpConfigStore((s) => s.loading);
@@ -396,6 +401,20 @@ export function OmpConfigSection({
 	const activeGroup =
 		allGroups.find((g) => g.id === activeTab) ?? allGroups[0] ?? null;
 
+	const tabGroupNames = useMemo(
+		() =>
+			new Set(
+				(activeGroup?.entries ?? []).map((e) => ompConfigGroup(e.key) ?? "其他"),
+			),
+		[activeGroup],
+	);
+	// Recover from a stale group (disappeared after omp upgrade).
+	useEffect(() => {
+		if (activeGroupName && !tabGroupNames.has(activeGroupName)) {
+			onGroupChange(null);
+		}
+	}, [activeGroupName, tabGroupNames, onGroupChange]);
+
 	// Recover from a stale selection (tab disappeared after omp upgrade).
 	useEffect(() => {
 		if (allGroups.length > 0 && !allGroups.some((g) => g.id === activeTab)) {
@@ -404,7 +423,11 @@ export function OmpConfigSection({
 	}, [allGroups, activeTab, onTabChange]);
 
 	const rows = useMemo(() => {
-		const base = activeGroup?.entries ?? [];
+		const base = activeGroupName
+			? (activeGroup?.entries ?? []).filter(
+					(e) => (ompConfigGroup(e.key) ?? "其他") === activeGroupName,
+				)
+			: (activeGroup?.entries ?? []);
 		const q = query.trim().toLowerCase();
 		if (!q) return base;
 		return base.filter(
@@ -413,7 +436,7 @@ export function OmpConfigSection({
 				e.description.toLowerCase().includes(q) ||
 				ompConfigTitle(e.key).toLowerCase().includes(q),
 		);
-	}, [activeGroup, query]);
+	}, [activeGroup, activeGroupName, query]);
 
 	// Sub-groups by schema group ("Theme", "Composer", …); settings without UI
 	// metadata land in a trailing 其他 bucket instead of raw key-name headers.
@@ -499,6 +522,17 @@ export function OmpConfigSection({
 
 	return (
 		<div className="space-y-3">
+			<div className="flex items-baseline gap-1.5">
+				<h3 className="text-sm font-semibold text-neutral-100">
+					{activeGroup?.label}
+				</h3>
+				{activeGroupName && (
+					<>
+						<span className="text-xs text-neutral-600">›</span>
+						<span className="text-xs text-neutral-400">{activeGroupName}</span>
+					</>
+				)}
+			</div>
 			<div className="flex items-center gap-2">
 				<div className="relative flex-1">
 					<Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
@@ -506,7 +540,7 @@ export function OmpConfigSection({
 						type="text"
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
-						placeholder={`在「${activeGroup?.label ?? ""}」中搜索配置...`}
+						placeholder={`在「${activeGroupName ?? activeGroup?.label ?? ""}」中搜索配置...`}
 						className="w-full rounded-lg border border-neutral-700 bg-neutral-950 py-1.5 pl-8 pr-3 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 					/>
 				</div>

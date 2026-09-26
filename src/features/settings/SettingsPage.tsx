@@ -44,6 +44,7 @@ import { OmpConfigSection } from "./OmpConfigSection";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
 import { groupByOmpTab } from "./ompConfigTabs";
+import { ompConfigGroup } from "./ompConfigMeta";
 import { ProviderPanel } from "../providers/ProviderPanel";
 
 interface ToggleProps {
@@ -101,12 +102,29 @@ export function SettingsPage() {
 
 	// OMP 配置: official tab selection lives in the left nav as a second level.
 	const [ompTab, setOmpTab] = useState<string>("");
+	const [ompGroup, setOmpGroup] = useState<string | null>(null);
 	const ompEntries = useOmpConfigStore((s) => s.entries);
 	const loadOmpConfig = useOmpConfigStore((s) => s.load);
 	useEffect(() => {
 		if (activeSection === "ompconfig") void loadOmpConfig();
 	}, [activeSection, loadOmpConfig]);
 	const ompGroups = useMemo(() => groupByOmpTab(ompEntries), [ompEntries]);
+	// Schema sub-groups per tab (Theme / Composer / …) for the third nav level.
+	const ompTabGroups = useMemo(() => {
+		const result: Record<string, { name: string; count: number }[]> = {};
+		for (const tab of ompGroups) {
+			const counts = new Map<string, number>();
+			for (const entry of tab.entries) {
+				const name = ompConfigGroup(entry.key) ?? "其他";
+				counts.set(name, (counts.get(name) ?? 0) + 1);
+			}
+			result[tab.id] = [...counts.entries()].map(([name, count]) => ({
+				name,
+				count,
+			}));
+		}
+		return result;
+	}, [ompGroups]);
 	const [saveNotice, setSaveNotice] = useState<string | null>(null);
 	const pendingSection = useUi((s) => s.settingsSection);
 	const fontSize = useFontSize();
@@ -418,8 +436,11 @@ export function SettingsPage() {
 									type="button"
 									onClick={() => {
 										setActiveSection(sec.id);
-										if (sec.id === "ompconfig" && ompGroups.length > 0 && !ompGroups.some((g) => g.id === ompTab)) {
-											setOmpTab(ompGroups[0].id);
+										if (sec.id === "ompconfig") {
+											setOmpGroup(null);
+											if (ompGroups.length > 0 && !ompGroups.some((g) => g.id === ompTab)) {
+												setOmpTab(ompGroups[0].id);
+											}
 										}
 									}}
 									className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
@@ -440,21 +461,46 @@ export function SettingsPage() {
 								{isOmp && isActive && ompGroups.length > 0 && (
 									<div className="mt-1 space-y-0.5 pl-4">
 										{ompGroups.map((g) => (
-											<button
-												key={g.id}
-												type="button"
-												onClick={() => setOmpTab(g.id)}
-												className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors ${
-													ompTab === g.id
-														? "bg-neutral-800/80 font-medium text-amber-300"
-														: "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
-												}`}
-											>
-												<span>{g.label}</span>
-												<span className="text-[10px] text-neutral-600">
-													{g.entries.length}
-												</span>
-											</button>
+											<div key={g.id}>
+												<button
+													type="button"
+													onClick={() => {
+														setOmpTab(g.id);
+														setOmpGroup(null);
+													}}
+													className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors ${
+														ompTab === g.id
+															? "bg-neutral-800/80 font-medium text-amber-300"
+															: "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+													}`}
+												>
+													<span>{g.label}</span>
+													<span className="text-[10px] text-neutral-600">
+														{g.entries.length}
+													</span>
+												</button>
+												{ompTab === g.id && (ompTabGroups[g.id]?.length ?? 0) > 0 && (
+													<div className="mt-0.5 space-y-0.5 pl-3">
+														{ompTabGroups[g.id].map((grp) => (
+															<button
+																key={grp.name}
+																type="button"
+																onClick={() => setOmpGroup(grp.name)}
+																className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors ${
+																	ompGroup === grp.name
+																		? "bg-neutral-800/80 font-medium text-amber-300"
+																		: "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+																}`}
+															>
+																<span className="truncate">{grp.name}</span>
+																<span className="shrink-0 text-[10px] text-neutral-600">
+																	{grp.count}
+																</span>
+															</button>
+														))}
+													</div>
+												)}
+											</div>
 										))}
 									</div>
 								)}
@@ -894,7 +940,12 @@ export function SettingsPage() {
 									读写 omp 自身的全局配置（~/.omp/agent/config.yml），与 workbench 设置相互独立
 								</p>
 							</div>
-							<OmpConfigSection activeTab={ompTab} onTabChange={setOmpTab} />
+							<OmpConfigSection
+								activeTab={ompTab}
+								onTabChange={setOmpTab}
+								activeGroupName={ompGroup}
+								onGroupChange={setOmpGroup}
+							/>
 						</div>
 					)}
 
