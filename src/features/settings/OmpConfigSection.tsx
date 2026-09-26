@@ -17,7 +17,7 @@ import { toast } from "../../lib/toast";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
 import { OMP_CONFIG_META, ompConfigGroup, ompConfigTitle } from "./ompConfigMeta";
-import { groupByOmpTab, keyPrefix } from "./ompConfigTabs";
+import { groupByOmpTab } from "./ompConfigTabs";
 
 const TYPE_BADGE: Record<string, string> = {
 	boolean: "bg-emerald-500/15 text-emerald-300",
@@ -402,19 +402,27 @@ export function OmpConfigSection({
 		);
 	}, [activeGroup, query]);
 
-	// Sub-groups by schema group ("Theme", "Composer", …), prefix as fallback.
+	// Sub-groups by schema group ("Theme", "Composer", …); settings without UI
+	// metadata land in a trailing 其他 bucket instead of raw key-name headers.
 	const grouped = useMemo(() => {
-		const map = new Map<string, OmpConfigEntry[]>();
+		const named = new Map<string, OmpConfigEntry[]>();
+		const other: OmpConfigEntry[] = [];
 		for (const entry of rows) {
-			const group = ompConfigGroup(entry.key) ?? keyPrefix(entry.key);
-			const list = map.get(group);
-			if (list) {
-				list.push(entry);
+			const group = ompConfigGroup(entry.key);
+			if (group) {
+				const list = named.get(group);
+				if (list) {
+					list.push(entry);
+				} else {
+					named.set(group, [entry]);
+				}
 			} else {
-				map.set(group, [entry]);
+				other.push(entry);
 			}
 		}
-		return [...map.entries()];
+		const result = [...named.entries()];
+		if (other.length > 0) result.push(["其他", other]);
+		return result;
 	}, [rows]);
 
 	const handleChanged = () => {

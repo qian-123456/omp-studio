@@ -2,7 +2,7 @@
  * installed omp binary's embedded settings schema (the same data omp's /settings TUI uses).
  * Regenerate after an omp upgrade by re-extracting `label:` entries from the binary
  * (strings ~/.local/bin/omp — entries shaped `"key.path": { ... ui: { tab, group, label, description } }`).
- * Keys missing here fall back to a derived title from the key itself.
+ * Keys missing here (settings without UI metadata) fall back to a derived title.
  */
 
 export interface OmpConfigMeta {
@@ -55,6 +55,15 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	"async.enabled": {
 		label: "Async Execution",
 		group: "Execution"
+	},
+	"autoResume": {
+		label: "Auto Resume",
+		group: "Startup & Updates"
+	},
+	"autocompleteMaxVisible": {
+		label: "Autocomplete Items",
+		group: "Input",
+		description: "Max visible items in autocomplete dropdown (3-20)"
 	},
 	"autolearn.autoContinue": {
 		label: "Auto-run capture at stop",
@@ -171,6 +180,10 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	"collab.webUrl": {
 		label: "Web UI URL",
 		group: "Collab"
+	},
+	"colorBlindMode": {
+		label: "Color-Blind Mode",
+		group: "Theme"
 	},
 	"commands.enableClaudeProject": {
 		label: "Claude Project Commands",
@@ -290,6 +303,11 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Debug",
 		group: "Available Tools"
 	},
+	"defaultThinkingLevel": {
+		label: "Thinking Level",
+		group: "Thinking",
+		description: "Reasoning depth for thinking-capable models"
+	},
 	"dev.autoqa": {
 		label: "Auto QA",
 		group: "Developer"
@@ -332,6 +350,10 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Smooth Streaming",
 		group: "Display"
 	},
+	"doubleEscapeAction": {
+		label: "Double-Escape Action",
+		group: "Input"
+	},
 	"edit.autoRepair.enabled": {
 		label: "Auto-Repair Parse Regressions",
 		group: "Editing"
@@ -369,6 +391,10 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Abort on Failed Preview",
 		group: "Editing"
 	},
+	"emojiAutocomplete": {
+		label: "Emoji Autocomplete",
+		group: "Input"
+	},
 	"error.notify": {
 		label: "Error Notification",
 		group: "Notifications"
@@ -401,9 +427,18 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Exa Search Delay",
 		group: "Services"
 	},
+	"extendedContext": {
+		label: "Extended Context",
+		group: "General"
+	},
 	"extensionHandlers.toolCallTimeoutMs": {
 		label: "Tool Call Handler Timeout (ms)",
 		group: "Extensions"
+	},
+	"externalThinking": {
+		label: "External Thinking",
+		group: "Thinking",
+		description: "Private scratchpad; not shown to user. Disables supported GPT, Claude, and Gemini reasoning"
 	},
 	"features.unexpectedStopDetection": {
 		label: "Unexpected Stops",
@@ -417,6 +452,10 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	"find.enabled": {
 		label: "Find (semantic grep)",
 		group: "Available Tools"
+	},
+	"followUpMode": {
+		label: "Follow-Up Mode",
+		group: "Input"
 	},
 	"generate_image.enabled": {
 		label: "Generate Image",
@@ -471,6 +510,10 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	"grep.enabled": {
 		label: "Grep",
 		group: "Available Tools"
+	},
+	"hideThinkingBlock": {
+		label: "Hide Thinking Blocks",
+		group: "Thinking"
 	},
 	"hindsight.apiToken": {
 		label: "Hindsight API Token",
@@ -567,6 +610,23 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Image URL Lifetime (hours)",
 		group: "Vision"
 	},
+	"includeModelInPrompt": {
+		label: "Include Model in Prompt",
+		group: "Prompt"
+	},
+	"includeWorkspaceTree": {
+		label: "Include Workspace Tree",
+		group: "Prompt"
+	},
+	"inlineToolDescriptors": {
+		label: "Inline Tool Descriptors",
+		group: "Prompt",
+		description: "Render full tool descriptors in the system prompt and strip top-level/nested descriptions from provider tool schemas so descriptor text is sent once. Auto enables this for Gemini models and disables it otherwise"
+	},
+	"interruptMode": {
+		label: "Interrupt Mode",
+		group: "Input"
+	},
 	"irc.timeoutMs": {
 		label: "IRC Timeout",
 		group: "Execution",
@@ -653,6 +713,11 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Memory Backend",
 		group: "General",
 		description: "Off, local summary pipeline, Mnemopi SQLite, Hindsight remote memory, or Sharpshooter"
+	},
+	"minP": {
+		label: "Min P",
+		group: "Sampling",
+		description: "Minimum probability threshold (0-1, -1 = provider default)"
 	},
 	"mnemopi.autoRecall": {
 		label: "Mnemopi Auto Recall",
@@ -763,10 +828,24 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Tool-Call Loop Threshold",
 		group: "Thinking"
 	},
+	"modelRoleStorage": {
+		label: "Model Role Storage",
+		group: "Prompt",
+		description: "Where model selector role assignments are saved"
+	},
+	"omitThinking": {
+		label: "Omit Thinking summaries",
+		group: "Thinking"
+	},
 	"paste.largeMenuThreshold": {
 		label: "Large Paste Menu",
 		group: "Input",
 		description: "When a paste reaches this many lines, offer a menu to wrap it in a code block, wrap it in XML tags, or save it to a file. 0 disables the menu (large pastes still collapse to a [Paste] marker)."
+	},
+	"personality": {
+		label: "Personality",
+		group: "Prompt",
+		description: "Communication style rendered into the system prompt's personality block"
 	},
 	"plan.autosave": {
 		label: "Autosave Plans",
@@ -792,9 +871,18 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		group: "Power",
 		description: "Prevent the system sleeping during active sessions. Each level is cumulative \\u2014 it adds the flags of all lower levels."
 	},
+	"presencePenalty": {
+		label: "Presence Penalty",
+		group: "Sampling",
+		description: "Penalty for introducing already-present tokens (-1 = provider default)"
+	},
 	"prewalk.enabled": {
 		label: "Enable Prewalk",
 		group: "Prewalk"
+	},
+	"proseOnlyThinking": {
+		label: "Prose Only Thinking",
+		group: "Thinking"
 	},
 	"provider.appendOnlyContext": {
 		label: "Append-Only Context",
@@ -933,6 +1021,10 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Inline Read Previews",
 		group: "Reading"
 	},
+	"readLineNumbers": {
+		label: "Line Numbers",
+		group: "Reading"
+	},
 	"recap.enabled": {
 		label: "Idle Recap",
 		group: "Notifications"
@@ -941,6 +1033,11 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Idle Recap Delay",
 		group: "Notifications",
 		description: "Seconds to wait while idle before showing the recap"
+	},
+	"repetitionPenalty": {
+		label: "Repetition Penalty",
+		group: "Sampling",
+		description: "Penalty for repeated tokens (-1 = provider default)"
 	},
 	"retry.fallbackChains": {
 		label: "Retry Fallback Chains",
@@ -1018,6 +1115,14 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	"shellMinimizer.sourceOutlineLevel": {
 		label: "Shell Minimizer Source Outline",
 		group: "Bash"
+	},
+	"showHardwareCursor": {
+		label: "Show Hardware Cursor",
+		group: "Display"
+	},
+	"skillful": {
+		label: "List Skills in Prompt",
+		group: "Prompt"
 	},
 	"skills.enableSkillCommands": {
 		label: "Skill Commands",
@@ -1126,6 +1231,10 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Transparent Status Line",
 		group: "Status Line"
 	},
+	"steeringMode": {
+		label: "Steering Mode",
+		group: "Input"
+	},
 	"stream.redactPatterns": {
 		label: "Extra Redaction Patterns",
 		group: "Stream"
@@ -1142,6 +1251,11 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		label: "Speech-to-Text Submit Trigger",
 		group: "Speech",
 		description: "Choose when speech dictation automatically submits: Never, Release (2+ words), Release with complete sentence, or When I Say Submit."
+	},
+	"symbolPreset": {
+		label: "Symbol Preset",
+		group: "Theme",
+		description: "Glyph set for icons and symbols (Unicode, Nerd Font, or ASCII)"
 	},
 	"task.agentIdleTtlMs": {
 		label: "Agent Idle TTL",
@@ -1224,6 +1338,11 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		group: "Todos",
 		description: "Delay before completed or abandoned todos are removed from the todo widget"
 	},
+	"temperature": {
+		label: "Temperature",
+		group: "Sampling",
+		description: "Sampling temperature (0 = deterministic, 1 = creative, -1 = provider default)"
+	},
 	"terminal.showImages": {
 		label: "Show Inline Images",
 		group: "Images",
@@ -1232,6 +1351,11 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	"terminal.showProgress": {
 		label: "Native Terminal Progress",
 		group: "Display"
+	},
+	"textVerbosity": {
+		label: "Text Verbosity",
+		group: "Sampling",
+		description: "OpenAI Responses and Codex response verbosity (low, medium, or high)"
 	},
 	"theme.dark": {
 		label: "Dark Theme",
@@ -1362,6 +1486,20 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	"tools.xdevInlineDevices": {
 		label: "xd:// Inline Devices",
 		group: "Discovery & MCP"
+	},
+	"topK": {
+		label: "Top K",
+		group: "Sampling",
+		description: "Sample from top-K tokens (-1 = provider default)"
+	},
+	"topP": {
+		label: "Top P",
+		group: "Sampling",
+		description: "Nucleus sampling cutoff (0-1, -1 = provider default)"
+	},
+	"treeFilterMode": {
+		label: "Session Tree Filter",
+		group: "Input"
 	},
 	"tts.localVoice": {
 		label: "Local TTS Voice",
