@@ -208,8 +208,6 @@ export const THEMES: ThemeDef[] = [
 ];
 
 export const DEFAULT_THEME: ThemeDef["id"] = "ompws";
-const SYSTEM_DARK_THEME = "ompws";
-const SYSTEM_LIGHT_THEME = "light";
 
 export const FONT_SIZES: { id: FontSize; name: string }[] = [
 	{ id: "sm", name: "小" },
@@ -229,6 +227,8 @@ const KEYS = {
 	theme: "ompws:theme",
 	fontSize: "ompws:font-size",
 	uiScale: "ompws:ui-scale",
+	systemDark: "ompws:system-dark-theme",
+	systemLight: "ompws:system-light-theme",
 } as const;
 
 const VALID_FONT_SIZES = new Set<string>(FONT_SIZES.map((f) => f.id));
@@ -253,21 +253,36 @@ function writeStorage(key: string, value: string): void {
 let themeChoice: ThemeChoice = DEFAULT_THEME;
 let fontSize: FontSize = "md";
 let uiScale: UiScale = "standard";
+/** Themes used while the choice is "system": one for OS dark, one for OS light. */
+let systemDarkTheme: string = DEFAULT_THEME;
+let systemLightTheme: string = "light";
+
+function themeById(id: string): ThemeDef | undefined {
+	return THEMES.find((t) => t.id === id);
+}
 
 /** The resolved concrete theme id when choice is "system". */
 export function resolvedThemeId(choice: ThemeChoice = themeChoice): string {
 	if (choice !== "system") return choice;
 	try {
 		return window.matchMedia("(prefers-color-scheme: dark)").matches
-			? SYSTEM_DARK_THEME
-			: SYSTEM_LIGHT_THEME;
+			? systemDarkTheme
+			: systemLightTheme;
 	} catch {
-		return SYSTEM_DARK_THEME;
+		return systemDarkTheme;
 	}
 }
 
 export function getThemeChoice(): ThemeChoice {
 	return themeChoice;
+}
+
+export function getSystemDarkTheme(): string {
+	return systemDarkTheme;
+}
+
+export function getSystemLightTheme(): string {
+	return systemLightTheme;
 }
 
 export function getFontSize(): FontSize {
@@ -318,6 +333,12 @@ export function initTheme(): void {
 	if (storedTheme === "system" || THEMES.some((t) => t.id === storedTheme)) {
 		themeChoice = storedTheme as ThemeChoice;
 	}
+	const storedDark = readStorage(KEYS.systemDark);
+	if (themeById(storedDark ?? "")?.dark) systemDarkTheme = storedDark as string;
+	const storedLight = readStorage(KEYS.systemLight);
+	if (themeById(storedLight ?? "") && !themeById(storedLight ?? "")?.dark) {
+		systemLightTheme = storedLight as string;
+	}
 	const storedFont = readStorage(KEYS.fontSize);
 	if (storedFont && VALID_FONT_SIZES.has(storedFont)) fontSize = storedFont as FontSize;
 	const storedScale = readStorage(KEYS.uiScale);
@@ -341,6 +362,26 @@ export function initTheme(): void {
 export function setTheme(choice: ThemeChoice): void {
 	themeChoice = choice;
 	writeStorage(KEYS.theme, choice);
+	apply();
+	emitChange();
+}
+
+/** Theme used while following the system in OS dark mode. */
+export function setSystemDarkTheme(id: string): void {
+	const def = themeById(id);
+	if (!def || !def.dark || id === systemDarkTheme) return;
+	systemDarkTheme = id;
+	writeStorage(KEYS.systemDark, id);
+	apply();
+	emitChange();
+}
+
+/** Theme used while following the system in OS light mode. */
+export function setSystemLightTheme(id: string): void {
+	const def = themeById(id);
+	if (!def || def.dark || id === systemLightTheme) return;
+	systemLightTheme = id;
+	writeStorage(KEYS.systemLight, id);
 	apply();
 	emitChange();
 }
@@ -371,6 +412,14 @@ export function useThemeChoice(): ThemeChoice {
 /** Reactive resolved theme id, for UI that needs the concrete theme. */
 export function useResolvedThemeId(): string {
 	return useThemeSync(() => resolvedThemeId());
+}
+
+export function useSystemDarkTheme(): string {
+	return useThemeSync(getSystemDarkTheme);
+}
+
+export function useSystemLightTheme(): string {
+	return useThemeSync(getSystemLightTheme);
 }
 
 export function useFontSize(): FontSize {

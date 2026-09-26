@@ -127,7 +127,7 @@ export function ThemeMenu() {
 					</button>
 					<div className="mt-1 flex items-center gap-1.5 px-2 pb-1 text-[10px] text-neutral-600">
 						<Monitor size={10} />
-						<span>跟随系统按系统明暗自动切换主题</span>
+						<span>跟随系统按明暗自动切换，可在设置 → 外观分别指定白天与夜间主题</span>
 					</div>
 				</div>
 			)}

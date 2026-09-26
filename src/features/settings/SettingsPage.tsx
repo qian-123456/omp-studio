@@ -20,17 +20,75 @@ import {
 	THEMES,
 	UI_SCALES,
 	setFontSize,
+	setSystemDarkTheme,
+	setSystemLightTheme,
 	setTheme,
 	setUiScale,
 	useFontSize,
+	useSystemDarkTheme,
+	useSystemLightTheme,
 	useThemeChoice,
 	useUiScale,
 	type ThemeChoice,
+	type ThemeDef,
 } from "../../lib/theme";
 import { installStatusExtensionGlobally, notifyTest } from "../../lib/ipc";
 import { MobilePanel } from "../mobile/MobilePanel";
 import { useUi } from "../../stores/ui";
 import { useSettings } from "./store";
+
+function ThemeCard({
+	theme,
+	active,
+	onSelect,
+	small,
+}: {
+	theme: ThemeDef;
+	active: boolean;
+	onSelect: (id: string) => void;
+	small?: boolean;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={() => onSelect(theme.id)}
+			title={theme.name}
+			className={`rounded-lg border p-2 text-left transition-colors ${
+				active
+					? "border-amber-500"
+					: "border-neutral-700/60 hover:border-neutral-600"
+			}`}
+		>
+			<span
+				className={`block w-full overflow-hidden rounded border border-black/20 ${
+					small ? "h-7" : "h-10"
+				}`}
+				style={{ backgroundColor: theme.swatch.bg }}
+				aria-hidden
+			>
+				<span
+					className={`mt-1 ml-1 block rounded-sm ${
+						small ? "h-2 w-7" : "h-3 w-9"
+					}`}
+					style={{ backgroundColor: theme.swatch.panel }}
+				>
+					<span
+						className={`mt-1 ml-1 block rounded-full ${
+							small ? "h-1 w-3" : "h-1.5 w-4"
+						}`}
+						style={{ backgroundColor: theme.swatch.accent }}
+					/>
+				</span>
+			</span>
+			<span className="mt-1.5 flex items-center gap-1 text-[11px] text-neutral-300">
+				<span className="truncate">{theme.name}</span>
+				{active && (
+					<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+				)}
+			</span>
+		</button>
+	);
+}
 
 export function SettingsPage() {
 	const settings = useSettings((s) => s.settings);
@@ -46,6 +104,8 @@ export function SettingsPage() {
 	const [saveNotice, setSaveNotice] = useState<string | null>(null);
 	const pendingSection = useUi((s) => s.settingsSection);
 	const themeChoice = useThemeChoice();
+	const sysDarkTheme = useSystemDarkTheme();
+	const sysLightTheme = useSystemLightTheme();
 	const fontSize = useFontSize();
 	const uiScale = useUiScale();
 
@@ -228,46 +288,14 @@ export function SettingsPage() {
 										选择界面配色；「跟随系统」按系统明暗设置自动切换
 									</div>
 									<div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-										{THEMES.map((t) => {
-											const active = themeChoice === t.id;
-											return (
-												<button
-													key={t.id}
-													type="button"
-													onClick={() => setTheme(t.id as ThemeChoice)}
-													className={`rounded-lg border p-2 text-left transition-colors ${
-														active
-															? "border-amber-500"
-															: "border-neutral-700/60 hover:border-neutral-600"
-													}`}
-												>
-													<span
-														className="block h-10 w-full overflow-hidden rounded border border-black/20"
-														style={{ backgroundColor: t.swatch.bg }}
-														aria-hidden
-													>
-														<span
-															className="mt-1 ml-1 block h-3 w-9 rounded-sm"
-															style={{ backgroundColor: t.swatch.panel }}
-														>
-															<span
-																className="mt-1 ml-1 block h-1.5 w-4 rounded-full"
-																style={{ backgroundColor: t.swatch.accent }}
-															/>
-														</span>
-													</span>
-													<span className="mt-1.5 flex items-center gap-1 text-[11px] text-neutral-300">
-														<span className="truncate">{t.name}</span>
-														{active && (
-															<span
-																className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
-																aria-hidden
-															/>
-														)}
-													</span>
-												</button>
-											);
-										})}
+										{THEMES.map((t) => (
+											<ThemeCard
+												key={t.id}
+												theme={t}
+												active={themeChoice === t.id}
+												onSelect={(id) => setTheme(id as ThemeChoice)}
+											/>
+										))}
 									</div>
 									<button
 										type="button"
@@ -281,6 +309,43 @@ export function SettingsPage() {
 										<Monitor className="h-3.5 w-3.5" />
 										<span>跟随系统</span>
 									</button>
+
+									{themeChoice === "system" && (
+										<div className="mt-3 space-y-4 rounded-lg border border-neutral-800/60 bg-neutral-950/40 p-3">
+											<div>
+												<div className="text-[11px] font-medium text-neutral-300">
+													白天主题（浅色）
+												</div>
+												<div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+													{THEMES.filter((t) => !t.dark).map((t) => (
+														<ThemeCard
+															key={t.id}
+															theme={t}
+															small
+															active={sysLightTheme === t.id}
+															onSelect={setSystemLightTheme}
+														/>
+													))}
+												</div>
+											</div>
+											<div>
+												<div className="text-[11px] font-medium text-neutral-300">
+													夜间主题（深色）
+												</div>
+												<div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+													{THEMES.filter((t) => t.dark).map((t) => (
+														<ThemeCard
+															key={t.id}
+															theme={t}
+															small
+															active={sysDarkTheme === t.id}
+															onSelect={setSystemDarkTheme}
+														/>
+													))}
+												</div>
+											</div>
+										</div>
+									)}
 								</div>
 
 								<div className="border-t border-neutral-800/60 pt-4">
