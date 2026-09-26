@@ -6,6 +6,7 @@ import {
 	FileDown,
 	FileUp,
 	FolderOpen,
+	KeyRound,
 	Palette,
 	RefreshCw,
 	RotateCcw,
@@ -38,6 +39,7 @@ import { ThemePicker } from "../../components/ThemePicker";
 import { MobilePanel } from "../mobile/MobilePanel";
 import { DEFAULT_SETTINGS, useSettings } from "./store";
 import { OmpConfigSection } from "./OmpConfigSection";
+import { ProviderPanel } from "../providers/ProviderPanel";
 
 interface ToggleProps {
 	checked: boolean;
@@ -375,6 +377,7 @@ export function SettingsPage() {
 	const sections = [
 		{ id: "general", label: "通用", icon: Sliders },
 		{ id: "appearance", label: "外观", icon: Palette },
+		{ id: "providers", label: "API 供应商", icon: KeyRound },
 		{ id: "todos", label: "待办与监工", icon: Sparkles },
 		{ id: "sessions", label: "会话", icon: Bot },
 		{ id: "notifications", label: "通知", icon: Bell },
@@ -539,6 +542,9 @@ export function SettingsPage() {
 							</div>
 						</div>
 					)}
+
+					{/* API providers (renders providers ProviderPanel) */}
+					{activeSection === "providers" && <ProviderPanel />}
 
 					{/* 2. Todos & Supervisor */}
 					{activeSection === "todos" && (
