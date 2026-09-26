@@ -44,6 +44,18 @@ function formatValue(entry: OmpConfigEntry): string {
 	return JSON.stringify(entry.value);
 }
 
+/** Short summary for the collapsed value column; the full value stays in the tooltip. */
+function formatValueSummary(entry: OmpConfigEntry): string {
+	if (entry.redacted) return "••••••";
+	if (entry.value === null || entry.value === undefined) return "未设置";
+	if (Array.isArray(entry.value)) return `[${entry.value.length} 项]`;
+	if (typeof entry.value === "object") {
+		return `{${Object.keys(entry.value as Record<string, unknown>).length} 键}`;
+	}
+	if (typeof entry.value === "string") return entry.value;
+	return JSON.stringify(entry.value);
+}
+
 /** Draft text shown when entering edit mode for an entry. */
 function draftFor(entry: OmpConfigEntry): string {
 	if (entry.redacted) return "";
@@ -51,7 +63,8 @@ function draftFor(entry: OmpConfigEntry): string {
 		return entry.valueType === "array" ? "[]" : entry.valueType === "record" ? "{}" : "";
 	}
 	if (typeof entry.value === "string") return entry.value;
-	return JSON.stringify(entry.value);
+	// Pretty-print structured values so the JSON editor stays readable.
+	return JSON.stringify(entry.value, null, 2);
 }
 
 /**
@@ -197,7 +210,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 				>
 					{!isBool && (
 						<span
-							className={`max-w-[45%] truncate font-mono text-[11px] ${
+							className={`max-w-80 truncate font-mono text-[11px] ${
 								isUnset
 									? "text-neutral-600"
 									: entry.redacted
@@ -206,7 +219,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 							}`}
 							title={formatValue(entry)}
 						>
-							{formatValue(entry)}
+							{formatValueSummary(entry)}
 						</span>
 					)}
 					{isBool ? (
@@ -425,6 +438,25 @@ export function OmpConfigSection({
 		return result;
 	}, [rows]);
 
+	// When the current tab has no matches, point at other tabs that do.
+	const suggestions = useMemo(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return [];
+		return allGroups
+			.filter((g) => g.id !== activeGroup?.id)
+			.map((g) => ({
+				id: g.id,
+				label: g.label,
+				count: g.entries.filter(
+					(e) =>
+						e.key.toLowerCase().includes(q) ||
+						e.description.toLowerCase().includes(q) ||
+						ompConfigTitle(e.key).toLowerCase().includes(q),
+				).length,
+			}))
+			.filter((s) => s.count > 0);
+	}, [allGroups, activeGroup, query]);
+
 	const handleChanged = () => {
 		// Re-list so edited values (and switches elsewhere) stay in sync with omp.
 		void load(true);
@@ -493,7 +525,27 @@ export function OmpConfigSection({
 
 			{rows.length === 0 ? (
 				<div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-center text-xs text-neutral-500">
-					没有匹配的配置项
+					<div>没有匹配的配置项</div>
+					{suggestions.length > 0 && (
+						<div className="mt-3 space-y-2">
+							<div>以下分类有匹配，点击切换：</div>
+							<div className="flex flex-wrap justify-center gap-1.5">
+								{suggestions.map((s) => (
+									<button
+										key={s.id}
+										type="button"
+										onClick={() => onTabChange(s.id)}
+										className="rounded-lg border border-neutral-700 px-2.5 py-1 text-[11px] text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+									>
+										{s.label}
+										<span className="ml-1.5 text-[10px] text-neutral-500">
+											{s.count} 项
+										</span>
+									</button>
+								))}
+							</div>
+						</div>
+					)}
 				</div>
 			) : (
 				<div className="space-y-3">
