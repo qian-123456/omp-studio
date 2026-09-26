@@ -464,6 +464,19 @@ pub struct Settings {
     pub tunnel_hostname: Option<String>,
     /// Default "CommandOrControl+Shift+I".
     pub quick_capture_shortcut: String,
+    /// Debounced supervisor trigger interval; default 30, 0 = manual refresh only.
+    pub supervisor_interval_minutes: u32,
+    /// "HH:MM" quiet-hours window for notifications; None or half-open pair = off.
+    pub notify_quiet_from: Option<String>,
+    pub notify_quiet_to: Option<String>,
+    /// Default model for new sessions (stored for future use, not yet consumed).
+    pub new_session_model: Option<String>,
+    /// Default false: expand completed todos on the home page queue.
+    pub home_show_completed_todos: bool,
+    /// Default true: dock badge shows the open todo count.
+    pub dock_badge_enabled: bool,
+    /// Default true: background refresh of session summaries.
+    pub session_turn_auto_refresh: bool,
 }
 
 impl Default for Settings {
@@ -487,6 +500,13 @@ impl Default for Settings {
             tunnel_name: None,
             tunnel_hostname: None,
             quick_capture_shortcut: "CommandOrControl+Shift+I".to_string(),
+            supervisor_interval_minutes: 30,
+            notify_quiet_from: None,
+            notify_quiet_to: None,
+            new_session_model: None,
+            home_show_completed_todos: false,
+            dock_badge_enabled: true,
+            session_turn_auto_refresh: true,
         }
     }
 }

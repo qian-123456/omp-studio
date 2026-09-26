@@ -337,6 +337,35 @@ export interface Settings {
 	tunnelName: string | null;
 	tunnelHostname: string | null;
 	quickCaptureShortcut: string;
+	/** 0 = manual refresh only. */
+	supervisorIntervalMinutes: number;
+	/** "HH:MM" quiet-hours window; null or half-open pair = off. */
+	notifyQuietFrom: string | null;
+	notifyQuietTo: string | null;
+	/** Default model for new sessions (stored for future use). */
+	newSessionModel: string | null;
+	homeShowCompletedTodos: boolean;
+	dockBadgeEnabled: boolean;
+	sessionTurnAutoRefresh: boolean;
+}
+
+/** One `omp config list --json` entry. */
+export interface OmpConfigEntry {
+	key: string;
+	/** Current effective value; null when unset or redacted. */
+	value: unknown | null;
+	/** "boolean" | "number" | "string" | "enum" | "array" | "record" */
+	valueType: string;
+	description: string;
+	/** Credential field: write-only in the UI. */
+	redacted: boolean;
+}
+
+/** Result of `omp config list --json`; found=false on missing binary / failure. */
+export interface OmpConfigListResult {
+	found: boolean;
+	entries: OmpConfigEntry[];
+	error: string | null;
 }
 
 /** Return value of `app_paths`. */

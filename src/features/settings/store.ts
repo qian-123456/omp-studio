@@ -4,6 +4,35 @@ import { create } from "zustand";
 import type { Settings } from "../../lib/contracts";
 import { getSettings, saveSettings } from "../../lib/ipc";
 
+/** Mirror of `Settings::default()` in contracts.rs (used by import / restore). */
+export const DEFAULT_SETTINGS: Settings = {
+	systemDetection: true,
+	supervisorEnabled: false,
+	supervisorModel: "smol",
+	smartContextRouting: false,
+	idleSuspendMinutes: 15,
+	defaultApprovalMode: "yolo",
+	ompBinary: "omp",
+	notifyTurnEnd: true,
+	notifyApproval: true,
+	notifyExit: true,
+	notifySound: false,
+	capsuleVisible: true,
+	mobileEnabled: false,
+	mobilePort: 7788,
+	tunnelMode: "off",
+	tunnelName: null,
+	tunnelHostname: null,
+	quickCaptureShortcut: "CommandOrControl+Shift+I",
+	supervisorIntervalMinutes: 30,
+	notifyQuietFrom: null,
+	notifyQuietTo: null,
+	newSessionModel: null,
+	homeShowCompletedTodos: false,
+	dockBadgeEnabled: true,
+	sessionTurnAutoRefresh: true,
+};
+
 export interface SettingsState {
 	settings: Settings | null;
 	error: string | null;

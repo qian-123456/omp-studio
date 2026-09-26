@@ -27,12 +27,18 @@ pub struct Suggestion {
     pub action: Option<Value>,
 }
 
-/// Debounced trigger on status changes (runs at most once per 5 min).
+/// Debounced trigger on status changes (at most once per settings interval; 0 = manual only).
 pub fn on_status_change(state: &AppState) {
     if !state.settings.read().supervisor_enabled {
         return;
     }
-    if LAST_RUN.lock().is_some_and(|t| t.elapsed() < MIN_INTERVAL) {
+    let minutes = state.settings.read().supervisor_interval_minutes;
+    if minutes == 0 {
+        return;
+    }
+    // Floor at MIN_INTERVAL so rapid toggles still debounce.
+    let interval = Duration::from_secs((u64::from(minutes) * 60).max(MIN_INTERVAL.as_secs()));
+    if LAST_RUN.lock().is_some_and(|t| t.elapsed() < interval) {
         return;
     }
     if SCHEDULED.swap(true, Ordering::SeqCst) {

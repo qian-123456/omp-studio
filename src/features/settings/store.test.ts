@@ -1,27 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Settings } from "../../lib/contracts";
 import * as ipc from "../../lib/ipc";
-import { useSettings } from "./store";
+import { DEFAULT_SETTINGS, useSettings } from "./store";
 
 const mockSettings: Settings = {
-	systemDetection: true,
-	supervisorEnabled: false,
-	supervisorModel: "smol",
-	smartContextRouting: false,
-	idleSuspendMinutes: 15,
+	...DEFAULT_SETTINGS,
 	defaultApprovalMode: "write",
-	ompBinary: "omp",
-	notifyTurnEnd: true,
-	notifyApproval: true,
-	notifyExit: true,
-	notifySound: false,
-	capsuleVisible: true,
-	mobileEnabled: false,
-	mobilePort: 7788,
-	tunnelMode: "off",
-	tunnelName: null,
-	tunnelHostname: null,
-	quickCaptureShortcut: "CommandOrControl+Shift+I",
 };
 
 describe("settings store", () => {

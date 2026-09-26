@@ -54,6 +54,29 @@ pub fn init(state: AppState) {
     });
 }
 
+/// True when `hm` ("HH:MM") falls inside the [from, to) quiet window.
+/// Wraps past midnight (e.g. 23:00–07:30); a zero-length window disables nothing.
+pub fn in_quiet_hours(hm: &str, from: &str, to: &str) -> bool {
+    let parse = |s: &str| -> Option<i64> {
+        let (h, m) = s.split_once(':')?;
+        let (h, m) = (h.parse::<i64>().ok()?, m.parse::<i64>().ok()?);
+        (0..=23).contains(&h).then_some(())?;
+        (0..=59).contains(&m).then_some(())?;
+        Some(h * 60 + m)
+    };
+    let (Some(now), Some(from), Some(to)) = (parse(hm), parse(from), parse(to)) else {
+        return false;
+    };
+    if from == to {
+        return false;
+    }
+    if from < to {
+        now >= from && now < to
+    } else {
+        now >= from || now < to
+    }
+}
+
 fn window_focused(state: &AppState) -> bool {
     state
         .app
@@ -69,6 +92,13 @@ async fn on_status(state: &AppState, session_id: &str, new: SessionStatus) {
     };
     if window_focused(state) {
         return;
+    }
+    // Quiet hours: suppress native notifications, keep the dock badge current.
+    if let (Some(from), Some(to)) = (&settings.notify_quiet_from, &settings.notify_quiet_to) {
+        let now = chrono::Local::now().format("%H:%M").to_string();
+        if in_quiet_hours(&now, from.trim(), to.trim()) {
+            return;
+        }
     }
     let meta = crate::todos::sessions::lookup(state, session_id).await;
     if let Some(m) = &meta {
@@ -106,6 +136,12 @@ pub fn send(state: &AppState, title: &str, body: &str, sound: bool) -> Result<()
 }
 
 fn update_badge(state: &AppState) {
+    if !state.settings.read().dock_badge_enabled {
+        if let Some(w) = state.app.get_webview_window("main") {
+            let _ = w.set_badge_count(None);
+        }
+        return;
+    }
     let open = crate::todos::counts_sync(state).open;
     if let Some(w) = state.app.get_webview_window("main") {
         let _ = w.set_badge_count((open > 0).then_some(open as i64));
@@ -132,5 +168,27 @@ mod tests {
             message_for(SessionStatus::AwaitingAnswer, &s),
             Some("有问题等你回答")
         );
+    }
+
+    #[test]
+    fn quiet_hours_window() {
+        // Normal window inside one day.
+        assert!(in_quiet_hours("23:10", "23:00", "07:30"));
+        assert!(in_quiet_hours("00:00", "23:00", "07:30"));
+        assert!(in_quiet_hours("07:29", "23:00", "07:30"));
+        assert!(!in_quiet_hours("12:00", "23:00", "07:30"));
+        assert!(!in_quiet_hours("07:30", "23:00", "07:30")); // end is exclusive
+
+        // Same-day window.
+        assert!(in_quiet_hours("12:30", "12:00", "13:00"));
+        assert!(!in_quiet_hours("13:00", "12:00", "13:00"));
+
+        // Zero-length window disables nothing.
+        assert!(!in_quiet_hours("12:00", "07:00", "07:00"));
+
+        // Unparseable inputs never suppress.
+        assert!(!in_quiet_hours("12:00", "", ""));
+        assert!(!in_quiet_hours("12:00", "24:00", "07:00"));
+        assert!(!in_quiet_hours("bad", "23:00", "07:30"));
     }
 }

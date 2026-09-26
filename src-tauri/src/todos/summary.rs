@@ -156,6 +156,9 @@ pub fn spawn_refresh(state: AppState) {
 }
 
 async fn refresh_once(state: &AppState) {
+    if !state.settings.read().session_turn_auto_refresh {
+        return;
+    }
     let hour_ago = chrono::Utc::now() - chrono::Duration::hours(1);
     let mut candidates: Vec<SessionMeta> = crate::catalog::list(state)
         .await
