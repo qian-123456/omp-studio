@@ -14,7 +14,10 @@ export default defineConfig({
 		port: 1421,
 		strictPort: true,
 		watch: {
-			ignored: ["**/src-tauri/**", "**/.worktrees/**"],
+			// NOTE: do not ignore "**/.worktrees/**" here — when the dev server runs
+			// from a worktree under the main repo's .worktrees/, that pattern would
+			// exclude this whole project and silently disable HMR.
+			ignored: ["**/src-tauri/**"],
 		},
 	},
 	build: {

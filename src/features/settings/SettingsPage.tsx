@@ -41,6 +41,7 @@ import { ThemePicker } from "../../components/ThemePicker";
 import { MobilePanel } from "../mobile/MobilePanel";
 import { DEFAULT_SETTINGS, useSettings } from "./store";
 import { OmpConfigSection } from "./OmpConfigSection";
+import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
 import { groupByOmpTab } from "./ompConfigTabs";
 import { ProviderPanel } from "../providers/ProviderPanel";
@@ -82,17 +83,7 @@ function Toggle({ checked, onChange, label, description, icon: Icon }: TogglePro
 					)}
 				</div>
 			</div>
-			<div
-				className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${
-					checked ? "bg-amber-500" : "bg-neutral-700"
-				}`}
-			>
-				<span
-					className={`inline-block h-3.5 w-3.5 transform rounded-full bg-neutral-950 transition duration-200 ease-in-out ${
-						checked ? "translate-x-4.5" : "translate-x-1"
-					}`}
-				/>
-			</div>
+			<Switch checked={checked} onChange={onChange} />
 		</div>
 	);
 }
@@ -109,7 +100,7 @@ export function SettingsPage() {
 	const [activeSection, setActiveSection] = useState<string>("general");
 
 	// OMP 配置: official tab selection lives in the left nav as a second level.
-	const [ompTab, setOmpTab] = useState<string>("all");
+	const [ompTab, setOmpTab] = useState<string>("");
 	const ompEntries = useOmpConfigStore((s) => s.entries);
 	const loadOmpConfig = useOmpConfigStore((s) => s.load);
 	useEffect(() => {
@@ -402,21 +393,21 @@ export function SettingsPage() {
 	return (
 		<div className="flex h-full overflow-hidden bg-neutral-950 text-neutral-200">
 			{/* Left Navigation Bar */}
-			<div className="w-48 border-r border-neutral-800/80 bg-neutral-950/60 p-4">
+			<div className="flex w-48 flex-col overflow-hidden border-r border-neutral-800/80 bg-neutral-950/60 p-4">
 				<button
 					type="button"
 					onClick={handleBack}
-					className="mb-4 flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors"
+					className="mb-4 flex w-full shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors"
 					title="返回工作区 (Esc)"
 				>
 					<ArrowLeft className="h-3.5 w-3.5" />
 					<span>返回工作区</span>
 				</button>
-				<div className="mb-3 flex items-center gap-2 px-2 text-xs font-semibold text-neutral-400">
+				<div className="mb-3 flex shrink-0 items-center gap-2 px-2 text-xs font-semibold text-neutral-400">
 					<SettingsIcon className="h-4 w-4 text-amber-400" />
 					<span>系统设置</span>
 				</div>
-				<nav className="space-y-1">
+				<nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
 					{sections.map((sec) => {
 						const Icon = sec.icon;
 						const isActive = activeSection === sec.id;
@@ -425,7 +416,12 @@ export function SettingsPage() {
 							<div key={sec.id}>
 								<button
 									type="button"
-									onClick={() => setActiveSection(sec.id)}
+									onClick={() => {
+										setActiveSection(sec.id);
+										if (sec.id === "ompconfig" && ompGroups.length > 0 && !ompGroups.some((g) => g.id === ompTab)) {
+											setOmpTab(ompGroups[0].id);
+										}
+									}}
 									className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
 										isActive
 											? "bg-neutral-800 text-neutral-100"
@@ -443,20 +439,6 @@ export function SettingsPage() {
 								</button>
 								{isOmp && isActive && ompGroups.length > 0 && (
 									<div className="mt-1 space-y-0.5 pl-4">
-										<button
-											type="button"
-											onClick={() => setOmpTab("all")}
-											className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors ${
-												ompTab === "all"
-													? "bg-neutral-800/80 font-medium text-amber-300"
-													: "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
-											}`}
-										>
-											<span>全部</span>
-											<span className="text-[10px] text-neutral-600">
-												{ompEntries.length}
-											</span>
-										</button>
 										{ompGroups.map((g) => (
 											<button
 												key={g.id}

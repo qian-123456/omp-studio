@@ -1,8 +1,6 @@
 import {
 	AlertTriangle,
 	Check,
-	ChevronDown,
-	ChevronRight,
 	KeyRound,
 	Pencil,
 	RefreshCw,
@@ -16,8 +14,9 @@ import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
 import { ompConfigReset, ompConfigSet } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { OMP_TAB_ORDER, groupByOmpTab, groupByPrefix } from "./ompConfigTabs";
+import { groupByOmpTab } from "./ompConfigTabs";
 
 const TYPE_BADGE: Record<string, string> = {
 	boolean: "bg-emerald-500/15 text-emerald-300",
@@ -54,6 +53,10 @@ function draftFor(entry: OmpConfigEntry): string {
 	return JSON.stringify(entry.value);
 }
 
+/**
+ * One config entry: the human-readable description is the primary title and the
+ * program key is small secondary text; booleans render a macOS-style switch.
+ */
 function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () => void }) {
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState("");
@@ -134,90 +137,120 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 		}
 	};
 
+	const description = entry.description.trim();
 	const badge = TYPE_BADGE[entry.valueType] ?? TYPE_BADGE.string;
 	const badgeLabel = TYPE_LABEL[entry.valueType] ?? entry.valueType;
 	const isBool = entry.valueType === "boolean";
 	const isJson = entry.valueType === "array" || entry.valueType === "record";
-	const description = entry.description.trim();
 
 	return (
-		<div className="rounded-lg border border-neutral-800/70 bg-neutral-900/50 p-2.5">
-			<div className="flex items-start justify-between gap-2">
+		<div className="rounded-lg border border-neutral-800/70 bg-neutral-900/50 p-3">
+			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-1.5">
-						<span className="break-all font-mono text-[11px] font-medium text-neutral-100">
-							{entry.key}
-						</span>
+					{/* Primary title: real meaning (description); key is secondary. */}
+					<div
+						role={description ? "button" : undefined}
+						tabIndex={description ? 0 : undefined}
+						onClick={() => {
+							if (description) setExpanded(!expanded);
+						}}
+						onKeyDown={(e) => {
+							if (description && e.key === "Enter") {
+								e.preventDefault();
+								setExpanded(!expanded);
+							}
+						}}
+						title={description ? (expanded ? "收起" : "展开") : undefined}
+					>
 						<span
-							className={`shrink-0 rounded px-1 py-0.2 text-[10px] font-medium ${badge}`}
-						>
-							{badgeLabel}
-						</span>
-						{entry.redacted && (
-							<span
-								className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.2 text-[10px] text-amber-300"
-								title="凭据字段：值被 OMP 遮蔽，仅可覆盖写入"
-							>
-								<KeyRound className="h-2.5 w-2.5" />
-								<span>凭据</span>
-							</span>
-						)}
-						{savedTick && (
-							<span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-400">
-								<Check className="h-2.5 w-2.5" />
-								<span>已保存</span>
-							</span>
-						)}
-					</div>
-					{description && (
-						<div
-							role="button"
-							tabIndex={0}
-							onClick={() => setExpanded(!expanded)}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") {
-									e.preventDefault();
-									setExpanded(!expanded);
-								}
-							}}
-							className={`mt-0.5 cursor-pointer text-[11px] text-neutral-500 ${
-								expanded ? "" : "line-clamp-2"
+							className={`text-xs font-medium leading-5 text-neutral-100 ${
+								description && !expanded ? "line-clamp-2" : ""
 							}`}
-							title={expanded ? "收起说明" : "展开说明"}
 						>
-							{description}
+							{description || entry.key}
+						</span>
+					</div>
+
+					{description ? (
+						<div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+							<span className="break-all font-mono text-[10px] text-neutral-500">
+								{entry.key}
+							</span>
+							<span
+								className={`shrink-0 rounded px-1 py-0.2 text-[9px] font-medium ${badge}`}
+							>
+								{badgeLabel}
+							</span>
+							{entry.redacted && (
+								<span
+									className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] text-amber-300"
+									title="凭据字段：值被 OMP 遮蔽，仅可覆盖写入"
+								>
+									<KeyRound className="h-2.5 w-2.5" />
+									<span>凭据</span>
+								</span>
+							)}
+							{savedTick && (
+								<span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-400">
+									<Check className="h-2.5 w-2.5" />
+									<span>已保存</span>
+								</span>
+							)}
+						</div>
+					) : (
+						<div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+							<span
+								className={`shrink-0 rounded px-1 py-0.2 text-[9px] font-medium ${badge}`}
+							>
+								{badgeLabel}
+							</span>
+							{entry.redacted && (
+								<span
+									className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] text-amber-300"
+									title="凭据字段：值被 OMP 遮蔽，仅可覆盖写入"
+								>
+									<KeyRound className="h-2.5 w-2.5" />
+									<span>凭据</span>
+								</span>
+							)}
+							{savedTick && (
+								<span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-400">
+									<Check className="h-2.5 w-2.5" />
+									<span>已保存</span>
+								</span>
+							)}
+						</div>
+					)}
+
+					{/* Current value (booleans show their switch instead). */}
+					{!isBool && !editing && (
+						<div className="mt-1.5 flex items-center gap-2">
+							<span
+								className={`break-all font-mono text-[11px] ${
+									entry.value === null || entry.value === undefined
+										? "text-neutral-600"
+										: entry.redacted
+											? "text-amber-300/70"
+											: "text-neutral-300"
+								}`}
+							>
+								{formatValue(entry)}
+							</span>
+							{entry.redacted &&
+								(entry.value === null || entry.value === undefined) && (
+									<span className="text-[10px] text-neutral-600">（未配置）</span>
+								)}
 						</div>
 					)}
 				</div>
 
-				<div className="flex shrink-0 items-center gap-1">
+				<div className="flex shrink-0 items-center gap-1 pt-0.5">
 					{isBool ? (
-						<>
-							<button
-								type="button"
-								disabled={busy}
-								onClick={() => saveBoolean(true)}
-								className={`rounded-md border px-2 py-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${
-									entry.value === true
-										? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
-										: "border-neutral-700 text-neutral-400 hover:text-neutral-200"
-								}`}
-							>
-								开启
-							</button>
-							<button
-								type="button"
-								disabled={busy}
-								onClick={() => saveBoolean(false)}
-								className={`rounded-md border px-2 py-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${
-									entry.value === false
-										? "border-neutral-500 bg-neutral-700 text-neutral-100"
-										: "border-neutral-700 text-neutral-400 hover:text-neutral-200"
-								}`}
-							>
-								关闭
-							</button>
-						</>
+						<Switch
+							checked={entry.value === true}
+							disabled={busy}
+							onChange={saveBoolean}
+						/>
 					) : (
 						<>
 							<button
@@ -243,7 +276,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 				</div>
 			</div>
 
-			{/* Current value / inline editor */}
+			{/* Inline editor */}
 			{editing ? (
 				<div className="mt-2">
 					{isJson ? (
@@ -321,24 +354,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 						</button>
 					</div>
 				</div>
-			) : (
-				<div className="mt-1.5 flex items-center gap-2">
-					<span
-						className={`break-all font-mono text-[11px] ${
-							entry.value === null || entry.value === undefined
-								? "text-neutral-600"
-								: entry.redacted
-									? "text-amber-300/70"
-									: "text-neutral-300"
-						}`}
-					>
-						{formatValue(entry)}
-					</span>
-					{entry.redacted && (entry.value === null || entry.value === undefined) && (
-						<span className="text-[10px] text-neutral-600">（未配置）</span>
-					)}
-				</div>
-			)}
+			) : null}
 
 			{rowError && (
 				<div className="mt-1.5 flex items-start gap-1 rounded-lg border border-rose-800/50 bg-rose-950/30 p-1.5 text-[11px] text-rose-300">
@@ -350,39 +366,10 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 	);
 }
 
-/** Entries grouped by their top-level key prefix, with a small mono section header. */
-function PrefixEntryList({
-	entries,
-	onChanged,
-}: {
-	entries: OmpConfigEntry[];
-	onChanged: () => void;
-}) {
-	return (
-		<div className="space-y-1.5">
-			{groupByPrefix(entries).map(([prefix, rows]) => (
-				<div key={prefix}>
-					<div className="px-1 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wide text-neutral-600">
-						{prefix}
-						<span className="ml-1.5 normal-case tracking-normal text-neutral-700">
-							{rows.length} 项
-						</span>
-					</div>
-					<div className="space-y-2">
-						{rows.map((entry) => (
-							<ConfigRow key={entry.key} entry={entry} onChanged={onChanged} />
-						))}
-					</div>
-				</div>
-			))}
-		</div>
-	);
-}
-
 /**
  * Settings panel bridging to OMP's own config system (`omp config list/set/reset`).
- * Category (official OMP tab) selection lives in the settings left nav and is
- * controlled from outside; "all" renders every tab as a collapsible section.
+ * The official OMP tab is selected from the settings left nav (controlled from
+ * outside); this panel renders only the selected category's entries.
  */
 export function OmpConfigSection({
 	activeTab,
@@ -398,50 +385,34 @@ export function OmpConfigSection({
 	const load = useOmpConfigStore((s) => s.load);
 
 	const [query, setQuery] = useState("");
-	const [collapsed, setCollapsed] = useState<Set<string>>(
-		() => new Set(OMP_TAB_ORDER),
-	);
 
 	useEffect(() => {
 		void load();
 	}, [load]);
 
 	const allGroups = useMemo(() => groupByOmpTab(entries), [entries]);
-	const searching = query.trim().length > 0;
+	const activeGroup =
+		allGroups.find((g) => g.id === activeTab) ?? allGroups[0] ?? null;
 
-	const filtered = useMemo(() => {
+	// Recover from a stale selection (tab disappeared after omp upgrade).
+	useEffect(() => {
+		if (allGroups.length > 0 && !allGroups.some((g) => g.id === activeTab)) {
+			onTabChange(allGroups[0].id);
+		}
+	}, [allGroups, activeTab, onTabChange]);
+
+	const rows = useMemo(() => {
+		const base = activeGroup?.entries ?? [];
 		const q = query.trim().toLowerCase();
-		if (!q) return entries;
-		return entries.filter(
+		if (!q) return base;
+		return base.filter(
 			(e) =>
 				e.key.toLowerCase().includes(q) || e.description.toLowerCase().includes(q),
 		);
-	}, [entries, query]);
-
-	const visibleGroups = useMemo(() => {
-		const groups = groupByOmpTab(filtered);
-		return activeTab === "all" ? groups : groups.filter((g) => g.id === activeTab);
-	}, [filtered, activeTab]);
-
-	const activeLabel =
-		activeTab === "all"
-			? "全部"
-			: (allGroups.find((g) => g.id === activeTab)?.label ?? activeTab);
-
-	const toggleGroup = (group: string) => {
-		setCollapsed((prev) => {
-			const next = new Set(prev);
-			if (next.has(group)) {
-				next.delete(group);
-			} else {
-				next.add(group);
-			}
-			return next;
-		});
-	};
+	}, [activeGroup, query]);
 
 	const handleChanged = () => {
-		// Re-list so edited values (and booleans in other rows) stay in sync with omp.
+		// Re-list so edited values (and switches elsewhere) stay in sync with omp.
 		void load(true);
 	};
 
@@ -489,12 +460,12 @@ export function OmpConfigSection({
 						type="text"
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
-						placeholder={`在 ${activeLabel} 中搜索配置键或说明...`}
+						placeholder={`在「${activeGroup?.label ?? ""}」中搜索配置...`}
 						className="w-full rounded-lg border border-neutral-700 bg-neutral-950 py-1.5 pl-8 pr-3 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 					/>
 				</div>
 				<span className="shrink-0 text-[11px] text-neutral-500">
-					{filtered.length}/{entries.length} 项
+					{rows.length}/{activeGroup?.entries.length ?? 0} 项
 				</span>
 				<button
 					type="button"
@@ -506,57 +477,15 @@ export function OmpConfigSection({
 				</button>
 			</div>
 
-			{visibleGroups.length === 0 ? (
+			{rows.length === 0 ? (
 				<div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-center text-xs text-neutral-500">
 					没有匹配的配置项
 				</div>
 			) : (
 				<div className="space-y-2">
-					{visibleGroups.map((group) => {
-						const isCollapsed =
-							activeTab === "all" && !searching && collapsed.has(group.id);
-						return (
-							<div
-								key={group.id}
-								className="rounded-xl border border-neutral-800 bg-neutral-900/40"
-							>
-								<button
-									type="button"
-									onClick={() =>
-										activeTab === "all"
-											? toggleGroup(group.id)
-											: onTabChange("all")
-									}
-									className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left"
-								>
-									{isCollapsed ? (
-										<ChevronRight className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
-									) : (
-										<ChevronDown className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
-									)}
-									<span className="text-xs font-semibold text-neutral-200">
-										{group.label}
-									</span>
-									<span className="rounded bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400">
-										{group.entries.length}
-									</span>
-									{activeTab === "all" && !searching && (
-										<span className="ml-auto text-[10px] text-neutral-600">
-											OMP 官方分组
-										</span>
-									)}
-								</button>
-								{!isCollapsed && (
-									<div className="px-2 pb-2 pt-0">
-										<PrefixEntryList
-											entries={group.entries}
-											onChanged={handleChanged}
-										/>
-									</div>
-								)}
-							</div>
-						);
-					})}
+					{rows.map((entry) => (
+						<ConfigRow key={entry.key} entry={entry} onChanged={handleChanged} />
+					))}
 				</div>
 			)}
 		</div>
