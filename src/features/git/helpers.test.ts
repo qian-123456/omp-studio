@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionMeta } from "../../lib/contracts";
-import {
-	appendLog,
-	basename,
-	defaultSlug,
-	isInside,
-	isMarkdown,
-	joinPath,
-	runningInRepo,
-	shortPath,
-	toplevelFor,
-} from "./helpers";
+import { basename, isInside, isMarkdown, joinPath, shortPath } from "../../lib/paths";
+import { appendLog, defaultSlug, repoRootFromWorktree, runningInRepo, stripAnsi, toplevelFor } from "./helpers";
 
 describe("isInside", () => {
 	it("matches the dir itself and descendants only", () => {
@@ -105,5 +96,20 @@ describe("appendLog", () => {
 		expect(lines.length).toBe(300);
 		expect(lines[0]).toBe("l5");
 		expect(lines[299]).toBe("l304");
+	});
+});
+
+describe("stripAnsi", () => {
+	it("removes terminal color and control sequences", () => {
+		const raw = "\x1b[32mready\x1b[0m in \x1b[1;33m512ms\x1b[0m";
+		expect(stripAnsi(raw)).toBe("ready in 512ms");
+	});
+});
+
+describe("repoRootFromWorktree", () => {
+	it("extracts root directory before .worktrees", () => {
+		expect(repoRootFromWorktree("/Users/dev/repo/.worktrees/feature-1")).toBe("/Users/dev/repo");
+		expect(repoRootFromWorktree("C:\\dev\\repo\\.worktrees\\feature-1")).toBe("C:\\dev\\repo");
+		expect(repoRootFromWorktree("/Users/dev/repo")).toBe("/Users/dev/repo");
 	});
 });

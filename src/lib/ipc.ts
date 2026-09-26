@@ -10,11 +10,14 @@ import type {
 	BacklogKind,
 	BacklogPatch,
 	BacklogRef,
+	DirEntry,
 	GitCommit,
 	GitSummary,
 	LiveSessionInfo,
 	MobileStatus,
+	Model,
 	PairingInfo,
+	PathCheck,
 	PendingUiRequest,
 	ServiceInfo,
 	SessionMeta,
@@ -29,6 +32,7 @@ import type {
 	WorktreeInfo,
 	Workspace,
 } from "./contracts";
+import { useLive } from "../stores/live";
 
 // ---- LEAD ----
 
@@ -38,6 +42,8 @@ export const saveSettings = (settings: Settings) =>
 	invoke<Settings>("save_settings", { settings });
 
 export const appPaths = () => invoke<AppPaths>("app_paths");
+
+export const allowedToolsList = () => invoke<string[]>("allowed_tools_list");
 
 // ---- A — catalog ----
 
@@ -74,7 +80,14 @@ export const reorderWorkspaces = (ids: string[]) =>
 export const sessionUsage = (sessionId: string) =>
 	invoke<UsageSummary>("session_usage", { sessionId });
 
+export const listModels = () => invoke<Model[]>("list_models");
+export const listWorkspaceFiles = (cwd: string) =>
+	invoke<string[]>("list_workspace_files", { cwd });
 export const rescanSessions = () => invoke<void>("rescan_sessions");
+
+/** Permanently delete a session (refused while live). */
+export const deleteSession = (sessionId: string) =>
+	invoke<void>("delete_session", { sessionId });
 
 // ---- B — rpc ----
 
@@ -147,6 +160,12 @@ export const gitScanOrphans = () =>
 export const gitResetTo = (repo: string, sha: string, mode: "soft" | "hard") =>
 	invoke<void>("git_reset_to", { repo, sha, mode });
 
+export const gitRestoreFile = (repo: string, path: string) =>
+	invoke<void>("git_restore_file", { repo, path });
+
+export const gitListBranches = (repo: string) =>
+	invoke<string[]>("git_list_branches", { repo });
+
 export const tmRun = (repo: string, sha: string, command?: string) =>
 	invoke<TmRun>("tm_run", { repo, sha, command: command ?? null });
 
@@ -169,12 +188,29 @@ export const readTextFile = (path: string) =>
 export const writeTextFile = (path: string, content: string) =>
 	invoke<void>("write_text_file", { path, content });
 
+export const fsReadDir = (path: string) =>
+	invoke<DirEntry[]>("fs_read_dir", { path });
+
+export const validatePath = (path: string) =>
+	invoke<PathCheck>("validate_path", { path });
+
+export const saveClipboardImage = (base64Png: string) =>
+	invoke<string>("save_clipboard_image", { base64Png });
+
+export interface ProcessMemoryInfo {
+	residentMb: number;
+	formatted: string;
+}
+
+export const getAppMemoryUsage = () =>
+	invoke<ProcessMemoryInfo>("app_memory_usage");
+
 // ---- D — todos / supervisor / summaries / diagnose ----
 
 export const todosList = (includeClosed: boolean) =>
 	invoke<Todo[]>("todos_list", { includeClosed });
 
-export const todosAct = (id: string, action: "done" | "ignore") =>
+export const todosAct = (id: string, action: "done" | "ignore" | "reopen") =>
 	invoke<void>("todos_act", { id, action });
 
 export const todosCounts = () => invoke<TodoCounts>("todos_counts");
@@ -187,9 +223,13 @@ export const summaryGet = (sessionId: string, ensure: boolean) =>
 export const diagnoseBuildPrompt = (targetSessionId: string) =>
 	invoke<string>("diagnose_build_prompt", { targetSessionId });
 
-/** Send through the backend so busy sessions receive follow-up prompts. */
-export const dispatchPrompt = (sessionId: string, prompt: string) =>
-	invoke<void>("dispatch_prompt", { sessionId, prompt });
+/** Send through the backend so busy sessions receive follow-up prompts.
+ * Echoes the prompt optimistically so the sender sees it immediately —
+ * the transcript page only refreshes on mount or turn end. */
+export const dispatchPrompt = async (sessionId: string, prompt: string) => {
+	await invoke<void>("dispatch_prompt", { sessionId, prompt });
+	useLive.getState().addUserEcho(sessionId, prompt);
+};
 
 // ---- D — backlog ----
 

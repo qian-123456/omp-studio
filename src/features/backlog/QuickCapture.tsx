@@ -1,8 +1,11 @@
-import { Bug, Check, Lightbulb, ListTodo, MessageSquare, X } from "lucide-react";
+import { Bug, Check, Lightbulb, ListTodo, Loader2, MessageSquare, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { BacklogKind, BacklogRef } from "../../lib/contracts";
+import { errMsg } from "../../lib/dialogs";
 import { onQuickCapture } from "../../lib/events";
+import { isComposing, useEscapeKey } from "../../lib/hooks";
 import { backlogAdd } from "../../lib/ipc";
+import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 
@@ -52,6 +55,8 @@ export function QuickCapture() {
 	const [error, setError] = useState<string | null>(null);
 
 	const inputRef = useRef<HTMLInputElement>(null);
+	useEscapeKey(closeModal, isVisible);
+
 
 	// Listen to global quick-capture shortcut event from Tauri
 	useEffect(() => {
@@ -91,9 +96,12 @@ export function QuickCapture() {
 				refs.push({ kind: "session", sessionId: targetSessionId, path: null, text: null, lines: null });
 			}
 			await backlogAdd(trimmed, kind, refs);
+			toast.success("已记入收集箱");
 			closeModal();
 		} catch (err) {
-			setError(String(err));
+			const msg = errMsg(err);
+			setError(msg);
+			toast.error(`保存失败: ${msg}`);
 			setSubmitting(false);
 		}
 	};
@@ -101,11 +109,14 @@ export function QuickCapture() {
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-24 backdrop-blur-xs"
-			onClick={(e) => {
+			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeModal();
 			}}
 		>
-			<div className="w-[520px] rounded-2xl border border-neutral-700/80 bg-neutral-900 p-5 shadow-2xl">
+			<div
+				className="w-[520px] rounded-2xl border border-neutral-700/80 bg-neutral-900 p-5 shadow-2xl"
+				onClick={(e) => e.stopPropagation()}
+			>
 				<div className="mb-3 flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/20 text-xs font-bold text-amber-300">
@@ -133,14 +144,17 @@ export function QuickCapture() {
 				<form onSubmit={handleSubmit} className="space-y-3">
 					<input
 						ref={inputRef}
+						autoFocus
 						type="text"
 						value={text}
 						onChange={(e) => setText(e.target.value)}
 						placeholder="记下一句话想法、待办或缺陷..."
 						className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 placeholder-neutral-500 focus:border-amber-500 focus:outline-none"
 						onKeyDown={(e) => {
-							if (e.key === "Escape") {
-								closeModal();
+							if (e.key === "Enter") {
+								e.preventDefault();
+								if (isComposing(e)) return;
+								handleSubmit();
 							}
 						}}
 					/>
@@ -200,8 +214,12 @@ export function QuickCapture() {
 							disabled={submitting || !text.trim()}
 							className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3.5 py-1.5 text-xs font-semibold text-neutral-950 hover:bg-amber-400 disabled:opacity-40"
 						>
-							<Check className="h-3.5 w-3.5" />
-							<span>保存 (Enter)</span>
+							{submitting ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							) : (
+								<Check className="h-3.5 w-3.5" />
+							)}
+							<span>{submitting ? "保存中..." : "保存 (Enter)"}</span>
 						</button>
 					</div>
 				</form>

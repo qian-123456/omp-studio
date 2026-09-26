@@ -1,37 +1,35 @@
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { ExternalLink, FolderOpen, Square, Trash2 } from "lucide-react";
+import clsx from "clsx";
+import { Copy, ExternalLink, FolderOpen, Maximize2, Minimize2, Square, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { TmRun } from "../../lib/contracts";
+import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { onTmLog } from "../../lib/events";
-import { tmList, tmStop } from "../../lib/ipc";
-import { appendLog, basename } from "./helpers";
-import { confirmDialog, errMsg } from "./ui";
+import { gitSummary, tmStop } from "../../lib/ipc";
+import { basename } from "../../lib/paths";
+import { toast } from "../../lib/toast";
+import { appendLog, stripAnsi } from "./helpers";
 
 /** Live view of one time-machine run: log tail, URL, stop/discard. */
 export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
-	const [log, setLog] = useState<string[]>(() => (run.logTail ? run.logTail.split("\n") : []));
+	const [log, setLog] = useState<string[]>(() =>
+		run.logTail ? run.logTail.split("\n").map(stripAnsi) : [],
+	);
 	const [info, setInfo] = useState(run);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [logExpanded, setLogExpanded] = useState(false);
 	const boxRef = useRef<HTMLPreElement>(null);
 
 	useEffect(() => {
 		setInfo(run);
-		setLog(run.logTail ? run.logTail.split("\n") : []);
+		setLog(run.logTail ? run.logTail.split("\n").map(stripAnsi) : []);
 	}, [run]);
 
 	useEffect(() => {
 		const un = onTmLog((p) => {
 			if (p.runId !== run.id) return;
-			setLog((l) => appendLog(l, p.line));
-			// URL / exit state live in the backend snapshot; refresh on relevant lines.
-			if (!/https?:\/\/|^\[进程/.test(p.line)) return;
-			tmList()
-				.then((runs) => {
-					const r = runs.find((x) => x.id === run.id);
-					if (r) setInfo(r);
-				})
-				.catch(() => {});
+			setLog((lines) => appendLog(lines, stripAnsi(p.line)));
 		});
 		return () => {
 			un.then((f) => f());
@@ -44,13 +42,29 @@ export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
 	}, [log]);
 
 	const stop = async (remove: boolean) => {
-		if (remove && !(await confirmDialog(`丢弃此版本的运行目录？\n${info.worktree}`, { danger: true }))) return;
+		if (remove) {
+			let dirtyWarning = "";
+			try {
+				const sum = await gitSummary(info.worktree);
+				if (sum.hasUncommitted && sum.files.length > 0) {
+					dirtyWarning = `\n\n⚠️ 警告：该工作区包含 ${sum.files.length} 个未提交的改动，丢弃后将永久删除！`;
+				}
+			} catch {
+				// Ignore inspection error; proceed to dialog
+			}
+			const ok = await confirmDialog(`丢弃此版本的运行目录？\n${info.worktree}${dirtyWarning}`, {
+				danger: true,
+				title: "丢弃工作区",
+				okLabel: "丢弃目录",
+			});
+			if (!ok) return;
+		}
 		setBusy(true);
 		setError(null);
 		try {
-			await tmStop(run.id, remove);
+			await tmStop(info.id, remove);
 			if (remove) onGone();
-			else setInfo((i) => ({ ...i, pid: null }));
+			else setInfo((prev) => ({ ...prev, pid: null }));
 		} catch (e) {
 			setError(errMsg(e));
 		} finally {
@@ -58,7 +72,20 @@ export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
 		}
 	};
 
+	const copyUrl = async () => {
+		if (!info.url) return;
+		await copyText(info.url);
+		toast.success("已复制服务地址");
+	};
+
+	const copyAllLogs = async () => {
+		if (log.length === 0) return;
+		await copyText(log.join("\n"));
+		toast.success("已复制全部运行日志");
+	};
+
 	const running = info.pid !== null && info.pid !== undefined;
+
 	return (
 		<div className="mt-1.5 rounded border border-neutral-700 bg-neutral-950/70 p-2 text-[11px]">
 			<div className="mb-1 flex items-center gap-1.5">
@@ -67,21 +94,61 @@ export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
 					{info.command || `仅创建目录 ${basename(info.worktree)}`}
 				</span>
 				{info.url && (
-					<button
-						type="button"
-						onClick={() => openUrl(info.url as string)}
-						className="flex items-center gap-0.5 text-sky-400 hover:underline"
-					>
-						{info.url} <ExternalLink size={11} />
-					</button>
+					<div className="flex shrink-0 items-center gap-1">
+						<button
+							type="button"
+							onClick={() => openUrl(info.url as string)}
+							className="flex items-center gap-0.5 text-sky-400 hover:underline"
+							title="在系统浏览器中打开"
+						>
+							{info.url} <ExternalLink size={11} />
+						</button>
+						<button
+							type="button"
+							onClick={copyUrl}
+							className="rounded p-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+							title="复制地址"
+						>
+							<Copy size={11} />
+						</button>
+					</div>
 				)}
 			</div>
+
 			{log.length > 0 && (
-				<pre ref={boxRef} className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-neutral-400">
-					{log.join("\n")}
-				</pre>
+				<div className="relative mt-1">
+					<div className="absolute right-1 top-1 z-10 flex items-center gap-1 rounded bg-neutral-900/80 px-1 py-0.5 text-[10px] text-neutral-400 backdrop-blur">
+						<button
+							type="button"
+							onClick={copyAllLogs}
+							className="hover:text-neutral-200"
+							title="复制全部日志"
+						>
+							<Copy size={11} />
+						</button>
+						<button
+							type="button"
+							onClick={() => setLogExpanded(!logExpanded)}
+							className="hover:text-neutral-200"
+							title={logExpanded ? "收起日志高度" : "展开日志高度"}
+						>
+							{logExpanded ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+						</button>
+					</div>
+					<pre
+						ref={boxRef}
+						className={clsx(
+							"overflow-auto whitespace-pre-wrap break-all rounded bg-neutral-900/50 p-1.5 font-mono text-[10px] text-neutral-400",
+							logExpanded ? "max-h-96" : "max-h-36",
+						)}
+					>
+						{log.join("\n")}
+					</pre>
+				</div>
 			)}
+
 			{error && <div className="mt-1 text-rose-400">{error}</div>}
+
 			<div className="mt-1.5 flex gap-1.5">
 				<button
 					type="button"

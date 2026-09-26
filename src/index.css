@@ -1,9 +1,17 @@
 @import "tailwindcss";
-
 @theme {
 	--font-sans:
 		-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
 		"Helvetica Neue", Arial, sans-serif;
+	--font-mono:
+		"JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono",
+		"Courier New", monospace;
+}
+
+/* Force dark UI scheme so native scrollbars, form controls, pickers and
+   date inputs render dark instead of the default light/white. */
+html {
+	color-scheme: dark;
 }
 
 html,
@@ -19,13 +27,68 @@ body {
 	-webkit-font-smoothing: antialiased;
 	user-select: none;
 }
+/* Text selection in amber brand accent */
+::selection {
+	background: rgba(245, 158, 11, 0.3);
+	color: #ffffff;
+}
 
-/* Text inside content panes stays selectable. */
+/* Global accessible focus ring for keyboard navigation */
+:focus-visible {
+	outline: 2px solid var(--color-amber-500, #f59e0b);
+	outline-offset: 1px;
+}
+
+
+/* Text inside content panes, dialogs, popovers, code and inputs stays selectable. */
 main,
-aside {
+aside,
+dialog,
+[role="dialog"],
+[role="alertdialog"],
+[data-popover],
+pre,
+code,
+input,
+textarea {
 	user-select: text;
 }
 
 [data-tauri-drag-region] {
 	user-select: none;
+}
+
+/* Dark mode custom scrollbars */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* WebKit / Safari (WKWebView) — needs the classic ::-webkit-scrollbar rules
+   plus `color-scheme: dark` above for the root/overlay scrollbar. */
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.15);
+	border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(255, 255, 255, 0.3);
+}
+
+/* Utility to completely hide scrollbar while preserving scrollability */
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+.no-scrollbar {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
 }

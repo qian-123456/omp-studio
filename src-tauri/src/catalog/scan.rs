@@ -208,9 +208,23 @@ pub fn resolve_workspace(
         }
     }
     for target in [repo_root, Some(cwd)].into_iter().flatten() {
+        // macOS: /tmp → /private/tmp, /var → /private/var. Session cwds keep
+        // the short form while workspace paths are usually canonicalized —
+        // compare canonical forms so symlinked dirs still group correctly.
+        let canon = std::fs::canonicalize(target)
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| target.to_string());
         let best = workspaces
             .iter()
-            .filter(|w| w.kind == WorkspaceKind::Project && path_within(target, &w.path))
+            .filter(|w| w.kind == WorkspaceKind::Project)
+            .filter(|w| {
+                let wcanon = std::fs::canonicalize(&w.path)
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| w.path.clone());
+                path_within(&canon, &wcanon)
+            })
             .max_by_key(|w| w.path.len());
         if let Some(w) = best {
             return Some(w.id.clone());

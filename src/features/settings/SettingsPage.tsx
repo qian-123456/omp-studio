@@ -1,4 +1,5 @@
 import {
+	ArrowLeft,
 	Bell,
 	Bot,
 	Download,
@@ -13,10 +14,65 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Settings } from "../../lib/contracts";
+import { errMsg } from "../../lib/dialogs";
+import { isComposing, useEscapeKey } from "../../lib/hooks";
 import { installStatusExtensionGlobally, notifyTest } from "../../lib/ipc";
+import { toast } from "../../lib/toast";
+import { useUi } from "../../stores/ui";
 import { MobilePanel } from "../mobile/MobilePanel";
 import { useSettings } from "./store";
 
+interface ToggleProps {
+	checked: boolean;
+	onChange: (next: boolean) => void;
+	label: string;
+	description?: string;
+	icon?: React.ComponentType<{ className?: string }>;
+}
+
+function Toggle({ checked, onChange, label, description, icon: Icon }: ToggleProps) {
+	return (
+		<div
+			role="button"
+			tabIndex={0}
+			onClick={() => onChange(!checked)}
+			onKeyDown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					onChange(!checked);
+				}
+			}}
+			className="group flex cursor-pointer items-center justify-between gap-4 rounded-lg p-2 -m-2 transition-colors hover:bg-neutral-800/40 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
+		>
+			<div className="flex items-start gap-2.5">
+				{Icon && (
+					<div className="mt-0.5 text-neutral-400 group-hover:text-neutral-200">
+						<Icon className="h-4 w-4" />
+					</div>
+				)}
+				<div>
+					<div className="text-xs font-medium text-neutral-200 group-hover:text-neutral-100">
+						{label}
+					</div>
+					{description && (
+						<div className="text-[11px] text-neutral-500">{description}</div>
+					)}
+				</div>
+			</div>
+			<div
+				className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${
+					checked ? "bg-amber-500" : "bg-neutral-700"
+				}`}
+			>
+				<span
+					className={`inline-block h-3.5 w-3.5 transform rounded-full bg-neutral-950 transition duration-200 ease-in-out ${
+						checked ? "translate-x-4.5" : "translate-x-1"
+					}`}
+				/>
+			</div>
+		</div>
+	);
+}
 export function SettingsPage() {
 	const settings = useSettings((s) => s.settings);
 	const loadSettings = useSettings((s) => s.load);
@@ -29,18 +85,106 @@ export function SettingsPage() {
 	const [extInstallResult, setExtInstallResult] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<string>("general");
 	const [saveNotice, setSaveNotice] = useState<string | null>(null);
+	const selectedSessionId = useUi((s) => s.selectedSessionId);
+	const selectSession = useUi((s) => s.selectSession);
+	const setCenter = useUi((s) => s.setCenter);
+
+	// Local buffer for text inputs to prevent keystroke IPC storms
+	const [localSupervisorModel, setLocalSupervisorModel] = useState("");
+	const [localIdleMinutes, setLocalIdleMinutes] = useState("0");
+	const [localShortcut, setLocalShortcut] = useState("");
+	const [localOmpBinary, setLocalOmpBinary] = useState("");
+
+	useEffect(() => {
+		if (settings) {
+			setLocalSupervisorModel(settings.supervisorModel);
+			setLocalIdleMinutes(String(settings.idleSuspendMinutes));
+			setLocalShortcut(settings.quickCaptureShortcut);
+			setLocalOmpBinary(settings.ompBinary);
+		}
+	}, [
+		settings?.supervisorModel,
+		settings?.idleSuspendMinutes,
+		settings?.quickCaptureShortcut,
+		settings?.ompBinary,
+	]);
+
+	const handleBack = () => {
+		if (selectedSessionId) {
+			selectSession(selectedSessionId);
+		} else {
+			setCenter("home");
+		}
+	};
+
+	useEscapeKey(handleBack);
+
 
 	useEffect(() => {
 		void loadSettings();
 	}, [loadSettings]);
 
 	const handleUpdate = async (patch: Partial<Settings>) => {
+		if (patch.supervisorModel !== undefined && !patch.supervisorModel.trim()) {
+			toast.error("监工模型不能为空");
+			return;
+		}
+		if (patch.ompBinary !== undefined && !patch.ompBinary.trim()) {
+			toast.error("OMP 命令行程序不能为空");
+			return;
+		}
 		try {
 			await updateSettings(patch);
 			setSaveNotice("设置已自动保存");
 			setTimeout(() => setSaveNotice(null), 2000);
-		} catch {
-			// error handled in store
+		} catch (err) {
+			const msg = errMsg(err);
+			toast.error(`保存失败: ${msg}`);
+		}
+	};
+
+	const commitSupervisorModel = async () => {
+		if (!settings) return;
+		const val = localSupervisorModel.trim();
+		if (!val) {
+			toast.error("监工模型不能为空");
+			setLocalSupervisorModel(settings.supervisorModel);
+			return;
+		}
+		if (val !== settings.supervisorModel) {
+			await handleUpdate({ supervisorModel: val });
+		}
+	};
+
+	const commitIdleMinutes = async () => {
+		if (!settings) return;
+		const parsed = Math.max(0, parseInt(localIdleMinutes, 10) || 0);
+		setLocalIdleMinutes(String(parsed));
+		if (parsed !== settings.idleSuspendMinutes) {
+			await handleUpdate({ idleSuspendMinutes: parsed });
+		}
+	};
+
+	const commitShortcut = async () => {
+		if (!settings) return;
+		const val = localShortcut.trim();
+		if (val && val !== settings.quickCaptureShortcut) {
+			await handleUpdate({ quickCaptureShortcut: val });
+		} else if (!val) {
+			setLocalShortcut(settings.quickCaptureShortcut);
+		}
+	};
+
+	const commitOmpBinary = async () => {
+		if (!settings) return;
+		const val = localOmpBinary.trim();
+		if (!val) {
+			toast.error("OMP 命令行程序不能为空");
+			setLocalOmpBinary(settings.ompBinary);
+			return;
+		}
+		if (val !== settings.ompBinary) {
+			await handleUpdate({ ompBinary: val });
 		}
 	};
 
@@ -93,7 +237,16 @@ export function SettingsPage() {
 		<div className="flex h-full overflow-hidden bg-neutral-950 text-neutral-200">
 			{/* Left Navigation Bar */}
 			<div className="w-48 border-r border-neutral-800/80 bg-neutral-950/60 p-4">
-				<div className="mb-4 flex items-center gap-2 px-2 text-xs font-semibold text-neutral-400">
+				<button
+					type="button"
+					onClick={handleBack}
+					className="mb-4 flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors"
+					title="返回工作区 (Esc)"
+				>
+					<ArrowLeft className="h-3.5 w-3.5" />
+					<span>返回工作区</span>
+				</button>
+				<div className="mb-3 flex items-center gap-2 px-2 text-xs font-semibold text-neutral-400">
 					<SettingsIcon className="h-4 w-4 text-amber-400" />
 					<span>系统设置</span>
 				</div>
@@ -144,41 +297,19 @@ export function SettingsPage() {
 							</div>
 
 							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-								<div className="flex items-center justify-between">
-									<div>
-										<div className="text-xs font-medium text-neutral-200">
-											顶部胶囊 (Top Capsule)
-										</div>
-										<div className="text-[11px] text-neutral-500">
-											在窗口右上角显示待处理待办统计与当前会话子任务状态条
-										</div>
-									</div>
-									<input
-										type="checkbox"
-										checked={settings.capsuleVisible}
-										onChange={(e) =>
-											handleUpdate({ capsuleVisible: e.target.checked })
-										}
-										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-0"
-									/>
-								</div>
+								<Toggle
+									label="顶部胶囊 (Top Capsule)"
+									description="在窗口右上角显示待处理待办统计与当前会话子任务状态条"
+									checked={settings.capsuleVisible}
+									onChange={(v) => handleUpdate({ capsuleVisible: v })}
+								/>
 
-								<div className="border-t border-neutral-800/60 pt-4 flex items-center justify-between">
-									<div>
-										<div className="text-xs font-medium text-neutral-200">
-											智能上下文路由
-										</div>
-										<div className="text-[11px] text-neutral-500">
-											根据任务类型与历史自动推荐或选择合适模型及参考文件
-										</div>
-									</div>
-									<input
-										type="checkbox"
+								<div className="border-t border-neutral-800/60 pt-4">
+									<Toggle
+										label="智能上下文路由"
+										description="根据任务类型与历史自动推荐或选择合适模型及参考文件"
 										checked={settings.smartContextRouting}
-										onChange={(e) =>
-											handleUpdate({ smartContextRouting: e.target.checked })
-										}
-										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-0"
+										onChange={(v) => handleUpdate({ smartContextRouting: v })}
 									/>
 								</div>
 							</div>
@@ -196,41 +327,19 @@ export function SettingsPage() {
 							</div>
 
 							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-								<div className="flex items-center justify-between">
-									<div>
-										<div className="text-xs font-medium text-neutral-200">
-											系统待办检测
-										</div>
-										<div className="text-[11px] text-neutral-500">
-											自动捕获会话审批、提问、报错、中断与待验收事件加入待办队列
-										</div>
-									</div>
-									<input
-										type="checkbox"
-										checked={settings.systemDetection}
-										onChange={(e) =>
-											handleUpdate({ systemDetection: e.target.checked })
-										}
-										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-0"
-									/>
-								</div>
+								<Toggle
+									label="系统待办检测"
+									description="自动捕获会话审批、提问、报错、中断与待验收事件加入待办队列"
+									checked={settings.systemDetection}
+									onChange={(v) => handleUpdate({ systemDetection: v })}
+								/>
 
-								<div className="border-t border-neutral-800/60 pt-4 flex items-center justify-between">
-									<div>
-										<div className="text-xs font-medium text-neutral-200">
-											后台监工建议 (Supervisor)
-										</div>
-										<div className="text-[11px] text-neutral-500">
-											定期基于会话摘要与收集箱生成建议（只读，无执行权限）
-										</div>
-									</div>
-									<input
-										type="checkbox"
+								<div className="border-t border-neutral-800/60 pt-4">
+									<Toggle
+										label="后台监工建议 (Supervisor)"
+										description="定期基于会话摘要与收集箱生成建议（只读，无执行权限）"
 										checked={settings.supervisorEnabled}
-										onChange={(e) =>
-											handleUpdate({ supervisorEnabled: e.target.checked })
-										}
-										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-violet-500 focus:ring-0"
+										onChange={(v) => handleUpdate({ supervisorEnabled: v })}
 									/>
 								</div>
 
@@ -243,10 +352,15 @@ export function SettingsPage() {
 									</div>
 									<input
 										type="text"
-										value={settings.supervisorModel}
-										onChange={(e) =>
-											handleUpdate({ supervisorModel: e.target.value })
-										}
+										value={localSupervisorModel}
+										onChange={(e) => setLocalSupervisorModel(e.target.value)}
+										onBlur={commitSupervisorModel}
+										onKeyDown={(e) => {
+											if (isComposing(e)) return;
+											if (e.key === "Enter") {
+												e.currentTarget.blur();
+											}
+										}}
 										placeholder="例如: smol, default"
 										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 									/>
@@ -278,10 +392,9 @@ export function SettingsPage() {
 										}
 										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 									>
-										<option value="write">写操作审批 (write - 默认)</option>
-										<option value="read">读写审批 (read)</option>
-										<option value="all">所有操作审批 (all)</option>
-										<option value="never">完全自动执行 (never)</option>
+										<option value="always-ask">每步必问 (always-ask)</option>
+										<option value="write">写操作审批 (write)</option>
+										<option value="yolo">完全自动执行 (yolo)</option>
 									</select>
 								</div>
 
@@ -296,15 +409,14 @@ export function SettingsPage() {
 										type="number"
 										min={0}
 										max={1440}
-										value={settings.idleSuspendMinutes}
-										onChange={(e) =>
-											handleUpdate({
-												idleSuspendMinutes: Math.max(
-													0,
-													parseInt(e.target.value, 10) || 0,
-												),
-											})
-										}
+										value={localIdleMinutes}
+										onChange={(e) => setLocalIdleMinutes(e.target.value)}
+										onBlur={commitIdleMinutes}
+										onKeyDown={(e) => {
+											if (e.key === "Enter") {
+												e.currentTarget.blur();
+											}
+										}}
 										className="mt-2 w-32 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 									/>
 								</div>
@@ -323,86 +435,38 @@ export function SettingsPage() {
 							</div>
 
 							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-								<div className="flex items-center justify-between">
-									<div>
-										<div className="text-xs font-medium text-neutral-200">
-											轮次结束通知
-										</div>
-										<div className="text-[11px] text-neutral-500">
-											Agent 完成本轮思考并等待验收时触发系统通知
-										</div>
-									</div>
-									<input
-										type="checkbox"
-										checked={settings.notifyTurnEnd}
-										onChange={(e) =>
-											handleUpdate({ notifyTurnEnd: e.target.checked })
-										}
-										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-0"
-									/>
-								</div>
+								<Toggle
+									label="轮次结束通知"
+									description="Agent 完成本轮思考并等待验收时触发系统通知"
+									checked={settings.notifyTurnEnd}
+									onChange={(v) => handleUpdate({ notifyTurnEnd: v })}
+								/>
 
-								<div className="border-t border-neutral-800/60 pt-4 flex items-center justify-between">
-									<div>
-										<div className="text-xs font-medium text-neutral-200">
-											审批与提问通知
-										</div>
-										<div className="text-[11px] text-neutral-500">
-											Agent 请求危险工具审批或需要用户输入回答时通知
-										</div>
-									</div>
-									<input
-										type="checkbox"
+								<div className="border-t border-neutral-800/60 pt-4">
+									<Toggle
+										label="审批与提问通知"
+										description="Agent 请求危险工具审批或需要用户输入回答时通知"
 										checked={settings.notifyApproval}
-										onChange={(e) =>
-											handleUpdate({ notifyApproval: e.target.checked })
-										}
-										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-0"
+										onChange={(v) => handleUpdate({ notifyApproval: v })}
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4 flex items-center justify-between">
-									<div>
-										<div className="text-xs font-medium text-neutral-200">
-											异常与中断通知
-										</div>
-										<div className="text-[11px] text-neutral-500">
-											会话因报错退出或进程意外终止时通知
-										</div>
-									</div>
-									<input
-										type="checkbox"
+								<div className="border-t border-neutral-800/60 pt-4">
+									<Toggle
+										label="异常与中断通知"
+										description="会话因报错退出或进程意外终止时通知"
 										checked={settings.notifyExit}
-										onChange={(e) =>
-											handleUpdate({ notifyExit: e.target.checked })
-										}
-										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-0"
+										onChange={(v) => handleUpdate({ notifyExit: v })}
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4 flex items-center justify-between">
-									<div className="flex items-center gap-2">
-										{settings.notifySound ? (
-											<Volume2 className="h-4 w-4 text-amber-400" />
-										) : (
-											<VolumeX className="h-4 w-4 text-neutral-500" />
-										)}
-										<div>
-											<div className="text-xs font-medium text-neutral-200">
-												通知提示音
-											</div>
-											<div className="text-[11px] text-neutral-500">
-												发送通知时伴随系统默认提示音
-											</div>
-										</div>
-									</div>
-									<input
-										type="checkbox"
+								<div className="border-t border-neutral-800/60 pt-4">
+									<Toggle
+										label="通知提示音"
+										description="发送通知时伴随系统默认提示音"
+										icon={settings.notifySound ? Volume2 : VolumeX}
 										checked={settings.notifySound}
-										onChange={(e) =>
-											handleUpdate({ notifySound: e.target.checked })
-										}
-										className="h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-0"
+										onChange={(v) => handleUpdate({ notifySound: v })}
 									/>
 								</div>
 
@@ -463,10 +527,15 @@ export function SettingsPage() {
 									</div>
 									<input
 										type="text"
-										value={settings.quickCaptureShortcut}
-										onChange={(e) =>
-											handleUpdate({ quickCaptureShortcut: e.target.value })
-										}
+										value={localShortcut}
+										onChange={(e) => setLocalShortcut(e.target.value)}
+										onBlur={commitShortcut}
+										onKeyDown={(e) => {
+											if (isComposing(e)) return;
+											if (e.key === "Enter") {
+												e.currentTarget.blur();
+											}
+										}}
 										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 font-mono focus:border-amber-500 focus:outline-none"
 									/>
 								</div>
@@ -480,10 +549,15 @@ export function SettingsPage() {
 									</div>
 									<input
 										type="text"
-										value={settings.ompBinary}
-										onChange={(e) =>
-											handleUpdate({ ompBinary: e.target.value })
-										}
+										value={localOmpBinary}
+										onChange={(e) => setLocalOmpBinary(e.target.value)}
+										onBlur={commitOmpBinary}
+										onKeyDown={(e) => {
+											if (isComposing(e)) return;
+											if (e.key === "Enter") {
+												e.currentTarget.blur();
+											}
+										}}
 										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 font-mono focus:border-amber-500 focus:outline-none"
 									/>
 								</div>

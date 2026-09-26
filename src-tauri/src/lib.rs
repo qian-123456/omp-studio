@@ -44,6 +44,51 @@ async fn app_paths() -> Result<AppPaths, String> {
     })
 }
 
+pub fn parse_allowed_tools_from_text(content: &str) -> Option<Vec<String>> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("allowed_tools") || trimmed.starts_with("allowed-tools") {
+            let sep = if trimmed.contains('=') { '=' } else { ':' };
+            if let Some((_, val)) = trimmed.split_once(sep) {
+                let val = val.trim();
+                if val.starts_with('[') && val.ends_with(']') {
+                    let inner = &val[1..val.len() - 1];
+                    let tools: Vec<String> = inner
+                        .split(',')
+                        .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    return Some(tools);
+                }
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+async fn allowed_tools_list() -> Result<Vec<String>, String> {
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
+    let candidates = [
+        home.join(".omp").join("settings.toml"),
+        home.join(".omp").join("agent").join("settings.toml"),
+        home.join(".config").join("omp").join("settings.toml"),
+        home.join(".omp").join("agent").join("config.yml"),
+    ];
+
+    for path in candidates {
+        if path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Some(tools) = parse_allowed_tools_from_text(&content) {
+                    return Ok(tools);
+                }
+            }
+        }
+    }
+
+    Ok(Vec::new())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     paths::ensure_dirs().expect("create ~/.omp-workspace dirs");
@@ -78,6 +123,7 @@ pub fn run() {
             get_settings,
             save_settings,
             app_paths,
+            allowed_tools_list,
             // A — catalog
             catalog::commands::list_sessions,
             catalog::commands::get_transcript,
@@ -90,6 +136,9 @@ pub fn run() {
             catalog::commands::reorder_workspaces,
             catalog::commands::session_usage,
             catalog::commands::rescan_sessions,
+            catalog::commands::delete_session,
+            catalog::commands::list_models,
+            catalog::commands::list_workspace_files,
             // B — rpc
             rpc::commands::rpc_start,
             rpc::commands::rpc_ensure_live,
@@ -109,6 +158,8 @@ pub fn run() {
             git::commands::git_remove_worktree,
             git::commands::git_scan_orphans,
             git::commands::git_reset_to,
+            git::commands::git_restore_file,
+            git::commands::git_list_branches,
             git::commands::tm_run,
             git::commands::tm_list,
             git::commands::tm_stop,
@@ -117,6 +168,10 @@ pub fn run() {
             services::commands::services_stop,
             services::commands::read_text_file,
             services::commands::write_text_file,
+            services::commands::fs_read_dir,
+            services::commands::validate_path,
+            services::commands::save_clipboard_image,
+            services::commands::app_memory_usage,
             // D — todos / supervisor / summaries / diagnose
             todos::commands::todos_list,
             todos::commands::todos_act,
@@ -167,4 +222,39 @@ pub fn run() {
                 tauri::async_runtime::block_on(rpc::shutdown());
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_allowed_tools_from_toml() {
+        let content = r#"
+default_model = "gpt-4o"
+allowed_tools = ["read", "write", "bash"]
+"#;
+        let tools = parse_allowed_tools_from_text(content).unwrap();
+        assert_eq!(tools, vec!["read", "write", "bash"]);
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_from_yaml() {
+        let content = r#"
+tools:
+  approvalMode: write
+allowed-tools: ["edit", "glob"]
+"#;
+        let tools = parse_allowed_tools_from_text(content).unwrap();
+        assert_eq!(tools, vec!["edit", "glob"]);
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_none() {
+        let content = r#"
+tools:
+  approvalMode: write
+"#;
+        assert!(parse_allowed_tools_from_text(content).is_none());
+    }
 }

@@ -78,7 +78,7 @@ pub fn augmented_path() -> String {
     seen.join(":")
 }
 
-fn resolve_binary(bin: &str, path: &str) -> PathBuf {
+pub fn resolve_binary(bin: &str, path: &str) -> PathBuf {
     if bin.contains('/') {
         return PathBuf::from(expand(bin));
     }

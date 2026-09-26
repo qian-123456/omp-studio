@@ -9,6 +9,7 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { PendingUiRequest, TranscriptItem } from "../lib/contracts";
+import type * as IpcModule from "../lib/ipc";
 import {
 	onRpcFrame,
 	onRpcProcess,
@@ -39,8 +40,11 @@ export interface LiveTool {
 	/** Concatenated text of the (partial) result. */
 	text: string;
 	details: unknown | null;
+	/** Start time epoch ms */
+	startedAt?: number;
+	/** End time epoch ms */
+	endedAt?: number;
 }
-
 /** Assistant/user message object as carried by message_* frames. */
 export interface AgentMessage {
 	role: string;
@@ -60,6 +64,9 @@ export interface SessionLive {
 	subagents: Record<string, SubagentInfo>;
 	/** In-flight assistant message snapshot (message_update.message). */
 	streamingMessage: AgentMessage | null;
+	/** Optimistic user bubbles waiting for the transcript fetch to confirm
+	 * them (rpc prompt accepted but not yet visible in the jsonl page). */
+	pendingUserEchoes: TranscriptItem[];
 	/** From available_commands_update. */
 	commands: SlashCommand[];
 	/** Live tool executions keyed by toolCallId (reset each turn). */
@@ -70,8 +77,14 @@ export interface SessionLive {
 	nextOffset: number;
 	/** rpc:process liveness. */
 	alive: boolean;
+	/** Message scroll request queued for virtual list scrollToItem + highlight. */
+	scrollRequest?: { itemId: string; timestamp: number } | null;
+	/** Thinking timing for live turn: start/end epoch ms */
+	thinkingStartedAt?: number | null;
+	thinkingEndedAt?: number | null;
+	/** Completed thinking durations by message/item id */
+	thinkingDurations?: Record<string, { startedAt: number; endedAt: number }>;
 }
-
 export const emptySessionLive = (): SessionLive => ({
 	streaming: false,
 	state: null,
@@ -81,8 +94,13 @@ export const emptySessionLive = (): SessionLive => ({
 	commands: [],
 	tools: {},
 	items: [],
+	pendingUserEchoes: [],
 	nextOffset: 0,
 	alive: false,
+	scrollRequest: null,
+	thinkingStartedAt: null,
+	thinkingEndedAt: null,
+	thinkingDurations: {},
 });
 
 type Frame = Record<string, unknown>;
@@ -100,6 +118,52 @@ const resultText = (result: unknown): string => {
 		.filter(Boolean)
 		.join("\n");
 };
+let nextEchoId = 1;
+
+/** Build the optimistic user bubble for a just-accepted prompt. */
+export function makeUserEcho(text: string): TranscriptItem {
+	return {
+		id: `pending-echo-${nextEchoId++}`,
+		parentId: null,
+		ts: new Date().toISOString(),
+		kind: "user",
+		text,
+		thinking: null,
+		toolCalls: [],
+		toolResult: null,
+		usage: null,
+		model: null,
+		stopReason: null,
+		hidden: false,
+	};
+}
+
+const flat = (t: string) => t.replace(/\s+/g, " ").trim();
+
+/** An echo is confirmed once the transcript carries a user item with
+ * matching text. `includes` both ways because the agent may prepend
+ * `[Image #N]` markers or drop annotation blocks. */
+const echoMatches = (echoText: string, itemText: string): boolean => {
+	const e = flat(echoText);
+	const u = flat(itemText);
+	return e !== "" && u !== "" && (e === u || u.includes(e) || e.includes(u));
+};
+
+/** Consume one pending echo per confirmed user transcript item (FIFO). */
+function reconcileEchoes(
+	pending: TranscriptItem[],
+	items: TranscriptItem[],
+): TranscriptItem[] {
+	if (!pending.length) return pending;
+	let rest = pending;
+	for (const it of items) {
+		if (it.kind !== "user") continue;
+		const i = rest.findIndex((e) => echoMatches(e.text ?? "", it.text ?? ""));
+		if (i < 0) continue;
+		rest = [...rest.slice(0, i), ...rest.slice(i + 1)];
+	}
+	return rest;
+}
 
 /** Dialog methods that wait for a host answer (mirrors the Rust side). */
 const INTERACTIVE_METHODS = new Set(["select", "confirm", "input", "editor"]);
@@ -116,14 +180,85 @@ function reduce(
 	switch (frame.type) {
 		case "agent_start":
 		case "turn_start":
-			return { ...live, streaming: true };
-		case "message_update":
-			return { ...live, streamingMessage: asFrame(frame.message) as AgentMessage };
-		case "message_end":
-			return { ...live, streamingMessage: null };
+			return {
+				...live,
+				streaming: true,
+				thinkingStartedAt: null,
+				thinkingEndedAt: null,
+			};
+		case "message_update": {
+			const msg = asFrame(frame.message) as AgentMessage;
+			// Only assistant messages stream; a `user` echo (or toolResult with
+			// role "user") must not occupy streamingMessage — it would render as
+			// an assistant bubble and then vanish on message_end.
+			if (msg.role && msg.role !== "assistant") return live;
+			const ts =
+				typeof frame.timestamp === "number"
+					? frame.timestamp
+					: typeof msg.timestamp === "number"
+						? msg.timestamp
+						: Date.now();
+			let thinkingStartedAt = live.thinkingStartedAt ?? null;
+			let thinkingEndedAt = live.thinkingEndedAt ?? null;
+			const content = Array.isArray(msg.content) ? msg.content : [];
+			const hasThinking = content.some((p) => {
+				const o = asFrame(p);
+				return o.type === "thinking" || o.type === "thought";
+			});
+			const hasText = content.some((p) => {
+				const o = asFrame(p);
+				return (
+					o.type === "text" &&
+					typeof o.text === "string" &&
+					o.text.length > 0
+				);
+			});
+			if (hasThinking && !thinkingStartedAt) {
+				thinkingStartedAt = ts;
+			}
+			if (hasText && thinkingStartedAt && !thinkingEndedAt) {
+				thinkingEndedAt = ts;
+			}
+			return {
+				...live,
+				streamingMessage: msg,
+				thinkingStartedAt,
+				thinkingEndedAt,
+			};
+		}
+		case "message_end": {
+			// Skip ends for messages we never tracked (e.g. user echoes).
+			if (!live.streamingMessage) return live;
+			const ts =
+				typeof frame.timestamp === "number" ? frame.timestamp : Date.now();
+			const thinkingEndedAt =
+				live.thinkingStartedAt && !live.thinkingEndedAt
+					? ts
+					: live.thinkingEndedAt;
+			const msgId =
+				str(frame.messageId) ||
+				(live.streamingMessage && typeof live.streamingMessage.id === "string"
+					? live.streamingMessage.id
+					: "");
+			const thinkingDurations = { ...(live.thinkingDurations ?? {}) };
+			if (msgId && live.thinkingStartedAt && thinkingEndedAt) {
+				thinkingDurations[msgId] = {
+					startedAt: live.thinkingStartedAt,
+					endedAt: thinkingEndedAt,
+				};
+			}
+			return {
+				...live,
+				streamingMessage: null,
+				thinkingEndedAt,
+				thinkingDurations,
+			};
+		}
 		case "tool_execution_start": {
 			const id = str(frame.toolCallId);
 			if (!id) return live;
+			const startTs =
+				typeof frame.timestamp === "number" ? frame.timestamp : Date.now();
 			return {
 				...live,
 				tools: {
@@ -136,6 +271,7 @@ function reduce(
 						status: "running",
 						text: "",
 						details: null,
+						startedAt: startTs,
 					},
 				},
 			};
@@ -156,6 +292,8 @@ function reduce(
 			const id = str(frame.toolCallId);
 			const tool = live.tools[id];
 			if (!tool) return live;
+			const endTs =
+				typeof frame.timestamp === "number" ? frame.timestamp : Date.now();
 			return {
 				...live,
 				tools: {
@@ -165,14 +303,22 @@ function reduce(
 						status: frame.isError === true ? "error" : "done",
 						text: resultText(frame.result) || tool.text,
 						details: asFrame(frame.result).details ?? null,
+						endedAt: endTs,
 					},
 				},
 			};
 		}
-		case "turn_end":
+		case "turn_end": {
+			const ts =
+				typeof frame.timestamp === "number" ? frame.timestamp : Date.now();
+			const thinkingEndedAt =
+				live.thinkingStartedAt && !live.thinkingEndedAt
+					? ts
+					: live.thinkingEndedAt;
 			// Tool results are persisted to the transcript; live tool map clears
 			// on the next turn_start implicitly via tool_execution ids.
-			return live;
+			return { ...live, thinkingEndedAt };
+		}
 		case "agent_end": {
 			if (frame.isTerminal === false) return live;
 			return { ...live, streaming: false, streamingMessage: null, tools: {} };
@@ -277,11 +423,17 @@ export interface LiveState {
 	dismissUi(sessionId: string, requestId: string): void;
 	/** Seed pendingUi from rpc_pending_ui when opening a live session. */
 	setPendingUi(sessionId: string, list: PendingUiRequest[]): void;
-	/** Replace/extend the transcript cache for a session. */
+	/** Replace/extend the transcript cache for a session. Pending user echoes
+	 * are reconciled against the incoming page (FIFO per user item). */
 	setItems(sessionId: string, items: TranscriptItem[], nextOffset: number): void;
 	appendItems(sessionId: string, items: TranscriptItem[], nextOffset: number): void;
+	/** Optimistically append a user bubble after rpc_send accepts a prompt;
+	 * dropped once a transcript page confirms a matching user item. */
+	addUserEcho(sessionId: string, text: string): void;
 	/** Scroll the message stream to a transcript item (used by HeatmapPanel). */
 	scrollToItem(sessionId: string, itemId: string): void;
+	/** Consume/clear the scroll request for a session. */
+	clearScrollRequest(sessionId: string): void;
 }
 
 export const useLive = create<LiveState>((set) => ({
@@ -345,7 +497,15 @@ export const useLive = create<LiveState>((set) => ({
 			return {
 				sessions: {
 					...s.sessions,
-					[sessionId]: { ...live, items, nextOffset },
+					[sessionId]: {
+						...live,
+						items,
+						nextOffset,
+						pendingUserEchoes: reconcileEchoes(
+							live.pendingUserEchoes,
+							items,
+						),
+					},
 				},
 			};
 		}),
@@ -363,17 +523,64 @@ export const useLive = create<LiveState>((set) => ({
 							...items.filter((i) => !known.has(i.id)),
 						],
 						nextOffset,
+						pendingUserEchoes: reconcileEchoes(
+							live.pendingUserEchoes,
+							items,
+						),
 					},
 				},
 			};
 		}),
-	scrollToItem: (_sessionId, itemId) => {
-		if (typeof document === "undefined") return;
-		document
-			.getElementById(`msg-${itemId}`)
-			?.scrollIntoView({ block: "center", behavior: "smooth" });
+	addUserEcho: (sessionId, text) =>
+		set((s) => {
+			const live = s.sessions[sessionId] ?? emptySessionLive();
+			const trimmed = text.trim();
+			if (!trimmed) return s;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						pendingUserEchoes: [
+							...live.pendingUserEchoes,
+							makeUserEcho(trimmed),
+						],
+					},
+				},
+			};
+		}),
+	scrollToItem: (sessionId, itemId) => {
+		set((s) => {
+			const live = s.sessions[sessionId] ?? emptySessionLive();
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						scrollRequest: { itemId, timestamp: Date.now() },
+					},
+				},
+			};
+		});
+	},
+	clearScrollRequest: (sessionId) => {
+		set((s) => {
+			const live = s.sessions[sessionId];
+			if (!live || !live.scrollRequest) return s;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						scrollRequest: null,
+					},
+				},
+			};
+		});
 	},
 }));
+
+let ipcMod: Promise<typeof IpcModule> | null = null;
 
 let unlisteners: Promise<UnlistenFn>[] | null = null;
 
@@ -381,7 +588,28 @@ let unlisteners: Promise<UnlistenFn>[] | null = null;
 export function startLiveEvents(): void {
 	if (unlisteners) return;
 	const { reduceFrame, reduceProcess } = useLive.getState();
-	unlisteners = [onRpcFrame(reduceFrame), onRpcProcess(reduceProcess)];
+	unlisteners = [
+		onRpcFrame((payload) => {
+			reduceFrame(payload);
+			const frame = payload.frame;
+			const ty =
+				frame && typeof frame === "object" && "type" in frame && typeof frame.type === "string"
+					? frame.type
+					: undefined;
+			if (
+				ty === "model_changed" ||
+				ty === "thinking_level_changed" ||
+				ty === "turn_end" ||
+				ty === "auto_compaction_end"
+			) {
+				ipcMod ??= import("../lib/ipc");
+				void ipcMod
+					.then((m) => m.rpcSend(payload.sessionId, { type: "get_state" }))
+					.catch(() => {});
+			}
+		}),
+		onRpcProcess(reduceProcess),
+	];
 }
 
 // Auto-wire inside the Tauri webview so module B doesn't touch main.tsx.

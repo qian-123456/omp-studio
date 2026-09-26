@@ -2,18 +2,21 @@ import {
 	ChevronDown,
 	ChevronRight,
 	FileText,
+	Loader2,
 	RefreshCw,
 	Send,
 	Stethoscope,
 	X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { errMsg } from "../../lib/dialogs";
+import { useEscapeKey } from "../../lib/hooks";
 import {
 	diagnoseBuildPrompt,
 	dispatchPrompt,
-	rpcSend,
 	rpcStart,
-} from "../../lib/ipc";
+	} from "../../lib/ipc";
+import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 
@@ -33,8 +36,7 @@ export function DiagnoseDialog() {
 
 	const [prompt, setPrompt] = useState<string>("");
 	const [loadingPrompt, setLoadingPrompt] = useState(false);
-	const [showPromptPreview, setShowPromptPreview] = useState(false);
-
+	const [showPromptPreview, setShowPromptPreview] = useState(true);
 	const [targetType, setTargetType] = useState<"existing" | "new">("existing");
 	const [selectedExistingId, setSelectedExistingId] = useState<string>("");
 	const [newSessionModel, setNewSessionModel] = useState<string>("");
@@ -42,11 +44,28 @@ export function DiagnoseDialog() {
 	const [error, setError] = useState<string | null>(null);
 
 	const targetSession = targetSessionId ? sessions[targetSessionId] : undefined;
+	useEscapeKey(closeModal, isVisible);
+
+	const fetchPrompt = useCallback(() => {
+		if (!targetSessionId) return;
+		setError(null);
+		setLoadingPrompt(true);
+		diagnoseBuildPrompt(targetSessionId)
+			.then((p) => {
+				setPrompt(p);
+			})
+			.catch((err) => {
+				const msg = errMsg(err);
+				setError(`生成诊断提示词失败: ${msg}`);
+				toast.error(`生成诊断提示词失败: ${msg}`);
+			})
+			.finally(() => {
+				setLoadingPrompt(false);
+			});
+	}, [targetSessionId]);
 
 	useEffect(() => {
 		if (isVisible && targetSessionId) {
-			setError(null);
-			setLoadingPrompt(true);
 			setDispatching(false);
 
 			// Choose default existing diagnoser: first session that is not target
@@ -55,18 +74,9 @@ export function DiagnoseDialog() {
 			);
 			setSelectedExistingId(candidateIds[0] || "");
 
-			void diagnoseBuildPrompt(targetSessionId)
-				.then((p) => {
-					setPrompt(p);
-				})
-				.catch((err) => {
-					setError(`生成诊断提示词失败: ${String(err)}`);
-				})
-				.finally(() => {
-					setLoadingPrompt(false);
-				});
+			fetchPrompt();
 		}
-	}, [isVisible, targetSessionId, sessions]);
+	}, [isVisible, targetSessionId, sessions, fetchPrompt]);
 
 	if (!isVisible) return null;
 
@@ -83,16 +93,19 @@ export function DiagnoseDialog() {
 					model: newSessionModel.trim() || undefined,
 				});
 				diagnoserId = info.sessionId;
-				await rpcSend(diagnoserId, { type: "prompt", text: prompt });
 			} else {
 				if (!diagnoserId) throw new Error("请选择用于诊断的会话");
-				await dispatchPrompt(diagnoserId, prompt);
 			}
 
+			await dispatchPrompt(diagnoserId, prompt);
+
+			toast.success("已启动诊断任务");
 			closeModal();
 			selectSession(diagnoserId);
 		} catch (err) {
-			setError(String(err));
+			const msg = errMsg(err);
+			setError(msg);
+			toast.error(`启动诊断失败: ${msg}`);
 			setDispatching(false);
 		}
 	};
@@ -104,12 +117,14 @@ export function DiagnoseDialog() {
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
-			onClick={(e) => {
+			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeModal();
 			}}
 		>
-			<div className="w-full max-w-xl rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
-				{/* Dialog Header */}
+			<div
+				className="w-full max-w-xl rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl"
+				onClick={(e) => e.stopPropagation()}
+			>
 				<div className="mb-4 flex items-center justify-between border-b border-neutral-800 pb-3">
 					<div className="flex items-center gap-2.5">
 						<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
@@ -134,8 +149,17 @@ export function DiagnoseDialog() {
 				</div>
 
 				{error && (
-					<div className="mb-4 rounded-lg border border-rose-800/50 bg-rose-950/20 p-2.5 text-xs text-rose-300">
-						{error}
+					<div className="mb-4 flex items-center justify-between rounded-lg border border-rose-800/50 bg-rose-950/20 p-2.5 text-xs text-rose-300">
+						<span>{error}</span>
+						<button
+							type="button"
+							onClick={fetchPrompt}
+							disabled={loadingPrompt}
+							className="ml-2 inline-flex items-center gap-1 rounded bg-rose-900/40 px-2 py-1 text-xs text-rose-200 hover:bg-rose-900/60 disabled:opacity-40"
+						>
+							<RefreshCw className={`h-3 w-3 ${loadingPrompt ? "animate-spin" : ""}`} />
+							<span>重试</span>
+						</button>
 					</div>
 				)}
 
@@ -177,14 +201,40 @@ export function DiagnoseDialog() {
 					{showPromptPreview && (
 						<div className="border-t border-neutral-800 p-3">
 							{loadingPrompt ? (
-								<div className="flex items-center gap-2 py-2 text-xs text-neutral-500">
-									<RefreshCw className="h-3 w-3 animate-spin" />
-									<span>正在扫描会话尾部错误和生成摘要...</span>
+								<div className="space-y-3 py-1">
+									<div className="flex items-center gap-2 text-xs text-amber-400">
+										<RefreshCw className="h-3.5 w-3.5 animate-spin" />
+										<span>正在扫描会话尾部错误和生成诊断摘要...</span>
+									</div>
+									<div className="space-y-2 pt-1">
+										<div className="h-3.5 w-3/4 animate-pulse rounded bg-neutral-800" />
+										<div className="h-3.5 w-5/6 animate-pulse rounded bg-neutral-800" />
+										<div className="h-3.5 w-2/3 animate-pulse rounded bg-neutral-800" />
+									</div>
 								</div>
 							) : (
-								<pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-neutral-950 p-2.5 text-[11px] text-neutral-300 font-mono">
-									{prompt}
-								</pre>
+								<div className="space-y-2">
+									<textarea
+										value={prompt}
+										onChange={(e) => setPrompt(e.target.value)}
+										rows={8}
+										placeholder="诊断提示词生成中，生成后可在此二次修订..."
+										className="w-full resize-y rounded-lg border border-neutral-700 bg-neutral-950 p-2.5 text-[11px] font-mono text-neutral-200 placeholder-neutral-500 focus:border-amber-500 focus:outline-none"
+									/>
+									<div className="flex items-center justify-between text-[11px] text-neutral-500">
+										<span>可在文本框内自由增删提示词或补充排查细节</span>
+										<button
+											type="button"
+											onClick={fetchPrompt}
+											disabled={loadingPrompt}
+											className="inline-flex items-center gap-1 text-neutral-400 hover:text-amber-400 disabled:opacity-40"
+											title="重新生成诊断提示词"
+										>
+											<RefreshCw className={`h-3 w-3 ${loadingPrompt ? "animate-spin" : ""}`} />
+											<span>重新生成</span>
+										</button>
+									</div>
+								</div>
 							)}
 						</div>
 					)}
@@ -236,13 +286,26 @@ export function DiagnoseDialog() {
 									onChange={(e) => setSelectedExistingId(e.target.value)}
 									className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-100 focus:border-amber-500 focus:outline-none"
 								>
-									{candidateSessions.map((s) => (
-										<option key={s.id} value={s.id}>
-											{s.title || s.id} ({s.status})
-										</option>
-									))}
+									{candidateSessions.map((s) => {
+										const modelLabel = s.model ? ` [${s.model}]` : "";
+										const statusLabel =
+											s.status === "working"
+												? "忙碌"
+												: s.status === "idle"
+													? "空闲"
+													: s.status === "error"
+														? "异常"
+														: s.status === "suspended"
+															? "已挂起"
+															: s.status;
+										return (
+											<option key={s.id} value={s.id}>
+												{s.title || s.id}{modelLabel} · {statusLabel}
+											</option>
+										);
+									})}
 								</select>
-							</div>
+								</div>
 						)
 					) : (
 						<div className="space-y-2">
@@ -285,7 +348,11 @@ export function DiagnoseDialog() {
 						onClick={handleExecuteDiagnose}
 						className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-neutral-950 hover:bg-amber-400 disabled:opacity-40"
 					>
-						<Send className="h-3.5 w-3.5" />
+						{dispatching ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Send className="h-3.5 w-3.5" />
+						)}
 						<span>{dispatching ? "正在启动诊断..." : "开始诊断"}</span>
 					</button>
 				</div>

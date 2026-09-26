@@ -95,6 +95,7 @@ export type TranscriptKind =
 	| "compaction"
 	| "branch_summary"
 	| "model_change"
+	| "thinking_level_change"
 	| "system"
 	| "unknown";
 
@@ -342,4 +343,24 @@ export interface Settings {
 export interface AppPaths {
 	dataDir: string;
 	globalDir: string;
+}
+
+export interface Model {
+	provider: string;
+	id: string;
+	name: string;
+}
+
+export interface PathCheck {
+	exists: boolean;
+	isDir: boolean;
+}
+
+export interface DirEntry {
+	name: string;
+	path: string;
+	isDir: boolean;
+	isSymlink: boolean;
+	size: number;
+	readonly: boolean;
 }

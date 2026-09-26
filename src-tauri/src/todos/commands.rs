@@ -11,7 +11,7 @@ pub async fn todos_list(
     Ok(crate::todos::list(&state, include_closed).await)
 }
 
-/// `action`: "done" | "ignore".
+/// `action`: "done" | "ignore" | "reopen".
 #[tauri::command]
 pub async fn todos_act(
     state: tauri::State<'_, AppState>,
@@ -54,7 +54,7 @@ pub async fn diagnose_build_prompt(
 pub async fn dispatch_prompt(
     state: tauri::State<'_, AppState>,
     session_id: String,
-    text: String,
+    prompt: String,
 ) -> Result<(), String> {
-    crate::rpc::send_prompt(&state, &session_id, &text).await
+    crate::rpc::send_prompt(&state, &session_id, &prompt).await
 }

@@ -1,31 +1,44 @@
 /** [C] New-session dialog (docs/ARCHITECTURE.md §11 C). */
 
+import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { SessionMeta } from "../../lib/contracts";
-import { appPaths, getSettings, gitCreateWorktree, gitSummary, rpcSend, rpcStart } from "../../lib/ipc";
+import { createSession, sendFirstPrompt } from "../../lib/createSession";
+import { errMsg } from "../../lib/dialogs";
+import { isComposing, useEscapeKey } from "../../lib/hooks";
+import {
+	appPaths,
+	gitCreateWorktree,
+	gitListBranches,
+	gitSummary,
+	listModels,
+	rpcSend,
+	validatePath,
+} from "../../lib/ipc";
+import {
+	type ModelOption,
+	parseModels,
+	toModelKey,
+} from "../../lib/models";
+import { ModelSelect } from "../../components/ModelSelect";
+import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { defaultSlug, isInside } from "./helpers";
-import { errMsg } from "./ui";
+import { defaultSlug } from "./helpers";
 
 const CUSTOM = "__custom";
-const APPROVAL_MODES = [
-	{ value: "", label: "默认（跟随设置）" },
-	{ value: "always-ask", label: "always-ask · 每步都问" },
-	{ value: "write", label: "write · 只问执行类" },
-	{ value: "yolo", label: "yolo · 全部自动批准" },
-];
+const CUSTOM_MODEL = "__custom_model";
+
 
 /**
- * Always mounted; opened via `ui.openModal("new-session", {workspaceId?, cwd?})`.
- * Workspace/cwd picker, model, approval mode, optional isolated worktree and
- * first prompt.
+ * Always mounted; opened via `ui.openModal("new-session" | "newSession", {workspaceId?, cwd?})`.
+ * Workspace/cwd picker, model, optional isolated worktree and first prompt.
+ * Approval mode is not a per-session choice here — it follows Settings.
  */
 export function NewSessionDialog() {
 	const modal = useUi((s) => s.modal);
-	if (modal?.name !== "new-session") return null;
+	if (modal?.name !== "new-session" && modal?.name !== "newSession") return null;
 	return <NewSessionForm props={modal.props} />;
 }
 
@@ -36,23 +49,40 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	const closeModal = useUi((s) => s.closeModal);
 	const selectSession = useUi((s) => s.selectSession);
 
+	useEscapeKey(closeModal);
+
 	const propCwd = typeof props.cwd === "string" ? props.cwd : "";
 	const propWs = typeof props.workspaceId === "string" ? props.workspaceId : "";
 
 	const [wsSel, setWsSel] = useState(() => {
 		if (propWs && workspaces.some((w) => w.id === propWs)) return propWs;
-		if (propCwd && workspaces.some((w) => w.path === propCwd)) {
-			return workspaces.find((w) => w.path === propCwd)?.id ?? CUSTOM;
-		}
-		return propCwd ? CUSTOM : (workspaces[0]?.id ?? CUSTOM);
+		const match = workspaces.find((w) => w.path === propCwd);
+		if (match) return match.id;
+		if (propCwd) return CUSTOM;
+		return workspaces[0]?.id ?? CUSTOM;
 	});
 	const [customCwd, setCustomCwd] = useState(propCwd);
 	const [globalDir, setGlobalDir] = useState("");
-	const [model, setModel] = useState("");
-	const [approval, setApproval] = useState("");
-	const [useWorktree, setUseWorktree] = useState(false);
+	const [availableModels, setAvailableModels] = useState<ModelOption[]>(() => {
+		try {
+			const cached = localStorage.getItem("ompws:cached-models");
+			if (cached) {
+				const parsed = JSON.parse(cached);
+				if (Array.isArray(parsed)) return parsed;
+			}
+		} catch {
+			/* ignore */
+		}
+		return [];
+	});
+	const [modelSel, setModelSel] = useState("");
+	const [customModel, setCustomModel] = useState("");
+	const [useWorktree, setUseWorktree] = useState(Boolean(props.useWorktree));
 	const [wtName, setWtName] = useState("");
-	const [wtTouched, setWtTouched] = useState(false);
+	const [customCwdError, setCustomCwdError] = useState<string | null>(null);
+	const [branches, setBranches] = useState<string[]>([]);
+	const [baseBranch, setBaseBranch] = useState("");
+	const [branchPrefix, setBranchPrefix] = useState("omp/");
 	const [prompt, setPrompt] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -63,100 +93,204 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 		appPaths()
 			.then((p) => setGlobalDir(p.globalDir))
 			.catch(() => {});
-		getSettings()
-			.then((s) => setApproval(s.defaultApprovalMode))
-			.catch(() => {});
-	}, []);
+
+		// Model fetching: listModels() IPC priority, cached in localStorage
+		listModels()
+			.then((models) => {
+				if (Array.isArray(models) && models.length > 0) {
+					const parsed = parseModels(models);
+					if (parsed.length > 0) {
+						setAvailableModels(parsed);
+						try {
+							localStorage.setItem(
+								"ompws:cached-models",
+								JSON.stringify(parsed),
+							);
+						} catch {
+							/* ignore */
+						}
+						return;
+					}
+				}
+				fallbackLiveModels();
+			})
+			.catch(() => {
+				fallbackLiveModels();
+			});
+
+		function fallbackLiveModels() {
+			const liveSession = Object.values(sessions).find((s) => s.live);
+			if (liveSession) {
+				rpcSend(liveSession.id, { type: "get_available_models" })
+					.then((resp) => {
+						const data =
+							resp && typeof resp === "object" && "data" in resp
+								? resp.data
+								: resp;
+						const m = parseModels(data);
+						if (m.length > 0) {
+							setAvailableModels(m);
+							try {
+								localStorage.setItem(
+									"ompws:cached-models",
+									JSON.stringify(m),
+								);
+							} catch {
+								/* ignore */
+							}
+						}
+					})
+					.catch(() => {
+						listModels()
+							.then((models) => {
+								if (Array.isArray(models) && models.length > 0) {
+									const parsed = parseModels(models);
+									if (parsed.length > 0) {
+										setAvailableModels(parsed);
+										try {
+											localStorage.setItem(
+												"ompws:cached-models",
+												JSON.stringify(parsed),
+											);
+										} catch {
+											/* ignore */
+										}
+										return;
+									}
+								}
+								toast.error("获取可用模型失败");
+							})
+							.catch((err) => {
+								toast.error(`获取可用模型失败: ${errMsg(err)}`);
+							});
+					});
+			}
+		}
+	}, [sessions]);
+
+	// Debounced validatePath on custom cwd
+	useEffect(() => {
+		if (wsSel !== CUSTOM || !customCwd.trim()) {
+			setCustomCwdError(null);
+			return;
+		}
+		let cancelled = false;
+		const timer = setTimeout(() => {
+			validatePath(customCwd.trim())
+				.then((res) => {
+					if (cancelled) return;
+					if (!res.exists) {
+						setCustomCwdError("路径不存在");
+					} else if (!res.isDir) {
+						setCustomCwdError("指定路径不是一个目录");
+					} else {
+						setCustomCwdError(null);
+					}
+				})
+				.catch((err) => {
+					if (!cancelled) setCustomCwdError(errMsg(err));
+				});
+		}, 250);
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	}, [wsSel, customCwd]);
 
 	const cwd = useMemo(() => {
 		if (wsSel === CUSTOM) return customCwd.trim();
-		const ws = workspaces.find((w) => w.id === wsSel);
-		if (!ws) return customCwd.trim();
-		return ws.kind === "global" ? globalDir || ws.path : ws.path;
+		const w = workspaces.find((x) => x.id === wsSel);
+		if (!w) return customCwd.trim();
+		return w.kind === "global" ? globalDir : w.path;
 	}, [wsSel, workspaces, customCwd, globalDir]);
 
 	// Detect whether the chosen cwd is inside a git repo (gates the worktree option).
 	useEffect(() => {
-		const seq = ++repoCheck.current;
-		setIsRepo(null);
 		if (!cwd) {
-			setIsRepo(false);
+			setIsRepo(null);
 			return;
 		}
-		const t = setTimeout(() => {
-			gitSummary(cwd)
-				.then((s) => {
-					if (repoCheck.current === seq) setIsRepo(s.isRepo);
-				})
-				.catch(() => {
-					if (repoCheck.current === seq) setIsRepo(false);
-				});
-		}, 250);
-		return () => clearTimeout(t);
+		const seq = ++repoCheck.current;
+		gitSummary(cwd)
+			.then((s) => {
+				if (seq === repoCheck.current) setIsRepo(s.isRepo);
+			})
+			.catch(() => {
+				if (seq === repoCheck.current) setIsRepo(false);
+			});
 	}, [cwd]);
+	// Fetch branches when selected cwd is a git repo
+	useEffect(() => {
+		if (isRepo && cwd) {
+			gitListBranches(cwd)
+				.then((list) => {
+					if (Array.isArray(list) && list.length > 0) {
+						setBranches(list);
+						setBaseBranch((prev) =>
+							prev && list.includes(prev) ? prev : list[0],
+						);
+					}
+				})
+				.catch(() => {});
+		} else {
+			setBranches([]);
+		}
+	}, [isRepo, cwd]);
+
 
 	// Sessions already running in the same repo → suggest a worktree.
 	const running = useMemo(() => {
 		if (!cwd) return [];
-		return Object.values(sessions).filter((s) => {
-			if (!(s.live || s.status === "working")) return false;
-			const root = s.repoRoot ?? s.cwd;
-			return isInside(cwd, root) || isInside(s.cwd, cwd);
-		});
+		return Object.values(sessions).filter(
+			(s) => s.cwd && (s.cwd === cwd || s.cwd.startsWith(`${cwd}/`)),
+		);
 	}, [sessions, cwd]);
 
 	const slug = defaultSlug(wtName || propCwd || cwd || "session");
-	const canSubmit = !!cwd && !busy && (!useWorktree || isRepo === true);
+	const effectiveModel = modelSel === CUSTOM_MODEL ? customModel.trim() : modelSel;
+	const canSubmit =
+		!!cwd &&
+		!busy &&
+		(wsSel !== CUSTOM || !customCwdError) &&
+		(!useWorktree || isRepo === true);
+
+	const handleBrowse = async () => {
+		try {
+			const selected = await open({
+				directory: true,
+				multiple: false,
+				title: "选择工作区目录",
+				defaultPath: customCwd || propCwd || undefined,
+			});
+			if (selected && typeof selected === "string") {
+				setWsSel(CUSTOM);
+				setCustomCwd(selected);
+			}
+		} catch (e) {
+			toast.error(errMsg(e));
+		}
+	};
 
 	const submit = async () => {
-		if (!cwd) return;
+		if (!cwd || !canSubmit) return;
 		setBusy(true);
 		setError(null);
 		try {
 			let target = cwd;
 			if (useWorktree) {
-				const wt = await gitCreateWorktree(cwd, wtName.trim() || slug);
+				const finalBranchName = `${branchPrefix}${wtName.trim() || slug}`;
+				const wt = await gitCreateWorktree(cwd, finalBranchName);
 				target = wt.path;
 			}
-			const live = await rpcStart({
+			const { sessionId, stub } = await createSession({
 				cwd: target,
-				model: model.trim() || null,
-				approvalMode: approval || null,
-			});
-			// Seed the store so the new session is selectable before the catalog
-			// emits its own sessions:updated (which overwrites this stub).
-			const now = new Date().toISOString();
-			const stub: SessionMeta = {
-				id: live.sessionId,
-				tool: "omp",
-				file: live.sessionFile,
-				cwd: live.cwd,
-				title: "",
-				label: "",
-				createdAt: now,
-				updatedAt: now,
-				parentId: null,
-				forkDepth: 0,
-				status: "working",
-				unread: false,
-				pending: null,
-				live: true,
-				externalPid: null,
-				pinned: false,
-				archived: false,
+				model: effectiveModel || null,
+				approvalMode: null, // per-session approval removed — Settings owns it
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
-				repoRoot: null,
-				git: null,
-				result: null,
-				lastAssistant: null,
-				model: model.trim() || null,
-			};
+			});
 			upsert([stub]);
-			const first = prompt.trim();
-			if (first) {
-				await rpcSend(live.sessionId, { type: "prompt", message: first });
-			}
-			selectSession(live.sessionId);
+			await sendFirstPrompt(sessionId, prompt);
+			selectSession(sessionId);
 			closeModal();
 		} catch (e) {
 			setError(errMsg(e));
@@ -171,21 +305,50 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
-			onMouseDown={closeModal}
+			onMouseDown={(e) => {
+				if (e.target === e.currentTarget) closeModal();
+			}}
 		>
 			<div
-				className="w-[480px] rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-300"
+				className="w-[480px] rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-300 shadow-xl"
 				onMouseDown={(e) => e.stopPropagation()}
+				onKeyDown={(e) => {
+					if (isComposing(e)) return;
+					if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+						e.preventDefault();
+						if (canSubmit) void submit();
+					}
+				}}
 			>
 				<div className="mb-3 flex items-center">
-					<span className="flex-1 text-sm font-medium text-neutral-100">新会话</span>
-					<button type="button" onClick={closeModal} className="rounded p-1 text-neutral-400 hover:bg-neutral-800">
+					<span className="flex-1 text-sm font-semibold text-neutral-100">新会话</span>
+					<button
+						type="button"
+						title="关闭 (Esc)"
+						onClick={closeModal}
+						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+					>
 						<X size={15} />
 					</button>
 				</div>
 
-				<label className="mb-1 block text-[11px] text-neutral-400">工作区 / 目录</label>
-				<select value={wsSel} onChange={(e) => setWsSel(e.target.value)} className={clsx(input, "mb-2")}>
+				<div className="mb-1 flex items-center justify-between">
+					<label className="text-[11px] text-neutral-400">工作区 / 目录</label>
+					<button
+						type="button"
+						onClick={handleBrowse}
+						className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300"
+					>
+						<FolderOpen size={12} />
+						<span>浏览系统目录…</span>
+					</button>
+				</div>
+				<select
+					autoFocus
+					value={wsSel}
+					onChange={(e) => setWsSel(e.target.value)}
+					className={clsx(input, "mb-2")}
+				>
 					{propCwd && !workspaces.some((w) => w.path === propCwd) && (
 						<option value={CUSTOM}>传入目录：{propCwd}</option>
 					)}
@@ -198,35 +361,91 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					<option value={CUSTOM}>自定义路径…</option>
 				</select>
 				{wsSel === CUSTOM && (
+					<div className="mb-2">
+						<div className="flex gap-1.5">
+							<input
+								value={customCwd}
+								onChange={(e) => setCustomCwd(e.target.value)}
+								placeholder="/绝对/路径"
+								className={clsx(
+									input,
+									"font-mono flex-1",
+									customCwdError &&
+										"border-rose-500 text-rose-200 focus:border-rose-500 ring-1 ring-rose-500/50",
+								)}
+							/>
+							<button
+								type="button"
+								onClick={handleBrowse}
+								className="flex shrink-0 items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-xs text-neutral-300 hover:bg-neutral-700 hover:text-white"
+								title="浏览目录"
+							>
+								<FolderOpen size={13} />
+								<span>浏览…</span>
+							</button>
+						</div>
+						{customCwdError && (
+							<div className="mt-1 text-[11px] text-rose-400">
+								{customCwdError}
+							</div>
+						)}
+					</div>
+				)}
+
+				<div className="mb-2">
+					<label className="mb-1 block text-[11px] text-neutral-400">
+						模型（可选）
+					</label>
+					<ModelSelect
+						direction="down"
+						widthClass="w-full"
+						icon={false}
+						label={
+							modelSel === CUSTOM_MODEL
+								? "自定义模型…"
+								: modelSel
+									? (availableModels.find(
+											(m) => toModelKey(m.provider, m.id) === modelSel,
+										)?.name ?? modelSel)
+									: "默认（跟随设置）"
+						}
+						buttonClass={`${input} flex items-center justify-between text-left`}
+						models={availableModels.length > 0 ? availableModels : []}
+						currentValue={modelSel}
+						extras={[
+							{ value: "", label: "默认（跟随设置）" },
+							{
+								value: CUSTOM_MODEL,
+								label: "自定义模型…",
+								hint: "手动输入",
+							},
+						]}
+						onSelect={(v: string) => setModelSel(v)}
+					/>
+				</div>
+
+				{modelSel === CUSTOM_MODEL && (
 					<input
-						value={customCwd}
-						onChange={(e) => setCustomCwd(e.target.value)}
-						placeholder="/绝对/路径"
+						value={customModel}
+						onChange={(e) => setCustomModel(e.target.value)}
+						placeholder="例如 anthropic/claude-3-7-sonnet"
 						className={clsx(input, "mb-2 font-mono")}
 					/>
 				)}
 
-				<div className="mb-2 flex gap-2">
-					<div className="flex-1">
-						<label className="mb-1 block text-[11px] text-neutral-400">模型（可选）</label>
-						<input
-							value={model}
-							onChange={(e) => setModel(e.target.value)}
-							placeholder="默认"
-							className={input}
-						/>
-					</div>
-					<div className="flex-1">
-						<label className="mb-1 block text-[11px] text-neutral-400">审批模式</label>
-						<select value={approval} onChange={(e) => setApproval(e.target.value)} className={input}>
-							{APPROVAL_MODES.map((m) => (
-								<option key={m.value} value={m.value}>
-									{m.label}
-								</option>
-							))}
-						</select>
-					</div>
-				</div>
+				{/* Approval mode intentionally not in the primary dialog — it
+				    lives in Settings (会话管理 → 默认审批模式) and applies via
+				    `approvalMode: null` (follow default). */}
+
+
+				{modelSel === CUSTOM_MODEL && (
+					<input
+						value={customModel}
+						onChange={(e) => setCustomModel(e.target.value)}
+						placeholder="例如 anthropic/claude-3-7-sonnet"
+						className={clsx(input, "mb-2 font-mono")}
+					/>
+				)}
 
 				<label
 					className={clsx(
@@ -244,18 +463,69 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					{isRepo === false && <span className="text-[10px]">（所选目录不是 git 仓库）</span>}
 				</label>
 				{useWorktree && (
-					<input
-						value={wtName}
-						onChange={(e) => {
-							setWtName(e.target.value);
-							setWtTouched(true);
-						}}
-						placeholder={`worktree 名称（默认 ${slug}）`}
-						className={clsx(input, "mb-2 font-mono")}
-					/>
-				)}
-				{!wtTouched && useWorktree && (
-					<div className="-mt-1 mb-2 text-[10px] text-neutral-500">将创建 omp/{slug} 分支</div>
+					<div className="mb-2.5 rounded-md border border-neutral-800 bg-neutral-950/40 p-2.5 space-y-2">
+						<div className="grid grid-cols-2 gap-2">
+							<div>
+								<label className="text-[10px] text-neutral-400 block mb-1">
+									基准分支
+								</label>
+								<select
+									value={baseBranch}
+									onChange={(e) => setBaseBranch(e.target.value)}
+									className={input}
+								>
+									{branches.length > 0 ? (
+										branches.map((b) => (
+											<option key={b} value={b}>
+												{b}
+											</option>
+										))
+									) : (
+										<option value="">当前分支 (HEAD)</option>
+									)}
+								</select>
+							</div>
+							<div>
+								<label className="text-[10px] text-neutral-400 block mb-1">
+									分支前缀
+								</label>
+								<input
+									type="text"
+									value={branchPrefix}
+									onChange={(e) => setBranchPrefix(e.target.value)}
+									placeholder="例如 omp/"
+									className={clsx(input, "font-mono")}
+								/>
+							</div>
+						</div>
+
+						<div>
+							<label className="text-[10px] text-neutral-400 block mb-1">
+								Worktree 名称
+							</label>
+							<input
+								value={wtName}
+								onChange={(e) => {
+									setWtName(e.target.value);
+								}}
+								placeholder={`worktree 名称（默认 ${slug}）`}
+								className={clsx(input, "font-mono")}
+							/>
+						</div>
+
+						<div className="text-[11px] text-neutral-400">
+							将创建分支：
+							<span className="font-mono text-indigo-300 ml-1">
+								{branchPrefix}
+								{wtName.trim() || slug}
+							</span>
+							{baseBranch && (
+								<span className="text-neutral-500 ml-1">
+									(基于 {baseBranch})
+								</span>
+							)}
+						</div>
+					</div>
 				)}
 
 				{running.length > 0 && !useWorktree && isRepo === true && (
@@ -270,28 +540,31 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					value={prompt}
 					onChange={(e) => setPrompt(e.target.value)}
 					rows={3}
-					placeholder="创建后立即发送给 Agent"
+					placeholder="创建后立即发送给 Agent（支持 Cmd+Enter 快速创建）"
 					className={clsx(input, "mb-3 resize-none")}
 				/>
 
 				{error && <div className="mb-2 text-xs text-rose-400">{error}</div>}
 
-				<div className="flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={closeModal}
-						className="rounded px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
-					>
-						取消
-					</button>
-					<button
-						type="button"
-						disabled={!canSubmit}
-						onClick={submit}
-						className="rounded bg-indigo-600 px-4 py-1.5 text-xs text-white hover:bg-indigo-500 disabled:opacity-40"
-					>
-						{busy ? "创建中…" : "创建会话"}
-					</button>
+				<div className="flex items-center justify-between">
+					<span className="text-[11px] text-neutral-500">按 Cmd+Enter 快速提交</span>
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={closeModal}
+							className="rounded px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
+						>
+							取消
+						</button>
+						<button
+							type="button"
+							disabled={!canSubmit}
+							onClick={submit}
+							className="rounded bg-indigo-600 px-4 py-1.5 text-xs text-white hover:bg-indigo-500 disabled:opacity-40"
+						>
+							{busy ? "创建中…" : "创建会话"}
+						</button>
+					</div>
 				</div>
 			</div>
 		</div>

@@ -1,6 +1,39 @@
 /** Formatting helpers (Chinese UI text). */
 
-/** 刚刚 / N分钟前 / N小时前 / N天前 — accepts ISO string or epoch ms. */
+/**
+ * 格式化绝对时间为 YYYY-MM-DD HH:mm:ss，用于 title hover 显示。
+ */
+export function absoluteTime(input: string | number | Date): string {
+	const d =
+		typeof input === "string" || input instanceof Date
+			? new Date(input)
+			: new Date(input);
+	if (Number.isNaN(d.getTime())) return "";
+	const pad = (n: number) => String(n).padStart(2, "0");
+	const y = d.getFullYear();
+	const m = pad(d.getMonth() + 1);
+	const date = pad(d.getDate());
+	const h = pad(d.getHours());
+	const min = pad(d.getMinutes());
+	const s = pad(d.getSeconds());
+	return `${y}-${m}-${date} ${h}:${min}:${s}`;
+}
+
+/** 格式化日历日期为 YYYY-MM-DD */
+export function formatDate(input: string | number | Date): string {
+	const d =
+		typeof input === "string" || input instanceof Date
+			? new Date(input)
+			: new Date(input);
+	if (Number.isNaN(d.getTime())) return "";
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * 刚刚 / N分钟前 / N小时前 / N天前；
+ * 超过 30 天时显示日历日期（YYYY-MM-DD）。
+ */
 export function relativeTime(input: string | number | Date): string {
 	const t =
 		typeof input === "string" || input instanceof Date
@@ -15,7 +48,19 @@ export function relativeTime(input: string | number | Date): string {
 	const hours = Math.floor(minutes / 60);
 	if (hours < 24) return `${hours}小时前`;
 	const days = Math.floor(hours / 24);
-	return `${days}天前`;
+	if (days <= 30) return `${days}天前`;
+	return formatDate(t);
+}
+
+/** 返回相对时间与绝对时间 title 的组合对象 */
+export function timeWithTitle(input: string | number | Date): {
+	title: string;
+	text: string;
+} {
+	return {
+		title: absoluteTime(input),
+		text: relativeTime(input),
+	};
 }
 
 /** Truncate to `max` chars with an ellipsis. */

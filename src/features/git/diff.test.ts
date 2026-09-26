@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeSelection, parseUnifiedDiff } from "./diff";
+import { describeSelection, describeSelectionSegments, parseUnifiedDiff } from "./diff";
 
 const DIFF = `diff --git a/a.ts b/a.ts
 index 111..222 100644
@@ -64,5 +64,50 @@ describe("describeSelection", () => {
 		const a = lines.findIndex((l) => l.text === "old");
 		const b = lines.findIndex((l) => l.text === "new");
 		expect(describeSelection(lines, b, a).lines).toBe("2");
+	});
+
+	it("splits cross-hunk selection into separate segments without min-max merging", () => {
+		const multiHunkDiff = `diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -10,3 +10,3 @@
+ ctx1
+-hunk1_del
++hunk1_add
+ ctx2
+@@ -80,3 +80,3 @@
+ ctx80
+-hunk2_del
++hunk2_add
+ ctx82
+`;
+		const lines = parseUnifiedDiff(multiHunkDiff);
+		const from = lines.findIndex((l) => l.text === "hunk1_del");
+		const to = lines.findIndex((l) => l.text === "hunk2_add");
+
+		const segs = describeSelectionSegments(lines, from, to);
+		expect(segs).toHaveLength(2);
+		expect(segs[0].lines).toBe("11-12");
+		expect(segs[0].text).toContain("-hunk1_del");
+		expect(segs[0].text).toContain("+hunk1_add");
+
+		expect(segs[1].lines).toBe("80-81");
+		expect(segs[1].text).toContain("-hunk2_del");
+		expect(segs[1].text).toContain("+hunk2_add");
+
+		const combined = describeSelection(lines, from, to);
+		expect(combined.lines).toBe("11-12, 80-81");
+		// Crucially, lines must NOT be "11-81" (the old min-max bug)
+		expect(combined.lines).not.toBe("11-81");
+	});
+
+	it("splits cross-file selection into separate segments", () => {
+		const lines = parseUnifiedDiff(DIFF);
+		const from = lines.findIndex((l) => l.text === "old");
+		const to = lines.findIndex((l) => l.text === "body");
+		const segs = describeSelectionSegments(lines, from, to);
+		expect(segs.length).toBeGreaterThanOrEqual(2);
+		expect(segs[0].file).toBe("a.ts");
+		expect(segs[segs.length - 1].file).toBe("b.md");
 	});
 });

@@ -76,6 +76,7 @@ pub struct SessionHandle {
     pub shutdown: watch::Sender<bool>,
     pub pending: PendingMap,
     pub pending_ui: parking_lot::Mutex<Vec<PendingUiRequest>>,
+    pub pending_frames: parking_lot::Mutex<Vec<Value>>,
     pub streaming: AtomicBool,
     pub alive: AtomicBool,
     pub last_activity: parking_lot::Mutex<Instant>,
@@ -95,6 +96,7 @@ impl SessionHandle {
             shutdown,
             pending: PendingMap::default(),
             pending_ui: parking_lot::Mutex::new(Vec::new()),
+            pending_frames: parking_lot::Mutex::new(Vec::new()),
             streaming: AtomicBool::new(false),
             alive: AtomicBool::new(true),
             last_activity: parking_lot::Mutex::new(Instant::now()),
@@ -206,12 +208,33 @@ pub(crate) fn sink_from_state(state: &AppState) -> OutSink {
 fn emit_frame(sink: &OutSink, handle: &SessionHandle, frame: &Value) {
     let session_id = handle.session_id.read().clone();
     if session_id.is_empty() {
+        let mut guard = handle.pending_frames.lock();
+        let session_id = handle.session_id.read().clone();
+        if session_id.is_empty() {
+            guard.push(frame.clone());
+            return;
+        }
+        drop(guard);
+        sink(OutEvent::Frame {
+            session_id,
+            frame: frame.clone(),
+        });
         return;
     }
     sink(OutEvent::Frame {
         session_id,
         frame: frame.clone(),
     });
+}
+
+fn drain_pending_frames(sink: &OutSink, handle: &SessionHandle) {
+    let frames = {
+        let mut guard = handle.pending_frames.lock();
+        std::mem::take(&mut *guard)
+    };
+    for frame in frames {
+        emit_frame(sink, handle, &frame);
+    }
 }
 
 /// macOS GUI apps get a minimal PATH — merge the login-shell PATH once and
@@ -375,6 +398,7 @@ pub async fn spawn_with_sink(
         shutdown: shutdown_tx,
         pending: PendingMap::default(),
         pending_ui: parking_lot::Mutex::new(Vec::new()),
+        pending_frames: parking_lot::Mutex::new(Vec::new()),
         streaming: AtomicBool::new(false),
         alive: AtomicBool::new(true),
         last_activity: parking_lot::Mutex::new(Instant::now()),
@@ -407,7 +431,7 @@ pub async fn spawn_with_sink(
 
     // Monitor task owns the child; emits rpc:process on exit and cleans up.
     let monitor_handle = handle.clone();
-    let monitor_sink = sink;
+    let monitor_sink = sink.clone();
     tokio::spawn(monitor(monitor_sink, monitor_handle, child));
 
     // Handshake.
@@ -428,6 +452,7 @@ pub async fn spawn_with_sink(
     }
     let state_resp = send_command(&handle, json!({"type": "get_state"})).await?;
     apply_state(&handle, &state_resp);
+    drain_pending_frames(&sink, &handle);
     let _ = send_command(
         &handle,
         json!({"type": "set_subagent_subscription", "level": "progress"}),
@@ -441,6 +466,7 @@ pub async fn spawn_with_sink(
         .await?;
         let state_resp = send_command(&handle, json!({"type": "get_state"})).await?;
         apply_state(&handle, &state_resp);
+        drain_pending_frames(&sink, &handle);
     }
     Ok(handle)
 }
@@ -642,5 +668,41 @@ mod tests {
             .unwrap_err();
         writer.await.unwrap();
         assert_eq!(err, "nope");
+    }
+
+    #[test]
+    fn emit_frame_buffers_when_session_id_empty_and_drains() {
+        let h = test_handle();
+        *h.session_id.write() = String::new();
+
+        let emitted = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let emitted_clone = emitted.clone();
+        let sink: OutSink = Arc::new(move |ev| {
+            if let OutEvent::Frame { session_id, frame } = ev {
+                emitted_clone.lock().push((session_id, frame));
+            }
+        });
+
+        let frame1 = json!({"type": "available_commands_update", "commands": []});
+        let frame2 = json!({"type": "extension_ui_request", "id": "1"});
+
+        emit_frame(&sink, &h, &frame1);
+        emit_frame(&sink, &h, &frame2);
+
+        // Buffering: nothing emitted yet
+        assert_eq!(emitted.lock().len(), 0);
+        assert_eq!(h.pending_frames.lock().len(), 2);
+
+        // Apply state / set session_id
+        *h.session_id.write() = "s_test_123".to_string();
+        drain_pending_frames(&sink, &h);
+
+        assert_eq!(h.pending_frames.lock().len(), 0);
+        let items = emitted.lock().clone();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].0, "s_test_123");
+        assert_eq!(items[0].1, frame1);
+        assert_eq!(items[1].0, "s_test_123");
+        assert_eq!(items[1].1, frame2);
     }
 }

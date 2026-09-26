@@ -164,3 +164,76 @@ pub async fn tm_stop(
 ) -> Result<(), String> {
     blocking(move || tm::stop(&run_id, remove_worktree)).await
 }
+
+pub fn restore_file(repo: &std::path::Path, path: &str) -> Result<(), String> {
+    let status_out = super::cmd::git(repo, &["status", "--porcelain", "--", path])?;
+    let text = status_out.text();
+    if text.trim_start().starts_with("??") {
+        super::cmd::git_ok(repo, &["clean", "-f", "-d", "--", path])?;
+    } else {
+        let res = super::cmd::git(repo, &["restore", "--staged", "--worktree", "--", path])?;
+        if !res.ok() {
+            super::cmd::git_ok(repo, &["restore", "--", path])?;
+        }
+    }
+    Ok(())
+}
+
+pub fn list_branches(repo: &std::path::Path) -> Result<Vec<String>, String> {
+    let out = super::cmd::git_ok(repo, &["branch", "-a", "--format=%(HEAD) %(refname:short)"])?;
+    let mut current_branch: Option<String> = None;
+    let mut other_branches: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for line in out.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let is_head = trimmed.starts_with('*');
+        let raw_name = trimmed.trim_start_matches('*').trim();
+        if raw_name.is_empty() || raw_name.contains("HEAD") {
+            continue;
+        }
+        let clean_name = if let Some(stripped) = raw_name.strip_prefix("origin/") {
+            stripped
+        } else {
+            raw_name
+        };
+        if clean_name.is_empty() {
+            continue;
+        }
+
+        if is_head {
+            current_branch = Some(clean_name.to_string());
+            seen.insert(clean_name.to_string());
+        } else if !seen.contains(clean_name) {
+            seen.insert(clean_name.to_string());
+            other_branches.push(clean_name.to_string());
+        }
+    }
+
+    let mut result = Vec::new();
+    if let Some(curr) = current_branch {
+        result.push(curr);
+    }
+    result.extend(other_branches);
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn git_restore_file(
+    _state: tauri::State<'_, AppState>,
+    repo: String,
+    path: String,
+) -> Result<(), String> {
+    blocking(move || restore_file(&PathBuf::from(repo), &path)).await
+}
+
+#[tauri::command]
+pub async fn git_list_branches(
+    _state: tauri::State<'_, AppState>,
+    repo: String,
+) -> Result<Vec<String>, String> {
+    blocking(move || list_branches(&PathBuf::from(repo))).await
+}

@@ -1,13 +1,20 @@
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
 	AlertTriangle,
 	Archive,
 	ArchiveRestore,
 	Check,
+	CheckCircle2,
+	ChevronDown,
+	ChevronRight,
+	Copy,
 	CornerDownRight,
 	ExternalLink,
 	FolderInput,
+	FolderOpen,
 	GitBranch,
+	Loader2,
 	MoreHorizontal,
 	Pencil,
 	Pin,
@@ -20,23 +27,60 @@ import {
 } from "lucide-react";
 import React, { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { SessionMeta, Workspace } from "../../lib/contracts";
+import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { relativeTime } from "../../lib/format";
+import { sessionDisplayName } from "../../lib/sessionName";
+import { isComposing, useEscapeKey } from "../../lib/hooks";
 import {
+	acceptSession,
+	deleteSession,
 	gitRemoveWorktree,
 	markSeen,
 	rpcEnsureLive,
 	takeoverExternal,
 	updateSessionMeta,
 } from "../../lib/ipc";
+import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-
+import { archiveSession } from "./archiveUndo";
+import { inferWorktreeName } from "./grouping";
 interface SessionRowProps {
 	session: SessionMeta;
 	depth?: number;
+	/** Extra left padding (px) for nesting under a subgroup header. */
+	indent?: number;
+	/** True when this session has side-chat children in the tree. */
+	hasChildren?: boolean;
+	/** True when its side-chat children are collapsed away. */
+	childrenCollapsed?: boolean;
+	onToggleChildren?: (id: string) => void;
 	workspaces: Workspace[];
-	onError: (err: string) => void;
+	allVisibleIds?: string[];
+	onRowFocus?: () => void;
+	onBatchAction?: (action: "archive" | "pin" | "delete", ids: string[]) => void;
 }
+
+/** Text pill for statuses that need human attention — readable at a glance
+ * where a bare colored dot is not (ZCode/Codex style). */
+const STATUS_PILLS: Record<string, { label: string; cls: string }> = {
+	awaiting_approval: {
+		label: "待审批",
+		cls: "bg-amber-500/15 text-amber-300 border-amber-500/40",
+	},
+	awaiting_answer: {
+		label: "待回答",
+		cls: "bg-sky-500/15 text-sky-300 border-sky-500/40",
+	},
+	review: {
+		label: "待验收",
+		cls: "bg-orange-500/15 text-orange-300 border-orange-500/40",
+	},
+	error: {
+		label: "异常",
+		cls: "bg-rose-500/15 text-rose-300 border-rose-500/40",
+	},
+};
 
 /** Status dot rendering per §11 A spec. */
 function renderStatusDot(status: SessionMeta["status"]) {
@@ -107,35 +151,54 @@ function renderStatusDot(status: SessionMeta["status"]) {
 	}
 }
 
+
 export function SessionRow({
 	session,
 	depth = 0,
+	indent = 0,
+	hasChildren = false,
+	childrenCollapsed = false,
+	onToggleChildren,
 	workspaces,
-	onError,
+	allVisibleIds,
+	onRowFocus,
+	onBatchAction,
 }: SessionRowProps) {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
+	const selectedIds = useUi((s) => s.selectedIds);
+	const highlightId = useUi((s) => s.highlightId);
 	const selectSession = useUi((s) => s.selectSession);
+	const setSelectedIds = useUi((s) => s.setSelectedIds);
+	const toggleSelectId = useUi((s) => s.toggleSelectId);
+	const setHighlightId = useUi((s) => s.setHighlightId);
 	const sessionViewMode = useUi((s) => s.sessionViewMode[session.id] ?? "chat");
 	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
 	const openModal = useUi((s) => s.openModal);
 
 	const isSelected = selectedSessionId === session.id;
+	const isMultiSelected = selectedIds.has(session.id) && selectedIds.size > 1;
+	const isHighlighted = highlightId === session.id && !isSelected;
 	const clampedDepth = Math.min(depth, 3);
+	const deletedWt =
+		!session.git?.worktree &&
+		!session.git?.branch &&
+		inferWorktreeName(session.cwd) !== null;
 
 	// Context menu & action modal states
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuCoords, setMenuCoords] = useState<{ x: number; y: number } | null>(
 		null,
 	);
-	const [showRenameModal, setShowRenameModal] = useState(false);
-	const [renameValue, setRenameValue] = useState(session.title || "");
+	const [isRenaming, setIsRenaming] = useState(false);
+	const [renameDraft, setRenameDraft] = useState(session.title || "");
 	const [showArchiveModal, setShowArchiveModal] = useState(false);
 	const [showAssignModal, setShowAssignModal] = useState(false);
 	const [showTakeoverModal, setShowTakeoverModal] = useState(false);
+	const [busy, setBusy] = useState(false);
 
 	const menuRef = useRef<HTMLDivElement>(null);
+	const renameInputRef = useRef<HTMLInputElement>(null);
 
-	// Close context menu on outside click
 	useEffect(() => {
 		if (!menuOpen) return;
 		const handleClickOutside = (e: globalThis.MouseEvent) => {
@@ -147,25 +210,95 @@ export function SessionRow({
 		return () => window.removeEventListener("mousedown", handleClickOutside);
 	}, [menuOpen]);
 
-	const handleRowClick = async () => {
+	const anyModalOpen =
+		showArchiveModal || showAssignModal || showTakeoverModal;
+
+	const closeAll = () => {
+		setShowArchiveModal(false);
+		setShowAssignModal(false);
+		setShowTakeoverModal(false);
+	};
+	useEscapeKey(() => {
+		if (menuOpen) {
+			setMenuOpen(false);
+			return;
+		}
+		closeAll();
+	}, menuOpen || anyModalOpen);
+
+	const startInlineRename = () => {
+		setRenameDraft(session.title || "");
+		setIsRenaming(true);
+		setMenuOpen(false);
+	};
+
+	const saveInlineRename = async () => {
+		const trimmed = renameDraft.trim();
+		setIsRenaming(false);
+		if (!trimmed || trimmed === session.title) return;
 		try {
-			selectSession(session.id);
+			const updated = await updateSessionMeta(session.id, {
+				customName: trimmed,
+			});
+			useSessions.getState().upsert([updated]);
+			toast.success("已重命名");
+		} catch (err) {
+			toast.error(`重命名失败: ${errMsg(err)}`);
+		}
+	};
+
+	const selectNextSession = () => {
+		if (selectedSessionId === session.id && allVisibleIds && allVisibleIds.length > 0) {
+			const idx = allVisibleIds.indexOf(session.id);
+			const nextId = allVisibleIds[idx + 1] ?? allVisibleIds[idx - 1] ?? null;
+			selectSession(nextId);
+		} else if (selectedSessionId === session.id) {
+			selectSession(null);
+		}
+	};
+
+	const handleRowClick = async (e: React.MouseEvent) => {
+		onRowFocus?.();
+		try {
+			if (e.shiftKey && allVisibleIds && allVisibleIds.length > 0) {
+				const lastId = selectedSessionId || allVisibleIds[0];
+				const fromIdx = allVisibleIds.indexOf(lastId);
+				const toIdx = allVisibleIds.indexOf(session.id);
+				if (fromIdx !== -1 && toIdx !== -1) {
+					const start = Math.min(fromIdx, toIdx);
+					const end = Math.max(fromIdx, toIdx);
+					const range = allVisibleIds.slice(start, end + 1);
+					setSelectedIds(new Set(range));
+					setHighlightId(session.id);
+				} else {
+					selectSession(session.id);
+				}
+			} else if (e.metaKey || e.ctrlKey) {
+				toggleSelectId(session.id);
+				setHighlightId(session.id);
+			} else {
+				selectSession(session.id);
+			}
 			if (session.unread) {
 				await markSeen(session.id);
 				useSessions.getState().upsert([{ ...session, unread: false }]);
 			}
 		} catch (err) {
-			onError(`选择会话失败: ${err instanceof Error ? err.message : String(err)}`);
+			toast.error(`选择会话失败: ${errMsg(err)}`);
 		}
 	};
 
+	// Right-click selects the row if not in multi-selection, then opens the menu.
 	const handleContextMenu = (e: MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
+		onRowFocus?.();
+		if (!selectedIds.has(session.id)) {
+			selectSession(session.id);
+		}
 		setMenuCoords({ x: e.clientX, y: e.clientY });
 		setMenuOpen(true);
 	};
-
 	const handleMenuBtnClick = (e: MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -174,20 +307,6 @@ export function SessionRow({
 		setMenuOpen((prev) => !prev);
 	};
 
-	// 1. Rename
-	const handleRenameSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!renameValue.trim()) return;
-		try {
-			const updated = await updateSessionMeta(session.id, {
-				customName: renameValue.trim(),
-			});
-			useSessions.getState().upsert([updated]);
-			setShowRenameModal(false);
-		} catch (err) {
-			onError(`重命名失败: ${err instanceof Error ? err.message : String(err)}`);
-		}
-	};
 
 	// 2. Pin / Unpin
 	const handleTogglePin = async () => {
@@ -198,43 +317,45 @@ export function SessionRow({
 			});
 			useSessions.getState().upsert([updated]);
 		} catch (err) {
-			onError(`切换置顶失败: ${err instanceof Error ? err.message : String(err)}`);
+			toast.error(`切换置顶失败: ${errMsg(err)}`);
 		}
 	};
 
-	// 3. Archive / Unarchive
+	// 3. Archive / Unarchive — archiving shows an Undo bar at the sidebar.
 	const handleArchiveClick = () => {
 		setMenuOpen(false);
 		if (session.archived) {
-			// Unarchive directly
 			updateSessionMeta(session.id, { archived: false })
 				.then((updated) => useSessions.getState().upsert([updated]))
-				.catch((err) => onError(`取消归档失败: ${err.message || String(err)}`));
+				.catch((err) => toast.error(`取消归档失败: ${errMsg(err)}`));
 			return;
 		}
-
 		if (session.git?.worktree) {
-			// Worktree confirmation required
 			setShowArchiveModal(true);
 		} else {
-			// No worktree, archive directly
-			updateSessionMeta(session.id, { archived: true })
-				.then((updated) => useSessions.getState().upsert([updated]))
-				.catch((err) => onError(`归档失败: ${err.message || String(err)}`));
+			selectNextSession();
+			archiveSession(session).catch((err) =>
+				toast.error(`归档失败: ${errMsg(err)}`),
+			);
 		}
 	};
 
+	const [archiving, setArchiving] = useState(false);
 	const executeArchiveWithWorktree = async (cleanWorktree: boolean) => {
-		setShowArchiveModal(false);
+		if (archiving) return;
+		setArchiving(true);
 		try {
 			if (cleanWorktree && session.git?.worktree) {
 				const repo = session.repoRoot || session.cwd;
 				await gitRemoveWorktree(repo, session.git.worktree, false, false);
 			}
-			const updated = await updateSessionMeta(session.id, { archived: true });
-			useSessions.getState().upsert([updated]);
+			selectNextSession();
+			await archiveSession(session);
+			setShowArchiveModal(false);
 		} catch (err) {
-			onError(`归档及清理失败: ${err instanceof Error ? err.message : String(err)}`);
+			toast.error(`归档及清理失败: ${errMsg(err)}`);
+		} finally {
+			setArchiving(false);
 		}
 	};
 
@@ -247,7 +368,7 @@ export function SessionRow({
 			});
 			useSessions.getState().upsert([updated]);
 		} catch (err) {
-			onError(`分配工作区失败: ${err instanceof Error ? err.message : String(err)}`);
+			toast.error(`分配工作区失败: ${errMsg(err)}`);
 		}
 	};
 
@@ -257,14 +378,18 @@ export function SessionRow({
 		openModal("diagnose", { sessionId: session.id });
 	};
 
-	// 6. Resume
+	// 6. Resume — inline spinner while the RPC channel comes back.
 	const handleResume = async () => {
+		if (busy) return;
 		setMenuOpen(false);
+		setBusy(true);
 		try {
 			await rpcEnsureLive(session.id);
 			selectSession(session.id);
 		} catch (err) {
-			onError(`恢复会话失败: ${err instanceof Error ? err.message : String(err)}`);
+			toast.error(`恢复会话失败: ${errMsg(err)}`);
+		} finally {
+			setBusy(false);
 		}
 	};
 
@@ -278,25 +403,95 @@ export function SessionRow({
 
 	// 8. Takeover External
 	const handleTakeoverConfirm = async () => {
-		setShowTakeoverModal(false);
+		if (busy) return;
+		setBusy(true);
 		try {
 			await takeoverExternal(session.id);
+			setShowTakeoverModal(false);
 			selectSession(session.id);
 		} catch (err) {
-			onError(`接管会话失败: ${err instanceof Error ? err.message : String(err)}`);
+			toast.error(`接管会话失败: ${errMsg(err)}`);
+		} finally {
+			setBusy(false);
 		}
 	};
 
+	// 9. Accept (review) — one click closes the turn; optional archive after.
+	const handleAccept = async (archive: boolean) => {
+		setMenuOpen(false);
+		try {
+			await acceptSession(session.id, archive);
+			toast.success(archive ? "已验收并归档" : "已验收");
+		} catch (err) {
+			toast.error(`验收失败: ${errMsg(err)}`);
+		}
+	};
+
+	// 10. Delete session — permanent; confirm first, refuse while live.
+	const handleDelete = async () => {
+		if (session.live || session.status === "working" || busy) {
+			toast.info("会话仍在运行，请先挂起或停止");
+			return;
+		}
+		const ok = await confirmDialog(
+			`永久删除会话「${sessionDisplayName(session)}」？\n该操作会删除 transcript 文件与全部记录，无法恢复。`,
+			{ danger: true, okLabel: "永久删除", title: "删除会话" },
+		);
+		if (!ok) return;
+		setBusy(true);
+		try {
+			await deleteSession(session.id);
+			useSessions.getState().remove([session.id]);
+			selectNextSession();
+			toast.success("会话已删除");
+		} catch (err) {
+			toast.error(`删除会话失败: ${errMsg(err)}`);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const handleCopy = async (text: string | null | undefined, label: string) => {
+		setMenuOpen(false);
+		if (!text) return;
+		try {
+			await copyText(text);
+			toast.success(`已复制${label}`);
+		} catch (err) {
+			toast.error(`复制失败: ${errMsg(err)}`);
+		}
+	};
+
+	const handleReveal = async () => {
+		setMenuOpen(false);
+		try {
+			await revealItemInDir(session.cwd);
+		} catch (err) {
+			toast.error(`在访达中打开失败: ${errMsg(err)}`);
+		}
+	};
+
+	const updatedAtTs = new Date(
+		session.updatedAt || session.createdAt,
+	).toLocaleString();
+	const pill = STATUS_PILLS[session.status];
+
 	return (
 		<div
+			data-session-id={session.id}
 			onClick={handleRowClick}
 			onContextMenu={handleContextMenu}
-			style={{ paddingLeft: `${8 + clampedDepth * 14}px` }}
+			style={{ paddingLeft: `${8 + indent + clampedDepth * 14}px` }}
 			className={clsx(
 				"group relative flex cursor-pointer select-none items-center justify-between gap-1.5 py-1.5 pr-2 transition-colors",
 				isSelected
-					? "bg-neutral-800 text-neutral-100"
-					: "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
+					? "bg-neutral-800 text-neutral-100 ring-1 ring-inset ring-neutral-700/80"
+					: isMultiSelected
+						? "bg-indigo-950/40 text-neutral-200 border-l-2 border-indigo-500"
+						: isHighlighted
+							? "bg-neutral-800/60 text-neutral-200 ring-1 ring-inset ring-neutral-600/50"
+							: "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
+				deletedWt && "opacity-50",
 			)}
 		>
 			{/* Sub-branch indentation elbow guide */}
@@ -307,74 +502,142 @@ export function SessionRow({
 				/>
 			)}
 
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-				{/* Top line: status dot + unread + label + title */}
-				<div className="flex items-center gap-1.5 min-w-0">
-					{renderStatusDot(session.status)}
-
-					{session.unread && (
-						<span
-							className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
-							title="未读"
-						/>
+			{/* Side-chat children collapse toggle */}
+			{hasChildren ? (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						onToggleChildren?.(session.id);
+					}}
+					className="-ml-1 shrink-0 rounded p-0.5 text-neutral-500 hover:bg-neutral-700/60 hover:text-neutral-200"
+					title={childrenCollapsed ? "展开侧聊" : "折叠侧聊"}
+				>
+					{childrenCollapsed ? (
+						<ChevronRight size={11} />
+					) : (
+						<ChevronDown size={11} />
 					)}
+				</button>
+			) : (
+				<span className="w-[15px] shrink-0" />
+			)}
 
-					<span className="shrink-0 font-mono text-[11px] font-semibold text-neutral-300">
-						{session.label}
+			{/* Single-line Codex-style row: dot · title · pill-or-time · pin */}
+			<div className="flex min-w-0 flex-1 items-center gap-1.5">
+				{busy ? (
+					<Loader2
+						size={10}
+						className="shrink-0 animate-spin text-indigo-400"
+					/>
+				) : (
+					renderStatusDot(session.status)
+				)}
+
+				{session.unread && (
+					<span
+						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
+						title="未读"
+					/>
+				)}
+
+				{isRenaming ? (
+					<input
+						ref={renameInputRef}
+						autoFocus
+						type="text"
+						value={renameDraft}
+						onClick={(e) => e.stopPropagation()}
+						onDoubleClick={(e) => e.stopPropagation()}
+						onChange={(e) => setRenameDraft(e.target.value)}
+						onBlur={saveInlineRename}
+						onKeyDown={(e) => {
+							if (isComposing(e)) return;
+							if (e.key === "Enter") {
+								e.preventDefault();
+								e.stopPropagation();
+								void saveInlineRename();
+							} else if (e.key === "Escape") {
+								e.preventDefault();
+								e.stopPropagation();
+								setIsRenaming(false);
+								setRenameDraft(session.title || "");
+							}
+						}}
+						className="h-5 min-w-0 flex-1 rounded border border-indigo-500 bg-neutral-900 px-1 py-0 text-xs font-medium text-neutral-100 outline-none"
+					/>
+				) : (
+					<span
+						onDoubleClick={(e) => {
+							e.stopPropagation();
+							startInlineRename();
+						}}
+						className="min-w-0 flex-1 cursor-text truncate text-xs font-medium"
+						title={sessionDisplayName(session)}
+					>
+						{sessionDisplayName(session)}
 					</span>
+				)}
 
-					<span className="truncate text-xs font-medium" title={session.title}>
-						{session.title || "未命名会话"}
+				{pill ? (
+					<span
+						className={clsx(
+							"ml-auto shrink-0 rounded border px-1 py-px text-[9px] font-medium",
+							pill.cls,
+						)}
+					>
+						{pill.label}
 					</span>
+				) : (
+					<span
+						title={updatedAtTs}
+						className="ml-auto shrink-0 text-[10px] text-neutral-600"
+					>
+						{relativeTime(session.updatedAt || session.createdAt)}
+					</span>
+				)}
 
-					{session.pinned && (
-						<Pin
-							size={11}
-							className="shrink-0 fill-amber-400/40 text-amber-400"
-							aria-label="已置顶"
-						/>
-					)}
-
-					{session.archived && (
-						<span className="shrink-0 rounded bg-neutral-800 px-1 py-0.2 text-[9px] text-neutral-500">
-							已归档
-						</span>
-					)}
-				</div>
-
-				{/* Second line: relative time · branch · dirty · result badge */}
-				<div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
-					<span>{relativeTime(session.updatedAt || session.createdAt)}</span>
-
-					{session.git?.branch && (
-						<>
-							<span>·</span>
-							<span className="flex items-center gap-0.5 truncate max-w-[100px]">
-								<GitBranch size={10} className="shrink-0" />
-								{session.git.branch}
-							</span>
-						</>
-					)}
-
-					{session.git && session.git.dirty > 0 && (
-						<span
-							className="font-mono text-amber-400 font-semibold"
-							title={`${session.git.dirty} 个未提交改动`}
-						>
-							●{session.git.dirty}
-						</span>
-					)}
-
-					{session.result && (
-						<span
-							className="ml-auto shrink-0 text-xs"
-							title={`${session.result.kind}: ${session.result.summary}`}
-						>
-							{session.result.ok ? "✅" : "❌"}
-						</span>
-					)}
-				</div>
+				{session.pinned && (
+					<Pin
+						size={11}
+						className="shrink-0 fill-amber-400/40 text-amber-400"
+						aria-label="已置顶"
+					/>
+				)}
 			</div>
+
+			{/* Inline quick actions */}
+			{session.status === "review" && (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleAccept(false);
+					}}
+					className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-300 hover:bg-orange-500/20"
+					title="验收此会话（标记本轮完成）"
+				>
+					✅ 验收
+				</button>
+			)}
+			{(session.status === "interrupted" || session.status === "suspended") && (
+				<button
+					type="button"
+					disabled={busy}
+					onClick={(e) => {
+						e.stopPropagation();
+						handleResume();
+					}}
+					className="shrink-0 rounded p-1 text-emerald-400 opacity-0 hover:bg-emerald-500/20 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+					title="恢复会话"
+				>
+					{busy ? (
+						<Loader2 size={12} className="animate-spin" />
+					) : (
+						<Play size={12} />
+					)}
+				</button>
+			)}
 
 			{/* Row Action Menu Button */}
 			<button
@@ -384,7 +647,7 @@ export function SessionRow({
 					"shrink-0 rounded p-1 hover:bg-neutral-700/60 hover:text-neutral-200",
 					menuOpen
 						? "text-neutral-200"
-						: "text-neutral-500 opacity-0 group-hover:opacity-100",
+						: "text-neutral-500 opacity-0 group-hover:opacity-100 focus:opacity-100",
 				)}
 				title="操作菜单"
 			>
@@ -398,24 +661,67 @@ export function SessionRow({
 					style={{
 						position: "fixed",
 						left: `${Math.min(menuCoords.x, window.innerWidth - 200)}px`,
-						top: `${Math.min(menuCoords.y, window.innerHeight - 260)}px`,
+						top: `${Math.min(menuCoords.y, window.innerHeight - 340)}px`,
 						zIndex: 50,
 					}}
 					className="w-44 rounded-md border border-neutral-700 bg-neutral-900 py-1 text-xs shadow-xl text-neutral-300"
 				>
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							setMenuOpen(false);
-							setRenameValue(session.title || "");
-							setShowRenameModal(true);
-						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-					>
-						<Pencil size={13} />
-						重命名
-					</button>
+					{isMultiSelected ? (
+						<>
+							<div className="px-3 py-1 font-semibold text-[11px] text-neutral-400 border-b border-neutral-800">
+								已选 {selectedIds.size} 个会话
+							</div>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									setMenuOpen(false);
+									onBatchAction?.("archive", Array.from(selectedIds));
+								}}
+								className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+							>
+								<Archive size={13} />
+								批量归档
+							</button>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									setMenuOpen(false);
+									onBatchAction?.("pin", Array.from(selectedIds));
+								}}
+								className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+							>
+								<Pin size={13} />
+								批量置顶 / 取消置顶
+							</button>
+							<div className="my-1 border-t border-neutral-800" />
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									setMenuOpen(false);
+									onBatchAction?.("delete", Array.from(selectedIds));
+								}}
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-rose-400 hover:bg-rose-950/50 hover:text-rose-300 text-left"
+							>
+								<Trash2 size={13} />
+								批量删除…
+							</button>
+						</>
+					) : (
+						<>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									startInlineRename();
+								}}
+								className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+							>
+								<Pencil size={13} />
+								重命名
+							</button>
 
 					<button
 						type="button"
@@ -444,6 +750,20 @@ export function SessionRow({
 						)}
 						{session.archived ? "取消归档" : "归档会话"}
 					</button>
+
+					{session.status === "review" && (
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								handleAccept(true);
+							}}
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-orange-300 hover:bg-neutral-800 text-left"
+						>
+							<CheckCircle2 size={13} />
+							验收并归档
+						</button>
+					)}
 
 					<button
 						type="button"
@@ -511,59 +831,79 @@ export function SessionRow({
 							接管会话…
 						</button>
 					)}
+
+					<div className="my-1 border-t border-neutral-800" />
+
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							handleCopy(session.id, "会话 ID");
+						}}
+						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+					>
+						<Copy size={13} />
+						复制会话 ID
+					</button>
+
+					{session.git?.branch && (
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								handleCopy(session.git?.branch, "分支名");
+							}}
+							className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+						>
+							<GitBranch size={13} />
+							复制分支名
+						</button>
+					)}
+
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							handleReveal();
+						}}
+						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+					>
+						<FolderOpen size={13} />
+						在访达中打开
+					</button>
+
+					<div className="my-1 border-t border-neutral-800" />
+
+					<button
+						type="button"
+						disabled={session.live || session.status === "working"}
+						title={
+							session.live || session.status === "working"
+								? "会话仍在运行，请先挂起或停止"
+								: undefined
+						}
+						onClick={(e) => {
+							e.stopPropagation();
+							setMenuOpen(false);
+							handleDelete();
+						}}
+						className="flex w-full items-center gap-2 px-3 py-1.5 text-rose-400 hover:bg-rose-950/50 hover:text-rose-300 text-left disabled:cursor-not-allowed disabled:opacity-40"
+					>
+						<Trash2 size={13} />
+						删除会话…
+					</button>
+						</>
+					)}
 				</div>
 			)}
 
-			{/* Modal 1: Rename */}
-			{showRenameModal && (
-				<div
-					onClick={(e) => e.stopPropagation()}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-				>
-					<form
-						onSubmit={handleRenameSubmit}
-						className="w-full max-w-sm rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-200 shadow-2xl"
-					>
-						<div className="flex items-center justify-between pb-3">
-							<span className="font-semibold text-sm">重命名会话</span>
-							<button
-								type="button"
-								onClick={() => setShowRenameModal(false)}
-								className="text-neutral-400 hover:text-neutral-200"
-							>
-								<X size={16} />
-							</button>
-						</div>
-						<input
-							type="text"
-							value={renameValue}
-							onChange={(e) => setRenameValue(e.target.value)}
-							autoFocus
-							className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-100 focus:border-indigo-500 focus:outline-none"
-							placeholder="输入新的会话名称"
-						/>
-						<div className="mt-4 flex justify-end gap-2 text-xs">
-							<button
-								type="button"
-								onClick={() => setShowRenameModal(false)}
-								className="rounded px-3 py-1.5 text-neutral-400 hover:bg-neutral-800"
-							>
-								取消
-							</button>
-							<button
-								type="submit"
-								className="rounded bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-500"
-							>
-								保存
-							</button>
-						</div>
-					</form>
-				</div>
-			)}
 
 			{/* Modal 2: Archive with Worktree Confirmation */}
 			{showArchiveModal && (
 				<div
+					onMouseDown={(e) => {
+						if (e.target === e.currentTarget) setShowArchiveModal(false);
+					}}
 					onClick={(e) => e.stopPropagation()}
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
 				>
@@ -590,8 +930,9 @@ export function SessionRow({
 						<div className="mt-4 flex flex-col gap-2 text-xs">
 							<button
 								type="button"
+								disabled={archiving}
 								onClick={() => executeArchiveWithWorktree(false)}
-								className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-left hover:bg-neutral-700"
+								className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-left hover:bg-neutral-700 disabled:opacity-50"
 							>
 								<div className="font-semibold text-neutral-200">
 									仅归档会话 (保留工作树)
@@ -603,11 +944,16 @@ export function SessionRow({
 
 							<button
 								type="button"
+								disabled={archiving}
 								onClick={() => executeArchiveWithWorktree(true)}
-								className="rounded border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-left hover:bg-rose-900/40 text-rose-200"
+								className="rounded border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-left hover:bg-rose-900/40 text-rose-200 disabled:opacity-50"
 							>
 								<div className="font-semibold flex items-center gap-1.5">
-									<Trash2 size={13} />
+									{archiving ? (
+										<Loader2 size={13} className="animate-spin" />
+									) : (
+										<Trash2 size={13} />
+									)}
 									归档并清理工作树
 								</div>
 								<div className="text-[11px] text-rose-300/80">
@@ -630,6 +976,9 @@ export function SessionRow({
 			{/* Modal 3: Assign to Workspace */}
 			{showAssignModal && (
 				<div
+					onMouseDown={(e) => {
+						if (e.target === e.currentTarget) setShowAssignModal(false);
+					}}
 					onClick={(e) => e.stopPropagation()}
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
 				>
@@ -640,6 +989,7 @@ export function SessionRow({
 								type="button"
 								onClick={() => setShowAssignModal(false)}
 								className="text-neutral-400 hover:text-neutral-200"
+								title="关闭"
 							>
 								<X size={16} />
 							</button>
@@ -685,6 +1035,9 @@ export function SessionRow({
 			{/* Modal 4: Takeover Confirmation */}
 			{showTakeoverModal && (
 				<div
+					onMouseDown={(e) => {
+						if (e.target === e.currentTarget) setShowTakeoverModal(false);
+					}}
 					onClick={(e) => e.stopPropagation()}
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
 				>
@@ -701,6 +1054,7 @@ export function SessionRow({
 						<div className="mt-4 flex justify-end gap-2 text-xs">
 							<button
 								type="button"
+								disabled={busy}
 								onClick={() => setShowTakeoverModal(false)}
 								className="rounded px-3 py-1.5 text-neutral-400 hover:bg-neutral-800"
 							>
@@ -708,9 +1062,11 @@ export function SessionRow({
 							</button>
 							<button
 								type="button"
+								disabled={busy}
 								onClick={handleTakeoverConfirm}
-								className="rounded bg-purple-600 px-3 py-1.5 text-white hover:bg-purple-500"
+								className="flex items-center gap-1.5 rounded bg-purple-600 px-3 py-1.5 text-white hover:bg-purple-500 disabled:opacity-60"
 							>
+								{busy && <Loader2 size={12} className="animate-spin" />}
 								确定接管
 							</button>
 						</div>

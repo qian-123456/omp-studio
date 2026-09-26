@@ -72,4 +72,27 @@ describe("held queue", () => {
 		q.clear(SID);
 		expect(localStorage.getItem("ompws-held:s1")).toBeNull();
 	});
+
+	it("can explicitly dismiss and restore queue bar", () => {
+		const q = useHeldQueue.getState();
+		q.push(SID, "msg");
+		expect(useHeldQueue.getState().dismissed[SID]).toBe(false);
+		q.setDismissed(SID, true);
+		expect(useHeldQueue.getState().dismissed[SID]).toBe(true);
+		q.setDismissed(SID, false);
+		expect(useHeldQueue.getState().dismissed[SID]).toBe(false);
+	});
+
+	it("maintains stable item IDs across updates to prevent focus loss", () => {
+		const q = useHeldQueue.getState();
+		q.push(SID, "hello");
+		const idBefore = useHeldQueue.getState().queues[SID][0].id;
+		expect(idBefore).toBeDefined();
+
+		// Update the text
+		q.update(SID, 0, "hello world!");
+		const idAfter = useHeldQueue.getState().queues[SID][0].id;
+		expect(idAfter).toBe(idBefore);
+		expect(useHeldQueue.getState().queues[SID][0].text).toBe("hello world!");
+	});
 });

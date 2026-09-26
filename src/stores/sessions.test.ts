@@ -337,4 +337,5 @@ describe("useSessions store", () => {
 		useSessions.getState().remove(["s1"]);
 		expect(useSessions.getState().sessions).toEqual({ s2 });
 	});
+
 });

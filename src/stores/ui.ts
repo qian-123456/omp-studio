@@ -5,21 +5,91 @@
 import { create } from "zustand";
 
 export type CenterView = "home" | "session" | "doc" | "backlog" | "settings";
-export type RightTab = "sidechat" | "heatmap" | "todos" | "git" | "services";
+export type RightTab = "explorer" | "sidechat" | "heatmap" | "todos" | "git" | "services";
+
+const STORAGE_KEYS = {
+	sidebarWidth: "ompws:sidebar-width",
+	rightWidth: "ompws:right-width",
+	sidebarOpen: "ompws:sidebar-open",
+	rightOpen: "ompws:right-open",
+	lastSession: "ompws:last-session",
+	rightTab: "ompws:right-tab",
+};
+
+function readNumber(
+	key: string,
+	fallback: number,
+	min: number,
+	max: number,
+): number {
+	try {
+		if (typeof localStorage === "undefined") return fallback;
+		const v = Number(localStorage.getItem(key));
+		if (!Number.isNaN(v) && v >= min && v <= max) return v;
+	} catch {
+		/* storage unavailable */
+	}
+	return fallback;
+}
+
+function readBool(key: string, fallback: boolean): boolean {
+	try {
+		if (typeof localStorage === "undefined") return fallback;
+		const v = localStorage.getItem(key);
+		if (v === "true") return true;
+		if (v === "false") return false;
+	} catch {
+		/* storage unavailable */
+	}
+	return fallback;
+}
+
+function writeStorage(key: string, val: string | number | boolean): void {
+	try {
+		if (typeof localStorage !== "undefined") {
+			localStorage.setItem(key, String(val));
+		}
+	} catch {
+		/* storage quota exceeded / unavailable */
+	}
+}
+
+function readString(key: string): string | null {
+	try {
+		return localStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
 
 export interface UiState {
 	centerView: CenterView;
 	selectedSessionId: string | null;
+	selectedIds: Set<string>;
+	highlightId: string | null;
+	lastSessionId: string | null;
 	docPath: string | null;
-	rightTab: RightTab;
+	rightTab: RightTab | null;
 	rightOpen: boolean;
+	rightWidth: number;
+	sidebarOpen: boolean;
+	sidebarWidth: number;
 	sessionViewMode: Record<string, "chat" | "terminal">;
 	modal: { name: string; props: Record<string, unknown> } | null;
 	selectSession(id: string | null): void;
+	setSelectedIds(ids: Set<string> | string[]): void;
+	toggleSelectId(id: string): void;
+	setHighlightId(id: string | null): void;
+	returnToSession(): void;
 	openDoc(path: string): void;
 	setCenter(v: CenterView): void;
-	setRightTab(t: RightTab): void;
+	setRightTab(t: RightTab | null): void;
 	toggleRight(): void;
+	setRightOpen(open: boolean): void;
+	setRightWidth(w: number): void;
+	toggleSidebar(): void;
+	setSidebarOpen(open: boolean): void;
+	setSidebarWidth(w: number): void;
 	setSessionViewMode(id: string, m: "chat" | "terminal"): void;
 	openModal(name: string, props?: Record<string, unknown>): void;
 	closeModal(): void;
@@ -28,20 +98,92 @@ export interface UiState {
 export const useUi = create<UiState>((set) => ({
 	centerView: "home",
 	selectedSessionId: null,
+	selectedIds: new Set<string>(),
+	highlightId: null,
+	lastSessionId: readString(STORAGE_KEYS.lastSession),
 	docPath: null,
-	rightTab: "todos",
-	rightOpen: true,
+	rightTab: (readString(STORAGE_KEYS.rightTab) as RightTab | null) ?? "explorer",
+	rightOpen: readBool(STORAGE_KEYS.rightOpen, true),
+	rightWidth: readNumber(STORAGE_KEYS.rightWidth, 360, 260, 720),
+	sidebarOpen: readBool(STORAGE_KEYS.sidebarOpen, true),
+	sidebarWidth: readNumber(STORAGE_KEYS.sidebarWidth, 280, 180, 600),
 	sessionViewMode: {},
 	modal: null,
-	selectSession: (id) =>
+	selectSession: (id) => {
+		if (id) writeStorage(STORAGE_KEYS.lastSession, id);
 		set((s) => ({
 			selectedSessionId: id,
+			selectedIds: id ? new Set([id]) : new Set(),
+			highlightId: id,
+			lastSessionId: id ?? s.lastSessionId,
 			centerView: id ? "session" : s.centerView === "session" ? "home" : s.centerView,
-		})),
+		}));
+	},
+	setSelectedIds: (ids) =>
+		set({ selectedIds: ids instanceof Set ? ids : new Set(ids) }),
+	toggleSelectId: (id) =>
+		set((s) => {
+			const next = new Set(s.selectedIds);
+			if (next.has(id)) {
+				next.delete(id);
+			} else {
+				next.add(id);
+			}
+			return { selectedIds: next };
+		}),
+	setHighlightId: (id) => set({ highlightId: id }),
+	returnToSession: () =>
+		set((s) => {
+			const targetId = s.selectedSessionId || s.lastSessionId;
+			if (targetId) {
+				return {
+					selectedSessionId: targetId,
+					centerView: "session",
+				};
+			}
+			return { centerView: "session" };
+		}),
 	openDoc: (path) => set({ docPath: path, centerView: "doc" }),
 	setCenter: (v) => set({ centerView: v }),
-	setRightTab: (t) => set({ rightTab: t, rightOpen: true }),
-	toggleRight: () => set((s) => ({ rightOpen: !s.rightOpen })),
+	setRightTab: (t) => {
+		if (t) {
+			writeStorage(STORAGE_KEYS.rightTab, t);
+			writeStorage(STORAGE_KEYS.rightOpen, true);
+			set({ rightTab: t, rightOpen: true });
+		} else {
+			set({ rightTab: null });
+		}
+	},
+	toggleRight: () =>
+		set((s) => {
+			const next = !s.rightOpen;
+			writeStorage(STORAGE_KEYS.rightOpen, next);
+			return { rightOpen: next };
+		}),
+	setRightOpen: (open) => {
+		writeStorage(STORAGE_KEYS.rightOpen, open);
+		set({ rightOpen: open });
+	},
+	setRightWidth: (w) => {
+		const clamped = Math.min(720, Math.max(260, w));
+		writeStorage(STORAGE_KEYS.rightWidth, clamped);
+		set({ rightWidth: clamped });
+	},
+	toggleSidebar: () =>
+		set((s) => {
+			const next = !s.sidebarOpen;
+			writeStorage(STORAGE_KEYS.sidebarOpen, next);
+			return { sidebarOpen: next };
+		}),
+	setSidebarOpen: (open) => {
+		writeStorage(STORAGE_KEYS.sidebarOpen, open);
+		set({ sidebarOpen: open });
+	},
+	setSidebarWidth: (w) => {
+		const clamped = Math.min(600, Math.max(180, w));
+		writeStorage(STORAGE_KEYS.sidebarWidth, clamped);
+		set({ sidebarWidth: clamped });
+	},
 	setSessionViewMode: (id, m) =>
 		set((s) => ({ sessionViewMode: { ...s.sessionViewMode, [id]: m } })),
 	openModal: (name, props = {}) => set({ modal: { name, props } }),

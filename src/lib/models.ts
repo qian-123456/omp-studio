@@ -2,6 +2,8 @@ export interface ModelOption {
 	provider: string;
 	id: string;
 	name: string;
+	/** Thinking levels this model supports (omp `thinking` array). Empty when unknown/unsupported. */
+	thinking?: string[];
 }
 
 export interface CurrentModelSelection {
@@ -48,10 +50,14 @@ export function parseModels(data: unknown): ModelOption[] {
 			const key = toModelKey(cleanProvider, cleanId);
 			if (!seen.has(key)) {
 				seen.add(key);
+				const thinking = Array.isArray(o.thinking)
+					? o.thinking.filter((t): t is string => typeof t === "string")
+					: undefined;
 				out.push({
 					provider: cleanProvider,
 					id: cleanId,
 					name: (typeof o.name === "string" && o.name.trim()) || key,
+					thinking,
 				});
 			}
 		}

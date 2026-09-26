@@ -1,8 +1,19 @@
 /** [B] Shared prompt-send helpers for Composer and the held-queue bar. */
 
+import { create } from "zustand";
 import { rpcEnsureLive, rpcSend } from "../../lib/ipc";
 import { useLive } from "../../stores/live";
 
+export interface AbortState {
+	aborting: Record<string, boolean>;
+	setAborting(sessionId: string, aborting: boolean): void;
+}
+
+export const useAbortState = create<AbortState>((set) => ({
+	aborting: {},
+	setAborting: (sessionId, aborting) =>
+		set((s) => ({ aborting: { ...s.aborting, [sessionId]: aborting } })),
+}));
 /**
  * Send a user prompt. Ensures the session is live first; while a turn is
  * streaming, `steer` sends it immediately (interrupt path) and otherwise the
@@ -25,9 +36,19 @@ export async function sendPrompt(
 		command.streamingBehavior = opts?.steer ? "steer" : "followUp";
 	}
 	await rpcSend(sessionId, command);
+	// Optimistic echo: the prompt only lands in items via a transcript
+	// fetch (mount / turn end), so without this the sent message is
+	// invisible for the whole turn.
+	useLive.getState().addUserEcho(sessionId, trimmed);
 }
 
-/** Abort the running turn. */
+/** Abort the running turn with stopping transition state. */
 export async function abortTurn(sessionId: string): Promise<void> {
-	await rpcSend(sessionId, { type: "abort" });
+	useAbortState.getState().setAborting(sessionId, true);
+	try {
+		await rpcSend(sessionId, { type: "abort" });
+	} catch (err) {
+		useAbortState.getState().setAborting(sessionId, false);
+		throw err;
+	}
 }

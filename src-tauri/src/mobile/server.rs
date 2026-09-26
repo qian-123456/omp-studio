@@ -265,10 +265,10 @@ async fn todo_act<B: Backend>(
     Json(body): Json<ActBody>,
 ) -> ApiResult<Value> {
     validate_id(&id)?;
-    if body.action != "done" && body.action != "ignore" {
+    if body.action != "done" && body.action != "ignore" && body.action != "reopen" {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "action 必须是 done 或 ignore".into(),
+            "action 必须是 done、ignore 或 reopen".into(),
         ));
     }
     ctx.backend

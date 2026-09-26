@@ -32,11 +32,12 @@ pub async fn list(state: &AppState, include_closed: bool) -> Vec<Todo> {
     store::list(&state.db.lock(), include_closed, sys, sup).unwrap_or_default()
 }
 
-/// `action`: "done" | "ignore".
+/// `action`: "done" | "ignore" | "reopen".
 pub async fn act(state: &AppState, id: &str, action: &str) -> Result<(), String> {
     let status = match action {
         "done" => TodoStatus::Done,
         "ignore" => TodoStatus::Ignored,
+        "reopen" => TodoStatus::Open,
         other => return Err(format!("unknown action: {other}")),
     };
     let todo = {

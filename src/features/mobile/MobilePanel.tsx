@@ -2,21 +2,33 @@
  * [E] Pairing / tunnel panel (rendered inside SettingsPage, §11 E).
  * LAN server controls, QR pairing, cloudflared tunnel, device revocation.
  */
+import {
+	Copy,
+	Globe,
+	Loader2,
+	Network,
+	Power,
+	QrCode,
+	Save,
+	ShieldAlert,
+	Smartphone,
+	X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MobileStatus, PairingInfo, Settings } from "../../lib/contracts";
+import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import {
 	getSettings,
-	installStatusExtensionGlobally,
 	mobileCreatePairing,
 	mobileRevokeAll,
 	mobileStart,
 	mobileStatus,
 	mobileStop,
-	saveSettings,
 	tunnelStart,
 	tunnelStop,
 } from "../../lib/ipc";
-
+import { useSettings } from "../settings/store";
+import { toast } from "../../lib/toast";
 type PairTarget = "lan" | "tunnel";
 
 export function MobilePanel() {
@@ -84,7 +96,9 @@ export function MobilePanel() {
 		try {
 			await fn();
 		} catch (e) {
-			setError(String(e));
+			const msg = errMsg(e);
+			setError(msg);
+			toast.error(msg);
 		} finally {
 			setBusy(null);
 		}
@@ -107,9 +121,11 @@ export function MobilePanel() {
 			const p = Number(port);
 			if (!Number.isInteger(p) || p <= 0 || p > 65535) {
 				setError("端口必须是 1-65535 的整数");
+				toast.error("端口必须是 1-65535 的整数");
 				return;
 			}
-			await saveSettings({ ...settings, mobilePort: p });
+			await useSettings.getState().update({ mobilePort: p });
+			toast.success("端口已保存，重启服务后生效");
 			setNotice("端口已保存，重启手机访问后生效");
 			await refresh();
 		});
@@ -119,6 +135,7 @@ export function MobilePanel() {
 			const info = await mobileCreatePairing(viaTunnel);
 			setPairing(info);
 			setPairTarget(viaTunnel ? "tunnel" : "lan");
+			toast.info("已生成配对二维码（5分钟内有效）");
 		});
 
 	const applyTunnel = () =>
@@ -129,13 +146,11 @@ export function MobilePanel() {
 				return;
 			}
 			// Persist all tunnel fields in one save (backend validates named mode).
-			const next: Settings = {
-				...settings,
+			await useSettings.getState().update({
 				tunnelMode,
 				tunnelName: tunnelName.trim() || null,
 				tunnelHostname: tunnelHost.trim() || null,
-			};
-			await saveSettings(next);
+			});
 			if (tunnelMode === "off") {
 				await tunnelStop();
 			} else {
@@ -146,33 +161,39 @@ export function MobilePanel() {
 
 	const revokeAll = () =>
 		run("revoke", async () => {
-			if (!window.confirm("撤销所有已配对设备？手机端需要重新扫码配对。")) return;
+			const confirmed = await confirmDialog(
+				"确定要撤销所有已配对设备吗？手机端将无法继续访问，需要重新扫码配对。",
+				{
+					danger: true,
+					title: "撤销所有已配对设备",
+					okLabel: "全部撤销",
+				},
+			);
+			if (!confirmed) return;
 			await mobileRevokeAll();
-			setNotice("已撤销全部设备");
-		});
-
-	const installExt = () =>
-		run("ext", async () => {
-			const path = await installStatusExtensionGlobally();
-			setNotice(`已安装到 ${path}`);
+			toast.success("已撤销全部已配对设备");
+			setNotice("已撤销全部设备，所有旧配对已失效");
 		});
 
 	const mm = Math.floor(expiresIn / 60);
 	const ss = String(expiresIn % 60).padStart(2, "0");
 
 	return (
-		<section className="flex flex-col gap-4 p-4 text-sm">
-			<header className="flex items-center justify-between">
-				<h2 className="text-sm font-semibold text-neutral-200">手机访问</h2>
+		<section className="flex flex-col gap-4 text-xs">
+			<header className="flex items-center justify-between border-b border-neutral-800 pb-3">
+				<div className="flex items-center gap-2">
+					<Smartphone className="h-4 w-4 text-amber-400" />
+					<h2 className="text-sm font-semibold text-neutral-100">手机访问与控制</h2>
+				</div>
 				<span
 					className={
-						"rounded px-2 py-0.5 text-xs " +
+						"rounded-full px-2.5 py-0.5 text-[11px] font-medium " +
 						(status?.running
-							? "bg-emerald-900/50 text-emerald-300"
-							: "bg-neutral-800 text-neutral-400")
+							? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+							: "bg-neutral-800 text-neutral-400 border border-neutral-700")
 					}
 				>
-					{status?.running ? "运行中" : "已停止"}
+					{status?.running ? "● 运行中" : "○ 已停止"}
 				</span>
 			</header>
 
@@ -188,142 +209,208 @@ export function MobilePanel() {
 			)}
 
 			{/* LAN server */}
-			<div className="flex flex-col gap-2 rounded border border-neutral-800 p-3">
-				<div className="text-xs font-medium text-neutral-400">局域网直连</div>
-				<div className="flex items-center gap-2">
-					<label className="text-xs text-neutral-400">端口</label>
+			<div className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3.5">
+				<div className="flex items-center gap-1.5 font-medium text-neutral-300">
+					<Network className="h-3.5 w-3.5 text-neutral-400" />
+					<span>局域网直连 (LAN)</span>
+				</div>
+				<div className="flex flex-wrap items-center gap-2">
+					<label className="text-neutral-400">端口号:</label>
 					<input
-						className="w-20 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs"
+						className="w-24 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 						value={port}
 						onChange={(e) => setPort(e.target.value)}
+						placeholder="7788"
 					/>
 					<button
-						className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+						type="button"
+						className="inline-flex items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-40"
 						disabled={busy !== null}
 						onClick={savePort}
 					>
-						保存端口
+						<Save className="h-3.5 w-3.5" />
+						<span>保存端口</span>
 					</button>
 				</div>
 				{status?.lanUrl && (
-					<div className="text-xs text-neutral-400">
-						地址 <code className="text-neutral-200">{status.lanUrl}</code>
+					<div className="text-[11px] text-neutral-400">
+						局域网地址: <code className="rounded bg-neutral-950 px-1.5 py-0.5 font-mono text-neutral-200">{status.lanUrl}</code>
 					</div>
 				)}
-				<div className="flex gap-2">
+				<div className="flex flex-wrap gap-2 pt-1">
 					<button
-						className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-40"
+						type="button"
+						className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+							status?.running
+								? "border border-rose-900/60 bg-rose-950/20 text-rose-300 hover:bg-rose-950/40"
+								: "bg-amber-500 text-neutral-950 hover:bg-amber-400 font-semibold"
+						}`}
 						disabled={busy !== null}
 						onClick={toggleServer}
 					>
-						{status?.running ? "停止服务" : "启动服务"}
+						{busy === "server" ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Power className="h-3.5 w-3.5" />
+						)}
+						<span>{status?.running ? "停止服务" : "启动服务"}</span>
 					</button>
 					<button
-						className="rounded border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800 disabled:opacity-40"
+						type="button"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-40"
 						disabled={busy !== null || !status?.running}
 						onClick={() => makePairing(false)}
 					>
-						生成配对二维码
+						<QrCode className="h-3.5 w-3.5 text-amber-400" />
+						<span>生成局域网配对码</span>
 					</button>
 				</div>
 			</div>
-
 			{/* Tunnel */}
-			<div className="flex flex-col gap-2 rounded border border-neutral-800 p-3">
-				<div className="text-xs font-medium text-neutral-400">
-					Cloudflare Tunnel
+			<div className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3.5">
+				<div className="flex items-center gap-1.5 font-medium text-neutral-300">
+					<Globe className="h-3.5 w-3.5 text-neutral-400" />
+					<span>Cloudflare Tunnel 公网隧道</span>
 				</div>
 				{status && !status.cloudflaredInstalled && (
-					<div className="text-xs text-amber-400">
-						未安装 cloudflared：brew install cloudflared
+					<div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-2 text-[11px] text-amber-300">
+						未检测到 cloudflared 二进制：建议执行 <code className="font-mono bg-neutral-950 px-1 rounded">brew install cloudflared</code> 安装
 					</div>
 				)}
 				<select
-					className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs"
+					className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 					value={tunnelMode}
 					onChange={(e) => setTunnelMode(e.target.value)}
 				>
-					<option value="off">关闭</option>
-					<option value="quick">临时隧道（trycloudflare）</option>
-					<option value="named">命名隧道（固定域名）</option>
+					<option value="off">关闭隧道 (仅局域网)</option>
+					<option value="quick">临时隧道（trycloudflare - 免配置）</option>
+					<option value="named">命名隧道（指定固定公网域名）</option>
 				</select>
 				{tunnelMode === "named" && (
-					<>
+					<div className="grid grid-cols-2 gap-2">
 						<input
-							className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs"
-							placeholder="隧道名称"
+							className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+							placeholder="隧道名称 (tunnel name)"
 							value={tunnelName}
 							onChange={(e) => setTunnelName(e.target.value)}
 						/>
 						<input
-							className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs"
-							placeholder="公网域名，如 ws.example.com"
+							className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+							placeholder="公网域名 (例如 ws.example.com)"
 							value={tunnelHost}
 							onChange={(e) => setTunnelHost(e.target.value)}
 						/>
-					</>
-				)}
-				{status?.tunnelUrl && (
-					<div className="text-xs text-neutral-400">
-						公网地址{" "}
-						<code className="text-neutral-200">{status.tunnelUrl}</code>
 					</div>
 				)}
-				<div className="flex gap-2">
+				{status?.tunnelUrl && (
+					<div className="text-[11px] text-neutral-400">
+						公网可访问地址:{" "}
+						<code className="rounded bg-neutral-950 px-1.5 py-0.5 font-mono text-neutral-200">{status.tunnelUrl}</code>
+					</div>
+				)}
+				<div className="flex flex-wrap gap-2 pt-1">
 					<button
-						className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-40"
+						type="button"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-40"
 						disabled={busy !== null}
 						onClick={applyTunnel}
 					>
-						{tunnelMode === "off" ? "保存并停止隧道" : "保存并启动隧道"}
+						{busy === "tunnel" ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Globe className="h-3.5 w-3.5" />
+						)}
+						<span>{tunnelMode === "off" ? "保存并停止隧道" : "保存并启动隧道"}</span>
 					</button>
 					<button
-						className="rounded border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800 disabled:opacity-40"
+						type="button"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-40"
 						disabled={busy !== null || !status?.tunnelUrl}
 						onClick={() => makePairing(true)}
 					>
-						生成隧道配对二维码
+						<QrCode className="h-3.5 w-3.5 text-amber-400" />
+						<span>生成公网配对码</span>
 					</button>
 				</div>
 				<div className="text-[11px] leading-4 text-neutral-500">
-					有域名建议绑子域名并配置 Cloudflare Access；无域名可用临时隧道。
+					有域名建议绑子域名并配置 Cloudflare Access；无域名可使用试用临时隧道快速体验。
 				</div>
 			</div>
 
 			{/* Pairing QR */}
 			{pairing && (
-				<div className="flex flex-col items-center gap-2 rounded border border-neutral-800 p-3">
-					<div className="text-xs text-neutral-400">
-						{pairTarget === "tunnel" ? "隧道" : "局域网"}配对码 · {mm}:{ss} 后过期
-						· 一次性
+				<div className="flex flex-col items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 shadow-xl">
+					<div className="flex w-full items-center justify-between border-b border-neutral-800 pb-2">
+						<span className="text-xs font-medium text-neutral-300">
+							{pairTarget === "tunnel" ? "公网隧道" : "局域网"}配对码 · {mm}:{ss} 后过期
+						</span>
+						<button
+							type="button"
+							onClick={() => setPairing(null)}
+							className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+							title="关闭二维码"
+						>
+							<X className="h-4 w-4" />
+						</button>
 					</div>
 					<div
-						className="rounded bg-white p-2 [&_svg]:h-44 [&_svg]:w-44"
+						className="rounded-lg bg-white p-3 [&_svg]:h-44 [&_svg]:w-44"
 						// Backend-generated SVG QR (qrcode crate), not user content.
 						dangerouslySetInnerHTML={{ __html: pairing.qrSvg }}
 					/>
-					<code className="max-w-full break-all text-center text-[11px] text-neutral-500">
-						{pairing.url}
-					</code>
+					<div className="flex w-full items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950 p-2">
+						<code className="flex-1 break-all text-[11px] font-mono text-neutral-300">
+							{pairing.url}
+						</code>
+						<button
+							type="button"
+							onClick={async () => {
+								await copyText(pairing.url);
+								toast.success("配对链接已复制到剪贴板");
+							}}
+							className="inline-flex shrink-0 items-center gap-1 rounded bg-neutral-800 px-2.5 py-1 text-xs text-neutral-200 hover:bg-neutral-700"
+							title="复制配对链接"
+						>
+							<Copy className="h-3.5 w-3.5" />
+							<span>复制链接</span>
+						</button>
+					</div>
 				</div>
 			)}
 
-			{/* Devices + status extension */}
-			<div className="flex flex-col gap-2 rounded border border-neutral-800 p-3">
-				<button
-					className="self-start rounded border border-red-900 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-40"
-					disabled={busy !== null}
-					onClick={revokeAll}
-				>
-					撤销全部已配对设备
-				</button>
-				<button
-					className="self-start rounded border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800 disabled:opacity-40"
-					disabled={busy !== null}
-					onClick={installExt}
-				>
-					安装状态扩展到全局 omp
-				</button>
+			{/* Paired Devices & Access Control */}
+			<div className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3.5">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-2">
+						<Smartphone className="h-4 w-4 text-amber-400" />
+						<span className="text-xs font-semibold text-neutral-200">
+							已配对设备与访问控制
+						</span>
+					</div>
+					<span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] text-neutral-400">
+						{status?.running ? "访问凭据生效中" : "服务已停止"}
+					</span>
+				</div>
+				<div className="rounded-lg bg-neutral-950/60 p-2.5 text-[11px] leading-relaxed text-neutral-400 border border-neutral-800/60">
+					<div className="font-medium text-neutral-300">设备授权模式说明：</div>
+					<p>
+						当前移动端访问采用全局凭据授权机制。受限于现有底层后端接口，应用暂不支持单独罗列已连接的各台移动设备详情或针对单台客户端分别解绑。
+					</p>
+					<p className="mt-1">
+						如需阻止历史配对设备继续访问，可随时点击下方按钮一键撤销全部已发放的授权凭据。
+					</p>
+				</div>
+				<div>
+					<button
+						type="button"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-950/40 disabled:opacity-40"
+						disabled={busy !== null}
+						onClick={revokeAll}
+					>
+						<ShieldAlert className="h-3.5 w-3.5" />
+						<span>撤销全部已配对设备凭据</span>
+					</button>
+				</div>
 			</div>
 		</section>
 	);

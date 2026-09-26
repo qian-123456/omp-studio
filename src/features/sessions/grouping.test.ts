@@ -6,7 +6,9 @@ import {
 	filterSessions,
 	flattenSessionTree,
 	groupSessions,
+	inferWorktreeName,
 	matchesSearch,
+	partitionNodes,
 } from "./grouping";
 
 function makeSession(partial: Partial<SessionMeta>): SessionMeta {
@@ -165,29 +167,163 @@ describe("groupSessions", () => {
 		sort: 1,
 	};
 
-	it("keeps global workspace fixed on top", () => {
-		const sGlobal = makeSession({ id: "sg", workspaceId: "global" });
-		const sProj = makeSession({ id: "sp", workspaceId: "proj1" });
-		const sUnassigned = makeSession({ id: "su", workspaceId: null, cwd: "/random/dir" });
+	it("pins the global workspace group on top and splits unassigned sessions", () => {
+		const sGlobal = makeSession({
+			id: "sg",
+			workspaceId: "global",
+			updatedAt: "2026-09-25T09:00:00Z",
+		});
+		const sProj = makeSession({
+			id: "sp",
+			workspaceId: "proj1",
+			updatedAt: "2026-09-25T08:00:00Z",
+		});
+		const sUnassigned = makeSession({
+			id: "su",
+			workspaceId: null,
+			cwd: "/random/dir",
+			updatedAt: "2026-09-24T10:00:00Z",
+		});
 
 		const result = groupSessions([sGlobal, sProj, sUnassigned], [projectWs, globalWs]);
 
-		expect(result.globalGroup).not.toBeNull();
-		expect(result.globalGroup?.isGlobal).toBe(true);
+		// Global workspace sessions land in the pinned global group (PLAN §67).
+		expect(result.globalGroup?.workspace.id).toBe("global");
 		expect(result.globalGroup?.totalCount).toBe(1);
+		expect(result.globalGroup?.subgroups[0]?.nodes[0].session.id).toBe("sg");
+
+		// Unassigned bucket = sessions with no workspace at all.
+		expect(result.unassigned.map((n) => n.session.id)).toEqual(["su"]);
 
 		expect(result.workspaceGroups).toHaveLength(1);
 		expect(result.workspaceGroups[0].workspace.id).toBe("proj1");
 		expect(result.workspaceGroups[0].totalCount).toBe(1);
-
-		expect(result.unassignedGroup.totalCount).toBe(1);
-		expect(result.unassignedGroup.cwdGroups[0].cwd).toBe("/random/dir");
+		expect(result.totalVisible).toBe(3);
 	});
 
-	it("creates a fallback global group if none exists in workspaces list", () => {
-		const result = groupSessions([], [projectWs]);
-		expect(result.globalGroup).not.toBeNull();
-		expect(result.globalGroup?.isGlobal).toBe(true);
-		expect(result.globalGroup?.workspace.id).toBe("global");
+	it("routes unassigned deleted-worktree sessions into the deleted bucket", () => {
+		const dead = makeSession({
+			id: "dead",
+			workspaceId: null,
+			cwd: "/repo/.cache/wt-dead",
+			git: null,
+		});
+		const alive = makeSession({
+			id: "alive",
+			workspaceId: null,
+			cwd: "/repo",
+			git: { branch: "main", dirty: 0, worktree: null },
+		});
+
+		const result = groupSessions([dead, alive], [], {
+			showDeletedWorktrees: true,
+		});
+		expect(result.unassigned.map((n) => n.session.id)).toEqual(["alive"]);
+		expect(result.deletedNodes.map((n) => n.session.id)).toEqual(["dead"]);
+	});
+
+	it("orders unassigned newest-first regardless of count", () => {
+		const many = Array.from({ length: 15 }, (_, i) =>
+			makeSession({
+				id: `s${i}`,
+				workspaceId: null,
+				updatedAt: new Date(1_700_000_000_000 + i * 1000).toISOString(),
+			}),
+		);
+		const result = groupSessions(many, []);
+		expect(result.unassigned).toHaveLength(15);
+		expect(result.unassigned[0].session.id).toBe("s14"); // newest first
+		expect(result.unassigned[14].session.id).toBe("s0");
+	});
+	it("extracts all pinned sessions into pinnedNodes at top-level", () => {
+		const p1 = makeSession({ id: "p1", pinned: true, updatedAt: "2026-09-25T10:00:00Z" });
+		const u1 = makeSession({ id: "u1", pinned: false, updatedAt: "2026-09-25T09:00:00Z" });
+		const p2 = makeSession({ id: "p2", pinned: true, updatedAt: "2026-09-25T11:00:00Z" });
+		const result = groupSessions([p1, u1, p2], []);
+		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p2", "p1"]);
+	});
+});
+
+describe("partitionNodes", () => {
+	const NOW = Date.parse("2026-09-25T00:00:00Z");
+	const daysAgo = (n: number) =>
+		new Date(NOW - n * 24 * 60 * 60 * 1000).toISOString();
+
+	it("splits by 7-day window and keeps subtrees with their root", () => {
+		const oldParent = makeSession({ id: "old", updatedAt: daysAgo(10) });
+		const oldChild = makeSession({
+			id: "old-child",
+			parentId: "old",
+			updatedAt: daysAgo(1), // recent child still follows its old root
+		});
+		const recent = makeSession({ id: "recent", updatedAt: daysAgo(2) });
+		const nodes = flattenSessionTree(
+			buildSessionTree([oldParent, oldChild, recent]),
+		);
+
+		const { recent: r, older: o } = partitionNodes(nodes, NOW);
+		expect(r.map((n) => n.session.id)).toEqual(["recent"]);
+		expect(o.map((n) => n.session.id)).toEqual(["old", "old-child"]);
+	});
+
+	it("keeps pinned sessions recent regardless of age", () => {
+		const pinned = makeSession({
+			id: "pin",
+			pinned: true,
+			updatedAt: daysAgo(30),
+		});
+		const nodes = flattenSessionTree(buildSessionTree([pinned]));
+
+		const { recent, older } = partitionNodes(nodes, NOW);
+		expect(recent).toHaveLength(1);
+		expect(older).toHaveLength(0);
+	});
+
+	it("treats unparseable updatedAt as recent", () => {
+		const s = makeSession({ id: "bad", updatedAt: "not-a-date" });
+		const nodes = flattenSessionTree(buildSessionTree([s]));
+
+		expect(partitionNodes(nodes, NOW).recent).toHaveLength(1);
+	});
+});
+
+describe("inferWorktreeName & deleted-worktree grouping", () => {
+	it("recovers names from .worktrees and .cache/wt- paths", () => {
+		expect(inferWorktreeName("/repo/.worktrees/wt-layout")).toBe("wt-layout");
+		expect(
+			inferWorktreeName("/repo/.cache/wt-export/sub/dir"),
+		).toBe("wt-export");
+		expect(inferWorktreeName("/repo/src")).toBeNull();
+	});
+
+	it("groups sessions without git badge by inferred worktree", () => {
+		const wt = makeSession({
+			id: "wt",
+			cwd: "/repo/.cache/wt-layout",
+			git: null,
+		});
+		const main = makeSession({ id: "main", cwd: "/repo", git: null });
+
+		const { subgroups, hasMultipleSubgroups } = createSubgroups([wt, main]);
+		expect(hasMultipleSubgroups).toBe(true);
+		const labels = subgroups.map((s) => s.label).sort();
+		expect(labels).toEqual(["wt-layout", "其他"]);
+	});
+});
+
+describe("filterSessions deleted worktrees", () => {
+	it("hides deleted-worktree sessions unless showDeletedWorktrees", () => {
+		const dead = makeSession({
+			id: "dead",
+			cwd: "/repo/.cache/wt-layout",
+			git: null,
+		});
+		const alive = makeSession({ id: "alive", cwd: "/repo", git: null });
+
+		const hidden = filterSessions([dead, alive]);
+		expect(hidden.map((s) => s.id)).toEqual(["alive"]);
+
+		const shown = filterSessions([dead, alive], { showDeletedWorktrees: true });
+		expect(shown).toHaveLength(2);
 	});
 });

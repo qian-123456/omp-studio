@@ -44,22 +44,39 @@ describe("todos logic", () => {
 				createdAt: "2026-09-24T09:00:00Z",
 				updatedAt: "2026-09-24T09:30:00Z",
 			},
+			{
+				id: "t4",
+				kind: "suggestion",
+				source: "supervisor",
+				status: "ignored",
+				sessionId: null,
+				title: "Ignored suggestion",
+				detail: "",
+				payload: {},
+				priority: 10,
+				createdAt: "2026-09-24T09:10:00Z",
+				updatedAt: "2026-09-24T09:40:00Z",
+			},
 		];
 
 		const { open, closed } = splitTodos(todos);
 		expect(open).toHaveLength(2);
 		expect(open[0].id).toBe("t2"); // priority 50 before 20
 		expect(open[1].id).toBe("t1");
-		expect(closed).toHaveLength(1);
-		expect(closed[0].id).toBe("t3");
+		expect(closed).toHaveLength(2);
+		expect(closed[0].id).toBe("t4"); // updatedAt 09:40 before 09:30
+		expect(closed[1].id).toBe("t3");
 	});
-
 	it("buckets subagent statuses correctly", () => {
 		expect(subagentBucket("running")).toBe("running");
 		expect(subagentBucket("completed")).toBe("done");
 		expect(subagentBucket("failed")).toBe("failed");
 		expect(subagentBucket("aborted")).toBe("failed");
-
+		expect(subagentBucket("error")).toBe("failed");
+		expect(subagentBucket("cancelled")).toBe("failed");
+		expect(subagentBucket("killed")).toBe("failed");
+		expect(subagentBucket("succeeded")).toBe("done");
+		expect(subagentBucket("working")).toBe("running");
 		const counts = subagentCounts({
 			s1: { id: "s1", label: "Subagent 1", status: "running" },
 			s2: { id: "s2", label: "Subagent 2", status: "finished" },

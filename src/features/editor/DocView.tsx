@@ -1,21 +1,23 @@
 /** [C] Center "文档" view: md preview/annotate/edit (docs/ARCHITECTURE.md §11 C). */
 
+import CodeMirror, { type ViewUpdate } from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
-import CodeMirror from "@uiw/react-codemirror";
 import clsx from "clsx";
 import { FileText, MessageSquarePlus, RefreshCw, Save, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { confirmDialog, errMsg } from "../../lib/dialogs";
+import { isComposing, useEscapeKey, useShortPath } from "../../lib/hooks";
 import { readTextFile, writeTextFile } from "../../lib/ipc";
+import { basename } from "../../lib/paths";
+import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { basename } from "../git/helpers";
-import { confirmDialog, errMsg, useShortPath } from "../git/ui";
 
-type Tab = "preview" | "edit";
+type Tab = "preview" | "split" | "edit";
 
 /** Tailwind styling for rendered markdown (no typography plugin). */
 const MD: Components = {
@@ -69,12 +71,14 @@ export function DocView({ path }: { path: string }) {
 	const [sel, setSel] = useState<Selection | null>(null);
 	const [comment, setComment] = useState("");
 	const [pickSession, setPickSession] = useState("");
+	const [lastAnnotatedSessionId, setLastAnnotatedSessionId] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const previewRef = useRef<HTMLDivElement>(null);
 
 	const sessions = useSessions((s) => s.sessions);
 	const sessionId = useUi((s) => s.selectedSessionId);
 	const setCenter = useUi((s) => s.setCenter);
+	const selectSession = useUi((s) => s.selectSession);
 	const addAnnotation = useComposer((s) => s.addAnnotation);
 	const short = useShortPath();
 
@@ -149,6 +153,25 @@ export function DocView({ path }: { path: string }) {
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
 	}, [save]);
+	const handleClose = async () => {
+		if (
+			dirty &&
+			!(await confirmDialog(
+				"当前文档有未保存的修改，确定要退出并放弃所有修改吗？",
+				{
+					danger: true,
+					title: "放弃未保存修改",
+					okLabel: "放弃并退出",
+				},
+			))
+		) {
+			return;
+		}
+		setCenter(sessionId ? "session" : "home");
+	};
+
+	useEscapeKey(handleClose);
+
 
 	const reload = async () => {
 		if (dirty && !(await confirmDialog("放弃未保存的修改并重新加载？", { danger: true }))) return;
@@ -158,11 +181,31 @@ export function DocView({ path }: { path: string }) {
 	const captureSelection = () => {
 		const s = window.getSelection();
 		if (!s || s.isCollapsed || !previewRef.current?.contains(s.anchorNode)) {
-			setSel(null);
+			if (!comment.trim()) {
+				setSel(null);
+			}
 			return;
 		}
 		const text = s.toString().trim();
-		setSel(text ? { text } : null);
+		if (text) {
+			setSel({ text });
+		} else if (!comment.trim()) {
+			setSel(null);
+		}
+	};
+
+	const handleCmUpdate = (viewUpdate: ViewUpdate) => {
+		if (viewUpdate.selectionSet) {
+			const mainSel = viewUpdate.state.selection.main;
+			if (!mainSel.empty) {
+				const text = viewUpdate.state.sliceDoc(mainSel.from, mainSel.to).trim();
+				if (text) {
+					setSel({ text });
+				}
+			} else if (!comment.trim()) {
+				setSel(null);
+			}
+		}
 	};
 
 	const annotate = () => {
@@ -174,12 +217,17 @@ export function DocView({ path }: { path: string }) {
 			text: sel.text,
 			comment: comment.trim() || undefined,
 		});
-		setNote(`已添加批注到会话 ${sessions[target]?.label || target.slice(0, 6)}`);
+		const sLabel = sessions[target]?.label || target.slice(0, 6);
+		setLastAnnotatedSessionId(target);
+		setNote(`已添加批注到会话 ${sLabel}`);
+		toast.success(`已添加批注到会话 ${sLabel}`);
+		setTimeout(() => {
+			setNote((n) => (n?.startsWith("已添加批注") ? null : n));
+		}, 2500);
 		setSel(null);
 		setComment("");
 		window.getSelection()?.removeAllRanges();
 	};
-
 	const sessionList = Object.values(sessions).filter((s) => !s.archived);
 	const annTarget = sessionId ?? (pickSession || null);
 
@@ -192,20 +240,41 @@ export function DocView({ path }: { path: string }) {
 					<span className="ml-1.5 text-[10px] text-neutral-500">{short(path)}</span>
 				</span>
 				{dirty && <span className="shrink-0 text-[10px] text-amber-400">● 未保存</span>}
-				{note && <span className="shrink-0 text-[10px] text-emerald-400">{note}</span>}
+				{note && (
+					<div className="flex shrink-0 items-center gap-1.5 text-[10px] text-emerald-400">
+						<span>{note}</span>
+						{lastAnnotatedSessionId && (
+							<button
+								type="button"
+								onClick={() => selectSession(lastAnnotatedSessionId)}
+								className="font-medium text-amber-400 hover:underline"
+							>
+								前往会话查看 →
+							</button>
+						)}
+					</div>
+				)}
 				<span className="flex-1" />
 				<div className="flex rounded border border-neutral-700 text-[11px]">
-					{(["preview", "edit"] as const).map((t) => (
+					{(
+						[
+							{ id: "preview", label: "预览" },
+							{ id: "split", label: "分栏" },
+							{ id: "edit", label: "编辑" },
+						] as const
+					).map((t) => (
 						<button
-							key={t}
+							key={t.id}
 							type="button"
-							onClick={() => setTab(t)}
+							onClick={() => setTab(t.id)}
 							className={clsx(
 								"px-2.5 py-0.5",
-								tab === t ? "bg-neutral-800 text-neutral-100" : "text-neutral-400 hover:text-neutral-200",
+								tab === t.id
+									? "bg-neutral-800 text-neutral-100"
+									: "text-neutral-400 hover:text-neutral-200",
 							)}
 						>
-							{t === "preview" ? "预览" : "编辑"}
+							{t.label}
 						</button>
 					))}
 				</div>
@@ -228,9 +297,9 @@ export function DocView({ path }: { path: string }) {
 				</button>
 				<button
 					type="button"
-					title="关闭"
-					onClick={() => setCenter(sessionId ? "session" : "home")}
-					className="rounded p-1 text-neutral-400 hover:bg-neutral-800"
+					title="关闭 (Esc)"
+					onClick={handleClose}
+					className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
 				>
 					<X size={13} />
 				</button>
@@ -249,7 +318,36 @@ export function DocView({ path }: { path: string }) {
 				</div>
 			)}
 
-			{tab === "preview" ? (
+			{tab === "split" ? (
+				<div className="flex min-h-0 flex-1 overflow-hidden">
+					<div className="flex-1 min-w-0 border-r border-neutral-800 overflow-hidden [&_.cm-editor]:h-full [&_.cm-editor]:bg-neutral-950 [&_.cm-scroller]:font-mono [&_.cm-scroller]:text-xs">
+						<CodeMirror
+							value={draft}
+							onChange={setDraft}
+							onUpdate={handleCmUpdate}
+							extensions={[markdown()]}
+							theme="dark"
+							height="100%"
+							style={{ height: "100%" }}
+							basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: true }}
+						/>
+					</div>
+					<div
+						ref={previewRef}
+						onMouseUp={captureSelection}
+						className="flex-1 min-w-0 overflow-y-auto px-5 py-3 text-sm"
+					>
+						{saved === null && !error && (
+							<div className="py-6 text-center text-xs text-neutral-500">加载中…</div>
+						)}
+						{saved !== null && (
+							<ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MD}>
+								{draft}
+							</ReactMarkdown>
+						)}
+					</div>
+				</div>
+			) : tab === "preview" ? (
 				<div
 					ref={previewRef}
 					onMouseUp={captureSelection}
@@ -267,6 +365,7 @@ export function DocView({ path }: { path: string }) {
 					<CodeMirror
 						value={draft}
 						onChange={setDraft}
+						onUpdate={handleCmUpdate}
 						extensions={[markdown()]}
 						theme="dark"
 						height="100%"
@@ -276,27 +375,42 @@ export function DocView({ path }: { path: string }) {
 				</div>
 			)}
 
-			{sel && tab === "preview" && (
-				<div className="flex shrink-0 items-end gap-2 border-t border-neutral-800 p-2">
+			{sel && (
+				<div className="flex shrink-0 items-end gap-2 border-t border-neutral-800 bg-neutral-900/60 p-2.5 shadow-lg">
 					<div className="min-w-0 flex-1">
-						<div className="mb-1 truncate text-[10px] text-neutral-500" title={sel.text}>
-							「{sel.text.length > 80 ? `${sel.text.slice(0, 80)}…` : sel.text}」
+						<div className="mb-1 truncate text-[10px] text-neutral-400 font-mono" title={sel.text}>
+							划选片段: 「{sel.text.length > 80 ? `${sel.text.slice(0, 80)}…` : sel.text}」
 						</div>
 						<textarea
+							autoFocus
 							value={comment}
 							onChange={(e) => setComment(e.target.value)}
-							placeholder="批注内容（附加到会话输入框）"
+							placeholder="输入批注内容 (⌘+Enter 提交至会话输入框)..."
 							rows={2}
-							className="w-full resize-none rounded border border-neutral-700 bg-neutral-950 p-2 text-xs text-neutral-200 outline-none focus:border-indigo-500"
+							className="w-full resize-none rounded-lg border border-neutral-700 bg-neutral-950 p-2 text-xs text-neutral-200 outline-none focus:border-amber-500"
+							onKeyDown={(e) => {
+								if (isComposing(e)) return;
+								if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+									e.preventDefault();
+									if (annTarget) annotate();
+								}
+								if (e.key === "Escape") {
+									e.preventDefault();
+									if (!comment.trim()) {
+										setSel(null);
+										window.getSelection()?.removeAllRanges();
+									}
+								}
+							}}
 						/>
 					</div>
 					{!sessionId && (
 						<select
 							value={pickSession}
 							onChange={(e) => setPickSession(e.target.value)}
-							className="max-w-32 rounded border border-neutral-700 bg-neutral-950 px-1 py-1 text-xs text-neutral-300"
+							className="max-w-36 rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-300 focus:border-amber-500 focus:outline-none"
 						>
-							<option value="">选择会话…</option>
+							<option value="">选择目标会话…</option>
 							{sessionList.map((s) => (
 								<option key={s.id} value={s.id}>
 									{s.label} {s.title}
@@ -308,23 +422,26 @@ export function DocView({ path }: { path: string }) {
 						type="button"
 						disabled={!annTarget}
 						onClick={annotate}
-						title={annTarget ? "添加批注" : "先选择一个会话"}
-						className="flex items-center gap-1 rounded bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-500 disabled:opacity-40"
+						title={annTarget ? "添加批注 (⌘+Enter)" : "先选择一个会话"}
+						className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3.5 py-1.5 text-xs font-semibold text-neutral-950 hover:bg-amber-400 disabled:opacity-40"
 					>
-						<MessageSquarePlus size={14} /> 批注
+						<MessageSquarePlus size={14} />
+						<span>批注 (⌘Enter)</span>
 					</button>
 					<button
 						type="button"
 						onClick={() => {
 							setSel(null);
+							setComment("");
 							window.getSelection()?.removeAllRanges();
 						}}
-						className="px-2 py-1.5 text-xs text-neutral-400"
+						className="rounded-lg px-2.5 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
 					>
 						取消
 					</button>
 				</div>
 			)}
+
 		</div>
 	);
 }

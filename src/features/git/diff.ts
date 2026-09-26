@@ -69,26 +69,84 @@ export function parseUnifiedDiff(text: string): DiffLine[] {
 	return out;
 }
 
+export interface SelectionAnnotation {
+	file?: string;
+	lines?: string;
+	text: string;
+}
+
+/**
+ * Summarize a selected range of diff lines into one or more segments split by hunk/file boundaries.
+ * Cross-hunk selections produce multiple segments with accurate per-hunk line ranges instead of
+ * merging with min/max across gaps.
+ */
+export function describeSelectionSegments(
+	lines: DiffLine[],
+	from: number,
+	to: number,
+): SelectionAnnotation[] {
+	const [a, b] = from <= to ? [from, to] : [to, from];
+	const slice = lines.slice(a, b + 1);
+
+	const segments: DiffLine[][] = [];
+	let current: DiffLine[] = [];
+
+	for (const line of slice) {
+		if (line.kind === "meta" || line.kind === "hunk") {
+			if (current.length > 0) {
+				segments.push(current);
+				current = [];
+			}
+		} else {
+			if (current.length > 0 && current[0].file !== line.file) {
+				segments.push(current);
+				current = [];
+			}
+			current.push(line);
+		}
+	}
+	if (current.length > 0) {
+		segments.push(current);
+	}
+
+	const prefix = { add: "+", del: "-", ctx: " " } as Record<string, string>;
+
+	return segments.map((seg) => {
+		const nums = seg
+			.map((l) => l.newNo ?? l.oldNo)
+			.filter((n): n is number => n !== undefined);
+		const lo = nums.length ? Math.min(...nums) : undefined;
+		const hi = nums.length ? Math.max(...nums) : undefined;
+		const range = lo === undefined ? undefined : lo === hi ? `${lo}` : `${lo}-${hi}`;
+		return {
+			file: seg[0]?.file,
+			lines: range,
+			text: seg.map((l) => `${prefix[l.kind] ?? " "}${l.text}`).join("\n"),
+		};
+	});
+}
+
 /** Summarize a selected range of diff lines for an annotation. */
 export function describeSelection(
 	lines: DiffLine[],
 	from: number,
 	to: number,
-): { file?: string; lines?: string; text: string } {
-	const [a, b] = from <= to ? [from, to] : [to, from];
-	const picked = lines
-		.slice(a, b + 1)
-		.filter((l) => l.kind === "add" || l.kind === "del" || l.kind === "ctx");
-	const nums = picked
-		.map((l) => l.newNo ?? l.oldNo)
-		.filter((n): n is number => n !== undefined);
-	const lo = nums.length ? Math.min(...nums) : undefined;
-	const hi = nums.length ? Math.max(...nums) : undefined;
-	const range = lo === undefined ? undefined : lo === hi ? `${lo}` : `${lo}-${hi}`;
-	const prefix = { add: "+", del: "-", ctx: " " } as Record<string, string>;
+): SelectionAnnotation {
+	const segs = describeSelectionSegments(lines, from, to);
+	if (segs.length === 0) {
+		return { text: "" };
+	}
+	if (segs.length === 1) {
+		return segs[0];
+	}
+	const file = segs[0]?.file;
+	const lineRanges = segs
+		.map((s) => s.lines)
+		.filter((l): l is string => Boolean(l))
+		.join(", ");
 	return {
-		file: picked[0]?.file,
-		lines: range,
-		text: picked.map((l) => `${prefix[l.kind]}${l.text}`).join("\n"),
+		file,
+		lines: lineRanges || undefined,
+		text: segs.map((s) => s.text).join("\n"),
 	};
 }

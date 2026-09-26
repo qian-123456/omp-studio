@@ -199,6 +199,15 @@ pub fn apply_patch(conn: &Connection, id: &str, patch: &SessionMetaPatch) -> rus
     Ok(())
 }
 
+/// Permanently delete a `session_meta` row (file deletion handled by caller).
+pub fn delete_row(conn: &Connection, id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM session_meta WHERE session_id = ?1",
+        params![id],
+    )?;
+    Ok(())
+}
+
 // ---- workspaces ----
 
 fn kind_from_str(s: &str) -> WorkspaceKind {

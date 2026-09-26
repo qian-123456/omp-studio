@@ -3,22 +3,49 @@
 
 import { create } from "zustand";
 
+export interface HeldItem {
+	id: string;
+	text: string;
+}
+
+let nextHeldId = 1;
+export function generateHeldId(): string {
+	return `held-${Date.now()}-${nextHeldId++}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 const KEY = (sid: string) => `ompws-held:${sid}`;
 
 const storage = {
-	load(sid: string): string[] {
+	load(sid: string): HeldItem[] {
 		try {
 			if (typeof localStorage === "undefined") return [];
 			const raw = localStorage.getItem(KEY(sid));
 			const arr = raw ? (JSON.parse(raw) as unknown) : [];
-			return Array.isArray(arr)
-				? arr.filter((s): s is string => typeof s === "string")
-				: [];
+			if (!Array.isArray(arr)) return [];
+			return arr
+				.filter(
+					(item): item is string | HeldItem =>
+						typeof item === "string" ||
+						(typeof item === "object" &&
+							item !== null &&
+							typeof (item as HeldItem).text === "string"),
+				)
+				.map((item) =>
+					typeof item === "string"
+						? { id: generateHeldId(), text: item }
+						: {
+								id:
+									typeof item.id === "string" && item.id
+										? item.id
+										: generateHeldId(),
+								text: item.text,
+							},
+				);
 		} catch {
 			return [];
 		}
 	},
-	save(sid: string, items: string[]): void {
+	save(sid: string, items: HeldItem[]): void {
 		try {
 			if (typeof localStorage === "undefined") return;
 			if (items.length === 0) localStorage.removeItem(KEY(sid));
@@ -30,8 +57,8 @@ const storage = {
 };
 
 export interface HeldQueueState {
-	/** Queued texts by sessionId. */
-	queues: Record<string, string[]>;
+	/** Queued items by sessionId. */
+	queues: Record<string, HeldItem[]>;
 	/** Sessions whose post-turn prompt bar is dismissed ("继续暂存"). */
 	dismissed: Record<string, boolean>;
 	push(sid: string, text: string): void;
@@ -45,7 +72,7 @@ export interface HeldQueueState {
 }
 
 export const useHeldQueue = create<HeldQueueState>((set, get) => {
-	const write = (sid: string, items: string[]) =>
+	const write = (sid: string, items: HeldItem[]) =>
 		set((s) => {
 			storage.save(sid, items);
 			return {
@@ -53,20 +80,19 @@ export const useHeldQueue = create<HeldQueueState>((set, get) => {
 				dismissed: { ...s.dismissed, [sid]: false },
 			};
 		});
-	const items = (sid: string) =>
+	const items = (sid: string): HeldItem[] =>
 		get().queues[sid] ?? storage.load(sid);
-
 	return {
 		queues: {},
 		dismissed: {},
 		push: (sid, text) => {
 			const t = text.trim();
-			if (t) write(sid, [...items(sid), t]);
+			if (t) write(sid, [...items(sid), { id: generateHeldId(), text: t }]);
 		},
 		update: (sid, index, text) => {
 			const arr = items(sid).slice();
 			if (index >= 0 && index < arr.length) {
-				arr[index] = text;
+				arr[index] = { ...arr[index], text };
 				write(sid, arr);
 			}
 		},
@@ -83,7 +109,7 @@ export const useHeldQueue = create<HeldQueueState>((set, get) => {
 		drain: (sid) => {
 			const arr = items(sid);
 			write(sid, []);
-			return arr;
+			return arr.map((item) => item.text);
 		},
 		setDismissed: (sid, dismissed) =>
 			set((s) => ({ dismissed: { ...s.dismissed, [sid]: dismissed } })),
@@ -92,5 +118,11 @@ export const useHeldQueue = create<HeldQueueState>((set, get) => {
 
 /** Read the queue for a session (hydrates from localStorage on first touch). */
 export function heldItems(sid: string): string[] {
+	const list = useHeldQueue.getState().queues[sid] ?? storage.load(sid);
+	return list.map((i) => i.text);
+}
+
+/** Read the queue items with stable IDs. */
+export function heldQueueItems(sid: string): HeldItem[] {
 	return useHeldQueue.getState().queues[sid] ?? storage.load(sid);
 }

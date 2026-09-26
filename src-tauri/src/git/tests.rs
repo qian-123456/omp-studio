@@ -221,3 +221,47 @@ fn time_machine_runs_and_stops() {
     tm::stop(&idle.id, true).unwrap();
     std::fs::remove_dir_all(&repo).unwrap();
 }
+
+#[test]
+fn restore_file_tracked_and_untracked() {
+    let repo = temp_repo("restore-test");
+    commit(&repo, "tracked.txt", "initial", "init");
+
+    // Modify tracked file
+    std::fs::write(repo.join("tracked.txt"), "modified").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(repo.join("tracked.txt")).unwrap(),
+        "modified"
+    );
+    commands::restore_file(&repo, "tracked.txt").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(repo.join("tracked.txt")).unwrap(),
+        "initial"
+    );
+
+    // Create untracked file
+    let untracked = repo.join("untracked.txt");
+    std::fs::write(&untracked, "new").unwrap();
+    assert!(untracked.exists());
+    commands::restore_file(&repo, "untracked.txt").unwrap();
+    assert!(!untracked.exists());
+
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
+fn list_branches_current_first_and_dedup() {
+    let repo = temp_repo("branches-test");
+    commit(&repo, "a.txt", "1", "init");
+
+    git_ok(&repo, &["branch", "feature-a"]).unwrap();
+    git_ok(&repo, &["branch", "feature-b"]).unwrap();
+    git_ok(&repo, &["checkout", "feature-a"]).unwrap();
+
+    let branches = commands::list_branches(&repo).unwrap();
+    assert_eq!(branches[0], "feature-a");
+    assert!(branches.contains(&"main".to_string()));
+    assert!(branches.contains(&"feature-b".to_string()));
+
+    std::fs::remove_dir_all(&repo).unwrap();
+}

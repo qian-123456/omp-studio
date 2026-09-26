@@ -12,17 +12,23 @@ import { listSessions, listWorkspaces } from "../lib/ipc";
 export interface SessionsState {
 	sessions: Record<string, SessionMeta>;
 	workspaces: Workspace[];
+	/** True once the first `load()` settled — used to render skeleton rows
+	 * instead of flashing the empty state on cold start. */
+	hasLoaded: boolean;
 	load(): Promise<void>;
+	/** Re-fetch just the workspace list (workspace adds/removes emit no event,
+	 *  so `sessions:updated` with an unknown workspaceId triggers this). */
+	refreshWorkspaces(): Promise<void>;
 	upsert(list: SessionMeta[]): void;
 	remove(ids: string[]): void;
 }
-
 interface InFlightLoad {
 	id: number;
 	updatedIds: Set<string>;
 	removedIds: Set<string>;
 }
 
+let workspacesRefreshInFlight: Promise<void> | null = null;
 let nextLoadId = 0;
 let latestAppliedLoadId = 0;
 const activeLoads = new Set<InFlightLoad>();
@@ -30,6 +36,8 @@ const activeLoads = new Set<InFlightLoad>();
 export const useSessions = create<SessionsState>((set) => ({
 	sessions: {},
 	workspaces: [],
+	usages: {},
+	hasLoaded: false,
 	load: async () => {
 		const loadCtx: InFlightLoad = {
 			id: ++nextLoadId,
@@ -85,7 +93,22 @@ export const useSessions = create<SessionsState>((set) => ({
 			});
 		} finally {
 			activeLoads.delete(loadCtx);
+			set({ hasLoaded: true });
 		}
+	},
+	refreshWorkspaces: async () => {
+		if (workspacesRefreshInFlight) return workspacesRefreshInFlight;
+		workspacesRefreshInFlight = (async () => {
+			try {
+				const workspaces = await listWorkspaces();
+				set({ workspaces });
+			} catch {
+				// non-fatal: sidebar keeps last-known groups
+			} finally {
+				workspacesRefreshInFlight = null;
+			}
+		})();
+		return workspacesRefreshInFlight;
 	},
 	upsert: (list) => {
 		if (list.length === 0) return;
@@ -111,7 +134,9 @@ export const useSessions = create<SessionsState>((set) => ({
 		}
 		set((s) => {
 			const sessions = { ...s.sessions };
-			for (const id of ids) delete sessions[id];
+			for (const id of ids) {
+				delete sessions[id];
+			}
 			return { sessions };
 		});
 	},
@@ -119,7 +144,6 @@ export const useSessions = create<SessionsState>((set) => ({
 
 let activeUnlisteners: UnlistenFn[] | null = null;
 let startEventsPromise: Promise<void> | null = null;
-
 /** Wire `sessions:updated`/`sessions:removed` once; call at app start. */
 export async function startSessionEvents(): Promise<void> {
 	if (activeUnlisteners) {
@@ -133,12 +157,20 @@ export async function startSessionEvents(): Promise<void> {
 		const results = await Promise.allSettled([
 			onSessionsUpdated((sessions) => {
 				useSessions.getState().upsert(sessions);
+				// A session arriving under a workspaceId we don't know means a
+				// workspace was added externally (CLI, another app window, DB write)
+				// — workspace changes emit no dedicated event, so refetch here.
+				const known = new Set(
+					useSessions.getState().workspaces.map((w) => w.id),
+				);
+				if (sessions.some((s) => s.workspaceId && !known.has(s.workspaceId))) {
+					void useSessions.getState().refreshWorkspaces();
+				}
 			}),
 			onSessionsRemoved((ids) => {
 				useSessions.getState().remove(ids);
 			}),
 		]);
-
 		const [r1, r2] = results;
 		if (r1.status === "rejected" || r2.status === "rejected") {
 			if (r1.status === "fulfilled") {

@@ -474,7 +474,7 @@ impl Default for Settings {
             supervisor_model: "smol".to_string(),
             smart_context_routing: false,
             idle_suspend_minutes: 15,
-            default_approval_mode: "write".to_string(),
+            default_approval_mode: "yolo".to_string(),
             omp_binary: "omp".to_string(),
             notify_turn_end: true,
             notify_approval: true,
@@ -497,4 +497,34 @@ impl Default for Settings {
 pub struct AppPaths {
     pub data_dir: String,
     pub global_dir: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Model {
+    pub provider: String,
+    pub id: String,
+    pub name: String,
+    /// Thinking levels this model supports (omp `thinking` array), e.g.
+    /// ["low","medium","high","xhigh","max"]. Empty when unknown/unsupported.
+    #[serde(default)]
+    pub thinking: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathCheck {
+    pub exists: bool,
+    pub is_dir: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub is_symlink: bool,
+    pub size: u64,
+    pub readonly: bool,
 }

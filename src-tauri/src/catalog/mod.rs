@@ -410,3 +410,59 @@ pub(crate) fn file_of(session_id: &str) -> Option<PathBuf> {
         .max_by_key(|s| s.mtime)
         .map(|s| s.path.clone())
 }
+
+/// Permanently delete a session: refuse while live, remove its transcript
+/// files and `session_meta` row, then emit `sessions:removed`.
+pub(crate) async fn delete(state: &AppState, session_id: &str) -> Result<(), String> {
+    if !cat().lock().ready {
+        rebuild(state).await;
+    }
+    if crate::rpc::is_live(session_id) {
+        return Err("会话仍在运行，请先挂起或停止".to_string());
+    }
+
+    // Collect every transcript file for this session id.
+    let (paths, meta_file) = {
+        let c = cat().lock();
+        let files: Vec<PathBuf> = c
+            .files
+            .values()
+            .filter(|s| s.head.id == session_id)
+            .map(|s| s.path.clone())
+            .collect();
+        let meta_file = c.metas.get(session_id).map(|m| PathBuf::from(&m.file));
+        (files, meta_file)
+    };
+    if paths.is_empty() && meta_file.is_none() {
+        return Err(format!("session not found: {session_id}"));
+    }
+    let mut gone = std::collections::HashSet::new();
+    for path in paths.iter().chain(meta_file.iter()) {
+        match std::fs::remove_file(path) {
+            Ok(()) => {
+                gone.insert(path.to_string_lossy().to_string());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                gone.insert(path.to_string_lossy().to_string());
+            }
+            Err(e) => {
+                return Err(format!("删除会话文件失败 {}: {e}", path.display()));
+            }
+        }
+    }
+    {
+        let db = state.db.lock();
+        store::delete_row(&db, session_id)
+            .map_err(|e| format!("delete session_meta {session_id}: {e}"))?;
+    }
+    {
+        let mut c = cat().lock();
+        c.files
+            .retain(|p, _| !gone.contains(&p.to_string_lossy().to_string()));
+        c.metas.remove(session_id);
+        c.runtime.remove(session_id);
+        c.external.retain(|p, _| !gone.contains(p));
+    }
+    emit_changes(state, Vec::new(), vec![session_id.to_string()], Vec::new());
+    Ok(())
+}

@@ -37,6 +37,44 @@ describe("live reducer — streaming lifecycle", () => {
 		frame({ type: "message_end", message: msg });
 		expect(live().streamingMessage).toBeNull();
 	});
+
+	it("records thinking start and end timestamps", () => {
+		frame({
+			type: "message_update",
+			timestamp: 1000,
+			message: {
+				id: "m1",
+				role: "assistant",
+				content: [{ type: "thinking", thinking: "analyzing..." }],
+			},
+		});
+		expect(live().thinkingStartedAt).toBe(1000);
+		expect(live().thinkingEndedAt).toBeNull();
+
+		frame({
+			type: "message_update",
+			timestamp: 2500,
+			message: {
+				id: "m1",
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: "analyzing..." },
+					{ type: "text", text: "Here is the answer" },
+				],
+			},
+		});
+		expect(live().thinkingEndedAt).toBe(2500);
+
+		frame({
+			type: "message_end",
+			messageId: "m1",
+			timestamp: 2600,
+		});
+		expect(live().thinkingDurations?.m1).toEqual({
+			startedAt: 1000,
+			endedAt: 2500,
+		});
+	});
 });
 
 describe("live reducer — pending UI", () => {
@@ -116,8 +154,12 @@ describe("live reducer — subagents + commands + tools", () => {
 		});
 		expect(live().tools.t1.status).toBe("done");
 		expect(live().tools.t1.text).toBe("hi\n");
+		expect(live().tools.t1.startedAt).toBeDefined();
+		expect(live().tools.t1.endedAt).toBeDefined();
+		expect(live().tools.t1.endedAt!).toBeGreaterThanOrEqual(
+			live().tools.t1.startedAt!,
+		);
 	});
-
 	it("get_state response fills state", () => {
 		frame({
 			type: "response",
@@ -142,5 +184,89 @@ describe("live reducer — process events", () => {
 		expect(live().alive).toBe(false);
 		expect(live().streaming).toBe(false);
 		expect(live().pendingUi).toHaveLength(0);
+	});
+});
+
+describe("live reducer — scrollToItem and scrollRequest", () => {
+	it("scrollToItem sets scrollRequest with itemId and timestamp, clearScrollRequest resets it", () => {
+		useLive.getState().scrollToItem(SID, "item-42");
+		expect(live().scrollRequest).toBeTruthy();
+		expect(live().scrollRequest?.itemId).toBe("item-42");
+		expect(typeof live().scrollRequest?.timestamp).toBe("number");
+
+		useLive.getState().clearScrollRequest(SID);
+		expect(live().scrollRequest).toBeNull();
+	});
+});
+
+describe("live reducer — pending user echoes", () => {
+	const userItem = (id: string, text: string) => ({
+		id,
+		parentId: null,
+		ts: "t",
+		kind: "user" as const,
+		text,
+		thinking: null,
+		toolCalls: [],
+		toolResult: null,
+		usage: null,
+		model: null,
+		stopReason: null,
+		hidden: false,
+	});
+
+	it("addUserEcho appends a user bubble; non-user items don't consume it", () => {
+		useLive.getState().addUserEcho(SID, "hello there");
+		expect(live().pendingUserEchoes).toHaveLength(1);
+		expect(live().pendingUserEchoes[0].kind).toBe("user");
+		expect(live().pendingUserEchoes[0].text).toBe("hello there");
+
+		useLive.getState().appendItems(SID, [], 10);
+		expect(live().pendingUserEchoes).toHaveLength(1);
+	});
+
+	it("appendItems drops the echo once its user message lands", () => {
+		useLive.getState().addUserEcho(SID, "hello there");
+		useLive.getState().appendItems(SID, [userItem("u1", "hello there")], 20);
+		expect(live().pendingUserEchoes).toHaveLength(0);
+		expect(live().items).toHaveLength(1);
+	});
+
+	it("setItems reconciles echoes and tolerates [Image #N] prefixes", () => {
+		useLive.getState().addUserEcho(SID, "看看这张图");
+		useLive
+			.getState()
+			.setItems(SID, [userItem("u1", "[Image #1, 1568x984] 看看这张图")], 30);
+		expect(live().pendingUserEchoes).toHaveLength(0);
+	});
+
+	it("keeps echo when the arriving user item is a different text", () => {
+		useLive.getState().addUserEcho(SID, "mine");
+		useLive.getState().appendItems(SID, [userItem("u1", "someone else")], 20);
+		expect(live().pendingUserEchoes).toHaveLength(1);
+	});
+
+	it("message_update for a user role never lands in streamingMessage", () => {
+		frame({
+			type: "message_update",
+			message: {
+				role: "user",
+				content: [{ type: "text", text: "hi" }],
+			},
+		});
+		expect(live().streamingMessage).toBeNull();
+		frame({
+			type: "message_update",
+			message: {
+				role: "assistant",
+				content: [{ type: "text", text: "ok" }],
+			},
+		});
+		expect(live().streamingMessage?.role).toBe("assistant");
+	});
+
+	it("message_end without a tracked stream is a no-op", () => {
+		frame({ type: "message_end" });
+		expect(live().streamingMessage).toBeNull();
 	});
 });

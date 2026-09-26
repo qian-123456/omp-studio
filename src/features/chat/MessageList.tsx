@@ -28,6 +28,7 @@ import {
 	isLastInTurn,
 	resolveToolStatus,
 } from "./messageTrace";
+import { useHeldQueue } from "./heldQueue";
 const EMPTY_TOOLS: Record<string, LiveTool> = {};
 
 const asObj = (v: unknown): Record<string, unknown> =>
@@ -528,6 +529,7 @@ export function MessageList({
 	const live = useLive((s) => s.sessions[sessionId]);
 	const items = live?.items ?? [];
 	const streamingMessage = live?.streamingMessage ?? null;
+	const pendingEchoes = live?.pendingUserEchoes ?? [];
 	const [showHidden, setShowHidden] = useState(false);
 	const [toolsExpanded, setToolsExpanded] = useState<boolean | null>(null);
 	const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -551,9 +553,11 @@ export function MessageList({
 		[items, showHidden],
 	);
 
+	// Optimistic user echoes ride at the tail until the transcript confirms
+	// them; they already have kind "user" so ItemRow renders them as bubbles.
 	const rows: (TranscriptItem | "live")[] = streamingMessage
-		? [...visible, "live"]
-		: visible;
+		? [...visible, ...pendingEchoes, "live"]
+		: [...visible, ...pendingEchoes];
 	const hiddenCount = items.length - visible.length;
 
 	const virtualizer = useVirtualizer({
@@ -718,6 +722,13 @@ export function MessageList({
 								key={prompt}
 								type="button"
 								onClick={async () => {
+									// Mirror Composer: while streaming, park the prompt in the
+									// visible held queue instead of a silent followUp send.
+									if (live?.streaming) {
+										useHeldQueue.getState().push(sessionId, prompt);
+										toast.info("已暂存消息，回合结束后可发送");
+										return;
+									}
 									try {
 										await sendPrompt(sessionId, prompt);
 										toast.info("已发送指令");
@@ -756,6 +767,9 @@ export function MessageList({
 									isHighlighted &&
 										"rounded-lg bg-indigo-950/40 ring-2 ring-indigo-500 shadow-lg shadow-indigo-500/20",
 									item === "live" && "opacity-90",
+									item !== "live" &&
+										item.id.startsWith("pending-echo-") &&
+										"opacity-60",
 								)}
 								id={
 									item === "live" ? "msg-live" : `msg-${item.id}`

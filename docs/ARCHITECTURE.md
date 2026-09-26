@@ -325,7 +325,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `read_text_file(path) -> String`, `write_text_file(path, content)` (for the md editor; reject paths > 5 MB)
 
 **D — todos / backlog / notify:**
-- `todos_list(include_closed: bool) -> Vec<Todo>`, `todos_act(id, action: "done"|"ignore")`, `todos_counts() -> TodoCounts`
+- `todos_list(include_closed: bool) -> Vec<Todo>`, `todos_act(id, action: "done"|"ignore"|"reopen")`, `todos_counts() -> TodoCounts`
 - `supervisor_refresh()`
 - `summary_get(session_id, ensure: bool) -> Option<String>`
 - `diagnose_build_prompt(target_session_id) -> String`
