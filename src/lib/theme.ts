@@ -250,7 +250,7 @@ function writeStorage(key: string, value: string): void {
 	}
 }
 
-let themeChoice: ThemeChoice = DEFAULT_THEME;
+let themeChoice: ThemeChoice = "system";
 let fontSize: FontSize = "md";
 let uiScale: UiScale = "standard";
 /** Themes used while the choice is "system": one for OS dark, one for OS light. */

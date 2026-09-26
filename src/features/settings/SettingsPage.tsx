@@ -213,7 +213,7 @@ export function SettingsPage() {
 								<div>
 									<div className="text-xs font-medium text-neutral-200">主题</div>
 									<div className="mt-1 text-[11px] text-neutral-500">
-										先选模式，再从对应列表里挑配色；「跟随系统」按系统明暗自动切换
+										默认跟随系统明暗自动切换；也可固定深色或浅色主题
 									</div>
 									<div className="mt-3">
 										<ThemePicker />

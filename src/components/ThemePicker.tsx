@@ -77,10 +77,19 @@ function ThemeCard({
 }
 
 export function ThemePicker({ compact = false }: { compact?: boolean }) {
-	const [view, setView] = useState<PickerView>("root");
 	const choice = useThemeChoice();
 	const sysDark = useSystemDarkTheme();
 	const sysLight = useSystemLightTheme();
+	// Open expanded into the list matching the current mode instead of the
+	// collapsed root — with the default follow-system choice that means the
+	// day/night pair is visible immediately.
+	const [view, setView] = useState<PickerView>(() =>
+		choice === "system"
+			? "system"
+			: themeById(choice)?.dark
+				? "dark"
+				: "light",
+	);
 
 	const cols = compact ? "grid-cols-3" : "grid-cols-3 sm:grid-cols-4";
 	const card = (
