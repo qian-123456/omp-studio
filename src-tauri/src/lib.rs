@@ -201,7 +201,7 @@ pub fn run() {
             providers::commands::provider_set_enabled,
             providers::commands::provider_reorder,
             providers::commands::provider_test,
-            providers::commands::provider_export_env_text
+            providers::commands::provider_export_env_text,
             // E — mobile + tunnel
             mobile::commands::mobile_start,
             mobile::commands::mobile_stop,

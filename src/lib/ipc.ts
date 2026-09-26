@@ -291,7 +291,6 @@ export const providerTest = (id: string) =>
 /** Plaintext .env text (clipboard only — never persisted by the app). */
 export const providerExportEnvText = (ids?: string[] | null) =>
 	invoke<string>("provider_export_env_text", { ids: ids ?? null });
->>>>>>> feat/api-providers-env
 
 // ---- E — mobile / tunnel ----
 
