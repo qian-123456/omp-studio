@@ -257,7 +257,7 @@ let uiScale: UiScale = "standard";
 let systemDarkTheme: string = DEFAULT_THEME;
 let systemLightTheme: string = "light";
 
-function themeById(id: string): ThemeDef | undefined {
+export function themeById(id: string): ThemeDef | undefined {
 	return THEMES.find((t) => t.id === id);
 }
 
