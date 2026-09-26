@@ -16,7 +16,8 @@ import { ompConfigReset, ompConfigSet } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { groupByOmpTab } from "./ompConfigTabs";
+import { OMP_CONFIG_META, ompConfigGroup, ompConfigTitle } from "./ompConfigMeta";
+import { groupByOmpTab, keyPrefix } from "./ompConfigTabs";
 
 const TYPE_BADGE: Record<string, string> = {
 	boolean: "bg-emerald-500/15 text-emerald-300",
@@ -54,14 +55,15 @@ function draftFor(entry: OmpConfigEntry): string {
 }
 
 /**
- * One config entry: the human-readable description is the primary title and the
- * program key is small secondary text; booleans render a macOS-style switch.
+ * One config entry. Collapsed by default: readable title left, current value /
+ * switch right. Clicking the row expands the long description plus the program
+ * key and type badges; booleans toggle via the macOS-style switch directly.
  */
 function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () => void }) {
+	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState("");
 	const [showValue, setShowValue] = useState(false);
-	const [expanded, setExpanded] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [savedTick, setSavedTick] = useState(false);
 	const [rowError, setRowError] = useState<string | null>(null);
@@ -117,7 +119,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 
 	const reset = async () => {
 		if (
-			!(await confirmDialog(`将 ${entry.key} 重置为 OMP 默认值？`, {
+			!(await confirmDialog(`将「${ompConfigTitle(entry.key)}」(${entry.key}) 重置为 OMP 默认值？`, {
 				danger: true,
 				okLabel: "重置",
 			}))
@@ -137,114 +139,76 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 		}
 	};
 
-	const description = entry.description.trim();
+	const title = ompConfigTitle(entry.key);
+	const detailDescription = (
+		OMP_CONFIG_META[entry.key]?.description ?? entry.description
+	).trim();
 	const badge = TYPE_BADGE[entry.valueType] ?? TYPE_BADGE.string;
 	const badgeLabel = TYPE_LABEL[entry.valueType] ?? entry.valueType;
 	const isBool = entry.valueType === "boolean";
 	const isJson = entry.valueType === "array" || entry.valueType === "record";
+	const isUnset = entry.value === null || entry.value === undefined;
 
 	return (
-		<div className="rounded-lg border border-neutral-800/70 bg-neutral-900/50 p-3">
-			<div className="flex items-start justify-between gap-3">
+		<div className="rounded-lg border border-neutral-800/70 bg-neutral-900/50">
+			{/* Collapsed row: title + value/switch */}
+			<div
+				role="button"
+				tabIndex={0}
+				onClick={() => setOpen(!open)}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						setOpen(!open);
+					}
+				}}
+				className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-neutral-800/30 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
+			>
 				<div className="min-w-0 flex-1">
-					{/* Primary title: real meaning (description); key is secondary. */}
-					<div
-						role={description ? "button" : undefined}
-						tabIndex={description ? 0 : undefined}
-						onClick={() => {
-							if (description) setExpanded(!expanded);
-						}}
-						onKeyDown={(e) => {
-							if (description && e.key === "Enter") {
-								e.preventDefault();
-								setExpanded(!expanded);
-							}
-						}}
-						title={description ? (expanded ? "收起" : "展开") : undefined}
-					>
-						<span
-							className={`text-xs font-medium leading-5 text-neutral-100 ${
-								description && !expanded ? "line-clamp-2" : ""
-							}`}
-						>
-							{description || entry.key}
+					<div className="flex min-w-0 items-center gap-2">
+						<span className="truncate text-xs font-medium text-neutral-100" title={entry.key}>
+							{title}
 						</span>
+						{entry.redacted && (
+							<span
+								className="shrink-0"
+								title="凭据字段：值被 OMP 遮蔽，仅可覆盖写入"
+							>
+								<KeyRound className="h-3 w-3 text-amber-300/80" />
+							</span>
+						)}
+						{savedTick && (
+							<span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-400">
+								<Check className="h-2.5 w-2.5" />
+								<span>已保存</span>
+							</span>
+						)}
 					</div>
-
-					{description ? (
-						<div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-							<span className="break-all font-mono text-[10px] text-neutral-500">
-								{entry.key}
-							</span>
-							<span
-								className={`shrink-0 rounded px-1 py-0.2 text-[9px] font-medium ${badge}`}
-							>
-								{badgeLabel}
-							</span>
-							{entry.redacted && (
-								<span
-									className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] text-amber-300"
-									title="凭据字段：值被 OMP 遮蔽，仅可覆盖写入"
-								>
-									<KeyRound className="h-2.5 w-2.5" />
-									<span>凭据</span>
-								</span>
-							)}
-							{savedTick && (
-								<span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-400">
-									<Check className="h-2.5 w-2.5" />
-									<span>已保存</span>
-								</span>
-							)}
-						</div>
-					) : (
-						<div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-							<span
-								className={`shrink-0 rounded px-1 py-0.2 text-[9px] font-medium ${badge}`}
-							>
-								{badgeLabel}
-							</span>
-							{entry.redacted && (
-								<span
-									className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] text-amber-300"
-									title="凭据字段：值被 OMP 遮蔽，仅可覆盖写入"
-								>
-									<KeyRound className="h-2.5 w-2.5" />
-									<span>凭据</span>
-								</span>
-							)}
-							{savedTick && (
-								<span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-400">
-									<Check className="h-2.5 w-2.5" />
-									<span>已保存</span>
-								</span>
-							)}
-						</div>
-					)}
-
-					{/* Current value (booleans show their switch instead). */}
-					{!isBool && !editing && (
-						<div className="mt-1.5 flex items-center gap-2">
-							<span
-								className={`break-all font-mono text-[11px] ${
-									entry.value === null || entry.value === undefined
-										? "text-neutral-600"
-										: entry.redacted
-											? "text-amber-300/70"
-											: "text-neutral-300"
-								}`}
-							>
-								{formatValue(entry)}
-							</span>
-							{entry.redacted &&
-								(entry.value === null || entry.value === undefined) && (
-									<span className="text-[10px] text-neutral-600">（未配置）</span>
-								)}
+					{isBool && (
+						<div className="mt-0.5 font-mono text-[10px] text-neutral-600">
+							{entry.value === true ? "已开启" : entry.value === false ? "已关闭" : "未设置"}
 						</div>
 					)}
 				</div>
 
-				<div className="flex shrink-0 items-center gap-1 pt-0.5">
+				<div
+					className="flex shrink-0 items-center gap-1"
+					onClick={(e) => e.stopPropagation()}
+				>
+					{!isBool && (
+						<span
+							className={`max-w-[45%] truncate font-mono text-[11px] ${
+								isUnset
+									? "text-neutral-600"
+									: entry.redacted
+										? "text-amber-300/70"
+										: "text-neutral-400"
+							}`}
+							title={formatValue(entry)}
+						>
+							{formatValue(entry)}
+						</span>
+					)}
 					{isBool ? (
 						<Switch
 							checked={entry.value === true}
@@ -276,9 +240,34 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 				</div>
 			</div>
 
+			{/* Expanded detail: description + program key + badges */}
+			{open && !editing && (
+				<div className="space-y-1.5 border-t border-neutral-800/60 px-3 py-2">
+					{detailDescription && (
+						<p className="text-[11px] leading-5 text-neutral-400">{detailDescription}</p>
+					)}
+					<div className="flex flex-wrap items-center gap-1.5">
+						<span
+							className={`shrink-0 rounded px-1 py-0.2 text-[9px] font-medium ${badge}`}
+						>
+							{badgeLabel}
+						</span>
+						{entry.redacted && (
+							<span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] text-amber-300">
+								<KeyRound className="h-2.5 w-2.5" />
+								<span>凭据</span>
+							</span>
+						)}
+						<span className="break-all font-mono text-[10px] text-neutral-600">
+							{entry.key}
+						</span>
+					</div>
+				</div>
+			)}
+
 			{/* Inline editor */}
 			{editing ? (
-				<div className="mt-2">
+				<div className="space-y-1.5 border-t border-neutral-800/60 px-3 py-2">
 					{isJson ? (
 						<textarea
 							value={draft}
@@ -312,11 +301,11 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 						/>
 					)}
 					{entry.valueType === "enum" && (
-						<div className="mt-1 text-[10px] text-neutral-500">
+						<div className="text-[10px] text-neutral-500">
 							枚举值需与 OMP 允许值完全匹配（可先运行 omp config set 查看错误提示中的可选值）
 						</div>
 					)}
-					<div className="mt-1.5 flex items-center gap-2">
+					<div className="flex items-center gap-2">
 						<button
 							type="button"
 							disabled={busy}
@@ -357,7 +346,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 			) : null}
 
 			{rowError && (
-				<div className="mt-1.5 flex items-start gap-1 rounded-lg border border-rose-800/50 bg-rose-950/30 p-1.5 text-[11px] text-rose-300">
+				<div className="flex items-start gap-1 border-t border-neutral-800/60 px-3 py-1.5 text-[11px] text-rose-300">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="break-all">{rowError}</span>
 				</div>
@@ -369,7 +358,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 /**
  * Settings panel bridging to OMP's own config system (`omp config list/set/reset`).
  * The official OMP tab is selected from the settings left nav (controlled from
- * outside); this panel renders only the selected category's entries.
+ * outside); entries are sub-grouped by their schema group (Theme, Composer, …).
  */
 export function OmpConfigSection({
 	activeTab,
@@ -407,9 +396,26 @@ export function OmpConfigSection({
 		if (!q) return base;
 		return base.filter(
 			(e) =>
-				e.key.toLowerCase().includes(q) || e.description.toLowerCase().includes(q),
+				e.key.toLowerCase().includes(q) ||
+				e.description.toLowerCase().includes(q) ||
+				ompConfigTitle(e.key).toLowerCase().includes(q),
 		);
 	}, [activeGroup, query]);
+
+	// Sub-groups by schema group ("Theme", "Composer", …), prefix as fallback.
+	const grouped = useMemo(() => {
+		const map = new Map<string, OmpConfigEntry[]>();
+		for (const entry of rows) {
+			const group = ompConfigGroup(entry.key) ?? keyPrefix(entry.key);
+			const list = map.get(group);
+			if (list) {
+				list.push(entry);
+			} else {
+				map.set(group, [entry]);
+			}
+		}
+		return [...map.entries()];
+	}, [rows]);
 
 	const handleChanged = () => {
 		// Re-list so edited values (and switches elsewhere) stay in sync with omp.
@@ -482,9 +488,25 @@ export function OmpConfigSection({
 					没有匹配的配置项
 				</div>
 			) : (
-				<div className="space-y-2">
-					{rows.map((entry) => (
-						<ConfigRow key={entry.key} entry={entry} onChanged={handleChanged} />
+				<div className="space-y-3">
+					{grouped.map(([group, list]) => (
+						<div key={group} className="space-y-2">
+							{grouped.length > 1 && (
+								<div className="px-1 text-[11px] font-semibold text-neutral-400">
+									{group}
+									<span className="ml-1.5 text-[10px] font-normal text-neutral-600">
+										{list.length} 项
+									</span>
+								</div>
+							)}
+							{list.map((entry) => (
+								<ConfigRow
+									key={entry.key}
+									entry={entry}
+									onChanged={handleChanged}
+								/>
+							))}
+						</div>
 					))}
 				</div>
 			)}
