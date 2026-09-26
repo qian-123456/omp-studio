@@ -10,6 +10,7 @@ mod mobile;
 mod notify;
 mod paths;
 mod prompts;
+mod providers;
 mod rpc;
 mod services;
 mod settings;
@@ -107,6 +108,7 @@ pub fn run() {
             app.manage(state.clone());
 
             // Register event consumers before catalog and process producers start.
+            providers::init();
             todos::init(state.clone());
             backlog::init(state.clone());
             notify::init(state.clone());
@@ -188,6 +190,14 @@ pub fn run() {
             backlog::commands::backlog_build_prompt,
             // D — notify
             notify::commands::notify_test,
+            // providers (API provider manager + encrypted vault)
+            providers::commands::provider_list,
+            providers::commands::provider_save,
+            providers::commands::provider_delete,
+            providers::commands::provider_set_enabled,
+            providers::commands::provider_reorder,
+            providers::commands::provider_test,
+            providers::commands::provider_export_env_text,
             // E — mobile + tunnel
             mobile::commands::mobile_start,
             mobile::commands::mobile_stop,

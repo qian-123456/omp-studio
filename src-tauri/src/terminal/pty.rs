@@ -73,6 +73,10 @@ pub fn open(
     if std::env::var_os("LANG").is_none() {
         cmd.env("LANG", "en_US.UTF-8");
     }
+    // Inject configured API provider keys (best effort; never logged).
+    for (key, value) in crate::providers::env_pairs() {
+        cmd.env(key, value);
+    }
 
     let mut child = pair
         .slave

@@ -528,3 +528,55 @@ pub struct DirEntry {
     pub size: u64,
     pub readonly: bool,
 }
+
+/// API protocol used to talk to a provider.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderApi {
+    /// OpenAI-compatible endpoints (`/models`, `/chat/completions`).
+    #[default]
+    OpenaiCompletions,
+    /// Anthropic Messages API.
+    Anthropic,
+    /// Google Gemini API.
+    Gemini,
+    /// Local Ollama engine (no API key needed).
+    Ollama,
+}
+
+/// Provider metadata (non-secret). Secrets live only in the encrypted vault
+/// (`providers::vault`); `hasKey`/`keyHint` are the only key-derived fields.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConfig {
+    pub id: String,
+    pub name: String,
+    /// Stable identifier `[A-Za-z0-9_-]+`; the vault line key derives from it.
+    pub slug: String,
+    /// Frontend preset this provider was created from, if any.
+    pub preset_id: Option<String>,
+    pub base_url: String,
+    pub api: ProviderApi,
+    /// Env var injected into child processes (e.g. ANTHROPIC_API_KEY).
+    pub env_var: String,
+    pub models: Vec<String>,
+    pub default_model: Option<String>,
+    pub enabled: bool,
+    pub sort: i64,
+    /// True when an encrypted key exists in the vault for this slug.
+    pub has_key: bool,
+    /// Last 4 chars of the key, stored at save time for display.
+    pub key_hint: Option<String>,
+    pub notes: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Result of `provider_test`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderTestResult {
+    pub ok: bool,
+    pub latency_ms: u64,
+    pub detail: String,
+}

@@ -363,6 +363,10 @@ pub async fn spawn_with_sink(
     let mut cmd = build_command(opts, settings);
     let path = augmented_path().await;
     cmd.env("PATH", &path);
+    // Inject configured API provider keys (best effort; never logged).
+    for (key, value) in crate::providers::env_pairs() {
+        cmd.env(key, value);
+    }
 
     let mut child = cmd
         .spawn()

@@ -364,3 +364,38 @@ export interface DirEntry {
 	size: number;
 	readonly: boolean;
 }
+
+/** API protocol used to talk to a provider. */
+export type ProviderApi = "openai_completions" | "anthropic" | "gemini" | "ollama";
+
+/** Provider metadata (non-secret). Secrets live only in the backend vault. */
+export interface ProviderConfig {
+	id: string;
+	name: string;
+	/** Stable identifier [A-Za-z0-9_-]+; the vault line key derives from it. */
+	slug: string;
+	/** Frontend preset this provider was created from, if any. */
+	presetId: string | null;
+	baseUrl: string;
+	api: ProviderApi;
+	/** Env var injected into child processes (e.g. ANTHROPIC_API_KEY). */
+	envVar: string;
+	models: string[];
+	defaultModel: string | null;
+	enabled: boolean;
+	sort: number;
+	/** True when an encrypted key exists in the vault for this slug. */
+	hasKey: boolean;
+	/** Last 4 chars of the key, stored at save time for display. */
+	keyHint: string | null;
+	notes: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+/** Result of `provider_test`. */
+export interface ProviderTestResult {
+	ok: boolean;
+	latencyMs: number;
+	detail: string;
+}

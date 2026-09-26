@@ -3,6 +3,7 @@ import {
 	Bell,
 	Bot,
 	Download,
+	KeyRound,
 	Palette,
 	RefreshCw,
 	Settings as SettingsIcon,
@@ -23,6 +24,7 @@ import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
 import { ThemePicker } from "../../components/ThemePicker";
 import { MobilePanel } from "../mobile/MobilePanel";
+import { ProviderPanel } from "../providers/ProviderPanel";
 import { useSettings } from "./store";
 
 interface ToggleProps {
@@ -241,6 +243,7 @@ export function SettingsPage() {
 	const sections = [
 		{ id: "general", label: "通用", icon: Sliders },
 		{ id: "appearance", label: "外观", icon: Palette },
+		{ id: "providers", label: "API 供应商", icon: KeyRound },
 		{ id: "todos", label: "待办与监工", icon: Sparkles },
 		{ id: "sessions", label: "会话", icon: Bot },
 		{ id: "notifications", label: "通知", icon: Bell },
@@ -404,6 +407,9 @@ export function SettingsPage() {
 							</div>
 						</div>
 					)}
+
+					{/* API providers (renders providers ProviderPanel) */}
+					{activeSection === "providers" && <ProviderPanel />}
 
 					{/* 2. Todos & Supervisor */}
 					{activeSection === "todos" && (

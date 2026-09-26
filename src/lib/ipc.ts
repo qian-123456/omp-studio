@@ -19,6 +19,8 @@ import type {
 	PairingInfo,
 	PathCheck,
 	PendingUiRequest,
+	ProviderConfig,
+	ProviderTestResult,
 	ServiceInfo,
 	SessionMeta,
 	SessionMetaPatch,
@@ -253,6 +255,31 @@ export const backlogBuildPrompt = (id: string) =>
 // ---- D — notify ----
 
 export const notifyTest = () => invoke<void>("notify_test");
+
+// ---- providers ----
+
+export const providerList = () => invoke<ProviderConfig[]>("provider_list");
+
+/** Upsert metadata; `apiKey` non-empty → (re)encrypt into the vault, else keep existing. */
+export const providerSave = (config: ProviderConfig, apiKey?: string | null) =>
+	invoke<ProviderConfig>("provider_save", { config, apiKey: apiKey ?? null });
+
+export const providerDelete = (id: string) =>
+	invoke<void>("provider_delete", { id });
+
+export const providerSetEnabled = (id: string, enabled: boolean) =>
+	invoke<void>("provider_set_enabled", { id, enabled });
+
+export const providerReorder = (ids: string[]) =>
+	invoke<void>("provider_reorder", { ids });
+
+/** Real HTTP probe with the key decrypted in memory only. */
+export const providerTest = (id: string) =>
+	invoke<ProviderTestResult>("provider_test", { id });
+
+/** Plaintext .env text (clipboard only — never persisted by the app). */
+export const providerExportEnvText = (ids?: string[] | null) =>
+	invoke<string>("provider_export_env_text", { ids: ids ?? null });
 
 // ---- E — mobile / tunnel ----
 
