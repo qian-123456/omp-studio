@@ -75,7 +75,7 @@ export function ThemeMenu() {
 					<div className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-neutral-500">
 						主题
 					</div>
-					<div className="grid grid-cols-3 gap-1">
+					<div className="grid max-h-72 grid-cols-3 gap-1 overflow-y-auto">
 						{THEMES.map((t) => (
 							<button
 								key={t.id}

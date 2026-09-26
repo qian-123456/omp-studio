@@ -92,6 +92,42 @@ export const THEMES: ThemeDef[] = [
 		swatch: { bg: "#1a1b26", panel: "#16161e", accent: "#7aa2f7", text: "#c0caf5" },
 	},
 	{
+		id: "kanagawa",
+		name: "Kanagawa",
+		dark: true,
+		swatch: { bg: "#1f1f28", panel: "#16161d", accent: "#7aa89f", text: "#dcd7ba" },
+	},
+	{
+		id: "everforest",
+		name: "Everforest",
+		dark: true,
+		swatch: { bg: "#2b3339", panel: "#1e2327", accent: "#a7c080", text: "#d3c6aa" },
+	},
+	{
+		id: "night-owl",
+		name: "Night Owl",
+		dark: true,
+		swatch: { bg: "#011627", panel: "#01111d", accent: "#c792ea", text: "#d6deeb" },
+	},
+	{
+		id: "ayu-dark",
+		name: "Ayu Dark",
+		dark: true,
+		swatch: { bg: "#0b0e14", panel: "#0d1017", accent: "#ff9940", text: "#bfbdb6" },
+	},
+	{
+		id: "solarized-dark",
+		name: "Solarized Dark",
+		dark: true,
+		swatch: { bg: "#002b36", panel: "#073642", accent: "#2aa198", text: "#93a1a1" },
+	},
+	{
+		id: "sakura",
+		name: "樱花",
+		dark: false,
+		swatch: { bg: "#fdf4f6", panel: "#f9eaee", accent: "#d6336c", text: "#472b36" },
+	},
+	{
 		id: "light",
 		name: "Light",
 		dark: false,
@@ -114,6 +150,18 @@ export const THEMES: ThemeDef[] = [
 		name: "Rosé Pine Dawn",
 		dark: false,
 		swatch: { bg: "#faf4ed", panel: "#fffaf3", accent: "#286983", text: "#575279" },
+	},
+	{
+		id: "solarized-light",
+		name: "Solarized Light",
+		dark: false,
+		swatch: { bg: "#fdf6e3", panel: "#eee8d5", accent: "#268bd2", text: "#4f5d66" },
+	},
+	{
+		id: "github-light",
+		name: "GitHub Light",
+		dark: false,
+		swatch: { bg: "#ffffff", panel: "#f6f8fa", accent: "#0969da", text: "#25292e" },
 	},
 ];
 
