@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "../../lib/toast";
+import { useSettings } from "../settings/store";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { TodoRow } from "./TodoRow";
@@ -33,6 +34,16 @@ export function TodoPanel() {
 	);
 	const [showClosed, setShowClosed] = useState(false);
 	const [focusedIndex, setFocusedIndex] = useState(0);
+	const homeShowCompletedTodos = useSettings(
+		(s) => s.settings?.homeShowCompletedTodos,
+	);
+
+	// Follow the settings default ("默认展开已处理待办"); the user can still collapse manually.
+	useEffect(() => {
+		if (homeShowCompletedTodos !== undefined) {
+			setShowClosed(homeShowCompletedTodos);
+		}
+	}, [homeShowCompletedTodos]);
 
 	useEffect(() => {
 		startTodos();

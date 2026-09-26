@@ -3,9 +3,14 @@ import {
 	Bell,
 	Bot,
 	Download,
+	FileDown,
+	FileUp,
+	FolderOpen,
 	Palette,
 	RefreshCw,
+	RotateCcw,
 	Settings as SettingsIcon,
+	Settings2,
 	Sliders,
 	Smartphone,
 	Sparkles,
@@ -14,16 +19,25 @@ import {
 	Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { Settings } from "../../lib/contracts";
 import { FONT_SIZES, UI_SCALES, setFontSize, setUiScale, useFontSize, useUiScale } from "../../lib/theme";
-import { errMsg } from "../../lib/dialogs";
+import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
-import { installStatusExtensionGlobally, notifyTest } from "../../lib/ipc";
+import {
+	appPaths,
+	installStatusExtensionGlobally,
+	notifyTest,
+	readTextFile,
+	writeTextFile,
+} from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
 import { ThemePicker } from "../../components/ThemePicker";
 import { MobilePanel } from "../mobile/MobilePanel";
-import { useSettings } from "./store";
+import { DEFAULT_SETTINGS, useSettings } from "./store";
+import { OmpConfigSection } from "./OmpConfigSection";
 
 interface ToggleProps {
 	checked: boolean;
@@ -108,6 +122,10 @@ export function SettingsPage() {
 	const [localIdleMinutes, setLocalIdleMinutes] = useState("0");
 	const [localShortcut, setLocalShortcut] = useState("");
 	const [localOmpBinary, setLocalOmpBinary] = useState("");
+	const [localSupervisorInterval, setLocalSupervisorInterval] = useState("30");
+	const [localNewSessionModel, setLocalNewSessionModel] = useState("");
+	const [localQuietFrom, setLocalQuietFrom] = useState("");
+	const [localQuietTo, setLocalQuietTo] = useState("");
 
 	useEffect(() => {
 		if (settings) {
@@ -115,12 +133,20 @@ export function SettingsPage() {
 			setLocalIdleMinutes(String(settings.idleSuspendMinutes));
 			setLocalShortcut(settings.quickCaptureShortcut);
 			setLocalOmpBinary(settings.ompBinary);
+			setLocalSupervisorInterval(String(settings.supervisorIntervalMinutes));
+			setLocalNewSessionModel(settings.newSessionModel ?? "");
+			setLocalQuietFrom(settings.notifyQuietFrom ?? "");
+			setLocalQuietTo(settings.notifyQuietTo ?? "");
 		}
 	}, [
 		settings?.supervisorModel,
 		settings?.idleSuspendMinutes,
 		settings?.quickCaptureShortcut,
 		settings?.ompBinary,
+		settings?.supervisorIntervalMinutes,
+		settings?.newSessionModel,
+		settings?.notifyQuietFrom,
+		settings?.notifyQuietTo,
 	]);
 
 	const handleBack = () => {
@@ -202,6 +228,114 @@ export function SettingsPage() {
 		}
 	};
 
+	const commitSupervisorInterval = async () => {
+		if (!settings) return;
+		const parsed = Math.max(0, parseInt(localSupervisorInterval, 10) || 0);
+		setLocalSupervisorInterval(String(parsed));
+		if (parsed !== settings.supervisorIntervalMinutes) {
+			await handleUpdate({ supervisorIntervalMinutes: parsed });
+		}
+	};
+
+	const commitNewSessionModel = async () => {
+		if (!settings) return;
+		const val = localNewSessionModel.trim();
+		if (val.startsWith("-")) {
+			toast.error("新会话默认模型不能以 '-' 开头");
+			setLocalNewSessionModel(settings.newSessionModel ?? "");
+			return;
+		}
+		if (val !== (settings.newSessionModel ?? "")) {
+			await handleUpdate({ newSessionModel: val === "" ? null : val });
+		}
+	};
+
+	/** Quiet hours must be committed as a pair (backend validation requires both). */
+	const updateQuietHours = (from: string, to: string) => {
+		const nextFrom = from || null;
+		const nextTo = to || null;
+		if ((nextFrom && !nextTo) || (!nextFrom && nextTo)) {
+			toast.error("免打扰时段需要同时设置开始与结束时间");
+			return;
+		}
+		if (nextFrom !== settings?.notifyQuietFrom || nextTo !== settings?.notifyQuietTo) {
+			void handleUpdate({ notifyQuietFrom: nextFrom, notifyQuietTo: nextTo });
+		}
+	};
+
+	const commitQuietHours = () => {
+		updateQuietHours(localQuietFrom, localQuietTo);
+	};
+
+	const clearQuietHours = () => {
+		setLocalQuietFrom("");
+		setLocalQuietTo("");
+		updateQuietHours("", "");
+	};
+
+	const handleOpenDataDir = async () => {
+		try {
+			const paths = await appPaths();
+			await revealItemInDir(paths.dataDir);
+		} catch (err) {
+			toast.error(`打开数据目录失败: ${errMsg(err)}`);
+		}
+	};
+
+	const handleExportSettings = async () => {
+		if (!settings) return;
+		try {
+			const path = await saveDialog({
+				defaultPath: "omp-workspace-settings.json",
+				filters: [{ name: "JSON", extensions: ["json"] }],
+			});
+			if (!path) return;
+			await writeTextFile(path, JSON.stringify(settings, null, "\t"));
+			toast.success("设置已导出");
+		} catch (err) {
+			toast.error(`导出失败: ${errMsg(err)}`);
+		}
+	};
+
+	const handleImportSettings = async () => {
+		try {
+			const path = await openDialog({
+				multiple: false,
+				directory: false,
+				filters: [{ name: "JSON", extensions: ["json"] }],
+			});
+			if (!path || Array.isArray(path)) return;
+			const parsed = JSON.parse(await readTextFile(path)) as unknown;
+			if (
+				typeof parsed !== "object" ||
+				parsed === null ||
+				Array.isArray(parsed)
+			) {
+				toast.error("设置文件格式不正确（需要 JSON 对象）");
+				return;
+			}
+			await handleUpdate(parsed as Partial<Settings>);
+			toast.success("设置已导入");
+		} catch (err) {
+			toast.error(`导入失败: ${errMsg(err)}`);
+		}
+	};
+
+	const handleResetSettings = async () => {
+		const first = await confirmDialog("确定要将所有设置恢复为默认值吗？", {
+			danger: true,
+			okLabel: "恢复默认",
+		});
+		if (!first) return;
+		const second = await confirmDialog(
+			"再次确认：全部设置（含通知、监工、隧道等）都会被重置，且无法撤销。",
+			{ danger: true, okLabel: "确认重置" },
+		);
+		if (!second) return;
+		await handleUpdate(DEFAULT_SETTINGS);
+		toast.success("已恢复默认设置");
+	};
+
 	const handleNotifyTest = async () => {
 		setTestingNotify(true);
 		setNotifySuccess(false);
@@ -245,6 +379,7 @@ export function SettingsPage() {
 		{ id: "sessions", label: "会话", icon: Bot },
 		{ id: "notifications", label: "通知", icon: Bell },
 		{ id: "mobile", label: "手机访问", icon: Smartphone },
+		{ id: "ompconfig", label: "OMP 配置", icon: Settings2 },
 		{ id: "advanced", label: "高级", icon: Wrench },
 	];
 
@@ -454,6 +589,38 @@ export function SettingsPage() {
 										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 									/>
 								</div>
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<label className="block text-xs font-medium text-neutral-200">
+										监工触发间隔 (分钟)
+									</label>
+									<div className="mt-1 text-[11px] text-neutral-500">
+										状态变化后触发监工分析的去抖间隔，最短 5 分钟；0 表示仅手动刷新
+									</div>
+									<input
+										type="number"
+										min={0}
+										max={10080}
+										value={localSupervisorInterval}
+										onChange={(e) => setLocalSupervisorInterval(e.target.value)}
+										onBlur={commitSupervisorInterval}
+										onKeyDown={(e) => {
+											if (e.key === "Enter") {
+												e.currentTarget.blur();
+											}
+										}}
+										className="mt-2 w-32 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+									/>
+								</div>
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<Toggle
+										label="默认展开已处理待办"
+										description="待办队列默认显示已完成的待办，无需手动展开"
+										checked={settings.homeShowCompletedTodos}
+										onChange={(v) => handleUpdate({ homeShowCompletedTodos: v })}
+									/>
+								</div>
 							</div>
 						</div>
 					)}
@@ -509,6 +676,38 @@ export function SettingsPage() {
 										className="mt-2 w-32 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
 									/>
 								</div>
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<Toggle
+										label="自动刷新会话摘要"
+										description="后台定期基于最近会话内容更新摘要；关闭后仅手动刷新"
+										checked={settings.sessionTurnAutoRefresh}
+										onChange={(v) => handleUpdate({ sessionTurnAutoRefresh: v })}
+									/>
+								</div>
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<label className="block text-xs font-medium text-neutral-200">
+										新会话默认模型
+									</label>
+									<div className="mt-1 text-[11px] text-neutral-500">
+										启动新会话时使用的默认模型（留空跟随 omp 自身配置；当前版本暂未接入新会话流程）
+									</div>
+									<input
+										type="text"
+										value={localNewSessionModel}
+										onChange={(e) => setLocalNewSessionModel(e.target.value)}
+										onBlur={commitNewSessionModel}
+										onKeyDown={(e) => {
+											if (isComposing(e)) return;
+											if (e.key === "Enter") {
+												e.currentTarget.blur();
+											}
+										}}
+										placeholder="例如: gpt-5.6-sol"
+										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+									/>
+								</div>
 							</div>
 						</div>
 					)}
@@ -559,6 +758,50 @@ export function SettingsPage() {
 									/>
 								</div>
 
+								<div className="border-t border-neutral-800/60 pt-4">
+									<Toggle
+										label="Dock 角标"
+										description="在程序坞图标上显示待处理的待办数量"
+										checked={settings.dockBadgeEnabled}
+										onChange={(v) => handleUpdate({ dockBadgeEnabled: v })}
+									/>
+								</div>
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<label className="block text-xs font-medium text-neutral-200">
+										免打扰时段
+									</label>
+									<div className="mt-1 text-[11px] text-neutral-500">
+										该时段内不发送系统通知（可跨零点，如 23:00 至次日 07:30）；开始与结束需同时设置
+									</div>
+									<div className="mt-2 flex items-center gap-2">
+										<input
+											type="time"
+											value={localQuietFrom}
+											onChange={(e) => setLocalQuietFrom(e.target.value)}
+											onBlur={commitQuietHours}
+											className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+										/>
+										<span className="text-xs text-neutral-500">至</span>
+										<input
+											type="time"
+											value={localQuietTo}
+											onChange={(e) => setLocalQuietTo(e.target.value)}
+											onBlur={commitQuietHours}
+											className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+										/>
+										{(settings.notifyQuietFrom || settings.notifyQuietTo) && (
+											<button
+												type="button"
+												onClick={clearQuietHours}
+												className="rounded-lg px-2 py-1 text-[11px] text-neutral-400 hover:text-neutral-200"
+											>
+												关闭免打扰
+											</button>
+										)}
+									</div>
+								</div>
+
 								<div className="border-t border-neutral-800/60 pt-4 flex items-center justify-between">
 									<span className="text-xs text-neutral-400">
 										测试系统通知权限与提示音
@@ -595,6 +838,19 @@ export function SettingsPage() {
 							<div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
 								<MobilePanel />
 							</div>
+						</div>
+					)}
+
+					{/* 5.5 OMP config bridge (`omp config list/set/reset`) */}
+					{activeSection === "ompconfig" && (
+						<div className="space-y-6">
+							<div>
+								<h2 className="text-sm font-semibold text-neutral-100">OMP 配置</h2>
+								<p className="text-xs text-neutral-500">
+									读写 omp 自身的全局配置（~/.omp/agent/config.yml），与 workbench 设置相互独立
+								</p>
+							</div>
+							<OmpConfigSection />
 						</div>
 					)}
 
@@ -675,6 +931,47 @@ export function SettingsPage() {
 										{extInstallResult}
 									</div>
 								)}
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<div className="text-xs font-medium text-neutral-200">数据管理</div>
+									<div className="mt-1 text-[11px] text-neutral-500">
+										打开数据目录、导出或导入设置 JSON，或将全部设置恢复为默认值
+									</div>
+									<div className="mt-2 flex flex-wrap items-center gap-2">
+										<button
+											type="button"
+											onClick={handleOpenDataDir}
+											className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+										>
+											<FolderOpen className="h-3.5 w-3.5" />
+											<span>打开数据目录</span>
+										</button>
+										<button
+											type="button"
+											onClick={handleExportSettings}
+											className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+										>
+											<FileDown className="h-3.5 w-3.5" />
+											<span>导出设置</span>
+										</button>
+										<button
+											type="button"
+											onClick={handleImportSettings}
+											className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+										>
+											<FileUp className="h-3.5 w-3.5" />
+											<span>导入设置</span>
+										</button>
+										<button
+											type="button"
+											onClick={handleResetSettings}
+											className="inline-flex items-center gap-1.5 rounded-lg border border-rose-800/60 bg-rose-950/30 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-950/60"
+										>
+											<RotateCcw className="h-3.5 w-3.5" />
+											<span>恢复默认设置</span>
+										</button>
+									</div>
+								</div>
 							</div>
 						</div>
 					)}
