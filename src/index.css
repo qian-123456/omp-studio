@@ -944,6 +944,17 @@ textarea::-webkit-resizer,
 	box-shadow: none !important;
 }
 
+/* Floating overlay scrollbars: scrollable regions use WebKit overlay scrollbars —
+ * the thumb hovers over the content, reserves no layout space, leaves no track
+ * edge. Only auto/scroll utilities; overflow-hidden is untouched. */
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto {
+	overflow: overlay !important;
+	overflow-y: overlay !important;
+	overflow-x: overlay !important;
+}
+
 /* Chat font-size presets (settings → 外观). */
 html[data-font-size="sm"] {
 	--chat-font-size: 12px;
