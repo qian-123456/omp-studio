@@ -59,7 +59,7 @@ import {
 import { SessionRow } from "./SessionRow";
 
 /** Sessions shown per section before a "show more" row appears. */
-const RECENT_LIMIT = 5;
+const RECENT_LIMIT = 3;
 /** Extra sessions revealed per "show more" click — never dumps the whole list. */
 const RECENT_STEP = 5;
 const COLLAPSED_GROUPS_KEY = "ompws:collapsed-groups";
@@ -221,9 +221,8 @@ export function SessionSidebar() {
 	// Search & Archive controls
 	const [searchQuery, setSearchQuery] = useState("");
 	const [showArchived, setShowArchived] = useState(false);
-	// Default to true: sessions on deleted worktrees are NOT silently hidden
-	const [showDeletedWt, setShowDeletedWt] = useState(true);
-
+	// Default to false: sessions on deleted worktrees do not clutter the sidebar by default (PLAN.md §66)
+	const [showDeletedWt, setShowDeletedWt] = useState(false);
 	// Group open states (explicit user toggles). Defaults:
 	// - project/global workspaces: open
 	// - unassigned bucket: collapsed
@@ -2311,24 +2310,29 @@ function SessionList({
 		const hidden = total - count;
 		if (hidden > 0) {
 			return (
-				<button
-					type="button"
-					onClick={() => onSetCount(moreKey, count + RECENT_STEP)}
-					className="flex items-center gap-1 px-4 py-1 text-[10.5px] text-indigo-400 hover:text-indigo-300 hover:underline transition-colors select-none"
-				>
-					<span>＋ 展开其余 {hidden} 条{label}</span>
-				</button>
+				<div className="py-1 px-3">
+					<button
+						type="button"
+						onClick={() => onSetCount(moreKey, count + RECENT_STEP)}
+						className="w-full flex items-center justify-center gap-1.5 py-1 px-2.5 rounded-md border border-dashed border-[var(--border)] bg-[var(--bg-hover)]/40 hover:bg-[var(--bg-hover)] text-[10.5px] font-medium text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all select-none group/paging shadow-2xs"
+					>
+						<Plus size={11} className="text-neutral-400 group-hover/paging:text-neutral-600 dark:group-hover/paging:text-neutral-200 transition-colors shrink-0" />
+						<span>展开其余 {hidden} 条{label}</span>
+					</button>
+				</div>
 			);
 		}
 		if (total > RECENT_LIMIT) {
 			return (
-				<button
-					type="button"
-					onClick={onCollapse}
-					className="flex items-center gap-1 px-4 py-1 text-[10.5px] text-neutral-500 hover:text-neutral-300 hover:underline transition-colors select-none"
-				>
-					<span>收起</span>
-				</button>
+				<div className="py-0.5 px-3">
+					<button
+						type="button"
+						onClick={onCollapse}
+						className="w-full flex items-center justify-center gap-1 py-0.5 px-2 rounded-md text-[10px] font-medium text-neutral-400 dark:text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-[var(--bg-hover)]/60 transition-colors select-none"
+					>
+						<span>收起已展开会话</span>
+					</button>
+				</div>
 			);
 		}
 		return null;
@@ -2345,28 +2349,43 @@ function SessionList({
 				() => onSetCount(moreKey, RECENT_LIMIT),
 			)}
 			{older.length > 0 && (
-				<>
-					<button
-						type="button"
-						onClick={() => {
-							// Folding the section also resets its paging back to the cap.
-							if (showOlder) onSetCount(olderMoreKey, RECENT_LIMIT);
-							onToggle(olderKey);
-						}}
-						className="flex items-center gap-1 px-4 py-1 text-[10.5px] text-neutral-400 hover:text-neutral-200 transition-colors select-none"
-					>
-						<span>{showOlder ? "▾" : "▸"} 更早的会话 ({older.length})</span>
-					</button>
-					{showOlder && visibleOlder.map(renderNode)}
-					{showOlder &&
-						renderPagingFooter(
-							olderCount,
-							older.length,
-							olderMoreKey,
-							"更早的会话",
-							() => onSetCount(olderMoreKey, RECENT_LIMIT),
-						)}
-				</>
+				<div className="pt-1 pb-0.5">
+					<div className="px-3">
+						<button
+							type="button"
+							onClick={() => {
+								// Folding the section also resets its paging back to the cap.
+								if (showOlder) onSetCount(olderMoreKey, RECENT_LIMIT);
+								onToggle(olderKey);
+							}}
+							className="w-full flex items-center justify-between py-1 px-2 rounded-md bg-[var(--bg-hover)]/30 hover:bg-[var(--bg-hover)] border border-[var(--border)] text-[10.5px] font-medium text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 transition-all select-none"
+						>
+							<div className="flex items-center gap-1.5 min-w-0">
+								{showOlder ? (
+									<ChevronDown size={11} className="text-neutral-400 shrink-0" />
+								) : (
+									<ChevronRight size={11} className="text-neutral-400 shrink-0" />
+								)}
+								<span>更早的会话</span>
+							</div>
+							<span className="font-mono text-[9.5px] rounded bg-neutral-200/70 dark:bg-neutral-800 px-1.5 py-px text-neutral-500 dark:text-neutral-400">
+								{older.length}
+							</span>
+						</button>
+					</div>
+					{showOlder && (
+						<div className="mt-1 space-y-0.5">
+							{visibleOlder.map(renderNode)}
+							{renderPagingFooter(
+								olderCount,
+								older.length,
+								olderMoreKey,
+								"更早的会话",
+								() => onSetCount(olderMoreKey, RECENT_LIMIT),
+							)}
+						</div>
+					)}
+				</div>
 			)}
 		</>
 	);
@@ -2410,11 +2429,12 @@ function CollapsibleSubgroup({
 	ws,
 	onCreateSession,
 }: CollapsibleSubgroupProps) {
-	const isCollapsed = expanded[`${scopeKey}|sub`] === 1;
+	const userExpanded = expanded[`${scopeKey}|sub`];
+	const isCollapsed = userExpanded !== undefined ? userExpanded === 1 : sub.deleted;
 	const open = searching || !isCollapsed;
 
 	return (
-		<div className="mt-1">
+		<div className={clsx("mt-1", sub.deleted && "opacity-60 hover:opacity-100 transition-opacity")}>
 			<div className="group/sub flex items-center">
 				<button
 					type="button"
