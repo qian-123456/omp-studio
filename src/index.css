@@ -2,11 +2,13 @@
 
 @theme {
 	--font-sans:
-		-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+		-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "PingFang SC",
 		"Helvetica Neue", Arial, sans-serif;
 	--font-mono:
-		"JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono",
+		"SF Mono", ui-monospace, "JetBrains Mono", Menlo, Monaco, Consolas, "Liberation Mono",
 		"Courier New", monospace;
+	--ease-spring: cubic-bezier(0.25, 1, 0.5, 1);
+	--ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /*
@@ -128,21 +130,39 @@
  * are ported from omp-web's palettes (same semantic variable names).
  */
 :root {
-	--bg: #0a0a0a;
-	--bg-panel: #171717;
-	--bg-hover: #262626;
-	--bg-selected: #404040;
-	--border: #404040;
-	--text: #f5f5f5;
-	--text-muted: #a3a3a3;
-	--text-dim: #737373;
-	--accent: #f59e0b;
-	--accent-strong: #564cf9;
-	--accent-hover: #fbbf24;
-	--status-error: #ef4444;
-	--status-success: #34d399;
-	--status-warning: #fbbf24;
-	--status-renamed: #38bdf8;
+	--bg: #161618;
+	--bg-panel: #1C1C1E;
+	--bg-hover: #2C2C2E;
+	--bg-selected: #3A3A3C;
+	--bg-active-fill: rgba(255, 255, 255, 0.10);
+	--border: rgba(255, 255, 255, 0.08);
+	--border-divider: rgba(255, 255, 255, 0.07);
+	--text: #F5F5F7;
+	--text-muted: rgba(235, 235, 245, 0.60);
+	--text-dim: rgba(235, 235, 245, 0.35);
+	--text-quaternary: rgba(235, 235, 245, 0.18);
+	--accent: #0A84FF;
+	--accent-strong: #5E5CE6;
+	--accent-hover: #409CFF;
+	--status-error: #FF453A;
+	--status-success: #30D158;
+	--status-warning: #FF9F0A;
+	--status-renamed: #64D2FF;
+
+	/* Apple HIG vibrancy, hairline, overlay & shadow tokens (dark palette default) */
+	--chrome-glass: rgba(28, 28, 30, 0.78);
+	--popover-glass: rgba(36, 36, 38, 0.85);
+	--hairline: rgba(255, 255, 255, 0.08);
+	--hairline-strong: rgba(255, 255, 255, 0.14);
+	--overlay: rgba(0, 0, 0, 0.55);
+	--well-bg: rgba(0, 0, 0, 0.35);
+	--switch-off: #39393D;
+	--shadow-apple-card: 0 0 0 0.5px var(--hairline), 0 4px 16px rgba(0, 0, 0, 0.35);
+	--shadow-apple-modal: 0 0 0 0.5px var(--hairline-strong), 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.25);
+
+	/* Apple HIG spring & sheet curves */
+	--ease-spring: cubic-bezier(0.25, 1, 0.5, 1);
+	--ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 
 	/* Chat typography, controlled by the font-size setting (data-font-size). */
 	--chat-font-size: 13px;
@@ -673,6 +693,38 @@ html[data-theme="everforest-light"] {
 	--status-renamed: #35a77c;
 }
 
+/*
+ * Light-family theme overrides for Apple vibrancy, hairline, overlay & shadow tokens.
+ * Applies whenever a light theme or light mode is active.
+ */
+html[data-mode="light"],
+html[data-theme="light"],
+html[data-theme="one-light"],
+html[data-theme="catppuccin-latte"],
+html[data-theme="rose-pine-dawn"],
+html[data-theme="solarized-light"],
+html[data-theme="github-light"],
+html[data-theme="nord-light"],
+html[data-theme="tokyo-night-light"],
+html[data-theme="ayu-light"],
+html[data-theme="gruvbox-light"],
+html[data-theme="everforest-light"],
+html[data-theme="sakura"],
+html[data-theme="glacier"],
+html[data-theme="lavender"] {
+	--chrome-glass: rgba(255, 255, 255, 0.72);
+	--popover-glass: rgba(255, 255, 255, 0.85);
+	--hairline: rgba(0, 0, 0, 0.08);
+	--hairline-strong: rgba(0, 0, 0, 0.14);
+	--border-divider: rgba(0, 0, 0, 0.06);
+	--bg-active-fill: rgba(0, 0, 0, 0.06);
+	--overlay: rgba(0, 0, 0, 0.30);
+	--well-bg: rgba(0, 0, 0, 0.04);
+	--switch-off: #E9E9EB;
+	--shadow-apple-card: 0 0 0 0.5px var(--hairline), 0 2px 12px rgba(0, 0, 0, 0.08);
+	--shadow-apple-modal: 0 0 0 0.5px var(--hairline-strong), 0 16px 40px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
 /* Follow the OS scheme while the theme choice is "system". */
 html[data-mode="dark"] {
 	color-scheme: dark;
@@ -689,10 +741,15 @@ body,
 }
 
 body {
+	font-family: var(--font-sans);
 	font-size: 13px;
+	line-height: 1.3846;
+	letter-spacing: -0.005em;
+	font-optical-sizing: auto;
 	background-color: var(--bg);
 	color: var(--text);
 	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 	user-select: none;
 }
 
@@ -704,8 +761,8 @@ body {
 
 /* Global accessible focus ring for keyboard navigation, excluding text inputs. */
 :focus-visible:not(input):not(textarea):not([contenteditable]):not(.outline-none) {
-	outline: 2px solid var(--accent);
-	outline-offset: 1px;
+	outline: none;
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 input:focus,
@@ -811,4 +868,75 @@ html[data-ui-scale="large"] {
 .no-scrollbar {
 	-ms-overflow-style: none;
 	scrollbar-width: none;
+}
+
+/*
+ * Apple HIG Utility Classes
+ */
+
+/* 0.5px Hairline techniques (using inset/outset box-shadow) */
+.hairline {
+	box-shadow: inset 0 0 0 0.5px var(--hairline);
+}
+.hairline-outset {
+	box-shadow: 0 0 0 0.5px var(--hairline);
+}
+.hairline-t {
+	box-shadow: inset 0 0.5px 0 0 var(--hairline);
+}
+.hairline-b {
+	box-shadow: inset 0 -0.5px 0 0 var(--hairline);
+}
+.hairline-l {
+	box-shadow: inset 0.5px 0 0 0 var(--hairline);
+}
+.hairline-r {
+	box-shadow: inset -0.5px 0 0 0 var(--hairline);
+}
+
+/* Layered shadows */
+.shadow-apple-card {
+	box-shadow: var(--shadow-apple-card);
+}
+.shadow-apple-modal {
+	box-shadow: var(--shadow-apple-modal);
+}
+
+/* Vibrancy surfaces */
+.vibrancy-chrome {
+	background-color: var(--chrome-glass);
+	backdrop-filter: blur(20px) saturate(190%);
+	-webkit-backdrop-filter: blur(20px) saturate(190%);
+}
+.vibrancy-popover {
+	background-color: var(--popover-glass);
+	backdrop-filter: blur(28px) saturate(190%);
+	-webkit-backdrop-filter: blur(28px) saturate(190%);
+}
+
+/* Reduced transparency accessibility fallback */
+@media (prefers-reduced-transparency: reduce) {
+	.vibrancy-chrome {
+		background-color: var(--bg-panel) !important;
+		backdrop-filter: none !important;
+		-webkit-backdrop-filter: none !important;
+	}
+	.vibrancy-popover {
+		background-color: var(--bg-panel) !important;
+		backdrop-filter: none !important;
+		-webkit-backdrop-filter: none !important;
+	}
+}
+
+/* Interactive press-scale */
+.press-scale {
+	transition: transform 200ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+.press-scale:active {
+	transform: scale(0.97);
+}
+
+/* Tabular nums */
+.tabular-nums {
+	font-variant-numeric: tabular-nums;
 }

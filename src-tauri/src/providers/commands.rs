@@ -20,6 +20,62 @@ fn key_hint(key: &str) -> String {
     chars[start..].iter().collect()
 }
 
+fn is_reserved_env_var(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    if upper.starts_with("DYLD_") || upper.starts_with("LD_") || upper.starts_with("OMP_") {
+        return true;
+    }
+    matches!(
+        upper.as_str(),
+        "PATH"
+            | "HOME"
+            | "SHELL"
+            | "USER"
+            | "LOGNAME"
+            | "TMPDIR"
+            | "NODE_OPTIONS"
+            | "HTTP_PROXY"
+            | "HTTPS_PROXY"
+            | "ALL_PROXY"
+            | "NO_PROXY"
+    )
+}
+
+fn is_private_or_loopback_domain(domain: &str) -> bool {
+    let lower = domain.to_ascii_lowercase();
+    lower == "localhost"
+        || lower.ends_with(".localhost")
+        || lower == "local"
+        || lower.ends_with(".local")
+}
+
+fn is_private_or_loopback_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    let o = ip.octets();
+    o[0] == 127
+        || o[0] == 10
+        || (o[0] == 172 && (16..=31).contains(&o[1]))
+        || (o[0] == 192 && o[1] == 168)
+        || (o[0] == 169 && o[1] == 254)
+}
+
+fn is_private_or_loopback_ipv6(ip: std::net::Ipv6Addr) -> bool {
+    ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00
+}
+
+fn is_private_or_loopback(host: &str) -> bool {
+    if is_private_or_loopback_domain(host) {
+        return true;
+    }
+    if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
+        return is_private_or_loopback_ipv4(ip);
+    }
+    let unbracketed = host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = unbracketed.parse::<std::net::Ipv6Addr>() {
+        return is_private_or_loopback_ipv6(ip);
+    }
+    false
+}
+
 /// Validate user-editable fields. Key values are never part of the config.
 pub(crate) fn validate(config: &ProviderConfig) -> Result<(), String> {
     let name = config.name.trim();
@@ -39,8 +95,15 @@ pub(crate) fn validate(config: &ProviderConfig) -> Result<(), String> {
     let base_url = config.base_url.trim();
     let url = reqwest::Url::parse(base_url)
         .map_err(|_| "Base URL 必须是有效的 http:// 或 https:// 地址".to_string())?;
-    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+    let host = match url.host_str() {
+        Some(h) => h,
+        None => return Err("Base URL 必须是有效的 http:// 或 https:// 地址".to_string()),
+    };
+    if !matches!(url.scheme(), "http" | "https") {
         return Err("Base URL 必须是有效的 http:// 或 https:// 地址".to_string());
+    }
+    if url.scheme() == "http" && !is_private_or_loopback(host) {
+        return Err("非本地或非私有网络地址必须使用 HTTPS 协议以防止密钥泄漏".to_string());
     }
     if !url.username().is_empty()
         || url.password().is_some()
@@ -58,6 +121,9 @@ pub(crate) fn validate(config: &ProviderConfig) -> Result<(), String> {
         .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
     {
         return Err("环境变量名只能包含大写字母、数字和下划线".to_string());
+    }
+    if is_reserved_env_var(env_var) {
+        return Err(format!("环境变量名 \"{env_var}\" 是系统保留名称，不可使用"));
     }
     for (label, value) in [
         ("名称", name),
@@ -111,7 +177,6 @@ pub async fn provider_save(
     validate_unique(&config, &providers)?;
     let now = now_iso();
     let new_key = api_key.as_deref().map(str::trim).filter(|k| !k.is_empty());
-    let mut old_slug = None;
 
     match providers.iter().position(|p| p.id == config.id) {
         None => {
@@ -126,13 +191,27 @@ pub async fn provider_save(
                     vault::write_entry(&config.slug, key)?;
                     config.has_key = true;
                     config.key_hint = Some(key_hint(key));
+                    providers.push(config.clone());
+                    if let Err(e) = store::save(&providers) {
+                        // Rollback newly written vault entry on store save failure
+                        let _ = vault::remove_entry(&config.slug);
+                        return Err(e);
+                    }
                 }
                 None => {
+                    // If a stale vault entry already exists under this slug (e.g. from
+                    // an uninstalled provider or prior failed operation) and the user did
+                    // not supply a key for the new provider, purge the stale entry so it
+                    // is not silently adopted.
+                    if vault::contains(&config.slug) {
+                        vault::remove_entry(&config.slug)?;
+                    }
                     config.has_key = false;
                     config.key_hint = None;
+                    providers.push(config.clone());
+                    store::save(&providers)?;
                 }
             }
-            providers.push(config.clone());
         }
         Some(idx) => {
             let prev = providers[idx].clone();
@@ -140,24 +219,42 @@ pub async fn provider_save(
             config.created_at = prev.created_at.clone();
             config.sort = prev.sort;
             config.updated_at = now;
+
+            let is_rename = vault::line_key(&prev.slug) != vault::line_key(&config.slug);
+            // Save backup of old key in case rollback is needed on store save failure
+            let prev_key = if is_rename || new_key.is_some() {
+                vault::read_entry(&prev.slug).unwrap_or(None)
+            } else {
+                None
+            };
+
             match new_key {
                 Some(key) => {
                     vault::write_entry(&config.slug, key)?;
-                    if vault::line_key(&prev.slug) != vault::line_key(&config.slug) {
-                        old_slug = Some(prev.slug.clone());
+                    if is_rename {
+                        if let Err(e) = vault::remove_entry(&prev.slug) {
+                            // Rollback newly written entry
+                            let _ = vault::remove_entry(&config.slug);
+                            return Err(format!("清理旧密钥失败: {e}"));
+                        }
                     }
                     config.has_key = true;
                     config.key_hint = Some(key_hint(key));
                 }
                 None => {
-                    // Slug changed: migrate the stored key so it is not orphaned.
-                    if vault::line_key(&prev.slug) != vault::line_key(&config.slug)
-                        && vault::contains(&prev.slug)
-                    {
-                        if let Some(value) = vault::read_entry(&prev.slug)? {
-                            vault::write_entry(&config.slug, &value)?;
+                    if is_rename {
+                        if vault::contains(&prev.slug) {
+                            if let Some(value) = &prev_key {
+                                vault::write_entry(&config.slug, value)?;
+                            }
+                            if let Err(e) = vault::remove_entry(&prev.slug) {
+                                let _ = vault::remove_entry(&config.slug);
+                                return Err(format!("清理旧密钥失败: {e}"));
+                            }
+                        } else if vault::contains(&config.slug) {
+                            // Target slug has a stale entry, but old slug had none: purge stale
+                            vault::remove_entry(&config.slug)?;
                         }
-                        old_slug = Some(prev.slug.clone());
                     }
                     config.has_key = vault::contains(&config.slug);
                     if !config.has_key {
@@ -165,14 +262,31 @@ pub async fn provider_save(
                     }
                 }
             }
+
             providers[idx] = config.clone();
+
+            if let Err(e) = store::save(&providers) {
+                // Rollback vault mutations if store save fails
+                if is_rename {
+                    let _ = vault::remove_entry(&config.slug);
+                    if let Some(val) = &prev_key {
+                        let _ = vault::write_entry(&prev.slug, val);
+                    }
+                } else if new_key.is_some() {
+                    match &prev_key {
+                        Some(val) => {
+                            let _ = vault::write_entry(&config.slug, val);
+                        }
+                        None => {
+                            let _ = vault::remove_entry(&config.slug);
+                        }
+                    }
+                }
+                return Err(e);
+            }
         }
     }
 
-    store::save(&providers)?;
-    if let Some(slug) = old_slug {
-        vault::remove_entry(&slug)?;
-    }
     Ok(config)
 }
 
@@ -182,9 +296,13 @@ pub async fn provider_delete(id: String) -> Result<(), String> {
     let _guard = super::MUTATION_LOCK.lock().await;
     let mut providers = store::load();
     if let Some(idx) = providers.iter().position(|p| p.id == id) {
-        let slug = providers.remove(idx).slug;
-        store::save(&providers)?;
+        let slug = providers[idx].slug.clone();
+        // Remove vault entry first; remove_entry is idempotent so if store::save
+        // fails afterward, the provider remains visible and the user can safely
+        // retry delete without leaving an orphaned secret in keys.env.
         vault::remove_entry(&slug)?;
+        providers.remove(idx);
+        store::save(&providers)?;
     }
     Ok(())
 }
@@ -515,5 +633,62 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(hits.load(Ordering::SeqCst), 0);
         assert!(!result.detail.contains("secret-test-key"));
+    }
+
+    #[test]
+    fn validate_rejects_reserved_env_vars() {
+        for reserved in [
+            "PATH",
+            "HOME",
+            "SHELL",
+            "USER",
+            "LOGNAME",
+            "TMPDIR",
+            "NODE_OPTIONS",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "OMP_WORKSPACE_PROVIDERS",
+            "OMP_CUSTOM_VAR",
+            "DYLD_LIBRARY_PATH",
+            "DYLD_INSERT_LIBRARIES",
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+        ] {
+            let c = config("Name", "slug", "https://x.dev", reserved);
+            assert!(
+                validate(&c).unwrap_err().contains("保留名称"),
+                "expected {reserved} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_enforces_https_or_private_network() {
+        // Valid HTTPS
+        assert!(validate(&config("Name", "slug", "https://api.openai.com/v1", "KEY")).is_ok());
+
+        // Valid HTTP loopback & private networks
+        assert!(validate(&config("Name", "slug", "http://localhost:11434", "KEY")).is_ok());
+        assert!(validate(&config("Name", "slug", "http://sub.localhost:8080", "KEY")).is_ok());
+        assert!(validate(&config("Name", "slug", "http://127.0.0.1:8080/v1", "KEY")).is_ok());
+        assert!(validate(&config("Name", "slug", "http://10.0.1.5:8000/v1", "KEY")).is_ok());
+        assert!(validate(&config("Name", "slug", "http://172.16.0.1:8000/v1", "KEY")).is_ok());
+        assert!(validate(&config(
+            "Name",
+            "slug",
+            "http://192.168.1.100:8000/v1",
+            "KEY"
+        ))
+        .is_ok());
+        assert!(validate(&config("Name", "slug", "http://[::1]:8000/v1", "KEY")).is_ok());
+
+        // Invalid HTTP public internet addresses
+        let c = config("Name", "slug", "http://api.openai.com/v1", "KEY");
+        assert!(validate(&c).unwrap_err().contains("HTTPS"));
+
+        let c2 = config("Name", "slug", "http://8.8.8.8:8000/v1", "KEY");
+        assert!(validate(&c2).unwrap_err().contains("HTTPS"));
     }
 }

@@ -206,11 +206,11 @@ export function StartPage() {
 	return (
 		<div className="relative flex h-full w-full flex-col items-center justify-center px-4 select-none">
 			<div className="relative flex w-full max-w-[700px] flex-col items-center">
-				<h1 className="self-start text-xl font-semibold text-neutral-100">
+				<h1 className="self-start text-xl font-semibold tracking-[-0.018em] text-neutral-100">
 					新会话
 				</h1>
 
-				<div className="relative mt-4 flex w-full flex-wrap items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 p-3 focus-within:border-neutral-500">
+				<div className="relative mt-4 flex w-full flex-wrap items-center gap-2 rounded-[14px] bg-[var(--bg-panel)] shadow-apple-card hairline p-3.5 focus-within:shadow-[0_0_0_0.5px_var(--hairline-strong),var(--shadow-apple-card)] transition-all">
 					<textarea
 						ref={inputRef}
 						autoFocus
@@ -235,7 +235,7 @@ export function StartPage() {
 							type="button"
 							onClick={() => setWsOpen((v) => !v)}
 							title={`工作目录: ${cwd || "未选择"}`}
-							className="flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-950/60 px-2.5 py-1.5 text-xs text-neutral-300 transition-colors hover:border-neutral-700 hover:bg-neutral-800/80 hover:text-neutral-100"
+							className="flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95"
 						>
 							<FolderOpen size={13} className="shrink-0 text-amber-400" />
 							<span className="max-w-[130px] truncate font-medium">
@@ -245,8 +245,8 @@ export function StartPage() {
 						</button>
 
 						{wsOpen && (
-							<div className="absolute bottom-full left-0 z-30 mb-2 w-[280px] rounded-xl border border-neutral-700/80 bg-neutral-900/95 py-1.5 shadow-2xl backdrop-blur-md">
-								<div className="border-b border-neutral-800 px-3 py-1 text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
+							<div className="absolute bottom-full left-0 z-30 mb-2 w-[280px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1.5">
+								<div className="border-b border-[var(--border-divider)] px-3 py-1 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">
 									工作目录
 								</div>
 								<div className="max-h-60 overflow-y-auto py-1">
@@ -266,10 +266,10 @@ export function StartPage() {
 													setWsOpen(false);
 												}}
 												className={clsx(
-													"flex w-full items-center justify-between px-3 py-1.5 text-left text-xs transition-colors",
+													"flex w-[calc(100%-8px)] mx-1 items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
 													isSelected
-														? "bg-indigo-600/15 text-indigo-300"
-														: "text-neutral-300 hover:bg-neutral-800/80 hover:text-neutral-100",
+														? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+														: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
 												)}
 											>
 												<div className="min-w-0 pr-2">
@@ -281,19 +281,19 @@ export function StartPage() {
 												{isSelected && (
 													<Check
 														size={13}
-														className="shrink-0 text-indigo-400"
+														className="shrink-0 text-[#0A84FF]"
 													/>
 												)}
 											</button>
 										);
 									})}
 
-									<div className="my-1 border-t border-neutral-800/80" />
+									<div className="my-1 border-t border-[var(--border-divider)]" />
 
 									<button
 										type="button"
 										onClick={() => void pickDirectory()}
-										className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800/80 hover:text-neutral-100"
+										className="flex w-[calc(100%-8px)] mx-1 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 									>
 										<FolderPlus
 											size={13}
@@ -321,7 +321,7 @@ export function StartPage() {
 											)?.name ?? modelSel)
 										: (defaultModel || "默认模型")
 							}
-							buttonClass="flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-950/60 px-2.5 py-1.5 text-xs text-neutral-400 transition-colors hover:border-neutral-700 hover:bg-neutral-800/80 hover:text-neutral-200"
+							buttonClass="flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
 							models={availableModels.length > 0 ? availableModels : null}
 							currentValue={modelSel}
 							extras={[
@@ -342,7 +342,7 @@ export function StartPage() {
 							value={customModel}
 							onChange={(e) => setCustomModel(e.target.value)}
 							placeholder="provider/model-id"
-							className="w-32 shrink-0 rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1 font-mono text-xs text-neutral-200 outline-none focus:border-indigo-500"
+							className="w-32 shrink-0 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1 font-mono text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50"
 						/>
 					)}
 
@@ -360,10 +360,10 @@ export function StartPage() {
 						}
 						aria-label="开始会话"
 						className={clsx(
-							"ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors",
+							"ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
 							canSubmit
-								? "bg-white text-neutral-950 shadow-md hover:bg-neutral-200 active:scale-95"
-								: "cursor-not-allowed bg-neutral-800/70 text-neutral-500",
+								? "bg-neutral-100 text-neutral-950 shadow-md hover:opacity-90 active:scale-95"
+								: "cursor-not-allowed bg-[var(--bg-active-fill)] text-neutral-500",
 						)}
 					>
 						{busy ? (

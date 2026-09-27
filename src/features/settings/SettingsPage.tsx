@@ -68,7 +68,7 @@ function Toggle({ checked, onChange, label, description, icon: Icon }: TogglePro
 					onChange(!checked);
 				}
 			}}
-			className="group flex cursor-pointer items-center justify-between gap-4 rounded-lg p-2 -m-2 transition-colors hover:bg-neutral-800/40 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
+			className="group flex cursor-pointer items-center justify-between gap-4 rounded-xl p-2.5 -m-2 transition-colors hover:bg-[var(--bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0A84FF]/40"
 		>
 			<div className="flex items-start gap-2.5">
 				{Icon && (
@@ -81,7 +81,7 @@ function Toggle({ checked, onChange, label, description, icon: Icon }: TogglePro
 						{label}
 					</div>
 					{description && (
-						<div className="text-[11px] text-neutral-500">{description}</div>
+						<div className="text-[11px] text-[rgba(235,235,245,0.60)]">{description}</div>
 					)}
 				</div>
 			</div>
@@ -412,17 +412,17 @@ export function SettingsPage() {
 	return (
 		<div className="flex h-full overflow-hidden bg-neutral-950 text-neutral-200">
 			{/* Left Navigation Bar */}
-			<div className="flex w-48 flex-col overflow-hidden border-r border-neutral-800/80 bg-neutral-950/60 p-4">
+			<div className="flex w-52 flex-col overflow-hidden border-r border-[var(--border-divider)] vibrancy-chrome p-3.5">
 				<button
 					type="button"
 					onClick={handleBack}
-					className="mb-4 flex w-full shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors"
+					className="mb-3.5 flex w-full shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all"
 					title="返回工作区 (Esc)"
 				>
 					<ArrowLeft className="h-3.5 w-3.5" />
 					<span>返回工作区</span>
 				</button>
-				<div className="mb-3 flex shrink-0 items-center gap-2 px-2 text-xs font-semibold text-neutral-400">
+				<div className="mb-2.5 flex shrink-0 items-center gap-2 px-2 text-xs font-semibold text-neutral-400 tracking-[-0.01em]">
 					<SettingsIcon className="h-4 w-4 text-amber-400" />
 					<span>系统设置</span>
 				</div>
@@ -444,10 +444,10 @@ export function SettingsPage() {
 											}
 										}
 									}}
-									className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
+									className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-all active:scale-[0.98] ${
 										isActive
-											? "bg-neutral-800 text-neutral-100"
-											: "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
+											? "bg-[var(--bg-hover)] text-neutral-100 shadow-sm"
+											: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
 									}`}
 								>
 									<Icon className="h-3.5 w-3.5" />
@@ -469,10 +469,10 @@ export function SettingsPage() {
 														setOmpTab(g.id);
 														setOmpGroup(null);
 													}}
-													className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors ${
+													className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-all active:scale-[0.98] ${
 														ompTab === g.id
-															? "bg-neutral-800/80 font-medium text-amber-300"
-															: "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+															? "bg-[var(--bg-hover)] font-medium text-[#0A84FF]"
+															: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
 													}`}
 												>
 													<span>{g.label}</span>
@@ -487,10 +487,10 @@ export function SettingsPage() {
 																key={grp.name}
 																type="button"
 																onClick={() => setOmpGroup(grp.name)}
-																className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors ${
+																className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-all active:scale-[0.98] ${
 																	ompGroup === grp.name
-																		? "bg-neutral-800/80 font-medium text-amber-300"
-																		: "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+																		? "bg-[var(--bg-hover)] font-medium text-[#0A84FF]"
+																		: "text-neutral-500 hover:bg-[var(--bg-active-fill)] hover:text-neutral-300"
 																}`}
 															>
 																<span className="truncate">{grp.name}</span>
@@ -521,7 +521,7 @@ export function SettingsPage() {
 						</div>
 					)}
 					{saveNotice && (
-						<div className="fixed bottom-6 right-6 z-50 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-emerald-400 shadow-xl">
+						<div className="fixed bottom-6 right-6 z-50 rounded-xl vibrancy-popover shadow-apple-modal hairline px-3.5 py-2 text-xs text-emerald-400">
 							{saveNotice}
 						</div>
 					)}
@@ -530,11 +530,11 @@ export function SettingsPage() {
 					{activeSection === "general" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold text-neutral-100">通用设置</h2>
-								<p className="text-xs text-neutral-500">workbench 界面与行为配置</p>
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">通用设置</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">workbench 界面与行为配置</p>
 							</div>
 
-							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+							<div className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
 								<Toggle
 									label="顶部胶囊 (Top Capsule)"
 									description="在窗口右上角显示待处理待办统计与当前会话子任务状态条"
@@ -542,7 +542,7 @@ export function SettingsPage() {
 									onChange={(v) => handleUpdate({ capsuleVisible: v })}
 								/>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<Toggle
 										label="智能上下文路由"
 										description="侧边提问时根据问题意图自动切换仅选区上下文与完整会话上下文"
@@ -558,14 +558,14 @@ export function SettingsPage() {
 					{activeSection === "appearance" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold text-neutral-100">外观</h2>
-								<p className="text-xs text-neutral-500">主题、聊天字号与界面密度</p>
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">外观</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">主题、聊天字号与界面密度</p>
 							</div>
 
-							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+							<div className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
 								<div>
 									<div className="text-xs font-medium text-neutral-200">主题</div>
-									<div className="mt-1 text-[11px] text-neutral-500">
+									<div className="mt-1 text-[11px] text-[rgba(235,235,245,0.60)]">
 										默认跟随系统明暗自动切换；也可固定深色或浅色主题
 									</div>
 									<div className="mt-3">
@@ -573,12 +573,12 @@ export function SettingsPage() {
 									</div>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<div className="text-xs font-medium text-neutral-200">聊天字号</div>
-									<div className="mt-1 text-[11px] text-neutral-500">
+									<div className="mt-1 text-[11px] text-[rgba(235,235,245,0.60)]">
 										会话消息正文的文字大小
 									</div>
-									<div className="mt-2 inline-flex rounded-lg border border-neutral-700 p-0.5">
+									<div className="mt-2 inline-flex rounded-lg hairline bg-[var(--well-bg)] p-0.5">
 										{FONT_SIZES.map((f) => {
 											const active = fontSize === f.id;
 											return (
@@ -586,9 +586,9 @@ export function SettingsPage() {
 													key={f.id}
 													type="button"
 													onClick={() => setFontSize(f.id)}
-													className={`rounded-md px-3 py-1 text-xs transition-colors ${
+													className={`rounded-md px-3 py-1 text-xs transition-all active:scale-95 ${
 														active
-															? "bg-neutral-800 text-neutral-100"
+															? "bg-[var(--bg-active-fill)] text-neutral-100 shadow-sm font-medium"
 															: "text-neutral-400 hover:text-neutral-200"
 													}`}
 												>
@@ -599,12 +599,12 @@ export function SettingsPage() {
 									</div>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<div className="text-xs font-medium text-neutral-200">界面密度</div>
-									<div className="mt-1 text-[11px] text-neutral-500">
+									<div className="mt-1 text-[11px] text-[rgba(235,235,245,0.60)]">
 										整体界面的缩放程度
 									</div>
-									<div className="mt-2 inline-flex rounded-lg border border-neutral-700 p-0.5">
+									<div className="mt-2 inline-flex rounded-lg hairline bg-[var(--well-bg)] p-0.5">
 										{UI_SCALES.map((s) => {
 											const active = uiScale === s.id;
 											return (
@@ -612,9 +612,9 @@ export function SettingsPage() {
 													key={s.id}
 													type="button"
 													onClick={() => setUiScale(s.id)}
-													className={`rounded-md px-3 py-1 text-xs transition-colors ${
+													className={`rounded-md px-3 py-1 text-xs transition-all active:scale-95 ${
 														active
-															? "bg-neutral-800 text-neutral-100"
+															? "bg-[var(--bg-active-fill)] text-neutral-100 shadow-sm font-medium"
 															: "text-neutral-400 hover:text-neutral-200"
 													}`}
 												>
@@ -625,11 +625,11 @@ export function SettingsPage() {
 									</div>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<div className="flex items-center justify-between">
 										<div>
 											<div className="text-xs font-medium text-neutral-200">界面缩放</div>
-											<div className="mt-1 text-[11px] text-neutral-500">
+											<div className="mt-1 text-[11px] text-[rgba(235,235,245,0.60)]">
 												调节窗口视图比例（快捷键：Cmd/Ctrl +/-，重置：Cmd/Ctrl 0）
 											</div>
 										</div>
@@ -639,7 +639,7 @@ export function SettingsPage() {
 												onClick={zoomOut}
 												disabled={zoom <= minZoom}
 												title="缩小 (-5%)"
-												className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-30"
+												className="rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all disabled:opacity-30"
 											>
 												-
 											</button>
@@ -647,7 +647,7 @@ export function SettingsPage() {
 												type="button"
 												onClick={resetZoom}
 												title="重置为 100%"
-												className="min-w-14 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1 text-center font-mono text-xs text-neutral-200 hover:bg-neutral-800"
+												className="min-w-14 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1 text-center font-mono tabular-nums text-xs text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 											>
 												{zoom}%
 											</button>
@@ -656,7 +656,7 @@ export function SettingsPage() {
 												onClick={zoomIn}
 												disabled={zoom >= maxZoom}
 												title="放大 (+5%)"
-												className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-30"
+												className="rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all disabled:opacity-30"
 											>
 												+
 											</button>
@@ -674,13 +674,13 @@ export function SettingsPage() {
 					{activeSection === "todos" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold text-neutral-100">待办与监工</h2>
-								<p className="text-xs text-neutral-500">
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">待办与监工</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">
 									自动化检测与只读 LLM 监工建议系统
 								</p>
 							</div>
 
-							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+							<div className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
 								<Toggle
 									label="系统待办检测"
 									description="自动捕获会话审批、提问、报错、中断与待验收事件加入待办队列"
@@ -688,7 +688,7 @@ export function SettingsPage() {
 									onChange={(v) => handleUpdate({ systemDetection: v })}
 								/>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<Toggle
 										label="后台监工建议 (Supervisor)"
 										description="定期基于会话摘要与收集箱生成建议（只读，无执行权限）"
@@ -697,11 +697,11 @@ export function SettingsPage() {
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<label className="block text-xs font-medium text-neutral-200">
 										监工模型
 									</label>
-									<div className="mt-1 text-[11px] text-neutral-500">
+									<div className="mt-1 text-[11px] text-[rgba(235,235,245,0.60)]">
 										监工调用 omp -p 时指定的轻量模型，建议保持快速或低成本模型
 									</div>
 									<input
@@ -716,15 +716,15 @@ export function SettingsPage() {
 											}
 										}}
 										placeholder="例如: smol, default"
-										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+										className="mt-2 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<label className="block text-xs font-medium text-neutral-200">
 										监工触发间隔 (分钟)
 									</label>
-									<div className="mt-1 text-[11px] text-neutral-500">
+									<div className="mt-1 text-[11px] text-[rgba(235,235,245,0.60)]">
 										状态变化后触发监工分析的去抖间隔，最短 5 分钟；0 表示仅手动刷新
 									</div>
 									<input
@@ -739,11 +739,11 @@ export function SettingsPage() {
 												e.currentTarget.blur();
 											}
 										}}
-										className="mt-2 w-32 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+										className="mt-2 w-32 rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono tabular-nums text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<Toggle
 										label="默认展开已处理待办"
 										description="待办队列默认显示已完成的待办，无需手动展开"
@@ -759,11 +759,11 @@ export function SettingsPage() {
 					{activeSection === "sessions" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold text-neutral-100">会话管理</h2>
-								<p className="text-xs text-neutral-500">会话生命周期与默认选项</p>
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">会话管理</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">会话生命周期与默认选项</p>
 							</div>
 
-							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+							<div className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
 								<div>
 									<label className="block text-xs font-medium text-neutral-200">
 										默认审批模式 (Approval Mode)
@@ -776,7 +776,7 @@ export function SettingsPage() {
 										onChange={(e) =>
 											handleUpdate({ defaultApprovalMode: e.target.value })
 										}
-										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+										className="mt-2 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 									>
 										<option value="always-ask">每步必问 (always-ask)</option>
 										<option value="write">写操作审批 (write)</option>
@@ -784,7 +784,7 @@ export function SettingsPage() {
 									</select>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<label className="block text-xs font-medium text-neutral-200">
 										空闲挂起时长 (分钟)
 									</label>
@@ -803,11 +803,11 @@ export function SettingsPage() {
 												e.currentTarget.blur();
 											}
 										}}
-										className="mt-2 w-32 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+										className="mt-2 w-32 rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono tabular-nums text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<Toggle
 										label="自动刷新会话摘要"
 										description="后台定期基于最近会话内容更新摘要；关闭后仅手动刷新"
@@ -816,7 +816,7 @@ export function SettingsPage() {
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<label className="block text-xs font-medium text-neutral-200">
 										新会话默认模型
 									</label>
@@ -835,7 +835,7 @@ export function SettingsPage() {
 											}
 										}}
 										placeholder="例如: gpt-5.6-sol"
-										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+										className="mt-2 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 									/>
 								</div>
 							</div>
@@ -846,13 +846,13 @@ export function SettingsPage() {
 					{activeSection === "notifications" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold text-neutral-100">通知提醒</h2>
-								<p className="text-xs text-neutral-500">
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">通知提醒</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">
 									系统原生通知、Dock 角标与提示音设置
 								</p>
 							</div>
 
-							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+							<div className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
 								<Toggle
 									label="轮次结束通知"
 									description="Agent 完成本轮思考并等待验收时触发系统通知"
@@ -860,7 +860,7 @@ export function SettingsPage() {
 									onChange={(v) => handleUpdate({ notifyTurnEnd: v })}
 								/>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<Toggle
 										label="审批与提问通知"
 										description="Agent 请求危险工具审批或需要用户输入回答时通知"
@@ -869,7 +869,7 @@ export function SettingsPage() {
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<Toggle
 										label="异常与中断通知"
 										description="会话因报错退出或进程意外终止时通知"
@@ -878,7 +878,7 @@ export function SettingsPage() {
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<Toggle
 										label="通知提示音"
 										description="发送通知时伴随系统默认提示音"
@@ -888,7 +888,7 @@ export function SettingsPage() {
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<Toggle
 										label="Dock 角标"
 										description="在程序坞图标上显示待处理的待办数量"
@@ -897,7 +897,7 @@ export function SettingsPage() {
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<label className="block text-xs font-medium text-neutral-200">
 										免打扰时段
 									</label>
@@ -910,7 +910,7 @@ export function SettingsPage() {
 											value={localQuietFrom}
 											onChange={(e) => setLocalQuietFrom(e.target.value)}
 											onBlur={commitQuietHours}
-											className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+											className="rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono tabular-nums text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 										/>
 										<span className="text-xs text-neutral-500">至</span>
 										<input
@@ -918,13 +918,13 @@ export function SettingsPage() {
 											value={localQuietTo}
 											onChange={(e) => setLocalQuietTo(e.target.value)}
 											onBlur={commitQuietHours}
-											className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+											className="rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono tabular-nums text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 										/>
 										{(settings.notifyQuietFrom || settings.notifyQuietTo) && (
 											<button
 												type="button"
 												onClick={clearQuietHours}
-												className="rounded-lg px-2 py-1 text-[11px] text-neutral-400 hover:text-neutral-200"
+												className="rounded-lg px-2.5 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 											>
 												关闭免打扰
 											</button>
@@ -932,7 +932,7 @@ export function SettingsPage() {
 									</div>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4 flex items-center justify-between">
+								<div className="border-t border-[var(--border-divider)] pt-4 flex items-center justify-between">
 									<span className="text-xs text-neutral-400">
 										测试系统通知权限与提示音
 									</span>
@@ -940,7 +940,7 @@ export function SettingsPage() {
 										type="button"
 										disabled={testingNotify}
 										onClick={handleNotifyTest}
-										className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-50"
+										className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-50"
 									>
 										<Bell className="h-3.5 w-3.5" />
 										<span>{testingNotify ? "正在发送..." : "发送测试通知"}</span>
@@ -959,13 +959,13 @@ export function SettingsPage() {
 					{activeSection === "mobile" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold text-neutral-100">手机访问</h2>
-								<p className="text-xs text-neutral-500">
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">手机访问</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">
 									通过局域网或 Cloudflare Tunnel 在手机移动端实时查看与审批待办
 								</p>
 							</div>
 
-							<div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+							<div className="rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
 								<MobilePanel />
 							</div>
 						</div>
@@ -975,8 +975,8 @@ export function SettingsPage() {
 					{activeSection === "ompconfig" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold text-neutral-100">OMP 配置</h2>
-								<p className="text-xs text-neutral-500">
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">OMP 配置</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">
 									读写 omp 自身的全局配置（~/.omp/agent/config.yml），与 workbench 设置相互独立
 								</p>
 							</div>
@@ -993,11 +993,11 @@ export function SettingsPage() {
 					{activeSection === "advanced" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold text-neutral-100">高级配置</h2>
-								<p className="text-xs text-neutral-500">命令行可执行路径与状态扩展</p>
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">高级配置</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">命令行可执行路径与状态扩展</p>
 							</div>
 
-							<div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+							<div className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
 								<div>
 									<label className="block text-xs font-medium text-neutral-200">
 										全局快捷键 (快速捕获)
@@ -1016,11 +1016,11 @@ export function SettingsPage() {
 												e.currentTarget.blur();
 											}
 										}}
-										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 font-mono focus:border-amber-500 focus:outline-none"
+										className="mt-2 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 font-mono focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<label className="block text-xs font-medium text-neutral-200">
 										OMP 命令行程序 (omp binary)
 									</label>
@@ -1038,11 +1038,11 @@ export function SettingsPage() {
 												e.currentTarget.blur();
 											}
 										}}
-										className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 font-mono focus:border-amber-500 focus:outline-none"
+										className="mt-2 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 font-mono focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 									/>
 								</div>
 
-								<div className="border-t border-neutral-800/60 pt-4 flex items-center justify-between">
+								<div className="border-t border-[var(--border-divider)] pt-4 flex items-center justify-between">
 									<div>
 										<div className="text-xs font-medium text-neutral-200">
 											安装全局状态扩展
@@ -1055,19 +1055,19 @@ export function SettingsPage() {
 										type="button"
 										disabled={installingExt}
 										onClick={handleInstallExtension}
-										className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-50"
+										className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-50"
 									>
 										<Download className="h-3.5 w-3.5" />
 										<span>{installingExt ? "正在安装..." : "安装全局扩展"}</span>
 									</button>
 								</div>
 								{extInstallResult && (
-									<div className="rounded-lg bg-neutral-950 p-2 text-[11px] font-mono text-neutral-300">
+									<div className="rounded-lg bg-[var(--well-bg)] hairline p-2 text-[11px] font-mono text-neutral-300">
 										{extInstallResult}
 									</div>
 								)}
 
-								<div className="border-t border-neutral-800/60 pt-4">
+								<div className="border-t border-[var(--border-divider)] pt-4">
 									<div className="text-xs font-medium text-neutral-200">数据管理</div>
 									<div className="mt-1 text-[11px] text-neutral-500">
 										打开数据目录、导出或导入设置 JSON，或将全部设置恢复为默认值
@@ -1076,7 +1076,7 @@ export function SettingsPage() {
 										<button
 											type="button"
 											onClick={handleOpenDataDir}
-											className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+											className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 										>
 											<FolderOpen className="h-3.5 w-3.5" />
 											<span>打开数据目录</span>
@@ -1084,7 +1084,7 @@ export function SettingsPage() {
 										<button
 											type="button"
 											onClick={handleExportSettings}
-											className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+											className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 										>
 											<FileDown className="h-3.5 w-3.5" />
 											<span>导出设置</span>
@@ -1092,7 +1092,7 @@ export function SettingsPage() {
 										<button
 											type="button"
 											onClick={handleImportSettings}
-											className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+											className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 										>
 											<FileUp className="h-3.5 w-3.5" />
 											<span>导入设置</span>
@@ -1100,7 +1100,7 @@ export function SettingsPage() {
 										<button
 											type="button"
 											onClick={handleResetSettings}
-											className="inline-flex items-center gap-1.5 rounded-lg border border-rose-800/60 bg-rose-950/30 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-950/60"
+											className="inline-flex items-center gap-1.5 rounded-lg border border-rose-800/40 bg-rose-950/20 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-950/40 active:scale-95 transition-all"
 										>
 											<RotateCcw className="h-3.5 w-3.5" />
 											<span>恢复默认设置</span>

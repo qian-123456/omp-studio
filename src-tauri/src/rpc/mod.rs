@@ -20,7 +20,7 @@ use crate::contracts::{LiveSessionInfo, PendingUiRequest, SessionMeta, StartOpts
 use crate::state::{AppEvent, AppState};
 use crate::{catalog, paths};
 
-use process::SessionHandle;
+pub use process::SessionHandle;
 
 type ResumeLocks = parking_lot::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
 static REGISTRY: OnceLock<parking_lot::RwLock<HashMap<String, Arc<SessionHandle>>>> =
@@ -31,7 +31,7 @@ pub(crate) fn registry() -> &'static parking_lot::RwLock<HashMap<String, Arc<Ses
     REGISTRY.get_or_init(Default::default)
 }
 
-fn session_resume_lock(session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+pub fn session_resume_lock(session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
     RESUME_LOCKS
         .get_or_init(Default::default)
         .lock()
@@ -40,7 +40,7 @@ fn session_resume_lock(session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
         .clone()
 }
 
-fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
+pub fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
     registry()
         .read()
         .get(session_id)
@@ -68,7 +68,7 @@ pub fn init(state: AppState) {
                     continue;
                 }
                 let session_id = handle.session_id.read().clone();
-                if stop(&state, &session_id).await.is_ok() {
+                if stop(&handle).await.is_ok() {
                     set_suspended(&state, &session_id, true);
                 }
             }
@@ -101,6 +101,12 @@ pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo
     if session_id.is_empty() {
         let _ = process::stop_handle(&handle).await;
         return Err("omp did not report a sessionId".into());
+    }
+    let old_handle = registry().read().get(&session_id).cloned();
+    if let Some(old) = old_handle {
+        if !Arc::ptr_eq(&old, &handle) {
+            let _ = process::stop_handle(&old).await;
+        }
     }
     registry()
         .write()
@@ -168,12 +174,13 @@ pub async fn send_prompt(state: &AppState, session_id: &str, text: &str) -> Resu
 /// Write an `extension_ui_response`, emit `UiResponded`.
 pub async fn ui_respond(state: &AppState, session_id: &str, response: Value) -> Result<(), String> {
     let handle = get_handle(session_id).ok_or("session is not live")?;
-    let mut frame = json!({"type": "extension_ui_response"});
+    let mut frame = json!({});
     if let Value::Object(map) = response {
         for (k, v) in map {
             frame[k] = v;
         }
     }
+    frame["type"] = json!("extension_ui_response");
     let request_id = frame
         .get("id")
         .and_then(Value::as_str)
@@ -205,9 +212,8 @@ pub fn is_live(session_id: &str) -> bool {
 }
 
 /// Close stdin, wait ≤5s, then kill. Used by terminal view (E) and idle suspend.
-pub async fn stop(_state: &AppState, session_id: &str) -> Result<(), String> {
-    let handle = get_handle(session_id).ok_or("session is not live")?;
-    process::stop_handle(&handle).await
+pub async fn stop(handle: &Arc<SessionHandle>) -> Result<(), String> {
+    process::stop_handle(handle).await
 }
 
 /// Restart the session RPC process (the `/fresh` equivalent): terminates any
@@ -255,27 +261,34 @@ pub async fn takeover_external(
 
 /// SIGTERM then SIGKILL after the grace window.
 async fn terminate_pid(pid: u32) {
-    let _ = std::process::Command::new("kill")
-        .args(["-TERM", &pid.to_string()])
-        .status();
+    if pid <= 1 {
+        return;
+    }
+    // SAFETY: send SIGTERM to external process.
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGTERM);
+    }
     for _ in 0..50 {
         if !pid_alive(pid) {
             return;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    let _ = std::process::Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .status();
+    // SAFETY: send SIGKILL after grace period.
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGKILL);
+    }
 }
 
 fn pid_alive(pid: u32) -> bool {
-    std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+    if pid <= 1 {
+        return false;
+    }
+    // SAFETY: kill(pid, 0) checks process existence without delivering a signal.
+    unsafe {
+        libc::kill(pid as libc::pid_t, 0) == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
 }
 
 fn set_suspended(state: &AppState, session_id: &str, suspended: bool) {
@@ -315,9 +328,12 @@ async fn find_session_file(state: &AppState, session_id: &str) -> Option<(String
 
 /// Read the `type:"session"` header line for its cwd.
 fn session_header_cwd(file: &str) -> Option<String> {
-    let text = std::fs::read_to_string(file).ok()?;
-    for line in text.lines().take(8) {
-        let Ok(v) = serde_json::from_str::<Value>(line) else {
+    use std::io::BufRead;
+    let f = std::fs::File::open(file).ok()?;
+    let reader = std::io::BufReader::new(f);
+    for line in reader.lines().take(8) {
+        let Ok(line) = line else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
         if v.get("type").and_then(Value::as_str) == Some("session") {
@@ -325,4 +341,87 @@ fn session_header_cwd(file: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempFile(std::path::PathBuf);
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn create_temp(content: &str) -> TempFile {
+        let path = std::env::temp_dir().join(format!("rpc_test_{}.jsonl", uuid::Uuid::new_v4()));
+        std::fs::write(&path, content).unwrap();
+        TempFile(path)
+    }
+
+    #[test]
+    fn session_header_cwd_extracts_cwd_within_8_lines() {
+        let content = "{\"type\":\"header\",\"version\":1}\n{\"type\":\"session\",\"cwd\":\"/test/dir\"}\n{\"type\":\"message\",\"content\":\"hi\"}\n";
+        let tmp = create_temp(content);
+        let cwd = session_header_cwd(tmp.0.to_str().unwrap());
+        assert_eq!(cwd, Some("/test/dir".to_string()));
+    }
+
+    #[test]
+    fn session_header_cwd_ignores_beyond_8_lines() {
+        let mut content = String::new();
+        for i in 0..10 {
+            content.push_str(&format!("{{\"type\":\"line_{i}\"}}\n"));
+        }
+        content.push_str("{\"type\":\"session\",\"cwd\":\"/too/late\"}\n");
+        let tmp = create_temp(&content);
+        let cwd = session_header_cwd(tmp.0.to_str().unwrap());
+        assert_eq!(cwd, None);
+    }
+
+    #[test]
+    fn registry_stale_monitor_does_not_remove_replacement_handle() {
+        let session_id = format!("sess_{}", uuid::Uuid::new_v4());
+        let handle1 = Arc::new(SessionHandle::for_test());
+        let handle2 = Arc::new(SessionHandle::for_test());
+
+        // Register handle1
+        registry()
+            .write()
+            .insert(session_id.clone(), handle1.clone());
+
+        // Now replacement handle2 arrives
+        registry()
+            .write()
+            .insert(session_id.clone(), handle2.clone());
+
+        // Stale monitor for handle1 runs cleanup
+        {
+            let mut reg = registry().write();
+            if let Some(existing) = reg.get(&session_id) {
+                if Arc::ptr_eq(existing, &handle1) {
+                    reg.remove(&session_id);
+                }
+            }
+        }
+
+        // handle2 is still in the registry!
+        assert!(registry().read().get(&session_id).is_some());
+        assert!(Arc::ptr_eq(
+            registry().read().get(&session_id).unwrap(),
+            &handle2
+        ));
+
+        // When monitor for handle2 runs cleanup
+        {
+            let mut reg = registry().write();
+            if let Some(existing) = reg.get(&session_id) {
+                if Arc::ptr_eq(existing, &handle2) {
+                    reg.remove(&session_id);
+                }
+            }
+        }
+        assert!(registry().read().get(&session_id).is_none());
+    }
 }

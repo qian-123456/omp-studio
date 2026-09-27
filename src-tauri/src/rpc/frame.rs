@@ -97,6 +97,12 @@ impl ChunkReassembler {
                 self.max_reassembled
             ));
         }
+        if count > self.max_reassembled || count > byte_length.max(1) {
+            self.active = None;
+            return Err(format!(
+                "rpc_chunk count {count} exceeds reassembly bounds (byteLength {byte_length})"
+            ));
+        }
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(data)
             .map_err(|e| format!("rpc_chunk invalid base64: {e}"))?;
@@ -296,6 +302,19 @@ mod tests {
         let mut r = ChunkReassembler::default();
         // Declares 4 bytes, delivers 2.
         let c = chunk("x", 0, 1, 4, "{}");
+        assert!(r.feed(c).is_err());
+    }
+
+    #[test]
+    fn rejects_unbounded_chunk_count() {
+        let mut r = ChunkReassembler::default();
+        // Declares byte_length 4 but count 1000.
+        let c = chunk("x", 0, 1000, 4, "x");
+        assert!(r.feed(c).is_err());
+
+        // Declares count exceeding max_reassembled.
+        let mut r = ChunkReassembler::new(10);
+        let c = chunk("y", 0, 20, 10, "y");
         assert!(r.feed(c).is_err());
     }
 }

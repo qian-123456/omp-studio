@@ -27,6 +27,9 @@ pub async fn rpc_send(
     session_id: String,
     command: Value,
 ) -> Result<Value, String> {
+    if !command.is_object() {
+        return Err("command must be a JSON object".into());
+    }
     let handle = crate::rpc::get_handle(&session_id).ok_or("session is not live")?;
     let is_prompt = matches!(
         command.get("type").and_then(Value::as_str),
@@ -57,8 +60,12 @@ pub async fn rpc_pending_ui(
 }
 
 #[tauri::command]
-pub async fn rpc_stop(state: tauri::State<'_, AppState>, session_id: String) -> Result<(), String> {
-    crate::rpc::stop(&state, &session_id).await
+pub async fn rpc_stop(
+    _state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
+    let handle = crate::rpc::get_handle(&session_id).ok_or("session is not live")?;
+    crate::rpc::stop(&handle).await
 }
 
 #[tauri::command]

@@ -109,10 +109,10 @@ export function FileTreeNode({
 				onContextMenu={handleContextMenu}
 				style={{ paddingLeft: `${depth * 14 + 8}px` }}
 				className={clsx(
-					"group flex h-[28px] cursor-pointer items-center gap-1.5 pr-2 text-xs transition-colors select-none mx-1 my-0.5",
+					"group flex h-[28px] cursor-pointer items-center gap-1.5 pr-2 text-xs transition-all select-none mx-1 my-0.5 active:scale-[0.98]",
 					isSelected
-						? "rounded-md border border-rose-500/70 bg-rose-500/10 text-rose-100 font-medium"
-						: "rounded-md border border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
+						? "rounded-lg bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+						: "rounded-lg text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
 				)}
 				title={entry.path}
 			>
@@ -199,39 +199,39 @@ export function FileTreeNode({
 					/>
 					<div
 						style={{ left: contextMenu.x, top: contextMenu.y }}
-						className="fixed z-50 min-w-[150px] rounded-lg border border-neutral-800 bg-neutral-900/95 p-1 shadow-2xl backdrop-blur-md text-xs text-neutral-200"
+						className="fixed z-50 min-w-[150px] rounded-xl vibrancy-popover shadow-apple-modal hairline p-1 text-xs text-neutral-200"
 					>
 						<button
 							type="button"
 							onClick={revealInFinder}
-							className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800 hover:text-neutral-100"
+							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 						>
 							在访达中显示
 						</button>
 						<button
 							type="button"
 							onClick={copyRelativePath}
-							className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800 hover:text-neutral-100"
+							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 						>
 							复制相对路径
 						</button>
 						<button
 							type="button"
 							onClick={copyAbsolutePath}
-							className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800 hover:text-neutral-100"
+							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 						>
 							复制完整路径
 						</button>
 						{entry.isDir && (
 							<>
-								<div className="my-1 border-t border-neutral-800" />
+								<div className="my-1 border-t border-[var(--border-divider)]" />
 								<button
 									type="button"
 									onClick={() => {
 										setContextMenu(null);
 										onRefreshDir(entry.path);
 									}}
-									className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800 hover:text-neutral-100"
+									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 								>
 									刷新此目录
 								</button>

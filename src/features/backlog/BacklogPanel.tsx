@@ -684,17 +684,17 @@ export function BacklogPanel() {
 			{/* Dispatch Modal */}
 			{dispatchingItem && (
 				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 pointer-events-auto"
+					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-xs p-4 pointer-events-auto"
 					onMouseDown={(e) => {
 						e.stopPropagation();
 						if (e.target === e.currentTarget) setDispatchingItem(null);
 					}}
 				>
 					<div
-						className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl"
+						className="w-full max-w-lg rounded-2xl bg-[var(--bg-panel)] p-6 shadow-apple-modal hairline"
 						onMouseDown={(e) => e.stopPropagation()}
 					>
-						<div className="mb-4 flex items-center justify-between border-b border-neutral-800 pb-3">
+						<div className="mb-4 flex items-center justify-between border-b border-[var(--border-divider)] pb-3">
 							<div className="flex items-center gap-2">
 								<Send className="h-5 w-5 text-amber-400" />
 								<h2 className="text-base font-semibold text-neutral-100">
@@ -704,7 +704,7 @@ export function BacklogPanel() {
 							<button
 								type="button"
 								onClick={() => setDispatchingItem(null)}
-								className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+								className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 							>
 								<X className="h-4 w-4" />
 							</button>

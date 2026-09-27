@@ -876,11 +876,10 @@ export function SessionSidebar() {
 					searchInputRef.current?.select();
 				}
 			}}
-			className="flex h-full flex-col bg-neutral-900/60 text-neutral-300 text-xs select-none"
+			className="flex h-full flex-col bg-transparent text-neutral-300 text-xs select-none"
 		>
 			{/* Top Bar: Workspace Switcher Card + Search & Filters */}
-			<div className="relative border-b border-neutral-800/80 bg-neutral-900/40 p-2">
-				{/* Workspace Switcher Header Card */}
+			<div className="relative border-b border-[var(--border-divider)] bg-transparent p-2">
 				<div className="flex items-center gap-1.5">
 					<button
 						type="button"
@@ -888,11 +887,11 @@ export function SessionSidebar() {
 							setWsDropdownOpen((v) => !v);
 							setFilterPopoverOpen(false);
 						}}
-						className="group flex min-w-0 flex-1 items-center justify-between rounded-lg border border-neutral-800/80 bg-neutral-950/40 px-2.5 py-1.5 text-left transition-colors hover:border-neutral-700/80 hover:bg-neutral-800/50"
+						className="group flex min-w-0 flex-1 items-center justify-between rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-left transition-all hover:bg-[var(--bg-hover)] active:scale-[0.99]"
 						title="点击切换或管理工作区"
 					>
 						<div className="flex min-w-0 items-center gap-2">
-							<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-neutral-800/80 text-neutral-300">
+							<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--bg-active-fill)] text-neutral-300">
 								{activeWorkspaceId === "__global" ? (
 									<Globe size={13} className="text-indigo-400" />
 								) : activeWs ? (
@@ -927,7 +926,7 @@ export function SessionSidebar() {
 								? `在「${activeWs.name}」新建会话 (Cmd+N)`
 								: "新建会话 (Cmd+N)"
 						}
-						className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-neutral-700/60 bg-neutral-800/70 text-neutral-300 shadow-sm transition-colors hover:border-indigo-500/50 hover:bg-indigo-600/20 hover:text-indigo-200"
+						className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg hairline bg-[var(--bg-active-fill)] text-neutral-300 shadow-sm transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95"
 					>
 						<Plus size={14} />
 					</button>
@@ -957,7 +956,7 @@ export function SessionSidebar() {
 								}
 							}}
 							placeholder="搜索会话、分支... (Cmd+F)"
-							className="w-full rounded-lg border border-neutral-800/80 bg-neutral-950/70 py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500 transition-colors focus:border-neutral-700 focus:outline-none"
+							className="w-full rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500/70 transition-colors focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 						/>
 						{searchQuery && (
 							<button
@@ -979,10 +978,10 @@ export function SessionSidebar() {
 							setWsDropdownOpen(false);
 						}}
 						className={clsx(
-							"relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors",
+							"relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95",
 							showArchived || showDeletedWt
-								? "border-amber-700/60 bg-amber-950/40 text-amber-300"
-								: "border-neutral-800/80 bg-neutral-950/40 text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
+								? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+								: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 						)}
 						title="过滤与显示设置"
 					>
@@ -997,7 +996,7 @@ export function SessionSidebar() {
 				{wsDropdownOpen && (
 					<div
 						ref={wsDropdownRef}
-						className="absolute left-2 right-2 top-10 z-50 rounded-lg border border-neutral-700/80 bg-neutral-900 p-1.5 text-xs text-neutral-300 shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+						className="absolute left-2 right-2 top-10 z-50 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1.5 text-xs text-neutral-300 animate-in fade-in zoom-in-95 duration-100"
 					>
 						<div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
 							工作区切换
@@ -1150,7 +1149,7 @@ export function SessionSidebar() {
 				{filterPopoverOpen && (
 					<div
 						ref={filterPopoverRef}
-						className="absolute right-2 top-20 z-50 w-56 rounded-lg border border-neutral-700/80 bg-neutral-900 p-2 text-xs text-neutral-300 shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+						className="absolute right-2 top-20 z-50 w-56 rounded-xl vibrancy-popover shadow-apple-modal hairline p-2 text-xs text-neutral-300 animate-in fade-in zoom-in-95 duration-100"
 					>
 						<div className="px-1 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
 							显示与过滤
@@ -1448,7 +1447,7 @@ export function SessionSidebar() {
 									<div className="py-1">
 										<div
 											onClick={() => toggleGroup("__global", true)}
-											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+											className="group flex h-7 cursor-pointer select-none items-center justify-between mx-1.5 px-2 rounded-lg hover:bg-[var(--bg-hover)] text-neutral-300 transition-colors"
 										>
 											<div className="flex items-center gap-1.5 min-w-0">
 												{isGroupOpen("__global", true) ? (
@@ -1469,7 +1468,7 @@ export function SessionSidebar() {
 												>
 													全局工作区
 												</span>
-												<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
+												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
 													{grouped.globalGroup.totalCount}
 												</span>
 												{!isGroupOpen("__global", true) &&
@@ -1537,7 +1536,7 @@ export function SessionSidebar() {
 											onContextMenu={(e) =>
 												handleWorkspaceContextMenu(wg.workspace, e)
 											}
-											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+											className="group flex h-7 cursor-pointer select-none items-center justify-between mx-1.5 px-2 rounded-lg hover:bg-[var(--bg-hover)] text-neutral-300 transition-colors"
 										>
 											<div className="flex items-center gap-1.5 min-w-0">
 												{isGroupOpen(wg.workspace.id, true) ? (
@@ -1561,7 +1560,7 @@ export function SessionSidebar() {
 												>
 													{wg.workspace.name}
 												</span>
-												<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
+												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
 													{wg.totalCount}
 												</span>
 												{!isGroupOpen(wg.workspace.id, true) &&
@@ -1658,7 +1657,7 @@ export function SessionSidebar() {
 									<div className="py-1">
 										<div
 											onClick={() => toggleGroup("__unassigned", false)}
-											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+											className="group flex h-7 cursor-pointer select-none items-center justify-between mx-1.5 px-2 rounded-lg hover:bg-[var(--bg-hover)] text-neutral-300 transition-colors"
 										>
 											<div className="flex items-center gap-1.5 min-w-0">
 												{isGroupOpen("__unassigned", false) ? (
@@ -1676,7 +1675,7 @@ export function SessionSidebar() {
 												<span className="font-semibold text-[13px] text-neutral-200 truncate">
 													{UNASSIGNED_LABEL}
 												</span>
-												<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
+												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
 													{grouped.unassigned.length}
 												</span>
 												{!isGroupOpen("__unassigned", false) &&
@@ -1724,7 +1723,7 @@ export function SessionSidebar() {
 									<div className="py-1 opacity-70">
 										<div
 											onClick={() => toggleGroup("__deleted", false)}
-											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+											className="group flex h-7 cursor-pointer select-none items-center justify-between mx-1.5 px-2 rounded-lg hover:bg-[var(--bg-hover)] text-neutral-300 transition-colors"
 										>
 											<div className="flex items-center gap-1.5 min-w-0">
 												{isGroupOpen("__deleted", false) ? (
@@ -1745,7 +1744,7 @@ export function SessionSidebar() {
 												<span className="font-semibold text-[13px] text-neutral-300 truncate">
 													{DELETED_LABEL}
 												</span>
-												<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
+												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
 													{grouped.deletedNodes.length}
 												</span>
 												{!isGroupOpen("__deleted", false) &&
@@ -1963,7 +1962,7 @@ export function SessionSidebar() {
 					onMouseDown={(e) => {
 						if (e.target === e.currentTarget) setAssignAllTarget(null);
 					}}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
 				>
 					<div
 						onClick={(e) => e.stopPropagation()}
@@ -2247,7 +2246,7 @@ function CollapsibleSubgroup({
 				<button
 					type="button"
 					onClick={() => onToggle(`${scopeKey}|sub`)}
-					className="flex min-w-0 flex-1 items-center gap-1 px-4 py-1 text-[11px] font-medium text-neutral-400 hover:bg-neutral-800/40 hover:text-neutral-300"
+					className="flex min-w-0 flex-1 items-center gap-1 mx-1.5 px-2 h-7 rounded-lg text-[11px] font-medium text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-300 transition-colors"
 				>
 					{open ? (
 						<ChevronDown size={11} className="shrink-0 text-neutral-500" />

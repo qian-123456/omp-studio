@@ -51,7 +51,7 @@ pub async fn term_open(
     cols: u16,
     rows: u16,
 ) -> Result<String, String> {
-    pty::open(&cwd, &command, cols, rows, app_sink(&state))
+    pty::open(&cwd, &command, cols, rows, app_sink(&state), &[])
 }
 
 /// `data`: utf8 text.
@@ -81,13 +81,17 @@ pub async fn term_open_session(
     cols: u16,
     rows: u16,
 ) -> Result<String, String> {
+    let lock = crate::rpc::session_resume_lock(&session_id);
+    let _guard = lock.lock().await;
     let meta = crate::catalog::get(&state, &session_id)
         .await
         .ok_or_else(|| format!("找不到会话 {session_id}"))?;
-    if crate::rpc::is_live(&session_id) {
-        crate::rpc::stop(&state, &session_id)
-            .await
-            .map_err(|e| format!("停止结构化通道失败: {e}"))?;
+    if let Some(handle) = crate::rpc::get_handle(&session_id) {
+        if let Err(e) = crate::rpc::stop(&handle).await {
+            if e != "session is not live" && e != "session process is not running" {
+                return Err(format!("停止结构化通道失败: {e}"));
+            }
+        }
     }
     // Re-opening a session terminal replaces the previous one.
     let old = session_terms().lock().get(&session_id).cloned();
@@ -98,17 +102,19 @@ pub async fn term_open_session(
     let ext = crate::paths::extension_path();
     let _ = extension::install_to(&ext);
     let binary = state.settings.read().omp_binary.clone();
-    let argv = vec![
+    let mut argv = vec![
         binary,
         "--resume".to_string(),
         meta.file.clone(),
         "-e".to_string(),
         ext.to_string_lossy().to_string(),
-        "-e".to_string(),
-        crate::providers::extension_path()?
-            .to_string_lossy()
-            .to_string(),
     ];
+    if let Some(provider_ext) = crate::providers::try_extension_path() {
+        argv.push("-e".to_string());
+        argv.push(provider_ext.to_string_lossy().to_string());
+    }
+    let extra_env: Vec<(String, String)> =
+        crate::providers::terminal_extra_env().into_iter().collect();
     let cwd = if std::path::Path::new(&meta.cwd).is_dir() {
         meta.cwd.clone()
     } else {
@@ -116,7 +122,7 @@ pub async fn term_open_session(
             .map(|h| h.to_string_lossy().to_string())
             .unwrap_or_else(|| "/".to_string())
     };
-    let term_id = pty::open(&cwd, &argv, cols, rows, app_sink(&state))?;
+    let term_id = pty::open(&cwd, &argv, cols, rows, app_sink(&state), &extra_env)?;
     session_terms().lock().insert(session_id, term_id.clone());
     Ok(term_id)
 }

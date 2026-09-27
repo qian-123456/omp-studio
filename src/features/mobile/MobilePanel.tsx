@@ -183,17 +183,17 @@ export function MobilePanel() {
 
 	return (
 		<section className="flex flex-col gap-4 text-xs">
-			<header className="flex items-center justify-between border-b border-neutral-800 pb-3">
+			<header className="flex items-center justify-between border-b border-[var(--border-divider)] pb-3">
 				<div className="flex items-center gap-2">
 					<Smartphone className="h-4 w-4 text-amber-400" />
-					<h2 className="text-sm font-semibold text-neutral-100">手机访问与控制</h2>
+					<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">手机访问与控制</h2>
 				</div>
 				<span
 					className={
-						"rounded-full px-2.5 py-0.5 text-[11px] font-medium " +
+						"rounded-full px-2.5 py-0.5 text-[11px] font-medium border " +
 						(status?.running
-							? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-							: "bg-neutral-800 text-neutral-400 border border-neutral-700")
+							? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+							: "bg-[var(--bg-active-fill)] text-neutral-400 hairline")
 					}
 				>
 					{status?.running ? "● 运行中" : "○ 已停止"}
@@ -212,7 +212,7 @@ export function MobilePanel() {
 			)}
 
 			{/* LAN server */}
-			<div className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3.5">
+			<div className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
 				<div className="flex items-center gap-1.5 font-medium text-neutral-300">
 					<Network className="h-3.5 w-3.5 text-neutral-400" />
 					<span>局域网直连 (LAN)</span>
@@ -220,14 +220,14 @@ export function MobilePanel() {
 				<div className="flex flex-wrap items-center gap-2">
 					<label className="text-neutral-400">端口号:</label>
 					<input
-						className="w-24 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+						className="w-24 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1 text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 						value={port}
 						onChange={(e) => setPort(e.target.value)}
 						placeholder="7788"
 					/>
 					<button
 						type="button"
-						className="inline-flex items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-40"
+						className="inline-flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40"
 						disabled={busy !== null}
 						onClick={savePort}
 					>
@@ -243,10 +243,10 @@ export function MobilePanel() {
 				<div className="flex flex-wrap gap-2 pt-1">
 					<button
 						type="button"
-						className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+						className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all active:scale-95 disabled:opacity-40 ${
 							status?.running
-								? "border border-rose-900/60 bg-rose-950/20 text-rose-300 hover:bg-rose-950/40"
-								: "bg-amber-500 text-neutral-950 hover:bg-amber-400 font-semibold"
+								? "border border-rose-800/40 bg-rose-950/20 text-rose-300 hover:bg-rose-950/40"
+								: "bg-[#0A84FF] text-white hover:bg-[#0A84FF]/90 font-medium shadow-sm"
 						}`}
 						disabled={busy !== null}
 						onClick={toggleServer}
@@ -260,7 +260,7 @@ export function MobilePanel() {
 					</button>
 					<button
 						type="button"
-						className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-40"
+						className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40"
 						disabled={busy !== null || !status?.running}
 						onClick={() => makePairing(false)}
 					>
@@ -270,18 +270,18 @@ export function MobilePanel() {
 				</div>
 			</div>
 			{/* Tunnel */}
-			<div className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3.5">
+			<div className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
 				<div className="flex items-center gap-1.5 font-medium text-neutral-300">
 					<Globe className="h-3.5 w-3.5 text-neutral-400" />
 					<span>Cloudflare Tunnel 公网隧道</span>
 				</div>
 				{status && !status.cloudflaredInstalled && (
 					<div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-2 text-[11px] text-amber-300">
-						未检测到 cloudflared 二进制：建议执行 <code className="font-mono bg-neutral-950 px-1 rounded">brew install cloudflared</code> 安装
+						未检测到 cloudflared 二进制：建议执行 <code className="font-mono bg-[var(--well-bg)] px-1 rounded">brew install cloudflared</code> 安装
 					</div>
 				)}
 				<select
-					className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+					className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 					value={tunnelMode}
 					onChange={(e) => setTunnelMode(e.target.value)}
 				>
@@ -292,13 +292,13 @@ export function MobilePanel() {
 				{tunnelMode === "named" && (
 					<div className="grid grid-cols-2 gap-2">
 						<input
-							className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+							className="rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 							placeholder="隧道名称 (tunnel name)"
 							value={tunnelName}
 							onChange={(e) => setTunnelName(e.target.value)}
 						/>
 						<input
-							className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+							className="rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 							placeholder="公网域名 (例如 ws.example.com)"
 							value={tunnelHost}
 							onChange={(e) => setTunnelHost(e.target.value)}
@@ -314,7 +314,7 @@ export function MobilePanel() {
 				<div className="flex flex-wrap gap-2 pt-1">
 					<button
 						type="button"
-						className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-40"
+						className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40"
 						disabled={busy !== null}
 						onClick={applyTunnel}
 					>
@@ -327,7 +327,7 @@ export function MobilePanel() {
 					</button>
 					<button
 						type="button"
-						className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-40"
+						className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40"
 						disabled={busy !== null || !status?.tunnelUrl}
 						onClick={() => makePairing(true)}
 					>
@@ -342,15 +342,15 @@ export function MobilePanel() {
 
 			{/* Pairing QR */}
 			{pairing && (
-				<div className="flex flex-col items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 shadow-xl">
-					<div className="flex w-full items-center justify-between border-b border-neutral-800 pb-2">
+				<div className="flex flex-col items-center gap-3 rounded-2xl vibrancy-popover shadow-apple-modal hairline p-4">
+					<div className="flex w-full items-center justify-between border-b border-[var(--border-divider)] pb-2">
 						<span className="text-xs font-medium text-neutral-300">
-							{pairTarget === "tunnel" ? "公网隧道" : "局域网"}配对码 · {mm}:{ss} 后过期
+							{pairTarget === "tunnel" ? "公网隧道" : "局域网"}配对码 · <span className="tabular-nums font-mono">{mm}:{ss}</span> 后过期
 						</span>
 						<button
 							type="button"
 							onClick={() => setPairing(null)}
-							className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+							className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 							title="关闭二维码"
 						>
 							<X className="h-4 w-4" />
@@ -361,7 +361,7 @@ export function MobilePanel() {
 						// Backend-generated SVG QR (qrcode crate), not user content.
 						dangerouslySetInnerHTML={{ __html: pairing.qrSvg }}
 					/>
-					<div className="flex w-full items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950 p-2">
+					<div className="flex w-full items-center gap-2 rounded-lg hairline bg-[var(--well-bg)] p-2">
 						<code className="flex-1 break-all text-[11px] font-mono text-neutral-300">
 							{pairing.url}
 						</code>
@@ -371,7 +371,7 @@ export function MobilePanel() {
 								await copyText(pairing.url);
 								toast.success("配对链接已复制到剪贴板");
 							}}
-							className="inline-flex shrink-0 items-center gap-1 rounded bg-neutral-800 px-2.5 py-1 text-xs text-neutral-200 hover:bg-neutral-700"
+							className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 							title="复制配对链接"
 						>
 							<Copy className="h-3.5 w-3.5" />
@@ -382,7 +382,7 @@ export function MobilePanel() {
 			)}
 
 			{/* Paired Devices & Access Control */}
-			<div className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3.5">
+			<div className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<Smartphone className="h-4 w-4 text-amber-400" />
@@ -390,7 +390,7 @@ export function MobilePanel() {
 							已配对设备与访问控制
 						</span>
 					</div>
-					<span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] text-neutral-400">
+					<span className="rounded-full bg-[var(--bg-active-fill)] hairline px-2 py-0.5 text-[10px] text-neutral-400">
 						{status?.running ? "访问凭据生效中" : "服务已停止"}
 					</span>
 				</div>
@@ -406,7 +406,7 @@ export function MobilePanel() {
 				<div>
 					<button
 						type="button"
-						className="inline-flex items-center gap-1.5 rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-950/40 disabled:opacity-40"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-rose-800/40 bg-rose-950/20 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-950/40 active:scale-95 transition-all disabled:opacity-40"
 						disabled={busy !== null}
 						onClick={revokeAll}
 					>

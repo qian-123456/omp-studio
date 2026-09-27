@@ -40,9 +40,9 @@ function blankConfig(): ProviderConfig {
 }
 
 const inputCls =
-	"mt-1.5 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none";
+	"mt-1.5 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all";
 const labelCls = "block text-xs font-medium text-neutral-200";
-const hintCls = "mt-0.5 text-[11px] text-neutral-500";
+const hintCls = "mt-0.5 text-[11px] text-neutral-400";
 
 export function ProviderDialog({ target, onClose }: Props) {
 	const dialogRef = useRef<HTMLDivElement>(null);
@@ -296,7 +296,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) void handleDismiss();
 			}}
@@ -321,10 +321,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 						first?.focus();
 					}
 				}}
-				className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg border border-neutral-800 bg-neutral-900 shadow-2xl"
+				className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-[var(--bg-panel)] shadow-apple-modal hairline"
 			>
-				<div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-					<div id="provider-dialog-title" className="text-xs font-semibold text-neutral-100">
+				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
+					<div id="provider-dialog-title" className="text-xs font-semibold tracking-[-0.018em] text-neutral-100">
 						{isEdit
 							? "编辑供应商"
 							: target.mode === "import"
@@ -335,7 +335,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 						type="button"
 						onClick={() => void handleDismiss()}
 						aria-label="关闭"
-						className="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
+						className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 					>
 						<X className="h-3.5 w-3.5" />
 					</button>
@@ -412,10 +412,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 											key={p.id}
 											type="button"
 											onClick={() => applyPreset(p.id)}
-											className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+											className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-all active:scale-95 ${
 												selectedPresetId === p.id
-													? "border-amber-500 bg-neutral-800 text-neutral-100"
-													: "border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+													? "border-[#0A84FF]/60 bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+													: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 											}`}
 										>
 											<span
@@ -489,7 +489,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 										onClick={() => setShowKey((value) => !value)}
 										title={showKey ? "隐藏密钥" : "显示密钥"}
 										aria-label={showKey ? "隐藏密钥" : "显示密钥"}
-										className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 text-neutral-500 hover:text-neutral-200"
+										className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 rounded p-1 text-neutral-500 hover:text-neutral-200 active:scale-95 transition-all"
 									>
 										{showKey ? <EyeOff size={14} /> : <Eye size={14} />}
 									</button>
@@ -500,12 +500,12 @@ export function ProviderDialog({ target, onClose }: Props) {
 							</div>
 						</div>
 
-						<div className="border-t border-neutral-800 pt-3">
+						<div className="border-t border-[var(--border-divider)] pt-3">
 							<button
 								type="button"
 								onClick={() => setAdvancedOpen((value) => !value)}
 								aria-expanded={advancedOpen}
-								className="flex w-full items-center justify-between text-left text-xs text-neutral-300 hover:text-neutral-100"
+								className="flex w-full items-center justify-between text-left text-xs text-neutral-300 hover:text-neutral-100 transition-colors"
 							>
 								<span>进阶设置</span>
 								<ChevronDown size={14} className={advancedOpen ? "rotate-180" : ""} />
@@ -575,16 +575,16 @@ export function ProviderDialog({ target, onClose }: Props) {
 				)}
 
 				{formError && (
-					<div className="mx-4 mb-2 rounded-lg border border-rose-800/50 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
+					<div className="mx-4 mb-2 rounded-xl border border-rose-800/40 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
 						{formError}
 					</div>
 				)}
 
-				<div className="flex items-center justify-end gap-2 border-t border-neutral-800 px-4 py-3">
+				<div className="flex items-center justify-end gap-2 border-t border-[var(--border-divider)] px-4 py-3">
 					<button
 						type="button"
 						onClick={() => void handleDismiss()}
-						className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+						className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 					>
 						取消
 					</button>
@@ -593,7 +593,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 							type="button"
 							disabled={importable === 0 || importing}
 							onClick={() => void handleImport()}
-							className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-neutral-950 hover:bg-amber-400 disabled:opacity-50"
+							className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
 						>
 							{importing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
 							<span>确认导入（{importable}）</span>
@@ -603,7 +603,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 							type="button"
 							disabled={saving}
 							onClick={() => void handleSave()}
-							className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-neutral-950 hover:bg-amber-400 disabled:opacity-50"
+							className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
 						>
 							{saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
 							<span>保存{apiKey.trim() ? "并加密密钥" : ""}</span>

@@ -300,7 +300,9 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     if ext.exists() {
         cmd.arg("-e").arg::<PathBuf>(ext);
     }
-    cmd.arg("-e").arg(crate::providers::extension_path()?);
+    if let Some(ext) = crate::providers::try_extension_path() {
+        cmd.arg("-e").arg(ext);
+    }
     Ok(cmd)
 }
 
@@ -310,7 +312,10 @@ pub async fn send_command(
     handle: &Arc<SessionHandle>,
     mut command: Value,
 ) -> Result<Value, String> {
-    if !handle.alive.load(Ordering::SeqCst) {
+    if !command.is_object() {
+        return Err("command must be a JSON object".into());
+    }
+    if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
         return Err("session process is not running".into());
     }
     let id = format!("req_{}", REQ_COUNTER.fetch_add(1, Ordering::Relaxed));
@@ -338,7 +343,7 @@ pub async fn send_command(
 
 /// Write a fire-and-forget frame (extension_ui_response etc.).
 pub fn send_raw(handle: &Arc<SessionHandle>, frame: Value) -> Result<(), String> {
-    if !handle.alive.load(Ordering::SeqCst) {
+    if !handle.alive.load(Ordering::SeqCst) || *handle.shutdown.borrow() {
         return Err("session process is not running".into());
     }
     handle
@@ -364,8 +369,8 @@ pub async fn spawn_with_sink(
     let mut cmd = build_command(opts, settings)?;
     let path = augmented_path().await;
     cmd.env("PATH", &path);
-    // Inject configured API provider keys (best effort; never logged).
-    for (key, value) in crate::providers::env_pairs() {
+    // Inject configured API provider keys and routing metadata (best effort; never logged).
+    for (key, value) in crate::providers::omp_spawn_env() {
         cmd.env(key, value);
     }
 
@@ -410,7 +415,8 @@ pub async fn spawn_with_sink(
     });
 
     // stdin writer task: drains the channel, exits on shutdown/close.
-    tokio::spawn(async move {
+    let writer_handle = handle.clone();
+    let stdin_task = tokio::spawn(async move {
         let mut stdin = stdin;
         loop {
             tokio::select! {
@@ -423,21 +429,61 @@ pub async fn spawn_with_sink(
                     }
                     None => break,
                 },
-                _ = shutdown_rx.changed() => break,
+                _ = shutdown_rx.changed() => {
+                    while stdin_rx.try_recv().is_ok() {}
+                    break;
+                }
             }
         }
+        writer_handle.pending.fail_all("session stdin closed");
         // Dropping ChildStdin closes stdin → omp exits gracefully.
     });
 
     // stdout reader task.
     let reader_handle = handle.clone();
     let reader_sink = sink.clone();
-    tokio::spawn(read_loop(reader_sink, reader_handle, stdout, ready_tx));
+    let reader_task = tokio::spawn(read_loop(reader_sink, reader_handle, stdout, ready_tx));
 
     // Monitor task owns the child; emits rpc:process on exit and cleans up.
     let monitor_handle = handle.clone();
     let monitor_sink = sink.clone();
-    tokio::spawn(monitor(monitor_sink, monitor_handle, child));
+    let monitor_task = tokio::spawn(monitor(monitor_sink, monitor_handle, child));
+
+    struct SpawnGuard {
+        handle: Arc<SessionHandle>,
+        stdin_task: tokio::task::JoinHandle<()>,
+        reader_task: tokio::task::JoinHandle<()>,
+        monitor_task: tokio::task::JoinHandle<()>,
+        armed: bool,
+    }
+
+    impl Drop for SpawnGuard {
+        fn drop(&mut self) {
+            if self.armed {
+                let _ = self.handle.shutdown.send(true);
+                self.handle.alive.store(false, Ordering::SeqCst);
+                self.handle.pending.fail_all("spawn aborted");
+                self.stdin_task.abort();
+                self.reader_task.abort();
+                let pid = self.handle.pid;
+                if pid > 1 {
+                    // SAFETY: best-effort kill of child process if spawn failed before completion.
+                    unsafe {
+                        libc::kill(pid as libc::pid_t, libc::SIGKILL);
+                    }
+                }
+                self.monitor_task.abort();
+            }
+        }
+    }
+
+    let mut guard = SpawnGuard {
+        handle: handle.clone(),
+        stdin_task,
+        reader_task,
+        monitor_task,
+        armed: true,
+    };
 
     // Handshake.
     let ready = tokio::time::timeout(READY_TIMEOUT, ready_rx)
@@ -473,9 +519,9 @@ pub async fn spawn_with_sink(
         apply_state(&handle, &state_resp);
         drain_pending_frames(&sink, &handle);
     }
+    guard.armed = false;
     Ok(handle)
 }
-
 fn apply_state(handle: &SessionHandle, resp: &Value) {
     let data = resp.get("data").unwrap_or(resp);
     if let Some(id) = data.get("sessionId").and_then(Value::as_str) {
@@ -544,12 +590,18 @@ async fn monitor(sink: OutSink, handle: Arc<SessionHandle>, mut child: Child) {
         running: false,
         exit_code: code,
     });
-    rpc::registry().write().remove(&session_id);
+    let mut reg = rpc::registry().write();
+    if let Some(existing) = reg.get(&session_id) {
+        if Arc::ptr_eq(existing, &handle) {
+            reg.remove(&session_id);
+        }
+    }
 }
 
 /// Close stdin, wait ≤5s for exit, then SIGKILL.
 pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
     let _ = handle.shutdown.send(true);
+    handle.pending.fail_all("session is stopping");
     for _ in 0..50 {
         if !handle.alive.load(Ordering::SeqCst) {
             return Ok(());
@@ -557,9 +609,12 @@ pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     let pid = handle.pid;
-    let _ = std::process::Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .status();
+    if pid > 1 {
+        // SAFETY: SIGKILL the child process after grace window.
+        unsafe {
+            libc::kill(pid as libc::pid_t, libc::SIGKILL);
+        }
+    }
     // Monitor emits rpc:process when wait() returns.
     Ok(())
 }
@@ -709,5 +764,44 @@ mod tests {
         assert_eq!(items[0].1, frame1);
         assert_eq!(items[1].0, "s_test_123");
         assert_eq!(items[1].1, frame2);
+    }
+
+    #[tokio::test]
+    async fn send_command_rejects_non_object() {
+        let h = test_handle();
+        let err = send_command(&h, json!("not an object")).await.unwrap_err();
+        assert_eq!(err, "command must be a JSON object");
+
+        let err2 = send_command(&h, json!([1, 2, 3])).await.unwrap_err();
+        assert_eq!(err2, "command must be a JSON object");
+    }
+
+    #[tokio::test]
+    async fn send_command_rejects_when_shutdown() {
+        let (tx, _rx) = mpsc::unbounded_channel::<String>();
+        let (shutdown, _srx) = watch::channel(false);
+        let h = Arc::new(SessionHandle {
+            stdin_tx: tx,
+            shutdown,
+            ..SessionHandle::for_test()
+        });
+        let _ = h.shutdown.send(true);
+        let err = send_command(&h, json!({"type": "get_state"}))
+            .await
+            .unwrap_err();
+        assert_eq!(err, "session process is not running");
+    }
+
+    #[tokio::test]
+    async fn stop_handle_fails_pending_requests() {
+        let h = test_handle();
+        let rx = h.pending.insert("req_test".into());
+        let _ = stop_handle(&h).await;
+        let resp = rx.await.expect("pending request resolved by stop_handle");
+        assert_eq!(resp.get("success").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            resp.get("error").and_then(Value::as_str),
+            Some("session is stopping")
+        );
     }
 }

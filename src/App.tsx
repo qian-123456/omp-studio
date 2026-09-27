@@ -495,13 +495,13 @@ export default function App() {
 			{/* Top bar — column-aligned single-row header; left column strictly matches sidebarWidth */}
 			<header
 				data-tauri-drag-region
-				className="flex h-10 shrink-0 border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur-sm select-none"
+				className="flex h-10 shrink-0 border-b border-[var(--border-divider)] vibrancy-chrome select-none"
 			>
 				{/* Left column topbar — matches sidebarWidth with right border */}
 				{sidebarOpen ? (
 					<div
 						style={{ width: sidebarWidth }}
-						className="flex h-full shrink-0 items-center justify-between border-r border-neutral-800/80 px-2.5"
+						className="flex h-full shrink-0 items-center justify-between border-r border-[var(--border-divider)] px-2.5"
 					>
 						{/* macOS traffic light spacer */}
 						<div className={isMac ? "w-[68px] shrink-0" : "hidden"} />
@@ -510,7 +510,7 @@ export default function App() {
 						<button
 							type="button"
 							onClick={toggleSidebar}
-							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200 transition-colors"
+							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 							title="收起左侧栏 (⌘B)"
 						>
 							<PanelLeftClose size={15} />
@@ -519,21 +519,20 @@ export default function App() {
 				) : (
 					<div
 						className={clsx(
-							"flex h-full shrink-0 items-center border-r border-neutral-800/80 px-2",
+							"flex h-full shrink-0 items-center border-r border-[var(--border-divider)] px-2",
 							isMac ? "pl-[78px]" : "pl-2",
 						)}
 					>
 						<button
 							type="button"
 							onClick={toggleSidebar}
-							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200 transition-colors"
+							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 							title="展开左侧栏 (⌘B)"
 						>
 							<PanelLeftOpen size={15} />
 						</button>
 					</div>
 				)}
-
 				{/* Center column topbar — aligns precisely with main conversation view */}
 				<div className="flex flex-1 min-w-0 items-center justify-between gap-2 px-3.5">
 					{/* Current view info */}
@@ -545,7 +544,7 @@ export default function App() {
 									<button
 										type="button"
 										onClick={() => selectSession(parentId)}
-										className="flex shrink-0 items-center gap-1 rounded-md bg-neutral-800/60 px-2 py-0.5 text-xs text-neutral-300 hover:bg-neutral-700/80 hover:text-white transition-colors"
+										className="flex shrink-0 items-center gap-1 rounded-md bg-[var(--bg-active-fill)] px-2 py-0.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all"
 										title={`返回父会话：${parentSession ? sessionDisplayName(parentSession) : parentId}`}
 									>
 										<span>←</span>
@@ -586,7 +585,7 @@ export default function App() {
 							) : (
 								<span
 									onDoubleClick={startEditTitle}
-									className="min-w-0 max-w-[200px] md:max-w-[320px] lg:max-w-[450px] cursor-pointer select-none truncate text-[13px] font-medium text-neutral-200 underline-offset-4 hover:text-white hover:underline decoration-neutral-600"
+									className="min-w-0 max-w-[200px] md:max-w-[320px] lg:max-w-[450px] cursor-pointer select-none truncate text-[13px] font-semibold tracking-[-0.015em] text-neutral-100 underline-offset-4 hover:text-white hover:underline decoration-neutral-600 transition-colors"
 									title={`双击重命名会话\n${sessionDisplayName(activeSession)}${activeSession.cwd ? `\n路径: ${activeSession.cwd}` : ""}`}
 								>
 									{sessionDisplayName(activeSession)}
@@ -599,7 +598,7 @@ export default function App() {
 								<button
 									type="button"
 									onClick={returnToSession}
-									className="flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-800/40 bg-indigo-950/30 px-2.5 py-0.5 text-xs text-indigo-300 hover:bg-indigo-900/40 hover:text-indigo-200 transition-colors"
+									className="flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-0.5 text-xs text-indigo-300 hover:bg-indigo-500/20 hover:text-indigo-200 active:scale-95 transition-all"
 									title={`返回会话: ${sessionDisplayName(activeSession)}`}
 								>
 									<ArrowLeft size={13} />
@@ -656,10 +655,10 @@ export default function App() {
 										)
 									}
 									className={clsx(
-										"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+										"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium active:scale-95 transition-all",
 										sessionViewMode === "terminal"
 											? "border border-indigo-500/40 bg-indigo-600/20 text-indigo-300"
-											: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
+											: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
 									)}
 									aria-label={sessionViewMode === "chat" ? "切换到会话终端" : "返回聊天视图"}
 									title={sessionViewMode === "chat" ? "用完整终端接管此会话（omp --resume，可交互操作 Agent）" : "返回聊天视图"}
@@ -686,7 +685,7 @@ export default function App() {
 							<button
 								type="button"
 								onClick={toggleRight}
-								className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200 transition-colors"
+								className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 								title="展开右侧面板 (⌘J)"
 							>
 								<PanelRightOpen size={15} />
@@ -707,14 +706,14 @@ export default function App() {
 					<>
 						<aside
 							style={{ width: sidebarWidth }}
-							className="shrink-0 border-r border-neutral-800 bg-neutral-900/40"
+							className="shrink-0 border-r border-[var(--border-divider)] vibrancy-chrome"
 						>
 							<SessionSidebar />
 						</aside>
 						{/* Sidebar drag handle */}
 						<div
 							onMouseDown={onLeftDragStart}
-							className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-indigo-500/40 active:bg-indigo-500/60"
+							className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-[#0A84FF]/40 active:bg-[#0A84FF]/60"
 							title="拖拽调节左栏宽度"
 						/>
 					</>
@@ -733,12 +732,12 @@ export default function App() {
 						{/* Right panel drag handle */}
 						<div
 							onMouseDown={onRightDragStart}
-							className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-indigo-500/40 active:bg-indigo-500/60"
+							className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-[#0A84FF]/40 active:bg-[#0A84FF]/60"
 							title="拖拽调节右栏宽度"
 						/>
 						<aside
 							style={{ width: rightWidth }}
-							className="flex shrink-0 flex-col border-l border-neutral-800 bg-neutral-900/40"
+							className="flex shrink-0 flex-col border-l border-[var(--border-divider)] vibrancy-chrome"
 						>
 							{rightTab ? (
 								<>
@@ -770,23 +769,23 @@ export default function App() {
 			{/* Mobile QR Pairing modal */}
 			{qrPairing && (
 				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-xs p-4"
 					onMouseDown={(e) => {
 						if (e.target === e.currentTarget) setQrPairing(null);
 					}}
 				>
 					<div
-						className="flex w-full max-w-xs flex-col items-center gap-3 rounded-xl border border-neutral-700 bg-neutral-900 p-5 shadow-2xl"
+						className="flex w-full max-w-xs flex-col items-center gap-3 rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-200 shadow-apple-modal hairline"
 						onClick={(e) => e.stopPropagation()}
 					>
-						<div className="flex w-full items-center justify-between border-b border-neutral-800 pb-2">
+						<div className="flex w-full items-center justify-between border-b border-[var(--border-divider)] pb-2">
 							<span className="text-xs font-medium text-neutral-200">
 								手机扫码查看
 							</span>
 							<button
 								type="button"
 								onClick={() => setQrPairing(null)}
-								className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+								className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 								title="关闭"
 							>
 								<X size={14} />

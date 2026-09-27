@@ -157,67 +157,67 @@ export function ToolCard({
 	return (
 		<div
 			className={clsx(
-				"group/card my-0.5 rounded text-[12px] transition-colors",
+				"group/card my-1 rounded-xl text-[12px] transition-colors",
 				status === "running"
-					? "bg-sky-500/5"
+					? "bg-[#0A84FF]/5 hairline"
 					: status === "error"
-						? "bg-red-500/5"
-						: "hover:bg-neutral-800/40",
+						? "bg-[#FF453A]/5 hairline"
+						: "bg-[var(--bg-panel)]/60 hover:bg-[var(--bg-panel)] hairline",
 			)}
 		>
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
-				className="flex w-full items-center gap-1.5 px-2 py-1 text-left select-none"
+				className="press-scale flex w-full items-center gap-2 px-2.5 py-1.5 text-left select-none rounded-xl"
 			>
 				<ChevronRight
 					size={12}
 					className={clsx(
-						"shrink-0 text-neutral-600 transition-all",
+						"shrink-0 text-neutral-500 transition-all",
 						open
 							? "rotate-90 opacity-100"
 							: "rotate-0 opacity-0 group-hover/card:opacity-100",
 					)}
 				/>
 				{status === "running" ? (
-					<Loader2 size={12} className="shrink-0 animate-spin text-sky-400" />
+					<Loader2 size={12} className="shrink-0 animate-spin text-[#0A84FF]" />
 				) : status === "error" ? (
-					<span className="shrink-0 text-[11px] font-bold leading-none text-red-400">
+					<span className="shrink-0 text-[11px] font-bold leading-none text-[#FF453A]">
 						✕
 					</span>
 				) : status === "called" ? (
-					<Clock size={12} className="shrink-0 text-amber-400" />
+					<Clock size={12} className="shrink-0 text-[#FF9F0A]" />
 				) : (
-					<ToolIcon size={12} className="shrink-0 text-neutral-500" />
+					<ToolIcon size={12} className="shrink-0 text-neutral-400" />
 				)}
 				<span
 					className={clsx(
 						"shrink-0 font-medium",
-						status === "error" ? "text-red-300" : "text-neutral-300",
+						status === "error" ? "text-[#ff7b72]" : "text-neutral-200",
 					)}
 					title={name}
 				>
 					{toolTitle}
 				</span>
 				{detail && (
-					<span className="truncate text-[11px] text-neutral-500">
+					<span className="truncate text-[11px] text-neutral-400">
 						{detail}
 					</span>
 				)}
 				{stat && (
-					<span className="shrink-0 font-mono text-[10px]">
-						<span className="text-emerald-400">+{stat.adds}</span>{" "}
-						<span className="text-red-400">-{stat.dels}</span>
+					<span className="shrink-0 font-mono text-[10px] tabular-nums">
+						<span className="text-[#30D158]">+{stat.adds}</span>{" "}
+						<span className="text-[#FF453A]">-{stat.dels}</span>
 					</span>
 				)}
 				{durationText && (
-					<span className="ml-auto shrink-0 font-mono text-[10px] text-neutral-500">
+					<span className="ml-auto shrink-0 font-mono text-[10px] text-neutral-400 tabular-nums">
 						{durationText}
 					</span>
 				)}
 			</button>
 			{open && (
-				<div className="space-y-1.5 border-t border-neutral-800/40 px-2 py-1.5 text-[11px]">
+				<div className="space-y-2 hairline-t px-2.5 py-2 text-[11px]">
 					{command && (
 						<div className="group/cmd relative">
 							<button
@@ -230,19 +230,19 @@ export function ToolCard({
 										toast.error(`复制失败: ${errMsg(e)}`);
 									}
 								}}
-								className="absolute right-1 top-1 flex items-center gap-1 rounded bg-neutral-800/80 px-1.5 py-0.5 text-[10px] text-neutral-400 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-200 focus:opacity-100 group-hover/cmd:opacity-100"
+								className="press-scale absolute right-1.5 top-1.5 flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-300 opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:text-neutral-100 focus:opacity-100 group-hover/cmd:opacity-100"
 								title="复制命令"
 							>
 								<Copy size={10} /> 复制
 							</button>
-							<pre className="overflow-x-auto rounded bg-neutral-950/80 border border-neutral-800/50 px-2 py-1 font-mono text-[11px] text-amber-200/90">
+							<pre className="overflow-x-auto rounded-xl bg-[var(--bg)] hairline px-2.5 py-1.5 font-mono text-[11px] text-[#FFD60A]/90">
 								<span className="text-neutral-500 select-none">$ </span>{command}
 							</pre>
 						</div>
 					)}
 
 					{file && (
-						<div className="flex items-center justify-between gap-2 rounded bg-neutral-950/60 border border-neutral-800/40 px-2 py-1 text-neutral-400">
+						<div className="flex items-center justify-between gap-2 rounded-xl bg-[var(--bg)] hairline px-2.5 py-1.5 text-neutral-400">
 							<span className="truncate font-mono text-[11px] text-neutral-300" title={file}>
 								{file}
 							</span>
@@ -259,7 +259,7 @@ export function ToolCard({
 										toast.error(`打开文件失败: ${errMsg(e)}`);
 									}
 								}}
-								className="flex shrink-0 items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-white"
+								className="press-scale flex shrink-0 items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-300 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-100"
 								title={file.endsWith(".md") ? "在工作台打开文档" : "在系统程序中打开"}
 							>
 								<ExternalLink size={10} />
@@ -269,7 +269,7 @@ export function ToolCard({
 					)}
 
 					{diff && (
-						<div className="rounded border border-neutral-800/60 p-1">
+						<div className="rounded-xl hairline bg-[var(--bg)]/50 p-1.5">
 							<DiffView diff={diff} file={file} sessionId={sessionId} />
 						</div>
 					)}
@@ -286,12 +286,12 @@ export function ToolCard({
 										toast.error(`复制失败: ${errMsg(e)}`);
 									}
 								}}
-								className="absolute right-1 top-1 flex items-center gap-1 rounded bg-neutral-800/80 px-1.5 py-0.5 text-[10px] text-neutral-400 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-200 focus:opacity-100 group-hover/out:opacity-100"
+								className="press-scale absolute right-1.5 top-1.5 flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-300 opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:text-neutral-100 focus:opacity-100 group-hover/out:opacity-100"
 								title="复制输出"
 							>
 								<Copy size={10} /> 复制
 							</button>
-							<pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all rounded bg-neutral-950/90 border border-neutral-800/50 px-2.5 py-1.5 font-mono text-[11px] text-neutral-300">
+							<pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all rounded-xl bg-[var(--bg)] hairline px-2.5 py-2 font-mono text-[11px] text-neutral-300">
 								{output}
 							</pre>
 						</div>
@@ -311,14 +311,14 @@ export function ToolCard({
 											toast.error(`复制失败: ${errMsg(e)}`);
 										}
 									}}
-									className="absolute right-1 top-1 flex items-center gap-1 rounded bg-neutral-800/80 px-1.5 py-0.5 text-[10px] text-neutral-400 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-200 focus:opacity-100 group-hover/content:opacity-100"
-									title="复制写入内容"
-								>
-									<Copy size={10} /> 复制
-								</button>
-								<pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all rounded bg-neutral-950/90 border border-neutral-800/50 px-2.5 py-1.5 font-mono text-[11px] text-neutral-300">
-									{String(asObj(args).content)}
-								</pre>
+								className="press-scale absolute right-1.5 top-1.5 flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-300 opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:text-neutral-100 focus:opacity-100 group-hover/content:opacity-100"
+								title="复制写入内容"
+							>
+								<Copy size={10} /> 复制
+							</button>
+							<pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all rounded-xl bg-[var(--bg)] hairline px-2.5 py-2 font-mono text-[11px] text-neutral-300">
+								{String(asObj(args).content)}
+							</pre>
 							</div>
 						)}
 
@@ -326,7 +326,7 @@ export function ToolCard({
 						!command &&
 						!file &&
 						name !== "write" && (
-							<pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-all rounded bg-neutral-950/80 border border-neutral-800/40 px-2 py-1 font-mono text-[11px] text-neutral-500">
+							<pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-all rounded-xl bg-[var(--bg)] hairline px-2.5 py-1.5 font-mono text-[11px] text-neutral-400">
 								{JSON.stringify(args, null, 2)}
 							</pre>
 						)}

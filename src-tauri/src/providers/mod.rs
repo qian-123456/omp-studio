@@ -72,30 +72,62 @@ pub fn extension_path() -> Result<std::path::PathBuf, String> {
     Ok(path)
 }
 
-/// Env pairs (env var → decrypted key) for enabled, configured providers,
+/// Best-effort extension path: on write or read error, logs a warning and returns `None`
+/// so that child processes still run without the extension instead of hard-failing.
+pub fn try_extension_path() -> Option<std::path::PathBuf> {
+    match extension_path() {
+        Ok(path) => Some(path),
+        Err(e) => {
+            tracing::warn!("providers: extension_path unavailable: {e}");
+            None
+        }
+    }
+}
+
+/// Key material only (env var → decrypted key) for enabled, configured providers,
 /// deduped by env var (first by `sort` wins). Best effort: on any failure the
 /// error is logged WITHOUT key material and no pairs are returned.
+///
+/// NOTE: Injected into PTY shells. NEVER includes `OMP_WORKSPACE_PROVIDERS` metadata
+/// so that interactive user shells remain clean.
 pub fn env_pairs() -> Vec<(String, String)> {
-    let mut pairs = match env_pairs_inner() {
+    match env_pairs_inner() {
         Ok(pairs) => pairs,
         Err(e) => {
             tracing::warn!("providers: env_pairs unavailable: {e}");
             Vec::new()
         }
-    };
-    // Only non-secret routing metadata is serialized; keys remain in individual env vars.
+    }
+}
+
+/// Routing metadata env var (`OMP_WORKSPACE_PROVIDERS`) for OMP-spawning processes.
+pub fn terminal_extra_env() -> Option<(String, String)> {
+    let keys = env_pairs();
     let routable: Vec<_> = store::load()
         .into_iter()
         .filter(|p| {
             p.api == crate::contracts::ProviderApi::Ollama
-                || pairs.iter().any(|(name, _)| name == &p.env_var)
+                || keys.iter().any(|(name, _)| name == &p.env_var)
                 || std::env::var_os(&p.env_var).is_some()
         })
         .collect();
-    if let Ok(metadata) = runtime_metadata(&routable) {
-        pairs.push(("OMP_WORKSPACE_PROVIDERS".into(), metadata));
+    match runtime_metadata(&routable) {
+        Ok(metadata) => Some(("OMP_WORKSPACE_PROVIDERS".into(), metadata)),
+        Err(e) => {
+            tracing::warn!("providers: runtime_metadata unavailable: {e}");
+            None
+        }
     }
-    pairs
+}
+
+/// Complete environment for spawning OMP processes: decrypted API keys plus
+/// the `OMP_WORKSPACE_PROVIDERS` routing metadata.
+pub fn omp_spawn_env() -> Vec<(String, String)> {
+    let mut env = env_pairs();
+    if let Some(extra) = terminal_extra_env() {
+        env.push(extra);
+    }
+    env
 }
 
 fn env_pairs_inner() -> Result<Vec<(String, String)>, String> {
@@ -128,7 +160,10 @@ mod tests {
     fn env_pairs_is_safe_without_vault_content() {
         // No providers configured in a fresh checkout → empty, never panics.
         // (The store may exist on dev machines, so only assert no panic.)
-        let _ = env_pairs();
+        let pairs = env_pairs();
+        // env_pairs MUST NOT contain metadata
+        assert!(!pairs.iter().any(|(k, _)| k == "OMP_WORKSPACE_PROVIDERS"));
+        let _ = omp_spawn_env();
     }
 
     #[test]

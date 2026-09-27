@@ -108,13 +108,13 @@ export function QuickCapture() {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-24 backdrop-blur-xs"
+			className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--overlay)] pt-24 backdrop-blur-xs"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeModal();
 			}}
 		>
 			<div
-				className="w-[520px] rounded-2xl border border-neutral-700/80 bg-neutral-900 p-5 shadow-2xl"
+				className="w-[520px] rounded-2xl bg-[var(--bg-panel)] p-5 shadow-apple-modal hairline"
 				onClick={(e) => e.stopPropagation()}
 			>
 				<div className="mb-3 flex items-center justify-between">
@@ -129,7 +129,7 @@ export function QuickCapture() {
 					<button
 						type="button"
 						onClick={closeModal}
-						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+						className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 					>
 						<X className="h-4 w-4" />
 					</button>
@@ -149,7 +149,7 @@ export function QuickCapture() {
 						value={text}
 						onChange={(e) => setText(e.target.value)}
 						placeholder="记下一句话想法、待办或缺陷..."
-						className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 placeholder-neutral-500 focus:border-amber-500 focus:outline-none"
+						className="w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-2 text-xs text-neutral-100 placeholder-neutral-500 focus:ring-1 focus:ring-amber-500 focus:outline-none transition-all"
 						onKeyDown={(e) => {
 							if (e.key === "Enter") {
 								e.preventDefault();
@@ -174,7 +174,7 @@ export function QuickCapture() {
 										className={`flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
 											isSelected
 												? meta.color
-												: "border-neutral-800 bg-neutral-800/40 text-neutral-400 hover:bg-neutral-800"
+												: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)]"
 										}`}
 									>
 										<Icon className="h-3 w-3" />
@@ -201,11 +201,11 @@ export function QuickCapture() {
 						)}
 					</div>
 
-					<div className="flex items-center justify-end gap-2 border-t border-neutral-800 pt-3">
+					<div className="flex items-center justify-end gap-2 border-t border-[var(--border-divider)] pt-3">
 						<button
 							type="button"
 							onClick={closeModal}
-							className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+							className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 						>
 							取消 (Esc)
 						</button>

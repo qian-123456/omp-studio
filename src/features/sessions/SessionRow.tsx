@@ -475,7 +475,12 @@ export function SessionRow({
 		session.updatedAt || session.createdAt,
 	).toLocaleString();
 	const pill = STATUS_PILLS[session.status];
-
+	const rowTooltip = [
+		sessionDisplayName(session),
+		session.git?.branch ? `分支: ${session.git.branch}${session.git.dirty ? ` (+${session.git.dirty})` : ""}` : "",
+		session.result ? `${session.result.kind === "test" ? "测试" : "构建"}: ${session.result.summary || (session.result.ok ? "✓" : "×")}` : "",
+		updatedAtTs,
+	].filter(Boolean).join(" · ");
 	return (
 		<div
 			data-session-id={session.id}
@@ -483,14 +488,14 @@ export function SessionRow({
 			onContextMenu={handleContextMenu}
 			style={{ paddingLeft: `${8 + indent + clampedDepth * 14}px` }}
 			className={clsx(
-				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg py-1.5 pr-2 transition-colors",
+				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-[8px] min-h-[28px] py-1 pr-2 transition-all",
 				isSelected
-					? "bg-neutral-800 text-neutral-100"
+					? "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium"
 					: isMultiSelected
-						? "bg-indigo-950/40 text-neutral-200 border-l-2 border-indigo-500"
+						? "bg-[#0A84FF]/20 text-white"
 						: isHighlighted
-							? "bg-neutral-800/60 text-neutral-200 ring-1 ring-inset ring-neutral-700/60"
-							: "text-neutral-400 hover:bg-neutral-800/40 hover:text-neutral-200",
+							? "bg-[var(--bg-active-fill)] text-neutral-200"
+							: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 				deletedWt && "opacity-50",
 			)}
 		>
@@ -523,25 +528,23 @@ export function SessionRow({
 				<span className="w-[15px] shrink-0" />
 			)}
 
-			<div className="flex min-w-0 flex-1 items-start gap-1.5">
+			<div className="flex min-w-0 flex-1 items-center gap-1.5" title={rowTooltip}>
 				{busy ? (
 					<Loader2
 						size={10}
-						className="mt-1 shrink-0 animate-spin text-indigo-400"
+						className="shrink-0 animate-spin text-indigo-400"
 					/>
 				) : (
-					<span className="mt-1 shrink-0">{renderStatusDot(session.status)}</span>
+					<span className="shrink-0">{renderStatusDot(session.status)}</span>
 				)}
 
 				{session.unread && (
 					<span
-						className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
+						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
 						title="未读"
 					/>
 				)}
 
-				<div className="min-w-0 flex-1">
-					<div className="flex min-w-0 items-center gap-1.5">
 				{isRenaming ? (
 					<input
 						ref={renameInputRef}
@@ -574,7 +577,6 @@ export function SessionRow({
 							startInlineRename();
 						}}
 						className="min-w-0 flex-1 cursor-text truncate text-xs font-medium text-neutral-200 group-hover:text-neutral-100"
-						title={sessionDisplayName(session)}
 					>
 						{sessionDisplayName(session)}
 					</span>
@@ -598,31 +600,11 @@ export function SessionRow({
 						aria-label="已置顶"
 					/>
 				)}
-					</div>
-					<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-neutral-500">
-						<span title={updatedAtTs} className="shrink-0">
-							{relativeTime(session.updatedAt || session.createdAt)}
-						</span>
-						{session.git?.branch && (
-							<>
-								<span aria-hidden="true" className="text-neutral-600">·</span>
-								<GitBranch size={10} className="shrink-0 text-neutral-500" />
-								<span className="truncate max-w-[90px]" title={session.git.branch}>{session.git.branch}</span>
-							</>
-						)}
-						{Boolean(session.git?.dirty) && (
-							<span className="shrink-0 text-amber-400/90 font-mono">+{session.git?.dirty}</span>
-						)}
-						{session.result && (
-							<span
-								className={clsx("shrink-0 font-medium", session.result.ok ? "text-emerald-400/90" : "text-rose-400/90")}
-								title={session.result.summary}
-							>
-								{session.result.kind === "test" ? "测试" : "构建"}{session.result.ok ? "✓" : "×"}
-							</span>
-						)}
-					</div>
-				</div>
+
+				{/* Single compact row: relative time only */}
+				<span title={updatedAtTs} className="shrink-0 text-[10px] text-neutral-500 tabular-nums">
+					{relativeTime(session.updatedAt || session.createdAt)}
+				</span>
 			</div>
 
 			{/* Inline quick actions */}
@@ -663,7 +645,7 @@ export function SessionRow({
 				type="button"
 				onClick={handleMenuBtnClick}
 				className={clsx(
-					"shrink-0 rounded p-1 transition-opacity hover:bg-neutral-700/60 hover:text-neutral-200",
+					"shrink-0 rounded-[6px] p-1 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95",
 					menuOpen
 						? "text-neutral-200 opacity-100"
 						: isSelected
@@ -685,11 +667,11 @@ export function SessionRow({
 						top: `${Math.min(menuCoords.y, window.innerHeight - 340)}px`,
 						zIndex: 50,
 					}}
-					className="w-44 rounded-md border border-neutral-700 bg-neutral-900 py-1 text-xs shadow-xl text-neutral-300"
+					className="w-48 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1 text-xs text-neutral-300"
 				>
 					{isMultiSelected ? (
 						<>
-							<div className="px-3 py-1 font-semibold text-[11px] text-neutral-400 border-b border-neutral-800">
+							<div className="px-2.5 py-1 font-semibold text-[11px] text-neutral-400 border-b border-[var(--border-divider)]">
 								已选 {selectedIds.size} 个会话
 							</div>
 							<button
@@ -926,9 +908,9 @@ export function SessionRow({
 						if (e.target === e.currentTarget) setShowArchiveModal(false);
 					}}
 					onClick={(e) => e.stopPropagation()}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
 				>
-					<div className="w-full max-w-md rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-200 shadow-2xl">
+					<div className="w-full max-w-md rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-200 shadow-apple-modal hairline">
 						<div className="flex items-center gap-2 pb-2 text-amber-400 font-semibold text-sm">
 							<AlertTriangle size={18} />
 							<span>归档会话与工作树清理</span>
@@ -1001,9 +983,9 @@ export function SessionRow({
 						if (e.target === e.currentTarget) setShowAssignModal(false);
 					}}
 					onClick={(e) => e.stopPropagation()}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
 				>
-					<div className="w-full max-w-sm rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-200 shadow-2xl">
+					<div className="w-full max-w-sm rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-200 shadow-apple-modal hairline">
 						<div className="flex items-center justify-between pb-3">
 							<span className="font-semibold text-sm">归入工作区</span>
 							<button
@@ -1060,7 +1042,7 @@ export function SessionRow({
 						if (e.target === e.currentTarget) setShowTakeoverModal(false);
 					}}
 					onClick={(e) => e.stopPropagation()}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
 				>
 					<div className="w-full max-w-sm rounded-lg border border-purple-500/40 bg-neutral-900 p-4 text-neutral-200 shadow-2xl">
 						<div className="flex items-center gap-2 pb-2 text-purple-400 font-semibold text-sm">

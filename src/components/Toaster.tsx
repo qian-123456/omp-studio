@@ -9,9 +9,9 @@ const ICONS: Record<ToastKind, typeof Info> = {
 };
 
 const TINT: Record<ToastKind, string> = {
-	info: "border-neutral-700 text-neutral-200",
-	success: "border-emerald-800 text-emerald-200",
-	error: "border-rose-800 text-rose-200",
+	info: "text-neutral-200",
+	success: "text-emerald-400",
+	error: "text-rose-400",
 };
 
 /** Fixed bottom-right stack; mount once in App. */
@@ -31,7 +31,7 @@ export function Toaster() {
 					<div
 						key={t.id}
 						className={clsx(
-							"pointer-events-auto flex items-start gap-2 rounded-lg border bg-neutral-900/95 px-3 py-2 text-xs shadow-lg backdrop-blur",
+							"pointer-events-auto flex items-start gap-2 rounded-xl hairline vibrancy-popover shadow-apple-modal px-3.5 py-2.5 text-xs",
 							TINT[t.kind],
 						)}
 					>

@@ -28,16 +28,16 @@ function RemoveWorktreeModal({ wt, onResolve }: ModalProps) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) onResolve(null);
 			}}
 		>
 			<div
-				className="w-[440px] rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-300 shadow-xl"
+				className="w-[440px] rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
 				onMouseDown={(e) => e.stopPropagation()}
 			>
-				<div className="mb-3 flex items-center justify-between border-b border-neutral-800 pb-2">
+				<div className="mb-3 flex items-center justify-between border-b border-[var(--border-divider)] pb-2">
 					<div className="flex items-center gap-1.5 text-sm font-semibold text-neutral-100">
 						<Trash2 size={16} className="text-rose-400" />
 						<span>清理 Worktree</span>
@@ -46,7 +46,7 @@ function RemoveWorktreeModal({ wt, onResolve }: ModalProps) {
 						type="button"
 						title="关闭 (Esc)"
 						onClick={() => onResolve(null)}
-						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+						className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 					>
 						<X size={15} />
 					</button>
@@ -54,7 +54,7 @@ function RemoveWorktreeModal({ wt, onResolve }: ModalProps) {
 
 				<div className="mb-3 text-xs text-neutral-300">
 					确定要清理以下工作区吗？
-					<div className="mt-1 rounded bg-neutral-950 p-2 font-mono text-[11px] text-neutral-200 break-all select-all">
+					<div className="mt-1 rounded-lg bg-[var(--well-bg)] hairline p-2 font-mono text-[11px] text-neutral-200 break-all select-all">
 						{wt.path}
 					</div>
 					{wt.sessionIds.length > 0 && (
@@ -65,7 +65,7 @@ function RemoveWorktreeModal({ wt, onResolve }: ModalProps) {
 					)}
 				</div>
 
-				<div className="mb-4 space-y-2 rounded border border-neutral-800 bg-neutral-950/50 p-2.5 text-xs">
+				<div className="mb-4 space-y-2 rounded-xl hairline bg-[var(--well-bg)] p-2.5 text-xs">
 					{wt.dirty && (
 						<label className="flex items-start gap-2 cursor-pointer select-none text-rose-300">
 							<input
@@ -103,7 +103,7 @@ function RemoveWorktreeModal({ wt, onResolve }: ModalProps) {
 					<button
 						type="button"
 						onClick={() => onResolve(null)}
-						className="rounded px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
+						className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] transition-colors"
 					>
 						取消
 					</button>

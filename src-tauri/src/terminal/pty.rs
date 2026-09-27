@@ -19,8 +19,29 @@ pub type Sink = Arc<dyn Fn(&str, TermEvent) + Send + Sync>;
 
 struct Term {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    pid: Option<u32>,
+}
+
+fn kill_pid_group(pid: Option<u32>) {
+    #[cfg(unix)]
+    if let Some(pid) = pid {
+        if pid > 1 {
+            // Best-effort: signal process group so grandchildren holding the slave open
+            // don't keep the reader thread alive. Note limitation: processes that called
+            // setpgid/setsid or reparented cannot be reached by killpg.
+            unsafe {
+                libc::killpg(pid as libc::pid_t, libc::SIGHUP);
+                libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+fn kill_term(term: &mut Term) {
+    let _ = term.killer.kill();
+    kill_pid_group(term.pid);
 }
 
 fn registry() -> &'static Mutex<HashMap<String, Term>> {
@@ -38,12 +59,15 @@ fn size(cols: u16, rows: u16) -> PtySize {
 }
 
 /// Spawn `argv` (empty → login shell) in a new PTY. Returns the termId.
+/// `extra_env` adds caller-scoped pairs (e.g. OMP provider metadata) on top of
+/// the shared provider key material.
 pub fn open(
     cwd: &str,
     argv: &[String],
     cols: u16,
     rows: u16,
     sink: Sink,
+    extra_env: &[(String, String)],
 ) -> Result<String, String> {
     if !std::path::Path::new(cwd).is_dir() {
         return Err(format!("目录不存在: {cwd}"));
@@ -77,6 +101,9 @@ pub fn open(
     for (key, value) in crate::providers::env_pairs() {
         cmd.env(key, value);
     }
+    for (key, value) in extra_env {
+        cmd.env(key, value);
+    }
 
     let mut child = pair
         .slave
@@ -85,15 +112,30 @@ pub fn open(
     // Drop our slave handle so the reader sees EOF once the child exits.
     drop(pair.slave);
 
-    let mut reader = pair
-        .master
-        .try_clone_reader()
-        .map_err(|e| format!("pty reader: {e}"))?;
-    let writer = pair
-        .master
-        .take_writer()
-        .map_err(|e| format!("pty writer: {e}"))?;
+    let pid = child.process_id();
+
+    let mut reader = match pair.master.try_clone_reader() {
+        Ok(r) => r,
+        Err(e) => {
+            let mut killer = child.clone_killer();
+            let _ = killer.kill();
+            kill_pid_group(pid);
+            let _ = child.wait();
+            return Err(format!("pty reader: {e}"));
+        }
+    };
+    let writer = match pair.master.take_writer() {
+        Ok(w) => Arc::new(Mutex::new(w)),
+        Err(e) => {
+            let mut killer = child.clone_killer();
+            let _ = killer.kill();
+            kill_pid_group(pid);
+            let _ = child.wait();
+            return Err(format!("pty writer: {e}"));
+        }
+    };
     let killer = child.clone_killer();
+    let mut killer_for_spawn_err = child.clone_killer();
     let id = uuid::Uuid::new_v4().to_string();
     registry().lock().insert(
         id.clone(),
@@ -101,11 +143,12 @@ pub fn open(
             master: pair.master,
             writer,
             killer,
+            pid,
         },
     );
 
     let tid = id.clone();
-    std::thread::Builder::new()
+    let spawn_res = std::thread::Builder::new()
         .name(format!("pty-{}", &id[..8]))
         .spawn(move || {
             let mut buf = [0u8; 16 * 1024];
@@ -118,17 +161,26 @@ pub fn open(
             let code = child.wait().ok().map(|s| s.exit_code() as i32);
             registry().lock().remove(&tid);
             sink(&tid, TermEvent::Exit(code));
-        })
-        .map_err(|e| format!("reader thread: {e}"))?;
+        });
+
+    if let Err(e) = spawn_res {
+        registry().lock().remove(&id);
+        let _ = killer_for_spawn_err.kill();
+        kill_pid_group(pid);
+        return Err(format!("reader thread: {e}"));
+    }
     Ok(id)
 }
 
 pub fn write(term_id: &str, data: &[u8]) -> Result<(), String> {
-    let mut reg = registry().lock();
-    let term = reg.get_mut(term_id).ok_or("终端不存在或已退出")?;
-    term.writer
-        .write_all(data)
-        .and_then(|_| term.writer.flush())
+    let writer = {
+        let reg = registry().lock();
+        let term = reg.get(term_id).ok_or("终端不存在或已退出")?;
+        term.writer.clone()
+    };
+    let mut w = writer.lock();
+    w.write_all(data)
+        .and_then(|_| w.flush())
         .map_err(|e| format!("write: {e}"))
 }
 
@@ -143,7 +195,7 @@ pub fn resize(term_id: &str, cols: u16, rows: u16) -> Result<(), String> {
 /// Kill the child and forget the terminal. Idempotent.
 pub fn close(term_id: &str) {
     if let Some(mut term) = registry().lock().remove(term_id) {
-        let _ = term.killer.kill();
+        kill_term(&mut term);
     }
 }
 
@@ -151,7 +203,7 @@ pub fn close(term_id: &str) {
 pub fn close_all() {
     let terms: Vec<Term> = registry().lock().drain().map(|(_, t)| t).collect();
     for mut term in terms {
-        let _ = term.killer.kill();
+        kill_term(&mut term);
     }
 }
 
@@ -191,7 +243,7 @@ mod tests {
     fn runs_command_and_reports_exit() {
         let (sink, rx) = channel_sink();
         let argv = vec!["sh".into(), "-c".into(), "echo hello-pty; exit 3".into()];
-        let id = open("/tmp", &argv, 80, 24, sink).unwrap();
+        let id = open("/tmp", &argv, 80, 24, sink, &[]).unwrap();
         let (out, code) = collect(&rx);
         assert!(out.contains("hello-pty"), "output: {out:?}");
         assert_eq!(code, Some(3));
@@ -202,7 +254,7 @@ mod tests {
     fn write_resize_and_close() {
         let (sink, rx) = channel_sink();
         let argv = vec!["cat".into()];
-        let id = open("/tmp", &argv, 80, 24, sink).unwrap();
+        let id = open("/tmp", &argv, 80, 24, sink, &[]).unwrap();
         resize(&id, 120, 40).unwrap();
         write(&id, b"ping-pty\n").unwrap();
         let mut out = Vec::new();
@@ -219,7 +271,7 @@ mod tests {
     #[test]
     fn rejects_missing_cwd_and_binary() {
         let (sink, _rx) = channel_sink();
-        assert!(open("/no/such/dir", &[], 80, 24, sink.clone()).is_err());
-        assert!(open("/tmp", &["no-such-binary-xyz".into()], 80, 24, sink).is_err());
+        assert!(open("/no/such/dir", &[], 80, 24, sink.clone(), &[]).is_err());
+        assert!(open("/tmp", &["no-such-binary-xyz".into()], 80, 24, sink, &[]).is_err());
     }
 }

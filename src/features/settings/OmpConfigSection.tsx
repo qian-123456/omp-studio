@@ -187,7 +187,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 	};
 
 	return (
-		<div className="rounded-lg border border-neutral-800/70 bg-neutral-900/50">
+		<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card transition-all">
 			{/* Collapsed row: title + value/switch */}
 			<div
 				role="button"
@@ -199,11 +199,11 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 						setOpen(!open);
 					}
 				}}
-				className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-neutral-800/30 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
+				className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--bg-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0A84FF]/40 rounded-xl"
 			>
 				<div className="min-w-0 flex-1">
 					<div className="flex min-w-0 items-center gap-2">
-						<span className="truncate text-xs font-medium text-neutral-100" title={entry.key}>
+						<span className="truncate text-xs font-semibold tracking-[-0.01em] text-neutral-100" title={entry.key}>
 							{title}
 						</span>
 						{entry.redacted && (
@@ -259,7 +259,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 								disabled={busy || editing}
 								onClick={startEdit}
 								title={entry.redacted ? "输入以覆盖已配置的值" : "编辑"}
-								className="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-50"
+								className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
 							>
 								<Pencil className="h-3 w-3" />
 							</button>
@@ -268,7 +268,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 								disabled={busy || editing}
 								onClick={reset}
 								title="重置为默认值"
-								className="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-amber-300 disabled:opacity-50"
+								className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-amber-300 active:scale-95 transition-all disabled:opacity-50"
 							>
 								<RotateCcw className="h-3 w-3" />
 							</button>
@@ -279,7 +279,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 
 			{/* Expanded detail: description + program key + badges */}
 			{open && !editing && (
-				<div className="space-y-1.5 border-t border-neutral-800/60 px-3 py-2">
+				<div className="space-y-1.5 border-t border-[var(--border-divider)] px-3 py-2">
 					{detailDescription && (
 						<p className="text-[11px] leading-5 text-neutral-400">{detailDescription}</p>
 					)}
@@ -304,7 +304,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 
 			{/* Inline editor */}
 			{editing ? (
-				<div className="space-y-1.5 border-t border-neutral-800/60 px-3 py-2">
+				<div className="space-y-1.5 border-t border-[var(--border-divider)] px-3 py-2">
 					{isJson ? (
 						<textarea
 							value={draft}
@@ -312,7 +312,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 							rows={4}
 							spellCheck={false}
 							placeholder={entry.valueType === "array" ? '["a","b"]' : '{"k":"v"}'}
-							className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:border-amber-500 focus:outline-none"
+							className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 						/>
 					) : options ? (
 						<div className="space-y-1.5">
@@ -331,7 +331,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 										setDraft(e.target.value);
 									}
 								}}
-								className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-[11px] text-neutral-200 focus:border-amber-500 focus:outline-none"
+								className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 							>
 								{options.map((o) => (
 									<option key={o.value} value={o.value}>
@@ -358,7 +358,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 									spellCheck={false}
 									autoFocus
 									placeholder="输入自定义值"
-									className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:border-amber-500 focus:outline-none"
+									className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 								/>
 							)}
 						</div>
@@ -382,7 +382,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 							placeholder={
 								entry.redacted ? "•••••• 已配置，输入以覆盖" : "输入新值"
 							}
-							className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:border-amber-500 focus:outline-none"
+							className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 						/>
 					)}
 					{entry.valueType === "enum" && !options && (
@@ -395,7 +395,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 							type="button"
 							disabled={busy}
 							onClick={() => void save(draft)}
-							className="rounded-lg bg-amber-500/20 px-2.5 py-1 text-[11px] font-medium text-amber-300 hover:bg-amber-500/30 disabled:opacity-50"
+							className="rounded-lg bg-[#0A84FF] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
 						>
 							{busy ? "保存中..." : "保存"}
 						</button>
@@ -425,7 +425,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 								setEditing(false);
 								setRowError(null);
 							}}
-							className="rounded-lg px-2 py-1 text-[11px] text-neutral-400 hover:text-neutral-200 disabled:opacity-50"
+							className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
 						>
 							取消
 						</button>
@@ -434,7 +434,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 			) : null}
 
 			{rowError && (
-				<div className="flex items-start gap-1 border-t border-neutral-800/60 px-3 py-1.5 text-[11px] text-rose-300">
+				<div className="flex items-start gap-1 border-t border-rose-800/40 bg-rose-950/20 px-3 py-1.5 text-[11px] text-rose-300">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="break-all">{rowError}</span>
 				</div>
@@ -563,7 +563,7 @@ export function OmpConfigSection({
 
 	if (loading && !loaded) {
 		return (
-			<div className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-xs text-neutral-500">
+			<div className="flex items-center gap-2 rounded-xl hairline bg-[var(--bg-panel)] p-6 text-xs text-neutral-500 shadow-apple-card">
 				<RefreshCw className="h-4 w-4 animate-spin" />
 				<span>正在读取 OMP 配置项...</span>
 			</div>
@@ -572,7 +572,7 @@ export function OmpConfigSection({
 
 	if (error && !loaded) {
 		return (
-			<div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-center">
+			<div className="rounded-xl hairline bg-[var(--bg-panel)] p-6 text-center shadow-apple-card">
 				<AlertTriangle className="mx-auto mb-2 h-6 w-6 text-amber-500/70" />
 				<div className="text-xs font-medium text-neutral-300">
 					无法读取 OMP 配置
@@ -587,7 +587,7 @@ export function OmpConfigSection({
 				<button
 					type="button"
 					onClick={() => void load(true)}
-					className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+					className="mt-3 inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 				>
 					<RefreshCw className="h-3.5 w-3.5" />
 					<span>重试</span>
@@ -617,7 +617,7 @@ export function OmpConfigSection({
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
 						placeholder={`在「${activeGroupName ?? activeGroup?.label ?? ""}」中搜索配置...`}
-						className="w-full rounded-lg border border-neutral-700 bg-neutral-950 py-1.5 pl-8 pr-3 text-xs text-neutral-200 focus:border-amber-500 focus:outline-none"
+						className="w-full rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-8 pr-3 text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 					/>
 				</div>
 				<span className="shrink-0 text-[11px] text-neutral-500">
@@ -627,14 +627,14 @@ export function OmpConfigSection({
 					type="button"
 					onClick={handleChanged}
 					title="重新读取 OMP 配置"
-					className="shrink-0 rounded-lg border border-neutral-700 bg-neutral-800 p-1.5 text-neutral-300 hover:bg-neutral-700"
+					className="shrink-0 rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 				>
 					<RefreshCw className="h-3.5 w-3.5" />
 				</button>
 			</div>
 
 			{rows.length === 0 ? (
-				<div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-center text-xs text-neutral-500">
+				<div className="rounded-xl hairline bg-[var(--bg-panel)] p-6 text-center text-xs text-neutral-500 shadow-apple-card">
 					<div>没有匹配的配置项</div>
 					{suggestions.length > 0 && (
 						<div className="mt-3 space-y-2">
@@ -645,7 +645,7 @@ export function OmpConfigSection({
 										key={s.id}
 										type="button"
 										onClick={() => onTabChange(s.id)}
-										className="rounded-lg border border-neutral-700 px-2.5 py-1 text-[11px] text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+										className="rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95"
 									>
 										{s.label}
 										<span className="ml-1.5 text-[10px] text-neutral-500">

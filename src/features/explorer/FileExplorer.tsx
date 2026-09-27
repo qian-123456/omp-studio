@@ -206,9 +206,9 @@ export function FileExplorer() {
 	}, [searchQuery, currentWorkspace?.path]);
 
 	return (
-		<div className="flex h-full flex-col bg-neutral-900/60 text-neutral-300 text-xs select-none">
+		<div className="flex h-full flex-col bg-transparent text-neutral-300 text-xs select-none">
 			{/* Top Tool Section: Actions Toolbar matching the reference screenshot */}
-			<div className="flex items-center justify-between border-b border-neutral-800/80 px-2.5 py-1.5 bg-neutral-950/40">
+			<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-2.5 py-1.5 bg-[var(--bg-active-fill)]">
 				<span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
 					资源管理器
 				</span>
@@ -230,10 +230,10 @@ export function FileExplorer() {
 							});
 						}}
 						className={clsx(
-							"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+							"flex h-7 w-7 items-center justify-center rounded-lg transition-all active:scale-95",
 							searchOpen
-								? "bg-neutral-800 text-neutral-100"
-								: "text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200",
+								? "bg-[var(--bg-hover)] text-neutral-100"
+								: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 						)}
 						title="搜索文件 (Cmd+F)"
 					>
@@ -244,41 +244,39 @@ export function FileExplorer() {
 					<button
 						type="button"
 						onClick={handleRevealInFinder}
-						className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200 transition-colors"
+						className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 						title="在访达中显示工作区目录"
 					>
 						<FolderUp size={14} />
 					</button>
-
 					{/* Collapse All */}
 					<button
 						type="button"
 						onClick={handleCollapseAll}
-						className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200 transition-colors"
+						className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 						title="全部折叠"
 					>
 						<FoldVertical size={14} />
 					</button>
-
 					{/* Refresh */}
 					<button
 						type="button"
 						onClick={refreshRoot}
 						className={clsx(
-							"flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200 transition-colors",
+							"flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all",
 							isRootLoading && "animate-spin text-neutral-200",
 						)}
-						title="刷新文件树"
-					>
-						<RefreshCw size={13} />
-					</button>
+							title="刷新文件树"
+						>
+							<RefreshCw size={13} />
+						</button>
 
 				</div>
 			</div>
 
 			{/* Search Input Bar (revealed on search click) */}
 			{searchOpen && (
-				<div className="border-b border-neutral-800/80 p-2 bg-neutral-950/60">
+				<div className="border-b border-[var(--border-divider)] p-2 bg-[var(--well-bg)]">
 					<div className="relative flex items-center">
 						<Search
 							size={13}
@@ -298,7 +296,7 @@ export function FileExplorer() {
 								}
 							}}
 							placeholder="输入文件名过滤..."
-							className="w-full rounded-md border border-neutral-800 bg-neutral-900 py-1 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500 focus:border-neutral-700 focus:outline-none"
+							className="w-full rounded-lg hairline bg-[var(--well-bg)] py-1 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 						/>
 						{searchQuery && (
 							<button
@@ -347,10 +345,10 @@ export function FileExplorer() {
 										tabIndex={0}
 										onClick={() => handleOpenFile(full)}
 										className={clsx(
-											"flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors cursor-pointer",
+											"flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all active:scale-[0.98] cursor-pointer",
 											isSelected
-												? "border border-rose-500/70 bg-rose-500/10 text-rose-100 font-medium"
-												: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
+												? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+												: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
 										)}
 										title={full}
 									>

@@ -178,11 +178,11 @@ async fn classify_route(
             "--model",
             &model,
         ]);
-        if let Ok(ext) = crate::providers::extension_path() {
+        if let Some(ext) = crate::providers::try_extension_path() {
             cmd.arg("-e").arg(ext);
         }
         cmd.current_dir(paths::global_dir())
-            .envs(crate::providers::env_pairs())
+            .envs(crate::providers::omp_spawn_env())
             .output()
             .await
     })

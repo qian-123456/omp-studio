@@ -169,7 +169,7 @@ function Thinking({
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
-				className="group/reasoning flex max-w-full min-w-0 items-center gap-2 rounded px-1 py-0.5 text-left transition-colors select-none hover:bg-neutral-800/40"
+				className="group/reasoning press-scale flex max-w-full min-w-0 items-center gap-2 rounded-lg px-1.5 py-0.5 text-left transition-colors select-none hover:bg-[var(--bg-active-fill)]"
 			>
 				<Sparkles
 					size={11}
@@ -217,7 +217,7 @@ function Thinking({
 				/>
 			</button>
 			{open && (
-				<div className="group/th relative ml-2 mt-1 border-l border-neutral-800/80 py-1 pl-3">
+				<div className="group/th relative ml-2 mt-1 border-l border-[var(--border-divider)] py-1 pl-3">
 					<button
 						type="button"
 						onClick={async () => {
@@ -228,7 +228,7 @@ function Thinking({
 								toast.error(`复制失败: ${errMsg(e)}`);
 							}
 						}}
-						className="absolute right-1 top-0 rounded bg-neutral-800/80 px-1.5 py-0.5 text-[10px] text-neutral-400 opacity-0 transition-opacity hover:text-white focus:opacity-100 group-hover/th:opacity-100"
+						className="press-scale absolute right-1 top-0 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-300 opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:text-neutral-100 focus:opacity-100 group-hover/th:opacity-100"
 						title="复制思考过程"
 					>
 						复制
@@ -291,7 +291,7 @@ function AssistantBody({
 		<div className="group relative">
 			{/* Execution trace: thinking + tool calls connected with Codex-style tree guide line */}
 			{(thinking || toolCalls.length > 0) && (
-				<div className="my-1 border-l-2 border-neutral-800/70 pl-2.5 py-0.5 space-y-0.5">
+				<div className="my-1 border-l-2 border-[var(--border)] pl-2.5 py-0.5 space-y-1">
 					{thinking && (
 						<Thinking
 							text={thinking}
@@ -350,7 +350,7 @@ function AssistantBody({
 			)}
 			{shouldShowFooter && (
 				<div className="mt-1 flex items-center justify-end">
-					<div className="flex items-center gap-1 rounded border border-neutral-700/80 bg-neutral-900/95 px-1.5 py-0.5 text-[11px] shadow opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+					<div className="flex items-center gap-1 rounded-xl hairline vibrancy-popover px-2 py-0.5 text-[11px] shadow-sm opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
 						{text && (
 							<button
 								type="button"
@@ -364,7 +364,7 @@ function AssistantBody({
 									useComposer.getState().focusComposer(sessionId);
 									toast.success("已添加引用");
 								}}
-								className="flex items-center gap-1 px-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100"
+								className="press-scale flex items-center gap-1 px-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100"
 								title="引用全文到输入框"
 							>
 								<MessageSquareQuote size={11} /> 引用
@@ -382,8 +382,8 @@ function AssistantBody({
 									}
 								}}
 								className={clsx(
-									"flex items-center gap-1 px-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100",
-									text && "border-l border-neutral-800 pl-1.5",
+									"press-scale flex items-center gap-1 px-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100",
+									text && "border-l border-[var(--border-divider)] pl-1.5",
 								)}
 								title="复制 Markdown"
 							>
@@ -395,8 +395,8 @@ function AssistantBody({
 								type="button"
 								onClick={onRetry}
 								className={clsx(
-									"flex items-center gap-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100",
-									text && "border-l border-neutral-800 pl-1.5 pr-1",
+									"press-scale flex items-center gap-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100",
+									text && "border-l border-[var(--border-divider)] pl-1.5 pr-1",
 								)}
 								title="重新生成此回合"
 							>
@@ -430,7 +430,7 @@ function ItemRow({
 			const userText = item.text ?? "";
 			return (
 				<div className="group/user-row relative flex flex-col items-end">
-					<div className="max-w-full rounded-xl rounded-tr-xs border border-neutral-800 bg-neutral-900/70 px-4 py-3 text-[length:var(--chat-user-font-size)] text-neutral-100 @min-[624px]:max-w-xl">
+					<div className="max-w-full rounded-2xl rounded-tr-sm hairline bg-[var(--bg-hover)] shadow-sm px-4 py-2.5 text-[length:var(--chat-user-font-size)] text-[var(--text)] @min-[624px]:max-w-xl">
 						<Markdown text={userText} />
 					</div>
 					<div className="mt-1 flex items-center gap-1 text-[10px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100">
@@ -450,7 +450,7 @@ function ItemRow({
 									toast.error(`重新发送失败: ${errMsg(e)}`);
 								}
 							}}
-							className="flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
+							className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
 							title="重新发送此消息"
 						>
 							<RotateCcw size={10} /> 重新发送
@@ -465,7 +465,7 @@ function ItemRow({
 									toast.error(`复制失败: ${errMsg(e)}`);
 								}
 							}}
-							className="flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
+							className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
 							title="复制消息"
 						>
 							<Copy size={10} /> 复制
@@ -519,7 +519,7 @@ function ItemRow({
 				? liveSession?.tools?.[r.toolCallId]
 				: undefined;
 			return (
-				<div className="my-1 border-l-2 border-neutral-800/70 pl-2.5 py-0.5">
+				<div className="my-1 border-l-2 border-[var(--border)] pl-2.5 py-0.5">
 					<ToolCard
 						sessionId={sessionId}
 						name={r?.toolName ?? item.kind}
@@ -778,7 +778,7 @@ export function MessageList({
 					<button
 						type="button"
 						onClick={() => setShowHidden((v) => !v)}
-						className="rounded bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-500 hover:text-neutral-300"
+						className="press-scale rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 					>
 						{showHidden ? "隐藏系统消息" : `显示 ${hiddenCount} 条隐藏消息`}
 					</button>
@@ -789,7 +789,7 @@ export function MessageList({
 					<button
 						type="button"
 						onClick={() => setToolsExpanded((v) => !v)}
-						className="flex items-center gap-1 rounded bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+						className="press-scale flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 						title={toolsExpanded ? "折叠所有工具卡片" : "展开所有工具卡片"}
 					>
 						<Wrench size={10} />
@@ -822,7 +822,7 @@ export function MessageList({
 						<button
 							type="button"
 							onClick={onRetryTranscript}
-							className="flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700 transition-colors"
+							className="press-scale flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs text-neutral-200 hover:bg-[var(--bg-hover)] transition-colors"
 						>
 							<RotateCcw size={13} />
 							<span>重试加载</span>
@@ -868,7 +868,7 @@ export function MessageList({
 										toast.error(`发送失败: ${errMsg(e)}`);
 									}
 								}}
-								className="cursor-pointer rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5 text-[11px] text-neutral-300 transition-all hover:border-indigo-500/50 hover:bg-neutral-800/80"
+								className="press-scale cursor-pointer rounded-xl hairline bg-[var(--bg-panel)] p-3 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100"
 							>
 								{prompt}
 							</button>
@@ -898,7 +898,7 @@ export function MessageList({
 									"absolute left-0 top-0 w-full py-1 transition-all duration-500",
 									traceGutter ? "pl-12 pr-3" : "px-3",
 									isHighlighted &&
-										"rounded-lg bg-indigo-950/40 ring-2 ring-indigo-500 shadow-lg shadow-indigo-500/20",
+										"rounded-xl bg-[#0A84FF]/10 ring-1 ring-[#0A84FF]/50 shadow-md shadow-[#0A84FF]/10",
 									item === "live" && "opacity-90",
 									item !== "live" &&
 										item.id.startsWith("pending-echo-") &&

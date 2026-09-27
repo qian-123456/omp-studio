@@ -1,4 +1,4 @@
-/** [D] macOS-style toggle switch — light pill with dark knob when on. */
+/** [D] Apple HIG toggle switch — h-5 w-9, white knob, #0A84FF on-track, spring transition. */
 
 export function Switch({
 	checked,
@@ -20,15 +20,13 @@ export function Switch({
 				e.stopPropagation();
 				onChange(!checked);
 			}}
-			className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500 ${
-				checked ? "bg-neutral-100" : "bg-neutral-700"
-			} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+			className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0A84FF]/50 ${
+				checked ? "bg-[#0A84FF]" : "bg-[var(--switch-off,#39393D)]"
+			} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer press-scale"}`}
 		>
 			<span
-				className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform duration-200 ease-in-out ${
-					checked
-						? "translate-x-[18px] bg-neutral-950"
-						: "translate-x-[2px] bg-neutral-400"
+				className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.3),0_0_1px_rgba(0,0,0,0.2)] transition-transform duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] ${
+					checked ? "translate-x-[18px]" : "translate-x-[2px]"
 				}`}
 			/>
 		</button>

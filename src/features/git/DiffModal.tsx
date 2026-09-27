@@ -15,10 +15,10 @@ import {
 } from "./diff";
 
 const ROW_STYLE: Record<DiffLine["kind"], string> = {
-	add: "bg-emerald-950/60 text-emerald-200",
-	del: "bg-rose-950/60 text-rose-200",
+	add: "bg-emerald-500/15 text-emerald-400",
+	del: "bg-rose-500/15 text-rose-400",
 	ctx: "text-neutral-300",
-	hunk: "bg-indigo-950/50 text-indigo-300",
+	hunk: "bg-[#0A84FF]/10 text-sky-400",
 	meta: "text-neutral-500",
 };
 
@@ -142,32 +142,32 @@ export function DiffModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) onClose();
 			}}
 		>
 			<div
-				className="flex h-full max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 shadow-2xl"
+				className="flex h-full max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-[var(--bg-panel)] shadow-apple-modal hairline text-neutral-200"
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				{/* Top Bar */}
-				<div className="flex items-center gap-2 border-b border-neutral-800 px-3 py-2 text-sm">
-					<span className="min-w-0 flex-1 truncate font-mono text-neutral-200">
+				<div className="flex items-center gap-2 hairline-b bg-[var(--bg-panel)]/90 backdrop-blur-md px-4 py-2.5 text-sm">
+					<span className="min-w-0 flex-1 truncate font-mono text-[var(--text)] font-medium">
 						{title}
 					</span>
-					{note && <span className="text-xs text-emerald-400">{note}</span>}
+					{note && <span className="text-xs text-[#30D158] font-mono">{note}</span>}
 
-					{/* View mode toggle */}
-					<div className="flex items-center rounded border border-neutral-800 bg-neutral-950 p-0.5 text-xs">
+					{/* View mode toggle - Apple Segmented Control */}
+					<div className="flex items-center rounded-lg bg-[var(--well-bg)] p-0.5 text-xs hairline">
 						<button
 							type="button"
 							onClick={() => setViewMode("unified")}
 							className={clsx(
-								"flex items-center gap-1 rounded px-2 py-0.5 transition-colors",
+								"press-scale flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors",
 								viewMode === "unified"
-									? "bg-neutral-800 font-medium text-neutral-200"
-									: "text-neutral-500 hover:text-neutral-300",
+									? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)] shadow-sm"
+									: "text-neutral-400 hover:text-neutral-200",
 							)}
 							title="单栏合并视图 (Unified)"
 						>
@@ -177,10 +177,10 @@ export function DiffModal({
 							type="button"
 							onClick={() => setViewMode("split")}
 							className={clsx(
-								"flex items-center gap-1 rounded px-2 py-0.5 transition-colors",
+								"press-scale flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors",
 								viewMode === "split"
-									? "bg-neutral-800 font-medium text-neutral-200"
-									: "text-neutral-500 hover:text-neutral-300",
+									? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)] shadow-sm"
+									: "text-neutral-400 hover:text-neutral-200",
 							)}
 							title="双栏对比视图 (Split)"
 						>
@@ -193,12 +193,11 @@ export function DiffModal({
 						title="关闭 (Esc)"
 						aria-label="关闭 (Esc)"
 						onClick={onClose}
-						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+						className="press-scale rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 					>
 						<X size={16} />
 					</button>
 				</div>
-
 				{/* Diff Content Area */}
 				<div className="min-h-0 flex-1 overflow-auto font-mono text-xs leading-5">
 					{error && <div className="p-3 text-rose-400">{error}</div>}
@@ -221,15 +220,15 @@ export function DiffModal({
 									className={clsx(
 										"group/row flex cursor-default whitespace-pre select-text transition-colors",
 										ROW_STYLE[l.kind],
-										inSel(i) && "outline outline-1 outline-amber-400/70",
+										inSel(i) && "outline outline-1 outline-[#0A84FF]/80",
 									)}
 								>
 									{/* Gutter with line numbers and hover + button */}
 									<div className="relative flex shrink-0 select-none w-20">
-										<span className="w-10 pr-1 text-right text-neutral-600 group-hover/row:text-neutral-500">
+										<span className="w-10 pr-1 text-right text-neutral-500 font-mono tabular-nums group-hover/row:text-neutral-400">
 											{l.oldNo ?? ""}
 										</span>
-										<span className="w-10 pr-2 text-right text-neutral-600 group-hover/row:text-neutral-500">
+										<span className="w-10 pr-2 text-right text-neutral-500 font-mono tabular-nums group-hover/row:text-neutral-400">
 											{l.newNo ?? ""}
 										</span>
 										{!isHeader && (
@@ -239,7 +238,7 @@ export function DiffModal({
 													e.stopPropagation();
 													setSel([i, i]);
 												}}
-												className="absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white shadow hover:bg-indigo-500 group-hover/row:flex"
+												className="press-scale absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 group-hover/row:flex"
 												title="为此行添加批注 (+)"
 												aria-label="为此行添加批注"
 											>
@@ -286,7 +285,7 @@ export function DiffModal({
 								<div
 									// biome-ignore lint/suspicious/noArrayIndexKey: static diff rows
 									key={`split-${i}`}
-									className="grid grid-cols-2 divide-x divide-neutral-800"
+									className="grid grid-cols-2 divide-x divide-[var(--border-divider)]"
 								>
 									{/* Left Column (Old / Deletion) */}
 									<div
@@ -297,18 +296,18 @@ export function DiffModal({
 											"group/left flex min-w-0 cursor-default select-text transition-colors",
 											left
 												? left.kind === "del"
-													? "bg-rose-950/60 text-rose-200"
+													? "bg-[rgba(255,69,58,0.12)] text-rose-400"
 													: "text-neutral-300"
 												: "bg-neutral-950/40 select-none",
 											left &&
 												inSel(left.origIdx) &&
-												"outline outline-1 outline-amber-400/70",
+												"outline outline-1 outline-[#0A84FF]/80",
 										)}
 									>
 										{left ? (
 											<>
 												<div className="relative flex shrink-0 select-none w-10">
-													<span className="w-10 pr-2 text-right text-neutral-600 group-hover/left:text-neutral-500">
+													<span className="w-10 pr-2 text-right text-neutral-500 font-mono tabular-nums group-hover/left:text-neutral-400">
 														{left.lineNo ?? ""}
 													</span>
 													<button
@@ -317,14 +316,14 @@ export function DiffModal({
 															e.stopPropagation();
 															setSel([left.origIdx, left.origIdx]);
 														}}
-														className="absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white shadow hover:bg-indigo-500 group-hover/left:flex"
+														className="press-scale absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 group-hover/left:flex"
 														title="为此行添加批注 (+)"
 														aria-label="为此行添加批注"
 													>
 														<Plus size={10} />
 													</button>
 												</div>
-												<span className="select-none pr-1 text-neutral-600 shrink-0">
+												<span className="select-none pr-1 text-neutral-500 shrink-0">
 													{left.kind === "del" ? "-" : " "}
 												</span>
 												<span className="select-text min-w-0 flex-1 truncate">
@@ -345,18 +344,18 @@ export function DiffModal({
 											"group/right flex min-w-0 cursor-default select-text transition-colors",
 											right
 												? right.kind === "add"
-													? "bg-emerald-950/60 text-emerald-200"
+													? "bg-[rgba(48,209,88,0.12)] text-emerald-400"
 													: "text-neutral-300"
 												: "bg-neutral-950/40 select-none",
 											right &&
 												inSel(right.origIdx) &&
-												"outline outline-1 outline-amber-400/70",
+												"outline outline-1 outline-[#0A84FF]/80",
 										)}
 									>
 										{right ? (
 											<>
 												<div className="relative flex shrink-0 select-none w-10">
-													<span className="w-10 pr-2 text-right text-neutral-600 group-hover/right:text-neutral-500">
+													<span className="w-10 pr-2 text-right text-neutral-500 font-mono tabular-nums group-hover/right:text-neutral-400">
 														{right.lineNo ?? ""}
 													</span>
 													<button
@@ -365,14 +364,14 @@ export function DiffModal({
 															e.stopPropagation();
 															setSel([right.origIdx, right.origIdx]);
 														}}
-														className="absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white shadow hover:bg-indigo-500 group-hover/right:flex"
+														className="press-scale absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 group-hover/right:flex"
 														title="为此行添加批注 (+)"
 														aria-label="为此行添加批注"
 													>
 														<Plus size={10} />
 													</button>
 												</div>
-												<span className="select-none pr-1 text-neutral-600 shrink-0">
+												<span className="select-none pr-1 text-neutral-500 shrink-0">
 													{right.kind === "add" ? "+" : " "}
 												</span>
 												<span className="select-text min-w-0 flex-1 truncate">
@@ -390,7 +389,7 @@ export function DiffModal({
 
 				{/* Selection & Annotation Bar */}
 				{sel && (
-					<div className="flex flex-col gap-2 border-t border-neutral-800 p-2.5 bg-neutral-950/60">
+					<div className="flex flex-col gap-2.5 hairline-t bg-[var(--bg)]/90 backdrop-blur-md p-3">
 						{sessionId ? (
 							<>
 								<textarea
@@ -406,28 +405,28 @@ export function DiffModal({
 									}}
 									placeholder="对所选行的批注（支持 Cmd+Enter 快速提交并关闭）"
 									rows={2}
-									className="min-w-0 w-full resize-none rounded border border-neutral-700 bg-neutral-950 p-2 text-xs text-neutral-200 outline-none focus:border-indigo-500"
+									className="min-w-0 w-full resize-none rounded-xl hairline bg-[var(--bg-panel)] p-2.5 text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50 transition-colors"
 								/>
 								<div className="flex items-center justify-between gap-2">
-									<div className="text-[11px] text-neutral-500">
+									<div className="text-[11px] text-neutral-400">
 										提示：按{" "}
-										<kbd className="rounded bg-neutral-800 px-1 py-0.5 text-neutral-300 font-mono">
+										<kbd className="rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-neutral-300 font-mono text-[10px]">
 											Cmd+Enter
 										</kbd>{" "}
 										提交并关闭
 									</div>
-									<div className="flex items-center gap-1.5">
+									<div className="flex items-center gap-2">
 										<button
 											type="button"
 											onClick={() => setSel(null)}
-											className="rounded px-2.5 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+											className="press-scale rounded-lg px-2.5 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 										>
 											取消
 										</button>
 										<button
 											type="button"
 											onClick={() => submitAnnotation(false)}
-											className="rounded border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+											className="press-scale rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] transition-colors"
 											title="加入当前会话草稿箱，保持弹窗开启"
 										>
 											仅加到草稿
@@ -436,7 +435,7 @@ export function DiffModal({
 											type="button"
 											disabled={sending}
 											onClick={sendToAgent}
-											className="flex items-center gap-1 rounded bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-40"
+											className="press-scale flex items-center gap-1 rounded-lg bg-[#FF9F0A] px-3 py-1 text-xs font-medium text-white hover:bg-[#FF9F0A]/90 disabled:opacity-40 transition-colors"
 											title="立即发送给 Agent 审查"
 										>
 											<Send size={13} /> {sending ? "发送中…" : "发给 Agent"}
@@ -444,7 +443,7 @@ export function DiffModal({
 										<button
 											type="button"
 											onClick={() => submitAnnotation(true)}
-											className="flex items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+											className="press-scale flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 transition-colors"
 											title="添加批注并关闭窗口 (Cmd+Enter)"
 										>
 											<MessageSquarePlus size={14} /> 批注并关闭
@@ -454,13 +453,13 @@ export function DiffModal({
 							</>
 						) : (
 							<div className="flex items-center justify-between">
-								<span className="text-xs text-neutral-500">
+								<span className="text-xs text-neutral-400">
 									先在左侧选择一个会话，才能添加批注
 								</span>
 								<button
 									type="button"
 									onClick={() => setSel(null)}
-									className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+									className="press-scale rounded-lg px-2.5 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] transition-colors"
 								>
 									取消
 								</button>

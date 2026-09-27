@@ -26,39 +26,81 @@ fn expand(dir: &str) -> String {
     }
 }
 
-/// Login-shell PATH, queried once (GUI apps start with a minimal PATH).
-fn login_path() -> &'static str {
-    static CELL: OnceLock<String> = OnceLock::new();
-    CELL.get_or_init(|| {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-        let mut child = match std::process::Command::new(shell)
-            .args(["-lc", "echo $PATH"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(_) => return String::new(),
-        };
-        let deadline = std::time::Instant::now() + Duration::from_secs(3);
-        loop {
-            match child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) if std::time::Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(50))
+static CELL: OnceLock<String> = OnceLock::new();
+
+fn query_login_path_blocking() -> String {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let mut child = match std::process::Command::new(shell)
+        .args(["-lc", "echo $PATH"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            _ => {
+                #[cfg(unix)]
+                {
+                    let pid = child.id();
+                    if pid > 1 {
+                        unsafe {
+                            libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+                        }
+                    }
                 }
-                _ => {
-                    let _ = child.kill();
-                    return String::new();
-                }
+                let _ = child.kill();
+                // Reap child so it doesn't become a zombie (<defunct>).
+                let _ = child.wait();
+                return String::new();
             }
         }
-        child
-            .wait_with_output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_default()
-    })
+    }
+    child
+        .wait_with_output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Asynchronously initialize login-shell PATH on a blocking thread pool if not already done.
+pub async fn init_login_path() {
+    if CELL.get().is_some() {
+        return;
+    }
+    let path = tokio::task::spawn_blocking(query_login_path_blocking)
+        .await
+        .unwrap_or_default();
+    let _ = CELL.set(path);
+}
+
+fn query_login_path() -> String {
+    // If we're inside a Tokio multi-threaded runtime, use block_in_place + spawn_blocking
+    // so the Tokio worker thread is freed while waiting for the shell-out.
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
+            return tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    tokio::task::spawn_blocking(query_login_path_blocking)
+                        .await
+                        .unwrap_or_default()
+                })
+            });
+        }
+    }
+    query_login_path_blocking()
+}
+
+/// Login-shell PATH, queried once (GUI apps start with a minimal PATH).
+fn login_path() -> &'static str {
+    CELL.get_or_init(query_login_path)
 }
 
 /// Augmented PATH: common tool dirs + login-shell PATH + current PATH (deduped).
@@ -96,18 +138,21 @@ pub async fn run_print(
     prompt: &str,
     timeout: Duration,
 ) -> Result<String, String> {
+    init_login_path().await;
     let bin = state.settings.read().omp_binary.clone();
     let path = augmented_path();
     let exe = resolve_binary(&bin, &path);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.args(["-p", "--no-tools", "--no-session", "--no-title"]);
-    cmd.arg("-e").arg(crate::providers::extension_path()?);
+    if let Some(ext) = crate::providers::try_extension_path() {
+        cmd.arg("-e").arg(ext);
+    }
     if !model.trim().is_empty() {
         cmd.args(["--model", model.trim()]);
     }
     cmd.current_dir(paths::supervisor_dir())
         .env("PATH", path)
-        .envs(crate::providers::env_pairs())
+        .envs(crate::providers::omp_spawn_env())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

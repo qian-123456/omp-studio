@@ -61,9 +61,9 @@ export function WorkspaceCard({
 					handleOpenInFinder(e);
 				}}
 				className={clsx(
-					"group flex items-center gap-2.5 rounded-xl border border-neutral-800/90 bg-neutral-900/60 p-2 text-left transition-all",
+					"group flex items-center gap-2.5 rounded-xl hairline bg-[var(--bg-panel)] p-2 text-left shadow-apple-card transition-all",
 					workspaces.length > 1
-						? "cursor-pointer hover:border-neutral-700/80 hover:bg-neutral-800/50"
+						? "cursor-pointer hover:bg-[var(--bg-hover)] active:scale-[0.98]"
 						: "cursor-default",
 				)}
 				title={
@@ -120,9 +120,9 @@ export function WorkspaceCard({
 			{menuOpen && workspaces.length > 1 && (
 				<div
 					ref={menuRef}
-					className="absolute left-2.5 right-2.5 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-neutral-800 bg-neutral-900/95 p-1 shadow-2xl backdrop-blur-md"
+					className="absolute left-2.5 right-2.5 top-full z-50 mt-1.5 max-h-60 overflow-y-auto rounded-xl vibrancy-popover shadow-apple-modal hairline p-1"
 				>
-					<div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+					<div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
 						切换工作区
 					</div>
 					{workspaces.map((ws) => (
@@ -134,10 +134,10 @@ export function WorkspaceCard({
 								setMenuOpen(false);
 							}}
 							className={clsx(
-								"flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+								"flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-all active:scale-[0.98]",
 								currentWorkspace?.id === ws.id
-									? "bg-indigo-950/60 text-indigo-300 border border-indigo-800/40"
-									: "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100",
+									? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+									: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
 							)}
 						>
 							<Folder size={13} className="shrink-0 text-amber-400/80" />
@@ -148,7 +148,7 @@ export function WorkspaceCard({
 								</div>
 							</div>
 							{currentWorkspace?.id === ws.id && (
-								<span className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0" />
+								<span className="h-1.5 w-1.5 rounded-full bg-[#0A84FF] shrink-0" />
 							)}
 						</button>
 					))}

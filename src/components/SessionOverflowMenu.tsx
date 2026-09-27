@@ -90,10 +90,10 @@ export function SessionOverflowMenu({
 				aria-expanded={open}
 				title="更多操作"
 				className={clsx(
-					"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+					"flex h-7 w-7 items-center justify-center rounded-lg transition-all active:scale-95",
 					open
-						? "bg-neutral-800 text-neutral-100"
-						: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
+						? "bg-[var(--bg-active-fill)] text-neutral-100"
+						: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 				)}
 			>
 				<MoreHorizontal size={14} />
@@ -103,10 +103,10 @@ export function SessionOverflowMenu({
 				<div
 					role="menu"
 					aria-orientation="vertical"
-					className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-xl"
+					className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1 text-xs"
 				>
 					{/* Section 1: 会话弹性与恢复 */}
-					<div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+					<div className="px-2.5 py-1 text-[10px] font-medium tracking-wider text-neutral-400/80 uppercase">
 						会话连接与维护
 					</div>
 
@@ -116,7 +116,7 @@ export function SessionOverflowMenu({
 						role="menuitem"
 						disabled={busy}
 						onClick={handleFreshRestart}
-						className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-neutral-200 hover:bg-neutral-800 hover:text-white disabled:opacity-50 transition-colors"
+						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-200 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-all active:scale-[0.98]"
 						title="重启 RPC 进程并重置提供商与网络连接，保留完整本地历史"
 					>
 						<RefreshCw
@@ -131,20 +131,20 @@ export function SessionOverflowMenu({
 						type="button"
 						role="menuitem"
 						onClick={handleClearContextNotice}
-						className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 transition-colors"
+						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-all active:scale-[0.98]"
 						title="清空上下文（保留会话）：当前 CLI 后端在 RPC 模式下暂不支持"
 					>
 						<Eraser size={13} className="shrink-0 text-neutral-400" />
 						<span className="flex-1 truncate">清空上下文（保留会话）</span>
-						<span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">
+						<span className="shrink-0 rounded-md bg-amber-500/15 border border-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-medium">
 							未支持
 						</span>
 					</button>
 
-					<div className="my-1 border-t border-neutral-800" />
+					<div className="my-1 border-t border-[var(--border-divider)]" />
 
 					{/* Section 2: 折叠的常用操作 (Task C fold) */}
-					<div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+					<div className="px-2.5 py-1 text-[10px] font-medium tracking-wider text-neutral-400/80 uppercase">
 						快捷操作
 					</div>
 
@@ -158,7 +158,7 @@ export function SessionOverflowMenu({
 								setOpen(false);
 								onOpenInFinder();
 							}}
-							className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white disabled:opacity-30 transition-colors"
+							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-30 transition-all active:scale-[0.98]"
 							title={cwd ? `在访达中显示 (${cwd})` : "无工作目录"}
 						>
 							<FolderOpen size={13} className="shrink-0 text-neutral-400" />
@@ -175,7 +175,7 @@ export function SessionOverflowMenu({
 								setOpen(false);
 								onCopyMarkdown();
 							}}
-							className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors"
+							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-all active:scale-[0.98]"
 						>
 							<Copy size={13} className="shrink-0 text-neutral-400" />
 							<span className="flex-1 truncate">复制为 Markdown</span>
@@ -191,7 +191,7 @@ export function SessionOverflowMenu({
 								setOpen(false);
 								onMobilePair();
 							}}
-							className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors"
+							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-all active:scale-[0.98]"
 						>
 							<QrCode size={13} className="shrink-0 text-neutral-400" />
 							<span className="flex-1 truncate">手机扫码查看</span>

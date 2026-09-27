@@ -95,7 +95,7 @@ export function BottomBar() {
 	const dirty = activeSession?.git?.dirty ?? 0;
 
 	return (
-		<footer className="relative flex h-7 shrink-0 items-center justify-between border-t border-neutral-800/80 bg-neutral-950/95 px-3 text-[11px] text-neutral-400 select-none backdrop-blur-sm">
+		<footer className="relative flex h-7 shrink-0 items-center justify-between border-t border-[var(--border-divider)] vibrancy-chrome px-3 text-[11px] text-neutral-400 select-none tabular-nums">
 			{/* Left: dsh-style Session Stats */}
 			<div className="flex items-center gap-2">
 				{activeSessionId && stats.hasData ? (
@@ -103,7 +103,7 @@ export function BottomBar() {
 						type="button"
 						onClick={() => setStatsOpen((v) => !v)}
 						title="点击查看详细会话统计 (模型用时、TTFT、TPS、Token 消耗)"
-						className="group flex items-center gap-1.5 rounded px-1.5 py-0.5 text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200 transition-colors"
+						className="group flex items-center gap-1.5 rounded-[6px] px-1.5 py-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97 transition-all"
 					>
 						<Gauge
 							size={12}
@@ -112,22 +112,22 @@ export function BottomBar() {
 								streaming ? "text-indigo-400 animate-pulse" : "text-neutral-500 group-hover:text-indigo-400",
 							)}
 						/>
-						<span>
+						<span className="tabular-nums font-mono">
 							{stats.rounds} 轮 {stats.steps} 步
 						</span>
 						{stats.tps > 0 && (
 							<>
 								<span className="text-neutral-600">·</span>
-								<span className="font-mono">{stats.tps} tok/s</span>
+								<span className="tabular-nums font-mono">{stats.tps} tok/s</span>
 							</>
 						)}
 						<span className="text-neutral-600">·</span>
 						<Coins size={11} className="text-neutral-500 group-hover:text-amber-400 transition-colors" />
-						<span className="font-mono">{formatTokens(stats.totalTokens)}</span>
+						<span className="tabular-nums font-mono">{formatTokens(stats.totalTokens)}</span>
 						{stats.cacheHitRate > 0 && (
 							<>
 								<span className="text-neutral-600">·</span>
-								<span>缓存 {stats.cacheHitRate.toFixed(1)}%</span>
+								<span className="tabular-nums font-mono">缓存 {stats.cacheHitRate.toFixed(1)}%</span>
 							</>
 						)}
 					</button>
@@ -156,8 +156,8 @@ export function BottomBar() {
 					aria-pressed={terminalOpen}
 					title={terminalOpen ? "收起本地终端 (⌘`)" : "打开本地终端 (⌘`) — 在当前工作区运行命令的独立 Shell，与会话无关"}
 					className={clsx(
-						"flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-neutral-800 hover:text-neutral-100",
-						terminalOpen && "bg-neutral-800 text-neutral-100",
+						"flex h-5 w-5 items-center justify-center rounded-[6px] transition-all hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95",
+						terminalOpen && "bg-[var(--bg-hover)] text-neutral-100",
 					)}
 				>
 					<TerminalSquare size={13} />
@@ -169,7 +169,7 @@ export function BottomBar() {
 					title="真实物理内存占用 (操作系统内核报告的 Resident Set Size)"
 				>
 					<Activity size={11} className="text-emerald-400" />
-					<span className="font-mono text-[10.5px]">
+					<span className="tabular-nums font-mono text-[10.5px]">
 						性能 {realMemoryStr ?? memEstimate}
 					</span>
 				</div>
@@ -183,10 +183,10 @@ export function BottomBar() {
 					aria-label="切换右侧热力图"
 					title={rightTab === "heatmap" && rightOpen ? "收起热力图" : "在右栏打开会话热力图"}
 					className={clsx(
-						"flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] transition-colors",
+						"flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 text-[10.5px] transition-all active:scale-95",
 						rightTab === "heatmap" && rightOpen
-							? "bg-emerald-950/70 text-emerald-300 font-medium border border-emerald-800/60"
-							: "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
+							? "bg-emerald-500/15 text-emerald-300 font-medium border border-emerald-500/30"
+							: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
 					)}
 				>
 					<Activity
@@ -223,7 +223,7 @@ export function BottomBar() {
 								{branch}
 							</span>
 							{dirty > 0 && (
-								<span className="text-[10px] text-amber-400">+{dirty}</span>
+								<span className="tabular-nums font-mono text-[10px] text-amber-400">+{dirty}</span>
 							)}
 						</div>
 					</>

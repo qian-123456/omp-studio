@@ -57,7 +57,7 @@ export function ProviderPanel() {
 					<button
 						type="button"
 						onClick={() => void handleExport()}
-						className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+						className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 						title="导出明文 .env 文本，仅复制到剪贴板"
 					>
 						<ClipboardCopy className="h-3.5 w-3.5" />
@@ -66,7 +66,7 @@ export function ProviderPanel() {
 					<button
 						type="button"
 						onClick={() => setDialog({ mode: "import" })}
-						className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+						className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 					>
 						<FileInput className="h-3.5 w-3.5" />
 						<span>.env 导入</span>
@@ -74,7 +74,7 @@ export function ProviderPanel() {
 					<button
 						type="button"
 						onClick={() => setDialog({ mode: "add" })}
-						className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-medium text-neutral-950 hover:bg-amber-400"
+						className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
 					>
 						<Plus className="h-3.5 w-3.5" />
 						<span>添加供应商</span>
@@ -150,7 +150,7 @@ function ProviderRow({
 	};
 
 	return (
-		<div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4">
+		<div className="rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
 			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div className="min-w-0 flex-1">
 					<div className="flex flex-wrap items-center gap-2">
@@ -158,14 +158,14 @@ function ProviderRow({
 							className="h-2 w-2 shrink-0 rounded-full"
 							style={{ backgroundColor: color }}
 						/>
-						<span className="text-xs font-medium text-neutral-100">
+						<span className="text-xs font-semibold text-neutral-100">
 							{provider.name}
 						</span>
-						<span className="rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-400">
+						<span className="rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-400">
 							{API_LABELS[provider.api]}
 						</span>
 						{provider.defaultModel && (
-							<span className="rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+							<span className="rounded-md bg-[var(--bg-active-fill)] px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
 								{provider.defaultModel}
 							</span>
 						)}
@@ -192,14 +192,14 @@ function ProviderRow({
 						disabled={test?.state === "testing"}
 						title="测试连接"
 						aria-label={`测试 ${provider.name} 连接`}
-						className="rounded border border-neutral-700 p-1.5 text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+						className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 transition-all disabled:opacity-40"
 					>
 						{test?.state === "testing" ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
 					</button>
 					<button
 						type="button"
 						onClick={onEdit}
-						className="rounded-lg border border-neutral-700 p-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+						className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 						title="编辑"
 					>
 						<Pencil className="h-3 w-3" />
@@ -207,7 +207,7 @@ function ProviderRow({
 					<button
 						type="button"
 						onClick={() => void handleDelete()}
-						className="rounded-lg border border-neutral-700 p-1.5 text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300"
+						className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300 active:scale-95 transition-all"
 						title="删除"
 					>
 						<Trash2 className="h-3 w-3" />
@@ -238,13 +238,13 @@ function EnabledToggle({
 			aria-checked={provider.enabled}
 			title={provider.enabled ? "已启用（新会话注入密钥）" : "已停用"}
 			onClick={() => onChange(!provider.enabled)}
-			className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-				provider.enabled ? "bg-amber-500" : "bg-neutral-700"
+			className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${
+				provider.enabled ? "bg-[#0A84FF]" : "bg-neutral-700/80"
 			}`}
 		>
 			<span
-				className={`inline-block h-3.5 w-3.5 transform rounded-full bg-neutral-950 transition ${
-					provider.enabled ? "translate-x-4.5" : "translate-x-1"
+				className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.4)] transition-transform duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] ${
+					provider.enabled ? "translate-x-[18px]" : "translate-x-[3px]"
 				}`}
 			/>
 		</button>
@@ -255,7 +255,7 @@ function TestResultLine({ test }: { test: TestStatus | undefined }) {
 	if (!test) return null;
 	if (test.state === "testing") {
 		return (
-			<div className="mt-2 flex items-center gap-1.5 border-t border-neutral-800/60 pt-2 text-[11px] text-neutral-400">
+			<div className="mt-2 flex items-center gap-1.5 border-t border-[var(--border-divider)] pt-2 text-[11px] text-neutral-400">
 				<Loader2 className="h-3 w-3 animate-spin" />
 				正在连接…
 			</div>
@@ -264,7 +264,7 @@ function TestResultLine({ test }: { test: TestStatus | undefined }) {
 	const { ok, latencyMs, detail } = test.result;
 	return (
 		<div
-			className={`mt-2 flex items-center gap-1.5 border-t border-neutral-800/60 pt-2 text-[11px] ${
+			className={`mt-2 flex items-center gap-1.5 border-t border-[var(--border-divider)] pt-2 text-[11px] ${
 				ok ? "text-emerald-400" : "text-rose-400"
 			}`}
 		>
@@ -274,7 +274,7 @@ function TestResultLine({ test }: { test: TestStatus | undefined }) {
 				<CircleX className="h-3 w-3 shrink-0" />
 			)}
 			<span className="truncate">
-				{detail}（{latencyMs}ms）
+				{detail}（<span className="tabular-nums font-mono">{latencyMs}ms</span>）
 			</span>
 		</div>
 	);

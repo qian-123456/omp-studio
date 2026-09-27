@@ -134,22 +134,22 @@ export function renderHighlightedCode(
 			parts.push(
 				<span
 					key={match.index}
-					className={kind === "del" ? "text-red-200" : "text-emerald-300"}
+					className={kind === "del" ? "text-[#ff7b72]" : "text-[#6be585]"}
 				>
 					{token}
-				</span>,
+				</span>
 			);
 		} else if (/^\d/.test(first)) {
 			parts.push(
-				<span key={match.index} className="text-amber-300">
+				<span key={match.index} className="text-[#FF9F0A]">
 					{token}
-				</span>,
+				</span>
 			);
 		} else {
 			parts.push(
-				<span key={match.index} className="font-semibold text-purple-400">
+				<span key={match.index} className="font-semibold text-[#BF5AF2]">
 					{token}
-				</span>,
+				</span>
 			);
 		}
 		lastIndex = re.lastIndex;
@@ -291,15 +291,15 @@ export function DiffView({
 				<span className="text-[10px] text-neutral-500">
 					{lines.length} 行改动（点击行号添加批注，拖选代码可复制）
 				</span>
-				<div className="flex items-center rounded border border-neutral-800 bg-neutral-900/80 p-0.5">
+				<div className="flex items-center rounded-lg bg-[var(--well-bg)] p-0.5 text-[10px] hairline">
 					<button
 						type="button"
 						onClick={() => setViewMode("unified")}
 						className={clsx(
-							"flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors",
+							"press-scale flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] transition-colors",
 							viewMode === "unified"
-								? "bg-neutral-800 font-medium text-neutral-200"
-								: "text-neutral-500 hover:text-neutral-300",
+								? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)] shadow-sm"
+								: "text-neutral-400 hover:text-neutral-200",
 						)}
 						title="单栏视图 (Unified)"
 					>
@@ -309,10 +309,10 @@ export function DiffView({
 						type="button"
 						onClick={() => setViewMode("split")}
 						className={clsx(
-							"flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors",
+							"press-scale flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] transition-colors",
 							viewMode === "split"
-								? "bg-neutral-800 font-medium text-neutral-200"
-								: "text-neutral-500 hover:text-neutral-300",
+								? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)] shadow-sm"
+								: "text-neutral-400 hover:text-neutral-200",
 						)}
 						title="左右双栏分栏对比 (Split)"
 					>
@@ -322,16 +322,16 @@ export function DiffView({
 			</div>
 
 			{viewMode === "unified" ? (
-				<div className="overflow-x-auto rounded-md border border-neutral-800 bg-neutral-950 font-mono text-[12px] leading-5">
+				<div className="overflow-x-auto rounded-xl hairline bg-[var(--bg)] font-mono text-[12px] leading-5">
 					{lines.map((l, i) => (
 						<div
 							key={i}
 							className={clsx(
-								"flex w-full select-text transition-colors hover:bg-neutral-900/50",
-								l.kind === "add" && "bg-emerald-950/40 text-emerald-300",
-								l.kind === "del" && "bg-red-950/40 text-red-300",
-								l.kind === "ctx" && "text-neutral-400",
-								selected.has(i) && "outline outline-1 outline-indigo-500",
+								"flex w-full select-text transition-colors hover:bg-[var(--bg-active-fill)]",
+								l.kind === "add" && "bg-[rgba(48,209,88,0.12)] text-[#6be585]",
+								l.kind === "del" && "bg-[rgba(255,69,58,0.12)] text-[#ff7b72]",
+								l.kind === "ctx" && "text-neutral-300",
+								selected.has(i) && "outline outline-1 outline-[#0A84FF]/80",
 							)}
 						>
 							<div
@@ -344,7 +344,7 @@ export function DiffView({
 										toggleSelect(i);
 									}
 								}}
-								className="flex w-12 shrink-0 cursor-pointer select-none items-center justify-end pr-2 text-right text-neutral-600 hover:text-indigo-400"
+								className="flex w-12 shrink-0 cursor-pointer select-none items-center justify-end pr-2 text-right text-neutral-500 font-mono tabular-nums hover:text-[#0A84FF]"
 								title="点击选中行添加批注"
 								aria-label={`选中第 ${l.line ?? i + 1} 行添加批注`}
 							>
@@ -360,21 +360,21 @@ export function DiffView({
 					))}
 				</div>
 			) : (
-				<div className="overflow-x-auto rounded-md border border-neutral-800 bg-neutral-950 font-mono text-[11px] leading-5">
-					<div className="grid grid-cols-2 divide-x divide-neutral-800">
+				<div className="overflow-x-auto rounded-xl hairline bg-[var(--bg)] font-mono text-[11px] leading-5">
+					<div className="grid grid-cols-2 divide-x divide-[var(--border-divider)]">
 						{splitRows.map((row, idx) => (
 							<React.Fragment key={idx}>
 								{/* Left column (Original / Deleted) */}
 								<div
 									className={clsx(
-										"flex min-w-0 select-text transition-colors hover:bg-neutral-900/50",
+										"flex min-w-0 select-text transition-colors hover:bg-[var(--bg-active-fill)]",
 										row.left?.kind === "del" &&
-											"bg-red-950/40 text-red-300",
-										row.left?.kind === "ctx" && "text-neutral-400",
-										!row.left && "bg-neutral-950/60",
+											"bg-[rgba(255,69,58,0.12)] text-[#ff7b72]",
+										row.left?.kind === "ctx" && "text-neutral-300",
+										!row.left && "bg-neutral-950/40 select-none",
 										row.left &&
 											selected.has(row.left.origIdx) &&
-											"outline outline-1 outline-indigo-500",
+											"outline outline-1 outline-[#0A84FF]/80",
 									)}
 								>
 									{row.left ? (
@@ -389,7 +389,7 @@ export function DiffView({
 														toggleSelect(row.left!.origIdx);
 													}
 												}}
-												className="flex w-10 shrink-0 cursor-pointer select-none items-center justify-end pr-1 text-right text-neutral-600 hover:text-indigo-400"
+												className="flex w-10 shrink-0 cursor-pointer select-none items-center justify-end pr-1 text-right text-neutral-500 font-mono tabular-nums hover:text-[#0A84FF]"
 												title="点击选中行"
 												aria-label={`选中第 ${row.left.line ?? row.left.origIdx + 1} 行`}
 											>
@@ -415,14 +415,14 @@ export function DiffView({
 								{/* Right column (New / Added) */}
 								<div
 									className={clsx(
-										"flex min-w-0 select-text transition-colors hover:bg-neutral-900/50",
+										"flex min-w-0 select-text transition-colors hover:bg-[var(--bg-active-fill)]",
 										row.right?.kind === "add" &&
-											"bg-emerald-950/40 text-emerald-300",
-										row.right?.kind === "ctx" && "text-neutral-400",
-										!row.right && "bg-neutral-950/60",
+											"bg-[rgba(48,209,88,0.12)] text-[#6be585]",
+										row.right?.kind === "ctx" && "text-neutral-300",
+										!row.right && "bg-neutral-950/40 select-none",
 										row.right &&
 											selected.has(row.right.origIdx) &&
-											"outline outline-1 outline-indigo-500",
+											"outline outline-1 outline-[#0A84FF]/80",
 									)}
 								>
 									{row.right ? (
@@ -439,7 +439,7 @@ export function DiffView({
 														toggleSelect(row.right!.origIdx);
 													}
 												}}
-												className="flex w-10 shrink-0 cursor-pointer select-none items-center justify-end pr-1 text-right text-neutral-600 hover:text-indigo-400"
+												className="flex w-10 shrink-0 cursor-pointer select-none items-center justify-end pr-1 text-right text-neutral-500 font-mono tabular-nums hover:text-[#0A84FF]"
 												title="点击选中行"
 												aria-label={`选中第 ${row.right.line ?? row.right.origIdx + 1} 行`}
 											>
@@ -470,8 +470,7 @@ export function DiffView({
 			{lo !== null && !commenting && (
 				<button
 					type="button"
-					onClick={() => setCommenting(true)}
-					className="mt-1 flex items-center gap-1 rounded bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-700"
+					className="mt-1.5 press-scale flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 				>
 					<MessageSquarePlus size={12} /> 批注选中行
 				</button>
@@ -497,13 +496,13 @@ export function DiffView({
 						}}
 						placeholder="批注内容 (⌘+Enter 提交，Esc 取消)…"
 						rows={2}
-						className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-[12px] text-neutral-200 outline-none focus:border-indigo-500"
+						className="w-full rounded-xl hairline bg-[var(--bg-panel)] px-2.5 py-1.5 text-[12px] text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50 transition-colors"
 					/>
-					<div className="flex gap-1">
+					<div className="flex gap-2">
 						<button
 							type="button"
 							onClick={submit}
-							className="rounded bg-indigo-600 px-2 py-0.5 text-[11px] text-white hover:bg-indigo-500"
+							className="press-scale rounded-lg bg-[#0A84FF] px-3 py-1 text-[11px] font-medium text-white hover:bg-[#0A84FF]/90 transition-colors"
 						>
 							添加批注
 						</button>
@@ -514,7 +513,7 @@ export function DiffView({
 								setAnchor(null);
 								setEnd(null);
 							}}
-							className="rounded bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-700"
+							className="press-scale rounded-lg px-2.5 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 						>
 							取消
 						</button>

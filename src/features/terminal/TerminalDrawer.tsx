@@ -410,12 +410,12 @@ export function TerminalDrawer() {
 		<>
 			{/* Drawer panel — always mounted so PTYs persist; slides via transform */}
 			<div
-				className="fixed left-0 right-0 z-40 flex flex-col border-t border-neutral-800 bg-[#0a0a0a] shadow-[0_-8px_24px_rgba(0,0,0,0.45)]"
+				className="fixed left-0 right-0 z-40 flex flex-col border-t border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-apple-modal"
 				style={{
 					height,
 					bottom: open ? 28 : 0,
 					transform: open ? "translateY(0)" : "translateY(100%)",
-					transition: "transform 200ms ease-out",
+					transition: "transform 200ms cubic-bezier(0.32, 0.72, 0, 1)",
 					pointerEvents: open ? "auto" : "none",
 				}}
 				aria-hidden={!open}
@@ -429,8 +429,8 @@ export function TerminalDrawer() {
 				/>
 
 				{/* Header: tabs + actions */}
-				<div className="flex shrink-0 items-center gap-1.5 border-b border-neutral-800 px-2 py-1 text-xs select-none">
-					<span className="shrink-0 px-1 text-[10px] font-medium uppercase tracking-wide text-neutral-500">本地终端</span>
+				<div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border-divider)] bg-[var(--bg-active-fill)] px-2 py-1 text-xs select-none">
+					<span className="shrink-0 px-1 text-[10px] font-medium tracking-wide text-neutral-500 uppercase">本地终端</span>
 					<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
 						{tabs.map((tab) => (
 							<div
@@ -438,10 +438,10 @@ export function TerminalDrawer() {
 								onClick={() => useDrawerStore.getState().setActive(tab.id)}
 								title={`工作目录: ${tab.cwd}`}
 								className={clsx(
-									"group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 transition-colors",
+									"group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 transition-all active:scale-[0.98]",
 									tab.id === activeTabId
-										? "bg-neutral-800 text-neutral-100"
-										: "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
+										? "bg-[var(--bg-hover)] text-neutral-100 shadow-sm"
+										: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
 								)}
 							>
 								<span
@@ -459,7 +459,7 @@ export function TerminalDrawer() {
 										void handleCloseTab(tab.id);
 									}}
 									title="关闭此终端"
-									className="rounded p-0.5 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-200 group-hover:opacity-100"
+									className="rounded p-0.5 text-neutral-400 opacity-0 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 group-hover:opacity-100 active:scale-90"
 								>
 									<X size={11} />
 								</button>
@@ -469,7 +469,7 @@ export function TerminalDrawer() {
 							type="button"
 							onClick={() => void handleNewTab()}
 							title="新建终端"
-							className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+							className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 						>
 							<Plus size={14} />
 						</button>
@@ -496,7 +496,7 @@ export function TerminalDrawer() {
 						type="button"
 						onClick={toggleMaximize}
 						title={isMaximized ? "恢复默认高度 (40vh)" : "最大化 (70vh)"}
-						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 					>
 						{isMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
 					</button>
@@ -504,7 +504,7 @@ export function TerminalDrawer() {
 						type="button"
 						onClick={() => setOpen(false)}
 						title="收起终端 (⌘`)，进程保持运行"
-						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 					>
 						<ChevronDown size={14} />
 					</button>
@@ -548,7 +548,7 @@ export function TerminalDrawer() {
 
 					{/* Exited banner with reconnect */}
 					{activeTab?.status === "exited" && (
-						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between border-t border-neutral-800 bg-neutral-900/90 px-3 py-2 text-xs">
+						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between border-t border-[var(--border-divider)] bg-[var(--bg-panel)]/95 backdrop-blur-md px-3 py-2 text-xs">
 							<span className="text-neutral-400">
 								终端进程已退出
 								{activeTab.exitCode !== null ? ` (退出代码: ${activeTab.exitCode})` : ""}
@@ -556,7 +556,7 @@ export function TerminalDrawer() {
 							<button
 								type="button"
 								onClick={() => handleReconnect(activeTab.id)}
-								className="flex items-center gap-1.5 rounded bg-indigo-600 px-2.5 py-1 font-medium text-white hover:bg-indigo-500 transition-colors"
+								className="flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-2.5 py-1 font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
 							>
 								<RefreshCw size={12} />
 								重新连接
@@ -566,14 +566,14 @@ export function TerminalDrawer() {
 
 					{/* Spawn failure banner */}
 					{activeTab?.status === "error" && activeEntry?.error && (
-						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between gap-3 border-t border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs">
+						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between gap-3 border-t border-rose-800/40 bg-rose-950/40 backdrop-blur-md px-3 py-2 text-xs">
 							<span className="min-w-0 truncate text-rose-300">
 								本地终端启动失败: {activeEntry.error}
 							</span>
 							<button
 								type="button"
 								onClick={() => handleReconnect(activeTab.id)}
-								className="flex shrink-0 items-center gap-1.5 rounded bg-indigo-600 px-2.5 py-1 font-medium text-white hover:bg-indigo-500 transition-colors"
+								className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#0A84FF] px-2.5 py-1 font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
 							>
 								<RefreshCw size={12} />
 								重试
@@ -583,7 +583,7 @@ export function TerminalDrawer() {
 
 					{/* Floating search bar (Cmd+F) */}
 					{searchOpen && (
-						<div className="absolute right-3 top-2 z-20 flex max-w-[calc(100%-16px)] flex-wrap items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900/95 p-1.5 shadow-2xl backdrop-blur-md">
+						<div className="absolute right-3 top-2 z-20 flex max-w-[calc(100%-16px)] flex-wrap items-center gap-1.5 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1.5">
 							<input
 								ref={searchInputRef}
 								type="text"
@@ -613,7 +613,7 @@ export function TerminalDrawer() {
 									}
 								}}
 								placeholder="在终端中搜索…"
-								className="w-44 rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 outline-none focus:border-indigo-500"
+								className="w-44 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1 text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50"
 							/>
 							{searchQuery.trim() && (
 								<span className="shrink-0 text-[11px] text-neutral-400 select-none">
@@ -626,7 +626,7 @@ export function TerminalDrawer() {
 								type="button"
 								onClick={handleFindPrevious}
 								title="上一处匹配 (Shift+Enter)"
-								className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+								className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 transition-all"
 							>
 								<ArrowUp size={13} />
 							</button>
@@ -634,20 +634,20 @@ export function TerminalDrawer() {
 								type="button"
 								onClick={handleFindNext}
 								title="下一处匹配 (Enter)"
-								className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+								className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 transition-all"
 							>
 								<ArrowDown size={13} />
 							</button>
-							<div className="mx-0.5 h-3 w-px bg-neutral-800" />
+							<div className="mx-0.5 h-3 w-px bg-[var(--border-divider)]" />
 							<button
 								type="button"
 								onClick={() => setSearchCaseSensitive((v) => !v)}
 								title="大小写匹配"
 								className={clsx(
-									"rounded px-1.5 py-0.5 text-[10px] font-mono",
+									"rounded-md px-1.5 py-0.5 text-[10px] font-mono transition-all active:scale-95",
 									searchCaseSensitive
-										? "bg-indigo-600 text-white"
-										: "text-neutral-400 hover:bg-neutral-800",
+										? "bg-[#0A84FF] text-white"
+										: "text-neutral-400 hover:bg-[var(--bg-hover)]",
 								)}
 							>
 								Aa
@@ -657,10 +657,10 @@ export function TerminalDrawer() {
 								onClick={() => setSearchWholeWord((v) => !v)}
 								title="全字匹配"
 								className={clsx(
-									"rounded px-1.5 py-0.5 text-[10px] font-mono",
+									"rounded-md px-1.5 py-0.5 text-[10px] font-mono transition-all active:scale-95",
 									searchWholeWord
-										? "bg-indigo-600 text-white"
-										: "text-neutral-400 hover:bg-neutral-800",
+										? "bg-[#0A84FF] text-white"
+										: "text-neutral-400 hover:bg-[var(--bg-hover)]",
 								)}
 							>
 								\b
@@ -670,8 +670,8 @@ export function TerminalDrawer() {
 								onClick={() => setSearchRegex((v) => !v)}
 								title="正则表达式"
 								className={clsx(
-									"rounded px-1.5 py-0.5 text-[10px] font-mono",
-									searchRegex ? "bg-indigo-600 text-white" : "text-neutral-400 hover:bg-neutral-800",
+									"rounded-md px-1.5 py-0.5 text-[10px] font-mono transition-all active:scale-95",
+									searchRegex ? "bg-[#0A84FF] text-white" : "text-neutral-400 hover:bg-[var(--bg-hover)]",
 								)}
 							>
 								.*
@@ -680,7 +680,7 @@ export function TerminalDrawer() {
 								type="button"
 								onClick={closeSearch}
 								title="关闭搜索 (Esc)"
-								className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+								className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 transition-all"
 							>
 								<X size={13} />
 							</button>
@@ -698,13 +698,13 @@ export function TerminalDrawer() {
 					>
 						<div
 							style={{ left: contextMenu.x, top: contextMenu.y }}
-							className="fixed z-50 min-w-40 rounded-md border border-neutral-800 bg-neutral-900 py-1 text-xs shadow-2xl"
+							className="fixed z-50 min-w-40 rounded-xl vibrancy-popover shadow-apple-modal hairline py-1 text-xs"
 							onClick={(e) => e.stopPropagation()}
 						>
 							<button
 								type="button"
 								onClick={handleCopy}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<ClipboardCopy size={13} className="text-neutral-400" />
 								复制选中内容
@@ -712,16 +712,16 @@ export function TerminalDrawer() {
 							<button
 								type="button"
 								onClick={() => void handlePaste()}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<ClipboardPaste size={13} className="text-neutral-400" />
 								粘贴至终端
 							</button>
-							<div className="my-1 border-t border-neutral-800" />
+							<div className="my-1 border-t border-[var(--border-divider)]" />
 							<button
 								type="button"
 								onClick={handleClear}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<Eraser size={13} className="text-neutral-400" />
 								清屏

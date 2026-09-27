@@ -92,11 +92,11 @@ export function ModelMenuContent({
 				type="button"
 				onClick={() => onSelect(key)}
 				className={clsx(
-					"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
+					"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors rounded-md",
 					indent && "pl-4",
 					isSelected
-						? "bg-indigo-600/20 text-indigo-300"
-						: "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100",
+						? "bg-[#0A84FF]/15 text-[#70b1ff] font-medium"
+						: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 				)}
 			>
 				<div className="min-w-0 pr-2">
@@ -110,7 +110,7 @@ export function ModelMenuContent({
 						</div>
 					)}
 				</div>
-				{isSelected && <Check size={13} className="shrink-0 text-indigo-400" />}
+				{isSelected && <Check size={13} className="shrink-0 text-[#0A84FF]" />}
 			</button>
 		);
 	};
@@ -123,8 +123,8 @@ export function ModelMenuContent({
 				</div>
 			)}
 			{models.length > 5 && (
-				<div className="border-b border-neutral-800 px-2 pb-1.5 pt-1">
-					<div className="flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-200">
+				<div className="border-b border-[var(--border-divider)] px-2 pb-1.5 pt-1">
+					<div className="flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg)] px-2 py-1 text-xs text-neutral-200">
 						<Search size={12} className="text-neutral-500" />
 						<input
 							type="text"
@@ -132,7 +132,7 @@ export function ModelMenuContent({
 							value={q}
 							onChange={(e) => setQ(e.target.value)}
 							placeholder="搜索模型或 provider…"
-							className="w-full bg-transparent outline-none placeholder:text-neutral-600"
+							className="w-full bg-transparent outline-none placeholder:text-neutral-500"
 						/>
 					</div>
 				</div>
@@ -151,7 +151,7 @@ export function ModelMenuContent({
 			) : (
 				<div className="flex max-h-64">
 					{/* Provider column */}
-					<div className="w-auto min-w-36 max-w-52 shrink-0 overflow-y-auto border-r border-neutral-800 py-0.5">
+					<div className="w-auto min-w-36 max-w-52 shrink-0 overflow-y-auto border-r border-[var(--border-divider)] py-0.5">
 						{providers.map(([provider, list]) => {
 							const active = provider === effectiveProvider;
 							return (
@@ -160,10 +160,10 @@ export function ModelMenuContent({
 									type="button"
 									onClick={() => setActiveProvider(provider)}
 									className={clsx(
-										"flex w-full items-center justify-between gap-1 px-2.5 py-1.5 text-left text-xs transition-colors",
+										"flex w-full items-center justify-between gap-1 px-2.5 py-1.5 text-left text-xs transition-colors rounded-md",
 										active
-											? "bg-neutral-800 font-medium text-neutral-100"
-											: "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
+											? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)]"
+											: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 									)}
 								>
 									<span className="truncate" title={provider}>{provider}</span>
@@ -189,17 +189,17 @@ export function ModelMenuContent({
 			)}
 
 			{extras && extras.length > 0 && (
-				<div className="border-t border-neutral-800">
+				<div className="border-t border-[var(--border-divider)] mt-1 pt-1">
 					{extras.map((x) => (
 						<button
 							key={x.value}
 							type="button"
 							onClick={() => onSelect(x.value)}
 							className={clsx(
-								"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
+								"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors rounded-md",
 								currentValue === x.value
-									? "bg-indigo-600/20 text-indigo-300"
-									: "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100",
+									? "bg-[#0A84FF]/15 text-[#70b1ff] font-medium"
+									: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 							)}
 						>
 							<span className="truncate">{x.label}</span>
@@ -208,7 +208,7 @@ export function ModelMenuContent({
 									{x.hint}
 								</span>
 							) : currentValue === x.value ? (
-								<Check size={13} className="shrink-0 text-indigo-400" />
+								<Check size={13} className="shrink-0 text-[#0A84FF]" />
 							) : null}
 						</button>
 					))}
@@ -272,7 +272,7 @@ export function ModelSelect({
 					<div className="fixed inset-0 z-30" onMouseDown={() => setOpen(false)} />
 					<div
 						className={clsx(
-							"absolute z-40 rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-xl",
+							"absolute z-40 rounded-xl vibrancy-popover shadow-apple-modal hairline py-1.5",
 							widthClass,
 							direction === "up" ? "bottom-full left-0 mb-1" : "left-0 top-full mt-1",
 						)}

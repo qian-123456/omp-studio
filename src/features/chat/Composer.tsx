@@ -620,7 +620,7 @@ export function Composer({
 
 	if (readonly) {
 		return (
-			<div className="border-t border-neutral-800 px-3 py-2 text-center text-[12px] text-neutral-500">
+			<div className="border-t border-[var(--border-divider)] px-3 py-2 text-center text-[12px] text-neutral-500">
 				只读观察 — 接管后可操作
 			</div>
 		);
@@ -628,7 +628,7 @@ export function Composer({
 
 
 	return (
-		<div className="shrink-0 border-t border-neutral-800">
+		<div className="shrink-0 border-t border-[var(--border-divider)] bg-transparent">
 			{/* Model / thinking / held controls live inside the composer box's
 			    bottom bar (Codex-style) — rendered below the textarea. */}
 
@@ -728,7 +728,7 @@ export function Composer({
 				{/* Slash-command menu floats above the composer box */}
 				{/* @ file-completion menu — same floating-above-box pattern */}
 				{atMenu.length > 0 && atToken && (
-					<div className="absolute bottom-full left-3 right-3 mb-1 max-h-64 overflow-y-auto overflow-x-hidden rounded-md border border-neutral-700 bg-neutral-900 shadow-lg">
+					<div className="absolute bottom-full left-3 right-3 mb-1.5 max-h-64 overflow-y-auto overflow-x-hidden rounded-[12px] vibrancy-popover shadow-apple-modal hairline p-1">
 						{atMenu.map((p, i) => (
 							<button
 								key={p}
@@ -738,10 +738,10 @@ export function Composer({
 									applyAtCompletion(p);
 								}}
 								className={clsx(
-									"flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px]",
+									"flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] transition-colors",
 									i === menuIndex
-										? "bg-neutral-800 text-neutral-100"
-										: "text-neutral-300",
+										? "bg-[var(--bg-hover)] text-neutral-100"
+										: "text-neutral-300 hover:bg-[var(--bg-active-fill)]",
 								)}
 							>
 								<span className="truncate font-mono text-neutral-300">{p}</span>
@@ -750,7 +750,7 @@ export function Composer({
 					</div>
 				)}
 				{menu.length > 0 && slashToken && (
-					<div className="absolute bottom-full left-3 right-3 mb-1 overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 shadow-lg">
+					<div className="absolute bottom-full left-3 right-3 mb-1.5 overflow-hidden rounded-[12px] vibrancy-popover shadow-apple-modal hairline p-1">
 						{menu.map((c, i) => (
 							<button
 								key={c.name}
@@ -760,10 +760,10 @@ export function Composer({
 									applySlashCommand(c.name);
 								}}
 								className={clsx(
-									"flex w-full items-baseline gap-2 px-2.5 py-1.5 text-left text-[12px]",
+									"flex w-full items-baseline gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] transition-colors",
 									i === menuIndex
-										? "bg-neutral-800 text-neutral-100"
-										: "text-neutral-300",
+										? "bg-[var(--bg-hover)] text-neutral-100"
+										: "text-neutral-300 hover:bg-[var(--bg-active-fill)]",
 								)}
 							>
 								<span className="font-mono text-indigo-300">/{c.name}</span>
@@ -777,10 +777,10 @@ export function Composer({
 				{/* Composer box: textarea on top, bottom bar inside (Codex-style rounded card) */}
 				<div
 					className={clsx(
-						"relative rounded-2xl border bg-neutral-900/90 shadow-sm backdrop-blur-sm transition-all duration-200",
+						"relative rounded-[14px] bg-[var(--bg-panel)] shadow-apple-card transition-all duration-200",
 						isDraggingOver
-							? "border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/30"
-							: "border-neutral-800/80 focus-within:border-neutral-700 focus-within:ring-1 focus-within:ring-neutral-700/40",
+							? "ring-2 ring-[#0A84FF]/60 shadow-[0_0_0_0.5px_var(--hairline-strong),0_6px_24px_rgba(10,132,255,0.25)]"
+							: "focus-within:shadow-[0_0_0_0.5px_var(--hairline-strong),var(--shadow-apple-card)]",
 					)}
 				>
 					<textarea
@@ -827,7 +827,7 @@ export function Composer({
 								onClick={() => void handleAddAttachment()}
 								aria-label="添加附件"
 								title="添加附件或引用文件 (@ 文件)"
-								className="flex h-6 w-6 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors"
+								className="flex h-6 w-6 items-center justify-center rounded-full text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 							>
 								<Plus size={14} />
 							</button>
@@ -852,7 +852,7 @@ export function Composer({
 										if (!models || models.length === 0) void loadModels();
 									}}
 									title={current.label || sessionMeta?.model || "选择模型"}
-									className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 transition-colors"
+									className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 								>
 									<Bot size={11} className="shrink-0 text-neutral-400" />
 									<span className={clsx("truncate", compact ? "max-w-24" : "max-w-36")}>
@@ -864,7 +864,7 @@ export function Composer({
 								</button>
 
 								{modelOpen && (
-									<div className="absolute bottom-full right-0 z-30 mb-1 w-[400px] rounded-xl border border-neutral-700 bg-neutral-900/95 py-1 shadow-2xl backdrop-blur-md">
+									<div className="absolute bottom-full right-0 z-30 mb-1 w-[400px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1">
 										<ModelMenuContent
 											models={models}
 											currentValue={current.value}
@@ -900,7 +900,7 @@ export function Composer({
 												? `思考等级: ${curThinkingObj.label}${curThinkingObj.desc ? ` (${curThinkingObj.desc})` : ""}`
 												: "配置思考等级"
 										}
-										className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+										className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 									>
 										<Brain size={11} className="shrink-0 text-neutral-400" />
 										<span className="truncate">
@@ -910,8 +910,8 @@ export function Composer({
 									</button>
 
 									{thinkingOpen && (
-										<div className="absolute bottom-full right-0 z-30 mb-1 w-[260px] rounded-xl border border-neutral-700 bg-neutral-900/95 py-1 shadow-2xl backdrop-blur-md">
-											<div className="border-b border-neutral-800 px-2.5 py-1 text-[11px] font-medium text-neutral-400">
+										<div className="absolute bottom-full right-0 z-30 mb-1 w-[260px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1">
+											<div className="border-b border-[var(--border-divider)] px-2.5 py-1 text-[11px] font-medium text-neutral-400">
 												思考等级
 											</div>
 											<div className="py-0.5">
@@ -972,7 +972,7 @@ export function Composer({
 									onClick={() => setDismissed(sessionId, false)}
 									aria-label="查看排队消息"
 									title="点击查看排队消息"
-									className="flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800/80 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-700 transition-colors"
+									className="flex items-center gap-1 rounded-full hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 								>
 									<CornerDownRight size={11} className="text-neutral-400" />
 									<span>排队 {held.length}</span>
@@ -989,7 +989,7 @@ export function Composer({
 											disabled={isAborting}
 											aria-label="停止当前回合"
 											title={isAborting ? "正在停止当前回合…" : "停止当前回合"}
-											className="flex h-7 w-7 items-center justify-center rounded-full border border-rose-800/50 bg-neutral-800 text-rose-400 transition-colors hover:bg-rose-950/80 disabled:opacity-50"
+											className="flex h-7 w-7 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-400 transition-all hover:bg-rose-500/20 active:scale-95 disabled:opacity-50"
 										>
 											{isAborting ? (
 												<Loader2 size={13} className="animate-spin" />
@@ -1005,7 +1005,7 @@ export function Composer({
 													disabled={busy}
 													aria-label="排队消息"
 													title="排队消息，待本回合结束后自动处理 (Enter)"
-													className="flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700 hover:text-white disabled:opacity-40 transition-colors"
+													className="flex items-center gap-1 rounded-full hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 disabled:opacity-40 transition-all"
 												>
 													<CornerDownRight size={11} className="text-neutral-400" />
 													<span>排队</span>
@@ -1016,7 +1016,7 @@ export function Composer({
 													disabled={busy}
 													aria-label="立即插队"
 													title="立即插队发送打断 (⌘Enter)"
-													className="flex items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-1 text-[11px] text-white hover:bg-indigo-500 disabled:opacity-40"
+													className="flex items-center gap-1 rounded-full bg-[#0A84FF] px-2.5 py-1 text-[11px] text-white hover:bg-[#0A84FF]/90 active:scale-95 disabled:opacity-40 shadow-sm transition-all"
 												>
 													<Zap size={11} />
 													<span>插队</span>
@@ -1033,8 +1033,8 @@ export function Composer({
 										title="发送消息 (Enter)"
 										className={clsx(
 											text.trim() && !busy
-												? "flex h-7 w-7 items-center justify-center rounded-full bg-white text-neutral-950 hover:bg-neutral-200 active:scale-95 shadow-sm transition-all duration-150"
-												: "flex h-7 w-7 items-center justify-center rounded-full bg-neutral-800/80 text-neutral-500 cursor-not-allowed transition-all duration-200",
+												? "flex h-7 w-7 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-90 active:scale-95 shadow-sm transition-all duration-150"
+												: "flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-active-fill)] text-neutral-500 cursor-not-allowed transition-all duration-200",
 										)}
 									>
 										<ArrowUp size={14} />

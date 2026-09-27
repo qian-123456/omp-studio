@@ -348,11 +348,11 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	};
 
 	const input =
-		"w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200 outline-none focus:border-indigo-500";
+		"w-full rounded-lg hairline bg-[var(--bg)] px-2.5 py-1.5 text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50 transition-colors";
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeModal();
 			}}
@@ -362,7 +362,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="new-session-dialog-title"
-				className="w-[480px] rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-300 shadow-xl"
+				className="w-[500px] rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
 				onMouseDown={(e) => e.stopPropagation()}
 				onKeyDown={(e) => {
 					if (isComposing(e)) return;
@@ -389,13 +389,13 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				}}
 			>
 				<div className="mb-3 flex items-center">
-					<span id="new-session-dialog-title" className="flex-1 text-sm font-semibold text-neutral-100">新会话</span>
+					<span id="new-session-dialog-title" className="flex-1 text-[15px] font-semibold tracking-tight text-[var(--text)]">新会话</span>
 					<button
 						type="button"
 						title="关闭 (Esc)"
 						aria-label="关闭对话框"
 						onClick={closeModal}
-						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+						className="press-scale rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 					>
 						<X size={15} />
 					</button>
@@ -406,7 +406,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					<button
 						type="button"
 						onClick={handleBrowse}
-						className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300"
+						className="press-scale flex items-center gap-1 text-[11px] text-[#0A84FF] hover:text-[#0A84FF]/80 transition-colors"
 					>
 						<FolderOpen size={12} />
 						<span>浏览系统目录…</span>
@@ -446,7 +446,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 							<button
 								type="button"
 								onClick={handleBrowse}
-								className="flex shrink-0 items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-xs text-neutral-300 hover:bg-neutral-700 hover:text-white"
+								className="press-scale flex shrink-0 items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 								title="浏览目录"
 								aria-label="浏览系统目录"
 							>
@@ -523,7 +523,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					{isRepo === false && <span className="text-[10px]">（所选目录不是 git 仓库）</span>}
 				</label>
 				{useWorktree && (
-					<div className="mb-2.5 rounded-md border border-neutral-800 bg-neutral-950/40 p-2.5 space-y-2">
+					<div className="mb-2.5 rounded-xl hairline bg-[var(--bg)]/60 p-3 space-y-2.5">
 						<div className="grid grid-cols-2 gap-2">
 							<div>
 								<label className="text-[10px] text-neutral-400 block mb-1">
@@ -575,7 +575,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 						<div className="text-[11px] text-neutral-400">
 							将创建分支：
-							<span className="font-mono text-indigo-300 ml-1">
+							<span className="font-mono text-[#70b1ff] ml-1">
 								{branchPrefix}
 								{wtName.trim() || slug}
 							</span>
@@ -589,7 +589,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				)}
 
 				{running.length > 0 && !useWorktree && isRepo === true && (
-					<div className="mb-2 flex items-center gap-1.5 rounded border border-amber-800/60 bg-amber-950/40 px-2 py-1.5 text-[11px] text-amber-200">
+					<div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
 						<AlertTriangle size={12} className="shrink-0" />
 						同仓库已有 {running.length} 个会话在跑，建议开 worktree
 					</div>
@@ -607,12 +607,12 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				{error && <div className="mb-2 text-xs text-rose-400">{error}</div>}
 
 				<div className="flex items-center justify-between">
-					<span className="text-[11px] text-neutral-500">按 {isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速提交</span>
+					<span className="text-[11px] text-neutral-400">按 {isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速提交</span>
 					<div className="flex gap-2">
 						<button
 							type="button"
 							onClick={closeModal}
-							className="rounded px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
+							className="press-scale rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 						>
 							取消
 						</button>
@@ -620,7 +620,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 							type="button"
 							disabled={!canSubmit}
 							onClick={submit}
-							className="rounded bg-indigo-600 px-4 py-1.5 text-xs text-white hover:bg-indigo-500 disabled:opacity-40"
+							className="press-scale rounded-lg bg-[#0A84FF] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 disabled:opacity-40 transition-colors"
 						>
 							{busy ? "创建中…" : "创建会话"}
 						</button>
