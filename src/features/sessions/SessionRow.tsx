@@ -89,7 +89,7 @@ function renderStatusDot(status: SessionMeta["status"]) {
 			return (
 				<span className="relative flex h-2 w-2 shrink-0" title="执行中 (Working)">
 					<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-					<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+					<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
 				</span>
 			);
 		case "awaiting_approval":
@@ -485,7 +485,7 @@ export function SessionRow({
 			className={clsx(
 				"group relative flex cursor-pointer select-none items-center justify-between gap-1.5 py-1.5 pr-2 transition-colors",
 				isSelected
-					? "bg-neutral-800 text-neutral-100 ring-1 ring-inset ring-neutral-700/80"
+					? "bg-neutral-800 text-neutral-100 border-l-2 border-indigo-500 ring-1 ring-inset ring-neutral-700/80"
 					: isMultiSelected
 						? "bg-indigo-950/40 text-neutral-200 border-l-2 border-indigo-500"
 						: isHighlighted
@@ -572,13 +572,24 @@ export function SessionRow({
 							e.stopPropagation();
 							startInlineRename();
 						}}
-						className="min-w-0 flex-1 cursor-text truncate text-xs font-medium"
+						className={clsx(
+							"min-w-0 flex-1 cursor-text truncate text-xs transition-colors",
+							session.status === "working"
+								? "font-semibold text-neutral-100"
+								: session.status === "awaiting_approval" ||
+									  session.status === "awaiting_answer" ||
+									  session.status === "review"
+									? "font-medium text-neutral-200"
+									: session.status === "error" ||
+										  session.status === "interrupted"
+										? "font-medium text-neutral-300"
+										: "font-normal text-neutral-400 hover:text-neutral-200",
+						)}
 						title={sessionDisplayName(session)}
 					>
 						{sessionDisplayName(session)}
 					</span>
 				)}
-
 				{pill ? (
 					<span
 						className={clsx(
@@ -591,12 +602,16 @@ export function SessionRow({
 				) : (
 					<span
 						title={updatedAtTs}
-						className="ml-auto shrink-0 text-[10px] text-neutral-600"
+						className={clsx(
+							"ml-auto shrink-0 text-[10px] transition-colors",
+							session.status === "working"
+								? "text-neutral-300 font-medium"
+								: "text-neutral-500",
+						)}
 					>
 						{relativeTime(session.updatedAt || session.createdAt)}
 					</span>
 				)}
-
 				{session.pinned && (
 					<Pin
 						size={11}
