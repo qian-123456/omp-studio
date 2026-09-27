@@ -481,6 +481,48 @@ pub async fn provider_export_env_text(ids: Option<Vec<String>>) -> Result<String
     Ok(out)
 }
 
+/// Query available login providers via probe RPC process.
+#[tauri::command]
+pub async fn oauth_login_providers() -> Result<Vec<serde_json::Value>, String> {
+    super::oauth::oauth_login_providers().await
+}
+
+/// Start an OAuth / account login flow for a provider.
+#[tauri::command]
+pub async fn oauth_login_start(app: tauri::AppHandle, provider_id: String) -> Result<(), String> {
+    super::oauth::oauth_login_start(app, provider_id).await
+}
+
+/// Respond to an active OAuth/RPC prompt.
+#[tauri::command]
+pub async fn oauth_login_respond(payload: serde_json::Value) -> Result<(), String> {
+    super::oauth::oauth_login_respond(payload).await
+}
+
+/// Cancel the active OAuth login process.
+#[tauri::command]
+pub async fn oauth_login_cancel(app: tauri::AppHandle) -> Result<(), String> {
+    super::oauth::oauth_login_cancel(app).await
+}
+
+/// Open a URL explicitly in the user's default browser (must be HTTP/HTTPS).
+#[tauri::command]
+pub async fn oauth_login_open_url(url: String) -> Result<(), String> {
+    super::oauth::oauth_login_open_url(url).await
+}
+
+/// Retrieve the current login status snapshot.
+#[tauri::command]
+pub async fn oauth_login_status() -> Result<Option<serde_json::Value>, String> {
+    super::oauth::oauth_login_status().await
+}
+
+/// Discover providers already configured in OMP's global configs (`~/.omp/agent/`).
+#[tauri::command]
+pub async fn omp_providers_list() -> Result<Vec<crate::contracts::OmpProviderInfo>, String> {
+    Ok(super::omp_config::scan())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

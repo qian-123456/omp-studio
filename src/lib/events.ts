@@ -4,7 +4,12 @@
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ServiceInfo, SessionMeta, TodoCounts } from "./contracts";
+import type {
+	OauthUiEvent,
+	ServiceInfo,
+	SessionMeta,
+	TodoCounts,
+} from "./contracts";
 
 /** { sessionId, frame } */
 export interface RpcFramePayload {
@@ -87,3 +92,8 @@ export const onTmLog = (
 /** Global quick-capture shortcut fired. */
 export const onQuickCapture = (cb: () => void): Promise<UnlistenFn> =>
 	listen<null>("quick-capture", () => cb());
+
+export const onProvidersOauth = (
+	cb: (payload: OauthUiEvent) => void,
+): Promise<UnlistenFn> =>
+	listen<OauthUiEvent>("providers:oauth", (e) => cb(e.payload));

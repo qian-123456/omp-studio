@@ -16,7 +16,10 @@ import type {
 	LiveSessionInfo,
 	MobileStatus,
 	Model,
+	OauthLoginProvider,
+	OauthLoginStatus,
 	OmpConfigListResult,
+	OmpProviderInfo,
 	PairingInfo,
 	PathCheck,
 	PendingUiRequest,
@@ -309,6 +312,27 @@ export const providerTest = (id: string) =>
 /** Plaintext .env text (clipboard only — never persisted by the app). */
 export const providerExportEnvText = (ids?: string[] | null) =>
 	invoke<string>("provider_export_env_text", { ids: ids ?? null });
+
+export const ompProvidersList = () =>
+	invoke<OmpProviderInfo[]>("omp_providers_list");
+
+export const oauthLoginProviders = () =>
+	invoke<OauthLoginProvider[]>("oauth_login_providers");
+
+export const oauthLoginStart = (providerId: string) =>
+	invoke<void>("oauth_login_start", { providerId });
+
+export const oauthLoginRespond = (payload: Record<string, unknown>) =>
+	invoke<void>("oauth_login_respond", { payload });
+
+export const oauthLoginCancel = () =>
+	invoke<void>("oauth_login_cancel");
+
+export const oauthLoginOpenUrl = (url: string) =>
+	invoke<void>("oauth_login_open_url", { url });
+
+export const oauthLoginStatus = () =>
+	invoke<OauthLoginStatus | null>("oauth_login_status");
 
 // ---- E — mobile / tunnel ----
 

@@ -612,3 +612,38 @@ pub struct ProviderTestResult {
     pub latency_ms: u64,
     pub detail: String,
 }
+
+/// Provider info discovered from OMP global configs (`models.yml`, `config.yml`, `agent.db`).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpProviderInfo {
+    pub id: String,
+    pub sources: Vec<String>,
+    pub base_url: Option<String>,
+    pub api: Option<String>,
+    pub has_api_key: bool,
+    pub api_key_env: Option<String>,
+    pub model_ids: Vec<String>,
+    pub credential_types: Vec<String>,
+    pub accounts: Vec<String>,
+    pub used_in_roles: Vec<String>,
+}
+
+/// Event payload emitted during OAuth/RPC login flow (`providers:oauth`).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OauthUiEvent {
+    pub kind: String,
+    pub provider_id: String,
+    pub url: Option<String>,
+    pub launch_url: Option<String>,
+    pub instructions: Option<String>,
+    pub request_id: Option<String>,
+    pub method: Option<String>,
+    pub title: Option<String>,
+    pub placeholder: Option<String>,
+    pub timeout_ms: Option<u64>,
+    pub message: Option<String>,
+    pub ok: Option<bool>,
+    pub error: Option<String>,
+}

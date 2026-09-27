@@ -439,3 +439,70 @@ export interface ProviderTestResult {
 	latencyMs: number;
 	detail: string;
 }
+
+/** Provider configured in OMP's own config (~/.omp/agent/models.yml, agent.db, etc.) */
+export interface OmpProviderInfo {
+	id: string;
+	sources: string[];
+	baseUrl: string | null;
+	api: string | null;
+	hasApiKey: boolean;
+	apiKeyEnv: string | null;
+	modelIds: string[];
+	credentialTypes: string[];
+	accounts: string[];
+	usedInRoles: string[];
+}
+
+/** Provider supported for OAuth/account login via `omp --mode rpc`. */
+export interface OauthLoginProvider {
+	id: string;
+	name: string;
+	available: boolean;
+	authenticated: boolean;
+}
+
+export type OauthUiEventKind =
+	| "started"
+	| "openUrl"
+	| "needsInput"
+	| "notify"
+	| "ui"
+	| "cancelledRequest"
+	| "completed";
+
+/** Event emitted during OAuth login flow via `providers:oauth`. */
+export interface OauthUiEvent {
+	kind: OauthUiEventKind;
+	providerId: string;
+	url?: string | null;
+	launchUrl?: string | null;
+	instructions?: string | null;
+	requestId?: string | null;
+	method?: string | null;
+	title?: string | null;
+	placeholder?: string | null;
+	timeoutMs?: number | null;
+	message?: string | null;
+	ok?: boolean | null;
+	error?: string | null;
+}
+
+/** Snapshot returned by `oauth_login_status`. */
+export interface OauthLoginStatus {
+	active: boolean;
+	providerId?: string;
+	kind?: string;
+	url?: string | null;
+	launchUrl?: string | null;
+	instructions?: string | null;
+	requestId?: string | null;
+	method?: string | null;
+	title?: string | null;
+	placeholder?: string | null;
+	timeoutMs?: number | null;
+	message?: string | null;
+	ok?: boolean | null;
+	error?: string | null;
+	[key: string]: unknown;
+}

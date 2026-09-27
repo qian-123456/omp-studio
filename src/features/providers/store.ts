@@ -1,10 +1,15 @@
 /** [providers] Provider list store for the settings panel. */
 
 import { create } from "zustand";
-import type { ProviderConfig, ProviderTestResult } from "../../lib/contracts";
+import type {
+	OmpProviderInfo,
+	ProviderConfig,
+	ProviderTestResult,
+} from "../../lib/contracts";
 import {
 	providerDelete,
 	providerExportEnvText,
+	ompProvidersList,
 	providerList,
 	providerReorder,
 	providerSave,
@@ -20,9 +25,13 @@ interface ProvidersState {
 	providers: ProviderConfig[];
 	loaded: boolean;
 	error: string | null;
+	ompProviders: OmpProviderInfo[];
+	ompLoaded: boolean;
+	ompError: string | null;
 	/** Per-provider inline probe state (ProviderPanel rows). */
 	tests: Record<string, TestStatus>;
 	load(): Promise<void>;
+	loadOmp(): Promise<void>;
 	/** Upsert via backend; returns the saved config. */
 	save(config: ProviderConfig, apiKey?: string | null): Promise<ProviderConfig>;
 	remove(id: string): Promise<void>;
@@ -36,15 +45,30 @@ export const useProviders = create<ProvidersState>((set, get) => ({
 	providers: [],
 	loaded: false,
 	error: null,
+	ompProviders: [],
+	ompLoaded: false,
+	ompError: null,
 	tests: {},
 
-	load: async () => {
+	loadOmp: async () => {
 		try {
-			const providers = await providerList();
-			set({ providers, loaded: true, error: null });
+			const ompProviders = await ompProvidersList();
+			set({ ompProviders, ompLoaded: true, ompError: null });
 		} catch (e) {
-			set({ error: String(e) });
+			set({ ompError: String(e), ompLoaded: true });
 		}
+	},
+
+	load: async () => {
+		const loadWorkbench = async () => {
+			try {
+				const providers = await providerList();
+				set({ providers, loaded: true, error: null });
+			} catch (e) {
+				set({ error: String(e), loaded: true });
+			}
+		};
+		await Promise.all([loadWorkbench(), get().loadOmp()]);
 	},
 
 	save: async (config, apiKey) => {

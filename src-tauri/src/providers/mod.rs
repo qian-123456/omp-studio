@@ -7,10 +7,11 @@
 //! the macOS Keychain). Child processes get decrypted keys via [`env_pairs`].
 
 pub mod commands;
+pub mod oauth;
+pub mod omp_config;
 pub mod presets;
 pub mod store;
 pub mod vault;
-
 use tokio::sync::Mutex;
 
 use crate::contracts::ProviderConfig;

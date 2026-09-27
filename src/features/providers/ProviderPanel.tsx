@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	Activity,
 	CircleCheck,
@@ -6,18 +6,20 @@ import {
 	ClipboardCopy,
 	FileInput,
 	Loader2,
+	LogIn,
 	Pencil,
 	Plus,
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import type { ProviderConfig } from "../../lib/contracts";
+import type { OmpProviderInfo, ProviderConfig } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
+import { getOmpAuthBadge } from "./ompBadge";
+import { OauthLoginDialog } from "./OauthLoginDialog";
 import { API_LABELS, presetById } from "./presets";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders, type TestStatus } from "./store";
-
 const PRIVACY_NOTE =
 	"密钥使用 macOS 钥匙串加密后存于 ~/.omp-workspace/env/keys.env，明文仅在内存中出现，不会写入数据库或日志。";
 
@@ -26,8 +28,18 @@ export function ProviderPanel() {
 	const loaded = useProviders((s) => s.loaded);
 	const error = useProviders((s) => s.error);
 	const load = useProviders((s) => s.load);
+	const ompProviders = useProviders((s) => s.ompProviders);
+	const ompLoaded = useProviders((s) => s.ompLoaded);
+	const ompError = useProviders((s) => s.ompError);
+	const loadOmp = useProviders((s) => s.loadOmp);
 	const exportEnvText = useProviders((s) => s.exportEnvText);
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
+	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
+
+	const workbenchSlugs = useMemo(
+		() => new Set(providers.map((p) => p.slug)),
+		[providers],
+	);
 
 	useEffect(() => {
 		void load();
@@ -48,66 +60,165 @@ export function ProviderPanel() {
 	};
 
 	return (
-		<div className="space-y-6">
-			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div>
-					<h2 className="text-sm font-semibold text-neutral-100">API 供应商</h2>
-				</div>
-				<div className="flex shrink-0 items-center gap-2">
+		<div className="space-y-8">
+			{/* Section 1: OMP 已配置的 Provider */}
+			<div className="space-y-3">
+				<div className="flex items-center justify-between gap-4">
+					<div>
+						<h2 className="text-sm font-semibold text-neutral-100">
+							OMP 已配置的 Provider
+						</h2>
+						<p className="mt-0.5 text-xs text-neutral-400">
+							来自 ~/.omp/agent/models.yml 与 agent.db，对全部会话生效
+						</p>
+					</div>
 					<button
 						type="button"
-						onClick={() => void handleExport()}
-						className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
-						title="导出明文 .env 文本，仅复制到剪贴板"
+						onClick={() => void loadOmp()}
+						title="刷新 OMP 供应商"
+						aria-label="刷新 OMP 供应商"
+						className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 					>
-						<ClipboardCopy className="h-3.5 w-3.5" />
-						<span>复制 .env</span>
-					</button>
-					<button
-						type="button"
-						onClick={() => setDialog({ mode: "import" })}
-						className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
-					>
-						<FileInput className="h-3.5 w-3.5" />
-						<span>.env 导入</span>
-					</button>
-					<button
-						type="button"
-						onClick={() => setDialog({ mode: "add" })}
-						className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
-					>
-						<Plus className="h-3.5 w-3.5" />
-						<span>添加供应商</span>
+						<RefreshCw className="h-3.5 w-3.5" />
 					</button>
 				</div>
+
+				{ompError && (
+					<div
+						role="alert"
+						className="flex items-center justify-between gap-2 rounded-xl border border-rose-800/40 bg-rose-950/20 px-3 py-2 text-xs text-rose-300"
+					>
+						<span className="min-w-0 flex-1 break-words">{ompError}</span>
+						<button
+							type="button"
+							onClick={() => void loadOmp()}
+							className="inline-flex items-center gap-1 text-xs text-rose-200 hover:underline shrink-0"
+						>
+							<RefreshCw className="h-3 w-3" />
+							<span>重试</span>
+						</button>
+					</div>
+				)}
+
+				{!ompLoaded && !ompError && (
+					<div className="flex items-center justify-center py-6 text-neutral-500">
+						<Loader2
+							aria-label="加载 OMP 供应商"
+							size={16}
+							className="animate-spin"
+						/>
+					</div>
+				)}
+
+				{ompLoaded && !ompError && ompProviders.length === 0 && (
+					<div className="rounded-xl hairline bg-[var(--well-bg)]/40 py-6 text-center text-xs text-neutral-500">
+						未在 OMP 配置中发现 provider
+					</div>
+				)}
+
+				{ompLoaded && !ompError && ompProviders.length > 0 && (
+					<div className="space-y-2">
+						{ompProviders.map((item) => (
+							<OmpProviderRow
+								key={item.id}
+								item={item}
+								isManagedInWorkbench={workbenchSlugs.has(item.id)}
+							/>
+						))}
+					</div>
+				)}
 			</div>
 
-			{error && (
-				<div role="alert" className="flex items-center gap-2 text-xs text-rose-400">
-					<span className="min-w-0 flex-1 break-words">{error}</span>
-					<button type="button" onClick={() => void load()} title="重新加载" aria-label="重新加载供应商" className="rounded p-1 hover:bg-neutral-800">
-						<RefreshCw size={14} />
-					</button>
-				</div>
-			)}
-			{!loaded && !error && <Loader2 aria-label="加载供应商" size={16} className="animate-spin text-neutral-500" />}
-			{loaded && !error && providers.length === 0 ? (
-				<div className="py-6 text-center">
-					<div className="text-xs text-neutral-300">
-						暂无供应商
+			{/* Section 2: 工作台私有供应商 */}
+			<div className="space-y-3">
+				<div className="flex flex-wrap items-start justify-between gap-4">
+					<div>
+						<h2 className="text-sm font-semibold text-neutral-100">
+							工作台私有供应商
+						</h2>
+						<p className="mt-0.5 text-xs text-neutral-400">
+							存储于本地 ~/.omp-workspace/providers.json，密钥加密存储
+						</p>
+					</div>
+					<div className="flex shrink-0 items-center gap-2">
+						<button
+							type="button"
+							onClick={() => void handleExport()}
+							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
+							title="导出明文 .env 文本，仅复制到剪贴板"
+						>
+							<ClipboardCopy className="h-3.5 w-3.5" />
+							<span>复制 .env</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => setDialog({ mode: "import" })}
+							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
+						>
+							<FileInput className="h-3.5 w-3.5" />
+							<span>.env 导入</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => setOauthDialogOpen(true)}
+							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
+						>
+							<LogIn className="h-3.5 w-3.5" />
+							<span>OAuth 登录</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => setDialog({ mode: "add" })}
+							className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
+						>
+							<Plus className="h-3.5 w-3.5" />
+							<span>添加供应商</span>
+						</button>
 					</div>
 				</div>
-			) : (
-				<div className="space-y-2">
-					{providers.map((provider) => (
-						<ProviderRow
-							key={provider.id}
-							provider={provider}
-							onEdit={() => setDialog({ mode: "edit", provider })}
-						/>
-					))}
-				</div>
-			)}
+
+				{error && (
+					<div
+						role="alert"
+						className="flex items-center gap-2 text-xs text-rose-400"
+					>
+						<span className="min-w-0 flex-1 break-words">{error}</span>
+						<button
+							type="button"
+							onClick={() => void load()}
+							title="重新加载"
+							aria-label="重新加载供应商"
+							className="rounded p-1 hover:bg-neutral-800"
+						>
+							<RefreshCw size={14} />
+						</button>
+					</div>
+				)}
+				{!loaded && !error && (
+					<Loader2
+						aria-label="加载供应商"
+						size={16}
+						className="animate-spin text-neutral-500"
+					/>
+				)}
+				{loaded && !error && providers.length === 0 ? (
+					<div className="rounded-xl hairline bg-[var(--well-bg)]/40 py-6 text-center">
+						<div className="text-xs text-neutral-400">
+							暂无私有供应商配置
+						</div>
+					</div>
+				) : (
+					<div className="space-y-2">
+						{providers.map((provider) => (
+							<ProviderRow
+								key={provider.id}
+								provider={provider}
+								onEdit={() => setDialog({ mode: "edit", provider })}
+							/>
+						))}
+					</div>
+				)}
+			</div>
 
 			<div className="text-[11px] leading-relaxed text-neutral-600">
 				{PRIVACY_NOTE}
@@ -116,6 +227,123 @@ export function ProviderPanel() {
 			{dialog && (
 				<ProviderDialog target={dialog} onClose={() => setDialog(null)} />
 			)}
+
+			{oauthDialogOpen && (
+				<OauthLoginDialog onClose={() => setOauthDialogOpen(false)} />
+			)}
+		</div>
+	);
+}
+
+function OmpProviderRow({
+	item,
+	isManagedInWorkbench,
+}: {
+	item: OmpProviderInfo;
+	isManagedInWorkbench: boolean;
+}) {
+	const authBadge = getOmpAuthBadge(item);
+	const displayedModels = item.modelIds.slice(0, 6);
+	const remainingModelsCount = item.modelIds.length - displayedModels.length;
+
+	return (
+		<div className="rounded-xl hairline bg-[var(--well-bg)] p-3 space-y-2">
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex flex-wrap items-center gap-2 min-w-0">
+					<span className="text-xs font-semibold text-neutral-100 font-mono">
+						{item.id}
+					</span>
+					{item.sources.map((src) => (
+						<span
+							key={src}
+							className="rounded px-1.5 py-0.5 text-[10px] font-mono text-neutral-400 bg-neutral-800/80"
+						>
+							{src}
+						</span>
+					))}
+				</div>
+
+				<div className="flex flex-wrap items-center gap-1.5 shrink-0">
+					<span
+						title={authBadge.tooltip}
+						className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+							authBadge.badgeType === "oauth"
+								? "bg-indigo-950/40 text-indigo-300 border-indigo-700/40"
+								: authBadge.badgeType === "api_key"
+									? "bg-emerald-950/40 text-emerald-300 border-emerald-700/40"
+									: authBadge.badgeType === "env"
+										? "bg-amber-950/40 text-amber-300 border-amber-700/40"
+										: "bg-neutral-800/60 text-neutral-400 border-neutral-700/40"
+						}`}
+					>
+						<span>{authBadge.label}</span>
+						{authBadge.accountSuffix && (
+							<span className="text-indigo-400/80 text-[10px] max-w-[140px] truncate">
+								· {authBadge.accountSuffix}
+							</span>
+						)}
+					</span>
+
+					{isManagedInWorkbench && (
+						<span
+							title="工作台私有供应商中已存在相同标识的配置"
+							className="rounded-full px-2 py-0.5 text-[10px] font-medium bg-sky-950/40 text-sky-300 border border-sky-700/40"
+						>
+							工作台已托管
+						</span>
+					)}
+				</div>
+			</div>
+
+			<div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+				{item.baseUrl && (
+					<span
+						className="font-mono text-neutral-400 truncate max-w-[280px]"
+						title={item.baseUrl}
+					>
+						{item.baseUrl}
+					</span>
+				)}
+				{item.baseUrl &&
+					(item.modelIds.length > 0 || item.usedInRoles.length > 0) && (
+						<span className="text-neutral-600">·</span>
+					)}
+
+				{item.modelIds.length > 0 && (
+					<div className="flex flex-wrap items-center gap-1">
+						<span className="text-neutral-500">
+							{item.modelIds.length} 个模型:
+						</span>
+						{displayedModels.map((m) => (
+							<span
+								key={m}
+								className="rounded bg-neutral-800/60 px-1 py-0.5 font-mono text-[10px] text-neutral-300"
+							>
+								{m}
+							</span>
+						))}
+						{remainingModelsCount > 0 && (
+							<span className="rounded bg-neutral-800/40 px-1 py-0.5 font-mono text-[10px] text-neutral-500">
+								+{remainingModelsCount}
+							</span>
+						)}
+					</div>
+				)}
+
+				{item.usedInRoles.length > 0 && (
+					<>
+						{(item.baseUrl || item.modelIds.length > 0) && (
+							<span className="text-neutral-600">·</span>
+						)}
+						<span className="text-neutral-400">
+							角色:{" "}
+							<span className="text-neutral-300">
+								{item.usedInRoles.join(", ")}
+							</span>
+						</span>
+					</>
+				)}
+			</div>
 		</div>
 	);
 }
