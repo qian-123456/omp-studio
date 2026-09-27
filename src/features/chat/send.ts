@@ -42,6 +42,9 @@ export async function sendPrompt(
 ): Promise<void> {
 	const trimmed = text.trim();
 	if (!trimmed) return;
+	// Optimistic echo: add immediately before network calls so the user bubble
+	// appears synchronously and never disappears or arrives after assistant stream.
+	useLive.getState().addUserEcho(sessionId, trimmed);
 	if (!useLive.getState().sessions[sessionId]?.alive) {
 		await rpcEnsureLive(sessionId);
 	}
@@ -51,10 +54,6 @@ export async function sendPrompt(
 		command.streamingBehavior = opts?.steer ? "steer" : "followUp";
 	}
 	await rpcSend(sessionId, command);
-	// Optimistic echo: the prompt only lands in items via a transcript
-	// fetch (mount / turn end), so without this the sent message is
-	// invisible for the whole turn.
-	useLive.getState().addUserEcho(sessionId, trimmed);
 }
 
 /** Abort the running turn with stopping transition state. */

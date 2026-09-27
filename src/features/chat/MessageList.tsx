@@ -8,8 +8,8 @@ import {
 	AlertCircle,
 	ChevronRight,
 	Copy,
+	GitFork,
 	Loader2,
-	MessageSquareQuote,
 	RotateCcw,
 	Sparkles,
 	Wrench,
@@ -17,9 +17,11 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ToolCall, ToolResultInfo, TranscriptItem } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
+import { createSideChat } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useLive, type AgentMessage, type LiveTool } from "../../stores/live";
-import { useComposer } from "../../stores/composer";
+import { useSessions } from "../../stores/sessions";
+import { useUi } from "../../stores/ui";
 import { Markdown } from "./markdown";
 import { sendPrompt } from "./send";
 import { ToolCard } from "./ToolCard";
@@ -81,10 +83,6 @@ function messageToolCalls(content: unknown): ToolCall[] {
 		.filter((t): t is ToolCall => t !== null);
 }
 
-const REASONING_TICK_MS = 1000;
-/** Edge fade for the streaming last-line marquee (ZCode ReasoningTrigger). */
-const REASONING_MASK =
-	"linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)";
 
 /** Newest non-empty line of the in-flight thinking text. */
 function lastNonEmptyLine(text: string): { key: string; text: string } | null {
@@ -96,80 +94,149 @@ function lastNonEmptyLine(text: string): { key: string; text: string } | null {
 	return null;
 }
 
-function Thinking({
+function formatTimestamp(ts?: string | number | null): string {
+	if (!ts) return "";
+	const date = new Date(ts);
+	if (isNaN(date.getTime())) return "";
+	const pad = (n: number) => String(n).padStart(2, "0");
+	const hours = pad(date.getHours());
+	const minutes = pad(date.getMinutes());
+	const seconds = pad(date.getSeconds());
+	return `${hours}:${minutes}:${seconds}`;
+}
+
+function ThinkingContent({
 	text,
-	startedAt,
-	endedAt,
 	isStreaming,
 }: {
 	text: string;
-	startedAt?: number | null;
-	endedAt?: number | null;
 	isStreaming?: boolean;
 }) {
-	// ZCode Reasoning: collapsed unless the user opens it; duration ticks
-	// whole seconds (min 1) while open+streaming and is finalized on turn end.
-	const [open, setOpen] = useState(false);
-	const [seconds, setSeconds] = useState<number | null>(null);
-	const marqueeRef = useRef<HTMLSpanElement>(null);
-	const [marqueeOverflow, setMarqueeOverflow] = useState(false);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const contentFollowRef = useRef(true);
 
 	useEffect(() => {
-		if (!isStreaming) {
-			if (startedAt) {
-				const end = endedAt ?? Date.now();
-				setSeconds(Math.max(1, Math.ceil((end - startedAt) / REASONING_TICK_MS)));
-			}
-			return;
-		}
-		if (!startedAt || !open) return;
-		const tick = () =>
-			setSeconds(
-				Math.max(1, Math.ceil((Date.now() - startedAt) / REASONING_TICK_MS)),
-			);
-		tick();
-		const id = setInterval(tick, REASONING_TICK_MS);
-		return () => clearInterval(id);
-	}, [isStreaming, open, startedAt, endedAt]);
-
-	const marquee = isStreaming && !open ? lastNonEmptyLine(text) : null;
-	const marqueeKey = marquee ? `${marquee.key}:${marquee.text}` : "";
-	useEffect(() => {
-		const el = marqueeRef.current;
-		if (!el || !marqueeKey) return;
-		const update = () => {
-			const over = el.scrollWidth > el.clientWidth + 1;
-			setMarqueeOverflow(over);
-			if (over) el.scrollLeft = el.scrollWidth;
-		};
-		update();
-		if (typeof ResizeObserver === "undefined") return;
-		const ro = new ResizeObserver(update);
-		ro.observe(el);
-		return () => ro.disconnect();
-	}, [marqueeKey]);
-
-	// Keep the open reasoning content pinned to its bottom while streaming
-	// unless the user scrolled up inside it.
-	useEffect(() => {
 		contentFollowRef.current = true;
-	}, [open]);
+	}, []);
+
 	useEffect(() => {
 		const el = contentRef.current;
-		if (!el || !open || !isStreaming || !contentFollowRef.current) return;
+		if (!el || !isStreaming || !contentFollowRef.current) return;
 		el.scrollTop = el.scrollHeight;
 	});
 
 	if (!text) return null;
 
 	return (
-		<div className="my-0.5 text-[12px]">
+		<div className="group/th relative ml-1 rounded-lg bg-[var(--bg-active-fill)]/50 p-2.5">
 			<button
 				type="button"
-				onClick={() => setOpen(!open)}
-				className="group/reasoning press-scale flex max-w-full min-w-0 items-center gap-2 rounded-lg px-1.5 py-0.5 text-left transition-colors select-none hover:bg-[var(--bg-active-fill)]"
+				onClick={async () => {
+					try {
+						await copyText(text);
+						toast.success("思考过程已复制");
+					} catch (e) {
+						toast.error(`复制失败: ${errMsg(e)}`);
+					}
+				}}
+				className="press-scale absolute right-2 top-2 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-300 opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:text-neutral-100 focus:opacity-100 group-hover/th:opacity-100"
+				title="复制思考过程"
+			>
+				复制
+			</button>
+			<div
+				ref={contentRef}
+				onScroll={() => {
+					const el = contentRef.current;
+					if (!el) return;
+					contentFollowRef.current =
+						el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+				}}
+				className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-relaxed text-neutral-400 select-text"
+			>
+				{text}
+			</div>
+		</div>
+	);
+}
+
+function TraceExecution({
+	sessionId,
+	thinking,
+	toolCalls,
+	isStreaming,
+	thinkingStartedAt,
+	thinkingEndedAt,
+	toolsExpanded,
+	toolResultsByCallId,
+}: {
+	sessionId: string;
+	thinking: string | null;
+	toolCalls: ToolCall[];
+	isStreaming?: boolean;
+	thinkingStartedAt?: number | null;
+	thinkingEndedAt?: number | null;
+	toolsExpanded?: boolean | null;
+	toolResultsByCallId?: Map<string, ToolResultInfo>;
+}) {
+	const liveTools = useLive(
+		(s) => s.sessions[sessionId]?.tools ?? EMPTY_TOOLS,
+	);
+	// Codex-style: during streaming, keep expanded. Once finished, default collapsed.
+	const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+
+	const isOpen =
+		toolsExpanded !== null && toolsExpanded !== undefined
+			? toolsExpanded
+			: userExpanded !== null
+				? userExpanded
+				: Boolean(isStreaming);
+
+	const [seconds, setSeconds] = useState<number | null>(null);
+	useEffect(() => {
+		if (!isStreaming) {
+			if (thinkingStartedAt) {
+				const end = thinkingEndedAt ?? Date.now();
+				setSeconds(Math.max(1, Math.ceil((end - thinkingStartedAt) / 1000)));
+			}
+			return;
+		}
+		if (!thinkingStartedAt) return;
+		const tick = () =>
+			setSeconds(
+				Math.max(1, Math.ceil((Date.now() - thinkingStartedAt) / 1000)),
+			);
+		tick();
+		const id = setInterval(tick, 1000);
+		return () => clearInterval(id);
+	}, [isStreaming, thinkingStartedAt, thinkingEndedAt]);
+
+	const stepCount = toolCalls.length;
+	const durationText = seconds == null ? "持续了几秒" : `持续了 ${seconds} 秒`;
+
+	let summaryText = "";
+	if (isStreaming && !thinking && stepCount === 0) {
+		summaryText = "正在思考…";
+	} else if (thinking && stepCount > 0) {
+		summaryText = isStreaming
+			? (stepCount > 0 ? `正在思考 · ${stepCount} 步工具调用` : "正在思考…")
+			: `思考 · ${durationText} · ${stepCount} 步`;
+	} else if (thinking) {
+		summaryText = isStreaming ? "正在思考…" : `思考 · ${durationText}`;
+	} else if (stepCount > 0) {
+		summaryText = isStreaming
+			? `正在执行工具 (${stepCount} 步)`
+			: `工具调用 · ${stepCount} 步`;
+	}
+
+	const marquee = isStreaming && !isOpen ? lastNonEmptyLine(thinking ?? "") : null;
+
+	return (
+		<div className="my-1 border-l-2 border-[var(--border)] pl-2.5 py-0.5 space-y-1">
+			<button
+				type="button"
+				onClick={() => setUserExpanded(!isOpen)}
+				className="group/trace press-scale flex max-w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-left text-[12px] text-neutral-400 transition-colors select-none hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
 			>
 				<Sparkles
 					size={11}
@@ -178,29 +245,11 @@ function Thinking({
 						isStreaming ? "animate-pulse text-indigo-400" : "text-neutral-500",
 					)}
 				/>
-				{isStreaming && !open ? (
-					<span className="shrink-0 animate-pulse font-medium text-neutral-300">
-						正在思考
-					</span>
-				) : (
-					<span className="shrink-0 whitespace-nowrap text-neutral-500">
-						<span className="font-medium">思考</span>
-						<span className="font-normal"> · </span>
-						<span className="font-normal">
-							{seconds == null ? "持续了几秒" : `持续了 ${seconds} 秒`}
-						</span>
-					</span>
-				)}
+				<span className="font-medium text-neutral-300">
+					{summaryText}
+				</span>
 				{marquee && (
-					<span
-						ref={marqueeRef}
-						className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-neutral-500"
-						style={
-							marqueeOverflow
-								? { maskImage: REASONING_MASK, WebkitMaskImage: REASONING_MASK }
-								: undefined
-						}
-					>
+					<span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-neutral-500">
 						<span className="inline-block whitespace-nowrap">
 							{marquee.text}
 						</span>
@@ -209,98 +258,21 @@ function Thinking({
 				<ChevronRight
 					size={12}
 					className={clsx(
-						"shrink-0 text-neutral-500 transition-all",
-						open
-							? "rotate-90 opacity-100"
-							: "rotate-0 opacity-0 group-hover/reasoning:opacity-100",
+						"shrink-0 text-neutral-500 transition-transform duration-150",
+						isOpen ? "rotate-90" : "rotate-0",
 					)}
 				/>
 			</button>
-			{open && (
-				<div className="group/th relative ml-2 mt-1 border-l border-[var(--border-divider)] py-1 pl-3">
-					<button
-						type="button"
-						onClick={async () => {
-							try {
-								await copyText(text);
-								toast.success("思考过程已复制");
-							} catch (e) {
-								toast.error(`复制失败: ${errMsg(e)}`);
-							}
-						}}
-						className="press-scale absolute right-1 top-0 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-300 opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:text-neutral-100 focus:opacity-100 group-hover/th:opacity-100"
-						title="复制思考过程"
-					>
-						复制
-					</button>
-					<div
-						ref={contentRef}
-						onScroll={() => {
-							const el = contentRef.current;
-							if (!el) return;
-							contentFollowRef.current =
-								el.scrollHeight - el.scrollTop - el.clientHeight < 8;
-						}}
-						className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-relaxed text-neutral-500"
-					>
-						{text}
-					</div>
-				</div>
-			)}
-		</div>
-	);
-}
 
-function AssistantBody({
-	sessionId,
-	text,
-	thinking,
-	toolCalls,
-	usage,
-	toolsExpanded,
-	onRetry,
-	itemId,
-	isStreaming,
-	thinkingStartedAt,
-	thinkingEndedAt,
-	toolResultsByCallId,
-	isLastInTurn,
-}: {
-	sessionId: string;
-	text: string;
-	thinking: string | null;
-	toolCalls: ToolCall[];
-	usage?: { totalTokens: number } | null;
-	toolsExpanded?: boolean | null;
-	onRetry?: () => void;
-	itemId?: string;
-	isStreaming?: boolean;
-	thinkingStartedAt?: number | null;
-	thinkingEndedAt?: number | null;
-	toolResultsByCallId?: Map<string, ToolResultInfo>;
-	isLastInTurn?: boolean;
-}) {
-	const liveTools = useLive(
-		(s) => s.sessions[sessionId]?.tools ?? EMPTY_TOOLS,
-	);
-	const hasVisibleText = Boolean(text && text.trim().length > 0);
-	const shouldShowFooter =
-		!isStreaming && (hasVisibleText || (isLastInTurn && toolCalls.length > 0));
-
-	return (
-		<div className="group relative">
-			{/* Execution trace: thinking + tool calls connected with Codex-style tree guide line */}
-			{(thinking || toolCalls.length > 0) && (
-				<div className="my-1 border-l-2 border-[var(--border)] pl-2.5 py-0.5 space-y-1">
+			{isOpen && (
+				<div className="space-y-1.5 pt-0.5">
 					{thinking && (
-						<Thinking
+						<ThinkingContent
 							text={thinking}
-							startedAt={thinkingStartedAt}
-							endedAt={thinkingEndedAt}
 							isStreaming={isStreaming}
 						/>
 					)}
-					{toolCalls.length > 0 && (
+					{stepCount > 0 && (
 						<div
 							className={clsx(
 								"space-y-0.5",
@@ -332,6 +304,66 @@ function AssistantBody({
 					)}
 				</div>
 			)}
+		</div>
+	);
+}
+
+function AssistantBody({
+	sessionId,
+	text,
+	thinking,
+	toolCalls,
+	toolsExpanded,
+	timestamp,
+	isStreaming,
+	thinkingStartedAt,
+	thinkingEndedAt,
+	toolResultsByCallId,
+	isLastInTurn,
+}: {
+	sessionId: string;
+	text: string;
+	thinking: string | null;
+	toolCalls: ToolCall[];
+	toolsExpanded?: boolean | null;
+	timestamp?: string | null;
+	isStreaming?: boolean;
+	thinkingStartedAt?: number | null;
+	thinkingEndedAt?: number | null;
+	toolResultsByCallId?: Map<string, ToolResultInfo>;
+	isLastInTurn?: boolean;
+}) {
+	const hasVisibleText = Boolean(text && text.trim().length > 0);
+	const shouldShowFooter =
+		!isStreaming && (hasVisibleText || (isLastInTurn && toolCalls.length > 0));
+	const timeStr = formatTimestamp(timestamp);
+
+	return (
+		<div className="group relative">
+			{/* Execution trace: thinking + tool calls auto-collapsed when finished */}
+			{(thinking || toolCalls.length > 0) && (
+				<TraceExecution
+					sessionId={sessionId}
+					thinking={thinking}
+					toolCalls={toolCalls}
+					isStreaming={isStreaming}
+					thinkingStartedAt={thinkingStartedAt}
+					thinkingEndedAt={thinkingEndedAt}
+					toolsExpanded={toolsExpanded}
+					toolResultsByCallId={toolResultsByCallId}
+				/>
+			)}
+
+			{/* When streaming but neither thinking text nor tool calls nor answer text have arrived yet */}
+			{isStreaming && !text && !thinking && toolCalls.length === 0 && (
+				<div className="my-1 border-l-2 border-[var(--border)] pl-2.5 py-0.5 space-y-1">
+					<div className="flex items-center gap-2 py-0.5 text-[12px] text-neutral-400 select-none">
+						<Sparkles size={11} className="shrink-0 animate-pulse text-indigo-400" />
+						<span className="animate-pulse font-medium text-neutral-300">正在思考…</span>
+					</div>
+				</div>
+			)}
+
 			<div className="relative">
 				{text && <Markdown text={text} />}
 				{isStreaming && (
@@ -343,33 +375,13 @@ function AssistantBody({
 					</span>
 				)}
 			</div>
-			{shouldShowFooter && usage && (
-				<div className="mt-1 text-[10px] text-neutral-600">
-					{usage.totalTokens.toLocaleString()} tokens
-				</div>
-			)}
+
 			{shouldShowFooter && (
-				<div className="mt-1 flex items-center justify-end">
-					<div className="flex items-center gap-1 rounded-xl hairline vibrancy-popover px-2 py-0.5 text-[11px] shadow-sm opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-						{text && (
-							<button
-								type="button"
-								onClick={() => {
-									if (!text.trim()) return;
-									useComposer.getState().addAnnotation(sessionId, {
-										source: "message",
-										text,
-										itemId,
-									});
-									useComposer.getState().focusComposer(sessionId);
-									toast.success("已添加引用");
-								}}
-								className="press-scale flex items-center gap-1 px-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100"
-								title="引用全文到输入框"
-							>
-								<MessageSquareQuote size={11} /> 引用
-							</button>
-						)}
+				<div className="mt-1 flex items-center justify-start">
+					<div
+						className="flex items-center gap-0.5 rounded-xl hairline vibrancy-popover p-0.5 text-[11px] shadow-sm opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
+						title={timeStr ? `完成时间 ${timeStr}` : undefined}
+					>
 						{text && (
 							<button
 								type="button"
@@ -381,28 +393,34 @@ function AssistantBody({
 										toast.error(`复制失败: ${errMsg(e)}`);
 									}
 								}}
-								className={clsx(
-									"press-scale flex items-center gap-1 px-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100",
-									text && "border-l border-[var(--border-divider)] pl-1.5",
-								)}
-								title="复制 Markdown"
+								className="press-scale flex h-6 w-6 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus:opacity-100"
+								title={timeStr ? `复制回复 · 完成时间 ${timeStr}` : "复制回复"}
+								aria-label="复制回复"
 							>
-								<Copy size={11} /> 复制
+								<Copy size={12} />
 							</button>
 						)}
-						{onRetry && (
-							<button
-								type="button"
-								onClick={onRetry}
-								className={clsx(
-									"press-scale flex items-center gap-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100",
-									text && "border-l border-[var(--border-divider)] pl-1.5 pr-1",
-								)}
-								title="重新生成此回合"
-							>
-								<RotateCcw size={11} /> 重试
-							</button>
-						)}
+						<button
+							type="button"
+							onClick={async () => {
+								try {
+									const snippet = text.slice(0, 60);
+									const prompt = snippet ? `基于回复继续：${snippet}…` : "分叉侧聊";
+									const info = await createSideChat(sessionId, prompt, text || undefined);
+									void useSessions.getState().load().catch(() => {});
+									useUi.getState().setRightTab("sidechat");
+									useUi.getState().selectSession(info.sessionId);
+									toast.success("已分叉到侧聊");
+								} catch (e) {
+									toast.error(`分叉失败: ${errMsg(e)}`);
+								}
+							}}
+							className="press-scale flex h-6 w-6 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus:opacity-100"
+							title={timeStr ? `分叉此回复到侧聊 · 完成时间 ${timeStr}` : "分叉此回复到侧聊"}
+							aria-label="分叉此回复到侧聊"
+						>
+							<GitFork size={12} />
+						</button>
 					</div>
 				</div>
 			)}
@@ -414,14 +432,12 @@ function ItemRow({
 	sessionId,
 	item,
 	toolsExpanded,
-	prevUserPrompt,
 	toolResultsByCallId,
 	isLastInTurn,
 }: {
 	sessionId: string;
 	item: TranscriptItem;
 	toolsExpanded?: boolean | null;
-	prevUserPrompt?: string | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 	isLastInTurn?: boolean;
 }) {
@@ -483,30 +499,12 @@ function ItemRow({
 					text={item.text ?? ""}
 					thinking={item.thinking}
 					toolCalls={item.toolCalls}
-					usage={item.usage}
 					toolsExpanded={toolsExpanded}
-					itemId={item.id}
+					timestamp={item.ts}
 					thinkingStartedAt={thinkingTimes?.startedAt}
 					thinkingEndedAt={thinkingTimes?.endedAt}
 					toolResultsByCallId={toolResultsByCallId}
 					isLastInTurn={isLastInTurn}
-					onRetry={
-						prevUserPrompt
-							? async () => {
-									const ok = await confirmDialog(
-										`确认重新发送上一条提问并重试？\n\n"${prevUserPrompt.slice(0, 100)}${prevUserPrompt.length > 100 ? "…" : ""}"`,
-										{ okLabel: "重试" },
-									);
-									if (!ok) return;
-									try {
-										await sendPrompt(sessionId, prevUserPrompt);
-										toast.success("正在重新生成…");
-									} catch (e) {
-										toast.error(`重试失败: ${errMsg(e)}`);
-									}
-								}
-							: undefined
-					}
 				/>
 			);
 		}
@@ -568,7 +566,7 @@ function StreamingRow({
 	toolResultsByCallId,
 }: {
 	sessionId: string;
-	message: AgentMessage;
+	message: AgentMessage | null;
 	toolsExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 }) {
@@ -577,9 +575,9 @@ function StreamingRow({
 		<div>
 			<AssistantBody
 				sessionId={sessionId}
-				text={messageText(message.content)}
-				thinking={messageThinking(message.content)}
-				toolCalls={messageToolCalls(message.content)}
+				text={messageText(message?.content)}
+				thinking={messageThinking(message?.content)}
+				toolCalls={messageToolCalls(message?.content)}
 				toolsExpanded={toolsExpanded}
 				isStreaming={true}
 				thinkingStartedAt={live?.thinkingStartedAt}
@@ -589,6 +587,7 @@ function StreamingRow({
 		</div>
 	);
 }
+
 export function MessageList({
 	sessionId,
 	scrollRef,
@@ -620,6 +619,7 @@ export function MessageList({
 	const isPinnedRef = useRef(true);
 	const prevItemsLen = useRef(items.length);
 	const prevStreamingTextLen = useRef(0);
+	const prevStreamingThinkingLen = useRef(0);
 	const lastHandledScrollReq = useRef<number>(0);
 	const containerRef = useRef<HTMLDivElement>(null);
 
@@ -656,18 +656,17 @@ export function MessageList({
 		[items, showHidden],
 	);
 
-	// Optimistic user echoes ride at the tail until the transcript confirms
-	// them; they already have kind "user" so ItemRow renders them as bubbles.
-	const rows: (TranscriptItem | "live")[] = streamingMessage
-		? [...visible, ...pendingEchoes, "live"]
-		: [...visible, ...pendingEchoes];
 	const hiddenCount = items.length - visible.length;
+	const isStreamingActive = Boolean(live?.streaming || streamingMessage);
+	const hasContent =
+		visible.length > 0 || pendingEchoes.length > 0 || isStreamingActive;
 
 	const virtualizer = useVirtualizer({
-		count: rows.length,
+		count: visible.length,
 		getScrollElement: () => scrollRef.current,
-		estimateSize: () => 90,
-		overscan: 8,
+		estimateSize: () => 80,
+		overscan: 6,
+		getItemKey: (index) => visible[index]?.id ?? index,
 	});
 
 	// Listen to user scroll in container to maintain pin-to-bottom state
@@ -676,7 +675,7 @@ export function MessageList({
 		if (!el) return;
 		const handleScroll = () => {
 			const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-			const pinned = dist < 150;
+			const pinned = dist < 120;
 			isPinnedRef.current = pinned;
 			emitScrollState({
 				nearBottom: pinned,
@@ -687,22 +686,35 @@ export function MessageList({
 		return () => el.removeEventListener("scroll", handleScroll);
 	}, [scrollRef]);
 
-	// Stream-following auto scroll: triggers when text or rows change
+	// Stream-following auto scroll: triggers when text, thinking or rows change
 	const streamingText = messageText(streamingMessage?.content);
+	const streamingThinking = messageThinking(streamingMessage?.content);
+
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (!el) return;
-		const itemsGrew = items.length > prevItemsLen.current;
+		const itemsGrew = visible.length > prevItemsLen.current;
+		const echoesGrew = pendingEchoes.length > 0;
 		const textGrew = streamingText.length > prevStreamingTextLen.current;
-		prevItemsLen.current = items.length;
+		const thinkingGrew =
+			(streamingThinking?.length ?? 0) > prevStreamingThinkingLen.current;
+
+		prevItemsLen.current = visible.length;
 		prevStreamingTextLen.current = streamingText.length;
+		prevStreamingThinkingLen.current = streamingThinking?.length ?? 0;
 
 		if (isPinnedRef.current) {
 			el.scrollTop = el.scrollHeight;
-		} else if (itemsGrew || textGrew) {
+		} else if (itemsGrew || echoesGrew || textGrew || thinkingGrew) {
 			emitScrollState({ hasNewMessages: true });
 		}
-	}, [rows.length, streamingText, items.length, scrollRef]);
+	}, [
+		visible.length,
+		pendingEchoes.length,
+		streamingText,
+		streamingThinking,
+		scrollRef,
+	]);
 
 	// ResizeObserver for dynamic content expansion during streaming
 	useEffect(() => {
@@ -724,8 +736,7 @@ export function MessageList({
 		if (!req || req.timestamp === lastHandledScrollReq.current) return;
 		lastHandledScrollReq.current = req.timestamp;
 
-		const targetIndex = rows.findIndex((r) => {
-			if (r === "live") return false;
+		const targetIndex = visible.findIndex((r) => {
 			if (r.id === req.itemId) return true;
 			if (
 				r.kind === "assistant" &&
@@ -753,18 +764,8 @@ export function MessageList({
 			useLive.getState().clearScrollRequest(sessionId);
 			return () => clearTimeout(timer);
 		}
-	}, [live?.scrollRequest, rows, virtualizer, sessionId]);
+	}, [live?.scrollRequest, visible, virtualizer, sessionId, toolResultsByCallId]);
 
-	// Find preceding user prompt for retry
-	const findPrecedingUserPrompt = (currentIndex: number): string | null => {
-		for (let i = currentIndex - 1; i >= 0; i--) {
-			const item = visible[i];
-			if (item && item.kind === "user" && item.text) {
-				return item.text;
-			}
-		}
-		return null;
-	};
 	return (
 		<div className="relative flex h-full flex-col">
 			{/* Top toolbar */}
@@ -799,7 +800,7 @@ export function MessageList({
 			</div>
 
 			{/* Loading transcript affordance */}
-			{isLoadingTranscript && visible.length === 0 && !streamingMessage && (
+			{isLoadingTranscript && !hasContent && (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center text-neutral-400">
 					<Loader2 size={24} className="mb-2.5 animate-spin text-neutral-500" />
 					<div className="text-[13px] text-neutral-400">正在加载会话记录…</div>
@@ -807,7 +808,7 @@ export function MessageList({
 			)}
 
 			{/* Error state with retry affordance */}
-			{!isLoadingTranscript && transcriptError && visible.length === 0 && !streamingMessage && (
+			{!isLoadingTranscript && transcriptError && !hasContent && (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
 					<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-400">
 						<AlertCircle size={24} />
@@ -832,7 +833,7 @@ export function MessageList({
 			)}
 
 			{/* Empty state guidance */}
-			{!isLoadingTranscript && !transcriptError && visible.length === 0 && !streamingMessage && (
+			{!isLoadingTranscript && !transcriptError && !hasContent && (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
 					<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-400">
 						<Sparkles size={24} />
@@ -877,57 +878,91 @@ export function MessageList({
 				</div>
 			)}
 
-			{/* Virtualized stream list */}
+			{/* Stream list */}
 			<div className="relative min-h-0 flex-1">
 				<div
 					ref={containerRef}
-					style={{ height: virtualizer.getTotalSize() }}
 					className="relative mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-4xl"
 				>
-					{virtualizer.getVirtualItems().map((row) => {
-						const item = rows[row.index];
-						const isHighlighted =
-							item !== "live" && item.id === highlightedId;
-						return (
-							<div
-								key={row.key}
-								data-index={row.index}
-								ref={virtualizer.measureElement}
-								style={{ transform: `translateY(${row.start}px)` }}
-								className={clsx(
-									"absolute left-0 top-0 w-full py-1 transition-all duration-500",
-									traceGutter ? "pl-12 pr-3" : "px-3",
-									isHighlighted &&
-										"rounded-xl bg-[#0A84FF]/10 ring-1 ring-[#0A84FF]/50 shadow-md shadow-[#0A84FF]/10",
-									item === "live" && "opacity-90",
-									item !== "live" &&
-										item.id.startsWith("pending-echo-") &&
-										"opacity-60",
-								)}
-								id={
-									item === "live" ? "msg-live" : `msg-${item.id}`
-								}
-							>
-								{item === "live" ? (
-									<StreamingRow
-										sessionId={sessionId}
-										message={streamingMessage!}
-										toolsExpanded={toolsExpanded}
-										toolResultsByCallId={toolResultsByCallId}
-									/>
-								) : (
+					{/* Virtualized committed transcript */}
+					{visible.length > 0 && (
+						<div
+							style={{ height: virtualizer.getTotalSize() }}
+							className="relative w-full"
+						>
+							{virtualizer.getVirtualItems().map((row) => {
+								const item = visible[row.index];
+								if (!item) return null;
+								const isHighlighted = item.id === highlightedId;
+								return (
+									<div
+										key={row.key}
+										data-index={row.index}
+										ref={virtualizer.measureElement}
+										style={{ transform: `translateY(${row.start}px)` }}
+										className={clsx(
+											"absolute left-0 top-0 w-full py-1",
+											traceGutter ? "pl-12 pr-3" : "px-3",
+											isHighlighted &&
+												"rounded-xl bg-[#0A84FF]/10 ring-1 ring-[#0A84FF]/50 shadow-md shadow-[#0A84FF]/10 transition-[background-color,box-shadow] duration-300",
+										)}
+										id={`msg-${item.id}`}
+									>
+										<ItemRow
+											sessionId={sessionId}
+											item={item}
+											toolsExpanded={toolsExpanded}
+											toolResultsByCallId={toolResultsByCallId}
+											isLastInTurn={isLastInTurn(visible, row.index)}
+										/>
+									</div>
+								);
+							})}
+						</div>
+					)}
+
+					{/* In-flight / pending user bubbles in normal document flow */}
+					{pendingEchoes.length > 0 && (
+						<div className="w-full">
+							{pendingEchoes.map((echo, i) => (
+								<div
+									key={echo.id}
+									data-index={visible.length + i}
+									id={`msg-${echo.id}`}
+									className={clsx(
+										"w-full py-1 opacity-90",
+										traceGutter ? "pl-12 pr-3" : "px-3",
+									)}
+								>
 									<ItemRow
 										sessionId={sessionId}
-										item={item}
+										item={echo}
 										toolsExpanded={toolsExpanded}
-										prevUserPrompt={findPrecedingUserPrompt(row.index)}
 										toolResultsByCallId={toolResultsByCallId}
-										isLastInTurn={isLastInTurn(visible, row.index)}
 									/>
-								)}
-							</div>
-						);
-					})}
+								</div>
+							))}
+						</div>
+					)}
+
+					{/* In-flight assistant streaming / thinking card in normal document flow */}
+					{isStreamingActive && (
+						<div
+							id="msg-live"
+							data-index={visible.length + pendingEchoes.length}
+							className={clsx(
+								"w-full py-1",
+								traceGutter ? "pl-12 pr-3" : "px-3",
+							)}
+						>
+							<StreamingRow
+								sessionId={sessionId}
+								message={streamingMessage}
+								toolsExpanded={toolsExpanded}
+								toolResultsByCallId={toolResultsByCallId}
+							/>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

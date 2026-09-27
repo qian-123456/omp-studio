@@ -38,12 +38,11 @@ export function BottomBar() {
 	// Global keyboard shortcuts (Cmd/Ctrl +/-, Cmd/Ctrl 0) and stored zoom application
 	useZoom();
 
-	const handleToggleHeatmap = () => {
-		if (rightTab === "heatmap" && rightOpen) {
-			setRightTab(null);
+	const handleToggleGit = () => {
+		if (rightTab === "git" && rightOpen) {
+			setRightOpen(false);
 		} else {
-			setRightTab("heatmap");
-			if (!rightOpen) setRightOpen(true);
+			setRightTab("git");
 		}
 	};
 
@@ -95,7 +94,7 @@ export function BottomBar() {
 	const dirty = activeSession?.git?.dirty ?? 0;
 
 	return (
-		<footer className="relative flex h-7 shrink-0 items-center justify-between border-t border-[var(--border-divider)] vibrancy-chrome px-3 text-[11px] text-neutral-400 select-none tabular-nums">
+		<footer className="relative flex h-7 shrink-0 items-center justify-between border-t border-[var(--border-divider)] bg-neutral-950 px-3 text-[11px] text-neutral-400 select-none tabular-nums">
 			{/* Left: dsh-style Session Stats */}
 			<div className="flex items-center gap-2">
 				{activeSessionId && stats.hasData ? (
@@ -174,29 +173,6 @@ export function BottomBar() {
 
 				<span className="text-neutral-700">·</span>
 
-				{/* Heatmap compact toggle */}
-				{/* Token usage compact toggle */}
-				<button
-					type="button"
-					onClick={handleToggleHeatmap}
-					aria-label="切换右侧 Token 用量"
-					title={rightTab === "heatmap" && rightOpen ? "收起 Token 用量" : "在右栏打开会话 Token 用量"}
-					className={clsx(
-						"flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 text-[10.5px] transition-all active:scale-95",
-						rightTab === "heatmap" && rightOpen
-							? "bg-emerald-500/15 text-emerald-300 font-medium border border-emerald-500/30"
-							: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
-					)}
-				>
-					<Activity
-						size={11}
-						className={rightTab === "heatmap" && rightOpen ? "text-emerald-400" : "text-neutral-500"}
-					/>
-					<span>Token 用量</span>
-				</button>
-
-				<span className="text-neutral-700">·</span>
-
 				{/* Sync state */}
 				<div className="flex items-center gap-1" title={streaming ? "正在生成中" : "会话状态已同步"}>
 					<RefreshCw
@@ -213,18 +189,30 @@ export function BottomBar() {
 				{branch && (
 					<>
 						<span className="text-neutral-700">·</span>
-						<div
-							className="flex items-center gap-1 text-neutral-400 hover:text-neutral-200 transition-colors"
-							title={`当前分支: ${branch}${dirty > 0 ? ` (${dirty} 处未提交变更)` : ""}`}
+						<button
+							type="button"
+							onClick={handleToggleGit}
+							aria-label="查看 Git 面板"
+							title="查看 Git 面板"
+							className={clsx(
+								"flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97 transition-all cursor-pointer",
+								rightTab === "git" && rightOpen && "bg-[var(--bg-active-fill)] text-neutral-200",
+							)}
 						>
-							<GitBranch size={11} className="text-neutral-500" />
+							<GitBranch
+								size={11}
+								className={clsx(
+									"transition-colors",
+									rightTab === "git" && rightOpen ? "text-indigo-400" : "text-neutral-500",
+								)}
+							/>
 							<span className="max-w-[120px] truncate font-mono text-[10.5px]">
 								{branch}
 							</span>
 							{dirty > 0 && (
 								<span className="tabular-nums font-mono text-[10px] text-amber-400">+{dirty}</span>
 							)}
-						</div>
+						</button>
 					</>
 				)}
 			</div>

@@ -185,7 +185,7 @@ export function ChatTrace({
 		[openIndex],
 	);
 
-	if (entries.length < 2) return null;
+	if (entries.length === 0) return null;
 
 	const jump = (entry: ChatTraceEntry) => {
 		useLive.getState().scrollToItem(sessionId, entry.id);
@@ -196,7 +196,7 @@ export function ChatTrace({
 	return (
 		<nav
 			aria-label="对话问题导航"
-			className="pointer-events-none invisible absolute inset-y-0 left-0 z-10 w-12 -translate-x-2 opacity-0 transition-[opacity,transform,visibility] duration-150 ease-out motion-reduce:transition-none @min-[640px]:visible @min-[640px]:translate-x-0 @min-[640px]:opacity-100"
+			className="pointer-events-none hidden md:block absolute inset-y-0 left-0 z-10 w-12"
 		>
 			<div
 				ref={stripRef}

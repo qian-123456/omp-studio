@@ -2,9 +2,14 @@ import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
 	ArrowLeft,
+	Copy,
+	FileDown,
+	FolderOpen,
 	PanelLeftClose,
 	PanelLeftOpen,
 	PanelRightOpen,
+	QrCode,
+	Share2,
 	Terminal,
 	X,
 } from "lucide-react";
@@ -27,7 +32,6 @@ import { NewSessionDialog } from "./features/git/NewSessionDialog";
 import { HeatmapPanel } from "./features/heatmap/HeatmapPanel";
 import { ServicesPanel } from "./features/services/ServicesPanel";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
-import { SessionOverflowMenu } from "./components/SessionOverflowMenu";
 import { SettingsOverlay } from "./features/settings/SettingsOverlay";
 import { SideChatPanel } from "./features/sidechat/SideChatPanel";
 import { StartPage } from "./features/home/StartPage";
@@ -42,7 +46,7 @@ import { gitSummary, servicesList } from "./lib/ipc";
 import type { PairingInfo, SessionStatus } from "./lib/contracts";
 import { confirmDialog, copyText, errMsg } from "./lib/dialogs";
 import { isComposing, useEscapeKey } from "./lib/hooks";
-import { mobileCreatePairing, takeoverExternal, terminalSetCurrentSession, updateSessionMeta } from "./lib/ipc";
+import { mobileCreatePairing, sessionExportHtml, takeoverExternal, terminalSetCurrentSession, updateSessionMeta } from "./lib/ipc";
 import { toast } from "./lib/toast";
 import { formatSessionMarkdown } from "./features/chat/exportMarkdown";
 import { sessionDisplayName } from "./lib/sessionName";
@@ -176,7 +180,6 @@ export default function App() {
 	const lastSessionId = useUi((s) => s.lastSessionId);
 	const returnToSession = useUi((s) => s.returnToSession);
 	const selectSession = useUi((s) => s.selectSession);
-	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
 	const setCenter = useUi((s) => s.setCenter);
 
 	// Track the underlying view so when settings overlay opens, the center view stays mounted
@@ -205,9 +208,6 @@ export default function App() {
 	const isViewingSession =
 		effectiveCenterView === "session" && !!selectedSessionId && !!activeSession;
 
-	const sessionViewMode = useUi((s) =>
-		activeSession ? s.sessionViewMode[activeSession.id] ?? "chat" : "chat",
-	);
 
 	const sessionLive = useLive((s) =>
 		activeSession ? s.sessions[activeSession.id] : undefined,
@@ -219,22 +219,40 @@ export default function App() {
 
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [titleDraft, setTitleDraft] = useState("");
+	const [shareOpen, setShareOpen] = useState(false);
 	const [qrPairing, setQrPairing] = useState<PairingInfo | null>(null);
 	const [busyAction, setBusyAction] = useState(false);
+	const shareRef = useRef<HTMLDivElement>(null);
 
 	// Reset header state on session change
 	useEffect(() => {
 		setEditingTitle(false);
+		setShareOpen(false);
 		setQrPairing(null);
 	}, [activeSession?.id]);
+
+	// Close share popover on outside click
+	useEffect(() => {
+		if (!shareOpen) return;
+		const handleClickOutside = (e: MouseEvent) => {
+			if (shareRef.current && !shareRef.current.contains(e.target as Node)) {
+				setShareOpen(false);
+			}
+		};
+		window.addEventListener("mousedown", handleClickOutside);
+		return () => window.removeEventListener("mousedown", handleClickOutside);
+	}, [shareOpen]);
+
 	// Escape key to close popovers/modals/title editing
 	useEscapeKey(() => {
 		if (qrPairing) {
 			setQrPairing(null);
+		} else if (shareOpen) {
+			setShareOpen(false);
 		} else if (editingTitle) {
 			setEditingTitle(false);
 		}
-	}, editingTitle || !!qrPairing);
+	}, editingTitle || shareOpen || !!qrPairing);
 
 	const startEditTitle = () => {
 		if (!activeSession) return;
@@ -268,6 +286,7 @@ export default function App() {
 	};
 
 	const handleCopyMarkdown = async () => {
+		setShareOpen(false);
 		if (!activeSession) return;
 		const items = useLive.getState().sessions[activeSession.id]?.items ?? [];
 		if (items.length === 0) {
@@ -286,7 +305,24 @@ export default function App() {
 		}
 	};
 
+	const handleExportHtml = async () => {
+		setShareOpen(false);
+		if (!activeSession) return;
+		try {
+			const outPath = await sessionExportHtml(activeSession.id);
+			toast.success(`已导出 HTML: ${outPath}`);
+			try {
+				await revealItemInDir(outPath);
+			} catch {
+				// ignore reveal failure
+			}
+		} catch (err) {
+			toast.error(`导出 HTML 失败: ${errMsg(err)}`);
+		}
+	};
+
 	const handleMobilePair = async () => {
+		setShareOpen(false);
 		try {
 			const info = await mobileCreatePairing(false);
 			setQrPairing(info);
@@ -665,20 +701,62 @@ export default function App() {
 									</button>
 								)}
 
-								{/* Session Overflow Menu (Finder, Share, Resilience, Session Terminal) */}
-								<SessionOverflowMenu
-									sessionId={activeSession.id}
-									cwd={activeSession.cwd}
-									onOpenInFinder={handleOpenInFinder}
-									onCopyMarkdown={handleCopyMarkdown}
-									onMobilePair={handleMobilePair}
-									onToggleSessionTerminal={() =>
-										setSessionViewMode(
-											activeSession.id,
-											sessionViewMode === "terminal" ? "chat" : "terminal",
-										)
-									}
-								/>
+								{/* Finder */}
+								<button
+									type="button"
+									disabled={!activeSession.cwd}
+									onClick={handleOpenInFinder}
+									title={activeSession.cwd ? `在访达中显示 (${activeSession.cwd})` : "无工作目录"}
+									className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200 disabled:opacity-30 transition-colors"
+								>
+									<FolderOpen size={14} />
+								</button>
+
+								{/* Share */}
+								<div className="relative" ref={shareRef}>
+									<button
+										type="button"
+										onClick={() => setShareOpen((v) => !v)}
+										title="分享与导出"
+										className={clsx(
+											"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+											shareOpen
+												? "bg-neutral-800 text-neutral-100"
+												: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
+										)}
+									>
+										<Share2 size={14} />
+									</button>
+									{/* Share Popover: 复制 Markdown / 导出 HTML / 手机扫码查看 */}
+									{shareOpen && (
+										<div className="absolute right-0 top-full z-50 mt-1.5 w-44 rounded-lg border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-xl">
+											<button
+												type="button"
+												onClick={handleCopyMarkdown}
+												className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+											>
+												<Copy size={13} />
+												<span>复制为 Markdown</span>
+											</button>
+											<button
+												type="button"
+												onClick={handleExportHtml}
+												className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+											>
+												<FileDown size={13} />
+												<span>导出为 HTML</span>
+											</button>
+											<button
+												type="button"
+												onClick={handleMobilePair}
+												className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+											>
+												<QrCode size={13} />
+												<span>手机扫码查看</span>
+											</button>
+										</div>
+									)}
+								</div>
 							</>
 						)}
 
