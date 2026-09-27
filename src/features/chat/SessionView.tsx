@@ -1,7 +1,7 @@
 /** [B] Center session view: message stream + pending dialogs +
  * held-queue bar + composer. `compact` = embedded side-chat mode. */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import type { SessionStatus } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
@@ -50,15 +50,43 @@ export function SessionView({
 	const external = status === "external";
 	const pendingUi = live?.pendingUi ?? [];
 
+	const [isLoadingTranscript, setIsLoadingTranscript] = useState(true);
+	const [transcriptError, setTranscriptError] = useState<string | null>(null);
+
+	const loadTranscript = useCallback(async () => {
+		setIsLoadingTranscript(true);
+		setTranscriptError(null);
+		try {
+			const page = await getTranscript(sessionId);
+			setItems(sessionId, page.items, page.nextOffset);
+		} catch (err) {
+			setTranscriptError(errMsg(err));
+		} finally {
+			setIsLoadingTranscript(false);
+		}
+	}, [sessionId, setItems]);
+
 	// Initial transcript + pending UI load.
 	useEffect(() => {
 		let cancelled = false;
+		setIsLoadingTranscript(true);
+		setTranscriptError(null);
 		setItems(sessionId, [], 0);
+
 		getTranscript(sessionId)
 			.then((page) => {
-				if (!cancelled) setItems(sessionId, page.items, page.nextOffset);
+				if (!cancelled) {
+					setItems(sessionId, page.items, page.nextOffset);
+					setIsLoadingTranscript(false);
+				}
 			})
-			.catch(() => {});
+			.catch((err) => {
+				if (!cancelled) {
+					setTranscriptError(errMsg(err));
+					setIsLoadingTranscript(false);
+				}
+			});
+
 		rpcPendingUi(sessionId)
 			.then((list) => {
 				if (!cancelled && list.length) setPendingUi(sessionId, list);
@@ -117,6 +145,9 @@ export function SessionView({
 								scrollRef={scrollRef}
 								traceGutter={!compact}
 								onScrollState={setScrollPill}
+								isLoadingTranscript={isLoadingTranscript}
+								transcriptError={transcriptError}
+								onRetryTranscript={loadTranscript}
 							/>
 							<SelectionToolbar
 								sessionId={sessionId}

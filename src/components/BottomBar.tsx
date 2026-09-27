@@ -4,8 +4,6 @@ import {
 	Coins,
 	Gauge,
 	GitBranch,
-	Minus,
-	Plus,
 	RefreshCw,
 	TerminalSquare,
 } from "lucide-react";
@@ -17,41 +15,18 @@ import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
 import { getAppMemoryUsage } from "../lib/ipc";
 import { useDrawerStore } from "../features/terminal/drawerStore";
+import { useZoom } from "../lib/zoom";
 
-const ZOOM_STORAGE_KEY = "ompws:ui-zoom";
-const DEFAULT_ZOOM = 100;
-const MIN_ZOOM = 80;
-const MAX_ZOOM = 140;
-const ZOOM_STEP = 5;
-
-function readStoredZoom(): number {
-	try {
-		const raw = localStorage.getItem(ZOOM_STORAGE_KEY);
-		if (raw) {
-			const n = Number(raw);
-			if (!Number.isNaN(n) && n >= MIN_ZOOM && n <= MAX_ZOOM) return n;
-		}
-	} catch {
-		/* ignore */
-	}
-	return DEFAULT_ZOOM;
-}
-
-function applyZoom(zoomPercent: number) {
-	try {
-		const val = `${zoomPercent}%`;
-		// CSS zoom property is supported in WebKit / Chromium
-		(document.documentElement.style as unknown as { zoom: string }).zoom = val;
-		localStorage.setItem(ZOOM_STORAGE_KEY, String(zoomPercent));
-	} catch {
-		/* ignore */
-	}
-}
 
 export function BottomBar() {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const lastSessionId = useUi((s) => s.lastSessionId);
 	const activeSessionId = selectedSessionId || lastSessionId;
+
+	const rightTab = useUi((s) => s.rightTab);
+	const setRightTab = useUi((s) => s.setRightTab);
+	const rightOpen = useUi((s) => s.rightOpen);
+	const setRightOpen = useUi((s) => s.setRightOpen);
 
 	const activeSession = useSessions((s) =>
 		activeSessionId ? s.sessions[activeSessionId] : undefined,
@@ -63,23 +38,16 @@ export function BottomBar() {
 	const terminalOpen = useDrawerStore((s) => s.open);
 	const toggleTerminal = useDrawerStore((s) => s.toggle);
 
-	// Zoom state
-	const [zoom, setZoom] = useState<number>(readStoredZoom);
+	// Global keyboard shortcuts (Cmd/Ctrl +/-, Cmd/Ctrl 0) and stored zoom application
+	useZoom();
 
-	useEffect(() => {
-		applyZoom(zoom);
-	}, [zoom]);
-
-	const handleZoomIn = () => {
-		setZoom((prev) => Math.min(MAX_ZOOM, prev + ZOOM_STEP));
-	};
-
-	const handleZoomOut = () => {
-		setZoom((prev) => Math.max(MIN_ZOOM, prev - ZOOM_STEP));
-	};
-
-	const handleResetZoom = () => {
-		setZoom(DEFAULT_ZOOM);
+	const handleToggleHeatmap = () => {
+		if (rightTab === "heatmap" && rightOpen) {
+			setRightTab(null);
+		} else {
+			setRightTab("heatmap");
+			if (!rightOpen) setRightOpen(true);
+		}
 	};
 
 	// Session statistics (dsh style)
@@ -184,9 +152,9 @@ export function BottomBar() {
 				<button
 					type="button"
 					onClick={toggleTerminal}
-					aria-label={terminalOpen ? "收起全局终端" : "打开全局终端"}
+					aria-label={terminalOpen ? "收起本地终端" : "打开本地终端"}
 					aria-pressed={terminalOpen}
-					title={terminalOpen ? "收起全局终端 (⌘`)" : "打开全局终端 (⌘`)"}
+					title={terminalOpen ? "收起本地终端 (⌘`)" : "打开本地终端 (⌘`) — 在当前工作区运行命令的独立 Shell，与会话无关"}
 					className={clsx(
 						"flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-neutral-800 hover:text-neutral-100",
 						terminalOpen && "bg-neutral-800 text-neutral-100",
@@ -208,35 +176,25 @@ export function BottomBar() {
 
 				<span className="text-neutral-700">·</span>
 
-				{/* Zoom controls: - 100% + */}
-				<div className="flex items-center gap-1 text-[11px]">
-					<button
-						type="button"
-						onClick={handleZoomOut}
-						disabled={zoom <= MIN_ZOOM}
-						title="缩小界面 (-5%)"
-						className="rounded p-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 transition-colors"
-					>
-						<Minus size={11} />
-					</button>
-					<button
-						type="button"
-						onClick={handleResetZoom}
-						title="重置缩放为 100%"
-						className="font-mono text-[10.5px] hover:text-neutral-200 transition-colors"
-					>
-						{zoom}%
-					</button>
-					<button
-						type="button"
-						onClick={handleZoomIn}
-						disabled={zoom >= MAX_ZOOM}
-						title="放大界面 (+5%)"
-						className="rounded p-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 transition-colors"
-					>
-						<Plus size={11} />
-					</button>
-				</div>
+				{/* Heatmap compact toggle */}
+				<button
+					type="button"
+					onClick={handleToggleHeatmap}
+					aria-label="切换右侧热力图"
+					title={rightTab === "heatmap" && rightOpen ? "收起热力图" : "在右栏打开会话热力图"}
+					className={clsx(
+						"flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] transition-colors",
+						rightTab === "heatmap" && rightOpen
+							? "bg-emerald-950/70 text-emerald-300 font-medium border border-emerald-800/60"
+							: "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
+					)}
+				>
+					<Activity
+						size={11}
+						className={rightTab === "heatmap" && rightOpen ? "text-emerald-400" : "text-neutral-500"}
+					/>
+					<span>热力图</span>
+				</button>
 
 				<span className="text-neutral-700">·</span>
 

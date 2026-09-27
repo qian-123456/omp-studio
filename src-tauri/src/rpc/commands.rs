@@ -62,6 +62,14 @@ pub async fn rpc_stop(state: tauri::State<'_, AppState>, session_id: String) -> 
 }
 
 #[tauri::command]
+pub async fn rpc_restart(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<LiveSessionInfo, String> {
+    crate::rpc::restart(&state, &session_id).await
+}
+
+#[tauri::command]
 pub async fn rpc_list_live(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<LiveSessionInfo>, String> {

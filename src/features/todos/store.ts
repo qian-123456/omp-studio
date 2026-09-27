@@ -82,15 +82,56 @@ export const useTodos = create<TodosState>((set, get) => ({
 	},
 }));
 
-let started = false;
+let startTodosPromise: Promise<void> | null = null;
+let activeUnlisten: (() => void) | null = null;
 
 /** Initial load + subscribe to `todos:changed` (idempotent). */
-export function startTodos(): void {
-	if (started) return;
-	started = true;
+export async function startTodos(): Promise<void> {
+	if (activeUnlisten) return;
+	if (startTodosPromise) return startTodosPromise;
+
 	void useTodos.getState().refresh();
-	void onTodosChanged((counts) => {
-		useTodos.setState({ counts });
-		void useTodos.getState().refresh();
+
+	startTodosPromise = (async () => {
+		try {
+			const unlisten = await onTodosChanged((counts) => {
+				useTodos.setState({ counts });
+				void useTodos.getState().refresh();
+			});
+			if (startTodosPromise === null) {
+				// stopTodos was called while start was in-flight
+				try {
+					unlisten();
+				} catch {}
+			} else {
+				activeUnlisten = unlisten;
+			}
+		} catch (err) {
+			console.error("Failed to subscribe to todos:changed", err);
+		}
+	})().finally(() => {
+		startTodosPromise = null;
 	});
+
+	return startTodosPromise;
+}
+
+/** Stop active listeners and clean up; useful for tests and teardown. */
+export async function stopTodos(): Promise<void> {
+	if (startTodosPromise) {
+		try {
+			await startTodosPromise;
+		} catch {
+			// ignore failure of in-flight start
+		}
+	}
+	if (activeUnlisten) {
+		const un = activeUnlisten;
+		activeUnlisten = null;
+		try {
+			un();
+		} catch (err) {
+			console.error("Failed to unlisten todos:changed", err);
+		}
+	}
 }

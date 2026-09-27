@@ -66,6 +66,23 @@ export function HeldQueueBar({
 			toast.success("已清空暂存消息");
 		}
 	};
+	const handleRemoveOne = async (index: number) => {
+		const item = items[index];
+		if (!item) return;
+		const preview = item.text.trim().slice(0, 30);
+		const label = preview
+			? `「${preview}${item.text.length > 30 ? "…" : ""}」`
+			: "该条暂存消息";
+		const ok = await confirmDialog(`确定要删除${label}吗？`, {
+			danger: true,
+			okLabel: "删除",
+		});
+		if (ok) {
+			remove(sessionId, index);
+			toast.info("已删除暂存消息");
+		}
+	};
+
 
 	return (
 		<div className="shrink-0 border-t border-neutral-800 bg-neutral-900/90 px-3 py-1.5 text-[12px] text-neutral-300 backdrop-blur-md">
@@ -123,6 +140,7 @@ export function HeldQueueBar({
 							<div className="flex shrink-0 flex-col gap-0.5">
 								<button
 									type="button"
+									aria-label="上移"
 									title="上移"
 									onClick={() => move(sessionId, i, -1)}
 									className="text-neutral-500 hover:text-neutral-200"
@@ -131,6 +149,7 @@ export function HeldQueueBar({
 								</button>
 								<button
 									type="button"
+									aria-label="下移"
 									title="下移"
 									onClick={() => move(sessionId, i, 1)}
 									className="text-neutral-500 hover:text-neutral-200"
@@ -140,6 +159,7 @@ export function HeldQueueBar({
 							</div>
 							<button
 								type="button"
+								aria-label="发送此条"
 								title={streaming ? "回合进行中，结束后可发送" : "发送此条"}
 								disabled={sending || streaming}
 								onClick={() => void sendOne(i)}
@@ -149,8 +169,9 @@ export function HeldQueueBar({
 							</button>
 							<button
 								type="button"
+								aria-label="删除此条"
 								title="删除"
-								onClick={() => remove(sessionId, i)}
+								onClick={() => void handleRemoveOne(i)}
 								className="shrink-0 p-1 text-neutral-500 hover:text-red-400"
 							>
 								<X size={12} />

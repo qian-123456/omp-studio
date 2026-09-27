@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { rpcEnsureLive, rpcSend } from "../../lib/ipc";
+import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 
 export interface AbortState {
@@ -9,10 +10,24 @@ export interface AbortState {
 	setAborting(sessionId: string, aborting: boolean): void;
 }
 
+const abortTimers = new Map<string, number>();
+
+function clearAbortTimer(sessionId: string) {
+	const timer = abortTimers.get(sessionId);
+	if (timer) {
+		clearTimeout(timer);
+		abortTimers.delete(sessionId);
+	}
+}
+
 export const useAbortState = create<AbortState>((set) => ({
 	aborting: {},
-	setAborting: (sessionId, aborting) =>
-		set((s) => ({ aborting: { ...s.aborting, [sessionId]: aborting } })),
+	setAborting: (sessionId, aborting) => {
+		if (!aborting) {
+			clearAbortTimer(sessionId);
+		}
+		set((s) => ({ aborting: { ...s.aborting, [sessionId]: aborting } }));
+	},
 }));
 /**
  * Send a user prompt. Ensures the session is live first; while a turn is
@@ -44,10 +59,22 @@ export async function sendPrompt(
 
 /** Abort the running turn with stopping transition state. */
 export async function abortTurn(sessionId: string): Promise<void> {
+	clearAbortTimer(sessionId);
 	useAbortState.getState().setAborting(sessionId, true);
+
+	const timer = window.setTimeout(() => {
+		abortTimers.delete(sessionId);
+		if (useAbortState.getState().aborting[sessionId]) {
+			useAbortState.getState().setAborting(sessionId, false);
+			toast.error("停止请求超时，未收到后端响应，请重试或检查进程状态");
+		}
+	}, 10_000);
+	abortTimers.set(sessionId, timer);
+
 	try {
 		await rpcSend(sessionId, { type: "abort" });
 	} catch (err) {
+		clearAbortTimer(sessionId);
 		useAbortState.getState().setAborting(sessionId, false);
 		throw err;
 	}

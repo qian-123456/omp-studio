@@ -183,6 +183,7 @@ export function ChangesSection({
 											<button
 												type="button"
 												title="在文档视图中打开"
+												aria-label="在文档视图中打开"
 												onClick={(e) => {
 													e.stopPropagation();
 													openDoc(fullPath);
@@ -195,6 +196,7 @@ export function ChangesSection({
 										<button
 											type="button"
 											title="复制相对路径"
+											aria-label="复制相对路径"
 											onClick={(e) => {
 												e.stopPropagation();
 												void handleCopyPath(f, false);
@@ -206,6 +208,7 @@ export function ChangesSection({
 										<button
 											type="button"
 											title="派发给 Agent 审查"
+											aria-label="派发给 Agent 审查"
 											onClick={(e) => {
 												e.stopPropagation();
 												void handleSendToAgent(f);
@@ -217,6 +220,7 @@ export function ChangesSection({
 										<button
 											type="button"
 											title={f.status === "??" ? "删除未跟踪文件" : "放弃此文件改动"}
+											aria-label={f.status === "??" ? "删除未跟踪文件" : "放弃此文件改动"}
 											onClick={(e) => {
 												e.stopPropagation();
 												void handleDiscard(f);

@@ -112,6 +112,9 @@ export const rpcPendingUi = (sessionId: string) =>
 export const rpcStop = (sessionId: string) =>
 	invoke<void>("rpc_stop", { sessionId });
 
+export const rpcRestart = (sessionId: string) =>
+	invoke<LiveSessionInfo>("rpc_restart", { sessionId });
+
 export const rpcListLive = () => invoke<LiveSessionInfo[]>("rpc_list_live");
 
 export const takeoverExternal = (sessionId: string) =>
@@ -168,6 +171,16 @@ export const gitRestoreFile = (repo: string, path: string) =>
 
 export const gitListBranches = (repo: string) =>
 	invoke<string[]>("git_list_branches", { repo });
+
+export const gitCommitSuggest = (cwd: string) =>
+	invoke<string>("git_commit_suggest", { cwd });
+
+export const gitCommit = (cwd: string, message: string, stageAll?: boolean) =>
+	invoke<string>("git_commit", {
+		cwd,
+		message,
+		stageAll: stageAll ?? null,
+	});
 
 export const tmRun = (repo: string, sha: string, command?: string) =>
 	invoke<TmRun>("tm_run", { repo, sha, command: command ?? null });

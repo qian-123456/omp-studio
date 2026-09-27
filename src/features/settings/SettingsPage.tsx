@@ -46,6 +46,7 @@ import { useOmpConfigStore } from "./ompConfigStore";
 import { groupByOmpTab } from "./ompConfigTabs";
 import { ompConfigGroup } from "./ompConfigMeta";
 import { ProviderPanel } from "../providers/ProviderPanel";
+import { useZoom } from "../../lib/zoom";
 
 interface ToggleProps {
 	checked: boolean;
@@ -93,7 +94,7 @@ export function SettingsPage() {
 	const loadSettings = useSettings((s) => s.load);
 	const updateSettings = useSettings((s) => s.update);
 	const storeError = useSettings((s) => s.error);
-
+	const { zoom, zoomIn, zoomOut, resetZoom, minZoom, maxZoom } = useZoom();
 	const [testingNotify, setTestingNotify] = useState(false);
 	const [notifySuccess, setNotifySuccess] = useState(false);
 	const [installingExt, setInstallingExt] = useState(false);
@@ -279,7 +280,6 @@ export function SettingsPage() {
 		const nextFrom = from || null;
 		const nextTo = to || null;
 		if ((nextFrom && !nextTo) || (!nextFrom && nextTo)) {
-			toast.error("免打扰时段需要同时设置开始与结束时间");
 			return;
 		}
 		if (nextFrom !== settings?.notifyQuietFrom || nextTo !== settings?.notifyQuietTo) {
@@ -369,6 +369,7 @@ export function SettingsPage() {
 			setTimeout(() => setNotifySuccess(false), 3000);
 		} catch (err) {
 			console.error("notify test failed", err);
+			toast.error(`发送测试通知失败: ${errMsg(err)}`);
 		} finally {
 			setTestingNotify(false);
 		}
@@ -544,7 +545,7 @@ export function SettingsPage() {
 								<div className="border-t border-neutral-800/60 pt-4">
 									<Toggle
 										label="智能上下文路由"
-										description="根据任务类型与历史自动推荐或选择合适模型及参考文件"
+										description="侧边提问时根据问题意图自动切换仅选区上下文与完整会话上下文"
 										checked={settings.smartContextRouting}
 										onChange={(v) => handleUpdate({ smartContextRouting: v })}
 									/>
@@ -621,6 +622,45 @@ export function SettingsPage() {
 												</button>
 											);
 										})}
+									</div>
+								</div>
+
+								<div className="border-t border-neutral-800/60 pt-4">
+									<div className="flex items-center justify-between">
+										<div>
+											<div className="text-xs font-medium text-neutral-200">界面缩放</div>
+											<div className="mt-1 text-[11px] text-neutral-500">
+												调节窗口视图比例（快捷键：Cmd/Ctrl +/-，重置：Cmd/Ctrl 0）
+											</div>
+										</div>
+										<div className="flex items-center gap-1.5">
+											<button
+												type="button"
+												onClick={zoomOut}
+												disabled={zoom <= minZoom}
+												title="缩小 (-5%)"
+												className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-30"
+											>
+												-
+											</button>
+											<button
+												type="button"
+												onClick={resetZoom}
+												title="重置为 100%"
+												className="min-w-14 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1 text-center font-mono text-xs text-neutral-200 hover:bg-neutral-800"
+											>
+												{zoom}%
+											</button>
+											<button
+												type="button"
+												onClick={zoomIn}
+												disabled={zoom >= maxZoom}
+												title="放大 (+5%)"
+												className="rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-30"
+											>
+												+
+											</button>
+										</div>
 									</div>
 								</div>
 							</div>

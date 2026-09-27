@@ -28,9 +28,17 @@ export const terminalRegistry = new Map<string, TerminalSessionEntry>();
 export function destroySessionTerminal(sessionId: string): void {
 	const entry = terminalRegistry.get(sessionId);
 	if (!entry) return;
-	for (const un of entry.unlisteners) un();
-	entry.dataSub.dispose();
+	for (const un of entry.unlisteners) {
+		try {
+			un();
+		} catch {}
+	}
+	try {
+		entry.dataSub.dispose();
+	} catch {}
 	void termClose(entry.termId).catch(() => {});
-	entry.term.dispose();
+	try {
+		entry.term.dispose();
+	} catch {}
 	terminalRegistry.delete(sessionId);
 }

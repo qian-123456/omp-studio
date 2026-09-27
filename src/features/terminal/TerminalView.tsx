@@ -261,6 +261,8 @@ export function TerminalView({
 		});
 		let currentTermId: string | null = null;
 		let disposed = false;
+		let failed = false;
+		let unregisteredCleaned = false;
 		const unlisteners: Array<() => void> = [];
 
 		// Key events: Cmd+Shift+A (annotation), Cmd+F (search)
@@ -283,6 +285,34 @@ export function TerminalView({
 			if (currentTermId) void termWrite(currentTermId, data).catch(() => {});
 		});
 
+		const cleanupUnregistered = () => {
+			if (unregisteredCleaned) return;
+			unregisteredCleaned = true;
+			for (const un of unlisteners) {
+				try {
+					un();
+				} catch {}
+			}
+			unlisteners.length = 0;
+			try {
+				dataSub.dispose();
+			} catch {}
+			try {
+				searchSub.dispose();
+			} catch {}
+			try {
+				observer?.disconnect();
+			} catch {}
+			try {
+				term.dispose();
+			} catch {}
+			if (term.element && host.contains(term.element)) {
+				try {
+					host.removeChild(term.element);
+				} catch {}
+			}
+		};
+
 		const open = async () => {
 			try {
 				const id = await termOpenSession(
@@ -292,6 +322,7 @@ export function TerminalView({
 				);
 				if (disposed) {
 					void termClose(id).catch(() => {});
+					cleanupUnregistered();
 					return;
 				}
 				currentTermId = id;
@@ -315,40 +346,50 @@ export function TerminalView({
 				};
 				terminalRegistry.set(sessionId, newEntry);
 			} catch (e) {
+				failed = true;
+				cleanupUnregistered();
 				if (!disposed) {
 					const msg = errMsg(e);
 					setError(msg);
 					setPhase("error");
-					toast.error(`终端启动失败: ${msg}`);
+					toast.error(`会话终端启动失败: ${msg}`);
 				}
 			}
 		};
 
 		const subs = async () => {
-			const unData = await onTerminalData((p) => {
-				const active = terminalRegistry.get(sessionId);
-				if (p.termId === currentTermId || (active && p.termId === active.termId)) {
-					term.write(decodeBase64(p.data));
-				}
-			});
-			const unExit = await onTerminalExit((p) => {
-				const active = terminalRegistry.get(sessionId);
-				if (p.termId === currentTermId || (active && p.termId === active.termId)) {
-					if (active) {
-						active.phase = "exited";
-						active.exitCode = p.code;
-						active.onExit?.(p.code);
-					} else {
-						setExitCode(p.code);
-						setPhase("exited");
+			try {
+				const unData = await onTerminalData((p) => {
+					const active = terminalRegistry.get(sessionId);
+					if (p.termId === currentTermId || (active && p.termId === active.termId)) {
+						term.write(decodeBase64(p.data));
 					}
+				});
+				const unExit = await onTerminalExit((p) => {
+					const active = terminalRegistry.get(sessionId);
+					if (p.termId === currentTermId || (active && p.termId === active.termId)) {
+						if (active) {
+							active.phase = "exited";
+							active.exitCode = p.code;
+							active.onExit?.(p.code);
+						} else {
+							setExitCode(p.code);
+							setPhase("exited");
+						}
+					}
+				});
+				if (disposed || failed) {
+					try {
+						unData();
+					} catch {}
+					try {
+						unExit();
+					} catch {}
+				} else {
+					unlisteners.push(unData, unExit);
 				}
-			});
-			if (disposed) {
-				unData();
-				unExit();
-			} else {
-				unlisteners.push(unData, unExit);
+			} catch (err) {
+				console.error("Failed to subscribe to terminal events", err);
 			}
 		};
 
@@ -372,10 +413,13 @@ export function TerminalView({
 			const active = terminalRegistry.get(sessionId);
 			if (active) {
 				active.onExit = undefined;
-			}
-			// Detach DOM element without killing PTY or disposing xterm
-			if (term.element && host.contains(term.element)) {
-				host.removeChild(term.element);
+				// Detach DOM element without killing PTY or disposing xterm
+				if (term.element && host.contains(term.element)) {
+					host.removeChild(term.element);
+				}
+			} else {
+				// Terminal was never registered or open() failed/aborted
+				cleanupUnregistered();
 			}
 		};
 	}, [sessionId, needsConfirm, captureSelection, restartTick, compact]);
@@ -423,7 +467,7 @@ export function TerminalView({
 				)}
 			>
 				<span className="shrink-0 font-medium text-neutral-300">
-					终端 · {meta?.label ?? sessionId}
+					会话终端 · {meta?.label ?? sessionId}
 				</span>
 				{phase === "ready" && !needsConfirm && (
 					<span className="shrink-0 flex items-center gap-1 text-emerald-400">
@@ -663,7 +707,7 @@ export function TerminalView({
 
 			{phase === "error" && !needsConfirm && (
 				<div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-					<div className="text-sm text-rose-400 font-medium">终端启动失败</div>
+					<div className="text-sm text-rose-400 font-medium">会话终端启动失败</div>
 					<div className="max-w-md text-xs text-neutral-500">{error}</div>
 					<div className="flex gap-2">
 						<button

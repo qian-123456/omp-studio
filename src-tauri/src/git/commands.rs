@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tauri::Emitter;
 
@@ -236,4 +237,108 @@ pub async fn git_list_branches(
     repo: String,
 ) -> Result<Vec<String>, String> {
     blocking(move || list_branches(&PathBuf::from(repo))).await
+}
+
+#[tauri::command]
+pub async fn git_commit_suggest(
+    state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<String, String> {
+    let dir = PathBuf::from(&cwd);
+    let diff_text = blocking(move || {
+        // 1. Check staged changes first
+        let staged =
+            super::cmd::git_ok(&dir, &["diff", "--staged", "--no-color"]).unwrap_or_default();
+        if !staged.trim().is_empty() {
+            return Ok(staged);
+        }
+        // 2. Check unstaged working tree diff vs HEAD / diff_base
+        let base = super::status::diff_base(&dir);
+        let unstaged = super::cmd::git_ok(&dir, &["diff", "--no-color", base]).unwrap_or_default();
+        if !unstaged.trim().is_empty() {
+            return Ok(unstaged);
+        }
+        // 3. If both empty, check status entries for untracked / modified files
+        let st =
+            super::status::status(&dir, true).ok_or_else(|| "无法获取 git 状态".to_string())?;
+        if st.entries.is_empty() {
+            return Err("没有检测到任何改动（暂存区和工作区均为空）".to_string());
+        }
+        let file_list: Vec<String> = st
+            .entries
+            .into_iter()
+            .map(|e| format!("{} {}", e.status, e.path))
+            .collect();
+        Ok(format!("Changed files:\n{}", file_list.join("\n")))
+    })
+    .await?;
+
+    let trimmed = diff_text.trim();
+    if trimmed.is_empty() {
+        return Err("没有检测到任何改动".to_string());
+    }
+
+    // Cap diff input to ~8000 chars as specified in the prompt
+    let capped_diff: String = trimmed.chars().take(8000).collect();
+
+    let prompt = format!(
+        "根据以下 Git diff 生成一条规范的 Git Commit Message。\n\
+         要求：\n\
+         1. 遵循 Conventional Commits 规范（例如 feat: ..., fix: ..., chore: ..., refactor: ...），简短清晰。\n\
+         2. 使用中文描述，第一行为主要摘要，若改动较多可在空一行后附带关键要点列表。\n\
+         3. 只输出 Commit Message 本身，严禁包含 markdown 代码块反引号（```）、问候语或额外解释说明。\n\n\
+         Diff:\n{}",
+        capped_diff
+    );
+
+    let model = state.settings.read().supervisor_model.clone();
+    let model_to_use = if model.trim().is_empty() {
+        "smol"
+    } else {
+        model.trim()
+    };
+    let suggestion =
+        crate::todos::omp::run_print(&state, model_to_use, &prompt, Duration::from_secs(60))
+            .await?;
+    let clean = suggestion
+        .trim()
+        .trim_start_matches("```git")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+    Ok(clean.to_string())
+}
+
+#[tauri::command]
+pub async fn git_commit(
+    _state: tauri::State<'_, AppState>,
+    cwd: String,
+    message: String,
+    stage_all: Option<bool>,
+) -> Result<String, String> {
+    blocking(move || {
+        let dir = PathBuf::from(&cwd);
+        let msg = message.trim();
+        if msg.is_empty() {
+            return Err("提交信息不能为空".to_string());
+        }
+        let should_stage = match stage_all {
+            Some(true) => true,
+            Some(false) => false,
+            None => {
+                let staged = super::cmd::git_ok(&dir, &["diff", "--staged", "--name-only"])
+                    .unwrap_or_default();
+                staged.trim().is_empty()
+            }
+        };
+
+        if should_stage {
+            super::cmd::git_ok(&dir, &["add", "-A"]).map_err(|e| format!("git add 失败: {e}"))?;
+        }
+
+        let out = super::cmd::git_ok(&dir, &["commit", "-m", msg])
+            .map_err(|e| format!("git commit 失败: {e}"))?;
+        Ok(out)
+    })
+    .await
 }

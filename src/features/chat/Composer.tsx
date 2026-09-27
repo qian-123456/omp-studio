@@ -3,7 +3,6 @@
 
 import clsx from "clsx";
 import {
-	AlertCircle,
 	ArrowUp,
 	Bot,
 	Brain,
@@ -12,7 +11,6 @@ import {
 	CornerDownRight,
 	Loader2,
 	Plus,
-	ShieldCheck,
 	Square,
 	X,
 	Zap,
@@ -20,7 +18,6 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSideChat, listModels, listWorkspaceFiles, readTextFile, rpcEnsureLive, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { useSettings } from "../settings/store";
 import { ContextRing } from "./ContextRing";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
@@ -158,21 +155,6 @@ export function Composer({
 	}, [atToken !== null, atFiles === null, sessionMeta?.cwd]);
 	const isAborting = useAbortState((s) => s.aborting[sessionId] === true);
 
-	// Settings & approval mode
-	const settings = useSettings((s) => s.settings);
-	const updateSettings = useSettings((s) => s.update);
-	const approvalMode = settings?.defaultApprovalMode || "write";
-	const handleToggleApprovalMode = async () => {
-		const nextMode = approvalMode === "yolo" ? "write" : "yolo";
-		try {
-			await updateSettings({ defaultApprovalMode: nextMode });
-			toast.success(
-				`已切换权限模式: ${nextMode === "yolo" ? "完全访问" : "需确认写入"}`,
-			);
-		} catch (err) {
-			toast.error(`切换权限模式失败: ${errMsg(err)}`);
-		}
-	};
 
 	// Context usage calculations for ContextRing
 	const contextRaw = live?.state?.contextUsage;
@@ -843,37 +825,11 @@ export function Composer({
 							<button
 								type="button"
 								onClick={() => void handleAddAttachment()}
+								aria-label="添加附件"
 								title="添加附件或引用文件 (@ 文件)"
 								className="flex h-6 w-6 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 transition-colors"
 							>
 								<Plus size={14} />
-							</button>
-
-							{/* Permission / Approval Mode Pill */}
-							<button
-								type="button"
-								onClick={handleToggleApprovalMode}
-								title={`权限模式: ${approvalMode === "yolo" ? "完全访问" : "需确认写入"} (点击切换)`}
-								className={clsx(
-									"flex items-center gap-1 text-[11px] font-medium transition-colors",
-									approvalMode === "yolo"
-										? "text-amber-400 hover:text-amber-300 hover:bg-amber-950/30 px-2 py-0.5 rounded-md"
-										: "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60 px-2 py-0.5 rounded-md",
-								)}
-							>
-								{approvalMode === "yolo" ? (
-									<AlertCircle size={12} className="shrink-0 text-amber-400" />
-								) : (
-									<ShieldCheck size={12} className="shrink-0 text-neutral-400" />
-								)}
-								<span>{approvalMode === "yolo" ? "完全访问" : "需确认写入"}</span>
-								<ChevronDown
-									size={10}
-									className={clsx(
-										"shrink-0",
-										approvalMode === "yolo" ? "text-amber-500/70" : "text-neutral-500",
-									)}
-								/>
 							</button>
 						</div>
 
@@ -1014,6 +970,7 @@ export function Composer({
 								<button
 									type="button"
 									onClick={() => setDismissed(sessionId, false)}
+									aria-label="查看排队消息"
 									title="点击查看排队消息"
 									className="flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800/80 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-700 transition-colors"
 								>
@@ -1030,6 +987,7 @@ export function Composer({
 											type="button"
 											onClick={() => void handleAbort()}
 											disabled={isAborting}
+											aria-label="停止当前回合"
 											title={isAborting ? "正在停止当前回合…" : "停止当前回合"}
 											className="flex h-7 w-7 items-center justify-center rounded-full border border-rose-800/50 bg-neutral-800 text-rose-400 transition-colors hover:bg-rose-950/80 disabled:opacity-50"
 										>
@@ -1043,6 +1001,9 @@ export function Composer({
 											<>
 												<button
 													type="button"
+													onClick={() => void submit(false)}
+													disabled={busy}
+													aria-label="排队消息"
 													title="排队消息，待本回合结束后自动处理 (Enter)"
 													className="flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700 hover:text-white disabled:opacity-40 transition-colors"
 												>
@@ -1053,6 +1014,7 @@ export function Composer({
 													type="button"
 													onClick={() => void submit(true)}
 													disabled={busy}
+													aria-label="立即插队"
 													title="立即插队发送打断 (⌘Enter)"
 													className="flex items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-1 text-[11px] text-white hover:bg-indigo-500 disabled:opacity-40"
 												>
@@ -1067,6 +1029,7 @@ export function Composer({
 										type="button"
 										onClick={() => void submit(false)}
 										disabled={busy || !text.trim()}
+										aria-label="发送消息"
 										title="发送消息 (Enter)"
 										className={clsx(
 											text.trim() && !busy

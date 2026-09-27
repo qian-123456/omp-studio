@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { Check, ChevronDown, ChevronRight, Loader2, Search } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { isComposing } from "../lib/hooks";
 import { type ModelOption, toModelKey } from "../lib/models";
 
 export interface ModelExtraOption {
@@ -237,9 +238,27 @@ export function ModelSelect({
 	...menu
 }: SelectProps) {
 	const [open, setOpen] = useState(false);
+	const buttonRef = useRef<HTMLButtonElement>(null);
+
+	useEffect(() => {
+		if (!open) return;
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				if (isComposing({ nativeEvent: e, key: e.key })) return;
+				e.stopPropagation();
+				e.preventDefault();
+				setOpen(false);
+				buttonRef.current?.focus();
+			}
+		};
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
+	}, [open]);
+
 	return (
 		<div className="relative">
 			<button
+				ref={buttonRef}
 				type="button"
 				onClick={() => setOpen((v) => !v)}
 				title={label || "选择模型"}
@@ -257,12 +276,22 @@ export function ModelSelect({
 							widthClass,
 							direction === "up" ? "bottom-full left-0 mb-1" : "left-0 top-full mt-1",
 						)}
+						onKeyDown={(e) => {
+							if (e.key === "Escape") {
+								if (isComposing(e)) return;
+								e.stopPropagation();
+								e.preventDefault();
+								setOpen(false);
+								buttonRef.current?.focus();
+							}
+						}}
 					>
 						<ModelMenuContent
 							{...menu}
 							onSelect={(v) => {
 								menu.onSelect(v);
 								setOpen(false);
+								buttonRef.current?.focus();
 							}}
 						/>
 					</div>

@@ -19,7 +19,7 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 	const setRightTab = useUi((s) => s.setRightTab);
 	const toggleRight = useUi((s) => s.toggleRight);
 
-	const OPTIONS: {
+	const PRIMARY_OPTIONS: {
 		id: RightTab;
 		label: string;
 		icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -50,12 +50,6 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 			iconColor: "text-sky-400",
 		},
 		{
-			id: "heatmap",
-			label: "热力图",
-			icon: Activity,
-			iconColor: "text-emerald-400",
-		},
-		{
 			id: "services",
 			label: "服务",
 			icon: Cpu,
@@ -72,6 +66,7 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 					onClick={toggleRight}
 					className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
 					title="收起侧边面板 (⌘J)"
+					aria-label="收起侧边面板 (⌘J)"
 				>
 					<PanelRightClose size={15} />
 				</button>
@@ -92,7 +87,7 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 
 					{/* Vertical button cards */}
 					<div className="space-y-2">
-						{OPTIONS.map((opt) => {
+						{PRIMARY_OPTIONS.map((opt) => {
 							const Icon = opt.icon;
 							const badge = tabBadges[opt.id] ?? 0;
 							return (
@@ -123,6 +118,18 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 								</button>
 							);
 						})}
+					</div>
+
+					{/* Demoted secondary option: Heatmap compact link */}
+					<div className="pt-1 text-center">
+						<button
+							type="button"
+							onClick={() => setRightTab("heatmap")}
+							className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-emerald-400 transition-colors py-1 px-2 rounded-md hover:bg-neutral-800/50"
+						>
+							<Activity size={13} className="text-emerald-400" />
+							<span>打开会话热力图 (统计分析)</span>
+						</button>
 					</div>
 				</div>
 			</div>

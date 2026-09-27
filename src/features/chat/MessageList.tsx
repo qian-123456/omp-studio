@@ -5,8 +5,10 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
+	AlertCircle,
 	ChevronRight,
 	Copy,
+	Loader2,
 	MessageSquareQuote,
 	RotateCcw,
 	Sparkles,
@@ -592,6 +594,9 @@ export function MessageList({
 	scrollRef,
 	traceGutter,
 	onScrollState,
+	isLoadingTranscript = false,
+	transcriptError = null,
+	onRetryTranscript,
 }: {
 	sessionId: string;
 	scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -600,6 +605,9 @@ export function MessageList({
 	/** Reports viewport pin state so the host can render a viewport-pinned
 	 * "scroll to bottom" button (the scrolled content must not host it). */
 	onScrollState?: (s: { nearBottom: boolean; hasNewMessages: boolean }) => void;
+	isLoadingTranscript?: boolean;
+	transcriptError?: string | null;
+	onRetryTranscript?: () => void;
 }) {
 	const live = useLive((s) => s.sessions[sessionId]);
 	const items = live?.items ?? [];
@@ -790,8 +798,41 @@ export function MessageList({
 				</div>
 			</div>
 
+			{/* Loading transcript affordance */}
+			{isLoadingTranscript && visible.length === 0 && !streamingMessage && (
+				<div className="flex h-full flex-col items-center justify-center p-6 text-center text-neutral-400">
+					<Loader2 size={24} className="mb-2.5 animate-spin text-neutral-500" />
+					<div className="text-[13px] text-neutral-400">正在加载会话记录…</div>
+				</div>
+			)}
+
+			{/* Error state with retry affordance */}
+			{!isLoadingTranscript && transcriptError && visible.length === 0 && !streamingMessage && (
+				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
+					<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-400">
+						<AlertCircle size={24} />
+					</div>
+					<h3 className="mb-1 text-[14px] font-medium text-neutral-200">
+						加载会话记录失败
+					</h3>
+					<p className="mb-4 max-w-sm text-[12px] leading-normal text-rose-400/90">
+						{transcriptError}
+					</p>
+					{onRetryTranscript && (
+						<button
+							type="button"
+							onClick={onRetryTranscript}
+							className="flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700 transition-colors"
+						>
+							<RotateCcw size={13} />
+							<span>重试加载</span>
+						</button>
+					)}
+				</div>
+			)}
+
 			{/* Empty state guidance */}
-			{visible.length === 0 && !streamingMessage && (
+			{!isLoadingTranscript && !transcriptError && visible.length === 0 && !streamingMessage && (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
 					<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-400">
 						<Sparkles size={24} />

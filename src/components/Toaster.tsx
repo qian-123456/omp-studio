@@ -20,7 +20,11 @@ export function Toaster() {
 	const dismiss = useToasts((s) => s.dismiss);
 	if (items.length === 0) return null;
 	return (
-		<div className="pointer-events-none fixed bottom-6 right-6 z-[100] flex w-80 flex-col gap-2 select-text">
+		<div
+			className="pointer-events-none fixed bottom-6 right-6 z-[100] flex w-80 flex-col gap-2 select-text"
+			role="status"
+			aria-live="polite"
+		>
 			{items.map((t) => {
 				const Icon = ICONS[t.kind];
 				return (
@@ -36,6 +40,7 @@ export function Toaster() {
 						<button
 							type="button"
 							title="关闭"
+							aria-label="关闭通知"
 							onClick={() => dismiss(t.id)}
 							className="shrink-0 rounded p-0.5 text-neutral-500 hover:text-neutral-200"
 						>

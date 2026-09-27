@@ -255,6 +255,51 @@ describe("groupSessions", () => {
 		expect(result.workspaceGroups[0].totalCount).toBe(1);
 		expect(result.globalGroup?.totalCount).toBe(0);
 	});
+
+	it("filters by activeWorkspaceId to isolate a single project", () => {
+		const p1 = makeSession({ id: "p1", workspaceId: "proj1", pinned: true });
+		const s1 = makeSession({ id: "s1", workspaceId: "proj1" });
+		const p2 = makeSession({ id: "p2", workspaceId: "global", pinned: true });
+		const s2 = makeSession({ id: "s2", workspaceId: "global" });
+		const s3 = makeSession({ id: "s3", workspaceId: null });
+
+		const result = groupSessions([p1, s1, p2, s2, s3], [projectWs, globalWs], {
+			activeWorkspaceId: "proj1",
+		});
+		expect(result.workspaceGroups).toHaveLength(1);
+		expect(result.workspaceGroups[0].workspace.id).toBe("proj1");
+		expect(result.workspaceGroups[0].totalCount).toBe(1);
+		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p1"]);
+		expect(result.globalGroup).toBeNull();
+		expect(result.unassigned).toHaveLength(0);
+		expect(result.totalVisible).toBe(2); // p1 + s1
+	});
+
+	it("filters by activeWorkspaceId '__global' to isolate global sessions", () => {
+		const p1 = makeSession({ id: "p1", workspaceId: "proj1", pinned: true });
+		const s1 = makeSession({ id: "s1", workspaceId: "proj1" });
+		const s2 = makeSession({ id: "s2", workspaceId: "global" });
+
+		const result = groupSessions([p1, s1, s2], [projectWs, globalWs], {
+			activeWorkspaceId: "__global",
+		});
+		expect(result.workspaceGroups).toHaveLength(0);
+		expect(result.globalGroup?.totalCount).toBe(1);
+		expect(result.pinnedNodes).toHaveLength(0);
+		expect(result.totalVisible).toBe(1);
+	});
+
+	it("keeps all workspaces when activeWorkspaceId is 'all'", () => {
+		const s1 = makeSession({ id: "s1", workspaceId: "proj1" });
+		const s2 = makeSession({ id: "s2", workspaceId: "global" });
+
+		const result = groupSessions([s1, s2], [projectWs, globalWs], {
+			activeWorkspaceId: "all",
+		});
+		expect(result.workspaceGroups).toHaveLength(1);
+		expect(result.globalGroup?.totalCount).toBe(1);
+		expect(result.totalVisible).toBe(2);
+	});
 });
 
 describe("partitionNodes", () => {
@@ -338,5 +383,45 @@ describe("filterSessions deleted worktrees", () => {
 
 		const shown = filterSessions([dead, alive], { showDeletedWorktrees: true });
 		expect(shown).toHaveLength(2);
+	});
+});
+
+describe("archive cascading & subtree pinning", () => {
+	it("cascades archive status to children when showArchived is false", () => {
+		const parent = makeSession({ id: "p1", archived: true });
+		const child = makeSession({ id: "c1", parentId: "p1", archived: false });
+		const normal = makeSession({ id: "n1", archived: false });
+
+		const hidden = filterSessions([parent, child, normal], { showArchived: false });
+		expect(hidden.map((s) => s.id)).toEqual(["n1"]);
+
+		const shown = filterSessions([parent, child, normal], { showArchived: true });
+		expect(shown.map((s) => s.id)).toEqual(["p1", "c1", "n1"]);
+	});
+
+	it("keeps entire subtree in pinnedNodes when parent is pinned", () => {
+		const parent = makeSession({ id: "p1", pinned: true, workspaceId: "proj1" });
+		const child = makeSession({ id: "c1", parentId: "p1", pinned: false, workspaceId: "proj1" });
+		const normal = makeSession({ id: "n1", pinned: false, workspaceId: "proj1" });
+
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
+		const result = groupSessions([parent, child, normal], [ws]);
+
+		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p1", "c1"]);
+		expect(result.pinnedNodes[0].children[0].session.id).toBe("c1");
+		expect(result.workspaceGroups[0].subgroups.flatMap((s) => s.nodes.map((n) => n.session.id))).toEqual(["n1"]);
+	});
+
+	it("keeps entire subtree in pinnedNodes when child is pinned", () => {
+		const parent = makeSession({ id: "p1", pinned: false, workspaceId: "proj1" });
+		const child = makeSession({ id: "c1", parentId: "p1", pinned: true, workspaceId: "proj1" });
+		const normal = makeSession({ id: "n1", pinned: false, workspaceId: "proj1" });
+
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
+		const result = groupSessions([parent, child, normal], [ws]);
+
+		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p1", "c1"]);
+		expect(result.pinnedNodes[0].children[0].session.id).toBe("c1");
+		expect(result.workspaceGroups[0].subgroups.flatMap((s) => s.nodes.map((n) => n.session.id))).toEqual(["n1"]);
 	});
 });

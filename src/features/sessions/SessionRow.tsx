@@ -483,14 +483,14 @@ export function SessionRow({
 			onContextMenu={handleContextMenu}
 			style={{ paddingLeft: `${8 + indent + clampedDepth * 14}px` }}
 			className={clsx(
-				"group relative flex cursor-pointer select-none items-center justify-between gap-1.5 py-1.5 pr-2 transition-colors",
+				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg py-1.5 pr-2 transition-colors",
 				isSelected
-					? "bg-neutral-800 text-neutral-100 ring-1 ring-inset ring-neutral-700/80"
+					? "bg-neutral-800 text-neutral-100"
 					: isMultiSelected
 						? "bg-indigo-950/40 text-neutral-200 border-l-2 border-indigo-500"
 						: isHighlighted
-							? "bg-neutral-800/60 text-neutral-200 ring-1 ring-inset ring-neutral-600/50"
-							: "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
+							? "bg-neutral-800/60 text-neutral-200 ring-1 ring-inset ring-neutral-700/60"
+							: "text-neutral-400 hover:bg-neutral-800/40 hover:text-neutral-200",
 				deletedWt && "opacity-50",
 			)}
 		>
@@ -573,7 +573,7 @@ export function SessionRow({
 							e.stopPropagation();
 							startInlineRename();
 						}}
-						className="min-w-0 flex-1 cursor-text truncate text-xs font-medium"
+						className="min-w-0 flex-1 cursor-text truncate text-xs font-medium text-neutral-200 group-hover:text-neutral-100"
 						title={sessionDisplayName(session)}
 					>
 						{sessionDisplayName(session)}
@@ -605,17 +605,17 @@ export function SessionRow({
 						</span>
 						{session.git?.branch && (
 							<>
-								<span aria-hidden="true">·</span>
-								<GitBranch size={10} className="shrink-0" />
-								<span className="truncate" title={session.git.branch}>{session.git.branch}</span>
+								<span aria-hidden="true" className="text-neutral-600">·</span>
+								<GitBranch size={10} className="shrink-0 text-neutral-500" />
+								<span className="truncate max-w-[90px]" title={session.git.branch}>{session.git.branch}</span>
 							</>
 						)}
 						{Boolean(session.git?.dirty) && (
-							<span className="shrink-0 text-amber-400">+{session.git?.dirty}</span>
+							<span className="shrink-0 text-amber-400/90 font-mono">+{session.git?.dirty}</span>
 						)}
 						{session.result && (
 							<span
-								className={clsx("shrink-0", session.result.ok ? "text-emerald-400" : "text-rose-400")}
+								className={clsx("shrink-0 font-medium", session.result.ok ? "text-emerald-400/90" : "text-rose-400/90")}
 								title={session.result.summary}
 							>
 								{session.result.kind === "test" ? "测试" : "构建"}{session.result.ok ? "✓" : "×"}
@@ -633,7 +633,7 @@ export function SessionRow({
 						e.stopPropagation();
 						handleAccept(false);
 					}}
-					className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-300 hover:bg-orange-500/20"
+					className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-300 opacity-0 transition-opacity hover:bg-orange-500/20 focus:opacity-100 group-hover:opacity-100"
 					title="验收此会话（标记本轮完成）"
 				>
 					✅ 验收
@@ -663,10 +663,12 @@ export function SessionRow({
 				type="button"
 				onClick={handleMenuBtnClick}
 				className={clsx(
-					"shrink-0 rounded p-1 hover:bg-neutral-700/60 hover:text-neutral-200",
+					"shrink-0 rounded p-1 transition-opacity hover:bg-neutral-700/60 hover:text-neutral-200",
 					menuOpen
-						? "text-neutral-200"
-						: "text-neutral-500 opacity-0 group-hover:opacity-100 focus:opacity-100",
+						? "text-neutral-200 opacity-100"
+						: isSelected
+							? "text-neutral-400 opacity-40 hover:opacity-100 focus:opacity-100"
+							: "text-neutral-500 opacity-0 group-hover:opacity-100 focus:opacity-100",
 				)}
 				title="操作菜单"
 			>

@@ -3,6 +3,7 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import React, { useState } from "react";
 import type { DirEntry } from "../../lib/contracts";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { useEscapeKey } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { FileIcon } from "./FileIcon";
 
@@ -41,6 +42,8 @@ export function FileTreeNode({
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
 		null,
 	);
+
+	useEscapeKey(() => setContextMenu(null), contextMenu !== null);
 
 	const handleClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
@@ -185,6 +188,11 @@ export function FileTreeNode({
 					<div
 						className="fixed inset-0 z-50 cursor-default"
 						onClick={(e) => {
+							e.stopPropagation();
+							setContextMenu(null);
+						}}
+						onContextMenu={(e) => {
+							e.preventDefault();
 							e.stopPropagation();
 							setContextMenu(null);
 						}}

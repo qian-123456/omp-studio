@@ -9,10 +9,12 @@ import { errMsg } from "../../lib/dialogs";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
 import {
 	appPaths,
+	deleteSession,
 	gitCreateWorktree,
 	gitListBranches,
 	gitSummary,
 	listModels,
+	rpcListLive,
 	rpcSend,
 	validatePath,
 } from "../../lib/ipc";
@@ -30,7 +32,9 @@ import { defaultSlug } from "./helpers";
 
 const CUSTOM = "__custom";
 const CUSTOM_MODEL = "__custom_model";
-
+const isMac =
+	typeof navigator !== "undefined" &&
+	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
 
 /**
  * Always mounted; opened via `ui.openModal("new-session" | "newSession", {workspaceId?, cwd?})`.
@@ -44,6 +48,7 @@ export function NewSessionDialog() {
 }
 
 function NewSessionForm({ props }: { props: Record<string, unknown> }) {
+	const dialogRef = useRef<HTMLDivElement>(null);
 	const workspaces = useSessions((s) => s.workspaces);
 	const sessions = useSessions((s) => s.sessions);
 	const upsert = useSessions((s) => s.upsert);
@@ -52,6 +57,15 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	const defaultModel = useSettings((s) => s.settings?.newSessionModel);
 
 	useEscapeKey(closeModal);
+
+	useEffect(() => {
+		const previous = document.activeElement;
+		(dialogRef.current?.querySelector<HTMLElement>("select, input, textarea")
+			?? dialogRef.current?.querySelector<HTMLElement>("button"))?.focus();
+		return () => {
+			if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+		};
+	}, []);
 
 	const propCwd = typeof props.cwd === "string" ? props.cwd : "";
 	const propWs = typeof props.workspaceId === "string" ? props.workspaceId : "";
@@ -116,11 +130,11 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				}
 				fallbackLiveModels();
 			})
-			.catch(() => {
-				fallbackLiveModels();
+			.catch((err) => {
+				fallbackLiveModels(err);
 			});
 
-		function fallbackLiveModels() {
+		function fallbackLiveModels(initialErr?: unknown) {
 			const liveSession = Object.values(sessions).find((s) => s.live);
 			if (liveSession) {
 				rpcSend(liveSession.id, { type: "get_available_models" })
@@ -166,6 +180,8 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 								toast.error(`获取可用模型失败: ${errMsg(err)}`);
 							});
 					});
+			} else {
+				toast.error(`获取可用模型失败${initialErr ? `: ${errMsg(initialErr)}` : ""}`);
 			}
 		}
 	}, [sessions]);
@@ -233,7 +249,9 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 						);
 					}
 				})
-				.catch(() => {});
+				.catch((err) => {
+					toast.error(`获取分支列表失败: ${errMsg(err)}`);
+				});
 		} else {
 			setBranches([]);
 		}
@@ -277,6 +295,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 		if (!cwd || !canSubmit) return;
 		setBusy(true);
 		setError(null);
+		let createdSessionId: string | null = null;
 		try {
 			let target = cwd;
 			if (useWorktree) {
@@ -290,11 +309,38 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				approvalMode: null, // per-session approval removed — Settings owns it
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
 			});
+			createdSessionId = sessionId;
 			upsert([stub]);
-			await sendFirstPrompt(sessionId, prompt);
+			try {
+				await sendFirstPrompt(sessionId, prompt);
+			} catch (promptErr) {
+				let isLive = false;
+				try {
+					const liveList = await rpcListLive();
+					isLive = liveList.some((s) => s.sessionId === sessionId);
+				} catch {
+					isLive = false;
+				}
+
+				if (isLive) {
+					selectSession(sessionId);
+					closeModal();
+					toast.error(`会话已创建，但发送第一条消息失败: ${errMsg(promptErr)}`);
+					return;
+				}
+
+				useSessions.getState().remove([sessionId]);
+				await deleteSession(sessionId).catch(() => {});
+				setError(`发送初始消息失败: ${errMsg(promptErr)}`);
+				return;
+			}
 			selectSession(sessionId);
 			closeModal();
 		} catch (e) {
+			if (createdSessionId) {
+				useSessions.getState().remove([createdSessionId]);
+				await deleteSession(createdSessionId).catch(() => {});
+			}
 			setError(errMsg(e));
 		} finally {
 			setBusy(false);
@@ -312,6 +358,10 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 			}}
 		>
 			<div
+				ref={dialogRef}
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="new-session-dialog-title"
 				className="w-[480px] rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-300 shadow-xl"
 				onMouseDown={(e) => e.stopPropagation()}
 				onKeyDown={(e) => {
@@ -319,14 +369,31 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
 						e.preventDefault();
 						if (canSubmit) void submit();
+						return;
+					}
+					if (e.key === "Tab") {
+						const controls = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(
+							'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+						)).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
+						if (controls.length === 0) return;
+						const first = controls[0];
+						const last = controls[controls.length - 1];
+						if (e.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement as HTMLElement))) {
+							e.preventDefault();
+							last?.focus();
+						} else if (!e.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement as HTMLElement))) {
+							e.preventDefault();
+							first?.focus();
+						}
 					}
 				}}
 			>
 				<div className="mb-3 flex items-center">
-					<span className="flex-1 text-sm font-semibold text-neutral-100">新会话</span>
+					<span id="new-session-dialog-title" className="flex-1 text-sm font-semibold text-neutral-100">新会话</span>
 					<button
 						type="button"
 						title="关闭 (Esc)"
+						aria-label="关闭对话框"
 						onClick={closeModal}
 						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
 					>
@@ -381,6 +448,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 								onClick={handleBrowse}
 								className="flex shrink-0 items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-xs text-neutral-300 hover:bg-neutral-700 hover:text-white"
 								title="浏览目录"
+								aria-label="浏览系统目录"
 							>
 								<FolderOpen size={13} />
 								<span>浏览…</span>
@@ -532,14 +600,14 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					value={prompt}
 					onChange={(e) => setPrompt(e.target.value)}
 					rows={3}
-					placeholder="创建后立即发送给 Agent（支持 Cmd+Enter 快速创建）"
+					placeholder={`创建后立即发送给 Agent（支持 ${isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速创建）`}
 					className={clsx(input, "mb-3 resize-none")}
 				/>
 
 				{error && <div className="mb-2 text-xs text-rose-400">{error}</div>}
 
 				<div className="flex items-center justify-between">
-					<span className="text-[11px] text-neutral-500">按 Cmd+Enter 快速提交</span>
+					<span className="text-[11px] text-neutral-500">按 {isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速提交</span>
 					<div className="flex gap-2">
 						<button
 							type="button"

@@ -346,6 +346,7 @@ export function DiffView({
 								}}
 								className="flex w-12 shrink-0 cursor-pointer select-none items-center justify-end pr-2 text-right text-neutral-600 hover:text-indigo-400"
 								title="点击选中行添加批注"
+								aria-label={`选中第 ${l.line ?? i + 1} 行添加批注`}
 							>
 								<span className="w-7">{l.line ?? ""}</span>
 								<span className="w-3 text-center">
@@ -382,8 +383,15 @@ export function DiffView({
 												role="button"
 												tabIndex={0}
 												onClick={() => toggleSelect(row.left!.origIdx)}
+												onKeyDown={(e) => {
+													if (e.key === "Enter" || e.key === " ") {
+														e.preventDefault();
+														toggleSelect(row.left!.origIdx);
+													}
+												}}
 												className="flex w-10 shrink-0 cursor-pointer select-none items-center justify-end pr-1 text-right text-neutral-600 hover:text-indigo-400"
 												title="点击选中行"
+												aria-label={`选中第 ${row.left.line ?? row.left.origIdx + 1} 行`}
 											>
 												<span className="w-6">
 													{row.left.line ?? ""}
@@ -425,8 +433,15 @@ export function DiffView({
 												onClick={() =>
 													toggleSelect(row.right!.origIdx)
 												}
+												onKeyDown={(e) => {
+													if (e.key === "Enter" || e.key === " ") {
+														e.preventDefault();
+														toggleSelect(row.right!.origIdx);
+													}
+												}}
 												className="flex w-10 shrink-0 cursor-pointer select-none items-center justify-end pr-1 text-right text-neutral-600 hover:text-indigo-400"
 												title="点击选中行"
+												aria-label={`选中第 ${row.right.line ?? row.right.origIdx + 1} 行`}
 											>
 												<span className="w-6">
 													{row.right.line ?? ""}

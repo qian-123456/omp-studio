@@ -196,9 +196,10 @@ export function TerminalDrawer() {
 
 		const observer = new ResizeObserver(() => {
 			try {
+				if (host.clientWidth <= 0 || host.clientHeight <= 0) return;
 				fit.fit();
 				const entry = drawerRegistry.get(tab.id);
-				if (entry?.termId && term.cols > 0 && term.rows > 0) {
+				if (entry?.termId && term.cols > 2 && term.rows > 1) {
 					void termResize(entry.termId, term.cols, term.rows).catch(() => {});
 				}
 			} catch {}
@@ -242,7 +243,7 @@ export function TerminalDrawer() {
 				};
 				drawerRegistry.set(tab.id, entry);
 				useDrawerStore.getState().updateTab(tab.id, { status: "error", exitCode: null });
-				toast.error(`终端启动失败: ${msg}`);
+				toast.error(`本地终端启动失败: ${msg}`);
 			}
 		})();
 	}, []);
@@ -258,10 +259,17 @@ export function TerminalDrawer() {
 			if (existing.term.element && existing.term.element.parentElement !== host) {
 				host.appendChild(existing.term.element);
 			}
-			// Refit after the tab becomes visible again
+			// Refit after the tab becomes visible again and update PTY size
 			const raf = requestAnimationFrame(() => {
 				try {
 					existing.fit.fit();
+					if (existing.termId && existing.term.cols > 0 && existing.term.rows > 0) {
+						void termResize(
+							existing.termId,
+							existing.term.cols,
+							existing.term.rows,
+						).catch(() => {});
+					}
 				} catch {}
 			});
 			existing.term.focus();
@@ -422,6 +430,7 @@ export function TerminalDrawer() {
 
 				{/* Header: tabs + actions */}
 				<div className="flex shrink-0 items-center gap-1.5 border-b border-neutral-800 px-2 py-1 text-xs select-none">
+					<span className="shrink-0 px-1 text-[10px] font-medium uppercase tracking-wide text-neutral-500">本地终端</span>
 					<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
 						{tabs.map((tab) => (
 							<div
@@ -524,7 +533,10 @@ export function TerminalDrawer() {
 										: e.clientY;
 								setContextMenu({ x, y });
 							}}
-							className={clsx("absolute inset-0 px-1", tab.id !== activeTabId && "hidden")}
+							className={clsx(
+								"absolute inset-0 px-1",
+								tab.id !== activeTabId && "invisible pointer-events-none",
+							)}
 						/>
 					))}
 
@@ -556,7 +568,7 @@ export function TerminalDrawer() {
 					{activeTab?.status === "error" && activeEntry?.error && (
 						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between gap-3 border-t border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs">
 							<span className="min-w-0 truncate text-rose-300">
-								终端启动失败: {activeEntry.error}
+								本地终端启动失败: {activeEntry.error}
 							</span>
 							<button
 								type="button"

@@ -2,14 +2,10 @@ import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
 	ArrowLeft,
-	Copy,
-	FolderOpen,
 	MessageSquare,
 	PanelLeftClose,
 	PanelLeftOpen,
 	PanelRightOpen,
-	QrCode,
-	Share2,
 	TerminalSquare,
 	X,
 } from "lucide-react";
@@ -31,6 +27,7 @@ import { NewSessionDialog } from "./features/git/NewSessionDialog";
 import { HeatmapPanel } from "./features/heatmap/HeatmapPanel";
 import { ServicesPanel } from "./features/services/ServicesPanel";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
+import { SessionOverflowMenu } from "./components/SessionOverflowMenu";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SideChatPanel } from "./features/sidechat/SideChatPanel";
 import { StartPage } from "./features/home/StartPage";
@@ -211,40 +208,22 @@ export default function App() {
 
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [titleDraft, setTitleDraft] = useState("");
-	const [shareOpen, setShareOpen] = useState(false);
 	const [qrPairing, setQrPairing] = useState<PairingInfo | null>(null);
 	const [busyAction, setBusyAction] = useState(false);
-	const shareRef = useRef<HTMLDivElement>(null);
 
 	// Reset header state on session change
 	useEffect(() => {
 		setEditingTitle(false);
-		setShareOpen(false);
 		setQrPairing(null);
 	}, [activeSession?.id]);
-
-	// Close share popover on outside click
-	useEffect(() => {
-		if (!shareOpen) return;
-		const handleClickOutside = (e: MouseEvent) => {
-			if (shareRef.current && !shareRef.current.contains(e.target as Node)) {
-				setShareOpen(false);
-			}
-		};
-		window.addEventListener("mousedown", handleClickOutside);
-		return () => window.removeEventListener("mousedown", handleClickOutside);
-	}, [shareOpen]);
-
 	// Escape key to close popovers/modals/title editing
 	useEscapeKey(() => {
 		if (qrPairing) {
 			setQrPairing(null);
-		} else if (shareOpen) {
-			setShareOpen(false);
 		} else if (editingTitle) {
 			setEditingTitle(false);
 		}
-	}, editingTitle || shareOpen || !!qrPairing);
+	}, editingTitle || !!qrPairing);
 
 	const startEditTitle = () => {
 		if (!activeSession) return;
@@ -278,7 +257,6 @@ export default function App() {
 	};
 
 	const handleCopyMarkdown = async () => {
-		setShareOpen(false);
 		if (!activeSession) return;
 		const items = useLive.getState().sessions[activeSession.id]?.items ?? [];
 		if (items.length === 0) {
@@ -298,7 +276,6 @@ export default function App() {
 	};
 
 	const handleMobilePair = async () => {
-		setShareOpen(false);
 		try {
 			const info = await mobileCreatePairing(false);
 			setQrPairing(info);
@@ -661,55 +638,14 @@ export default function App() {
 									</button>
 								)}
 
-								{/* Finder */}
-								<button
-									type="button"
-									disabled={!activeSession.cwd}
-									onClick={handleOpenInFinder}
-									title={activeSession.cwd ? `在访达中显示 (${activeSession.cwd})` : "无工作目录"}
-									className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200 disabled:opacity-30 transition-colors"
-								>
-									<FolderOpen size={14} />
-								</button>
-
-								{/* Share */}
-								<div className="relative" ref={shareRef}>
-									<button
-										type="button"
-										onClick={() => setShareOpen((v) => !v)}
-										title="分享与导出"
-										className={clsx(
-											"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-											shareOpen
-												? "bg-neutral-800 text-neutral-100"
-												: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
-										)}
-									>
-										<Share2 size={14} />
-									</button>
-									{/* Share Popover: 复制 Markdown / 手机扫码查看 */}
-									{shareOpen && (
-										<div className="absolute right-0 top-full z-50 mt-1.5 w-44 rounded-lg border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-xl">
-											<button
-												type="button"
-												onClick={handleCopyMarkdown}
-												className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
-											>
-												<Copy size={13} />
-												<span>复制为 Markdown</span>
-											</button>
-											<button
-												type="button"
-												onClick={handleMobilePair}
-												className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
-											>
-												<QrCode size={13} />
-												<span>手机扫码查看</span>
-											</button>
-										</div>
-									)}
-								</div>
-
+								{/* Session Overflow Menu (Finder, Share, Resilience) */}
+								<SessionOverflowMenu
+									sessionId={activeSession.id}
+									cwd={activeSession.cwd}
+									onOpenInFinder={handleOpenInFinder}
+									onCopyMarkdown={handleCopyMarkdown}
+									onMobilePair={handleMobilePair}
+								/>
 								{/* Terminal / Chat toggle */}
 								<button
 									type="button"
@@ -725,12 +661,13 @@ export default function App() {
 											? "border border-indigo-500/40 bg-indigo-600/20 text-indigo-300"
 											: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
 									)}
-									title={sessionViewMode === "chat" ? "切换到终端视图" : "返回聊天视图"}
+									aria-label={sessionViewMode === "chat" ? "切换到会话终端" : "返回聊天视图"}
+									title={sessionViewMode === "chat" ? "用完整终端接管此会话（omp --resume，可交互操作 Agent）" : "返回聊天视图"}
 								>
 									{sessionViewMode === "chat" ? (
 										<>
 											<TerminalSquare size={13} />
-											<span>终端</span>
+											<span>会话终端</span>
 										</>
 									) : (
 										<>

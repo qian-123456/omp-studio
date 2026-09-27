@@ -48,6 +48,11 @@ export interface GroupingOptions {
 	showArchived?: boolean;
 	/** Include sessions whose worktree was deleted (inferred from cwd). */
 	showDeletedWorktrees?: boolean;
+	/**
+	 * Filter sessions to a specific workspace ("all", "__global", "__unassigned", or a workspace.id).
+	 * When set to a specific workspace, only that workspace's sessions and relevant pins are returned.
+	 */
+	activeWorkspaceId?: string;
 }
 
 /** Label for the collapsed unassigned bucket (PLAN.md §66 未归档桶). */
@@ -83,8 +88,29 @@ export function filterSessions(
 		showDeletedWorktrees = false,
 	} = options;
 
+	const sessionById = new Map<string, SessionMeta>();
+	for (const s of sessions) {
+		sessionById.set(s.id, s);
+	}
+
+	// Cascades archive state: if any ancestor is archived, children are also treated as archived
+	const isArchivedCascaded = (s: SessionMeta): boolean => {
+		if (s.archived) return true;
+		let curr = s;
+		const visited = new Set<string>([s.id]);
+		while (curr.parentId) {
+			if (visited.has(curr.parentId)) break;
+			visited.add(curr.parentId);
+			const parent = sessionById.get(curr.parentId);
+			if (!parent) break;
+			if (parent.archived) return true;
+			curr = parent;
+		}
+		return false;
+	};
+
 	return sessions.filter((session) => {
-		if (!showArchived && session.archived) {
+		if (!showArchived && isArchivedCascaded(session)) {
 			return false;
 		}
 		if (
@@ -301,6 +327,57 @@ export function createSubgroups(
 }
 
 /**
+ * Collects all session IDs that belong to a subtree containing at least one pinned session.
+ * Ensures the entire subtree moves together into pinnedNodes instead of breaking hierarchy.
+ */
+function getPinnedTreeSessionIds(sessions: SessionMeta[]): Set<string> {
+	const parentMap = new Map<string, string>();
+	const childrenMap = new Map<string, string[]>();
+	const pinnedIds = new Set<string>();
+
+	for (const s of sessions) {
+		if (s.pinned) pinnedIds.add(s.id);
+		if (s.parentId) {
+			parentMap.set(s.id, s.parentId);
+			const list = childrenMap.get(s.parentId) ?? [];
+			list.push(s.id);
+			childrenMap.set(s.parentId, list);
+		}
+	}
+
+	if (pinnedIds.size === 0) return new Set();
+
+	// Find all root IDs for every pinned session
+	const pinnedRoots = new Set<string>();
+	for (const id of pinnedIds) {
+		let curr = id;
+		const visited = new Set<string>([curr]);
+		while (parentMap.has(curr)) {
+			const p = parentMap.get(curr)!;
+			if (visited.has(p)) break;
+			visited.add(p);
+			curr = p;
+		}
+		pinnedRoots.add(curr);
+	}
+
+	// Collect all descendants of every pinned root
+	const allPinnedTreeIds = new Set<string>();
+	function collectDescendants(id: string) {
+		allPinnedTreeIds.add(id);
+		for (const childId of childrenMap.get(id) ?? []) {
+			collectDescendants(childId);
+		}
+	}
+
+	for (const rootId of pinnedRoots) {
+		collectDescendants(rootId);
+	}
+
+	return allPinnedTreeIds;
+}
+
+/**
  * Main grouping function (PLAN.md §66-67):
  * 1. Filters sessions by query, archive status, deleted-worktree visibility.
  * 2. 🌐 Global workspace pinned on top (sessions under globalDir, not the
@@ -344,14 +421,17 @@ export function groupSessions(
 		}
 	}
 
+	const pinnedTreeIds = getPinnedTreeSessionIds(visibleSessions);
+	const isPinned = (s: SessionMeta) => pinnedTreeIds.has(s.id);
+
 	// Split unassigned: sessions on deleted worktrees go to a dedicated dimmed
 	// bucket instead of vanishing (or polluting the live list).
 	const isDeletedWt = (s: SessionMeta) =>
 		!s.git?.worktree && !s.git?.branch && inferWorktreeName(s.cwd) !== null;
-	const unassignedLive = unassignedSessions.filter((s) => !s.pinned && !isDeletedWt(s));
-	const unassignedDeleted = unassignedSessions.filter((s) => !s.pinned && isDeletedWt(s));
+	const unassignedLive = unassignedSessions.filter((s) => !isPinned(s) && !isDeletedWt(s));
+	const unassignedDeleted = unassignedSessions.filter((s) => !isPinned(s) && isDeletedWt(s));
 
-	const pinnedSessions = visibleSessions.filter((s) => s.pinned);
+	const pinnedSessions = visibleSessions.filter((s) => isPinned(s));
 	const pinnedNodes = flattenSessionTree(
 		buildSessionTree([...pinnedSessions].sort(compareSessions)),
 	);
@@ -363,7 +443,7 @@ export function groupSessions(
 		buildSessionTree([...unassignedDeleted].sort(compareSessions)),
 	);
 	const workspaceGroups: WorkspaceGroup[] = projectWorkspaces.map((ws) => {
-		const items = (sessionMap.get(ws.id) ?? []).filter((s) => !s.pinned);
+		const items = (sessionMap.get(ws.id) ?? []).filter((s) => !isPinned(s));
 		const { subgroups, hasMultipleSubgroups } = createSubgroups(items);
 		return {
 			workspace: ws,
@@ -376,24 +456,58 @@ export function groupSessions(
 
 	const globalGroup: WorkspaceGroup | null = globalWs
 		? (() => {
-				const { subgroups, hasMultipleSubgroups } =
-					createSubgroups(globalSessions.filter((s) => !s.pinned));
+				const items = globalSessions.filter((s) => !isPinned(s));
+				const { subgroups, hasMultipleSubgroups } = createSubgroups(items);
 				return {
 					workspace: globalWs,
 					isGlobal: true,
 					subgroups,
 					hasMultipleSubgroups,
-					totalCount: globalSessions.filter((s) => !s.pinned).length,
+					totalCount: items.length,
 				};
 			})()
 		: null;
+	let finalPinnedNodes = pinnedNodes;
+	let finalGlobalGroup = globalGroup;
+	let finalWorkspaceGroups = workspaceGroups;
+	let finalUnassigned = unassigned;
+	let finalDeletedNodes = deletedNodes;
+
+	const { activeWorkspaceId } = options;
+	if (activeWorkspaceId && activeWorkspaceId !== "all") {
+		if (activeWorkspaceId === "__global") {
+			finalPinnedNodes = pinnedNodes.filter((n) => n.session.workspaceId === globalWs?.id);
+			finalWorkspaceGroups = [];
+			finalUnassigned = [];
+			finalDeletedNodes = [];
+		} else if (activeWorkspaceId === "__unassigned") {
+			finalPinnedNodes = pinnedNodes.filter((n) => !n.session.workspaceId);
+			finalWorkspaceGroups = [];
+			finalGlobalGroup = null;
+			finalDeletedNodes = [];
+		} else {
+			const targetGroup = workspaceGroups.find((g) => g.workspace.id === activeWorkspaceId);
+			finalWorkspaceGroups = targetGroup ? [targetGroup] : [];
+			finalGlobalGroup = null;
+			finalPinnedNodes = pinnedNodes.filter((n) => n.session.workspaceId === activeWorkspaceId);
+			finalUnassigned = [];
+			finalDeletedNodes = [];
+		}
+	}
+
+	const totalVisible =
+		finalPinnedNodes.length +
+		(finalGlobalGroup?.totalCount ?? 0) +
+		finalWorkspaceGroups.reduce((acc, g) => acc + g.totalCount, 0) +
+		finalUnassigned.length +
+		finalDeletedNodes.length;
 
 	return {
-		pinnedNodes,
-		globalGroup,
-		unassigned,
-		deletedNodes,
-		workspaceGroups,
-		totalVisible: visibleSessions.length,
+		pinnedNodes: finalPinnedNodes,
+		globalGroup: finalGlobalGroup,
+		unassigned: finalUnassigned,
+		deletedNodes: finalDeletedNodes,
+		workspaceGroups: finalWorkspaceGroups,
+		totalVisible,
 	};
 }

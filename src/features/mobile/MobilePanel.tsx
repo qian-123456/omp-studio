@@ -15,10 +15,9 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MobileStatus, PairingInfo, Settings } from "../../lib/contracts";
+import type { MobileStatus, PairingInfo } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import {
-	getSettings,
 	mobileCreatePairing,
 	mobileRevokeAll,
 	mobileStart,
@@ -33,32 +32,36 @@ type PairTarget = "lan" | "tunnel";
 
 export function MobilePanel() {
 	const [status, setStatus] = useState<MobileStatus | null>(null);
-	const [settings, setSettings] = useState<Settings | null>(null);
+	const settings = useSettings((s) => s.settings);
+	const loadSettings = useSettings((s) => s.load);
 	const [pairing, setPairing] = useState<PairingInfo | null>(null);
 	const [pairTarget, setPairTarget] = useState<PairTarget>("lan");
 	const [busy, setBusy] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
-	const [tunnelMode, setTunnelMode] = useState("off");
-	const [tunnelName, setTunnelName] = useState("");
-	const [tunnelHost, setTunnelHost] = useState("");
-	const [port, setPort] = useState("7788");
+	const [tunnelMode, setTunnelMode] = useState(settings?.tunnelMode ?? "off");
+	const [tunnelName, setTunnelName] = useState(settings?.tunnelName ?? "");
+	const [tunnelHost, setTunnelHost] = useState(settings?.tunnelHostname ?? "");
+	const [port, setPort] = useState(String(settings?.mobilePort ?? 7788));
 	const pairingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 	const [expiresIn, setExpiresIn] = useState(0);
+	useEffect(() => {
+		if (settings) {
+			setTunnelMode(settings.tunnelMode);
+			setTunnelName(settings.tunnelName ?? "");
+			setTunnelHost(settings.tunnelHostname ?? "");
+			setPort(String(settings.mobilePort));
+		}
+	}, [settings]);
 
 	const refresh = useCallback(async () => {
 		try {
-			const [st, se] = await Promise.all([mobileStatus(), getSettings()]);
+			const [st] = await Promise.all([mobileStatus(), loadSettings()]);
 			setStatus(st);
-			setSettings(se);
-			setTunnelMode(se.tunnelMode);
-			setTunnelName(se.tunnelName ?? "");
-			setTunnelHost(se.tunnelHostname ?? "");
-			setPort(String(se.mobilePort));
 		} catch (e) {
 			setError(String(e));
 		}
-	}, []);
+	}, [loadSettings]);
 
 	useEffect(() => {
 		refresh();

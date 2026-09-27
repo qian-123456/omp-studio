@@ -210,6 +210,37 @@ pub async fn stop(_state: &AppState, session_id: &str) -> Result<(), String> {
     process::stop_handle(&handle).await
 }
 
+/// Restart the session RPC process (the `/fresh` equivalent): terminates any
+/// active child process and resumes with `--resume <file>`, resetting all
+/// provider streams and active connection state without altering transcript history.
+pub async fn restart(state: &AppState, session_id: &str) -> Result<LiveSessionInfo, String> {
+    let lock = session_resume_lock(session_id);
+    let _guard = lock.lock().await;
+    if let Some(handle) = get_handle(session_id) {
+        let _ = process::stop_handle(&handle).await;
+        for _ in 0..20 {
+            if get_handle(session_id).is_none() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+    let (file, cwd) = find_session_file(state, session_id)
+        .await
+        .ok_or_else(|| format!("cannot locate session file for {session_id}"))?;
+    let info = start(
+        state,
+        &StartOpts {
+            cwd,
+            resume_file: Some(file),
+            ..Default::default()
+        },
+    )
+    .await?;
+    set_suspended(state, session_id, false);
+    Ok(info)
+}
+
 /// SIGTERM the external holder, wait ≤5s (SIGKILL after), then resume.
 pub async fn takeover_external(
     state: &AppState,

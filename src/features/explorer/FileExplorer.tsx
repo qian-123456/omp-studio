@@ -94,7 +94,7 @@ export function FileExplorer() {
 		}
 	}, []);
 
-	// Initial load for root directory
+	// Refresh root directory and reload expanded directories in current workspace
 	const refreshRoot = useCallback(async () => {
 		if (!currentWorkspace?.path) {
 			setRootEntries([]);
@@ -106,7 +106,9 @@ export function FileExplorer() {
 			setRootEntries(entries);
 			// Also reload currently expanded directories
 			for (const expPath of expandedPaths) {
-				loadDir(expPath).catch(() => {});
+				if (expPath.startsWith(currentWorkspace.path)) {
+					loadDir(expPath).catch(() => {});
+				}
 			}
 		} catch (err) {
 			toast.error(`加载工作区文件失败: ${String(err)}`);
@@ -116,8 +118,26 @@ export function FileExplorer() {
 		}
 	}, [currentWorkspace?.path, expandedPaths, loadDir]);
 
+	// Reset tree expansion and cache on workspace change, then load new root
 	useEffect(() => {
-		refreshRoot();
+		setExpandedPaths(new Set());
+		setChildrenMap({});
+		if (!currentWorkspace?.path) {
+			setRootEntries([]);
+			return;
+		}
+		setIsRootLoading(true);
+		fsReadDir(currentWorkspace.path)
+			.then((entries) => {
+				setRootEntries(entries);
+			})
+			.catch((err) => {
+				toast.error(`加载工作区文件失败: ${String(err)}`);
+				setRootEntries([]);
+			})
+			.finally(() => {
+				setIsRootLoading(false);
+			});
 	}, [currentWorkspace?.path]);
 
 	// Toggle folder expand/collapse

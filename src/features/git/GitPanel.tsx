@@ -8,6 +8,7 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { ChangesSection } from "./ChangesSection";
+import { CommitSection } from "./CommitSection";
 import { DiffModal } from "./DiffModal";
 import { toplevelFor } from "./helpers";
 import { OrphanBanner } from "./OrphanBanner";
@@ -135,6 +136,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 				<button
 					type="button"
 					title="刷新"
+					aria-label="刷新"
 					onClick={loadAll}
 					className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
 				>
@@ -164,6 +166,11 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 			{summary && summary.isRepo && (
 				<div className="space-y-2.5 p-2.5">
 					<OrphanBanner repo={mainRoot ?? cwd} />
+					<CommitSection
+						cwd={cwd}
+						summary={summary}
+						onCommitted={loadAll}
+					/>
 					<ChangesSection
 						summary={summary}
 						toplevel={top}

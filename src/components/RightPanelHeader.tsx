@@ -61,7 +61,7 @@ export function RightPanelHeader({
 		return () => window.removeEventListener("keydown", onKey);
 	}, [menuOpen]);
 
-	const ALL_TABS: {
+	const PRIMARY_TABS: {
 		id: RightTab;
 		label: string;
 		icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -92,18 +92,21 @@ export function RightPanelHeader({
 			iconColor: "text-indigo-400",
 		},
 		{
-			id: "heatmap",
-			label: "热力图",
-			icon: Activity,
-			iconColor: "text-emerald-400",
-		},
-		{
 			id: "services",
 			label: "服务",
 			icon: Cpu,
 			iconColor: "text-purple-400",
 		},
 	];
+
+	const HEATMAP_TAB = {
+		id: "heatmap" as RightTab,
+		label: "热力图",
+		icon: Activity,
+		iconColor: "text-emerald-400",
+	};
+
+	const ALL_TABS = [...PRIMARY_TABS, HEATMAP_TAB];
 
 	const currentTabInfo =
 		ALL_TABS.find((t) => t.id === activeTab) || ALL_TABS[0];
@@ -120,6 +123,7 @@ export function RightPanelHeader({
 					onClick={() => setMenuOpen((v) => !v)}
 					className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200 transition-colors"
 					title="切换标签页"
+					aria-label="切换标签页"
 				>
 					<ChevronDown
 						size={14}
@@ -153,6 +157,7 @@ export function RightPanelHeader({
 						}}
 						className="ml-0.5 rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 						title="关闭此标签页"
+						aria-label="关闭此标签页"
 					>
 						<X size={12} />
 					</button>
@@ -170,20 +175,48 @@ export function RightPanelHeader({
 							: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
 					)}
 					title="打开新标签页"
+					aria-label="打开新标签页"
 				>
 					<Plus size={14} />
 				</button>
 			</div>
 
-			{/* Right toggle button */}
-			<button
-				type="button"
-				onClick={toggleRight}
-				className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200 transition-colors"
-				title="收起侧边面板 (⌘J)"
-			>
-				<PanelRightClose size={15} />
-			</button>
+			{/* Right actions: compact heatmap toggle + toggle panel button */}
+			<div className="flex items-center gap-1">
+				<button
+					type="button"
+					onClick={() => {
+						if (activeTab === "heatmap") {
+							setRightTab(null);
+						} else {
+							setRightTab("heatmap");
+						}
+					}}
+					className={clsx(
+						"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+						activeTab === "heatmap"
+							? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+							: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
+					)}
+					aria-label="会话热力图"
+					title={activeTab === "heatmap" ? "收起热力图" : "切换会话热力图"}
+				>
+					<Activity
+						size={14}
+						className={activeTab === "heatmap" ? "text-emerald-400" : "text-neutral-400"}
+					/>
+				</button>
+
+				<button
+					type="button"
+					onClick={toggleRight}
+					className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200 transition-colors"
+					title="收起侧边面板 (⌘J)"
+					aria-label="收起侧边面板 (⌘J)"
+				>
+					<PanelRightClose size={15} />
+				</button>
+			</div>
 
 			{/* Vertical Dropdown Popover matching Image 3 */}
 			{menuOpen && (
@@ -192,7 +225,7 @@ export function RightPanelHeader({
 					className="absolute left-10 top-full z-50 mt-1 w-48 rounded-xl border border-neutral-800 bg-neutral-900/95 p-1.5 shadow-2xl backdrop-blur-md text-xs text-neutral-200 animate-in fade-in zoom-in-95 duration-100"
 				>
 					<div className="space-y-0.5">
-						{ALL_TABS.map((tab) => {
+						{PRIMARY_TABS.map((tab) => {
 							const Icon = tab.icon;
 							const badge = tabBadges[tab.id] ?? 0;
 							const isCurrent = activeTab === tab.id;
@@ -223,6 +256,33 @@ export function RightPanelHeader({
 								</button>
 							);
 						})}
+
+						{/* Demoted secondary section: Heatmap */}
+						<div className="border-t border-neutral-800/80 pt-1 mt-1">
+							<button
+								type="button"
+								onClick={() => {
+									setRightTab("heatmap");
+									setMenuOpen(false);
+								}}
+								className={clsx(
+									"flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors",
+									activeTab === "heatmap"
+										? "bg-neutral-800 text-neutral-100 font-medium"
+										: "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
+								)}
+							>
+								<div className="flex items-center gap-2.5">
+									<Activity size={14} className="text-emerald-400" />
+									<span>热力图 (统计分析)</span>
+								</div>
+								{tabBadges.heatmap > 0 && (
+									<span className="rounded-full bg-neutral-700/80 px-1.5 py-0.2 text-[10px] font-medium leading-tight text-neutral-300">
+										{tabBadges.heatmap}
+									</span>
+								)}
+							</button>
+						</div>
 					</div>
 				</div>
 			)}

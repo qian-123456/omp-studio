@@ -44,6 +44,15 @@ export interface SettingsState {
 let loading: Promise<void> | null = null;
 let lastConfirmed: Settings | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
+const keyRevisions = new Map<keyof Settings, number>();
+let currentRev = 0;
+
+export function _resetSettingsStore(): void {
+	lastConfirmed = null;
+	keyRevisions.clear();
+	currentRev = 0;
+	saveQueue = Promise.resolve();
+}
 
 export const useSettings = create<SettingsState>((set, get) => ({
 	settings: null,
@@ -52,6 +61,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
 		loading ??= getSettings()
 			.then((settings) => {
 				lastConfirmed = settings;
+				keyRevisions.clear();
 				set({ settings, error: null });
 			})
 			.catch((e) => set({ error: String(e) }))
@@ -66,6 +76,11 @@ export const useSettings = create<SettingsState>((set, get) => ({
 		if (!lastConfirmed) {
 			lastConfirmed = current;
 		}
+		const rev = ++currentRev;
+		const prevSnapshot = { ...current };
+		for (const k of Object.keys(patch) as (keyof Settings)[]) {
+			keyRevisions.set(k, rev);
+		}
 		const next = { ...current, ...patch };
 		set({ settings: next });
 
@@ -75,13 +90,29 @@ export const useSettings = create<SettingsState>((set, get) => ({
 			try {
 				const saved = await saveSettings(target);
 				lastConfirmed = saved;
+				const confirmedPatch: Partial<Settings> = {};
+				for (const k of Object.keys(patch) as (keyof Settings)[]) {
+					if (keyRevisions.get(k) === rev) {
+						(confirmedPatch as Record<string, unknown>)[k] = saved[k];
+					}
+				}
 				set((state) => ({
-					settings: state.settings === next ? saved : state.settings,
+					settings: state.settings ? { ...state.settings, ...confirmedPatch } : saved,
 					error: null,
 				}));
 			} catch (e) {
+				const revertPatch: Partial<Settings> = {};
+				for (const k of Object.keys(patch) as (keyof Settings)[]) {
+					if (keyRevisions.get(k) === rev) {
+						if (lastConfirmed && lastConfirmed[k] !== undefined) {
+							(revertPatch as Record<string, unknown>)[k] = lastConfirmed[k];
+						} else if (prevSnapshot[k] !== undefined) {
+							(revertPatch as Record<string, unknown>)[k] = prevSnapshot[k];
+						}
+					}
+				}
 				set((state) => ({
-					settings: state.settings === next ? lastConfirmed : state.settings,
+					settings: state.settings ? { ...state.settings, ...revertPatch } : null,
 					error: String(e),
 				}));
 				throw e;

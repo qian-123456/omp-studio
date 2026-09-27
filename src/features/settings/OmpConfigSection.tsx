@@ -13,7 +13,6 @@ import type { OmpConfigEntry } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
 import { ompConfigReset, ompConfigSet } from "../../lib/ipc";
-import { toast } from "../../lib/toast";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
 import {
@@ -107,18 +106,19 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 	};
 
 	const save = async (value: string) => {
+		let finalValue = value;
 		if (entry.valueType === "array" || entry.valueType === "record") {
 			try {
-				JSON.parse(value);
+				finalValue = JSON.stringify(JSON.parse(value));
 			} catch {
-				toast.error("不是合法的 JSON");
+				setRowError("JSON 格式不正确，请检查后重试");
 				return;
 			}
 		}
 		setBusy(true);
 		setRowError(null);
 		try {
-			await ompConfigSet(entry.key, value);
+			await ompConfigSet(entry.key, finalValue);
 			flashSaved();
 			setEditing(false);
 			onChanged();
@@ -421,7 +421,10 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 						<button
 							type="button"
 							disabled={busy}
-							onClick={() => setEditing(false)}
+							onClick={() => {
+								setEditing(false);
+								setRowError(null);
+							}}
 							className="rounded-lg px-2 py-1 text-[11px] text-neutral-400 hover:text-neutral-200 disabled:opacity-50"
 						>
 							取消

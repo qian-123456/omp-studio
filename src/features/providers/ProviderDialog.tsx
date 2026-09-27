@@ -1,8 +1,8 @@
 import { ChevronDown, Eye, EyeOff, Loader2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderApi, ProviderConfig } from "../../lib/contracts";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
-import { errMsg } from "../../lib/dialogs";
+import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { maskKey, parseEnvText, slugify } from "./envparse";
 import { API_LABELS, matchPresetByEnvVar, PROVIDER_PRESETS } from "./presets";
@@ -72,7 +72,75 @@ export function ProviderDialog({ target, onClose }: Props) {
 	const [pasteText, setPasteText] = useState("");
 	const [importing, setImporting] = useState(false);
 
-	useEscapeKey(onClose);
+	const isDirty = useMemo(() => {
+		if (target.mode === "import") {
+			return pasteText.trim().length > 0;
+		}
+		if (isEdit && editing) {
+			return (
+				name !== (editing.name ?? "") ||
+				slug !== (editing.slug ?? "") ||
+				baseUrl !== (editing.baseUrl ?? "") ||
+				api !== (editing.api ?? "openai_completions") ||
+				envVar !== (editing.envVar ?? "") ||
+				apiKey.length > 0 ||
+				modelsText !== (editing.models ?? []).join("\n") ||
+				defaultModel !== (editing.defaultModel ?? "") ||
+				notes !== (editing.notes ?? "")
+			);
+		}
+		return (
+			selectedPresetId !== null ||
+			name.length > 0 ||
+			slug.length > 0 ||
+			baseUrl.length > 0 ||
+			api !== "openai_completions" ||
+			envVar.length > 0 ||
+			apiKey.length > 0 ||
+			modelsText.length > 0 ||
+			defaultModel.length > 0 ||
+			notes.length > 0
+		);
+	}, [
+		target.mode,
+		isEdit,
+		editing,
+		pasteText,
+		name,
+		slug,
+		baseUrl,
+		api,
+		envVar,
+		apiKey,
+		modelsText,
+		defaultModel,
+		notes,
+		selectedPresetId,
+	]);
+
+	const isClosingRef = useRef(false);
+	const handleDismiss = useCallback(async () => {
+		if (isClosingRef.current) return;
+		if (isDirty) {
+			isClosingRef.current = true;
+			try {
+				const ok = await confirmDialog("当前有未保存的修改，确定要放弃吗？", {
+					danger: true,
+					okLabel: "放弃修改",
+				});
+				if (!ok) {
+					isClosingRef.current = false;
+					return;
+				}
+			} catch {
+				isClosingRef.current = false;
+				return;
+			}
+		}
+		onClose();
+	}, [isDirty, onClose]);
+
+	useEscapeKey(handleDismiss);
 	useEffect(() => {
 		const previous = document.activeElement;
 		(dialogRef.current?.querySelector<HTMLElement>("input, textarea")
@@ -144,9 +212,14 @@ export function ProviderDialog({ target, onClose }: Props) {
 					defaultModel: models.includes(defaultModel) ? defaultModel : null,
 					notes: notes.trim() || null,
 				};
-		if (!config.name || !config.slug || !config.baseUrl || !config.envVar) {
+		const missing: string[] = [];
+		if (!config.name) missing.push("名称");
+		if (!config.slug) missing.push("标识符");
+		if (!config.baseUrl) missing.push("Base URL");
+		if (!config.envVar) missing.push("环境变量名");
+		if (missing.length > 0) {
 			setAdvancedOpen(true);
-			setFormError("请填写名称、Base URL 和环境变量名");
+			setFormError(`请填写${missing.join("、")}`);
 			return;
 		}
 		if (config.models.length === 0) {
@@ -225,7 +298,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
 			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onClose();
+				if (e.target === e.currentTarget) void handleDismiss();
 			}}
 		>
 			<div
@@ -260,7 +333,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 					</div>
 					<button
 						type="button"
-						onClick={onClose}
+						onClick={() => void handleDismiss()}
 						aria-label="关闭"
 						className="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
 					>
@@ -510,7 +583,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 				<div className="flex items-center justify-end gap-2 border-t border-neutral-800 px-4 py-3">
 					<button
 						type="button"
-						onClick={onClose}
+						onClick={() => void handleDismiss()}
 						className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
 					>
 						取消

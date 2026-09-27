@@ -191,6 +191,7 @@ export function DiffModal({
 					<button
 						type="button"
 						title="关闭 (Esc)"
+						aria-label="关闭 (Esc)"
 						onClick={onClose}
 						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
 					>
@@ -240,6 +241,7 @@ export function DiffModal({
 												}}
 												className="absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white shadow hover:bg-indigo-500 group-hover/row:flex"
 												title="为此行添加批注 (+)"
+												aria-label="为此行添加批注"
 											>
 												<Plus size={10} />
 											</button>
@@ -317,6 +319,7 @@ export function DiffModal({
 														}}
 														className="absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white shadow hover:bg-indigo-500 group-hover/left:flex"
 														title="为此行添加批注 (+)"
+														aria-label="为此行添加批注"
 													>
 														<Plus size={10} />
 													</button>
@@ -364,6 +367,7 @@ export function DiffModal({
 														}}
 														className="absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white shadow hover:bg-indigo-500 group-hover/right:flex"
 														title="为此行添加批注 (+)"
+														aria-label="为此行添加批注"
 													>
 														<Plus size={10} />
 													</button>

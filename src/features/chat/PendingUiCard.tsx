@@ -1,7 +1,7 @@
 /** [B] Inline pending-UI dialog cards (approval select/confirm/input/editor). */
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PendingUiRequest } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
@@ -38,6 +38,90 @@ export function PendingUiCard({
 	const [busy, setBusy] = useState(false);
 	const [hasPermanent, setHasPermanent] = useState(false);
 	const [validationError, setValidationError] = useState<string | null>(null);
+	const prevActiveElement = useRef<HTMLElement | null>(null);
+	const primaryApprovalBtnRef = useRef<HTMLButtonElement | null>(null);
+
+	const isApproval = /allow|approve|权限|允许/i.test(title);
+
+	useEffect(() => {
+		prevActiveElement.current = document.activeElement as HTMLElement | null;
+		if (isApproval || method === "confirm") {
+			primaryApprovalBtnRef.current?.focus();
+		}
+		return () => {
+			if (
+				prevActiveElement.current &&
+				typeof prevActiveElement.current.focus === "function"
+			) {
+				prevActiveElement.current.focus();
+			}
+		};
+	}, [isApproval, method]);
+
+	const isRequired =
+		request.required === true ||
+		(request.required !== false &&
+			request.allowEmpty !== true &&
+			/required|必填/i.test(`${title} ${message}`));
+
+	const handleApprovalApprove = () => {
+		if (busy) return;
+		if (method === "select") {
+			const approveOpt =
+				options.find((o) => /approve|允许|yes|allow/i.test(o)) ??
+				options[0] ??
+				"allow";
+			void respond({ value: approveOpt, confirmed: true });
+		} else {
+			void respond({ confirmed: true });
+		}
+	};
+
+	const handleApprovalReject = () => {
+		if (busy) return;
+		if (method === "select") {
+			const rejectOpt =
+				options.find((o) => /deny|reject|拒绝|no|cancel/i.test(o)) ??
+				options[options.length - 1] ??
+				"deny";
+			void respond({
+				value: rejectOpt,
+				confirmed: false,
+				cancelled: true,
+			});
+		} else {
+			void respond({ confirmed: false });
+		}
+	};
+
+	const submitText = () => {
+		if (busy) return;
+		if (isRequired && !text.trim()) {
+			setValidationError("输入内容不能为空");
+			return;
+		}
+		const defaultValue =
+			typeof request.default === "string"
+				? request.default
+				: typeof request.defaultValue === "string"
+					? request.defaultValue
+					: "";
+		const submittedValue = !text.trim() && defaultValue ? defaultValue : text;
+		void respond({ value: submittedValue });
+	};
+
+	const onCardKeyDown = (e: React.KeyboardEvent) => {
+		if (isComposing(e)) return;
+		if (isApproval) {
+			if (e.key === "y" || e.key === "Y") {
+				e.preventDefault();
+				handleApprovalApprove();
+			} else if (e.key === "n" || e.key === "N") {
+				e.preventDefault();
+				handleApprovalReject();
+			}
+		}
+	};
 
 	useEffect(() => {
 		let mounted = true;
@@ -67,11 +151,13 @@ export function PendingUiCard({
 		}
 	};
 
-	const isApproval = /allow|approve|权限|允许/i.test(title);
 	const btn =
 		"inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs disabled:opacity-50 transition-colors font-medium";
 	return (
-		<div className="my-2 rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-3 text-neutral-200 shadow-xl backdrop-blur-md">
+		<div
+			onKeyDown={onCardKeyDown}
+			className="my-2 rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-3 text-neutral-200 shadow-xl backdrop-blur-md"
+		>
 			{title && (
 				<div className="whitespace-pre-wrap text-[13px] font-medium text-neutral-100">
 					{title}
@@ -86,21 +172,13 @@ export function PendingUiCard({
 			{isApproval && (
 				<div className="mt-2.5 flex flex-wrap items-center gap-2">
 					<button
+						ref={primaryApprovalBtnRef}
+						autoFocus
 						type="button"
 						disabled={busy}
-						onClick={() => {
-							if (method === "select") {
-								const approveOpt =
-									options.find((o) => /approve|允许|yes|allow/i.test(o)) ??
-									options[0] ??
-									"allow";
-								void respond({ value: approveOpt, confirmed: true });
-							} else {
-								void respond({ confirmed: true });
-							}
-						}}
-						className={`${btn} bg-emerald-700 text-white hover:bg-emerald-600 focus:opacity-100`}
-						title="仅允许本次执行"
+						onClick={handleApprovalApprove}
+						className={`${btn} bg-emerald-700 text-white hover:bg-emerald-600 focus:opacity-100 focus:ring-2 focus:ring-emerald-400 focus:outline-none`}
+						title="仅允许本次执行 (快捷键: y 或 Enter)"
 					>
 						{busy && <Loader2 size={12} className="animate-spin" />}
 						仅本次
@@ -163,23 +241,9 @@ export function PendingUiCard({
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => {
-							if (method === "select") {
-								const rejectOpt =
-									options.find((o) => /deny|reject|拒绝|no|cancel/i.test(o)) ??
-									options[options.length - 1] ??
-									"deny";
-								void respond({
-									value: rejectOpt,
-									confirmed: false,
-									cancelled: true,
-								});
-							} else {
-								void respond({ confirmed: false });
-							}
-						}}
-						className={`${btn} bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white focus:opacity-100`}
-						title="拒绝本次执行"
+						onClick={handleApprovalReject}
+						className={`${btn} bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white focus:opacity-100 focus:outline-none`}
+						title="拒绝本次执行 (快捷键: n)"
 					>
 						拒绝
 					</button>
@@ -211,10 +275,12 @@ export function PendingUiCard({
 				<div className="mt-2 flex flex-col gap-2">
 					<div className="flex gap-2">
 						<button
+							ref={!isApproval ? primaryApprovalBtnRef : undefined}
+							autoFocus={!isApproval}
 							type="button"
 							disabled={busy}
 							onClick={() => respond({ confirmed: true })}
-							className={`${btn} bg-emerald-700 text-white hover:bg-emerald-600 focus:opacity-100`}
+							className={`${btn} bg-emerald-700 text-white hover:bg-emerald-600 focus:opacity-100 focus:ring-2 focus:ring-emerald-400 focus:outline-none`}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
 							确认
@@ -250,14 +316,18 @@ export function PendingUiCard({
 								((e.metaKey || e.ctrlKey) && e.key === "Enter")
 							) {
 								e.preventDefault();
-								if (!text.trim()) {
-									setValidationError("输入内容不能为空");
-									return;
-								}
-								void respond({ value: text });
+								submitText();
 							}
 						}}
-						placeholder={method === "editor" ? "请输入内容 (⌘+Enter 提交，Esc 取消)…" : "请输入内容 (Enter 提交，Esc 取消)…"}
+						placeholder={
+							typeof request.placeholder === "string" && request.placeholder
+								? request.placeholder
+								: method === "editor"
+									? "请输入内容 (⌘+Enter 提交，Esc 取消)…"
+									: isRequired
+										? "请输入内容 (必填，Enter 提交，Esc 取消)…"
+										: "请输入内容 (直接回车可跳过/默认，Esc 取消)…"
+						}
 						rows={method === "editor" ? 8 : 2}
 						className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 font-mono text-[12px] text-neutral-200 outline-none focus:border-indigo-500"
 					/>
@@ -270,13 +340,7 @@ export function PendingUiCard({
 						<button
 							type="button"
 							disabled={busy}
-							onClick={() => {
-								if (!text.trim()) {
-									setValidationError("输入内容不能为空");
-									return;
-								}
-								void respond({ value: text });
-							}}
+							onClick={submitText}
 							className={`${btn} bg-indigo-600 text-white hover:bg-indigo-500`}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}

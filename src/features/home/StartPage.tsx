@@ -13,7 +13,7 @@ import { ModelSelect } from "../../components/ModelSelect";
 import { createSession, sendFirstPrompt } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing, useHomeDir } from "../../lib/hooks";
-import { appPaths, listModels } from "../../lib/ipc";
+import { appPaths, deleteSession, listModels, rpcListLive } from "../../lib/ipc";
 import { type ModelOption, parseModels, toModelKey } from "../../lib/models";
 import { basename, shortPath } from "../../lib/paths";
 import { toast } from "../../lib/toast";
@@ -23,7 +23,9 @@ import { useSettings } from "../settings/store";
 
 const CUSTOM = "__custom";
 const CUSTOM_MODEL = "__custom_model";
-
+const isMac =
+	typeof navigator !== "undefined" &&
+	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
 export function StartPage() {
 	const workspaces = useSessions((s) => s.workspaces);
 	const selectSession = useUi((s) => s.selectSession);
@@ -73,10 +75,19 @@ export function StartPage() {
 						} catch {
 							/* ignore */
 						}
+						return;
 					}
 				}
+				setAvailableModels((prev) => {
+					if (prev.length === 0) {
+						toast.error("获取可用模型失败: 返回列表为空");
+					}
+					return prev;
+				});
 			})
-			.catch(() => {});
+			.catch((err) => {
+				toast.error(`获取可用模型失败: ${errMsg(err)}`);
+			});
 	}, []);
 
 	useEffect(() => {
@@ -144,6 +155,7 @@ export function StartPage() {
 		const targetPrompt = prompt.trim();
 		if (!cwd || !targetPrompt || busy) return;
 		setBusy(true);
+		let createdSessionId: string | null = null;
 		try {
 			const { sessionId, stub } = await createSession({
 				cwd,
@@ -151,11 +163,38 @@ export function StartPage() {
 				approvalMode: null,
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
 			});
+			createdSessionId = sessionId;
 			useSessions.getState().upsert([stub]);
-			await sendFirstPrompt(sessionId, targetPrompt);
+			try {
+				await sendFirstPrompt(sessionId, targetPrompt);
+			} catch (promptErr) {
+				let isLive = false;
+				try {
+					const liveList = await rpcListLive();
+					isLive = liveList.some((s) => s.sessionId === sessionId);
+				} catch {
+					isLive = false;
+				}
+
+				if (isLive) {
+					selectSession(sessionId);
+					setPrompt("");
+					toast.error(`会话已创建，但发送第一条消息失败: ${errMsg(promptErr)}`);
+					return;
+				}
+
+				useSessions.getState().remove([sessionId]);
+				await deleteSession(sessionId).catch(() => {});
+				toast.error(`创建会话失败: ${errMsg(promptErr)}`);
+				return;
+			}
 			selectSession(sessionId);
 			setPrompt("");
 		} catch (e) {
+			if (createdSessionId) {
+				useSessions.getState().remove([createdSessionId]);
+				await deleteSession(createdSessionId).catch(() => {});
+			}
 			toast.error(errMsg(e));
 		} finally {
 			setBusy(false);
@@ -180,13 +219,13 @@ export function StartPage() {
 						onChange={(e) => setPrompt(e.target.value)}
 						onKeyDown={(e) => {
 							if (isComposing(e)) return;
-							if (e.key === "Enter" && !e.shiftKey) {
+							if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
 								e.preventDefault();
 								void submit();
 							}
 						}}
 						aria-label="任务内容"
-						placeholder="输入任务或需求"
+						placeholder={`输入任务或需求（按 ${isMac ? "Cmd+Enter" : "Ctrl+Enter"} 发送）`}
 						className="w-full resize-none bg-transparent px-1 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
 					/>
 
@@ -312,7 +351,13 @@ export function StartPage() {
 						type="button"
 						onClick={() => void submit()}
 						disabled={!canSubmit}
-						title={cwd ? "开始会话" : "请先选择工作目录"}
+						title={
+							cwd
+								? busy
+									? "创建中…"
+									: `开始会话 (${isMac ? "Cmd+Enter" : "Ctrl+Enter"})`
+								: "请先选择工作目录"
+						}
 						aria-label="开始会话"
 						className={clsx(
 							"ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors",

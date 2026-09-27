@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Settings } from "../../lib/contracts";
 import * as ipc from "../../lib/ipc";
-import { DEFAULT_SETTINGS, useSettings } from "./store";
+import { _resetSettingsStore, DEFAULT_SETTINGS, useSettings } from "./store";
 
 const mockSettings: Settings = {
 	...DEFAULT_SETTINGS,
@@ -32,6 +32,34 @@ describe("settings store", () => {
 		expect(current?.systemDetection).toBe(false);
 		expect(current?.supervisorEnabled).toBe(false);
 		expect(useSettings.getState().error).toContain("Disk full");
+
+		saveSpy.mockRestore();
+	});
+
+	it("rolls back only the failed update when A fails and B succeeds", async () => {
+		_resetSettingsStore();
+		useSettings.setState({ settings: { ...mockSettings }, error: null });
+
+		let callCount = 0;
+		const saveSpy = vi.spyOn(ipc, "saveSettings").mockImplementation(async (target) => {
+			callCount++;
+			if (callCount === 1) {
+				throw new Error("Update A failed");
+			}
+			return { ...target };
+		});
+
+		// Call update A and update B concurrently
+		const p1 = useSettings.getState().update({ systemDetection: false });
+		const p2 = useSettings.getState().update({ supervisorEnabled: true });
+
+		await expect(p1).rejects.toThrow("Update A failed");
+		await expect(p2).resolves.toBeUndefined();
+
+		const current = useSettings.getState().settings;
+		// A should have rolled back to initial (true), B should remain applied (true)
+		expect(current?.systemDetection).toBe(true);
+		expect(current?.supervisorEnabled).toBe(true);
 
 		saveSpy.mockRestore();
 	});
