@@ -304,6 +304,11 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `session_usage(session_id) -> UsageSummary`
 - `rescan_sessions()`
 
+**A — catalog (added):**
+- `session_export_html(session_id) -> String` — runs `omp --export <file>`, returns the produced HTML path
+- `quick_ask(prompt: String) -> String` — one-shot `omp -p --no-tools --no-session` (supervisor/smol model)
+
+
 **B — rpc:**
 - `rpc_start(opts: StartOpts) -> LiveSessionInfo`
 - `rpc_ensure_live(session_id) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions)
@@ -311,6 +316,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `rpc_ui_respond(session_id, response: Value)` — writes an `extension_ui_response`, emits `UiResponded`
 - `rpc_pending_ui(session_id) -> Vec<PendingUiRequest>` — outstanding dialog requests (select/confirm/input/editor)
 - `rpc_stop(session_id)` — close stdin, wait ≤5s, then kill
+- `rpc_restart(session_id) -> LiveSessionInfo` — stop + `--resume` (the `/fresh` equivalent; resets provider/stream state, keeps history)
+
 - `rpc_list_live() -> Vec<LiveSessionInfo>`
 - `takeover_external(session_id) -> LiveSessionInfo` — SIGTERM external pid, wait ≤5s (SIGKILL after), then `rpc_start` with resume
 - `create_side_chat(parent_session_id, selection: Option<String>, question: String) -> LiveSessionInfo` — §B spec
@@ -320,6 +327,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `git_create_worktree(repo, name) -> WorktreeInfo`, `git_list_worktrees(repo) -> Vec<WorktreeInfo>`, `git_remove_worktree(repo, path, delete_branch: bool, force: bool)`
 - `git_scan_orphans() -> Vec<WorktreeInfo>` — `.worktrees/*` in registered workspaces with no session whose cwd is inside
 - `git_reset_to(repo, sha, mode: "soft"|"hard")`
+- `git_commit_suggest(cwd) -> String` — one-shot AI commit message from staged/unstaged diff (≤8k chars)
+- `git_commit(cwd, message, stage_all: Option<bool>) -> String` — real `git commit` (argv, no shell)
 - `tm_run(repo, sha, command: Option<String>) -> TmRun`, `tm_list() -> Vec<TmRun>`, `tm_stop(run_id, remove_worktree: bool)`
 - `services_list(all: bool) -> Vec<ServiceInfo>`, `services_stop(pid)`
 - `read_text_file(path) -> String`, `write_text_file(path, content)` (for the md editor; reject paths > 5 MB)
@@ -336,7 +345,11 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `mobile_start() -> MobileStatus`, `mobile_stop()`, `mobile_status() -> MobileStatus`, `mobile_create_pairing() -> PairingInfo`, `mobile_revoke_all()`
 - `tunnel_start() -> MobileStatus`, `tunnel_stop()`
 - `term_open(cwd, command: Vec<String>, cols: u16, rows: u16) -> String /* termId */`, `term_write(term_id, data: String /* utf8 */)`, `term_resize(term_id, cols, rows)`, `term_close(term_id)`
-- `term_open_session(session_id, cols, rows) -> String` — stops the RPC process for that session if live, then runs `omp --resume <file> -e <extension_path>` in a PTY
+- `term_open_session(session_id, cols, rows) -> String` — stops the RPC process for that session if live, then runs `omp --resume <file> -e <extension_path> [-e <providers ext>]` in a PTY (provider keys + `OMP_WORKSPACE_PROVIDERS` via extra env)
+
+**Providers (added module — §2 ownership):**
+- `provider_list() -> Vec<ProviderConfig>`, `provider_save(config, api_key: Option<String>) -> ProviderConfig`, `provider_delete(id)`, `provider_test(id) -> ProviderTestResult`, `provider_import_env(text) -> Vec<ProviderConfig>`, `provider_export_env_text(ids: Option<Vec<String>>) -> String`
+- Provider secrets: AES-256-GCM vault (`providers/vault.rs`, master key in macOS Keychain via security-framework). `env_pairs()` injects decrypted keys only; `OMP_WORKSPACE_PROVIDERS` metadata rides only into omp spawns (rpc/process, catalog list_models, todos/omp run_print, sidechat classify_route, term_open_session). Private extension `~/.omp-workspace/extension/omp-workspace-providers.ts` registers `ompws-<slug>` providers + models with OMP at spawn — never edits `~/.omp/agent/models.yml`.
 - `install_status_extension_globally() -> String` — copies the extension into `~/.omp/agent/extensions/` (opt-in button)
 
 ## 8. Status extension file format
