@@ -2,21 +2,28 @@
 //! Discovers providers and models configured across `models.yml`, `models-snippet.yml`,
 //! `config.yml`, and `agent.db` under `~/.omp/agent/`.
 //!
-//! Zero-exposure invariant: Secret key values are NEVER read, stored, printed,
-//! or returned. Only presence (`has_api_key`) or env var reference (`api_key_env`)
-//! is recorded.
+//! Zero-exposure invariant: Secret key values are NEVER exposed to the frontend,
+//! printed in logs, or serialized into command outputs. In-memory `api_key_value`
+//! is used strictly and exclusively for programmatic batch import into the encrypted vault
+//! (`vault::write_entry`), and `RawParsedProvider` does not derive `Serialize`.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::contracts::OmpProviderInfo;
 
+/// Raw parsed provider information from YAML files.
+///
+/// Zero-exposure invariant: Secret key values are NEVER exposed to the frontend
+/// and this struct MUST NOT derive `Serialize`. `api_key_value` is kept in memory
+/// exclusively for one-time programmatic import into the encrypted vault (`vault::write_entry`).
 #[derive(Debug, Default, Clone)]
 pub struct RawParsedProvider {
     pub id: String,
     pub base_url: Option<String>,
     pub api: Option<String>,
     pub has_api_key: bool,
+    pub api_key_value: Option<String>,
     pub api_key_env: Option<String>,
     pub model_ids: Vec<String>,
     pub has_provider_markers: bool,
@@ -190,7 +197,7 @@ pub fn parse_yaml_providers(text: &str, require_markers: bool) -> Vec<RawParsedP
             if let Some((before_comment, _)) = val.split_once('#') {
                 val = before_comment.trim();
             }
-            let val = val.trim_matches(|c| c == '"' || c == '\'');
+            let val = val.trim_matches(|c| c == '"' || c == '\'').trim();
 
             if key.eq_ignore_ascii_case("baseUrl") || key == "base_url" {
                 prov.has_provider_markers = true;
@@ -214,9 +221,10 @@ pub fn parse_yaml_providers(text: &str, require_markers: bool) -> Vec<RawParsedP
                         prov.api_key_env = Some(env_name.to_string());
                     }
                 } else if !val.is_empty() {
-                    // Non-empty literal secret key: mark presence ONLY.
-                    // NEVER store or copy secret value!
+                    // Non-empty literal secret key: mark presence and retain in-memory value
+                    // exclusively for programmatic vault import (NEVER serialized to frontend).
                     prov.has_api_key = true;
+                    prov.api_key_value = Some(val.to_string());
                 }
             } else if key == "models" {
                 prov.has_provider_markers = true;
@@ -425,7 +433,7 @@ pub fn merge_scanned(
     result
 }
 
-fn home_agent_dir() -> PathBuf {
+pub fn home_agent_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/"))
         .join(".omp")
@@ -447,6 +455,114 @@ pub fn scan() -> Vec<OmpProviderInfo> {
         config_yml.as_deref(),
         db_credentials,
     )
+}
+
+/// Merge scanned YAML provider definitions for vault import.
+///
+/// Precedence order: models.yml > models-snippet.yml > config.yml.
+/// Later sources do not clobber a provider that already has key, baseUrl, or api.
+pub fn scan_for_import_from_sources(
+    models_yaml: Option<&str>,
+    snippet_yaml: Option<&str>,
+    config_yaml: Option<&str>,
+) -> HashMap<String, RawParsedProvider> {
+    let mut map: HashMap<String, RawParsedProvider> = HashMap::new();
+
+    let mut merge_provider = |p: RawParsedProvider| {
+        let entry = map
+            .entry(p.id.clone())
+            .or_insert_with(|| RawParsedProvider {
+                id: p.id.clone(),
+                ..Default::default()
+            });
+
+        if entry.base_url.is_none() && p.base_url.is_some() {
+            entry.base_url = p.base_url;
+        }
+        if entry.api.is_none() && p.api.is_some() {
+            entry.api = p.api;
+        }
+        if entry.api_key_value.is_none() && p.api_key_value.is_some() {
+            entry.api_key_value = p.api_key_value;
+        }
+        if !entry.has_api_key && p.has_api_key {
+            entry.has_api_key = true;
+        }
+        if entry.api_key_env.is_none() && p.api_key_env.is_some() {
+            entry.api_key_env = p.api_key_env;
+        }
+        for m in p.model_ids {
+            if !entry.model_ids.contains(&m) {
+                entry.model_ids.push(m);
+            }
+        }
+        if p.has_provider_markers {
+            entry.has_provider_markers = true;
+        }
+    };
+
+    if let Some(text) = models_yaml {
+        for p in parse_yaml_providers(text, false) {
+            merge_provider(p);
+        }
+    }
+    if let Some(text) = snippet_yaml {
+        for p in parse_yaml_providers(text, false) {
+            merge_provider(p);
+        }
+    }
+    if let Some(text) = config_yaml {
+        for p in parse_yaml_providers(text, true) {
+            merge_provider(p);
+        }
+    }
+
+    map
+}
+
+/// Scan host's OMP global YAML configs (`~/.omp/agent/`) for import into the vault.
+pub fn scan_for_import() -> HashMap<String, RawParsedProvider> {
+    let agent_dir = home_agent_dir();
+    let models_yml = std::fs::read_to_string(agent_dir.join("models.yml")).ok();
+    let snippet_yml = std::fs::read_to_string(agent_dir.join("models-snippet.yml")).ok();
+    let config_yml = std::fs::read_to_string(agent_dir.join("config.yml")).ok();
+    scan_for_import_from_sources(
+        models_yml.as_deref(),
+        snippet_yml.as_deref(),
+        config_yml.as_deref(),
+    )
+}
+
+/// Query `agent.db` for authenticated API key for the specified provider.
+///
+/// Zero-exposure invariant: Secret data from `auth_credentials` is parsed in memory
+/// and only the specific API key string value is extracted. The raw record data is
+/// NEVER returned or exposed.
+pub fn read_agent_api_key(db_path: &Path, provider: &str) -> Option<String> {
+    let conn =
+        rusqlite::Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT data FROM auth_credentials WHERE provider=?1 AND credential_type='api_key' AND disabled_cause IS NULL ORDER BY updated_at DESC LIMIT 1",
+        )
+        .ok()?;
+
+    let data: String = stmt.query_row([provider], |row| row.get(0)).ok()?;
+    let val: serde_json::Value = serde_json::from_str(&data).ok()?;
+    let obj = val.as_object()?;
+
+    for candidate in &["apiKey", "api_key", "key", "accessToken", "access"] {
+        if let Some(v) = obj.get(*candidate).and_then(|v| v.as_str()) {
+            let trimmed = v.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -482,6 +598,10 @@ providers:
         assert_eq!(p1.base_url.as_deref(), Some("https://api.example.com/v1"));
         assert_eq!(p1.api.as_deref(), Some("openai-completions"));
         assert!(p1.has_api_key);
+        assert_eq!(
+            p1.api_key_value.as_deref(),
+            Some("sk-super-secret-key-1234567890")
+        );
         assert_eq!(p1.api_key_env, None);
         assert_eq!(
             p1.model_ids,
@@ -504,6 +624,7 @@ providers:
         assert_eq!(p2.id, "openrouter");
         assert_eq!(p2.api_key_env.as_deref(), Some("OPENROUTER_API_KEY"));
         assert!(!p2.has_api_key);
+        assert_eq!(p2.api_key_value, None);
     }
 
     #[test]
@@ -587,5 +708,164 @@ unrelated: false
             HashMap::new(),
         );
         assert!(merged2.is_empty());
+    }
+
+    #[test]
+    fn test_api_key_quote_stripping_and_in_memory_only() {
+        let yaml = r#"
+providers:
+  double-quoted:
+    baseUrl: https://api.double.com/v1
+    apiKey: "sk-double-quoted-key"
+  single-quoted:
+    baseUrl: https://api.single.com/v1
+    apiKey: 'sk-single-quoted-key'
+  env-quoted:
+    apiKey: "$ENV_KEY_NAME"
+"#;
+        let list = parse_yaml_providers(yaml, false);
+        assert_eq!(list.len(), 3);
+
+        assert_eq!(list[0].id, "double-quoted");
+        assert!(list[0].has_api_key);
+        assert_eq!(
+            list[0].api_key_value.as_deref(),
+            Some("sk-double-quoted-key")
+        );
+        assert_eq!(list[0].api_key_env, None);
+
+        assert_eq!(list[1].id, "single-quoted");
+        assert!(list[1].has_api_key);
+        assert_eq!(
+            list[1].api_key_value.as_deref(),
+            Some("sk-single-quoted-key")
+        );
+        assert_eq!(list[1].api_key_env, None);
+
+        assert_eq!(list[2].id, "env-quoted");
+        assert!(!list[2].has_api_key);
+        assert_eq!(list[2].api_key_value, None);
+        assert_eq!(list[2].api_key_env.as_deref(), Some("ENV_KEY_NAME"));
+    }
+
+    #[test]
+    fn test_scan_for_import_sources_precedence() {
+        let models_yaml = r#"
+providers:
+  p-shared:
+    baseUrl: https://models.example.com/v1
+    apiKey: sk-models-key
+    api: openai-completions
+  p-models-only:
+    baseUrl: https://models-only.example.com
+    apiKey: sk-models-only
+"#;
+        let snippet_yaml = r#"
+providers:
+  p-shared:
+    baseUrl: https://snippet-overridden.com
+    apiKey: sk-snippet-key
+  p-snippet-only:
+    baseUrl: https://snippet.example.com
+    apiKey: sk-snippet-only
+"#;
+        let config_yaml = r#"
+providers:
+  p-shared:
+    baseUrl: https://config-overridden.com
+    apiKey: sk-config-key
+  p-config-only:
+    baseUrl: https://config.example.com
+    apiKey: sk-config-only
+"#;
+
+        let imported =
+            scan_for_import_from_sources(Some(models_yaml), Some(snippet_yaml), Some(config_yaml));
+
+        // p-shared should keep models.yml values (first-file priority)
+        let shared = imported.get("p-shared").unwrap();
+        assert_eq!(
+            shared.base_url.as_deref(),
+            Some("https://models.example.com/v1")
+        );
+        assert_eq!(shared.api_key_value.as_deref(), Some("sk-models-key"));
+        assert_eq!(shared.api.as_deref(), Some("openai-completions"));
+
+        // Other providers are present
+        assert!(imported.contains_key("p-models-only"));
+        assert!(imported.contains_key("p-snippet-only"));
+        assert!(imported.contains_key("p-config-only"));
+    }
+
+    #[test]
+    fn test_read_agent_api_key() {
+        let temp_dir = std::env::temp_dir();
+        let db_name = format!("test_agent_{}.db", uuid::Uuid::new_v4());
+        let db_path = temp_dir.join(db_name);
+
+        // 1. Create table with real schema
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            conn.execute(
+                "CREATE TABLE auth_credentials (
+                    provider TEXT NOT NULL,
+                    credential_type TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    disabled_cause TEXT,
+                    identity_key TEXT,
+                    created_at TEXT,
+                    updated_at TEXT
+                )",
+                [],
+            )
+            .unwrap();
+
+            // Insert valid api_key row
+            conn.execute(
+                "INSERT INTO auth_credentials (provider, credential_type, data, disabled_cause, identity_key, created_at, updated_at)
+                 VALUES ('test-provider', 'api_key', '{\"apiKey\":\"sk-test\"}', NULL, 'ident-1', '2026-01-01', '2026-01-02')",
+                [],
+            )
+            .unwrap();
+
+            // Insert oauth row for another provider
+            conn.execute(
+                "INSERT INTO auth_credentials (provider, credential_type, data, disabled_cause, identity_key, created_at, updated_at)
+                 VALUES ('oauth-provider', 'oauth', '{\"accessToken\":\"oauth-token-123\"}', NULL, 'ident-2', '2026-01-01', '2026-01-02')",
+                [],
+            )
+            .unwrap();
+
+            // Insert disabled api_key row
+            conn.execute(
+                "INSERT INTO auth_credentials (provider, credential_type, data, disabled_cause, identity_key, created_at, updated_at)
+                 VALUES ('disabled-provider', 'api_key', '{\"apiKey\":\"sk-disabled\"}', 'revoked', 'ident-3', '2026-01-01', '2026-01-02')",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Test valid api_key returns "sk-test"
+        let key = read_agent_api_key(&db_path, "test-provider");
+        assert_eq!(key.as_deref(), Some("sk-test"));
+
+        // Test oauth row returns None
+        let oauth_key = read_agent_api_key(&db_path, "oauth-provider");
+        assert_eq!(oauth_key, None);
+
+        // Test disabled row returns None
+        let disabled_key = read_agent_api_key(&db_path, "disabled-provider");
+        assert_eq!(disabled_key, None);
+
+        // Test non-existent provider returns None
+        let none_key = read_agent_api_key(&db_path, "non-existent");
+        assert_eq!(none_key, None);
+
+        // Test missing db file returns None
+        let missing_path = temp_dir.join(format!("missing_{}.db", uuid::Uuid::new_v4()));
+        assert_eq!(read_agent_api_key(&missing_path, "test-provider"), None);
+
+        // Clean up temp db file
+        let _ = std::fs::remove_file(&db_path);
     }
 }

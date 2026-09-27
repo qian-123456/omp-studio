@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type {
 	OmpProviderInfo,
+	OmpImportResult,
 	ProviderConfig,
 	ProviderTestResult,
 } from "../../lib/contracts";
@@ -10,6 +11,7 @@ import {
 	providerDelete,
 	providerExportEnvText,
 	ompProvidersList,
+	providerImportOmp,
 	providerList,
 	providerReorder,
 	providerSave,
@@ -28,6 +30,7 @@ interface ProvidersState {
 	ompProviders: OmpProviderInfo[];
 	ompLoaded: boolean;
 	ompError: string | null;
+	importingOmp: boolean;
 	/** Per-provider inline probe state (ProviderPanel rows). */
 	tests: Record<string, TestStatus>;
 	load(): Promise<void>;
@@ -39,6 +42,7 @@ interface ProvidersState {
 	reorder(ids: string[]): Promise<void>;
 	runTest(id: string): Promise<void>;
 	exportEnvText(ids?: string[]): Promise<string>;
+	importOmp(ids: string[]): Promise<OmpImportResult[]>;
 }
 
 export const useProviders = create<ProvidersState>((set, get) => ({
@@ -49,6 +53,7 @@ export const useProviders = create<ProvidersState>((set, get) => ({
 	ompLoaded: false,
 	ompError: null,
 	tests: {},
+	importingOmp: false,
 
 	loadOmp: async () => {
 		try {
@@ -134,4 +139,15 @@ export const useProviders = create<ProvidersState>((set, get) => ({
 	},
 
 	exportEnvText: (ids) => providerExportEnvText(ids ?? null),
+
+	importOmp: async (ids: string[]) => {
+		set({ importingOmp: true });
+		try {
+			const results = await providerImportOmp(ids);
+			await get().load();
+			return results;
+		} finally {
+			set({ importingOmp: false });
+		}
+	},
 }));

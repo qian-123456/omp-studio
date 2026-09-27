@@ -4,6 +4,7 @@ import {
 	CircleCheck,
 	CircleX,
 	ClipboardCopy,
+	Download,
 	FileInput,
 	Loader2,
 	LogIn,
@@ -12,10 +13,14 @@ import {
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import type { OmpProviderInfo, ProviderConfig } from "../../lib/contracts";
+import type {
+	OmpImportResult,
+	OmpProviderInfo,
+	ProviderConfig,
+} from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
-import { getOmpAuthBadge } from "./ompBadge";
+import { canImportOmpProvider, getOmpAuthBadge } from "./ompBadge";
 import { OauthLoginDialog } from "./OauthLoginDialog";
 import { API_LABELS, presetById } from "./presets";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
@@ -33,6 +38,8 @@ export function ProviderPanel() {
 	const ompError = useProviders((s) => s.ompError);
 	const loadOmp = useProviders((s) => s.loadOmp);
 	const exportEnvText = useProviders((s) => s.exportEnvText);
+	const importingOmp = useProviders((s) => s.importingOmp);
+	const importOmp = useProviders((s) => s.importOmp);
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
 	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
 
@@ -41,6 +48,21 @@ export function ProviderPanel() {
 		[providers],
 	);
 
+
+	const eligibleOmpIds = useMemo(
+		() => ompProviders.filter(canImportOmpProvider).map((p) => p.id),
+		[ompProviders],
+	);
+
+	const handleImportAll = async () => {
+		if (eligibleOmpIds.length === 0 || importingOmp) return;
+		try {
+			const results = await importOmp(eligibleOmpIds);
+			notifyImportResults(results);
+		} catch (err) {
+			toast.error(`导入失败: ${errMsg(err)}`);
+		}
+	};
 	useEffect(() => {
 		void load();
 	}, [load]);
@@ -72,15 +94,36 @@ export function ProviderPanel() {
 							来自 ~/.omp/agent/models.yml 与 agent.db，对全部会话生效
 						</p>
 					</div>
-					<button
-						type="button"
-						onClick={() => void loadOmp()}
-						title="刷新 OMP 供应商"
-						aria-label="刷新 OMP 供应商"
-						className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
-					>
-						<RefreshCw className="h-3.5 w-3.5" />
-					</button>
+					<div className="flex shrink-0 items-center gap-2">
+						<button
+							type="button"
+							onClick={() => void handleImportAll()}
+							disabled={importingOmp || eligibleOmpIds.length === 0}
+							title={
+								eligibleOmpIds.length === 0
+									? "没有可导入的 API 密钥"
+									: "一键导入全部 OMP 供应商密钥"
+							}
+							aria-label="一键导入"
+							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+						>
+							{importingOmp ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							) : (
+								<Download className="h-3.5 w-3.5" />
+							)}
+							<span>一键导入</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => void loadOmp()}
+							title="刷新 OMP 供应商"
+							aria-label="刷新 OMP 供应商"
+							className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
+						>
+							<RefreshCw className="h-3.5 w-3.5" />
+						</button>
+					</div>
 				</div>
 
 				{ompError && (
@@ -235,6 +278,26 @@ export function ProviderPanel() {
 	);
 }
 
+function notifyImportResults(results: OmpImportResult[]) {
+	if (results.length === 0) return;
+	const succeeded = results.filter((r) => r.ok);
+	const failed = results.filter((r) => !r.ok);
+
+	if (succeeded.length > 0) {
+		toast.success(`成功导入 ${succeeded.length} 个`);
+	}
+
+	if (failed.length > 0) {
+		const reasons = failed
+			.slice(0, 3)
+			.map((r) => `${r.id}: ${r.error || "导入失败"}`);
+		if (failed.length > 3) {
+			reasons.push(`还有 ${failed.length - 3} 个供应商导入失败`);
+		}
+		toast.error(reasons.join("\n"));
+	}
+}
+
 function OmpProviderRow({
 	item,
 	isManagedInWorkbench,
@@ -242,7 +305,29 @@ function OmpProviderRow({
 	item: OmpProviderInfo;
 	isManagedInWorkbench: boolean;
 }) {
+	const importOmp = useProviders((s) => s.importOmp);
+	const importingOmp = useProviders((s) => s.importingOmp);
+	const [rowImporting, setRowImporting] = useState(false);
 	const authBadge = getOmpAuthBadge(item);
+	const canImport = canImportOmpProvider(item);
+
+	const handleRowImport = async () => {
+		if (rowImporting || importingOmp) return;
+		setRowImporting(true);
+		try {
+			const results = await importOmp([item.id]);
+			notifyImportResults(results);
+		} catch (err) {
+			toast.error(`导入失败: ${errMsg(err)}`);
+		} finally {
+			setRowImporting(false);
+		}
+	};
+
+	const notImportableTitle =
+		authBadge.badgeType === "oauth" || item.credentialTypes?.includes("oauth")
+			? "OAuth 凭据由 OMP 托管，无需导入"
+			: "没有可导入的 API 密钥";
 	const displayedModels = item.modelIds.slice(0, 6);
 	const remainingModelsCount = item.modelIds.length - displayedModels.length;
 
@@ -291,6 +376,43 @@ function OmpProviderRow({
 						>
 							工作台已托管
 						</span>
+					)}
+
+					{!canImport ? (
+						<button
+							type="button"
+							disabled
+							title={notImportableTitle}
+							className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium text-neutral-500 bg-neutral-800/40 cursor-not-allowed opacity-50"
+						>
+							导入
+						</button>
+					) : isManagedInWorkbench ? (
+						<button
+							type="button"
+							onClick={() => void handleRowImport()}
+							disabled={importingOmp || rowImporting}
+							title="重新导入密钥以更新工作台配置"
+							className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 hover:text-neutral-200 hover:underline active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+						>
+							{rowImporting && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+							<span>重新导入</span>
+						</button>
+					) : (
+						<button
+							type="button"
+							onClick={() => void handleRowImport()}
+							disabled={importingOmp || rowImporting}
+							title="导入 API 密钥到工作台私有供应商"
+							className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+						>
+							{rowImporting ? (
+								<Loader2 className="h-3 w-3 animate-spin" />
+							) : (
+								<Download className="h-3 w-3" />
+							)}
+							<span>导入</span>
+						</button>
 					)}
 				</div>
 			</div>

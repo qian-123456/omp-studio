@@ -20,6 +20,7 @@ import type {
 	OauthLoginStatus,
 	OmpConfigListResult,
 	OmpProviderInfo,
+	OmpImportResult,
 	PairingInfo,
 	PathCheck,
 	PendingUiRequest,
@@ -315,6 +316,9 @@ export const providerExportEnvText = (ids?: string[] | null) =>
 
 export const ompProvidersList = () =>
 	invoke<OmpProviderInfo[]>("omp_providers_list");
+
+export const providerImportOmp = (ids: string[]) =>
+	invoke<OmpImportResult[]>("provider_import_omp", { ids });
 
 export const oauthLoginProviders = () =>
 	invoke<OauthLoginProvider[]>("oauth_login_providers");

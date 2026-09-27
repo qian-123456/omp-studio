@@ -506,3 +506,10 @@ export interface OauthLoginStatus {
 	error?: string | null;
 	[key: string]: unknown;
 }
+
+/** Result of batch-importing OMP provider keys into workbench vault. */
+export interface OmpImportResult {
+	id: string;
+	ok: boolean;
+	error: string | null;
+}

@@ -55,3 +55,18 @@ export function getOmpAuthBadge(
 		tooltip: "未检测到 API 凭据",
 	};
 }
+
+/**
+ * Determine if an OMP provider has importable API key credentials.
+ * OAuth-only providers are managed by OMP and cannot be imported into workbench keys.env.
+ */
+export function canImportOmpProvider(
+	item: Pick<OmpProviderInfo, "hasApiKey" | "apiKeyEnv" | "credentialTypes">,
+): boolean {
+	const creds = item.credentialTypes ?? [];
+	return (
+		Boolean(item.hasApiKey) ||
+		item.apiKeyEnv != null ||
+		creds.includes("api_key")
+	);
+}

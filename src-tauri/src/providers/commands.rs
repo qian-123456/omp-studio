@@ -5,9 +5,10 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-use crate::contracts::{ProviderApi, ProviderConfig, ProviderTestResult};
+use crate::contracts::{OmpImportResult, ProviderApi, ProviderConfig, ProviderTestResult};
 
-use super::{store, vault};
+use super::omp_config::{self, RawParsedProvider};
+use super::{presets, store, vault};
 
 fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -523,6 +524,248 @@ pub async fn omp_providers_list() -> Result<Vec<crate::contracts::OmpProviderInf
     Ok(super::omp_config::scan())
 }
 
+fn normalize_identifier(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+pub fn match_preset(provider_id: &str) -> Option<&'static presets::ProviderPreset> {
+    if let Some(p) = presets::PRESETS.iter().find(|p| p.id == provider_id) {
+        return Some(p);
+    }
+    let norm_id = normalize_identifier(provider_id);
+    if norm_id.is_empty() {
+        return None;
+    }
+    presets::PRESETS
+        .iter()
+        .find(|p| normalize_identifier(p.id) == norm_id)
+}
+
+pub fn map_provider_api(api_str: Option<&str>, default_api: ProviderApi) -> ProviderApi {
+    match api_str.map(str::trim) {
+        Some(s)
+            if s.eq_ignore_ascii_case("openai-completions")
+                || s.eq_ignore_ascii_case("openai_completions") =>
+        {
+            ProviderApi::OpenaiCompletions
+        }
+        Some(s)
+            if s.eq_ignore_ascii_case("openai-responses")
+                || s.eq_ignore_ascii_case("openai_responses") =>
+        {
+            ProviderApi::OpenaiCompletions
+        }
+        Some(s)
+            if s.eq_ignore_ascii_case("anthropic")
+                || s.eq_ignore_ascii_case("anthropic-messages")
+                || s.eq_ignore_ascii_case("anthropic_messages") =>
+        {
+            ProviderApi::Anthropic
+        }
+        Some(s)
+            if s.eq_ignore_ascii_case("gemini")
+                || s.eq_ignore_ascii_case("google-generative-ai")
+                || s.eq_ignore_ascii_case("google_generative_ai") =>
+        {
+            ProviderApi::Gemini
+        }
+        Some(s) if s.eq_ignore_ascii_case("ollama") => ProviderApi::Ollama,
+        Some(_) => ProviderApi::OpenaiCompletions,
+        None => default_api,
+    }
+}
+
+pub fn generate_import_env_var(slug: &str, api_key_env: Option<&str>) -> String {
+    if let Some(var) = api_key_env {
+        let trimmed = var.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let sanitized: String = slug
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("OMPWS_{sanitized}_API_KEY")
+}
+
+pub fn build_import_config(
+    id: &str,
+    raw: Option<&RawParsedProvider>,
+) -> Result<ProviderConfig, String> {
+    let preset = match_preset(id);
+    let name = preset
+        .map(|p| p.name.to_string())
+        .unwrap_or_else(|| id.to_string());
+    let preset_id = preset.map(|p| p.id.to_string());
+
+    let base_url = raw
+        .and_then(|r| r.base_url.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| preset.map(|p| p.base_url.to_string()))
+        .ok_or_else(|| "缺少 baseUrl，请手动添加".to_string())?;
+
+    let default_api = preset
+        .map(|p| p.api)
+        .unwrap_or(ProviderApi::OpenaiCompletions);
+    let api = map_provider_api(raw.and_then(|r| r.api.as_deref()), default_api);
+
+    let api_key_env = raw.and_then(|r| r.api_key_env.as_deref());
+    let env_var = generate_import_env_var(id, api_key_env);
+
+    let models = raw.map(|r| r.model_ids.clone()).unwrap_or_default();
+
+    Ok(ProviderConfig {
+        id: String::new(),
+        name,
+        slug: id.to_string(),
+        preset_id,
+        base_url,
+        api,
+        env_var,
+        models,
+        default_model: None,
+        enabled: true,
+        sort: 0,
+        has_key: false,
+        key_hint: None,
+        notes: Some("从 OMP 配置导入".to_string()),
+        created_at: String::new(),
+        updated_at: String::new(),
+    })
+}
+
+/// Batch-import API keys and provider configurations from OMP global configs.
+#[tauri::command]
+pub async fn provider_import_omp(ids: Vec<String>) -> Result<Vec<OmpImportResult>, String> {
+    let scanned = omp_config::scan_for_import();
+    let agent_db_path = omp_config::home_agent_dir().join("agent.db");
+
+    let mut results = Vec::with_capacity(ids.len());
+
+    for id in ids {
+        let raw = scanned.get(&id);
+        let mut config = match build_import_config(&id, raw) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                results.push(OmpImportResult {
+                    id,
+                    ok: false,
+                    error: Some(e),
+                });
+                continue;
+            }
+        };
+
+        // Reuse existing provider id if slug matches, making re-import idempotent
+        let existing = store::load();
+        if let Some(prev) = existing
+            .iter()
+            .find(|p| vault::line_key(&p.slug) == vault::line_key(&config.slug))
+        {
+            config.id = prev.id.clone();
+        }
+
+        // Key resolution order:
+        // 1. yaml literal api_key_value
+        // 2. env var resolution std::env::var(api_key_env)
+        // 3. agent.db api_key data
+        // 4. none
+        let mut resolved_key: Option<String> = None;
+        let mut unresolvable_env_var: Option<String> = None;
+
+        if let Some(key) = raw
+            .and_then(|r| r.api_key_value.as_deref())
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
+        {
+            resolved_key = Some(key.to_string());
+        } else if let Some(env_name) = raw
+            .and_then(|r| r.api_key_env.as_deref())
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+        {
+            match std::env::var(env_name) {
+                Ok(val) if !val.trim().is_empty() => {
+                    resolved_key = Some(val.trim().to_string());
+                }
+                _ => {
+                    unresolvable_env_var = Some(env_name.to_string());
+                }
+            }
+        }
+
+        if resolved_key.is_none() {
+            if let Some(db_key) = omp_config::read_agent_api_key(&agent_db_path, &id) {
+                let trimmed = db_key.trim();
+                if !trimmed.is_empty() {
+                    resolved_key = Some(trimmed.to_string());
+                    unresolvable_env_var = None;
+                }
+            }
+        }
+
+        match (resolved_key, unresolvable_env_var) {
+            (Some(key), _) => match provider_save(config, Some(key)).await {
+                Ok(_) => {
+                    results.push(OmpImportResult {
+                        id,
+                        ok: true,
+                        error: None,
+                    });
+                }
+                Err(err) => {
+                    results.push(OmpImportResult {
+                        id,
+                        ok: false,
+                        error: Some(err),
+                    });
+                }
+            },
+            (None, Some(var_name)) => match provider_save(config, None).await {
+                Ok(_) => {
+                    results.push(OmpImportResult {
+                        id,
+                        ok: true,
+                        error: Some(format!(
+                            "已导入元数据，但环境变量 {var_name} 当前无值，密钥未入库"
+                        )),
+                    });
+                }
+                Err(err) => {
+                    results.push(OmpImportResult {
+                        id,
+                        ok: false,
+                        error: Some(err),
+                    });
+                }
+            },
+            (None, None) => {
+                results.push(OmpImportResult {
+                    id,
+                    ok: false,
+                    error: Some(
+                        "该 provider 没有可导入的 API 密钥（OAuth 凭据由 OMP 托管）".to_string(),
+                    ),
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -732,5 +975,134 @@ mod tests {
 
         let c2 = config("Name", "slug", "http://8.8.8.8:8000/v1", "KEY");
         assert!(validate(&c2).unwrap_err().contains("HTTPS"));
+    }
+
+    #[test]
+    fn test_generate_import_env_var() {
+        assert_eq!(
+            generate_import_env_var("yiyuan-codex", None),
+            "OMPWS_YIYUAN_CODEX_API_KEY"
+        );
+        assert_eq!(
+            generate_import_env_var("deepseek", None),
+            "OMPWS_DEEPSEEK_API_KEY"
+        );
+        assert_eq!(
+            generate_import_env_var("my-prov", Some("CUSTOM_ENV_VAR")),
+            "CUSTOM_ENV_VAR"
+        );
+        assert_eq!(
+            generate_import_env_var("provider.with.dots-and_underscores", None),
+            "OMPWS_PROVIDER_WITH_DOTS_AND_UNDERSCORES_API_KEY"
+        );
+    }
+
+    #[test]
+    fn test_map_provider_api_table() {
+        assert_eq!(
+            map_provider_api(Some("openai-completions"), ProviderApi::Anthropic),
+            ProviderApi::OpenaiCompletions
+        );
+        assert_eq!(
+            map_provider_api(Some("openai-responses"), ProviderApi::Anthropic),
+            ProviderApi::OpenaiCompletions
+        );
+        assert_eq!(
+            map_provider_api(Some("anthropic"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Anthropic
+        );
+        assert_eq!(
+            map_provider_api(Some("anthropic-messages"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Anthropic
+        );
+        assert_eq!(
+            map_provider_api(Some("gemini"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Gemini
+        );
+        assert_eq!(
+            map_provider_api(Some("google-generative-ai"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Gemini
+        );
+        assert_eq!(
+            map_provider_api(Some("ollama"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Ollama
+        );
+        assert_eq!(
+            map_provider_api(Some("unknown-custom-api"), ProviderApi::Anthropic),
+            ProviderApi::OpenaiCompletions
+        );
+        assert_eq!(
+            map_provider_api(None, ProviderApi::Anthropic),
+            ProviderApi::Anthropic
+        );
+    }
+
+    #[test]
+    fn test_match_preset() {
+        let p_exact = match_preset("openai").unwrap();
+        assert_eq!(p_exact.id, "openai");
+
+        let p_norm1 = match_preset("DeepSeek").unwrap();
+        assert_eq!(p_norm1.id, "deepseek");
+
+        let p_norm2 = match_preset("deep-seek").unwrap();
+        assert_eq!(p_norm2.id, "deepseek");
+
+        assert!(match_preset("nonexistent-custom-provider").is_none());
+    }
+
+    #[test]
+    fn test_build_import_config_precedence_and_validation() {
+        // Preset match fills missing baseUrl and api
+        let cfg = build_import_config("openai", None).unwrap();
+        assert_eq!(cfg.name, "OpenAI");
+        assert_eq!(cfg.base_url, "https://api.openai.com/v1");
+        assert_eq!(cfg.api, ProviderApi::OpenaiCompletions);
+        assert_eq!(cfg.env_var, "OMPWS_OPENAI_API_KEY");
+        assert_eq!(cfg.notes.as_deref(), Some("从 OMP 配置导入"));
+
+        // Raw YAML overrides preset
+        let raw = RawParsedProvider {
+            id: "openai".to_string(),
+            base_url: Some("https://custom-openai.proxy.com/v1".to_string()),
+            api: Some("anthropic".to_string()),
+            api_key_env: Some("MY_OPENAI_KEY".to_string()),
+            model_ids: vec!["gpt-4o-custom".to_string()],
+            ..Default::default()
+        };
+        let cfg2 = build_import_config("openai", Some(&raw)).unwrap();
+        assert_eq!(cfg2.base_url, "https://custom-openai.proxy.com/v1");
+        assert_eq!(cfg2.api, ProviderApi::Anthropic);
+        assert_eq!(cfg2.env_var, "MY_OPENAI_KEY");
+        assert_eq!(cfg2.models, vec!["gpt-4o-custom"]);
+
+        // Missing baseUrl in both raw and preset -> error
+        let err = build_import_config("unknown-provider", None).unwrap_err();
+        assert_eq!(err, "缺少 baseUrl，请手动添加");
+    }
+
+    #[tokio::test]
+    async fn test_provider_import_omp_edge_cases() {
+        // Missing baseUrl edge
+        let missing_results = provider_import_omp(vec!["unknown-missing-base".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(missing_results.len(), 1);
+        assert!(!missing_results[0].ok);
+        assert_eq!(
+            missing_results[0].error.as_deref(),
+            Some("缺少 baseUrl，请手动添加")
+        );
+
+        // Preset provider with no key material / OAuth only edge
+        let results = provider_import_omp(vec!["xai".to_string()]).await.unwrap();
+        assert_eq!(results.len(), 1);
+        if !results[0].ok {
+            let err = results[0].error.as_deref().unwrap_or("");
+            assert!(
+                err.contains("OAuth") || err.contains("托管"),
+                "error was: {err}"
+            );
+        }
     }
 }

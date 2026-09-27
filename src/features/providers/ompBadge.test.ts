@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getOmpAuthBadge } from "./ompBadge";
+import { canImportOmpProvider, getOmpAuthBadge } from "./ompBadge";
 
 describe("getOmpAuthBadge", () => {
 	it("derives OAuth badge with account suffix when credentialTypes includes oauth", () => {
@@ -69,5 +69,57 @@ describe("getOmpAuthBadge", () => {
 		});
 		expect(badge.label).toBe("无凭据");
 		expect(badge.badgeType).toBe("none");
+	});
+});
+
+describe("canImportOmpProvider", () => {
+	it("returns true when hasApiKey is true", () => {
+		expect(
+			canImportOmpProvider({
+				hasApiKey: true,
+				apiKeyEnv: null,
+				credentialTypes: [],
+			}),
+		).toBe(true);
+	});
+
+	it("returns true when apiKeyEnv is present", () => {
+		expect(
+			canImportOmpProvider({
+				hasApiKey: false,
+				apiKeyEnv: "OPENAI_API_KEY",
+				credentialTypes: [],
+			}),
+		).toBe(true);
+	});
+
+	it("returns true when credentialTypes includes api_key", () => {
+		expect(
+			canImportOmpProvider({
+				hasApiKey: false,
+				apiKeyEnv: null,
+				credentialTypes: ["api_key"],
+			}),
+		).toBe(true);
+	});
+
+	it("returns false when credentialTypes contains only oauth", () => {
+		expect(
+			canImportOmpProvider({
+				hasApiKey: false,
+				apiKeyEnv: null,
+				credentialTypes: ["oauth"],
+			}),
+		).toBe(false);
+	});
+
+	it("returns false when no credentials are present", () => {
+		expect(
+			canImportOmpProvider({
+				hasApiKey: false,
+				apiKeyEnv: null,
+				credentialTypes: [],
+			}),
+		).toBe(false);
 	});
 });

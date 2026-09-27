@@ -647,3 +647,12 @@ pub struct OauthUiEvent {
     pub ok: Option<bool>,
     pub error: Option<String>,
 }
+
+/// Result of importing an OMP provider configuration into the vault.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpImportResult {
+    pub id: String,
+    pub ok: bool,
+    pub error: Option<String>,
+}
