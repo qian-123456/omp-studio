@@ -22,6 +22,7 @@ import {
 	Eraser,
 	Maximize2,
 	Minimize2,
+	Minus,
 	Plus,
 	RefreshCw,
 	X,
@@ -35,8 +36,6 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import {
-	MAXIMIZED_DRAWER_HEIGHT_VH,
-	DEFAULT_DRAWER_HEIGHT_VH,
 	useDrawerStore,
 	type DrawerTab,
 } from "./drawerStore";
@@ -46,6 +45,7 @@ import {
 	ensureDrawerEventBridge,
 	type DrawerTerminalEntry,
 } from "./drawerRegistry";
+import { bindXtermTheme } from "./terminalTheme";
 
 const SEARCH_DECORATIONS = {
 	matchBackground: "#3b4252",
@@ -82,14 +82,19 @@ async function resolveCwd(): Promise<string> {
 export function TerminalDrawer() {
 	const open = useDrawerStore((s) => s.open);
 	const height = useDrawerStore((s) => s.height);
+	const maximized = useDrawerStore((s) => s.maximized);
 	const tabs = useDrawerStore((s) => s.tabs);
 	const activeTabId = useDrawerStore((s) => s.activeTabId);
 	const setOpen = useDrawerStore((s) => s.setOpen);
 	const setHeight = useDrawerStore((s) => s.setHeight);
+	const setMaximized = useDrawerStore((s) => s.setMaximized);
+	const toggleMaximized = useDrawerStore((s) => s.toggleMaximized);
 	const updateTab = useDrawerStore((s) => s.updateTab);
 	const removeTab = useDrawerStore((s) => s.removeTab);
+	const detachTab = useDrawerStore((s) => s.detachTab);
 
-	const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
+	const visibleTabs = tabs.filter((t) => !t.detached);
+	const activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? null;
 	const activeEntry = activeTabId ? drawerRegistry.get(activeTabId) : undefined;
 
 	const hostRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -132,10 +137,11 @@ export function TerminalDrawer() {
 		useDrawerStore.getState().addTab(cwd, basename(cwd));
 	}, []);
 
-	// Opening the drawer with no tabs spawns the first shell
+	// Opening the drawer with no visible tabs spawns the first shell
 	useEffect(() => {
 		if (!open || !hydrated) return;
-		if (useDrawerStore.getState().tabs.length > 0) return;
+		const hasVisible = useDrawerStore.getState().tabs.some((t) => !t.detached);
+		if (hasVisible) return;
 		if (ensuringTabRef.current) return;
 		ensuringTabRef.current = true;
 		void handleNewTab().finally(() => {
@@ -162,8 +168,8 @@ export function TerminalDrawer() {
 			fontSize: 12,
 			cursorBlink: true,
 			scrollback: 5000,
-			theme: { background: "#0a0a0a" },
 		});
+		const themeSub = bindXtermTheme(term);
 		const fit = new FitAddon();
 		const search = new SearchAddon();
 		term.loadAddon(fit);
@@ -231,6 +237,7 @@ export function TerminalDrawer() {
 					search,
 					observer,
 					dataSub,
+					themeSub,
 					phase: "ready",
 					exitCode: null,
 					error: null,
@@ -247,13 +254,14 @@ export function TerminalDrawer() {
 					search,
 					observer,
 					dataSub,
+					themeSub,
 					phase: "error",
 					exitCode: null,
 					error: msg,
 				};
 				drawerRegistry.set(tab.id, entry);
 				useDrawerStore.getState().updateTab(tab.id, { status: "error", exitCode: null });
-				toast.error(`本地终端启动失败: ${msg}`);
+				toast.error(`命令终端启动失败: ${msg}`);
 			}
 		})();
 	}, []);
@@ -261,7 +269,7 @@ export function TerminalDrawer() {
 	// Ensure the active tab has a terminal; reattach on tab switches
 	useEffect(() => {
 		if (!open || !activeTabId) return;
-		const tab = tabs.find((t) => t.id === activeTabId);
+		const tab = visibleTabs.find((t) => t.id === activeTabId);
 		const host = hostRefs.current.get(activeTabId);
 		if (!tab || !host) return;
 		const existing = drawerRegistry.get(tab.id);
@@ -286,7 +294,22 @@ export function TerminalDrawer() {
 			return () => cancelAnimationFrame(raf);
 		}
 		createTerminal(tab, host);
-	}, [open, activeTabId, tabs, createTerminal]);
+	}, [open, activeTabId, visibleTabs, createTerminal]);
+
+	// Detach a tab to headless background service
+	const handleDetachTab = useCallback(
+		(tabId: string) => {
+			const host = hostRefs.current.get(tabId);
+			const entry = drawerRegistry.get(tabId);
+			if (entry?.term.element && host && host.contains(entry.term.element)) {
+				host.removeChild(entry.term.element);
+			}
+			hostRefs.current.delete(tabId);
+			detachTab(tabId);
+			toast.success("已折叠为后台服务（可在右侧「服务」面板查看与恢复）");
+		},
+		[detachTab],
+	);
 
 	// Close a tab: confirm-kill a running PTY, then drop tab + terminal
 	const handleCloseTab = useCallback(
@@ -301,10 +324,12 @@ export function TerminalDrawer() {
 				if (!ok) return;
 			}
 			destroyDrawerTerminal(tabId);
-			const remaining = useDrawerStore.getState().tabs.length;
+			const remainingVisible = useDrawerStore
+				.getState()
+				.tabs.filter((t) => !t.detached && t.id !== tabId).length;
 			removeTab(tabId);
-			// Closing the last tab also collapses the drawer
-			if (remaining <= 1) setOpen(false);
+			// Closing the last visible tab also collapses the drawer
+			if (remainingVisible === 0) setOpen(false);
 		},
 		[removeTab, setOpen],
 	);
@@ -317,24 +342,31 @@ export function TerminalDrawer() {
 		[updateTab],
 	);
 
-	const maxHeight = typeof window === "undefined" ? 800 : window.innerHeight * MAXIMIZED_DRAWER_HEIGHT_VH;
-	const isMaximized = height >= Math.round(maxHeight) - 1;
-	const toggleMaximize = useCallback(() => {
-		if (typeof window === "undefined") return;
-		setHeight(
-			isMaximized
-				? window.innerHeight * DEFAULT_DRAWER_HEIGHT_VH
-				: window.innerHeight * MAXIMIZED_DRAWER_HEIGHT_VH,
-		);
-	}, [isMaximized, setHeight]);
-
+	// When maximized state changes, refit the active terminal
+	useEffect(() => {
+		if (!open || !activeTabId) return;
+		const entry = drawerRegistry.get(activeTabId);
+		if (!entry) return;
+		const timer = setTimeout(() => {
+			try {
+				entry.fit.fit();
+				if (entry.termId && entry.term.cols > 0 && entry.term.rows > 0) {
+					void termResize(entry.termId, entry.term.cols, entry.term.rows).catch(() => {});
+				}
+			} catch {}
+		}, 50);
+		return () => clearTimeout(timer);
+	}, [maximized, open, activeTabId]);
 	// Drag the top edge to resize (disable text selection while dragging)
 	const onDragStart = useCallback((e: React.MouseEvent) => {
 		e.preventDefault();
+		if (useDrawerStore.getState().maximized) {
+			setMaximized(false);
+		}
 		dragActiveRef.current = true;
 		document.body.style.userSelect = "none";
 		document.body.style.cursor = "row-resize";
-	}, []);
+	}, [setMaximized]);
 
 	useEffect(() => {
 		const onMove = (e: MouseEvent) => {
@@ -422,27 +454,29 @@ export function TerminalDrawer() {
 			<div
 				className="fixed left-0 right-0 z-40 flex flex-col border-t border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-apple-modal"
 				style={{
-					height,
-					bottom: open ? 28 : 0,
+					height: maximized ? "calc(100vh - 38px)" : height,
+					bottom: open ? (maximized ? 0 : 28) : 0,
 					transform: open ? "translateY(0)" : "translateY(100%)",
-					transition: "transform 200ms cubic-bezier(0.32, 0.72, 0, 1)",
+					transition: "transform 200ms cubic-bezier(0.32, 0.72, 0, 1), height 150ms ease-out",
 					pointerEvents: open ? "auto" : "none",
 				}}
 				aria-hidden={!open}
 				inert={!open}
 			>
-				{/* Resize grab strip */}
-				<div
-					onMouseDown={onDragStart}
-					className="h-1 w-full shrink-0 cursor-row-resize bg-transparent hover:bg-indigo-500/40"
-					title="拖拽调节终端高度"
-				/>
+				{/* Resize grab strip (hidden when maximized) */}
+				{!maximized && (
+					<div
+						onMouseDown={onDragStart}
+						className="h-1 w-full shrink-0 cursor-row-resize bg-transparent hover:bg-indigo-500/40"
+						title="拖拽调节终端高度"
+					/>
+				)}
 
 				{/* Header: tabs + actions */}
 				<div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border-divider)] bg-[var(--bg-active-fill)] px-2 py-1 text-xs select-none">
-					<span className="shrink-0 px-1 text-[10px] font-medium tracking-wide text-neutral-500 uppercase">本地终端</span>
+					<span className="shrink-0 px-1 text-[10px] font-medium tracking-wide text-neutral-500 uppercase">命令终端</span>
 					<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-						{tabs.map((tab) => (
+						{visibleTabs.map((tab) => (
 							<div
 								key={tab.id}
 								onClick={() => useDrawerStore.getState().setActive(tab.id)}
@@ -462,17 +496,30 @@ export function TerminalDrawer() {
 									)}
 								/>
 								<span className="max-w-[140px] truncate">{tab.title}</span>
-								<button
-									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
-										void handleCloseTab(tab.id);
-									}}
-									title="关闭此终端"
-									className="rounded p-0.5 text-neutral-400 opacity-0 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 group-hover:opacity-100 active:scale-90"
-								>
-									<X size={11} />
-								</button>
+								<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											handleDetachTab(tab.id);
+										}}
+										title="折叠为后台服务"
+										className="rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-90 transition-all"
+									>
+										<Minus size={11} />
+									</button>
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											void handleCloseTab(tab.id);
+										}}
+										title="关闭此终端"
+										className="rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-90 transition-all"
+									>
+										<X size={11} />
+									</button>
+								</div>
 							</div>
 						))}
 						<button
@@ -501,14 +548,14 @@ export function TerminalDrawer() {
 						</span>
 					)}
 
-					{/* Height toggle */}
+					{/* Maximize / restore toggle */}
 					<button
 						type="button"
-						onClick={toggleMaximize}
-						title={isMaximized ? "恢复默认高度 (40vh)" : "最大化 (70vh)"}
+						onClick={toggleMaximized}
+						title={maximized ? "还原高度" : "最大化全屏"}
 						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
 					>
-						{isMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+						{maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
 					</button>
 					<button
 						type="button"
@@ -522,7 +569,7 @@ export function TerminalDrawer() {
 
 				{/* Body: one host per tab, inactive tabs hidden (PTYs stay alive) */}
 				<div className="relative min-h-0 flex-1">
-					{tabs.map((tab) => (
+					{visibleTabs.map((tab) => (
 						<div
 							key={tab.id}
 							ref={(el) => {
@@ -550,7 +597,7 @@ export function TerminalDrawer() {
 						/>
 					))}
 
-					{tabs.length === 0 && (
+					{visibleTabs.length === 0 && (
 						<div className="flex h-full items-center justify-center text-xs text-neutral-600">
 							按 ⌘` 或点击 + 新建终端
 						</div>

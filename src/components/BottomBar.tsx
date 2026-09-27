@@ -5,7 +5,6 @@ import {
 	Gauge,
 	GitBranch,
 	RefreshCw,
-	TerminalSquare,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { computeSessionStats, formatTokens } from "../features/chat/sessionStats";
@@ -15,7 +14,6 @@ import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
 import { getAppMemoryUsage, type ProcessMemoryInfo } from "../lib/ipc";
-import { useDrawerStore } from "../features/terminal/drawerStore";
 import { useZoom } from "../lib/zoom";
 
 
@@ -36,8 +34,6 @@ export function BottomBar() {
 		activeSessionId ? s.sessions[activeSessionId] : undefined,
 	);
 	const streaming = live?.streaming === true;
-	const terminalOpen = useDrawerStore((s) => s.open);
-	const toggleTerminal = useDrawerStore((s) => s.toggle);
 
 	// Global keyboard shortcuts (Cmd/Ctrl +/-, Cmd/Ctrl 0) and stored zoom application
 	useZoom();
@@ -153,20 +149,6 @@ export function BottomBar() {
 
 			{/* Right: CC GUI style Status Strip (Performance, Zoom, Sync, Git) */}
 			<div className="flex items-center gap-2 text-neutral-400">
-				<button
-					type="button"
-					onClick={toggleTerminal}
-					aria-label={terminalOpen ? "收起本地终端" : "打开本地终端"}
-					aria-pressed={terminalOpen}
-					title={terminalOpen ? "收起本地终端 (⌘`)" : "打开本地终端 (⌘`) — 在当前工作区运行命令的独立 Shell，与会话无关"}
-					className={clsx(
-						"flex h-5 w-5 items-center justify-center rounded-[6px] transition-all hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95",
-						terminalOpen && "bg-[var(--bg-hover)] text-neutral-100",
-					)}
-				>
-					<TerminalSquare size={13} />
-				</button>
-				<span className="text-neutral-700">·</span>
 				{/* Performance indicator (Real OS physical memory RSS) — click for per-process breakdown */}
 				<button
 					type="button"

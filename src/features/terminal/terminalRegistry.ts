@@ -42,3 +42,48 @@ export function destroySessionTerminal(sessionId: string): void {
 	} catch {}
 	terminalRegistry.delete(sessionId);
 }
+
+export interface AgentTerminalEntry {
+	termId: string;
+	term: Terminal;
+	fit: FitAddon;
+	search: SearchAddon;
+	cwd: string;
+	phase: TerminalPhase;
+	exitCode: number | null;
+	error: string | null;
+	unlisteners: Array<() => void>;
+	dataSub: { dispose: () => void };
+	onExit?: (code: number | null) => void;
+}
+
+let agentTerminalInstance: AgentTerminalEntry | null = null;
+
+export function getAgentTerminal(): AgentTerminalEntry | null {
+	return agentTerminalInstance;
+}
+
+export function setAgentTerminal(entry: AgentTerminalEntry | null): void {
+	agentTerminalInstance = entry;
+}
+
+/**
+ * Destroy and clean up the full-page agent terminal:
+ * unlisten events, close backend PTY, dispose xterm instance and clear registry.
+ */
+export function destroyAgentTerminal(): void {
+	if (!agentTerminalInstance) return;
+	for (const un of agentTerminalInstance.unlisteners) {
+		try {
+			un();
+		} catch {}
+	}
+	try {
+		agentTerminalInstance.dataSub.dispose();
+	} catch {}
+	void termClose(agentTerminalInstance.termId).catch(() => {});
+	try {
+		agentTerminalInstance.term.dispose();
+	} catch {}
+	agentTerminalInstance = null;
+}

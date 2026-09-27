@@ -21,6 +21,7 @@ export interface DrawerTerminalEntry {
 	search: SearchAddon;
 	observer: ResizeObserver;
 	dataSub: { dispose: () => void };
+	themeSub?: () => void;
 	phase: DrawerTerminalPhase;
 	exitCode: number | null;
 	error: string | null;
@@ -72,6 +73,7 @@ export function destroyDrawerTerminal(tabId: string): void {
 	if (!entry) return;
 	entry.observer.disconnect();
 	entry.dataSub.dispose();
+	entry.themeSub?.();
 	if (entry.termId) void termClose(entry.termId).catch(() => {});
 	entry.term.dispose();
 	drawerRegistry.delete(tabId);

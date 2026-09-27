@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	destroyAgentTerminal,
 	destroySessionTerminal,
+	getAgentTerminal,
+	setAgentTerminal,
 	terminalRegistry,
+	type AgentTerminalEntry,
 	type TerminalSessionEntry,
 } from "./terminalRegistry";
 
@@ -76,5 +80,40 @@ describe("terminalRegistry", () => {
 		terminalRegistry.set("session-2", entry);
 		expect(() => destroySessionTerminal("session-2")).not.toThrow();
 		expect(terminalRegistry.has("session-2")).toBe(false);
+	});
+
+	describe("agentTerminal", () => {
+		beforeEach(() => {
+			destroyAgentTerminal();
+		});
+
+		it("stores, retrieves, and destroys agent terminal entry", () => {
+			const unlistener = vi.fn();
+			const dataDispose = vi.fn();
+			const termDispose = vi.fn();
+
+			const entry = {
+				termId: "agent-term-1",
+				term: { dispose: termDispose } as unknown,
+				fit: {} as unknown,
+				search: {} as unknown,
+				cwd: "/test/cwd",
+				phase: "ready",
+				exitCode: null,
+				error: null,
+				unlisteners: [unlistener],
+				dataSub: { dispose: dataDispose },
+			} as AgentTerminalEntry;
+
+			expect(getAgentTerminal()).toBeNull();
+			setAgentTerminal(entry);
+			expect(getAgentTerminal()).toBe(entry);
+
+			destroyAgentTerminal();
+			expect(unlistener).toHaveBeenCalledTimes(1);
+			expect(dataDispose).toHaveBeenCalledTimes(1);
+			expect(termDispose).toHaveBeenCalledTimes(1);
+			expect(getAgentTerminal()).toBeNull();
+		});
 	});
 });

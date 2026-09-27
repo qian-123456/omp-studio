@@ -17,6 +17,7 @@ import {
 	ClipboardCopy,
 	ClipboardPaste,
 	Eraser,
+	GitBranch,
 	MessageSquareQuote,
 	RefreshCw,
 	Search,
@@ -27,12 +28,14 @@ import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { onTerminalData, onTerminalExit } from "../../lib/events";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
 import {
+	createSideChat,
 	termClose,
 	termOpenSession,
 	termResize,
 	termWrite,
 } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { bindXtermTheme, currentXtermTheme } from "./terminalTheme";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -96,6 +99,7 @@ export function TerminalView({
 		x: number;
 		y: number;
 	} | null>(null);
+	const [hasSelection, setHasSelection] = useState(false);
 
 	// Esc keys
 	useEscapeKey(() => setContextMenu(null), contextMenu !== null);
@@ -120,6 +124,23 @@ export function TerminalView({
 		toast.success("已将选中内容添加至批注");
 		setTimeout(() => setCopied(false), 1500);
 	}, [addAnnotation, sessionId]);
+	const handleSendToSideChat = useCallback(async () => {
+		const entry = terminalRegistry.get(sessionId);
+		const sel = entry?.term.getSelection()?.trim();
+		if (!sel || !sessionId) {
+			toast.info("未选中任何终端文本");
+			return;
+		}
+		setContextMenu(null);
+		try {
+			await createSideChat(sessionId, "终端输出", sel);
+			void useSessions.getState().load().catch(() => {});
+			useUi.getState().setRightTab("sidechat");
+			toast.success("已发送到侧聊");
+		} catch (e) {
+			toast.error(`发送到侧聊失败: ${errMsg(e)}`);
+		}
+	}, [sessionId]);
 
 	// Switch back to chat without killing PTY (persists in background)
 	const handleBackToChat = useCallback(() => {
@@ -213,6 +234,10 @@ export function TerminalView({
 					count: e.resultCount,
 				});
 			});
+			const unbindTheme = bindXtermTheme(entry.term);
+			const selSub = entry.term.onSelectionChange(() => {
+				setHasSelection(entry.term.hasSelection());
+			});
 
 			observer = new ResizeObserver(() => {
 				try {
@@ -229,6 +254,8 @@ export function TerminalView({
 			entry.term.focus();
 
 			return () => {
+				unbindTheme();
+				selSub.dispose();
 				searchSub.dispose();
 				observer?.disconnect();
 				if (entry) entry.onExit = undefined;
@@ -244,14 +271,19 @@ export function TerminalView({
 			fontSize: compact ? 11 : 12,
 			cursorBlink: true,
 			scrollback: 5000,
-			theme: { background: "#0a0a0a" },
+			theme: currentXtermTheme(),
 		});
+		const unbindTheme = bindXtermTheme(term);
 		const fit = new FitAddon();
 		const search = new SearchAddon();
 		term.loadAddon(fit);
 		term.loadAddon(search);
 		term.open(host);
 		fit.fit();
+
+		const selSub = term.onSelectionChange(() => {
+			setHasSelection(term.hasSelection());
+		});
 
 		const searchSub = search.onDidChangeResults((e) => {
 			setSearchResult({
@@ -288,6 +320,10 @@ export function TerminalView({
 		const cleanupUnregistered = () => {
 			if (unregisteredCleaned) return;
 			unregisteredCleaned = true;
+			unbindTheme();
+			try {
+				selSub.dispose();
+			} catch {}
 			for (const un of unlisteners) {
 				try {
 					un();
@@ -408,6 +444,10 @@ export function TerminalView({
 
 		return () => {
 			disposed = true;
+			unbindTheme();
+			try {
+				selSub.dispose();
+			} catch {}
 			searchSub.dispose();
 			observer?.disconnect();
 			const active = terminalRegistry.get(sessionId);
@@ -422,7 +462,7 @@ export function TerminalView({
 				cleanupUnregistered();
 			}
 		};
-	}, [sessionId, needsConfirm, captureSelection, restartTick, compact]);
+	}, [sessionId, needsConfirm, captureSelection, handleSendToSideChat, restartTick, compact]);
 
 	// Context menu actions
 	const handleCopy = async () => {
@@ -456,7 +496,7 @@ export function TerminalView({
 	};
 
 	return (
-		<div className="relative flex h-full flex-col bg-[#0a0a0a]">
+		<div className="relative flex h-full flex-col bg-[var(--bg)]">
 			{/* Top action header */}
 			<div
 				className={clsx(
@@ -535,6 +575,17 @@ export function TerminalView({
 				>
 					{copied ? "已加入批注" : "引用选中"}
 				</button>
+				{hasSelection && sessionId && (
+					<button
+						type="button"
+						className="shrink-0 flex items-center gap-1 rounded border border-amber-600/40 bg-amber-500/10 px-2 py-0.5 text-amber-300 hover:bg-amber-500/20 transition-colors focus:opacity-100"
+						onClick={handleSendToSideChat}
+						title="将选中终端文本发送到侧聊"
+					>
+						<GitBranch size={12} />
+						<span>发送到侧聊</span>
+					</button>
+				)}
 
 				<button
 					type="button"
@@ -808,6 +859,16 @@ export function TerminalView({
 							<MessageSquareQuote size={13} className="text-indigo-400" />
 							引用至批注 (Cmd+Shift+A)
 						</button>
+						{sessionId && (
+							<button
+								type="button"
+								onClick={handleSendToSideChat}
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							>
+								<GitBranch size={13} className="text-amber-400" />
+								发送到侧聊
+							</button>
+						)}
 						<div className="my-1 border-t border-neutral-800" />
 						<button
 							type="button"

@@ -36,7 +36,7 @@ import { TopCapsule } from "./features/todos/TopCapsule";
 import { startTodos, useTodos } from "./features/todos/store";
 import { destroySessionTerminal } from "./features/terminal/terminalRegistry";
 import { TerminalDrawer } from "./features/terminal/TerminalDrawer";
-import { useDrawerStore } from "./features/terminal/drawerStore";
+import { AgentTerminalPage } from "./features/terminal/AgentTerminalPage";
 import { onServicesChanged, onSessionsRemoved } from "./lib/events";
 import { gitSummary, servicesList } from "./lib/ipc";
 import type { PairingInfo, SessionStatus } from "./lib/contracts";
@@ -151,6 +151,8 @@ function MainCenterView({ activeView }: { activeView: CenterView }) {
 			);
 		case "doc":
 			return docPath ? <DocView path={docPath} /> : <StartPage />;
+		case "agentTerminal":
+			return <AgentTerminalPage />;
 		default:
 			return <StartPage />;
 	}
@@ -161,8 +163,6 @@ export default function App() {
 	const rightOpen = useUi((s) => s.rightOpen);
 	const toggleRight = useUi((s) => s.toggleRight);
 	const rightWidth = useUi((s) => s.rightWidth);
-	const terminalDrawerOpen = useDrawerStore((s) => s.open);
-	const toggleTerminalDrawer = useDrawerStore((s) => s.toggle);
 	const setRightWidth = useUi((s) => s.setRightWidth);
 
 	const sidebarOpen = useUi((s) => s.sidebarOpen);
@@ -177,6 +177,7 @@ export default function App() {
 	const returnToSession = useUi((s) => s.returnToSession);
 	const selectSession = useUi((s) => s.selectSession);
 	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
+	const setCenter = useUi((s) => s.setCenter);
 
 	// Track the underlying view so when settings overlay opens, the center view stays mounted
 	const lastNonSettingsCenterView = useRef<CenterView>("home");
@@ -377,13 +378,21 @@ export default function App() {
 				} else {
 					returnToSession();
 				}
+			} else if ((e.key === "~" || e.key === "`" || e.code === "Backquote") && e.shiftKey && !e.altKey) {
+				e.preventDefault();
+				if (centerView === "agentTerminal") {
+					const prev = previousCenterView ?? (selectedSessionId ? "session" : "home");
+					setCenter(prev === "agentTerminal" ? (selectedSessionId ? "session" : "home") : prev);
+				} else {
+					setCenter("agentTerminal");
+				}
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => {
 			window.removeEventListener("keydown", onKeyDown);
 		};
-	}, [centerView, toggleSidebar, toggleRight, parentId, selectSession, returnToSession]);
+	}, [centerView, previousCenterView, selectedSessionId, setCenter, toggleSidebar, toggleRight, parentId, selectSession, returnToSession]);
 
 	// Initialize todos subscription
 	useEffect(() => {
@@ -631,7 +640,9 @@ export default function App() {
 									? "文档"
 									: effectiveCenterView === "backlog"
 										? "收集箱"
-										: "待办任务"}
+										: effectiveCenterView === "agentTerminal"
+											? "Agent 终端"
+											: "待办任务"}
 							</span>
 						</div>
 					)}
@@ -671,20 +682,27 @@ export default function App() {
 							</>
 						)}
 
-						{/* Global Terminal Drawer Toggle */}
+						{/* Agent Terminal Center Page Toggle */}
 						<button
 							type="button"
-							onClick={toggleTerminalDrawer}
-							aria-label={terminalDrawerOpen ? "收起本地终端" : "打开本地终端"}
-							aria-pressed={terminalDrawerOpen}
+							onClick={() => {
+								if (effectiveCenterView === "agentTerminal") {
+									const prev = previousCenterView ?? (selectedSessionId ? "session" : "home");
+									setCenter(prev === "agentTerminal" ? (selectedSessionId ? "session" : "home") : prev);
+								} else {
+									setCenter("agentTerminal");
+								}
+							}}
+							aria-label={effectiveCenterView === "agentTerminal" ? "返回主视图" : "打开 Agent 终端"}
+							aria-pressed={effectiveCenterView === "agentTerminal"}
 							title={
-								terminalDrawerOpen
-									? "收起本地终端 (⌘`)"
-									: "打开本地终端（⌘`）— shell，可输 omp/claude/codex 自动接管当前会话"
+								effectiveCenterView === "agentTerminal"
+									? "返回主视图"
+									: "打开 Agent 终端（全屏中心页，可输入 omp/claude/codex 接管）"
 							}
 							className={clsx(
 								"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium active:scale-95 transition-all",
-								terminalDrawerOpen
+								effectiveCenterView === "agentTerminal"
 									? "border border-indigo-500/40 bg-indigo-600/20 text-indigo-300"
 									: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
 							)}
@@ -692,7 +710,6 @@ export default function App() {
 							<Terminal size={13} />
 							<span>终端</span>
 						</button>
-
 						<TopCapsule />
 
 						{/* Show expand right panel button only when right panel is closed */}

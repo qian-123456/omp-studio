@@ -7,7 +7,9 @@ import {
 	FolderOpen,
 	Loader2,
 	RefreshCw,
+	RotateCcw,
 	Square,
+	TerminalSquare,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ServiceInfo } from "../../lib/contracts";
@@ -18,8 +20,8 @@ import { servicesList, servicesStop } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-
-/** [C] Right tab: local listening services (dev-like by default). */
+import { useDrawerStore, type DrawerTab } from "../terminal/drawerStore";
+import { destroyDrawerTerminal } from "../terminal/drawerRegistry";
 export function ServicesPanel() {
 	const [all, setAll] = useState(false);
 	const [rows, setRows] = useState<ServiceInfo[] | null>(null);
@@ -31,9 +33,12 @@ export function ServicesPanel() {
 	const sessions = useSessions((s) => s.sessions);
 	const selectSession = useUi((s) => s.selectSession);
 	const short = useShortPath();
+	const tabs = useDrawerStore((s) => s.tabs);
+	const detachedTabs = tabs.filter((t) => t.detached);
+	const reattachTab = useDrawerStore((s) => s.reattachTab);
+	const removeTab = useDrawerStore((s) => s.removeTab);
 	const allRef = useRef(all);
 	allRef.current = all;
-
 	const refresh = useCallback(async () => {
 		setLoading(true);
 		try {
@@ -160,6 +165,29 @@ export function ServicesPanel() {
 			setCleaningOrphans(false);
 		}
 	};
+	const handleReattachTerminal = useCallback(
+		(tabId: string, title: string) => {
+			reattachTab(tabId);
+			toast.success(`已恢复终端「${title}」`);
+		},
+		[reattachTab],
+	);
+
+	const handleTerminateTerminal = useCallback(
+		async (tab: DrawerTab) => {
+			const ok = await confirmDialog(`确定要结束后台终端「${tab.title}」吗？`, {
+				danger: true,
+				title: "结束后台终端",
+				okLabel: "结束进程",
+			});
+			if (!ok) return;
+			destroyDrawerTerminal(tab.id);
+			removeTab(tab.id);
+			toast.success(`已结束终端「${tab.title}」`);
+		},
+		[removeTab],
+	);
+
 
 	return (
 		<div className="flex h-full flex-col text-xs">
@@ -188,6 +216,70 @@ export function ServicesPanel() {
 					<RefreshCw size={13} className={loading ? "animate-spin" : ""} />
 				</button>
 			</div>
+			{/* Detached background terminals block */}
+			{detachedTabs.length > 0 && (
+				<div className="shrink-0 border-b border-[var(--border-divider)] bg-[var(--well-bg)]/40 p-2.5">
+					<div className="mb-2 flex items-center justify-between text-[11px] font-medium text-neutral-300">
+						<span className="flex items-center gap-1.5">
+							<TerminalSquare size={13} className="text-[#0A84FF]" />
+							后台终端 ({detachedTabs.length})
+						</span>
+						<span className="text-[10px] text-neutral-500">已从命令终端折叠</span>
+					</div>
+					<div className="space-y-1.5">
+						{detachedTabs.map((tab) => (
+							<div
+								key={tab.id}
+								className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border-divider)] bg-[var(--bg-panel)] px-2.5 py-1.5 transition-colors hover:border-neutral-700"
+							>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-1.5">
+										<span className="truncate font-medium text-neutral-200">
+											{tab.title}
+										</span>
+										{tab.status === "exited" ? (
+											<span className="rounded border border-neutral-700/60 bg-neutral-800/40 px-1 py-0.2 text-[10px] text-neutral-400">
+												已退出{tab.exitCode !== null ? ` (${tab.exitCode})` : ""}
+											</span>
+										) : (
+											<span className="flex shrink-0 items-center gap-1 rounded border border-emerald-800/50 bg-emerald-950/50 px-1 py-0.2 text-[10px] text-emerald-400">
+												<span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+												运行中
+											</span>
+										)}
+									</div>
+									<div className="mt-0.5 flex items-center gap-1 text-[10px] text-neutral-500">
+										<FolderOpen size={10} className="shrink-0 text-neutral-500" />
+										<span className="truncate" title={tab.cwd}>
+											{short(tab.cwd)}
+										</span>
+									</div>
+								</div>
+								<div className="flex shrink-0 items-center gap-1">
+									<button
+										type="button"
+										onClick={() => handleReattachTerminal(tab.id, tab.title)}
+										className="flex items-center gap-1 rounded bg-[#0A84FF] px-2 py-0.5 text-[11px] font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-xs"
+										title="恢复到命令终端"
+									>
+										<RotateCcw size={10} />
+										恢复
+									</button>
+									<button
+										type="button"
+										onClick={() => void handleTerminateTerminal(tab)}
+										className="flex items-center gap-1 rounded border border-rose-800/60 bg-rose-950/30 px-2 py-0.5 text-[11px] font-medium text-rose-300 hover:bg-rose-900/50 active:scale-95 transition-all"
+										title="结束终端进程并移除"
+									>
+										<Square size={10} />
+										结束
+									</button>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
 
 			{/* Orphan services banner */}
 			{orphanServices.length > 0 && (
