@@ -1,8 +1,3 @@
-/**
- * StartPage: Centered, sleek command bar with a refined brand hero header.
- * Clean, balanced, Raycast/Linear-style layout — no bulky cards, just pure focus.
- */
-
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,7 +8,6 @@ import {
 	FolderOpen,
 	FolderPlus,
 	Loader2,
-	Sparkles,
 } from "lucide-react";
 import { ModelSelect } from "../../components/ModelSelect";
 import { createSession, sendFirstPrompt } from "../../lib/createSession";
@@ -25,6 +19,7 @@ import { basename, shortPath } from "../../lib/paths";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useSettings } from "../settings/store";
 
 const CUSTOM = "__custom";
 const CUSTOM_MODEL = "__custom_model";
@@ -32,10 +27,11 @@ const CUSTOM_MODEL = "__custom_model";
 export function StartPage() {
 	const workspaces = useSessions((s) => s.workspaces);
 	const selectSession = useUi((s) => s.selectSession);
+	const defaultModel = useSettings((s) => s.settings?.newSessionModel);
 
 	const [prompt, setPrompt] = useState("");
 	const [busy, setBusy] = useState(false);
-	const inputRef = useRef<HTMLInputElement>(null);
+	const inputRef = useRef<HTMLTextAreaElement>(null);
 
 	const [wsSel, setWsSel] = useState(() => workspaces[0]?.id ?? CUSTOM);
 	const [customCwd, setCustomCwd] = useState("");
@@ -151,7 +147,7 @@ export function StartPage() {
 		try {
 			const { sessionId, stub } = await createSession({
 				cwd,
-				model: effectiveModel || null,
+				model: effectiveModel || defaultModel || null,
 				approvalMode: null,
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
 			});
@@ -170,31 +166,29 @@ export function StartPage() {
 
 	return (
 		<div className="relative flex h-full w-full flex-col items-center justify-center px-4 select-none">
-			{/* Subtle ambient lighting */}
-			<div
-				aria-hidden
-				className="pointer-events-none absolute inset-0 flex items-center justify-center"
-			>
-				<div className="h-[360px] w-[560px] rounded-full bg-gradient-to-tr from-indigo-500/10 via-amber-500/5 to-purple-500/10 blur-3xl opacity-60" />
-			</div>
-
 			<div className="relative flex w-full max-w-[700px] flex-col items-center">
-				{/* Refined Brand Hero Header */}
-				<div className="mb-3.5 flex h-10 w-10 items-center justify-center rounded-2xl border border-indigo-400/25 bg-gradient-to-b from-indigo-500/20 to-indigo-600/5 shadow-md shadow-indigo-950/40">
-					<Sparkles size={18} className="text-indigo-300" />
-				</div>
-
-				<h1 className="text-2xl font-semibold tracking-tight text-neutral-100 sm:text-3xl">
-					今天想做什么？
+				<h1 className="self-start text-xl font-semibold text-neutral-100">
+					新会话
 				</h1>
-				<p className="mt-1.5 text-xs text-neutral-400/80">
-					输入任务目标，Agent 将在沙盒进程中自主规划、执行与交付
-				</p>
 
-				{/* Center Command Bar: Single sleek horizontal pill */}
-				<div className="group relative mt-7 flex h-14 w-full items-center gap-2 rounded-2xl border border-neutral-700/80 bg-neutral-900/90 px-3 shadow-2xl shadow-black/50 backdrop-blur-xl transition-all duration-200 focus-within:border-neutral-500 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_40px_-10px_rgba(0,0,0,0.8)]">
-					{/* Top edge subtle sheen highlight */}
-					<div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-2xl bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+				<div className="relative mt-4 flex w-full flex-wrap items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 p-3 focus-within:border-neutral-500">
+					<textarea
+						ref={inputRef}
+						autoFocus
+						rows={4}
+						value={prompt}
+						onChange={(e) => setPrompt(e.target.value)}
+						onKeyDown={(e) => {
+							if (isComposing(e)) return;
+							if (e.key === "Enter" && !e.shiftKey) {
+								e.preventDefault();
+								void submit();
+							}
+						}}
+						aria-label="任务内容"
+						placeholder="输入任务或需求"
+						className="w-full resize-none bg-transparent px-1 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
+					/>
 
 					{/* Workspace Pill */}
 					<div className="relative shrink-0" ref={wsMenuRef}>
@@ -273,30 +267,11 @@ export function StartPage() {
 						)}
 					</div>
 
-					{/* Center Input (Single sleek line) */}
-					<input
-						ref={inputRef}
-						autoFocus
-						type="text"
-						value={prompt}
-						onChange={(e) => setPrompt(e.target.value)}
-						onKeyDown={(e) => {
-							if (isComposing(e)) return;
-							if (e.key === "Enter") {
-								e.preventDefault();
-								void submit();
-							}
-						}}
-						placeholder="输入任务或需求，按回车立即开始..."
-						style={{ outline: "none", boxShadow: "none" }}
-						className="min-w-0 flex-1 bg-transparent px-2 text-[14px] text-neutral-100 placeholder-neutral-500 outline-none !outline-none focus:outline-none focus:ring-0 selection:bg-indigo-500/30"
-					/>
-
 					{/* Model Selector Chip */}
 					<div className="shrink-0">
 						<ModelSelect
 							direction="up"
-							widthClass="w-[360px]"
+							widthClass="w-[min(360px,calc(100vw-40px))]"
 							label={
 								modelSel === CUSTOM_MODEL
 									? (customModel.trim() || "自定义…")
@@ -305,7 +280,7 @@ export function StartPage() {
 												(m: ModelOption) =>
 													toModelKey(m.provider, m.id) === modelSel,
 											)?.name ?? modelSel)
-										: "默认模型"
+										: (defaultModel || "默认模型")
 							}
 							buttonClass="flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-950/60 px-2.5 py-1.5 text-xs text-neutral-400 transition-colors hover:border-neutral-700 hover:bg-neutral-800/80 hover:text-neutral-200"
 							models={availableModels.length > 0 ? availableModels : null}
@@ -337,9 +312,10 @@ export function StartPage() {
 						type="button"
 						onClick={() => void submit()}
 						disabled={!canSubmit}
-						title={cwd ? "回车启动" : "请先选择工作目录"}
+						title={cwd ? "开始会话" : "请先选择工作目录"}
+						aria-label="开始会话"
 						className={clsx(
-							"flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
+							"ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors",
 							canSubmit
 								? "bg-white text-neutral-950 shadow-md hover:bg-neutral-200 active:scale-95"
 								: "cursor-not-allowed bg-neutral-800/70 text-neutral-500",
@@ -353,13 +329,6 @@ export function StartPage() {
 					</button>
 				</div>
 
-				{/* Subtle keyboard hint below */}
-				<div className="mt-3.5 flex items-center gap-1.5 text-[11px] text-neutral-500">
-					<kbd className="rounded border border-neutral-800 bg-neutral-900/80 px-1.5 py-0.5 font-mono text-[9px] text-neutral-400">
-						↵ Enter
-					</kbd>
-					<span>开工新会话 · 独立沙盒进程</span>
-				</div>
 			</div>
 		</div>
 	);

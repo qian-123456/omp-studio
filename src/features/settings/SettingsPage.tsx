@@ -781,7 +781,7 @@ export function SettingsPage() {
 										新会话默认模型
 									</label>
 									<div className="mt-1 text-[11px] text-neutral-500">
-										启动新会话时使用的默认模型（留空跟随 omp 自身配置；当前版本暂未接入新会话流程）
+										启动新会话时使用的默认模型（留空跟随 OMP 自身配置）
 									</div>
 									<input
 										type="text"

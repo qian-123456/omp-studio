@@ -828,7 +828,7 @@ export function Composer({
 						rows={compact ? 2 : 3}
 						placeholder={
 							streaming
-								? "输入消息... (Enter 暂存，⌘Enter 插队)"
+								? "输入后续消息..."
 								: "提出后续修改要求... (Enter 发送，Shift+Enter 换行，/ 命令，@ 文件)"
 						}
 						style={{ outline: "none", boxShadow: "none" }}

@@ -101,11 +101,13 @@ pub async fn run_print(
     let exe = resolve_binary(&bin, &path);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.args(["-p", "--no-tools", "--no-session", "--no-title"]);
+    cmd.arg("-e").arg(crate::providers::extension_path()?);
     if !model.trim().is_empty() {
         cmd.args(["--model", model.trim()]);
     }
     cmd.current_dir(paths::supervisor_dir())
         .env("PATH", path)
+        .envs(crate::providers::env_pairs())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

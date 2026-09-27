@@ -440,7 +440,9 @@ pub async fn list_models(state: tauri::State<'_, AppState>) -> Result<Vec<Model>
 
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.args(["models", "--json"]);
+    cmd.arg("-e").arg(crate::providers::extension_path()?);
     cmd.env("PATH", &path_env);
+    cmd.envs(crate::providers::env_pairs());
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());

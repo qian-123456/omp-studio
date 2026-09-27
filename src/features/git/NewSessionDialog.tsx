@@ -25,6 +25,7 @@ import { ModelSelect } from "../../components/ModelSelect";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useSettings } from "../settings/store";
 import { defaultSlug } from "./helpers";
 
 const CUSTOM = "__custom";
@@ -48,6 +49,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	const upsert = useSessions((s) => s.upsert);
 	const closeModal = useUi((s) => s.closeModal);
 	const selectSession = useUi((s) => s.selectSession);
+	const defaultModel = useSettings((s) => s.settings?.newSessionModel);
 
 	useEscapeKey(closeModal);
 
@@ -284,7 +286,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 			}
 			const { sessionId, stub } = await createSession({
 				cwd: target,
-				model: effectiveModel || null,
+				model: effectiveModel || defaultModel || null,
 				approvalMode: null, // per-session approval removed — Settings owns it
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
 			});
@@ -407,7 +409,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 									? (availableModels.find(
 											(m) => toModelKey(m.provider, m.id) === modelSel,
 										)?.name ?? modelSel)
-									: "默认（跟随设置）"
+									: (defaultModel || "默认（跟随设置）")
 						}
 						buttonClass={`${input} flex items-center justify-between text-left`}
 						models={availableModels.length > 0 ? availableModels : []}
@@ -436,16 +438,6 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				{/* Approval mode intentionally not in the primary dialog — it
 				    lives in Settings (会话管理 → 默认审批模式) and applies via
 				    `approvalMode: null` (follow default). */}
-
-
-				{modelSel === CUSTOM_MODEL && (
-					<input
-						value={customModel}
-						onChange={(e) => setCustomModel(e.target.value)}
-						placeholder="例如 anthropic/claude-3-7-sonnet"
-						className={clsx(input, "mb-2 font-mono")}
-					/>
-				)}
 
 				<label
 					className={clsx(

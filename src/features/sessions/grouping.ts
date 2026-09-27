@@ -348,8 +348,8 @@ export function groupSessions(
 	// bucket instead of vanishing (or polluting the live list).
 	const isDeletedWt = (s: SessionMeta) =>
 		!s.git?.worktree && !s.git?.branch && inferWorktreeName(s.cwd) !== null;
-	const unassignedLive = unassignedSessions.filter((s) => !isDeletedWt(s));
-	const unassignedDeleted = unassignedSessions.filter(isDeletedWt);
+	const unassignedLive = unassignedSessions.filter((s) => !s.pinned && !isDeletedWt(s));
+	const unassignedDeleted = unassignedSessions.filter((s) => !s.pinned && isDeletedWt(s));
 
 	const pinnedSessions = visibleSessions.filter((s) => s.pinned);
 	const pinnedNodes = flattenSessionTree(
@@ -363,7 +363,7 @@ export function groupSessions(
 		buildSessionTree([...unassignedDeleted].sort(compareSessions)),
 	);
 	const workspaceGroups: WorkspaceGroup[] = projectWorkspaces.map((ws) => {
-		const items = sessionMap.get(ws.id) ?? [];
+		const items = (sessionMap.get(ws.id) ?? []).filter((s) => !s.pinned);
 		const { subgroups, hasMultipleSubgroups } = createSubgroups(items);
 		return {
 			workspace: ws,
@@ -377,13 +377,13 @@ export function groupSessions(
 	const globalGroup: WorkspaceGroup | null = globalWs
 		? (() => {
 				const { subgroups, hasMultipleSubgroups } =
-					createSubgroups(globalSessions);
+					createSubgroups(globalSessions.filter((s) => !s.pinned));
 				return {
 					workspace: globalWs,
 					isGlobal: true,
 					subgroups,
 					hasMultipleSubgroups,
-					totalCount: globalSessions.length,
+					totalCount: globalSessions.filter((s) => !s.pinned).length,
 				};
 			})()
 		: null;

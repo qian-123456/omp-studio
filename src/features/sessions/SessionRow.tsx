@@ -523,24 +523,25 @@ export function SessionRow({
 				<span className="w-[15px] shrink-0" />
 			)}
 
-			{/* Single-line Codex-style row: dot · title · pill-or-time · pin */}
-			<div className="flex min-w-0 flex-1 items-center gap-1.5">
+			<div className="flex min-w-0 flex-1 items-start gap-1.5">
 				{busy ? (
 					<Loader2
 						size={10}
-						className="shrink-0 animate-spin text-indigo-400"
+						className="mt-1 shrink-0 animate-spin text-indigo-400"
 					/>
 				) : (
-					renderStatusDot(session.status)
+					<span className="mt-1 shrink-0">{renderStatusDot(session.status)}</span>
 				)}
 
 				{session.unread && (
 					<span
-						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
+						className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
 						title="未读"
 					/>
 				)}
 
+				<div className="min-w-0 flex-1">
+					<div className="flex min-w-0 items-center gap-1.5">
 				{isRenaming ? (
 					<input
 						ref={renameInputRef}
@@ -579,21 +580,14 @@ export function SessionRow({
 					</span>
 				)}
 
-				{pill ? (
+				{pill && (
 					<span
 						className={clsx(
-							"ml-auto shrink-0 rounded border px-1 py-px text-[9px] font-medium",
+							"shrink-0 rounded border px-1 py-px text-[9px] font-medium",
 							pill.cls,
 						)}
 					>
 						{pill.label}
-					</span>
-				) : (
-					<span
-						title={updatedAtTs}
-						className="ml-auto shrink-0 text-[10px] text-neutral-600"
-					>
-						{relativeTime(session.updatedAt || session.createdAt)}
 					</span>
 				)}
 
@@ -604,6 +598,31 @@ export function SessionRow({
 						aria-label="已置顶"
 					/>
 				)}
+					</div>
+					<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-neutral-500">
+						<span title={updatedAtTs} className="shrink-0">
+							{relativeTime(session.updatedAt || session.createdAt)}
+						</span>
+						{session.git?.branch && (
+							<>
+								<span aria-hidden="true">·</span>
+								<GitBranch size={10} className="shrink-0" />
+								<span className="truncate" title={session.git.branch}>{session.git.branch}</span>
+							</>
+						)}
+						{Boolean(session.git?.dirty) && (
+							<span className="shrink-0 text-amber-400">+{session.git?.dirty}</span>
+						)}
+						{session.result && (
+							<span
+								className={clsx("shrink-0", session.result.ok ? "text-emerald-400" : "text-rose-400")}
+								title={session.result.summary}
+							>
+								{session.result.kind === "test" ? "测试" : "构建"}{session.result.ok ? "✓" : "×"}
+							</span>
+						)}
+					</div>
+				</div>
 			</div>
 
 			{/* Inline quick actions */}

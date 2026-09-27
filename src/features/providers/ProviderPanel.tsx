@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+	Activity,
 	CircleCheck,
 	CircleX,
 	ClipboardCopy,
@@ -7,6 +8,7 @@ import {
 	Loader2,
 	Pencil,
 	Plus,
+	RefreshCw,
 	Trash2,
 } from "lucide-react";
 import type { ProviderConfig } from "../../lib/contracts";
@@ -22,6 +24,7 @@ const PRIVACY_NOTE =
 export function ProviderPanel() {
 	const providers = useProviders((s) => s.providers);
 	const loaded = useProviders((s) => s.loaded);
+	const error = useProviders((s) => s.error);
 	const load = useProviders((s) => s.load);
 	const exportEnvText = useProviders((s) => s.exportEnvText);
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
@@ -46,12 +49,9 @@ export function ProviderPanel() {
 
 	return (
 		<div className="space-y-6">
-			<div className="flex items-start justify-between gap-4">
+			<div className="flex flex-wrap items-start justify-between gap-4">
 				<div>
 					<h2 className="text-sm font-semibold text-neutral-100">API 供应商</h2>
-					<p className="text-xs text-neutral-500">
-						图形化配置模型供应商；密钥加密保存，并自动注入新会话与终端的环境变量
-					</p>
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
 					<button
@@ -82,12 +82,20 @@ export function ProviderPanel() {
 				</div>
 			</div>
 
-			{loaded && providers.length === 0 ? (
-				<div className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-center">
+			{error && (
+				<div role="alert" className="flex items-center gap-2 text-xs text-rose-400">
+					<span className="min-w-0 flex-1 break-words">{error}</span>
+					<button type="button" onClick={() => void load()} title="重新加载" aria-label="重新加载供应商" className="rounded p-1 hover:bg-neutral-800">
+						<RefreshCw size={14} />
+					</button>
+				</div>
+			)}
+			{!loaded && !error && <Loader2 aria-label="加载供应商" size={16} className="animate-spin text-neutral-500" />}
+			{loaded && !error && providers.length === 0 ? (
+				<div className="py-6 text-center">
 					<div className="text-xs text-neutral-300">
-						还没有供应商。点击「添加供应商」从预设开始，或粘贴 .env 一键导入。
+						暂无供应商
 					</div>
-					<div className="text-[11px] text-neutral-500">{PRIVACY_NOTE}</div>
 				</div>
 			) : (
 				<div className="space-y-2">
@@ -142,8 +150,8 @@ function ProviderRow({
 	};
 
 	return (
-		<div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-			<div className="flex items-start justify-between gap-3">
+		<div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4">
+			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div className="min-w-0 flex-1">
 					<div className="flex flex-wrap items-center gap-2">
 						<span
@@ -182,9 +190,11 @@ function ProviderRow({
 						type="button"
 						onClick={() => void runTest(provider.id)}
 						disabled={test?.state === "testing"}
-						className="rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+						title="测试连接"
+						aria-label={`测试 ${provider.name} 连接`}
+						className="rounded border border-neutral-700 p-1.5 text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
 					>
-						{test?.state === "testing" ? "测试中…" : "测试"}
+						{test?.state === "testing" ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
 					</button>
 					<button
 						type="button"
@@ -224,6 +234,7 @@ function EnabledToggle({
 		<button
 			type="button"
 			role="switch"
+			aria-label={`启用 ${provider.name}`}
 			aria-checked={provider.enabled}
 			title={provider.enabled ? "已启用（新会话注入密钥）" : "已停用"}
 			onClick={() => onChange(!provider.enabled)}

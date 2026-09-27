@@ -10,7 +10,7 @@
 //! when the Keychain is unavailable the vault fails with a clear error.
 
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
@@ -51,7 +51,7 @@ fn set_mode(_path: &Path, _mode: u32) -> Result<(), String> {
     Ok(())
 }
 
-// ---- master key (macOS Keychain via the `security` CLI) ----
+// ---- master key (native macOS Keychain API) ----
 
 fn decode_hex_key(hex: &str) -> Option<[u8; 32]> {
     let hex = hex.trim();
@@ -65,25 +65,25 @@ fn decode_hex_key(hex: &str) -> Option<[u8; 32]> {
     Some(key)
 }
 
-fn keychain_read() -> Result<[u8; 32], String> {
-    let out = std::process::Command::new("security")
-        .args([
-            "find-generic-password",
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-a",
-            KEYCHAIN_ACCOUNT,
-            "-w",
-        ])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| format!("无法运行 security 命令: {e}"))?;
-    if !out.status.success() {
-        return Err(keychain_error());
+#[cfg(target_os = "macos")]
+fn keychain_read() -> Result<Option<[u8; 32]>, String> {
+    use security_framework::passwords::{generic_password, PasswordOptions};
+    match generic_password(PasswordOptions::new_generic_password(
+        KEYCHAIN_SERVICE,
+        KEYCHAIN_ACCOUNT,
+    )) {
+        Ok(bytes) => {
+            let hex = std::str::from_utf8(&bytes).map_err(|_| keychain_error())?;
+            decode_hex_key(hex).map(Some).ok_or_else(keychain_error)
+        }
+        Err(error) if error.code() == -25300 => Ok(None), // errSecItemNotFound
+        Err(_) => Err(keychain_error()),
     }
-    let hex = String::from_utf8_lossy(&out.stdout);
-    decode_hex_key(&hex).ok_or_else(keychain_error)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn keychain_read() -> Result<Option<[u8; 32]>, String> {
+    Err(keychain_error())
 }
 
 fn keychain_error() -> String {
@@ -99,39 +99,34 @@ fn random_key() -> Result<[u8; 32], String> {
     Ok(key)
 }
 
+#[cfg(target_os = "macos")]
 fn keychain_create(key: &[u8; 32]) -> Result<(), String> {
     let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
-    let out = std::process::Command::new("security")
-        .args([
-            "add-generic-password",
-            "-U",
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-a",
-            KEYCHAIN_ACCOUNT,
-            "-w",
-            &hex,
-        ])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| format!("无法运行 security 命令: {e}"))?;
-    if !out.status.success() {
-        return Err(keychain_error());
-    }
-    Ok(())
+    security_framework::passwords::set_generic_password(
+        KEYCHAIN_SERVICE,
+        KEYCHAIN_ACCOUNT,
+        hex.as_bytes(),
+    )
+    .map_err(|_| keychain_error())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn keychain_create(_key: &[u8; 32]) -> Result<(), String> {
+    Err(keychain_error())
 }
 
 /// Load the master key, creating a fresh random one in the Keychain on first
 /// use. A successful load is cached for the process lifetime.
 pub fn master_key() -> Result<[u8; 32], String> {
     static KEY: OnceLock<[u8; 32]> = OnceLock::new();
+    static INIT: Mutex<()> = Mutex::new(());
+    let _guard = INIT.lock().map_err(|_| keychain_error())?;
     if let Some(key) = KEY.get() {
         return Ok(*key);
     }
-    let key = match keychain_read() {
-        Ok(key) => key,
-        Err(read_err) => {
+    let key = match keychain_read()? {
+        Some(key) => key,
+        None => {
             // First use (no vault content yet): create a fresh key. When the
             // vault already holds ciphertext a new key would be useless, so
             // surface the read error instead.
@@ -139,7 +134,7 @@ pub fn master_key() -> Result<[u8; 32], String> {
                 .map(|bytes| !bytes.is_empty())
                 .unwrap_or(false);
             if has_content {
-                return Err(read_err);
+                return Err(keychain_error());
             }
             let key = random_key()?;
             keychain_create(&key)?;
@@ -179,6 +174,9 @@ pub fn decrypt(key: &[u8; 32], token: &str) -> Result<String, String> {
     let nonce = base64::engine::general_purpose::STANDARD
         .decode(nonce_b64)
         .map_err(|_| "密文格式错误".to_string())?;
+    if nonce.len() != 12 {
+        return Err("密文 nonce 长度错误".to_string());
+    }
     let ct = base64::engine::general_purpose::STANDARD
         .decode(ct_b64)
         .map_err(|_| "密文格式错误".to_string())?;
@@ -381,6 +379,7 @@ mod tests {
         assert!(decrypt(&other, &t1).is_err());
         assert!(decrypt(&key, "v0:xx:yy").is_err());
         assert!(decrypt(&key, "v1:notb64:alsonot").is_err());
+        assert!(decrypt(&key, "v1:YQ==:Yg==").is_err());
     }
 
     #[test]

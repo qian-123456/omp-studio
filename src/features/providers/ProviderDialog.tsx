@@ -1,5 +1,5 @@
-import { Loader2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronDown, Eye, EyeOff, Loader2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderApi, ProviderConfig } from "../../lib/contracts";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
 import { errMsg } from "../../lib/dialogs";
@@ -45,6 +45,7 @@ const labelCls = "block text-xs font-medium text-neutral-200";
 const hintCls = "mt-0.5 text-[11px] text-neutral-500";
 
 export function ProviderDialog({ target, onClose }: Props) {
+	const dialogRef = useRef<HTMLDivElement>(null);
 	const providers = useProviders((s) => s.providers);
 	const save = useProviders((s) => s.save);
 
@@ -62,6 +63,8 @@ export function ProviderDialog({ target, onClose }: Props) {
 	const [modelsText, setModelsText] = useState((editing?.models ?? []).join("\n"));
 	const [defaultModel, setDefaultModel] = useState(editing?.defaultModel ?? "");
 	const [notes, setNotes] = useState(editing?.notes ?? "");
+	const [advancedOpen, setAdvancedOpen] = useState(isEdit);
+	const [showKey, setShowKey] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [formError, setFormError] = useState<string | null>(null);
 
@@ -70,11 +73,20 @@ export function ProviderDialog({ target, onClose }: Props) {
 	const [importing, setImporting] = useState(false);
 
 	useEscapeKey(onClose);
+	useEffect(() => {
+		const previous = document.activeElement;
+		(dialogRef.current?.querySelector<HTMLElement>("input, textarea")
+			?? dialogRef.current?.querySelector<HTMLElement>("button"))?.focus();
+		return () => {
+			if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+		};
+	}, []);
 
 	const applyPreset = (presetId: string) => {
 		const p = PROVIDER_PRESETS.find((x) => x.id === presetId);
 		setSelectedPresetId(presetId);
 		if (!p) return;
+		setAdvancedOpen(presetId === "custom");
 		setName(p.name);
 		if (!slugTouched) setSlug(slugify(p.name));
 		setBaseUrl(p.baseUrl);
@@ -91,10 +103,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 	const models = useMemo(
 		() =>
-			modelsText
+			[...new Set(modelsText
 				.split(/[\n,]/)
 				.map((m) => m.trim())
-				.filter(Boolean),
+				.filter(Boolean))],
 		[modelsText],
 	);
 
@@ -117,7 +129,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 					api,
 					envVar: envVar.trim().toUpperCase(),
 					models,
-					defaultModel: defaultModel || null,
+					defaultModel: models.includes(defaultModel) ? defaultModel : null,
 					notes: notes.trim() || null,
 				}
 			: {
@@ -129,11 +141,17 @@ export function ProviderDialog({ target, onClose }: Props) {
 					api,
 					envVar: envVar.trim().toUpperCase(),
 					models,
-					defaultModel: defaultModel || null,
+					defaultModel: models.includes(defaultModel) ? defaultModel : null,
 					notes: notes.trim() || null,
 				};
 		if (!config.name || !config.slug || !config.baseUrl || !config.envVar) {
-			setFormError("请填写名称、标识符、Base URL 和环境变量名");
+			setAdvancedOpen(true);
+			setFormError("请填写名称、Base URL 和环境变量名");
+			return;
+		}
+		if (config.models.length === 0) {
+			setAdvancedOpen(true);
+			setFormError("请至少填写一个模型 ID，才能在 OMP 中选择");
 			return;
 		}
 		setSaving(true);
@@ -210,9 +228,30 @@ export function ProviderDialog({ target, onClose }: Props) {
 				if (e.target === e.currentTarget) onClose();
 			}}
 		>
-			<div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-neutral-800 bg-neutral-900 shadow-2xl">
+			<div
+				ref={dialogRef}
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="provider-dialog-title"
+				onKeyDown={(e) => {
+					if (e.key !== "Tab") return;
+					const controls = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(
+						'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]',
+					)).filter((control) => control.getClientRects().length > 0);
+					const first = controls[0];
+					const last = controls[controls.length - 1];
+					if (e.shiftKey && document.activeElement === first) {
+						e.preventDefault();
+						last?.focus();
+					} else if (!e.shiftKey && document.activeElement === last) {
+						e.preventDefault();
+						first?.focus();
+					}
+				}}
+				className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg border border-neutral-800 bg-neutral-900 shadow-2xl"
+			>
 				<div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-					<div className="text-xs font-semibold text-neutral-100">
+					<div id="provider-dialog-title" className="text-xs font-semibold text-neutral-100">
 						{isEdit
 							? "编辑供应商"
 							: target.mode === "import"
@@ -222,6 +261,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 					<button
 						type="button"
 						onClick={onClose}
+						aria-label="关闭"
 						className="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
 					>
 						<X className="h-3.5 w-3.5" />
@@ -231,12 +271,13 @@ export function ProviderDialog({ target, onClose }: Props) {
 				{target.mode === "import" ? (
 					<div className="flex-1 space-y-4 overflow-y-auto p-4">
 						<div>
-							<label className={labelCls}>粘贴 .env 内容</label>
+							<label htmlFor="provider-import" className={labelCls}>粘贴 .env 内容</label>
 							<div className={hintCls}>
 								支持多行，格式 <code className="font-mono">ANTHROPIC_API_KEY=sk-…</code>；
 								能识别的变量会自动匹配预设
 							</div>
 							<textarea
+								id="provider-import"
 								value={pasteText}
 								onChange={(e) => setPasteText(e.target.value)}
 								rows={6}
@@ -315,10 +356,11 @@ export function ProviderDialog({ target, onClose }: Props) {
 							</div>
 						)}
 
-						<div className="grid grid-cols-2 gap-3">
+						<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 							<div>
-								<label className={labelCls}>名称</label>
+								<label htmlFor="provider-name" className={labelCls}>名称</label>
 								<input
+									id="provider-name"
 									type="text"
 									value={name}
 									onChange={(e) => handleNameChange(e.target.value)}
@@ -327,24 +369,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 								/>
 							</div>
 							<div>
-								<label className={labelCls}>标识符 (slug)</label>
+								<label htmlFor="provider-url" className={labelCls}>Base URL</label>
 								<input
-									type="text"
-									value={slug}
-									onChange={(e) => {
-										setSlug(e.target.value);
-										setSlugTouched(true);
-									}}
-									className={`${inputCls} font-mono`}
-									placeholder="my-gateway"
-								/>
-							</div>
-						</div>
-
-						<div className="grid grid-cols-2 gap-3">
-							<div>
-								<label className={labelCls}>Base URL</label>
-								<input
+									id="provider-url"
 									type="text"
 									value={baseUrl}
 									onChange={(e) => setBaseUrl(e.target.value)}
@@ -352,94 +379,124 @@ export function ProviderDialog({ target, onClose }: Props) {
 									placeholder="https://api.example.com/v1"
 								/>
 							</div>
-							<div>
-								<label className={labelCls}>协议</label>
-								<select
-									value={api}
-									onChange={(e) => setApi(e.target.value as ProviderApi)}
-									className={inputCls}
-								>
-									{Object.entries(API_LABELS).map(([value, label]) => (
-										<option key={value} value={value}>
-											{label}
-										</option>
-									))}
-								</select>
-							</div>
 						</div>
 
-						<div className="grid grid-cols-2 gap-3">
+						<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 							<div>
-								<label className={labelCls}>环境变量名</label>
+								<label htmlFor="provider-env" className={labelCls}>环境变量名</label>
 								<input
+									id="provider-env"
 									type="text"
 									value={envVar}
 									onChange={(e) => setEnvVar(e.target.value.toUpperCase())}
 									className={`${inputCls} font-mono`}
-									placeholder="ANTHROPIC_API_KEY"
+									placeholder="OPENAI_API_KEY"
 								/>
 							</div>
 							<div>
-								<label className={labelCls}>API 密钥</label>
-								<input
-									type="password"
-									value={apiKey}
-									onChange={(e) => setApiKey(e.target.value)}
-									onKeyDown={(e) => {
-										if (isComposing(e)) return;
-										if (e.key === "Enter" && !saving) void handleSave();
-									}}
-									autoComplete="off"
-									className={inputCls}
-									placeholder={
-										editing?.hasKey ? "留空保持不变" : "sk-…（保存后加密）"
-									}
-								/>
+								<label htmlFor="provider-key" className={labelCls}>API 密钥</label>
+								<div className="relative">
+									<input
+										id="provider-key"
+										type={showKey ? "text" : "password"}
+										value={apiKey}
+										onChange={(e) => setApiKey(e.target.value)}
+										onKeyDown={(e) => {
+											if (isComposing(e)) return;
+											if (e.key === "Enter" && !saving) void handleSave();
+										}}
+										autoComplete="new-password"
+										className={`${inputCls} pr-9`}
+										placeholder={
+											editing?.hasKey ? "留空保持不变" : "sk-…（保存后加密）"
+										}
+									/>
+									<button
+										type="button"
+										onClick={() => setShowKey((value) => !value)}
+										title={showKey ? "隐藏密钥" : "显示密钥"}
+										aria-label={showKey ? "隐藏密钥" : "显示密钥"}
+										className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 text-neutral-500 hover:text-neutral-200"
+									>
+										{showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+									</button>
+								</div>
 								{editing?.hasKey && editing.keyHint && (
 									<div className={hintCls}>已配置 (…{editing.keyHint})</div>
 								)}
 							</div>
 						</div>
 
-						<div>
-							<label className={labelCls}>模型列表</label>
-							<textarea
-								value={modelsText}
-								onChange={(e) => setModelsText(e.target.value)}
-								rows={3}
-								spellCheck={false}
-								className={inputCls}
-								placeholder={"每行一个模型，或用逗号分隔\ngpt-4o\ngpt-4.1"}
-							/>
-						</div>
+						<div className="border-t border-neutral-800 pt-3">
+							<button
+								type="button"
+								onClick={() => setAdvancedOpen((value) => !value)}
+								aria-expanded={advancedOpen}
+								className="flex w-full items-center justify-between text-left text-xs text-neutral-300 hover:text-neutral-100"
+							>
+								<span>进阶设置</span>
+								<ChevronDown size={14} className={advancedOpen ? "rotate-180" : ""} />
+							</button>
+							{advancedOpen && (
+								<div className="mt-3 space-y-3">
+									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+										<div>
+											<label htmlFor="provider-slug" className={labelCls}>标识符</label>
+											<input
+												id="provider-slug"
+												type="text"
+												value={slug}
+												onChange={(e) => {
+													setSlug(e.target.value);
+													setSlugTouched(true);
+												}}
+												className={`${inputCls} font-mono`}
+												placeholder="my-gateway"
+											/>
+										</div>
+										<div>
+											<label htmlFor="provider-api" className={labelCls}>协议</label>
+											<select
+												id="provider-api"
+												value={api}
+												onChange={(e) => setApi(e.target.value as ProviderApi)}
+												className={inputCls}
+											>
+												{Object.entries(API_LABELS).map(([value, label]) => (
+													<option key={value} value={value}>{label}</option>
+												))}
+											</select>
+										</div>
+									</div>
+									<div>
+										<label htmlFor="provider-models" className={labelCls}>模型 ID</label>
+										<textarea
+											id="provider-models"
+											value={modelsText}
+											onChange={(e) => setModelsText(e.target.value)}
+											rows={3}
+											spellCheck={false}
+											className={inputCls}
+											placeholder="每行一个模型"
+										/>
+										<p className={hintCls}>配置密钥后以 ompws-{slug.trim() || slugify(name) || "标识符"}/模型 ID 选择。默认上下文 32K，输出上限 4K。</p>
+									</div>
 
-						{models.length > 0 && (
-							<div>
-								<label className={labelCls}>默认模型</label>
-								<select
-									value={defaultModel}
-									onChange={(e) => setDefaultModel(e.target.value)}
-									className={inputCls}
-								>
-									<option value="">（不指定）</option>
-									{models.map((m) => (
-										<option key={m} value={m}>
-											{m}
-										</option>
-									))}
-								</select>
-							</div>
-						)}
-
-						<div>
-							<label className={labelCls}>备注（可选）</label>
-							<input
-								type="text"
-								value={notes}
-								onChange={(e) => setNotes(e.target.value)}
-								className={inputCls}
-								placeholder="例如: 团队共享额度"
-							/>
+									{models.length > 0 && (
+										<div>
+											<label htmlFor="provider-default" className={labelCls}>供应商列表标记模型</label>
+											<select id="provider-default" value={models.includes(defaultModel) ? defaultModel : ""} onChange={(e) => setDefaultModel(e.target.value)} className={inputCls}>
+												<option value="">（不指定）</option>
+												{models.map((m) => <option key={m} value={m}>{m}</option>)}
+											</select>
+										</div>
+									)}
+									<div>
+										<label htmlFor="provider-notes" className={labelCls}>备注（可选）</label>
+										<input id="provider-notes" type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} placeholder="例如: 团队共享额度" />
+									</div>
+								</div>
+							)}
 						</div>
 					</div>
 				)}

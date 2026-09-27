@@ -241,6 +241,19 @@ describe("groupSessions", () => {
 		const p2 = makeSession({ id: "p2", pinned: true, updatedAt: "2026-09-25T11:00:00Z" });
 		const result = groupSessions([p1, u1, p2], []);
 		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p2", "p1"]);
+		expect(result.unassigned.map((n) => n.session.id)).toEqual(["u1"]);
+		expect(result.totalVisible).toBe(3);
+	});
+
+	it("renders pinned sessions only once across workspace groups", () => {
+		const pinnedProject = makeSession({ id: "project", pinned: true, workspaceId: "proj1" });
+		const pinnedGlobal = makeSession({ id: "global", pinned: true, workspaceId: "global" });
+		const unpinned = makeSession({ id: "normal", workspaceId: "proj1" });
+		const result = groupSessions([pinnedProject, pinnedGlobal, unpinned], [projectWs, globalWs]);
+		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["project", "global"]);
+		expect(result.workspaceGroups[0].subgroups.flatMap((s) => s.nodes.map((n) => n.session.id))).toEqual(["normal"]);
+		expect(result.workspaceGroups[0].totalCount).toBe(1);
+		expect(result.globalGroup?.totalCount).toBe(0);
 	});
 });
 

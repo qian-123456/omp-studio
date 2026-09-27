@@ -54,7 +54,7 @@ import {
 import { SessionRow } from "./SessionRow";
 
 /** Sessions shown per section before a "show more" row appears. */
-const RECENT_LIMIT = 5;
+const RECENT_LIMIT = 12;
 /** Extra sessions revealed per "show more" click — never dumps the whole list. */
 const RECENT_STEP = 10;
 const COLLAPSED_GROUPS_KEY = "ompws:collapsed-groups";
@@ -990,7 +990,7 @@ export function SessionSidebar() {
 											</div>
 										) : (
 											<SessionList
-												nodes={grouped.globalGroup.subgroups[0]?.nodes ?? []}
+												nodes={grouped.globalGroup.subgroups.flatMap((group) => group.nodes)}
 												scopeKey="__global"
 												searching={searching}
 												onSetCount={setSectionCount}

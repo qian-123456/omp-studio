@@ -4,7 +4,7 @@
  * up from the bottom edge (z-40, below modals); multiple tabs, each a login
  * shell PTY via term_open(cwd, [], cols, rows). PTYs persist while the
  * drawer is closed or across tab switches; closing a tab explicitly kills
- * its PTY. Toggle: Cmd+` (Ctrl+` on non-mac) or the bottom handle pill.
+ * its PTY. Toggle: Cmd+` (Ctrl+` on non-mac) or the status-bar button.
  * Esc deliberately does NOT close the drawer (it is a terminal key).
  */
 import { homeDir } from "@tauri-apps/api/path";
@@ -24,7 +24,6 @@ import {
 	Minimize2,
 	Plus,
 	RefreshCw,
-	TerminalSquare,
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -322,7 +321,7 @@ export function TerminalDrawer() {
 	useEffect(() => {
 		const onMove = (e: MouseEvent) => {
 			if (!dragActiveRef.current) return;
-			setHeight(window.innerHeight - e.clientY);
+			setHeight(window.innerHeight - e.clientY - 28);
 		};
 		const onUp = () => {
 			if (!dragActiveRef.current) return;
@@ -403,14 +402,16 @@ export function TerminalDrawer() {
 		<>
 			{/* Drawer panel — always mounted so PTYs persist; slides via transform */}
 			<div
-				className="fixed bottom-0 left-0 right-0 z-40 flex flex-col border-t border-neutral-800 bg-[#0a0a0a] shadow-[0_-8px_24px_rgba(0,0,0,0.45)]"
+				className="fixed left-0 right-0 z-40 flex flex-col border-t border-neutral-800 bg-[#0a0a0a] shadow-[0_-8px_24px_rgba(0,0,0,0.45)]"
 				style={{
 					height,
+					bottom: open ? 28 : 0,
 					transform: open ? "translateY(0)" : "translateY(100%)",
 					transition: "transform 200ms ease-out",
 					pointerEvents: open ? "auto" : "none",
 				}}
 				aria-hidden={!open}
+				inert={!open}
 			>
 				{/* Resize grab strip */}
 				<div
@@ -497,14 +498,6 @@ export function TerminalDrawer() {
 						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
 					>
 						<ChevronDown size={14} />
-					</button>
-					<button
-						type="button"
-						onClick={() => setOpen(false)}
-						title="关闭抽屉"
-						className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
-					>
-						<X size={14} />
 					</button>
 				</div>
 
@@ -726,20 +719,6 @@ export function TerminalDrawer() {
 				)}
 			</div>
 
-			{/* Closed-state handle: subtle pill at the bottom edge, above BottomBar */}
-			{!open && (
-				<div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 flex justify-center pb-1">
-					<button
-						type="button"
-						onClick={() => setOpen(true)}
-						title="打开终端 (⌘`)"
-						className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/90 px-3 py-0.5 text-[11px] text-neutral-500 shadow transition-colors hover:border-neutral-700 hover:text-neutral-200"
-					>
-						<TerminalSquare size={12} />
-						<span>⌘` 终端</span>
-					</button>
-				</div>
-			)}
 		</>
 	);
 }

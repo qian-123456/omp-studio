@@ -272,7 +272,7 @@ async fn augmented_path() -> String {
         .clone()
 }
 
-fn build_command(opts: &StartOpts, settings: &Settings) -> tokio::process::Command {
+fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process::Command, String> {
     let approval_mode = opts
         .approval_mode
         .clone()
@@ -300,7 +300,8 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> tokio::process::Comma
     if ext.exists() {
         cmd.arg("-e").arg::<PathBuf>(ext);
     }
-    cmd
+    cmd.arg("-e").arg(crate::providers::extension_path()?);
+    Ok(cmd)
 }
 
 /// Send one command, correlating the response by generated id.
@@ -360,7 +361,7 @@ pub async fn spawn_with_sink(
     settings: &Settings,
     sink: OutSink,
 ) -> Result<Arc<SessionHandle>, String> {
-    let mut cmd = build_command(opts, settings);
+    let mut cmd = build_command(opts, settings)?;
     let path = augmented_path().await;
     cmd.env("PATH", &path);
     // Inject configured API provider keys (best effort; never logged).

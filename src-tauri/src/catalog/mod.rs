@@ -156,16 +156,21 @@ fn index_by_id(files: &FileMap) -> HashMap<String, Arc<Scanned>> {
     idx
 }
 
+fn git_needs_refresh(cached_at: Option<Instant>, force: bool) -> bool {
+    force
+        || match cached_at {
+            Some(at) => at.elapsed() >= GIT_TTL,
+            None => true,
+        }
+}
+
 /// Refresh cached git facts for `cwds`; returns the cwds whose facts changed.
 fn refresh_git(cwds: Vec<String>, force: bool) -> Vec<String> {
     let todo: Vec<String> = {
         let c = cat().lock();
         let uniq: HashSet<String> = cwds.into_iter().collect();
         uniq.into_iter()
-            .filter(|cwd| match c.git.get(cwd) {
-                Some((at, _)) => force && at.elapsed() >= GIT_TTL,
-                None => true,
-            })
+            .filter(|cwd| git_needs_refresh(c.git.get(cwd).map(|(at, _)| *at), force))
             .collect()
     };
     if todo.is_empty() {
@@ -210,6 +215,20 @@ fn refresh_git(cwds: Vec<String>, force: bool) -> Vec<String> {
         c.git.insert(cwd, (now, info));
     }
     changed
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use super::*;
+
+    #[test]
+    fn git_refresh_respects_expiry_and_force() {
+        let now = Instant::now();
+        assert!(git_needs_refresh(None, false));
+        assert!(!git_needs_refresh(Some(now), false));
+        assert!(git_needs_refresh(Some(now), true));
+        assert!(git_needs_refresh(Some(now - GIT_TTL), false));
+    }
 }
 
 fn parse_ts(s: &str) -> Option<chrono::DateTime<chrono::FixedOffset>> {

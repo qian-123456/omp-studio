@@ -7,6 +7,7 @@ import {
 	Minus,
 	Plus,
 	RefreshCw,
+	TerminalSquare,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { computeSessionStats, formatTokens } from "../features/chat/sessionStats";
@@ -15,6 +16,7 @@ import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
 import { getAppMemoryUsage } from "../lib/ipc";
+import { useDrawerStore } from "../features/terminal/drawerStore";
 
 const ZOOM_STORAGE_KEY = "ompws:ui-zoom";
 const DEFAULT_ZOOM = 100;
@@ -58,6 +60,8 @@ export function BottomBar() {
 		activeSessionId ? s.sessions[activeSessionId] : undefined,
 	);
 	const streaming = live?.streaming === true;
+	const terminalOpen = useDrawerStore((s) => s.open);
+	const toggleTerminal = useDrawerStore((s) => s.toggle);
 
 	// Zoom state
 	const [zoom, setZoom] = useState<number>(readStoredZoom);
@@ -177,6 +181,20 @@ export function BottomBar() {
 
 			{/* Right: CC GUI style Status Strip (Performance, Zoom, Sync, Git) */}
 			<div className="flex items-center gap-2 text-neutral-400">
+				<button
+					type="button"
+					onClick={toggleTerminal}
+					aria-label={terminalOpen ? "收起全局终端" : "打开全局终端"}
+					aria-pressed={terminalOpen}
+					title={terminalOpen ? "收起全局终端 (⌘`)" : "打开全局终端 (⌘`)"}
+					className={clsx(
+						"flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-neutral-800 hover:text-neutral-100",
+						terminalOpen && "bg-neutral-800 text-neutral-100",
+					)}
+				>
+					<TerminalSquare size={13} />
+				</button>
+				<span className="text-neutral-700">·</span>
 				{/* Performance indicator (Real OS physical memory RSS) */}
 				<div
 					className="flex items-center gap-1"

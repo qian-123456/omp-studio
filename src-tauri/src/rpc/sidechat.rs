@@ -169,16 +169,20 @@ async fn classify_route(
     let prompt = prompts::render(prompts::CONTEXT_ROUTE, &vars);
 
     let output = tokio::time::timeout(Duration::from_secs(60), async {
-        tokio::process::Command::new(binary)
-            .args([
-                "-p",
-                &prompt,
-                "--no-session",
-                "--no-tools",
-                "--model",
-                &model,
-            ])
-            .current_dir(paths::global_dir())
+        let mut cmd = tokio::process::Command::new(binary);
+        cmd.args([
+            "-p",
+            &prompt,
+            "--no-session",
+            "--no-tools",
+            "--model",
+            &model,
+        ]);
+        if let Ok(ext) = crate::providers::extension_path() {
+            cmd.arg("-e").arg(ext);
+        }
+        cmd.current_dir(paths::global_dir())
+            .envs(crate::providers::env_pairs())
             .output()
             .await
     })

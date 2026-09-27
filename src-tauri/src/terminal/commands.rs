@@ -104,6 +104,10 @@ pub async fn term_open_session(
         meta.file.clone(),
         "-e".to_string(),
         ext.to_string_lossy().to_string(),
+        "-e".to_string(),
+        crate::providers::extension_path()?
+            .to_string_lossy()
+            .to_string(),
     ];
     let cwd = if std::path::Path::new(&meta.cwd).is_dir() {
         meta.cwd.clone()

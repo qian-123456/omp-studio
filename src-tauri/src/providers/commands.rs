@@ -37,8 +37,17 @@ pub(crate) fn validate(config: &ProviderConfig) -> Result<(), String> {
         return Err("标识符只能包含字母、数字、下划线和连字符".to_string());
     }
     let base_url = config.base_url.trim();
-    if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
-        return Err("Base URL 必须以 http:// 或 https:// 开头".to_string());
+    let url = reqwest::Url::parse(base_url)
+        .map_err(|_| "Base URL 必须是有效的 http:// 或 https:// 地址".to_string())?;
+    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+        return Err("Base URL 必须是有效的 http:// 或 https:// 地址".to_string());
+    }
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("Base URL 不能包含用户名、密码、查询参数或片段".to_string());
     }
     let env_var = config.env_var.trim();
     if env_var.is_empty() {
@@ -57,6 +66,18 @@ pub(crate) fn validate(config: &ProviderConfig) -> Result<(), String> {
     ] {
         if value.contains('\0') || value.contains('\n') || value.contains('\r') {
             return Err(format!("{label}不能包含换行或空字符"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_unique(config: &ProviderConfig, providers: &[ProviderConfig]) -> Result<(), String> {
+    for existing in providers.iter().filter(|p| p.id != config.id) {
+        if vault::line_key(&existing.slug) == vault::line_key(&config.slug) {
+            return Err("标识符已被其他供应商使用".to_string());
+        }
+        if existing.env_var == config.env_var {
+            return Err("环境变量名已被其他供应商使用".to_string());
         }
     }
     Ok(())
@@ -87,8 +108,10 @@ pub async fn provider_save(
     config.env_var = config.env_var.trim().to_string();
 
     let mut providers = store::load();
+    validate_unique(&config, &providers)?;
     let now = now_iso();
     let new_key = api_key.as_deref().map(str::trim).filter(|k| !k.is_empty());
+    let mut old_slug = None;
 
     match providers.iter().position(|p| p.id == config.id) {
         None => {
@@ -120,16 +143,21 @@ pub async fn provider_save(
             match new_key {
                 Some(key) => {
                     vault::write_entry(&config.slug, key)?;
+                    if vault::line_key(&prev.slug) != vault::line_key(&config.slug) {
+                        old_slug = Some(prev.slug.clone());
+                    }
                     config.has_key = true;
                     config.key_hint = Some(key_hint(key));
                 }
                 None => {
                     // Slug changed: migrate the stored key so it is not orphaned.
-                    if prev.slug != config.slug && vault::contains(&prev.slug) {
+                    if vault::line_key(&prev.slug) != vault::line_key(&config.slug)
+                        && vault::contains(&prev.slug)
+                    {
                         if let Some(value) = vault::read_entry(&prev.slug)? {
                             vault::write_entry(&config.slug, &value)?;
                         }
-                        vault::remove_entry(&prev.slug)?;
+                        old_slug = Some(prev.slug.clone());
                     }
                     config.has_key = vault::contains(&config.slug);
                     if !config.has_key {
@@ -142,6 +170,9 @@ pub async fn provider_save(
     }
 
     store::save(&providers)?;
+    if let Some(slug) = old_slug {
+        vault::remove_entry(&slug)?;
+    }
     Ok(config)
 }
 
@@ -152,8 +183,8 @@ pub async fn provider_delete(id: String) -> Result<(), String> {
     let mut providers = store::load();
     if let Some(idx) = providers.iter().position(|p| p.id == id) {
         let slug = providers.remove(idx).slug;
-        vault::remove_entry(&slug)?;
         store::save(&providers)?;
+        vault::remove_entry(&slug)?;
     }
     Ok(())
 }
@@ -218,6 +249,7 @@ async fn test_provider(
 ) -> Result<ProviderTestResult, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
     let base = config.base_url.trim_end_matches('/');
@@ -241,11 +273,11 @@ async fn test_provider(
             req.send().await
         }
         ProviderApi::Gemini => {
-            let mut url = format!("{base}/v1beta/models");
+            let mut req = client.get(format!("{base}/v1beta/models"));
             if let Some(k) = key {
-                url = format!("{url}?key={k}");
+                req = req.header("x-goog-api-key", k);
             }
-            client.get(url).send().await
+            req.send().await
         }
         ProviderApi::Ollama => client.get(format!("{base}/api/tags")).send().await,
     };
@@ -257,7 +289,7 @@ async fn test_provider(
             return Ok(ProviderTestResult {
                 ok: false,
                 latency_ms,
-                detail: format!("连接失败: {e}"),
+                detail: format!("连接失败: {}", e.without_url()),
             });
         }
     };
@@ -304,7 +336,7 @@ fn count_models(body: &str, api: ProviderApi) -> Option<usize> {
 #[tauri::command]
 pub async fn provider_export_env_text(ids: Option<Vec<String>>) -> Result<String, String> {
     let providers = store::load();
-    let mut selected: Vec<ProviderConfig> = match &ids {
+    let selected: Vec<ProviderConfig> = match &ids {
         Some(ids) => ids
             .iter()
             .filter_map(|id| providers.iter().find(|p| &p.id == id))
@@ -317,13 +349,15 @@ pub async fn provider_export_env_text(ids: Option<Vec<String>>) -> Result<String
         }
     };
     let mut seen = HashSet::new();
-    selected.retain(|p| seen.insert(p.env_var.clone()));
-
     let mut out = String::new();
     for provider in selected {
+        if seen.contains(&provider.env_var) {
+            continue;
+        }
         let Some(value) = vault::read_entry(&provider.slug)? else {
             continue;
         };
+        seen.insert(provider.env_var.clone());
         out.push_str(&format!("{}={}\n", provider.env_var, value));
     }
     Ok(out)
@@ -381,6 +415,34 @@ mod tests {
 
         c = config("n", "slug", "https://x.dev\0", "KEY");
         assert!(validate(&c).unwrap_err().contains("Base URL"));
+
+        c = config("n", "slug", "https://user:secret@x.dev/v1", "KEY");
+        assert!(validate(&c).unwrap_err().contains("Base URL"));
+
+        c = config("n", "slug", "https://x.dev/v1?key=secret", "KEY");
+        assert!(validate(&c).unwrap_err().contains("Base URL"));
+    }
+
+    #[test]
+    fn duplicate_provider_identity_is_rejected_except_for_self() {
+        let mut existing = config("First", "first", "https://x.dev", "FIRST_KEY");
+        existing.id = "id-1".to_string();
+        let mut edited = existing.clone();
+        edited.name = "Renamed".to_string();
+        assert!(validate_unique(&edited, &[existing.clone()]).is_ok());
+
+        let duplicate_slug = config("Second", "first", "https://x.dev", "SECOND_KEY");
+        assert!(validate_unique(&duplicate_slug, &[existing.clone()])
+            .unwrap_err()
+            .contains("标识符"));
+        let case_alias = config("Second", "FIRST", "https://x.dev", "SECOND_KEY");
+        assert!(validate_unique(&case_alias, &[existing.clone()])
+            .unwrap_err()
+            .contains("标识符"));
+        let duplicate_env = config("Second", "second", "https://x.dev", "FIRST_KEY");
+        assert!(validate_unique(&duplicate_env, &[existing])
+            .unwrap_err()
+            .contains("环境变量"));
     }
 
     #[test]
@@ -404,5 +466,54 @@ mod tests {
             Some(1)
         );
         assert_eq!(count_models("not json", ProviderApi::Gemini), None);
+    }
+
+    #[tokio::test]
+    async fn probe_does_not_follow_redirects_with_credentials() {
+        use axum::{response::Redirect, routing::get, Router};
+        use std::future::IntoFuture;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let hits = Arc::new(AtomicUsize::new(0));
+        let target_hits = hits.clone();
+        let target = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let location = format!("http://{}/models", target.local_addr().unwrap());
+        let target_task = tokio::spawn(
+            axum::serve(
+                target,
+                Router::new().route(
+                    "/models",
+                    get(move || async move {
+                        target_hits.fetch_add(1, Ordering::SeqCst);
+                        "{}"
+                    }),
+                ),
+            )
+            .into_future(),
+        );
+        let source = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", source.local_addr().unwrap());
+        let source_task = tokio::spawn(
+            axum::serve(
+                source,
+                Router::new().route(
+                    "/v1beta/models",
+                    get(move || async move { Redirect::temporary(&location) }),
+                ),
+            )
+            .into_future(),
+        );
+        let mut provider = config("Test", "test", &base, "TEST_KEY");
+        provider.api = ProviderApi::Gemini;
+        let result = test_provider(&provider, Some("secret-test-key"))
+            .await
+            .unwrap();
+        target_task.abort();
+        source_task.abort();
+        assert!(!result.ok);
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+        assert!(!result.detail.contains("secret-test-key"));
     }
 }
