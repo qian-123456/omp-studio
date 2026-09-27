@@ -68,12 +68,12 @@ export function HeldQueueBar({
 	};
 
 	return (
-		<div className="shrink-0 border-t border-amber-800/50 bg-amber-950/20 px-3 py-1.5 text-[12px]">
+		<div className="shrink-0 border-t border-neutral-800 bg-neutral-900/90 px-3 py-1.5 text-[12px] text-neutral-300 backdrop-blur-md">
 			<div className="flex items-center gap-2">
-				<span className="text-amber-300">有 {items.length} 条暂存</span>
+				<span className="font-medium text-neutral-200">排队队列 ({items.length})</span>
 				{streaming && (
-					<span className="text-[11px] text-amber-400/80">
-						（回合进行中，结束后可发送）
+					<span className="text-[11px] text-neutral-400">
+						（回合进行中，将按序执行）
 					</span>
 				)}
 				<button

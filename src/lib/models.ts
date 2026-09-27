@@ -24,6 +24,23 @@ export function toModelKey(provider: string, id: string): string {
 	return `${provider}/${id}`;
 }
 
+/** Normalize omp's `thinking` field into a flat list of effort levels.
+ * Accepts both shapes observed in the wild:
+ *  - `omp models --json`: `["medium","high","max"]`
+ *  - `get_state` / models.db cache: `{mode, efforts:[…], defaultLevel, …}`
+ * Unknown/absent input → `[]`. */
+export function extractThinkingLevels(thinking: unknown): string[] {
+	if (Array.isArray(thinking)) {
+		return thinking.filter((t): t is string => typeof t === "string");
+	}
+	if (thinking && typeof thinking === "object") {
+		const efforts = (thinking as Record<string, unknown>).efforts;
+		if (Array.isArray(efforts)) {
+			return efforts.filter((t): t is string => typeof t === "string");
+		}
+	}
+	return [];
+}
 export function parseModels(data: unknown): ModelOption[] {
 	if (!data) return [];
 	const d = data as Record<string, unknown>;
@@ -50,9 +67,10 @@ export function parseModels(data: unknown): ModelOption[] {
 			const key = toModelKey(cleanProvider, cleanId);
 			if (!seen.has(key)) {
 				seen.add(key);
-				const thinking = Array.isArray(o.thinking)
-					? o.thinking.filter((t): t is string => typeof t === "string")
-					: undefined;
+				const thinking =
+					o.thinking === undefined
+						? undefined
+						: extractThinkingLevels(o.thinking);
 				out.push({
 					provider: cleanProvider,
 					id: cleanId,

@@ -702,10 +702,23 @@ body {
 	color: var(--text);
 }
 
-/* Global accessible focus ring for keyboard navigation. */
-:focus-visible {
+/* Global accessible focus ring for keyboard navigation, excluding text inputs. */
+:focus-visible:not(input):not(textarea):not([contenteditable]):not(.outline-none) {
 	outline: 2px solid var(--accent);
 	outline-offset: 1px;
+}
+
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+[contenteditable]:focus,
+[contenteditable]:focus-visible,
+.outline-none,
+.outline-none:focus,
+.outline-none:focus-visible {
+	outline: none !important;
+	outline-offset: 0 !important;
 }
 
 /* Native form controls follow the theme accent. */

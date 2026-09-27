@@ -1,7 +1,8 @@
 /** [B] Center session view: message stream + pending dialogs +
  * held-queue bar + composer. `compact` = embedded side-chat mode. */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown } from "lucide-react";
 import type { SessionStatus } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import {
@@ -15,6 +16,7 @@ import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { TerminalView } from "../terminal/TerminalView";
+import { ChatTrace } from "./ChatTrace";
 import { Composer } from "./Composer";
 import { HeldQueueBar } from "./HeldQueueBar";
 import { MessageList } from "./MessageList";
@@ -35,6 +37,10 @@ export function SessionView({
 		(s) => s.sessionViewMode[sessionId] ?? "chat",
 	);
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const [scrollPill, setScrollPill] = useState({
+		nearBottom: true,
+		hasNewMessages: false,
+	});
 
 	const streaming = live?.streaming === true;
 	const status: SessionStatus =
@@ -98,36 +104,71 @@ export function SessionView({
 				<TerminalView sessionId={sessionId} />
 			) : (
 				<>
-					<div
-						ref={scrollRef}
-						className="relative min-h-0 flex-1 overflow-y-auto"
-					>
-						<MessageList sessionId={sessionId} scrollRef={scrollRef} />
-						<SelectionToolbar
-							sessionId={sessionId}
-							containerRef={scrollRef}
-						/>
+					<div className="relative min-h-0 flex-1 @container">
+						{!compact && (
+							<ChatTrace sessionId={sessionId} scrollRef={scrollRef} />
+						)}
+						<div
+							ref={scrollRef}
+							className="relative h-full overflow-y-auto"
+						>
+							<MessageList
+								sessionId={sessionId}
+								scrollRef={scrollRef}
+								traceGutter={!compact}
+								onScrollState={setScrollPill}
+							/>
+							<SelectionToolbar
+								sessionId={sessionId}
+								containerRef={scrollRef}
+							/>
+						</div>
+						{/* Viewport-pinned scroll-to-bottom (ZCode DWt: circular
+							icon button anchored outside the scrolled content). */}
+						{!scrollPill.nearBottom && (
+							<button
+								type="button"
+								aria-label="滚动到底部"
+								title="滚动到底部"
+								onClick={() => {
+									const el = scrollRef.current;
+									if (el)
+										el.scrollTo({
+											top: el.scrollHeight,
+											behavior: "smooth",
+										});
+								}}
+								className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-neutral-700 bg-neutral-900 p-2 text-neutral-300 shadow-lg transition-colors hover:bg-neutral-800 hover:text-white"
+							>
+								<ArrowDown size={16} />
+								{scrollPill.hasNewMessages && (
+									<span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-neutral-900 bg-indigo-500" />
+								)}
+							</button>
+						)}
 					</div>
 
 					{/* Pending dialogs at the stream bottom. */}
-					{pendingUi.length > 0 && (
-						<div className="shrink-0 border-t border-neutral-800 px-3 pb-1">
-							{pendingUi.map((req, i) => (
-								<PendingUiCard
-									key={`${(req.request as { id?: string }).id ?? i}`}
-									sessionId={sessionId}
-									req={req}
-								/>
-							))}
-						</div>
-					)}
+					<div className="mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-4xl">
+						{pendingUi.length > 0 && (
+							<div className="shrink-0 border-t border-neutral-800 px-3 pb-1">
+								{pendingUi.map((req, i) => (
+									<PendingUiCard
+										key={`${(req.request as { id?: string }).id ?? i}`}
+										sessionId={sessionId}
+										req={req}
+									/>
+								))}
+							</div>
+						)}
 
-					<HeldQueueBar sessionId={sessionId} streaming={streaming} />
-					<Composer
-						sessionId={sessionId}
-						readonly={external}
-						compact={compact}
-					/>
+						<HeldQueueBar sessionId={sessionId} streaming={streaming} />
+						<Composer
+							sessionId={sessionId}
+							readonly={external}
+							compact={compact}
+						/>
+					</div>
 				</>
 			)}
 		</div>

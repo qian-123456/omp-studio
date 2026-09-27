@@ -52,7 +52,6 @@ import { useLive } from "./stores/live";
 import { useSessions } from "./stores/sessions";
 import { type RightTab, useUi } from "./stores/ui";
 import { Toaster } from "./components/Toaster";
-import { ThemeMenu } from "./components/ThemeMenu";
 import { BottomBar } from "./components/BottomBar";
 import { RightPanelHeader } from "./components/RightPanelHeader";
 import { RightPanelEmptyState } from "./components/RightPanelEmptyState";
@@ -744,7 +743,6 @@ export default function App() {
 						)}
 
 						<TopCapsule />
-						<ThemeMenu />
 
 						{/* Show expand right panel button only when right panel is closed */}
 						{!rightOpen && (

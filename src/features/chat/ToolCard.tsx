@@ -3,12 +3,23 @@
 
 import clsx from "clsx";
 import {
+	Bot,
+	ChevronRight,
 	Clock,
 	Copy,
 	ExternalLink,
+	FilePlus2,
+	FileText,
+	FolderOpen,
+	Globe,
+	ListTodo,
 	Loader2,
+	Pencil,
+	Search,
 	Terminal,
+	Wrench,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
@@ -28,12 +39,57 @@ const pick = (args: unknown, keys: string[]): string | undefined => {
 	return undefined;
 };
 
+/** Chinese titles per tool family (ZCode tool rows lead with these). */
+const TOOL_TITLES: Record<string, string> = {
+	bash: "终端",
+	shell: "终端",
+	read: "读取",
+	edit: "编辑",
+	write: "写入",
+	grep: "搜索",
+	glob: "查找",
+	list: "列出文件",
+	todo: "待办",
+	todowrite: "待办",
+	task: "子代理",
+	agent: "子代理",
+	webfetch: "网页",
+};
+
+const TOOL_ICONS: Record<string, LucideIcon> = {
+	bash: Terminal,
+	shell: Terminal,
+	read: FileText,
+	edit: Pencil,
+	write: FilePlus2,
+	grep: Search,
+	glob: FolderOpen,
+	list: FolderOpen,
+	todo: ListTodo,
+	todowrite: ListTodo,
+	task: Bot,
+	agent: Bot,
+	webfetch: Globe,
+};
+
 /** Short summary for the collapsed header, per tool kind. */
-function headline(name: string, args: unknown, intent: string | null): string {
+function headline(args: unknown, intent: string | null): string {
 	if (intent) return intent;
 	const target = pick(args, ["path", "file", "filePath", "pattern", "command"]);
 	if (target) return target.length > 80 ? `${target.slice(0, 80)}…` : target;
-	return name;
+	return "";
+}
+
+/** +/- line counts from the unified diff detail string. */
+function diffStat(diff: string | null): { adds: number; dels: number } | null {
+	if (!diff) return null;
+	let adds = 0;
+	let dels = 0;
+	for (const line of diff.split("\n")) {
+		if (line.startsWith("+") && !line.startsWith("+++")) adds += 1;
+		else if (line.startsWith("-") && !line.startsWith("---")) dels += 1;
+	}
+	return adds + dels > 0 ? { adds, dels } : null;
 }
 
 export function ToolCard({
@@ -65,17 +121,17 @@ export function ToolCard({
 
 	useEffect(() => {
 		if (status !== "running" || !startedAt) return;
-		const id = setInterval(() => setNow(Date.now()), 200);
+		const id = setInterval(() => setNow(Date.now()), 1000);
 		return () => clearInterval(id);
 	}, [status, startedAt]);
 
 	let durationText: string | null = null;
 	if (startedAt && endedAt) {
 		const ms = Math.max(0, endedAt - startedAt);
-		durationText = `${(ms / 1000).toFixed(1)}s`;
+		durationText = `${Math.max(1, Math.ceil(ms / 1000))}s`;
 	} else if (status === "running" && startedAt) {
 		const ms = Math.max(0, now - startedAt);
-		durationText = `${(ms / 1000).toFixed(1)}s`;
+		durationText = `${Math.max(1, Math.ceil(ms / 1000))}s`;
 	}
 	useEffect(() => {
 		if (expanded !== undefined) {
@@ -92,21 +148,21 @@ export function ToolCard({
 	const diff = typeof det.diff === "string" ? det.diff : null;
 	const file = pick(args, ["path", "file", "filePath"]);
 	const command = pick(args, ["command"]);
-	const isBash = name === "bash" || name === "shell";
+	const toolKey = name.toLowerCase();
+	const ToolIcon = TOOL_ICONS[toolKey] ?? Wrench;
+	const toolTitle = TOOL_TITLES[toolKey] ?? "工具调用";
+	const detail = headline(args, intent ?? null);
+	const stat = diffStat(diff);
 
 	return (
 		<div
 			className={clsx(
-				"my-0.5 rounded text-[12px] transition-all",
+				"group/card my-0.5 rounded text-[12px] transition-colors",
 				status === "running"
-					? "bg-sky-950/25 text-sky-200 border border-sky-500/30 animate-pulse"
-					: status === "called"
-						? "bg-amber-950/20 text-amber-200 border border-amber-600/30"
-						: status === "error"
-							? "bg-red-950/25 text-red-200 border border-red-500/30"
-							: open
-								? "bg-neutral-900/40 border border-neutral-800/60"
-								: "hover:bg-neutral-800/40",
+					? "bg-sky-500/5"
+					: status === "error"
+						? "bg-red-500/5"
+						: "hover:bg-neutral-800/40",
 			)}
 		>
 			<button
@@ -114,26 +170,49 @@ export function ToolCard({
 				onClick={() => setOpen(!open)}
 				className="flex w-full items-center gap-1.5 px-2 py-1 text-left select-none"
 			>
-				<span className="text-[10px] text-neutral-500 shrink-0 select-none">
-					{open ? "▾" : "▸"}
-				</span>
+				<ChevronRight
+					size={12}
+					className={clsx(
+						"shrink-0 text-neutral-600 transition-all",
+						open
+							? "rotate-90 opacity-100"
+							: "rotate-0 opacity-0 group-hover/card:opacity-100",
+					)}
+				/>
 				{status === "running" ? (
 					<Loader2 size={12} className="shrink-0 animate-spin text-sky-400" />
 				) : status === "error" ? (
-					<span className="shrink-0 text-[11px] font-bold text-red-400 leading-none">✕</span>
+					<span className="shrink-0 text-[11px] font-bold leading-none text-red-400">
+						✕
+					</span>
 				) : status === "called" ? (
 					<Clock size={12} className="shrink-0 text-amber-400" />
 				) : (
-					<span className="shrink-0 text-[11px] font-bold text-emerald-400 leading-none">✓</span>
+					<ToolIcon size={12} className="shrink-0 text-neutral-500" />
 				)}
-				{isBash && <Terminal size={11} className="shrink-0 text-neutral-500" />}
-				<span className="shrink-0 font-medium font-mono text-[11px] text-neutral-300">{name}</span>
-				<span className="truncate text-neutral-400 text-[11px]">
-					{headline(name, args, intent ?? null)}
+				<span
+					className={clsx(
+						"shrink-0 font-medium",
+						status === "error" ? "text-red-300" : "text-neutral-300",
+					)}
+					title={name}
+				>
+					{toolTitle}
 				</span>
+				{detail && (
+					<span className="truncate text-[11px] text-neutral-500">
+						{detail}
+					</span>
+				)}
+				{stat && (
+					<span className="shrink-0 font-mono text-[10px]">
+						<span className="text-emerald-400">+{stat.adds}</span>{" "}
+						<span className="text-red-400">-{stat.dels}</span>
+					</span>
+				)}
 				{durationText && (
-					<span className="ml-auto flex items-center gap-1 font-mono text-[10px] text-neutral-500 shrink-0">
-						<span>{durationText}</span>
+					<span className="ml-auto shrink-0 font-mono text-[10px] text-neutral-500">
+						{durationText}
 					</span>
 				)}
 			</button>

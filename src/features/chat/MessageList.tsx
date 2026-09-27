@@ -5,9 +5,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
-	ArrowDown,
+	ChevronRight,
 	Copy,
-	Loader2,
 	MessageSquareQuote,
 	RotateCcw,
 	Sparkles,
@@ -80,6 +79,21 @@ function messageToolCalls(content: unknown): ToolCall[] {
 		.filter((t): t is ToolCall => t !== null);
 }
 
+const REASONING_TICK_MS = 1000;
+/** Edge fade for the streaming last-line marquee (ZCode ReasoningTrigger). */
+const REASONING_MASK =
+	"linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)";
+
+/** Newest non-empty line of the in-flight thinking text. */
+function lastNonEmptyLine(text: string): { key: string; text: string } | null {
+	const lines = text.replace(/\r\n?/g, "\n").split("\n");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i]?.trim() ?? "";
+		if (line) return { key: String(i), text: line };
+	}
+	return null;
+}
+
 function Thinking({
 	text,
 	startedAt,
@@ -91,53 +105,70 @@ function Thinking({
 	endedAt?: number | null;
 	isStreaming?: boolean;
 }) {
-	const [open, setOpen] = useState(isStreaming === true);
-	const [now, setNow] = useState(() => Date.now());
-	const prevStreamingRef = useRef(isStreaming);
+	// ZCode Reasoning: collapsed unless the user opens it; duration ticks
+	// whole seconds (min 1) while open+streaming and is finalized on turn end.
+	const [open, setOpen] = useState(false);
+	const [seconds, setSeconds] = useState<number | null>(null);
+	const marqueeRef = useRef<HTMLSpanElement>(null);
+	const [marqueeOverflow, setMarqueeOverflow] = useState(false);
+	const contentRef = useRef<HTMLDivElement>(null);
+	const contentFollowRef = useRef(true);
 
 	useEffect(() => {
-		if (prevStreamingRef.current && !isStreaming) {
-			// Auto collapse when streaming finishes
-			setOpen(false);
-		} else if (!prevStreamingRef.current && isStreaming) {
-			// Auto expand when streaming starts
-			setOpen(true);
+		if (!isStreaming) {
+			if (startedAt) {
+				const end = endedAt ?? Date.now();
+				setSeconds(Math.max(1, Math.ceil((end - startedAt) / REASONING_TICK_MS)));
+			}
+			return;
 		}
-		prevStreamingRef.current = isStreaming;
-	}, [isStreaming]);
-
-	useEffect(() => {
-		if (!isStreaming || !startedAt || endedAt) return;
-		const id = setInterval(() => setNow(Date.now()), 200);
+		if (!startedAt || !open) return;
+		const tick = () =>
+			setSeconds(
+				Math.max(1, Math.ceil((Date.now() - startedAt) / REASONING_TICK_MS)),
+			);
+		tick();
+		const id = setInterval(tick, REASONING_TICK_MS);
 		return () => clearInterval(id);
-	}, [isStreaming, startedAt, endedAt]);
+	}, [isStreaming, open, startedAt, endedAt]);
+
+	const marquee = isStreaming && !open ? lastNonEmptyLine(text) : null;
+	const marqueeKey = marquee ? `${marquee.key}:${marquee.text}` : "";
+	useEffect(() => {
+		const el = marqueeRef.current;
+		if (!el || !marqueeKey) return;
+		const update = () => {
+			const over = el.scrollWidth > el.clientWidth + 1;
+			setMarqueeOverflow(over);
+			if (over) el.scrollLeft = el.scrollWidth;
+		};
+		update();
+		if (typeof ResizeObserver === "undefined") return;
+		const ro = new ResizeObserver(update);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [marqueeKey]);
+
+	// Keep the open reasoning content pinned to its bottom while streaming
+	// unless the user scrolled up inside it.
+	useEffect(() => {
+		contentFollowRef.current = true;
+	}, [open]);
+	useEffect(() => {
+		const el = contentRef.current;
+		if (!el || !open || !isStreaming || !contentFollowRef.current) return;
+		el.scrollTop = el.scrollHeight;
+	});
 
 	if (!text) return null;
 
-	let durationText: string | null = null;
-	if (startedAt && endedAt) {
-		const ms = Math.max(0, endedAt - startedAt);
-		durationText = `${(ms / 1000).toFixed(1)}s`;
-	} else if (isStreaming && startedAt) {
-		const ms = Math.max(0, now - startedAt);
-		durationText = `${(ms / 1000).toFixed(1)}s`;
-	}
-
 	return (
-		<div className="my-0.5 text-[11px]">
+		<div className="my-0.5 text-[12px]">
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
-				className={clsx(
-					"group/th-btn flex items-center gap-1.5 rounded px-1.5 py-0.5 text-left transition-colors select-none",
-					isStreaming
-						? "text-indigo-300 hover:bg-indigo-950/30"
-						: "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40",
-				)}
+				className="group/reasoning flex max-w-full min-w-0 items-center gap-2 rounded px-1 py-0.5 text-left transition-colors select-none hover:bg-neutral-800/40"
 			>
-				<span className="text-[10px] select-none text-neutral-500">
-					{open ? "▾" : "▸"}
-				</span>
 				<Sparkles
 					size={11}
 					className={clsx(
@@ -145,18 +176,46 @@ function Thinking({
 						isStreaming ? "animate-pulse text-indigo-400" : "text-neutral-500",
 					)}
 				/>
-				<span className="font-mono text-neutral-400">
-					{isStreaming ? "thinking…" : "thinking"}
-				</span>
-				{durationText && (
-					<span className="font-mono text-[10px] text-neutral-500">· {durationText}</span>
+				{isStreaming && !open ? (
+					<span className="shrink-0 animate-pulse font-medium text-neutral-300">
+						正在思考
+					</span>
+				) : (
+					<span className="shrink-0 whitespace-nowrap text-neutral-500">
+						<span className="font-medium">思考</span>
+						<span className="font-normal"> · </span>
+						<span className="font-normal">
+							{seconds == null ? "持续了几秒" : `持续了 ${seconds} 秒`}
+						</span>
+					</span>
 				)}
-				{isStreaming && (
-					<Loader2 size={10} className="animate-spin text-indigo-400 ml-0.5" />
+				{marquee && (
+					<span
+						ref={marqueeRef}
+						className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-neutral-500"
+						style={
+							marqueeOverflow
+								? { maskImage: REASONING_MASK, WebkitMaskImage: REASONING_MASK }
+								: undefined
+						}
+					>
+						<span className="inline-block whitespace-nowrap">
+							{marquee.text}
+						</span>
+					</span>
 				)}
+				<ChevronRight
+					size={12}
+					className={clsx(
+						"shrink-0 text-neutral-500 transition-all",
+						open
+							? "rotate-90 opacity-100"
+							: "rotate-0 opacity-0 group-hover/reasoning:opacity-100",
+					)}
+				/>
 			</button>
 			{open && (
-				<div className="group/th relative mt-1 ml-2 border-l border-neutral-800/80 pl-2.5 py-1 text-neutral-300">
+				<div className="group/th relative ml-2 mt-1 border-l border-neutral-800/80 py-1 pl-3">
 					<button
 						type="button"
 						onClick={async () => {
@@ -172,7 +231,16 @@ function Thinking({
 					>
 						复制
 					</button>
-					<div className="max-h-36 select-text overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-neutral-400">
+					<div
+						ref={contentRef}
+						onScroll={() => {
+							const el = contentRef.current;
+							if (!el) return;
+							contentFollowRef.current =
+								el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+						}}
+						className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-relaxed text-neutral-500"
+					>
 						{text}
 					</div>
 				</div>
@@ -359,11 +427,11 @@ function ItemRow({
 		case "user": {
 			const userText = item.text ?? "";
 			return (
-				<div className="group relative flex flex-col items-end">
-					<div className="max-w-[85%] rounded-lg bg-indigo-950/60 px-3 py-1.5 text-[length:var(--chat-user-font-size)] text-neutral-100 shadow-sm">
+				<div className="group/user-row relative flex flex-col items-end">
+					<div className="max-w-full rounded-xl rounded-tr-xs border border-neutral-800 bg-neutral-900/70 px-4 py-3 text-[length:var(--chat-user-font-size)] text-neutral-100 @min-[624px]:max-w-xl">
 						<Markdown text={userText} />
 					</div>
-					<div className="mt-1 flex items-center gap-1 rounded border border-neutral-700/80 bg-neutral-900/95 px-1 py-0.5 text-[10px] shadow opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+					<div className="mt-1 flex items-center gap-1 text-[10px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100">
 						<button
 							type="button"
 							onClick={async () => {
@@ -380,7 +448,7 @@ function ItemRow({
 									toast.error(`重新发送失败: ${errMsg(e)}`);
 								}
 							}}
-							className="flex items-center gap-1 px-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100"
+							className="flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
 							title="重新发送此消息"
 						>
 							<RotateCcw size={10} /> 重新发送
@@ -395,7 +463,7 @@ function ItemRow({
 									toast.error(`复制失败: ${errMsg(e)}`);
 								}
 							}}
-							className="flex items-center gap-1 border-l border-neutral-800 pl-1.5 pr-1 text-neutral-400 transition-colors hover:text-neutral-200 focus:opacity-100"
+							className="flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
 							title="复制消息"
 						>
 							<Copy size={10} /> 复制
@@ -522,9 +590,16 @@ function StreamingRow({
 export function MessageList({
 	sessionId,
 	scrollRef,
+	traceGutter,
+	onScrollState,
 }: {
 	sessionId: string;
 	scrollRef: React.RefObject<HTMLDivElement | null>;
+	/** Reserve the left gutter for the ChatTrace dash strip. */
+	traceGutter?: boolean;
+	/** Reports viewport pin state so the host can render a viewport-pinned
+	 * "scroll to bottom" button (the scrolled content must not host it). */
+	onScrollState?: (s: { nearBottom: boolean; hasNewMessages: boolean }) => void;
 }) {
 	const live = useLive((s) => s.sessions[sessionId]);
 	const items = live?.items ?? [];
@@ -533,14 +608,34 @@ export function MessageList({
 	const [showHidden, setShowHidden] = useState(false);
 	const [toolsExpanded, setToolsExpanded] = useState<boolean | null>(null);
 	const [highlightedId, setHighlightedId] = useState<string | null>(null);
-	const [isNearBottom, setIsNearBottom] = useState(true);
-	const [hasNewMessages, setHasNewMessages] = useState(false);
 
 	const isPinnedRef = useRef(true);
 	const prevItemsLen = useRef(items.length);
 	const prevStreamingTextLen = useRef(0);
 	const lastHandledScrollReq = useRef<number>(0);
 	const containerRef = useRef<HTMLDivElement>(null);
+
+	// Viewport pin state, mirrored to the host for the scroll-to-bottom pill.
+	const scrollStateRef = useRef({ nearBottom: true, hasNewMessages: false });
+	const onScrollStateRef = useRef(onScrollState);
+	onScrollStateRef.current = onScrollState;
+	const emitScrollState = (
+		patch: { nearBottom?: boolean; hasNewMessages?: boolean },
+	) => {
+		const cur = scrollStateRef.current;
+		const next = {
+			nearBottom: patch.nearBottom ?? cur.nearBottom,
+			hasNewMessages: patch.hasNewMessages ?? cur.hasNewMessages,
+		};
+		if (
+			next.nearBottom === cur.nearBottom &&
+			next.hasNewMessages === cur.hasNewMessages
+		) {
+			return;
+		}
+		scrollStateRef.current = next;
+		onScrollStateRef.current?.({ ...next });
+	};
 
 	// Map of tool results by toolCallId
 	const toolResultsByCallId = useMemo(
@@ -575,10 +670,10 @@ export function MessageList({
 			const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
 			const pinned = dist < 150;
 			isPinnedRef.current = pinned;
-			setIsNearBottom(pinned);
-			if (pinned) {
-				setHasNewMessages(false);
-			}
+			emitScrollState({
+				nearBottom: pinned,
+				hasNewMessages: pinned ? false : undefined,
+			});
 		};
 		el.addEventListener("scroll", handleScroll, { passive: true });
 		return () => el.removeEventListener("scroll", handleScroll);
@@ -597,7 +692,7 @@ export function MessageList({
 		if (isPinnedRef.current) {
 			el.scrollTop = el.scrollHeight;
 		} else if (itemsGrew || textGrew) {
-			setHasNewMessages(true);
+			emitScrollState({ hasNewMessages: true });
 		}
 	}, [rows.length, streamingText, items.length, scrollRef]);
 
@@ -652,15 +747,6 @@ export function MessageList({
 		}
 	}, [live?.scrollRequest, rows, virtualizer, sessionId]);
 
-	const scrollToBottom = () => {
-		const el = scrollRef.current;
-		if (!el) return;
-		isPinnedRef.current = true;
-		setIsNearBottom(true);
-		setHasNewMessages(false);
-		el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-	};
-
 	// Find preceding user prompt for retry
 	const findPrecedingUserPrompt = (currentIndex: number): string | null => {
 		for (let i = currentIndex - 1; i >= 0; i--) {
@@ -674,7 +760,12 @@ export function MessageList({
 	return (
 		<div className="relative flex h-full flex-col">
 			{/* Top toolbar */}
-			<div className="flex shrink-0 items-center justify-between px-3 py-1 text-[11px] text-neutral-500">
+			<div
+				className={clsx(
+					"mx-auto flex w-full shrink-0 items-center justify-between py-1 text-[11px] text-neutral-500 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-4xl",
+					traceGutter ? "pl-12 pr-3" : "px-3",
+				)}
+			>
 				{hiddenCount > 0 ? (
 					<button
 						type="button"
@@ -750,7 +841,7 @@ export function MessageList({
 				<div
 					ref={containerRef}
 					style={{ height: virtualizer.getTotalSize() }}
-					className="relative w-full"
+					className="relative mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-4xl"
 				>
 					{virtualizer.getVirtualItems().map((row) => {
 						const item = rows[row.index];
@@ -763,7 +854,8 @@ export function MessageList({
 								ref={virtualizer.measureElement}
 								style={{ transform: `translateY(${row.start}px)` }}
 								className={clsx(
-									"absolute left-0 top-0 w-full px-3 py-1 transition-all duration-500",
+									"absolute left-0 top-0 w-full py-1 transition-all duration-500",
+									traceGutter ? "pl-12 pr-3" : "px-3",
 									isHighlighted &&
 										"rounded-lg bg-indigo-950/40 ring-2 ring-indigo-500 shadow-lg shadow-indigo-500/20",
 									item === "live" && "opacity-90",
@@ -797,26 +889,6 @@ export function MessageList({
 					})}
 				</div>
 			</div>
-
-			{/* Floating "Scroll to bottom" button with new message pill */}
-			{!isNearBottom && (
-				<div className="pointer-events-none absolute bottom-3 right-4 z-20">
-					<button
-						type="button"
-						onClick={scrollToBottom}
-						className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-neutral-700 bg-neutral-900/95 px-3 py-1.5 text-[11px] font-medium text-neutral-200 shadow-xl backdrop-blur transition-all hover:bg-neutral-800 hover:text-white"
-					>
-						<ArrowDown size={12} />
-						<span>回到最新</span>
-						{hasNewMessages && (
-							<span
-								className="flex h-2 w-2 animate-pulse rounded-full bg-indigo-500"
-								title="有新消息"
-							/>
-						)}
-					</button>
-				</div>
-			)}
 		</div>
 	);
 }

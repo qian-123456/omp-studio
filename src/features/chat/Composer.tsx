@@ -33,6 +33,7 @@ import { useHeldQueue } from "./heldQueue";
 import { abortTurn, sendPrompt, useAbortState } from "./send";
 import {
 	buildSetModelPayload,
+	extractThinkingLevels,
 	type ModelOption,
 	parseModels,
 	resolveCurrentModel,
@@ -125,7 +126,6 @@ export function Composer({
 	const scrollToItem = useLive((s) => s.scrollToItem);
 
 	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
-	const pushHeld = useHeldQueue((s) => s.push);
 	const setDismissed = useHeldQueue((s) => s.setDismissed);
 	const selectSession = useUi((s) => s.selectSession);
 	const setRightTab = useUi((s) => s.setRightTab);
@@ -267,8 +267,10 @@ export function Composer({
 		[state.model, sessionMeta?.model, models],
 	);
 
-	// Thinking levels come from the selected model's own `thinking` array —
-	// never hardcoded (different models declare different sets).
+	// Thinking levels: prefer the live model's own `thinking` block from
+	// get_state (always present for the running session); fall back to the
+	// models catalog entry (unreliable — get_available_models can exceed the
+	// rpc transport limit and models.db caches use the object shape).
 	const currentModelOption = useMemo(
 		() =>
 			models?.find(
@@ -277,37 +279,41 @@ export function Composer({
 		[models, current],
 	);
 	const thinkingLevels = useMemo(() => {
-		const supported = currentModelOption?.thinking ?? [];
+		const stateThinking = extractThinkingLevels(
+			(state.model as Record<string, unknown> | undefined)?.thinking,
+		);
+		const supported =
+			stateThinking.length > 0
+				? stateThinking
+				: (currentModelOption?.thinking ?? []);
 		// omp TUI always offers "auto" (model default); "off" when reasoning exists.
 		const levels = ["auto", ...supported.filter((l) => l !== "auto")];
 		if (supported.length > 0 && !levels.includes("off")) levels.push("off");
 		return levels;
-	}, [currentModelOption]);
+	}, [state.model, currentModelOption]);
 	const curThinkingObj = thinkingLabel(currentThinking);
-
 	const loadModels = async () => {
 		if (models !== null && models.length > 0) return;
+		// Prefer the CLI-backed listModels (`omp models --json`): same filtered,
+		// slim payload NewSessionDialog uses. get_available_models is only a
+		// fallback — large catalogs exceed the rpc transport limit there.
+		try {
+			const listed = await listModels();
+			if (listed && listed.length > 0) {
+				setModels(parseModels(listed));
+				return;
+			}
+		} catch {
+			/* rpc fallback below */
+		}
+
 		try {
 			if (live?.alive) {
 				const resp = (await rpcSend(sessionId, {
 					type: "get_available_models",
 				})) as Record<string, unknown>;
 				const parsed = parseModels(resp.data ?? resp);
-				if (parsed.length > 0) {
-					setModels(parsed);
-					return;
-				}
-			}
-		} catch {
-			/* fallback below */
-		}
-
-		try {
-			const fallback = await listModels();
-			if (fallback && fallback.length > 0) {
-				setModels(parseModels(fallback));
-			} else {
-				setModels([]);
+				setModels(parsed);
 			}
 		} catch {
 			setModels([]);
@@ -429,14 +435,6 @@ export function Composer({
 			return;
 		}
 		const message = formatWithAnnotations(raw, annotations);
-		if (streaming && !steer) {
-			pushHeld(sessionId, message);
-			pushHistory(raw.trim());
-			clearDraft(sessionId);
-			clearAnnotations(sessionId);
-			toast.info("已暂存消息，回合结束后可发送");
-			return;
-		}
 		setBusy(true);
 		try {
 			await sendPrompt(sessionId, message, { steer });
@@ -833,7 +831,8 @@ export function Composer({
 								? "输入消息... (Enter 暂存，⌘Enter 插队)"
 								: "提出后续修改要求... (Enter 发送，Shift+Enter 换行，/ 命令，@ 文件)"
 						}
-						className="w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[13px] leading-relaxed text-neutral-100 outline-none placeholder:text-neutral-500/60"
+						style={{ outline: "none", boxShadow: "none" }}
+						className="w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[13px] leading-relaxed text-neutral-100 outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-neutral-500/60"
 					/>
 
 					{/* Bottom bar: + button, permission pill, context ring (left); model/thinking pills, send/stop (right) */}
@@ -1011,16 +1010,17 @@ export function Composer({
  							)}
 
  							{/* Held queue count pill (clickable to un-dismiss) */}
- 							{held.length > 0 && (
- 								<button
- 									type="button"
- 									onClick={() => setDismissed(sessionId, false)}
- 									title="点击重新展开暂存栏"
- 									className="flex items-center gap-1 rounded-full border border-amber-800/40 bg-amber-950/40 px-2 py-0.5 text-[11px] text-amber-300 hover:bg-amber-900/50"
- 								>
- 									<CornerDownRight size={11} /> 暂存 {held.length}
- 								</button>
- 							)}
+							{held.length > 0 && (
+								<button
+									type="button"
+									onClick={() => setDismissed(sessionId, false)}
+									title="点击查看排队消息"
+									className="flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800/80 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-700 transition-colors"
+								>
+									<CornerDownRight size={11} className="text-neutral-400" />
+									<span>排队 {held.length}</span>
+								</button>
+							)}
 
 							{/* Send / streaming controls (Codex circular button with ArrowUp) */}
 							<div className="flex items-center gap-1.5">
@@ -1043,13 +1043,11 @@ export function Composer({
 											<>
 												<button
 													type="button"
-													onClick={() => void submit(false)}
-													disabled={busy}
-													title="暂存消息到队列，待本回合结束后处理 (Enter)"
-													className="flex items-center gap-1 rounded-full border border-amber-600/40 bg-amber-950/60 px-2.5 py-1 text-[11px] text-amber-300 hover:bg-amber-900/60 disabled:opacity-40"
+													title="排队消息，待本回合结束后自动处理 (Enter)"
+													className="flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700 hover:text-white disabled:opacity-40 transition-colors"
 												>
-													<CornerDownRight size={11} />
-													<span>暂存</span>
+													<CornerDownRight size={11} className="text-neutral-400" />
+													<span>排队</span>
 												</button>
 												<button
 													type="button"

@@ -266,13 +266,21 @@ fn parse_models_value(
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
                     .unwrap_or(&key);
+                // `thinking` is a flat array in `omp models --json`, but an object
+                // {mode, efforts:[…], defaultLevel, …} in models.db model_cache and
+                // get_state snapshots. Accept both.
                 let thinking = item
                     .get("thinking")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                            .collect()
+                    .map(|v| {
+                        let arr = v
+                            .as_array()
+                            .or_else(|| v.get("efforts").and_then(|e| e.as_array()));
+                        arr.map(|a| {
+                            a.iter()
+                                .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                                .collect::<Vec<String>>()
+                        })
+                        .unwrap_or_default()
                     })
                     .unwrap_or_default();
                 out.push(Model {
@@ -286,8 +294,91 @@ fn parse_models_value(
     }
 }
 
+/// Collect "configured" provider ids: keys under `providers:` in omp's YAML
+/// configs plus providers holding credentials in agent.db. Only keys are read,
+/// never values — keys are names, values carry secrets. A `provider/model`
+/// selector key (config.yml style) contributes its `provider` prefix.
+fn configured_providers(home: &std::path::Path) -> std::collections::HashSet<String> {
+    let mut set = std::collections::HashSet::new();
+    for name in ["models.yml", "models-snippet.yml", "config.yml"] {
+        let path = home.join(".omp").join("agent").join(name);
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            collect_provider_keys(&text, &mut set);
+        }
+    }
+    let db = home.join(".omp").join("agent").join("agent.db");
+    if let Ok(conn) =
+        rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    {
+        if let Ok(mut stmt) = conn
+            .prepare("SELECT DISTINCT provider FROM auth_credentials WHERE disabled_cause IS NULL")
+        {
+            if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+                for p in rows.flatten() {
+                    set.insert(p);
+                }
+            }
+        }
+    }
+    set
+}
+
+/// Extract provider names: keys at the first child level under a `providers:`
+/// mapping. Tolerant line scan — enough for omp's machine-written configs.
+/// `provider/model` selector keys contribute their `provider` prefix.
+fn collect_provider_keys(text: &str, out: &mut std::collections::HashSet<String>) {
+    let mut base: Option<usize> = None;
+    let mut child_indent: Option<usize> = None;
+    for raw in text.lines() {
+        let line = raw.trim_end();
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - line.trim_start().len();
+        match base {
+            None => {
+                if trimmed == "providers:" {
+                    base = Some(indent);
+                    child_indent = None;
+                }
+            }
+            Some(b) => {
+                if indent <= b {
+                    // Left the block; allow a later sibling `providers:` too.
+                    base = if trimmed == "providers:" {
+                        child_indent = None;
+                        Some(indent)
+                    } else {
+                        None
+                    };
+                    continue;
+                }
+                match child_indent {
+                    None => child_indent = Some(indent),
+                    Some(ci) if indent != ci => continue,
+                    _ => {}
+                }
+                if let Some(key) = line
+                    .split_once(':')
+                    .map(|(k, _)| k.trim().trim_matches(|c| c == '"' || c == '\''))
+                {
+                    let provider = key.split('/').next().unwrap_or(key);
+                    if !provider.is_empty() {
+                        out.insert(provider.to_string());
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn load_fallback_models(seen: &mut std::collections::HashSet<String>, out: &mut Vec<Model>) {
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
+    // model_cache also holds the *entire upstream catalog* for providers the
+    // user never configured — restrict to configured ones, matching what
+    // `omp models --json` emits.
+    let configured = configured_providers(&home);
     let candidates = [
         home.join(".omp").join("agent").join("models.db"),
         home.join(".omp").join("models.db"),
@@ -315,12 +406,19 @@ fn load_fallback_models(seen: &mut std::collections::HashSet<String>, out: &mut 
             let models_str: String = row.get(1)?;
             Ok((provider_id, models_str))
         });
-
         if let Ok(rows) = rows {
             for row in rows.flatten() {
                 let (provider_id, models_str) = row;
+                // Cache keys may carry a catalog suffix: "opencode-zen:models-v3:…"
+                let provider_name = provider_id.split(':').next().unwrap_or(&provider_id);
+                if !configured.is_empty()
+                    && !configured.contains(&provider_id)
+                    && !configured.contains(provider_name)
+                {
+                    continue;
+                }
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&models_str) {
-                    parse_models_value(&parsed, Some(&provider_id), seen, out);
+                    parse_models_value(&parsed, Some(provider_name), seen, out);
                 }
             }
         }
@@ -406,6 +504,53 @@ mod tests {
 
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].name, "Claude 3.7 Sonnet");
+    }
+
+    #[test]
+    fn test_parse_models_value_thinking_object_shape() {
+        // models.db model_cache stores thinking as {mode, efforts, …}, not an array.
+        let val = serde_json::json!([
+            {
+                "provider": "devin",
+                "id": "swe-2",
+                "thinking": {
+                    "mode": "effort",
+                    "efforts": ["medium", "high", "max"],
+                    "defaultLevel": "high"
+                }
+            },
+            { "provider": "anthropic", "id": "claude", "thinking": ["low", "high"] },
+            { "provider": "x", "id": "no-thinking" }
+        ]);
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        parse_models_value(&val, None, &mut seen, &mut out);
+
+        assert_eq!(out[0].thinking, vec!["medium", "high", "max"]);
+        assert_eq!(out[1].thinking, vec!["low", "high"]);
+        assert!(out[2].thinking.is_empty());
+    }
+
+    #[test]
+    fn test_collect_provider_keys_models_yml_shape() {
+        // models.yml: provider keys at one indent level, secret fields deeper.
+        let text = "providers:\n  devin:\n    apiKey: \"sk-xxx\"\n    models:\n      - id: swe-2\n  sub2api-gpt-pro:\n    baseUrl: https://x\n    apiKey: k\nsettings:\n  foo: 1\n";
+        let mut set = std::collections::HashSet::new();
+        collect_provider_keys(text, &mut set);
+        assert!(set.contains("devin"));
+        assert!(set.contains("sub2api-gpt-pro"));
+        assert_eq!(set.len(), 2, "nested keys must not leak: {set:?}");
+    }
+
+    #[test]
+    fn test_collect_provider_keys_selector_prefix() {
+        // config.yml style: "provider/model" selectors and quoted keys.
+        let text = "providers:\n    CTAI-luna+plus/gpt-5.6-luna:\n      model: x\n    \"google-antigravity/*\":\n      model: y\n";
+        let mut set = std::collections::HashSet::new();
+        collect_provider_keys(text, &mut set);
+        assert!(set.contains("CTAI-luna+plus"));
+        assert!(set.contains("google-antigravity"));
+        assert_eq!(set.len(), 2);
     }
 
     #[test]

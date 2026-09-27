@@ -71,9 +71,9 @@ export function PendingUiCard({
 	const btn =
 		"inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs disabled:opacity-50 transition-colors font-medium";
 	return (
-		<div className="my-2 rounded-md border border-amber-800/60 bg-amber-950/20 p-2.5">
+		<div className="my-2 rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-3 text-neutral-200 shadow-xl backdrop-blur-md">
 			{title && (
-				<div className="whitespace-pre-wrap text-[12px] font-medium text-amber-200">
+				<div className="whitespace-pre-wrap text-[13px] font-medium text-neutral-100">
 					{title}
 				</div>
 			)}
