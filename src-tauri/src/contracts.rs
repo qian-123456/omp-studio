@@ -223,6 +223,8 @@ pub struct StartOpts {
     pub parent_session_id: Option<String>,
     /// Pre-assigned label (side chats).
     pub label: Option<String>,
+    /// --plan-yolo: read-only plan mode, auto-approving plan into implementation.
+    pub plan_yolo: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -165,6 +165,8 @@ export interface StartOpts {
 	parentSessionId?: string | null;
 	/** Pre-assigned label (side chats). */
 	label?: string | null;
+	/** --plan-yolo: read-only plan mode, auto-approving plan into implementation. */
+	planYolo?: boolean | null;
 }
 
 export interface PendingUiRequest {

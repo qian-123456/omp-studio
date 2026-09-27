@@ -552,7 +552,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 											className={inputCls}
 											placeholder="每行一个模型"
 										/>
-										<p className={hintCls}>配置密钥后以 ompws-{slug.trim() || slugify(name) || "标识符"}/模型 ID 选择。默认上下文 32K，输出上限 4K。</p>
+										<p className={hintCls}>配置密钥后以 ompws-{slug.trim() || slugify(name) || "标识符"}/模型 ID 选择（环境变量须遵循 OMP 命名规范）。默认上下文 32K，输出上限 4K。</p>
 									</div>
 
 									{models.length > 0 && (

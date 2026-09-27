@@ -301,7 +301,7 @@ fn set_suspended(state: &AppState, session_id: &str, suspended: bool) {
 
 /// Locate the session jsonl + cwd for resume: catalog first, then a filename
 /// scan of `~/.omp/agent/sessions/*/​*_<id>.jsonl` with a header fallback.
-async fn find_session_file(state: &AppState, session_id: &str) -> Option<(String, String)> {
+pub(crate) async fn find_session_file(state: &AppState, session_id: &str) -> Option<(String, String)> {
     if let Some(meta) = catalog::get(state, session_id).await {
         return Some((meta.file, meta.cwd));
     }

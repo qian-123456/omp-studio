@@ -294,6 +294,8 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     }
     if let Some(file) = &opts.resume_file {
         cmd.arg("--resume").arg(file);
+    } else if opts.plan_yolo == Some(true) {
+        cmd.arg("--plan-yolo");
     }
     // App-launched sessions get the status extension for precise reporting (§8).
     let ext = paths::extension_path();
@@ -803,5 +805,71 @@ mod tests {
             resp.get("error").and_then(Value::as_str),
             Some("session is stopping")
         );
+    }
+
+    #[test]
+    fn build_command_plan_yolo_appended_for_fresh_session() {
+        let settings = Settings::default();
+        let opts = StartOpts {
+            cwd: "/tmp".into(),
+            plan_yolo: Some(true),
+            ..Default::default()
+        };
+        let cmd = build_command(&opts, &settings).unwrap();
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(args.contains(&"--plan-yolo".to_string()));
+    }
+
+    #[test]
+    fn build_command_plan_yolo_skipped_when_resuming() {
+        let settings = Settings::default();
+        let opts = StartOpts {
+            cwd: "/tmp".into(),
+            resume_file: Some("/tmp/session.jsonl".into()),
+            plan_yolo: Some(true),
+            ..Default::default()
+        };
+        let cmd = build_command(&opts, &settings).unwrap();
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(!args.contains(&"--plan-yolo".to_string()));
+        assert!(args.contains(&"--resume".to_string()));
+    }
+
+    #[test]
+    fn build_command_plan_yolo_skipped_when_false_or_none() {
+        let settings = Settings::default();
+        let opts = StartOpts {
+            cwd: "/tmp".into(),
+            plan_yolo: Some(false),
+            ..Default::default()
+        };
+        let cmd = build_command(&opts, &settings).unwrap();
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(!args.contains(&"--plan-yolo".to_string()));
+
+        let opts_none = StartOpts {
+            cwd: "/tmp".into(),
+            plan_yolo: None,
+            ..Default::default()
+        };
+        let cmd_none = build_command(&opts_none, &settings).unwrap();
+        let args_none: Vec<String> = cmd_none
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(!args_none.contains(&"--plan-yolo".to_string()));
     }
 }

@@ -8,6 +8,7 @@
 import {
 	Copy,
 	Eraser,
+	FileDown,
 	FolderOpen,
 	MoreHorizontal,
 	QrCode,
@@ -15,9 +16,9 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { rpcRestart } from "../lib/ipc";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { rpcRestart, sessionExportHtml } from "../lib/ipc";
 import { toast } from "../lib/toast";
-
 export interface SessionOverflowMenuProps {
 	sessionId: string;
 	cwd?: string | null;
@@ -78,6 +79,26 @@ export function SessionOverflowMenu({
 			5000,
 		);
 		setOpen(false);
+	};
+
+	const handleExportHtml = async () => {
+		if (busy) return;
+		setBusy(true);
+		try {
+			const outPath = await sessionExportHtml(sessionId);
+			toast.success(`已导出 HTML: ${outPath}`);
+			try {
+				await revealItemInDir(outPath);
+			} catch (err) {
+				console.warn("在访达中显示失败:", err);
+			}
+			setOpen(false);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			toast.error(`导出 HTML 失败: ${msg}`);
+		} finally {
+			setBusy(false);
+		}
 	};
 
 	return (
@@ -181,6 +202,19 @@ export function SessionOverflowMenu({
 							<span className="flex-1 truncate">复制为 Markdown</span>
 						</button>
 					)}
+
+					{/* 导出 HTML */}
+					<button
+						type="button"
+						role="menuitem"
+						disabled={busy}
+						onClick={handleExportHtml}
+						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-all active:scale-[0.98]"
+						title="导出当前会话为独立 HTML 文件并在访达中显示"
+					>
+						<FileDown size={13} className="shrink-0 text-neutral-400" />
+						<span className="flex-1 truncate">导出 HTML</span>
+					</button>
 
 					{/* 手机扫码查看 */}
 					{onMobilePair && (

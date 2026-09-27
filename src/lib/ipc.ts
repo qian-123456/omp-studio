@@ -92,6 +92,9 @@ export const rescanSessions = () => invoke<void>("rescan_sessions");
 export const deleteSession = (sessionId: string) =>
 	invoke<void>("delete_session", { sessionId });
 
+export const sessionExportHtml = (sessionId: string) =>
+	invoke<string>("session_export_html", { sessionId });
+
 // ---- B — rpc ----
 
 export const rpcStart = (opts: StartOpts) =>

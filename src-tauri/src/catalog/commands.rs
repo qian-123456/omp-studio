@@ -471,6 +471,94 @@ pub async fn list_models(state: tauri::State<'_, AppState>) -> Result<Vec<Model>
     Ok(out)
 }
 
+fn parse_export_output(stdout: &str, working_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(stripped) = line.strip_prefix("Exported to:") {
+            let target = std::path::Path::new(stripped.trim());
+            return Some(if target.is_absolute() {
+                target.to_path_buf()
+            } else {
+                working_dir.join(target)
+            });
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub async fn session_export_html(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    let (file, cwd) = crate::rpc::find_session_file(&state, &session_id)
+        .await
+        .ok_or_else(|| format!("找不到会话文件: {session_id}"))?;
+
+    if !std::path::Path::new(&file).exists() {
+        return Err(format!("会话文件不存在: {file}"));
+    }
+
+    crate::todos::omp::init_login_path().await;
+    let bin = state.settings.read().omp_binary.clone();
+    let path_env = crate::todos::omp::augmented_path();
+    let exe = crate::todos::omp::resolve_binary(&bin, &path_env);
+
+    let working_dir = if std::path::Path::new(&cwd).is_dir() {
+        std::path::PathBuf::from(&cwd)
+    } else if let Some(parent) = std::path::Path::new(&file).parent() {
+        parent.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+    };
+
+    let mut cmd = tokio::process::Command::new(&exe);
+    cmd.arg("--export")
+        .arg(&file)
+        .current_dir(&working_dir)
+        .env("PATH", &path_env)
+        .envs(crate::providers::omp_spawn_env())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("执行 omp 失败 ({}): {e}", exe.display()))?;
+
+    let timeout = std::time::Duration::from_secs(60);
+    let out = tokio::time::timeout(timeout, child.wait_with_output())
+        .await
+        .map_err(|_| "omp 导出超时 (60s)".to_string())?
+        .map_err(|e| format!("omp 执行错误: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let tail: String = stderr
+            .chars()
+            .rev()
+            .take(400)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        return Err(format!("导出失败 ({}): {}", out.status, tail.trim()));
+    }
+
+    if let Some(path) = parse_export_output(&stdout, &working_dir) {
+        if path.exists() {
+            return Ok(path.to_string_lossy().to_string());
+        }
+    }
+
+    if stdout.is_empty() {
+        Ok(working_dir.to_string_lossy().to_string())
+    } else {
+        Ok(stdout)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -563,5 +651,24 @@ mod tests {
         let mut out = Vec::new();
         load_fallback_models(&mut seen, &mut out);
         println!("Loaded fallback models count: {}", out.len());
+    }
+
+    #[test]
+    fn test_parse_export_output() {
+        let working = std::path::Path::new("/tmp/test_dir");
+        let out1 = "Exported to: omp-session-abc.html";
+        assert_eq!(
+            parse_export_output(out1, working),
+            Some(working.join("omp-session-abc.html"))
+        );
+
+        let out2 = "Exporting...\nExported to: /absolute/path/omp-session-abc.html\nDone.";
+        assert_eq!(
+            parse_export_output(out2, working),
+            Some(std::path::PathBuf::from("/absolute/path/omp-session-abc.html"))
+        );
+
+        let out3 = "No export line here";
+        assert_eq!(parse_export_output(out3, working), None);
     }
 }

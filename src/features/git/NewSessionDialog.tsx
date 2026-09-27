@@ -93,6 +93,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	});
 	const [modelSel, setModelSel] = useState("");
 	const [customModel, setCustomModel] = useState("");
+	const [planYolo, setPlanYolo] = useState(false);
 	const [useWorktree, setUseWorktree] = useState(Boolean(props.useWorktree));
 	const [wtName, setWtName] = useState("");
 	const [customCwdError, setCustomCwdError] = useState<string | null>(null);
@@ -308,6 +309,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				model: effectiveModel || defaultModel || null,
 				approvalMode: null, // per-session approval removed — Settings owns it
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
+				planYolo: planYolo || null,
 			});
 			createdSessionId = sessionId;
 			upsert([stub]);
@@ -506,6 +508,16 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				{/* Approval mode intentionally not in the primary dialog — it
 				    lives in Settings (会话管理 → 默认审批模式) and applies via
 				    `approvalMode: null` (follow default). */}
+
+				<label className="mb-2 flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
+					<input
+						type="checkbox"
+						checked={planYolo}
+						onChange={(e) => setPlanYolo(e.target.checked)}
+					/>
+					<span>规划模式</span>
+					<span className="text-[10px] text-neutral-400">（先只读规划并自动进入实施）</span>
+				</label>
 
 				<label
 					className={clsx(

@@ -11,6 +11,7 @@ export interface CreateSessionOpts {
 	workspaceId?: string | null;
 	/** Optional first prompt, sent right after start. */
 	prompt?: string;
+	planYolo?: boolean | null;
 }
 
 export interface CreateSessionResult {
@@ -29,6 +30,7 @@ export async function createSession(
 		cwd: opts.cwd,
 		model: opts.model?.trim() || null,
 		approvalMode: opts.approvalMode || null,
+		planYolo: opts.planYolo ?? null,
 	});
 	const now = new Date().toISOString();
 	// Seed the store so the session is selectable before the catalog's own

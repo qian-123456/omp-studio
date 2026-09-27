@@ -141,6 +141,7 @@ pub fn run() {
             catalog::commands::delete_session,
             catalog::commands::list_models,
             catalog::commands::list_workspace_files,
+            catalog::commands::session_export_html,
             // B — rpc
             rpc::commands::rpc_start,
             rpc::commands::rpc_ensure_live,
