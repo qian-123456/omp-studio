@@ -836,7 +836,7 @@ textarea {
 	min-height: 32px;
 	min-width: 32px;
 }
-.is-scrolling::-webkit-scrollbar-thumb,
+*[data-scroll-active]::-webkit-scrollbar-thumb,
 *:hover::-webkit-scrollbar-thumb,
 *::-webkit-scrollbar-thumb:hover,
 *::-webkit-scrollbar-thumb:active {
