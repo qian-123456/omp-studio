@@ -18,10 +18,13 @@ startSessionEvents()
 // while the pointer hovers/drags the scrollbar lane). WebKit DOES repaint
 // scrollbar pseudo-elements on class changes but NOT on attribute changes,
 // so the flag must be a class on the scrolled element itself.
-// Wheel events cover mouse/trackpad scrolls even where a scroll event is
-// swallowed by React; pointermove into the scrollbar lane covers drag.
+//
+// Timing: `scroll` events keep coming during macOS momentum for a while after
+// the gesture ends — that is real scrolling, the pill SHOULD stay up. `wheel`
+// events fire from finger contact, so they get a shorter idle window (350ms)
+// to approximate "gesture over" without waiting out the full momentum tail.
 const scrollIdleTimers = new Map<Element, number>();
-const markScrolling = (el: Element) => {
+const markScrolling = (el: Element, idleMs: number) => {
 	el.classList.add("is-scrolling");
 	const prev = scrollIdleTimers.get(el);
 	if (prev !== undefined) window.clearTimeout(prev);
@@ -30,15 +33,15 @@ const markScrolling = (el: Element) => {
 		window.setTimeout(() => {
 			scrollIdleTimers.delete(el);
 			el.classList.remove("is-scrolling");
-		}, 600),
+		}, idleMs),
 	);
 };
 window.addEventListener(
 	"scroll",
-	(e) => markScrolling(e.target === document ? document.body : (e.target as Element)),
+	(e) =>
+		markScrolling(e.target === document ? document.body : (e.target as Element), 500),
 	{ capture: true, passive: true },
 );
-// Wheel scroll: mark the element under the pointer (closest scrollable).
 window.addEventListener(
 	"wheel",
 	(e) => {
@@ -48,19 +51,7 @@ window.addEventListener(
 			if (/(auto|scroll)/.test(st.overflowY + st.overflowX)) break;
 			el = el.parentElement;
 		}
-		markScrolling(el ?? document.body);
-	},
-	{ capture: true, passive: true },
-);
-// Pointer entering/dragging the scrollbar lane (right ~14px of a scrollable el).
-window.addEventListener(
-	"pointermove",
-	(e) => {
-		const t = e.target as Element;
-		const scroller = t.closest?.("*[style*='overflow'], .overflow-y-auto, .overflow-x-auto, .overflow-auto, .overflow-scroll, .overflow-y-scroll, .overflow-x-scroll");
-		if (!scroller) return;
-		const r = scroller.getBoundingClientRect();
-		if (e.clientX >= r.right - 14 || e.clientY >= r.bottom - 14) markScrolling(scroller);
+		markScrolling(el ?? document.body, 350);
 	},
 	{ capture: true, passive: true },
 );
