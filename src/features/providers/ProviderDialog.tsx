@@ -1,4 +1,5 @@
 import { ChevronDown, Eye, EyeOff, Loader2, X } from "lucide-react";
+import { NativeSelect } from "../../components/NativeSelect";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderApi, ProviderConfig } from "../../lib/contracts";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
@@ -529,16 +530,16 @@ export function ProviderDialog({ target, onClose }: Props) {
 										</div>
 										<div>
 											<label htmlFor="provider-api" className={labelCls}>协议</label>
-											<select
+											<NativeSelect
 												id="provider-api"
 												value={api}
 												onChange={(e) => setApi(e.target.value as ProviderApi)}
-												className={inputCls}
+												containerClassName="mt-1.5"
 											>
 												{Object.entries(API_LABELS).map(([value, label]) => (
 													<option key={value} value={value}>{label}</option>
 												))}
-											</select>
+											</NativeSelect>
 										</div>
 									</div>
 									<div>
@@ -558,10 +559,15 @@ export function ProviderDialog({ target, onClose }: Props) {
 									{models.length > 0 && (
 										<div>
 											<label htmlFor="provider-default" className={labelCls}>供应商列表标记模型</label>
-											<select id="provider-default" value={models.includes(defaultModel) ? defaultModel : ""} onChange={(e) => setDefaultModel(e.target.value)} className={inputCls}>
+											<NativeSelect
+												id="provider-default"
+												value={models.includes(defaultModel) ? defaultModel : ""}
+												onChange={(e) => setDefaultModel(e.target.value)}
+												containerClassName="mt-1.5"
+											>
 												<option value="">（不指定）</option>
 												{models.map((m) => <option key={m} value={m}>{m}</option>)}
-											</select>
+											</NativeSelect>
 										</div>
 									)}
 									<div>

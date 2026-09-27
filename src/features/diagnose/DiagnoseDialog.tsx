@@ -19,6 +19,7 @@ import {
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { NativeSelect } from "../../components/NativeSelect";
 
 /**
  * [D] Diagnose dialog. Always mounted; opened via
@@ -281,10 +282,9 @@ export function DiagnoseDialog() {
 								<label className="mb-1 block text-xs text-neutral-400">
 									选择执行诊断的会话
 								</label>
-								<select
+								<NativeSelect
 									value={selectedExistingId}
 									onChange={(e) => setSelectedExistingId(e.target.value)}
-									className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-100 focus:border-amber-500 focus:outline-none"
 								>
 									{candidateSessions.map((s) => {
 										const modelLabel = s.model ? ` [${s.model}]` : "";
@@ -304,7 +304,7 @@ export function DiagnoseDialog() {
 											</option>
 										);
 									})}
-								</select>
+								</NativeSelect>
 								</div>
 						)
 					) : (

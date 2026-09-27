@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import {
-	Activity,
+	Coins,
 	CheckSquare,
 	ChevronDown,
 	Cpu,
@@ -101,9 +101,9 @@ export function RightPanelHeader({
 
 	const HEATMAP_TAB = {
 		id: "heatmap" as RightTab,
-		label: "热力图",
-		icon: Activity,
-		iconColor: "text-emerald-400",
+		label: "Token 用量",
+		icon: Coins,
+		iconColor: "text-amber-400",
 	};
 
 	const ALL_TABS = [...PRIMARY_TABS, HEATMAP_TAB];
@@ -195,15 +195,15 @@ export function RightPanelHeader({
 					className={clsx(
 						"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
 						activeTab === "heatmap"
-							? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+							? "bg-amber-950/80 text-amber-300 border border-amber-800/60"
 							: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
 					)}
-					aria-label="会话热力图"
-					title={activeTab === "heatmap" ? "收起热力图" : "切换会话热力图"}
+					aria-label="Token 用量"
+					title={activeTab === "heatmap" ? "收起 Token 用量" : "查看 Token 用量"}
 				>
-					<Activity
+					<Coins
 						size={14}
-						className={activeTab === "heatmap" ? "text-emerald-400" : "text-neutral-400"}
+						className={activeTab === "heatmap" ? "text-amber-400" : "text-neutral-400"}
 					/>
 				</button>
 
@@ -273,8 +273,8 @@ export function RightPanelHeader({
 								)}
 							>
 								<div className="flex items-center gap-2.5">
-									<Activity size={14} className="text-emerald-400" />
-									<span>热力图 (统计分析)</span>
+									<Coins size={14} className="text-amber-400" />
+									<span>Token 用量 (统计分析)</span>
 								</div>
 								{tabBadges.heatmap > 0 && (
 									<span className="rounded-full bg-neutral-700/80 px-1.5 py-0.2 text-[10px] font-medium leading-tight text-neutral-300">

@@ -19,6 +19,7 @@ import {
 	VolumeX,
 	Wrench,
 } from "lucide-react";
+import { NativeSelect } from "../../components/NativeSelect";
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -759,17 +760,17 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 									<div className="mt-1 text-[11px] text-neutral-500">
 										启动新会话时的默认审批强度
 									</div>
-									<select
+									<NativeSelect
 										value={settings.defaultApprovalMode}
 										onChange={(e) =>
 											handleUpdate({ defaultApprovalMode: e.target.value })
 										}
-										className="mt-2 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+										containerClassName="mt-2"
 									>
 										<option value="always-ask">每步必问 (always-ask)</option>
 										<option value="write">写操作审批 (write)</option>
 										<option value="yolo">完全自动执行 (yolo)</option>
-									</select>
+									</NativeSelect>
 								</div>
 
 								<div className="border-t border-[var(--border-divider)] pt-4">

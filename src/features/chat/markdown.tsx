@@ -92,7 +92,7 @@ function PreBlock({
 				<pre
 					{...props}
 					className={clsx(
-						"overflow-x-auto p-3 text-[12px] leading-relaxed transition-all",
+						"overflow-x-auto p-3 text-[12px] leading-relaxed transition-all [&_code]:bg-transparent [&_code]:p-0 [&_code]:rounded-none",
 						isLong && !expanded && "max-h-[220px] overflow-hidden select-none",
 					)}
 				>
@@ -168,15 +168,69 @@ function MarkdownLink({
 	);
 }
 
+function TableBlock({
+	children,
+	className,
+	node: _node,
+	...props
+}: React.ComponentPropsWithoutRef<"table"> & { node?: unknown }) {
+	return (
+		<div className="my-3 w-full overflow-x-auto">
+			<table
+				className={clsx(
+					"w-full border-collapse text-[0.9em] !my-0",
+					className,
+				)}
+				{...props}
+			>
+				{children}
+			</table>
+		</div>
+	);
+}
+
 export function Markdown({ text }: { text: string }) {
 	return (
-		<div className="prose-sm max-w-none leading-relaxed text-neutral-200 text-[length:var(--chat-font-size)] [&_code]:rounded [&_code]:bg-neutral-800 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[length:var(--chat-code-font-size)] [&_blockquote]:border-l-2 [&_blockquote]:border-neutral-700 [&_blockquote]:pl-3 [&_blockquote]:text-neutral-400">
+		<div
+			className={clsx(
+				"prose-sm max-w-none leading-relaxed text-neutral-200 text-[length:var(--chat-font-size)]",
+				"[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+				// Headings
+				"[&_h1]:text-lg [&_h1]:font-semibold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-neutral-100",
+				"[&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-3.5 [&_h2]:mb-2 [&_h2]:text-neutral-100",
+				"[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:text-neutral-200",
+				"[&_h4]:text-sm [&_h4]:font-medium [&_h4]:mt-2.5 [&_h4]:mb-1 [&_h4]:text-neutral-200",
+				"[&_h5]:text-sm [&_h5]:font-medium [&_h5]:mt-2 [&_h5]:mb-1 [&_h5]:text-neutral-200",
+				"[&_h6]:text-sm [&_h6]:font-medium [&_h6]:mt-2 [&_h6]:mb-1 [&_h6]:text-neutral-200",
+				// Paragraphs & text
+				"[&_p]:my-2 [&_p]:leading-relaxed",
+				"[&_strong]:font-semibold [&_strong]:text-neutral-100",
+				// Lists
+				"[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2",
+				"[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2",
+				"[&_li]:my-0.5",
+				"[&_li>p]:my-0.5",
+				"[&_ul_ul]:my-0.5 [&_ol_ol]:my-0.5 [&_ul_ol]:my-0.5 [&_ol_ul]:my-0.5",
+				// Tables
+				"[&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_table]:text-[0.9em]",
+				"[&_th]:border [&_th]:border-neutral-700 [&_th]:bg-neutral-800/60 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:text-neutral-200",
+				"[&_td]:border [&_td]:border-neutral-800 [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-neutral-300",
+				"[&_tbody_tr:hover]:bg-neutral-800/30",
+				// Divider & quotes
+				"[&_hr]:my-4 [&_hr]:border-neutral-800",
+				"[&_blockquote]:my-2.5 [&_blockquote]:border-l-2 [&_blockquote]:border-neutral-700 [&_blockquote]:pl-3 [&_blockquote]:text-neutral-400",
+				// Inline code & pre block overrides
+				"[&_code]:rounded [&_code]:bg-neutral-800 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[length:var(--chat-code-font-size)] [&_code]:font-mono",
+				"[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:rounded-none",
+			)}
+		>
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
 				rehypePlugins={[rehypeHighlight]}
 				components={{
 					pre: PreBlock,
 					a: MarkdownLink,
+					table: TableBlock,
 				}}
 			>
 				{text}

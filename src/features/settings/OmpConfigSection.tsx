@@ -13,6 +13,7 @@ import type { OmpConfigEntry } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
 import { ompConfigReset, ompConfigSet } from "../../lib/ipc";
+import { NativeSelect } from "../../components/NativeSelect";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
 import {
@@ -316,7 +317,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 						/>
 					) : options ? (
 						<div className="space-y-1.5">
-							<select
+							<NativeSelect
 								value={
 									custom || !options.some((o) => o.value === draft)
 										? CUSTOM_VALUE
@@ -331,7 +332,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 										setDraft(e.target.value);
 									}
 								}}
-								className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+								className="text-[11px]"
 							>
 								{options.map((o) => (
 									<option key={o.value} value={o.value}>
@@ -339,7 +340,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 									</option>
 								))}
 								<option value={CUSTOM_VALUE}>自定义…</option>
-							</select>
+							</NativeSelect>
 							{custom && (
 								<input
 									type="text"

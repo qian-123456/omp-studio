@@ -408,6 +408,14 @@ pub struct ServiceInfo {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProcessMemoryInfo {
+    pub resident_mb: f64,
+    pub formatted: String,
+    pub processes: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PairingInfo {
     pub url: String,
     pub qr_svg: String,

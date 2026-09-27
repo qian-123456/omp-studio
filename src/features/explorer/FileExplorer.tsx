@@ -66,6 +66,7 @@ export function FileExplorer() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [searchResults, setSearchResults] = useState<string[]>([]);
 	const [isSearchingFiles, setIsSearchingFiles] = useState(false);
+	const [searchLimit, setSearchLimit] = useState(50);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 
 	// Sync selectedPath when docPath changes externally
@@ -187,6 +188,7 @@ export function FileExplorer() {
 			setSearchResults([]);
 			return;
 		}
+		setSearchLimit(50);
 		const timer = setTimeout(async () => {
 			setIsSearchingFiles(true);
 			try {
@@ -195,7 +197,7 @@ export function FileExplorer() {
 				const matched = allFiles.filter((rel) =>
 					rel.toLowerCase().includes(lowerQ),
 				);
-				setSearchResults(matched.slice(0, 50));
+				setSearchResults(matched);
 			} catch {
 				setSearchResults([]);
 			} finally {
@@ -208,8 +210,8 @@ export function FileExplorer() {
 	return (
 		<div className="flex h-full flex-col bg-transparent text-neutral-300 text-xs select-none">
 			{/* Top Tool Section: Actions Toolbar matching the reference screenshot */}
-			<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-2.5 py-1.5 bg-[var(--bg-active-fill)]">
-				<span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+			<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-2 py-1 bg-[var(--bg-active-fill)]">
+				<span className="text-[10.5px] font-semibold uppercase tracking-wider text-neutral-400">
 					资源管理器
 				</span>
 
@@ -230,57 +232,56 @@ export function FileExplorer() {
 							});
 						}}
 						className={clsx(
-							"flex h-7 w-7 items-center justify-center rounded-lg transition-all active:scale-95",
+							"flex h-6 w-6 items-center justify-center rounded transition-all active:scale-95",
 							searchOpen
 								? "bg-[var(--bg-hover)] text-neutral-100"
 								: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 						)}
 						title="搜索文件 (Cmd+F)"
 					>
-						<Search size={14} />
+						<Search size={13} />
 					</button>
 
 					{/* Reveal in Finder / Open */}
 					<button
 						type="button"
 						onClick={handleRevealInFinder}
-						className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
+						className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 						title="在访达中显示工作区目录"
 					>
-						<FolderUp size={14} />
+						<FolderUp size={13} />
 					</button>
 					{/* Collapse All */}
 					<button
 						type="button"
 						onClick={handleCollapseAll}
-						className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
+						className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 						title="全部折叠"
 					>
-						<FoldVertical size={14} />
+						<FoldVertical size={13} />
 					</button>
 					{/* Refresh */}
 					<button
 						type="button"
 						onClick={refreshRoot}
 						className={clsx(
-							"flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all",
+							"flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all",
 							isRootLoading && "animate-spin text-neutral-200",
 						)}
-							title="刷新文件树"
-						>
-							<RefreshCw size={13} />
-						</button>
-
+						title="刷新文件树"
+					>
+						<RefreshCw size={12} />
+					</button>
 				</div>
 			</div>
 
 			{/* Search Input Bar (revealed on search click) */}
 			{searchOpen && (
-				<div className="border-b border-[var(--border-divider)] p-2 bg-[var(--well-bg)]">
+				<div className="border-b border-[var(--border-divider)] p-1.5 bg-[var(--well-bg)]">
 					<div className="relative flex items-center">
 						<Search
-							size={13}
-							className="pointer-events-none absolute left-2.5 text-neutral-500"
+							size={12}
+							className="pointer-events-none absolute left-2 text-neutral-500"
 						/>
 						<input
 							ref={searchInputRef}
@@ -296,15 +297,15 @@ export function FileExplorer() {
 								}
 							}}
 							placeholder="输入文件名过滤..."
-							className="w-full rounded-lg hairline bg-[var(--well-bg)] py-1 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
+							className="w-full rounded hairline bg-[var(--well-bg)] py-0.5 pl-6 pr-5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 						/>
 						{searchQuery && (
 							<button
 								type="button"
 								onClick={() => setSearchQuery("")}
-								className="absolute right-2 text-neutral-500 hover:text-neutral-300"
+								className="absolute right-1.5 text-neutral-500 hover:text-neutral-300"
 							>
-								<X size={12} />
+								<X size={11} />
 							</button>
 						)}
 					</div>
@@ -319,63 +320,74 @@ export function FileExplorer() {
 			/>
 
 			{/* Tree or Search Results Container */}
-			<div className="flex-1 overflow-y-auto px-1 py-1 focus:outline-none">
+			<div className="flex-1 overflow-y-auto px-0.5 py-0.5 focus:outline-none">
 				{/* Search Results Mode */}
 				{searchQuery.trim().length > 0 ? (
 					<div className="space-y-0.5">
-						<div className="px-2 py-1 text-[11px] text-neutral-500 flex items-center justify-between">
+						<div className="px-2 py-0.5 text-[10.5px] text-neutral-500 flex items-center justify-between">
 							<span>搜索结果 ({searchResults.length})</span>
 							{isSearchingFiles && <Loader2 size={11} className="animate-spin" />}
 						</div>
 						{searchResults.length === 0 && !isSearchingFiles ? (
-							<div className="py-6 text-center text-xs text-neutral-500">
+							<div className="py-4 text-center text-xs text-neutral-500">
 								无匹配文件
 							</div>
 						) : (
-							searchResults.map((rel) => {
-								const full = currentWorkspace
-									? `${currentWorkspace.path}/${rel}`
-									: rel;
-								const fileName = rel.split("/").pop() || rel;
-								const isSelected = selectedPath === full;
-								return (
-									<div
-										key={rel}
-										role="button"
-										tabIndex={0}
-										onClick={() => handleOpenFile(full)}
-										className={clsx(
-											"flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all active:scale-[0.98] cursor-pointer",
-											isSelected
-												? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
-												: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
-										)}
-										title={full}
-									>
-										<FileIcon name={fileName} size={14} />
-										<div className="min-w-0 flex-1">
-											<div className="truncate font-mono text-[11.5px] leading-tight">
-												{fileName}
-											</div>
-											<div className="truncate font-mono text-[10px] text-neutral-500 leading-tight">
-												{rel}
+							<>
+								{searchResults.slice(0, searchLimit).map((rel) => {
+									const full = currentWorkspace
+										? `${currentWorkspace.path}/${rel}`
+										: rel;
+									const fileName = rel.split("/").pop() || rel;
+									const isSelected = selectedPath === full;
+									return (
+										<div
+											key={rel}
+											role="button"
+											tabIndex={0}
+											onClick={() => handleOpenFile(full)}
+											className={clsx(
+												"flex h-[22px] items-center gap-1.5 rounded px-2 text-xs transition-all active:scale-[0.98] cursor-pointer",
+												isSelected
+													? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+													: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
+											)}
+											title={full}
+										>
+											<FileIcon name={fileName} size={12} />
+											<div className="min-w-0 flex-1 flex items-baseline gap-1.5 overflow-hidden">
+												<span className="truncate font-mono text-[11px] leading-tight text-neutral-200">
+													{fileName}
+												</span>
+												<span className="truncate font-mono text-[10px] text-neutral-500 leading-tight flex-1">
+													{rel}
+												</span>
 											</div>
 										</div>
-									</div>
-								);
-							})
+									);
+								})}
+								{searchResults.length > searchLimit && (
+									<button
+										type="button"
+										onClick={() => setSearchLimit((l) => l + 50)}
+										className="w-full py-1 text-center text-[10.5px] text-neutral-400 hover:text-neutral-200 hover:bg-[var(--bg-hover)] rounded transition-colors"
+									>
+										显示更多 (剩余 {searchResults.length - searchLimit} 项)...
+									</button>
+								)}
+							</>
 						)}
 					</div>
 				) : (
 					/* Regular File Tree Mode */
 					<div>
 						{isRootLoading && rootEntries.length === 0 ? (
-							<div className="flex items-center justify-center gap-2 py-10 text-neutral-500">
-								<Loader2 size={16} className="animate-spin" />
+							<div className="flex items-center justify-center gap-1.5 py-6 text-neutral-500 text-xs">
+								<Loader2 size={13} className="animate-spin" />
 								<span>加载目录中...</span>
 							</div>
 						) : rootEntries.length === 0 ? (
-							<div className="py-10 text-center text-neutral-500 text-xs">
+							<div className="py-6 text-center text-neutral-500 text-xs">
 								当前工作区暂无文件
 							</div>
 						) : (

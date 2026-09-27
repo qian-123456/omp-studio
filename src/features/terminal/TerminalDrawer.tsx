@@ -4,7 +4,7 @@
  * up from the bottom edge (z-40, below modals); multiple tabs, each a login
  * shell PTY via term_open(cwd, [], cols, rows). PTYs persist while the
  * drawer is closed or across tab switches; closing a tab explicitly kills
- * its PTY. Toggle: Cmd+` (Ctrl+` on non-mac) or the status-bar button.
+ * its PTY. Toggle: Cmd+` (Ctrl+` on non-mac) or the topbar "终端" button.
  * Esc deliberately does NOT close the drawer (it is a terminal key).
  */
 import { homeDir } from "@tauri-apps/api/path";

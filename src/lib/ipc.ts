@@ -21,6 +21,7 @@ import type {
 	PathCheck,
 	PendingUiRequest,
 	ProviderConfig,
+	ProcessMemoryInfo,
 	ProviderTestResult,
 	ServiceInfo,
 	SessionMeta,
@@ -220,10 +221,7 @@ export const validatePath = (path: string) =>
 export const saveClipboardImage = (base64Png: string) =>
 	invoke<string>("save_clipboard_image", { base64Png });
 
-export interface ProcessMemoryInfo {
-	residentMb: number;
-	formatted: string;
-}
+export type { ProcessMemoryInfo } from "./contracts";
 
 export const getAppMemoryUsage = () =>
 	invoke<ProcessMemoryInfo>("app_memory_usage");

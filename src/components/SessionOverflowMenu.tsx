@@ -10,21 +10,25 @@ import {
 	Eraser,
 	FileDown,
 	FolderOpen,
+	MessageSquare,
 	MoreHorizontal,
 	QrCode,
 	RefreshCw,
+	TerminalSquare,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { rpcRestart, sessionExportHtml } from "../lib/ipc";
 import { toast } from "../lib/toast";
+import { useUi } from "../stores/ui";
 export interface SessionOverflowMenuProps {
 	sessionId: string;
 	cwd?: string | null;
 	onOpenInFinder?: () => void;
 	onCopyMarkdown?: () => void;
 	onMobilePair?: () => void;
+	onToggleSessionTerminal?: () => void;
 	className?: string;
 }
 
@@ -34,11 +38,26 @@ export function SessionOverflowMenu({
 	onOpenInFinder,
 	onCopyMarkdown,
 	onMobilePair,
+	onToggleSessionTerminal,
 	className,
 }: SessionOverflowMenuProps) {
 	const [open, setOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
+	const sessionViewMode = useUi((s) => s.sessionViewMode[sessionId] ?? "chat");
+	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
+
+	const handleToggleTerminal = () => {
+		setOpen(false);
+		if (onToggleSessionTerminal) {
+			onToggleSessionTerminal();
+		} else {
+			setSessionViewMode(
+				sessionId,
+				sessionViewMode === "terminal" ? "chat" : "terminal",
+			);
+		}
+	};
 
 	useEffect(() => {
 		if (!open) return;
@@ -102,7 +121,7 @@ export function SessionOverflowMenu({
 	};
 
 	return (
-		<div className={clsx("relative", className)} ref={ref}>
+		<div className={clsx("relative z-20", className)} ref={ref}>
 			<button
 				type="button"
 				onClick={() => setOpen((v) => !v)}
@@ -124,7 +143,7 @@ export function SessionOverflowMenu({
 				<div
 					role="menu"
 					aria-orientation="vertical"
-					className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1 text-xs"
+					className="absolute right-0 top-full z-[60] mt-1.5 w-60 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1 text-xs"
 				>
 					{/* Section 1: 会话弹性与恢复 */}
 					<div className="px-2.5 py-1 text-[10px] font-medium tracking-wider text-neutral-400/80 uppercase">
@@ -145,6 +164,31 @@ export function SessionOverflowMenu({
 							className={clsx("shrink-0 text-emerald-400", busy && "animate-spin")}
 						/>
 						<span className="flex-1 truncate">重置流连接（保留历史）</span>
+					</button>
+
+					{/* 会话终端接管 / 返回聊天视图 */}
+					<button
+						type="button"
+						role="menuitem"
+						onClick={handleToggleTerminal}
+						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-200 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-all active:scale-[0.98]"
+						title={
+							sessionViewMode === "terminal"
+								? "返回聊天视图"
+								: "用完整终端接管此会话（omp --resume，可交互操作 Agent）"
+						}
+					>
+						{sessionViewMode === "terminal" ? (
+							<>
+								<MessageSquare size={13} className="shrink-0 text-indigo-400" />
+								<span className="flex-1 truncate">返回聊天视图</span>
+							</>
+						) : (
+							<>
+								<TerminalSquare size={13} className="shrink-0 text-neutral-400" />
+								<span className="flex-1 truncate">在会话终端中打开</span>
+							</>
+						)}
 					</button>
 
 					{/* /clear equivalent: 清空上下文（保留会话） */}

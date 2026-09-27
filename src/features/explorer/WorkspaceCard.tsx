@@ -47,7 +47,7 @@ export function WorkspaceCard({
 	};
 
 	return (
-		<div className="relative px-2.5 pt-2 pb-1.5">
+		<div className="relative px-2 py-1">
 			<div
 				role="button"
 				tabIndex={0}
@@ -61,7 +61,7 @@ export function WorkspaceCard({
 					handleOpenInFinder(e);
 				}}
 				className={clsx(
-					"group flex items-center gap-2.5 rounded-xl hairline bg-[var(--bg-panel)] p-2 text-left shadow-apple-card transition-all",
+					"group flex h-[26px] items-center gap-1.5 rounded-lg hairline bg-[var(--bg-panel)] px-2 py-0.5 text-left shadow-apple-card transition-all",
 					workspaces.length > 1
 						? "cursor-pointer hover:bg-[var(--bg-hover)] active:scale-[0.98]"
 						: "cursor-default",
@@ -73,39 +73,37 @@ export function WorkspaceCard({
 				}
 			>
 				{/* Folder icon container */}
-				<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-					<Folder size={15} />
+				<div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+					<Folder size={11} />
 				</div>
 
 				{/* Title and path */}
-				<div className="min-w-0 flex-1">
-					<div className="flex items-center gap-1.5">
-						<span className="truncate text-xs font-semibold text-neutral-200">
-							{name}
-						</span>
-						{workspaces.length > 1 && (
-							<ChevronDown
-								size={12}
-								className={clsx(
-									"text-neutral-500 transition-transform duration-200",
-									menuOpen && "rotate-180 text-neutral-300",
-								)}
-							/>
-						)}
-					</div>
-					<div className="truncate font-mono text-[10px] text-neutral-400/80 leading-tight mt-0.5">
+				<div className="min-w-0 flex-1 flex items-baseline gap-1.5 overflow-hidden">
+					<span className="truncate text-xs font-medium text-neutral-200 shrink-0 max-w-[120px]">
+						{name}
+					</span>
+					{workspaces.length > 1 && (
+						<ChevronDown
+							size={11}
+							className={clsx(
+								"text-neutral-500 transition-transform duration-200 shrink-0 self-center",
+								menuOpen && "rotate-180 text-neutral-300",
+							)}
+						/>
+					)}
+					<span className="truncate font-mono text-[10px] text-neutral-500 flex-1">
 						{path || "选择或添加工作区目录"}
-					</div>
+					</span>
 				</div>
 
 				{/* Status indicator dot */}
 				<div className="shrink-0 flex items-center pr-0.5">
 					<span
 						className={clsx(
-							"h-2 w-2 rounded-full transition-colors",
+							"h-1.5 w-1.5 rounded-full transition-colors",
 							gitDirtyCount > 0
-								? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]"
-								: "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]",
+								? "bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.5)]"
+								: "bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]",
 						)}
 						title={
 							gitDirtyCount > 0
@@ -120,9 +118,9 @@ export function WorkspaceCard({
 			{menuOpen && workspaces.length > 1 && (
 				<div
 					ref={menuRef}
-					className="absolute left-2.5 right-2.5 top-full z-50 mt-1.5 max-h-60 overflow-y-auto rounded-xl vibrancy-popover shadow-apple-modal hairline p-1"
+					className="absolute left-2 right-2 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg vibrancy-popover shadow-apple-modal hairline p-1"
 				>
-					<div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+					<div className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
 						切换工作区
 					</div>
 					{workspaces.map((ws) => (
@@ -134,18 +132,18 @@ export function WorkspaceCard({
 								setMenuOpen(false);
 							}}
 							className={clsx(
-								"flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-all active:scale-[0.98]",
+								"flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-all active:scale-[0.98]",
 								currentWorkspace?.id === ws.id
 									? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
 									: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
 							)}
 						>
-							<Folder size={13} className="shrink-0 text-amber-400/80" />
-							<div className="min-w-0 flex-1">
-								<div className="truncate font-medium">{ws.name}</div>
-								<div className="truncate font-mono text-[10px] text-neutral-400">
+							<Folder size={12} className="shrink-0 text-amber-400/80" />
+							<div className="min-w-0 flex-1 flex items-baseline gap-1.5 overflow-hidden">
+								<span className="truncate font-medium">{ws.name}</span>
+								<span className="truncate font-mono text-[10px] text-neutral-500 flex-1">
 									{ws.path}
-								</div>
+								</span>
 							</div>
 							{currentWorkspace?.id === ws.id && (
 								<span className="h-1.5 w-1.5 rounded-full bg-[#0A84FF] shrink-0" />

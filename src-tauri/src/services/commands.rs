@@ -4,6 +4,7 @@ use base64::Engine as _;
 use tauri::Manager as _;
 
 use super::files;
+pub use crate::contracts::ProcessMemoryInfo;
 use crate::contracts::{DirEntry, PathCheck, ServiceInfo};
 use crate::state::AppState;
 #[tauri::command]
@@ -156,31 +157,190 @@ pub async fn save_clipboard_image(
     save_clipboard_image_internal(&cache_dir, &base64_png)
 }
 #[cfg(target_os = "macos")]
-#[allow(deprecated)]
-fn get_resident_memory_bytes() -> u64 {
-    use std::mem::MaybeUninit;
-    let mut task_info = MaybeUninit::<libc::mach_task_basic_info>::uninit();
-    let mut count = (std::mem::size_of::<libc::mach_task_basic_info>()
-        / std::mem::size_of::<libc::natural_t>())
-        as libc::mach_msg_type_number_t;
-    let kerr = unsafe {
-        libc::task_info(
-            libc::mach_task_self(),
-            libc::MACH_TASK_BASIC_INFO,
-            task_info.as_mut_ptr() as libc::task_info_t,
-            &mut count,
-        )
-    };
-    if kerr == libc::KERN_SUCCESS {
-        let task_info = unsafe { task_info.assume_init() };
-        task_info.resident_size
-    } else {
-        0
+mod macos_mem {
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    // RUSAGE_INFO_V5 is flavor 5 for proc_pid_rusage (sys/resource.h).
+    // Not exposed as a constant in libc crate 0.2.
+    const RUSAGE_INFO_V5: libc::c_int = 5;
+
+    #[repr(C)]
+    #[derive(Default, Copy, Clone)]
+    pub struct rusage_info_v5 {
+        pub ri_uuid: [u8; 16],
+        pub ri_user_time: u64,
+        pub ri_system_time: u64,
+        pub ri_pkg_idle_wkups: u64,
+        pub ri_interrupt_wkups: u64,
+        pub ri_pageins: u64,
+        pub ri_wired_size: u64,
+        pub ri_resident_size: u64,
+        pub ri_phys_footprint: u64,
+        pub ri_proc_start_abstime: u64,
+        pub ri_proc_exit_abstime: u64,
+        pub ri_child_user_time: u64,
+        pub ri_child_system_time: u64,
+        pub ri_child_pkg_idle_wkups: u64,
+        pub ri_child_interrupt_wkups: u64,
+        pub ri_child_pageins: u64,
+        pub ri_child_elapsed_abstime: u64,
+        pub ri_diskio_bytesread: u64,
+        pub ri_diskio_byteswritten: u64,
+        pub ri_cpu_time_qos_default: u64,
+        pub ri_cpu_time_qos_maintenance: u64,
+        pub ri_cpu_time_qos_background: u64,
+        pub ri_cpu_time_qos_utility: u64,
+        pub ri_cpu_time_qos_legacy: u64,
+        pub ri_cpu_time_qos_user_initiated: u64,
+        pub ri_cpu_time_qos_user_interactive: u64,
+        pub ri_billed_system_time: u64,
+        pub ri_serviced_system_time: u64,
+        pub ri_logical_writes: u64,
+        pub ri_lifetime_max_phys_footprint: u64,
+        pub ri_instructions: u64,
+        pub ri_cycles: u64,
+        pub ri_billed_energy: u64,
+        pub ri_serviced_energy: u64,
+        pub ri_interval_max_phys_footprint: u64,
+        pub ri_runnable_time: u64,
+        pub ri_flags: u64,
+    }
+
+    extern "C" {
+        // macOS libproc APIs (provided by libSystem.B.dylib)
+        fn proc_listallpids(buffer: *mut libc::c_void, buffersize: libc::c_int) -> libc::c_int;
+        fn proc_pid_rusage(
+            pid: libc::c_int,
+            flavor: libc::c_int,
+            buffer: *mut libc::c_void,
+        ) -> libc::c_int;
+        // Returns the responsible PID for attribution (aligned with macOS Activity Monitor)
+        fn responsibility_get_pid_responsible_for_pid(pid: libc::c_int) -> libc::c_int;
+    }
+
+    static CACHE: Mutex<Option<(Instant, (u64, u32))>> = Mutex::new(None);
+    const CACHE_TTL: Duration = Duration::from_millis(2500);
+
+    pub fn get_attributed_memory_bytes() -> (u64, u32) {
+        if let Ok(guard) = CACHE.lock() {
+            if let Some((cached_at, res)) = *guard {
+                if cached_at.elapsed() < CACHE_TTL {
+                    return res;
+                }
+            }
+        }
+
+        let res = compute_attributed_memory_bytes();
+
+        if let Ok(mut guard) = CACHE.lock() {
+            *guard = Some((Instant::now(), res));
+        }
+
+        res
+    }
+
+    fn compute_attributed_memory_bytes() -> (u64, u32) {
+        let self_pid = std::process::id() as libc::c_int;
+
+        // Query total running PIDs
+        let needed = unsafe { proc_listallpids(std::ptr::null_mut(), 0) };
+        let capacity = if needed > 0 {
+            (needed as usize) + 64
+        } else {
+            1024
+        };
+        let mut pids = vec![0i32; capacity];
+
+        let num_pids = unsafe {
+            proc_listallpids(
+                pids.as_mut_ptr() as *mut libc::c_void,
+                (pids.len() * std::mem::size_of::<libc::c_int>()) as libc::c_int,
+            )
+        };
+
+        let mut total_footprint = 0u64;
+        let mut proc_count = 0u32;
+
+        if num_pids > 0 {
+            let count = (num_pids as usize).min(pids.len());
+            for &pid in &pids[..count] {
+                if pid <= 0 {
+                    continue;
+                }
+                let is_self = pid == self_pid;
+                let is_responsible = if !is_self {
+                    let resp = unsafe { responsibility_get_pid_responsible_for_pid(pid) };
+                    resp == self_pid
+                } else {
+                    true
+                };
+
+                if is_responsible {
+                    let mut ri = rusage_info_v5::default();
+                    let ret = unsafe {
+                        proc_pid_rusage(pid, RUSAGE_INFO_V5, &mut ri as *mut _ as *mut libc::c_void)
+                    };
+                    if ret == 0 {
+                        total_footprint += ri.ri_phys_footprint;
+                        proc_count += 1;
+                    }
+                }
+            }
+        }
+
+        // Fallback: if process enumeration didn't find even self, query self directly
+        if proc_count == 0 {
+            let mut ri = rusage_info_v5::default();
+            let ret = unsafe {
+                proc_pid_rusage(
+                    self_pid,
+                    RUSAGE_INFO_V5,
+                    &mut ri as *mut _ as *mut libc::c_void,
+                )
+            };
+            if ret == 0 {
+                return (ri.ri_phys_footprint, 1);
+            }
+
+            // Ultimate fallback to mach_task_basic_info
+            return (get_mach_resident_size(), 1);
+        }
+
+        (total_footprint, proc_count)
+    }
+
+    #[allow(deprecated)]
+    fn get_mach_resident_size() -> u64 {
+        use std::mem::MaybeUninit;
+        let mut task_info = MaybeUninit::<libc::mach_task_basic_info>::uninit();
+        let mut count = (std::mem::size_of::<libc::mach_task_basic_info>()
+            / std::mem::size_of::<libc::natural_t>())
+            as libc::mach_msg_type_number_t;
+        let kerr = unsafe {
+            libc::task_info(
+                libc::mach_task_self(),
+                libc::MACH_TASK_BASIC_INFO,
+                task_info.as_mut_ptr() as libc::task_info_t,
+                &mut count,
+            )
+        };
+        if kerr == libc::KERN_SUCCESS {
+            let task_info = unsafe { task_info.assume_init() };
+            task_info.resident_size
+        } else {
+            0
+        }
     }
 }
 
+#[cfg(target_os = "macos")]
+fn get_resident_memory_bytes() -> (u64, u32) {
+    macos_mem::get_attributed_memory_bytes()
+}
+
 #[cfg(target_os = "linux")]
-fn get_resident_memory_bytes() -> u64 {
+fn get_resident_memory_bytes() -> (u64, u32) {
     if let Ok(status) = std::fs::read_to_string("/proc/self/statm") {
         if let Some(pages) = status
             .split_whitespace()
@@ -189,28 +349,21 @@ fn get_resident_memory_bytes() -> u64 {
         {
             let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
             if page_size > 0 {
-                return pages * page_size as u64;
+                return (pages * page_size as u64, 1);
             }
         }
     }
-    0
+    (0, 1)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn get_resident_memory_bytes() -> u64 {
-    0
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProcessMemoryInfo {
-    pub resident_mb: f64,
-    pub formatted: String,
+fn get_resident_memory_bytes() -> (u64, u32) {
+    (0, 1)
 }
 
 #[tauri::command]
 pub async fn app_memory_usage() -> Result<ProcessMemoryInfo, String> {
-    let bytes = get_resident_memory_bytes();
+    let (bytes, processes) = get_resident_memory_bytes();
     let mb = (bytes as f64) / (1024.0 * 1024.0);
     let formatted = if mb >= 1024.0 {
         format!("{:.1} GB", mb / 1024.0)
@@ -220,6 +373,7 @@ pub async fn app_memory_usage() -> Result<ProcessMemoryInfo, String> {
     Ok(ProcessMemoryInfo {
         resident_mb: mb,
         formatted,
+        processes,
     })
 }
 
@@ -264,6 +418,7 @@ mod tests {
     async fn test_app_memory_usage() {
         let mem = app_memory_usage().await.unwrap();
         assert!(mem.formatted.contains("MB") || mem.formatted.contains("GB"));
+        assert!(mem.processes >= 1);
         #[cfg(target_os = "macos")]
         assert!(mem.resident_mb > 0.0);
     }

@@ -18,6 +18,7 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { NativeSelect } from "../../components/NativeSelect";
 import type {
 	BacklogItem,
 	BacklogKind,
@@ -767,17 +768,16 @@ export function BacklogPanel() {
 										<label className="mb-1 block text-xs font-medium text-neutral-400">
 											选择目标会话
 										</label>
-										<select
+										<NativeSelect
 											value={selectedExistingId}
 											onChange={(e) => setSelectedExistingId(e.target.value)}
-											className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-100 focus:border-amber-500 focus:outline-none"
 										>
 											{Object.values(sessions).map((s) => (
 												<option key={s.id} value={s.id}>
 													{s.title || s.id} ({s.status})
 												</option>
 											))}
-										</select>
+										</NativeSelect>
 									</div>
 								)}
 							</div>
@@ -787,17 +787,16 @@ export function BacklogPanel() {
 									<label className="mb-1 block text-xs font-medium text-neutral-400">
 										选择工作区目录
 									</label>
-									<select
+									<NativeSelect
 										value={selectedWorkspacePath}
 										onChange={(e) => setSelectedWorkspacePath(e.target.value)}
-										className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-100 focus:border-amber-500 focus:outline-none"
 									>
 										{workspaces.map((w) => (
 											<option key={w.id} value={w.path}>
 												{w.name} ({w.path})
 											</option>
 										))}
-									</select>
+									</NativeSelect>
 								</div>
 								<div>
 									<label className="mb-1 block text-xs font-medium text-neutral-400">

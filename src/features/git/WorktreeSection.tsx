@@ -1,6 +1,6 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
-import { ChevronDown, FolderOpen, GitBranch, Loader2, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, FolderOpen, GitBranch, Info, Loader2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
@@ -99,17 +99,26 @@ export function WorktreeSection({
 					className={clsx("transition-transform text-neutral-400", collapsed && "-rotate-90")}
 				/>
 				<GitBranch size={13} className="text-emerald-400" />
-				<span>并行环境</span>
+				<span>并行工作区</span>
 				{worktrees.length > 0 && (
 					<span className="rounded-full bg-neutral-800 px-1.5 py-0.5 text-[10px] font-mono text-neutral-400">
 						{worktrees.length}
 					</span>
 				)}
+				<span
+					title="Git Worktree：每个工作区是一份独立代码副本，让多个任务并行互不干扰"
+					className="text-neutral-500 hover:text-neutral-300 transition-colors"
+					onClick={(e) => {
+						e.stopPropagation();
+					}}
+				>
+					<Info size={12} />
+				</span>
 			</button>
 			{!collapsed && (
 				<button
 					type="button"
-					title="新建 Worktree"
+					title="新建并行工作区"
 					onClick={() => setShowCreate(!showCreate)}
 					className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 focus:opacity-100"
 				>
@@ -120,10 +129,13 @@ export function WorktreeSection({
 
 		{!collapsed && (
 			<div className="border-t border-neutral-800 px-3 pb-2 pt-1">
+			<p className="mb-2 text-[11px] leading-relaxed text-neutral-400">
+				每个工作区是一份独立代码副本，让多个任务并行互不干扰 — 点 + 新建
+			</p>
 
 			{showCreate && (
 				<div className="mb-2 rounded border border-neutral-800 bg-neutral-900/80 p-2 text-xs">
-					<div className="mb-1 text-[11px] text-neutral-400">新建隔离工作区</div>
+					<div className="mb-1 text-[11px] text-neutral-400">新建并行工作区 (Git Worktree)</div>
 					<div className="flex gap-1.5 mb-1.5">
 						<input
 							autoFocus
@@ -140,7 +152,7 @@ export function WorktreeSection({
 									setShowCreate(false);
 								}
 							}}
-							placeholder="worktree 名称（例如 feat-auth）"
+							placeholder="工作区名称（例如 feat-auth）"
 							className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-200 outline-none focus:border-indigo-500 font-mono"
 						/>
 						<button
@@ -200,7 +212,7 @@ export function WorktreeSection({
 									className="min-w-0 flex-1 text-left truncate text-neutral-200 hover:text-indigo-300"
 									title={
 										wt.sessionIds.length > 1
-											? `点击选择会话 (${wt.sessionIds.length} 个会话): ${wt.path}`
+											? `点击选择会话 (该分支上有 ${wt.sessionIds.length} 个会话): ${wt.path}`
 											: wt.sessionIds.length === 1
 											? `点击切换至会话: ${wt.path}`
 											: isCurrent
@@ -208,17 +220,27 @@ export function WorktreeSection({
 											: `点击在此工作区新建会话: ${wt.path}`
 									}
 								>
-									<span className="font-medium">{main ? "主工作区" : basename(wt.path)}</span>
+									<span className="font-medium">{main ? "主目录" : basename(wt.path)}</span>
 									{isCurrent && (
 										<span className="ml-1.5 rounded bg-indigo-950 px-1 py-0.2 text-[10px] text-indigo-300 border border-indigo-800/50">
 											当前
 										</span>
 									)}
-									{wt.sessionIds.length > 1 && (
-										<span className="ml-1.5 text-[10px] text-neutral-400">
+									{wt.sessionIds.length > 1 ? (
+										<span
+											className="ml-1.5 text-[10px] text-neutral-400"
+											title={`该分支上有 ${wt.sessionIds.length} 个会话`}
+										>
 											({wt.sessionIds.length} 会话 ▾)
 										</span>
-									)}
+									) : wt.sessionIds.length === 1 ? (
+										<span
+											className="ml-1.5 text-[10px] text-neutral-400"
+											title="该分支上有 1 个会话"
+										>
+											(1 会话)
+										</span>
+									) : null}
 								</button>
 
 								{wt.dirty && (
@@ -274,36 +296,51 @@ export function WorktreeSection({
 							</div>
 
 							<div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-neutral-500">
-								<span className="truncate">{wt.branch ?? `detached ${wt.head.slice(0, 8)}`}</span>
+								<span className="truncate text-neutral-400 font-mono">
+									{wt.branch ?? `detached ${wt.head.slice(0, 8)}`}
+								</span>
 								{wt.sessionIds.length > 0 && (
 									<div className="flex items-center gap-1">
-										<span>· 会话:</span>
-										{wt.sessionIds.map((id) => {
-											const s = sessions[id];
-											const label = s?.label ?? id.slice(0, 6);
-											const isArchived = s?.archived;
-											return (
-												<button
-													key={id}
-													type="button"
-													title={
-														isArchived
-															? `目录已删/已归档会话: ${s?.title ?? id}`
-															: `切换到会话: ${s?.title ?? id}`
-													}
-													onClick={() => selectSession(id)}
-													className={clsx(
-														"rounded px-1 py-0.2 text-[10px] font-mono border transition-colors",
-														isArchived
-															? "bg-neutral-800/60 text-neutral-400 border-neutral-700/50 line-through"
-															: "bg-indigo-950/80 text-indigo-300 hover:bg-indigo-900 hover:text-indigo-100 border-indigo-800/40",
-													)}
-												>
-													{label}
-													{isArchived && <span className="ml-0.5 text-[9px] no-underline">·已删</span>}
-												</button>
-											);
-										})}
+										{wt.sessionIds.length <= 3 ? (
+											<>
+												<span>· 会话:</span>
+												{wt.sessionIds.map((id) => {
+													const s = sessions[id];
+													const label = s?.label ?? id.slice(0, 6);
+													const isArchived = s?.archived;
+													return (
+														<button
+															key={id}
+															type="button"
+															title={
+																isArchived
+																	? `已归档会话: ${s?.title ?? id} (该分支上有 ${wt.sessionIds.length} 个会话)`
+																	: `切换到会话: ${s?.title ?? id} (该分支上有 ${wt.sessionIds.length} 个会话)`
+															}
+															onClick={() => selectSession(id)}
+															className={clsx(
+																"rounded px-1 py-0.2 text-[10px] font-mono border transition-colors",
+																isArchived
+																	? "bg-neutral-800/60 text-neutral-400 border-neutral-700/50 line-through"
+																	: "bg-indigo-950/80 text-indigo-300 hover:bg-indigo-900 hover:text-indigo-100 border-indigo-800/40",
+															)}
+														>
+															{label}
+															{isArchived && <span className="ml-0.5 text-[9px] no-underline">·已删</span>}
+														</button>
+													);
+												})}
+											</>
+										) : (
+											<button
+												type="button"
+												onClick={() => setSessionMenuWt(sessionMenuWt === wt.path ? null : wt.path)}
+												title={`该分支上有 ${wt.sessionIds.length} 个会话，点击查看列表`}
+												className="rounded text-[10px] text-neutral-400 hover:text-neutral-200 transition-colors"
+											>
+												· {wt.sessionIds.length} 个会话 ▾
+											</button>
+										)}
 									</div>
 								)}
 							</div>

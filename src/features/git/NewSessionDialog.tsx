@@ -24,6 +24,7 @@ import {
 	toModelKey,
 } from "../../lib/models";
 import { ModelSelect } from "../../components/ModelSelect";
+import { NativeSelect } from "../../components/NativeSelect";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -414,11 +415,11 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 						<span>浏览系统目录…</span>
 					</button>
 				</div>
-				<select
+				<NativeSelect
 					autoFocus
 					value={wsSel}
 					onChange={(e) => setWsSel(e.target.value)}
-					className={clsx(input, "mb-2")}
+					containerClassName="mb-2"
 				>
 					{propCwd && !workspaces.some((w) => w.path === propCwd) && (
 						<option value={CUSTOM}>传入目录：{propCwd}</option>
@@ -430,7 +431,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 						</option>
 					))}
 					<option value={CUSTOM}>自定义路径…</option>
-				</select>
+				</NativeSelect>
 				{wsSel === CUSTOM && (
 					<div className="mb-2">
 						<div className="flex gap-1.5">
@@ -541,10 +542,9 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 								<label className="text-[10px] text-neutral-400 block mb-1">
 									基准分支
 								</label>
-								<select
+								<NativeSelect
 									value={baseBranch}
 									onChange={(e) => setBaseBranch(e.target.value)}
-									className={input}
 								>
 									{branches.length > 0 ? (
 										branches.map((b) => (
@@ -555,7 +555,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 									) : (
 										<option value="">当前分支 (HEAD)</option>
 									)}
-								</select>
+								</NativeSelect>
 							</div>
 							<div>
 								<label className="text-[10px] text-neutral-400 block mb-1">

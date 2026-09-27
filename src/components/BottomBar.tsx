@@ -14,7 +14,7 @@ import { SessionStatsPopover } from "../features/chat/SessionStatsPopover";
 import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
-import { getAppMemoryUsage } from "../lib/ipc";
+import { getAppMemoryUsage, type ProcessMemoryInfo } from "../lib/ipc";
 import { useDrawerStore } from "../features/terminal/drawerStore";
 import { useZoom } from "../lib/zoom";
 
@@ -58,8 +58,8 @@ export function BottomBar() {
 		() => computeSessionStats(transcriptItems, live),
 		[transcriptItems, live],
 	);
-	// Real OS process physical memory (RSS)
-	const [realMemoryStr, setRealMemoryStr] = useState<string | null>(null);
+	// Real OS process physical memory (footprint across app + helpers)
+	const [memoryInfo, setMemoryInfo] = useState<ProcessMemoryInfo | null>(null);
 	const [perfOpen, setPerfOpen] = useState(false);
 
 	useEffect(() => {
@@ -68,7 +68,7 @@ export function BottomBar() {
 			try {
 				const info = await getAppMemoryUsage();
 				if (!cancelled && info?.formatted) {
-					setRealMemoryStr(info.formatted);
+					setMemoryInfo(info);
 				}
 			} catch {
 				/* ignore */
@@ -85,6 +85,8 @@ export function BottomBar() {
 			clearInterval(timer);
 		};
 	}, []);
+	const realMemoryStr = memoryInfo?.formatted ?? null;
+
 
 	// Approximate memory estimation for CC-GUI style indicator
 	const memEstimate = useMemo(() => {
@@ -169,7 +171,7 @@ export function BottomBar() {
 				<button
 					type="button"
 					onClick={() => setPerfOpen((v) => !v)}
-					title="真实物理内存占用 (操作系统内核报告的 Resident Set Size) — 点击查看各进程明细"
+					title={`真实物理内存占用 (对齐活动监视器口径，含本体及 WebView/帮助进程)${memoryInfo?.processes ? ` — 含 ${memoryInfo.processes} 个进程` : ""}，点击查看各进程明细`}
 					className={clsx(
 						"flex items-center gap-1 rounded-[6px] px-1 py-0.5 transition-all hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97",
 						perfOpen && "bg-[var(--bg-hover)] text-neutral-100",
@@ -182,6 +184,7 @@ export function BottomBar() {
 				</button>
 				<PerfPopover
 					appMemory={realMemoryStr}
+					processes={memoryInfo?.processes}
 					open={perfOpen}
 					onClose={() => setPerfOpen(false)}
 					className="bottom-8 right-3"
@@ -190,11 +193,12 @@ export function BottomBar() {
 				<span className="text-neutral-700">·</span>
 
 				{/* Heatmap compact toggle */}
+				{/* Token usage compact toggle */}
 				<button
 					type="button"
 					onClick={handleToggleHeatmap}
-					aria-label="切换右侧热力图"
-					title={rightTab === "heatmap" && rightOpen ? "收起热力图" : "在右栏打开会话热力图"}
+					aria-label="切换右侧 Token 用量"
+					title={rightTab === "heatmap" && rightOpen ? "收起 Token 用量" : "在右栏打开会话 Token 用量"}
 					className={clsx(
 						"flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 text-[10.5px] transition-all active:scale-95",
 						rightTab === "heatmap" && rightOpen
@@ -206,7 +210,7 @@ export function BottomBar() {
 						size={11}
 						className={rightTab === "heatmap" && rightOpen ? "text-emerald-400" : "text-neutral-500"}
 					/>
-					<span>热力图</span>
+					<span>Token 用量</span>
 				</button>
 
 				<span className="text-neutral-700">·</span>

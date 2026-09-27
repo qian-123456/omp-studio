@@ -2,11 +2,10 @@ import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
 	ArrowLeft,
-	MessageSquare,
 	PanelLeftClose,
 	PanelLeftOpen,
 	PanelRightOpen,
-	TerminalSquare,
+	Terminal,
 	X,
 } from "lucide-react";
 import React, {
@@ -37,6 +36,7 @@ import { TopCapsule } from "./features/todos/TopCapsule";
 import { startTodos, useTodos } from "./features/todos/store";
 import { destroySessionTerminal } from "./features/terminal/terminalRegistry";
 import { TerminalDrawer } from "./features/terminal/TerminalDrawer";
+import { useDrawerStore } from "./features/terminal/drawerStore";
 import { onServicesChanged, onSessionsRemoved } from "./lib/events";
 import { gitSummary, servicesList } from "./lib/ipc";
 import type { PairingInfo, SessionStatus } from "./lib/contracts";
@@ -161,6 +161,8 @@ export default function App() {
 	const rightOpen = useUi((s) => s.rightOpen);
 	const toggleRight = useUi((s) => s.toggleRight);
 	const rightWidth = useUi((s) => s.rightWidth);
+	const terminalDrawerOpen = useDrawerStore((s) => s.open);
+	const toggleTerminalDrawer = useDrawerStore((s) => s.toggle);
 	const setRightWidth = useUi((s) => s.setRightWidth);
 
 	const sidebarOpen = useUi((s) => s.sidebarOpen);
@@ -512,7 +514,7 @@ export default function App() {
 			{/* Top bar — column-aligned single-row header; left column strictly matches sidebarWidth */}
 			<header
 				data-tauri-drag-region
-				className="flex h-10 shrink-0 border-b border-[var(--border-divider)] vibrancy-chrome select-none"
+				className="relative z-30 flex h-10 shrink-0 border-b border-[var(--border-divider)] vibrancy-chrome select-none"
 			>
 				{/* Left column topbar — matches sidebarWidth with right border */}
 				{sidebarOpen ? (
@@ -652,46 +654,44 @@ export default function App() {
 									</button>
 								)}
 
-								{/* Session Overflow Menu (Finder, Share, Resilience) */}
+								{/* Session Overflow Menu (Finder, Share, Resilience, Session Terminal) */}
 								<SessionOverflowMenu
 									sessionId={activeSession.id}
 									cwd={activeSession.cwd}
 									onOpenInFinder={handleOpenInFinder}
 									onCopyMarkdown={handleCopyMarkdown}
 									onMobilePair={handleMobilePair}
-								/>
-								{/* Terminal / Chat toggle */}
-								<button
-									type="button"
-									onClick={() =>
+									onToggleSessionTerminal={() =>
 										setSessionViewMode(
 											activeSession.id,
-											sessionViewMode === "chat" ? "terminal" : "chat",
+											sessionViewMode === "terminal" ? "chat" : "terminal",
 										)
 									}
-									className={clsx(
-										"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium active:scale-95 transition-all",
-										sessionViewMode === "terminal"
-											? "border border-indigo-500/40 bg-indigo-600/20 text-indigo-300"
-											: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
-									)}
-									aria-label={sessionViewMode === "chat" ? "切换到会话终端" : "返回聊天视图"}
-									title={sessionViewMode === "chat" ? "用完整终端接管此会话（omp --resume，可交互操作 Agent）" : "返回聊天视图"}
-								>
-									{sessionViewMode === "chat" ? (
-										<>
-											<TerminalSquare size={13} />
-											<span>会话终端</span>
-										</>
-									) : (
-										<>
-											<MessageSquare size={13} />
-											<span>聊天</span>
-										</>
-									)}
-								</button>
+								/>
 							</>
 						)}
+
+						{/* Global Terminal Drawer Toggle */}
+						<button
+							type="button"
+							onClick={toggleTerminalDrawer}
+							aria-label={terminalDrawerOpen ? "收起本地终端" : "打开本地终端"}
+							aria-pressed={terminalDrawerOpen}
+							title={
+								terminalDrawerOpen
+									? "收起本地终端 (⌘`)"
+									: "打开本地终端（⌘`）— shell，可输 omp/claude/codex 自动接管当前会话"
+							}
+							className={clsx(
+								"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium active:scale-95 transition-all",
+								terminalDrawerOpen
+									? "border border-indigo-500/40 bg-indigo-600/20 text-indigo-300"
+									: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
+							)}
+						>
+							<Terminal size={13} />
+							<span>终端</span>
+						</button>
 
 						<TopCapsule />
 

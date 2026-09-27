@@ -296,6 +296,12 @@ export interface ServiceInfo {
 	memoryKb: number | null;
 }
 
+export interface ProcessMemoryInfo {
+	residentMb: number;
+	formatted: string;
+	processes: number;
+}
+
 export interface PairingInfo {
 	url: string;
 	qrSvg: string;

@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import {
-	Activity,
+	Coins,
 	CheckSquare,
 	Cpu,
 	Folder,
@@ -125,10 +125,10 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 						<button
 							type="button"
 							onClick={() => setRightTab("heatmap")}
-							className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-emerald-400 transition-colors py-1 px-2 rounded-md hover:bg-neutral-800/50"
+							className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-amber-400 transition-colors py-1 px-2 rounded-md hover:bg-neutral-800/50"
 						>
-							<Activity size={13} className="text-emerald-400" />
-							<span>打开会话热力图 (统计分析)</span>
+							<Coins size={13} className="text-amber-400" />
+							<span>打开 Token 用量 (统计分析)</span>
 						</button>
 					</div>
 				</div>

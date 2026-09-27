@@ -160,11 +160,18 @@
 	--shadow-apple-card: 0 0 0 0.5px var(--hairline), 0 4px 16px rgba(0, 0, 0, 0.35);
 	--shadow-apple-modal: 0 0 0 0.5px var(--hairline-strong), 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.25);
 
+
+	/* macOS-style floating scrollbar tokens */
+	--scrollbar-thumb: light-dark(rgba(160, 160, 160, 0.35), rgba(160, 160, 160, 0.28));
+	--scrollbar-thumb-hover: rgba(160, 160, 160, 0.55);
 	/* Apple HIG spring & sheet curves */
 	--ease-spring: cubic-bezier(0.25, 1, 0.5, 1);
 	--ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 
-	/* Chat typography, controlled by the font-size setting (data-font-size). */
+	/* Chat typography, controlled by the font-size setting (data-font-size).
+	 * Tailwind v4 operates without @tailwindcss/typography; markdown styling is handled
+	 * via [&_*] child selectors in src/features/chat/markdown.tsx.
+	 */
 	--chat-font-size: 13px;
 	--chat-line-height: 1.7;
 	--chat-code-font-size: 12px;
@@ -723,6 +730,8 @@ html[data-theme="lavender"] {
 	--switch-off: #E9E9EB;
 	--shadow-apple-card: 0 0 0 0.5px var(--hairline), 0 2px 12px rgba(0, 0, 0, 0.08);
 	--shadow-apple-modal: 0 0 0 0.5px var(--hairline-strong), 0 16px 40px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
+	--scrollbar-thumb: rgba(160, 160, 160, 0.35);
+	--scrollbar-thumb-hover: rgba(160, 160, 160, 0.55);
 }
 
 /* Follow the OS scheme while the theme choice is "system". */
@@ -802,15 +811,20 @@ textarea {
 	user-select: none;
 }
 
-/* Theme-aware scrollbars. */
+/* macOS-style floating thin scrollbar (borderless, transparent track, rounded capsule). */
+:root {
+	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
 * {
 	scrollbar-width: thin;
-	scrollbar-color: color-mix(in srgb, var(--text) 15%, transparent) transparent;
+	scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 ::-webkit-scrollbar {
-	width: 6px;
-	height: 6px;
+	width: 8px;
+	height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -818,12 +832,19 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-	background: color-mix(in srgb, var(--text) 15%, transparent);
-	border-radius: 3px;
+	background-color: var(--scrollbar-thumb);
+	background-clip: padding-box;
+	border: 2px solid transparent;
+	border-radius: 999px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-	background: color-mix(in srgb, var(--text) 30%, transparent);
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+	background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+	background: transparent;
 }
 
 /* Chat font-size presets (settings → 外观). */

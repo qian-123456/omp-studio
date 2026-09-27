@@ -14,6 +14,7 @@ import {
 	Smartphone,
 	X,
 } from "lucide-react";
+import { NativeSelect } from "../../components/NativeSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MobileStatus, PairingInfo } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
@@ -280,15 +281,14 @@ export function MobilePanel() {
 						未检测到 cloudflared 二进制：建议执行 <code className="font-mono bg-[var(--well-bg)] px-1 rounded">brew install cloudflared</code> 安装
 					</div>
 				)}
-				<select
-					className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-xs text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
+				<NativeSelect
 					value={tunnelMode}
 					onChange={(e) => setTunnelMode(e.target.value)}
 				>
 					<option value="off">关闭隧道 (仅局域网)</option>
 					<option value="quick">临时隧道（trycloudflare - 免配置）</option>
 					<option value="named">命名隧道（指定固定公网域名）</option>
-				</select>
+				</NativeSelect>
 				{tunnelMode === "named" && (
 					<div className="grid grid-cols-2 gap-2">
 						<input

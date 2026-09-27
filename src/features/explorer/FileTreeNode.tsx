@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight, Loader2, MoreHorizontal } from "lucide-react";
 import React, { useState } from "react";
 import type { DirEntry } from "../../lib/contracts";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -107,23 +107,23 @@ export function FileTreeNode({
 				aria-selected={isSelected}
 				onClick={handleClick}
 				onContextMenu={handleContextMenu}
-				style={{ paddingLeft: `${depth * 14 + 8}px` }}
+				style={{ paddingLeft: `${depth * 12 + 6}px` }}
 				className={clsx(
-					"group flex h-[28px] cursor-pointer items-center gap-1.5 pr-2 text-xs transition-all select-none mx-1 my-0.5 active:scale-[0.98]",
+					"group flex h-[22px] cursor-pointer items-center gap-1.5 pr-1.5 text-xs transition-all select-none mx-0.5 rounded active:scale-[0.98]",
 					isSelected
-						? "rounded-lg bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
-						: "rounded-lg text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
+						? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+						: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
 				)}
 				title={entry.path}
 			>
 				{/* Chevron / Spacer */}
-				<div className="flex h-4 w-4 shrink-0 items-center justify-center">
+				<div className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
 					{entry.isDir ? (
 						isLoading ? (
-							<Loader2 size={12} className="animate-spin text-neutral-500" />
+							<Loader2 size={11} className="animate-spin text-neutral-500" />
 						) : (
 							<ChevronRight
-								size={12}
+								size={11}
 								className={clsx(
 									"text-neutral-500 transition-transform duration-150 group-hover:text-neutral-300",
 									isExpanded && "rotate-90 text-neutral-300",
@@ -131,7 +131,7 @@ export function FileTreeNode({
 							/>
 						)
 					) : (
-						<span className="w-3" />
+						<span className="w-3.5" />
 					)}
 				</div>
 
@@ -141,23 +141,41 @@ export function FileTreeNode({
 						name={entry.name}
 						isDir={entry.isDir}
 						isOpen={isExpanded}
-						size={14}
+						size={13}
 					/>
 				</div>
 
 				{/* Label */}
-				<span className="truncate flex-1 font-mono text-[11.5px] leading-none">
+				<span className="truncate flex-1 font-mono text-[11px] leading-none">
 					{entry.name}
 				</span>
+
+				{/* Action button on hover */}
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleContextMenu(e);
+					}}
+					className="opacity-0 group-hover:opacity-100 flex h-4 w-4 shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-opacity"
+					title="更多选项"
+				>
+					<MoreHorizontal size={11} />
+				</button>
 			</div>
 
 			{/* Render Children when expanded */}
 			{entry.isDir && isExpanded && (
-				<div role="group" className="flex flex-col">
+				<div role="group" className="relative flex flex-col">
+					{/* Vertical guide line for this subtree */}
+					<div
+						className="pointer-events-none absolute bottom-0.5 top-0.5 border-l border-white/[0.08]"
+						style={{ left: `${depth * 12 + 13}px` }}
+					/>
 					{children.length === 0 && !isLoading ? (
 						<div
-							style={{ paddingLeft: `${(depth + 1) * 14 + 18}px` }}
-							className="py-1 text-[11px] text-neutral-500 italic select-none"
+							style={{ paddingLeft: `${(depth + 1) * 12 + 20}px` }}
+							className="py-0.5 text-[10.5px] text-neutral-500 italic select-none"
 						>
 							空目录
 						</div>
@@ -199,39 +217,39 @@ export function FileTreeNode({
 					/>
 					<div
 						style={{ left: contextMenu.x, top: contextMenu.y }}
-						className="fixed z-50 min-w-[150px] rounded-xl vibrancy-popover shadow-apple-modal hairline p-1 text-xs text-neutral-200"
+						className="fixed z-50 min-w-[140px] rounded-lg vibrancy-popover shadow-apple-modal hairline p-1 text-xs text-neutral-200"
 					>
 						<button
 							type="button"
 							onClick={revealInFinder}
-							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
+							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 						>
 							在访达中显示
 						</button>
 						<button
 							type="button"
 							onClick={copyRelativePath}
-							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
+							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 						>
 							复制相对路径
 						</button>
 						<button
 							type="button"
 							onClick={copyAbsolutePath}
-							className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
+							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 						>
 							复制完整路径
 						</button>
 						{entry.isDir && (
 							<>
-								<div className="my-1 border-t border-[var(--border-divider)]" />
+								<div className="my-0.5 border-t border-[var(--border-divider)]" />
 								<button
 									type="button"
 									onClick={() => {
 										setContextMenu(null);
 										onRefreshDir(entry.path);
 									}}
-									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
+									className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 								>
 									刷新此目录
 								</button>

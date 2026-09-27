@@ -7,8 +7,10 @@ import { servicesList } from "../../lib/ipc";
 import { useSessions } from "../../stores/sessions";
 
 interface PerfPopoverProps {
-	/** Formatted RSS of the app itself (e.g. "412 MB"). */
+	/** Formatted memory of the app itself and helpers (e.g. "412 MB"). */
 	appMemory: string | null;
+	/** Number of processes included in the app total. */
+	processes?: number;
 	open: boolean;
 	onClose: () => void;
 	className?: string;
@@ -32,6 +34,7 @@ function formatKb(kb: number | null): string {
 
 export function PerfPopover({
 	appMemory,
+	processes = 1,
 	open,
 	onClose,
 	className,
@@ -132,10 +135,16 @@ export function PerfPopover({
 				</div>
 
 				{/* App itself */}
-				<div className="flex items-center justify-between text-xs">
+				<div
+					className="flex items-center justify-between text-xs"
+					title={`含 ${processes} 个进程（本体+WebView/帮助进程）`}
+				>
 					<div className="flex min-w-0 items-center gap-1.5">
 						<AppWindow size={12} className="shrink-0 text-[#0A84FF]" />
-						<span className="truncate text-neutral-300">
+						<span
+							className="truncate text-neutral-300"
+							title={`含 ${processes} 个进程（本体+WebView/帮助进程）`}
+						>
 							omp-workspace (本体)
 						</span>
 					</div>

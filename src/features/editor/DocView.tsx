@@ -16,6 +16,7 @@ import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { NativeSelect } from "../../components/NativeSelect";
 
 type Tab = "preview" | "split" | "edit";
 
@@ -405,10 +406,10 @@ export function DocView({ path }: { path: string }) {
 						/>
 					</div>
 					{!sessionId && (
-						<select
+						<NativeSelect
 							value={pickSession}
 							onChange={(e) => setPickSession(e.target.value)}
-							className="max-w-36 rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-300 focus:border-amber-500 focus:outline-none"
+							containerClassName="max-w-36 shrink-0"
 						>
 							<option value="">选择目标会话…</option>
 							{sessionList.map((s) => (
@@ -416,7 +417,7 @@ export function DocView({ path }: { path: string }) {
 									{s.label} {s.title}
 								</option>
 							))}
-						</select>
+						</NativeSelect>
 					)}
 					<button
 						type="button"

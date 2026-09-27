@@ -58,9 +58,9 @@ import {
 import { SessionRow } from "./SessionRow";
 
 /** Sessions shown per section before a "show more" row appears. */
-const RECENT_LIMIT = 12;
+const RECENT_LIMIT = 5;
 /** Extra sessions revealed per "show more" click — never dumps the whole list. */
-const RECENT_STEP = 10;
+const RECENT_STEP = 5;
 const COLLAPSED_GROUPS_KEY = "ompws:collapsed-groups";
 const ACTIVE_WORKSPACE_KEY = "ompws:active-workspace-id";
 
@@ -2136,8 +2136,8 @@ function SessionList({
 	);
 	const visibleOlder = older.slice(0, olderCount);
 
-	// Progressive-disclosure footer: "show N more" while items remain, then a
-	// collapse row once the section is fully revealed.
+	// Progressive-disclosure footer: "show N more" while items remain, and a
+	// collapse row whenever the section is expanded beyond RECENT_LIMIT.
 	const renderPagingFooter = (
 		count: number,
 		total: number,
@@ -2146,32 +2146,37 @@ function SessionList({
 		onCollapse: () => void,
 	) => {
 		const hidden = total - count;
-		if (hidden > 0) {
-			const next = Math.min(RECENT_STEP, hidden);
-			return (
-				<button
-					type="button"
-					onClick={() => onSetCount(moreKey, count + RECENT_STEP)}
-					className="flex w-full items-center gap-1 px-6 py-1 text-[10px] text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
-				>
-					<ChevronRight size={11} className="shrink-0" />
-					再显示 {next} 条（剩余 {hidden} 条{label}）
-				</button>
-			);
+		const hasMore = hidden > 0;
+		const canCollapse = count > RECENT_LIMIT;
+
+		if (!hasMore && !canCollapse) {
+			return null;
 		}
-		if (total > RECENT_LIMIT) {
-			return (
-				<button
-					type="button"
-					onClick={onCollapse}
-					className="flex w-full items-center gap-1 px-6 py-1 text-[10px] text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
-				>
-					<ChevronDown size={11} className="shrink-0" />
-					收起
-				</button>
-			);
-		}
-		return null;
+
+		return (
+			<>
+				{hasMore && (
+					<button
+						type="button"
+						onClick={() => onSetCount(moreKey, count + RECENT_STEP)}
+						className="flex w-full items-center gap-1 px-6 py-1 text-[10px] text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
+					>
+						<ChevronRight size={11} className="shrink-0" />
+						再显示 {Math.min(RECENT_STEP, hidden)} 条（剩余 {hidden} 条{label}）
+					</button>
+				)}
+				{canCollapse && (
+					<button
+						type="button"
+						onClick={onCollapse}
+						className="flex w-full items-center gap-1 px-6 py-1 text-[10px] text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
+					>
+						<ChevronDown size={11} className="shrink-0" />
+						收起
+					</button>
+				)}
+			</>
+		);
 	};
 
 	return (
@@ -2209,10 +2214,7 @@ function SessionList({
 							older.length,
 							olderMoreKey,
 							"更早的会话",
-							() => {
-								onSetCount(olderMoreKey, RECENT_LIMIT);
-								onToggle(olderKey);
-							},
+							() => onSetCount(olderMoreKey, RECENT_LIMIT),
 						)}
 				</>
 			)}
