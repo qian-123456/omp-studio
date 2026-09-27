@@ -1753,7 +1753,7 @@ export function SessionSidebar() {
 														<div>
 															{wg.subgroups[0] &&
 																wg.subgroups[0].kind !== "default" && (
-																	<div className="px-2.5 py-1">
+																	<div className="mx-1 px-2 py-1">
 																		<div className="inline-flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded bg-[var(--bg-hover)] border border-[var(--border)] max-w-full text-[11px] font-mono">
 																			{wg.subgroups[0].kind === "worktree" ? (
 																				<FolderGit2
@@ -1777,7 +1777,7 @@ export function SessionSidebar() {
 																		</div>
 																	</div>
 																)}
-															<div className="ml-3 pl-1.5 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
+															<div className="ml-[22px] pl-2 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
 												<SessionList
 													nodes={wg.subgroups[0]?.nodes ?? []}
 													scopeKey={`${wg.workspace.id}|default`}
@@ -2462,7 +2462,7 @@ function CollapsibleSubgroup({
 				)}
 			</div>
 			{open && (
-				<div className="ml-3.5 pl-1.5 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
+				<div className="ml-[22px] pl-2 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
 					<SessionList
 						nodes={sub.nodes}
 						scopeKey={scopeKey}
