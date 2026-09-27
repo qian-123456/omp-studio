@@ -14,17 +14,24 @@ startSessionEvents()
 	.catch((err) => console.error("initial session load failed", err));
 
 // macOS-style overlay scrollbars on the classic-scrollbars system setting:
-// toggle a body class while scrolling so the capsule thumb only renders during
-// scrolling (or while hovering/dragging the scrollbar). No JS → no pill.
-let scrollIdleTimer = 0;
+// the capsule thumb only renders while an element is actively scrolling (or
+// while the pointer hovers/drags the scrollbar lane). Tag the scrolled element
+// itself — ancestor selectors are unreliable against scrollbar pseudo-elements.
+const scrollingEls = new Map<Element, number>();
 window.addEventListener(
 	"scroll",
-	() => {
-		document.body.classList.add("is-scrolling");
-		clearTimeout(scrollIdleTimer);
-		scrollIdleTimer = window.setTimeout(() => {
-			document.body.classList.remove("is-scrolling");
-		}, 500);
+	(e) => {
+		const el = (e.target === document ? document.body : e.target) as Element;
+		el.classList.add("is-scrolling");
+		const prev = scrollingEls.get(el);
+		if (prev !== undefined) window.clearTimeout(prev);
+		scrollingEls.set(
+			el,
+			window.setTimeout(() => {
+				el.classList.remove("is-scrolling");
+				scrollingEls.delete(el);
+			}, 500),
+		);
 	},
 	{ capture: true, passive: true },
 );
