@@ -596,22 +596,6 @@ export function SessionRow({
 						aria-label="已置顶"
 					/>
 				)}
-
-				{/* Trailing edge: attention pill replaces relative time */}
-				{pill ? (
-					<span
-						className={clsx(
-							"shrink-0 rounded border px-1 py-px text-[9px] font-medium",
-							pill.cls,
-						)}
-					>
-						{pill.label}
-					</span>
-				) : (
-					<span title={updatedAtTs} className="shrink-0 text-[10px] text-neutral-500 tabular-nums">
-						{relativeTime(session.updatedAt || session.createdAt)}
-					</span>
-				)}
 			</div>
 
 			{/* Inline quick actions */}

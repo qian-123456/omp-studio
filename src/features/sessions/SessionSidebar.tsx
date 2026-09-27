@@ -115,43 +115,43 @@ export interface WorkspacePalette {
 
 export const WORKSPACE_PALETTES: WorkspacePalette[] = [
 	{
-		cardBorder: "border-sky-500/25 hover:border-sky-500/40",
-		folderColor: "text-sky-400",
-		spineBorder: "border-sky-500/30",
+		cardBorder: "border-sky-500/35 hover:border-sky-500/55 dark:border-sky-500/25 dark:hover:border-sky-500/40",
+		folderColor: "text-sky-600 dark:text-sky-400",
+		spineBorder: "border-sky-500/30 dark:border-sky-500/30",
 	},
 	{
-		cardBorder: "border-emerald-500/25 hover:border-emerald-500/40",
-		folderColor: "text-emerald-400",
-		spineBorder: "border-emerald-500/30",
+		cardBorder: "border-emerald-500/35 hover:border-emerald-500/55 dark:border-emerald-500/25 dark:hover:border-emerald-500/40",
+		folderColor: "text-emerald-600 dark:text-emerald-400",
+		spineBorder: "border-emerald-500/30 dark:border-emerald-500/30",
 	},
 	{
-		cardBorder: "border-amber-500/25 hover:border-amber-500/40",
-		folderColor: "text-amber-400",
-		spineBorder: "border-amber-500/30",
+		cardBorder: "border-amber-500/35 hover:border-amber-500/55 dark:border-amber-500/25 dark:hover:border-amber-500/40",
+		folderColor: "text-amber-600 dark:text-amber-400",
+		spineBorder: "border-amber-500/30 dark:border-amber-500/30",
 	},
 	{
-		cardBorder: "border-purple-500/25 hover:border-purple-500/40",
-		folderColor: "text-purple-400",
-		spineBorder: "border-purple-500/30",
+		cardBorder: "border-purple-500/35 hover:border-purple-500/55 dark:border-purple-500/25 dark:hover:border-purple-500/40",
+		folderColor: "text-purple-600 dark:text-purple-400",
+		spineBorder: "border-purple-500/30 dark:border-purple-500/30",
 	},
 	{
-		cardBorder: "border-rose-500/25 hover:border-rose-500/40",
-		folderColor: "text-rose-400",
-		spineBorder: "border-rose-500/30",
+		cardBorder: "border-rose-500/35 hover:border-rose-500/55 dark:border-rose-500/25 dark:hover:border-rose-500/40",
+		folderColor: "text-rose-600 dark:text-rose-400",
+		spineBorder: "border-rose-500/30 dark:border-rose-500/30",
 	},
 	{
-		cardBorder: "border-teal-500/25 hover:border-teal-500/40",
-		folderColor: "text-teal-400",
-		spineBorder: "border-teal-500/30",
+		cardBorder: "border-teal-500/35 hover:border-teal-500/55 dark:border-teal-500/25 dark:hover:border-teal-500/40",
+		folderColor: "text-teal-600 dark:text-teal-400",
+		spineBorder: "border-teal-500/30 dark:border-teal-500/30",
 	},
 ];
 
 export function getWorkspacePalette(idOrName: string): WorkspacePalette {
 	if (idOrName === "__global") {
 		return {
-			cardBorder: "border-indigo-500/25 hover:border-indigo-500/40",
-			folderColor: "text-indigo-400",
-			spineBorder: "border-indigo-500/30",
+			cardBorder: "border-indigo-500/35 hover:border-indigo-500/55 dark:border-indigo-500/25 dark:hover:border-indigo-500/40",
+			folderColor: "text-indigo-600 dark:text-indigo-400",
+			spineBorder: "border-indigo-500/30 dark:border-indigo-500/30",
 		};
 	}
 	let hash = 0;
@@ -501,39 +501,41 @@ export function SessionSidebar() {
 		)
 			return null;
 		return (
-			<div className="flex items-center gap-1 ml-auto shrink-0 mr-1.5">
+			<div className="flex items-center gap-1 ml-auto shrink-0 mr-1">
 				{counts.working > 0 && (
 					<span
-						className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[9px] font-mono text-emerald-300 border border-emerald-500/40"
-						title={`${counts.working} 个运行中的会话`}
+						className="flex items-center gap-1 rounded-full bg-emerald-500/15 dark:bg-emerald-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-medium text-emerald-600 dark:text-emerald-300 border border-emerald-500/30"
+						title={`${counts.working} 个运行中会话`}
 					>
-						<span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-						{counts.working} 运行中
+						<span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+						{counts.working}
 					</span>
 				)}
 				{counts.awaiting > 0 && (
 					<span
-						className="flex items-center gap-1 rounded-full bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-mono text-amber-300 border border-amber-500/40"
-						title={`${counts.awaiting} 个等待审批或回复的会话`}
+						className="flex items-center gap-1 rounded-full bg-amber-500/15 dark:bg-amber-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-medium text-amber-600 dark:text-amber-300 border border-amber-500/30"
+						title={`${counts.awaiting} 个待审批或回复`}
 					>
-						<span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-						{counts.awaiting} 待审批
+						<span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+						{counts.awaiting}
 					</span>
 				)}
 				{counts.review > 0 && (
 					<span
-						className="rounded-full bg-orange-500/20 px-1.5 py-0.2 text-[9px] font-mono text-orange-300 border border-orange-500/40"
-						title={`${counts.review} 个待验收的会话`}
+						className="flex items-center gap-1 rounded-full bg-orange-500/15 dark:bg-orange-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-medium text-orange-600 dark:text-orange-300 border border-orange-500/30"
+						title={`${counts.review} 个待验收`}
 					>
-						{counts.review} 待验收
+						<span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+						{counts.review}
 					</span>
 				)}
 				{counts.error > 0 && (
 					<span
-						className="rounded-full bg-rose-500/20 px-1.5 py-0.2 text-[9px] font-mono text-rose-300 border border-rose-500/40"
+						className="flex items-center gap-1 rounded-full bg-rose-500/15 dark:bg-rose-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-medium text-rose-600 dark:text-rose-300 border border-rose-500/30"
 						title={`${counts.error} 个异常会话`}
 					>
-						{counts.error} 异常
+						<span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+						{counts.error}
 					</span>
 				)}
 			</div>
@@ -1375,35 +1377,35 @@ export function SessionSidebar() {
 						{grouped.pinnedNodes.length > 0 && (
 							<div
 								className={clsx(
-									"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/40 overflow-hidden transition-all border-amber-500/25 hover:border-amber-500/40",
+									"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all border-amber-500/35 dark:border-amber-500/25 shadow-xs",
 									!isGroupOpen("__pinned", true) && "opacity-90",
 								)}
 							>
 								<div
 									onClick={() => toggleGroup("__pinned", true)}
-									className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+									className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
 								>
 									<div className="flex items-center gap-1.5 min-w-0 flex-1">
 										{isGroupOpen("__pinned", true) ? (
 											<ChevronDown
 												size={13}
-												className="text-neutral-500 shrink-0"
+												className="text-neutral-400 dark:text-neutral-500 shrink-0"
 											/>
 										) : (
 											<ChevronRight
 												size={13}
-												className="text-neutral-500 shrink-0"
+												className="text-neutral-400 dark:text-neutral-500 shrink-0"
 											/>
 										)}
 										<Pin
 											size={13}
-											className="text-amber-400 fill-amber-400/30 shrink-0"
+											className="text-amber-500 dark:text-amber-400 fill-amber-500/30 shrink-0"
 										/>
-										<span className="font-bold text-[12.5px] text-neutral-100 truncate">
+										<span className="font-bold text-[12.5px] text-neutral-800 dark:text-neutral-100 truncate">
 											已置顶
 										</span>
-										<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
-											{grouped.pinnedNodes.length}
+										<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
+											({grouped.pinnedNodes.length})
 										</span>
 										{renderBubbleBadges(
 											getGroupStatusCounts(grouped.pinnedNodes),
@@ -1569,25 +1571,25 @@ export function SessionSidebar() {
 									return (
 										<div
 											className={clsx(
-												"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/40 overflow-hidden transition-all",
+												"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all shadow-xs",
 												palette.cardBorder,
 												!isOpen && "opacity-90",
 											)}
 										>
 											<div
 												onClick={() => toggleGroup("__global", true)}
-												className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+												className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
 											>
 												<div className="flex items-center gap-1.5 min-w-0 flex-1">
 													{isOpen ? (
 														<ChevronDown
 															size={13}
-															className="text-neutral-500 shrink-0"
+															className="text-neutral-400 dark:text-neutral-500 shrink-0"
 														/>
 													) : (
 														<ChevronRight
 															size={13}
-															className="text-neutral-500 shrink-0"
+															className="text-neutral-400 dark:text-neutral-500 shrink-0"
 														/>
 													)}
 													<Globe
@@ -1595,13 +1597,13 @@ export function SessionSidebar() {
 														className={clsx("shrink-0", palette.folderColor)}
 													/>
 													<span
-														className="font-bold text-[12.5px] text-neutral-100 truncate"
-												title={grouped.globalGroup.workspace.path}
+														className="font-bold text-[12.5px] text-neutral-800 dark:text-neutral-100 truncate"
+														title={grouped.globalGroup.workspace.path}
 													>
 														全局工作区
 													</span>
-													<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
-														{grouped.globalGroup.totalCount}
+													<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
+														({grouped.globalGroup.totalCount})
 													</span>
 													{renderBubbleBadges(statusCounts)}
 												</div>
@@ -1615,7 +1617,7 @@ export function SessionSidebar() {
 													disabled={
 														creatingWs === grouped.globalGroup.workspace.id
 													}
-													className="rounded p-1 text-neutral-500 hover:bg-neutral-700/60 hover:text-neutral-200 disabled:opacity-40 ml-1 shrink-0"
+													className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-selected)] hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 ml-1 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
 												>
 													{creatingWs === grouped.globalGroup.workspace.id ? (
 														<Loader2 size={13} className="animate-spin" />
@@ -1662,7 +1664,7 @@ export function SessionSidebar() {
 										<div
 											key={wg.workspace.id}
 											className={clsx(
-												"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/40 overflow-hidden transition-all",
+												"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all shadow-xs",
 												palette.cardBorder,
 												!isOpen && "opacity-90",
 											)}
@@ -1673,18 +1675,18 @@ export function SessionSidebar() {
 												onContextMenu={(e) =>
 													handleWorkspaceContextMenu(wg.workspace, e)
 												}
-												className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+												className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
 											>
 												<div className="flex items-center gap-1.5 min-w-0 flex-1">
 													{isOpen ? (
 														<ChevronDown
 															size={13}
-															className="text-neutral-500 shrink-0"
+															className="text-neutral-400 dark:text-neutral-500 shrink-0"
 														/>
 													) : (
 														<ChevronRight
 															size={13}
-															className="text-neutral-500 shrink-0"
+															className="text-neutral-400 dark:text-neutral-500 shrink-0"
 														/>
 													)}
 													{isOpen ? (
@@ -1699,13 +1701,13 @@ export function SessionSidebar() {
 														/>
 													)}
 													<span
-														className="font-bold text-[12.5px] text-neutral-100 truncate"
+														className="font-bold text-[12.5px] text-neutral-800 dark:text-neutral-100 truncate"
 														title={`${wg.workspace.name} (${wg.workspace.path})`}
 													>
 														{wg.workspace.name}
 													</span>
-													<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
-														{wg.totalCount}
+													<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
+														({wg.totalCount})
 													</span>
 													{renderBubbleBadges(statusCounts)}
 												</div>
@@ -1715,7 +1717,7 @@ export function SessionSidebar() {
 													onClick={(e) => handlePlusClick(wg.workspace, e)}
 													title="新建会话（选择当前目录或独立 Worktree）"
 													disabled={creatingWs === wg.workspace.id}
-													className="rounded p-1 text-neutral-500 hover:bg-neutral-700/60 hover:text-neutral-200 disabled:opacity-40 ml-1 shrink-0"
+													className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-selected)] hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 ml-1 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
 												>
 													{creatingWs === wg.workspace.id ? (
 														<Loader2 size={13} className="animate-spin" />
@@ -1762,29 +1764,29 @@ export function SessionSidebar() {
 														<div>
 															{wg.subgroups[0] &&
 																wg.subgroups[0].kind !== "default" && (
-																<div className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono text-purple-300">
-													{wg.subgroups[0].kind === "worktree" ? (
-														<FolderGit2
-															size={12}
-															className="text-indigo-400 shrink-0"
-														/>
-													) : (
-														<GitBranch
-															size={12}
-															className="text-purple-400 shrink-0"
-														/>
-													)}
-													<span className="truncate">
-														{wg.subgroups[0].label}
-													</span>
-													{wg.subgroups[0].deleted && (
-														<span className="rounded bg-neutral-800 px-1 text-[9px] text-neutral-500">
-											已清理
-										</span>
-													)}
-												</div>
-												)}
-											<div className="ml-3 pl-1.5 border-l-2 border-purple-500/25 my-0.5">
+																	<div className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono text-neutral-700 dark:text-neutral-200 font-medium">
+																		{wg.subgroups[0].kind === "worktree" ? (
+																			<FolderGit2
+																				size={12}
+																				className="text-indigo-600 dark:text-indigo-400 shrink-0"
+																			/>
+																		) : (
+																			<GitBranch
+																				size={12}
+																				className="text-purple-600 dark:text-purple-400 shrink-0"
+																			/>
+																		)}
+																		<span className="truncate">
+																			{wg.subgroups[0].label}
+																		</span>
+																		{wg.subgroups[0].deleted && (
+																			<span className="rounded bg-neutral-200 dark:bg-neutral-800 px-1 text-[9px] text-neutral-600 dark:text-neutral-400">
+																				已清理
+																			</span>
+																		)}
+																	</div>
+																)}
+															<div className="ml-3 pl-1.5 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
 												<SessionList
 													nodes={wg.subgroups[0]?.nodes ?? []}
 													scopeKey={`${wg.workspace.id}|default`}
@@ -1812,32 +1814,32 @@ export function SessionSidebar() {
 								{grouped.unassigned.length > 0 && (
 									<div
 										className={clsx(
-											"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/30 overflow-hidden transition-all border-neutral-800/60 hover:border-neutral-700/60",
+											"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all border-neutral-300/60 dark:border-neutral-800/60 shadow-xs",
 											!isGroupOpen("__unassigned", false) && "opacity-90",
 										)}
 									>
 										<div
 											onClick={() => toggleGroup("__unassigned", false)}
-											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
 										>
 											<div className="flex items-center gap-1.5 min-w-0 flex-1">
 												{isGroupOpen("__unassigned", false) ? (
 													<ChevronDown
 														size={13}
-														className="text-neutral-500 shrink-0"
+														className="text-neutral-400 dark:text-neutral-500 shrink-0"
 													/>
 												) : (
 													<ChevronRight
 														size={13}
-														className="text-neutral-500 shrink-0"
+														className="text-neutral-400 dark:text-neutral-500 shrink-0"
 													/>
 												)}
-												<Clock size={14} className="text-neutral-400 shrink-0" />
-												<span className="font-bold text-[12.5px] text-neutral-200 truncate">
+												<Clock size={14} className="text-neutral-500 dark:text-neutral-400 shrink-0" />
+												<span className="font-bold text-[12.5px] text-neutral-800 dark:text-neutral-100 truncate">
 													{UNASSIGNED_LABEL}
 												</span>
-												<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
-													{grouped.unassigned.length}
+												<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
+													({grouped.unassigned.length})
 												</span>
 												{renderBubbleBadges(
 													getGroupStatusCounts(grouped.unassigned),
@@ -1884,34 +1886,34 @@ export function SessionSidebar() {
 								{grouped.deletedNodes.length > 0 && (
 									<div
 										className={clsx(
-											"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/30 overflow-hidden transition-all border-neutral-800/40 opacity-75",
+											"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all border-neutral-300/40 dark:border-neutral-800/40 opacity-75 shadow-xs",
 										)}
 									>
 										<div
 											onClick={() => toggleGroup("__deleted", false)}
-											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
 										>
 											<div className="flex items-center gap-1.5 min-w-0 flex-1">
 												{isGroupOpen("__deleted", false) ? (
 													<ChevronDown
 														size={13}
-														className="text-neutral-500 shrink-0"
+														className="text-neutral-400 dark:text-neutral-500 shrink-0"
 													/>
 												) : (
 													<ChevronRight
 														size={13}
-														className="text-neutral-500 shrink-0"
+														className="text-neutral-400 dark:text-neutral-500 shrink-0"
 													/>
 												)}
 												<FolderGit2
 													size={14}
-													className="text-neutral-500 shrink-0"
+													className="text-neutral-500 dark:text-neutral-400 shrink-0"
 												/>
-												<span className="font-bold text-[12.5px] text-neutral-300 truncate">
+												<span className="font-bold text-[12.5px] text-neutral-700 dark:text-neutral-300 truncate">
 													{DELETED_LABEL}
 												</span>
-												<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
-													{grouped.deletedNodes.length}
+												<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
+													({grouped.deletedNodes.length})
 												</span>
 												{renderBubbleBadges(
 													getGroupStatusCounts(grouped.deletedNodes),
@@ -2405,27 +2407,27 @@ function CollapsibleSubgroup({
 				<button
 					type="button"
 					onClick={() => onToggle(`${scopeKey}|sub`)}
-					className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-neutral-800/40 hover:text-neutral-100 transition-colors"
+					className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
 				>
 					{open ? (
-						<ChevronDown size={11} className="shrink-0 text-neutral-500" />
+						<ChevronDown size={11} className="shrink-0 text-neutral-400 dark:text-neutral-500" />
 					) : (
-						<ChevronRight size={11} className="shrink-0 text-neutral-500" />
+						<ChevronRight size={11} className="shrink-0 text-neutral-400 dark:text-neutral-500" />
 					)}
 					{sub.kind === "worktree" ? (
-						<FolderGit2 size={12} className="text-indigo-400 shrink-0" />
+						<FolderGit2 size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
 					) : (
-						<GitBranch size={12} className="text-purple-400 shrink-0" />
+						<GitBranch size={12} className="text-purple-600 dark:text-purple-400 shrink-0" />
 					)}
-					<span className="truncate font-mono text-purple-300 dark:text-purple-200">
+					<span className="truncate font-mono font-medium text-neutral-700 dark:text-neutral-200">
 						{sub.label}
 					</span>
 					{sub.deleted && (
-						<span className="shrink-0 rounded bg-neutral-800 px-1 text-[9px] text-neutral-500">
+						<span className="shrink-0 rounded bg-neutral-200 dark:bg-neutral-800 px-1 text-[9px] text-neutral-600 dark:text-neutral-400">
 							已清理
 						</span>
 					)}
-					<span className="font-mono text-neutral-500 text-[10px]">
+					<span className="font-mono text-neutral-400 dark:text-neutral-500 text-[10px]">
 						({sub.totalCount})
 					</span>
 				</button>
@@ -2457,7 +2459,7 @@ function CollapsibleSubgroup({
 				)}
 			</div>
 			{open && (
-				<div className="ml-3.5 pl-1.5 border-l-2 border-purple-500/25 my-0.5">
+				<div className="ml-3.5 pl-1.5 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
 					<SessionList
 						nodes={sub.nodes}
 						scopeKey={scopeKey}
