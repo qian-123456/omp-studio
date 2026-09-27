@@ -1382,15 +1382,10 @@ export function SessionSidebar() {
 					<>
 						{/* 0. 📌 Pinned Sessions: fixed on the very top */}
 						{grouped.pinnedNodes.length > 0 && (
-							<div
-								className={clsx(
-									"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all border-amber-500/35 dark:border-amber-500/25 border-l-[3px] border-l-amber-500 shadow-xs",
-									!isGroupOpen("__pinned", true) && "opacity-90",
-								)}
-							>
+							<div className="mt-0.5">
 								<div
 									onClick={() => toggleGroup("__pinned", true)}
-									className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
+									className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
 								>
 									<div className="flex items-center gap-1.5 min-w-0 flex-1">
 										{isGroupOpen("__pinned", true) ? (
@@ -1576,17 +1571,10 @@ export function SessionSidebar() {
 										grouped.globalGroup.subgroups,
 									);
 									return (
-										<div
-											className={clsx(
-												"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all shadow-xs",
-												palette.cardBorder,
-												palette.leftAccent,
-												!isOpen && "opacity-90",
-											)}
-										>
+										<div className="mt-0.5">
 											<div
 												onClick={() => toggleGroup("__global", true)}
-												className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
+												className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
 											>
 												<div className="flex items-center gap-1.5 min-w-0 flex-1">
 													{isOpen ? (
@@ -1669,22 +1657,14 @@ export function SessionSidebar() {
 									const isOpen = isGroupOpen(wg.workspace.id, true);
 									const statusCounts = getGroupStatusCounts(wg.subgroups);
 									return (
-										<div
-											key={wg.workspace.id}
-											className={clsx(
-												"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all shadow-xs",
-												palette.cardBorder,
-												palette.leftAccent,
-												!isOpen && "opacity-90",
-											)}
-										>
-											{/* Workspace Group Header */}
+										<div key={wg.workspace.id} className="mt-0.5">
+											{/* Workspace Group Header (Codex unified style) */}
 											<div
 												onClick={() => toggleGroup(wg.workspace.id, true)}
 												onContextMenu={(e) =>
 													handleWorkspaceContextMenu(wg.workspace, e)
 												}
-												className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
+												className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
 											>
 												<div className="flex items-center gap-1.5 min-w-0 flex-1">
 													{isOpen ? (
@@ -1823,15 +1803,10 @@ export function SessionSidebar() {
 
 								{/* 3. Unassigned Bucket (PLAN.md §66 未归档桶): collapsed by default */}
 								{grouped.unassigned.length > 0 && (
-									<div
-										className={clsx(
-											"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all border-neutral-300/60 dark:border-neutral-800/60 shadow-xs",
-											!isGroupOpen("__unassigned", false) && "opacity-90",
-										)}
-									>
+									<div className="mt-0.5">
 										<div
 											onClick={() => toggleGroup("__unassigned", false)}
-											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
+											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
 										>
 											<div className="flex items-center gap-1.5 min-w-0 flex-1">
 												{isGroupOpen("__unassigned", false) ? (
@@ -1895,14 +1870,10 @@ export function SessionSidebar() {
 
 								{/* 4. Deleted Worktrees Bucket: kept visible (dimmed) instead of vanishing */}
 								{grouped.deletedNodes.length > 0 && (
-									<div
-										className={clsx(
-											"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all border-neutral-300/40 dark:border-neutral-800/40 opacity-75 shadow-xs",
-										)}
-									>
+									<div className="mt-0.5 opacity-60 hover:opacity-100 transition-opacity">
 										<div
 											onClick={() => toggleGroup("__deleted", false)}
-											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200"
+											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
 										>
 											<div className="flex items-center gap-1.5 min-w-0 flex-1">
 												{isGroupOpen("__deleted", false) ? (
@@ -2434,12 +2405,12 @@ function CollapsibleSubgroup({
 	const open = searching || !isCollapsed;
 
 	return (
-		<div className={clsx("mt-1", sub.deleted && "opacity-60 hover:opacity-100 transition-opacity")}>
+		<div className={clsx("mt-0.5", sub.deleted && "opacity-60 hover:opacity-100 transition-opacity")}>
 			<div className="group/sub flex items-center">
 				<button
 					type="button"
 					onClick={() => onToggle(`${scopeKey}|sub`)}
-					className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-neutral-800 dark:text-neutral-200 hover:bg-[var(--bg-hover)] transition-colors"
+					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-[11px] font-semibold text-neutral-800 dark:text-neutral-200 hover:bg-[var(--bg-hover)] rounded-md transition-colors"
 				>
 					{open ? (
 						<ChevronDown size={11} className="shrink-0 text-neutral-400 dark:text-neutral-500" />
