@@ -1622,8 +1622,12 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 	},
 };
 
-/** Readable title for a config key: curated label, else derived from the last key segment. */
+import { OMP_CONFIG_GROUP_ZH, OMP_CONFIG_KEY_ZH } from "./ompConfigZh";
+
+/** Readable title for a config key: curated Chinese, else schema label, else derived. */
 export function ompConfigTitle(key: string): string {
+	const zh = OMP_CONFIG_KEY_ZH[key];
+	if (zh) return zh;
 	const label = OMP_CONFIG_META[key]?.label;
 	if (label) return label;
 	const seg = key.includes(".") ? key.slice(key.lastIndexOf(".") + 1) : key;
@@ -1635,7 +1639,9 @@ export function ompConfigTitle(key: string): string {
 	return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
-/** Schema sub-group (e.g. "Theme", "Composer") for a key, if known. */
+/** Schema sub-group for a key (e.g. "主题", "输入框"), Chinese, if known. */
 export function ompConfigGroup(key: string): string | null {
-	return OMP_CONFIG_META[key]?.group ?? null;
+	const group = OMP_CONFIG_META[key]?.group;
+	if (!group) return null;
+	return OMP_CONFIG_GROUP_ZH[group] ?? group;
 }
