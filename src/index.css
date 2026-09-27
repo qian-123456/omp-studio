@@ -806,12 +806,49 @@ textarea {
 	user-select: none;
 }
 
-/* Native WKWebView scrollbars are already the right thing: overlay scrollbars
- * float over content, reserve zero layout space, auto-hide, capsule thumb,
- * follow light/dark. IMPORTANT: do NOT define any ::-webkit-scrollbar rules —
- * in WebKit, a single custom scrollbar rule force-switches that element to the
- * legacy always-on, space-reserving scrollbar (the "lane" look we removed).
- * .no-scrollbar below is the only scrollbar-related rule left. */
+/* Overlay-style scrollbars for WebKit (custom rules REQUIRED here: the user's
+ * macOS "show scroll bars" is non-overlay, so native bars are classic style).
+ * Design: 8px lane with a fully transparent track — no lane edge at all; the
+ * capsule thumb only renders on container hover / thumb hover / drag, exactly
+ * like the macOS overlay pill. Applies to every element incl. xterm viewport. */
+*::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+	background: transparent;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track-piece,
+*::-webkit-scrollbar-corner {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+}
+*::-webkit-scrollbar-button {
+	display: none;
+	width: 0;
+	height: 0;
+}
+*::-webkit-scrollbar-thumb {
+	background-color: transparent;
+	background-clip: padding-box;
+	border: 2px solid transparent;
+	border-radius: 999px;
+	min-height: 32px;
+	min-width: 32px;
+}
+*:hover::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:active {
+	background-color: var(--scrollbar-thumb, rgba(150, 150, 150, 0.4));
+	background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:active {
+	background-color: var(--scrollbar-thumb-hover, rgba(150, 150, 150, 0.6));
+}
+:root {
+	--scrollbar-thumb: light-dark(rgba(0, 0, 0, 0.30), rgba(255, 255, 255, 0.26));
+	--scrollbar-thumb-hover: light-dark(rgba(0, 0, 0, 0.55), rgba(255, 255, 255, 0.50));
+}
 
 /* Chat font-size presets (settings → 外观). */
 html[data-font-size="sm"] {
