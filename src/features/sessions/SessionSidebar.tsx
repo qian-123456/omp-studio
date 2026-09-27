@@ -111,6 +111,7 @@ export interface WorkspacePalette {
 	cardBorder: string;
 	folderColor: string;
 	spineBorder: string;
+	leftAccent: string;
 }
 
 export const WORKSPACE_PALETTES: WorkspacePalette[] = [
@@ -118,31 +119,37 @@ export const WORKSPACE_PALETTES: WorkspacePalette[] = [
 		cardBorder: "border-sky-500/35 hover:border-sky-500/55 dark:border-sky-500/25 dark:hover:border-sky-500/40",
 		folderColor: "text-sky-600 dark:text-sky-400",
 		spineBorder: "border-sky-500/30 dark:border-sky-500/30",
+		leftAccent: "border-l-[3px] border-l-sky-500",
 	},
 	{
 		cardBorder: "border-emerald-500/35 hover:border-emerald-500/55 dark:border-emerald-500/25 dark:hover:border-emerald-500/40",
 		folderColor: "text-emerald-600 dark:text-emerald-400",
 		spineBorder: "border-emerald-500/30 dark:border-emerald-500/30",
+		leftAccent: "border-l-[3px] border-l-emerald-500",
 	},
 	{
 		cardBorder: "border-amber-500/35 hover:border-amber-500/55 dark:border-amber-500/25 dark:hover:border-amber-500/40",
 		folderColor: "text-amber-600 dark:text-amber-400",
 		spineBorder: "border-amber-500/30 dark:border-amber-500/30",
+		leftAccent: "border-l-[3px] border-l-amber-500",
 	},
 	{
 		cardBorder: "border-purple-500/35 hover:border-purple-500/55 dark:border-purple-500/25 dark:hover:border-purple-500/40",
 		folderColor: "text-purple-600 dark:text-purple-400",
 		spineBorder: "border-purple-500/30 dark:border-purple-500/30",
+		leftAccent: "border-l-[3px] border-l-purple-500",
 	},
 	{
 		cardBorder: "border-rose-500/35 hover:border-rose-500/55 dark:border-rose-500/25 dark:hover:border-rose-500/40",
 		folderColor: "text-rose-600 dark:text-rose-400",
 		spineBorder: "border-rose-500/30 dark:border-rose-500/30",
+		leftAccent: "border-l-[3px] border-l-rose-500",
 	},
 	{
 		cardBorder: "border-teal-500/35 hover:border-teal-500/55 dark:border-teal-500/25 dark:hover:border-teal-500/40",
 		folderColor: "text-teal-600 dark:text-teal-400",
 		spineBorder: "border-teal-500/30 dark:border-teal-500/30",
+		leftAccent: "border-l-[3px] border-l-teal-500",
 	},
 ];
 
@@ -152,6 +159,7 @@ export function getWorkspacePalette(idOrName: string): WorkspacePalette {
 			cardBorder: "border-indigo-500/35 hover:border-indigo-500/55 dark:border-indigo-500/25 dark:hover:border-indigo-500/40",
 			folderColor: "text-indigo-600 dark:text-indigo-400",
 			spineBorder: "border-indigo-500/30 dark:border-indigo-500/30",
+			leftAccent: "border-l-[3px] border-l-indigo-500",
 		};
 	}
 	let hash = 0;
@@ -504,7 +512,7 @@ export function SessionSidebar() {
 			<div className="flex items-center gap-1 ml-auto shrink-0 mr-1">
 				{counts.working > 0 && (
 					<span
-						className="flex items-center gap-1 rounded-full bg-emerald-500/15 dark:bg-emerald-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-medium text-emerald-600 dark:text-emerald-300 border border-emerald-500/30"
+						className="flex items-center gap-1 rounded-full bg-emerald-500/15 dark:bg-emerald-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/35"
 						title={`${counts.working} 个运行中会话`}
 					>
 						<span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
@@ -513,7 +521,7 @@ export function SessionSidebar() {
 				)}
 				{counts.awaiting > 0 && (
 					<span
-						className="flex items-center gap-1 rounded-full bg-amber-500/15 dark:bg-amber-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-medium text-amber-600 dark:text-amber-300 border border-amber-500/30"
+						className="flex items-center gap-1 rounded-full bg-amber-500/15 dark:bg-amber-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-bold text-amber-700 dark:text-amber-300 border border-amber-500/35"
 						title={`${counts.awaiting} 个待审批或回复`}
 					>
 						<span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
@@ -522,7 +530,7 @@ export function SessionSidebar() {
 				)}
 				{counts.review > 0 && (
 					<span
-						className="flex items-center gap-1 rounded-full bg-orange-500/15 dark:bg-orange-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-medium text-orange-600 dark:text-orange-300 border border-orange-500/30"
+						className="flex items-center gap-1 rounded-full bg-orange-500/15 dark:bg-orange-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-bold text-orange-700 dark:text-orange-300 border border-orange-500/35"
 						title={`${counts.review} 个待验收`}
 					>
 						<span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
@@ -531,7 +539,7 @@ export function SessionSidebar() {
 				)}
 				{counts.error > 0 && (
 					<span
-						className="flex items-center gap-1 rounded-full bg-rose-500/15 dark:bg-rose-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-medium text-rose-600 dark:text-rose-300 border border-rose-500/30"
+						className="flex items-center gap-1 rounded-full bg-rose-500/15 dark:bg-rose-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-bold text-rose-700 dark:text-rose-300 border border-rose-500/35"
 						title={`${counts.error} 个异常会话`}
 					>
 						<span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
@@ -1377,7 +1385,7 @@ export function SessionSidebar() {
 						{grouped.pinnedNodes.length > 0 && (
 							<div
 								className={clsx(
-									"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all border-amber-500/35 dark:border-amber-500/25 shadow-xs",
+									"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all border-amber-500/35 dark:border-amber-500/25 border-l-[3px] border-l-amber-500 shadow-xs",
 									!isGroupOpen("__pinned", true) && "opacity-90",
 								)}
 							>
@@ -1573,6 +1581,7 @@ export function SessionSidebar() {
 											className={clsx(
 												"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all shadow-xs",
 												palette.cardBorder,
+												palette.leftAccent,
 												!isOpen && "opacity-90",
 											)}
 										>
@@ -1666,6 +1675,7 @@ export function SessionSidebar() {
 											className={clsx(
 												"my-1.5 mx-1.5 rounded-lg border bg-[var(--bg-panel)] overflow-hidden transition-all shadow-xs",
 												palette.cardBorder,
+												palette.leftAccent,
 												!isOpen && "opacity-90",
 											)}
 										>
@@ -1764,26 +1774,28 @@ export function SessionSidebar() {
 														<div>
 															{wg.subgroups[0] &&
 																wg.subgroups[0].kind !== "default" && (
-																	<div className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono text-neutral-700 dark:text-neutral-200 font-medium">
-																		{wg.subgroups[0].kind === "worktree" ? (
-																			<FolderGit2
-																				size={12}
-																				className="text-indigo-600 dark:text-indigo-400 shrink-0"
-																			/>
-																		) : (
-																			<GitBranch
-																				size={12}
-																				className="text-purple-600 dark:text-purple-400 shrink-0"
-																			/>
-																		)}
-																		<span className="truncate">
-																			{wg.subgroups[0].label}
-																		</span>
-																		{wg.subgroups[0].deleted && (
-																			<span className="rounded bg-neutral-200 dark:bg-neutral-800 px-1 text-[9px] text-neutral-600 dark:text-neutral-400">
-																				已清理
+																	<div className="px-2.5 py-1">
+																		<div className="inline-flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded bg-[var(--bg-hover)] border border-[var(--border)] max-w-full text-[11px] font-mono">
+																			{wg.subgroups[0].kind === "worktree" ? (
+																				<FolderGit2
+																					size={12}
+																					className="text-indigo-600 dark:text-indigo-400 shrink-0"
+																				/>
+																			) : (
+																				<GitBranch
+																					size={12}
+																					className="text-purple-600 dark:text-purple-400 shrink-0"
+																				/>
+																			)}
+																			<span className="truncate font-bold text-neutral-900 dark:text-neutral-100">
+																				{wg.subgroups[0].label}
 																			</span>
-																		)}
+																			{wg.subgroups[0].deleted && (
+																				<span className="rounded bg-neutral-200 dark:bg-neutral-800 px-1 text-[9px] text-neutral-600 dark:text-neutral-400 font-normal">
+																					已清理
+																				</span>
+																			)}
+																		</div>
 																	</div>
 																)}
 															<div className="ml-3 pl-1.5 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
@@ -2407,27 +2419,29 @@ function CollapsibleSubgroup({
 				<button
 					type="button"
 					onClick={() => onToggle(`${scopeKey}|sub`)}
-					className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+					className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-neutral-800 dark:text-neutral-200 hover:bg-[var(--bg-hover)] transition-colors"
 				>
 					{open ? (
 						<ChevronDown size={11} className="shrink-0 text-neutral-400 dark:text-neutral-500" />
 					) : (
 						<ChevronRight size={11} className="shrink-0 text-neutral-400 dark:text-neutral-500" />
 					)}
-					{sub.kind === "worktree" ? (
-						<FolderGit2 size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-					) : (
-						<GitBranch size={12} className="text-purple-600 dark:text-purple-400 shrink-0" />
-					)}
-					<span className="truncate font-mono font-medium text-neutral-700 dark:text-neutral-200">
-						{sub.label}
-					</span>
-					{sub.deleted && (
-						<span className="shrink-0 rounded bg-neutral-200 dark:bg-neutral-800 px-1 text-[9px] text-neutral-600 dark:text-neutral-400">
-							已清理
+					<div className="inline-flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded bg-[var(--bg-hover)] border border-[var(--border)] max-w-[calc(100%-40px)]">
+						{sub.kind === "worktree" ? (
+							<FolderGit2 size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+						) : (
+							<GitBranch size={12} className="text-purple-600 dark:text-purple-400 shrink-0" />
+						)}
+						<span className="truncate font-mono font-bold text-neutral-900 dark:text-neutral-100">
+							{sub.label}
 						</span>
-					)}
-					<span className="font-mono text-neutral-400 dark:text-neutral-500 text-[10px]">
+						{sub.deleted && (
+							<span className="shrink-0 rounded bg-neutral-200 dark:bg-neutral-800 px-1 text-[9px] text-neutral-600 dark:text-neutral-400 font-normal">
+								已清理
+							</span>
+						)}
+					</div>
+					<span className="font-mono text-neutral-400 dark:text-neutral-500 text-[10px] ml-auto shrink-0">
 						({sub.totalCount})
 					</span>
 				</button>

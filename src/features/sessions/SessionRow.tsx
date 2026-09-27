@@ -66,23 +66,23 @@ interface SessionRowProps {
 const STATUS_PILLS: Record<string, { label: string; cls: string }> = {
 	awaiting_approval: {
 		label: "待审批",
-		cls: "bg-amber-500/15 text-amber-300 border-amber-500/40",
+		cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
 	},
 	awaiting_answer: {
 		label: "待回答",
-		cls: "bg-sky-500/15 text-sky-300 border-sky-500/40",
+		cls: "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40",
 	},
 	review: {
 		label: "待验收",
-		cls: "bg-orange-500/15 text-orange-300 border-orange-500/40",
+		cls: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/40",
 	},
 	error: {
 		label: "异常",
-		cls: "bg-rose-500/15 text-rose-300 border-rose-500/40",
+		cls: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40",
 	},
 	interrupted: {
 		label: "已中断",
-		cls: "bg-rose-500/15 text-rose-300/90 border-rose-500/30",
+		cls: "bg-neutral-200 text-neutral-700 border-neutral-300 dark:bg-rose-500/15 dark:text-rose-300/90 dark:border-rose-500/30",
 	},
 };
 /** Status dot rendering per §11 A spec. */
@@ -546,15 +546,15 @@ export function SessionRow({
 						className={clsx(
 							"min-w-0 flex-1 cursor-text truncate text-xs transition-colors",
 							session.status === "working" || session.unread
-								? "font-semibold text-neutral-100"
+								? "font-semibold text-neutral-900 dark:text-neutral-100"
 								: session.status === "awaiting_approval" ||
 									  session.status === "awaiting_answer" ||
 									  session.status === "review"
-									? "font-medium text-neutral-200"
+									? "font-medium text-neutral-900 dark:text-neutral-200"
 									: session.status === "error" ||
 										  session.status === "interrupted"
-										? "font-medium text-neutral-300"
-										: "font-normal text-neutral-400 hover:text-neutral-200",
+										? "font-medium text-neutral-800 dark:text-neutral-300"
+										: "font-normal text-neutral-700 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-neutral-100",
 						)}
 						title={sessionDisplayName(session)}
 					>
@@ -570,7 +570,7 @@ export function SessionRow({
 				{pill ? (
 					<span
 						className={clsx(
-							"ml-auto shrink-0 rounded border px-1 py-px text-[9px] font-medium",
+							"ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold",
 							pill.cls,
 						)}
 					>
@@ -580,10 +580,10 @@ export function SessionRow({
 					<span
 						title={updatedAtTs}
 						className={clsx(
-							"ml-auto shrink-0 text-[10px] transition-colors",
+							"ml-auto shrink-0 text-[10px] transition-all duration-150 tabular-nums font-mono opacity-0 group-hover:opacity-100",
 							session.status === "working"
-								? "text-neutral-300 font-medium"
-								: "text-neutral-500",
+								? "text-neutral-700 dark:text-neutral-300 font-medium"
+								: "text-neutral-500 dark:text-neutral-400",
 						)}
 					>
 						{relativeTime(session.updatedAt || session.createdAt)}
