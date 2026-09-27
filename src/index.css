@@ -161,9 +161,7 @@
 	--shadow-apple-modal: 0 0 0 0.5px var(--hairline-strong), 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.25);
 
 
-	/* macOS-style floating scrollbar tokens */
-	--scrollbar-thumb: light-dark(rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.28));
-	--scrollbar-thumb-hover: light-dark(rgba(0, 0, 0, 0.58), rgba(255, 255, 255, 0.52));
+	/* scrollbars use native WKWebView overlay appearance — no tokens needed */
 	/* Apple HIG spring & sheet curves */
 	--ease-spring: cubic-bezier(0.25, 1, 0.5, 1);
 	--ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
@@ -730,23 +728,16 @@ html[data-theme="lavender"] {
 	--switch-off: #E9E9EB;
 	--shadow-apple-card: 0 0 0 0.5px var(--hairline), 0 2px 12px rgba(0, 0, 0, 0.08);
 	--shadow-apple-modal: 0 0 0 0.5px var(--hairline-strong), 0 16px 40px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
-	--scrollbar-thumb: rgba(0, 0, 0, 0.32);
-	--scrollbar-thumb-hover: rgba(0, 0, 0, 0.58);
 }
 
 /* Follow the OS scheme while the theme choice is "system". */
 html[data-mode="dark"] {
 	color-scheme: dark;
-	--scrollbar-thumb: rgba(255, 255, 255, 0.28);
-	--scrollbar-thumb-hover: rgba(255, 255, 255, 0.52);
 }
 
 html[data-mode="light"] {
 	color-scheme: light;
-	--scrollbar-thumb: rgba(0, 0, 0, 0.32);
-	--scrollbar-thumb-hover: rgba(0, 0, 0, 0.58);
 }
-
 html,
 body,
 #root {
@@ -815,145 +806,12 @@ textarea {
 	user-select: none;
 }
 
-/* macOS-style floating thin scrollbar (borderless, transparent track, rounded capsule).
- * Applied universally across html, body, and all scrollable containers (pre, code, textarea, etc.).
- * xterm terminal (.xterm, .xterm-viewport, .xterm-screen) is explicitly excluded to preserve built-in terminal scrolling.
- */
-/* macOS floating capsule scrollbar — webkit pseudo-elements only.
- * NOTE: do NOT set scrollbar-width/scrollbar-color on universal selectors —
- * in WebKit/Chromium that forces the element onto the *native* scrollbar path
- * and silently disables every ::-webkit-scrollbar rule below.
- * Keep .no-scrollbar as the only scrollbar-width user (it hides the bar).
- * xterm (.xterm, .xterm-viewport, .xterm-screen) excluded — its own scroller. */
-
-/* Terminal exclusion: keep xterm viewport using native platform scrollbars */
-.xterm,
-.xterm-viewport,
-.xterm-screen {
-	scrollbar-width: auto !important;
-	scrollbar-color: auto !important;
-}
-
-/* Base scrollbar dimension & transparency for all non-xterm elements */
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-scrollbar,
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-pre::-webkit-scrollbar,
-code::-webkit-scrollbar,
-textarea::-webkit-scrollbar,
-.cm-scroller::-webkit-scrollbar {
-	width: 8px;
-	height: 8px;
-	background: transparent !important;
-	background-color: transparent !important;
-	border: none !important;
-}
-
-/* Remove scrollbar directional buttons (up/down/left/right arrows) completely */
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-scrollbar-button,
-html::-webkit-scrollbar-button,
-body::-webkit-scrollbar-button,
-pre::-webkit-scrollbar-button,
-code::-webkit-scrollbar-button,
-textarea::-webkit-scrollbar-button,
-.cm-scroller::-webkit-scrollbar-button {
-	display: none !important;
-	width: 0 !important;
-	height: 0 !important;
-	background: transparent !important;
-	background-color: transparent !important;
-	border: none !important;
-}
-
-/* Strip track & track-piece borders, background gutters, and inset shadows */
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-scrollbar-track,
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-scrollbar-track-piece,
-html::-webkit-scrollbar-track,
-html::-webkit-scrollbar-track-piece,
-body::-webkit-scrollbar-track,
-body::-webkit-scrollbar-track-piece,
-pre::-webkit-scrollbar-track,
-pre::-webkit-scrollbar-track-piece,
-code::-webkit-scrollbar-track,
-code::-webkit-scrollbar-track-piece,
-textarea::-webkit-scrollbar-track,
-textarea::-webkit-scrollbar-track-piece,
-.cm-scroller::-webkit-scrollbar-track,
-.cm-scroller::-webkit-scrollbar-track-piece {
-	background: transparent !important;
-	background-color: transparent !important;
-	border: none !important;
-	border-color: transparent !important;
-	box-shadow: none !important;
-	margin: 0 !important;
-}
-
-/* Rounded capsule thumb with transparent padding border for floating effect */
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-scrollbar-thumb,
-html::-webkit-scrollbar-thumb,
-body::-webkit-scrollbar-thumb,
-pre::-webkit-scrollbar-thumb,
-code::-webkit-scrollbar-thumb,
-textarea::-webkit-scrollbar-thumb,
-.cm-scroller::-webkit-scrollbar-thumb {
-	background-color: var(--scrollbar-thumb) !important;
-	background-clip: padding-box !important;
-	border: 2px solid transparent !important;
-	border-radius: 999px !important;
-	box-shadow: none !important;
-	min-height: 24px;
-	min-width: 24px;
-}
-
-/* Thumb hover & active states */
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-scrollbar-thumb:hover,
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-scrollbar-thumb:active,
-html::-webkit-scrollbar-thumb:hover,
-html::-webkit-scrollbar-thumb:active,
-body::-webkit-scrollbar-thumb:hover,
-body::-webkit-scrollbar-thumb:active,
-pre::-webkit-scrollbar-thumb:hover,
-pre::-webkit-scrollbar-thumb:active,
-code::-webkit-scrollbar-thumb:hover,
-code::-webkit-scrollbar-thumb:active,
-textarea::-webkit-scrollbar-thumb:hover,
-textarea::-webkit-scrollbar-thumb:active,
-.cm-scroller::-webkit-scrollbar-thumb:hover,
-.cm-scroller::-webkit-scrollbar-thumb:active {
-	background-color: var(--scrollbar-thumb-hover) !important;
-}
-
-/* Corners and resizers */
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-scrollbar-corner,
-*:not(.xterm):not(.xterm-viewport):not(.xterm-screen)::-webkit-resizer,
-html::-webkit-scrollbar-corner,
-html::-webkit-resizer,
-body::-webkit-scrollbar-corner,
-body::-webkit-resizer,
-pre::-webkit-scrollbar-corner,
-pre::-webkit-resizer,
-code::-webkit-scrollbar-corner,
-code::-webkit-resizer,
-textarea::-webkit-scrollbar-corner,
-textarea::-webkit-resizer,
-.cm-scroller::-webkit-scrollbar-corner,
-.cm-scroller::-webkit-resizer {
-	background: transparent !important;
-	background-color: transparent !important;
-	border: none !important;
-	box-shadow: none !important;
-}
-
-/* Floating overlay scrollbars: scrollable regions use WebKit overlay scrollbars —
- * the thumb hovers over the content, reserves no layout space, leaves no track
- * edge. Only auto/scroll utilities; overflow-hidden is untouched. */
-.overflow-auto,
-.overflow-y-auto,
-.overflow-x-auto {
-	overflow: overlay !important;
-	overflow-y: overlay !important;
-	overflow-x: overlay !important;
-}
+/* Native WKWebView scrollbars are already the right thing: overlay scrollbars
+ * float over content, reserve zero layout space, auto-hide, capsule thumb,
+ * follow light/dark. IMPORTANT: do NOT define any ::-webkit-scrollbar rules —
+ * in WebKit, a single custom scrollbar rule force-switches that element to the
+ * legacy always-on, space-reserving scrollbar (the "lane" look we removed).
+ * .no-scrollbar below is the only scrollbar-related rule left. */
 
 /* Chat font-size presets (settings → 外观). */
 html[data-font-size="sm"] {
