@@ -16,7 +16,11 @@ import { ompConfigReset, ompConfigSet } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { OMP_CONFIG_META, ompConfigGroup, ompConfigTitle } from "./ompConfigMeta";
+import {
+	ompConfigDescription,
+	ompConfigGroup,
+	ompConfigTitle,
+} from "./ompConfigMeta";
 import { groupByOmpTab } from "./ompConfigTabs";
 
 const TYPE_BADGE: Record<string, string> = {
@@ -153,9 +157,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 	};
 
 	const title = ompConfigTitle(entry.key);
-	const detailDescription = (
-		OMP_CONFIG_META[entry.key]?.description ?? entry.description
-	).trim();
+	const detailDescription = ompConfigDescription(entry.key, entry.description).trim();
 	const badge = TYPE_BADGE[entry.valueType] ?? TYPE_BADGE.string;
 	const badgeLabel = TYPE_LABEL[entry.valueType] ?? entry.valueType;
 	const isBool = entry.valueType === "boolean";
@@ -434,7 +436,8 @@ export function OmpConfigSection({
 			(e) =>
 				e.key.toLowerCase().includes(q) ||
 				e.description.toLowerCase().includes(q) ||
-				ompConfigTitle(e.key).toLowerCase().includes(q),
+				ompConfigTitle(e.key).toLowerCase().includes(q) ||
+				ompConfigDescription(e.key, e.description).toLowerCase().includes(q),
 		);
 	}, [activeGroup, activeGroupName, query]);
 

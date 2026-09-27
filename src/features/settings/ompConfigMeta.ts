@@ -1623,6 +1623,7 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 };
 
 import { OMP_CONFIG_GROUP_ZH, OMP_CONFIG_KEY_ZH } from "./ompConfigZh";
+import { OMP_CONFIG_DESC_ZH } from "./ompConfigDescZh";
 
 /** Readable title for a config key: curated Chinese, else schema label, else derived. */
 export function ompConfigTitle(key: string): string {
@@ -1644,4 +1645,12 @@ export function ompConfigGroup(key: string): string | null {
 	const group = OMP_CONFIG_META[key]?.group;
 	if (!group) return null;
 	return OMP_CONFIG_GROUP_ZH[group] ?? group;
+}
+
+/**
+ * Long description for a config key: curated Chinese, else the English schema
+ * description, else the runtime-listing fallback passed by the caller.
+ */
+export function ompConfigDescription(key: string, fallback = ""): string {
+	return OMP_CONFIG_DESC_ZH[key] ?? OMP_CONFIG_META[key]?.description ?? fallback;
 }
