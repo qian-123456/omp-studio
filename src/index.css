@@ -830,22 +830,24 @@ textarea {
 	height: 0;
 }
 *::-webkit-scrollbar-thumb {
-	background-color: var(--scrollbar-thumb, rgba(150, 150, 150, 0.28));
+	background-color: transparent;
 	background-clip: padding-box;
 	border: 2px solid transparent;
 	border-radius: 999px;
 	min-height: 32px;
 	min-width: 32px;
 }
-*[data-scroll-active]::-webkit-scrollbar-thumb,
-*:hover::-webkit-scrollbar-thumb,
+.is-scrolling::-webkit-scrollbar-thumb,
 *::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:active {
+	background-color: var(--scrollbar-thumb, rgba(150, 150, 150, 0.42));
+}
 *::-webkit-scrollbar-thumb:active {
 	background-color: var(--scrollbar-thumb-hover, rgba(150, 150, 150, 0.55));
 }
 :root {
-	--scrollbar-thumb: light-dark(rgba(0, 0, 0, 0.26), rgba(255, 255, 255, 0.24));
-	--scrollbar-thumb-hover: light-dark(rgba(0, 0, 0, 0.5), rgba(255, 255, 255, 0.45));
+	--scrollbar-thumb: light-dark(rgba(0, 0, 0, 0.40), rgba(255, 255, 255, 0.36));
+	--scrollbar-thumb-hover: light-dark(rgba(0, 0, 0, 0.55), rgba(255, 255, 255, 0.50));
 }
 
 /* Chat font-size presets (settings → 外观). */
