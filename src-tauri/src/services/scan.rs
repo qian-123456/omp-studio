@@ -80,15 +80,17 @@ pub fn parse_lsof_cwd(text: &str) -> HashMap<u32, String> {
     out
 }
 
-/// Parse `ps -o pid=,pgid=,command=` output into pid → (pgid, command).
-pub fn parse_ps(text: &str) -> HashMap<u32, (i32, String)> {
+/// Parse `ps -o pid=,pgid=,rss=,command=` output into pid → (pgid, rss_kb, command).
+/// `rss` is empty for processes we cannot inspect; tolerate that.
+pub fn parse_ps(text: &str) -> HashMap<u32, (i32, Option<u64>, String)> {
     text.lines()
         .filter_map(|line| {
             let mut it = line.split_whitespace();
             let pid = it.next()?.parse().ok()?;
             let pgid = it.next()?.parse().ok()?;
+            let rss_kb = it.next().and_then(|s| s.parse().ok());
             let rest: Vec<&str> = it.collect();
-            Some((pid, (pgid, rest.join(" "))))
+            Some((pid, (pgid, rss_kb, rest.join(" "))))
         })
         .collect()
 }
@@ -142,13 +144,13 @@ pub fn is_dev_like(name: &str, command: &str) -> bool {
         || command.contains("/go-build")
         || command.contains("node_modules/.bin/")
 }
-
-/// Raw scan: listeners joined with cwd, command and pgid.
+/// Raw scan: listeners joined with cwd, command, pgid and RSS.
 pub struct Scanned {
     pub listener: Listener,
     pub cwd: Option<String>,
     pub command: String,
     pub pgid: i32,
+    pub rss_kb: Option<u64>,
 }
 
 pub fn scan() -> Vec<Scanned> {
@@ -172,18 +174,20 @@ pub fn scan() -> Vec<Scanned> {
         .map(|o| parse_lsof_cwd(&o.text()))
         .unwrap_or_default();
     let mut cmd = Command::new("/bin/ps");
-    cmd.args(["-o", "pid=,pgid=,command=", "-p", &pids]);
+    cmd.args(["-o", "pid=,pgid=,rss=,command=", "-p", &pids]);
     let ps = run(cmd, SCAN_TIMEOUT)
         .map(|o| parse_ps(&o.text()))
         .unwrap_or_default();
     listeners
         .into_iter()
         .map(|l| {
-            let (pgid, command) = ps.get(&l.pid).cloned().unwrap_or((0, l.name.clone()));
+            let (pgid, rss_kb, command) =
+                ps.get(&l.pid).cloned().unwrap_or((0, None, l.name.clone()));
             Scanned {
                 cwd: cwds.get(&l.pid).cloned(),
                 command,
                 pgid,
+                rss_kb,
                 listener: l,
             }
         })
@@ -223,6 +227,7 @@ pub fn to_services(
                 url: format!("http://localhost:{port}"),
                 session_id: session_id.clone(),
                 started_by_app,
+                memory_kb: s.rss_kb,
             })
         })
         .collect();
@@ -249,13 +254,15 @@ mod tests {
         let cwd = parse_lsof_cwd("p123\nfcwd\nn/Users/me/proj\np456\nfcwd\nn/\n");
         assert_eq!(cwd.get(&123).map(String::as_str), Some("/Users/me/proj"));
         let ps = parse_ps(
-            "  123   120 node /x/node_modules/.bin/vite --port 5173\n 456 456 /usr/bin/foo\n",
+            "  123   120 456789 node /x/node_modules/.bin/vite --port 5173\n 456 456 /usr/bin/foo\n",
         );
         assert_eq!(ps.get(&123).unwrap().0, 120);
+        assert_eq!(ps.get(&123).unwrap().1, Some(456789));
         assert_eq!(
-            ps.get(&123).unwrap().1,
+            ps.get(&123).unwrap().2,
             "node /x/node_modules/.bin/vite --port 5173"
         );
+        assert_eq!(ps.get(&456).unwrap().1, None);
     }
 
     #[test]
@@ -294,6 +301,7 @@ mod tests {
                 cwd: Some("/r/src".into()),
                 command: "node vite".into(),
                 pgid: 7,
+                rss_kb: Some(102_400),
             },
             Scanned {
                 listener: Listener {
@@ -304,6 +312,7 @@ mod tests {
                 cwd: None,
                 command: "postgres".into(),
                 pgid: 2,
+                rss_kb: None,
             },
         ];
         let rows = to_services(scanned, false, &sessions, &[7]);
@@ -311,5 +320,6 @@ mod tests {
         assert_eq!(rows[0].url, "http://localhost:5173");
         assert_eq!(rows[0].session_id.as_deref(), Some("root"));
         assert!(rows[0].started_by_app);
+        assert_eq!(rows[0].memory_kb, Some(102_400));
     }
 }

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { computeSessionStats, formatTokens } from "../features/chat/sessionStats";
+import { PerfPopover } from "../features/chat/PerfPopover";
 import { SessionStatsPopover } from "../features/chat/SessionStatsPopover";
 import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
@@ -59,6 +60,7 @@ export function BottomBar() {
 	);
 	// Real OS process physical memory (RSS)
 	const [realMemoryStr, setRealMemoryStr] = useState<string | null>(null);
+	const [perfOpen, setPerfOpen] = useState(false);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -163,16 +165,27 @@ export function BottomBar() {
 					<TerminalSquare size={13} />
 				</button>
 				<span className="text-neutral-700">·</span>
-				{/* Performance indicator (Real OS physical memory RSS) */}
-				<div
-					className="flex items-center gap-1"
-					title="真实物理内存占用 (操作系统内核报告的 Resident Set Size)"
+				{/* Performance indicator (Real OS physical memory RSS) — click for per-process breakdown */}
+				<button
+					type="button"
+					onClick={() => setPerfOpen((v) => !v)}
+					title="真实物理内存占用 (操作系统内核报告的 Resident Set Size) — 点击查看各进程明细"
+					className={clsx(
+						"flex items-center gap-1 rounded-[6px] px-1 py-0.5 transition-all hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97",
+						perfOpen && "bg-[var(--bg-hover)] text-neutral-100",
+					)}
 				>
 					<Activity size={11} className="text-emerald-400" />
 					<span className="tabular-nums font-mono text-[10.5px]">
 						性能 {realMemoryStr ?? memEstimate}
 					</span>
-				</div>
+				</button>
+				<PerfPopover
+					appMemory={realMemoryStr}
+					open={perfOpen}
+					onClose={() => setPerfOpen(false)}
+					className="bottom-8 right-3"
+				/>
 
 				<span className="text-neutral-700">·</span>
 

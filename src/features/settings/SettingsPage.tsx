@@ -1,5 +1,4 @@
 import {
-	ArrowLeft,
 	Bell,
 	Bot,
 	ChevronDown,
@@ -12,7 +11,6 @@ import {
 	Palette,
 	RefreshCw,
 	RotateCcw,
-	Settings as SettingsIcon,
 	Settings2,
 	Sliders,
 	Smartphone,
@@ -89,7 +87,11 @@ function Toggle({ checked, onChange, label, description, icon: Icon }: TogglePro
 		</div>
 	);
 }
-export function SettingsPage() {
+interface SettingsPageProps {
+	onClose?: () => void;
+}
+
+export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 	const settings = useSettings((s) => s.settings);
 	const loadSettings = useSettings((s) => s.load);
 	const updateSettings = useSettings((s) => s.update);
@@ -130,9 +132,7 @@ export function SettingsPage() {
 	const pendingSection = useUi((s) => s.settingsSection);
 	const fontSize = useFontSize();
 	const uiScale = useUiScale();
-	const selectedSessionId = useUi((s) => s.selectedSessionId);
-	const selectSession = useUi((s) => s.selectSession);
-	const setCenter = useUi((s) => s.setCenter);
+	const closeSettings = useUi((s) => s.closeSettings);
 
 	// When opened via "更多外观设置…", land on the requested section.
 	useEffect(() => {
@@ -175,10 +175,10 @@ export function SettingsPage() {
 	]);
 
 	const handleBack = () => {
-		if (selectedSessionId) {
-			selectSession(selectedSessionId);
+		if (onClose) {
+			onClose();
 		} else {
-			setCenter("home");
+			closeSettings();
 		}
 	};
 
@@ -397,35 +397,23 @@ export function SettingsPage() {
 		);
 	}
 
+	// Reorder sections: Move "OMP 配置" right after "通用" so users can easily find OMP native configuration
 	const sections = [
 		{ id: "general", label: "通用", icon: Sliders },
+		{ id: "ompconfig", label: "OMP 配置", icon: Settings2 },
 		{ id: "appearance", label: "外观", icon: Palette },
 		{ id: "providers", label: "API 供应商", icon: KeyRound },
 		{ id: "todos", label: "待办与监工", icon: Sparkles },
 		{ id: "sessions", label: "会话", icon: Bot },
 		{ id: "notifications", label: "通知", icon: Bell },
 		{ id: "mobile", label: "手机访问", icon: Smartphone },
-		{ id: "ompconfig", label: "OMP 配置", icon: Settings2 },
 		{ id: "advanced", label: "高级", icon: Wrench },
 	];
 
 	return (
-		<div className="flex h-full overflow-hidden bg-neutral-950 text-neutral-200">
+		<div className="flex h-full min-h-0 overflow-hidden bg-transparent text-neutral-200">
 			{/* Left Navigation Bar */}
-			<div className="flex w-52 flex-col overflow-hidden border-r border-[var(--border-divider)] vibrancy-chrome p-3.5">
-				<button
-					type="button"
-					onClick={handleBack}
-					className="mb-3.5 flex w-full shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all"
-					title="返回工作区 (Esc)"
-				>
-					<ArrowLeft className="h-3.5 w-3.5" />
-					<span>返回工作区</span>
-				</button>
-				<div className="mb-2.5 flex shrink-0 items-center gap-2 px-2 text-xs font-semibold text-neutral-400 tracking-[-0.01em]">
-					<SettingsIcon className="h-4 w-4 text-amber-400" />
-					<span>系统设置</span>
-				</div>
+			<div className="flex w-48 shrink-0 flex-col overflow-hidden border-r border-[var(--border-divider)] vibrancy-chrome p-2.5">
 				<nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
 					{sections.map((sec) => {
 						const Icon = sec.icon;
@@ -512,7 +500,7 @@ export function SettingsPage() {
 			</div>
 
 			{/* Main Settings Content Area */}
-			<div className="flex-1 overflow-y-auto p-8">
+			<div className="flex-1 overflow-y-auto p-6 lg:p-7">
 				<div className="max-w-2xl space-y-8">
 					{/* Status feedback alerts */}
 					{storeError && (

@@ -80,8 +80,11 @@ const STATUS_PILLS: Record<string, { label: string; cls: string }> = {
 		label: "异常",
 		cls: "bg-rose-500/15 text-rose-300 border-rose-500/40",
 	},
+	interrupted: {
+		label: "已中断",
+		cls: "bg-rose-500/15 text-rose-300/90 border-rose-500/30",
+	},
 };
-
 /** Status dot rendering per §11 A spec. */
 function renderStatusDot(status: SessionMeta["status"]) {
 	switch (status) {
@@ -92,41 +95,7 @@ function renderStatusDot(status: SessionMeta["status"]) {
 					<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
 				</span>
 			);
-		case "awaiting_approval":
-			return (
-				<span
-					className="h-2 w-2 shrink-0 rounded-full bg-amber-400"
-					title="等待审批 (AwaitingApproval)"
-				/>
-			);
-		case "awaiting_answer":
-			return (
-				<span
-					className="h-2 w-2 shrink-0 rounded-full bg-sky-400"
-					title="等待回答 (AwaitingAnswer)"
-				/>
-			);
-		case "review":
-			return (
-				<span
-					className="h-2 w-2 shrink-0 rounded-full bg-orange-500"
-					title="待验收 (Review)"
-				/>
-			);
-		case "error":
-			return (
-				<span
-					className="h-2 w-2 shrink-0 rounded-full bg-rose-500"
-					title="异常 (Error)"
-				/>
-			);
-		case "interrupted":
-			return (
-				<span
-					className="h-2 w-2 shrink-0 rounded-full bg-rose-400/80 ring-1 ring-neutral-400"
-					title="已中断 (Interrupted)"
-				/>
-			);
+		// Attention statuses render as text pills (STATUS_PILLS), not dots.
 		case "suspended":
 			return (
 				<span
@@ -508,7 +477,7 @@ export function SessionRow({
 			)}
 
 			{/* Side-chat children collapse toggle */}
-			{hasChildren ? (
+			{hasChildren && (
 				<button
 					type="button"
 					onClick={(e) => {
@@ -524,9 +493,8 @@ export function SessionRow({
 						<ChevronDown size={11} />
 					)}
 				</button>
-			) : (
-				<span className="w-[15px] shrink-0" />
 			)}
+			{/* No chevron spacer for leaf rows — gives the title ~15px more room */}
 
 			<div className="flex min-w-0 flex-1 items-center gap-1.5" title={rowTooltip}>
 				{busy ? (
@@ -535,14 +503,13 @@ export function SessionRow({
 						className="shrink-0 animate-spin text-indigo-400"
 					/>
 				) : (
-					<span className="shrink-0">{renderStatusDot(session.status)}</span>
-				)}
-
-				{session.unread && (
-					<span
-						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
-						title="未读"
-					/>
+					// Leading dot only for non-attention statuses (working/idle/
+					// suspended/external); attention states show a text pill instead.
+					!pill && (
+						<span className="shrink-0">
+							{renderStatusDot(session.status)}
+						</span>
+					)
 				)}
 
 				{isRenaming ? (
@@ -576,21 +543,24 @@ export function SessionRow({
 							e.stopPropagation();
 							startInlineRename();
 						}}
-						className="min-w-0 flex-1 cursor-text truncate text-xs font-medium text-neutral-200 group-hover:text-neutral-100"
+						className={clsx(
+							"min-w-0 flex-1 cursor-text truncate text-xs",
+							// Unread: bold bright title + trailing blue dot reads
+							// cleaner than a second cryptic leading dot.
+							session.unread
+								? "font-semibold text-neutral-100"
+								: "font-medium text-neutral-200 group-hover:text-neutral-100",
+						)}
 					>
 						{sessionDisplayName(session)}
 					</span>
 				)}
 
-				{pill && (
+				{session.unread && (
 					<span
-						className={clsx(
-							"shrink-0 rounded border px-1 py-px text-[9px] font-medium",
-							pill.cls,
-						)}
-					>
-						{pill.label}
-					</span>
+						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
+						title="未读"
+					/>
 				)}
 
 				{session.pinned && (
@@ -601,10 +571,21 @@ export function SessionRow({
 					/>
 				)}
 
-				{/* Single compact row: relative time only */}
-				<span title={updatedAtTs} className="shrink-0 text-[10px] text-neutral-500 tabular-nums">
-					{relativeTime(session.updatedAt || session.createdAt)}
-				</span>
+				{/* Trailing edge: attention pill replaces relative time */}
+				{pill ? (
+					<span
+						className={clsx(
+							"shrink-0 rounded border px-1 py-px text-[9px] font-medium",
+							pill.cls,
+						)}
+					>
+						{pill.label}
+					</span>
+				) : (
+					<span title={updatedAtTs} className="shrink-0 text-[10px] text-neutral-500 tabular-nums">
+						{relativeTime(session.updatedAt || session.createdAt)}
+					</span>
+				)}
 			</div>
 
 			{/* Inline quick actions */}

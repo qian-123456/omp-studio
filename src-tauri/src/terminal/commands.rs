@@ -9,6 +9,7 @@ use tauri::Emitter as _;
 
 use super::extension;
 use super::pty::{self, Sink, TermEvent};
+use super::shell_init;
 use crate::state::AppState;
 
 /// session_id → termId for terminals opened via `term_open_session`.
@@ -42,7 +43,8 @@ fn app_sink(state: &AppState) -> Sink {
     })
 }
 
-/// Returns the new termId.
+/// Spawns a local drawer shell (empty `command` → `$SHELL` with the generated
+/// agent-aware init files; explicit commands pass through). Returns termId.
 #[tauri::command]
 pub async fn term_open(
     state: tauri::State<'_, AppState>,
@@ -51,7 +53,16 @@ pub async fn term_open(
     cols: u16,
     rows: u16,
 ) -> Result<String, String> {
-    pty::open(&cwd, &command, cols, rows, app_sink(&state), &[])
+    let (argv, extra_env) = shell_init::drawer_spawn(&command).unwrap_or((command, vec![]));
+    pty::open(&cwd, &argv, cols, rows, app_sink(&state), &extra_env)
+}
+
+/// Records the selected session's transcript in
+/// `~/.omp-workspace/current-session` (None clears it) so a drawer terminal's
+/// bare `omp`/`claude`/`codex` can resume it.
+#[tauri::command]
+pub async fn terminal_set_current_session(path: Option<String>) -> Result<(), String> {
+    shell_init::set_current_session_file(path.as_deref())
 }
 
 /// `data`: utf8 text.

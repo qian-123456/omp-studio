@@ -29,7 +29,7 @@ import { HeatmapPanel } from "./features/heatmap/HeatmapPanel";
 import { ServicesPanel } from "./features/services/ServicesPanel";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
 import { SessionOverflowMenu } from "./components/SessionOverflowMenu";
-import { SettingsPage } from "./features/settings/SettingsPage";
+import { SettingsOverlay } from "./features/settings/SettingsOverlay";
 import { SideChatPanel } from "./features/sidechat/SideChatPanel";
 import { StartPage } from "./features/home/StartPage";
 import { TodoPanel } from "./features/todos/TodoPanel";
@@ -42,13 +42,13 @@ import { gitSummary, servicesList } from "./lib/ipc";
 import type { PairingInfo, SessionStatus } from "./lib/contracts";
 import { confirmDialog, copyText, errMsg } from "./lib/dialogs";
 import { isComposing, useEscapeKey } from "./lib/hooks";
-import { mobileCreatePairing, takeoverExternal, updateSessionMeta } from "./lib/ipc";
+import { mobileCreatePairing, takeoverExternal, terminalSetCurrentSession, updateSessionMeta } from "./lib/ipc";
 import { toast } from "./lib/toast";
 import { formatSessionMarkdown } from "./features/chat/exportMarkdown";
 import { sessionDisplayName } from "./lib/sessionName";
 import { useLive } from "./stores/live";
 import { useSessions } from "./stores/sessions";
-import { type RightTab, useUi } from "./stores/ui";
+import { type CenterView, type RightTab, useUi } from "./stores/ui";
 import { Toaster } from "./components/Toaster";
 import { BottomBar } from "./components/BottomBar";
 import { RightPanelHeader } from "./components/RightPanelHeader";
@@ -139,11 +139,10 @@ function RightPanelBody({ tab }: { tab: RightTab }) {
 	}
 }
 
-function CenterView() {
-	const centerView = useUi((s) => s.centerView);
+function MainCenterView({ activeView }: { activeView: CenterView }) {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const docPath = useUi((s) => s.docPath);
-	switch (centerView) {
+	switch (activeView) {
 		case "session":
 			return selectedSessionId ? (
 				<SessionView sessionId={selectedSessionId} />
@@ -152,8 +151,6 @@ function CenterView() {
 			);
 		case "doc":
 			return docPath ? <DocView path={docPath} /> : <StartPage />;
-		case "settings":
-			return <SettingsPage />;
 		default:
 			return <StartPage />;
 	}
@@ -172,12 +169,22 @@ export default function App() {
 	const setSidebarWidth = useUi((s) => s.setSidebarWidth);
 
 	const centerView = useUi((s) => s.centerView);
+	const previousCenterView = useUi((s) => s.previousCenterView);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const lastSessionId = useUi((s) => s.lastSessionId);
 	const returnToSession = useUi((s) => s.returnToSession);
 	const selectSession = useUi((s) => s.selectSession);
 	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
 
+	// Track the underlying view so when settings overlay opens, the center view stays mounted
+	const lastNonSettingsCenterView = useRef<CenterView>("home");
+	if (centerView !== "settings") {
+		lastNonSettingsCenterView.current = centerView;
+	}
+	const effectiveCenterView =
+		centerView === "settings"
+			? previousCenterView ?? lastNonSettingsCenterView.current
+			: centerView;
 	// Active session for return-to-session, badges and topbar
 	const activeSessionId = selectedSessionId || lastSessionId;
 	const activeSession = useSessions((s) =>
@@ -193,7 +200,7 @@ export default function App() {
 	);
 
 	const isViewingSession =
-		centerView === "session" && !!selectedSessionId && !!activeSession;
+		effectiveCenterView === "session" && !!selectedSessionId && !!activeSession;
 
 	const sessionViewMode = useUi((s) =>
 		activeSession ? s.sessionViewMode[activeSession.id] ?? "chat" : "chat",
@@ -352,9 +359,9 @@ export default function App() {
 	// Global keyboard shortcuts: Cmd+B (left sidebar) / Cmd+J (right panel) / Cmd+[ (return to session/parent)
 	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
+			if (centerView === "settings") return;
 			const isMod = e.metaKey || e.ctrlKey;
 			if (!isMod) return;
-
 			if (e.key.toLowerCase() === "b" && !e.shiftKey && !e.altKey) {
 				e.preventDefault();
 				toggleSidebar();
@@ -374,7 +381,7 @@ export default function App() {
 		return () => {
 			window.removeEventListener("keydown", onKeyDown);
 		};
-	}, [toggleSidebar, toggleRight, parentId, selectSession, returnToSession]);
+	}, [centerView, toggleSidebar, toggleRight, parentId, selectSession, returnToSession]);
 
 	// Initialize todos subscription
 	useEffect(() => {
@@ -401,6 +408,15 @@ export default function App() {
 			if (unlisten) unlisten();
 		};
 	}, []);
+	// Keep ~/.omp-workspace/current-session in sync with the selected session so
+	// drawer-terminal `omp`/`claude`/`codex` wrappers resume the right transcript.
+	const selectedSessionFile = useSessions((s) =>
+		selectedSessionId ? (s.sessions[selectedSessionId]?.file ?? null) : null,
+	);
+	useEffect(() => {
+		terminalSetCurrentSession(selectedSessionId ? selectedSessionFile : null).catch(() => {});
+	}, [selectedSessionId, selectedSessionFile]);
+
 
 
 	// Restore last session once the session list finishes loading (fall back to home).
@@ -609,13 +625,11 @@ export default function App() {
 								</button>
 							)}
 							<span className="text-[13px] font-medium text-neutral-300 shrink-0">
-								{centerView === "settings"
-									? "设置"
-									: centerView === "doc"
-										? "文档"
-										: centerView === "backlog"
-											? "收集箱"
-											: "待办任务"}
+								{effectiveCenterView === "doc"
+									? "文档"
+									: effectiveCenterView === "backlog"
+										? "收集箱"
+										: "待办任务"}
 							</span>
 						</div>
 					)}
@@ -723,7 +737,7 @@ export default function App() {
 				{/* Center */}
 				<main className="min-w-0 flex-1">
 					<ErrorBoundary label="主视图">
-						<CenterView />
+						<MainCenterView activeView={effectiveCenterView} />
 					</ErrorBoundary>
 				</main>
 
@@ -808,6 +822,7 @@ export default function App() {
 			<QuickAskDialog />
 			<DiagnoseDialog />
 			<NewSessionDialog />
+			<SettingsOverlay />
 		</div>
 	);
 }

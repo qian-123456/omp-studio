@@ -1481,7 +1481,7 @@ export function SessionSidebar() {
 												)}
 												<Globe size={14} className="text-indigo-400 shrink-0" />
 												<span
-													className="font-semibold text-[13px] text-neutral-200 truncate"
+													className="font-semibold text-xs text-neutral-200 truncate"
 													title={grouped.globalGroup.workspace.path}
 												>
 													全局工作区
@@ -1573,7 +1573,7 @@ export function SessionSidebar() {
 													className="text-amber-500/80 shrink-0"
 												/>
 												<span
-													className="font-semibold text-[13px] text-neutral-200 truncate"
+													className="font-semibold text-xs text-neutral-200 truncate"
 													title={`${wg.workspace.name} (${wg.workspace.path})`}
 												>
 													{wg.workspace.name}
@@ -1690,7 +1690,7 @@ export function SessionSidebar() {
 													/>
 												)}
 												<Clock size={14} className="text-neutral-400 shrink-0" />
-												<span className="font-semibold text-[13px] text-neutral-200 truncate">
+												<span className="font-semibold text-xs text-neutral-200 truncate">
 													{UNASSIGNED_LABEL}
 												</span>
 												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
@@ -1759,7 +1759,7 @@ export function SessionSidebar() {
 													size={14}
 													className="text-neutral-500 shrink-0"
 												/>
-												<span className="font-semibold text-[13px] text-neutral-300 truncate">
+												<span className="font-semibold text-xs text-neutral-200 truncate">
 													{DELETED_LABEL}
 												</span>
 												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
@@ -1858,24 +1858,27 @@ export function SessionSidebar() {
 					</button>
 				</div>
 			)}
-			{/* Bottom footer: Settings */}
-			<div className="flex shrink-0 items-center justify-between border-t border-neutral-800/80 px-3 py-2 bg-neutral-900/50">
+			{/* Bottom footer: Settings — whole row is the click target (button
+				onClick bubbles up; button keeps focus + active styling) */}
+			<div
+				onClick={() =>
+					setCenter(
+						centerView === "settings"
+							? selectedSessionId
+								? "session"
+								: "home"
+							: "settings",
+					)
+				}
+				className="group flex shrink-0 cursor-pointer items-center justify-between border-t border-neutral-800/80 px-3 py-2 bg-neutral-900/50 hover:bg-neutral-800/60 transition-colors"
+			>
 				<button
 					type="button"
-					onClick={() =>
-						setCenter(
-							centerView === "settings"
-								? selectedSessionId
-									? "session"
-									: "home"
-								: "settings",
-						)
-					}
 					className={clsx(
-						"flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors",
+						"flex w-full items-center justify-start gap-2 rounded-md px-2 py-1 text-xs transition-colors",
 						centerView === "settings"
 							? "bg-neutral-800 text-neutral-100 font-medium"
-							: "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
+							: "text-neutral-400 group-hover:text-neutral-200",
 					)}
 				>
 					<SettingsIcon size={14} />
@@ -2264,7 +2267,7 @@ function CollapsibleSubgroup({
 				<button
 					type="button"
 					onClick={() => onToggle(`${scopeKey}|sub`)}
-					className="flex min-w-0 flex-1 items-center gap-1 mx-1.5 px-2 h-7 rounded-lg text-[11px] font-medium text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-300 transition-colors"
+					className="flex min-w-0 flex-1 items-center gap-1 mx-1.5 px-2 h-7 rounded-lg text-xs font-medium text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 				>
 					{open ? (
 						<ChevronDown size={11} className="shrink-0 text-neutral-500" />
@@ -2282,7 +2285,7 @@ function CollapsibleSubgroup({
 							已清理
 						</span>
 					)}
-					<span className="font-mono text-neutral-600">({sub.totalCount})</span>
+					<span className="font-mono text-[10px] text-neutral-500">({sub.totalCount})</span>
 				</button>
 				{!sub.deleted && sub.createCwd && (
 					<button

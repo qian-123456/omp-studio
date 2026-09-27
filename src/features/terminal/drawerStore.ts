@@ -113,8 +113,11 @@ export interface DrawerState {
 	/** Drop a tab (PTY teardown is the caller's job via drawerRegistry). */
 	removeTab(id: string): void;
 	setActive(id: string): void;
-	/** Patch transient status fields of a tab. */
-	updateTab(id: string, patch: Partial<Pick<DrawerTab, "status" | "exitCode">>): void;
+	/** Patch a tab (status/exitCode transient; cwd/title persisted). */
+	updateTab(
+		id: string,
+		patch: Partial<Pick<DrawerTab, "status" | "exitCode" | "cwd" | "title">>,
+	): void;
 	/** Restore open/height/tab metas from localStorage (call once on mount). */
 	hydrate(): void;
 }
@@ -155,9 +158,11 @@ export const useDrawerStore = create<DrawerState>((set, get) => ({
 		}),
 	setActive: (id) => set({ activeTabId: id }),
 	updateTab: (id, patch) =>
-		set((s) => ({
-			tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-		})),
+		set((s) => {
+			const tabs = s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t));
+			if (patch.cwd !== undefined || patch.title !== undefined) persistTabs(tabs);
+			return { tabs };
+		}),
 	hydrate: () => {
 		const open = readBool(STORAGE_KEYS.open, false);
 		const height = readNumber(STORAGE_KEYS.height, defaultHeight(), DRAWER_HEIGHT_MIN, maxHeightPx());

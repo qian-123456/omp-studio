@@ -402,6 +402,8 @@ pub struct ServiceInfo {
     pub url: String,
     pub session_id: Option<String>,
     pub started_by_app: bool,
+    /// Resident set size in KiB, captured at scan time.
+    pub memory_kb: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

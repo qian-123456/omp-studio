@@ -64,6 +64,7 @@ function readString(key: string): string | null {
 
 export interface UiState {
 	centerView: CenterView;
+	previousCenterView: CenterView | null;
 	selectedSessionId: string | null;
 	selectedIds: Set<string>;
 	highlightId: string | null;
@@ -86,6 +87,7 @@ export interface UiState {
 	openDoc(path: string): void;
 	setCenter(v: CenterView): void;
 	openSettings(section?: string): void;
+	closeSettings(): void;
 	setRightTab(t: RightTab | null): void;
 	toggleRight(): void;
 	setRightOpen(open: boolean): void;
@@ -100,6 +102,7 @@ export interface UiState {
 
 export const useUi = create<UiState>((set) => ({
 	centerView: "home",
+	previousCenterView: null,
 	selectedSessionId: null,
 	selectedIds: new Set<string>(),
 	highlightId: null,
@@ -148,9 +151,29 @@ export const useUi = create<UiState>((set) => ({
 			return { centerView: "session" };
 		}),
 	openDoc: (path) => set({ docPath: path, centerView: "doc" }),
-	setCenter: (v) => set({ centerView: v }),
+	setCenter: (v) =>
+		set((s) => ({
+			previousCenterView:
+				v === "settings"
+					? s.centerView !== "settings"
+						? s.centerView
+						: s.previousCenterView
+					: s.previousCenterView,
+			centerView: v,
+		})),
 	openSettings: (section) =>
-		set({ centerView: "settings", settingsSection: section ?? null }),
+		set((s) => ({
+			previousCenterView:
+				s.centerView !== "settings" ? s.centerView : s.previousCenterView,
+			centerView: "settings",
+			settingsSection: section ?? null,
+		})),
+	closeSettings: () =>
+		set((s) => {
+			const prev =
+				s.previousCenterView ?? (s.selectedSessionId ? "session" : "home");
+			return { centerView: prev, settingsSection: null };
+		}),
 	setRightTab: (t) => {
 		if (t) {
 			writeStorage(STORAGE_KEYS.rightTab, t);

@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
-import { appPaths, termClose, termOpen, termResize, termWrite } from "../../lib/ipc";
+import { appPaths, termClose, termOpen, termResize, termWrite, terminalSetCurrentSession } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
 import { basename } from "../../lib/paths";
 import { toast } from "../../lib/toast";
@@ -208,7 +208,17 @@ export function TerminalDrawer() {
 
 		void (async () => {
 			try {
-				const id = await termOpen(tab.cwd, [], term.cols || 80, term.rows || 24);
+				// Prefer the currently selected session's cwd/file over the stored
+				// tab cwd so a restored or freshly spawned shell lands in the
+				// session context (agent-aware init resumes its transcript).
+				const selected = useUi.getState().selectedSessionId;
+				const session = selected ? useSessions.getState().sessions[selected] : undefined;
+				void terminalSetCurrentSession(session?.file ?? null).catch(() => {});
+				const cwd = session?.cwd || tab.cwd || (await resolveCwd());
+				if (cwd !== tab.cwd) {
+					useDrawerStore.getState().updateTab(tab.id, { cwd, title: basename(cwd) });
+				}
+				const id = await termOpen(cwd, [], term.cols || 80, term.rows || 24);
 				// Tab may have been closed while the spawn was in flight
 				if (!useDrawerStore.getState().tabs.some((t) => t.id === tab.id)) {
 					void termClose(id).catch(() => {});

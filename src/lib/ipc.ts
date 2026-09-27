@@ -351,5 +351,9 @@ export const termClose = (termId: string) =>
 export const termOpenSession = (sessionId: string, cols: number, rows: number) =>
 	invoke<string>("term_open_session", { sessionId, cols, rows });
 
+/** Records/clears the transcript the drawer's bare `omp` should resume. */
+export const terminalSetCurrentSession = (path: string | null) =>
+	invoke<void>("terminal_set_current_session", { path });
+
 export const installStatusExtensionGlobally = () =>
 	invoke<string>("install_status_extension_globally");

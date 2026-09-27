@@ -293,6 +293,7 @@ export interface ServiceInfo {
 	url: string;
 	sessionId: string | null;
 	startedByApp: boolean;
+	memoryKb: number | null;
 }
 
 export interface PairingInfo {

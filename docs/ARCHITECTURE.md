@@ -346,6 +346,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `tunnel_start() -> MobileStatus`, `tunnel_stop()`
 - `term_open(cwd, command: Vec<String>, cols: u16, rows: u16) -> String /* termId */`, `term_write(term_id, data: String /* utf8 */)`, `term_resize(term_id, cols, rows)`, `term_close(term_id)`
 - `term_open_session(session_id, cols, rows) -> String` — stops the RPC process for that session if live, then runs `omp --resume <file> -e <extension_path> [-e <providers ext>]` in a PTY (provider keys + `OMP_WORKSPACE_PROVIDERS` via extra env)
+- `terminal_set_current_session(path: Option<String>)` — writes/clears `~/.omp-workspace/current-session`; `term_open` drawer shells source generated `zdot/`/`bashrc`/`terminal-init.*` so bare `omp`/`claude`/`codex` resume that transcript (session terminals unaffected — they run `omp --resume` directly)
 
 **Providers (added module — §2 ownership):**
 - `provider_list() -> Vec<ProviderConfig>`, `provider_save(config, api_key: Option<String>) -> ProviderConfig`, `provider_delete(id)`, `provider_test(id) -> ProviderTestResult`, `provider_import_env(text) -> Vec<ProviderConfig>`, `provider_export_env_text(ids: Option<Vec<String>>) -> String`
