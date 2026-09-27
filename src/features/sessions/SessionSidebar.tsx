@@ -14,6 +14,7 @@ import {
 	FolderInput,
 	FolderOpen,
 	FolderPlus,
+	GitBranch,
 	Globe,
 	Inbox,
 	Layers,
@@ -106,6 +107,62 @@ function writeCollapsedGroups(state: Record<string, boolean>) {
 		/* ignore */
 	}
 }
+export interface WorkspacePalette {
+	cardBorder: string;
+	folderColor: string;
+	spineBorder: string;
+}
+
+export const WORKSPACE_PALETTES: WorkspacePalette[] = [
+	{
+		cardBorder: "border-sky-500/25 hover:border-sky-500/40",
+		folderColor: "text-sky-400",
+		spineBorder: "border-sky-500/30",
+	},
+	{
+		cardBorder: "border-emerald-500/25 hover:border-emerald-500/40",
+		folderColor: "text-emerald-400",
+		spineBorder: "border-emerald-500/30",
+	},
+	{
+		cardBorder: "border-amber-500/25 hover:border-amber-500/40",
+		folderColor: "text-amber-400",
+		spineBorder: "border-amber-500/30",
+	},
+	{
+		cardBorder: "border-purple-500/25 hover:border-purple-500/40",
+		folderColor: "text-purple-400",
+		spineBorder: "border-purple-500/30",
+	},
+	{
+		cardBorder: "border-rose-500/25 hover:border-rose-500/40",
+		folderColor: "text-rose-400",
+		spineBorder: "border-rose-500/30",
+	},
+	{
+		cardBorder: "border-teal-500/25 hover:border-teal-500/40",
+		folderColor: "text-teal-400",
+		spineBorder: "border-teal-500/30",
+	},
+];
+
+export function getWorkspacePalette(idOrName: string): WorkspacePalette {
+	if (idOrName === "__global") {
+		return {
+			cardBorder: "border-indigo-500/25 hover:border-indigo-500/40",
+			folderColor: "text-indigo-400",
+			spineBorder: "border-indigo-500/30",
+		};
+	}
+	let hash = 0;
+	for (let i = 0; i < idOrName.length; i++) {
+		hash = (hash << 5) - hash + idOrName.charCodeAt(i);
+		hash |= 0;
+	}
+	const idx = Math.abs(hash) % WORKSPACE_PALETTES.length;
+	return WORKSPACE_PALETTES[idx];
+}
+
 
 
 interface PlusMenuState {
@@ -403,11 +460,24 @@ export function SessionSidebar() {
 		writeCollapsedGroups(next);
 	};
 
-	const getGroupStatusCounts = (nodes: SessionTreeNode[] | BranchSubgroup[]) => {
+	interface GroupStatusCounts {
+		working: number;
+		awaiting: number;
+		review: number;
+		error: number;
+	}
+
+	const getGroupStatusCounts = (
+		nodes: SessionTreeNode[] | BranchSubgroup[],
+	): GroupStatusCounts => {
 		let working = 0;
+		let awaiting = 0;
+		let review = 0;
 		let error = 0;
 		const check = (s: SessionMeta) => {
 			if (s.status === "working") working++;
+			else if (s.status === "awaiting_approval" || s.status === "awaiting_answer") awaiting++;
+			else if (s.status === "review") review++;
 			else if (s.status === "error") error++;
 		};
 		for (const item of nodes) {
@@ -419,20 +489,43 @@ export function SessionSidebar() {
 				}
 			}
 		}
-		return { working, error };
+		return { working, awaiting, review, error };
 	};
 
-	const renderBubbleBadges = (counts: { working: number; error: number }) => {
-		if (counts.working === 0 && counts.error === 0) return null;
+	const renderBubbleBadges = (counts: GroupStatusCounts) => {
+		if (
+			counts.working === 0 &&
+			counts.awaiting === 0 &&
+			counts.review === 0 &&
+			counts.error === 0
+		)
+			return null;
 		return (
-			<div className="flex items-center gap-1 ml-1.5">
+			<div className="flex items-center gap-1 ml-auto shrink-0 mr-1.5">
 				{counts.working > 0 && (
 					<span
 						className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[9px] font-mono text-emerald-300 border border-emerald-500/40"
 						title={`${counts.working} 个运行中的会话`}
 					>
-						<span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-						{counts.working}
+						<span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+						{counts.working} 运行中
+					</span>
+				)}
+				{counts.awaiting > 0 && (
+					<span
+						className="flex items-center gap-1 rounded-full bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-mono text-amber-300 border border-amber-500/40"
+						title={`${counts.awaiting} 个等待审批或回复的会话`}
+					>
+						<span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+						{counts.awaiting} 待审批
+					</span>
+				)}
+				{counts.review > 0 && (
+					<span
+						className="rounded-full bg-orange-500/20 px-1.5 py-0.2 text-[9px] font-mono text-orange-300 border border-orange-500/40"
+						title={`${counts.review} 个待验收的会话`}
+					>
+						{counts.review} 待验收
 					</span>
 				)}
 				{counts.error > 0 && (
@@ -440,7 +533,7 @@ export function SessionSidebar() {
 						className="rounded-full bg-rose-500/20 px-1.5 py-0.2 text-[9px] font-mono text-rose-300 border border-rose-500/40"
 						title={`${counts.error} 个异常会话`}
 					>
-						{counts.error}
+						{counts.error} 异常
 					</span>
 				)}
 			</div>
@@ -1280,12 +1373,17 @@ export function SessionSidebar() {
 					<>
 						{/* 0. 📌 Pinned Sessions: fixed on the very top */}
 						{grouped.pinnedNodes.length > 0 && (
-							<div className="py-1">
+							<div
+								className={clsx(
+									"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/40 overflow-hidden transition-all border-amber-500/25 hover:border-amber-500/40",
+									!isGroupOpen("__pinned", true) && "opacity-90",
+								)}
+							>
 								<div
 									onClick={() => toggleGroup("__pinned", true)}
 									className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
 								>
-									<div className="flex items-center gap-1.5 min-w-0">
+									<div className="flex items-center gap-1.5 min-w-0 flex-1">
 										{isGroupOpen("__pinned", true) ? (
 											<ChevronDown
 												size={13}
@@ -1301,34 +1399,35 @@ export function SessionSidebar() {
 											size={13}
 											className="text-amber-400 fill-amber-400/30 shrink-0"
 										/>
-										<span className="font-semibold text-[13px] text-neutral-200 truncate">
+										<span className="font-bold text-[12.5px] text-neutral-100 truncate">
 											已置顶
 										</span>
 										<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
 											{grouped.pinnedNodes.length}
 										</span>
-										{!isGroupOpen("__pinned", true) &&
-											renderBubbleBadges(
-												getGroupStatusCounts(grouped.pinnedNodes),
-											)}
+										{renderBubbleBadges(
+											getGroupStatusCounts(grouped.pinnedNodes),
+										)}
 									</div>
 								</div>
 
 								{isGroupOpen("__pinned", true) && (
-									<SessionList
-										nodes={grouped.pinnedNodes}
-										scopeKey="__pinned"
-										searching={searching}
-										onSetCount={setSectionCount}
-										expanded={expandedSections}
-										onToggle={toggleSection}
-										collapsedSideChats={collapsedSideChats}
-										onToggleSideChat={toggleSideChat}
-										workspaces={workspaces}
-										allVisibleIds={allVisibleIds}
-										onRowFocus={focusList}
-										onBatchAction={handleBatchAction}
-									/>
+									<div className="pb-1">
+										<SessionList
+											nodes={grouped.pinnedNodes}
+											scopeKey="__pinned"
+											searching={searching}
+											onSetCount={setSectionCount}
+											expanded={expandedSections}
+											onToggle={toggleSection}
+											collapsedSideChats={collapsedSideChats}
+											onToggleSideChat={toggleSideChat}
+											workspaces={workspaces}
+											allVisibleIds={allVisibleIds}
+											onRowFocus={focusList}
+											onBatchAction={handleBatchAction}
+										/>
+									</div>
 								)}
 							</div>
 						)}
@@ -1398,7 +1497,7 @@ export function SessionSidebar() {
 													onBatchArchive={() =>
 														batchArchiveSessions(
 															sub.label,
-															sub.nodes.map((n) => n.session),
+												sub.nodes.map((n) => n.session),
 														)
 													}
 													workspaces={workspaces}
@@ -1461,156 +1560,180 @@ export function SessionSidebar() {
 						{activeWorkspaceId === "all" && (
 							<>
 								{/* 1. Global Workspace */}
-								{grouped.globalGroup && (
-									<div className="py-1">
+								{grouped.globalGroup && (() => {
+									const palette = getWorkspacePalette("__global");
+									const isOpen = isGroupOpen("__global", true);
+									const statusCounts = getGroupStatusCounts(
+										grouped.globalGroup.subgroups,
+									);
+									return (
 										<div
-											onClick={() => toggleGroup("__global", true)}
-											className="group flex h-7 cursor-pointer select-none items-center justify-between mx-1.5 px-2 rounded-lg hover:bg-[var(--bg-hover)] text-neutral-300 transition-colors"
+											className={clsx(
+												"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/40 overflow-hidden transition-all",
+												palette.cardBorder,
+												!isOpen && "opacity-90",
+											)}
 										>
-											<div className="flex items-center gap-1.5 min-w-0">
-												{isGroupOpen("__global", true) ? (
-													<ChevronDown
-														size={13}
-														className="text-neutral-500 shrink-0"
-													/>
-												) : (
-													<ChevronRight
-														size={13}
-														className="text-neutral-500 shrink-0"
-													/>
-												)}
-												<Globe size={14} className="text-indigo-400 shrink-0" />
-												<span
-													className="font-semibold text-xs text-neutral-200 truncate"
-													title={grouped.globalGroup.workspace.path}
-												>
-													全局工作区
-												</span>
-												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
-													{grouped.globalGroup.totalCount}
-												</span>
-												{!isGroupOpen("__global", true) &&
-													renderBubbleBadges(
-														getGroupStatusCounts(
-															grouped.globalGroup.subgroups,
-														),
-													)}
-											</div>
-
-											<button
-												type="button"
-												onClick={(e) =>
-													handlePlusClick(grouped.globalGroup!.workspace, e)
-												}
-												title="新建会话"
-												disabled={
-													creatingWs === grouped.globalGroup.workspace.id
-												}
-												className="rounded p-1 text-neutral-500 hover:bg-neutral-700/60 hover:text-neutral-200 disabled:opacity-40"
+											<div
+												onClick={() => toggleGroup("__global", true)}
+												className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
 											>
-												{creatingWs === grouped.globalGroup.workspace.id ? (
-													<Loader2 size={13} className="animate-spin" />
-												) : (
-													<Plus size={13} />
-												)}
-											</button>
-										</div>
-
-										{isGroupOpen("__global", true) && (
-											<div>
-												{grouped.globalGroup.totalCount === 0 ? (
-													<div className="px-6 py-2 text-[11px] text-neutral-500 italic">
-														暂无会话
-													</div>
-												) : (
-													<SessionList
-														nodes={grouped.globalGroup.subgroups.flatMap(
-															(group) => group.nodes,
-														)}
-														scopeKey="__global"
-														searching={searching}
-														onSetCount={setSectionCount}
-														expanded={expandedSections}
-														onToggle={toggleSection}
-														collapsedSideChats={collapsedSideChats}
-														onToggleSideChat={toggleSideChat}
-														workspaces={workspaces}
-														allVisibleIds={allVisibleIds}
-														onRowFocus={focusList}
-														onBatchAction={handleBatchAction}
+												<div className="flex items-center gap-1.5 min-w-0 flex-1">
+													{isOpen ? (
+														<ChevronDown
+															size={13}
+															className="text-neutral-500 shrink-0"
+														/>
+													) : (
+														<ChevronRight
+															size={13}
+															className="text-neutral-500 shrink-0"
+														/>
+													)}
+													<Globe
+														size={14}
+														className={clsx("shrink-0", palette.folderColor)}
 													/>
-												)}
+													<span
+														className="font-bold text-[12.5px] text-neutral-100 truncate"
+												title={grouped.globalGroup.workspace.path}
+													>
+														全局工作区
+													</span>
+													<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
+														{grouped.globalGroup.totalCount}
+													</span>
+													{renderBubbleBadges(statusCounts)}
+												</div>
+
+												<button
+													type="button"
+													onClick={(e) =>
+														handlePlusClick(grouped.globalGroup!.workspace, e)
+													}
+													title="新建会话"
+													disabled={
+														creatingWs === grouped.globalGroup.workspace.id
+													}
+													className="rounded p-1 text-neutral-500 hover:bg-neutral-700/60 hover:text-neutral-200 disabled:opacity-40 ml-1 shrink-0"
+												>
+													{creatingWs === grouped.globalGroup.workspace.id ? (
+														<Loader2 size={13} className="animate-spin" />
+													) : (
+														<Plus size={13} />
+													)}
+												</button>
 											</div>
-										)}
-									</div>
-								)}
+
+											{isOpen && (
+												<div className="pb-1">
+													{grouped.globalGroup.totalCount === 0 ? (
+														<div className="px-6 py-2 text-[11px] text-neutral-500 italic">
+															暂无会话
+														</div>
+													) : (
+														<SessionList
+															nodes={grouped.globalGroup.subgroups[0]?.nodes ?? []}
+															scopeKey="__global"
+															searching={searching}
+															onSetCount={setSectionCount}
+															expanded={expandedSections}
+															onToggle={toggleSection}
+															collapsedSideChats={collapsedSideChats}
+															onToggleSideChat={toggleSideChat}
+															workspaces={workspaces}
+															allVisibleIds={allVisibleIds}
+															onRowFocus={focusList}
+															onBatchAction={handleBatchAction}
+														/>
+													)}
+												</div>
+											)}
+										</div>
+									);
+								})()}
 
 								{/* 2. Registered Project Workspaces */}
-								{grouped.workspaceGroups.map((wg) => (
-									<div key={wg.workspace.id} className="py-1">
-										{/* Workspace Group Header */}
+								{grouped.workspaceGroups.map((wg) => {
+									const palette = getWorkspacePalette(wg.workspace.id || wg.workspace.name);
+									const isOpen = isGroupOpen(wg.workspace.id, true);
+									const statusCounts = getGroupStatusCounts(wg.subgroups);
+									return (
 										<div
-											onClick={() => toggleGroup(wg.workspace.id, true)}
-											onContextMenu={(e) =>
-												handleWorkspaceContextMenu(wg.workspace, e)
-											}
-											className="group flex h-7 cursor-pointer select-none items-center justify-between mx-1.5 px-2 rounded-lg hover:bg-[var(--bg-hover)] text-neutral-300 transition-colors"
+											key={wg.workspace.id}
+											className={clsx(
+												"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/40 overflow-hidden transition-all",
+												palette.cardBorder,
+												!isOpen && "opacity-90",
+											)}
 										>
-											<div className="flex items-center gap-1.5 min-w-0">
-												{isGroupOpen(wg.workspace.id, true) ? (
-													<ChevronDown
-														size={13}
-														className="text-neutral-500 shrink-0"
-													/>
-												) : (
-													<ChevronRight
-														size={13}
-														className="text-neutral-500 shrink-0"
-													/>
-												)}
-												<Folder
-													size={14}
-													className="text-amber-500/80 shrink-0"
-												/>
-												<span
-													className="font-semibold text-xs text-neutral-200 truncate"
-													title={`${wg.workspace.name} (${wg.workspace.path})`}
-												>
-													{wg.workspace.name}
-												</span>
-												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
-													{wg.totalCount}
-												</span>
-												{!isGroupOpen(wg.workspace.id, true) &&
-													renderBubbleBadges(
-														getGroupStatusCounts(wg.subgroups),
+											{/* Workspace Group Header */}
+											<div
+												onClick={() => toggleGroup(wg.workspace.id, true)}
+												onContextMenu={(e) =>
+													handleWorkspaceContextMenu(wg.workspace, e)
+												}
+												className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
+											>
+												<div className="flex items-center gap-1.5 min-w-0 flex-1">
+													{isOpen ? (
+														<ChevronDown
+															size={13}
+															className="text-neutral-500 shrink-0"
+														/>
+													) : (
+														<ChevronRight
+															size={13}
+															className="text-neutral-500 shrink-0"
+														/>
 													)}
+													{isOpen ? (
+														<FolderOpen
+															size={14}
+															className={clsx("shrink-0", palette.folderColor)}
+														/>
+													) : (
+														<Folder
+															size={14}
+															className={clsx("shrink-0", palette.folderColor)}
+														/>
+													)}
+													<span
+														className="font-bold text-[12.5px] text-neutral-100 truncate"
+														title={`${wg.workspace.name} (${wg.workspace.path})`}
+													>
+														{wg.workspace.name}
+													</span>
+													<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
+														{wg.totalCount}
+													</span>
+													{renderBubbleBadges(statusCounts)}
+												</div>
+
+												<button
+													type="button"
+													onClick={(e) => handlePlusClick(wg.workspace, e)}
+													title="新建会话（选择当前目录或独立 Worktree）"
+													disabled={creatingWs === wg.workspace.id}
+													className="rounded p-1 text-neutral-500 hover:bg-neutral-700/60 hover:text-neutral-200 disabled:opacity-40 ml-1 shrink-0"
+												>
+													{creatingWs === wg.workspace.id ? (
+														<Loader2 size={13} className="animate-spin" />
+													) : (
+														<Plus size={13} />
+													)}
+												</button>
 											</div>
 
-											<button
-												type="button"
-												onClick={(e) => handlePlusClick(wg.workspace, e)}
-												title="新建会话（选择当前目录或独立 Worktree）"
-												disabled={creatingWs === wg.workspace.id}
-												className="rounded p-1 text-neutral-500 hover:bg-neutral-700/60 hover:text-neutral-200 disabled:opacity-40"
-											>
-												{creatingWs === wg.workspace.id ? (
-													<Loader2 size={13} className="animate-spin" />
-												) : (
-													<Plus size={13} />
-												)}
-											</button>
-										</div>
-
-										{/* Workspace Group Body */}
-										{isGroupOpen(wg.workspace.id, true) && (
-											<div>
-												{wg.totalCount === 0 ? (
-													<div className="px-6 py-2 text-[11px] text-neutral-500 italic">
-														暂无会话
-													</div>
-												) : wg.hasMultipleSubgroups ? (
-													wg.subgroups.map((sub) => (
+											{/* Workspace Group Body */}
+											{isOpen && (
+												<div className="pb-1">
+													{wg.totalCount === 0 ? (
+														<div className="px-6 py-2 text-[11px] text-neutral-500 italic">
+															暂无会话
+														</div>
+													) : wg.hasMultipleSubgroups ? (
+														wg.subgroups.map((sub) => (
 														<CollapsibleSubgroup
 															key={sub.key}
 															sub={sub}
@@ -1624,7 +1747,7 @@ export function SessionSidebar() {
 															onBatchArchive={() =>
 																batchArchiveSessions(
 																	sub.label,
-																	sub.nodes.map((n) => n.session),
+																sub.nodes.map((n) => n.session),
 																)
 															}
 															workspaces={workspaces}
@@ -1635,49 +1758,69 @@ export function SessionSidebar() {
 															onCreateSession={startSessionAt}
 														/>
 													))
-												) : (
-													<div>
-														{wg.subgroups[0] &&
-															wg.subgroups[0].kind !== "default" && (
-																<div className="flex items-center gap-1 px-4 py-1 text-[11px] text-neutral-400">
-																	<FolderGit2
-																		size={11}
-																		className="text-neutral-500"
-																	/>
-																	<span className="truncate">
-																		{wg.subgroups[0].label}
-																	</span>
-																</div>
-															)}
-														<SessionList
-															nodes={wg.subgroups[0]?.nodes ?? []}
-															scopeKey={`${wg.workspace.id}|default`}
-															searching={searching}
-															onSetCount={setSectionCount}
-															expanded={expandedSections}
-															onToggle={toggleSection}
-															collapsedSideChats={collapsedSideChats}
-															onToggleSideChat={toggleSideChat}
-															workspaces={workspaces}
-															allVisibleIds={allVisibleIds}
-															onRowFocus={focusList}
-															onBatchAction={handleBatchAction}
+													) : (
+														<div>
+															{wg.subgroups[0] &&
+																wg.subgroups[0].kind !== "default" && (
+																<div className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono text-purple-300">
+													{wg.subgroups[0].kind === "worktree" ? (
+														<FolderGit2
+															size={12}
+															className="text-indigo-400 shrink-0"
 														/>
-													</div>
+													) : (
+														<GitBranch
+															size={12}
+															className="text-purple-400 shrink-0"
+														/>
+													)}
+													<span className="truncate">
+														{wg.subgroups[0].label}
+													</span>
+													{wg.subgroups[0].deleted && (
+														<span className="rounded bg-neutral-800 px-1 text-[9px] text-neutral-500">
+											已清理
+										</span>
+													)}
+												</div>
 												)}
+											<div className="ml-3 pl-1.5 border-l-2 border-purple-500/25 my-0.5">
+												<SessionList
+													nodes={wg.subgroups[0]?.nodes ?? []}
+													scopeKey={`${wg.workspace.id}|default`}
+													searching={searching}
+													onSetCount={setSectionCount}
+													expanded={expandedSections}
+													onToggle={toggleSection}
+													collapsedSideChats={collapsedSideChats}
+													onToggleSideChat={toggleSideChat}
+													workspaces={workspaces}
+												allVisibleIds={allVisibleIds}
+												onRowFocus={focusList}
+												onBatchAction={handleBatchAction}
+												/>
 											</div>
-										)}
-									</div>
-								))}
+										</div>
+									)}
+								</div>
+							)}
+						</div>
+					);
+				})}
 
-								{/* 3. Unassigned Bucket */}
+								{/* 3. Unassigned Bucket (PLAN.md §66 未归档桶): collapsed by default */}
 								{grouped.unassigned.length > 0 && (
-									<div className="py-1">
+									<div
+										className={clsx(
+											"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/30 overflow-hidden transition-all border-neutral-800/60 hover:border-neutral-700/60",
+											!isGroupOpen("__unassigned", false) && "opacity-90",
+										)}
+									>
 										<div
 											onClick={() => toggleGroup("__unassigned", false)}
-											className="group flex h-7 cursor-pointer select-none items-center justify-between mx-1.5 px-2 rounded-lg hover:bg-[var(--bg-hover)] text-neutral-300 transition-colors"
+											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
 										>
-											<div className="flex items-center gap-1.5 min-w-0">
+											<div className="flex items-center gap-1.5 min-w-0 flex-1">
 												{isGroupOpen("__unassigned", false) ? (
 													<ChevronDown
 														size={13}
@@ -1690,16 +1833,15 @@ export function SessionSidebar() {
 													/>
 												)}
 												<Clock size={14} className="text-neutral-400 shrink-0" />
-												<span className="font-semibold text-xs text-neutral-200 truncate">
+												<span className="font-bold text-[12.5px] text-neutral-200 truncate">
 													{UNASSIGNED_LABEL}
 												</span>
-												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
+												<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
 													{grouped.unassigned.length}
 												</span>
-												{!isGroupOpen("__unassigned", false) &&
-													renderBubbleBadges(
-														getGroupStatusCounts(grouped.unassigned),
-													)}
+												{renderBubbleBadges(
+													getGroupStatusCounts(grouped.unassigned),
+												)}
 											</div>
 
 											<button
@@ -1710,7 +1852,7 @@ export function SessionSidebar() {
 														grouped.unassigned.map((n) => n.session.id),
 													);
 												}}
-												className="rounded p-1 text-neutral-500 opacity-0 hover:bg-neutral-700/60 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100"
+												className="rounded p-1 text-neutral-500 opacity-0 hover:bg-neutral-700/60 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100 ml-1 shrink-0"
 												title="将全部未归档会话归入某个工作区…"
 											>
 												<FolderInput size={13} />
@@ -1718,32 +1860,38 @@ export function SessionSidebar() {
 										</div>
 
 										{isGroupOpen("__unassigned", false) && (
-											<SessionList
-												nodes={grouped.unassigned}
-												scopeKey="__unassigned"
-												searching={searching}
-												onSetCount={setSectionCount}
-												expanded={expandedSections}
-												onToggle={toggleSection}
-												collapsedSideChats={collapsedSideChats}
-												onToggleSideChat={toggleSideChat}
-												workspaces={workspaces}
+											<div className="pb-1">
+												<SessionList
+													nodes={grouped.unassigned}
+													scopeKey="__unassigned"
+													searching={searching}
+													onSetCount={setSectionCount}
+													expanded={expandedSections}
+													onToggle={toggleSection}
+													collapsedSideChats={collapsedSideChats}
+													onToggleSideChat={toggleSideChat}
+													workspaces={workspaces}
 												allVisibleIds={allVisibleIds}
 												onRowFocus={focusList}
 												onBatchAction={handleBatchAction}
-											/>
+												/>
+											</div>
 										)}
 									</div>
 								)}
 
-								{/* 4. Deleted Worktrees Bucket */}
+								{/* 4. Deleted Worktrees Bucket: kept visible (dimmed) instead of vanishing */}
 								{grouped.deletedNodes.length > 0 && (
-									<div className="py-1 opacity-70">
+									<div
+										className={clsx(
+											"my-1.5 mx-1.5 rounded-lg border bg-neutral-900/30 overflow-hidden transition-all border-neutral-800/40 opacity-75",
+										)}
+									>
 										<div
 											onClick={() => toggleGroup("__deleted", false)}
-											className="group flex h-7 cursor-pointer select-none items-center justify-between mx-1.5 px-2 rounded-lg hover:bg-[var(--bg-hover)] text-neutral-300 transition-colors"
+											className="group flex cursor-pointer select-none items-center justify-between px-2.5 py-1.5 hover:bg-neutral-800/40 text-neutral-300"
 										>
-											<div className="flex items-center gap-1.5 min-w-0">
+											<div className="flex items-center gap-1.5 min-w-0 flex-1">
 												{isGroupOpen("__deleted", false) ? (
 													<ChevronDown
 														size={13}
@@ -1759,16 +1907,15 @@ export function SessionSidebar() {
 													size={14}
 													className="text-neutral-500 shrink-0"
 												/>
-												<span className="font-semibold text-xs text-neutral-200 truncate">
+												<span className="font-bold text-[12.5px] text-neutral-300 truncate">
 													{DELETED_LABEL}
 												</span>
-												<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-0.2 text-[10px] text-neutral-400 tabular-nums font-mono">
+												<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] text-neutral-400 font-mono">
 													{grouped.deletedNodes.length}
 												</span>
-												{!isGroupOpen("__deleted", false) &&
-													renderBubbleBadges(
-														getGroupStatusCounts(grouped.deletedNodes),
-													)}
+												{renderBubbleBadges(
+													getGroupStatusCounts(grouped.deletedNodes),
+												)}
 											</div>
 
 											<button
@@ -1788,20 +1935,22 @@ export function SessionSidebar() {
 										</div>
 
 										{isGroupOpen("__deleted", false) && (
-											<SessionList
-												nodes={grouped.deletedNodes}
-												scopeKey="__deleted"
-												searching={searching}
-												onSetCount={setSectionCount}
-												expanded={expandedSections}
-												onToggle={toggleSection}
-												collapsedSideChats={collapsedSideChats}
-												onToggleSideChat={toggleSideChat}
-												workspaces={workspaces}
+											<div className="pb-1">
+												<SessionList
+													nodes={grouped.deletedNodes}
+													scopeKey="__deleted"
+													searching={searching}
+													onSetCount={setSectionCount}
+													expanded={expandedSections}
+													onToggle={toggleSection}
+													collapsedSideChats={collapsedSideChats}
+													onToggleSideChat={toggleSideChat}
+													workspaces={workspaces}
 												allVisibleIds={allVisibleIds}
 												onRowFocus={focusList}
 												onBatchAction={handleBatchAction}
-											/>
+												/>
+											</div>
 										)}
 									</div>
 								)}
@@ -2146,37 +2295,29 @@ function SessionList({
 		onCollapse: () => void,
 	) => {
 		const hidden = total - count;
-		const hasMore = hidden > 0;
-		const canCollapse = count > RECENT_LIMIT;
-
-		if (!hasMore && !canCollapse) {
-			return null;
+		if (hidden > 0) {
+			return (
+				<button
+					type="button"
+					onClick={() => onSetCount(moreKey, count + RECENT_STEP)}
+					className="flex items-center gap-1 px-4 py-1 text-[10.5px] text-indigo-400 hover:text-indigo-300 hover:underline transition-colors select-none"
+				>
+					<span>＋ 展开其余 {hidden} 条{label}</span>
+				</button>
+			);
 		}
-
-		return (
-			<>
-				{hasMore && (
-					<button
-						type="button"
-						onClick={() => onSetCount(moreKey, count + RECENT_STEP)}
-						className="flex w-full items-center gap-1 px-6 py-1 text-[10px] text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
-					>
-						<ChevronRight size={11} className="shrink-0" />
-						再显示 {Math.min(RECENT_STEP, hidden)} 条（剩余 {hidden} 条{label}）
-					</button>
-				)}
-				{canCollapse && (
-					<button
-						type="button"
-						onClick={onCollapse}
-						className="flex w-full items-center gap-1 px-6 py-1 text-[10px] text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
-					>
-						<ChevronDown size={11} className="shrink-0" />
-						收起
-					</button>
-				)}
-			</>
-		);
+		if (total > RECENT_LIMIT) {
+			return (
+				<button
+					type="button"
+					onClick={onCollapse}
+					className="flex items-center gap-1 px-4 py-1 text-[10.5px] text-neutral-500 hover:text-neutral-300 hover:underline transition-colors select-none"
+				>
+					<span>收起</span>
+				</button>
+			);
+		}
+		return null;
 	};
 
 	return (
@@ -2198,14 +2339,9 @@ function SessionList({
 							if (showOlder) onSetCount(olderMoreKey, RECENT_LIMIT);
 							onToggle(olderKey);
 						}}
-						className="flex w-full items-center gap-1 px-6 py-1 text-[10px] text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
+						className="flex items-center gap-1 px-4 py-1 text-[10.5px] text-neutral-400 hover:text-neutral-200 transition-colors select-none"
 					>
-						{showOlder ? (
-							<ChevronDown size={11} className="shrink-0" />
-						) : (
-							<ChevronRight size={11} className="shrink-0" />
-						)}
-						更早的会话 ({older.length})
+						<span>{showOlder ? "▾" : "▸"} 更早的会话 ({older.length})</span>
 					</button>
 					{showOlder && visibleOlder.map(renderNode)}
 					{showOlder &&
@@ -2269,7 +2405,7 @@ function CollapsibleSubgroup({
 				<button
 					type="button"
 					onClick={() => onToggle(`${scopeKey}|sub`)}
-					className="flex min-w-0 flex-1 items-center gap-1 mx-1.5 px-2 h-7 rounded-lg text-xs font-medium text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
+					className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-neutral-800/40 hover:text-neutral-100 transition-colors"
 				>
 					{open ? (
 						<ChevronDown size={11} className="shrink-0 text-neutral-500" />
@@ -2277,17 +2413,21 @@ function CollapsibleSubgroup({
 						<ChevronRight size={11} className="shrink-0 text-neutral-500" />
 					)}
 					{sub.kind === "worktree" ? (
-						<FolderGit2 size={11} className="text-neutral-500" />
+						<FolderGit2 size={12} className="text-indigo-400 shrink-0" />
 					) : (
-						<Folder size={11} className="text-neutral-500" />
+						<GitBranch size={12} className="text-purple-400 shrink-0" />
 					)}
-					<span className="truncate">{sub.label}</span>
+					<span className="truncate font-mono text-purple-300 dark:text-purple-200">
+						{sub.label}
+					</span>
 					{sub.deleted && (
 						<span className="shrink-0 rounded bg-neutral-800 px-1 text-[9px] text-neutral-500">
 							已清理
 						</span>
 					)}
-					<span className="font-mono text-[10px] text-neutral-500">({sub.totalCount})</span>
+					<span className="font-mono text-neutral-500 text-[10px]">
+						({sub.totalCount})
+					</span>
 				</button>
 				{!sub.deleted && sub.createCwd && (
 					<button
@@ -2317,21 +2457,23 @@ function CollapsibleSubgroup({
 				)}
 			</div>
 			{open && (
-				<SessionList
-					nodes={sub.nodes}
-					scopeKey={scopeKey}
-					searching={searching}
-					indent={14}
-					expanded={expanded}
-					onToggle={onToggle}
-					onSetCount={onSetCount}
-					collapsedSideChats={collapsedSideChats}
-					onToggleSideChat={onToggleSideChat}
-					workspaces={workspaces}
-					allVisibleIds={allVisibleIds}
-					onRowFocus={onRowFocus}
-					onBatchAction={onBatchAction}
-				/>
+				<div className="ml-3.5 pl-1.5 border-l-2 border-purple-500/25 my-0.5">
+					<SessionList
+						nodes={sub.nodes}
+						scopeKey={scopeKey}
+						searching={searching}
+						indent={0}
+						expanded={expanded}
+						onToggle={onToggle}
+						onSetCount={onSetCount}
+						collapsedSideChats={collapsedSideChats}
+						onToggleSideChat={onToggleSideChat}
+						workspaces={workspaces}
+						allVisibleIds={allVisibleIds}
+						onRowFocus={onRowFocus}
+						onBatchAction={onBatchAction}
+					/>
+				</div>
 			)}
 		</div>
 	);

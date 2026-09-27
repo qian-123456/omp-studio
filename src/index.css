@@ -806,19 +806,18 @@ textarea {
 	user-select: none;
 }
 
-/* Scrollbar = floating capsule only. The user's macOS shows classic scrollbars
- * (no native overlay), so we style ::-webkit-scrollbar directly: transparent
- * track/buttons (no lane edge), and a permanently subtle capsule thumb that
- * darkens on scroll (data-scroll-active), hover, and drag. WebKit matches some
- * scrollbar pseudo pseudo-classes unreliably — an always-on subtle thumb is
- * the predictable floor; active states are pure enhancement. */
+/* Scrollbars: native bars are hidden (the macOS classic always-on lane is the
+ * ugly look). Custom overlay pills are drawn by src/lib/scrollPills.ts — a
+ * floating capsule per scroller, visible while scrolling / hovering the lane,
+ * fading ~600ms after idle. .no-scrollbar suppresses it as before. */
 *::-webkit-scrollbar {
-	width: 8px;
-	height: 8px;
+	width: 0;
+	height: 0;
 	background: transparent;
 }
 *::-webkit-scrollbar-track,
 *::-webkit-scrollbar-track-piece,
+*::-webkit-scrollbar-thumb,
 *::-webkit-scrollbar-corner {
 	background: transparent;
 	border: none;
@@ -829,25 +828,23 @@ textarea {
 	width: 0;
 	height: 0;
 }
-*::-webkit-scrollbar-thumb {
-	background-color: transparent;
-	background-clip: padding-box;
-	border: 2px solid transparent;
+
+/* JS-drawn overlay pill. position: fixed; top/left/height set per-frame. */
+.scroll-pill {
+	position: fixed;
+	z-index: 9999;
 	border-radius: 999px;
-	min-height: 32px;
-	min-width: 32px;
+	background: light-dark(rgba(0, 0, 0, 0.36), rgba(255, 255, 255, 0.32));
+	opacity: 0;
+	transition: opacity 0.18s ease;
+	pointer-events: none;
 }
-.is-scrolling::-webkit-scrollbar-thumb,
-*::-webkit-scrollbar-thumb:hover,
-*::-webkit-scrollbar-thumb:active {
-	background-color: var(--scrollbar-thumb, rgba(150, 150, 150, 0.42));
+.scroll-pill--visible {
+	opacity: 1;
 }
-*::-webkit-scrollbar-thumb:active {
-	background-color: var(--scrollbar-thumb-hover, rgba(150, 150, 150, 0.55));
-}
-:root {
-	--scrollbar-thumb: light-dark(rgba(0, 0, 0, 0.40), rgba(255, 255, 255, 0.36));
-	--scrollbar-thumb-hover: light-dark(rgba(0, 0, 0, 0.55), rgba(255, 255, 255, 0.50));
+.no-scrollbar ~ .scroll-pill,
+.no-scrollbar .scroll-pill {
+	display: none !important;
 }
 
 /* Chat font-size presets (settings → 外观). */

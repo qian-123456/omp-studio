@@ -4,8 +4,6 @@
 import clsx from "clsx";
 import {
 	ArrowUp,
-	Bot,
-	Brain,
 	Check,
 	ChevronDown,
 	CornerDownRight,
@@ -319,7 +317,7 @@ export function Composer({
 		const ta = taRef.current;
 		if (!ta) return;
 		ta.style.height = "auto";
-		const minH = compact ? 42 : 58;
+		const minH = compact ? 22 : 26;
 		const maxH = 220;
 		const nextH = Math.min(Math.max(ta.scrollHeight, minH), maxH);
 		ta.style.height = `${nextH}px`;
@@ -807,18 +805,18 @@ export function Composer({
 						onDragLeave={onDragLeave}
 						onDrop={(e) => void onDrop(e)}
 						onPaste={(e) => void onPaste(e)}
-						rows={compact ? 2 : 3}
+						rows={1}
 						placeholder={
 							streaming
 								? "输入后续消息..."
 								: "提出后续修改要求... (Enter 发送，Shift+Enter 换行，/ 命令，@ 文件)"
 						}
 						style={{ outline: "none", boxShadow: "none" }}
-						className="w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[13px] leading-relaxed text-neutral-100 outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-neutral-500/60"
+						className="w-full resize-none bg-transparent px-3.5 pt-2.5 pb-1 text-[13px] leading-relaxed text-neutral-100 outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-neutral-500/60"
 					/>
 
 					{/* Bottom bar: + button, permission pill, context ring (left); model/thinking pills, send/stop (right) */}
-					<div className="flex items-center justify-between gap-2 px-3 pb-2.5 pt-1 text-[11px] text-neutral-500">
+					<div className="flex items-center justify-between gap-2 px-3 pb-2 pt-0.5 text-[11px] text-neutral-500">
 						{/* Left side actions */}
 						<div className="flex items-center gap-1.5">
 							{/* Plus button for attachments / annotations */}
@@ -852,16 +850,15 @@ export function Composer({
 										if (!models || models.length === 0) void loadModels();
 									}}
 									title={current.label || sessionMeta?.model || "选择模型"}
-									className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
-								>
-									<Bot size={11} className="shrink-0 text-neutral-400" />
-									<span className={clsx("truncate", compact ? "max-w-24" : "max-w-36")}>
-										{current.label ||
-											sessionMeta?.model ||
-											(models === null ? "加载中…" : "选择模型…")}
-									</span>
-									<ChevronDown size={10} className="shrink-0 text-neutral-500" />
-								</button>
+								className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
+							>
+								<span className={clsx("truncate", compact ? "max-w-24" : "max-w-36")}>
+									{current.label ||
+										sessionMeta?.model ||
+										(models === null ? "加载中…" : "选择模型…")}
+								</span>
+								<ChevronDown size={10} className="shrink-0 text-neutral-500" />
+							</button>
 
 								{modelOpen && (
 									<div className="absolute bottom-full right-0 z-30 mb-1 w-[400px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1">
@@ -900,14 +897,13 @@ export function Composer({
 												? `思考等级: ${curThinkingObj.label}${curThinkingObj.desc ? ` (${curThinkingObj.desc})` : ""}`
 												: "配置思考等级"
 										}
-										className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
-									>
-										<Brain size={11} className="shrink-0 text-neutral-400" />
-										<span className="truncate">
-											{curThinkingObj?.label ?? "思考等级"}
-										</span>
-										<ChevronDown size={10} className="shrink-0 text-neutral-500" />
-									</button>
+									className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
+								>
+									<span className="truncate">
+										{curThinkingObj?.label ?? "思考等级"}
+									</span>
+									<ChevronDown size={10} className="shrink-0 text-neutral-500" />
+								</button>
 
 									{thinkingOpen && (
 										<div className="absolute bottom-full right-0 z-30 mb-1 w-[260px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1">

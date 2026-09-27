@@ -92,7 +92,7 @@ function renderStatusDot(status: SessionMeta["status"]) {
 			return (
 				<span className="relative flex h-2 w-2 shrink-0" title="执行中 (Working)">
 					<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-					<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+					<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
 				</span>
 			);
 		// Attention statuses render as text pills (STATUS_PILLS), not dots.
@@ -459,7 +459,7 @@ export function SessionRow({
 			className={clsx(
 				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-[8px] min-h-[28px] py-1 pr-2 transition-all",
 				isSelected
-					? "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium"
+					? "bg-neutral-800 text-neutral-100 border-l-2 border-indigo-500 ring-1 ring-inset ring-neutral-700/80"
 					: isMultiSelected
 						? "bg-[#0A84FF]/20 text-white"
 						: isHighlighted
@@ -544,25 +544,51 @@ export function SessionRow({
 							startInlineRename();
 						}}
 						className={clsx(
-							"min-w-0 flex-1 cursor-text truncate text-xs",
-							// Unread: bold bright title + trailing blue dot reads
-							// cleaner than a second cryptic leading dot.
-							session.unread
+							"min-w-0 flex-1 cursor-text truncate text-xs transition-colors",
+							session.status === "working" || session.unread
 								? "font-semibold text-neutral-100"
-								: "font-medium text-neutral-200 group-hover:text-neutral-100",
+								: session.status === "awaiting_approval" ||
+									  session.status === "awaiting_answer" ||
+									  session.status === "review"
+									? "font-medium text-neutral-200"
+									: session.status === "error" ||
+										  session.status === "interrupted"
+										? "font-medium text-neutral-300"
+										: "font-normal text-neutral-400 hover:text-neutral-200",
 						)}
+						title={sessionDisplayName(session)}
 					>
 						{sessionDisplayName(session)}
 					</span>
 				)}
-
 				{session.unread && (
 					<span
 						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
 						title="未读"
 					/>
 				)}
-
+				{pill ? (
+					<span
+						className={clsx(
+							"ml-auto shrink-0 rounded border px-1 py-px text-[9px] font-medium",
+							pill.cls,
+						)}
+					>
+						{pill.label}
+					</span>
+				) : (
+					<span
+						title={updatedAtTs}
+						className={clsx(
+							"ml-auto shrink-0 text-[10px] transition-colors",
+							session.status === "working"
+								? "text-neutral-300 font-medium"
+								: "text-neutral-500",
+						)}
+					>
+						{relativeTime(session.updatedAt || session.createdAt)}
+					</span>
+				)}
 				{session.pinned && (
 					<Pin
 						size={11}
