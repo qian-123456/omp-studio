@@ -559,6 +559,28 @@ pub async fn session_export_html(
         Ok(stdout)
     }
 }
+
+/// One-shot throwaway question to the supervisor model (`omp -p` scratchpad).
+/// Uses the configured supervisor model; falls back to "smol" when unset.
+/// Passing an explicit `model` overrides both.
+#[tauri::command]
+pub async fn quick_ask(
+    state: tauri::State<'_, AppState>,
+    prompt: String,
+    model: Option<String>,
+) -> Result<String, String> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Err("问题不能为空".to_string());
+    }
+    let model = model.unwrap_or_else(|| state.settings.read().supervisor_model.clone());
+    let model = if model.trim().is_empty() {
+        "smol".to_string()
+    } else {
+        model.trim().to_string()
+    };
+    crate::todos::omp::run_print(&state, &model, prompt, std::time::Duration::from_secs(60)).await
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -665,7 +687,9 @@ mod tests {
         let out2 = "Exporting...\nExported to: /absolute/path/omp-session-abc.html\nDone.";
         assert_eq!(
             parse_export_output(out2, working),
-            Some(std::path::PathBuf::from("/absolute/path/omp-session-abc.html"))
+            Some(std::path::PathBuf::from(
+                "/absolute/path/omp-session-abc.html"
+            ))
         );
 
         let out3 = "No export line here";

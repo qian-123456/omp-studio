@@ -19,6 +19,7 @@ import React, {
 import { BacklogPanel } from "./features/backlog/BacklogPanel";
 import { QuickCapture } from "./features/backlog/QuickCapture";
 import { SessionView } from "./features/chat/SessionView";
+import { QuickAskDialog } from "./features/chat/QuickAskDialog";
 import { DiagnoseDialog } from "./features/diagnose/DiagnoseDialog";
 import { DocView } from "./features/editor/DocView";
 import { FileExplorer } from "./features/explorer/FileExplorer";
@@ -804,6 +805,7 @@ export default function App() {
 			{/* Global modals — render nothing unless ui.modal matches. */}
 			<BacklogPanel />
 			<QuickCapture />
+			<QuickAskDialog />
 			<DiagnoseDialog />
 			<NewSessionDialog />
 		</div>

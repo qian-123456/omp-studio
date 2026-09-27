@@ -142,6 +142,7 @@ pub fn run() {
             catalog::commands::list_models,
             catalog::commands::list_workspace_files,
             catalog::commands::session_export_html,
+            catalog::commands::quick_ask,
             // B — rpc
             rpc::commands::rpc_start,
             rpc::commands::rpc_ensure_live,

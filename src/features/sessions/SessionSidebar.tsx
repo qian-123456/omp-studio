@@ -18,6 +18,7 @@ import {
 	Inbox,
 	Layers,
 	Loader2,
+	MessageCircleQuestion,
 	Pin,
 	Plus,
 	Search,
@@ -563,11 +564,18 @@ export function SessionSidebar() {
 				}
 				e.preventDefault();
 				handleHeaderNewSession();
+			} else if (
+				(e.metaKey || e.ctrlKey) &&
+				e.shiftKey &&
+				e.key.toLowerCase() === "k"
+			) {
+				e.preventDefault();
+				openModal("quick-ask");
 			}
 		};
 		window.addEventListener("keydown", onGlobalKeyDown);
 		return () => window.removeEventListener("keydown", onGlobalKeyDown);
-	}, [activeWorkspaceId, activeWs, globalWs, projectWorkspaces]);
+	}, [activeWorkspaceId, activeWs, globalWs, projectWorkspaces, openModal]);
 
 	// "+" button click: opens a popover menu (current dir vs new worktree)
 	// instead of silently mutating git state on disk.
@@ -929,6 +937,16 @@ export function SessionSidebar() {
 						className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg hairline bg-[var(--bg-active-fill)] text-neutral-300 shadow-sm transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95"
 					>
 						<Plus size={14} />
+					</button>
+
+					{/* Quick Ask Button */}
+					<button
+						type="button"
+						onClick={() => openModal("quick-ask")}
+						title="快速提问 (Cmd+Shift+K)"
+						className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg hairline bg-[var(--bg-active-fill)] text-neutral-300 shadow-sm transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95"
+					>
+						<MessageCircleQuestion size={14} />
 					</button>
 				</div>
 

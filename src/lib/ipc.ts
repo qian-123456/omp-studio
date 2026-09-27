@@ -95,6 +95,10 @@ export const deleteSession = (sessionId: string) =>
 export const sessionExportHtml = (sessionId: string) =>
 	invoke<string>("session_export_html", { sessionId });
 
+/** One-shot throwaway question to the supervisor model (scratchpad, no session). */
+export const quickAsk = (prompt: string, model?: string) =>
+	invoke<string>("quick_ask", { prompt, model });
+
 // ---- B — rpc ----
 
 export const rpcStart = (opts: StartOpts) =>
