@@ -17,24 +17,45 @@ startSessionEvents()
 // the capsule thumb only renders while an element is actively scrolling (or
 // while the pointer hovers/drags the scrollbar lane). Tag the scrolled element
 // itself — ancestor selectors are unreliable against scrollbar pseudo-elements.
-const scrollingEls = new Map<Element, number>();
+// `data-scroll-active` records intent so a mutation observer can restore the
+// class whenever a React re-render rewrites `className` and strips it.
+const scrollingEls = new Set<Element>();
+const scrollIdleTimers = new Map<Element, number>();
 window.addEventListener(
 	"scroll",
 	(e) => {
 		const el = (e.target === document ? document.body : e.target) as Element;
+		scrollingEls.add(el);
+		el.setAttribute("data-scroll-active", "");
 		el.classList.add("is-scrolling");
-		const prev = scrollingEls.get(el);
+		const prev = scrollIdleTimers.get(el);
 		if (prev !== undefined) window.clearTimeout(prev);
-		scrollingEls.set(
+		scrollIdleTimers.set(
 			el,
 			window.setTimeout(() => {
-				el.classList.remove("is-scrolling");
 				scrollingEls.delete(el);
+				scrollIdleTimers.delete(el);
+				el.removeAttribute("data-scroll-active");
+				el.classList.remove("is-scrolling");
 			}, 500),
 		);
 	},
 	{ capture: true, passive: true },
 );
+// React re-renders on scroll (e.g. scroll-pill state) can reset `className`
+// and drop `is-scrolling`; re-apply it while the element is marked active.
+new MutationObserver((records) => {
+	for (const rec of records) {
+		const el = rec.target as Element;
+		if (scrollingEls.has(el) && !el.classList.contains("is-scrolling")) {
+			el.classList.add("is-scrolling");
+		}
+	}
+}).observe(document.body, {
+	subtree: true,
+	attributes: true,
+	attributeFilter: ["class"],
+});
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 	<React.StrictMode>
