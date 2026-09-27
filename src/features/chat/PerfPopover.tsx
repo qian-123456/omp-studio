@@ -115,7 +115,7 @@ export function PerfPopover({
 			<div
 				onClick={(e) => e.stopPropagation()}
 				className={clsx(
-					"absolute z-50 w-72 rounded-2xl vibrancy-popover shadow-apple-modal hairline p-3.5 text-neutral-200 select-none",
+					"absolute z-50 w-72 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-divider)] shadow-apple-modal p-3.5 text-neutral-200 select-none",
 					className,
 				)}
 			>

@@ -42,7 +42,7 @@ export function SessionStatsPopover({
 		<>
 			{/* Backdrop */}
 			<div
-				className="fixed inset-0 z-40 bg-[var(--overlay)] backdrop-blur-xs"
+				className="fixed inset-0 z-40"
 				onMouseDown={(e) => {
 					if (e.target === e.currentTarget) {
 						onClose();
