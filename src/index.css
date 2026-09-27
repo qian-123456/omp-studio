@@ -806,11 +806,12 @@ textarea {
 	user-select: none;
 }
 
-/* Overlay-style scrollbars for WebKit (custom rules REQUIRED here: the user's
- * macOS "show scroll bars" is non-overlay, so native bars are classic style).
- * Design: 8px lane with a fully transparent track — no lane edge at all; the
- * capsule thumb only renders on container hover / thumb hover / drag, exactly
- * like the macOS overlay pill. Applies to every element incl. xterm viewport. */
+/* Scrollbar = floating capsule only. The user's macOS shows classic scrollbars
+ * (no native overlay), so we style ::-webkit-scrollbar directly: transparent
+ * track/buttons (no lane edge), and a permanently subtle capsule thumb that
+ * darkens on scroll (data-scroll-active), hover, and drag. WebKit matches some
+ * scrollbar pseudo pseudo-classes unreliably — an always-on subtle thumb is
+ * the predictable floor; active states are pure enhancement. */
 *::-webkit-scrollbar {
 	width: 8px;
 	height: 8px;
@@ -829,7 +830,7 @@ textarea {
 	height: 0;
 }
 *::-webkit-scrollbar-thumb {
-	background-color: transparent;
+	background-color: var(--scrollbar-thumb, rgba(150, 150, 150, 0.28));
 	background-clip: padding-box;
 	border: 2px solid transparent;
 	border-radius: 999px;
@@ -840,15 +841,11 @@ textarea {
 *:hover::-webkit-scrollbar-thumb,
 *::-webkit-scrollbar-thumb:hover,
 *::-webkit-scrollbar-thumb:active {
-	background-color: var(--scrollbar-thumb, rgba(150, 150, 150, 0.4));
-	background-clip: padding-box;
-}
-*::-webkit-scrollbar-thumb:active {
-	background-color: var(--scrollbar-thumb-hover, rgba(150, 150, 150, 0.6));
+	background-color: var(--scrollbar-thumb-hover, rgba(150, 150, 150, 0.55));
 }
 :root {
-	--scrollbar-thumb: light-dark(rgba(0, 0, 0, 0.30), rgba(255, 255, 255, 0.26));
-	--scrollbar-thumb-hover: light-dark(rgba(0, 0, 0, 0.55), rgba(255, 255, 255, 0.50));
+	--scrollbar-thumb: light-dark(rgba(0, 0, 0, 0.26), rgba(255, 255, 255, 0.24));
+	--scrollbar-thumb-hover: light-dark(rgba(0, 0, 0, 0.5), rgba(255, 255, 255, 0.45));
 }
 
 /* Chat font-size presets (settings → 外观). */
