@@ -19,6 +19,8 @@ import { useOmpConfigStore } from "./ompConfigStore";
 import {
 	ompConfigDescription,
 	ompConfigGroup,
+	ompConfigOptionLabel,
+	ompConfigOptions,
 	ompConfigTitle,
 } from "./ompConfigMeta";
 import { groupByOmpTab } from "./ompConfigTabs";
@@ -76,11 +78,15 @@ function draftFor(entry: OmpConfigEntry): string {
  * switch right. Clicking the row expands the long description plus the program
  * key and type badges; booleans toggle via the macOS-style switch directly.
  */
+/** Sentinel select value for the "type a custom value" escape hatch. */
+const CUSTOM_VALUE = "__custom__";
+
 function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () => void }) {
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState("");
 	const [showValue, setShowValue] = useState(false);
+	const [custom, setCustom] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [savedTick, setSavedTick] = useState(false);
 	const [rowError, setRowError] = useState<string | null>(null);
@@ -91,7 +97,11 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 	};
 
 	const startEdit = () => {
-		setDraft(draftFor(entry));
+		const next = draftFor(entry);
+		setDraft(next);
+		setCustom(
+			options !== null && !options.some((o) => o.value === next),
+		);
 		setRowError(null);
 		setEditing(true);
 	};
@@ -163,6 +173,18 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 	const isBool = entry.valueType === "boolean";
 	const isJson = entry.valueType === "array" || entry.valueType === "record";
 	const isUnset = entry.value === null || entry.value === undefined;
+	// Dropdown choices from the embedded schema (strict enums, or presets for
+	// numbers/strings); redacted and JSON fields stay free-form.
+	const options = isJson || entry.redacted ? null : ompConfigOptions(entry.key);
+	const optionLabel = (o: { value: string; label?: string }) => {
+		const label = ompConfigOptionLabel(entry.key, o);
+		// Schema-authored labels (e.g. "10%", "8x8 repeated, black") already present
+		// the value; only curated Chinese labels get the raw value appended.
+		if (label === o.value || (o.label !== undefined && label === o.label)) {
+			return label;
+		}
+		return `${label}（${o.value}）`;
+	};
 
 	return (
 		<div className="rounded-lg border border-neutral-800/70 bg-neutral-900/50">
@@ -292,6 +314,54 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 							placeholder={entry.valueType === "array" ? '["a","b"]' : '{"k":"v"}'}
 							className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:border-amber-500 focus:outline-none"
 						/>
+					) : options ? (
+						<div className="space-y-1.5">
+							<select
+								value={
+									custom || !options.some((o) => o.value === draft)
+										? CUSTOM_VALUE
+										: draft
+								}
+								disabled={busy}
+								onChange={(e) => {
+									if (e.target.value === CUSTOM_VALUE) {
+										setCustom(true);
+									} else {
+										setCustom(false);
+										setDraft(e.target.value);
+									}
+								}}
+								className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-[11px] text-neutral-200 focus:border-amber-500 focus:outline-none"
+							>
+								{options.map((o) => (
+									<option key={o.value} value={o.value}>
+										{optionLabel(o)}
+									</option>
+								))}
+								<option value={CUSTOM_VALUE}>自定义…</option>
+							</select>
+							{custom && (
+								<input
+									type="text"
+									value={draft}
+									onChange={(e) => setDraft(e.target.value)}
+									onKeyDown={(e) => {
+										if (isComposing(e)) return;
+										if (e.key === "Enter") {
+											e.preventDefault();
+											void save(draft);
+										}
+										if (e.key === "Escape") {
+											setEditing(false);
+										}
+									}}
+									spellCheck={false}
+									autoFocus
+									placeholder="输入自定义值"
+									className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:border-amber-500 focus:outline-none"
+								/>
+							)}
+						</div>
 					) : (
 						<input
 							type={entry.redacted && !showValue ? "password" : "text"}
@@ -315,7 +385,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 							className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:border-amber-500 focus:outline-none"
 						/>
 					)}
-					{entry.valueType === "enum" && (
+					{entry.valueType === "enum" && !options && (
 						<div className="text-[10px] text-neutral-500">
 							枚举值需与 OMP 允许值完全匹配（可先运行 omp config set 查看错误提示中的可选值）
 						</div>
