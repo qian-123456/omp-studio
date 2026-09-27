@@ -1613,7 +1613,7 @@ export function SessionSidebar() {
 													disabled={
 														creatingWs === grouped.globalGroup.workspace.id
 													}
-													className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-selected)] hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 ml-1 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+													className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-selected)] hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 shrink-0 max-w-0 opacity-0 overflow-hidden group-hover:max-w-[28px] group-hover:opacity-100 group-hover:ml-1 focus:max-w-[28px] focus:opacity-100 focus:ml-1 transition-all duration-150 ease-out"
 												>
 													{creatingWs === grouped.globalGroup.workspace.id ? (
 														<Loader2 size={13} className="animate-spin" />
@@ -1706,7 +1706,7 @@ export function SessionSidebar() {
 													onClick={(e) => handlePlusClick(wg.workspace, e)}
 													title="新建会话（选择当前目录或独立 Worktree）"
 													disabled={creatingWs === wg.workspace.id}
-													className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-selected)] hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 ml-1 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+													className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-selected)] hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 shrink-0 max-w-0 opacity-0 overflow-hidden group-hover:max-w-[28px] group-hover:opacity-100 group-hover:ml-1 focus:max-w-[28px] focus:opacity-100 focus:ml-1 transition-all duration-150 ease-out"
 												>
 													{creatingWs === wg.workspace.id ? (
 														<Loader2 size={13} className="animate-spin" />
@@ -2443,8 +2443,7 @@ function CollapsibleSubgroup({
 							e.stopPropagation();
 							onCreateSession(ws, sub.createCwd!);
 						}}
-						className="mr-1 shrink-0 rounded p-0.5 text-neutral-600 opacity-0 hover:bg-neutral-700/60 hover:text-neutral-200 focus:opacity-100 group-hover/sub:opacity-100"
-						title="在该目录下新建会话"
+						className="shrink-0 rounded p-0.5 text-neutral-600 dark:text-neutral-400 max-w-0 opacity-0 overflow-hidden group-hover/sub:max-w-[24px] group-hover/sub:opacity-100 group-hover/sub:mr-1 focus:max-w-[24px] focus:opacity-100 focus:mr-1 hover:bg-[var(--bg-selected)] hover:text-neutral-200 transition-all duration-150 ease-out"
 					>
 						<Plus size={11} />
 					</button>
@@ -2456,8 +2455,7 @@ function CollapsibleSubgroup({
 							e.stopPropagation();
 							onBatchArchive();
 						}}
-						className="mr-2 shrink-0 rounded p-0.5 text-neutral-600 opacity-0 hover:bg-neutral-700/60 hover:text-amber-300 focus:opacity-100 group-hover/sub:opacity-100"
-						title="批量归档该组全部会话"
+						className="shrink-0 rounded p-0.5 text-neutral-600 dark:text-neutral-400 max-w-0 opacity-0 overflow-hidden group-hover/sub:max-w-[24px] group-hover/sub:opacity-100 group-hover/sub:mr-1 focus:max-w-[24px] focus:opacity-100 focus:mr-1 hover:bg-neutral-700/60 hover:text-amber-300 transition-all duration-150 ease-out"
 					>
 						<Archive size={11} />
 					</button>

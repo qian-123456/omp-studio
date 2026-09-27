@@ -567,20 +567,39 @@ export function SessionRow({
 						title="未读"
 					/>
 				)}
-				{pill ? (
+				{pill && (
 					<span
 						className={clsx(
-							"ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold",
+							"ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold transition-all",
 							pill.cls,
 						)}
 					>
 						{pill.label}
 					</span>
-				) : (
+				)}
+				{session.pinned && (
+					<Pin
+						size={11}
+						className="shrink-0 fill-amber-400/40 text-amber-400 ml-0.5"
+						aria-label="已置顶"
+					/>
+				)}
+			</div>
+
+			{/* Trailing Interactive Tray: 0 width resting to yield 100% space to title; smoothly reveals on hover */}
+			<div
+				className={clsx(
+					"flex items-center gap-1 shrink-0 overflow-hidden transition-all duration-200 ease-out",
+					menuOpen
+						? "max-w-[150px] opacity-100 ml-1.5"
+						: "max-w-0 opacity-0 group-hover:max-w-[150px] group-hover:opacity-100 group-hover:ml-1.5 group-focus-within:max-w-[150px] group-focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
+				)}
+			>
+				{!pill && (
 					<span
 						title={updatedAtTs}
 						className={clsx(
-							"ml-auto shrink-0 text-[10px] transition-all duration-150 tabular-nums font-mono opacity-0 group-hover:opacity-100",
+							"text-[10px] tabular-nums font-mono whitespace-nowrap",
 							session.status === "working"
 								? "text-neutral-700 dark:text-neutral-300 font-medium"
 								: "text-neutral-500 dark:text-neutral-400",
@@ -589,65 +608,57 @@ export function SessionRow({
 						{relativeTime(session.updatedAt || session.createdAt)}
 					</span>
 				)}
-				{session.pinned && (
-					<Pin
-						size={11}
-						className="shrink-0 fill-amber-400/40 text-amber-400"
-						aria-label="已置顶"
-					/>
-				)}
-			</div>
 
-			{/* Inline quick actions */}
-			{session.status === "review" && (
+				{/* Inline quick actions */}
+				{session.status === "review" && (
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							handleAccept(false);
+						}}
+						className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-300 hover:bg-orange-500/20"
+						title="验收此会话（标记本轮完成）"
+					>
+						✅ 验收
+					</button>
+				)}
+				{(session.status === "interrupted" || session.status === "suspended") && (
+					<button
+						type="button"
+						disabled={busy}
+						onClick={(e) => {
+							e.stopPropagation();
+							handleResume();
+						}}
+						className="shrink-0 rounded p-1 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40"
+						title="恢复会话"
+					>
+						{busy ? (
+							<Loader2 size={12} className="animate-spin" />
+						) : (
+							<Play size={12} />
+						)}
+					</button>
+				)}
+
+				{/* Row Action Menu Button */}
 				<button
 					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						handleAccept(false);
-					}}
-					className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-300 opacity-0 transition-opacity hover:bg-orange-500/20 focus:opacity-100 group-hover:opacity-100"
-					title="验收此会话（标记本轮完成）"
-				>
-					✅ 验收
-				</button>
-			)}
-			{(session.status === "interrupted" || session.status === "suspended") && (
-				<button
-					type="button"
-					disabled={busy}
-					onClick={(e) => {
-						e.stopPropagation();
-						handleResume();
-					}}
-					className="shrink-0 rounded p-1 text-emerald-400 opacity-0 hover:bg-emerald-500/20 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
-					title="恢复会话"
-				>
-					{busy ? (
-						<Loader2 size={12} className="animate-spin" />
-					) : (
-						<Play size={12} />
+					onClick={handleMenuBtnClick}
+					className={clsx(
+						"shrink-0 rounded-[6px] p-1 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95",
+						menuOpen
+							? "text-neutral-200"
+							: isSelected
+								? "text-neutral-400 hover:text-neutral-200"
+								: "text-neutral-500 hover:text-neutral-200",
 					)}
+					title="操作菜单"
+				>
+					<MoreHorizontal size={14} />
 				</button>
-			)}
-
-			{/* Row Action Menu Button */}
-			<button
-				type="button"
-				onClick={handleMenuBtnClick}
-				className={clsx(
-					"shrink-0 rounded-[6px] p-1 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95",
-					menuOpen
-						? "text-neutral-200 opacity-100"
-						: isSelected
-							? "text-neutral-400 opacity-40 hover:opacity-100 focus:opacity-100"
-							: "text-neutral-500 opacity-0 group-hover:opacity-100 focus:opacity-100",
-				)}
-				title="操作菜单"
-			>
-				<MoreHorizontal size={14} />
-			</button>
-
+			</div>
 			{/* Floating Context Menu */}
 			{menuOpen && menuCoords && (
 				<div
