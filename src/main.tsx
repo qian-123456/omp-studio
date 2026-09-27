@@ -17,24 +17,50 @@ startSessionEvents()
 // the capsule thumb renders only while an element is actively scrolling (or
 // while the pointer hovers/drags the scrollbar lane). WebKit DOES repaint
 // scrollbar pseudo-elements on class changes but NOT on attribute changes,
-// so the flag must be a class on the scrolled element itself. React re-renders
-// that reset `className` mid-scroll are re-covered by the very next scroll
-// event in the same gesture, so no mutation observer is needed.
+// so the flag must be a class on the scrolled element itself.
+// Wheel events cover mouse/trackpad scrolls even where a scroll event is
+// swallowed by React; pointermove into the scrollbar lane covers drag.
 const scrollIdleTimers = new Map<Element, number>();
+const markScrolling = (el: Element) => {
+	el.classList.add("is-scrolling");
+	const prev = scrollIdleTimers.get(el);
+	if (prev !== undefined) window.clearTimeout(prev);
+	scrollIdleTimers.set(
+		el,
+		window.setTimeout(() => {
+			scrollIdleTimers.delete(el);
+			el.classList.remove("is-scrolling");
+		}, 600),
+	);
+};
 window.addEventListener(
 	"scroll",
+	(e) => markScrolling(e.target === document ? document.body : (e.target as Element)),
+	{ capture: true, passive: true },
+);
+// Wheel scroll: mark the element under the pointer (closest scrollable).
+window.addEventListener(
+	"wheel",
 	(e) => {
-		const el = (e.target === document ? document.body : e.target) as Element;
-		el.classList.add("is-scrolling");
-		const prev = scrollIdleTimers.get(el);
-		if (prev !== undefined) window.clearTimeout(prev);
-		scrollIdleTimers.set(
-			el,
-			window.setTimeout(() => {
-				scrollIdleTimers.delete(el);
-				el.classList.remove("is-scrolling");
-			}, 600),
-		);
+		let el = e.target as Element | null;
+		while (el && el !== document.body) {
+			const st = getComputedStyle(el);
+			if (/(auto|scroll)/.test(st.overflowY + st.overflowX)) break;
+			el = el.parentElement;
+		}
+		markScrolling(el ?? document.body);
+	},
+	{ capture: true, passive: true },
+);
+// Pointer entering/dragging the scrollbar lane (right ~14px of a scrollable el).
+window.addEventListener(
+	"pointermove",
+	(e) => {
+		const t = e.target as Element;
+		const scroller = t.closest?.("*[style*='overflow'], .overflow-y-auto, .overflow-x-auto, .overflow-auto, .overflow-scroll, .overflow-y-scroll, .overflow-x-scroll");
+		if (!scroller) return;
+		const r = scroller.getBoundingClientRect();
+		if (e.clientX >= r.right - 14 || e.clientY >= r.bottom - 14) markScrolling(scroller);
 	},
 	{ capture: true, passive: true },
 );
