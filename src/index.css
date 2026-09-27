@@ -819,25 +819,12 @@ textarea {
  * Applied universally across html, body, and all scrollable containers (pre, code, textarea, etc.).
  * xterm terminal (.xterm, .xterm-viewport, .xterm-screen) is explicitly excluded to preserve built-in terminal scrolling.
  */
-:root,
-html,
-body,
-*,
-*::before,
-*::after {
-	scrollbar-width: thin;
-	scrollbar-color: var(--scrollbar-thumb) transparent;
-}
-
-/* Explicit coverage for pre, code, textarea, CodeMirror scroller, and overflow containers */
-pre,
-code,
-textarea,
-.cm-scroller,
-[class*="overflow-"] {
-	scrollbar-width: thin;
-	scrollbar-color: var(--scrollbar-thumb) transparent;
-}
+/* macOS floating capsule scrollbar — webkit pseudo-elements only.
+ * NOTE: do NOT set scrollbar-width/scrollbar-color on universal selectors —
+ * in WebKit/Chromium that forces the element onto the *native* scrollbar path
+ * and silently disables every ::-webkit-scrollbar rule below.
+ * Keep .no-scrollbar as the only scrollbar-width user (it hides the bar).
+ * xterm (.xterm, .xterm-viewport, .xterm-screen) excluded — its own scroller. */
 
 /* Terminal exclusion: keep xterm viewport using native platform scrollbars */
 .xterm,
