@@ -9,6 +9,8 @@ import {
 	ClipboardCopy,
 	Download,
 	FileInput,
+	Folder,
+	FolderOpen,
 	Loader2,
 	LogIn,
 	Pencil,
@@ -60,6 +62,11 @@ export function ProviderPanel() {
 	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [expandedKey, setExpandedKey] = useState<string | null>(null);
+	const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+	const toggleGroup = (tier: string) => {
+		setCollapsedGroups((prev) => ({ ...prev, [tier]: !prev[tier] }));
+	};
 
 	useEffect(() => {
 		void load();
@@ -111,6 +118,23 @@ export function ProviderPanel() {
 			return haystack.includes(q);
 		});
 	}, [rows, query]);
+
+	const groups = useMemo(() => {
+		const g0: ListRow[] = [];
+		const g1: ListRow[] = [];
+		const g2: ListRow[] = [];
+		for (const row of filteredRows) {
+			const tier = row.workbench ? (row.omp ? 0 : 2) : 1;
+			if (tier === 0) g0.push(row);
+			else if (tier === 1) g1.push(row);
+			else g2.push(row);
+		}
+		return [
+			{ label: "已托管", rows: g0 },
+			{ label: "待导入", rows: g1 },
+			{ label: "工作台私有", rows: g2 },
+		].filter((g) => g.rows.length > 0);
+	}, [filteredRows]);
 
 	const eligibleOmpIds = useMemo(
 		() => ompProviders.filter(canImportOmpProvider).map((p) => p.id),
@@ -271,30 +295,79 @@ export function ProviderPanel() {
 				</div>
 			)}
 
-			{filteredRows.length > 0 && (
-				<div className="relative">
-					{/* Continuous left spine */}
-					<div
-						aria-hidden="true"
-						className="pointer-events-none absolute left-[7px] top-0 bottom-0 w-px bg-[var(--border-divider)]"
-					/>
-					<div className="space-y-1.5 pl-5">
-						{filteredRows.map((row) => (
-							<UnifiedProviderRow
-								key={row.key}
-								row={row}
-								isExpanded={expandedKey === row.key}
-								onToggleExpand={() =>
-									setExpandedKey((curr) => (curr === row.key ? null : row.key))
-								}
-								onEdit={() => {
-									if (row.workbench) {
-										setDialog({ mode: "edit", provider: row.workbench });
-									}
-								}}
-							/>
-						))}
-					</div>
+			{groups.length > 0 && (
+				<div className="space-y-3">
+					{groups.map((group) => {
+						const isOpen = !collapsedGroups[group.label];
+						return (
+							<div key={group.label} className="mt-0.5">
+								{/* Group Header */}
+								<div
+									onClick={() => toggleGroup(group.label)}
+									className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--text)]/5 text-[var(--text)] transition-colors"
+								>
+									<div className="flex items-center gap-1.5 min-w-0 flex-1">
+										{isOpen ? (
+											<ChevronDown
+												size={13}
+												className="text-[var(--text-dim)] shrink-0"
+											/>
+										) : (
+											<ChevronRight
+												size={13}
+												className="text-[var(--text-dim)] shrink-0"
+											/>
+										)}
+										{isOpen ? (
+											<FolderOpen
+												size={14}
+												className="shrink-0 text-neutral-400"
+											/>
+										) : (
+											<Folder
+												size={14}
+												className="shrink-0 text-neutral-400"
+											/>
+										)}
+										<span className="font-bold text-[12.5px] text-[var(--text)] truncate">
+											{group.label}
+										</span>
+										<span className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-dim)]">
+											{group.rows.length}
+										</span>
+									</div>
+								</div>
+
+								{/* Group Body */}
+								{isOpen && (
+									<div className="pb-1">
+										<div className="pl-2 border-l-2 border-[var(--text-dim)]/40 my-0.5 ml-[22px] space-y-1.5">
+											{group.rows.map((row) => (
+												<UnifiedProviderRow
+													key={row.key}
+													row={row}
+													isExpanded={expandedKey === row.key}
+													onToggleExpand={() =>
+														setExpandedKey((curr) =>
+															curr === row.key ? null : row.key,
+														)
+													}
+													onEdit={() => {
+														if (row.workbench) {
+															setDialog({
+																mode: "edit",
+																provider: row.workbench,
+															});
+														}
+													}}
+												/>
+											))}
+										</div>
+									</div>
+								)}
+							</div>
+						);
+					})}
 				</div>
 			)}
 
@@ -388,8 +461,6 @@ function UnifiedProviderRow({
 	const preset = workbench ? presetById(workbench.presetId) : undefined;
 	const color = preset?.color ?? "#f59e0b";
 	const isOmpOnly = !workbench && Boolean(info);
-	const isManaged = Boolean(workbench && info);
-	const isWorkbenchOnly = Boolean(workbench && !info);
 
 	const handleRowImport = async () => {
 		if (!info || rowImporting || importingOmp) return;
@@ -431,20 +502,8 @@ function UnifiedProviderRow({
 		return (
 			<div
 				onClick={onToggleExpand}
-				className="group relative flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)]"
+				className="group flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)]"
 			>
-				{/* Tick hanging off the continuous spine */}
-				<span
-					aria-hidden="true"
-					className={clsx(
-						"pointer-events-none absolute -left-[13px] top-1/2 -translate-y-1/2 h-[2px] rounded-full transition-all duration-150",
-						isManaged
-							? "w-3.5 bg-[#0A84FF]"
-							: isWorkbenchOnly
-								? "w-2.5 bg-neutral-500"
-								: "w-1.5 bg-neutral-600",
-					)}
-				/>
 
 				{/* Left items: Chevron + Preset dot + Name + Auth badge + host + {N} 模型 */}
 				<div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -634,19 +693,7 @@ function UnifiedProviderRow({
 
 	// Expanded state: card treatment echoing highlighted trace event
 	return (
-		<div className="group relative rounded-xl hairline bg-[var(--well-bg)] p-3 transition-colors">
-			{/* Tick grows / brightens */}
-			<span
-				aria-hidden="true"
-				className={clsx(
-					"pointer-events-none absolute -left-[13px] top-6 -translate-y-1/2 h-[2px] rounded-full transition-all duration-150",
-					isManaged
-						? "w-[17px] bg-[#0A84FF] shadow-[0_0_8px_rgba(10,132,255,0.6)]"
-						: isWorkbenchOnly
-							? "w-3 bg-neutral-300"
-							: "w-2 bg-neutral-400",
-				)}
-			/>
+		<div className="group rounded-xl hairline border-l-[3px] border-l-[#0A84FF] bg-[var(--well-bg)] p-3 transition-colors">
 
 			{/* Header bar — clicking toggles collapse */}
 			<div
