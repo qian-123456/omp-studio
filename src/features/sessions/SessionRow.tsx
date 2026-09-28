@@ -61,64 +61,111 @@ interface SessionRowProps {
 	onBatchAction?: (action: "archive" | "pin" | "delete", ids: string[]) => void;
 }
 
-/** Text pill for statuses that need human attention — readable at a glance
- * where a bare colored dot is not (ZCode/Codex style). */
-const STATUS_PILLS: Record<string, { label: string; cls: string }> = {
+/**
+ * Status indicator configuration and rendering.
+ * Overrides RFC S3–S7 / T2/T4 per user requirements:
+ * 1. Solid dots for all statuses (no hollow borders, no rings, no bg-transparent).
+ * 2. working keeps the Loader2 spinner with emerald treatment (single mark, no duplicate dot).
+ * 3. Every status gets a solid mark: idle gets a solid 7px neutral-500 dot.
+ * 4. External/suspended use bg-status-external / bg-status-suspended tokens.
+ * 5. Interrupted uses solid rose-400 (no ring).
+ * 6. Attention statuses (awaiting_approval=待审批, awaiting_answer=待回答, review=待验收, error=异常, interrupted=已中断)
+ *    render dot+label ALWAYS.
+ * 7. Ambient statuses (working=运行中, suspended=已挂起, external=外部进程, idle=空闲)
+ *    render dot + hover-expanding label (max-w-0 → group-hover:max-w-[44px]).
+ * 8. Status mark sits adjacent to the title, not flush-right. STATUS_PILLS removed.
+ */
+const STATUS_CONFIG: Record<
+	SessionMeta["status"],
+	{
+		label: string;
+		title: string;
+		attention: boolean;
+		dotCls?: string;
+	}
+> = {
 	awaiting_approval: {
 		label: "待审批",
-		cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
+		title: "待审批 (Awaiting Approval)",
+		attention: true,
+		dotCls: "bg-amber-400",
 	},
 	awaiting_answer: {
 		label: "待回答",
-		cls: "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40",
+		title: "待回答 (Awaiting Answer)",
+		attention: true,
+		dotCls: "bg-sky-400",
 	},
 	review: {
 		label: "待验收",
-		cls: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/40",
+		title: "待验收 (Review)",
+		attention: true,
+		dotCls: "bg-orange-500",
 	},
 	error: {
 		label: "异常",
-		cls: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40",
+		title: "异常 (Error)",
+		attention: true,
+		dotCls: "bg-rose-500",
 	},
 	interrupted: {
 		label: "已中断",
-		cls: "bg-neutral-200 text-neutral-700 border-neutral-300 dark:bg-rose-500/15 dark:text-rose-300/90 dark:border-rose-500/30",
+		title: "已中断 (Interrupted)",
+		attention: true,
+		dotCls: "bg-rose-400",
+	},
+	working: {
+		label: "运行中",
+		title: "运行中 (Working)",
+		attention: false,
+	},
+	suspended: {
+		label: "已挂起",
+		title: "已挂起 (Suspended)",
+		attention: false,
+		dotCls: "bg-status-suspended",
+	},
+	external: {
+		label: "外部进程",
+		title: "外部进程 (External)",
+		attention: false,
+		dotCls: "bg-status-external",
+	},
+	idle: {
+		label: "空闲",
+		title: "空闲 (Idle)",
+		attention: false,
+		dotCls: "bg-neutral-500",
 	},
 };
-/** Status dot rendering per §11 A spec. */
-function renderStatusDot(status: SessionMeta["status"]) {
-	switch (status) {
-		case "working":
-			return (
-				<span className="relative flex h-2 w-2 shrink-0" title="执行中 (Working)">
-					<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-					<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+
+export function renderStatusDot(status: SessionMeta["status"]) {
+	const cfg = STATUS_CONFIG[status];
+	if (!cfg) return null;
+
+	const mark =
+		status === "working" ? (
+			<Loader2 size={11} className="shrink-0 animate-spin text-emerald-400" />
+		) : (
+			<span className={clsx("h-[7px] w-[7px] shrink-0 rounded-full", cfg.dotCls)} />
+		);
+
+	return (
+		<span className="flex shrink-0 items-center" title={cfg.title}>
+			{mark}
+			{cfg.attention ? (
+				<span className="ml-0.5 whitespace-nowrap text-[9px] font-semibold text-[var(--text-muted)]">
+					{cfg.label}
 				</span>
-			);
-		// Attention statuses render as text pills (STATUS_PILLS), not dots.
-		case "suspended":
-			return (
-				<span
-					className="h-2 w-2 shrink-0 rounded-full border border-neutral-400 bg-transparent"
-					title="已挂起 (Suspended)"
-				/>
-			);
-		case "external":
-			return (
-				<span
-					className="h-2 w-2 shrink-0 rounded-full border-2 border-purple-500 bg-transparent"
-					title="外部进程 (External)"
-				/>
-			);
-		default:
-			return (
-				<span
-					className="h-2 w-2 shrink-0 rounded-full bg-neutral-500"
-					title="空闲 (Idle)"
-				/>
-			);
-	}
+			) : (
+				<span className="max-w-0 overflow-hidden whitespace-nowrap text-[9px] font-semibold text-[var(--text-muted)] opacity-0 transition-all duration-200 group-hover:max-w-[44px] group-hover:opacity-100 group-hover:ml-0.5">
+					{cfg.label}
+				</span>
+			)}
+		</span>
+	);
 }
+
 
 
 export function SessionRow({
@@ -443,7 +490,6 @@ export function SessionRow({
 	const updatedAtTs = new Date(
 		session.updatedAt || session.createdAt,
 	).toLocaleString();
-	const pill = STATUS_PILLS[session.status];
 	const rowTooltip = [
 		sessionDisplayName(session),
 		session.git?.branch ? `分支: ${session.git.branch}${session.git.dirty ? ` (+${session.git.dirty})` : ""}` : "",
@@ -459,12 +505,12 @@ export function SessionRow({
 			className={clsx(
 				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-[8px] min-h-[28px] py-1 pr-2 transition-all",
 				isSelected
-					? "bg-neutral-800 text-neutral-100 border-l-2 border-indigo-500 ring-1 ring-inset ring-neutral-700/80"
+					? "bg-[var(--bg-selected)] text-[var(--text)]"
 					: isMultiSelected
 						? "bg-[#0A84FF]/20 text-white"
 						: isHighlighted
 							? "bg-[var(--bg-active-fill)] text-neutral-200"
-							: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
+							: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 				deletedWt && "opacity-50",
 			)}
 		>
@@ -476,8 +522,8 @@ export function SessionRow({
 				/>
 			)}
 
-			{/* Side-chat children collapse toggle */}
-			{hasChildren && (
+			{/* Side-chat children collapse toggle (or spacer for leaf rows to maintain alignment, overriding RFC) */}
+			{hasChildren ? (
 				<button
 					type="button"
 					onClick={(e) => {
@@ -493,25 +539,13 @@ export function SessionRow({
 						<ChevronDown size={11} />
 					)}
 				</button>
+			) : (
+				<span className="w-[15px] shrink-0" />
 			)}
-			{/* No chevron spacer for leaf rows — gives the title ~15px more room */}
 
+			{/* Title column — status mark sits adjacent to the title with a small gap,
+			 *  overriding RFC T2/T4 per verbatim user requirement. */}
 			<div className="flex min-w-0 flex-1 items-center gap-1.5" title={rowTooltip}>
-				{busy ? (
-					<Loader2
-						size={10}
-						className="shrink-0 animate-spin text-indigo-400"
-					/>
-				) : (
-					// Leading dot only for non-attention statuses (working/idle/
-					// suspended/external); attention states show a text pill instead.
-					!pill && (
-						<span className="shrink-0">
-							{renderStatusDot(session.status)}
-						</span>
-					)
-				)}
-
 				{isRenaming ? (
 					<input
 						ref={renameInputRef}
@@ -544,120 +578,98 @@ export function SessionRow({
 							startInlineRename();
 						}}
 						className={clsx(
-							"min-w-0 flex-1 cursor-text truncate text-xs transition-colors",
-							session.status === "working" || session.unread
-								? "font-semibold text-neutral-900 dark:text-neutral-100"
-								: session.status === "awaiting_approval" ||
-									  session.status === "awaiting_answer" ||
-									  session.status === "review"
-									? "font-medium text-neutral-900 dark:text-neutral-200"
-									: session.status === "error" ||
-										  session.status === "interrupted"
-										? "font-medium text-neutral-800 dark:text-neutral-300"
-										: "font-normal text-neutral-700 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-neutral-100",
+							"min-w-0 truncate cursor-text text-xs transition-colors",
+							isSelected
+								? "font-semibold text-[var(--text)]"
+								: "font-normal text-[var(--text)]",
 						)}
 						title={sessionDisplayName(session)}
 					>
 						{sessionDisplayName(session)}
 					</span>
 				)}
-				{session.unread && (
-					<span
-						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500"
-						title="未读"
-					/>
-				)}
-				{pill && (
-					<span
-						className={clsx(
-							"ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold transition-all",
-							pill.cls,
-						)}
-					>
-						{pill.label}
-					</span>
-				)}
-				{session.pinned && (
-					<Pin
-						size={11}
-						className="shrink-0 fill-amber-400/40 text-amber-400 ml-0.5"
-						aria-label="已置顶"
-					/>
+				{busy ? (
+					<Loader2 size={11} className="shrink-0 animate-spin text-[var(--text-muted)]" />
+				) : (
+					renderStatusDot(session.status)
 				)}
 			</div>
 
-			{/* Trailing Interactive Tray: 0 width resting to yield 100% space to title; smoothly reveals on hover */}
-			<div
-				className={clsx(
-					"flex items-center gap-1 shrink-0 overflow-hidden transition-all duration-200 ease-out",
-					menuOpen
-						? "max-w-[150px] opacity-100 ml-1.5"
-						: "max-w-0 opacity-0 group-hover:max-w-[150px] group-hover:opacity-100 group-hover:ml-1.5 group-focus-within:max-w-[150px] group-focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
-				)}
-			>
-				{!pill && (
+			{/* Trailing zone: permanent relative-time stamp with the bare "…" menu button overlaid
+			 *  (Time Swap — zero extra layout width). Quick actions reveal on hover. */}
+			<div className="relative flex shrink-0 items-center ml-1">
+				{/* Rest state: unread dot only on a bare idle row, never beside another indicator. */}
+				{session.unread && session.status === "idle" && !session.live && !busy && (
 					<span
-						title={updatedAtTs}
-						className={clsx(
-							"text-[10px] tabular-nums font-mono whitespace-nowrap",
-							session.status === "working"
-								? "text-neutral-700 dark:text-neutral-300 font-medium"
-								: "text-neutral-500 dark:text-neutral-400",
-						)}
-					>
-						{relativeTime(session.updatedAt || session.createdAt)}
-					</span>
+						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 mr-1"
+						title="未读"
+					/>
 				)}
-
-				{/* Inline quick actions */}
-				{session.status === "review" && (
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							handleAccept(false);
-						}}
-						className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-300 hover:bg-orange-500/20"
-						title="验收此会话（标记本轮完成）"
-					>
-						✅ 验收
-					</button>
-				)}
-				{(session.status === "interrupted" || session.status === "suspended") && (
-					<button
-						type="button"
-						disabled={busy}
-						onClick={(e) => {
-							e.stopPropagation();
-							handleResume();
-						}}
-						className="shrink-0 rounded p-1 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40"
-						title="恢复会话"
-					>
-						{busy ? (
-							<Loader2 size={12} className="animate-spin" />
-						) : (
-							<Play size={12} />
-						)}
-					</button>
-				)}
-
-				{/* Row Action Menu Button */}
-				<button
-					type="button"
-					onClick={handleMenuBtnClick}
-					className={clsx(
-						"shrink-0 rounded-[6px] p-1 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95",
-						menuOpen
-							? "text-neutral-200"
-							: isSelected
-								? "text-neutral-400 hover:text-neutral-200"
-								: "text-neutral-500 hover:text-neutral-200",
-					)}
-					title="操作菜单"
+				<span
+					title={updatedAtTs}
+					className="ml-1 text-[10px] tabular-nums font-mono whitespace-nowrap text-[var(--text-dim)]"
 				>
-					<MoreHorizontal size={14} />
-				</button>
+					{relativeTime(session.updatedAt || session.createdAt)}
+				</span>
+
+				{/* Hover overlay: status label + quick actions + "…" — absolutely
+				 *  positioned over the title's tail so nothing eats title width.
+				 *  (RFC T2 Time Swap applied to the whole trailing cluster.) */}
+				<div
+					className={clsx(
+						"absolute inset-y-0 right-0 z-10 flex items-center gap-1 pl-3 rounded-r-[8px] transition-opacity duration-150",
+						isSelected
+							? "bg-[var(--bg-selected)]"
+							: "bg-[var(--bg-hover)]",
+						menuOpen
+							? "opacity-100"
+							: "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
+					)}
+				>
+					{session.status === "review" && (
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								handleAccept(false);
+							}}
+							className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-emerald-500 hover:bg-emerald-500/15"
+							title="验收此会话（标记本轮完成）"
+						>
+							验收
+						</button>
+					)}
+					{(session.status === "interrupted" ||
+						session.status === "suspended") && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={(e) => {
+								e.stopPropagation();
+								handleResume();
+							}}
+							className="shrink-0 rounded p-1 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40"
+							title="恢复会话"
+						>
+							{busy ? (
+								<Loader2 size={12} className="animate-spin" />
+							) : (
+								<Play size={12} />
+							)}
+						</button>
+					)}
+					{session.pinned && (
+						<Pin size={11} className="shrink-0 fill-amber-400/40 text-amber-400" />
+					)}
+					<button
+						type="button"
+						onClick={handleMenuBtnClick}
+						className="flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)]"
+						title="操作菜单"
+					>
+						<MoreHorizontal size={14} />
+					</button>
+				</div>
 			</div>
 			{/* Floating Context Menu */}
 			{menuOpen && menuCoords && (

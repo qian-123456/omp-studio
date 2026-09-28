@@ -123,6 +123,8 @@
 	--color-blue-500: color-mix(in srgb, var(--status-renamed) 82%, black);
 	--color-blue-600: color-mix(in srgb, var(--status-renamed) 58%, var(--bg));
 	--color-cyan-400: var(--status-renamed);
+	--color-status-external: #a78bfa;
+	--color-status-suspended: #94a3b8;
 }
 
 /*

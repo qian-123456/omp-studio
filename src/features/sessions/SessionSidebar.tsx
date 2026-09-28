@@ -54,7 +54,6 @@ import {
 	type SessionTreeNode,
 	UNASSIGNED_LABEL,
 	groupSessions,
-	partitionNodes,
 } from "./grouping";
 import { SessionRow } from "./SessionRow";
 
@@ -507,44 +506,27 @@ export function SessionSidebar() {
 			counts.error === 0
 		)
 			return null;
+		// Capsule with colored number only — the tiny dot inside is dropped so
+		// the badge stays compact; color still carries the meaning.
+		const badge = (n: number, cls: string, tip: string) => (
+			<span
+				key={tip}
+				className={`rounded-full px-1.5 py-0.5 text-[9.5px] font-mono font-bold border ${cls}`}
+				title={tip}
+			>
+				{n}
+			</span>
+		);
 		return (
 			<div className="flex items-center gap-1 ml-auto shrink-0 mr-1">
-				{counts.working > 0 && (
-					<span
-						className="flex items-center gap-1 rounded-full bg-emerald-500/15 dark:bg-emerald-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/35"
-						title={`${counts.working} 个运行中会话`}
-					>
-						<span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-						{counts.working}
-					</span>
-				)}
-				{counts.awaiting > 0 && (
-					<span
-						className="flex items-center gap-1 rounded-full bg-amber-500/15 dark:bg-amber-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-bold text-amber-700 dark:text-amber-300 border border-amber-500/35"
-						title={`${counts.awaiting} 个待审批或回复`}
-					>
-						<span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-						{counts.awaiting}
-					</span>
-				)}
-				{counts.review > 0 && (
-					<span
-						className="flex items-center gap-1 rounded-full bg-orange-500/15 dark:bg-orange-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-bold text-orange-700 dark:text-orange-300 border border-orange-500/35"
-						title={`${counts.review} 个待验收`}
-					>
-						<span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
-						{counts.review}
-					</span>
-				)}
-				{counts.error > 0 && (
-					<span
-						className="flex items-center gap-1 rounded-full bg-rose-500/15 dark:bg-rose-500/25 px-1.5 py-0.5 text-[9.5px] font-mono font-bold text-rose-700 dark:text-rose-300 border border-rose-500/35"
-						title={`${counts.error} 个异常会话`}
-					>
-						<span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-						{counts.error}
-					</span>
-				)}
+				{counts.working > 0 &&
+					badge(counts.working, "bg-[var(--bg-hover)] text-[var(--text-muted)] border-[var(--border)]", `${counts.working} 个运行中会话`)}
+				{counts.awaiting > 0 &&
+					badge(counts.awaiting, "bg-sky-500/15 dark:bg-sky-500/25 text-sky-600 dark:text-sky-300 border-sky-500/40", `${counts.awaiting} 个待审批或回复`)}
+				{counts.review > 0 &&
+					badge(counts.review, "bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-300 border-emerald-500/35", `${counts.review} 个待验收`)}
+				{counts.error > 0 &&
+					badge(counts.error, "bg-rose-500/15 dark:bg-rose-500/25 text-rose-600 dark:text-rose-300 border-rose-500/35", `${counts.error} 个异常会话`)}
 			</div>
 		);
 	};
@@ -1132,8 +1114,8 @@ export function SessionSidebar() {
 							className={clsx(
 								"flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors",
 								activeWorkspaceId === "all"
-									? "bg-neutral-800 font-medium text-neutral-100"
-									: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
+									? "bg-[var(--bg-hover)] font-medium text-[var(--text)]"
+									: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]/60 hover:text-[var(--text)]",
 							)}
 						>
 							<div className="flex items-center gap-2">
@@ -1156,8 +1138,8 @@ export function SessionSidebar() {
 								className={clsx(
 									"flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors",
 									activeWorkspaceId === "__global"
-										? "bg-neutral-800 font-medium text-neutral-100"
-										: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
+										? "bg-[var(--bg-hover)] font-medium text-[var(--text)]"
+										: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]/60 hover:text-[var(--text)]",
 								)}
 							>
 								<div className="flex items-center gap-2">
@@ -1185,8 +1167,8 @@ export function SessionSidebar() {
 										className={clsx(
 											"group flex items-center justify-between rounded-md px-2 py-1.5 transition-colors",
 											isSelected
-												? "bg-neutral-800 font-medium text-neutral-100"
-												: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
+												? "bg-[var(--bg-hover)] font-medium text-[var(--text)]"
+												: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]/60 hover:text-[var(--text)]",
 										)}
 									>
 										<button
@@ -1385,29 +1367,26 @@ export function SessionSidebar() {
 							<div className="mt-0.5">
 								<div
 									onClick={() => toggleGroup("__pinned", true)}
-									className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
+								className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
 								>
 									<div className="flex items-center gap-1.5 min-w-0 flex-1">
 										{isGroupOpen("__pinned", true) ? (
 											<ChevronDown
 												size={13}
-												className="text-neutral-400 dark:text-neutral-500 shrink-0"
+												className="text-[var(--text-dim)] shrink-0"
 											/>
 										) : (
 											<ChevronRight
 												size={13}
-												className="text-neutral-400 dark:text-neutral-500 shrink-0"
+												className="text-[var(--text-dim)] shrink-0"
 											/>
 										)}
 										<Pin
 											size={13}
 											className="text-amber-500 dark:text-amber-400 fill-amber-500/30 shrink-0"
 										/>
-										<span className="font-bold text-[12.5px] text-neutral-800 dark:text-neutral-100 truncate">
+									<span className="font-bold text-[12.5px] text-[var(--text)] truncate">
 											已置顶
-										</span>
-										<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
-											({grouped.pinnedNodes.length})
 										</span>
 										{renderBubbleBadges(
 											getGroupStatusCounts(grouped.pinnedNodes),
@@ -1423,7 +1402,6 @@ export function SessionSidebar() {
 											searching={searching}
 											onSetCount={setSectionCount}
 											expanded={expandedSections}
-											onToggle={toggleSection}
 											collapsedSideChats={collapsedSideChats}
 											onToggleSideChat={toggleSideChat}
 											workspaces={workspaces}
@@ -1448,7 +1426,6 @@ export function SessionSidebar() {
 											searching={searching}
 											onSetCount={setSectionCount}
 											expanded={expandedSections}
-											onToggle={toggleSection}
 											collapsedSideChats={collapsedSideChats}
 											onToggleSideChat={toggleSideChat}
 											workspaces={workspaces}
@@ -1486,7 +1463,10 @@ export function SessionSidebar() {
 									)
 								) : activeWs && grouped.workspaceGroups[0] ? (
 									grouped.workspaceGroups[0].totalCount > 0 ? (
-										grouped.workspaceGroups[0].hasMultipleSubgroups ? (
+										// Semantics: every worktree/branch subgroup renders as CollapsibleSubgroup even when it is the only subgroup; bare default rows render with SessionList.
+										grouped.workspaceGroups[0].hasMultipleSubgroups ||
+										(grouped.workspaceGroups[0].subgroups[0] &&
+											grouped.workspaceGroups[0].subgroups[0].kind !== "default") ? (
 											grouped.workspaceGroups[0].subgroups.map((sub) => (
 												<CollapsibleSubgroup
 													key={sub.key}
@@ -1521,7 +1501,6 @@ export function SessionSidebar() {
 												searching={searching}
 												onSetCount={setSectionCount}
 												expanded={expandedSections}
-												onToggle={toggleSection}
 												collapsedSideChats={collapsedSideChats}
 												onToggleSideChat={toggleSideChat}
 												workspaces={workspaces}
@@ -1574,18 +1553,18 @@ export function SessionSidebar() {
 										<div className="mt-0.5">
 											<div
 												onClick={() => toggleGroup("__global", true)}
-												className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
+											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
 											>
 												<div className="flex items-center gap-1.5 min-w-0 flex-1">
 													{isOpen ? (
 														<ChevronDown
 															size={13}
-															className="text-neutral-400 dark:text-neutral-500 shrink-0"
+															className="text-[var(--text-dim)] shrink-0"
 														/>
 													) : (
 														<ChevronRight
 															size={13}
-															className="text-neutral-400 dark:text-neutral-500 shrink-0"
+															className="text-[var(--text-dim)] shrink-0"
 														/>
 													)}
 													<Globe
@@ -1593,13 +1572,10 @@ export function SessionSidebar() {
 														className={clsx("shrink-0", palette.folderColor)}
 													/>
 													<span
-														className="font-bold text-[12.5px] text-neutral-800 dark:text-neutral-100 truncate"
+													className="font-bold text-[12.5px] text-[var(--text)] truncate"
 														title={grouped.globalGroup.workspace.path}
 													>
 														全局工作区
-													</span>
-													<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
-														({grouped.globalGroup.totalCount})
 													</span>
 													{renderBubbleBadges(statusCounts)}
 												</div>
@@ -1613,7 +1589,7 @@ export function SessionSidebar() {
 													disabled={
 														creatingWs === grouped.globalGroup.workspace.id
 													}
-													className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-selected)] hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 shrink-0 max-w-0 opacity-0 overflow-hidden group-hover:max-w-[28px] group-hover:opacity-100 group-hover:ml-1 focus:max-w-[28px] focus:opacity-100 focus:ml-1 transition-all duration-150 ease-out"
+													className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100"
 												>
 													{creatingWs === grouped.globalGroup.workspace.id ? (
 														<Loader2 size={13} className="animate-spin" />
@@ -1626,7 +1602,7 @@ export function SessionSidebar() {
 											{isOpen && (
 												<div className="pb-1">
 													{grouped.globalGroup.totalCount === 0 ? (
-														<div className="px-6 py-2 text-[11px] text-neutral-500 italic">
+														<div className="px-6 py-2 text-[11px] text-[var(--text-dim)] italic">
 															暂无会话
 														</div>
 													) : (
@@ -1636,7 +1612,6 @@ export function SessionSidebar() {
 															searching={searching}
 															onSetCount={setSectionCount}
 															expanded={expandedSections}
-															onToggle={toggleSection}
 															collapsedSideChats={collapsedSideChats}
 															onToggleSideChat={toggleSideChat}
 															workspaces={workspaces}
@@ -1664,18 +1639,18 @@ export function SessionSidebar() {
 												onContextMenu={(e) =>
 													handleWorkspaceContextMenu(wg.workspace, e)
 												}
-												className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
+											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
 											>
 												<div className="flex items-center gap-1.5 min-w-0 flex-1">
 													{isOpen ? (
 														<ChevronDown
 															size={13}
-															className="text-neutral-400 dark:text-neutral-500 shrink-0"
+															className="text-[var(--text-dim)] shrink-0"
 														/>
 													) : (
 														<ChevronRight
 															size={13}
-															className="text-neutral-400 dark:text-neutral-500 shrink-0"
+															className="text-[var(--text-dim)] shrink-0"
 														/>
 													)}
 													{isOpen ? (
@@ -1690,13 +1665,10 @@ export function SessionSidebar() {
 														/>
 													)}
 													<span
-														className="font-bold text-[12.5px] text-neutral-800 dark:text-neutral-100 truncate"
+													className="font-bold text-[12.5px] text-[var(--text)] truncate"
 														title={`${wg.workspace.name} (${wg.workspace.path})`}
 													>
 														{wg.workspace.name}
-													</span>
-													<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
-														({wg.totalCount})
 													</span>
 													{renderBubbleBadges(statusCounts)}
 												</div>
@@ -1706,7 +1678,7 @@ export function SessionSidebar() {
 													onClick={(e) => handlePlusClick(wg.workspace, e)}
 													title="新建会话（选择当前目录或独立 Worktree）"
 													disabled={creatingWs === wg.workspace.id}
-													className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-selected)] hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 shrink-0 max-w-0 opacity-0 overflow-hidden group-hover:max-w-[28px] group-hover:opacity-100 group-hover:ml-1 focus:max-w-[28px] focus:opacity-100 focus:ml-1 transition-all duration-150 ease-out"
+													className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100"
 												>
 													{creatingWs === wg.workspace.id ? (
 														<Loader2 size={13} className="animate-spin" />
@@ -1720,10 +1692,12 @@ export function SessionSidebar() {
 											{isOpen && (
 												<div className="pb-1">
 													{wg.totalCount === 0 ? (
-														<div className="px-6 py-2 text-[11px] text-neutral-500 italic">
+														<div className="px-6 py-2 text-[11px] text-[var(--text-dim)] italic">
 															暂无会话
 														</div>
-													) : wg.hasMultipleSubgroups ? (
+													) : wg.hasMultipleSubgroups ||
+													  (wg.subgroups[0] &&
+															wg.subgroups[0].kind !== "default") ? (
 														wg.subgroups.map((sub) => (
 														<CollapsibleSubgroup
 															key={sub.key}
@@ -1750,51 +1724,22 @@ export function SessionSidebar() {
 														/>
 													))
 													) : (
-														<div>
-															{wg.subgroups[0] &&
-																wg.subgroups[0].kind !== "default" && (
-																	<div className="mx-1 px-2 py-1">
-																		<div className="inline-flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded bg-[var(--bg-hover)] border border-[var(--border)] max-w-full text-[11px] font-mono">
-																			{wg.subgroups[0].kind === "worktree" ? (
-																				<FolderGit2
-																					size={12}
-																					className="text-indigo-600 dark:text-indigo-400 shrink-0"
-																				/>
-																			) : (
-																				<GitBranch
-																					size={12}
-																					className="text-purple-600 dark:text-purple-400 shrink-0"
-																				/>
-																			)}
-																			<span className="truncate font-bold text-neutral-900 dark:text-neutral-100">
-																				{wg.subgroups[0].label}
-																			</span>
-																			{wg.subgroups[0].deleted && (
-																				<span className="rounded bg-neutral-200 dark:bg-neutral-800 px-1 text-[9px] text-neutral-600 dark:text-neutral-400 font-normal">
-																					已清理
-																				</span>
-																			)}
-																		</div>
-																	</div>
-																)}
-															<div className="ml-[22px] pl-2 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
-												<SessionList
-													nodes={wg.subgroups[0]?.nodes ?? []}
-													scopeKey={`${wg.workspace.id}|default`}
-													searching={searching}
-													onSetCount={setSectionCount}
-													expanded={expandedSections}
-													onToggle={toggleSection}
-													collapsedSideChats={collapsedSideChats}
-													onToggleSideChat={toggleSideChat}
-													workspaces={workspaces}
-												allVisibleIds={allVisibleIds}
-												onRowFocus={focusList}
-												onBatchAction={handleBatchAction}
-												/>
-											</div>
-										</div>
-									)}
+														<div className="ml-[22px] pl-2 border-l-2 border-[var(--text-dim)]/40 my-0.5">
+															<SessionList
+																nodes={wg.subgroups[0]?.nodes ?? []}
+																scopeKey={`${wg.workspace.id}|default`}
+																searching={searching}
+																onSetCount={setSectionCount}
+																expanded={expandedSections}
+																collapsedSideChats={collapsedSideChats}
+																onToggleSideChat={toggleSideChat}
+																workspaces={workspaces}
+																allVisibleIds={allVisibleIds}
+																onRowFocus={focusList}
+																onBatchAction={handleBatchAction}
+															/>
+														</div>
+													)}
 								</div>
 							)}
 						</div>
@@ -1806,26 +1751,23 @@ export function SessionSidebar() {
 									<div className="mt-0.5">
 										<div
 											onClick={() => toggleGroup("__unassigned", false)}
-											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
+											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
 										>
 											<div className="flex items-center gap-1.5 min-w-0 flex-1">
 												{isGroupOpen("__unassigned", false) ? (
 													<ChevronDown
 														size={13}
-														className="text-neutral-400 dark:text-neutral-500 shrink-0"
+														className="text-[var(--text-dim)] shrink-0"
 													/>
 												) : (
 													<ChevronRight
 														size={13}
-														className="text-neutral-400 dark:text-neutral-500 shrink-0"
+														className="text-[var(--text-dim)] shrink-0"
 													/>
 												)}
-												<Clock size={14} className="text-neutral-500 dark:text-neutral-400 shrink-0" />
-												<span className="font-bold text-[12.5px] text-neutral-800 dark:text-neutral-100 truncate">
+												<Clock size={14} className="text-[var(--text-dim)] shrink-0" />
+												<span className="font-bold text-[12.5px] text-[var(--text)] truncate">
 													{UNASSIGNED_LABEL}
-												</span>
-												<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
-													({grouped.unassigned.length})
 												</span>
 												{renderBubbleBadges(
 													getGroupStatusCounts(grouped.unassigned),
@@ -1840,7 +1782,7 @@ export function SessionSidebar() {
 														grouped.unassigned.map((n) => n.session.id),
 													);
 												}}
-												className="rounded p-1 text-neutral-500 opacity-0 hover:bg-neutral-700/60 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100 ml-1 shrink-0"
+												className="rounded p-1 text-neutral-500 opacity-50 hover:opacity-100 hover:bg-neutral-700/60 hover:text-neutral-200 focus:opacity-100 ml-1 shrink-0 transition-opacity"
 												title="将全部未归档会话归入某个工作区…"
 											>
 												<FolderInput size={13} />
@@ -1855,7 +1797,6 @@ export function SessionSidebar() {
 													searching={searching}
 													onSetCount={setSectionCount}
 													expanded={expandedSections}
-													onToggle={toggleSection}
 													collapsedSideChats={collapsedSideChats}
 													onToggleSideChat={toggleSideChat}
 													workspaces={workspaces}
@@ -1873,29 +1814,26 @@ export function SessionSidebar() {
 									<div className="mt-0.5 opacity-60 hover:opacity-100 transition-opacity">
 										<div
 											onClick={() => toggleGroup("__deleted", false)}
-											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-neutral-800 dark:text-neutral-200 transition-colors"
+											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
 										>
 											<div className="flex items-center gap-1.5 min-w-0 flex-1">
 												{isGroupOpen("__deleted", false) ? (
 													<ChevronDown
 														size={13}
-														className="text-neutral-400 dark:text-neutral-500 shrink-0"
+														className="text-[var(--text-dim)] shrink-0"
 													/>
 												) : (
 													<ChevronRight
 														size={13}
-														className="text-neutral-400 dark:text-neutral-500 shrink-0"
+														className="text-[var(--text-dim)] shrink-0"
 													/>
 												)}
 												<FolderGit2
 													size={14}
-													className="text-neutral-500 dark:text-neutral-400 shrink-0"
+													className="text-[var(--text-dim)] shrink-0"
 												/>
-												<span className="font-bold text-[12.5px] text-neutral-700 dark:text-neutral-300 truncate">
+												<span className="font-bold text-[12.5px] text-[var(--text)] truncate">
 													{DELETED_LABEL}
-												</span>
-												<span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tabular-nums shrink-0">
-													({grouped.deletedNodes.length})
 												</span>
 												{renderBubbleBadges(
 													getGroupStatusCounts(grouped.deletedNodes),
@@ -1911,7 +1849,7 @@ export function SessionSidebar() {
 														grouped.deletedNodes.map((n) => n.session),
 													);
 												}}
-												className="mr-1 rounded p-1 text-neutral-500 opacity-0 hover:bg-neutral-700/60 hover:text-amber-300 focus:opacity-100 group-hover:opacity-100"
+												className="mr-1 rounded p-1 text-neutral-500 opacity-50 hover:opacity-100 hover:bg-neutral-700/60 hover:text-amber-300 focus:opacity-100 transition-opacity"
 												title="一键归档全部已清理 Worktree 的会话"
 											>
 												<Archive size={12} />
@@ -1926,7 +1864,6 @@ export function SessionSidebar() {
 													searching={searching}
 													onSetCount={setSectionCount}
 													expanded={expandedSections}
-													onToggle={toggleSection}
 													collapsedSideChats={collapsedSideChats}
 													onToggleSideChat={toggleSideChat}
 													workspaces={workspaces}
@@ -2100,7 +2037,7 @@ export function SessionSidebar() {
 							<button
 								type="button"
 								onClick={() => handleRemoveWorkspace(wsMenu.ws)}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-rose-400 hover:bg-rose-950/50 hover:text-rose-300 text-left"
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-[var(--status-error)] hover:bg-rose-500/15 text-left"
 							>
 								<Trash2 size={13} />
 								从工作区中移除
@@ -2163,7 +2100,6 @@ interface SessionListProps {
 	scopeKey: string;
 	searching: boolean;
 	expanded: Record<string, number>;
-	onToggle: (key: string) => void;
 	onSetCount: (key: string, count: number) => void;
 	collapsedSideChats: Record<string, boolean>;
 	onToggleSideChat: (id: string) => void;
@@ -2185,7 +2121,6 @@ function SessionList({
 	searching,
 	indent = 0,
 	expanded,
-	onToggle,
 	onSetCount,
 	collapsedSideChats,
 	onToggleSideChat,
@@ -2251,112 +2186,62 @@ function SessionList({
 		return <>{visibleBySideChat.map(renderNode)}</>;
 	}
 
-	const { recent, older } = partitionNodes(visibleBySideChat);
+	const all = visibleBySideChat;
 	const moreKey = `${scopeKey}|more`;
-	const olderKey = `${scopeKey}|older`;
-	const olderMoreKey = `${scopeKey}|older-more`;
 
-	const recentCount = Math.min(
+	const visibleCount = Math.min(
 		Math.max(expanded[moreKey] ?? RECENT_LIMIT, RECENT_LIMIT),
-		recent.length,
+		all.length,
 	);
-	const visibleRecent = recent.slice(0, recentCount);
-
-	const showOlder = Boolean(expanded[olderKey]);
-	const olderCount = Math.min(
-		Math.max(expanded[olderMoreKey] ?? RECENT_LIMIT, RECENT_LIMIT),
-		older.length,
-	);
-	const visibleOlder = older.slice(0, olderCount);
-
+	const visibleNodes = all.slice(0, visibleCount);
 	// Progressive-disclosure footer: "show N more" while items remain, and a
-	// collapse row whenever the section is expanded beyond RECENT_LIMIT.
+	// collapse row whenever the list is expanded beyond RECENT_LIMIT.
 	const renderPagingFooter = (
 		count: number,
 		total: number,
 		moreKey: string,
-		label: string,
 		onCollapse: () => void,
 	) => {
 		const hidden = total - count;
-		if (hidden > 0) {
-			return (
-				<div className="py-1 px-3">
+		const expandable = Math.min(RECENT_STEP, hidden);
+		const showExpand = hidden > 0;
+		const showCollapse = count > RECENT_LIMIT;
+		if (!showExpand && !showCollapse) return null;
+		return (
+			<div className="flex items-center py-1 px-3 text-[10px] font-medium select-none">
+				<span className="h-px flex-1 bg-[var(--border)] opacity-50" />
+				{showExpand && (
 					<button
 						type="button"
 						onClick={() => onSetCount(moreKey, count + RECENT_STEP)}
-						className="w-full flex items-center justify-center gap-1.5 py-1 px-2.5 rounded-md border border-dashed border-[var(--border)] bg-[var(--bg-hover)]/40 hover:bg-[var(--bg-hover)] text-[10.5px] font-medium text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all select-none group/paging shadow-2xs"
+						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
 					>
-						<Plus size={11} className="text-neutral-400 group-hover/paging:text-neutral-600 dark:group-hover/paging:text-neutral-200 transition-colors shrink-0" />
-						<span>展开其余 {hidden} 条{label}</span>
+						<Plus size={9} className="shrink-0" />
+						<span>展开 {expandable} 条</span>
 					</button>
-				</div>
-			);
-		}
-		if (total > RECENT_LIMIT) {
-			return (
-				<div className="py-0.5 px-3">
+				)}
+				{showExpand && showCollapse && (
+					<span className="mx-1.5 text-[var(--text-dim)] opacity-50">｜</span>
+				)}
+				{showCollapse && (
 					<button
 						type="button"
 						onClick={onCollapse}
-						className="w-full flex items-center justify-center gap-1 py-0.5 px-2 rounded-md text-[10px] font-medium text-neutral-400 dark:text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-[var(--bg-hover)]/60 transition-colors select-none"
+						className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[var(--text-dim)] hover:text-[var(--accent-strong)] transition-colors"
 					>
-						<span>收起已展开会话</span>
+						<ChevronDown size={9} className="shrink-0 rotate-180" />
+						<span>收起</span>
 					</button>
-				</div>
-			);
-		}
-		return null;
+				)}
+				<span className="h-px flex-1 bg-[var(--border)] opacity-50" />
+			</div>
+		);
 	};
-
 	return (
 		<>
-			{visibleRecent.map(renderNode)}
-			{renderPagingFooter(
-				recentCount,
-				recent.length,
-				moreKey,
-				"近 7 天的会话",
-				() => onSetCount(moreKey, RECENT_LIMIT),
-			)}
-			{older.length > 0 && (
-				<div className="pt-1 pb-0.5">
-					<div className="px-3">
-						<button
-							type="button"
-							onClick={() => {
-								// Folding the section also resets its paging back to the cap.
-								if (showOlder) onSetCount(olderMoreKey, RECENT_LIMIT);
-								onToggle(olderKey);
-							}}
-							className="w-full flex items-center justify-between py-1 px-2 rounded-md bg-[var(--bg-hover)]/30 hover:bg-[var(--bg-hover)] border border-[var(--border)] text-[10.5px] font-medium text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 transition-all select-none"
-						>
-							<div className="flex items-center gap-1.5 min-w-0">
-								{showOlder ? (
-									<ChevronDown size={11} className="text-neutral-400 shrink-0" />
-								) : (
-									<ChevronRight size={11} className="text-neutral-400 shrink-0" />
-								)}
-								<span>更早的会话</span>
-							</div>
-							<span className="font-mono text-[9.5px] rounded bg-neutral-200/70 dark:bg-neutral-800 px-1.5 py-px text-neutral-500 dark:text-neutral-400">
-								{older.length}
-							</span>
-						</button>
-					</div>
-					{showOlder && (
-						<div className="mt-1 space-y-0.5">
-							{visibleOlder.map(renderNode)}
-							{renderPagingFooter(
-								olderCount,
-								older.length,
-								olderMoreKey,
-								"更早的会话",
-								() => onSetCount(olderMoreKey, RECENT_LIMIT),
-							)}
-						</div>
-					)}
-				</div>
+			{visibleNodes.map(renderNode)}
+			{renderPagingFooter(visibleCount, all.length, moreKey, () =>
+				onSetCount(moreKey, RECENT_LIMIT),
 			)}
 		</>
 	);
@@ -2405,36 +2290,32 @@ function CollapsibleSubgroup({
 	const open = searching || !isCollapsed;
 
 	return (
-		<div className={clsx("mt-0.5", sub.deleted && "opacity-60 hover:opacity-100 transition-opacity")}>
+		<div className={clsx("mt-0.5 ml-[14px]", sub.deleted && "opacity-60 hover:opacity-100 transition-opacity")}>
 			<div className="group/sub flex items-center">
 				<button
 					type="button"
 					onClick={() => onToggle(`${scopeKey}|sub`)}
-					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-[11px] font-semibold text-neutral-800 dark:text-neutral-200 hover:bg-[var(--bg-hover)] rounded-md transition-colors"
+					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
 				>
 					{open ? (
-						<ChevronDown size={11} className="shrink-0 text-neutral-400 dark:text-neutral-500" />
+						<ChevronDown size={11} className="shrink-0 text-[var(--text-dim)]" />
 					) : (
-						<ChevronRight size={11} className="shrink-0 text-neutral-400 dark:text-neutral-500" />
+						<ChevronRight size={11} className="shrink-0 text-[var(--text-dim)]" />
 					)}
-					<div className="inline-flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded bg-[var(--bg-hover)] border border-[var(--border)] max-w-[calc(100%-40px)]">
-						{sub.kind === "worktree" ? (
-							<FolderGit2 size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-						) : (
-							<GitBranch size={12} className="text-purple-600 dark:text-purple-400 shrink-0" />
-						)}
-						<span className="truncate font-mono font-bold text-neutral-900 dark:text-neutral-100">
-							{sub.label}
-						</span>
-						{sub.deleted && (
-							<span className="shrink-0 rounded bg-neutral-200 dark:bg-neutral-800 px-1 text-[9px] text-neutral-600 dark:text-neutral-400 font-normal">
-								已清理
-							</span>
-						)}
-					</div>
-					<span className="font-mono text-neutral-400 dark:text-neutral-500 text-[10px] ml-auto shrink-0">
-						({sub.totalCount})
+					{sub.kind === "worktree" ? (
+						<FolderGit2 size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+					) : (
+						<GitBranch size={12} className="text-purple-600 dark:text-purple-400 shrink-0" />
+					)}
+					<span className="min-w-0 truncate font-mono font-bold text-[var(--text)]">
+						{sub.label}
 					</span>
+					{sub.deleted && (
+						<span className="shrink-0 rounded bg-[var(--bg-hover)] px-1 text-[9px] text-[var(--text-dim)] font-normal">
+							已清理
+						</span>
+					)}
+					{/* Session count stays hidden until the row is hovered */}
 				</button>
 				{!sub.deleted && sub.createCwd && (
 					<button
@@ -2443,9 +2324,10 @@ function CollapsibleSubgroup({
 							e.stopPropagation();
 							onCreateSession(ws, sub.createCwd!);
 						}}
-						className="shrink-0 rounded p-0.5 text-neutral-600 dark:text-neutral-400 max-w-0 opacity-0 overflow-hidden group-hover/sub:max-w-[24px] group-hover/sub:opacity-100 group-hover/sub:mr-1 focus:max-w-[24px] focus:opacity-100 focus:mr-1 hover:bg-[var(--bg-selected)] hover:text-neutral-200 transition-all duration-150 ease-out"
+						className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all duration-150 ease-out hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
+						title="在该分支创建新会话"
 					>
-						<Plus size={11} />
+						<Plus size={12} />
 					</button>
 				)}
 				{sub.deleted && (
@@ -2455,21 +2337,23 @@ function CollapsibleSubgroup({
 							e.stopPropagation();
 							onBatchArchive();
 						}}
-						className="shrink-0 rounded p-0.5 text-neutral-600 dark:text-neutral-400 max-w-0 opacity-0 overflow-hidden group-hover/sub:max-w-[24px] group-hover/sub:opacity-100 group-hover/sub:mr-1 focus:max-w-[24px] focus:opacity-100 focus:mr-1 hover:bg-neutral-700/60 hover:text-amber-300 transition-all duration-150 ease-out"
+						className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all duration-150 ease-out hover:bg-neutral-700/60 hover:text-amber-300"
+						title="归档该分支全部会话"
 					>
 						<Archive size={11} />
 					</button>
 				)}
 			</div>
 			{open && (
-				<div className="ml-[22px] pl-2 border-l-2 border-neutral-300/80 dark:border-purple-500/30 my-0.5">
+				<div
+					className="ml-[22px] pl-2 border-l-2 border-[var(--text-dim)]/40 my-0.5"
+				>
 					<SessionList
 						nodes={sub.nodes}
 						scopeKey={scopeKey}
 						searching={searching}
 						indent={0}
 						expanded={expanded}
-						onToggle={onToggle}
 						onSetCount={onSetCount}
 						collapsedSideChats={collapsedSideChats}
 						onToggleSideChat={onToggleSideChat}

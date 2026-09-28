@@ -201,33 +201,6 @@ export function flattenSessionTree(nodes: SessionTreeNode[]): SessionTreeNode[] 
 	return result;
 }
 
-/** Sessions updated within this window count as "recent". */
-export const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
-/**
- * Split flattened nodes into recent vs older, keeping each root's subtree
- * together. Pinned sessions and unparseable timestamps count as recent.
- */
-export function partitionNodes(
-	nodes: SessionTreeNode[],
-	now = Date.now(),
-): { recent: SessionTreeNode[]; older: SessionTreeNode[] } {
-	const recent: SessionTreeNode[] = [];
-	const older: SessionTreeNode[] = [];
-	let recentRoot = false;
-	for (const node of nodes) {
-		if (node.depth === 0) {
-			const t = Date.parse(node.session.updatedAt);
-			recentRoot =
-				node.session.pinned ||
-				Number.isNaN(t) ||
-				now - t <= RECENT_WINDOW_MS;
-		}
-		(recentRoot ? recent : older).push(node);
-	}
-	return { recent, older };
-}
-
 
 /**
  * Recover a worktree name from a cwd path when live git metadata is gone

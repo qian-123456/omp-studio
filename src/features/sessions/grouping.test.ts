@@ -8,7 +8,6 @@ import {
 	groupSessions,
 	inferWorktreeName,
 	matchesSearch,
-	partitionNodes,
 } from "./grouping";
 
 function makeSession(partial: Partial<SessionMeta>): SessionMeta {
@@ -302,48 +301,6 @@ describe("groupSessions", () => {
 	});
 });
 
-describe("partitionNodes", () => {
-	const NOW = Date.parse("2026-09-25T00:00:00Z");
-	const daysAgo = (n: number) =>
-		new Date(NOW - n * 24 * 60 * 60 * 1000).toISOString();
-
-	it("splits by 7-day window and keeps subtrees with their root", () => {
-		const oldParent = makeSession({ id: "old", updatedAt: daysAgo(10) });
-		const oldChild = makeSession({
-			id: "old-child",
-			parentId: "old",
-			updatedAt: daysAgo(1), // recent child still follows its old root
-		});
-		const recent = makeSession({ id: "recent", updatedAt: daysAgo(2) });
-		const nodes = flattenSessionTree(
-			buildSessionTree([oldParent, oldChild, recent]),
-		);
-
-		const { recent: r, older: o } = partitionNodes(nodes, NOW);
-		expect(r.map((n) => n.session.id)).toEqual(["recent"]);
-		expect(o.map((n) => n.session.id)).toEqual(["old", "old-child"]);
-	});
-
-	it("keeps pinned sessions recent regardless of age", () => {
-		const pinned = makeSession({
-			id: "pin",
-			pinned: true,
-			updatedAt: daysAgo(30),
-		});
-		const nodes = flattenSessionTree(buildSessionTree([pinned]));
-
-		const { recent, older } = partitionNodes(nodes, NOW);
-		expect(recent).toHaveLength(1);
-		expect(older).toHaveLength(0);
-	});
-
-	it("treats unparseable updatedAt as recent", () => {
-		const s = makeSession({ id: "bad", updatedAt: "not-a-date" });
-		const nodes = flattenSessionTree(buildSessionTree([s]));
-
-		expect(partitionNodes(nodes, NOW).recent).toHaveLength(1);
-	});
-});
 
 describe("inferWorktreeName & deleted-worktree grouping", () => {
 	it("recovers names from .worktrees and .cache/wt- paths", () => {
