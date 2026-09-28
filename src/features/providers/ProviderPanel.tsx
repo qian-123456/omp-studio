@@ -11,6 +11,7 @@ import {
 	Pencil,
 	Plus,
 	RefreshCw,
+	Search,
 	Trash2,
 } from "lucide-react";
 import type {
@@ -25,8 +26,19 @@ import { OauthLoginDialog } from "./OauthLoginDialog";
 import { API_LABELS, presetById } from "./presets";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders, type TestStatus } from "./store";
+
 const PRIVACY_NOTE =
 	"密钥使用 macOS 钥匙串加密后存于 ~/.omp-workspace/env/keys.env，明文仅在内存中出现，不会写入数据库或日志。";
+
+/** One row in the unified provider list — may carry both an OMP-discovered
+ * config and a workbench-managed copy (matched by slug). */
+interface ListRow {
+	key: string;
+	/** OMP config (models.yml/config.yml/agent.db), when the provider exists there. */
+	omp: OmpProviderInfo | null;
+
+	workbench: ProviderConfig | null;
+}
 
 export function ProviderPanel() {
 	const providers = useProviders((s) => s.providers);
@@ -36,18 +48,63 @@ export function ProviderPanel() {
 	const ompProviders = useProviders((s) => s.ompProviders);
 	const ompLoaded = useProviders((s) => s.ompLoaded);
 	const ompError = useProviders((s) => s.ompError);
-	const loadOmp = useProviders((s) => s.loadOmp);
 	const exportEnvText = useProviders((s) => s.exportEnvText);
 	const importingOmp = useProviders((s) => s.importingOmp);
 	const importOmp = useProviders((s) => s.importOmp);
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
 	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
+	const [query, setQuery] = useState("");
 
-	const workbenchSlugs = useMemo(
-		() => new Set(providers.map((p) => p.slug)),
-		[providers],
-	);
+	useEffect(() => {
+		void load();
+	}, [load]);
 
+	// Merge OMP-discovered providers and workbench-managed ones into one list,
+	// keyed by slug so the same provider never appears twice.
+	const rows = useMemo<ListRow[]>(() => {
+		const map = new Map<string, ListRow>();
+		for (const info of ompProviders) {
+			map.set(info.id, { key: info.id, omp: info, workbench: null });
+		}
+		for (const cfg of providers) {
+			const existing = map.get(cfg.slug);
+			if (existing) {
+				existing.workbench = cfg;
+			} else {
+				map.set(cfg.slug, { key: cfg.slug, omp: null, workbench: cfg });
+			}
+		}
+		const list = [...map.values()];
+		list.sort((a, b) => {
+			// Managed rows first, then OMP-configured, then workbench-only;
+			// within a tier sort by id/name.
+			const ra = a.workbench ? (a.omp ? 0 : 2) : 1;
+			const rb = b.workbench ? (b.omp ? 0 : 2) : 1;
+			if (ra !== rb) return ra - rb;
+			const an = a.omp?.id ?? a.workbench?.name ?? "";
+			const bn = b.omp?.id ?? b.workbench?.name ?? "";
+			return an.localeCompare(bn);
+		});
+		return list;
+	}, [ompProviders, providers]);
+
+	const filteredRows = useMemo(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return rows;
+		return rows.filter((r) => {
+			const haystack = [
+				r.omp?.id,
+				r.workbench?.name,
+				r.workbench?.slug,
+				r.omp?.baseUrl ?? r.workbench?.baseUrl,
+				...(r.omp?.modelIds ?? r.workbench?.models ?? []),
+			]
+				.filter(Boolean)
+				.join(" ")
+				.toLowerCase();
+			return haystack.includes(q);
+		});
+	}, [rows, query]);
 
 	const eligibleOmpIds = useMemo(
 		() => ompProviders.filter(canImportOmpProvider).map((p) => p.id),
@@ -63,9 +120,6 @@ export function ProviderPanel() {
 			toast.error(`导入失败: ${errMsg(err)}`);
 		}
 	};
-	useEffect(() => {
-		void load();
-	}, [load]);
 
 	const handleExport = async () => {
 		try {
@@ -81,109 +135,55 @@ export function ProviderPanel() {
 		}
 	};
 
+	const combinedError = error ?? ompError;
+	const isLoading =
+		(!loaded && !error) || (!ompLoaded && !ompError);
+	const totalCount = rows.length;
+	const managedCount = rows.filter((r) => r.workbench).length;
+
 	return (
-		<div className="space-y-8">
-			{/* Section 1: OMP 已配置的 Provider */}
+		<div className="space-y-4">
+			{/* Fixed action bar — always visible, never scrolled away. */}
 			<div className="space-y-3">
-				<div className="flex items-center justify-between gap-4">
+				<div className="flex flex-wrap items-center justify-between gap-3">
 					<div>
 						<h2 className="text-sm font-semibold text-neutral-100">
-							OMP 已配置的 Provider
+							API 供应商
 						</h2>
 						<p className="mt-0.5 text-xs text-neutral-400">
-							来自 ~/.omp/agent/models.yml 与 agent.db，对全部会话生效
+							{totalCount} 个（{managedCount} 个已由工作台托管密钥）·
+							读取 ~/.omp/agent 与 providers.json
 						</p>
 					</div>
-					<div className="flex shrink-0 items-center gap-2">
-						<button
-							type="button"
-							onClick={() => void handleImportAll()}
-							disabled={importingOmp || eligibleOmpIds.length === 0}
-							title={
-								eligibleOmpIds.length === 0
-									? "没有可导入的 API 密钥"
-									: "一键导入全部 OMP 供应商密钥"
-							}
-							aria-label="一键导入"
-							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-						>
-							{importingOmp ? (
-								<Loader2 className="h-3.5 w-3.5 animate-spin" />
-							) : (
-								<Download className="h-3.5 w-3.5" />
-							)}
-							<span>一键导入</span>
-						</button>
-						<button
-							type="button"
-							onClick={() => void loadOmp()}
-							title="刷新 OMP 供应商"
-							aria-label="刷新 OMP 供应商"
-							className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
-						>
-							<RefreshCw className="h-3.5 w-3.5" />
-						</button>
-					</div>
-				</div>
-
-				{ompError && (
-					<div
-						role="alert"
-						className="flex items-center justify-between gap-2 rounded-xl border border-rose-800/40 bg-rose-950/20 px-3 py-2 text-xs text-rose-300"
-					>
-						<span className="min-w-0 flex-1 break-words">{ompError}</span>
-						<button
-							type="button"
-							onClick={() => void loadOmp()}
-							className="inline-flex items-center gap-1 text-xs text-rose-200 hover:underline shrink-0"
-						>
-							<RefreshCw className="h-3 w-3" />
-							<span>重试</span>
-						</button>
-					</div>
-				)}
-
-				{!ompLoaded && !ompError && (
-					<div className="flex items-center justify-center py-6 text-neutral-500">
-						<Loader2
-							aria-label="加载 OMP 供应商"
-							size={16}
-							className="animate-spin"
-						/>
-					</div>
-				)}
-
-				{ompLoaded && !ompError && ompProviders.length === 0 && (
-					<div className="rounded-xl hairline bg-[var(--well-bg)]/40 py-6 text-center text-xs text-neutral-500">
-						未在 OMP 配置中发现 provider
-					</div>
-				)}
-
-				{ompLoaded && !ompError && ompProviders.length > 0 && (
-					<div className="space-y-2">
-						{ompProviders.map((item) => (
-							<OmpProviderRow
-								key={item.id}
-								item={item}
-								isManagedInWorkbench={workbenchSlugs.has(item.id)}
+					<div className="flex shrink-0 flex-wrap items-center gap-2">
+						<div className="relative">
+							<Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-500" />
+							<input
+								type="text"
+								value={query}
+								onChange={(e) => setQuery(e.target.value)}
+								placeholder="筛选…"
+								aria-label="筛选供应商"
+								className="w-32 rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-7 pr-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#0A84FF]/50"
 							/>
-						))}
-					</div>
-				)}
-			</div>
-
-			{/* Section 2: 工作台私有供应商 */}
-			<div className="space-y-3">
-				<div className="flex flex-wrap items-start justify-between gap-4">
-					<div>
-						<h2 className="text-sm font-semibold text-neutral-100">
-							工作台私有供应商
-						</h2>
-						<p className="mt-0.5 text-xs text-neutral-400">
-							存储于本地 ~/.omp-workspace/providers.json，密钥加密存储
-						</p>
-					</div>
-					<div className="flex shrink-0 items-center gap-2">
+						</div>
+						{eligibleOmpIds.length > 0 && (
+							<button
+								type="button"
+								onClick={() => void handleImportAll()}
+								disabled={importingOmp}
+								title="将全部 OMP 已配置供应商的密钥加密导入工作台密钥库"
+								aria-label="一键导入"
+								className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40"
+							>
+								{importingOmp ? (
+									<Loader2 className="h-3.5 w-3.5 animate-spin" />
+								) : (
+									<Download className="h-3.5 w-3.5" />
+								)}
+								<span>一键导入</span>
+							</button>
+						)}
 						<button
 							type="button"
 							onClick={() => void handleExport()}
@@ -217,51 +217,69 @@ export function ProviderPanel() {
 							<Plus className="h-3.5 w-3.5" />
 							<span>添加供应商</span>
 						</button>
-					</div>
-				</div>
-
-				{error && (
-					<div
-						role="alert"
-						className="flex items-center gap-2 text-xs text-rose-400"
-					>
-						<span className="min-w-0 flex-1 break-words">{error}</span>
 						<button
 							type="button"
-							onClick={() => void load()}
-							title="重新加载"
-							aria-label="重新加载供应商"
-							className="rounded p-1 hover:bg-neutral-800"
+							onClick={() => {
+								void load();
+							}}
+							title="刷新供应商"
+							aria-label="刷新供应商"
+							className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
 						>
-							<RefreshCw size={14} />
+							<RefreshCw className="h-3.5 w-3.5" />
 						</button>
 					</div>
-				)}
-				{!loaded && !error && (
+				</div>
+			</div>
+
+			{combinedError && (
+				<div
+					role="alert"
+					className="flex items-center gap-2 rounded-xl border border-rose-800/40 bg-rose-950/20 px-3 py-2 text-xs text-rose-300"
+				>
+					<span className="min-w-0 flex-1 break-words">{combinedError}</span>
+					<button
+						type="button"
+						onClick={() => void load()}
+						className="inline-flex items-center gap-1 text-xs text-rose-200 hover:underline shrink-0"
+					>
+						<RefreshCw className="h-3 w-3" />
+						<span>重试</span>
+					</button>
+				</div>
+			)}
+
+			{isLoading && !combinedError && (
+				<div className="flex items-center justify-center py-6 text-neutral-500">
 					<Loader2
 						aria-label="加载供应商"
 						size={16}
-						className="animate-spin text-neutral-500"
+						className="animate-spin"
 					/>
-				)}
-				{loaded && !error && providers.length === 0 ? (
-					<div className="rounded-xl hairline bg-[var(--well-bg)]/40 py-6 text-center">
-						<div className="text-xs text-neutral-400">
-							暂无私有供应商配置
-						</div>
-					</div>
-				) : (
-					<div className="space-y-2">
-						{providers.map((provider) => (
-							<ProviderRow
-								key={provider.id}
-								provider={provider}
-								onEdit={() => setDialog({ mode: "edit", provider })}
-							/>
-						))}
-					</div>
-				)}
-			</div>
+				</div>
+			)}
+
+			{!isLoading && !combinedError && filteredRows.length === 0 && (
+				<div className="rounded-xl hairline bg-[var(--well-bg)]/40 py-6 text-center text-xs text-neutral-500">
+					{rows.length === 0 ? "暂无供应商" : "没有匹配的供应商"}
+				</div>
+			)}
+
+			{filteredRows.length > 0 && (
+				<div className="space-y-2">
+					{filteredRows.map((row) => (
+						<UnifiedProviderRow
+							key={row.key}
+							row={row}
+							onEdit={() => {
+								if (row.workbench) {
+									setDialog({ mode: "edit", provider: row.workbench });
+								}
+							}}
+						/>
+					))}
+				</div>
+			)}
 
 			<div className="text-[11px] leading-relaxed text-neutral-600">
 				{PRIVACY_NOTE}
@@ -298,24 +316,45 @@ function notifyImportResults(results: OmpImportResult[]) {
 	}
 }
 
-function OmpProviderRow({
-	item,
-	isManagedInWorkbench,
+function UnifiedProviderRow({
+	row,
+	onEdit,
 }: {
-	item: OmpProviderInfo;
-	isManagedInWorkbench: boolean;
+	row: ListRow;
+	onEdit: () => void;
 }) {
 	const importOmp = useProviders((s) => s.importOmp);
 	const importingOmp = useProviders((s) => s.importingOmp);
+	const setEnabled = useProviders((s) => s.setEnabled);
+	const remove = useProviders((s) => s.remove);
+	const runTest = useProviders((s) => s.runTest);
+	const test = useProviders((s) =>
+		row.workbench ? s.tests[row.workbench.id] : undefined,
+	);
 	const [rowImporting, setRowImporting] = useState(false);
-	const authBadge = getOmpAuthBadge(item);
-	const canImport = canImportOmpProvider(item);
+
+	const info = row.omp;
+	const workbench = row.workbench;
+	const authBadge = info ? getOmpAuthBadge(info) : null;
+	const canImport = info ? canImportOmpProvider(info) : false;
+
+	const displayName = workbench?.name ?? info?.id ?? "";
+	const displaySlug = workbench?.slug ?? info?.id ?? "";
+	const baseUrl = workbench?.baseUrl ?? info?.baseUrl ?? null;
+	const modelIds =
+		info && info.modelIds.length > 0 ? info.modelIds : (workbench?.models ?? []);
+	const apiLabel = workbench ? API_LABELS[workbench.api] : info?.api;
+	// apiLabel renders as a small chip after the name in the header row below.
+	const preset = workbench ? presetById(workbench.presetId) : undefined;
+	const color = preset?.color ?? "#f59e0b";
+	const displayedModels = modelIds.slice(0, 6);
+	const remainingModelsCount = modelIds.length - displayedModels.length;
 
 	const handleRowImport = async () => {
-		if (rowImporting || importingOmp) return;
+		if (!info || rowImporting || importingOmp) return;
 		setRowImporting(true);
 		try {
-			const results = await importOmp([item.id]);
+			const results = await importOmp([info.id]);
 			notifyImportResults(results);
 		} catch (err) {
 			toast.error(`导入失败: ${errMsg(err)}`);
@@ -324,118 +363,199 @@ function OmpProviderRow({
 		}
 	};
 
+	const handleDelete = async () => {
+		if (!workbench) return;
+		const ok = await confirmDialog(
+			info
+				? `删除工作台私有副本「${workbench.name}」？加密密钥也会移除，但 OMP 全局配置（models.yml/agent.db）不受影响。`
+				: `删除供应商「${workbench.name}」？其加密密钥也会从密钥库中移除。`,
+			{ title: "删除供应商", danger: true, okLabel: "删除" },
+		);
+		if (!ok) return;
+		try {
+			await remove(workbench.id);
+			toast.success("已删除");
+		} catch (err) {
+			toast.error(`删除失败: ${errMsg(err)}`);
+		}
+	};
+
 	const notImportableTitle =
-		authBadge.badgeType === "oauth" || item.credentialTypes?.includes("oauth")
+		info?.credentialTypes?.includes("oauth") && !canImport
 			? "OAuth 凭据由 OMP 托管，无需导入"
 			: "没有可导入的 API 密钥";
-	const displayedModels = item.modelIds.slice(0, 6);
-	const remainingModelsCount = item.modelIds.length - displayedModels.length;
 
 	return (
-		<div className="rounded-xl hairline bg-[var(--well-bg)] p-3 space-y-2">
+		<div className="rounded-xl hairline bg-[var(--well-bg)] p-3">
 			<div className="flex flex-wrap items-center justify-between gap-2">
-				<div className="flex flex-wrap items-center gap-2 min-w-0">
+				{/* Left: name + source chips */}
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
+					{workbench && (
+						<span
+							className="h-2 w-2 shrink-0 rounded-full"
+							style={{ backgroundColor: color }}
+						/>
+					)}
 					<span className="text-xs font-semibold text-neutral-100 font-mono">
-						{item.id}
+						{displayName}
 					</span>
-					{item.sources.map((src) => (
+					{displaySlug !== displayName && (
+						<span className="text-[10px] font-mono text-neutral-500">
+							{displaySlug}
+						</span>
+					)}
+					{apiLabel && (
+						<span className="rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-400">
+							{apiLabel}
+						</span>
+					)}
+					{info?.sources.map((src) => (
 						<span
 							key={src}
 							className="rounded px-1.5 py-0.5 text-[10px] font-mono text-neutral-400 bg-neutral-800/80"
+							title={`来源: ${src}`}
 						>
 							{src}
 						</span>
 					))}
+					{workbench && (
+						<span
+							className="rounded px-1.5 py-0.5 text-[10px] font-mono text-sky-300/90 bg-sky-950/40 border border-sky-700/40"
+							title="密钥已由工作台加密托管"
+						>
+							providers.json
+						</span>
+					)}
 				</div>
 
-				<div className="flex flex-wrap items-center gap-1.5 shrink-0">
-					<span
-						title={authBadge.tooltip}
-						className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border ${
-							authBadge.badgeType === "oauth"
-								? "bg-indigo-950/40 text-indigo-300 border-indigo-700/40"
-								: authBadge.badgeType === "api_key"
-									? "bg-emerald-950/40 text-emerald-300 border-emerald-700/40"
-									: authBadge.badgeType === "env"
-										? "bg-amber-950/40 text-amber-300 border-amber-700/40"
-										: "bg-neutral-800/60 text-neutral-400 border-neutral-700/40"
-						}`}
-					>
-						<span>{authBadge.label}</span>
-						{authBadge.accountSuffix && (
-							<span className="text-indigo-400/80 text-[10px] max-w-[140px] truncate">
-								· {authBadge.accountSuffix}
-							</span>
-						)}
-					</span>
-
-					{isManagedInWorkbench && (
+				{/* Right: auth badge + actions */}
+				<div className="flex shrink-0 flex-wrap items-center gap-1.5">
+					{authBadge && (
 						<span
-							title="工作台私有供应商中已存在相同标识的配置"
-							className="rounded-full px-2 py-0.5 text-[10px] font-medium bg-sky-950/40 text-sky-300 border border-sky-700/40"
+							title={authBadge.tooltip}
+							className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+								authBadge.badgeType === "oauth"
+									? "bg-indigo-950/40 text-indigo-300 border-indigo-700/40"
+									: authBadge.badgeType === "api_key"
+										? "bg-emerald-950/40 text-emerald-300 border-emerald-700/40"
+										: authBadge.badgeType === "env"
+											? "bg-amber-950/40 text-amber-300 border-amber-700/40"
+											: "bg-neutral-800/60 text-neutral-400 border-neutral-700/40"
+							}`}
 						>
-							工作台已托管
+							<span>{authBadge.label}</span>
+							{authBadge.accountSuffix && (
+								<span className="max-w-[140px] truncate text-indigo-400/80 text-[10px]">
+									· {authBadge.accountSuffix}
+								</span>
+							)}
+						</span>
+					)}
+					{!info && workbench?.hasKey && (
+						<span
+							title="密钥已加密存于工作台密钥库"
+							className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border bg-emerald-950/40 text-emerald-300 border-emerald-700/40"
+						>
+							API Key
 						</span>
 					)}
 
-					{!canImport ? (
-						<button
-							type="button"
-							disabled
-							title={notImportableTitle}
-							className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium text-neutral-500 bg-neutral-800/40 cursor-not-allowed opacity-50"
-						>
-							导入
-						</button>
-					) : isManagedInWorkbench ? (
-						<button
-							type="button"
-							onClick={() => void handleRowImport()}
-							disabled={importingOmp || rowImporting}
-							title="重新导入密钥以更新工作台配置"
-							className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 hover:text-neutral-200 hover:underline active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-						>
-							{rowImporting && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
-							<span>重新导入</span>
-						</button>
-					) : (
-						<button
-							type="button"
-							onClick={() => void handleRowImport()}
-							disabled={importingOmp || rowImporting}
-							title="导入 API 密钥到工作台私有供应商"
-							className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-						>
-							{rowImporting ? (
-								<Loader2 className="h-3 w-3 animate-spin" />
-							) : (
-								<Download className="h-3 w-3" />
-							)}
-							<span>导入</span>
-						</button>
+					{/* Import action (only when the provider exists in OMP config) */}
+					{info &&
+						(canImport ? (
+							<button
+								type="button"
+								onClick={() => void handleRowImport()}
+								disabled={importingOmp || rowImporting}
+								title={
+									workbench
+										? "重新从 OMP 配置导入密钥以更新工作台配置"
+										: "将该供应商的密钥加密导入工作台密钥库"
+								}
+								className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+							>
+								{rowImporting ? (
+									<Loader2 className="h-3 w-3 animate-spin" />
+								) : (
+									<Download className="h-3 w-3" />
+								)}
+								<span>{workbench ? "重新导入" : "导入"}</span>
+							</button>
+						) : (
+							<span
+								title={notImportableTitle}
+								className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium text-neutral-500 bg-neutral-800/40 cursor-not-allowed"
+							>
+								{info.credentialTypes?.includes("oauth") ? "OAuth 托管" : "导入"}
+							</span>
+						))}
+
+					{/* Workbench-managed actions */}
+					{workbench && (
+						<>
+							<button
+								type="button"
+								onClick={() => void runTest(workbench.id)}
+								disabled={test?.state === "testing"}
+								title="测试连接"
+								aria-label={`测试 ${workbench.name} 连接`}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 transition-all disabled:opacity-40"
+							>
+								{test?.state === "testing" ? (
+									<Loader2 size={12} className="animate-spin" />
+								) : (
+									<Activity size={12} />
+								)}
+							</button>
+							<button
+								type="button"
+								onClick={onEdit}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
+								title="编辑"
+							>
+								<Pencil className="h-3 w-3" />
+							</button>
+							<button
+								type="button"
+								onClick={() => void handleDelete()}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300 active:scale-95 transition-all"
+								title={
+									info
+										? "仅删除工作台私有副本与加密密钥；OMP 全局配置保留"
+										: "删除"
+								}
+							>
+								<Trash2 className="h-3 w-3" />
+							</button>
+							<EnabledToggle
+								provider={workbench}
+								onChange={(v) =>
+									void setEnabled(workbench.id, v).catch((err) =>
+										toast.error(`更新失败: ${errMsg(err)}`),
+									)
+								}
+							/>
+						</>
 					)}
 				</div>
 			</div>
 
-			<div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-				{item.baseUrl && (
+			{/* Second line: baseUrl + models + roles */}
+			<div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+				{baseUrl && (
 					<span
-						className="font-mono text-neutral-400 truncate max-w-[280px]"
-						title={item.baseUrl}
+						className="max-w-[280px] truncate font-mono text-neutral-400"
+						title={baseUrl}
 					>
-						{item.baseUrl}
+						{baseUrl}
 					</span>
 				)}
-				{item.baseUrl &&
-					(item.modelIds.length > 0 || item.usedInRoles.length > 0) && (
-						<span className="text-neutral-600">·</span>
-					)}
-
-				{item.modelIds.length > 0 && (
+				{baseUrl && (modelIds.length > 0 || (info?.usedInRoles.length ?? 0) > 0) && (
+					<span className="text-neutral-600">·</span>
+				)}
+				{modelIds.length > 0 && (
 					<div className="flex flex-wrap items-center gap-1">
-						<span className="text-neutral-500">
-							{item.modelIds.length} 个模型:
-						</span>
+						<span className="text-neutral-500">{modelIds.length} 个模型:</span>
 						{displayedModels.map((m) => (
 							<span
 								key={m}
@@ -451,124 +571,25 @@ function OmpProviderRow({
 						)}
 					</div>
 				)}
-
-				{item.usedInRoles.length > 0 && (
+				{info && info.usedInRoles.length > 0 && (
 					<>
-						{(item.baseUrl || item.modelIds.length > 0) && (
+						{(baseUrl || modelIds.length > 0) && (
 							<span className="text-neutral-600">·</span>
 						)}
 						<span className="text-neutral-400">
 							角色:{" "}
 							<span className="text-neutral-300">
-								{item.usedInRoles.join(", ")}
+								{info.usedInRoles.join(", ")}
 							</span>
 						</span>
 					</>
 				)}
+				{!info && workbench && !workbench.hasKey && workbench.api !== "ollama" && (
+					<span className="text-neutral-500">未配置密钥</span>
+				)}
 			</div>
-		</div>
-	);
-}
 
-function ProviderRow({
-	provider,
-	onEdit,
-}: {
-	provider: ProviderConfig;
-	onEdit: () => void;
-}) {
-	const setEnabled = useProviders((s) => s.setEnabled);
-	const remove = useProviders((s) => s.remove);
-	const runTest = useProviders((s) => s.runTest);
-	const test = useProviders((s) => s.tests[provider.id]);
-
-	const preset = presetById(provider.presetId);
-	const color = preset?.color ?? "#f59e0b";
-
-	const handleDelete = async () => {
-		const ok = await confirmDialog(
-			`删除供应商「${provider.name}」？其加密密钥也会从密钥库中移除。`,
-			{ title: "删除供应商", danger: true, okLabel: "删除" },
-		);
-		if (!ok) return;
-		try {
-			await remove(provider.id);
-			toast.success("已删除");
-		} catch (err) {
-			toast.error(`删除失败: ${errMsg(err)}`);
-		}
-	};
-
-	return (
-		<div className="rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
-			<div className="flex flex-wrap items-start justify-between gap-3">
-				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-2">
-						<span
-							className="h-2 w-2 shrink-0 rounded-full"
-							style={{ backgroundColor: color }}
-						/>
-						<span className="text-xs font-semibold text-neutral-100">
-							{provider.name}
-						</span>
-						<span className="rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-400">
-							{API_LABELS[provider.api]}
-						</span>
-						{provider.defaultModel && (
-							<span className="rounded-md bg-[var(--bg-active-fill)] px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
-								{provider.defaultModel}
-							</span>
-						)}
-					</div>
-					<div className="mt-1 truncate font-mono text-[11px] text-neutral-500">
-						{provider.baseUrl}
-					</div>
-					<div className="mt-1 text-[11px]">
-						{provider.hasKey ? (
-							<span className="text-emerald-400">
-								已配置{provider.keyHint ? ` (…${provider.keyHint})` : ""}
-							</span>
-						) : (
-							<span className="text-neutral-500">
-								{provider.api === "ollama" ? "本地引擎，无需密钥" : "未配置密钥"}
-							</span>
-						)}
-					</div>
-				</div>
-				<div className="flex shrink-0 items-center gap-1.5">
-					<button
-						type="button"
-						onClick={() => void runTest(provider.id)}
-						disabled={test?.state === "testing"}
-						title="测试连接"
-						aria-label={`测试 ${provider.name} 连接`}
-						className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 transition-all disabled:opacity-40"
-					>
-						{test?.state === "testing" ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
-					</button>
-					<button
-						type="button"
-						onClick={onEdit}
-						className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
-						title="编辑"
-					>
-						<Pencil className="h-3 w-3" />
-					</button>
-					<button
-						type="button"
-						onClick={() => void handleDelete()}
-						className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300 active:scale-95 transition-all"
-						title="删除"
-					>
-						<Trash2 className="h-3 w-3" />
-					</button>
-					<EnabledToggle
-						provider={provider}
-						onChange={(v) => void setEnabled(provider.id, v).catch((err) => toast.error(`更新失败: ${errMsg(err)}`))}
-					/>
-				</div>
-			</div>
-			<TestResultLine test={test} />
+			{workbench && <TestResultLine test={test} />}
 		</div>
 	);
 }
