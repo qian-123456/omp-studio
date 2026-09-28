@@ -9,8 +9,9 @@ import {
 	ClipboardCopy,
 	Download,
 	FileInput,
-	Folder,
-	FolderOpen,
+	Database,
+	FileCode2,
+	FileJson2,
 	Loader2,
 	LogIn,
 	Pencil,
@@ -45,6 +46,39 @@ interface ListRow {
 	omp: OmpProviderInfo | null;
 
 	workbench: ProviderConfig | null;
+}
+
+const GROUP_ORDER = [
+	"models.yml",
+	"models-snippet.yml",
+	"config.yml",
+	"agent.db",
+	"providers.json",
+] as const;
+
+function getRowSource(row: ListRow): string {
+	if (!row.omp) {
+		return "providers.json";
+	}
+	const sources = row.omp.sources ?? [];
+	const yaml = sources.find(
+		(s) => s === "models.yml" || s === "models-snippet.yml" || s === "config.yml",
+	);
+	if (yaml) return yaml;
+	if (sources.includes("agent.db")) {
+		return "agent.db";
+	}
+	return sources[0] ?? "providers.json";
+}
+
+function renderGroupIcon(source: string) {
+	if (source === "agent.db") {
+		return <Database size={14} className="shrink-0 text-neutral-400" />;
+	}
+	if (source === "providers.json") {
+		return <FileJson2 size={14} className="shrink-0 text-neutral-400" />;
+	}
+	return <FileCode2 size={14} className="shrink-0 text-neutral-400" />;
 }
 
 export function ProviderPanel() {
@@ -120,20 +154,26 @@ export function ProviderPanel() {
 	}, [rows, query]);
 
 	const groups = useMemo(() => {
-		const g0: ListRow[] = [];
-		const g1: ListRow[] = [];
-		const g2: ListRow[] = [];
-		for (const row of filteredRows) {
-			const tier = row.workbench ? (row.omp ? 0 : 2) : 1;
-			if (tier === 0) g0.push(row);
-			else if (tier === 1) g1.push(row);
-			else g2.push(row);
+		const map = new Map<string, ListRow[]>();
+		for (const key of GROUP_ORDER) {
+			map.set(key, []);
 		}
-		return [
-			{ label: "已托管", rows: g0 },
-			{ label: "待导入", rows: g1 },
-			{ label: "工作台私有", rows: g2 },
-		].filter((g) => g.rows.length > 0);
+		for (const row of filteredRows) {
+			const source = getRowSource(row);
+			let list = map.get(source);
+			if (!list) {
+				list = [];
+				map.set(source, list);
+			}
+			list.push(row);
+		}
+		const result: { label: string; rows: ListRow[] }[] = [];
+		for (const [label, r] of map.entries()) {
+			if (r.length > 0) {
+				result.push({ label, rows: r });
+			}
+		}
+		return result;
 	}, [filteredRows]);
 
 	const eligibleOmpIds = useMemo(
@@ -318,21 +358,11 @@ export function ProviderPanel() {
 												className="text-[var(--text-dim)] shrink-0"
 											/>
 										)}
-										{isOpen ? (
-											<FolderOpen
-												size={14}
-												className="shrink-0 text-neutral-400"
-											/>
-										) : (
-											<Folder
-												size={14}
-												className="shrink-0 text-neutral-400"
-											/>
-										)}
-										<span className="font-bold text-[12.5px] text-[var(--text)] truncate">
+										{renderGroupIcon(group.label)}
+										<span className="font-bold text-[12.5px] text-[var(--text)] truncate font-mono">
 											{group.label}
 										</span>
-										<span className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-dim)]">
+										<span className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-dim)] font-mono">
 											{group.rows.length}
 										</span>
 									</div>
