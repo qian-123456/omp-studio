@@ -417,17 +417,27 @@ fn emit_changes(
     state.emit(AppEvent::SessionsChanged { ids });
 }
 
-/// Session file path for an id (from the scan cache).
+/// Session file path for an id (from the scan cache). Falls back to the live
+/// RPC handle: omp writes the transcript lazily on the first message, so a
+/// just-spawned session may have no file on disk yet — the handle already
+/// knows its destined path.
 pub(crate) fn file_of(session_id: &str) -> Option<PathBuf> {
     let c = cat().lock();
     if let Some(m) = c.metas.get(session_id) {
         return Some(PathBuf::from(&m.file));
     }
-    c.files
+    if let Some(s) = c
+        .files
         .values()
         .filter(|s| s.head.id == session_id)
         .max_by_key(|s| s.mtime)
-        .map(|s| s.path.clone())
+    {
+        return Some(s.path.clone());
+    }
+    drop(c);
+    crate::rpc::get_handle(session_id)
+        .map(|h| PathBuf::from(h.session_file.read().clone()))
+        .filter(|p| !p.as_os_str().is_empty())
 }
 
 /// Permanently delete a session: refuse while live, remove its transcript

@@ -12,6 +12,7 @@ import type {
 	BacklogRef,
 	DirEntry,
 	GitCommit,
+	GitBadge,
 	GitSummary,
 	LiveSessionInfo,
 	MobileStatus,
@@ -147,6 +148,14 @@ export const createSideChat = (
 
 export const gitSummary = (cwd: string) =>
 	invoke<GitSummary>("git_summary", { cwd });
+
+/** Sidebar badge (branch/dirty/worktree); null when `cwd` is not a repo. */
+export const gitBadge = (cwd: string) =>
+	invoke<GitBadge | null>("git_badge", { cwd });
+
+/** Main repo root for `cwd` (resolves linked worktrees); null when not a repo. */
+export const gitRepoRoot = (cwd: string) =>
+	invoke<string | null>("git_repo_root", { cwd });
 
 export const gitLog = (cwd: string, limit: number) =>
 	invoke<GitCommit[]>("git_log", { cwd, limit });

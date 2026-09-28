@@ -19,6 +19,14 @@ pub async fn get_transcript(
 ) -> Result<TranscriptPage, String> {
     let file = crate::catalog::file_of(&session_id)
         .ok_or_else(|| format!("session not found: {session_id}"))?;
+    // Live sessions flush the transcript on the first message; before that the
+    // destined file doesn't exist. Mirror the zero-byte case: empty page.
+    if !file.exists() {
+        return Ok(TranscriptPage {
+            session_id,
+            ..Default::default()
+        });
+    }
     transcript::read_page(&file, &session_id, from_offset.unwrap_or(0))
         .map_err(|e| format!("read transcript {session_id}: {e}"))
 }

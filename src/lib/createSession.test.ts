@@ -5,6 +5,8 @@ import * as ipc from "./ipc";
 vi.mock("./ipc", () => ({
 	rpcStart: vi.fn(),
 	rpcSend: vi.fn(),
+	gitBadge: vi.fn().mockResolvedValue(null),
+	gitRepoRoot: vi.fn().mockResolvedValue(null),
 }));
 
 describe("createSession", () => {
@@ -70,5 +72,47 @@ describe("createSession", () => {
 			approvalMode: null,
 			planYolo: false,
 		});
+	});
+
+	it("fills stub git and repoRoot from the cwd probes", async () => {
+		vi.mocked(ipc.rpcStart).mockResolvedValue({
+			sessionId: "s_git",
+			sessionFile: "/tmp/s_git.jsonl",
+			pid: 1002,
+			cwd: "/repo",
+		});
+		vi.mocked(ipc.gitBadge).mockResolvedValue({
+			branch: "main",
+			dirty: 2,
+			worktree: null,
+		});
+		vi.mocked(ipc.gitRepoRoot).mockResolvedValue("/repo");
+
+		const result = await createSession({ cwd: "/repo" });
+
+		expect(ipc.gitBadge).toHaveBeenCalledWith("/repo");
+		expect(ipc.gitRepoRoot).toHaveBeenCalledWith("/repo");
+		expect(result.stub.git).toEqual({
+			branch: "main",
+			dirty: 2,
+			worktree: null,
+		});
+		expect(result.stub.repoRoot).toBe("/repo");
+	});
+
+	it("leaves git null when the probes fail", async () => {
+		vi.mocked(ipc.rpcStart).mockResolvedValue({
+			sessionId: "s_nogit",
+			sessionFile: "/tmp/s_nogit.jsonl",
+			pid: 1003,
+			cwd: "/not-a-repo",
+		});
+		vi.mocked(ipc.gitBadge).mockRejectedValue(new Error("no git"));
+		vi.mocked(ipc.gitRepoRoot).mockRejectedValue(new Error("no git"));
+
+		const result = await createSession({ cwd: "/not-a-repo" });
+
+		expect(result.stub.git).toBeNull();
+		expect(result.stub.repoRoot).toBeNull();
 	});
 });

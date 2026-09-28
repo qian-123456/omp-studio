@@ -156,6 +156,8 @@ pub fn run() {
             rpc::commands::create_side_chat,
             // C — git + time machine
             git::commands::git_summary,
+            git::commands::git_badge,
+            git::commands::git_repo_root,
             git::commands::git_log,
             git::commands::git_diff,
             git::commands::git_create_worktree,

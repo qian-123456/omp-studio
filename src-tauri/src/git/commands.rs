@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use tauri::Emitter;
 
-use super::{history, status, tm, worktree};
-use crate::contracts::{GitCommit, GitSummary, TmRun, WorktreeInfo};
+use super::{badge, history, repo_root, status, tm, worktree};
+use crate::contracts::{GitBadge, GitCommit, GitSummary, TmRun, WorktreeInfo};
 use crate::state::AppState;
 
 /// Run blocking git work off the async runtime.
@@ -47,6 +47,25 @@ pub async fn git_summary(
     cwd: String,
 ) -> Result<GitSummary, String> {
     blocking(move || Ok(status::summary(&PathBuf::from(cwd)))).await
+}
+
+/// Sidebar badge for a directory (branch, dirty count, worktree name).
+/// Fast: the underlying probe is cached for ~5s.
+#[tauri::command]
+pub async fn git_badge(
+    _state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<Option<GitBadge>, String> {
+    blocking(move || Ok(badge(&PathBuf::from(cwd)))).await
+}
+
+/// Main repo root for a directory (resolves linked worktrees).
+#[tauri::command]
+pub async fn git_repo_root(
+    _state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<Option<String>, String> {
+    blocking(move || Ok(repo_root(&PathBuf::from(cwd)))).await
 }
 
 #[tauri::command]

@@ -74,13 +74,11 @@ fn compute_badge(cwd: &Path) -> Option<GitBadge> {
 }
 
 /// Fast (cached ≤5s) git badge for a directory.
-#[allow(dead_code)] // §9 API, consumed by catalog (A).
 pub fn badge(cwd: &Path) -> Option<GitBadge> {
     cached(badge_cache(), cwd, BADGE_TTL, || compute_badge(cwd))
 }
 
 /// Main repo root, resolves worktrees via git-common-dir.
-#[allow(dead_code)] // §9 API, consumed by catalog (A).
 pub fn repo_root(cwd: &Path) -> Option<String> {
     cached(root_cache(), cwd, ROOT_TTL, || {
         worktree::repo_info(cwd).map(|i| i.main_root().to_string_lossy().into_owned())
