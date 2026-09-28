@@ -1,3 +1,16 @@
+/**
+ * [D] Desktop equivalent of omp `/model` → Roles view.
+ *
+ * Compact grouped-row layout: one row per role — primary model select saves
+ * immediately on pick; the fallback chain collapses into a small state chip
+ * that expands into an inline editor on demand. Explanations live in
+ * tooltips and one section-level legend line, not per-role paragraphs.
+ *
+ * Backed by `modelRoles` + `retry.fallbackChains` (both record-typed omp
+ * settings: `omp config set` only accepts top-level keys, so every write
+ * rewrites the whole record via withRoleAssignment/withChain).
+ */
+
 import {
 	AlertTriangle,
 	Check,
@@ -6,7 +19,7 @@ import {
 	Plus,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { OmpConfigEntry } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
@@ -31,10 +44,7 @@ import { useOmpConfigStore } from "./ompConfigStore";
 
 const CUSTOM_VALUE = "__custom__";
 
-function entryValue(
-	entries: OmpConfigEntry[],
-	key: string,
-): unknown {
+function entryValue(entries: OmpConfigEntry[], key: string): unknown {
 	return entries.find((e) => e.key === key)?.value;
 }
 
@@ -91,86 +101,71 @@ function Segmented({
 const ICON_BTN =
 	"rounded-md p-1 text-neutral-500 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none";
 
+const SAVE_BTN =
+	"rounded-lg bg-[#0A84FF] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm disabled:opacity-50";
+
 function flashSaved(setter: (v: boolean) => void) {
 	setter(true);
 	setTimeout(() => setter(false), 2000);
 }
 
 /**
- * Ordered fallback-chain editor for one role.
- * `omp` stores chains inside the `retry.fallbackChains` record, so writes
- * re-serialize the whole record with this role's entry replaced/removed.
+ * Collapsed-by-default fallback-chain editor for one role, shown inline under
+ * the role row. Tri-state: 未设置 (inherit/built-in) · 不回退 ([]) · 自定义.
  */
-function ChainEditor({
+function ChainPanel({
 	roleId,
-	isCustom,
 	chains,
 	models,
 	onSaved,
+	onCollapse,
 }: {
 	roleId: string;
-	isCustom: boolean;
 	chains: Record<string, unknown>;
 	models: ModelOption[];
 	onSaved: () => void;
+	onCollapse: () => void;
 }) {
 	const committed = useMemo(() => parseChain(chains[roleId]), [chains, roleId]);
 	const [items, setItems] = useState<string[]>(committed.items);
-	// Entered by picking 自定义 while unset/empty; cleared once the write lands
-	// or another mode is picked.
-	const [editing, setEditing] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [savedTick, setSavedTick] = useState(false);
 
-	// Re-sync the draft when the persisted chain changes (store reload / reset).
+	// Re-sync the draft when the persisted chain changes (store reload).
 	useEffect(() => {
 		setItems(committed.items);
 	}, [committed]);
 
 	const dirty = JSON.stringify(items) !== JSON.stringify(committed.items);
-	const showList = committed.state === "list" || editing;
 
-	const writeRecord = async (
-		next: Record<string, unknown>,
-	): Promise<boolean> => {
+	const writeRecord = async (next: Record<string, unknown>) => {
 		setBusy(true);
 		try {
 			await ompConfigSet("retry.fallbackChains", JSON.stringify(next));
 			flashSaved(setSavedTick);
-			toast.success(`「${roleId}」回退链已保存`);
 			onSaved();
-			return true;
 		} catch (e) {
 			toast.error(`保存回退链失败：${errMsg(e)}`);
-			return false;
 		} finally {
 			setBusy(false);
 		}
 	};
 
-	const applyChain = async () => {
-		if (await writeRecord(withChain(chains, roleId, items))) {
-			setEditing(false);
-		}
+	/** Apply the current draft list. */
+	const apply = async () => {
+		await writeRecord(withChain(chains, roleId, items));
 	};
 
+	// withChain(role, null) removes the key → inherit/built-in; [] disables.
+	// "list" is not a mode switch — the editor drafts rows and 应用 writes them.
 	const pickMode = async (mode: string) => {
-		if (busy) return;
+		if (busy || mode === "list") return;
 		if (mode === "unset") {
-			if (committed.state === "unset" && !editing) return;
-			// omp config only accepts top-level schema keys, so "未设置" is reached
-			// by rewriting retry.fallbackChains without this role's entry — a
-			// subkey reset (`omp config reset retry.fallbackChains.<role>`) does
-			// not exist.
-			setEditing(false);
 			await writeRecord(withChain(chains, roleId, null));
-		} else if (mode === "empty") {
-			setEditing(false);
-			await writeRecord(withChain(chains, roleId, []));
+			onCollapse();
 		} else {
-			// Custom: edit the committed list locally; written on 应用更改.
-			setItems(committed.items);
-			setEditing(true);
+			await writeRecord(withChain(chains, roleId, []));
+			onCollapse();
 		}
 	};
 
@@ -182,176 +177,160 @@ function ChainEditor({
 		setItems(next);
 	};
 
-	const chainKey = `retry.fallbackChains.${roleId}`;
-
 	return (
-		<div className="mt-3 border-t border-[var(--border-divider)] pt-3">
+		<div className="mt-2 space-y-1.5 border-t border-[var(--border-divider)] pt-2">
 			<div className="flex flex-wrap items-center gap-2">
-				<span className="text-[11px] font-medium text-neutral-300">回退链</span>
 				<Segmented
-					value={committed.state === "list" || editing ? "list" : committed.state}
+					value={committed.state === "list" ? "list" : committed.state}
 					disabled={busy}
 					onPick={(m) => void pickMode(m)}
 					options={[
-						{ id: "unset", label: "未设置", title: "继承 / 使用 OMP 内置默认回退" },
-						{ id: "empty", label: "不回退", title: "显式空链：此角色失败时不回退" },
-						{ id: "list", label: "自定义", title: "按顺序尝试回退模型" },
+						{ id: "unset", label: "未设置", title: "继承：模型职能角色用内置候选，对话角色跟随 default 链" },
+						{ id: "empty", label: "不回退", title: "显式空链 []：此角色失败时不回退" },
+						{ id: "list", label: "自定义", title: "按顺序尝试的回退模型（provider/id[:level] 或 @角色）" },
 					]}
 				/>
+				<button
+					type="button"
+					disabled={busy}
+					onClick={onCollapse}
+					className="ml-auto rounded-lg px-2 py-1 text-[11px] text-neutral-500 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
+				>
+					收起
+				</button>
 				{savedTick && (
 					<span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400">
 						<Check className="h-2.5 w-2.5" />
 						已保存
 					</span>
 				)}
-				{committed.state !== "unset" && !editing && (
+			</div>
+
+			{items.map((item, i) => (
+				<div key={i} className="flex items-center gap-1.5">
+					<span className="w-4 shrink-0 text-center font-mono text-[10px] text-neutral-600">
+						{i + 1}
+					</span>
+					<input
+						type="text"
+						value={item}
+						disabled={busy}
+						onChange={(e) =>
+							setItems(items.map((x, j) => (j === i ? e.target.value : x)))
+						}
+						onKeyDown={(e) => {
+							if (isComposing(e)) return;
+							if (e.key === "Enter") {
+								e.preventDefault();
+								void apply();
+							}
+						}}
+						spellCheck={false}
+						placeholder="provider/id[:level] 或 @角色"
+						className="flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+					/>
+					<button
+						type="button"
+						disabled={busy || i === 0}
+						onClick={() => move(i, -1)}
+						title="上移"
+						className={ICON_BTN}
+					>
+						<ChevronUp className="h-3 w-3" />
+					</button>
+					<button
+						type="button"
+						disabled={busy || i === items.length - 1}
+						onClick={() => move(i, 1)}
+						title="下移"
+						className={ICON_BTN}
+					>
+						<ChevronDown className="h-3 w-3" />
+					</button>
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => void pickMode("unset")}
-						title={`从 ${chainKey} 移除该角色的回退链，恢复内置默认`}
-						className="ml-auto rounded-lg px-2 py-1 text-[11px] text-neutral-500 hover:bg-[var(--bg-hover)] hover:text-amber-300 active:scale-95 transition-all disabled:opacity-50"
+						onClick={() => setItems(items.filter((_, j) => j !== i))}
+						title="移除"
+						className={ICON_BTN}
 					>
-						恢复默认
+						<Trash2 className="h-3 w-3" />
+					</button>
+				</div>
+			))}
+			<div className="flex items-center gap-1.5">
+				<span className="w-4 shrink-0" />
+				<NativeSelect
+					value=""
+					disabled={busy}
+					onChange={(e) => {
+						const v = e.target.value;
+						if (v) setItems([...items, v]);
+						e.target.value = "";
+					}}
+					className="text-[11px]"
+					containerClassName="flex-1"
+				>
+					<option value="">从模型列表添加…</option>
+					{groupModelsByProvider(models).map((g) => (
+						<optgroup key={g.provider} label={g.provider}>
+							{g.models.map((m) => {
+								const key = toModelKey(m.provider, m.id);
+								return (
+									<option key={key} value={key} title={m.name}>
+										{key}
+									</option>
+								);
+							})}
+						</optgroup>
+					))}
+				</NativeSelect>
+				<button
+					type="button"
+					disabled={busy}
+					onClick={() => setItems([...items, ""])}
+					title="添加空行手动输入（如 @smol、web/duckduckgo）"
+					className={ICON_BTN}
+				>
+					<Plus className="h-3 w-3" />
+				</button>
+			</div>
+			<div className="flex items-center gap-2 pl-5">
+				<button
+					type="button"
+					disabled={busy || !dirty}
+					onClick={() => void apply()}
+					className={SAVE_BTN}
+				>
+					{busy ? "保存中..." : "应用"}
+				</button>
+				{dirty && (
+					<button
+						type="button"
+						disabled={busy}
+						onClick={() => setItems(committed.items)}
+						className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
+					>
+						放弃
 					</button>
 				)}
 			</div>
-
-			{committed.state === "unset" && !editing && (
-				<p className="mt-1.5 text-[11px] leading-5 text-neutral-500">
-					此角色没有自定义回退链 — OMP 使用内置默认（模型职能角色回退到各自的内置候选列表，对话角色跟随 default）。
-					重置整条记录需用命令行 <span className="font-mono">omp config reset retry.fallbackChains</span>。
-				</p>
-			)}
-			{committed.state === "empty" && !editing && (
-				<p className="mt-1.5 text-[11px] leading-5 text-neutral-500">
-					显式空链（[]）：此角色失败时不会回退到其他模型。
-				</p>
-			)}
-			{showList && (
-				<div className="mt-2 space-y-1.5">
-					{items.map((item, i) => (
-						<div key={i} className="flex items-center gap-1.5">
-							<span className="w-4 shrink-0 text-center font-mono text-[10px] text-neutral-600">
-								{i + 1}
-							</span>
-							<input
-								type="text"
-								value={item}
-								disabled={busy}
-								onChange={(e) =>
-									setItems(items.map((x, j) => (j === i ? e.target.value : x)))
-								}
-								onKeyDown={(e) => {
-									if (isComposing(e)) return;
-									if (e.key === "Enter") {
-										e.preventDefault();
-										void applyChain();
-									}
-								}}
-								spellCheck={false}
-								placeholder="provider/id[:level] 或 @角色"
-								className="flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
-							/>
-							<button
-								type="button"
-								disabled={busy || i === 0}
-								onClick={() => move(i, -1)}
-								title="上移"
-								className={ICON_BTN}
-							>
-								<ChevronUp className="h-3 w-3" />
-							</button>
-							<button
-								type="button"
-								disabled={busy || i === items.length - 1}
-								onClick={() => move(i, 1)}
-								title="下移"
-								className={ICON_BTN}
-							>
-								<ChevronDown className="h-3 w-3" />
-							</button>
-							<button
-								type="button"
-								disabled={busy}
-								onClick={() => setItems(items.filter((_, j) => j !== i))}
-								title="移除"
-								className={ICON_BTN}
-							>
-								<Trash2 className="h-3 w-3" />
-							</button>
-						</div>
-					))}
-					<div className="flex items-center gap-1.5">
-						<span className="w-4 shrink-0" />
-						<NativeSelect
-							value=""
-							disabled={busy}
-							onChange={(e) => {
-								const v = e.target.value;
-								if (v) setItems([...items, v]);
-								e.target.value = "";
-							}}
-							className="text-[11px]"
-							containerClassName="flex-1"
-						>
-							<option value="">从模型列表添加…</option>
-							{groupModelsByProvider(models).map((g) => (
-								<optgroup key={g.provider} label={g.provider}>
-									{g.models.map((m) => {
-										const key = toModelKey(m.provider, m.id);
-										return (
-											<option key={key} value={key} title={m.name}>
-												{key}
-											</option>
-										);
-									})}
-								</optgroup>
-							))}
-						</NativeSelect>
-						<button
-							type="button"
-							disabled={busy}
-							onClick={() => setItems([...items, ""])}
-							title="添加空行手动输入（如 @smol、web/duckduckgo）"
-							className={ICON_BTN}
-						>
-							<Plus className="h-3 w-3" />
-						</button>
-					</div>
-					<div className="flex items-center gap-2 pt-0.5 pl-5">
-						<button
-							type="button"
-							disabled={busy || !dirty}
-							onClick={() => void applyChain()}
-							className="rounded-lg bg-[#0A84FF] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
-						>
-							{busy ? "保存中..." : "应用更改"}
-						</button>
-						{dirty && (
-							<button
-								type="button"
-								disabled={busy}
-								onClick={() => setItems(committed.items)}
-								className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
-							>
-								放弃
-							</button>
-						)}
-						{isCustom && (
-							<span className="text-[10px] text-neutral-600">自定义角色</span>
-						)}
-					</div>
-				</div>
-			)}
 		</div>
 	);
 }
+
+/** Chain-state chip label for the collapsed row. */
+function chainChipLabel(state: "unset" | "empty" | "list", count: number) {
+	if (state === "unset") return "未设置";
+	if (state === "empty") return "不回退";
+	return `${count} 项`;
+}
+
 /**
- * One role card: primary model selector + fallback chain editor.
- * Primary writes rewrite the whole `modelRoles` record.
+ * One compact role row inside a grouped card: label + primary model select
+ * (auto-save on pick) + optional thinking suffix + collapsed chain chip.
  */
-function RoleCard({
+function RoleRow({
 	roleId,
 	label,
 	description,
@@ -373,141 +352,122 @@ function RoleCard({
 	onSaved: () => void;
 }) {
 	const current = roleValue(roles, roleId);
-	const [draft, setDraft] = useState(current ?? "");
-	const [thinking, setThinking] = useState("");
-	const [customMode, setCustomMode] = useState(false);
+	const [thinking, setThinking] = useState(
+		() => splitRoleValue(current ?? "").thinkingSuffix ?? "",
+	);
+	const [customDraft, setCustomDraft] = useState<string | null>(null);
+	const [chainOpen, setChainOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [savedTick, setSavedTick] = useState(false);
 
-	// Re-sync when the persisted assignment changes.
+	// Re-sync suffix state when the persisted assignment changes.
 	useEffect(() => {
-		const next = current ?? "";
-		setDraft(next);
-		const { selector, thinkingSuffix } = splitRoleValue(next);
-		setThinking(thinkingSuffix ?? "");
-		setCustomMode(
-			next !== "" && !models.some((m) => toModelKey(m.provider, m.id) === selector),
-		);
-	}, [current, models]);
+		setThinking(splitRoleValue(current ?? "").thinkingSuffix ?? "");
+	}, [current]);
 
+	const grouped = useMemo(() => groupModelsByProvider(models), [models]);
 	const catalogKeys = useMemo(
-		() => models.map((m) => toModelKey(m.provider, m.id)),
+		() => new Set(models.map((m) => toModelKey(m.provider, m.id))),
 		[models],
 	);
-	const grouped = useMemo(() => groupModelsByProvider(models), [models]);
-	const { selector: baseSelector } = splitRoleValue(draft);
-	const selectValue = customMode
-		? CUSTOM_VALUE
-		: catalogKeys.includes(baseSelector)
-			? baseSelector
-			: "";
-	// The value omp would store for the current draft (selector + thinking
-	// suffix for catalog picks, raw text in custom mode).
-	const effective = customMode
-		? draft.trim()
-		: kind === "chat"
-			? joinRoleValue(baseSelector, thinking || null)
-			: baseSelector;
-	const dirty = effective !== (current ?? "");
+	const baseSelector = splitRoleValue(current ?? "").selector;
+	const isCustomValue =
+		current !== null && current !== "" && !catalogKeys.has(baseSelector);
+	const selectValue =
+		customDraft !== null
+			? CUSTOM_VALUE
+			: isCustomValue
+				? CUSTOM_VALUE
+				: catalogKeys.has(baseSelector)
+					? baseSelector
+					: "";
 
 	const writeRoles = async (
 		next: Record<string, unknown>,
-		okMsg: string,
-		errMsgPrefix: string,
-	) => {
+	): Promise<boolean> => {
 		setBusy(true);
 		try {
 			await ompConfigSet("modelRoles", JSON.stringify(next));
 			flashSaved(setSavedTick);
-			toast.success(okMsg);
 			onSaved();
+			return true;
 		} catch (e) {
-			toast.error(`${errMsgPrefix}：${errMsg(e)}`);
+			toast.error(`保存「${label}」失败：${errMsg(e)}`);
+			return false;
 		} finally {
 			setBusy(false);
 		}
 	};
 
-	const save = async () => {
-		const final = effective;
-		if (!final) {
-			// Empty selector = un-assign the role (record entries can only be
-			// removed by rewriting modelRoles without the key).
-			await writeRoles(
-				withRoleAssignment(roles, roleId, null),
-				`已移除「${label}」的角色指定`,
-				"移除失败",
-			);
-			return;
-		}
-		if (kind === "modelKind" && splitRoleValue(final).thinkingSuffix) {
+	/** Commit a full role value (selector + suffix); empty removes the role. */
+	const commit = async (value: string): Promise<boolean> => {
+		if (kind === "modelKind" && splitRoleValue(value).thinkingSuffix) {
 			toast.error("模型职能角色不支持 :thinking 后缀");
-			return;
+			return false;
 		}
-		await writeRoles(
-			withRoleAssignment(roles, roleId, final),
-			`「${label}」已保存为 ${final}`,
-			"保存模型角色失败",
-		);
+		return writeRoles(withRoleAssignment(roles, roleId, value || null));
 	};
 
-	const remove = () =>
-		writeRoles(
-			withRoleAssignment(roles, roleId, null),
-			`已移除「${label}」的角色指定`,
-			"移除失败",
-		);
+	const onPickModel = async (key: string) => {
+		if (key === CUSTOM_VALUE) {
+			setCustomDraft(current ?? "");
+			return;
+		}
+		setCustomDraft(null);
+		const value =
+			key === ""
+				? ""
+				: kind === "chat"
+					? joinRoleValue(key, thinking || null)
+					: key;
+		await commit(value);
+	};
+
+	const onPickThinking = async (suffix: string) => {
+		setThinking(suffix);
+		if (!baseSelector || !catalogKeys.has(baseSelector)) return;
+		await commit(joinRoleValue(baseSelector, suffix || null));
+	};
+
+	const commitCustom = async () => {
+		const v = (customDraft ?? "").trim();
+		if (!(await commit(v))) return;
+		setCustomDraft(null);
+	};
+
+	const chain = useMemo(() => parseChain(chains[roleId]), [chains, roleId]);
 
 	return (
-		<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card px-3 py-2.5">
+		<div className="px-3.5 py-2">
 			<div className="flex items-center gap-2">
-				<span className="text-xs font-semibold tracking-[-0.01em] text-neutral-100">
+				<span
+					title={description}
+					className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-neutral-200"
+				>
 					{label}
-				</span>
-				<span className="rounded bg-neutral-700/60 px-1 py-0.5 font-mono text-[9px] text-neutral-400">
-					{roleId}
-				</span>
-				{isCustom && (
-					<span className="rounded bg-violet-500/15 px-1 py-0.5 text-[9px] text-violet-300">
-						自定义
+					<span className="rounded bg-neutral-700/60 px-1 py-px font-mono text-[9px] font-normal text-neutral-400">
+						{roleId}
 					</span>
-				)}
+					{isCustom && (
+						<span className="rounded bg-violet-500/15 px-1 py-px text-[9px] font-normal text-violet-300">
+							自定义
+						</span>
+					)}
+				</span>
 				{savedTick && (
-					<span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400">
-						<Check className="h-2.5 w-2.5" />
-						已保存
-					</span>
+					<Check className="h-3 w-3 shrink-0 text-emerald-400" />
 				)}
-				{current !== null && (
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => void remove()}
-						title="移除角色指定（重写 modelRoles 记录，移除该键）"
-						className="ml-auto rounded-lg p-1 text-neutral-500 hover:bg-[var(--bg-hover)] hover:text-amber-300 active:scale-95 transition-all disabled:opacity-50"
-					>
-						<Trash2 className="h-3 w-3" />
-					</button>
-				)}
-			</div>
-			<p className="mt-0.5 text-[11px] leading-4 text-neutral-500">{description}</p>
 
-			<div className="mt-2 flex items-end gap-1.5">
-				<div className="min-w-0 flex-1">
+				<div className="ml-auto flex min-w-0 items-center gap-1.5">
 					<NativeSelect
-						value={customMode ? CUSTOM_VALUE : selectValue}
+						value={selectValue}
 						disabled={busy}
-						onChange={(e) => {
-							if (e.target.value === CUSTOM_VALUE) {
-								setCustomMode(true);
-							} else {
-								setCustomMode(false);
-								setDraft(e.target.value);
-							}
-						}}
+						onChange={(e) => void onPickModel(e.target.value)}
 						className="text-[11px]"
+						containerClassName="max-w-[240px] min-w-[140px]"
+						title={current ?? "未设置"}
 					>
-						<option value="">未设置（使用内置默认）</option>
+						<option value="">未设置（内置默认）</option>
 						{grouped.map((g) => (
 							<optgroup key={g.provider} label={g.provider}>
 								{g.models.map((m) => {
@@ -522,76 +482,98 @@ function RoleCard({
 						))}
 						<option value={CUSTOM_VALUE}>自定义…</option>
 					</NativeSelect>
-				</div>
-				{kind === "chat" && !customMode && (
-					<NativeSelect
-						value={thinking}
+					{kind === "chat" && !isCustomValue && (
+						<NativeSelect
+							value={thinking}
+							disabled={busy || !baseSelector}
+							onChange={(e) => void onPickThinking(e.target.value)}
+							className="text-[11px]"
+							containerClassName="w-[72px] shrink-0"
+							title="思考级别后缀（:minimal…:max / :auto）"
+						>
+							<option value="">默认</option>
+							{THINKING_SUFFIXES.map((t) => (
+								<option key={t} value={t}>
+									:{t}
+								</option>
+							))}
+						</NativeSelect>
+					)}
+					<button
+						type="button"
 						disabled={busy}
-						onChange={(e) => setThinking(e.target.value)}
-						className="text-[11px]"
-						containerClassName="w-24 shrink-0"
-						title="思考级别后缀（:minimal…:max / :auto）"
+						onClick={() => setChainOpen((v) => !v)}
+						title="回退链：未设置=继承内置默认 · 不回退=失败即停 · N 项=按序尝试"
+						className={`inline-flex shrink-0 items-center gap-1 rounded-lg hairline px-2 py-1 text-[11px] transition-all active:scale-95 disabled:opacity-50 ${
+							chainOpen
+								? "bg-[var(--bg-active-fill)] text-neutral-100"
+								: "bg-[var(--well-bg)] text-neutral-400 hover:text-neutral-200"
+						}`}
 					>
-						<option value="">默认</option>
-						{THINKING_SUFFIXES.map((t) => (
-							<option key={t} value={t}>
-								:{t}
-							</option>
-						))}
-					</NativeSelect>
-				)}
-				<button
-					type="button"
-					disabled={busy || !dirty}
-					onClick={() => void save()}
-					className="shrink-0 rounded-lg bg-[#0A84FF] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
-				>
-					{busy ? "保存中..." : "保存"}
-				</button>
+						回退 · {chainChipLabel(chain.state, chain.items.length)}
+						<ChevronDown
+							className={`h-2.5 w-2.5 transition-transform ${chainOpen ? "rotate-180" : ""}`}
+						/>
+					</button>
+				</div>
 			</div>
-			{customMode && (
-				<input
-					type="text"
-					value={draft}
-					disabled={busy}
-					autoFocus
-					onChange={(e) => setDraft(e.target.value)}
-					onKeyDown={(e) => {
-						if (isComposing(e)) return;
-						if (e.key === "Enter") {
-							e.preventDefault();
-							void save();
-						}
-						if (e.key === "Escape") {
-							setCustomMode(false);
-							setDraft(current ?? "");
-						}
-					}}
-					spellCheck={false}
-					placeholder="provider/id[:level]、web/duckduckgo、local/kokoro、@smol"
-					className="mt-1.5 w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
-				/>
-			)}
-			{models.length === 0 && !customMode && (
-				<p className="mt-1.5 text-[10px] leading-4 text-neutral-600">
-					未获取到模型目录，可用「自定义…」手动输入选择器。
-				</p>
+
+			{customDraft !== null && (
+				<div className="mt-1.5 flex items-center gap-1.5 pl-1">
+					<input
+						type="text"
+						value={customDraft}
+						disabled={busy}
+						autoFocus
+						onChange={(e) => setCustomDraft(e.target.value)}
+						onKeyDown={(e) => {
+							if (isComposing(e)) return;
+							if (e.key === "Enter") {
+								e.preventDefault();
+								void commitCustom();
+							}
+							if (e.key === "Escape") {
+								setCustomDraft(null);
+							}
+						}}
+						spellCheck={false}
+						placeholder="provider/id[:level]、web/duckduckgo、@smol"
+						className="flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+					/>
+					<button
+						type="button"
+						disabled={busy || !customDraft.trim()}
+						onClick={() => void commitCustom()}
+						className={SAVE_BTN}
+					>
+						保存
+					</button>
+					<button
+						type="button"
+						disabled={busy}
+						onClick={() => setCustomDraft(null)}
+						title="取消自定义输入"
+						className={ICON_BTN}
+					>
+						<Trash2 className="h-3 w-3" />
+					</button>
+				</div>
 			)}
 
-			<ChainEditor
-				roleId={roleId}
-				isCustom={isCustom}
-				chains={chains}
-				models={models}
-				onSaved={onSaved}
-			/>
+			{chainOpen && (
+				<ChainPanel
+					roleId={roleId}
+					chains={chains}
+					models={models}
+					onSaved={onSaved}
+					onCollapse={() => setChainOpen(false)}
+				/>
+			)}
 		</div>
 	);
 }
 
-/**
- * Ordered `cycleOrder` editor — the chat roles the model switcher cycles through.
- */
+/** Ordered `cycleOrder` editor — chat roles the in-session switcher cycles. */
 function CycleOrderEditor({
 	value,
 	availableRoles,
@@ -634,10 +616,9 @@ function CycleOrderEditor({
 		try {
 			await ompConfigSet("cycleOrder", JSON.stringify(items));
 			flashSaved(setSavedTick);
-			toast.success("角色切换顺序已保存");
 			onSaved();
 		} catch (e) {
-			toast.error(`保存 cycleOrder 失败：${errMsg(e)}`);
+			toast.error(`保存切换顺序失败：${errMsg(e)}`);
 		} finally {
 			setBusy(false);
 		}
@@ -646,18 +627,15 @@ function CycleOrderEditor({
 	return (
 		<div>
 			<div className="flex items-center gap-2">
-				<span className="text-[11px] font-medium text-neutral-300">角色切换顺序</span>
-				{savedTick && (
-					<span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400">
-						<Check className="h-2.5 w-2.5" />
-						已保存
-					</span>
-				)}
+				<span
+					title="会话内模型切换器按此顺序轮换对话角色（cycleOrder）"
+					className="text-[11px] font-medium text-neutral-300"
+				>
+					角色切换顺序
+				</span>
+				{savedTick && <Check className="h-2.5 w-2.5 text-emerald-400" />}
 			</div>
-			<p className="mt-0.5 text-[11px] leading-4 text-neutral-500">
-				会话内模型切换器按此顺序轮换对话角色（cycleOrder）
-			</p>
-			<div className="mt-2 flex flex-wrap items-center gap-1">
+			<div className="mt-1.5 flex flex-wrap items-center gap-1">
 				{items.map((r, i) => (
 					<span
 						key={`${r}-${i}`}
@@ -692,10 +670,10 @@ function CycleOrderEditor({
 					</span>
 				))}
 				{items.length === 0 && (
-					<span className="text-[11px] text-neutral-600">（空 — 切换器将无角色可轮换）</span>
+					<span className="text-[11px] text-neutral-600">（空）</span>
 				)}
 			</div>
-			<div className="mt-2 flex items-center gap-1.5">
+			<div className="mt-1.5 flex items-center gap-1.5">
 				<NativeSelect
 					value=""
 					disabled={busy}
@@ -705,7 +683,7 @@ function CycleOrderEditor({
 						e.target.value = "";
 					}}
 					className="text-[11px]"
-					containerClassName="w-48"
+					containerClassName="w-44"
 				>
 					<option value="">添加角色…</option>
 					{addable.map((r) => (
@@ -728,7 +706,7 @@ function CycleOrderEditor({
 					}}
 					spellCheck={false}
 					placeholder="自定义角色名"
-					className="w-32 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+					className="w-28 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
 				/>
 				<button
 					type="button"
@@ -743,7 +721,7 @@ function CycleOrderEditor({
 					type="button"
 					disabled={busy || !dirty}
 					onClick={() => void apply()}
-					className="rounded-lg bg-[#0A84FF] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
+					className={SAVE_BTN}
 				>
 					{busy ? "保存中..." : "应用"}
 				</button>
@@ -754,6 +732,31 @@ function CycleOrderEditor({
 
 const CHAT_ROLES = BUILTIN_ROLES.filter((r) => r.kind === "chat");
 const KIND_ROLES = BUILTIN_ROLES.filter((r) => r.kind === "modelKind");
+
+/** One grouped card of role rows (macOS-style grouped list). */
+function RoleGroup({
+	title,
+	titleHint,
+	children,
+}: {
+	title: string;
+	titleHint?: string;
+	children: ReactNode;
+}) {
+	return (
+		<div>
+			<h3
+				title={titleHint}
+				className="mb-1.5 px-1 text-[11px] font-semibold text-neutral-400"
+			>
+				{title}
+			</h3>
+			<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card divide-y divide-[var(--border-divider)]">
+				{children}
+			</div>
+		</div>
+	);
+}
 
 /**
  * Desktop equivalent of omp `/model` → Roles: assign each role a primary model
@@ -793,10 +796,7 @@ export function ModelRolesSection() {
 		void useOmpConfigStore.getState().load(true);
 	};
 
-	const roles = useMemo(
-		() => asRecord(entryValue(entries, "modelRoles")),
-		[entries],
-	);
+	const roles = useMemo(() => asRecord(entryValue(entries, "modelRoles")), [entries]);
 	const chains = useMemo(
 		() => asRecord(entryValue(entries, "retry.fallbackChains")),
 		[entries],
@@ -805,10 +805,7 @@ export function ModelRolesSection() {
 		const v = entryValue(entries, "modelRoleStorage");
 		return v === "project" ? "project" : "global";
 	}, [entries]);
-	const cycle = useMemo(
-		() => asStringList(entryValue(entries, "cycleOrder")),
-		[entries],
-	);
+	const cycle = useMemo(() => asStringList(entryValue(entries, "cycleOrder")), [entries]);
 	const customIds = useMemo(() => customRoles(roles), [roles]);
 
 	const allRoleIds = useMemo(
@@ -821,11 +818,6 @@ export function ModelRolesSection() {
 		setStorageBusy(true);
 		try {
 			await ompConfigSet("modelRoleStorage", mode);
-			toast.success(
-				mode === "global"
-					? "角色指定将保存到全局配置"
-					: "角色指定将保存到项目配置",
-			);
 			handleChanged();
 		} catch (e) {
 			toast.error(`保存 modelRoleStorage 失败：${errMsg(e)}`);
@@ -835,16 +827,7 @@ export function ModelRolesSection() {
 	};
 
 	return (
-		<div className="space-y-6">
-			<div>
-				<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">
-					模型角色与回退链
-				</h2>
-				<p className="text-xs text-[rgba(235,235,245,0.60)]">
-					为每个角色指定主力模型（modelRoles），并配置按顺序尝试的回退模型（retry.fallbackChains）
-				</p>
-			</div>
-
+		<div className="space-y-4">
 			{error && (
 				<div className="flex items-start gap-1.5 rounded-xl hairline bg-rose-950/20 px-3 py-2 text-[11px] text-rose-300">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -860,32 +843,29 @@ export function ModelRolesSection() {
 			{loaded && (
 				<>
 					{/* storage + cycle order */}
-					<div className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
-						<div>
-							<div className="flex items-center gap-3">
-								<span className="text-[11px] font-medium text-neutral-300">
-									角色保存位置
-								</span>
-								<Segmented
-									value={storage}
-									disabled={storageBusy}
-									onPick={(m) => void setStorage(m)}
-									options={[
-										{ id: "global", label: "global（全局）" },
-										{ id: "project", label: "project（项目）" },
-									]}
-								/>
-							</div>
-						<p className="mt-1 text-[11px] leading-4 text-neutral-500">
-							modelRoleStorage：TUI 里 /model 选择器的保存位置。此处编辑始终写入全局配置（omp config set 不走项目分支）
-						</p>
+					<div className="space-y-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
+						<div className="flex items-center gap-3">
+							<span
+								title="modelRoleStorage：TUI 里 /model 选择器的保存位置；此处编辑始终写入全局配置"
+								className="text-[11px] font-medium text-neutral-300"
+							>
+								角色保存位置
+							</span>
+							<Segmented
+								value={storage}
+								disabled={storageBusy}
+								onPick={(m) => void setStorage(m)}
+								options={[
+									{ id: "global", label: "global" },
+									{ id: "project", label: "project" },
+								]}
+							/>
+						</div>
 						{storage === "project" && (
-							<div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-5 text-amber-200">
+							<div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-5 text-amber-200">
 								<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
 								<div className="flex-1">
-									project 模式下，仓库内
-									<span className="font-mono"> .omp/config.yml </span>
-									的角色指定会覆盖全局——在此处的修改写进全局后，带项目覆盖的仓库里仍使用项目值，改动看起来不生效。建议使用 global，并删除仓库里的角色覆盖。
+									仓库 .omp/config.yml 里的角色会覆盖全局——此处的修改对带项目覆盖的仓库不生效。建议 global。
 									<button
 										type="button"
 										disabled={storageBusy}
@@ -897,8 +877,7 @@ export function ModelRolesSection() {
 								</div>
 							</div>
 						)}
-						</div>
-						<div className="border-t border-[var(--border-divider)] pt-4">
+						<div className="border-t border-[var(--border-divider)] pt-3">
 							<CycleOrderEditor
 								value={cycle}
 								availableRoles={allRoleIds}
@@ -907,73 +886,65 @@ export function ModelRolesSection() {
 						</div>
 					</div>
 
-					{/* chat roles */}
-					<div>
-						<h3 className="mb-2 text-xs font-semibold tracking-[-0.01em] text-neutral-300">
-							对话角色
-						</h3>
-						<div className="space-y-2">
-							{CHAT_ROLES.map((r) => (
-								<RoleCard
-									key={r.id}
-									roleId={r.id}
-									label={r.zhLabel}
-									description={r.description}
-									kind={r.kind}
-									roles={roles}
-									chains={chains}
-									models={models}
-									onSaved={handleChanged}
-								/>
-							))}
-						</div>
-					</div>
+					<p className="px-1 text-[11px] leading-4 text-neutral-500">
+						选模型后立即保存；「回退」徽章展开该角色的回退链（未设置 = 用内置默认，不回退 = 失败即停，N 项 = 按顺序尝试）。
+					</p>
 
-					{/* model-kind roles */}
-					<div>
-						<h3 className="mb-2 text-xs font-semibold tracking-[-0.01em] text-neutral-300">
-							模型职能角色
-						</h3>
-						<div className="space-y-2">
-							{KIND_ROLES.map((r) => (
-								<RoleCard
-									key={r.id}
-									roleId={r.id}
-									label={r.zhLabel}
-									description={r.description}
-									kind={r.kind}
-									roles={roles}
-									chains={chains}
-									models={models}
-									onSaved={handleChanged}
-								/>
-							))}
-						</div>
-					</div>
+					<RoleGroup
+						title="对话角色"
+						titleHint="chat roles — 可带 :thinking 后缀"
+					>
+						{CHAT_ROLES.map((r) => (
+							<RoleRow
+								key={r.id}
+								roleId={r.id}
+								label={r.zhLabel}
+								description={r.description}
+								kind={r.kind}
+								roles={roles}
+								chains={chains}
+								models={models}
+								onSaved={handleChanged}
+							/>
+						))}
+					</RoleGroup>
 
-					{/* custom roles (only when present in modelRoles / modelTags) */}
+					<RoleGroup
+						title="模型职能角色"
+						titleHint="model-kind roles — 图像 / 搜索 / 语音等专用运行器"
+					>
+						{KIND_ROLES.map((r) => (
+							<RoleRow
+								key={r.id}
+								roleId={r.id}
+								label={r.zhLabel}
+								description={r.description}
+								kind={r.kind}
+								roles={roles}
+								chains={chains}
+								models={models}
+								onSaved={handleChanged}
+							/>
+						))}
+					</RoleGroup>
+
 					{customIds.length > 0 && (
-						<div>
-							<h3 className="mb-2 text-xs font-semibold tracking-[-0.01em] text-neutral-300">
-								自定义角色
-							</h3>
-							<div className="space-y-2">
-								{customIds.map((id) => (
-									<RoleCard
-										key={id}
-										roleId={id}
-										label={id}
-										description="用户自定义角色（modelRoles 中的非内置键）"
-										kind="chat"
-										isCustom
-										roles={roles}
-										chains={chains}
-										models={models}
-										onSaved={handleChanged}
-									/>
-								))}
-							</div>
-						</div>
+						<RoleGroup title="自定义角色" titleHint="modelRoles 中的非内置键">
+							{customIds.map((id) => (
+								<RoleRow
+									key={id}
+									roleId={id}
+									label={id}
+									description="用户自定义角色（modelRoles 中的非内置键）"
+									kind="chat"
+									isCustom
+									roles={roles}
+									chains={chains}
+									models={models}
+									onSaved={handleChanged}
+								/>
+							))}
+						</RoleGroup>
 					)}
 				</>
 			)}

@@ -26,7 +26,7 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 import { NativeSelect } from "../../components/NativeSelect";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { Settings } from "../../lib/contracts";
@@ -121,6 +121,11 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 	const [installingExt, setInstallingExt] = useState(false);
 	const [extInstallResult, setExtInstallResult] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<string>("general");
+	const contentRef = useRef<HTMLDivElement>(null);
+	// Switching sections always lands at the top of the new section.
+	useEffect(() => {
+		contentRef.current?.scrollTo({ top: 0 });
+	}, [activeSection]);
 
 	// OMP config: the roles editor plus one entry per desktop category are
 	// top-level nav items ("omp-*"); the category id is the section suffix.
@@ -452,7 +457,7 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 			</div>
 
 			{/* Main Settings Content Area */}
-			<div className="flex-1 overflow-y-auto p-6 lg:p-7">
+			<div ref={contentRef} className="flex-1 overflow-y-auto p-6 lg:p-7">
 				<div className="max-w-2xl space-y-8">
 					{/* Status feedback alerts */}
 					{storeError && (
