@@ -40,9 +40,10 @@ import { ThemePicker } from "../../components/ThemePicker";
 import { MobilePanel } from "../mobile/MobilePanel";
 import { DEFAULT_SETTINGS, useSettings } from "./store";
 import { OmpConfigSection } from "./OmpConfigSection";
+import { ModelRolesSection } from "./ModelRolesSection";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { groupByOmpTab } from "./ompConfigTabs";
+import { groupByDesktopCategory } from "./ompDesktopCategories";
 import { ompConfigGroup } from "./ompConfigMeta";
 import { ProviderPanel } from "../providers/ProviderPanel";
 import { useZoom } from "../../lib/zoom";
@@ -104,16 +105,24 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 	const [extInstallResult, setExtInstallResult] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<string>("general");
 
-	// OMP 配置: official tab selection lives in the left nav as a second level.
-	const [ompTab, setOmpTab] = useState<string>("");
+	// OMP 配置: desktop category (or the roles editor) selected in the left nav.
+	const [ompTab, setOmpTab] = useState<string>("roles");
 	const [ompGroup, setOmpGroup] = useState<string | null>(null);
 	const ompEntries = useOmpConfigStore((s) => s.entries);
 	const loadOmpConfig = useOmpConfigStore((s) => s.load);
 	useEffect(() => {
 		if (activeSection === "ompconfig") void loadOmpConfig();
 	}, [activeSection, loadOmpConfig]);
-	const ompGroups = useMemo(() => groupByOmpTab(ompEntries), [ompEntries]);
-	// Schema sub-groups per tab (Theme / Composer / …) for the third nav level.
+	const ompGroups = useMemo(
+		() =>
+			groupByDesktopCategory(ompEntries).map((g) => ({
+				id: g.category.id,
+				label: g.category.label,
+				entries: g.entries,
+			})),
+		[ompEntries],
+	);
+	// Schema sub-groups per category (Tools / Memory / …) for the third nav level.
 	const ompTabGroups = useMemo(() => {
 		const result: Record<string, { name: string; count: number }[]> = {};
 		for (const tab of ompGroups) {
@@ -428,8 +437,8 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 										setActiveSection(sec.id);
 										if (sec.id === "ompconfig") {
 											setOmpGroup(null);
-											if (ompGroups.length > 0 && !ompGroups.some((g) => g.id === ompTab)) {
-												setOmpTab(ompGroups[0].id);
+											if (ompTab !== "roles" && !ompGroups.some((g) => g.id === ompTab)) {
+												setOmpTab("roles");
 											}
 										}
 									}}
@@ -448,8 +457,22 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 											<ChevronRight className="ml-auto h-3 w-3 shrink-0 text-neutral-600" />
 										))}
 								</button>
-								{isOmp && isActive && ompGroups.length > 0 && (
+								{isOmp && isActive && (
 									<div className="mt-1 space-y-0.5 pl-4">
+										<button
+											type="button"
+											onClick={() => {
+												setOmpTab("roles");
+												setOmpGroup(null);
+											}}
+											className={`flex w-full items-center rounded-md px-2 py-1 text-[11px] transition-all active:scale-[0.98] ${
+												ompTab === "roles"
+													? "bg-[var(--bg-hover)] font-medium text-[#0A84FF]"
+													: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
+											}`}
+										>
+											<span>模型角色与回退链</span>
+										</button>
 										{ompGroups.map((g) => (
 											<div key={g.id}>
 												<button
@@ -969,12 +992,16 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 									读写 omp 自身的全局配置（~/.omp/agent/config.yml），与 workbench 设置相互独立
 								</p>
 							</div>
-							<OmpConfigSection
-								activeTab={ompTab}
-								onTabChange={setOmpTab}
-								activeGroupName={ompGroup}
-								onGroupChange={setOmpGroup}
-							/>
+							{ompTab === "roles" ? (
+								<ModelRolesSection />
+							) : (
+								<OmpConfigSection
+									activeTab={ompTab}
+									onTabChange={setOmpTab}
+									activeGroupName={ompGroup}
+									onGroupChange={setOmpGroup}
+								/>
+							)}
 						</div>
 					)}
 
