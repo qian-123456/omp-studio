@@ -756,7 +756,7 @@ function RoleGroup({
  * and an ordered fallback chain. Backed by `modelRoles` + `retry.fallbackChains`
  * (both record-typed — single-role writes rewrite the whole record).
  */
-export function ModelRolesSection() {
+export function ModelRolesSection({ query = "" }: { query?: string }) {
 	const entries = useOmpConfigStore((s) => s.entries);
 	const loading = useOmpConfigStore((s) => s.loading);
 	const loaded = useOmpConfigStore((s) => s.loaded);
@@ -800,6 +800,16 @@ export function ModelRolesSection() {
 	}, [entries]);
 	const cycle = useMemo(() => asStringList(entryValue(entries, "cycleOrder")), [entries]);
 	const customIds = useMemo(() => customRoles(roles), [roles]);
+
+	const q = query.trim().toLowerCase();
+	const matchRole = (r: { id: string; zhLabel: string; description: string }) =>
+		!q ||
+		r.id.toLowerCase().includes(q) ||
+		r.zhLabel.toLowerCase().includes(q) ||
+		r.description.toLowerCase().includes(q);
+	const chatRows = useMemo(() => CHAT_ROLES.filter(matchRole), [q]);
+	const kindRows = useMemo(() => KIND_ROLES.filter(matchRole), [q]);
+	const customRows = useMemo(() => customIds.filter((id) => matchRole({ id, zhLabel: id, description: "" })), [customIds, q]);
 
 	const allRoleIds = useMemo(
 		() => [...BUILTIN_ROLES.map((r) => r.id), ...customIds],
@@ -887,7 +897,7 @@ export function ModelRolesSection() {
 						title="对话角色"
 						titleHint="chat roles — 可带 :thinking 后缀"
 					>
-						{CHAT_ROLES.map((r) => (
+						{chatRows.map((r) => (
 							<RoleRow
 								key={r.id}
 								roleId={r.id}
@@ -906,7 +916,7 @@ export function ModelRolesSection() {
 						title="模型职能角色"
 						titleHint="model-kind roles — 图像 / 搜索 / 语音等专用运行器"
 					>
-						{KIND_ROLES.map((r) => (
+						{kindRows.map((r) => (
 							<RoleRow
 								key={r.id}
 								roleId={r.id}
@@ -921,9 +931,9 @@ export function ModelRolesSection() {
 						))}
 					</RoleGroup>
 
-					{customIds.length > 0 && (
+					{customRows.length > 0 && (
 						<RoleGroup title="自定义角色" titleHint="modelRoles 中的非内置键">
-							{customIds.map((id) => (
+							{customRows.map((id) => (
 								<RoleRow
 									key={id}
 									roleId={id}

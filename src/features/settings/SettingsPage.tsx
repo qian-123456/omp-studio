@@ -15,6 +15,7 @@ import {
 	Palette,
 	RefreshCw,
 	RotateCcw,
+	Search,
 	Settings2,
 	Sliders,
 	Smartphone,
@@ -23,10 +24,11 @@ import {
 	Volume2,
 	VolumeX,
 	Wrench,
+	X,
 	type LucideIcon,
 } from "lucide-react";
 import { NativeSelect } from "../../components/NativeSelect";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { Settings } from "../../lib/contracts";
@@ -49,7 +51,9 @@ import { OmpConfigSection } from "./OmpConfigSection";
 import { ModelRolesSection } from "./ModelRolesSection";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { OMP_DESKTOP_CATEGORIES } from "./ompDesktopCategories";
+import { OMP_DESKTOP_CATEGORIES, ompDesktopCategoryFor } from "./ompDesktopCategories";
+import { BUILTIN_ROLES, asRecord, customRoles } from "./modelRoles";
+import { ompConfigDescription, ompConfigTitle } from "./ompConfigMeta";
 import { ProviderPanel } from "../providers/ProviderPanel";
 import { useZoom } from "../../lib/zoom";
 
@@ -63,6 +67,18 @@ const OMP_CATEGORY_ICONS: Record<string, LucideIcon> = {
 	tasks: Network,
 	providers: Globe,
 	advanced: Settings2,
+};
+
+/** Extra search terms for the app's own sections (nav-level search index). */
+const SECTION_KEYWORDS: Record<string, string[]> = {
+	general: ["缩放", "字体", "zoom", "font", "窗口"],
+	appearance: ["主题", "深色", "浅色", "theme", "dark", "light", "字号"],
+	providers: ["API", "密钥", "key", "provider", "anthropic", "openai", "凭证"],
+	todos: ["待办", "监工", "todo", "supervisor", "巡检"],
+	sessions: ["会话", "session", "新会话", "模型", "工作目录", "默认模型"],
+	notifications: ["通知", "提醒", "声音", "免打扰", "安静时段", "notify", "quiet"],
+	mobile: ["手机", "移动端", "局域网", "配对", "二维码", "mobile", "lan"],
+	advanced: ["OMP 命令行", "二进制", "binary", "导出", "导入", "重置", "数据目录", "扩展"],
 };
 
 interface ToggleProps {
@@ -134,9 +150,12 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 			? activeSection.slice("omp-".length)
 			: null;
 	const loadOmpConfig = useOmpConfigStore((s) => s.load);
+	const ompEntries = useOmpConfigStore((s) => s.entries);
+	const [navQuery, setNavQuery] = useState("");
+	// Load OMP entries eagerly while searching so the nav index covers them.
 	useEffect(() => {
-		if (activeSection.startsWith("omp-")) void loadOmpConfig();
-	}, [activeSection, loadOmpConfig]);
+		if (activeSection.startsWith("omp-") || navQuery.trim()) void loadOmpConfig();
+	}, [activeSection, navQuery, loadOmpConfig]);
 	const [saveNotice, setSaveNotice] = useState<string | null>(null);
 	const pendingSection = useUi((s) => s.settingsSection);
 	const fontSize = useFontSize();
@@ -429,32 +448,128 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 		{ id: "advanced", label: "高级", icon: Wrench },
 	];
 
+	// Nav search index: section label + keywords + OMP keys/roles/custom terms.
+	const navQueryL = navQuery.trim().toLowerCase();
+	const navMatch = useMemo(() => {
+		const sectionKeys = (id: string): string[] => {
+			if (id === "omp-roles") {
+				const cust = customRoles(
+					asRecord(ompEntries.find((e) => e.key === "modelRoles")?.value),
+				);
+				return [
+					...BUILTIN_ROLES.flatMap((r) => [r.id, r.zhLabel, r.description]),
+					...cust,
+					"modelroles",
+					"fallback",
+					"回退",
+					"角色",
+				];
+			}
+			const cat = OMP_DESKTOP_CATEGORIES.find((c) => `omp-${c.id}` === id);
+			if (cat) {
+				return ompEntries
+					.filter((e) => ompDesktopCategoryFor(e.key).id === cat.id)
+					.flatMap((e) => [
+						e.key,
+						ompConfigTitle(e.key),
+						ompConfigDescription(e.key, e.description),
+					]);
+			}
+			return SECTION_KEYWORDS[id] ?? [];
+		};
+		return sections
+			.map((sec) => {
+				const hits = navQueryL
+					? sectionKeys(sec.id).filter((t) =>
+							t.toLowerCase().includes(navQueryL),
+						)
+					: [];
+				const hit =
+					!navQueryL ||
+					sec.label.toLowerCase().includes(navQueryL) ||
+					hits.length > 0;
+				return { ...sec, hit, hits: [...new Set(hits)] };
+			})
+			.filter((s) => s.hit);
+	}, [navQueryL, ompEntries]);
+
+	// Keep the active section inside the filtered set while searching.
+	useEffect(() => {
+		if (!navQueryL) return;
+		if (!navMatch.some((s) => s.id === activeSection)) {
+			setActiveSection(navMatch[0]?.id ?? activeSection);
+		}
+	}, [navMatch, navQueryL, activeSection]);
+
 	return (
 		<div className="flex h-full min-h-0 overflow-hidden bg-transparent text-neutral-200">
 			{/* Left Navigation Bar */}
 			<div className="flex w-48 shrink-0 flex-col overflow-hidden border-r border-[var(--border-divider)] vibrancy-chrome p-2.5">
+				<div className="mb-2 flex items-center gap-1.5 rounded-lg hairline bg-[var(--well-bg)] px-2 py-1.5">
+					<Search className="h-3 w-3 shrink-0 text-neutral-500" />
+					<input
+						value={navQuery}
+						onChange={(e) => setNavQuery(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Escape" && !isComposing(e)) {
+								e.stopPropagation();
+								if (navQuery) setNavQuery("");
+								else e.currentTarget.blur();
+							}
+						}}
+						placeholder="搜索设置…"
+						className="w-full bg-transparent text-[11px] text-neutral-200 outline-none placeholder:text-neutral-500"
+					/>
+					{navQuery && (
+						<button
+							type="button"
+							onClick={() => setNavQuery("")}
+							className="shrink-0 rounded p-0.5 text-neutral-500 hover:text-neutral-300 active:scale-95 transition-all"
+						>
+							<X className="h-3 w-3" />
+						</button>
+					)}
+				</div>
 				<nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-					{sections.map((sec) => {
-						const Icon = sec.icon;
-						const isActive = activeSection === sec.id;
-						return (
-							<button
-								key={sec.id}
-								type="button"
-								onClick={() => setActiveSection(sec.id)}
-								className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-all active:scale-[0.98] ${
-									isActive
-										? "bg-[var(--bg-hover)] text-neutral-100 shadow-sm"
-										: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
-								}`}
-							>
-								<Icon className="h-3.5 w-3.5" />
-								<span>{sec.label}</span>
-							</button>
-						);
-					})}
+					{navMatch.length === 0 ? (
+						<div className="px-2 py-3 text-center text-[11px] text-neutral-500">
+							无匹配设置项
+						</div>
+					) : (
+						navMatch.map((sec) => {
+							const Icon = sec.icon;
+							const isActive = activeSection === sec.id;
+							const hint =
+								sec.id.startsWith("omp-") && sec.hits.length > 0
+									? sec.hits.slice(0, 2).join(" · ")
+									: null;
+							return (
+								<button
+									key={sec.id}
+									type="button"
+									onClick={() => setActiveSection(sec.id)}
+									className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-all active:scale-[0.98] ${
+										isActive
+											? "bg-[var(--bg-hover)] text-neutral-100 shadow-sm"
+											: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
+									}`}
+								>
+									<Icon className="h-3.5 w-3.5" />
+									<span className="min-w-0 flex-1 text-left">
+										<span className="block truncate">{sec.label}</span>
+										{hint && (
+											<span className="block truncate text-[10px] font-normal text-neutral-500">
+												{hint}
+											</span>
+										)}
+									</span>
+								</button>
+							);
+						})
+					)}
 				</nav>
 			</div>
+
 
 			{/* Main Settings Content Area */}
 			<div ref={contentRef} className="flex-1 overflow-y-auto p-6 lg:p-7">
@@ -915,7 +1030,6 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 							</div>
 						</div>
 					)}
-
 					{/* 5.5 OMP config surfaces (roles editor + per-category flat list) */}
 					{activeSection === "omp-roles" && (
 						<div className="space-y-6">
@@ -925,7 +1039,7 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 									为每类任务指定主力模型与回退顺序（对应 omp /model 的 Roles 视图），写入 ~/.omp/agent/config.yml
 								</p>
 							</div>
-							<ModelRolesSection />
+							<ModelRolesSection query={navQuery.trim()} />
 						</div>
 					)}
 					{ompCategory !== null && (
@@ -934,6 +1048,7 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 							onTabChange={() => {}}
 							activeGroupName={null}
 							onGroupChange={() => {}}
+							seedQuery={navQuery.trim()}
 						/>
 					)}
 

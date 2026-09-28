@@ -455,12 +455,15 @@ export function OmpConfigSection({
 	onTabChange,
 	activeGroupName,
 	onGroupChange,
+	seedQuery,
 }: {
 	activeTab: string;
 	onTabChange: (tab: string) => void;
 	/** Schema sub-group (Theme / Composer / …); null shows the whole tab. */
 	activeGroupName: string | null;
 	onGroupChange: (group: string | null) => void;
+	/** External query seeded from the settings nav search; internal box wins after edits. */
+	seedQuery?: string;
 }) {
 	const entries = useOmpConfigStore((s) => s.entries);
 	const loading = useOmpConfigStore((s) => s.loading);
@@ -469,6 +472,12 @@ export function OmpConfigSection({
 	const load = useOmpConfigStore((s) => s.load);
 
 	const [query, setQuery] = useState("");
+
+	// Seed from the nav-level search; typed edits here stay until the nav query changes.
+	useEffect(() => {
+		if (seedQuery !== undefined && seedQuery !== query) setQuery(seedQuery);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [seedQuery]);
 
 	useEffect(() => {
 		void load();
