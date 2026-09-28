@@ -1,13 +1,17 @@
 import {
 	Bell,
 	Bot,
-	ChevronDown,
-	ChevronRight,
+	Brain,
 	Download,
 	FileDown,
 	FileUp,
 	FolderOpen,
+	Globe,
+	Hammer,
 	KeyRound,
+	Library,
+	ListTree,
+	Network,
 	Palette,
 	RefreshCw,
 	RotateCcw,
@@ -15,12 +19,14 @@ import {
 	Sliders,
 	Smartphone,
 	Sparkles,
+	Users,
 	Volume2,
 	VolumeX,
 	Wrench,
+	type LucideIcon,
 } from "lucide-react";
 import { NativeSelect } from "../../components/NativeSelect";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { Settings } from "../../lib/contracts";
@@ -43,10 +49,21 @@ import { OmpConfigSection } from "./OmpConfigSection";
 import { ModelRolesSection } from "./ModelRolesSection";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { groupByDesktopCategory } from "./ompDesktopCategories";
-import { ompConfigGroup } from "./ompConfigMeta";
+import { OMP_DESKTOP_CATEGORIES } from "./ompDesktopCategories";
 import { ProviderPanel } from "../providers/ProviderPanel";
 import { useZoom } from "../../lib/zoom";
+
+/** Nav icons for the OMP config category entries (`advanced` → OMP 其他). */
+const OMP_CATEGORY_ICONS: Record<string, LucideIcon> = {
+	model: ListTree,
+	thinking: Brain,
+	retry: RefreshCw,
+	context: Library,
+	tools: Hammer,
+	tasks: Network,
+	providers: Globe,
+	advanced: Settings2,
+};
 
 interface ToggleProps {
 	checked: boolean;
@@ -105,39 +122,16 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 	const [extInstallResult, setExtInstallResult] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<string>("general");
 
-	// OMP 配置: desktop category (or the roles editor) selected in the left nav.
-	const [ompTab, setOmpTab] = useState<string>("roles");
-	const [ompGroup, setOmpGroup] = useState<string | null>(null);
-	const ompEntries = useOmpConfigStore((s) => s.entries);
+	// OMP config: the roles editor plus one entry per desktop category are
+	// top-level nav items ("omp-*"); the category id is the section suffix.
+	const ompCategory =
+		activeSection.startsWith("omp-") && activeSection !== "omp-roles"
+			? activeSection.slice("omp-".length)
+			: null;
 	const loadOmpConfig = useOmpConfigStore((s) => s.load);
 	useEffect(() => {
-		if (activeSection === "ompconfig") void loadOmpConfig();
+		if (activeSection.startsWith("omp-")) void loadOmpConfig();
 	}, [activeSection, loadOmpConfig]);
-	const ompGroups = useMemo(
-		() =>
-			groupByDesktopCategory(ompEntries).map((g) => ({
-				id: g.category.id,
-				label: g.category.label,
-				entries: g.entries,
-			})),
-		[ompEntries],
-	);
-	// Schema sub-groups per category (Tools / Memory / …) for the third nav level.
-	const ompTabGroups = useMemo(() => {
-		const result: Record<string, { name: string; count: number }[]> = {};
-		for (const tab of ompGroups) {
-			const counts = new Map<string, number>();
-			for (const entry of tab.entries) {
-				const name = ompConfigGroup(entry.key) ?? "其他";
-				counts.set(name, (counts.get(name) ?? 0) + 1);
-			}
-			result[tab.id] = [...counts.entries()].map(([name, count]) => ({
-				name,
-				count,
-			}));
-		}
-		return result;
-	}, [ompGroups]);
 	const [saveNotice, setSaveNotice] = useState<string | null>(null);
 	const pendingSection = useUi((s) => s.settingsSection);
 	const fontSize = useFontSize();
@@ -407,10 +401,20 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 		);
 	}
 
-	// Reorder sections: Move "OMP 配置" right after "通用" so users can easily find OMP native configuration
+	// OMP config surfaces right after 通用: the roles editor plus one entry per
+	// desktop category (the `advanced` bucket becomes "OMP 其他" so it never
+	// clashes with the app's own 高级 section).
+	const ompSections = [
+		{ id: "omp-roles", label: "模型角色", icon: Users },
+		...OMP_DESKTOP_CATEGORIES.map((c) => ({
+			id: `omp-${c.id}`,
+			label: c.id === "advanced" ? "OMP 其他" : c.label,
+			icon: OMP_CATEGORY_ICONS[c.id] ?? Settings2,
+		})),
+	];
 	const sections = [
 		{ id: "general", label: "通用", icon: Sliders },
-		{ id: "ompconfig", label: "OMP 配置", icon: Settings2 },
+		...ompSections,
 		{ id: "appearance", label: "外观", icon: Palette },
 		{ id: "providers", label: "API 供应商", icon: KeyRound },
 		{ id: "todos", label: "待办与监工", icon: Sparkles },
@@ -428,96 +432,20 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 					{sections.map((sec) => {
 						const Icon = sec.icon;
 						const isActive = activeSection === sec.id;
-						const isOmp = sec.id === "ompconfig";
 						return (
-							<div key={sec.id}>
-								<button
-									type="button"
-									onClick={() => {
-										setActiveSection(sec.id);
-										if (sec.id === "ompconfig") {
-											setOmpGroup(null);
-											if (ompTab !== "roles" && !ompGroups.some((g) => g.id === ompTab)) {
-												setOmpTab("roles");
-											}
-										}
-									}}
-									className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-all active:scale-[0.98] ${
-										isActive
-											? "bg-[var(--bg-hover)] text-neutral-100 shadow-sm"
-											: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
-									}`}
-								>
-									<Icon className="h-3.5 w-3.5" />
-									<span>{sec.label}</span>
-									{isOmp &&
-										(isActive ? (
-											<ChevronDown className="ml-auto h-3 w-3 shrink-0 text-neutral-500" />
-										) : (
-											<ChevronRight className="ml-auto h-3 w-3 shrink-0 text-neutral-600" />
-										))}
-								</button>
-								{isOmp && isActive && (
-									<div className="mt-1 space-y-0.5 pl-4">
-										<button
-											type="button"
-											onClick={() => {
-												setOmpTab("roles");
-												setOmpGroup(null);
-											}}
-											className={`flex w-full items-center rounded-md px-2 py-1 text-[11px] transition-all active:scale-[0.98] ${
-												ompTab === "roles"
-													? "bg-[var(--bg-hover)] font-medium text-[#0A84FF]"
-													: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
-											}`}
-										>
-											<span>模型角色与回退链</span>
-										</button>
-										{ompGroups.map((g) => (
-											<div key={g.id}>
-												<button
-													type="button"
-													onClick={() => {
-														setOmpTab(g.id);
-														setOmpGroup(null);
-													}}
-													className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-all active:scale-[0.98] ${
-														ompTab === g.id
-															? "bg-[var(--bg-hover)] font-medium text-[#0A84FF]"
-															: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
-													}`}
-												>
-													<span>{g.label}</span>
-													<span className="text-[10px] text-neutral-600">
-														{g.entries.length}
-													</span>
-												</button>
-												{ompTab === g.id && (ompTabGroups[g.id]?.length ?? 0) > 0 && (
-													<div className="mt-0.5 space-y-0.5 pl-3">
-														{ompTabGroups[g.id].map((grp) => (
-															<button
-																key={grp.name}
-																type="button"
-																onClick={() => setOmpGroup(grp.name)}
-																className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition-all active:scale-[0.98] ${
-																	ompGroup === grp.name
-																		? "bg-[var(--bg-hover)] font-medium text-[#0A84FF]"
-																		: "text-neutral-500 hover:bg-[var(--bg-active-fill)] hover:text-neutral-300"
-																}`}
-															>
-																<span className="truncate">{grp.name}</span>
-																<span className="shrink-0 text-[10px] text-neutral-600">
-																	{grp.count}
-																</span>
-															</button>
-														))}
-													</div>
-												)}
-											</div>
-										))}
-									</div>
-								)}
-							</div>
+							<button
+								key={sec.id}
+								type="button"
+								onClick={() => setActiveSection(sec.id)}
+								className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-all active:scale-[0.98] ${
+									isActive
+										? "bg-[var(--bg-hover)] text-neutral-100 shadow-sm"
+										: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
+								}`}
+							>
+								<Icon className="h-3.5 w-3.5" />
+								<span>{sec.label}</span>
+							</button>
 						);
 					})}
 				</nav>
@@ -983,26 +911,25 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 						</div>
 					)}
 
-					{/* 5.5 OMP config bridge (`omp config list/set/reset`) */}
-					{activeSection === "ompconfig" && (
+					{/* 5.5 OMP config surfaces (roles editor + per-category flat list) */}
+					{activeSection === "omp-roles" && (
 						<div className="space-y-6">
 							<div>
-								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">OMP 配置</h2>
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">模型角色与回退链</h2>
 								<p className="text-xs text-[rgba(235,235,245,0.60)]">
-									读写 omp 自身的全局配置（~/.omp/agent/config.yml），与 workbench 设置相互独立
+									为每类任务指定主力模型与回退顺序（对应 omp /model 的 Roles 视图），写入 ~/.omp/agent/config.yml
 								</p>
 							</div>
-							{ompTab === "roles" ? (
-								<ModelRolesSection />
-							) : (
-								<OmpConfigSection
-									activeTab={ompTab}
-									onTabChange={setOmpTab}
-									activeGroupName={ompGroup}
-									onGroupChange={setOmpGroup}
-								/>
-							)}
+							<ModelRolesSection />
 						</div>
+					)}
+					{ompCategory !== null && (
+						<OmpConfigSection
+							activeTab={ompCategory}
+							onTabChange={() => {}}
+							activeGroupName={null}
+							onGroupChange={() => {}}
+						/>
 					)}
 
 					{/* 6. Advanced */}

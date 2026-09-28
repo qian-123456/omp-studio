@@ -42,7 +42,7 @@
 | `providers` | 提供商与网络 | 其余 `providers.*` `searxng.*` `exa.*` `auth.*` `extensions` `disabledExtensions` `extensionHandlers.*` `dev.*` `gc.*` `commit.*` `git.*` |
 | `advanced` | 高级 | 兜底桶：其他桌面相关但未命中以上规则的可见键（如 `shellPath`、`power.*`） |
 
-另有独立入口 **模型角色与回退链**（对应 omp `/model` 的 Roles 视图），管理 `modelRoles.*`、`retry.fallbackChains.*`、`cycleOrder`、`modelRoleStorage`；其中 `cycleOrder`、`modelRoleStorage` 仍同时出现在 `model` 类目的扁平列表中。
+以上入口与「模型角色」编辑器都是设置页左侧**一级导航项**（紧随「通用」，无二级折叠）：`模型角色` 对应 omp `/model` 的 Roles 视图，管理 `modelRoles.*`、`retry.fallbackChains.*`、`cycleOrder`、`modelRoleStorage`；其余 8 项各对应一个类目的扁平键列表（`advanced` 在导航中显示为 **OMP 其他**，避免与应用自身「高级」混淆）。其中 `cycleOrder`、`modelRoleStorage` 仍同时出现在 `model` 类目的扁平列表中。
 
 ## 4. 模型角色与回退链
 
