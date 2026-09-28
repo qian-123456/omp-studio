@@ -55,25 +55,29 @@ function ProviderRail({
 	if (rows.length < 8) return null;
 
 	return (
-		<div className="w-5 shrink-0 self-stretch flex flex-col justify-between items-center py-[19px]">
-			{rows.map((row) => {
-				const isExpanded = row.key === expandedKey;
-				const name = row.workbench?.name ?? row.omp?.id ?? row.key;
-				return (
-					<button
-						key={row.key}
-						type="button"
-						tabIndex={-1}
-						title={name}
-						aria-label={name}
-						onClick={() => onJump(row.key)}
-						className={clsx(
-							"h-[2px] rounded-full transition-all duration-150 hover:bg-neutral-300 focus:outline-none",
-							isExpanded ? "w-4 bg-white" : "w-2 bg-neutral-600",
-						)}
-					/>
-				);
-			})}
+		<div className="sticky top-4 self-start h-[calc(100vh-220px)] min-h-[240px] w-5 shrink-0">
+			<div className="flex h-full flex-col justify-between items-start">
+				{rows.map((row) => {
+					const isExpanded = row.key === expandedKey;
+					const name = row.workbench?.name ?? row.omp?.id ?? row.key;
+					return (
+						<button
+							key={row.key}
+							type="button"
+							tabIndex={-1}
+							title={name}
+							aria-label={name}
+							onClick={() => onJump(row.key)}
+							className={clsx(
+								"h-[3px] rounded-full transition-all cursor-pointer focus:outline-none",
+								isExpanded
+									? "w-5 bg-neutral-100"
+									: "w-2.5 bg-neutral-600 hover:bg-neutral-300",
+							)}
+						/>
+					);
+				})}
+			</div>
 		</div>
 	);
 }
