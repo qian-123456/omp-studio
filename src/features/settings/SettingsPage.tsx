@@ -20,7 +20,7 @@ import {
 	Wrench,
 } from "lucide-react";
 import { NativeSelect } from "../../components/NativeSelect";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { Settings } from "../../lib/contracts";
@@ -45,6 +45,7 @@ import { useOmpConfigStore } from "./ompConfigStore";
 import { groupByOmpTab } from "./ompConfigTabs";
 import { ompConfigGroup } from "./ompConfigMeta";
 import { ProviderPanel } from "../providers/ProviderPanel";
+import { ProviderTrace } from "../providers/ProviderTrace";
 import { useZoom } from "../../lib/zoom";
 
 interface ToggleProps {
@@ -103,6 +104,7 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 	const [installingExt, setInstallingExt] = useState(false);
 	const [extInstallResult, setExtInstallResult] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<string>("general");
+	const settingsScrollRef = useRef<HTMLDivElement>(null);
 
 	// OMP 配置: official tab selection lives in the left nav as a second level.
 	const [ompTab, setOmpTab] = useState<string>("");
@@ -501,7 +503,8 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 			</div>
 
 			{/* Main Settings Content Area */}
-			<div className="flex-1 overflow-y-auto p-6 lg:p-7">
+			<div className="relative flex-1 min-w-0">
+				<div ref={settingsScrollRef} className="h-full overflow-y-auto p-6 lg:p-7">
 				<div className="max-w-2xl space-y-8">
 					{/* Status feedback alerts */}
 					{storeError && (
@@ -1100,6 +1103,10 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 						</div>
 					)}
 				</div>
+				</div>
+				{activeSection === "providers" && (
+					<ProviderTrace scrollRef={settingsScrollRef} />
+				)}
 			</div>
 		</div>
 	);
