@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
 import {
 	Activity,
 	ChevronDown,
@@ -58,6 +59,7 @@ export function ProviderPanel() {
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
 	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
 	const [query, setQuery] = useState("");
+	const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
 	useEffect(() => {
 		void load();
@@ -270,18 +272,29 @@ export function ProviderPanel() {
 			)}
 
 			{filteredRows.length > 0 && (
-				<div className="space-y-2">
-					{filteredRows.map((row) => (
-						<UnifiedProviderRow
-							key={row.key}
-							row={row}
-							onEdit={() => {
-								if (row.workbench) {
-									setDialog({ mode: "edit", provider: row.workbench });
+				<div className="relative">
+					{/* Continuous left spine */}
+					<div
+						aria-hidden="true"
+						className="pointer-events-none absolute left-[7px] top-0 bottom-0 w-px bg-[var(--border-divider)]"
+					/>
+					<div className="space-y-1.5 pl-5">
+						{filteredRows.map((row) => (
+							<UnifiedProviderRow
+								key={row.key}
+								row={row}
+								isExpanded={expandedKey === row.key}
+								onToggleExpand={() =>
+									setExpandedKey((curr) => (curr === row.key ? null : row.key))
 								}
-							}}
-						/>
-					))}
+								onEdit={() => {
+									if (row.workbench) {
+										setDialog({ mode: "edit", provider: row.workbench });
+									}
+								}}
+							/>
+						))}
+					</div>
 				</div>
 			)}
 
@@ -320,11 +333,30 @@ function notifyImportResults(results: OmpImportResult[]) {
 	}
 }
 
+function formatHostOnly(rawUrl: string | null | undefined): string | null {
+	if (!rawUrl) return null;
+	const trimmed = rawUrl.trim();
+	if (!trimmed) return null;
+	try {
+		const candidate = trimmed.includes("://") ? trimmed : `http://${trimmed}`;
+		const parsed = new URL(candidate);
+		const host = parsed.host;
+		if (host) return host;
+	} catch {
+		// ignore
+	}
+	return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
+}
+
 function UnifiedProviderRow({
 	row,
+	isExpanded,
+	onToggleExpand,
 	onEdit,
 }: {
 	row: ListRow;
+	isExpanded: boolean;
+	onToggleExpand: () => void;
 	onEdit: () => void;
 }) {
 	const importOmp = useProviders((s) => s.importOmp);
@@ -338,7 +370,6 @@ function UnifiedProviderRow({
 		row.workbench ? s.tests[row.workbench.id] : undefined,
 	);
 	const [rowImporting, setRowImporting] = useState(false);
-	const [expanded, setExpanded] = useState(false);
 
 	const info = row.omp;
 	const workbench = row.workbench;
@@ -348,17 +379,18 @@ function UnifiedProviderRow({
 	const displayName = workbench?.name ?? info?.id ?? "";
 	const displaySlug = workbench?.slug ?? info?.id ?? "";
 	const baseUrl = workbench?.baseUrl ?? info?.baseUrl ?? null;
+	const hostOnly = formatHostOnly(baseUrl);
 	const allModels: ModelEntry[] =
 		workbench && workbench.models.length > 0
 			? workbench.models
 			: (info?.modelIds ?? []);
 	const apiLabel = workbench ? API_LABELS[workbench.api] : info?.api;
-	// apiLabel renders as a small chip after the name in the header row below.
 	const preset = workbench ? presetById(workbench.presetId) : undefined;
 	const color = preset?.color ?? "#f59e0b";
-	const displayedModels = allModels.slice(0, 6);
-	const remainingModelsCount = allModels.length - displayedModels.length;
-	const isOmpOnly = !workbench && !!info;
+	const isOmpOnly = !workbench && Boolean(info);
+	const isManaged = Boolean(workbench && info);
+	const isWorkbenchOnly = Boolean(workbench && !info);
+
 	const handleRowImport = async () => {
 		if (!info || rowImporting || importingOmp) return;
 		setRowImporting(true);
@@ -394,35 +426,249 @@ function UnifiedProviderRow({
 			? "OAuth 凭据由 OMP 托管，无需导入"
 			: "没有可导入的 API 密钥";
 
-	return (
-		<div className="rounded-xl hairline bg-[var(--well-bg)] p-3">
-			<div className="flex flex-wrap items-center justify-between gap-2">
-				{/* Left: expand button + name + source chips */}
-				<div className="flex min-w-0 flex-wrap items-center gap-2">
-					<button
-						type="button"
-						onClick={() => setExpanded((v) => !v)}
-						aria-expanded={expanded}
-						aria-label={expanded ? "收起模型列表" : "展开模型列表"}
-						className="rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
-					>
-						{expanded ? (
-							<ChevronDown className="h-3.5 w-3.5" />
-						) : (
-							<ChevronRight className="h-3.5 w-3.5" />
-						)}
-					</button>
+	// Collapsed single-line row (~38px, NOT a card)
+	if (!isExpanded) {
+		return (
+			<div
+				onClick={onToggleExpand}
+				className="group relative flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)]"
+			>
+				{/* Tick hanging off the continuous spine */}
+				<span
+					aria-hidden="true"
+					className={clsx(
+						"pointer-events-none absolute -left-[13px] top-1/2 -translate-y-1/2 h-[2px] rounded-full transition-all duration-150",
+						isManaged
+							? "w-3.5 bg-[#0A84FF]"
+							: isWorkbenchOnly
+								? "w-2.5 bg-neutral-500"
+								: "w-1.5 bg-neutral-600",
+					)}
+				/>
+
+				{/* Left items: Chevron + Preset dot + Name + Auth badge + host + {N} 模型 */}
+				<div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+					<span className="shrink-0 p-0.5 text-neutral-500 transition-colors group-hover:text-neutral-300">
+						<ChevronRight className="h-3 w-3" />
+					</span>
+
 					{workbench && (
 						<span
 							className="h-2 w-2 shrink-0 rounded-full"
 							style={{ backgroundColor: color }}
 						/>
 					)}
-					<span className="text-xs font-semibold text-neutral-100 font-mono">
+
+					<span
+						className="max-w-[150px] shrink-0 truncate font-mono text-xs font-semibold text-neutral-100 sm:max-w-[200px]"
+						title={
+							displaySlug !== displayName
+								? `${displayName} (${displaySlug})`
+								: displayName
+						}
+					>
+						{displayName}
+					</span>
+
+					{/* Compact Auth badge */}
+					{authBadge && (
+						<span
+							title={authBadge.tooltip}
+							className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border ${
+								authBadge.badgeType === "oauth"
+									? "bg-indigo-950/40 text-indigo-300 border-indigo-700/40"
+									: authBadge.badgeType === "api_key"
+										? "bg-emerald-950/40 text-emerald-300 border-emerald-700/40"
+										: authBadge.badgeType === "env"
+											? "bg-amber-950/40 text-amber-300 border-amber-700/40"
+											: "bg-neutral-800/60 text-neutral-400 border-neutral-700/40"
+							}`}
+						>
+							<span>{authBadge.label}</span>
+							{authBadge.accountSuffix && (
+								<span className="max-w-[80px] truncate text-[10px] text-indigo-400/80 sm:max-w-[120px]">
+									· {authBadge.accountSuffix}
+								</span>
+							)}
+						</span>
+					)}
+					{!info && workbench?.hasKey && (
+						<span
+							title="密钥已加密存于工作台密钥库"
+							className="inline-flex shrink-0 items-center rounded-full border border-emerald-700/40 bg-emerald-950/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300"
+						>
+							API Key
+						</span>
+					)}
+					{!info && workbench && !workbench.hasKey && workbench.api !== "ollama" && (
+						<span
+							title="未检测到 API 凭据"
+							className="inline-flex shrink-0 items-center rounded-full border border-neutral-700/40 bg-neutral-800/60 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400"
+						>
+							无凭据
+						</span>
+					)}
+
+					{/* BaseUrl host only */}
+					{hostOnly && (
+						<span
+							className="max-w-[130px] truncate font-mono text-[10px] text-neutral-500 sm:max-w-[180px]"
+							title={baseUrl ?? undefined}
+						>
+							{hostOnly}
+						</span>
+					)}
+
+					{/* Model count */}
+					<span className="shrink-0 font-mono text-[10px] text-neutral-500">
+						{allModels.length} 模型
+					</span>
+				</div>
+
+				{/* Actions zone: hover reveal + always-visible toggle/import */}
+				<div
+					className="flex shrink-0 items-center gap-1.5"
+					onClick={(e) => e.stopPropagation()}
+				>
+					{workbench && (
+						<div
+							className={clsx(
+								"flex items-center gap-1 transition-opacity duration-150",
+								test?.state === "testing"
+									? "opacity-100"
+									: "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+							)}
+						>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									void runTest(workbench.id);
+								}}
+								disabled={test?.state === "testing"}
+								title="测试连接"
+								aria-label={`测试 ${workbench.name} 连接`}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 disabled:opacity-40"
+							>
+								{test?.state === "testing" ? (
+									<Loader2 size={12} className="animate-spin" />
+								) : (
+									<Activity size={12} />
+								)}
+							</button>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									onEdit();
+								}}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
+								title="编辑"
+							>
+								<Pencil className="h-3 w-3" />
+							</button>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									void handleDelete();
+								}}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95"
+								title={
+									info
+										? "仅删除工作台私有副本与加密密钥；OMP 全局配置保留"
+										: "删除"
+								}
+							>
+								<Trash2 className="h-3 w-3" />
+							</button>
+						</div>
+					)}
+
+					{info &&
+						(canImport ? (
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									void handleRowImport();
+								}}
+								disabled={importingOmp || rowImporting}
+								title={
+									workbench
+										? "重新从 OMP 配置导入密钥以更新工作台配置"
+										: "将该供应商的密钥加密导入工作台密钥库"
+								}
+								className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+							>
+								{rowImporting ? (
+									<Loader2 className="h-3 w-3 animate-spin" />
+								) : (
+									<Download className="h-3 w-3" />
+								)}
+								<span>{workbench ? "重新导入" : "导入"}</span>
+							</button>
+						) : (
+							<span
+								title={notImportableTitle}
+								className="inline-flex cursor-not-allowed items-center rounded-md bg-neutral-800/40 px-2 py-0.5 text-[10px] font-medium text-neutral-500"
+							>
+								{info.credentialTypes?.includes("oauth") ? "OAuth 托管" : "导入"}
+							</span>
+						))}
+
+					{workbench && (
+						<EnabledToggle
+							provider={workbench}
+							onChange={(v) =>
+								void setEnabled(workbench.id, v).catch((err) =>
+									toast.error(`更新失败: ${errMsg(err)}`),
+								)
+							}
+						/>
+					)}
+				</div>
+			</div>
+		);
+	}
+
+	// Expanded state: card treatment echoing highlighted trace event
+	return (
+		<div className="group relative rounded-xl hairline bg-[var(--well-bg)] p-3 transition-colors">
+			{/* Tick grows / brightens */}
+			<span
+				aria-hidden="true"
+				className={clsx(
+					"pointer-events-none absolute -left-[13px] top-6 -translate-y-1/2 h-[2px] rounded-full transition-all duration-150",
+					isManaged
+						? "w-[17px] bg-[#0A84FF] shadow-[0_0_8px_rgba(10,132,255,0.6)]"
+						: isWorkbenchOnly
+							? "w-3 bg-neutral-300"
+							: "w-2 bg-neutral-400",
+				)}
+			/>
+
+			{/* Header bar — clicking toggles collapse */}
+			<div
+				onClick={onToggleExpand}
+				className="flex cursor-pointer select-none flex-wrap items-center justify-between gap-2"
+			>
+				{/* Left: Chevron + Dot + Name + Slug + ApiLabel + AuthBadge */}
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
+					<span className="shrink-0 p-0.5 text-neutral-400 transition-colors group-hover:text-neutral-200">
+						<ChevronDown className="h-3.5 w-3.5" />
+					</span>
+					{workbench && (
+						<span
+							className="h-2 w-2 shrink-0 rounded-full"
+							style={{ backgroundColor: color }}
+						/>
+					)}
+					<span className="font-mono text-xs font-semibold text-neutral-100">
 						{displayName}
 					</span>
 					{displaySlug !== displayName && (
-						<span className="text-[10px] font-mono text-neutral-500">
+						<span className="font-mono text-[10px] text-neutral-500">
 							{displaySlug}
 						</span>
 					)}
@@ -431,27 +677,6 @@ function UnifiedProviderRow({
 							{apiLabel}
 						</span>
 					)}
-					{info?.sources.map((src) => (
-						<span
-							key={src}
-							className="rounded px-1.5 py-0.5 text-[10px] font-mono text-neutral-400 bg-neutral-800/80"
-							title={`来源: ${src}`}
-						>
-							{src}
-						</span>
-					))}
-					{workbench && (
-						<span
-							className="rounded px-1.5 py-0.5 text-[10px] font-mono text-sky-300/90 bg-sky-950/40 border border-sky-700/40"
-							title="密钥已由工作台加密托管"
-						>
-							providers.json
-						</span>
-					)}
-				</div>
-
-				{/* Right: auth badge + actions */}
-				<div className="flex shrink-0 flex-wrap items-center gap-1.5">
 					{authBadge && (
 						<span
 							title={authBadge.tooltip}
@@ -467,7 +692,7 @@ function UnifiedProviderRow({
 						>
 							<span>{authBadge.label}</span>
 							{authBadge.accountSuffix && (
-								<span className="max-w-[140px] truncate text-indigo-400/80 text-[10px]">
+								<span className="max-w-[140px] truncate text-[10px] text-indigo-400/80">
 									· {authBadge.accountSuffix}
 								</span>
 							)}
@@ -476,25 +701,89 @@ function UnifiedProviderRow({
 					{!info && workbench?.hasKey && (
 						<span
 							title="密钥已加密存于工作台密钥库"
-							className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border bg-emerald-950/40 text-emerald-300 border-emerald-700/40"
+							className="inline-flex items-center rounded-full border border-emerald-700/40 bg-emerald-950/40 px-2 py-0.5 text-[10px] font-medium text-emerald-300"
 						>
 							API Key
 						</span>
 					)}
+					{!info && workbench && !workbench.hasKey && workbench.api !== "ollama" && (
+						<span
+							title="未检测到 API 凭据"
+							className="inline-flex items-center rounded-full border border-neutral-700/40 bg-neutral-800/60 px-2 py-0.5 text-[10px] font-medium text-neutral-400"
+						>
+							无凭据
+						</span>
+					)}
+				</div>
 
-					{/* Import action (only when the provider exists in OMP config) */}
+				{/* Right: Actions */}
+				<div
+					className="flex shrink-0 flex-wrap items-center gap-1.5"
+					onClick={(e) => e.stopPropagation()}
+				>
+					{workbench && (
+						<>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									void runTest(workbench.id);
+								}}
+								disabled={test?.state === "testing"}
+								title="测试连接"
+								aria-label={`测试 ${workbench.name} 连接`}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 disabled:opacity-40"
+							>
+								{test?.state === "testing" ? (
+									<Loader2 size={12} className="animate-spin" />
+								) : (
+									<Activity size={12} />
+								)}
+							</button>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									onEdit();
+								}}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
+								title="编辑"
+							>
+								<Pencil className="h-3 w-3" />
+							</button>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									void handleDelete();
+								}}
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95"
+								title={
+									info
+										? "仅删除工作台私有副本与加密密钥；OMP 全局配置保留"
+										: "删除"
+								}
+							>
+								<Trash2 className="h-3 w-3" />
+							</button>
+						</>
+					)}
+
 					{info &&
 						(canImport ? (
 							<button
 								type="button"
-								onClick={() => void handleRowImport()}
+								onClick={(e) => {
+									e.stopPropagation();
+									void handleRowImport();
+								}}
 								disabled={importingOmp || rowImporting}
 								title={
 									workbench
 										? "重新从 OMP 配置导入密钥以更新工作台配置"
 										: "将该供应商的密钥加密导入工作台密钥库"
 								}
-								className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+								className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
 							>
 								{rowImporting ? (
 									<Loader2 className="h-3 w-3 animate-spin" />
@@ -506,67 +795,52 @@ function UnifiedProviderRow({
 						) : (
 							<span
 								title={notImportableTitle}
-								className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium text-neutral-500 bg-neutral-800/40 cursor-not-allowed"
+								className="inline-flex cursor-not-allowed items-center rounded-md bg-neutral-800/40 px-2 py-0.5 text-[10px] font-medium text-neutral-500"
 							>
 								{info.credentialTypes?.includes("oauth") ? "OAuth 托管" : "导入"}
 							</span>
 						))}
 
-					{/* Workbench-managed actions */}
 					{workbench && (
-						<>
-							<button
-								type="button"
-								onClick={() => void runTest(workbench.id)}
-								disabled={test?.state === "testing"}
-								title="测试连接"
-								aria-label={`测试 ${workbench.name} 连接`}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 transition-all disabled:opacity-40"
-							>
-								{test?.state === "testing" ? (
-									<Loader2 size={12} className="animate-spin" />
-								) : (
-									<Activity size={12} />
-								)}
-							</button>
-							<button
-								type="button"
-								onClick={onEdit}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
-								title="编辑"
-							>
-								<Pencil className="h-3 w-3" />
-							</button>
-							<button
-								type="button"
-								onClick={() => void handleDelete()}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300 active:scale-95 transition-all"
-								title={
-									info
-										? "仅删除工作台私有副本与加密密钥；OMP 全局配置保留"
-										: "删除"
-								}
-							>
-								<Trash2 className="h-3 w-3" />
-							</button>
-							<EnabledToggle
-								provider={workbench}
-								onChange={(v) =>
-									void setEnabled(workbench.id, v).catch((err) =>
-										toast.error(`更新失败: ${errMsg(err)}`),
-									)
-								}
-							/>
-						</>
+						<EnabledToggle
+							provider={workbench}
+							onChange={(v) =>
+								void setEnabled(workbench.id, v).catch((err) =>
+									toast.error(`更新失败: ${errMsg(err)}`),
+								)
+							}
+						/>
 					)}
 				</div>
 			</div>
 
-			{/* Second line: baseUrl + models summary + roles */}
-			<div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+			{/* Provenance: 来源 line */}
+			{((info && info.sources.length > 0) || workbench) && (
+				<div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
+					<span>来源:</span>
+					{info?.sources.map((src) => (
+						<span
+							key={src}
+							className="rounded bg-neutral-800/80 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400"
+						>
+							{src}
+						</span>
+					))}
+					{workbench && (
+						<span
+							className="rounded border border-sky-700/40 bg-sky-950/40 px-1.5 py-0.5 font-mono text-[10px] text-sky-300/90"
+						>
+							providers.json
+						</span>
+					)}
+				</div>
+			)}
+
+			{/* Full baseUrl + 角色 */}
+			<div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
 				{baseUrl && (
 					<span
-						className="max-w-[280px] truncate font-mono text-neutral-400"
+						className="max-w-[480px] break-all font-mono text-neutral-300 select-all"
 						title={baseUrl}
 					>
 						{baseUrl}
@@ -575,176 +849,144 @@ function UnifiedProviderRow({
 				{baseUrl && (allModels.length > 0 || (info?.usedInRoles.length ?? 0) > 0) && (
 					<span className="text-neutral-600">·</span>
 				)}
-				{allModels.length > 0 && !expanded && (
-					<div className="flex flex-wrap items-center gap-1">
-						<span className="text-neutral-500">{allModels.length} 个模型:</span>
-						{displayedModels.map((m) => {
-							const id = modelEntryId(m);
-							return (
-								<span
-									key={id}
-									title={isOmpOnly ? "导入工作台后可单独测试该模型" : undefined}
-									className="rounded bg-neutral-800/60 px-1 py-0.5 font-mono text-[10px] text-neutral-300"
-								>
-									{id}
-								</span>
-							);
-						})}
-						{remainingModelsCount > 0 && (
-							<button
-								type="button"
-								onClick={() => setExpanded(true)}
-								className="rounded bg-neutral-800/40 px-1 py-0.5 font-mono text-[10px] text-neutral-500 hover:text-neutral-300"
-							>
-								+{remainingModelsCount}
-							</button>
-						)}
-					</div>
-				)}
-				{allModels.length > 0 && expanded && (
-					<span className="text-neutral-500">{allModels.length} 个模型</span>
-				)}
 				{info && info.usedInRoles.length > 0 && (
-					<>
-						{(baseUrl || allModels.length > 0) && (
-							<span className="text-neutral-600">·</span>
-						)}
-						<span className="text-neutral-400">
-							角色:{" "}
-							<span className="text-neutral-300">
-								{info.usedInRoles.join(", ")}
-							</span>
+					<span>
+						角色:{" "}
+						<span className="font-mono text-neutral-300">
+							{info.usedInRoles.join(", ")}
 						</span>
-					</>
+					</span>
 				)}
 				{!info && workbench && !workbench.hasKey && workbench.api !== "ollama" && (
 					<span className="text-neutral-500">未配置密钥</span>
 				)}
 			</div>
 
-			{expanded && (
-				<div className="mt-3 border-t border-[var(--border-divider)] pt-2.5">
-					<div className="mb-2 flex items-center justify-between text-xs text-neutral-400">
-						<span className="font-medium text-neutral-300">
-							模型列表（{allModels.length}）
+			{/* Model grid */}
+			<div className="mt-3 border-t border-[var(--border-divider)] pt-2.5">
+				<div className="mb-2 flex items-center justify-between text-xs text-neutral-400">
+					<span className="font-medium text-neutral-300">
+						模型列表（{allModels.length}）
+					</span>
+					{workbench?.defaultModel && (
+						<span className="text-[11px]">
+							默认: <code className="font-mono text-neutral-200">{workbench.defaultModel}</code>
 						</span>
-						{workbench?.defaultModel && (
-							<span className="text-[11px]">
-								默认: <code className="font-mono text-neutral-200">{workbench.defaultModel}</code>
-							</span>
-						)}
-					</div>
-					{allModels.length === 0 ? (
-						<div className="rounded-lg bg-neutral-900/40 p-2.5 text-center text-xs text-neutral-500">
-							未配置模型
-						</div>
-					) : (
-						<div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-							{allModels.map((entry) => {
-								const id = modelEntryId(entry);
-								const spec = modelEntrySpec(entry);
-								const ctx =
-									spec.contextWindow ?? workbench?.defaultContextWindow ?? null;
-								const max =
-									spec.maxTokens ?? workbench?.defaultMaxTokens ?? null;
-								const testKey = workbench ? `${workbench.id}::${id}` : null;
-								const modelTest = testKey ? modelTests[testKey] : undefined;
-
-								return (
-									<div
-										key={id}
-										title={isOmpOnly ? "导入工作台后可单独测试该模型" : undefined}
-										className="flex flex-col justify-between gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)]/60 p-2.5 text-xs transition-all"
-									>
-										<div className="flex items-center justify-between gap-1.5 min-w-0">
-											<span
-												className="truncate font-mono font-medium text-neutral-200"
-												title={id}
-											>
-												{id}
-											</span>
-											{workbench && (
-												<button
-													type="button"
-													onClick={() => void runModelTest(workbench.id, id)}
-													disabled={modelTest?.state === "testing"}
-													title={`测试模型 ${id}`}
-													aria-label={`测试模型 ${id}`}
-													className="shrink-0 inline-flex items-center gap-1 rounded bg-[var(--well-bg)] px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 transition-all disabled:opacity-40"
-												>
-													{modelTest?.state === "testing" ? (
-														<Loader2 size={11} className="animate-spin" />
-													) : (
-														<Activity size={11} />
-													)}
-													<span>测试</span>
-												</button>
-											)}
-										</div>
-
-										{(ctx != null || max != null) && (
-											<div className="flex flex-wrap items-center gap-1 text-[10px]">
-												{ctx != null && (
-													<span
-														className="rounded bg-sky-950/60 px-1.5 py-0.5 font-mono text-sky-300 border border-sky-800/40"
-														title={`上下文窗口: ${ctx} tokens`}
-													>
-														ctx:{formatTokens(ctx)}
-													</span>
-												)}
-												{max != null && (
-													<span
-														className="rounded bg-indigo-950/60 px-1.5 py-0.5 font-mono text-indigo-300 border border-indigo-800/40"
-														title={`输出上限: ${max} tokens`}
-													>
-														max:{formatTokens(max)}
-													</span>
-												)}
-											</div>
-										)}
-
-										{modelTest && (
-											<div
-												className={`text-[11px] ${
-													modelTest.state === "testing"
-														? "text-neutral-400 flex items-center gap-1"
-														: modelTest.result.ok
-															? "text-emerald-400"
-															: "text-rose-400"
-												}`}
-											>
-												{modelTest.state === "testing" ? (
-													<>
-														<Loader2 size={11} className="animate-spin" />
-														<span>正在测试…</span>
-													</>
-												) : (
-													<div
-														className="flex items-center gap-1 truncate"
-														title={`${modelTest.result.detail} (${modelTest.result.latencyMs}ms)`}
-													>
-														{modelTest.result.ok ? (
-															<CircleCheck className="h-3 w-3 shrink-0" />
-														) : (
-															<CircleX className="h-3 w-3 shrink-0" />
-														)}
-														<span className="truncate">
-															{modelTest.result.detail}
-														</span>
-														<span className="shrink-0 font-mono text-[10px] opacity-80">
-															({modelTest.result.latencyMs}ms)
-														</span>
-													</div>
-												)}
-											</div>
-										)}
-									</div>
-								);
-							})}
-						</div>
 					)}
 				</div>
-			)}
+				{allModels.length === 0 ? (
+					<div className="rounded-lg bg-neutral-900/40 p-2.5 text-center text-xs text-neutral-500">
+						未配置模型
+					</div>
+				) : (
+					<div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+						{allModels.map((entry) => {
+							const id = modelEntryId(entry);
+							const spec = modelEntrySpec(entry);
+							const ctx =
+								spec.contextWindow ?? workbench?.defaultContextWindow ?? null;
+							const max =
+								spec.maxTokens ?? workbench?.defaultMaxTokens ?? null;
+							const testKey = workbench ? `${workbench.id}::${id}` : null;
+							const modelTest = testKey ? modelTests[testKey] : undefined;
+
+							return (
+								<div
+									key={id}
+									title={isOmpOnly ? "导入工作台后可单独测试该模型" : undefined}
+									className="flex flex-col justify-between gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)]/60 p-2.5 text-xs transition-all"
+								>
+									<div className="flex min-w-0 items-center justify-between gap-1.5">
+										<span
+											className="truncate font-mono font-medium text-neutral-200"
+											title={id}
+										>
+											{id}
+										</span>
+										{workbench && (
+											<button
+												type="button"
+												onClick={(e) => {
+													e.stopPropagation();
+													void runModelTest(workbench.id, id);
+												}}
+												disabled={modelTest?.state === "testing"}
+												title={`测试模型 ${id}`}
+												aria-label={`测试模型 ${id}`}
+												className="inline-flex shrink-0 items-center gap-1 rounded bg-[var(--well-bg)] px-2 py-0.5 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 disabled:opacity-40"
+											>
+												{modelTest?.state === "testing" ? (
+													<Loader2 size={11} className="animate-spin" />
+												) : (
+													<Activity size={11} />
+												)}
+												<span>测试</span>
+											</button>
+										)}
+									</div>
+
+									{(ctx != null || max != null) && (
+										<div className="flex flex-wrap items-center gap-1 text-[10px]">
+											{ctx != null && (
+												<span
+													className="rounded border border-sky-800/40 bg-sky-950/60 px-1.5 py-0.5 font-mono text-sky-300"
+													title={`上下文窗口: ${ctx} tokens`}
+												>
+													ctx:{formatTokens(ctx)}
+												</span>
+											)}
+											{max != null && (
+												<span
+													className="rounded border border-indigo-800/40 bg-indigo-950/60 px-1.5 py-0.5 font-mono text-indigo-300"
+													title={`输出上限: ${max} tokens`}
+												>
+													max:{formatTokens(max)}
+												</span>
+											)}
+										</div>
+									)}
+
+									{modelTest && (
+										<div
+											className={`text-[11px] ${
+												modelTest.state === "testing"
+													? "flex items-center gap-1 text-neutral-400"
+													: modelTest.result.ok
+														? "text-emerald-400"
+														: "text-rose-400"
+											}`}
+										>
+											{modelTest.state === "testing" ? (
+												<>
+													<Loader2 size={11} className="animate-spin" />
+													<span>正在测试…</span>
+												</>
+											) : (
+												<div
+													className="flex items-center gap-1 truncate"
+													title={`${modelTest.result.detail} (${modelTest.result.latencyMs}ms)`}
+												>
+													{modelTest.result.ok ? (
+														<CircleCheck className="h-3 w-3 shrink-0" />
+													) : (
+														<CircleX className="h-3 w-3 shrink-0" />
+													)}
+													<span className="truncate">
+														{modelTest.result.detail}
+													</span>
+													<span className="shrink-0 font-mono text-[10px] opacity-80">
+														({modelTest.result.latencyMs}ms)
+													</span>
+												</div>
+											)}
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				)}
+			</div>
 
 			{workbench && <TestResultLine test={test} />}
 		</div>
@@ -765,7 +1007,10 @@ function EnabledToggle({
 			aria-label={`启用 ${provider.name}`}
 			aria-checked={provider.enabled}
 			title={provider.enabled ? "已启用（新会话注入密钥）" : "已停用"}
-			onClick={() => onChange(!provider.enabled)}
+			onClick={(e) => {
+				e.stopPropagation();
+				onChange(!provider.enabled);
+			}}
 			className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${
 				provider.enabled ? "bg-[#0A84FF]" : "bg-neutral-700/80"
 			}`}
