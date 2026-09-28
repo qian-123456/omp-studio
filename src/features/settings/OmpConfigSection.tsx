@@ -23,7 +23,7 @@ import {
 	ompConfigOptions,
 	ompConfigTitle,
 } from "./ompConfigMeta";
-import { groupByOmpTab } from "./ompConfigTabs";
+import { groupByDesktopCategory } from "./ompDesktopCategories";
 
 const TYPE_BADGE: Record<string, string> = {
 	boolean: "bg-emerald-500/15 text-emerald-300",
@@ -446,20 +446,24 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 
 /**
  * Settings panel bridging to OMP's own config system (`omp config list/set/reset`).
- * The official OMP tab is selected from the settings left nav (controlled from
- * outside); entries are sub-grouped by their schema group (Theme, Composer, …).
+ * The active desktop category (model/thinking/…/advanced) is selected from the
+ * settings left nav (controlled from outside); TUI-only keys never reach this
+ * panel. Entries are sub-grouped by their schema group (Tools, Memory, …).
  */
 export function OmpConfigSection({
 	activeTab,
 	onTabChange,
 	activeGroupName,
 	onGroupChange,
+	seedQuery,
 }: {
 	activeTab: string;
 	onTabChange: (tab: string) => void;
 	/** Schema sub-group (Theme / Composer / …); null shows the whole tab. */
 	activeGroupName: string | null;
 	onGroupChange: (group: string | null) => void;
+	/** External query seeded from the settings nav search; internal box wins after edits. */
+	seedQuery?: string;
 }) {
 	const entries = useOmpConfigStore((s) => s.entries);
 	const loading = useOmpConfigStore((s) => s.loading);
@@ -469,11 +473,26 @@ export function OmpConfigSection({
 
 	const [query, setQuery] = useState("");
 
+	// Seed from the nav-level search; typed edits here stay until the nav query changes.
+	useEffect(() => {
+		if (seedQuery !== undefined && seedQuery !== query) setQuery(seedQuery);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [seedQuery]);
+
 	useEffect(() => {
 		void load();
 	}, [load]);
 
-	const allGroups = useMemo(() => groupByOmpTab(entries), [entries]);
+	const allGroups = useMemo(
+		() =>
+			groupByDesktopCategory(entries).map((g) => ({
+				id: g.category.id,
+				label: g.category.label,
+				hint: g.category.hint,
+				entries: g.entries,
+			})),
+		[entries],
+	);
 	const activeGroup =
 		allGroups.find((g) => g.id === activeTab) ?? allGroups[0] ?? null;
 
@@ -599,15 +618,22 @@ export function OmpConfigSection({
 
 	return (
 		<div className="space-y-3">
-			<div className="flex items-baseline gap-1.5">
-				<h3 className="text-sm font-semibold text-neutral-100">
-					{activeGroup?.label}
-				</h3>
-				{activeGroupName && (
-					<>
-						<span className="text-xs text-neutral-600">›</span>
-						<span className="text-xs text-neutral-400">{activeGroupName}</span>
-					</>
+			<div>
+				<div className="flex items-baseline gap-1.5">
+					<h3 className="text-sm font-semibold text-neutral-100">
+						{activeGroup?.label}
+					</h3>
+					{activeGroupName && (
+						<>
+							<span className="text-xs text-neutral-600">›</span>
+							<span className="text-xs text-neutral-400">{activeGroupName}</span>
+						</>
+					)}
+				</div>
+				{activeGroup?.hint && (
+					<div className="mt-0.5 text-[11px] text-neutral-600">
+						{activeGroup.hint}
+					</div>
 				)}
 			</div>
 			<div className="flex items-center gap-2">
