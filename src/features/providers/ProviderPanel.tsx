@@ -2,16 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import {
 	Activity,
-	ChevronDown,
-	ChevronRight,
 	CircleCheck,
 	CircleX,
 	ClipboardCopy,
 	Download,
 	FileInput,
-	Database,
-	FileCode2,
-	FileJson2,
 	Loader2,
 	LogIn,
 	Pencil,
@@ -48,37 +43,39 @@ interface ListRow {
 	workbench: ProviderConfig | null;
 }
 
-const GROUP_ORDER = [
-	"models.yml",
-	"models-snippet.yml",
-	"config.yml",
-	"agent.db",
-	"providers.json",
-] as const;
+function ProviderRail({
+	rows,
+	expandedKey,
+	onJump,
+}: {
+	rows: ListRow[];
+	expandedKey: string | null;
+	onJump: (key: string) => void;
+}) {
+	if (rows.length < 8) return null;
 
-function getRowSource(row: ListRow): string {
-	if (!row.omp) {
-		return "providers.json";
-	}
-	const sources = row.omp.sources ?? [];
-	const yaml = sources.find(
-		(s) => s === "models.yml" || s === "models-snippet.yml" || s === "config.yml",
+	return (
+		<div className="w-5 shrink-0 self-stretch flex flex-col justify-between items-center py-[19px]">
+			{rows.map((row) => {
+				const isExpanded = row.key === expandedKey;
+				const name = row.workbench?.name ?? row.omp?.id ?? row.key;
+				return (
+					<button
+						key={row.key}
+						type="button"
+						tabIndex={-1}
+						title={name}
+						aria-label={name}
+						onClick={() => onJump(row.key)}
+						className={clsx(
+							"h-[2px] rounded-full transition-all duration-150 hover:bg-neutral-300 focus:outline-none",
+							isExpanded ? "w-4 bg-white" : "w-2 bg-neutral-600",
+						)}
+					/>
+				);
+			})}
+		</div>
 	);
-	if (yaml) return yaml;
-	if (sources.includes("agent.db")) {
-		return "agent.db";
-	}
-	return sources[0] ?? "providers.json";
-}
-
-function renderGroupIcon(source: string) {
-	if (source === "agent.db") {
-		return <Database size={14} className="shrink-0 text-neutral-400" />;
-	}
-	if (source === "providers.json") {
-		return <FileJson2 size={14} className="shrink-0 text-neutral-400" />;
-	}
-	return <FileCode2 size={14} className="shrink-0 text-neutral-400" />;
 }
 
 export function ProviderPanel() {
@@ -96,11 +93,6 @@ export function ProviderPanel() {
 	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [expandedKey, setExpandedKey] = useState<string | null>(null);
-	const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-
-	const toggleGroup = (tier: string) => {
-		setCollapsedGroups((prev) => ({ ...prev, [tier]: !prev[tier] }));
-	};
 
 	useEffect(() => {
 		void load();
@@ -153,28 +145,6 @@ export function ProviderPanel() {
 		});
 	}, [rows, query]);
 
-	const groups = useMemo(() => {
-		const map = new Map<string, ListRow[]>();
-		for (const key of GROUP_ORDER) {
-			map.set(key, []);
-		}
-		for (const row of filteredRows) {
-			const source = getRowSource(row);
-			let list = map.get(source);
-			if (!list) {
-				list = [];
-				map.set(source, list);
-			}
-			list.push(row);
-		}
-		const result: { label: string; rows: ListRow[] }[] = [];
-		for (const [label, r] of map.entries()) {
-			if (r.length > 0) {
-				result.push({ label, rows: r });
-			}
-		}
-		return result;
-	}, [filteredRows]);
 
 	const eligibleOmpIds = useMemo(
 		() => ompProviders.filter(canImportOmpProvider).map((p) => p.id),
@@ -335,69 +305,41 @@ export function ProviderPanel() {
 				</div>
 			)}
 
-			{groups.length > 0 && (
-				<div className="space-y-3">
-					{groups.map((group) => {
-						const isOpen = !collapsedGroups[group.label];
-						return (
-							<div key={group.label} className="mt-0.5">
-								{/* Group Header */}
-								<div
-									onClick={() => toggleGroup(group.label)}
-									className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--text)]/5 text-[var(--text)] transition-colors"
-								>
-									<div className="flex items-center gap-1.5 min-w-0 flex-1">
-										{isOpen ? (
-											<ChevronDown
-												size={13}
-												className="text-[var(--text-dim)] shrink-0"
-											/>
-										) : (
-											<ChevronRight
-												size={13}
-												className="text-[var(--text-dim)] shrink-0"
-											/>
-										)}
-										{renderGroupIcon(group.label)}
-										<span className="font-bold text-[12.5px] text-[var(--text)] truncate font-mono">
-											{group.label}
-										</span>
-										<span className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-dim)] font-mono">
-											{group.rows.length}
-										</span>
-									</div>
-								</div>
-
-								{/* Group Body */}
-								{isOpen && (
-									<div className="pb-1">
-										<div className="pl-2 border-l-2 border-[var(--text-dim)]/40 my-0.5 ml-[22px] space-y-1.5">
-											{group.rows.map((row) => (
-												<UnifiedProviderRow
-													key={row.key}
-													row={row}
-													isExpanded={expandedKey === row.key}
-													onToggleExpand={() =>
-														setExpandedKey((curr) =>
-															curr === row.key ? null : row.key,
-														)
-													}
-													onEdit={() => {
-														if (row.workbench) {
-															setDialog({
-																mode: "edit",
-																provider: row.workbench,
-															});
-														}
-													}}
-												/>
-											))}
-										</div>
-									</div>
-								)}
-							</div>
-						);
-					})}
+			{!isLoading && !combinedError && filteredRows.length > 0 && (
+				<div className="flex gap-0">
+					<ProviderRail
+						rows={filteredRows}
+						expandedKey={expandedKey}
+						onJump={(key) => {
+							document.getElementById(`provider-row-${key}`)?.scrollIntoView({
+								behavior: "smooth",
+								block: "center",
+							});
+							setExpandedKey(key);
+						}}
+					/>
+					<div className="flex-1 space-y-1.5 min-w-0">
+						{filteredRows.map((row) => (
+							<UnifiedProviderRow
+								key={row.key}
+								row={row}
+								isExpanded={expandedKey === row.key}
+								onToggleExpand={() =>
+									setExpandedKey((curr) =>
+										curr === row.key ? null : row.key,
+									)
+								}
+								onEdit={() => {
+									if (row.workbench) {
+										setDialog({
+											mode: "edit",
+											provider: row.workbench,
+										});
+									}
+								}}
+							/>
+						))}
+					</div>
 				</div>
 			)}
 
@@ -531,15 +473,13 @@ function UnifiedProviderRow({
 	if (!isExpanded) {
 		return (
 			<div
+				id={`provider-row-${row.key}`}
 				onClick={onToggleExpand}
 				className="group flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)]"
 			>
 
-				{/* Left items: Chevron + Preset dot + Name + Auth badge + host + {N} 模型 */}
+				{/* Left items: Preset dot + Name + Auth badge + host + {N} 模型 */}
 				<div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-					<span className="shrink-0 p-0.5 text-neutral-500 transition-colors group-hover:text-neutral-300">
-						<ChevronRight className="h-3 w-3" />
-					</span>
 
 					{workbench && (
 						<span
@@ -723,18 +663,18 @@ function UnifiedProviderRow({
 
 	// Expanded state: card treatment echoing highlighted trace event
 	return (
-		<div className="group rounded-xl hairline border-l-[3px] border-l-[#0A84FF] bg-[var(--well-bg)] p-3 transition-colors">
+		<div
+			id={`provider-row-${row.key}`}
+			className="group rounded-xl hairline border-l-[3px] border-l-[#0A84FF] bg-[var(--well-bg)] p-3 transition-colors"
+		>
 
 			{/* Header bar — clicking toggles collapse */}
 			<div
 				onClick={onToggleExpand}
 				className="flex cursor-pointer select-none flex-wrap items-center justify-between gap-2"
 			>
-				{/* Left: Chevron + Dot + Name + Slug + ApiLabel + AuthBadge */}
+				{/* Left: Dot + Name + Slug + ApiLabel + AuthBadge */}
 				<div className="flex min-w-0 flex-wrap items-center gap-2">
-					<span className="shrink-0 p-0.5 text-neutral-400 transition-colors group-hover:text-neutral-200">
-						<ChevronDown className="h-3.5 w-3.5" />
-					</span>
 					{workbench && (
 						<span
 							className="h-2 w-2 shrink-0 rounded-full"
