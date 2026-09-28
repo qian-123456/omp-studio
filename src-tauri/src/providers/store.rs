@@ -61,7 +61,7 @@ fn save_to(path: &Path, providers: &[ProviderConfig]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contracts::ProviderApi;
+    use crate::contracts::{ModelEntry, ProviderApi};
 
     fn sample(slug: &str, sort: i64) -> ProviderConfig {
         ProviderConfig {
@@ -72,8 +72,10 @@ mod tests {
             base_url: "https://api.example.com/v1".to_string(),
             api: ProviderApi::OpenaiCompletions,
             env_var: format!("{}_API_KEY", slug.to_ascii_uppercase()),
-            models: vec!["m1".to_string()],
+            models: vec![ModelEntry::Id("m1".to_string())],
             default_model: None,
+            default_context_window: None,
+            default_max_tokens: None,
             enabled: true,
             sort,
             has_key: false,

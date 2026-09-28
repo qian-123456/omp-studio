@@ -17,6 +17,7 @@ import {
 	providerSave,
 	providerSetEnabled,
 	providerTest,
+	providerTestModel,
 } from "../../lib/ipc";
 
 export type TestStatus =
@@ -33,6 +34,8 @@ interface ProvidersState {
 	importingOmp: boolean;
 	/** Per-provider inline probe state (ProviderPanel rows). */
 	tests: Record<string, TestStatus>;
+	/** Per-model inline probe state (ProviderPanel rows). Key: `${providerId}::${modelId}` */
+	modelTests: Record<string, TestStatus>;
 	load(): Promise<void>;
 	loadOmp(): Promise<void>;
 	/** Upsert via backend; returns the saved config. */
@@ -41,6 +44,7 @@ interface ProvidersState {
 	setEnabled(id: string, enabled: boolean): Promise<void>;
 	reorder(ids: string[]): Promise<void>;
 	runTest(id: string): Promise<void>;
+	runModelTest(providerId: string, modelId: string): Promise<void>;
 	exportEnvText(ids?: string[]): Promise<string>;
 	importOmp(ids: string[]): Promise<OmpImportResult[]>;
 }
@@ -53,6 +57,7 @@ export const useProviders = create<ProvidersState>((set, get) => ({
 	ompLoaded: false,
 	ompError: null,
 	tests: {},
+	modelTests: {},
 	importingOmp: false,
 
 	loadOmp: async () => {
@@ -96,6 +101,9 @@ export const useProviders = create<ProvidersState>((set, get) => ({
 			tests: Object.fromEntries(
 				Object.entries(s.tests).filter(([key]) => key !== id),
 			),
+			modelTests: Object.fromEntries(
+				Object.entries(s.modelTests).filter(([key]) => !key.startsWith(`${id}::`)),
+			),
 		}));
 	},
 
@@ -130,6 +138,27 @@ export const useProviders = create<ProvidersState>((set, get) => ({
 				tests: {
 					...s.tests,
 					[id]: {
+						state: "done",
+						result: { ok: false, latencyMs: 0, detail: String(e) },
+					},
+				},
+			}));
+		}
+	},
+
+	runModelTest: async (providerId: string, modelId: string) => {
+		const key = `${providerId}::${modelId}`;
+		set((s) => ({ modelTests: { ...s.modelTests, [key]: { state: "testing" } } }));
+		try {
+			const result = await providerTestModel(providerId, modelId);
+			set((s) => ({
+				modelTests: { ...s.modelTests, [key]: { state: "done", result } },
+			}));
+		} catch (e) {
+			set((s) => ({
+				modelTests: {
+					...s.modelTests,
+					[key]: {
 						state: "done",
 						result: { ok: false, latencyMs: 0, detail: String(e) },
 					},

@@ -310,6 +310,10 @@ export const providerReorder = (ids: string[]) =>
 export const providerTest = (id: string) =>
 	invoke<ProviderTestResult>("provider_test", { id });
 
+/** Real HTTP probe for a specific model under a provider. */
+export const providerTestModel = (id: string, modelId: string) =>
+	invoke<ProviderTestResult>("provider_test_model", { id, modelId });
+
 /** Plaintext .env text (clipboard only — never persisted by the app). */
 export const providerExportEnvText = (ids?: string[] | null) =>
 	invoke<string>("provider_export_env_text", { ids: ids ?? null });

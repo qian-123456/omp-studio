@@ -206,6 +206,7 @@ pub fn run() {
             providers::commands::provider_set_enabled,
             providers::commands::provider_reorder,
             providers::commands::provider_test,
+            providers::commands::provider_test_model,
             providers::commands::provider_export_env_text,
             providers::commands::omp_providers_list,
             providers::commands::provider_import_omp,

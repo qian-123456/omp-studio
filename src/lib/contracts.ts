@@ -406,7 +406,23 @@ export interface DirEntry {
 }
 
 /** API protocol used to talk to a provider. */
-export type ProviderApi = "openai_completions" | "anthropic" | "gemini" | "ollama";
+export type ProviderApi =
+	| "openai_completions"
+	| "openai_responses"
+	| "anthropic"
+	| "gemini"
+	| "ollama";
+
+/** A model specification with optional limits and display name. */
+export interface ModelSpec {
+	id: string;
+	name?: string | null;
+	contextWindow?: number | null;
+	maxTokens?: number | null;
+}
+
+/** A provider model entry: bare id or a spec with per-model limits. */
+export type ModelEntry = string | ModelSpec;
 
 /** Provider metadata (non-secret). Secrets live only in the backend vault. */
 export interface ProviderConfig {
@@ -420,8 +436,10 @@ export interface ProviderConfig {
 	api: ProviderApi;
 	/** Env var injected into child processes (e.g. ANTHROPIC_API_KEY). */
 	envVar: string;
-	models: string[];
+	models: ModelEntry[];
 	defaultModel: string | null;
+	defaultContextWindow: number | null;
+	defaultMaxTokens: number | null;
 	enabled: boolean;
 	sort: number;
 	/** True when an encrypted key exists in the vault for this slug. */

@@ -149,6 +149,7 @@ export function matchPresetByEnvVar(envVar: string): ProviderPreset | undefined 
 
 export const API_LABELS: Record<ProviderApi, string> = {
 	openai_completions: "OpenAI 兼容",
+	openai_responses: "OpenAI Responses",
 	anthropic: "Anthropic",
 	gemini: "Gemini",
 	ollama: "Ollama",

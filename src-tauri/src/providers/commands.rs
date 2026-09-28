@@ -5,7 +5,9 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-use crate::contracts::{OmpImportResult, ProviderApi, ProviderConfig, ProviderTestResult};
+use crate::contracts::{
+    ModelEntry, OmpImportResult, ProviderApi, ProviderConfig, ProviderTestResult,
+};
 
 use super::omp_config::{self, RawParsedProvider};
 use super::{presets, store, vault};
@@ -133,6 +135,44 @@ pub(crate) fn validate(config: &ProviderConfig) -> Result<(), String> {
     ] {
         if value.contains('\0') || value.contains('\n') || value.contains('\r') {
             return Err(format!("{label}不能包含换行或空字符"));
+        }
+    }
+    if let Some(w) = config.default_context_window {
+        if w > 2_000_000 {
+            return Err("默认上下文窗口大小不能超过 2,000,000".to_string());
+        }
+    }
+    if let Some(t) = config.default_max_tokens {
+        if t > 2_000_000 {
+            return Err("默认最大输出 Token 数不能超过 2,000,000".to_string());
+        }
+    }
+    for model in &config.models {
+        let id = model.id().trim();
+        if id.is_empty() {
+            return Err("模型 ID 不能为空".to_string());
+        }
+        if id.contains('\0') || id.contains('\n') || id.contains('\r') {
+            return Err("模型 ID 不能包含换行或空字符".to_string());
+        }
+        if let ModelEntry::Spec(spec) = model {
+            if let Some(w) = spec.context_window {
+                if w > 2_000_000 {
+                    return Err(format!("模型 \"{id}\" 的上下文窗口大小不能超过 2,000,000"));
+                }
+            }
+            if let Some(t) = spec.max_tokens {
+                if t > 2_000_000 {
+                    return Err(format!(
+                        "模型 \"{id}\" 的最大输出 Token 数不能超过 2,000,000"
+                    ));
+                }
+            }
+            if let Some(name) = &spec.name {
+                if name.contains('\0') || name.contains('\n') || name.contains('\r') {
+                    return Err(format!("模型 \"{id}\" 的名称不能包含换行或空字符"));
+                }
+            }
         }
     }
     Ok(())
@@ -375,7 +415,7 @@ async fn test_provider(
 
     let started = Instant::now();
     let response = match config.api {
-        ProviderApi::OpenaiCompletions => {
+        ProviderApi::OpenaiCompletions | ProviderApi::OpenaiResponses => {
             let mut req = client.get(format!("{base}/models"));
             if let Some(k) = key {
                 req = req.bearer_auth(k);
@@ -442,11 +482,208 @@ async fn test_provider(
 fn count_models(body: &str, api: ProviderApi) -> Option<usize> {
     let value = serde_json::from_str::<serde_json::Value>(body).ok()?;
     let list = match api {
-        ProviderApi::Gemini => value.get("models")?,
-        ProviderApi::OpenaiCompletions | ProviderApi::Anthropic => value.get("data")?,
-        ProviderApi::Ollama => value.get("models")?,
+        ProviderApi::Gemini | ProviderApi::Ollama => value.get("models")?,
+        ProviderApi::OpenaiCompletions | ProviderApi::OpenaiResponses | ProviderApi::Anthropic => {
+            value.get("data")?
+        }
     };
     list.as_array().map(|a| a.len())
+}
+
+/// In-memory decrypt + real HTTP probe for a specific model (30s timeout).
+/// Returns a concise Chinese detail; key material never appears in errors or results.
+#[tauri::command]
+pub async fn provider_test_model(
+    id: String,
+    model_id: String,
+) -> Result<ProviderTestResult, String> {
+    let model_id = model_id.trim();
+    if model_id.is_empty() {
+        return Err("模型 ID 不能为空".to_string());
+    }
+    let config = store::load()
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| "供应商不存在".to_string())?;
+    let has_key = vault::contains(&config.slug);
+    if !has_key && config.api != ProviderApi::Ollama {
+        return Ok(ProviderTestResult {
+            ok: false,
+            latency_ms: 0,
+            detail: "尚未配置 API 密钥".to_string(),
+        });
+    }
+    let key = if has_key {
+        Some(vault::read_entry(&config.slug)?.ok_or_else(|| "读取密钥失败".to_string())?)
+    } else {
+        None
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
+
+    let req = model_probe_request(
+        &client,
+        config.api,
+        &config.base_url,
+        model_id,
+        key.as_deref(),
+    );
+
+    let started = Instant::now();
+    let response = req.send().await;
+    let latency_ms = started.elapsed().as_millis() as u64;
+
+    let response = match response {
+        Ok(res) => res,
+        Err(e) => {
+            let mut err_msg = format!("连接失败: {}", e.without_url());
+            if let Some(k) = key.as_deref() {
+                let trimmed_k = k.trim();
+                if !trimmed_k.is_empty() {
+                    err_msg = err_msg.replace(trimmed_k, "[REDACTED]");
+                }
+            }
+            return Ok(ProviderTestResult {
+                ok: false,
+                latency_ms,
+                detail: err_msg,
+            });
+        }
+    };
+
+    let status = response.status();
+    if status.is_success() {
+        Ok(ProviderTestResult {
+            ok: true,
+            latency_ms,
+            detail: format!("模型可用 · {status}"),
+        })
+    } else {
+        let raw_body = response.text().await.unwrap_or_default();
+        let detail = sanitize_error_detail(status, &raw_body, key.as_deref());
+        Ok(ProviderTestResult {
+            ok: false,
+            latency_ms,
+            detail,
+        })
+    }
+}
+
+pub(crate) fn sanitize_error_detail(
+    status: reqwest::StatusCode,
+    raw_body: &str,
+    key: Option<&str>,
+) -> String {
+    let mut body = raw_body.to_string();
+    if let Some(k) = key {
+        let trimmed_k = k.trim();
+        if !trimmed_k.is_empty() {
+            body = body.replace(trimmed_k, "[REDACTED]");
+        }
+    }
+    let trimmed = body.trim();
+    let first_200: String = trimmed.chars().take(200).collect();
+    if first_200.is_empty() {
+        format!("HTTP {status}")
+    } else {
+        format!("HTTP {status}: {first_200}")
+    }
+}
+
+pub(crate) fn model_probe_request(
+    client: &reqwest::Client,
+    api: ProviderApi,
+    base_url: &str,
+    model: &str,
+    key: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let base = base_url.trim_end_matches('/');
+    match api {
+        ProviderApi::OpenaiCompletions => {
+            let body = serde_json::json!({
+                "model": model,
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "hi"}]
+            });
+            let mut req = client.post(format!("{base}/chat/completions")).json(&body);
+            if let Some(k) = key {
+                req = req.bearer_auth(k);
+            }
+            req
+        }
+        ProviderApi::OpenaiResponses => {
+            let body = serde_json::json!({
+                "model": model,
+                "input": "hi",
+                "max_output_tokens": 16
+            });
+            let mut req = client.post(format!("{base}/responses")).json(&body);
+            if let Some(k) = key {
+                req = req.bearer_auth(k);
+            }
+            req
+        }
+        ProviderApi::Anthropic => {
+            let body = serde_json::json!({
+                "model": model,
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "hi"}]
+            });
+            let url = if let Some(b) = base.strip_suffix("/v1") {
+                format!("{b}/v1/messages")
+            } else {
+                format!("{base}/v1/messages")
+            };
+            let mut req = client
+                .post(url)
+                .header("anthropic-version", "2023-06-01")
+                .json(&body);
+            if let Some(k) = key {
+                req = req.header("x-api-key", k);
+            }
+            req
+        }
+        ProviderApi::Gemini => {
+            let body = serde_json::json!({
+                "contents": [{"parts": [{"text": "hi"}]}]
+            });
+            let model_path = if model.starts_with("models/") {
+                model.to_string()
+            } else {
+                format!("models/{model}")
+            };
+            let url = if base.ends_with("/v1beta") {
+                format!("{base}/{model_path}:generateContent")
+            } else {
+                format!("{base}/v1beta/{model_path}:generateContent")
+            };
+            let mut req = client.post(url).json(&body);
+            if let Some(k) = key {
+                req = req.header("x-goog-api-key", k);
+            }
+            req
+        }
+        ProviderApi::Ollama => {
+            let body = serde_json::json!({
+                "model": model,
+                "prompt": "hi",
+                "stream": false,
+                "options": {
+                    "num_predict": 8
+                }
+            });
+            let base_api = if let Some(b) = base.strip_suffix("/api") {
+                format!("{b}/api/generate")
+            } else {
+                format!("{base}/api/generate")
+            };
+            client.post(base_api).json(&body)
+        }
+    }
 }
 
 /// Plaintext `.env` TEXT for the explicit "复制 .env" button (clipboard only —
@@ -548,15 +785,17 @@ pub fn map_provider_api(api_str: Option<&str>, default_api: ProviderApi) -> Prov
     match api_str.map(str::trim) {
         Some(s)
             if s.eq_ignore_ascii_case("openai-completions")
-                || s.eq_ignore_ascii_case("openai_completions") =>
+                || s.eq_ignore_ascii_case("openai_completions")
+                || s.eq_ignore_ascii_case("chat-completions") =>
         {
             ProviderApi::OpenaiCompletions
         }
         Some(s)
             if s.eq_ignore_ascii_case("openai-responses")
-                || s.eq_ignore_ascii_case("openai_responses") =>
+                || s.eq_ignore_ascii_case("openai_responses")
+                || s.eq_ignore_ascii_case("responses") =>
         {
-            ProviderApi::OpenaiCompletions
+            ProviderApi::OpenaiResponses
         }
         Some(s)
             if s.eq_ignore_ascii_case("anthropic")
@@ -624,7 +863,9 @@ pub fn build_import_config(
     let api_key_env = raw.and_then(|r| r.api_key_env.as_deref());
     let env_var = generate_import_env_var(id, api_key_env);
 
-    let models = raw.map(|r| r.model_ids.clone()).unwrap_or_default();
+    let models = raw
+        .map(|r| r.model_ids.iter().cloned().map(ModelEntry::Id).collect())
+        .unwrap_or_default();
 
     Ok(ProviderConfig {
         id: String::new(),
@@ -636,6 +877,8 @@ pub fn build_import_config(
         env_var,
         models,
         default_model: None,
+        default_context_window: None,
+        default_max_tokens: None,
         enabled: true,
         sort: 0,
         has_key: false,
@@ -769,6 +1012,7 @@ pub async fn provider_import_omp(ids: Vec<String>) -> Result<Vec<OmpImportResult
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contracts::ModelSpec;
 
     fn config(name: &str, slug: &str, base: &str, env: &str) -> ProviderConfig {
         ProviderConfig {
@@ -781,6 +1025,8 @@ mod tests {
             env_var: env.to_string(),
             models: Vec::new(),
             default_model: None,
+            default_context_window: None,
+            default_max_tokens: None,
             enabled: true,
             sort: 0,
             has_key: false,
@@ -1005,7 +1251,7 @@ mod tests {
         );
         assert_eq!(
             map_provider_api(Some("openai-responses"), ProviderApi::Anthropic),
-            ProviderApi::OpenaiCompletions
+            ProviderApi::OpenaiResponses
         );
         assert_eq!(
             map_provider_api(Some("anthropic"), ProviderApi::OpenaiCompletions),
@@ -1074,7 +1320,10 @@ mod tests {
         assert_eq!(cfg2.base_url, "https://custom-openai.proxy.com/v1");
         assert_eq!(cfg2.api, ProviderApi::Anthropic);
         assert_eq!(cfg2.env_var, "MY_OPENAI_KEY");
-        assert_eq!(cfg2.models, vec!["gpt-4o-custom"]);
+        assert_eq!(
+            cfg2.models,
+            vec![ModelEntry::Id("gpt-4o-custom".to_string())]
+        );
 
         // Missing baseUrl in both raw and preset -> error
         let err = build_import_config("unknown-provider", None).unwrap_err();
@@ -1104,5 +1353,272 @@ mod tests {
                 "error was: {err}"
             );
         }
+    }
+
+    #[test]
+    fn test_map_provider_api_variants_and_aliases() {
+        assert_eq!(
+            map_provider_api(Some("openai-responses"), ProviderApi::OpenaiCompletions),
+            ProviderApi::OpenaiResponses
+        );
+        assert_eq!(
+            map_provider_api(Some("openai_responses"), ProviderApi::OpenaiCompletions),
+            ProviderApi::OpenaiResponses
+        );
+        assert_eq!(
+            map_provider_api(Some("responses"), ProviderApi::OpenaiCompletions),
+            ProviderApi::OpenaiResponses
+        );
+        assert_eq!(
+            map_provider_api(Some("openai-completions"), ProviderApi::Anthropic),
+            ProviderApi::OpenaiCompletions
+        );
+        assert_eq!(
+            map_provider_api(Some("openai_completions"), ProviderApi::Anthropic),
+            ProviderApi::OpenaiCompletions
+        );
+        assert_eq!(
+            map_provider_api(Some("chat-completions"), ProviderApi::Anthropic),
+            ProviderApi::OpenaiCompletions
+        );
+        assert_eq!(
+            map_provider_api(Some("anthropic"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Anthropic
+        );
+        assert_eq!(
+            map_provider_api(Some("anthropic-messages"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Anthropic
+        );
+        assert_eq!(
+            map_provider_api(Some("gemini"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Gemini
+        );
+        assert_eq!(
+            map_provider_api(Some("google-generative-ai"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Gemini
+        );
+        assert_eq!(
+            map_provider_api(Some("ollama"), ProviderApi::OpenaiCompletions),
+            ProviderApi::Ollama
+        );
+        assert_eq!(
+            map_provider_api(None, ProviderApi::Gemini),
+            ProviderApi::Gemini
+        );
+    }
+
+    #[test]
+    fn test_validate_model_specs_and_bounds() {
+        let mut c = config("Provider", "slug", "https://api.openai.com/v1", "KEY");
+
+        // Empty model id is rejected
+        c.models = vec![ModelEntry::Id("   ".to_string())];
+        assert_eq!(validate(&c).unwrap_err(), "模型 ID 不能为空");
+
+        // Model id with newline or null is rejected
+        c.models = vec![ModelEntry::Id("model\n1".to_string())];
+        assert_eq!(validate(&c).unwrap_err(), "模型 ID 不能包含换行或空字符");
+        c.models = vec![ModelEntry::Id("model\01".to_string())];
+        assert_eq!(validate(&c).unwrap_err(), "模型 ID 不能包含换行或空字符");
+
+        // ModelSpec bounds > 2_000_000
+        c.models = vec![ModelEntry::Spec(ModelSpec {
+            id: "m1".to_string(),
+            context_window: Some(2_000_001),
+            ..Default::default()
+        })];
+        assert!(validate(&c).unwrap_err().contains("不能超过 2,000,000"));
+
+        c.models = vec![ModelEntry::Spec(ModelSpec {
+            id: "m1".to_string(),
+            max_tokens: Some(2_000_001),
+            ..Default::default()
+        })];
+        assert!(validate(&c).unwrap_err().contains("不能超过 2,000,000"));
+
+        // ModelSpec name containing null/newline
+        c.models = vec![ModelEntry::Spec(ModelSpec {
+            id: "m1".to_string(),
+            name: Some("Name\nBad".to_string()),
+            ..Default::default()
+        })];
+        assert!(validate(&c)
+            .unwrap_err()
+            .contains("模型 \"m1\" 的名称不能包含换行或空字符"));
+
+        // Provider defaults > 2_000_000
+        c.models = vec![ModelEntry::Id("m1".to_string())];
+        c.default_context_window = Some(2_000_001);
+        assert_eq!(
+            validate(&c).unwrap_err(),
+            "默认上下文窗口大小不能超过 2,000,000"
+        );
+
+        c.default_context_window = Some(128_000);
+        c.default_max_tokens = Some(2_000_001);
+        assert_eq!(
+            validate(&c).unwrap_err(),
+            "默认最大输出 Token 数不能超过 2,000,000"
+        );
+
+        // Valid bounds pass
+        c.default_max_tokens = Some(4096);
+        c.models = vec![
+            ModelEntry::Id("m1".to_string()),
+            ModelEntry::Spec(ModelSpec {
+                id: "m2".to_string(),
+                name: Some("Model 2".to_string()),
+                context_window: Some(200_000),
+                max_tokens: Some(8192),
+            }),
+        ];
+        assert!(validate(&c).is_ok());
+    }
+
+    #[test]
+    fn test_model_probe_request_construction() {
+        let client = reqwest::Client::builder().build().unwrap();
+
+        // OpenaiCompletions
+        let req = model_probe_request(
+            &client,
+            ProviderApi::OpenaiCompletions,
+            "https://api.openai.com/v1",
+            "gpt-4o",
+            Some("sk-openai-secret"),
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            req.url().as_str(),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(req.method(), reqwest::Method::POST);
+        assert_eq!(
+            req.headers()
+                .get("authorization")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "Bearer sk-openai-secret"
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(req.body().unwrap().as_bytes().unwrap()).unwrap();
+        assert_eq!(body["model"], "gpt-4o");
+        assert_eq!(body["max_tokens"], 1);
+        assert_eq!(body["messages"][0]["content"], "hi");
+
+        // OpenaiResponses
+        let req = model_probe_request(
+            &client,
+            ProviderApi::OpenaiResponses,
+            "https://api.openai.com/v1",
+            "gpt-4o",
+            Some("sk-resp-secret"),
+        )
+        .build()
+        .unwrap();
+        assert_eq!(req.url().as_str(), "https://api.openai.com/v1/responses");
+        assert_eq!(
+            req.headers()
+                .get("authorization")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "Bearer sk-resp-secret"
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(req.body().unwrap().as_bytes().unwrap()).unwrap();
+        assert_eq!(body["model"], "gpt-4o");
+        assert_eq!(body["input"], "hi");
+        assert_eq!(body["max_output_tokens"], 16);
+
+        // Anthropic
+        let req = model_probe_request(
+            &client,
+            ProviderApi::Anthropic,
+            "https://api.anthropic.com",
+            "claude-3-5-sonnet",
+            Some("sk-ant-secret"),
+        )
+        .build()
+        .unwrap();
+        assert_eq!(req.url().as_str(), "https://api.anthropic.com/v1/messages");
+        assert_eq!(
+            req.headers().get("x-api-key").unwrap().to_str().unwrap(),
+            "sk-ant-secret"
+        );
+        assert_eq!(
+            req.headers()
+                .get("anthropic-version")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "2023-06-01"
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(req.body().unwrap().as_bytes().unwrap()).unwrap();
+        assert_eq!(body["model"], "claude-3-5-sonnet");
+        assert_eq!(body["max_tokens"], 1);
+
+        // Gemini
+        let req = model_probe_request(
+            &client,
+            ProviderApi::Gemini,
+            "https://generativelanguage.googleapis.com",
+            "gemini-1.5-flash",
+            Some("gemini-secret-key"),
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            req.url().as_str(),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        );
+        assert_eq!(
+            req.headers()
+                .get("x-goog-api-key")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "gemini-secret-key"
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(req.body().unwrap().as_bytes().unwrap()).unwrap();
+        assert_eq!(body["contents"][0]["parts"][0]["text"], "hi");
+
+        // Ollama
+        let req = model_probe_request(
+            &client,
+            ProviderApi::Ollama,
+            "http://localhost:11434",
+            "llama3.2",
+            None,
+        )
+        .build()
+        .unwrap();
+        assert_eq!(req.url().as_str(), "http://localhost:11434/api/generate");
+        let body: serde_json::Value =
+            serde_json::from_slice(req.body().unwrap().as_bytes().unwrap()).unwrap();
+        assert_eq!(body["model"], "llama3.2");
+        assert_eq!(body["prompt"], "hi");
+        assert_eq!(body["stream"], false);
+        assert_eq!(body["options"]["num_predict"], 8);
+    }
+
+    #[test]
+    fn test_sanitize_error_detail() {
+        let status = reqwest::StatusCode::UNAUTHORIZED;
+        let secret = "super-secret-key-12345";
+        let raw = format!("Error: invalid key '{secret}' was provided by client");
+        let sanitized = sanitize_error_detail(status, &raw, Some(secret));
+        assert!(!sanitized.contains(secret));
+        assert!(sanitized.contains("[REDACTED]"));
+        assert!(sanitized.starts_with("HTTP 401 Unauthorized"));
+
+        // Limit first 200 chars
+        let long_body = "x".repeat(500);
+        let detail = sanitize_error_detail(reqwest::StatusCode::BAD_REQUEST, &long_body, None);
+        assert!(detail.len() <= 230); // "HTTP 400 Bad Request: " + 200 chars
     }
 }

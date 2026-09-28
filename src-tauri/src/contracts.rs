@@ -568,12 +568,56 @@ pub enum ProviderApi {
     /// OpenAI-compatible endpoints (`/models`, `/chat/completions`).
     #[default]
     OpenaiCompletions,
+    /// OpenAI Responses API (`/responses`) — distinct wire format from chat completions.
+    OpenaiResponses,
     /// Anthropic Messages API.
     Anthropic,
     /// Google Gemini API.
     Gemini,
     /// Local Ollama engine (no API key needed).
     Ollama,
+}
+
+/// A provider model entry: bare id or a spec with per-model limits.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum ModelEntry {
+    /// Simple form — just the model id (keeps existing providers.json data valid).
+    Id(String),
+    Spec(ModelSpec),
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelSpec {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+}
+
+impl ModelEntry {
+    pub fn id(&self) -> &str {
+        match self {
+            ModelEntry::Id(id) => id,
+            ModelEntry::Spec(spec) => &spec.id,
+        }
+    }
+}
+
+impl From<String> for ModelEntry {
+    fn from(id: String) -> Self {
+        ModelEntry::Id(id)
+    }
+}
+
+impl From<&str> for ModelEntry {
+    fn from(id: &str) -> Self {
+        ModelEntry::Id(id.to_string())
+    }
 }
 
 /// Provider metadata (non-secret). Secrets live only in the encrypted vault
@@ -591,8 +635,12 @@ pub struct ProviderConfig {
     pub api: ProviderApi,
     /// Env var injected into child processes (e.g. ANTHROPIC_API_KEY).
     pub env_var: String,
-    pub models: Vec<String>,
+    pub models: Vec<ModelEntry>,
     pub default_model: Option<String>,
+    #[serde(default)]
+    pub default_context_window: Option<u32>,
+    #[serde(default)]
+    pub default_max_tokens: Option<u32>,
     pub enabled: bool,
     pub sort: i64,
     /// True when an encrypted key exists in the vault for this slug.
@@ -655,4 +703,86 @@ pub struct OmpImportResult {
     pub id: String,
     pub ok: bool,
     pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_model_entry_untagged_roundtrip() {
+        // Old format: array of strings
+        let old_json = r#"["gpt-4o", "claude-3-5-sonnet"]"#;
+        let entries: Vec<ModelEntry> = serde_json::from_str(old_json).unwrap();
+        assert_eq!(
+            entries,
+            vec![
+                ModelEntry::Id("gpt-4o".into()),
+                ModelEntry::Id("claude-3-5-sonnet".into())
+            ]
+        );
+        assert_eq!(entries[0].id(), "gpt-4o");
+        assert_eq!(entries[1].id(), "claude-3-5-sonnet");
+
+        // New format: objects with spec
+        let new_json =
+            r#"[{"id":"m","contextWindow":200000},{"id":"m2","maxTokens":8192,"name":"M2"}]"#;
+        let spec_entries: Vec<ModelEntry> = serde_json::from_str(new_json).unwrap();
+        assert_eq!(
+            spec_entries,
+            vec![
+                ModelEntry::Spec(ModelSpec {
+                    id: "m".into(),
+                    name: None,
+                    context_window: Some(200000),
+                    max_tokens: None,
+                }),
+                ModelEntry::Spec(ModelSpec {
+                    id: "m2".into(),
+                    name: Some("M2".into()),
+                    context_window: None,
+                    max_tokens: Some(8192),
+                }),
+            ]
+        );
+        assert_eq!(spec_entries[0].id(), "m");
+        assert_eq!(spec_entries[1].id(), "m2");
+
+        // Mixed format
+        let mixed_json = r#"["bare-id", {"id":"spec-id","contextWindow":128000}]"#;
+        let mixed: Vec<ModelEntry> = serde_json::from_str(mixed_json).unwrap();
+        assert_eq!(mixed[0], ModelEntry::Id("bare-id".into()));
+        assert_eq!(
+            mixed[1],
+            ModelEntry::Spec(ModelSpec {
+                id: "spec-id".into(),
+                name: None,
+                context_window: Some(128000),
+                max_tokens: None,
+            })
+        );
+    }
+
+    #[test]
+    fn test_provider_config_missing_option_fields_default_to_none() {
+        let json = r#"{
+            "id": "p1",
+            "name": "Provider",
+            "slug": "p1",
+            "baseUrl": "https://api.openai.com/v1",
+            "api": "openai_responses",
+            "envVar": "OPENAI_API_KEY",
+            "models": ["gpt-4o"],
+            "enabled": true,
+            "sort": 1,
+            "hasKey": true,
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:00Z"
+        }"#;
+        let config: ProviderConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.api, ProviderApi::OpenaiResponses);
+        assert_eq!(config.default_context_window, None);
+        assert_eq!(config.default_max_tokens, None);
+        assert_eq!(config.models, vec![ModelEntry::Id("gpt-4o".into())]);
+    }
 }

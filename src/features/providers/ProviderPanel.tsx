@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
 	Activity,
+	ChevronDown,
+	ChevronRight,
 	CircleCheck,
 	CircleX,
 	ClipboardCopy,
@@ -15,6 +17,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import type {
+	ModelEntry,
 	OmpImportResult,
 	OmpProviderInfo,
 	ProviderConfig,
@@ -26,6 +29,7 @@ import { OauthLoginDialog } from "./OauthLoginDialog";
 import { API_LABELS, presetById } from "./presets";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders, type TestStatus } from "./store";
+import { formatTokens, modelEntryId, modelEntrySpec } from "./modelEntry";
 
 const PRIVACY_NOTE =
 	"密钥使用 macOS 钥匙串加密后存于 ~/.omp-workspace/env/keys.env，明文仅在内存中出现，不会写入数据库或日志。";
@@ -328,10 +332,13 @@ function UnifiedProviderRow({
 	const setEnabled = useProviders((s) => s.setEnabled);
 	const remove = useProviders((s) => s.remove);
 	const runTest = useProviders((s) => s.runTest);
+	const runModelTest = useProviders((s) => s.runModelTest);
+	const modelTests = useProviders((s) => s.modelTests);
 	const test = useProviders((s) =>
 		row.workbench ? s.tests[row.workbench.id] : undefined,
 	);
 	const [rowImporting, setRowImporting] = useState(false);
+	const [expanded, setExpanded] = useState(false);
 
 	const info = row.omp;
 	const workbench = row.workbench;
@@ -341,15 +348,17 @@ function UnifiedProviderRow({
 	const displayName = workbench?.name ?? info?.id ?? "";
 	const displaySlug = workbench?.slug ?? info?.id ?? "";
 	const baseUrl = workbench?.baseUrl ?? info?.baseUrl ?? null;
-	const modelIds =
-		info && info.modelIds.length > 0 ? info.modelIds : (workbench?.models ?? []);
+	const allModels: ModelEntry[] =
+		workbench && workbench.models.length > 0
+			? workbench.models
+			: (info?.modelIds ?? []);
 	const apiLabel = workbench ? API_LABELS[workbench.api] : info?.api;
 	// apiLabel renders as a small chip after the name in the header row below.
 	const preset = workbench ? presetById(workbench.presetId) : undefined;
 	const color = preset?.color ?? "#f59e0b";
-	const displayedModels = modelIds.slice(0, 6);
-	const remainingModelsCount = modelIds.length - displayedModels.length;
-
+	const displayedModels = allModels.slice(0, 6);
+	const remainingModelsCount = allModels.length - displayedModels.length;
+	const isOmpOnly = !workbench && !!info;
 	const handleRowImport = async () => {
 		if (!info || rowImporting || importingOmp) return;
 		setRowImporting(true);
@@ -388,8 +397,21 @@ function UnifiedProviderRow({
 	return (
 		<div className="rounded-xl hairline bg-[var(--well-bg)] p-3">
 			<div className="flex flex-wrap items-center justify-between gap-2">
-				{/* Left: name + source chips */}
+				{/* Left: expand button + name + source chips */}
 				<div className="flex min-w-0 flex-wrap items-center gap-2">
+					<button
+						type="button"
+						onClick={() => setExpanded((v) => !v)}
+						aria-expanded={expanded}
+						aria-label={expanded ? "收起模型列表" : "展开模型列表"}
+						className="rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
+					>
+						{expanded ? (
+							<ChevronDown className="h-3.5 w-3.5" />
+						) : (
+							<ChevronRight className="h-3.5 w-3.5" />
+						)}
+					</button>
 					{workbench && (
 						<span
 							className="h-2 w-2 shrink-0 rounded-full"
@@ -540,7 +562,7 @@ function UnifiedProviderRow({
 				</div>
 			</div>
 
-			{/* Second line: baseUrl + models + roles */}
+			{/* Second line: baseUrl + models summary + roles */}
 			<div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
 				{baseUrl && (
 					<span
@@ -550,30 +572,41 @@ function UnifiedProviderRow({
 						{baseUrl}
 					</span>
 				)}
-				{baseUrl && (modelIds.length > 0 || (info?.usedInRoles.length ?? 0) > 0) && (
+				{baseUrl && (allModels.length > 0 || (info?.usedInRoles.length ?? 0) > 0) && (
 					<span className="text-neutral-600">·</span>
 				)}
-				{modelIds.length > 0 && (
+				{allModels.length > 0 && !expanded && (
 					<div className="flex flex-wrap items-center gap-1">
-						<span className="text-neutral-500">{modelIds.length} 个模型:</span>
-						{displayedModels.map((m) => (
-							<span
-								key={m}
-								className="rounded bg-neutral-800/60 px-1 py-0.5 font-mono text-[10px] text-neutral-300"
-							>
-								{m}
-							</span>
-						))}
+						<span className="text-neutral-500">{allModels.length} 个模型:</span>
+						{displayedModels.map((m) => {
+							const id = modelEntryId(m);
+							return (
+								<span
+									key={id}
+									title={isOmpOnly ? "导入工作台后可单独测试该模型" : undefined}
+									className="rounded bg-neutral-800/60 px-1 py-0.5 font-mono text-[10px] text-neutral-300"
+								>
+									{id}
+								</span>
+							);
+						})}
 						{remainingModelsCount > 0 && (
-							<span className="rounded bg-neutral-800/40 px-1 py-0.5 font-mono text-[10px] text-neutral-500">
+							<button
+								type="button"
+								onClick={() => setExpanded(true)}
+								className="rounded bg-neutral-800/40 px-1 py-0.5 font-mono text-[10px] text-neutral-500 hover:text-neutral-300"
+							>
 								+{remainingModelsCount}
-							</span>
+							</button>
 						)}
 					</div>
 				)}
+				{allModels.length > 0 && expanded && (
+					<span className="text-neutral-500">{allModels.length} 个模型</span>
+				)}
 				{info && info.usedInRoles.length > 0 && (
 					<>
-						{(baseUrl || modelIds.length > 0) && (
+						{(baseUrl || allModels.length > 0) && (
 							<span className="text-neutral-600">·</span>
 						)}
 						<span className="text-neutral-400">
@@ -588,6 +621,130 @@ function UnifiedProviderRow({
 					<span className="text-neutral-500">未配置密钥</span>
 				)}
 			</div>
+
+			{expanded && (
+				<div className="mt-3 border-t border-[var(--border-divider)] pt-2.5">
+					<div className="mb-2 flex items-center justify-between text-xs text-neutral-400">
+						<span className="font-medium text-neutral-300">
+							模型列表（{allModels.length}）
+						</span>
+						{workbench?.defaultModel && (
+							<span className="text-[11px]">
+								默认: <code className="font-mono text-neutral-200">{workbench.defaultModel}</code>
+							</span>
+						)}
+					</div>
+					{allModels.length === 0 ? (
+						<div className="rounded-lg bg-neutral-900/40 p-2.5 text-center text-xs text-neutral-500">
+							未配置模型
+						</div>
+					) : (
+						<div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+							{allModels.map((entry) => {
+								const id = modelEntryId(entry);
+								const spec = modelEntrySpec(entry);
+								const ctx =
+									spec.contextWindow ?? workbench?.defaultContextWindow ?? null;
+								const max =
+									spec.maxTokens ?? workbench?.defaultMaxTokens ?? null;
+								const testKey = workbench ? `${workbench.id}::${id}` : null;
+								const modelTest = testKey ? modelTests[testKey] : undefined;
+
+								return (
+									<div
+										key={id}
+										title={isOmpOnly ? "导入工作台后可单独测试该模型" : undefined}
+										className="flex flex-col justify-between gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)]/60 p-2.5 text-xs transition-all"
+									>
+										<div className="flex items-center justify-between gap-1.5 min-w-0">
+											<span
+												className="truncate font-mono font-medium text-neutral-200"
+												title={id}
+											>
+												{id}
+											</span>
+											{workbench && (
+												<button
+													type="button"
+													onClick={() => void runModelTest(workbench.id, id)}
+													disabled={modelTest?.state === "testing"}
+													title={`测试模型 ${id}`}
+													aria-label={`测试模型 ${id}`}
+													className="shrink-0 inline-flex items-center gap-1 rounded bg-[var(--well-bg)] px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 transition-all disabled:opacity-40"
+												>
+													{modelTest?.state === "testing" ? (
+														<Loader2 size={11} className="animate-spin" />
+													) : (
+														<Activity size={11} />
+													)}
+													<span>测试</span>
+												</button>
+											)}
+										</div>
+
+										{(ctx != null || max != null) && (
+											<div className="flex flex-wrap items-center gap-1 text-[10px]">
+												{ctx != null && (
+													<span
+														className="rounded bg-sky-950/60 px-1.5 py-0.5 font-mono text-sky-300 border border-sky-800/40"
+														title={`上下文窗口: ${ctx} tokens`}
+													>
+														ctx:{formatTokens(ctx)}
+													</span>
+												)}
+												{max != null && (
+													<span
+														className="rounded bg-indigo-950/60 px-1.5 py-0.5 font-mono text-indigo-300 border border-indigo-800/40"
+														title={`输出上限: ${max} tokens`}
+													>
+														max:{formatTokens(max)}
+													</span>
+												)}
+											</div>
+										)}
+
+										{modelTest && (
+											<div
+												className={`text-[11px] ${
+													modelTest.state === "testing"
+														? "text-neutral-400 flex items-center gap-1"
+														: modelTest.result.ok
+															? "text-emerald-400"
+															: "text-rose-400"
+												}`}
+											>
+												{modelTest.state === "testing" ? (
+													<>
+														<Loader2 size={11} className="animate-spin" />
+														<span>正在测试…</span>
+													</>
+												) : (
+													<div
+														className="flex items-center gap-1 truncate"
+														title={`${modelTest.result.detail} (${modelTest.result.latencyMs}ms)`}
+													>
+														{modelTest.result.ok ? (
+															<CircleCheck className="h-3 w-3 shrink-0" />
+														) : (
+															<CircleX className="h-3 w-3 shrink-0" />
+														)}
+														<span className="truncate">
+															{modelTest.result.detail}
+														</span>
+														<span className="shrink-0 font-mono text-[10px] opacity-80">
+															({modelTest.result.latencyMs}ms)
+														</span>
+													</div>
+												)}
+											</div>
+										)}
+									</div>
+								);
+							})}
+						</div>
+					)}
+				</div>
+			)}
 
 			{workbench && <TestResultLine test={test} />}
 		</div>

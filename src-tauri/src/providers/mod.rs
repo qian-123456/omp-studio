@@ -14,7 +14,7 @@ pub mod store;
 pub mod vault;
 use tokio::sync::Mutex;
 
-use crate::contracts::ProviderConfig;
+use crate::contracts::{ModelEntry, ProviderConfig};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -25,7 +25,11 @@ struct RuntimeProvider<'a> {
     base_url: &'a str,
     api: crate::contracts::ProviderApi,
     env_var: &'a str,
-    models: &'a [String],
+    models: &'a [ModelEntry],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_context_window: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_max_tokens: Option<u32>,
 }
 
 fn runtime_metadata(providers: &[ProviderConfig]) -> Result<String, String> {
@@ -39,6 +43,8 @@ fn runtime_metadata(providers: &[ProviderConfig]) -> Result<String, String> {
             api: p.api,
             env_var: &p.env_var,
             models: &p.models,
+            default_context_window: p.default_context_window,
+            default_max_tokens: p.default_max_tokens,
         })
         .collect();
     serde_json::to_string(&routes).map_err(|e| e.to_string())
@@ -203,5 +209,35 @@ mod tests {
             ..provider
         };
         assert_eq!(runtime_metadata(&[no_models]).unwrap(), "[]");
+    }
+
+    #[test]
+    fn runtime_metadata_serializes_model_specs_and_defaults() {
+        let provider = ProviderConfig {
+            name: "Custom gateway".into(),
+            slug: "cgateway".into(),
+            base_url: "https://api.gateway.com/v1".into(),
+            api: crate::contracts::ProviderApi::OpenaiResponses,
+            env_var: "GATEWAY_KEY".into(),
+            models: vec![
+                ModelEntry::Id("model-1".into()),
+                ModelEntry::Spec(crate::contracts::ModelSpec {
+                    id: "model-2".into(),
+                    name: Some("Model Two".into()),
+                    context_window: Some(100_000),
+                    max_tokens: Some(4096),
+                }),
+            ],
+            default_context_window: Some(32000),
+            default_max_tokens: Some(2048),
+            enabled: true,
+            ..Default::default()
+        };
+        let metadata = runtime_metadata(&[provider]).unwrap();
+        assert!(metadata.contains("\"api\":\"openai_responses\""));
+        assert!(metadata.contains("\"defaultContextWindow\":32000"));
+        assert!(metadata.contains("\"defaultMaxTokens\":2048"));
+        assert!(metadata.contains("\"model-1\""));
+        assert!(metadata.contains("\"contextWindow\":100000"));
     }
 }

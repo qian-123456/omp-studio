@@ -1,4 +1,4 @@
-import { ChevronDown, Eye, EyeOff, Loader2, X } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Loader2, Plus, X } from "lucide-react";
 import { NativeSelect } from "../../components/NativeSelect";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderApi, ProviderConfig } from "../../lib/contracts";
@@ -8,6 +8,11 @@ import { toast } from "../../lib/toast";
 import { maskKey, parseEnvText, slugify } from "./envparse";
 import { API_LABELS, matchPresetByEnvVar, PROVIDER_PRESETS } from "./presets";
 import { useProviders } from "./store";
+import {
+	type ModelRow,
+	modelEntriesToRows,
+	rowsToModelEntries,
+} from "./modelEntry";
 
 export type ProviderDialogTarget =
 	| { mode: "add" }
@@ -30,6 +35,8 @@ function blankConfig(): ProviderConfig {
 		envVar: "",
 		models: [],
 		defaultModel: null,
+		defaultContextWindow: null,
+		defaultMaxTokens: null,
 		enabled: true,
 		sort: 0,
 		hasKey: false,
@@ -61,8 +68,19 @@ export function ProviderDialog({ target, onClose }: Props) {
 	const [api, setApi] = useState<ProviderApi>(editing?.api ?? "openai_completions");
 	const [envVar, setEnvVar] = useState(editing?.envVar ?? "");
 	const [apiKey, setApiKey] = useState("");
-	const [modelsText, setModelsText] = useState((editing?.models ?? []).join("\n"));
+	const [modelRows, setModelRows] = useState<ModelRow[]>(() => {
+		const rows = modelEntriesToRows(editing?.models ?? []);
+		return rows.length > 0
+			? rows
+			: [{ id: "", name: null, contextWindow: "", maxTokens: "" }];
+	});
 	const [defaultModel, setDefaultModel] = useState(editing?.defaultModel ?? "");
+	const [defaultContextWindow, setDefaultContextWindow] = useState(
+		editing?.defaultContextWindow != null ? String(editing.defaultContextWindow) : "",
+	);
+	const [defaultMaxTokens, setDefaultMaxTokens] = useState(
+		editing?.defaultMaxTokens != null ? String(editing.defaultMaxTokens) : "",
+	);
 	const [notes, setNotes] = useState(editing?.notes ?? "");
 	const [advancedOpen, setAdvancedOpen] = useState(isEdit);
 	const [showKey, setShowKey] = useState(false);
@@ -78,6 +96,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 			return pasteText.trim().length > 0;
 		}
 		if (isEdit && editing) {
+			const currentEntries = rowsToModelEntries(modelRows);
 			return (
 				name !== (editing.name ?? "") ||
 				slug !== (editing.slug ?? "") ||
@@ -85,11 +104,20 @@ export function ProviderDialog({ target, onClose }: Props) {
 				api !== (editing.api ?? "openai_completions") ||
 				envVar !== (editing.envVar ?? "") ||
 				apiKey.length > 0 ||
-				modelsText !== (editing.models ?? []).join("\n") ||
+				JSON.stringify(currentEntries) !== JSON.stringify(editing.models ?? []) ||
 				defaultModel !== (editing.defaultModel ?? "") ||
+				defaultContextWindow !==
+					(editing.defaultContextWindow != null
+						? String(editing.defaultContextWindow)
+						: "") ||
+				defaultMaxTokens !==
+					(editing.defaultMaxTokens != null
+						? String(editing.defaultMaxTokens)
+						: "") ||
 				notes !== (editing.notes ?? "")
 			);
 		}
+		const currentEntries = rowsToModelEntries(modelRows);
 		return (
 			selectedPresetId !== null ||
 			name.length > 0 ||
@@ -98,8 +126,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 			api !== "openai_completions" ||
 			envVar.length > 0 ||
 			apiKey.length > 0 ||
-			modelsText.length > 0 ||
+			currentEntries.length > 0 ||
 			defaultModel.length > 0 ||
+			defaultContextWindow.length > 0 ||
+			defaultMaxTokens.length > 0 ||
 			notes.length > 0
 		);
 	}, [
@@ -113,8 +143,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 		api,
 		envVar,
 		apiKey,
-		modelsText,
+		modelRows,
 		defaultModel,
+		defaultContextWindow,
+		defaultMaxTokens,
 		notes,
 		selectedPresetId,
 	]);
@@ -161,8 +193,15 @@ export function ProviderDialog({ target, onClose }: Props) {
 		setBaseUrl(p.baseUrl);
 		setApi(p.api);
 		setEnvVar(p.envVar);
-		setModelsText(p.models.join("\n"));
+		const rows = modelEntriesToRows(p.models);
+		setModelRows(
+			rows.length > 0
+				? rows
+				: [{ id: "", name: null, contextWindow: "", maxTokens: "" }],
+		);
 		setDefaultModel(p.defaultModel ?? "");
+		setDefaultContextWindow("");
+		setDefaultMaxTokens("");
 	};
 
 	const handleNameChange = (value: string) => {
@@ -170,14 +209,39 @@ export function ProviderDialog({ target, onClose }: Props) {
 		if (!slugTouched && !isEdit) setSlug(slugify(value));
 	};
 
-	const models = useMemo(
-		() =>
-			[...new Set(modelsText
-				.split(/[\n,]/)
-				.map((m) => m.trim())
-				.filter(Boolean))],
-		[modelsText],
+	const enteredModelIds = useMemo(
+		() => [
+			...new Set(
+				modelRows
+					.map((r) => r.id.trim())
+					.filter(Boolean),
+			),
+		],
+		[modelRows],
 	);
+
+	const handleModelRowChange = (
+		index: number,
+		field: keyof ModelRow,
+		value: string,
+	) => {
+		setModelRows((prev) => {
+			const next = [...prev];
+			next[index] = { ...next[index], [field]: value };
+			return next;
+		});
+	};
+
+	const handleAddModelRow = () => {
+		setModelRows((prev) => [
+			...prev,
+			{ id: "", name: null, contextWindow: "", maxTokens: "" },
+		]);
+	};
+
+	const handleRemoveModelRow = (index: number) => {
+		setModelRows((prev) => prev.filter((_, i) => i !== index));
+	};
 
 	const uniqueSlug = (base: string): string => {
 		let slug = base;
@@ -189,6 +253,30 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 	const handleSave = async () => {
 		setFormError(null);
+		const parsedContextWindow = defaultContextWindow.trim()
+			? parseInt(defaultContextWindow.trim(), 10)
+			: null;
+		const validContextWindow =
+			parsedContextWindow !== null &&
+			!Number.isNaN(parsedContextWindow) &&
+			parsedContextWindow > 0
+				? parsedContextWindow
+				: null;
+
+		const parsedMaxTokens = defaultMaxTokens.trim()
+			? parseInt(defaultMaxTokens.trim(), 10)
+			: null;
+		const validMaxTokens =
+			parsedMaxTokens !== null &&
+			!Number.isNaN(parsedMaxTokens) &&
+			parsedMaxTokens > 0
+				? parsedMaxTokens
+				: null;
+
+		const models = rowsToModelEntries(modelRows);
+		const trimmedDefault = defaultModel.trim();
+		const defaultModelVal = trimmedDefault.length > 0 ? trimmedDefault : null;
+
 		const config: ProviderConfig = editing
 			? {
 					...editing,
@@ -198,7 +286,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 					api,
 					envVar: envVar.trim().toUpperCase(),
 					models,
-					defaultModel: models.includes(defaultModel) ? defaultModel : null,
+					defaultModel: defaultModelVal,
+					defaultContextWindow: validContextWindow,
+					defaultMaxTokens: validMaxTokens,
 					notes: notes.trim() || null,
 				}
 			: {
@@ -210,7 +300,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 					api,
 					envVar: envVar.trim().toUpperCase(),
 					models,
-					defaultModel: models.includes(defaultModel) ? defaultModel : null,
+					defaultModel: defaultModelVal,
+					defaultContextWindow: validContextWindow,
+					defaultMaxTokens: validMaxTokens,
 					notes: notes.trim() || null,
 				};
 		const missing: string[] = [];
@@ -226,6 +318,16 @@ export function ProviderDialog({ target, onClose }: Props) {
 		if (config.models.length === 0) {
 			setAdvancedOpen(true);
 			setFormError("请至少填写一个模型 ID，才能在 OMP 中选择");
+			return;
+		}
+		if (validContextWindow && validContextWindow > 2_000_000) {
+			setAdvancedOpen(true);
+			setFormError("默认上下文窗口不能超过 2,000,000");
+			return;
+		}
+		if (validMaxTokens && validMaxTokens > 2_000_000) {
+			setAdvancedOpen(true);
+			setFormError("默认输出上限不能超过 2,000,000");
 			return;
 		}
 		setSaving(true);
@@ -542,34 +644,132 @@ export function ProviderDialog({ target, onClose }: Props) {
 											</NativeSelect>
 										</div>
 									</div>
-									<div>
-										<label htmlFor="provider-models" className={labelCls}>模型 ID</label>
-										<textarea
-											id="provider-models"
-											value={modelsText}
-											onChange={(e) => setModelsText(e.target.value)}
-											rows={3}
-											spellCheck={false}
-											className={inputCls}
-											placeholder="每行一个模型"
-										/>
-										<p className={hintCls}>配置密钥后以 ompws-{slug.trim() || slugify(name) || "标识符"}/模型 ID 选择（环境变量须遵循 OMP 命名规范）。默认上下文 32K，输出上限 4K。</p>
+									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+										<div>
+											<label htmlFor="provider-default-ctx" className={labelCls}>默认上下文窗口 (tokens)</label>
+											<input
+												id="provider-default-ctx"
+												type="number"
+												min={1}
+												max={2000000}
+												value={defaultContextWindow}
+												onChange={(e) => setDefaultContextWindow(e.target.value)}
+												className={`${inputCls} font-mono`}
+												placeholder="例如: 128000（留空为 32768）"
+											/>
+										</div>
+										<div>
+											<label htmlFor="provider-default-max-tokens" className={labelCls}>默认输出上限 (tokens)</label>
+											<input
+												id="provider-default-max-tokens"
+												type="number"
+												min={1}
+												max={2000000}
+												value={defaultMaxTokens}
+												onChange={(e) => setDefaultMaxTokens(e.target.value)}
+												className={`${inputCls} font-mono`}
+												placeholder="例如: 4096（留空为 4096）"
+											/>
+										</div>
 									</div>
 
-									{models.length > 0 && (
-										<div>
-											<label htmlFor="provider-default" className={labelCls}>供应商列表标记模型</label>
-											<NativeSelect
-												id="provider-default"
-												value={models.includes(defaultModel) ? defaultModel : ""}
-												onChange={(e) => setDefaultModel(e.target.value)}
-												containerClassName="mt-1.5"
+									<div>
+										<div className="flex items-center justify-between">
+											<label className={labelCls}>模型列表</label>
+											<button
+												type="button"
+												onClick={handleAddModelRow}
+												className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-[#0A84FF] hover:bg-[#0A84FF]/10 active:scale-95 transition-all"
 											>
-												<option value="">（不指定）</option>
-												{models.map((m) => <option key={m} value={m}>{m}</option>)}
-											</NativeSelect>
+												<Plus className="h-3 w-3" />
+												<span>添加模型</span>
+											</button>
 										</div>
-									)}
+										<p className={hintCls}>配置模型 ID；各模型上下文窗口和输出上限若留空，将继承上方供应商默认值。</p>
+
+										<div className="mt-2 space-y-1.5">
+											{modelRows.length > 0 && (
+												<div className="grid grid-cols-[1fr_88px_88px_28px] gap-2 px-1 text-[11px] font-medium text-neutral-400">
+													<span>模型 ID</span>
+													<span>上下文窗口</span>
+													<span>输出上限</span>
+													<span />
+												</div>
+											)}
+											{modelRows.map((row, index) => (
+												<div
+													key={index}
+													className="grid grid-cols-[1fr_88px_88px_28px] items-center gap-2"
+												>
+													<input
+														type="text"
+														value={row.id}
+														onChange={(e) =>
+															handleModelRowChange(index, "id", e.target.value)
+														}
+														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+														placeholder="例如: gpt-4o"
+													/>
+													<input
+														type="number"
+														min={1}
+														max={2000000}
+														value={row.contextWindow}
+														onChange={(e) =>
+															handleModelRowChange(index, "contextWindow", e.target.value)
+														}
+														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+														placeholder="默认"
+													/>
+													<input
+														type="number"
+														min={1}
+														max={2000000}
+														value={row.maxTokens}
+														onChange={(e) =>
+															handleModelRowChange(index, "maxTokens", e.target.value)
+														}
+														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+														placeholder="默认"
+													/>
+													<button
+														type="button"
+														onClick={() => handleRemoveModelRow(index)}
+														aria-label={`删除第 ${index + 1} 个模型`}
+														title="删除模型"
+														className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300 active:scale-95 transition-all"
+													>
+														<X className="h-3.5 w-3.5" />
+													</button>
+												</div>
+											))}
+											{modelRows.length === 0 && (
+												<div className="rounded-lg hairline border-dashed border-neutral-700 p-3 text-center text-xs text-neutral-500">
+													暂无模型，点击右上角「添加模型」
+												</div>
+											)}
+										</div>
+										<p className={hintCls}>配置密钥后以 ompws-{slug.trim() || slugify(name) || "标识符"}/模型 ID 选择。</p>
+									</div>
+
+									<div>
+										<label htmlFor="provider-default" className={labelCls}>默认模型（可选）</label>
+										<input
+											id="provider-default"
+											type="text"
+											list="provider-default-models-list"
+											value={defaultModel}
+											onChange={(e) => setDefaultModel(e.target.value)}
+											className={`${inputCls} font-mono`}
+											placeholder="未指定时自动选择第一个可用模型"
+										/>
+										<datalist id="provider-default-models-list">
+											{enteredModelIds.map((id) => (
+												<option key={id} value={id} />
+											))}
+										</datalist>
+										<p className={hintCls}>供应商标记模型，用于未明确指定模型时的默认选择。可在下拉列表中选择或手动输入。</p>
+									</div>
 									<div>
 										<label htmlFor="provider-notes" className={labelCls}>备注（可选）</label>
 										<input id="provider-notes" type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} placeholder="例如: 团队共享额度" />
