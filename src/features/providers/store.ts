@@ -36,10 +36,6 @@ interface ProvidersState {
 	tests: Record<string, TestStatus>;
 	/** Per-model inline probe state (ProviderPanel rows). Key: `${providerId}::${modelId}` */
 	modelTests: Record<string, TestStatus>;
-	query: string;
-	setQuery(query: string): void;
-	expandedKey: string | null;
-	setExpandedKey(key: string | null): void;
 	load(): Promise<void>;
 	loadOmp(): Promise<void>;
 	/** Upsert via backend; returns the saved config. */
@@ -63,10 +59,6 @@ export const useProviders = create<ProvidersState>((set, get) => ({
 	tests: {},
 	modelTests: {},
 	importingOmp: false,
-	query: "",
-	setQuery: (query) => set({ query }),
-	expandedKey: null,
-	setExpandedKey: (expandedKey) => set({ expandedKey }),
 
 	loadOmp: async () => {
 		try {

@@ -18,6 +18,7 @@ import {
 import type {
 	ModelEntry,
 	OmpImportResult,
+	OmpProviderInfo,
 	ProviderConfig,
 } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
@@ -28,15 +29,19 @@ import { API_LABELS, presetById } from "./presets";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders, type TestStatus } from "./store";
 import { formatTokens, modelEntryId, modelEntrySpec } from "./modelEntry";
-import {
-	buildProviderRows,
-	formatHostOnly,
-	providerRowMatchesQuery,
-	type ProviderListRow,
-} from "./providerRows";
 
 const PRIVACY_NOTE =
 	"密钥使用 macOS 钥匙串加密后存于 ~/.omp-workspace/env/keys.env，明文仅在内存中出现，不会写入数据库或日志。";
+
+/** One row in the unified provider list — may carry both an OMP-discovered
+ * config and a workbench-managed copy (matched by slug). */
+interface ListRow {
+	key: string;
+	/** OMP config (models.yml/config.yml/agent.db), when the provider exists there. */
+	omp: OmpProviderInfo | null;
+
+	workbench: ProviderConfig | null;
+}
 
 
 export function ProviderPanel() {
@@ -52,10 +57,8 @@ export function ProviderPanel() {
 	const importOmp = useProviders((s) => s.importOmp);
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
 	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
-	const query = useProviders((s) => s.query);
-	const setQuery = useProviders((s) => s.setQuery);
-	const expandedKey = useProviders((s) => s.expandedKey);
-	const setExpandedKey = useProviders((s) => s.setExpandedKey);
+	const [query, setQuery] = useState("");
+	const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
 	useEffect(() => {
 		void load();
@@ -63,15 +66,50 @@ export function ProviderPanel() {
 
 	// Merge OMP-discovered providers and workbench-managed ones into one list,
 	// keyed by slug so the same provider never appears twice.
-	const rows = useMemo<ProviderListRow[]>(
-		() => buildProviderRows(ompProviders, providers),
-		[ompProviders, providers],
-	);
+	const rows = useMemo<ListRow[]>(() => {
+		const map = new Map<string, ListRow>();
+		for (const info of ompProviders) {
+			map.set(info.id, { key: info.id, omp: info, workbench: null });
+		}
+		for (const cfg of providers) {
+			const existing = map.get(cfg.slug);
+			if (existing) {
+				existing.workbench = cfg;
+			} else {
+				map.set(cfg.slug, { key: cfg.slug, omp: null, workbench: cfg });
+			}
+		}
+		const list = [...map.values()];
+		list.sort((a, b) => {
+			// Managed rows first, then OMP-configured, then workbench-only;
+			// within a tier sort by id/name.
+			const ra = a.workbench ? (a.omp ? 0 : 2) : 1;
+			const rb = b.workbench ? (b.omp ? 0 : 2) : 1;
+			if (ra !== rb) return ra - rb;
+			const an = a.omp?.id ?? a.workbench?.name ?? "";
+			const bn = b.omp?.id ?? b.workbench?.name ?? "";
+			return an.localeCompare(bn);
+		});
+		return list;
+	}, [ompProviders, providers]);
 
-	const filteredRows = useMemo(
-		() => rows.filter((r) => providerRowMatchesQuery(r, query)),
-		[rows, query],
-	);
+	const filteredRows = useMemo(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return rows;
+		return rows.filter((r) => {
+			const haystack = [
+				r.omp?.id,
+				r.workbench?.name,
+				r.workbench?.slug,
+				r.omp?.baseUrl ?? r.workbench?.baseUrl,
+				...(r.omp?.modelIds ?? r.workbench?.models ?? []),
+			]
+				.filter(Boolean)
+				.join(" ")
+				.toLowerCase();
+			return haystack.includes(q);
+		});
+	}, [rows, query]);
 
 
 	const eligibleOmpIds = useMemo(
@@ -241,7 +279,9 @@ export function ProviderPanel() {
 							row={row}
 							isExpanded={expandedKey === row.key}
 							onToggleExpand={() =>
-								setExpandedKey(expandedKey === row.key ? null : row.key)
+								setExpandedKey((curr) =>
+									curr === row.key ? null : row.key,
+								)
 							}
 							onEdit={() => {
 								if (row.workbench) {
@@ -291,6 +331,20 @@ function notifyImportResults(results: OmpImportResult[]) {
 	}
 }
 
+function formatHostOnly(rawUrl: string | null | undefined): string | null {
+	if (!rawUrl) return null;
+	const trimmed = rawUrl.trim();
+	if (!trimmed) return null;
+	try {
+		const candidate = trimmed.includes("://") ? trimmed : `http://${trimmed}`;
+		const parsed = new URL(candidate);
+		const host = parsed.host;
+		if (host) return host;
+	} catch {
+		// ignore
+	}
+	return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
+}
 
 function UnifiedProviderRow({
 	row,
@@ -298,7 +352,7 @@ function UnifiedProviderRow({
 	onToggleExpand,
 	onEdit,
 }: {
-	row: ProviderListRow;
+	row: ListRow;
 	isExpanded: boolean;
 	onToggleExpand: () => void;
 	onEdit: () => void;
@@ -373,7 +427,6 @@ function UnifiedProviderRow({
 		return (
 			<div
 				id={`provider-row-${row.key}`}
-				data-row-key={row.key}
 				onClick={onToggleExpand}
 				className="group flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)]"
 			>
@@ -565,7 +618,6 @@ function UnifiedProviderRow({
 	return (
 		<div
 			id={`provider-row-${row.key}`}
-			data-row-key={row.key}
 			className="group rounded-xl hairline border-l-[3px] border-l-[#0A84FF] bg-[var(--well-bg)] p-3 transition-colors"
 		>
 
