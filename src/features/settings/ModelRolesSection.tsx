@@ -26,6 +26,7 @@ import { isComposing } from "../../lib/hooks";
 import { listModels, ompConfigSet } from "../../lib/ipc";
 import { parseModels, toModelKey, type ModelOption } from "../../lib/models";
 import { toast } from "../../lib/toast";
+import { ModelSelect } from "../../components/ModelSelect";
 import { NativeSelect } from "../../components/NativeSelect";
 import {
 	BUILTIN_ROLES,
@@ -365,7 +366,6 @@ function RoleRow({
 		setThinking(splitRoleValue(current ?? "").thinkingSuffix ?? "");
 	}, [current]);
 
-	const grouped = useMemo(() => groupModelsByProvider(models), [models]);
 	const catalogKeys = useMemo(
 		() => new Set(models.map((m) => toModelKey(m.provider, m.id))),
 		[models],
@@ -373,14 +373,6 @@ function RoleRow({
 	const baseSelector = splitRoleValue(current ?? "").selector;
 	const isCustomValue =
 		current !== null && current !== "" && !catalogKeys.has(baseSelector);
-	const selectValue =
-		customDraft !== null
-			? CUSTOM_VALUE
-			: isCustomValue
-				? CUSTOM_VALUE
-				: catalogKeys.has(baseSelector)
-					? baseSelector
-					: "";
 
 	const writeRoles = async (
 		next: Record<string, unknown>,
@@ -407,6 +399,16 @@ function RoleRow({
 		}
 		return writeRoles(withRoleAssignment(roles, roleId, value || null));
 	};
+
+	// Trigger label: pretty name for catalog picks, raw selector otherwise.
+	const modelLabel = customDraft
+		? "自定义选择器…"
+		: current === null
+			? "未设置（内置默认）"
+			: isCustomValue
+				? current
+				: (models.find((m) => toModelKey(m.provider, m.id) === baseSelector)
+						?.name ?? baseSelector);
 
 	const onPickModel = async (key: string) => {
 		if (key === CUSTOM_VALUE) {
@@ -459,29 +461,20 @@ function RoleRow({
 				)}
 
 				<div className="ml-auto flex min-w-0 items-center gap-1.5">
-					<NativeSelect
-						value={selectValue}
-						disabled={busy}
-						onChange={(e) => void onPickModel(e.target.value)}
-						className="text-[11px]"
-						containerClassName="max-w-[240px] min-w-[140px]"
-						title={current ?? "未设置"}
-					>
-						<option value="">未设置（内置默认）</option>
-						{grouped.map((g) => (
-							<optgroup key={g.provider} label={g.provider}>
-								{g.models.map((m) => {
-									const key = toModelKey(m.provider, m.id);
-									return (
-										<option key={key} value={key} title={m.name}>
-											{key}
-										</option>
-									);
-								})}
-							</optgroup>
-						))}
-						<option value={CUSTOM_VALUE}>自定义…</option>
-					</NativeSelect>
+					<ModelSelect
+						direction="down"
+						widthClass="w-[360px]"
+						icon={false}
+						label={modelLabel}
+						buttonClass={`h-7 flex min-w-[140px] max-w-[240px] items-center justify-between rounded-lg hairline bg-[var(--well-bg)] px-2.5 text-left text-[11px] text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all ${busy ? "pointer-events-none opacity-50" : ""}`}
+						models={models}
+						currentValue={catalogKeys.has(baseSelector) ? baseSelector : ""}
+						extras={[
+							{ value: "", label: "未设置（内置默认）", hint: "unset" },
+							{ value: CUSTOM_VALUE, label: "自定义选择器…", hint: "手动输入" },
+						]}
+						onSelect={(v) => void onPickModel(v)}
+					/>
 					{kind === "chat" && !isCustomValue && (
 						<NativeSelect
 							value={thinking}
