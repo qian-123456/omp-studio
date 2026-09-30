@@ -269,8 +269,56 @@ export interface WorktreeInfo {
 	path: string;
 	branch: string | null;
 	head: string;
-	dirty: boolean;
+	/** Number of uncommitted changes (0 = clean). */
+	dirty: number;
 	sessionIds: string[];
+}
+
+/** One file changed during an agent turn. */
+export interface TurnFile {
+	path: string;
+	/** A = created during the turn, M = modified, D = deleted. */
+	status: "A" | "M" | "D";
+}
+
+/**
+ * Per-turn checkpoint recorded by the omp-workspace-checkpoints extension
+ * (session entry `custom` / `omp-workspace.turn-checkpoint`), enriched by Rust.
+ */
+export interface TurnCheckpoint {
+	turnId: string;
+	sessionId: string;
+	/** Transcript item id of the user message that started the turn. */
+	userItemId: string | null;
+	/** First line of that user message, at most 80 chars. */
+	prompt: string;
+	/** Hidden snapshot commit of the worktree before / after the turn. */
+	before: string;
+	after: string;
+	headBefore: string | null;
+	headAfter: string | null;
+	/** Commits the agent created during the turn, newest first. */
+	commits: string[];
+	files: TurnFile[];
+	/** ISO time the turn ended. */
+	endedAt: string;
+	/** Snapshot refs still exist (not pruned). */
+	restorable: boolean;
+	/** The user already undid this turn. */
+	undone: boolean;
+}
+
+export interface TurnUndoResult {
+	/** Files written back to their pre-turn content. */
+	restored: string[];
+	/** Files removed because the turn created them. */
+	deleted: string[];
+	/** Files changed after the turn ended; non-empty means nothing was touched (force=false). */
+	conflicts: string[];
+	/** HEAD moved back to headBefore (the turn's commits left the history). */
+	headReset: boolean;
+	/** Plain-Chinese note for the user, e.g. why history was left alone. */
+	warning: string | null;
 }
 
 export interface TmRun {
@@ -356,6 +404,11 @@ export interface Settings {
 	homeShowCompletedTodos: boolean;
 	dockBadgeEnabled: boolean;
 	sessionTurnAutoRefresh: boolean;
+	/**
+	 * Turn checkpoints for app-launched sessions (loads the checkpoints extension
+	 * via `-e`). null = never asked (Git panel shows the consent card).
+	 */
+	turnCheckpoints: boolean | null;
 }
 
 /** One `omp config list --json` entry. */

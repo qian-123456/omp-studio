@@ -1724,7 +1724,7 @@ export function SessionSidebar() {
 														/>
 													))
 													) : (
-														<div className="ml-[22px] pl-2 border-l-2 border-[var(--text-dim)]/40 my-0.5">
+														<div className="ml-[22px] pl-2 my-0.5">
 															<SessionList
 																nodes={wg.subgroups[0]?.nodes ?? []}
 																scopeKey={`${wg.workspace.id}|default`}
@@ -1736,15 +1736,15 @@ export function SessionSidebar() {
 																workspaces={workspaces}
 																allVisibleIds={allVisibleIds}
 																onRowFocus={focusList}
-																onBatchAction={handleBatchAction}
+																withSpine
 															/>
 														</div>
 													)}
-								</div>
-							)}
-						</div>
-					);
-				})}
+												</div>
+											)}
+										</div>
+									);
+								})}
 
 								{/* 3. Unassigned Bucket (PLAN.md §66 未归档桶): collapsed by default */}
 								{grouped.unassigned.length > 0 && (
@@ -2104,6 +2104,8 @@ interface SessionListProps {
 	collapsedSideChats: Record<string, boolean>;
 	onToggleSideChat: (id: string) => void;
 	indent?: number;
+	/** Draw the subgroup guide line as a per-row segment (stops at last row). */
+	withSpine?: boolean;
 	workspaces: Workspace[];
 	allVisibleIds?: string[];
 	onRowFocus?: () => void;
@@ -2120,6 +2122,7 @@ function SessionList({
 	scopeKey,
 	searching,
 	indent = 0,
+	withSpine = false,
 	expanded,
 	onSetCount,
 	collapsedSideChats,
@@ -2170,8 +2173,8 @@ function SessionList({
 		<SessionRow
 			key={node.session.id}
 			session={node.session}
-			depth={node.depth}
 			indent={indent}
+			withSpine={withSpine}
 			hasChildren={childrenMap.has(node.session.id)}
 			childrenCollapsed={Boolean(collapsedSideChats[node.session.id])}
 			onToggleChildren={onToggleSideChat}
@@ -2345,9 +2348,7 @@ function CollapsibleSubgroup({
 				)}
 			</div>
 			{open && (
-				<div
-					className="ml-[22px] pl-2 border-l-2 border-[var(--text-dim)]/40 my-0.5"
-				>
+				<div className="ml-[22px] pl-2 my-0.5">
 					<SessionList
 						nodes={sub.nodes}
 						scopeKey={scopeKey}
@@ -2361,6 +2362,7 @@ function CollapsibleSubgroup({
 						allVisibleIds={allVisibleIds}
 						onRowFocus={onRowFocus}
 						onBatchAction={onBatchAction}
+						withSpine
 					/>
 				</div>
 			)}

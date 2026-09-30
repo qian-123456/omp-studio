@@ -4,26 +4,70 @@ import {
 	ChevronRight,
 	Copy,
 	FileDiff,
-	History,
+	MessageSquare,
 	Play,
 	RotateCcw,
 	Search,
 	Terminal,
 	X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { GitCommit, GitSummary, TmRun } from "../../lib/contracts";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import type { GitCommit, GitSummary, TmRun, TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
-import { relativeTime } from "../../lib/format";
+import { absoluteTime } from "../../lib/format";
+import { gitResetTo, gitWorktreeTurns, tmRun } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
-import { gitResetTo, tmRun } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { useTurnNav } from "../../stores/turnNav";
+import { useUi } from "../../stores/ui";
+import { ListMore } from "./helpers";
 import { TmRunCard } from "./TmRunCard";
+import { shaToTurnMap } from "./turns";
 
 const btn =
 	"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors focus:opacity-100";
 
 const HISTORY_KEY = "omp:tm:custom-command-history";
+
+const COMMIT_CAP = 15;
+
+/** Conventional-commit types rendered as a chip; unknown prefixes stay in the raw subject. */
+const KNOWN_TYPES: Record<string, true> = {
+	feat: true,
+	fix: true,
+	refactor: true,
+	docs: true,
+	test: true,
+	chore: true,
+	perf: true,
+	style: true,
+	build: true,
+	ci: true,
+	revert: true,
+};
+
+export type ParsedCommitSubject =
+	| { kind: "plain" }
+	| { kind: "merge"; source: string }
+	| { kind: "conventional"; type: string; scope: string | null; subject: string };
+
+/**
+ * Parses a commit subject into a display shape:
+ * - conventional commits `type(scope): subject` / `type: subject` (known types only)
+ * - git merge messages (`Merge branch 'x' into y`, `Merge pull request #n from a/b`)
+ * - anything else renders as the raw subject.
+ */
+export function parseCommitSubject(subject: string): ParsedCommitSubject {
+	let m = /^merge (?:remote(?:-tracking)? )?branch '([^']+)'/i.exec(subject);
+	if (m) return { kind: "merge", source: m[1] };
+	m = /^merge pull request #\d+ from (\S+)/i.exec(subject);
+	if (m) return { kind: "merge", source: m[1] };
+	m = /^([a-zA-Z]+)(?:\(([^)]*)\))?!?:[ \t]*(.+)$/.exec(subject);
+	if (m && KNOWN_TYPES[m[1].toLowerCase()]) {
+		return { kind: "conventional", type: m[1].toLowerCase(), scope: m[2] || null, subject: m[3].trim() };
+	}
+	return { kind: "plain" };
+}
 
 
 function dayKey(d: Date): string {
@@ -49,7 +93,13 @@ function formatDayLabel(d: Date, now: Date): string {
 
 interface CommitRowProps {
 	c: GitCommit;
+	/** The agent turn that produced this commit, if any (turn checkpoints). */
+	turn: TurnCheckpoint | undefined;
+	/** Highlighted right after a chat → git jump. */
+	flash: boolean;
 	run: TmRun | undefined;
+	isFirst: boolean;
+	isLast: boolean;
 	expanded: boolean;
 	currentCustom: string;
 	customFor: boolean;
@@ -64,11 +114,28 @@ interface CommitRowProps {
 	onReset: (c: GitCommit, mode: "soft" | "hard") => void;
 	onCopySha: (sha: string, short: string) => void;
 	onRunGone: (id: string) => void;
+	onRunUpdate: (run: TmRun) => void;
+	onJumpTurn: (turn: TurnCheckpoint) => void;
 }
 
+/** One labelled line of the expanded panel: 看看 / 试试 / 回到. */
+function ActionLine({ label, children }: { label: string; children: ReactNode }) {
+	return (
+		<div className="flex items-start gap-2">
+			<span className="w-7 shrink-0 pt-[3px] text-[10px] text-neutral-500">{label}</span>
+			<div className="flex min-w-0 flex-1 flex-wrap gap-1">{children}</div>
+		</div>
+	);
+}
+
+/** Timeline row: time gutter | rail + dot | subject. Expands into an action panel. */
 function CommitRow({
 	c,
+	turn,
+	flash,
 	run,
+	isFirst,
+	isLast,
 	expanded,
 	currentCustom,
 	customFor,
@@ -83,153 +150,172 @@ function CommitRow({
 	onReset,
 	onCopySha,
 	onRunGone,
+	onRunUpdate,
+	onJumpTurn,
 }: CommitRowProps) {
+	const [resetOpen, setResetOpen] = useState(false);
+	const parsed = parseCommitSubject(c.subject);
+	const when = absoluteTime(c.ts);
 	return (
-		<li className="group/item relative pb-1 pl-3.5">
-			{/* Timeline node dot */}
+		<li className="group/item relative" data-commit-sha={c.sha}>
+			{/* Rail segment: starts at the first dot and stops at the last one — no dangling ends. */}
 			<span
+				aria-hidden
 				className={clsx(
-					"absolute -left-[3.5px] top-2 h-1.5 w-1.5 rounded-full ring-2 ring-neutral-900 transition-colors",
-					run?.pid ? "bg-emerald-400 ring-emerald-950/60" : "bg-neutral-600 group-hover/item:bg-neutral-400",
-					expanded && "!bg-indigo-400 !ring-indigo-950/60",
+					"absolute left-[44px] w-px bg-neutral-800",
+					isFirst ? "top-[11px]" : "top-0",
+					isLast ? "h-[11px]" : "bottom-0",
+					isFirst && isLast && "hidden",
 				)}
 			/>
 
-			{/* Main Compact Row */}
 			<div
 				className={clsx(
-					"flex items-center justify-between gap-1.5 rounded px-1.5 py-1 transition-colors",
-					expanded ? "bg-neutral-800/60" : "hover:bg-neutral-800/40",
+					"relative flex items-start rounded transition-colors",
+					flash
+						? "bg-indigo-500/15 ring-1 ring-indigo-500/40"
+						: expanded
+							? "bg-neutral-800/60"
+							: "hover:bg-neutral-800/40",
 				)}
-				title={`${c.subject}\n作者: ${c.author}\n时间: ${c.ts}\nSHA: ${c.sha}`}
+				title={`${c.subject}\n作者 ${c.author} · ${when}\n版本编号 ${c.short}`}
 			>
-				{/* Message: truncate 1 line */}
+				<span className="w-[38px] shrink-0 py-0.5 pl-1 font-mono text-[10px] leading-[18px] tabular-nums text-neutral-500">
+					{when.slice(11, 16)}
+				</span>
+				<span aria-hidden className="relative w-3 shrink-0 self-stretch">
+					<span
+						className={clsx(
+							"absolute left-1/2 top-[8px] h-1.5 w-1.5 -translate-x-1/2 rounded-full transition-colors",
+							expanded
+								? "bg-indigo-400"
+								: run?.pid
+									? "bg-emerald-400"
+									: "bg-neutral-600 group-hover/item:bg-neutral-400",
+						)}
+					/>
+				</span>
 				<button
 					type="button"
 					onClick={onToggleOpen}
-					className="min-w-0 flex-1 text-left"
+					aria-expanded={expanded}
+					className="min-w-0 flex-1 py-0.5 pl-1 pr-1 text-left"
 				>
 					<span
 						className={clsx(
-							"block truncate text-xs transition-colors",
-							expanded ? "font-medium text-white" : "text-neutral-200 group-hover/item:text-neutral-100",
+							"line-clamp-2 text-xs leading-[18px] transition-colors",
+							parsed.kind === "merge"
+								? "text-neutral-500"
+								: expanded
+									? "font-medium text-neutral-100"
+									: "text-neutral-200",
 						)}
 					>
-						{c.subject}
+						{parsed.kind !== "plain" && (
+							<span className="mr-1.5 inline-block rounded bg-neutral-800 px-1 py-px align-[1px] text-[10px] leading-none text-neutral-400">
+								{parsed.kind === "merge" ? "merge" : parsed.type}
+								{parsed.kind === "conventional" && parsed.scope && (
+									<span className="text-neutral-500"> · {parsed.scope}</span>
+								)}
+							</span>
+						)}
+						{parsed.kind === "merge"
+							? parsed.source
+							: parsed.kind === "conventional"
+								? parsed.subject
+								: c.subject}
 					</span>
 				</button>
 
-				{/* Right side: quick actions on hover, short SHA, relative time */}
-				<div className="flex shrink-0 items-center gap-1.5 text-[10px]">
-					{/* Quick Actions (Diff, Run) visible on hover */}
-					<div className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/item:opacity-100">
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								onDiff(c.sha, `${c.short} ${c.subject}`);
-							}}
-							title="查看此版本 Diff"
-							className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors"
-						>
-							<FileDiff size={12} />
-						</button>
-						<button
-							type="button"
-							disabled={busy}
-							onClick={(e) => {
-								e.stopPropagation();
-								onStart(c.sha);
-							}}
-							title="运行此版本"
-							className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-emerald-300 transition-colors"
-						>
-							<Play size={12} />
-						</button>
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								onCopySha(c.sha, c.short);
-							}}
-							title="复制完整 SHA"
-							className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors"
-						>
-							<Copy size={12} />
-						</button>
-					</div>
-
-					{/* Short SHA */}
+				{/* Quick actions on hover: overlaid so they never take width from the subject. */}
+				<div className="absolute right-1 top-0.5 flex items-center gap-0.5 rounded bg-neutral-900/95 px-0.5 opacity-0 shadow-md transition-opacity focus-within:opacity-100 group-hover/item:opacity-100">
 					<button
 						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							onCopySha(c.sha, c.short);
-						}}
-						className="font-mono text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700/60 rounded px-1 py-0.5 transition-colors"
-						title={`点击复制完整 SHA: ${c.sha}\n作者: ${c.author}`}
+						onClick={() => onDiff(c.sha, `${c.short} ${c.subject}`)}
+						title="这一版改了什么"
+						aria-label="这一版改了什么"
+						className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors"
 					>
-						{c.short}
+						<FileDiff size={12} />
 					</button>
-
-					{/* Relative Time */}
-					<span className="text-neutral-500 whitespace-nowrap text-[10px]">
-						{relativeTime(c.ts)}
-					</span>
+					<button
+						type="button"
+						disabled={busy}
+						onClick={() => onStart(c.sha)}
+						title="运行这个版本"
+						aria-label="运行这个版本"
+						className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-emerald-300 transition-colors"
+					>
+						<Play size={12} />
+					</button>
 				</div>
 			</div>
+			{/* Turn checkpoints: a commit made during an agent turn links back to the conversation. */}
+			{turn && (
+				<button
+					type="button"
+					onClick={() => onJumpTurn(turn)}
+					title={`跳转到这一轮对话\n${turn.prompt}`}
+					className="ml-[50px] mr-1 flex items-center gap-1 rounded px-1 py-0 text-left text-[10px] leading-[18px] text-indigo-400/80 transition-colors hover:bg-indigo-500/10 hover:text-indigo-300"
+				>
+					<MessageSquare size={10} className="shrink-0" />
+					<span className="min-w-0 truncate">
+						来自对话：{turn.prompt || "（空消息）"}
+					</span>
+				</button>
+			)}
 
-			{/* Expanded Panel */}
 			{expanded && (
-				<div className="mt-1 pl-1">
-					<div className="mb-1.5 flex items-center justify-between text-[10px] text-neutral-500 border-b border-neutral-800/80 pb-1">
-						<span>
-							作者: <span className="text-neutral-400">{c.author}</span>
-						</span>
-						<span>{c.ts}</span>
-					</div>
+				<div className="mb-1.5 ml-[50px] mr-1 mt-1 space-y-1.5 rounded border border-neutral-800 bg-neutral-900/60 p-2 text-[11px]">
+					<ActionLine label="原文">
+						<span className="break-words px-1.5 py-0.5 text-neutral-300">{c.subject}</span>
+					</ActionLine>
+					<ActionLine label="作者">
+						<span className="break-all px-1.5 py-0.5 text-neutral-300">{c.author}</span>
+					</ActionLine>
+					<ActionLine label="时间">
+						<span className="px-1.5 py-0.5 font-mono tabular-nums text-neutral-300">{when}</span>
+					</ActionLine>
+					<ActionLine label="编号">
+						<button
+							type="button"
+							onClick={() => onCopySha(c.sha, c.short)}
+							title={`复制完整版本编号\n${c.sha}`}
+							className={clsx(btn, "font-mono")}
+						>
+							{c.short}
+							<Copy size={11} />
+						</button>
+					</ActionLine>
 
-					<div className="flex flex-wrap gap-1">
+					<ActionLine label="看看">
 						<button
 							type="button"
 							className={btn}
 							onClick={() => onDiff(c.sha, `${c.short} ${c.subject}`)}
 						>
-							<FileDiff size={12} /> 查看 diff
+							<FileDiff size={12} /> 这一版改了什么
 						</button>
+					</ActionLine>
+
+					<ActionLine label="试试">
 						<button
 							type="button"
 							className={btn}
 							disabled={busy}
 							onClick={() => onStart(c.sha)}
-							title="将基于 package.json 自动推断命令（例如 pnpm dev）及分配端口运行"
+							title="自动识别启动命令（例如 pnpm dev），在单独的文件夹里运行这个版本"
 						>
-							<Play size={12} />
-							<span>{busy ? "启动中…" : "运行此版本"}</span>
-							<span className="font-mono text-[10px] text-neutral-500">(pnpm dev · 端口 5173+)</span>
+							<Play size={12} /> {busy ? "启动中…" : "运行这个版本"}
 						</button>
-						<button
-							type="button"
-							className={btn}
-							onClick={onCustomFor}
-						>
-							<Terminal size={12} /> 自定义命令
+						<button type="button" className={btn} onClick={onCustomFor}>
+							<Terminal size={12} /> 用自定义命令运行
 						</button>
-						<button type="button" className={btn} onClick={() => onReset(c, "soft")}>
-							<RotateCcw size={12} /> 软回退
-						</button>
-						<button
-							type="button"
-							className={clsx(btn, "text-rose-400 hover:text-rose-300")}
-							onClick={() => onReset(c, "hard")}
-						>
-							<RotateCcw size={12} /> 硬回退
-						</button>
-					</div>
+					</ActionLine>
 
 					{customFor && (
 						<form
-							className="mt-1 flex flex-col gap-1 rounded border border-neutral-800 bg-neutral-900/60 p-1.5"
+							className="ml-9 flex flex-col gap-1 rounded border border-neutral-800 bg-neutral-950/60 p-1.5"
 							onSubmit={(e) => {
 								e.preventDefault();
 								if (currentCustom.trim()) onStart(c.sha, currentCustom.trim());
@@ -266,7 +352,7 @@ function CommitRow({
 							</div>
 							{cmdHistory.length > 0 && (
 								<div className="flex flex-wrap items-center gap-1 text-[10px] text-neutral-500">
-									<span>历史:</span>
+									<span>最近用过:</span>
 									{cmdHistory.slice(0, 3).map((cmd) => (
 										<button
 											key={cmd}
@@ -281,19 +367,55 @@ function CommitRow({
 							)}
 						</form>
 					)}
+
+					<ActionLine label="回到">
+						<button
+							type="button"
+							className={btn}
+							aria-expanded={resetOpen}
+							onClick={() => setResetOpen((v) => !v)}
+						>
+							<RotateCcw size={12} /> 回到这个版本…
+						</button>
+					</ActionLine>
+
+					{resetOpen && (
+						<div className="ml-9 space-y-1">
+							<button
+								type="button"
+								onClick={() => onReset(c, "soft")}
+								className="block w-full rounded border border-neutral-700 px-2 py-1 text-left transition-colors hover:bg-neutral-800"
+							>
+								<span className="block text-neutral-200">保留之后的修改（推荐）</span>
+								<span className="block text-[10px] text-neutral-500">
+									撤销这个版本之后的提交，文件里的修改留着，变成未提交的改动
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={() => onReset(c, "hard")}
+								className="block w-full rounded border border-rose-900/60 px-2 py-1 text-left transition-colors hover:bg-rose-950/40"
+							>
+								<span className="block text-rose-300">彻底丢弃之后的一切</span>
+								<span className="block text-[10px] text-rose-400/70">
+									之后的提交和现在所有未提交的修改都会消失，无法恢复
+								</span>
+							</button>
+						</div>
+					)}
 				</div>
 			)}
 
 			{run && (expanded || run.pid) && (
-				<div className="mt-1 pl-1">
-					<TmRunCard run={run} onGone={() => onRunGone(run.id)} />
+				<div className="mb-1.5 ml-[50px] mr-1 mt-1">
+					<TmRunCard run={run} onGone={() => onRunGone(run.id)} onUpdate={onRunUpdate} />
 				</div>
 			)}
 		</li>
 	);
 }
 
-/** 时光机: uncommitted changes on top, commit timeline grouped by day. */
+/** 历史: commit timeline of one worktree, grouped by day, with time-machine runs. */
 export function TimelineSection({
 	cwd,
 	summary,
@@ -317,7 +439,7 @@ export function TimelineSection({
 	onRunsChange: (runs: TmRun[]) => void;
 	onChanged: () => void;
 }) {
-	const [collapsed, setCollapsed] = useState(false);
+	const rootRef = useRef<HTMLDivElement>(null);
 	const [open, setOpen] = useState<string | null>(null);
 	const [customFor, setCustomFor] = useState<string | null>(null);
 	const [customCommands, setCustomCommands] = useState<Record<string, string>>({});
@@ -331,19 +453,18 @@ export function TimelineSection({
 	});
 	const [busy, setBusy] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 	const [dayToggles, setDayToggles] = useState<Record<string, boolean>>({});
+	/** Turn checkpoints recorded by app-launched sessions in this worktree. */
+	const [turns, setTurns] = useState<TurnCheckpoint[]>([]);
+	const revealCommit = useTurnNav((s) => s.revealCommit);
+	const [flash, setFlash] = useState<string | null>(null);
+	const handledReveal = useRef(0);
 
 	// Filter state
 	const [filterText, setFilterText] = useState("");
-	const [onlyWithFiles, setOnlyWithFiles] = useState(false);
 
-	// Check if commit items have `files` field (Requirement 3: 可选 "只看有代码变更"（若数据有 files 字段）)
-	const hasFilesData = useMemo(
-		() => commits.some((c) => Array.isArray((c as unknown as { files?: unknown[] }).files)),
-		[commits],
-	);
-
-	// Filter commits by message / sha / author / files
+	// Filter commits by message / sha / author
 	const filteredCommits = useMemo(() => {
 		const query = filterText.trim().toLowerCase();
 		return commits.filter((c) => {
@@ -355,13 +476,29 @@ export function TimelineSection({
 					return false;
 				}
 			}
-			if (onlyWithFiles && hasFilesData) {
-				const files = (c as unknown as { files?: unknown[] }).files;
-				if (!files || files.length === 0) return false;
-			}
 			return true;
 		});
-	}, [commits, filterText, onlyWithFiles, hasFilesData]);
+	}, [commits, filterText]);
+
+	// Fetch turn checkpoints alongside the log: keyed by cwd and the commit shas
+	// so polling with unchanged history never refetches.
+	const commitsKey = useMemo(() => commits.map((c) => c.sha).join(","), [commits]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: commitsKey summarizes commits
+	useEffect(() => {
+		let stale = false;
+		gitWorktreeTurns(cwd)
+			.then((ts) => {
+				if (!stale) setTurns(ts);
+			})
+			.catch(() => {
+				if (!stale) setTurns([]);
+			});
+		return () => {
+			stale = true;
+		};
+	}, [cwd, commitsKey]);
+
+	const turnBySha = useMemo(() => shaToTurnMap(turns), [turns]);
 
 	// Group filtered commits by calendar day
 	const dayGroups = useMemo(() => {
@@ -415,6 +552,42 @@ export function TimelineSection({
 
 	const runFor = (sha: string) => runs.find((r) => r.sha === sha);
 
+	// Chat → git jump: once the target sha is rendered, expand its day group
+	// (and the COMMIT_CAP window) and flag it for the flash/scroll effect.
+	useEffect(() => {
+		if (!revealCommit || revealCommit.cwd !== cwd) return;
+		if (revealCommit.nonce <= handledReveal.current) return;
+		const commit = commits.find((c) => c.sha === revealCommit.sha);
+		if (!commit) return; // keep pending — another log page may load it
+		handledReveal.current = revealCommit.nonce;
+		const group = dayGroups.find((g) => g.items.some((c) => c.sha === commit.sha));
+		if (group) {
+			setDayToggles((prev) => ({ ...prev, [group.key]: true }));
+			if (group.items.findIndex((c) => c.sha === commit.sha) >= COMMIT_CAP) {
+				setExpandedDays((prev) => ({ ...prev, [group.key]: true }));
+			}
+		}
+		setFlash(commit.sha);
+		useTurnNav.getState().clearCommit();
+	}, [revealCommit, commits, dayGroups, cwd]);
+
+	// After flash renders, scroll the row into view, then fade the highlight.
+	useEffect(() => {
+		if (!flash) return;
+		const el = rootRef.current?.querySelector(`[data-commit-sha="${flash}"]`);
+		el?.scrollIntoView({ behavior: "smooth", block: "center" });
+		const t = setTimeout(() => setFlash(null), 2600);
+		return () => clearTimeout(t);
+	}, [flash]);
+
+	// Timeline → chat jump (revealTurn is consumed by the chat side).
+	const jumpToTurn = (turn: TurnCheckpoint) => {
+		useUi.getState().selectSession(turn.sessionId);
+		if (turn.userItemId) {
+			useTurnNav.getState().showTurn(turn.sessionId, turn.userItemId);
+		}
+	};
+
 	const saveHistory = (cmd: string) => {
 		const trimmed = cmd.trim();
 		if (!trimmed) return;
@@ -448,28 +621,27 @@ export function TimelineSection({
 
 	const reset = async (c: GitCommit, mode: "soft" | "hard") => {
 		const dirty = summary.hasUncommitted
-			? `\n\n⚠️ 当前有 ${summary.files.length} 个文件未提交。`
+			? `\n\n现在还有 ${summary.files.length} 个文件没有保存成版本。`
 			: "";
-		if (mode === "soft") {
-			const ok = await confirmDialog(
-				`软回退到 ${c.short}「${c.subject}」？\n之后的提交会被撤销，但改动保留在工作区。${dirty}`,
-			);
-			if (!ok) return;
-		} else {
-			const ok = await confirmDialog(
-				`硬回退到 ${c.short}「${c.subject}」？\n\n⚠️ 注意：后端无法自动保存快照 (Stash)。回退后，该版本之后的所有提交和当前未提交的改动都会被永久丢弃，无法撤销与恢复！${dirty}`,
-				{
-					danger: true,
-					title: "硬回退确认",
-					okLabel: "确认丢弃并回退",
-				},
-			);
-			if (!ok) return;
-		}
+		const ok =
+			mode === "soft"
+				? await confirmDialog(
+						`回到版本 ${c.short}「${c.subject}」，并保留之后的修改？\n\n之后的提交会被撤销，但文件里的修改都留着，变成未提交的改动，随时可以重新提交。${dirty}`,
+						{ title: "回到这个版本", okLabel: "回到这个版本" },
+					)
+				: await confirmDialog(
+						`回到版本 ${c.short}「${c.subject}」，并彻底丢弃之后的一切？\n\n这个版本之后的所有提交、以及现在所有未提交的修改都会消失，无法恢复。${dirty}`,
+						{ danger: true, title: "彻底丢弃之后的一切", okLabel: "确认丢弃" },
+					);
+		if (!ok) return;
 		setError(null);
 		try {
 			await gitResetTo(cwd, c.sha, mode);
-			toast.success(`已${mode === "soft" ? "软" : "硬"}回退到 ${c.short}`);
+			toast.success(
+				mode === "soft"
+					? `已回到 ${c.short}，之后的修改保留为未提交的改动`
+					: `已回到 ${c.short}，之后的内容已丢弃`,
+			);
 			onChanged();
 		} catch (e) {
 			setError(errMsg(e));
@@ -483,46 +655,8 @@ export function TimelineSection({
 	};
 
 	return (
-		<section className="rounded-lg border border-neutral-800 bg-neutral-900/50">
-			<div className="flex items-center justify-between px-3 py-2">
-				<button
-					type="button"
-					onClick={() => setCollapsed(!collapsed)}
-					className="flex items-center gap-1.5 text-xs font-medium text-neutral-300 hover:text-neutral-100"
-				>
-					<ChevronDown
-						size={13}
-						className={clsx("text-neutral-400 transition-transform", collapsed && "-rotate-90")}
-					/>
-					<History size={13} className="text-sky-400" />
-					<span>时光机</span>
-					{commits.length > 0 && (
-						<span className="rounded-full bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
-							{filteredCommits.length !== commits.length
-								? `${filteredCommits.length}/${commits.length}`
-								: commits.length}
-						</span>
-					)}
-				</button>
-			</div>
-
-			{!collapsed && (
-				<div className="border-t border-neutral-800 px-3 pb-2 pt-1.5">
-					{error && <div className="mb-1 text-[11px] text-rose-400">{error}</div>}
-
-					{summary.hasUncommitted && (
-						<div className="mb-2 flex items-center gap-1 rounded border border-amber-900/40 bg-amber-950/20 px-2 py-1 text-xs text-amber-300">
-							<span className="flex-1 truncate">未提交的改动（{summary.files.length} 个文件）</span>
-							<button
-								type="button"
-								className={btn}
-								onClick={() => onDiff(undefined, "未提交的改动")}
-								title="查看所有未提交改动的 Diff"
-							>
-								<FileDiff size={12} /> diff
-							</button>
-						</div>
-					)}
+		<div ref={rootRef} className="pt-1.5">
+			{error && <div className="mb-1 text-[11px] text-rose-400">{error}</div>}
 
 					{/* Filter & Search Bar */}
 					{commits.length > 0 && (
@@ -536,7 +670,7 @@ export function TimelineSection({
 									type="text"
 									value={filterText}
 									onChange={(e) => setFilterText(e.target.value)}
-									placeholder="搜索提交信息 / 作者 / SHA..."
+									placeholder="搜索提交说明 / 作者 / 版本编号"
 									className="w-full rounded border border-neutral-800 bg-neutral-950/70 pl-6 pr-6 py-1 text-xs text-neutral-200 placeholder:text-neutral-600 outline-none focus:border-neutral-700 focus:bg-neutral-950 transition-colors"
 								/>
 								{filterText && (
@@ -545,22 +679,12 @@ export function TimelineSection({
 										onClick={() => setFilterText("")}
 										className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-neutral-500 hover:text-neutral-300"
 										title="清除"
+										aria-label="清除搜索"
 									>
 										<X size={12} />
 									</button>
 								)}
 							</div>
-							{hasFilesData && (
-								<label className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-neutral-200 cursor-pointer shrink-0 select-none">
-									<input
-										type="checkbox"
-										checked={onlyWithFiles}
-										onChange={(e) => setOnlyWithFiles(e.target.checked)}
-										className="rounded border-neutral-700 bg-neutral-900 text-indigo-500 focus:ring-0"
-									/>
-									<span>仅代码变更</span>
-								</label>
-							)}
 						</div>
 					)}
 
@@ -618,14 +742,18 @@ export function TimelineSection({
 									</span>
 								</button>
 								{dayOpen && (
-									<ol className="relative ml-2.5 mt-1 border-l border-neutral-800/80 space-y-0.5">
-										{g.items.map((c) => {
+									<ol className="mt-1 space-y-0.5">
+										{(expandedDays[g.key] ? g.items : g.items.slice(0, COMMIT_CAP)).map((c, i, shown) => {
 											const run = runFor(c.sha);
 											return (
 												<CommitRow
 													key={c.sha}
 													c={c}
+													turn={turnBySha.get(c.sha)}
+													flash={flash === c.sha}
 													run={run}
+													isFirst={i === 0}
+													isLast={i === shown.length - 1}
 													expanded={open === c.sha}
 													currentCustom={customCommands[c.sha] ?? ""}
 													customFor={customFor === c.sha}
@@ -650,9 +778,21 @@ export function TimelineSection({
 													onRunGone={(id) =>
 														onRunsChange(runs.filter((r) => r.id !== id))
 													}
+													onRunUpdate={(next) =>
+														onRunsChange(runs.map((r) => (r.id === next.id ? next : r)))
+													}
+													onJumpTurn={jumpToTurn}
 												/>
 											);
 										})}
+										<ListMore
+											n={g.items.length - COMMIT_CAP}
+											expanded={!!expandedDays[g.key]}
+											onToggle={() =>
+												setExpandedDays((prev) => ({ ...prev, [g.key]: !prev[g.key] }))
+											}
+											unit="条"
+										/>
 									</ol>
 								)}
 							</div>
@@ -670,9 +810,7 @@ export function TimelineSection({
 								{loadingMore ? "正在加载更多提交…" : "加载更多提交…"}
 							</button>
 						</div>
-					)}
-				</div>
 			)}
-		</section>
+		</div>
 	);
 }

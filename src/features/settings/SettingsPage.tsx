@@ -8,6 +8,7 @@ import {
 	FolderOpen,
 	Globe,
 	Hammer,
+	History,
 	KeyRound,
 	Library,
 	ListTree,
@@ -49,6 +50,7 @@ import { MobilePanel } from "../mobile/MobilePanel";
 import { DEFAULT_SETTINGS, useSettings } from "./store";
 import { OmpConfigSection } from "./OmpConfigSection";
 import { ModelRolesSection } from "./ModelRolesSection";
+import { CheckpointsSection } from "./CheckpointsSection";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
 import { OMP_DESKTOP_CATEGORIES, ompDesktopCategoryFor } from "./ompDesktopCategories";
@@ -76,6 +78,7 @@ const SECTION_KEYWORDS: Record<string, string[]> = {
 	providers: ["API", "密钥", "key", "provider", "anthropic", "openai", "凭证"],
 	todos: ["待办", "监工", "todo", "supervisor", "巡检"],
 	sessions: ["会话", "session", "新会话", "模型", "工作目录", "默认模型"],
+	checkpoints: ["检查点", "checkpoint", "撤回", "对话", "存档", "规则"],
 	notifications: ["通知", "提醒", "声音", "免打扰", "安静时段", "notify", "quiet"],
 	mobile: ["手机", "移动端", "局域网", "配对", "二维码", "mobile", "lan"],
 	advanced: ["OMP 命令行", "二进制", "binary", "导出", "导入", "重置", "数据目录", "扩展"],
@@ -443,6 +446,7 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 		{ id: "providers", label: "API 供应商", icon: KeyRound },
 		{ id: "todos", label: "待办与监工", icon: Sparkles },
 		{ id: "sessions", label: "会话", icon: Bot },
+		{ id: "checkpoints", label: "对话检查点", icon: History },
 		{ id: "notifications", label: "通知", icon: Bell },
 		{ id: "mobile", label: "手机访问", icon: Smartphone },
 		{ id: "advanced", label: "高级", icon: Wrench },
@@ -899,6 +903,19 @@ export function SettingsPage({ onClose }: SettingsPageProps = {}) {
 									/>
 								</div>
 							</div>
+						</div>
+					)}
+
+					{/* 3.5 Turn checkpoints */}
+					{activeSection === "checkpoints" && (
+						<div className="space-y-6">
+							<div>
+								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">对话检查点</h2>
+								<p className="text-xs text-[rgba(235,235,245,0.60)]">
+									每一轮对话自动保存现场，可随时撤回；仅限本应用启动的会话
+								</p>
+							</div>
+							<CheckpointsSection />
 						</div>
 					)}
 

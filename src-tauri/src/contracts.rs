@@ -374,8 +374,48 @@ pub struct WorktreeInfo {
     pub path: String,
     pub branch: Option<String>,
     pub head: String,
-    pub dirty: bool,
+    /// Number of uncommitted changes (0 = clean).
+    pub dirty: u32,
     pub session_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnFile {
+    pub path: String,
+    /// "A" created during the turn, "M" modified, "D" deleted.
+    pub status: String,
+}
+
+/// Per-turn checkpoint written by the omp-workspace-checkpoints extension,
+/// enriched with `restorable` / `undone` from the repo's hidden refs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnCheckpoint {
+    pub turn_id: String,
+    pub session_id: String,
+    pub user_item_id: Option<String>,
+    pub prompt: String,
+    pub before: String,
+    pub after: String,
+    pub head_before: Option<String>,
+    pub head_after: Option<String>,
+    /// Newest first.
+    pub commits: Vec<String>,
+    pub files: Vec<TurnFile>,
+    pub ended_at: String,
+    pub restorable: bool,
+    pub undone: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnUndoResult {
+    pub restored: Vec<String>,
+    pub deleted: Vec<String>,
+    pub conflicts: Vec<String>,
+    pub head_reset: bool,
+    pub warning: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -489,6 +529,10 @@ pub struct Settings {
     pub dock_badge_enabled: bool,
     /// Default true: background refresh of session summaries.
     pub session_turn_auto_refresh: bool,
+    /// Turn checkpoints for app-launched sessions (spawn adds `-e` with the
+    /// checkpoints extension). None = never asked; Some(false) = declined/off.
+    #[serde(default)]
+    pub turn_checkpoints: Option<bool>,
 }
 
 impl Default for Settings {
@@ -519,6 +563,7 @@ impl Default for Settings {
             home_show_completed_todos: false,
             dock_badge_enabled: true,
             session_turn_auto_refresh: true,
+            turn_checkpoints: None,
         }
     }
 }

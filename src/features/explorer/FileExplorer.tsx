@@ -13,6 +13,7 @@ import { fsReadDir, listWorkspaceFiles } from "../../lib/ipc";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
+import { useExplorer } from "../../stores/explorer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { FileIcon } from "./FileIcon";
@@ -28,7 +29,8 @@ export function FileExplorer() {
 
 	// Determine active workspace: match selected session's workspace/cwd, or fallback to first non-global, or first workspace
 	const activeSession = selectedSessionId ? sessions[selectedSessionId] : null;
-	const [manualWorkspaceId, setManualWorkspaceId] = useState<string | null>(null);
+	const manualWorkspaceId = useExplorer((s) => s.workspaceId);
+	const setManualWorkspaceId = useExplorer((s) => s.setWorkspaceId);
 
 	const currentWorkspace = useMemo(() => {
 		if (workspaces.length === 0) return null;

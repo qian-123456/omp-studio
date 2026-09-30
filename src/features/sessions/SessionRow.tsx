@@ -50,6 +50,8 @@ interface SessionRowProps {
 	depth?: number;
 	/** Extra left padding (px) for nesting under a subgroup header. */
 	indent?: number;
+	/** Draw this row's segment of the subgroup guide line at the row's left edge. */
+	withSpine?: boolean;
 	/** True when this session has side-chat children in the tree. */
 	hasChildren?: boolean;
 	/** True when its side-chat children are collapsed away. */
@@ -62,108 +64,76 @@ interface SessionRowProps {
 }
 
 /**
- * Status indicator configuration and rendering.
- * Overrides RFC S3–S7 / T2/T4 per user requirements:
- * 1. Solid dots for all statuses (no hollow borders, no rings, no bg-transparent).
- * 2. working keeps the Loader2 spinner with emerald treatment (single mark, no duplicate dot).
- * 3. Every status gets a solid mark: idle gets a solid 7px neutral-500 dot.
- * 4. External/suspended use bg-status-external / bg-status-suspended tokens.
- * 5. Interrupted uses solid rose-400 (no ring).
- * 6. Attention statuses (awaiting_approval=待审批, awaiting_answer=待回答, review=待验收, error=异常, interrupted=已中断)
- *    render dot+label ALWAYS.
- * 7. Ambient statuses (working=运行中, suspended=已挂起, external=外部进程, idle=空闲)
- *    render dot + hover-expanding label (max-w-0 → group-hover:max-w-[44px]).
- * 8. Status mark sits adjacent to the title, not flush-right. STATUS_PILLS removed.
+ * Status marks — final spec (RFC S3–S7 + grilling round 2026-09-28):
+ * - working: neutral monochrome spinner, label reveals on hover.
+ * - awaiting_approval/awaiting_answer: persistent sky-blue 待回复 pill, no dot.
+ * - review: solid green #10b981 dot + persistent 待验收 label.
+ * - error/interrupted: solid red #ef4444 dot + persistent label (异常 / 已中断).
+ * - suspended/external/idle: no mark at all.
+ * - Unread stays a blue dot in the trailing zone (rendered by SessionRow).
+ * - Status mark sits adjacent to the title, not flush-right.
  */
-const STATUS_CONFIG: Record<
-	SessionMeta["status"],
-	{
-		label: string;
-		title: string;
-		attention: boolean;
-		dotCls?: string;
-	}
-> = {
-	awaiting_approval: {
-		label: "待审批",
-		title: "待审批 (Awaiting Approval)",
-		attention: true,
-		dotCls: "bg-amber-400",
-	},
-	awaiting_answer: {
-		label: "待回答",
-		title: "待回答 (Awaiting Answer)",
-		attention: true,
-		dotCls: "bg-sky-400",
-	},
+type StatusMark =
+	| { kind: "none" }
+	| { kind: "spinner"; label: string; pillCls: string }
+	| { kind: "pill"; label: string }
+	| { kind: "dot"; label: string; dotCls: string; pillCls: string };
+
+const STATUS_CONFIG: Record<SessionMeta["status"], StatusMark> = {
+	awaiting_approval: { kind: "pill", label: "待回复" },
+	awaiting_answer: { kind: "pill", label: "待回复" },
 	review: {
+		kind: "dot",
 		label: "待验收",
-		title: "待验收 (Review)",
-		attention: true,
-		dotCls: "bg-orange-500",
+		dotCls: "bg-emerald-500",
+		pillCls: "bg-emerald-500/15 text-emerald-500",
 	},
 	error: {
+		kind: "dot",
 		label: "异常",
-		title: "异常 (Error)",
-		attention: true,
-		dotCls: "bg-rose-500",
+		dotCls: "bg-red-500",
+		pillCls: "bg-red-500/15 text-red-500",
 	},
 	interrupted: {
+		kind: "dot",
 		label: "已中断",
-		title: "已中断 (Interrupted)",
-		attention: true,
-		dotCls: "bg-rose-400",
+		dotCls: "bg-red-500",
+		pillCls: "bg-red-500/15 text-red-400",
 	},
 	working: {
+		kind: "spinner",
 		label: "运行中",
-		title: "运行中 (Working)",
-		attention: false,
+		pillCls: "bg-neutral-500/20 text-[var(--text-muted)]",
 	},
-	suspended: {
-		label: "已挂起",
-		title: "已挂起 (Suspended)",
-		attention: false,
-		dotCls: "bg-status-suspended",
-	},
-	external: {
-		label: "外部进程",
-		title: "外部进程 (External)",
-		attention: false,
-		dotCls: "bg-status-external",
-	},
-	idle: {
-		label: "空闲",
-		title: "空闲 (Idle)",
-		attention: false,
-		dotCls: "bg-neutral-500",
-	},
+	suspended: { kind: "none" },
+	external: { kind: "none" },
+	idle: { kind: "none" },
 };
 
 export function renderStatusDot(status: SessionMeta["status"]) {
 	const cfg = STATUS_CONFIG[status];
-	if (!cfg) return null;
+	if (!cfg || cfg.kind === "none") return null;
+
+	if (cfg.kind === "pill") {
+		return (
+			<span
+				className="shrink-0 whitespace-nowrap rounded-[4px] bg-sky-500/15 px-1 text-[9px] font-semibold leading-[14px] text-sky-600 dark:text-sky-300"
+			>
+				{cfg.label}
+			</span>
+		);
+	}
 
 	const mark =
-		status === "working" ? (
-			<Loader2 size={11} className="shrink-0 animate-spin text-emerald-400" />
+		cfg.kind === "spinner" ? (
+			<Loader2 size={11} className="shrink-0 animate-spin text-[var(--text-muted)]" />
 		) : (
 			<span className={clsx("h-[7px] w-[7px] shrink-0 rounded-full", cfg.dotCls)} />
 		);
 
-	return (
-		<span className="flex shrink-0 items-center" title={cfg.title}>
-			{mark}
-			{cfg.attention ? (
-				<span className="ml-0.5 whitespace-nowrap text-[9px] font-semibold text-[var(--text-muted)]">
-					{cfg.label}
-				</span>
-			) : (
-				<span className="max-w-0 overflow-hidden whitespace-nowrap text-[9px] font-semibold text-[var(--text-muted)] opacity-0 transition-all duration-200 group-hover:max-w-[44px] group-hover:opacity-100 group-hover:ml-0.5">
-					{cfg.label}
-				</span>
-			)}
-		</span>
-	);
+	/* Dots and spinner are bare marks — no expanding label. Hover context is
+	 * provided by the row tray, which prints the status name itself. */
+	return <span className="flex shrink-0 items-center">{mark}</span>;
 }
 
 
@@ -172,6 +142,7 @@ export function SessionRow({
 	session,
 	depth = 0,
 	indent = 0,
+	withSpine = false,
 	hasChildren = false,
 	childrenCollapsed = false,
 	onToggleChildren,
@@ -522,8 +493,19 @@ export function SessionRow({
 				/>
 			)}
 
-			{/* Side-chat children collapse toggle (or spacer for leaf rows to maintain alignment, overriding RFC) */}
-			{hasChildren ? (
+			{/* Subgroup guide line segment — real element, positioned 4px left of
+			 *  the row edge so it lands under the branch icon's center, and only
+			 *  spans this row so no tail extends past the last session. */}
+			{withSpine && (
+				<span
+					aria-hidden
+					className="absolute -left-1 top-0 bottom-0 w-[2px] bg-[var(--text-dim)]/40"
+				/>
+			)}
+
+			{/* Side-chat children collapse toggle — leaf rows render no placeholder
+			 *  so their titles hug the spine (RFC T4 alignment intent). */}
+			{hasChildren && (
 				<button
 					type="button"
 					onClick={(e) => {
@@ -539,12 +521,9 @@ export function SessionRow({
 						<ChevronDown size={11} />
 					)}
 				</button>
-			) : (
-				<span className="w-[15px] shrink-0" />
 			)}
 
-			{/* Title column — status mark sits adjacent to the title with a small gap,
-			 *  overriding RFC T2/T4 per verbatim user requirement. */}
+			{/* Title column — status mark sits adjacent to the title with a small gap. */}
 			<div className="flex min-w-0 flex-1 items-center gap-1.5" title={rowTooltip}>
 				{isRenaming ? (
 					<input
@@ -598,8 +577,8 @@ export function SessionRow({
 			{/* Trailing zone: permanent relative-time stamp with the bare "…" menu button overlaid
 			 *  (Time Swap — zero extra layout width). Quick actions reveal on hover. */}
 			<div className="relative flex shrink-0 items-center ml-1">
-				{/* Rest state: unread dot only on a bare idle row, never beside another indicator. */}
-				{session.unread && session.status === "idle" && !session.live && !busy && (
+				{/* Rest state: unread dot only on rows that carry no status mark. */}
+				{session.unread && STATUS_CONFIG[session.status].kind === "none" && !session.live && !busy && (
 					<span
 						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 mr-1"
 						title="未读"
@@ -626,38 +605,24 @@ export function SessionRow({
 							: "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
 					)}
 				>
-					{session.status === "review" && (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								handleAccept(false);
-							}}
-							className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-emerald-500 hover:bg-emerald-500/15"
-							title="验收此会话（标记本轮完成）"
-						>
-							验收
-						</button>
-					)}
-					{(session.status === "interrupted" ||
-						session.status === "suspended") && (
-						<button
-							type="button"
-							disabled={busy}
-							onClick={(e) => {
-								e.stopPropagation();
-								handleResume();
-							}}
-							className="shrink-0 rounded p-1 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40"
-							title="恢复会话"
-						>
-							{busy ? (
-								<Loader2 size={12} className="animate-spin" />
-							) : (
-								<Play size={12} />
-							)}
-						</button>
-					)}
+					{(() => {
+						const m = STATUS_CONFIG[session.status];
+						/* awaiting_* renders the pill beside the title already;
+						 * skip repeating it in the tray. All actions live in the
+						 * context menu or inside the session view — the tray only
+						 * displays status, never offers decisions. */
+						if (m.kind === "none" || m.kind === "pill") return null;
+						return (
+							<span
+								className={clsx(
+									"shrink-0 whitespace-nowrap rounded-[4px] px-1 text-[9px] font-semibold leading-[14px]",
+									m.pillCls,
+								)}
+							>
+								{m.label}
+							</span>
+						);
+					})()}
 					{session.pinned && (
 						<Pin size={11} className="shrink-0 fill-amber-400/40 text-amber-400" />
 					)}
