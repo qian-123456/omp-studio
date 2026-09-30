@@ -51,7 +51,6 @@ import { useArchiveUndo, undoArchive } from "./archiveUndo";
 import {
 	type BranchSubgroup,
 	DELETED_LABEL,
-	type SessionTreeNode,
 	UNASSIGNED_LABEL,
 	groupSessions,
 } from "./grouping";
@@ -231,7 +230,7 @@ export function SessionSidebar() {
 	);
 
 	// Per-section disclosure state, keyed per subgroup:
-	// - `…|more` stores how many recent sessions are visible (default RECENT_LIMIT)
+	// - `…|more` stores how many top-level session blocks are visible (default RECENT_LIMIT)
 	// - `…|older` / `…|sub` are 0/1 open flags
 	const [expandedSections, setExpandedSections] = useState<
 		Record<string, number>
@@ -240,13 +239,6 @@ export function SessionSidebar() {
 		setExpandedSections((prev) => ({ ...prev, [key]: prev[key] ? 0 : 1 }));
 	const setSectionCount = (key: string, count: number) =>
 		setExpandedSections((prev) => ({ ...prev, [key]: count }));
-
-	// Collapsed side-chat parent IDs
-	const [collapsedSideChats, setCollapsedSideChats] = useState<
-		Record<string, boolean>
-	>({});
-	const toggleSideChat = (id: string) =>
-		setCollapsedSideChats((prev) => ({ ...prev, [id]: !prev[id] }));
 
 	const searching = searchQuery.trim().length > 0;
 
@@ -412,40 +404,40 @@ export function SessionSidebar() {
 
 	const allVisibleIds = useMemo(() => {
 		const list: string[] = [];
-		if (grouped.pinnedNodes.length > 0 && isGroupOpen("__pinned", true)) {
-			list.push(...grouped.pinnedNodes.map((n) => n.session.id));
+		if (grouped.pinnedSessions.length > 0 && isGroupOpen("__pinned", true)) {
+			list.push(...grouped.pinnedSessions.map((s) => s.id));
 		}
 		if (
 			grouped.globalGroup &&
 			(activeWorkspaceId === "__global" || isGroupOpen("__global", true))
 		) {
 			for (const sg of grouped.globalGroup.subgroups) {
-				list.push(...sg.nodes.map((n) => n.session.id));
+				list.push(...sg.sessions.map((s) => s.id));
 			}
 		}
 		for (const wg of grouped.workspaceGroups) {
 			if (activeWorkspaceId !== "all" || isGroupOpen(wg.workspace.id, true)) {
 				for (const sg of wg.subgroups) {
-					list.push(...sg.nodes.map((n) => n.session.id));
+					list.push(...sg.sessions.map((s) => s.id));
 				}
 			}
 		}
 		if (isGroupOpen("__unassigned", false)) {
-			list.push(...grouped.unassigned.map((n) => n.session.id));
+			list.push(...grouped.unassigned.map((s) => s.id));
 		}
 		if (isGroupOpen("__deleted", false)) {
-			list.push(...grouped.deletedNodes.map((n) => n.session.id));
+			list.push(...grouped.deletedSessions.map((s) => s.id));
 		}
 		return Array.from(new Set(list));
 	}, [grouped, groupOpen, searching, activeWorkspaceId]);
 
 	const allGroupIds = useMemo(() => {
 		const ids: string[] = [];
-		if (grouped.pinnedNodes.length > 0) ids.push("__pinned");
+		if (grouped.pinnedSessions.length > 0) ids.push("__pinned");
 		if (grouped.globalGroup) ids.push("__global");
 		for (const wg of grouped.workspaceGroups) ids.push(wg.workspace.id);
 		ids.push("__unassigned");
-		if (grouped.deletedNodes.length > 0) ids.push("__deleted");
+		if (grouped.deletedSessions.length > 0) ids.push("__deleted");
 		return ids;
 	}, [grouped]);
 
@@ -474,7 +466,7 @@ export function SessionSidebar() {
 	}
 
 	const getGroupStatusCounts = (
-		nodes: SessionTreeNode[] | BranchSubgroup[],
+		sessions: SessionMeta[] | BranchSubgroup[],
 	): GroupStatusCounts => {
 		let working = 0;
 		let awaiting = 0;
@@ -486,13 +478,11 @@ export function SessionSidebar() {
 			else if (s.status === "review") review++;
 			else if (s.status === "error") error++;
 		};
-		for (const item of nodes) {
-			if ("session" in item) {
-				check(item.session);
-			} else if ("nodes" in item) {
-				for (const n of item.nodes) {
-					check(n.session);
-				}
+		for (const item of sessions) {
+			if ("sessions" in item) {
+				for (const s of item.sessions) check(s);
+			} else {
+				check(item);
 			}
 		}
 		return { working, awaiting, review, error };
@@ -862,13 +852,7 @@ export function SessionSidebar() {
 			const targetId = highlightId ?? selectedSessionId;
 			if (targetId) {
 				const meta = sessions[targetId];
-				// If this session has side chats and is expanded, collapse them
-				const hasChildren = Object.values(sessions).some((s) => s.parentId === targetId);
-				if (hasChildren && !collapsedSideChats[targetId]) {
-					toggleSideChat(targetId);
-					return;
-				}
-				// Otherwise collapse the group it belongs to
+				// Collapse the group it belongs to
 				if (meta?.workspaceId && isGroupOpen(meta.workspaceId, true)) {
 					toggleGroup(meta.workspaceId, true);
 				} else if (!meta?.workspaceId && isGroupOpen("__unassigned", false)) {
@@ -880,10 +864,6 @@ export function SessionSidebar() {
 			const targetId = highlightId ?? selectedSessionId;
 			if (targetId) {
 				const meta = sessions[targetId];
-				if (collapsedSideChats[targetId]) {
-					toggleSideChat(targetId);
-					return;
-				}
 				if (meta?.workspaceId && !isGroupOpen(meta.workspaceId, true)) {
 					toggleGroup(meta.workspaceId, true);
 				} else if (!meta?.workspaceId && !isGroupOpen("__unassigned", false)) {
@@ -1363,7 +1343,7 @@ export function SessionSidebar() {
 				{hasLoaded && (
 					<>
 						{/* 0. 📌 Pinned Sessions: fixed on the very top */}
-						{grouped.pinnedNodes.length > 0 && (
+						{grouped.pinnedSessions.length > 0 && (
 							<div className="mt-0.5">
 								<div
 									onClick={() => toggleGroup("__pinned", true)}
@@ -1389,7 +1369,7 @@ export function SessionSidebar() {
 											已置顶
 										</span>
 										{renderBubbleBadges(
-											getGroupStatusCounts(grouped.pinnedNodes),
+											getGroupStatusCounts(grouped.pinnedSessions),
 										)}
 									</div>
 								</div>
@@ -1397,13 +1377,11 @@ export function SessionSidebar() {
 								{isGroupOpen("__pinned", true) && (
 									<div className="pb-1">
 										<SessionList
-											nodes={grouped.pinnedNodes}
+											sessions={grouped.pinnedSessions}
 											scopeKey="__pinned"
 											searching={searching}
 											onSetCount={setSectionCount}
 											expanded={expandedSections}
-											collapsedSideChats={collapsedSideChats}
-											onToggleSideChat={toggleSideChat}
 											workspaces={workspaces}
 											allVisibleIds={allVisibleIds}
 											onRowFocus={focusList}
@@ -1419,15 +1397,13 @@ export function SessionSidebar() {
 								{activeWorkspaceId === "__global" ? (
 									grouped.globalGroup && grouped.globalGroup.totalCount > 0 ? (
 										<SessionList
-											nodes={grouped.globalGroup.subgroups.flatMap(
-												(group) => group.nodes,
+											sessions={grouped.globalGroup.subgroups.flatMap(
+												(group) => group.sessions,
 											)}
 											scopeKey="__global"
 											searching={searching}
 											onSetCount={setSectionCount}
 											expanded={expandedSections}
-											collapsedSideChats={collapsedSideChats}
-											onToggleSideChat={toggleSideChat}
 											workspaces={workspaces}
 											allVisibleIds={allVisibleIds}
 											onRowFocus={focusList}
@@ -1476,12 +1452,10 @@ export function SessionSidebar() {
 													onSetCount={setSectionCount}
 													expanded={expandedSections}
 													onToggle={toggleSection}
-													collapsedSideChats={collapsedSideChats}
-													onToggleSideChat={toggleSideChat}
 													onBatchArchive={() =>
 														batchArchiveSessions(
 															sub.label,
-												sub.nodes.map((n) => n.session),
+														sub.sessions,
 														)
 													}
 													workspaces={workspaces}
@@ -1494,15 +1468,13 @@ export function SessionSidebar() {
 											))
 										) : (
 											<SessionList
-												nodes={
-													grouped.workspaceGroups[0].subgroups[0]?.nodes ?? []
-												}
+											sessions={
+												grouped.workspaceGroups[0].subgroups[0]?.sessions ?? []
+											}
 												scopeKey={`${activeWs.id}|default`}
 												searching={searching}
 												onSetCount={setSectionCount}
 												expanded={expandedSections}
-												collapsedSideChats={collapsedSideChats}
-												onToggleSideChat={toggleSideChat}
 												workspaces={workspaces}
 												allVisibleIds={allVisibleIds}
 												onRowFocus={focusList}
@@ -1607,13 +1579,11 @@ export function SessionSidebar() {
 														</div>
 													) : (
 														<SessionList
-															nodes={grouped.globalGroup.subgroups[0]?.nodes ?? []}
+															sessions={grouped.globalGroup.subgroups[0]?.sessions ?? []}
 															scopeKey="__global"
 															searching={searching}
 															onSetCount={setSectionCount}
 															expanded={expandedSections}
-															collapsedSideChats={collapsedSideChats}
-															onToggleSideChat={toggleSideChat}
 															workspaces={workspaces}
 															allVisibleIds={allVisibleIds}
 															onRowFocus={focusList}
@@ -1707,12 +1677,10 @@ export function SessionSidebar() {
 															onSetCount={setSectionCount}
 															expanded={expandedSections}
 															onToggle={toggleSection}
-															collapsedSideChats={collapsedSideChats}
-															onToggleSideChat={toggleSideChat}
 															onBatchArchive={() =>
 																batchArchiveSessions(
 																	sub.label,
-																sub.nodes.map((n) => n.session),
+																sub.sessions,
 																)
 															}
 															workspaces={workspaces}
@@ -1726,13 +1694,11 @@ export function SessionSidebar() {
 													) : (
 														<div className="ml-[22px] pl-2 my-0.5">
 															<SessionList
-																nodes={wg.subgroups[0]?.nodes ?? []}
+																sessions={wg.subgroups[0]?.sessions ?? []}
 																scopeKey={`${wg.workspace.id}|default`}
 																searching={searching}
 																onSetCount={setSectionCount}
 																expanded={expandedSections}
-																collapsedSideChats={collapsedSideChats}
-																onToggleSideChat={toggleSideChat}
 																workspaces={workspaces}
 																allVisibleIds={allVisibleIds}
 																onRowFocus={focusList}
@@ -1779,7 +1745,7 @@ export function SessionSidebar() {
 												onClick={(e) => {
 													e.stopPropagation();
 													setAssignAllTarget(
-														grouped.unassigned.map((n) => n.session.id),
+														grouped.unassigned.map((s) => s.id),
 													);
 												}}
 												className="rounded p-1 text-neutral-500 opacity-50 hover:opacity-100 hover:bg-neutral-700/60 hover:text-neutral-200 focus:opacity-100 ml-1 shrink-0 transition-opacity"
@@ -1792,13 +1758,11 @@ export function SessionSidebar() {
 										{isGroupOpen("__unassigned", false) && (
 											<div className="pb-1">
 												<SessionList
-													nodes={grouped.unassigned}
+													sessions={grouped.unassigned}
 													scopeKey="__unassigned"
 													searching={searching}
 													onSetCount={setSectionCount}
 													expanded={expandedSections}
-													collapsedSideChats={collapsedSideChats}
-													onToggleSideChat={toggleSideChat}
 													workspaces={workspaces}
 												allVisibleIds={allVisibleIds}
 												onRowFocus={focusList}
@@ -1810,7 +1774,7 @@ export function SessionSidebar() {
 								)}
 
 								{/* 4. Deleted Worktrees Bucket: kept visible (dimmed) instead of vanishing */}
-								{grouped.deletedNodes.length > 0 && (
+								{grouped.deletedSessions.length > 0 && (
 									<div className="mt-0.5 opacity-60 hover:opacity-100 transition-opacity">
 										<div
 											onClick={() => toggleGroup("__deleted", false)}
@@ -1836,7 +1800,7 @@ export function SessionSidebar() {
 													{DELETED_LABEL}
 												</span>
 												{renderBubbleBadges(
-													getGroupStatusCounts(grouped.deletedNodes),
+													getGroupStatusCounts(grouped.deletedSessions),
 												)}
 											</div>
 
@@ -1846,7 +1810,7 @@ export function SessionSidebar() {
 													e.stopPropagation();
 													batchArchiveSessions(
 														DELETED_LABEL,
-														grouped.deletedNodes.map((n) => n.session),
+														grouped.deletedSessions,
 													);
 												}}
 												className="mr-1 rounded p-1 text-neutral-500 opacity-50 hover:opacity-100 hover:bg-neutral-700/60 hover:text-amber-300 focus:opacity-100 transition-opacity"
@@ -1859,13 +1823,11 @@ export function SessionSidebar() {
 										{isGroupOpen("__deleted", false) && (
 											<div className="pb-1">
 												<SessionList
-													nodes={grouped.deletedNodes}
+													sessions={grouped.deletedSessions}
 													scopeKey="__deleted"
 													searching={searching}
 													onSetCount={setSectionCount}
 													expanded={expandedSections}
-													collapsedSideChats={collapsedSideChats}
-													onToggleSideChat={toggleSideChat}
 													workspaces={workspaces}
 												allVisibleIds={allVisibleIds}
 												onRowFocus={focusList}
@@ -2096,13 +2058,11 @@ export function SessionSidebar() {
 }
 
 interface SessionListProps {
-	nodes: SessionTreeNode[];
+	sessions: SessionMeta[];
 	scopeKey: string;
 	searching: boolean;
 	expanded: Record<string, number>;
 	onSetCount: (key: string, count: number) => void;
-	collapsedSideChats: Record<string, boolean>;
-	onToggleSideChat: (id: string) => void;
 	indent?: number;
 	/** Draw the subgroup guide line as a per-row segment (stops at last row). */
 	withSpine?: boolean;
@@ -2113,71 +2073,29 @@ interface SessionListProps {
 }
 
 /**
- * Renders a list of session tree nodes with progressive disclosure (RECENT_LIMIT
- * rows initially, +RECENT_STEP per "show more" click) and hierarchical
- * side-chat folding.
+ * Renders a flat list of sessions with progressive disclosure (RECENT_LIMIT
+ * rows initially, +RECENT_STEP per "show more" click). Forked sessions are
+ * ordinary rows; SessionRow marks them with a small fork icon.
  */
 function SessionList({
-	nodes,
+	sessions,
 	scopeKey,
 	searching,
 	indent = 0,
 	withSpine = false,
 	expanded,
 	onSetCount,
-	collapsedSideChats,
-	onToggleSideChat,
 	workspaces,
 	allVisibleIds,
 	onRowFocus,
 	onBatchAction,
 }: SessionListProps) {
-	// Side-chat tree folding: if an ancestor is collapsed, hide this node.
-	const visibleBySideChat = useMemo(() => {
-		if (searching) return nodes;
-		const hiddenRoots = new Set<string>();
-		const result: SessionTreeNode[] = [];
-		const stack: { id: string; depth: number }[] = [];
-
-		for (const node of nodes) {
-			while (
-				stack.length > 0 &&
-				stack[stack.length - 1].depth >= node.depth
-			) {
-				stack.pop();
-			}
-			const parentIsHidden = stack.some((entry) =>
-				hiddenRoots.has(entry.id),
-			);
-			if (!parentIsHidden) {
-				result.push(node);
-			}
-			if (collapsedSideChats[node.session.id]) {
-				hiddenRoots.add(node.session.id);
-			}
-			stack.push({ id: node.session.id, depth: node.depth });
-		}
-		return result;
-	}, [nodes, searching, collapsedSideChats]);
-
-	// Compute which nodes have children in this list
-	const childrenMap = useMemo(() => {
-		const set = new Set<string>();
-		for (const n of nodes) {
-			if (n.session.parentId) set.add(n.session.parentId);
-		}
-		return set;
-	}, [nodes]);
-
-	const renderNode = (node: SessionTreeNode) => (
+	const renderSession = (session: SessionMeta) => (
 		<SessionRow
-			key={node.session.id}
-			session={node.session}
+			key={session.id}
+			session={session}
 			indent={indent}
 			withSpine={withSpine}
-			hasChildren={childrenMap.has(node.session.id)}
-			childrenCollapsed={Boolean(collapsedSideChats[node.session.id])}
-			onToggleChildren={onToggleSideChat}
 			workspaces={workspaces}
 			allVisibleIds={allVisibleIds}
 			onRowFocus={onRowFocus}
@@ -2186,26 +2104,24 @@ function SessionList({
 	);
 
 	if (searching) {
-		return <>{visibleBySideChat.map(renderNode)}</>;
+		return <>{sessions.map(renderSession)}</>;
 	}
 
-	const all = visibleBySideChat;
 	const moreKey = `${scopeKey}|more`;
 
 	const visibleCount = Math.min(
 		Math.max(expanded[moreKey] ?? RECENT_LIMIT, RECENT_LIMIT),
-		all.length,
+		sessions.length,
 	);
-	const visibleNodes = all.slice(0, visibleCount);
-	// Progressive-disclosure footer: "show N more" while items remain, and a
+	const visibleSessions = sessions.slice(0, visibleCount);
+	// Progressive-disclosure footer: "show N more" while sessions remain, and a
 	// collapse row whenever the list is expanded beyond RECENT_LIMIT.
 	const renderPagingFooter = (
 		count: number,
-		total: number,
+		hidden: number,
 		moreKey: string,
 		onCollapse: () => void,
 	) => {
-		const hidden = total - count;
 		const expandable = Math.min(RECENT_STEP, hidden);
 		const showExpand = hidden > 0;
 		const showCollapse = count > RECENT_LIMIT;
@@ -2242,8 +2158,8 @@ function SessionList({
 	};
 	return (
 		<>
-			{visibleNodes.map(renderNode)}
-			{renderPagingFooter(visibleCount, all.length, moreKey, () =>
+			{visibleSessions.map(renderSession)}
+			{renderPagingFooter(visibleCount, sessions.length - visibleCount, moreKey, () =>
 				onSetCount(moreKey, RECENT_LIMIT),
 			)}
 		</>
@@ -2257,8 +2173,6 @@ interface CollapsibleSubgroupProps {
 	expanded: Record<string, number>;
 	onToggle: (key: string) => void;
 	onSetCount: (key: string, count: number) => void;
-	collapsedSideChats: Record<string, boolean>;
-	onToggleSideChat: (id: string) => void;
 	onBatchArchive: () => void;
 	workspaces: Workspace[];
 	allVisibleIds?: string[];
@@ -2278,8 +2192,6 @@ function CollapsibleSubgroup({
 	expanded,
 	onToggle,
 	onSetCount,
-	collapsedSideChats,
-	onToggleSideChat,
 	onBatchArchive,
 	workspaces,
 	allVisibleIds,
@@ -2350,14 +2262,12 @@ function CollapsibleSubgroup({
 			{open && (
 				<div className="ml-[22px] pl-2 my-0.5">
 					<SessionList
-						nodes={sub.nodes}
+						sessions={sub.sessions}
 						scopeKey={scopeKey}
 						searching={searching}
 						indent={0}
 						expanded={expanded}
 						onSetCount={onSetCount}
-						collapsedSideChats={collapsedSideChats}
-						onToggleSideChat={onToggleSideChat}
 						workspaces={workspaces}
 						allVisibleIds={allVisibleIds}
 						onRowFocus={onRowFocus}

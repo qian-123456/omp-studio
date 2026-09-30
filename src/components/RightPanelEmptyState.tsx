@@ -55,12 +55,18 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 			icon: Cpu,
 			iconColor: "text-purple-400",
 		},
+		{
+			id: "heatmap",
+			label: "Token 用量",
+			icon: Coins,
+			iconColor: "text-amber-400",
+		},
 	];
 
 	return (
 		<div className="relative flex h-full flex-col bg-neutral-900/40 text-neutral-200 select-none">
 			{/* Top right close button matching Image 1 */}
-			<div className="flex h-10 shrink-0 items-center justify-end px-3">
+		<div className="flex h-10 shrink-0 items-center justify-end border-b border-[var(--border-divider)] px-3">
 				<button
 					type="button"
 					onClick={toggleRight}
@@ -118,18 +124,6 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 								</button>
 							);
 						})}
-					</div>
-
-					{/* Demoted secondary option: Heatmap compact link */}
-					<div className="pt-1 text-center">
-						<button
-							type="button"
-							onClick={() => setRightTab("heatmap")}
-							className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-amber-400 transition-colors py-1 px-2 rounded-md hover:bg-neutral-800/50"
-						>
-							<Coins size={13} className="text-amber-400" />
-							<span>打开 Token 用量 (统计分析)</span>
-						</button>
 					</div>
 				</div>
 			</div>

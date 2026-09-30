@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SessionMeta, Workspace } from "../../lib/contracts";
 import {
-	buildSessionTree,
 	createSubgroups,
 	filterSessions,
-	flattenSessionTree,
 	groupSessions,
 	inferWorktreeName,
 	matchesSearch,
@@ -76,53 +74,69 @@ describe("matchesSearch & filterSessions", () => {
 	});
 });
 
-describe("buildSessionTree & pinned sorting", () => {
-	it("places pinned sessions before unpinned sessions at the root level", () => {
+describe("createSubgroups", () => {
+	it("detects single subgroup when all sessions share the same branch", () => {
+		const s1 = makeSession({ id: "s1", git: { branch: "main", dirty: 0, worktree: null } });
+		const s2 = makeSession({ id: "s2", git: { branch: "main", dirty: 1, worktree: null } });
+
+		const { subgroups, hasMultipleSubgroups } = createSubgroups([s1, s2]);
+		expect(hasMultipleSubgroups).toBe(false);
+		expect(subgroups).toHaveLength(1);
+		expect(subgroups[0].label).toBe("main");
+	});
+
+	it("detects multiple subgroups when sessions span different branches or worktrees", () => {
+		const s1 = makeSession({ id: "s1", git: { branch: "main", dirty: 0, worktree: null } });
+		const s2 = makeSession({
+			id: "s2",
+			git: { branch: "feat", dirty: 0, worktree: "/repo/.worktrees/feat" },
+		});
+
+		const { subgroups, hasMultipleSubgroups } = createSubgroups([s1, s2]);
+		expect(hasMultipleSubgroups).toBe(true);
+		expect(subgroups.length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("places pinned sessions before unpinned sessions within a subgroup", () => {
 		const s1 = makeSession({ id: "s1", pinned: false, updatedAt: "2026-09-24T12:00:00Z" });
 		const s2 = makeSession({ id: "s2", pinned: true, updatedAt: "2026-09-24T10:00:00Z" });
 
-		const tree = buildSessionTree([s1, s2]);
-		expect(tree[0].session.id).toBe("s2");
-		expect(tree[1].session.id).toBe("s1");
+		const { subgroups } = createSubgroups([s1, s2]);
+		expect(subgroups[0].sessions.map((s) => s.id)).toEqual(["s2", "s1"]);
 	});
 
-	it("nests side chats under parent and clamps depth to max 3", () => {
-		const root = makeSession({ id: "s0", label: "#0" });
-		const c1 = makeSession({ id: "s1", parentId: "s0", label: "#0.1" });
-		const c2 = makeSession({ id: "s2", parentId: "s1", label: "#0.1.1" });
-		const c3 = makeSession({ id: "s3", parentId: "s2", label: "#0.1.1.1" });
-		const c4 = makeSession({ id: "s4", parentId: "s3", label: "#0.1.1.1.1" }); // deep fork
+	it("lists fork sessions as flat rows ordered purely by updatedAt, not nested under parents", () => {
+		const parent = makeSession({
+			id: "p1",
+			git: { branch: "main", dirty: 0, worktree: null },
+			updatedAt: "2026-09-24T12:00:00Z",
+		});
+		const forkNewer = makeSession({
+			id: "f-new",
+			parentId: "p1",
+			git: { branch: "main", dirty: 0, worktree: null },
+			updatedAt: "2026-09-24T13:00:00Z",
+		});
+		const unrelated = makeSession({
+			id: "u1",
+			git: { branch: "main", dirty: 0, worktree: null },
+			updatedAt: "2026-09-24T12:30:00Z",
+		});
+		const forkOlder = makeSession({
+			id: "f-old",
+			parentId: "p1",
+			git: { branch: "main", dirty: 0, worktree: null },
+			updatedAt: "2026-09-24T11:00:00Z",
+		});
 
-		const tree = buildSessionTree([root, c1, c2, c3, c4]);
-		expect(tree).toHaveLength(1);
-		expect(tree[0].session.id).toBe("s0");
-		expect(tree[0].depth).toBe(0);
-
-		const nodeC1 = tree[0].children[0];
-		expect(nodeC1.session.id).toBe("s1");
-		expect(nodeC1.depth).toBe(1);
-
-		const nodeC2 = nodeC1.children[0];
-		expect(nodeC2.session.id).toBe("s2");
-		expect(nodeC2.depth).toBe(2);
-
-		const nodeC3 = nodeC2.children[0];
-		expect(nodeC3.session.id).toBe("s3");
-		expect(nodeC3.depth).toBe(3);
-
-		const nodeC4 = nodeC3.children[0];
-		expect(nodeC4.session.id).toBe("s4");
-		// Clamped to 3
-		expect(nodeC4.depth).toBe(3);
-	});
-
-	it("flattens tree preserving parent-child order", () => {
-		const parent = makeSession({ id: "p1" });
-		const child = makeSession({ id: "c1", parentId: "p1" });
-
-		const tree = buildSessionTree([parent, child]);
-		const flat = flattenSessionTree(tree);
-		expect(flat.map((n) => n.session.id)).toEqual(["p1", "c1"]);
+		const { subgroups } = createSubgroups([parent, forkNewer, unrelated, forkOlder]);
+		expect(subgroups).toHaveLength(1);
+		expect(subgroups[0].sessions.map((s) => s.id)).toEqual([
+			"f-new", // fork newer than its parent sorts before it
+			"u1",
+			"p1",
+			"f-old", // fork older than an unrelated session lands after it
+		]);
 	});
 });
 
@@ -189,10 +203,10 @@ describe("groupSessions", () => {
 		// Global workspace sessions land in the pinned global group (PLAN §67).
 		expect(result.globalGroup?.workspace.id).toBe("global");
 		expect(result.globalGroup?.totalCount).toBe(1);
-		expect(result.globalGroup?.subgroups[0]?.nodes[0].session.id).toBe("sg");
+		expect(result.globalGroup?.subgroups[0]?.sessions[0].id).toBe("sg");
 
 		// Unassigned bucket = sessions with no workspace at all.
-		expect(result.unassigned.map((n) => n.session.id)).toEqual(["su"]);
+		expect(result.unassigned.map((s) => s.id)).toEqual(["su"]);
 
 		expect(result.workspaceGroups).toHaveLength(1);
 		expect(result.workspaceGroups[0].workspace.id).toBe("proj1");
@@ -217,8 +231,8 @@ describe("groupSessions", () => {
 		const result = groupSessions([dead, alive], [], {
 			showDeletedWorktrees: true,
 		});
-		expect(result.unassigned.map((n) => n.session.id)).toEqual(["alive"]);
-		expect(result.deletedNodes.map((n) => n.session.id)).toEqual(["dead"]);
+		expect(result.unassigned.map((s) => s.id)).toEqual(["alive"]);
+		expect(result.deletedSessions.map((s) => s.id)).toEqual(["dead"]);
 	});
 
 	it("orders unassigned newest-first regardless of count", () => {
@@ -231,16 +245,16 @@ describe("groupSessions", () => {
 		);
 		const result = groupSessions(many, []);
 		expect(result.unassigned).toHaveLength(15);
-		expect(result.unassigned[0].session.id).toBe("s14"); // newest first
-		expect(result.unassigned[14].session.id).toBe("s0");
+		expect(result.unassigned[0].id).toBe("s14"); // newest first
+		expect(result.unassigned[14].id).toBe("s0");
 	});
-	it("extracts all pinned sessions into pinnedNodes at top-level", () => {
+	it("extracts all pinned sessions into pinnedSessions at top-level", () => {
 		const p1 = makeSession({ id: "p1", pinned: true, updatedAt: "2026-09-25T10:00:00Z" });
 		const u1 = makeSession({ id: "u1", pinned: false, updatedAt: "2026-09-25T09:00:00Z" });
 		const p2 = makeSession({ id: "p2", pinned: true, updatedAt: "2026-09-25T11:00:00Z" });
 		const result = groupSessions([p1, u1, p2], []);
-		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p2", "p1"]);
-		expect(result.unassigned.map((n) => n.session.id)).toEqual(["u1"]);
+		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["p2", "p1"]);
+		expect(result.unassigned.map((s) => s.id)).toEqual(["u1"]);
 		expect(result.totalVisible).toBe(3);
 	});
 
@@ -249,8 +263,8 @@ describe("groupSessions", () => {
 		const pinnedGlobal = makeSession({ id: "global", pinned: true, workspaceId: "global" });
 		const unpinned = makeSession({ id: "normal", workspaceId: "proj1" });
 		const result = groupSessions([pinnedProject, pinnedGlobal, unpinned], [projectWs, globalWs]);
-		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["project", "global"]);
-		expect(result.workspaceGroups[0].subgroups.flatMap((s) => s.nodes.map((n) => n.session.id))).toEqual(["normal"]);
+		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["project", "global"]);
+		expect(result.workspaceGroups[0].subgroups.flatMap((s) => s.sessions.map((x) => x.id))).toEqual(["normal"]);
 		expect(result.workspaceGroups[0].totalCount).toBe(1);
 		expect(result.globalGroup?.totalCount).toBe(0);
 	});
@@ -268,7 +282,7 @@ describe("groupSessions", () => {
 		expect(result.workspaceGroups).toHaveLength(1);
 		expect(result.workspaceGroups[0].workspace.id).toBe("proj1");
 		expect(result.workspaceGroups[0].totalCount).toBe(1);
-		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p1"]);
+		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["p1"]);
 		expect(result.globalGroup).toBeNull();
 		expect(result.unassigned).toHaveLength(0);
 		expect(result.totalVisible).toBe(2); // p1 + s1
@@ -284,7 +298,7 @@ describe("groupSessions", () => {
 		});
 		expect(result.workspaceGroups).toHaveLength(0);
 		expect(result.globalGroup?.totalCount).toBe(1);
-		expect(result.pinnedNodes).toHaveLength(0);
+		expect(result.pinnedSessions).toHaveLength(0);
 		expect(result.totalVisible).toBe(1);
 	});
 
@@ -343,7 +357,7 @@ describe("filterSessions deleted worktrees", () => {
 	});
 });
 
-describe("archive cascading & subtree pinning", () => {
+describe("archive cascading & pinning", () => {
 	it("cascades archive status to children when showArchived is false", () => {
 		const parent = makeSession({ id: "p1", archived: true });
 		const child = makeSession({ id: "c1", parentId: "p1", archived: false });
@@ -356,29 +370,52 @@ describe("archive cascading & subtree pinning", () => {
 		expect(shown.map((s) => s.id)).toEqual(["p1", "c1", "n1"]);
 	});
 
-	it("keeps entire subtree in pinnedNodes when parent is pinned", () => {
+	it("pins only the parent itself, leaving its child in the workspace subgroup", () => {
 		const parent = makeSession({ id: "p1", pinned: true, workspaceId: "proj1" });
-		const child = makeSession({ id: "c1", parentId: "p1", pinned: false, workspaceId: "proj1" });
-		const normal = makeSession({ id: "n1", pinned: false, workspaceId: "proj1" });
+		const child = makeSession({
+			id: "c1",
+			parentId: "p1",
+			pinned: false,
+			workspaceId: "proj1",
+			updatedAt: "2026-09-24T11:00:00Z",
+		});
+		const normal = makeSession({
+			id: "n1",
+			pinned: false,
+			workspaceId: "proj1",
+			updatedAt: "2026-09-24T10:00:00Z",
+		});
 
 		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
 		const result = groupSessions([parent, child, normal], [ws]);
 
-		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p1", "c1"]);
-		expect(result.pinnedNodes[0].children[0].session.id).toBe("c1");
-		expect(result.workspaceGroups[0].subgroups.flatMap((s) => s.nodes.map((n) => n.session.id))).toEqual(["n1"]);
+		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["p1"]);
+		expect(
+			result.workspaceGroups[0].subgroups.flatMap((s) => s.sessions.map((x) => x.id)),
+		).toEqual(["c1", "n1"]);
 	});
 
-	it("keeps entire subtree in pinnedNodes when child is pinned", () => {
-		const parent = makeSession({ id: "p1", pinned: false, workspaceId: "proj1" });
+	it("pins only the child itself, leaving its parent in the workspace subgroup", () => {
+		const parent = makeSession({
+			id: "p1",
+			pinned: false,
+			workspaceId: "proj1",
+			updatedAt: "2026-09-24T11:00:00Z",
+		});
 		const child = makeSession({ id: "c1", parentId: "p1", pinned: true, workspaceId: "proj1" });
-		const normal = makeSession({ id: "n1", pinned: false, workspaceId: "proj1" });
+		const normal = makeSession({
+			id: "n1",
+			pinned: false,
+			workspaceId: "proj1",
+			updatedAt: "2026-09-24T10:00:00Z",
+		});
 
 		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
 		const result = groupSessions([parent, child, normal], [ws]);
 
-		expect(result.pinnedNodes.map((n) => n.session.id)).toEqual(["p1", "c1"]);
-		expect(result.pinnedNodes[0].children[0].session.id).toBe("c1");
-		expect(result.workspaceGroups[0].subgroups.flatMap((s) => s.nodes.map((n) => n.session.id))).toEqual(["n1"]);
+		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["c1"]);
+		expect(
+			result.workspaceGroups[0].subgroups.flatMap((s) => s.sessions.map((x) => x.id)),
+		).toEqual(["p1", "n1"]);
 	});
 });

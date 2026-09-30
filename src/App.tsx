@@ -556,270 +556,42 @@ export default function App() {
 
 	return (
 		<div className="flex h-screen flex-col overflow-hidden bg-neutral-950 text-neutral-200">
-			{/* Top bar — column-aligned single-row header; left column strictly matches sidebarWidth */}
-			<header
-				data-tauri-drag-region
-				className="relative z-30 flex h-10 shrink-0 border-b border-[var(--border-divider)] vibrancy-chrome select-none"
-			>
-				{/* Left column topbar — matches sidebarWidth with right border */}
-				{sidebarOpen ? (
-					<div
-						style={{ width: sidebarWidth }}
-						className="flex h-full shrink-0 items-center justify-between border-r border-[var(--border-divider)] px-2.5"
-					>
-						{/* macOS traffic light spacer */}
-						<div className={isMac ? "w-[68px] shrink-0" : "hidden"} />
-						<div className="flex-1" data-tauri-drag-region />
-						{/* Collapse sidebar button */}
-						<button
-							type="button"
-							onClick={toggleSidebar}
-							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
-							title="收起左侧栏 (⌘B)"
-						>
-							<PanelLeftClose size={15} />
-						</button>
-					</div>
-				) : (
-					<div
-						className={clsx(
-							"flex h-full shrink-0 items-center border-r border-[var(--border-divider)] px-2",
-							isMac ? "pl-[78px]" : "pl-2",
-						)}
-					>
-						<button
-							type="button"
-							onClick={toggleSidebar}
-							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
-							title="展开左侧栏 (⌘B)"
-						>
-							<PanelLeftOpen size={15} />
-						</button>
-					</div>
-				)}
-				{/* Center column topbar — aligns precisely with main conversation view */}
-				<div className="flex flex-1 min-w-0 items-center justify-between gap-2 px-3.5">
-					{/* Current view info */}
-					{isViewingSession ? (
-						<div className="flex min-w-0 items-center gap-2">
-							{/* Side-chat parent breadcrumb: ← #N 父标题 / */}
-							{parentId && (
-								<>
-									<button
-										type="button"
-										onClick={() => selectSession(parentId)}
-										className="flex shrink-0 items-center gap-1 rounded-md bg-[var(--bg-active-fill)] px-2 py-0.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all"
-										title={`返回父会话：${parentSession ? sessionDisplayName(parentSession) : parentId}`}
-									>
-										<span>←</span>
-										<span className="max-w-[120px] md:max-w-[160px] truncate text-neutral-300">
-											{parentSession ? sessionDisplayName(parentSession) : "父会话"}
-										</span>
-									</button>
-									<span className="text-neutral-600 shrink-0">/</span>
-								</>
-							)}
-
-							{/* Status dot */}
-							<span
-								className={clsx("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[sessionStatus])}
-								title={STATUS_LABEL[sessionStatus]}
-							/>
-
-							{/* Double-click rename or display title */}
-							{editingTitle ? (
-								<input
-									autoFocus
-									type="text"
-									value={titleDraft}
-									onChange={(e) => setTitleDraft(e.target.value)}
-									onBlur={saveTitle}
-									onKeyDown={(e) => {
-										if (isComposing(e)) return;
-										if (e.key === "Enter") {
-											e.preventDefault();
-											void saveTitle();
-										} else if (e.key === "Escape") {
-											e.preventDefault();
-											setEditingTitle(false);
-										}
-									}}
-									className="h-6 rounded border border-indigo-500 bg-neutral-900 px-1.5 py-0 text-[13px] font-medium text-neutral-100 outline-none"
-								/>
-							) : (
-								<span
-									onDoubleClick={startEditTitle}
-									className="min-w-0 max-w-[200px] md:max-w-[320px] lg:max-w-[450px] cursor-pointer select-none truncate text-[13px] font-semibold tracking-[-0.015em] text-neutral-100 underline-offset-4 hover:text-white hover:underline decoration-neutral-600 transition-colors"
-									title={`双击重命名会话\n${sessionDisplayName(activeSession)}${activeSession.cwd ? `\n路径: ${activeSession.cwd}` : ""}`}
-								>
-									{sessionDisplayName(activeSession)}
-								</span>
-							)}
-						</div>
-					) : (
-						<div className="flex min-w-0 items-center gap-2">
-							{activeSession && (
-								<button
-									type="button"
-									onClick={returnToSession}
-									className="flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-0.5 text-xs text-indigo-300 hover:bg-indigo-500/20 hover:text-indigo-200 active:scale-95 transition-all"
-									title={`返回会话: ${sessionDisplayName(activeSession)}`}
-								>
-									<ArrowLeft size={13} />
-									<span className="max-w-[180px] truncate">
-										返回 {sessionDisplayName(activeSession)}
-									</span>
-								</button>
-							)}
-							<span className="text-[13px] font-medium text-neutral-300 shrink-0">
-								{effectiveCenterView === "doc"
-									? "文档"
-									: effectiveCenterView === "backlog"
-										? "收集箱"
-										: effectiveCenterView === "agentTerminal"
-											? "Agent 终端"
-											: "待办任务"}
-							</span>
-						</div>
-					)}
-
-					{/* Drag spacer */}
-					<div className="flex-1 min-w-2" data-tauri-drag-region />
-
-					{/* Right: Actions & Capsule */}
-					<div className="flex items-center gap-1.5 shrink-0">
-						{isViewingSession && (
-							<>
-								{sessionStatus === "external" && (
-									<button
-										type="button"
-										disabled={busyAction}
-										onClick={() => void takeover()}
-										className="flex shrink-0 items-center gap-1.5 rounded-lg border border-purple-800/50 bg-purple-950/40 px-2 py-1 text-xs font-medium text-purple-300 hover:bg-purple-900/50 disabled:opacity-50 transition-colors"
-									>
-										<span>接管</span>
-									</button>
-								)}
-
-								{/* Finder */}
-								<button
-									type="button"
-									disabled={!activeSession.cwd}
-									onClick={handleOpenInFinder}
-									title={activeSession.cwd ? `在访达中显示 (${activeSession.cwd})` : "无工作目录"}
-									className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200 disabled:opacity-30 transition-colors"
-								>
-									<FolderOpen size={14} />
-								</button>
-
-								{/* Share */}
-								<div className="relative" ref={shareRef}>
-									<button
-										type="button"
-										onClick={() => setShareOpen((v) => !v)}
-										title="分享与导出"
-										className={clsx(
-											"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-											shareOpen
-												? "bg-neutral-800 text-neutral-100"
-												: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
-										)}
-									>
-										<Share2 size={14} />
-									</button>
-									{/* Share Popover: 复制 Markdown / 导出 HTML / 手机扫码查看 */}
-									{shareOpen && (
-										<div className="absolute right-0 top-full z-50 mt-1.5 w-44 rounded-lg border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-xl">
-											<button
-												type="button"
-												onClick={handleCopyMarkdown}
-												className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
-											>
-												<Copy size={13} />
-												<span>复制为 Markdown</span>
-											</button>
-											<button
-												type="button"
-												onClick={handleExportHtml}
-												className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
-											>
-												<FileDown size={13} />
-												<span>导出为 HTML</span>
-											</button>
-											<button
-												type="button"
-												onClick={handleMobilePair}
-												className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
-											>
-												<QrCode size={13} />
-												<span>手机扫码查看</span>
-											</button>
-										</div>
-									)}
-								</div>
-							</>
-						)}
-
-						{/* Agent Terminal Center Page Toggle */}
-						<button
-							type="button"
-							onClick={() => {
-								if (effectiveCenterView === "agentTerminal") {
-									const prev = previousCenterView ?? (selectedSessionId ? "session" : "home");
-									setCenter(prev === "agentTerminal" ? (selectedSessionId ? "session" : "home") : prev);
-								} else {
-									setCenter("agentTerminal");
-								}
-							}}
-							aria-label={effectiveCenterView === "agentTerminal" ? "返回主视图" : "打开 Agent 终端"}
-							aria-pressed={effectiveCenterView === "agentTerminal"}
-							title={
-								effectiveCenterView === "agentTerminal"
-									? "返回主视图"
-									: "打开 Agent 终端（全屏中心页，可输入 omp/claude/codex 接管）"
-							}
-							className={clsx(
-								"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium active:scale-95 transition-all",
-								effectiveCenterView === "agentTerminal"
-									? "border border-indigo-500/40 bg-indigo-600/20 text-indigo-300"
-									: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
-							)}
-						>
-							<Terminal size={13} />
-							<span>终端</span>
-						</button>
-						<TopCapsule />
-
-						{/* Show expand right panel button only when right panel is closed */}
-						{!rightOpen && (
-							<button
-								type="button"
-								onClick={toggleRight}
-								className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
-								title="展开右侧面板 (⌘J)"
-							>
-								<PanelRightOpen size={15} />
-							</button>
-						)}
-					</div>
-				</div>
-			</header>
-
+			{/* Body row: [left column][center column][right aside]; right aside spans full window height */}
 			<div className="relative flex min-h-0 flex-1">
 				{/* Invisible drag overlay prevents text selection and event loss across iframes/terminals */}
 				{isDragging && (
 					<div className="fixed inset-0 z-50 cursor-col-resize select-none" />
 				)}
 
-				{/* Left: session sidebar */}
+				{/* Left column: topbar cell + session sidebar, strictly matches sidebarWidth */}
 				{sidebarOpen && (
 					<>
-						<aside
+						<div
 							style={{ width: sidebarWidth }}
-							className="shrink-0 border-r border-[var(--border-divider)] vibrancy-chrome"
+							className="flex shrink-0 flex-col vibrancy-chrome"
 						>
-							<SessionSidebar />
-						</aside>
+							{/* Left column topbar — same width with right + bottom border */}
+							<div
+								data-tauri-drag-region
+								className="flex h-10 shrink-0 items-center justify-between border-b border-r border-[var(--border-divider)] px-2.5 select-none"
+							>
+								{/* macOS traffic light spacer */}
+								<div className={isMac ? "w-[68px] shrink-0" : "hidden"} />
+								<div className="flex-1" data-tauri-drag-region />
+								{/* Collapse sidebar button */}
+								<button
+									type="button"
+									onClick={toggleSidebar}
+									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
+									title="收起左侧栏 (⌘B)"
+								>
+									<PanelLeftClose size={15} />
+								</button>
+							</div>
+							<aside className="min-h-0 flex-1 border-r border-[var(--border-divider)]">
+								<SessionSidebar />
+							</aside>
+						</div>
 						{/* Sidebar drag handle */}
 						<div
 							onMouseDown={onLeftDragStart}
@@ -829,14 +601,247 @@ export default function App() {
 					</>
 				)}
 
-				{/* Center */}
-				<main className="min-w-0 flex-1">
-					<ErrorBoundary label="主视图">
-						<MainCenterView activeView={effectiveCenterView} />
-					</ErrorBoundary>
-				</main>
+				{/* Center column: topbar + main conversation view */}
+				<div className="flex min-w-0 flex-1 flex-col">
+					{/* Center column topbar — aligns precisely with main conversation view; never spans the right panel */}
+					<header
+						data-tauri-drag-region
+						className="relative z-30 flex h-10 shrink-0 items-center border-b border-[var(--border-divider)] vibrancy-chrome select-none"
+					>
+						{/* Expand sidebar cell — only rendered when the sidebar is closed */}
+						{!sidebarOpen && (
+							<div
+								className={clsx(
+									"flex h-full shrink-0 items-center border-r border-[var(--border-divider)] px-2",
+									isMac ? "pl-[78px]" : "pl-2",
+								)}
+							>
+								<button
+									type="button"
+									onClick={toggleSidebar}
+									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
+									title="展开左侧栏 (⌘B)"
+								>
+									<PanelLeftOpen size={15} />
+								</button>
+							</div>
+						)}
+						<div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3.5">
+							{/* Current view info */}
+							{isViewingSession ? (
+								<div className="flex min-w-0 items-center gap-2">
+									{/* Side-chat parent breadcrumb: ← #N 父标题 / */}
+									{parentId && (
+										<>
+											<button
+												type="button"
+												onClick={() => selectSession(parentId)}
+												className="flex shrink-0 items-center gap-1 rounded-md bg-[var(--bg-active-fill)] px-2 py-0.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all"
+												title={`返回父会话：${parentSession ? sessionDisplayName(parentSession) : parentId}`}
+											>
+												<span>←</span>
+												<span className="max-w-[120px] md:max-w-[160px] truncate text-neutral-300">
+													{parentSession ? sessionDisplayName(parentSession) : "父会话"}
+												</span>
+											</button>
+											<span className="text-neutral-600 shrink-0">/</span>
+										</>
+									)}
 
-				{/* Right panel */}
+									{/* Status dot */}
+									<span
+										className={clsx("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[sessionStatus])}
+										title={STATUS_LABEL[sessionStatus]}
+									/>
+
+									{/* Double-click rename or display title */}
+									{editingTitle ? (
+										<input
+											autoFocus
+											type="text"
+											value={titleDraft}
+											onChange={(e) => setTitleDraft(e.target.value)}
+											onBlur={saveTitle}
+											onKeyDown={(e) => {
+												if (isComposing(e)) return;
+												if (e.key === "Enter") {
+													e.preventDefault();
+													void saveTitle();
+												} else if (e.key === "Escape") {
+													e.preventDefault();
+													setEditingTitle(false);
+												}
+											}}
+											className="h-6 rounded border border-indigo-500 bg-neutral-900 px-1.5 py-0 text-[13px] font-medium text-neutral-100 outline-none"
+										/>
+									) : (
+										<span
+											onDoubleClick={startEditTitle}
+											className="min-w-0 max-w-[200px] md:max-w-[320px] lg:max-w-[450px] cursor-pointer select-none truncate text-[13px] font-semibold tracking-[-0.015em] text-neutral-100 underline-offset-4 hover:text-white hover:underline decoration-neutral-600 transition-colors"
+											title={`双击重命名会话\n${sessionDisplayName(activeSession)}${activeSession.cwd ? `\n路径: ${activeSession.cwd}` : ""}`}
+										>
+											{sessionDisplayName(activeSession)}
+										</span>
+									)}
+								</div>
+							) : (
+								<div className="flex min-w-0 items-center gap-2">
+									{activeSession && (
+										<button
+											type="button"
+											onClick={returnToSession}
+											className="flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-0.5 text-xs text-indigo-300 hover:bg-indigo-500/20 hover:text-indigo-200 active:scale-95 transition-all"
+											title={`返回会话: ${sessionDisplayName(activeSession)}`}
+										>
+											<ArrowLeft size={13} />
+											<span className="max-w-[180px] truncate">
+												返回 {sessionDisplayName(activeSession)}
+											</span>
+										</button>
+									)}
+									<span className="text-[13px] font-medium text-neutral-300 shrink-0">
+										{effectiveCenterView === "doc"
+											? "文档"
+											: effectiveCenterView === "backlog"
+												? "收集箱"
+												: effectiveCenterView === "agentTerminal"
+													? "Agent 终端"
+													: "待办任务"}
+									</span>
+								</div>
+							)}
+
+							{/* Drag spacer */}
+							<div className="flex-1 min-w-2" data-tauri-drag-region />
+
+							{/* Right: Actions & Capsule */}
+							<div className="flex items-center gap-1.5 shrink-0">
+								{isViewingSession && (
+									<>
+										{sessionStatus === "external" && (
+											<button
+												type="button"
+												disabled={busyAction}
+												onClick={() => void takeover()}
+												className="flex shrink-0 items-center gap-1.5 rounded-lg border border-purple-800/50 bg-purple-950/40 px-2 py-1 text-xs font-medium text-purple-300 hover:bg-purple-900/50 disabled:opacity-50 transition-colors"
+											>
+												<span>接管</span>
+											</button>
+										)}
+
+										{/* Finder */}
+										<button
+											type="button"
+											disabled={!activeSession.cwd}
+											onClick={handleOpenInFinder}
+											title={activeSession.cwd ? `在访达中显示 (${activeSession.cwd})` : "无工作目录"}
+											className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200 disabled:opacity-30 transition-colors"
+										>
+											<FolderOpen size={14} />
+										</button>
+
+										{/* Share */}
+										<div className="relative" ref={shareRef}>
+											<button
+												type="button"
+												onClick={() => setShareOpen((v) => !v)}
+												title="分享与导出"
+												className={clsx(
+													"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+													shareOpen
+														? "bg-neutral-800 text-neutral-100"
+														: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
+												)}
+											>
+												<Share2 size={14} />
+											</button>
+											{/* Share Popover: 复制 Markdown / 导出 HTML / 手机扫码查看 */}
+											{shareOpen && (
+												<div className="absolute right-0 top-full z-50 mt-1.5 w-44 rounded-lg border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-xl">
+													<button
+														type="button"
+														onClick={handleCopyMarkdown}
+														className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+													>
+														<Copy size={13} />
+														<span>复制为 Markdown</span>
+													</button>
+													<button
+														type="button"
+														onClick={handleExportHtml}
+														className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+													>
+														<FileDown size={13} />
+														<span>导出为 HTML</span>
+													</button>
+													<button
+														type="button"
+														onClick={handleMobilePair}
+														className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+													>
+														<QrCode size={13} />
+														<span>手机扫码查看</span>
+													</button>
+												</div>
+											)}
+										</div>
+									</>
+								)}
+
+								{/* Agent Terminal Center Page Toggle */}
+								<button
+									type="button"
+									onClick={() => {
+										if (effectiveCenterView === "agentTerminal") {
+											const prev = previousCenterView ?? (selectedSessionId ? "session" : "home");
+											setCenter(prev === "agentTerminal" ? (selectedSessionId ? "session" : "home") : prev);
+										} else {
+											setCenter("agentTerminal");
+										}
+									}}
+									aria-label={effectiveCenterView === "agentTerminal" ? "返回主视图" : "打开 Agent 终端"}
+									aria-pressed={effectiveCenterView === "agentTerminal"}
+									title={
+										effectiveCenterView === "agentTerminal"
+											? "返回主视图"
+											: "打开 Agent 终端（全屏中心页，可输入 omp/claude/codex 接管）"
+									}
+									className={clsx(
+										"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium active:scale-95 transition-all",
+										effectiveCenterView === "agentTerminal"
+											? "border border-indigo-500/40 bg-indigo-600/20 text-indigo-300"
+											: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
+									)}
+								>
+									<Terminal size={13} />
+									<span>终端</span>
+								</button>
+								<TopCapsule />
+
+								{/* Show expand right panel button only when right panel is closed */}
+								{!rightOpen && (
+									<button
+										type="button"
+										onClick={toggleRight}
+										className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
+										title="展开右侧面板 (⌘J)"
+									>
+										<PanelRightOpen size={15} />
+									</button>
+								)}
+							</div>
+						</div>
+					</header>
+
+					{/* Center */}
+					<main className="min-h-0 min-w-0 flex-1">
+						<ErrorBoundary label="主视图">
+							<MainCenterView activeView={effectiveCenterView} />
+						</ErrorBoundary>
+					</main>
+				</div>
+
+				{/* Right panel — spans the full window height above the BottomBar */}
 				{rightOpen && (
 					<>
 						{/* Right panel drag handle */}

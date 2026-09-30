@@ -513,7 +513,7 @@ export function formatWithAnnotations(text: string, anns: Annotation[]): string;
 - `session_usage`: try Token Tracker on `http://localhost:7680` (discover the API; e.g. inspect its HTML/JS bundle for `/api/...`
   routes); on failure sum `usage` from the transcript (`source:"transcript"`). Never error.
 - Frontend `SessionSidebar`: 🌐 全局 group fixed on top; registered workspaces; inside each group, sub-groups by worktree/branch
-  (`git.worktree` / branch) when more than one; side chats indented under their parent (`parent_id`) with labels `#3.1`;
+  (`git.worktree` / branch) when more than one; sessions with a `parent_id` (omp forks, side chats) are NOT nested — they are flat rows sorted with everything else and carry a small fork icon (tooltip "分叉自: <parent title>") before the title, with labels `#3.1`;
   "未归档" bucket collapsed by default, grouped by cwd with an "添加为工作区" button and per-session "归入工作区…".
   Row: status dot (Working green pulse, AwaitingApproval 🟡, AwaitingAnswer 💬, Review 🟠, Error red, Interrupted grey-red,
   Suspended hollow, External purple outline) + 🔵 unread dot + name + second line `3分钟前 · branch` + dirty `●N` + ✅/❌ badge.

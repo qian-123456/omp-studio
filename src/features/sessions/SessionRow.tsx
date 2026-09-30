@@ -6,14 +6,12 @@ import {
 	ArchiveRestore,
 	Check,
 	CheckCircle2,
-	ChevronDown,
-	ChevronRight,
 	Copy,
-	CornerDownRight,
 	ExternalLink,
 	FolderInput,
 	FolderOpen,
 	GitBranch,
+	GitFork,
 	Loader2,
 	MoreHorizontal,
 	Pencil,
@@ -47,16 +45,10 @@ import { archiveSession } from "./archiveUndo";
 import { inferWorktreeName } from "./grouping";
 interface SessionRowProps {
 	session: SessionMeta;
-	depth?: number;
 	/** Extra left padding (px) for nesting under a subgroup header. */
 	indent?: number;
 	/** Draw this row's segment of the subgroup guide line at the row's left edge. */
 	withSpine?: boolean;
-	/** True when this session has side-chat children in the tree. */
-	hasChildren?: boolean;
-	/** True when its side-chat children are collapsed away. */
-	childrenCollapsed?: boolean;
-	onToggleChildren?: (id: string) => void;
 	workspaces: Workspace[];
 	allVisibleIds?: string[];
 	onRowFocus?: () => void;
@@ -140,12 +132,8 @@ export function renderStatusDot(status: SessionMeta["status"]) {
 
 export function SessionRow({
 	session,
-	depth = 0,
 	indent = 0,
 	withSpine = false,
-	hasChildren = false,
-	childrenCollapsed = false,
-	onToggleChildren,
 	workspaces,
 	allVisibleIds,
 	onRowFocus,
@@ -161,11 +149,13 @@ export function SessionRow({
 	const sessionViewMode = useUi((s) => s.sessionViewMode[session.id] ?? "chat");
 	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
 	const openModal = useUi((s) => s.openModal);
+	const parent = useSessions((s) =>
+		session.parentId ? s.sessions[session.parentId] : undefined,
+	);
 
 	const isSelected = selectedSessionId === session.id;
 	const isMultiSelected = selectedIds.has(session.id) && selectedIds.size > 1;
 	const isHighlighted = highlightId === session.id && !isSelected;
-	const clampedDepth = Math.min(depth, 3);
 	const deletedWt =
 		!session.git?.worktree &&
 		!session.git?.branch &&
@@ -463,6 +453,7 @@ export function SessionRow({
 	).toLocaleString();
 	const rowTooltip = [
 		sessionDisplayName(session),
+		session.parentId ? `分叉自: ${parent ? sessionDisplayName(parent) : "已不在列表中的会话"}` : "",
 		session.git?.branch ? `分支: ${session.git.branch}${session.git.dirty ? ` (+${session.git.dirty})` : ""}` : "",
 		session.result ? `${session.result.kind === "test" ? "测试" : "构建"}: ${session.result.summary || (session.result.ok ? "✓" : "×")}` : "",
 		updatedAtTs,
@@ -472,7 +463,7 @@ export function SessionRow({
 			data-session-id={session.id}
 			onClick={handleRowClick}
 			onContextMenu={handleContextMenu}
-			style={{ paddingLeft: `${8 + indent + clampedDepth * 14}px` }}
+			style={{ paddingLeft: `${8 + indent}px` }}
 			className={clsx(
 				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-[8px] min-h-[28px] py-1 pr-2 transition-all",
 				isSelected
@@ -485,14 +476,6 @@ export function SessionRow({
 				deletedWt && "opacity-50",
 			)}
 		>
-			{/* Sub-branch indentation elbow guide */}
-			{clampedDepth > 0 && (
-				<CornerDownRight
-					size={12}
-					className="-ml-3 mr-0.5 shrink-0 text-neutral-600"
-				/>
-			)}
-
 			{/* Subgroup guide line segment — real element, positioned 4px left of
 			 *  the row edge so it lands under the branch icon's center, and only
 			 *  spans this row so no tail extends past the last session. */}
@@ -503,28 +486,18 @@ export function SessionRow({
 				/>
 			)}
 
-			{/* Side-chat children collapse toggle — leaf rows render no placeholder
-			 *  so their titles hug the spine (RFC T4 alignment intent). */}
-			{hasChildren && (
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						onToggleChildren?.(session.id);
-					}}
-					className="-ml-1 shrink-0 rounded p-0.5 text-neutral-500 hover:bg-neutral-700/60 hover:text-neutral-200"
-					title={childrenCollapsed ? "展开侧聊" : "折叠侧聊"}
-				>
-					{childrenCollapsed ? (
-						<ChevronRight size={11} />
-					) : (
-						<ChevronDown size={11} />
-					)}
-				</button>
-			)}
-
 			{/* Title column — status mark sits adjacent to the title with a small gap. */}
 			<div className="flex min-w-0 flex-1 items-center gap-1.5" title={rowTooltip}>
+				{/* Fork marker — forked sessions are ordinary flat rows; only this
+				 *  small icon (no indent, no toggle) tells them apart. */}
+				{session.parentId && (
+					<span
+						className="shrink-0 text-[var(--text-dim)]"
+						title={`分叉自: ${parent ? sessionDisplayName(parent) : "已不在列表中的会话"}`}
+					>
+						<GitFork size={11} />
+					</span>
+				)}
 				{isRenaming ? (
 					<input
 						ref={renameInputRef}

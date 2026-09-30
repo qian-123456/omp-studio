@@ -97,24 +97,22 @@ export function RightPanelHeader({
 			icon: Cpu,
 			iconColor: "text-purple-400",
 		},
+		{
+			id: "heatmap",
+			label: "Token 用量",
+			icon: Coins,
+			iconColor: "text-amber-400",
+		},
 	];
 
-	const HEATMAP_TAB = {
-		id: "heatmap" as RightTab,
-		label: "Token 用量",
-		icon: Coins,
-		iconColor: "text-amber-400",
-	};
-
-	const ALL_TABS = [...PRIMARY_TABS, HEATMAP_TAB];
-
 	const currentTabInfo =
-		ALL_TABS.find((t) => t.id === activeTab) || ALL_TABS[0];
+		PRIMARY_TABS.find((t) => t.id === activeTab) || PRIMARY_TABS[0];
+
 	const ActiveIcon = currentTabInfo.icon;
 	const activeBadge = tabBadges[activeTab] ?? 0;
 
 	return (
-		<div className="relative flex h-10 shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950/80 px-2 select-none">
+		<div className="relative flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-divider)] bg-neutral-950/80 px-2 select-none">
 			{/* Left controls: chevron + active tab pill + plus button matching Image 2 */}
 			<div className="flex items-center gap-1.5 min-w-0">
 				{/* Down Chevron button */}
@@ -181,32 +179,8 @@ export function RightPanelHeader({
 				</button>
 			</div>
 
-			{/* Right actions: compact heatmap toggle + toggle panel button */}
+			{/* Right action: toggle panel button */}
 			<div className="flex items-center gap-1">
-				<button
-					type="button"
-					onClick={() => {
-						if (activeTab === "heatmap") {
-							setRightTab(null);
-						} else {
-							setRightTab("heatmap");
-						}
-					}}
-					className={clsx(
-						"flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-						activeTab === "heatmap"
-							? "bg-amber-950/80 text-amber-300 border border-amber-800/60"
-							: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
-					)}
-					aria-label="Token 用量"
-					title={activeTab === "heatmap" ? "收起 Token 用量" : "查看 Token 用量"}
-				>
-					<Coins
-						size={14}
-						className={activeTab === "heatmap" ? "text-amber-400" : "text-neutral-400"}
-					/>
-				</button>
-
 				<button
 					type="button"
 					onClick={toggleRight}
@@ -256,33 +230,6 @@ export function RightPanelHeader({
 								</button>
 							);
 						})}
-
-						{/* Demoted secondary section: Heatmap */}
-						<div className="border-t border-neutral-800/80 pt-1 mt-1">
-							<button
-								type="button"
-								onClick={() => {
-									setRightTab("heatmap");
-									setMenuOpen(false);
-								}}
-								className={clsx(
-									"flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors",
-									activeTab === "heatmap"
-										? "bg-neutral-800 text-neutral-100 font-medium"
-										: "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
-								)}
-							>
-								<div className="flex items-center gap-2.5">
-									<Coins size={14} className="text-amber-400" />
-									<span>Token 用量 (统计分析)</span>
-								</div>
-								{tabBadges.heatmap > 0 && (
-									<span className="rounded-full bg-neutral-700/80 px-1.5 py-0.2 text-[10px] font-medium leading-tight text-neutral-300">
-										{tabBadges.heatmap}
-									</span>
-								)}
-							</button>
-						</div>
 					</div>
 				</div>
 			)}
