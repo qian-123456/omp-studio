@@ -46,6 +46,8 @@ src-tauri/src/
   notify/           native notifications, dock badge, sound                            [D]
   mobile/           LAN HTTP server, pairing, QR, SSE, cloudflared tunnel              [E]
   terminal/         PTY sessions                                                       [E]
+  schedules/        scheduled tasks, cadence, runner, background scheduler (§11 F)     [E]
+  skills/           skills & extensions catalog, frontmatter parse, reader (§11 G)     [F]
 src-tauri/mobile/index.html   mobile web app (single file, vanilla JS)                 [E]
 src-tauri/prompts/*.md + src/prompts.rs  prompt templates + render() ({{var}}, {{#if var}}..{{/if}}) [LEAD]
 extension/omp-workspace-status.ts   OMP status-report extension (§8)                   [E]
@@ -53,6 +55,9 @@ extension/omp-workspace-checkpoints.ts + autocommit-rule.md  turn checkpoints ex
 
 src/
   main.tsx, App.tsx          shell, three-pane layout, top bar                          [LEAD]
+  components/FloatingLayer.tsx  stacking portal, usableViewport clamp, Z_LAYER tiers (§12) [LEAD]
+  components/CenterHeader.tsx   top bar with window drag & sidebar/right toggles        [LEAD]
+  components/RightAside.tsx     collapsible right tab container                         [LEAD]
   lib/contracts.ts           TS mirror of contracts.rs                                  [LEAD]
   lib/ipc.ts                 typed wrappers for EVERY command in §7                     [LEAD]
   lib/events.ts              typed `listen` helpers for §5 events                       [LEAD]
@@ -63,20 +68,24 @@ src/
   stores/live.ts             per-session live RPC state (streaming, pending UI, subagents, state) [B]
   stores/explorer.ts         pinned explorer workspace (Git worktree map → explorer)    [C]
   stores/turnNav.ts          chat turn ⇄ git commit jump requests (§8.1)                [C]
-  stores/worktrees.ts        live git worktrees per workspace id (git_list_worktrees) [A]
-  features/sessions/         left column                                                [A]
-  features/chat/             center session view, composer, tool cards, diff, approvals, held queue [B]
+  stores/worktrees.ts        live git worktrees per workspace id (git_list_worktrees)   [A]
+  features/home/             composer-first start screen (StartPage)                    [A]
+  features/sessions/         left column, Codex-style navigation (§10)                  [A]
+  features/chat/             center session view, composer, turn grouping, tool cards, answer footer (§11 B) [B]
   features/sidechat/         right tab: forks                                           [B]
   features/heatmap/          right tab: minimap                                         [B]
   features/git/              right tab: changes + time machine; worktree dialogs        [C]
   features/services/         right tab: services                                        [C]
   features/editor/           center "文档" view: md preview/annotate/edit               [C]
-  features/todos/            home page queue + top-right capsule + subagent strip       [D]
-  features/backlog/          backlog page + quick capture modal                         [D]
+  features/todos/            queue store, smart detection logic, top capsule, todo row  [D]
+  features/inbox/            merged queue + backlog center page, useInboxBadge (§11 D)  [D]
+  features/backlog/          backlog store, quick capture modal (BacklogPanel removed)  [D]
+  features/schedules/        scheduled tasks center page, cadence editor, run history (§11 F) [E]
+  features/skills/           skills & extensions browser center page (§11 G)            [F]
   features/diagnose/         diagnose dialog                                            [D]
-  features/settings/         settings page (all toggles in §6 settings)                 [D]
+  features/settings/         settings page & overlay (categorized IA, §11 D)            [D]
   features/mobile/           pairing / tunnel panel (inside settings or its own modal)  [E]
-  features/terminal/         terminal view (xterm) for a session                        [E]
+  features/terminal/         terminal drawer & agent terminal center view               [E]
 ```
 
 Rules for parallel work:
@@ -127,7 +136,7 @@ pub enum PendingKind { Approval, Question, Review, Error, Interrupted }
 pub struct GitBadge { pub branch: Option<String>, pub dirty: u32, pub worktree: Option<String> }
 pub struct ResultBadge { pub kind: String /* "test" | "build" */, pub ok: bool, pub at: String, pub summary: String }
 
-pub struct SessionMeta {
+pub struct SessionMeta {                // #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
   pub id: String,                 // OMP session id (header.id)
   pub tool: String,               // always "omp"
   pub file: String,               // absolute jsonl path
@@ -161,12 +170,17 @@ pub enum TranscriptKind { User, Assistant, ToolResult, Bash, Custom, Compaction,
 pub struct ToolCall { pub id: String, pub name: String, pub args: serde_json::Value, pub intent: Option<String> }
 pub struct ToolResultInfo { pub tool_call_id: String, pub tool_name: String, pub text: String, pub is_error: bool, pub details: Option<serde_json::Value> }
 pub struct Usage { pub input: u64, pub output: u64, pub cache_read: u64, pub cache_write: u64, pub total_tokens: u64, pub cost: f64 }
+pub struct ImageAttachment {
+  pub id: String, pub marker: Option<String>, pub path: Option<String>,
+  pub mime_type: Option<String>, pub width: Option<u32>, pub height: Option<u32>,
+}
 pub struct TranscriptItem {
   pub id: String, pub parent_id: Option<String>, pub ts: String, pub kind: TranscriptKind,
   pub text: Option<String>, pub thinking: Option<String>,
   pub tool_calls: Vec<ToolCall>, pub tool_result: Option<ToolResultInfo>,
   pub usage: Option<Usage>, pub model: Option<String>, pub stop_reason: Option<String>,
   pub hidden: bool,               // custom_message display:false, system reminders
+  pub images: Vec<ImageAttachment>, // attached images (blob refs, clip files, or unresolvable markers)
 }
 pub struct TranscriptPage { pub session_id: String, pub items: Vec<TranscriptItem>, pub next_offset: u64 /* byte offset for incremental reads */, pub reset: bool }
 
@@ -181,8 +195,8 @@ pub struct StartOpts {
 }
 pub struct PendingUiRequest { pub session_id: String, pub request: serde_json::Value /* raw extension_ui_request */, pub received_at: String }
 
-pub enum TodoKind { Approval, Question, Error, Interrupted, Review, Suggestion, ServiceLeft }
-pub enum TodoSource { System, Supervisor }
+pub enum TodoKind { Approval, Question, Error, Interrupted, Review, Suggestion, ServiceLeft, ScheduleRun }
+pub enum TodoSource { System, Supervisor, Schedule } // Schedule: always visible (not gated by system/supervisor switches)
 pub enum TodoStatus { Open, Done, Ignored }
 pub struct Todo {
   pub id: String, pub kind: TodoKind, pub source: TodoSource, pub status: TodoStatus,
@@ -234,6 +248,45 @@ pub struct Settings {
   // … (later fields: see contracts.rs)
   pub turn_checkpoints: Option<bool>, // default None = never asked; Some(true) loads the checkpoints extension (§8.1)
 }
+
+// Schedules (定时任务)
+pub enum ScheduleRunMode { Local, Worktree }
+pub enum ScheduleCadence {
+  Interval { minutes: u32 },
+  Daily { time: String, weekdays: Vec<u32> },
+}
+pub enum ScheduleRunStatus { Running, Ok, Error, Skipped }
+pub struct Schedule {
+  pub id: String, pub name: String, pub prompt: String, pub cwd: String,
+  pub run_mode: ScheduleRunMode, pub cadence: ScheduleCadence,
+  pub model: Option<String>, pub thinking: Option<String>, pub approval_mode: Option<String>,
+  pub enabled: bool, pub next_run_at: Option<String>, pub last_run_at: Option<String>,
+  pub last_run_status: Option<ScheduleRunStatus>, // derived via subquery in store SCHEDULE_COLS
+  pub created_at: String, pub updated_at: String,
+}
+pub struct ScheduleDraft {
+  pub id: Option<String>, pub name: String, pub prompt: String, pub cwd: String,
+  pub run_mode: ScheduleRunMode, pub cadence: ScheduleCadence,
+  pub model: Option<String>, pub thinking: Option<String>, pub approval_mode: Option<String>,
+  pub enabled: bool,
+}
+pub struct ScheduleRun {
+  pub id: String, pub schedule_id: String, pub session_id: Option<String>,
+  pub status: ScheduleRunStatus, pub started_at: String, pub finished_at: Option<String>,
+  pub summary: Option<String>,
+}
+
+// Skills & Extensions catalog
+pub struct SkillItem {
+  pub name: String, pub description: String, pub source: String /* "project" | "user" */,
+  pub path: String /* SKILL.md */, pub dir: String,
+}
+pub struct ExtensionItem {
+  pub name: String, pub path: String, pub source: String /* "project" | "user" */, pub enabled: bool,
+}
+pub struct SkillsCatalog {
+  pub skills: Vec<SkillItem>, pub extensions: Vec<ExtensionItem>,
+}
 ```
 
 ## 5. AppState and events
@@ -276,8 +329,9 @@ Frontend events (`app.emit`), names are exact:
 | `terminal:exit` | `{ termId, code }` | E |
 | `tm:log` | `{ runId, line }` | C |
 | `quick-capture` | `null` (global shortcut fired) | D |
+| `schedules:changed` | `null` | E (schedules runner/scheduler/commands) |
 
-## 6. SQLite schema (`db.rs`, migrations v1 → v2)
+## 6. SQLite schema (`db.rs`, migrations v1 → v2 → v3)
 
 ```sql
 CREATE TABLE workspaces(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
@@ -298,6 +352,20 @@ CREATE TABLE summaries(session_id TEXT PRIMARY KEY, summary TEXT NOT NULL, upto_
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- single row key='settings' holding Settings JSON
 CREATE TABLE mobile_devices(token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, last_seen_at TEXT);
 CREATE TABLE pairing_codes(code TEXT PRIMARY KEY, expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0);
+  -- v3: scheduled tasks (schedules and schedule_runs tables)
+CREATE TABLE schedules(
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL, cwd TEXT NOT NULL,
+  run_mode TEXT NOT NULL DEFAULT 'local', cadence TEXT NOT NULL,
+  model TEXT, thinking TEXT, approval_mode TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1, next_run_at TEXT, last_run_at TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE schedule_runs(
+  id TEXT PRIMARY KEY, schedule_id TEXT NOT NULL, session_id TEXT,
+  status TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, summary TEXT,
+  FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_schedule_runs_schedule_id ON schedule_runs(schedule_id, started_at DESC);
 ```
 Use a `user_version` pragma for migrations. `db.rs` also provides `load_settings`/`save_settings`.
 
@@ -376,6 +444,18 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - Provider secrets: AES-256-GCM vault (`providers/vault.rs`, master key in macOS Keychain via security-framework). `env_pairs()` injects decrypted keys only; `OMP_WORKSPACE_PROVIDERS` metadata rides only into omp spawns (rpc/process, catalog list_models, todos/omp run_print, sidechat classify_route, term_open_session). Private extension `~/.omp-workspace/extension/omp-workspace-providers.ts` registers `ompws-<slug>` providers + models with OMP at spawn — never edits `~/.omp/agent/models.yml`.
 - `install_status_extension_globally() -> String` — copies the extension into `~/.omp/agent/extensions/` (opt-in button)
 
+**E — schedules (定时任务):**
+- `schedules_list() -> Vec<Schedule>`
+- `schedules_save(schedule: ScheduleDraft) -> Schedule`
+- `schedules_delete(id: String)`
+- `schedules_set_enabled(id: String, enabled: bool) -> Schedule`
+- `schedules_run_now(id: String) -> ScheduleRun`
+- `schedule_runs(schedule_id: String, limit: Option<u32>) -> Vec<ScheduleRun>`
+
+**F — skills & extensions (技能与扩展):**
+- `skills_list(cwd: Option<String>) -> SkillsCatalog`
+- `skills_read(path: String) -> String`
+
 ## 8. Status extension file format
 
 `extension/omp-workspace-status.ts` (OMP extension, default-export factory `(pi) => {...}`), hooks
@@ -431,6 +511,11 @@ pub async fn todos::summary(state: &AppState, session_id: &str, ensure: bool) ->
 pub fn todos::init(state: AppState); pub fn notify::init(state: AppState); pub fn backlog::init(state: AppState);
 // mobile/terminal (E)
 pub fn mobile::init(state: AppState);    // autostart when settings.mobile_enabled
+// schedules (E)
+pub fn schedules::init(state: AppState);    // start background scheduler & startup catch-up
+// todos (D helpers)
+pub fn todos::detect::reconcile_db(conn: &rusqlite::Connection, sessions: &[SessionMeta], live_pending: &[(String, Vec<PendingUiRequest>)], all_services: Vec<ServiceInfo>) -> bool; // resolves zombie & orphaned todos
+pub fn todos::detect::resolve_status_leaving(conn: &rusqlite::Connection, sid: &str, new: SessionStatus) -> bool;
 ```
 (`catalog::set_pending` is internal to A; listed only so nobody else writes `pending_kind`.)
 
@@ -442,29 +527,49 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 
 | Import | Rendered where |
 |---|---|
-| `features/sessions/SessionSidebar` | left column |
-| `features/chat/SessionView` (props `{ sessionId }`) | center when `ui.centerView === "session"` |
-| `features/editor/DocView` (props `{ path }`) | center when `centerView === "doc"` |
-| `features/todos/TodoHome` | center when `centerView === "home"` (default) |
-| `features/backlog/BacklogPage` | center when `centerView === "backlog"` |
-| `features/settings/SettingsPage` | center when `centerView === "settings"` |
+| `features/sessions/SessionSidebar` | left column (Codex-style vertical nav on top) |
+| `features/home/StartPage` | center when `ui.centerView === "home"` (default composer-first screen) |
+| `features/chat/SessionView` (props `{ sessionId }`) | center when `ui.centerView === "session"` (or `StartPage` if none selected) |
+| `features/editor/DocView` (props `{ path }`) | center when `centerView === "doc"` (or `StartPage` if none selected) |
+| `features/inbox/InboxPage` | center when `centerView === "inbox"` (merged queue + backlog) |
+| `features/schedules/SchedulesPage` | center when `centerView === "schedules"` |
+| `features/skills/SkillsPage` | center when `centerView === "skills"` |
+| `features/terminal/AgentTerminalPage` | center when `centerView === "agentTerminal"` |
+| `features/settings/SettingsOverlay` | overlay when `centerView === "settings"`, keeps underlying center view mounted |
+| `features/terminal/TerminalDrawer` | global bottom-drawer terminal (Codex-style overlay) |
 | `features/todos/TopCapsule` | top bar, right |
 | `features/backlog/QuickCapture` | global modal (always mounted) |
 | `features/diagnose/DiagnoseDialog` | global modal (always mounted; opened via `ui.openModal("diagnose", {sessionId})`) |
+| `features/git/QuickAskDialog` | global modal (opened via `ui.openModal("quick-ask")` or ⌘⇧K) |
 | `features/sidechat/SideChatPanel` | right tab `sidechat` |
 | `features/heatmap/HeatmapPanel` | right tab `heatmap` |
 | `features/git/GitPanel` | right tab `git` |
 | `features/services/ServicesPanel` | right tab `services` |
 | `features/todos/TodoPanel` | right tab `todos` |
+| `features/explorer/FileExplorer` | right tab `explorer` |
 | `features/terminal/TerminalView` (props `{ sessionId }`) | center, when `ui.sessionViewMode[sessionId] === "terminal"` (SessionView renders it) |
-| `features/mobile/MobilePanel` | inside SettingsPage (D imports it) |
+| `features/mobile/MobilePanel` | inside SettingsPage (under `mobile` section) |
 | `features/git/NewSessionDialog` | global modal (`ui.openModal("new-session", {workspaceId?, cwd?})`) |
 | `features/sessions/ResumeMissingCwdDialog` | global modal (`ui.openModal("resume-missing-cwd", {sessionId, cwd, repoRoot, worktreeName?})`, driven by `lib/ensureLive.ts`) |
 
+Sidebar navigation (Codex-style vertical nav list at the top of the left sidebar):
+1. **新建会话** (`⌘N`): opens new session flow; right-side button **快速提问** (`⌘⇧K`) opens `QuickAskDialog`.
+2. **收件箱**: `setCenter("inbox")`; unread badge via `useInboxBadge()` reading `useTodos.counts.open`.
+3. **定时任务**: `setCenter("schedules")`; management for automated schedule runs.
+4. **技能与扩展**: `setCenter("skills")`; browser for available skills and extension plugins.
+
 `stores/ui.ts` shape:
 ```ts
-type CenterView = "home" | "session" | "doc" | "backlog" | "settings";
-type RightTab = "sidechat" | "heatmap" | "todos" | "git" | "services";
+type CenterView =
+  | "home"
+  | "session"
+  | "doc"
+  | "inbox"
+  | "schedules"
+  | "skills"
+  | "settings"
+  | "agentTerminal";
+type RightTab = "explorer" | "sidechat" | "heatmap" | "todos" | "git" | "services";
 interface UiState {
   centerView: CenterView; selectedSessionId: string | null; docPath: string | null;
   rightTab: RightTab; rightOpen: boolean;
@@ -561,9 +666,20 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `SessionView`: header (label, title, status, model, context usage from `get_state.contextUsage`, usage chip from `session_usage`,
   ✅ 验收 / ✅ 验收并归档 when pending Review, 恢复 for interrupted/suspended, 接管 for external, 聊天/终端 toggle). Message stream from
   `get_transcript` + live frames (use `message_update.message` snapshots for the in-flight assistant message; on terminal `agent_end` re-fetch
-  transcript incrementally). Virtualized. User bubbles; assistant markdown; collapsible thinking; tool cards collapsed by default showing
-  intent/`i` + tool name + status; bash shows command+output; read/grep/glob show path/pattern; edit shows the diff from
-  `toolResult.details.diff` (format: lines like ` 38|text`, `+40|text`, `-41|text`); write shows content. Hidden items not shown (toggle).
+  transcript incrementally). Virtualized.
+- Turn grouping (`turnGrouping.ts`): normalizes linear transcript items into `DisplayBlock[]` (`TurnBlock` vs `ProtocolBlock`).
+  Each `TurnBlock` begins with a `user` item, aggregates intermediate `TurnStep`s (collapsible `thinking` blocks, `tool` calls paired with
+  their `tool_result`, intermediate `text` updates), and terminates on the final assistant `answerItem`, computing `stepCount` and total `durationMs`.
+  Standalone protocol items (`model_change`, `compaction`, `custom`, `system`) form `ProtocolBlock`s. Duration is formatted in Chinese via
+  `formatDurationChinese` (e.g. "12 秒", "1 分 23 秒"); model strings are cleaned to display names via `formatShortModel`.
+- Execution disclosure (`ExecutionDisclosure.tsx`): collapsible drawer displaying intermediate thinking processes, tool call cards
+  (with command, args, status, and inline diffs from `toolResult.details.diff`), and execution step counts.
+- Answer footer (`AnswerFooter.tsx`): rendered below each assistant message; displays duration, model badge, Git checkpoint status
+  (`TurnCheckpoint`: saved commit badge jumping to git timeline via `useTurnNav.showCommit`, modified files count toggle, single-click "撤回这一轮"
+  undo with conflict detection), copy button, and side-chat fork button.
+- Image attachments: `ImageAttachment` (blob refs, clip files, mimeType, width, height) rendered via `ImageChips.tsx` with Tauri asset
+  protocol (`protocol-asset` feature, scope `$HOME/.omp/agent/blobs/**`, `$APPCACHE/ompws-clip/**`) and full preview portaled at `Z_LAYER.modal`.
+  User bubbles; assistant markdown; hidden items not shown (toggle).
 - Diff view component: line numbers, +/- colors; select lines → "批注" → comment textarea → adds Annotation `{source:"diff", file, lines, comment, text}`.
 - Text selection anywhere in the stream → floating toolbar "引用" (addAnnotation) / "在侧聊中提问" (`requestSideChat`) / "记到收集箱" (open
   QuickCapture via `ui.openModal("quick-capture", {text, sessionId})`).
@@ -614,11 +730,14 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   checkbox + name (default slug) → `git_create_worktree` then `rpc_start({cwd: worktree.path, ...})`, optional first prompt → send `prompt`
   via `rpc_send`, then select the session. Warn "同仓库已有 N 个会话在跑，建议开 worktree" when applicable.
 
-### D — Smart todos, supervisor, summaries, diagnose, backlog, notifications, settings (backend + frontend)
+### D — Inbox (smart todos + backlog), supervisor, summaries, diagnose, notifications, settings (backend + frontend)
 - System detection (when `settings.system_detection`): subscribe to bus. Create/refresh todos with `dedupe_key`:
   approval/question `ui:<sessionId>:<requestId>` (payload `{uiRequest}`), review `review:<sessionId>`, error `error:<sessionId>`,
   interrupted `interrupted:<sessionId>`. Resolve automatically (status Done) when: `UiResponded` for that request; `SessionAccepted` or
-  `PromptSent` for review/question; session status leaves Error/Interrupted. Emit `todos:changed` with counts.
+  `PromptSent` for review/question; session status leaves Error/Interrupted (`resolve_status_leaving`). Emit `todos:changed` with counts.
+- Reconcile safety net (`todos::detect::reconcile_db`): periodically and on session rescan, resolves zombie todos whose sessions
+  were deleted or are missing from the catalog, resolves orphaned UI todos when the session is not live or the pending request was dismissed,
+  and syncs absent status todos.
 - `todos_act(done)` on a Review todo → call the same logic as `accept_session` (emit `SessionAccepted`; A reacts). On Approval todo the
   frontend shows Approve/Deny inline and calls `rpc_ui_respond`; the todo resolves via `UiResponded`.
 - Supervisor (when enabled): triggered by `supervisor_refresh` or debounced status changes (≥5 min apart). Builds a digest of recent sessions
@@ -633,24 +752,24 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   stop reasons, session_exit records), last assistant text. `DiagnoseDialog`: choose diagnoser: existing session (list) or new session
   (model input; cwd = target cwd) → send via `rpc_start` + `rpc_send prompt`; then navigate to the diagnoser session.
 - Backlog: CRUD + `backlog_build_prompt` (`prompts/backlog_dispatch.md`: item text + kind + each ref: session → label/title/summary,
-  file → path (+ first 200 lines if small), annotation → quoted text). `BacklogPage`: capture input with kind chips (idea/bug/todo) and
-  optional refs; list grouped by status (inbox / 已派发 with link to target session and its status / 完成 / 关闭); "派给 Agent" → choose
-  新会话 (workspace + model) or 现有会话 → send prompt → `backlog_update(status=dispatched, targetSessionId)`. Hint text (small, grey):
-  "额度用完/报错中断时先存进来；模型太贵时先攒着；会话正忙不想打断时先记下". Auto-mark Done when target session is accepted (SessionAccepted).
+  file → path (+ first 200 lines if small), annotation → quoted text). Auto-mark Done when target session is accepted (`SessionAccepted`).
 - `QuickCapture`: global shortcut (`global-shortcut` plugin, `settings.quick_capture_shortcut`) shows+focuses window, emits `quick-capture`;
   modal also opened via `ui.openModal("quick-capture", {text?, sessionId?})`. One line + kind + auto-ref to current session.
 - Notifications: on `SessionStatusChanged` → Review (turn end), AwaitingApproval/AwaitingAnswer, Error/Interrupted (exit), per settings;
-  skip when the main window is focused AND that session is selected (frontend reports focus/selection via... keep simple: skip only when window focused).
-  Dock badge = open todo count (`window.set_badge_count`). Optional sound (`sound: "default"`). `notify_test` command.
-- `TodoHome` (default center page): queue sorted by priority desc then time; most urgent highlighted; each row [处理] [忽略] [跳转会话];
-  处理: Approval → inline Approve/Deny; Question → inline answer (options or text); Review → 验收 / 验收并归档; Error/Interrupted → 恢复 (`rpc_ensure_live`)
-  / 诊断; Suggestion → run its action or 跳转; ServiceLeft → 停止服务. Done items collapsed at the bottom. Two switches shown at top
-  (系统检测 / 监工建议) bound to settings + 刷新监工 button.
+  skip when the main window is focused AND that session is selected. Dock badge = open todo count (`window.set_badge_count`). Optional sound (`sound: "default"`). `notify_test` command.
+- `InboxPage` (center when `centerView === "inbox"`): unified center page replacing separate TodoHome and BacklogPage.
+  Combines 智能待办 (system & supervisor todos + `schedule_run`, with direct actions: 审批, 验收, 恢复, 查看定时任务) and
+  需求与想法 (BacklogItems: idea/bug/todo, with dispatch to new/existing session); gear button navigates to Settings section `"inbox"`.
+- `useInboxBadge()`: reactive hook returning `useTodos((s) => s.counts.open)` for the sidebar 收件箱 unread badge.
 - `TopCapsule`: pill `待处理 open/total` (hidden if `!capsule_visible`), click → popover with the compact queue; second segment shows the selected
   session's subagents from `stores/live.ts` (运行中/完成/失败 counts, click → details list).
 - `TodoPanel` (right tab): same queue filtered to the selected session.
-- `SettingsPage`: all Settings fields grouped (通用 / 待办与监工 / 会话 / 通知 / 手机访问 (renders `MobilePanel`) / 高级 (omp binary,
-  install status extension button)).
+- `SettingsPage`: navigation organized into 5 top-level groups:
+  - 常规: `general` (通用), `appearance` (外观), `notifications` (通知)
+  - 模型: `providers` (API 供应商), `omp-roles` (模型角色), `omp-model` (模型与目录), `omp-thinking` (思考与采样), `omp-retry` (重试与回退)
+  - Agent: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `omp-context` (上下文与记忆), `omp-tools` (工具与审批), `omp-tasks` (任务与子代理)
+  - 连接: `mobile` (手机访问; renders `MobilePanel`), `omp-providers` (网络与扩展)
+  - 高级: `advanced` (高级), `omp-advanced` (其他 OMP 配置)
 
 ### E — Mobile access, terminal, status extension
 - `mobile`: axum server bound to `0.0.0.0:<mobile_port>` on `mobile_start`. Pairing: `mobile_create_pairing` makes a random 32-byte code
@@ -673,4 +792,39 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   (confirm) and switch back to chat (structured view re-reads the transcript).
   Quote capture: in `TerminalView`, Cmd+Shift+A (and a toolbar button) adds the current xterm selection as an Annotation `{source:"terminal"}`.
 - Extension (§8) + install at startup to `extension_path()` (overwrite when content differs) + `install_status_extension_globally`.
-```
+
+### F — Scheduled tasks (backend + frontend)
+- Cadence semantics: `ScheduleCadence::Interval { minutes }` (pure interval math) and `Daily { time: "HH:MM", weekdays: Vec<u32> }` (local-time, DST-safe search over next 14 days; empty weekdays = run every day).
+- Background scheduler (`schedules::scheduler`): calculates earliest `next_run_at` across enabled schedules; sleeps via `tokio::select!` with `tokio::sync::Notify` wakeups on mutations (`schedules_save`, `schedules_delete`, `schedules_set_enabled`).
+- Catch-up: on startup and sleep-wake loop, checks all enabled schedules where `next_run_at <= now`; executes them immediately and advances `next_run_at` to prevent missed runs.
+- Skip-if-running: if a schedule's previous run is still `Running`, automated triggers mark the run `Skipped` ("上一次运行仍在进行中，已跳过") and advance `next_run_at` without duplicate executions; manual `schedules_run_now` returns an explicit error.
+- Isolated execution: supports `local` cwd or `worktree` mode (creates isolated worktree `.worktrees/sched-<slug>-<id8>` via git).
+- Completion detection: spawns RPC session with label `⏰ <name>`, subscribes to bus; turn completion detected by transition to `SessionStatus::Review` or `Idle` (after work started) → `Ok`; `Error` / `Interrupted` / non-zero process exit → `Error`. Timeout cap 1 hour.
+- Todo write: writes `ScheduleRun` record with status and last assistant text summary, updates schedule's `last_run_at` (and derives `last_run_status` via `SCHEDULE_COLS` subquery), and writes a `Todo` with kind `schedule_run`, source `schedule` (always visible, not gated by system/supervisor switches), dedupe key `sched:<run_id>`, payload `{"scheduleId","runId","ok":bool}`. Emits `schedules:changed`.
+- Frontend `SchedulesPage` (`centerView === "schedules"`): lists scheduled tasks with toggle switches, human-readable cadence descriptions (`humanCadence.ts`), last run status badges (运行中/成功/失败/跳过), expandable run histories with log snippets, manual "立即运行" trigger, and `ScheduleEditorModal` for creating/editing drafts.
+
+### G — Skills & extensions catalog (backend + frontend)
+- Discovery roots:
+  - Project roots (walking up from `cwd` up to 5 levels or `.git`): `.omp/skills`, `.agents/skills`, `.agent/skills`, `.claude/skills`, `.codex/skills`, `.github/skills`; extensions in `.omp/extensions`.
+  - User global roots: `~/.omp/agent/skills`, `~/.omp/agent/managed-skills`, `~/.agents/skills`, `~/.agent/skills`, `~/.claude/skills`, `~/.codex/skills`; extensions in `~/.omp/agent/extensions`.
+- Cheap scanning: frontmatter parsing extracts `name` and `description` from the YAML header of `SKILL.md` without loading entire files; fallback to directory name when name is missing.
+- Invocation syntax: slash command `/skill:<name> [arguments]` (registered in omp) or `skill://<name>` URI. UI button inserts `/skill:<name> ` directly into active session composer draft and auto-focuses it.
+- Read path restriction: `skills_read` strictly verifies `is_path_allowed`: target must be a `.md` file, strictly contained within recognized project skill directory structures or standard user home skill roots. Rejects directory traversal (`..`) and paths outside allowed skill roots.
+- Extension disablement: checks `disabledExtensions` array in global/project config (`config.yml` / `settings.json`) matching extension names, module IDs (`extension-module:<name>`), or file paths; files ending in `.disabled` are also treated as disabled. Toggled via `omp_config_set`.
+- Frontend `SkillsPage` (`centerView === "skills"`): searchable catalog grouped by Skills and Extensions, with source badges (项目 / 全局), markdown preview modal (`skills_read`), toggle switches for extensions, and "在当前会话中使用" button.
+
+## 12. UI layering and overlay rules
+
+All floating and layered surfaces throughout the desktop app MUST adhere to the following rules:
+
+- **FloatingLayer portal**: All floating surfaces (menus, popovers, hovercards, context menus, tooltips, dialogs) MUST use `FloatingLayer` portaled to `document.body`, never inline absolute positioning.
+- **Viewport containment**: `FloatingLayer` automatically computes placement, flips to the opposite side when the preferred side lacks space, and clamps within `usableViewport()`. The usable viewport explicitly excludes the app bottom status bar (`[data-app-bottombar]`), ensuring floating surfaces never slide underneath it.
+- **Stacking tiers (`Z_LAYER`)**: Stacking order is strictly governed by `Z_LAYER` (mirrored as `--z-*` CSS variables in `index.css`), never ad-hoc integers:
+  - `drawer`: 40 (`--z-drawer: 40`) — e.g. global `TerminalDrawer`
+  - `modal`: 50 (`--z-modal: 50`) — e.g. `NewSessionDialog`, `QuickAskDialog`, `DiagnoseDialog`, `ResumeMissingCwdDialog`, `ScheduleEditorModal`, `ImageChip` full preview
+  - `popover`: 60 (`--z-popover: 60`) — e.g. `PerfPopover`, `SessionStatsPopover`, filter popovers
+  - `menu`: 65 (`--z-menu: 65`) — e.g. context menus, dropdown action menus (`plusMenu`, `wsMenu`, `ModelSelect`, `ThemeMenu`)
+  - `hovercard`: 70 (`--z-hovercard: 70`) — e.g. `SessionHoverCard`, `WorktreeHoverCard`, heatmap tooltips
+  - `toast`: 100 (`--z-toast: 100`) — global notification toasts
+- **No `position: fixed` inside `.vibrancy-chrome`**: Surfaces styled with `.vibrancy-chrome` apply `backdrop-filter: blur(20px) saturate(190%)`. By CSS specification, `backdrop-filter` creates a new containing block for `position: fixed` elements and a local stacking context, trapping any descendant with `position: fixed` or `z-index` and causing it to be clipped or painted over by sibling layout columns. Floating surfaces must always portal to `document.body` via `FloatingLayer`.
+- **Asset protocol & image preview**: Tauri asset protocol is enabled (`features = ["macos-private-api", "protocol-asset"]` in `Cargo.toml`, scopes `["$HOME/.omp/agent/blobs/**", "$APPCACHE/ompws-clip/**"]` in `tauri.conf.json`). Attached images (`ImageAttachment`) are rendered via `ImageChips.tsx`, and click-to-preview is portaled at `Z_LAYER.modal`.

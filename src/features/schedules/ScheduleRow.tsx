@@ -46,8 +46,8 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const selectSession = useUi((s) => s.selectSession);
 
-	const latestRun = runs[0];
-	const lastRunStatus = latestRun?.status;
+	// Runs load lazily on expand; the list row carries the latest status.
+	const lastRunStatus = runs[0]?.status ?? schedule.lastRunStatus ?? undefined;
 
 	const handleOpenSession = (sessionId: string | null) => {
 		if (sessionId) {

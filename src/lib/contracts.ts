@@ -623,6 +623,8 @@ export interface Schedule {
 	enabled: boolean;
 	nextRunAt: string | null;
 	lastRunAt: string | null;
+	/** Status of the most recent run (derived from schedule_runs). */
+	lastRunStatus: ScheduleRunStatus | null;
 	createdAt: string;
 	updatedAt: string;
 }

@@ -102,18 +102,25 @@ fn row_to_schedule(r: &Row) -> rusqlite::Result<Schedule> {
         last_run_at: r.get(11)?,
         created_at: r.get(12)?,
         updated_at: r.get(13)?,
+        last_run_status: r
+            .get::<_, Option<String>>(14)?
+            .as_deref()
+            .map(parse_run_status),
     })
+}
+
+fn parse_run_status(s: &str) -> ScheduleRunStatus {
+    match s {
+        "running" => ScheduleRunStatus::Running,
+        "ok" => ScheduleRunStatus::Ok,
+        "skipped" => ScheduleRunStatus::Skipped,
+        _ => ScheduleRunStatus::Error,
+    }
 }
 
 fn row_to_run(r: &Row) -> rusqlite::Result<ScheduleRun> {
     let status_str: String = r.get(3)?;
-    let status = match status_str.as_str() {
-        "running" => ScheduleRunStatus::Running,
-        "ok" => ScheduleRunStatus::Ok,
-        "error" => ScheduleRunStatus::Error,
-        "skipped" => ScheduleRunStatus::Skipped,
-        _ => ScheduleRunStatus::Error,
-    };
+    let status = parse_run_status(&status_str);
 
     Ok(ScheduleRun {
         id: r.get(0)?,
@@ -126,7 +133,8 @@ fn row_to_run(r: &Row) -> rusqlite::Result<ScheduleRun> {
     })
 }
 
-const SCHEDULE_COLS: &str = "id, name, prompt, cwd, run_mode, cadence, model, thinking, approval_mode, enabled, next_run_at, last_run_at, created_at, updated_at";
+const SCHEDULE_COLS: &str = "id, name, prompt, cwd, run_mode, cadence, model, thinking, approval_mode, enabled, next_run_at, last_run_at, created_at, updated_at, \
+    (SELECT status FROM schedule_runs WHERE schedule_runs.schedule_id = schedules.id ORDER BY started_at DESC LIMIT 1)";
 const RUN_COLS: &str = "id, schedule_id, session_id, status, started_at, finished_at, summary";
 
 pub fn list(conn: &Connection) -> Result<Vec<Schedule>, rusqlite::Error> {

@@ -23,6 +23,12 @@ import { useSkillsStore } from "./store";
 const INITIAL_PAGE_SIZE = 50;
 const PAGE_STEP = 50;
 
+/** Drop a leading YAML frontmatter block; name/description are shown in the header. */
+function stripFrontmatter(text: string): string {
+	const m = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+	return m ? text.slice(m[0].length).trimStart() : text;
+}
+
 export function SkillsPage() {
 	const catalog = useSkillsStore((s) => s.catalog);
 	const loading = useSkillsStore((s) => s.loading);
@@ -78,7 +84,7 @@ export function SkillsPage() {
 		skillsRead(selectedSkillPath)
 			.then((text) => {
 				if (!cancelled) {
-					setDetailContent(text);
+					setDetailContent(stripFrontmatter(text));
 					setDetailLoading(false);
 				}
 			})
@@ -543,7 +549,10 @@ export function SkillsPage() {
 							<div className="flex shrink-0 items-center justify-between border-b border-[var(--border-divider)] bg-[var(--bg-panel)] px-6 py-3.5">
 								<div className="min-w-0 flex-1 pr-4">
 									<div className="flex items-center gap-2">
-										<h2 className="text-base font-semibold text-neutral-100 truncate">
+										<h2
+											className="min-w-0 text-base font-semibold text-neutral-100 truncate"
+											title={activeSkill.name}
+										>
 											{activeSkill.name}
 										</h2>
 										<span
@@ -556,16 +565,18 @@ export function SkillsPage() {
 										>
 											{activeSkill.source === "project" ? "当前项目" : "全局"}
 										</span>
-										<span className="rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 text-xs font-mono shrink-0">
+									</div>
+									<div className="mt-1 flex min-w-0 items-center gap-2 text-xs">
+										<span className="shrink-0 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 px-1.5 py-px font-mono">
 											/skill:{activeSkill.name}
 										</span>
+										<span
+											className="min-w-0 truncate font-mono text-neutral-500"
+											title={activeSkill.path}
+										>
+											{activeSkill.path}
+										</span>
 									</div>
-									<p
-										className="mt-1 text-xs text-neutral-500 font-mono truncate"
-										title={activeSkill.path}
-									>
-										{activeSkill.path}
-									</p>
 								</div>
 
 								{/* Action Buttons */}

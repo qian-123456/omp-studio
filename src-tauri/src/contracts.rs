@@ -821,6 +821,8 @@ pub struct Schedule {
     pub enabled: bool,
     pub next_run_at: Option<String>,
     pub last_run_at: Option<String>,
+    /// Status of the most recent run (derived from schedule_runs).
+    pub last_run_status: Option<ScheduleRunStatus>,
     pub created_at: String,
     pub updated_at: String,
 }
