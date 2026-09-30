@@ -10,6 +10,7 @@ import { isComposing, useEscapeKey } from "../../lib/hooks";
 import {
 	appPaths,
 	deleteSession,
+	gitBadge,
 	gitCreateWorktree,
 	gitListBranches,
 	gitSummary,
@@ -28,6 +29,7 @@ import { NativeSelect } from "../../components/NativeSelect";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useWorktrees } from "../../stores/worktrees";
 import { useSettings } from "../settings/store";
 import { defaultSlug, runningInRepo } from "./helpers";
 
@@ -112,6 +114,8 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [isRepo, setIsRepo] = useState<boolean | null>(null);
+	/** Linked-worktree name when `cwd` already is one (null = main checkout). */
+	const [linkedWt, setLinkedWt] = useState<string | null>(null);
 	const repoCheck = useRef(0);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: fetch models once per dialog open (sessions read via getState)
@@ -236,6 +240,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 	// Detect whether the chosen cwd is inside a git repo (gates the worktree option).
 	useEffect(() => {
+		setLinkedWt(null);
 		if (!cwd) {
 			setIsRepo(null);
 			return;
@@ -248,6 +253,11 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 			.catch(() => {
 				if (seq === repoCheck.current) setIsRepo(false);
 			});
+		gitBadge(cwd)
+			.then((b) => {
+				if (seq === repoCheck.current) setLinkedWt(b?.worktree ?? null);
+			})
+			.catch(() => {});
 	}, [cwd]);
 	// Fetch branches when selected cwd is a git repo
 	useEffect(() => {
@@ -270,15 +280,19 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	}, [isRepo, cwd]);
 
 
-	// Sessions already running in the same repo → suggest a worktree.
+	// Sessions already running in the same checkout (same worktree of the
+	// same repo) → suggest a worktree. Other worktrees don't conflict.
 	const running = useMemo(
-		() => runningInRepo(Object.values(sessions), cwd),
-		[sessions, cwd],
+		() =>
+			runningInRepo(Object.values(sessions), cwd).filter(
+				(s) => (s.git?.worktree ?? null) === linkedWt,
+			),
+		[sessions, cwd, linkedWt],
 	);
 
-	const slug = defaultSlug(
-		wtName || propBranch || propCwd || cwd || "session",
-	);
+	// Never derive the name from the cwd path: that yields slugs like
+	// `users-<name>-documents-<repo>`. Timestamp fallback when nothing typed.
+	const slug = defaultSlug(wtName || propBranch || prompt);
 	const effectiveModel = modelSel === CUSTOM_MODEL ? customModel.trim() : modelSel;
 	const canSubmit =
 		!!cwd &&
@@ -317,6 +331,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					branch: propBranch || `${branchPrefix}${wtName.trim() || slug}`,
 					base: propBranch || !baseBranch ? undefined : baseBranch,
 				});
+				void useWorktrees.getState().refresh();
 				target = wt.path;
 			}
 			const { sessionId, stub } = await createSession({
@@ -546,10 +561,15 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 						disabled={isRepo !== true}
 						onChange={(e) => setUseWorktree(e.target.checked)}
 					/>
-					在独立工作树中运行
+					{linkedWt ? "另建一个新工作树" : "在独立工作树中运行"}
 					<span className="text-[10px] text-neutral-500">（单独的文件夹，改动互不影响）</span>
 					{isRepo === false && <span className="text-[10px]">（所选目录不是 git 仓库）</span>}
 				</label>
+				{linkedWt && !useWorktree && (
+					<div className="mb-2 text-[11px] text-emerald-300/90">
+						将直接在已有工作树「{linkedWt}」中运行，无需勾选上面的选项
+					</div>
+				)}
 				{useWorktree && (
 					<div className="mb-2.5 rounded-xl hairline bg-[var(--bg)]/60 p-3 space-y-2.5">
 						{!propBranch && (

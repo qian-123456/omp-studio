@@ -13,12 +13,15 @@ pub async fn rpc_start(
     crate::rpc::start(&state, &opts).await
 }
 
+/// `cwd`: optional override resume directory (repo main dir after the
+/// worktree was deleted); persisted as `session_meta.cwd_override`.
 #[tauri::command]
 pub async fn rpc_ensure_live(
     state: tauri::State<'_, AppState>,
     session_id: String,
+    cwd: Option<String>,
 ) -> Result<LiveSessionInfo, String> {
-    crate::rpc::ensure_live(&state, &session_id).await
+    crate::rpc::ensure_live(&state, &session_id, cwd).await
 }
 
 #[tauri::command]

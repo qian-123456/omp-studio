@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { useSessions } from "../stores/sessions";
 import { createSession } from "./createSession";
 import * as ipc from "./ipc";
 
@@ -114,5 +115,30 @@ describe("createSession", () => {
 
 		expect(result.stub.git).toBeNull();
 		expect(result.stub.repoRoot).toBeNull();
+	});
+
+	it("places a worktree session without explicit workspace in its project", async () => {
+		useSessions.setState({
+			workspaces: [
+				{ id: "g", path: "/home/.omp-workspace/global", name: "g", kind: "global", sort: 0 },
+				{ id: "repo", path: "/repo", name: "repo", kind: "project", sort: 1 },
+				{ id: "repo-other", path: "/repo-other", name: "o", kind: "project", sort: 2 },
+			],
+		});
+		vi.mocked(ipc.rpcStart).mockResolvedValue({
+			sessionId: "s_wt",
+			sessionFile: "/tmp/s_wt.jsonl",
+			pid: 1004,
+			cwd: "/repo/.worktrees/fix",
+		});
+		vi.mocked(ipc.gitBadge).mockResolvedValue({ branch: "omp/fix", dirty: 0, worktree: "fix" });
+		vi.mocked(ipc.gitRepoRoot).mockResolvedValue("/repo");
+
+		const wt = await createSession({ cwd: "/repo/.worktrees/fix", workspaceId: null });
+		expect(wt.stub.workspaceId).toBe("repo");
+
+		// An explicit choice still wins over path membership.
+		const explicit = await createSession({ cwd: "/repo/.worktrees/fix", workspaceId: "repo-other" });
+		expect(explicit.stub.workspaceId).toBe("repo-other");
 	});
 });

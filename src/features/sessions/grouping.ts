@@ -1,11 +1,15 @@
-import type { SessionMeta, Workspace } from "../../lib/contracts";
-
+import type { SessionMeta, WorktreeInfo, Workspace } from "../../lib/contracts";
+import { basename, isInside } from "../../lib/paths";
 export interface BranchSubgroup {
 	key: string;
 	kind: "worktree" | "branch" | "default";
 	label: string;
 	/** True when the group was inferred from cwd because the worktree is gone. */
 	deleted: boolean;
+	/** True for the repo's main checkout (first entry of git_list_worktrees). */
+	isMain: boolean;
+	/** Filesystem path of the worktree/checkout this subgroup represents. */
+	path?: string;
 	/**
 	 * Real directory sessions in this group run in — used for "new session in
 	 * this worktree/branch checkout". Undefined when it cannot be determined.
@@ -19,6 +23,9 @@ export interface WorkspaceGroup {
 	workspace: Workspace;
 	isGlobal: boolean;
 	subgroups: BranchSubgroup[];
+	/** Subgroups whose worktree dir was deleted — rendered in a dimmed folder
+	 *  at the bottom of the project group instead of inline. */
+	deletedSubgroups: BranchSubgroup[];
 	hasMultipleSubgroups: boolean;
 	totalCount: number;
 }
@@ -40,8 +47,12 @@ export interface GroupedSessionsResult {
 export interface GroupingOptions {
 	searchQuery?: string;
 	showArchived?: boolean;
-	/** Include sessions whose worktree was deleted (inferred from cwd). */
-	showDeletedWorktrees?: boolean;
+	/**
+	 * Live git worktrees per workspace id (`stores/worktrees.ts`). When a
+	 * workspace has a list, every entry becomes a subgroup — including empty
+	 * ones — and sessions attach by deepest cwd containment.
+	 */
+	worktrees?: Record<string, WorktreeInfo[]>;
 	/**
 	 * Filter sessions to a specific workspace ("all", "__global", "__unassigned", or a workspace.id).
 	 * When set to a specific workspace, only that workspace's sessions and relevant pins are returned.
@@ -76,11 +87,7 @@ export function filterSessions(
 	sessions: SessionMeta[],
 	options: GroupingOptions = {},
 ): SessionMeta[] {
-	const {
-		searchQuery = "",
-		showArchived = false,
-		showDeletedWorktrees = false,
-	} = options;
+	const { searchQuery = "", showArchived = false } = options;
 
 	const sessionById = new Map<string, SessionMeta>();
 	for (const s of sessions) {
@@ -105,14 +112,6 @@ export function filterSessions(
 
 	return sessions.filter((session) => {
 		if (!showArchived && isArchivedCascaded(session)) {
-			return false;
-		}
-		if (
-			!showDeletedWorktrees &&
-			!session.git?.worktree &&
-			!session.git?.branch &&
-			inferWorktreeName(session.cwd) !== null
-		) {
 			return false;
 		}
 		if (searchQuery && !matchesSearch(session, searchQuery)) {
@@ -148,11 +147,19 @@ export function inferWorktreeName(cwd: string): string | null {
 /**
  * Creates subgroups by worktree/branch.
  * If sessions belong to more than 1 worktree/branch, hasMultipleSubgroups = true.
+ *
+ * When `worktrees` (a live `git_list_worktrees` result; first entry = main
+ * checkout) is given, every listed worktree yields a subgroup — including
+ * ones with zero sessions — keyed `wtp:<path>`, labeled by branch name
+ * (falling back to the dir basename). Sessions attach by deepest cwd
+ * containment; sessions matching no listed worktree fall back to the
+ * badge/inferred bucketing below.
  */
 export function createSubgroups(
 	sessions: SessionMeta[],
+	worktrees?: WorktreeInfo[],
 ): { subgroups: BranchSubgroup[]; hasMultipleSubgroups: boolean } {
-	if (sessions.length === 0) {
+	if (sessions.length === 0 && (!worktrees || worktrees.length === 0)) {
 		return { subgroups: [], hasMultipleSubgroups: false };
 	}
 	const bucketMap = new Map<
@@ -165,7 +172,30 @@ export function createSubgroups(
 		}
 	>();
 
+	// Deepest-worktree-path-first so a nested checkout wins over its parents.
+	const liveWorktrees = worktrees
+		? [...worktrees].sort((a, b) => b.path.length - a.path.length)
+		: null;
+	const worktreeItems = new Map<string, SessionMeta[]>();
 	for (const s of sessions) {
+		if (liveWorktrees) {
+			// A cwd inside a `.worktrees/<name>` / `.cache/wt-<name>` dir can only
+			// belong to a live worktree that is itself inside such a dir — the
+			// main checkout must not swallow sessions from deleted worktrees.
+			const inWtDir = inferWorktreeName(s.cwd) !== null;
+			const wt = liveWorktrees.find(
+				(w) =>
+					isInside(s.cwd, w.path) &&
+					(!inWtDir || inferWorktreeName(w.path) !== null),
+			);
+			if (wt) {
+				const items = worktreeItems.get(wt.path) ?? [];
+				items.push(s);
+				worktreeItems.set(wt.path, items);
+				continue;
+			}
+		}
+
 		let key = "default";
 		let kind: "worktree" | "branch" | "default" = "default";
 		let label = "其他";
@@ -200,39 +230,69 @@ export function createSubgroups(
 		bucket.items.push(s);
 	}
 
-	const hasMultipleSubgroups = bucketMap.size > 1;
+	const subgroups: BranchSubgroup[] = [];
 
-	const subgroups: BranchSubgroup[] = Array.from(bucketMap.entries()).map(
-		([key, bucket]) => {
-			return {
-				key,
-				kind: bucket.kind,
-				label: bucket.label,
-				deleted: bucket.deleted,
-				createCwd: bucket.items[0]?.cwd,
-				sessions: [...bucket.items].sort(compareSessions),
-				totalCount: bucket.items.length,
-			};
-		},
+	// Live worktree subgroups first: main checkout, then the rest alphabetical
+	// by label (the list order itself is path-length sorted, so reorder here).
+	if (worktrees) {
+		const wtSubs = worktrees.map((wt, index) => ({
+			wt,
+			sub: {
+				key: `wtp:${wt.path}`,
+				kind: "worktree" as const,
+				label: wt.branch ?? basename(wt.path),
+				deleted: false,
+				isMain: index === 0,
+				path: wt.path,
+				createCwd: wt.path,
+				sessions: [...(worktreeItems.get(wt.path) ?? [])].sort(compareSessions),
+				totalCount: worktreeItems.get(wt.path)?.length ?? 0,
+			},
+		}));
+		wtSubs.sort((a, b) => {
+			if (a.sub.isMain !== b.sub.isMain) return a.sub.isMain ? -1 : 1;
+			return a.sub.label.localeCompare(b.sub.label);
+		});
+		for (const { sub } of wtSubs) subgroups.push(sub);
+	}
+
+	subgroups.push(
+		...Array.from(bucketMap.entries()).map(([key, bucket]) => ({
+			key,
+			kind: bucket.kind,
+			label: bucket.label,
+			deleted: bucket.deleted,
+			isMain: false,
+			createCwd: bucket.items[0]?.cwd,
+			sessions: [...bucket.items].sort(compareSessions),
+			totalCount: bucket.items.length,
+		})),
 	);
 
-	// Sort: 主仓库 first, live worktrees/branches alphabetical, deleted last.
+	// Live groups first (main/default before other worktrees/branches), deleted last.
 	subgroups.sort((a, b) => {
 		if (a.deleted !== b.deleted) return a.deleted ? 1 : -1;
+		if (a.isMain !== b.isMain) return a.isMain ? -1 : 1;
 		if (a.kind === "default" && b.kind !== "default") return -1;
 		if (b.kind === "default" && a.kind !== "default") return 1;
 		return a.label.localeCompare(b.label);
 	});
+
+	// Multiple live buckets means real worktree/branch spread; deleted groups
+	// render in a separate folder and don't count.
+	const hasMultipleSubgroups = subgroups.filter((s) => !s.deleted).length > 1;
 
 	return { subgroups, hasMultipleSubgroups };
 }
 
 /**
  * Main grouping function (PLAN.md §66-67):
- * 1. Filters sessions by query, archive status, deleted-worktree visibility.
+ * 1. Filters sessions by query and archive status.
  * 2. 🌐 Global workspace pinned on top (sessions under globalDir, not the
  *    unassigned bucket).
- * 3. Project workspaces follow in sort order, subgroups by worktree/branch.
+ * 3. Project workspaces follow in sort order, subgroups by live worktree
+ *    (`GroupingOptions.worktrees`) or worktree/branch badge; sessions whose
+ *    worktree dir is gone land in `deletedSubgroups` per workspace.
  * 4. Unassigned ("未归档") bucket + "已清理的 Worktree" bucket for unassigned
  *    sessions whose worktree directory is gone — kept visible (dimmed)
  *    instead of silently evaporating.
@@ -285,14 +345,32 @@ export function groupSessions(
 		.sort(compareSessions);
 	const unassigned = [...unassignedLive].sort(compareSessions);
 	const deletedSessions = [...unassignedDeleted].sort(compareSessions);
+	// While searching, drop empty subgroups so only real matches show.
+	const searching = (options.searchQuery ?? "").trim().length > 0;
+	const splitSubgroups = (
+		all: BranchSubgroup[],
+	): { live: BranchSubgroup[]; deleted: BranchSubgroup[] } => {
+		const live: BranchSubgroup[] = [];
+		const deleted: BranchSubgroup[] = [];
+		for (const sg of all) {
+			if (sg.deleted) {
+				deleted.push(sg);
+			} else if (!searching || sg.sessions.length > 0) {
+				live.push(sg);
+			}
+		}
+		return { live, deleted };
+	};
 	const workspaceGroups: WorkspaceGroup[] = projectWorkspaces.map((ws) => {
 		const items = (sessionMap.get(ws.id) ?? []).filter((s) => !isPinned(s));
-		const { subgroups, hasMultipleSubgroups } = createSubgroups(items);
+		const { subgroups } = createSubgroups(items, options.worktrees?.[ws.id]);
+		const { live, deleted } = splitSubgroups(subgroups);
 		return {
 			workspace: ws,
 			isGlobal: false,
-			subgroups,
-			hasMultipleSubgroups,
+			subgroups: live,
+			deletedSubgroups: deleted,
+			hasMultipleSubgroups: live.length > 1,
 			totalCount: items.length,
 		};
 	});
@@ -300,12 +378,14 @@ export function groupSessions(
 	const globalGroup: WorkspaceGroup | null = globalWs
 		? (() => {
 				const items = globalSessions.filter((s) => !isPinned(s));
-				const { subgroups, hasMultipleSubgroups } = createSubgroups(items);
+				const { subgroups } = createSubgroups(items);
+				const { live, deleted } = splitSubgroups(subgroups);
 				return {
 					workspace: globalWs,
 					isGlobal: true,
-					subgroups,
-					hasMultipleSubgroups,
+					subgroups: live,
+					deletedSubgroups: deleted,
+					hasMultipleSubgroups: live.length > 1,
 					totalCount: items.length,
 				};
 			})()

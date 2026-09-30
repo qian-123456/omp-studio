@@ -112,8 +112,8 @@ export const quickAsk = (prompt: string, model?: string) =>
 export const rpcStart = (opts: StartOpts) =>
 	invoke<LiveSessionInfo>("rpc_start", { opts });
 
-export const rpcEnsureLive = (sessionId: string) =>
-	invoke<LiveSessionInfo>("rpc_ensure_live", { sessionId });
+export const rpcEnsureLive = (sessionId: string, cwd?: string) =>
+	invoke<LiveSessionInfo>("rpc_ensure_live", { sessionId, cwd: cwd ?? null });
 
 export const rpcSend = (sessionId: string, command: unknown) =>
 	invoke<unknown>("rpc_send", { sessionId, command });

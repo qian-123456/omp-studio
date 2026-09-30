@@ -22,6 +22,9 @@ pub struct MetaRow {
     pub accepted_at: Option<String>,
     pub suspended: bool,
     pub seq: Option<i64>,
+    /// Resume-directory override (§3): set when the user chose to continue a
+    /// session whose original worktree dir was deleted in the repo's main dir.
+    pub cwd_override: Option<String>,
 }
 
 pub fn pending_to_str(p: PendingKind) -> &'static str {
@@ -63,7 +66,8 @@ pub fn load_meta_row(conn: &Connection, id: &str) -> MetaRow {
 fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<String, MetaRow>> {
     let mut stmt = conn.prepare_cached(
         "SELECT session_id, custom_name, label, pinned, archived, parent_session_id, fork_depth,
-                workspace_id, unread, pending_kind, pending_since, accepted_at, suspended, seq
+                workspace_id, unread, pending_kind, pending_since, accepted_at, suspended, seq,
+                cwd_override
          FROM session_meta WHERE ?1 IS NULL OR session_id = ?1",
     )?;
     let rows = stmt.query_map(params![id], |r| {
@@ -84,10 +88,22 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
                 accepted_at: r.get(11)?,
                 suspended: r.get::<_, i64>(12)? != 0,
                 seq: r.get(13)?,
+                cwd_override: r.get(14)?,
             },
         ))
     })?;
     rows.collect()
+}
+
+/// Persist (or clear with None) the resume-directory override; the catalog
+/// uses it as the session's effective cwd on the next recompute.
+pub fn set_cwd_override(conn: &Connection, id: &str, cwd: Option<&str>) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO session_meta(session_id, cwd_override) VALUES(?1, ?2)
+         ON CONFLICT(session_id) DO UPDATE SET cwd_override = excluded.cwd_override",
+        params![id, cwd],
+    )?;
+    Ok(())
 }
 
 /// Ensure a row exists and record the current file path.
@@ -324,13 +340,32 @@ pub mod tests {
                parent_session_id TEXT, fork_depth INTEGER NOT NULL DEFAULT 0,
                workspace_id TEXT, unread INTEGER NOT NULL DEFAULT 0, pending_kind TEXT, pending_since TEXT,
                accepted_at TEXT, last_seen_at TEXT, suspended INTEGER NOT NULL DEFAULT 0, created_by_app INTEGER NOT NULL DEFAULT 0,
-               seq INTEGER);
+               seq INTEGER, cwd_override TEXT);
              INSERT INTO workspaces VALUES('global', '/g', '🌐 全局', 'global', -1, 'now');",
         )
         .unwrap();
         conn
     }
 
+    #[test]
+    fn cwd_override_roundtrip() {
+        let c = test_conn();
+        ensure_row(&c, "s1", "/f1").unwrap();
+        assert_eq!(load_meta_row(&c, "s1").cwd_override, None);
+        set_cwd_override(&c, "s1", Some("/repo")).unwrap();
+        assert_eq!(
+            load_meta_row(&c, "s1").cwd_override.as_deref(),
+            Some("/repo")
+        );
+        set_cwd_override(&c, "s1", None).unwrap();
+        assert_eq!(load_meta_row(&c, "s1").cwd_override, None);
+        // Upsert on a missing row creates it.
+        set_cwd_override(&c, "s2", Some("/main")).unwrap();
+        assert_eq!(
+            load_meta_row(&c, "s2").cwd_override.as_deref(),
+            Some("/main")
+        );
+    }
     #[test]
     fn meta_roundtrip_and_patch() {
         let c = test_conn();

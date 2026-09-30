@@ -7,6 +7,8 @@ import { useShortPath } from "../../lib/hooks";
 import { gitDiff, gitListWorktrees, gitLog, gitRepoRoot, gitSummary, tmList } from "../../lib/ipc";
 import { basename } from "../../lib/paths";
 import { toast } from "../../lib/toast";
+import { HoverScrollText } from "../../components/HoverScrollText";
+import { WorktreeHoverCard } from "./WorktreeHoverCard";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useTurnNav } from "../../stores/turnNav";
@@ -76,6 +78,35 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	/** Bumped to make the focus pane reload (manual refresh, session activity). */
 	const [paneNonce, setPaneNonce] = useState(0);
 	const [diff, setDiff] = useState<DiffReq | null>(null);
+
+	// Top bar HoverCard state
+	const [topHoverOpen, setTopHoverOpen] = useState(false);
+	const [topAnchorRect, setTopAnchorRect] = useState<DOMRect | null>(null);
+	const topHoverTimer = useRef<number | null>(null);
+	const topCloseTimer = useRef<number | null>(null);
+
+	const handleTopMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+		if (topCloseTimer.current !== null) {
+			window.clearTimeout(topCloseTimer.current);
+			topCloseTimer.current = null;
+		}
+		const rect = e.currentTarget.getBoundingClientRect();
+		topHoverTimer.current = window.setTimeout(() => {
+			setTopAnchorRect(rect);
+			setTopHoverOpen(true);
+		}, 400);
+	};
+
+	const handleTopMouseLeave = () => {
+		if (topHoverTimer.current !== null) {
+			window.clearTimeout(topHoverTimer.current);
+			topHoverTimer.current = null;
+		}
+		topCloseTimer.current = window.setTimeout(() => {
+			setTopHoverOpen(false);
+			setTopAnchorRect(null);
+		}, 150);
+	};
 	/** Chat → git jump (contract §Frontend shared pieces). */
 	const revealCommit = useTurnNav((s) => s.revealCommit);
 	const handledReveal = useRef(0);
@@ -160,12 +191,18 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 		<div>
 			{/* Compact repo header: repo name + path + refresh */}
 			<div className="flex items-center justify-between border-b border-neutral-800/80 bg-neutral-900/40 px-3 py-1.5 text-xs">
-				<div className="flex items-center gap-1.5 min-w-0 flex-1">
+				<div
+					onMouseEnter={handleTopMouseEnter}
+					onMouseLeave={handleTopMouseLeave}
+					className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer"
+				>
 					<FolderTree size={13} className="text-emerald-400 shrink-0" />
-					<span className="font-semibold text-neutral-200 text-xs truncate" title={mainRoot ?? cwd}>
-						{basename(mainRoot ?? cwd)}
-					</span>
-					<span className="text-[10px] text-neutral-500 truncate" title={mainRoot ?? cwd}>
+					<HoverScrollText
+						text={basename(mainRoot ?? cwd)}
+						title=""
+						className="font-semibold text-neutral-200 text-xs truncate max-w-[140px]"
+					/>
+					<span className="text-[10px] text-neutral-500 truncate">
 						· {short(mainRoot ?? cwd)}
 					</span>
 				</div>
@@ -247,6 +284,15 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 			)}
 
 			{diff && <DiffModal title={diff.title} load={diff.load} onClose={() => setDiff(null)} />}
+
+			{/* Floating preview card to the LEFT for top repo */}
+			<WorktreeHoverCard
+				title={basename(mainRoot ?? cwd)}
+				path={mainRoot ?? cwd}
+				anchorRect={topAnchorRect}
+				open={topHoverOpen && topAnchorRect !== null}
+				isCurrent={true}
+			/>
 		</div>
 	);
 }

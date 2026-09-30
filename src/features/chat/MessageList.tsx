@@ -17,6 +17,7 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ToolCall, ToolResultInfo, TranscriptItem, TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
+import { isResumeCancelled } from "../../lib/ensureLive";
 import { createSideChat } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useLive, type AgentMessage, type LiveTool } from "../../stores/live";
@@ -466,7 +467,8 @@ function ItemRow({
 									await sendPrompt(sessionId, userText);
 									toast.success("正在重新发送…");
 								} catch (e) {
-									toast.error(`重新发送失败: ${errMsg(e)}`);
+									if (!isResumeCancelled(e))
+										toast.error(`重新发送失败: ${errMsg(e)}`);
 								}
 							}}
 							className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
@@ -912,7 +914,8 @@ export function MessageList({
 										await sendPrompt(sessionId, prompt);
 										toast.info("已发送指令");
 									} catch (e) {
-										toast.error(`发送失败: ${errMsg(e)}`);
+										if (!isResumeCancelled(e))
+											toast.error(`发送失败: ${errMsg(e)}`);
 									}
 								}}
 								className="press-scale cursor-pointer rounded-xl hairline bg-[var(--bg-panel)] p-3 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100"

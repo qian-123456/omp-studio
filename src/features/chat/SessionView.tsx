@@ -12,6 +12,7 @@ import {
 	rpcPendingUi,
 	rpcSend,
 } from "../../lib/ipc";
+import { cwdMissingPath } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
@@ -139,6 +140,9 @@ export function SessionView({
 		if (external) return;
 		if (!live?.alive || status === "interrupted" || status === "suspended") {
 			rpcEnsureLive(sessionId).catch((err) => {
+				// Deleted worktree: history stays readable; resume only happens
+				// via the explicit resume dialog (Composer/row actions).
+				if (cwdMissingPath(err) !== null) return;
 				console.warn(`[SessionView] auto-resume ${sessionId} failed:`, err);
 				toast.error("会话自动恢复失败: " + errMsg(err));
 			});

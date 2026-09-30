@@ -1,7 +1,8 @@
 /** [B] Shared prompt-send helpers for Composer and the held-queue bar. */
 
 import { create } from "zustand";
-import { rpcEnsureLive, rpcSend } from "../../lib/ipc";
+import { ensureLive } from "../../lib/ensureLive";
+import { rpcSend } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 
@@ -46,7 +47,7 @@ export async function sendPrompt(
 	// appears synchronously and never disappears or arrives after assistant stream.
 	useLive.getState().addUserEcho(sessionId, trimmed);
 	if (!useLive.getState().sessions[sessionId]?.alive) {
-		await rpcEnsureLive(sessionId);
+		await ensureLive(sessionId);
 	}
 	const streaming = useLive.getState().sessions[sessionId]?.streaming === true;
 	const command: Record<string, unknown> = { type: "prompt", message: trimmed };

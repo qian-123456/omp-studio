@@ -40,6 +40,12 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch(SCHEMA_V1)?;
         conn.pragma_update(None, "user_version", 1)?;
     }
+    // v2: sessions whose worktree dir was deleted can be resumed in the repo's
+    // main directory; the chosen cwd is persisted here (§6).
+    if version < 2 {
+        conn.execute_batch("ALTER TABLE session_meta ADD COLUMN cwd_override TEXT;")?;
+        conn.pragma_update(None, "user_version", 2)?;
+    }
     Ok(())
 }
 
@@ -92,4 +98,50 @@ pub fn ensure_global_workspace(conn: &Connection) -> rusqlite::Result<()> {
         rusqlite::params![path, chrono::Utc::now().to_rfc3339()],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// v1 schema -> migrate() -> v2 adds `cwd_override`, keeps rows.
+    #[test]
+    fn migrate_v2_adds_cwd_override() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        conn.execute(
+            "INSERT INTO session_meta(session_id, file_path) VALUES('s1', '/f')",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        let version: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(session_meta)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(cols.iter().any(|c| c == "cwd_override"));
+        let v: Option<String> = conn
+            .query_row(
+                "SELECT cwd_override FROM session_meta WHERE session_id='s1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(v, None);
+        // Fresh DB reaches v2 in one pass.
+        let fresh = Connection::open_in_memory().unwrap();
+        migrate(&fresh).unwrap();
+        let v2: u32 = fresh
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v2, 2);
+    }
 }

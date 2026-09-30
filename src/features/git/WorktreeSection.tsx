@@ -7,10 +7,11 @@ import { isComposing, useEscapeKey } from "../../lib/hooks";
 import { gitCreateWorktree, updateSessionMeta } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
+import { useWorktrees } from "../../stores/worktrees";
 import { useUi } from "../../stores/ui";
 import { defaultSlug } from "./helpers";
 import { removeWorktreeFlow } from "./removeWorktree";
-import { OrphanBadge } from "./OrphanBadge";
+import { OrphanBadge, OrphanInlinePanel, useOrphans } from "./OrphanBadge";
 import { WorktreeGraph } from "./WorktreeGraph";
 
 /** Worktrees of the repo with change counts, session labels, creation and switching.
@@ -35,6 +36,8 @@ export function WorktreeSection({
 	const [error, setError] = useState<string | null>(null);
 	const [collapsed, setCollapsed] = useState(false);
 	const [showCreate, setShowCreate] = useState(false);
+	const [showOrphans, setShowOrphans] = useState(false);
+	const orphanState = useOrphans(repo, onChanged);
 	const [newWtName, setNewWtName] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [cleaningPath, setCleaningPath] = useState<string | null>(null);
@@ -48,6 +51,7 @@ export function WorktreeSection({
 		setError(null);
 		try {
 			await gitCreateWorktree(repo, name);
+			void useWorktrees.getState().refresh();
 			toast.success(`已创建工作树：${name}`);
 			setNewWtName("");
 			setShowCreate(false);
@@ -78,6 +82,7 @@ export function WorktreeSection({
 						}
 					}
 				}
+				void useWorktrees.getState().refresh();
 				toast.success("已清理工作树，并自动归档关联会话");
 				onChanged();
 			}
@@ -119,7 +124,11 @@ export function WorktreeSection({
 					</span>
 				</button>
 				<div className="flex items-center gap-1.5">
-					<OrphanBadge cwd={repo} onChanged={onChanged} />
+					<OrphanBadge
+						count={orphanState.orphans.length}
+						open={showOrphans}
+						onToggle={() => setShowOrphans(!showOrphans)}
+					/>
 					{!collapsed && (
 						<button
 							type="button"
@@ -139,6 +148,22 @@ export function WorktreeSection({
 
 			{!collapsed && (
 				<div className="px-0.5 pt-0.5 pb-1">
+			{showOrphans && orphanState.orphans.length > 0 && (
+				<OrphanInlinePanel
+					orphans={orphanState.orphans}
+					busy={orphanState.busy}
+					cleaningPath={orphanState.cleaningPath}
+					error={orphanState.error}
+					home={orphanState.home}
+					onReclaim={orphanState.reclaim}
+					onReclaimAll={orphanState.reclaimAll}
+					onClose={() => setShowOrphans(false)}
+					onDismiss={() => {
+						orphanState.dismiss();
+						setShowOrphans(false);
+					}}
+				/>
+			)}
 			{showCreate && (
 				<div className="mb-2 rounded border border-neutral-800 bg-neutral-900/80 p-2 text-xs">
 					<div className="mb-1 text-[11px] text-neutral-400">新建并行工作树</div>

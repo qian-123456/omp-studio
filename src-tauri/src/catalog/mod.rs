@@ -28,6 +28,7 @@ use crate::paths;
 use crate::state::{AppEvent, AppState};
 use scan::{FileMap, GitInfo, Scanned};
 use status::{DeriveInput, Runtime};
+use store::MetaRow;
 
 /// Git facts are refreshed at most this often per cwd.
 const GIT_TTL: Duration = Duration::from_secs(5);
@@ -86,6 +87,19 @@ pub async fn set_pending(state: &AppState, session_id: &str, pending: Option<Pen
     recompute_async(state, Some(vec![session_id.to_string()])).await;
 }
 
+/// Persist a resume-directory override (`session_meta.cwd_override`) — chosen
+/// when the original worktree dir is gone — then recompute the session so
+/// `meta.cwd`, git facts and workspace membership follow the new cwd.
+pub async fn set_cwd_override(state: &AppState, session_id: &str, cwd: &str) {
+    {
+        let db = state.db.lock();
+        if let Err(e) = store::set_cwd_override(&db, session_id, Some(cwd)) {
+            tracing::warn!("set_cwd_override {session_id}: {e}");
+        }
+    }
+    recompute_async(state, Some(vec![session_id.to_string()])).await;
+}
+
 /// Full rescan (only changed files are re-parsed), then recompute every meta.
 pub(crate) async fn rebuild(state: &AppState) {
     let _guard = scan_lock().lock().await;
@@ -106,7 +120,22 @@ fn rebuild_blocking(state: &AppState) {
     let listed = files.len();
     let (map, changed) = scan::scan_files(files, &prev);
     let t_scan = t0.elapsed();
-    refresh_git(map.values().map(|s| s.head.cwd.clone()).collect(), false);
+    // Git facts key on the *effective* cwd (a persisted cwd_override wins over
+    // the transcript header's cwd), so meta rows load before refreshing.
+    let overrides: HashMap<String, MetaRow> = {
+        let db = state.db.lock();
+        store::load_meta_rows(&db).unwrap_or_default()
+    };
+    let empty_row = MetaRow::default();
+    refresh_git(
+        map.values()
+            .map(|s| {
+                scan::effective_cwd(&s.head, overrides.get(&s.head.id).unwrap_or(&empty_row))
+                    .to_string()
+            })
+            .collect(),
+        false,
+    );
     {
         let db = state.db.lock();
         for path in &changed {
@@ -217,20 +246,6 @@ fn refresh_git(cwds: Vec<String>, force: bool) -> Vec<String> {
     changed
 }
 
-#[cfg(test)]
-mod refresh_tests {
-    use super::*;
-
-    #[test]
-    fn git_refresh_respects_expiry_and_force() {
-        let now = Instant::now();
-        assert!(git_needs_refresh(None, false));
-        assert!(!git_needs_refresh(Some(now), false));
-        assert!(git_needs_refresh(Some(now), true));
-        assert!(git_needs_refresh(Some(now - GIT_TTL), false));
-    }
-}
-
 fn parse_ts(s: &str) -> Option<chrono::DateTime<chrono::FixedOffset>> {
     chrono::DateTime::parse_from_rfc3339(s).ok()
 }
@@ -298,6 +313,18 @@ fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
         }
         (rows, store::list_workspaces(&db).unwrap_or_default())
     };
+
+    // Refresh git facts for the effective cwd of each target (override-aware).
+    {
+        let empty_row = MetaRow::default();
+        let cwds = targets
+            .iter()
+            .map(|s| {
+                scan::effective_cwd(&s.head, rows.get(&s.head.id).unwrap_or(&empty_row)).to_string()
+            })
+            .collect();
+        refresh_git(cwds, false);
+    }
     let global_dir = paths::global_dir().to_string_lossy().to_string();
 
     // Compute phase.
@@ -317,11 +344,8 @@ fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
                 }
                 c.files.get(&PathBuf::from(p)).map(|ps| ps.head.id.clone())
             });
-            let git = c
-                .git
-                .get(&s.head.cwd)
-                .map(|g| g.1.clone())
-                .unwrap_or_default();
+            let eff_cwd = scan::effective_cwd(&s.head, &row).to_string();
+            let git = c.git.get(&eff_cwd).map(|g| g.1.clone()).unwrap_or_default();
             let mut meta = scan::build_meta(s, &row, &git, &workspaces, &global_dir, parent_id);
             let rt = c.runtime.get(id).cloned().unwrap_or_default();
             let is_live = rt.live || live.contains(id);
@@ -494,4 +518,18 @@ pub(crate) async fn delete(state: &AppState, session_id: &str) -> Result<(), Str
     }
     emit_changes(state, Vec::new(), vec![session_id.to_string()], Vec::new());
     Ok(())
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use super::*;
+
+    #[test]
+    fn git_refresh_respects_expiry_and_force() {
+        let now = Instant::now();
+        assert!(git_needs_refresh(None, false));
+        assert!(!git_needs_refresh(Some(now), false));
+        assert!(git_needs_refresh(Some(now), true));
+        assert!(git_needs_refresh(Some(now - GIT_TTL), false));
+    }
 }

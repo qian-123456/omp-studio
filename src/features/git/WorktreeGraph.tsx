@@ -1,10 +1,12 @@
 import clsx from "clsx";
 import { GitBranch, Info, Loader2, PanelRight, Plus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { addWorkspace, gitListBranches } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { HoverScrollText } from "../../components/HoverScrollText";
+import { WorktreeHoverCard } from "./WorktreeHoverCard";
 import { useExplorer } from "../../stores/explorer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -131,6 +133,46 @@ export function WorktreeGraph({
 	const [branches, setBranches] = useState<string[] | null>(null);
 	const [idleExpanded, setIdleExpanded] = useState(false);
 
+	// WorktreeHoverCard state (opens cleanly to the LEFT)
+	const [hoveredWt, setHoveredWt] = useState<WorktreeInfo | null>(null);
+	const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+	const hoverTimer = useRef<number | null>(null);
+	const closeTimer = useRef<number | null>(null);
+
+	const handleItemMouseEnter = (wt: WorktreeInfo, e: React.MouseEvent<HTMLDivElement>) => {
+		if (closeTimer.current !== null) {
+			window.clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+		const rect = e.currentTarget.getBoundingClientRect();
+		hoverTimer.current = window.setTimeout(() => {
+			setHoveredWt(wt);
+			setAnchorRect(rect);
+		}, 400);
+	};
+
+	const dismissHover = () => {
+		if (hoverTimer.current !== null) {
+			window.clearTimeout(hoverTimer.current);
+			hoverTimer.current = null;
+		}
+		if (closeTimer.current !== null) {
+			window.clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+		setHoveredWt(null);
+		setAnchorRect(null);
+	};
+
+	const handleItemMouseLeave = () => {
+		if (hoverTimer.current !== null) {
+			window.clearTimeout(hoverTimer.current);
+			hoverTimer.current = null;
+		}
+		closeTimer.current = window.setTimeout(() => {
+			dismissHover();
+		}, 150);
+	};
 	/** Worktree paths+branches as a change key: re-list branches whenever a
 	 *  worktree is created/removed/switched so the idle-branch list stays fresh. */
 	const worktreeKey = useMemo(
@@ -222,6 +264,8 @@ export function WorktreeGraph({
 
 									{/* Row content: Plan A Two-Line layout */}
 									<div
+										onMouseEnter={(e) => handleItemMouseEnter(wt, e)}
+										onMouseLeave={handleItemMouseLeave}
 										className={clsx(
 											"relative flex min-w-0 flex-1 flex-col justify-center rounded border px-2 py-1.5 transition-colors",
 											isSelected
@@ -242,19 +286,26 @@ export function WorktreeGraph({
 
 												<button
 													type="button"
-													onClick={() => onSelect(wt.path)}
+													onClick={() => {
+														dismissHover();
+														onSelect(wt.path);
+													}}
 													aria-pressed={isSelected}
 													className={clsx(
-														"min-w-0 flex-1 truncate font-mono text-xs font-medium text-left transition-colors",
+														"min-w-0 flex-1 font-mono text-xs font-medium text-left transition-colors",
 														isCurrent
 															? "text-emerald-300 font-semibold"
 															: isSelected
 																? "text-indigo-200"
 																: "text-neutral-200 hover:text-indigo-300",
 													)}
-													title={`查看这个工作树的改动和历史\n${wt.path}`}
 												>
-													{displayName}
+													<HoverScrollText
+														text={displayName}
+														extraEndPadding={78}
+														className="max-w-full"
+														title=""
+													/>
 												</button>
 											</div>
 
@@ -262,8 +313,10 @@ export function WorktreeGraph({
 											<div className="absolute right-1 top-1 flex items-center gap-1 shrink-0 bg-neutral-900/95 border border-neutral-700/80 rounded px-1 py-0.5 shadow-md opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
 												<button
 													type="button"
-													onClick={() => openInExplorer(wt.path)}
-													title="在右侧文件浏览器中打开该工作树目录"
+													onClick={() => {
+														dismissHover();
+														openInExplorer(wt.path);
+													}}
 													aria-label="在右侧文件浏览器中打开该工作树目录"
 													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 												>
@@ -272,10 +325,10 @@ export function WorktreeGraph({
 
 												<button
 													type="button"
-													onClick={() =>
-														openModal("new-session", { cwd: wt.path })
-													}
-													title="在此工作树新建会话"
+													onClick={() => {
+														dismissHover();
+														openModal("new-session", { cwd: wt.path });
+													}}
 													aria-label="在此工作树新建会话"
 													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 												>
@@ -286,7 +339,10 @@ export function WorktreeGraph({
 													<button
 														type="button"
 														disabled={isCleaning || isCurrent}
-														onClick={() => onClean(wt)}
+														onClick={() => {
+															dismissHover();
+															onClean(wt);
+														}}
 														title={
 															isCurrent
 																? "当前工作树使用中，无法清理"
@@ -470,12 +526,11 @@ export function WorktreeGraph({
 										<div className="flex min-w-0 items-center gap-1.5">
 											{/* Git branch badge/icon */}
 											<GitBranch size={12} className="shrink-0 text-neutral-500 group-hover:text-neutral-300 transition-colors" />
-											<span
-												className="truncate font-mono text-xs text-neutral-400 group-hover:text-neutral-200 transition-colors"
+											<HoverScrollText
+												text={branch}
+												className="font-mono text-xs text-neutral-400 group-hover:text-neutral-200 transition-colors"
 												title={branch}
-											>
-												{branch}
-											</span>
+											/>
 										</div>
 										{/* Action to spawn a worktree on this branch */}
 										<button
@@ -515,6 +570,14 @@ export function WorktreeGraph({
 					</div>
 				</div>
 			)}
+			{/* Floating preview card to the LEFT */}
+			<WorktreeHoverCard
+				wt={hoveredWt}
+				anchorRect={anchorRect}
+				open={hoveredWt !== null && anchorRect !== null}
+				isCurrent={hoveredWt?.path === current}
+				onClose={dismissHover}
+			/>
 		</div>
 	);
 }

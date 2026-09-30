@@ -1,8 +1,37 @@
 /** Shared session creation: start an omp RPC session, seed + select it. */
 
-import type { SessionMeta } from "./contracts";
+import type { SessionMeta, Workspace } from "./contracts";
 import { gitBadge, gitRepoRoot, rpcSend, rpcStart } from "./ipc";
 import { useLive } from "../stores/live";
+import { useSessions } from "../stores/sessions";
+
+function pathWithin(path: string, root: string): boolean {
+	const r = root.replace(/\/+$/, "");
+	return path === r || path.startsWith(`${r}/`);
+}
+
+/**
+ * Mirror of the backend's `catalog::scan::resolve_workspace` fallback: the
+ * project workspace containing `repoRoot ?? cwd` (longest path wins), else
+ * Global when `cwd` is under its dir. Keeps a stub started in a worktree dir
+ * (`<repo>/.worktrees/x`) or a custom path in its group instead of the
+ * collapsed unassigned bucket until the catalog resolves it.
+ */
+export function resolveWorkspaceId(
+	workspaces: Workspace[],
+	repoRoot: string | null,
+	cwd: string,
+): string | null {
+	for (const target of [repoRoot, cwd]) {
+		if (!target) continue;
+		const best = workspaces
+			.filter((w) => w.kind === "project" && pathWithin(target, w.path))
+			.sort((a, b) => b.path.length - a.path.length)[0];
+		if (best) return best.id;
+	}
+	const global = workspaces.find((w) => w.kind === "global");
+	return global && pathWithin(cwd, global.path) ? global.id : null;
+}
 
 export interface CreateSessionOpts {
 	cwd: string;
@@ -60,7 +89,9 @@ export async function createSession(
 		externalPid: null,
 		pinned: false,
 		archived: false,
-		workspaceId: opts.workspaceId ?? null,
+		workspaceId:
+			opts.workspaceId ??
+			resolveWorkspaceId(useSessions.getState().workspaces, repoRoot, live.cwd),
 		repoRoot,
 		git,
 		result: null,

@@ -14,7 +14,8 @@ import {
 	Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createSideChat, listModels, listWorkspaceFiles, readTextFile, rpcEnsureLive, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
+import { createSideChat, listModels, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
+import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ContextRing } from "./ContextRing";
 import { errMsg } from "../../lib/dialogs";
@@ -422,7 +423,7 @@ export function Composer({
 			clearDraft(sessionId);
 			clearAnnotations(sessionId);
 		} catch (err) {
-			toast.error(`发送失败: ${errMsg(err)}`);
+			if (!isResumeCancelled(err)) toast.error(`发送失败: ${errMsg(err)}`);
 		} finally {
 			setBusy(false);
 		}
@@ -870,13 +871,14 @@ export function Composer({
 												if (payload) {
 													try {
 														if (!live?.alive) {
-															await rpcEnsureLive(sessionId);
+															await ensureLive(sessionId);
 														}
 														await rpcSend(sessionId, payload);
 														await rpcSend(sessionId, { type: "get_state" });
 														toast.success("已切换模型");
 													} catch (err) {
-														toast.error(`切换模型失败: ${errMsg(err)}`);
+														if (!isResumeCancelled(err))
+															toast.error(`切换模型失败: ${errMsg(err)}`);
 													}
 												}
 												setModelOpen(false);

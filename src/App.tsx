@@ -32,6 +32,7 @@ import { NewSessionDialog } from "./features/git/NewSessionDialog";
 import { HeatmapPanel } from "./features/heatmap/HeatmapPanel";
 import { ServicesPanel } from "./features/services/ServicesPanel";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
+import { ResumeMissingCwdDialog } from "./features/sessions/ResumeMissingCwdDialog";
 import { SettingsOverlay } from "./features/settings/SettingsOverlay";
 import { SideChatPanel } from "./features/sidechat/SideChatPanel";
 import { StartPage } from "./features/home/StartPage";
@@ -922,6 +923,7 @@ export default function App() {
 			<QuickAskDialog />
 			<DiagnoseDialog />
 			<NewSessionDialog />
+			<ResumeMissingCwdDialog />
 			<SettingsOverlay />
 		</div>
 	);

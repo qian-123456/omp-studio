@@ -63,6 +63,7 @@ src/
   stores/live.ts             per-session live RPC state (streaming, pending UI, subagents, state) [B]
   stores/explorer.ts         pinned explorer workspace (Git worktree map → explorer)    [C]
   stores/turnNav.ts          chat turn ⇄ git commit jump requests (§8.1)                [C]
+  stores/worktrees.ts        live git worktrees per workspace id (git_list_worktrees) [A]
   features/sessions/         left column                                                [A]
   features/chat/             center session view, composer, tool cards, diff, approvals, held queue [B]
   features/sidechat/         right tab: forks                                           [B]
@@ -276,7 +277,7 @@ Frontend events (`app.emit`), names are exact:
 | `tm:log` | `{ runId, line }` | C |
 | `quick-capture` | `null` (global shortcut fired) | D |
 
-## 6. SQLite schema (`db.rs`, migration v1)
+## 6. SQLite schema (`db.rs`, migrations v1 → v2)
 
 ```sql
 CREATE TABLE workspaces(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
@@ -287,6 +288,7 @@ CREATE TABLE session_meta(
   workspace_id TEXT, unread INTEGER NOT NULL DEFAULT 0, pending_kind TEXT, pending_since TEXT,
   accepted_at TEXT, last_seen_at TEXT, suspended INTEGER NOT NULL DEFAULT 0, created_by_app INTEGER NOT NULL DEFAULT 0,
   seq INTEGER);                                  -- local number when title has no "#<n>"
+  -- v2 adds: session_meta.cwd_override TEXT    -- resume dir override picked after the original worktree dir was deleted
 CREATE TABLE todos(id TEXT PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL, session_id TEXT,
   title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL DEFAULT '{}', priority INTEGER NOT NULL DEFAULT 0,
   dedupe_key TEXT UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -322,7 +324,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **B — rpc:**
 - `rpc_start(opts: StartOpts) -> LiveSessionInfo`
-- `rpc_ensure_live(session_id) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions)
+- `rpc_ensure_live(session_id, cwd: Option<String>) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions). `cwd` overrides the transcript dir: it must exist, is persisted as `session_meta.cwd_override`, and the catalog meta is recomputed. When `cwd` is None and the located dir no longer exists, returns `Err("CWD_MISSING:<dir>")` so the frontend can offer 主目录 / 重建工作树 (`resume-missing-cwd` modal, `src/lib/ensureLive.ts`).
 - `rpc_send(session_id, command: Value) -> Value` — writes the command with a generated `id`, awaits the matching `response`, returns it (`success:false` → Err(error))
 - `rpc_ui_respond(session_id, response: Value)` — writes an `extension_ui_response`, emits `UiResponded`
 - `rpc_pending_ui(session_id) -> Vec<PendingUiRequest>` — outstanding dialog requests (select/confirm/input/editor)
@@ -408,10 +410,10 @@ pub async fn catalog::list(state: &AppState) -> Vec<SessionMeta>;
 pub async fn catalog::get(state: &AppState, session_id: &str) -> Option<SessionMeta>;
 pub async fn catalog::set_pending(state: &AppState, session_id: &str, pending: Option<PendingKind>);  // used by D's system detection? NO — A owns pending; D only reads
 pub fn catalog::init(state: AppState);   // spawn scanner/watcher/status tasks
+pub async fn catalog::set_cwd_override(state: &AppState, session_id: &str, cwd: &str); // persist cwd_override + recompute meta
 // rpc (B)
 pub async fn rpc::send_prompt(state: &AppState, session_id: &str, text: &str) -> Result<(), String>; // ensure_live + prompt (followUp when streaming)
-pub async fn rpc::ui_respond(state: &AppState, session_id: &str, response: serde_json::Value) -> Result<(), String>;
-pub async fn rpc::ensure_live(state: &AppState, session_id: &str) -> Result<LiveSessionInfo, String>;
+pub async fn rpc::ensure_live(state: &AppState, session_id: &str, cwd: Option<String>) -> Result<LiveSessionInfo, String>; // cwd=Some: persist as cwd_override + resume there
 pub async fn rpc::pending_ui(state: &AppState, session_id: &str) -> Vec<PendingUiRequest>;
 pub fn rpc::is_live(session_id: &str) -> bool;
 pub async fn rpc::stop(state: &AppState, session_id: &str) -> Result<(), String>; // E uses it before terminal view
@@ -457,6 +459,7 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/terminal/TerminalView` (props `{ sessionId }`) | center, when `ui.sessionViewMode[sessionId] === "terminal"` (SessionView renders it) |
 | `features/mobile/MobilePanel` | inside SettingsPage (D imports it) |
 | `features/git/NewSessionDialog` | global modal (`ui.openModal("new-session", {workspaceId?, cwd?})`) |
+| `features/sessions/ResumeMissingCwdDialog` | global modal (`ui.openModal("resume-missing-cwd", {sessionId, cwd, repoRoot, worktreeName?})`, driven by `lib/ensureLive.ts`) |
 
 `stores/ui.ts` shape:
 ```ts
@@ -485,6 +488,18 @@ interface ComposerState {
 export function formatWithAnnotations(text: string, anns: Annotation[]): string; // markdown quote blocks, numbered [1]..[n], diff comments as "文件 path 第 lines 行：comment"
 ```
 `stores/sessions.ts`: `{ sessions: Record<string, SessionMeta>; workspaces: Workspace[]; load(): Promise<void>; upsert(list); remove(ids) }`, wired to `sessions:updated/removed` at app start.
+
+`stores/worktrees.ts` shape:
+```ts
+interface WorktreesState {
+  byWorkspace: Record<string, WorktreeInfo[]>;   // live worktrees per workspace id; first entry = main checkout
+  refresh(workspaces?: Workspace[]): Promise<void>; // git_list_worktrees per project ws; errors/non-repo → []; in-flight deduped
+}
+```
+Sidebar grouping consumes it via `GroupingOptions.worktrees`: each listed worktree yields a
+subgroup (empty ones dimmed 暂无会话, main tagged 主目录), sessions attach by deepest cwd
+containment, and sessions in deleted worktree dirs group under a default-collapsed
+已清理的工作树 folder per project. Git worktree create/cleanup call sites must call `refresh()`.
 
 ## 11. Module specs
 

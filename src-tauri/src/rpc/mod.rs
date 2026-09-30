@@ -124,9 +124,31 @@ pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo
     Ok(info)
 }
 
+/// Error prefix the frontend recognizes to pop the "missing cwd" resume dialog.
+pub const CWD_MISSING_PREFIX: &str = "CWD_MISSING:";
+
+/// Some(err) when `cwd` cannot host a process (missing directory).
+fn cwd_missing_err(cwd: &str) -> Option<String> {
+    if cwd.is_empty() || !std::path::Path::new(cwd).is_dir() {
+        Some(format!("{CWD_MISSING_PREFIX}{cwd}"))
+    } else {
+        None
+    }
+}
+
 /// Start with `--resume <file>` if not live (suspended/interrupted/idle).
 /// Clears the `suspended` flag in session_meta.
-pub async fn ensure_live(state: &AppState, session_id: &str) -> Result<LiveSessionInfo, String> {
+///
+/// `cwd = Some(dir)`: user-chosen resume directory (e.g. the repo's main dir
+/// after its worktree was deleted). Must be an existing directory; it is
+/// persisted as `session_meta.cwd_override` and the catalog meta is recomputed.
+/// `cwd = None`: resume in the transcript/override cwd; when that directory no
+/// longer exists this fails with `CWD_MISSING:<cwd>` instead of spawning.
+pub async fn ensure_live(
+    state: &AppState,
+    session_id: &str,
+    cwd: Option<String>,
+) -> Result<LiveSessionInfo, String> {
     if let Some(handle) = get_handle(session_id) {
         handle.touch();
         return Ok(handle.info());
@@ -137,9 +159,25 @@ pub async fn ensure_live(state: &AppState, session_id: &str) -> Result<LiveSessi
         handle.touch();
         return Ok(handle.info());
     }
-    let (file, cwd) = find_session_file(state, session_id)
+    let (file, found_cwd) = find_session_file(state, session_id)
         .await
         .ok_or_else(|| format!("cannot locate session file for {session_id}"))?;
+    let cwd = match cwd {
+        Some(dir) => {
+            if !std::path::Path::new(&dir).is_dir() {
+                return Err(format!("目录不存在: {dir}"));
+            }
+            // Persist first so the recomputed meta reports the new cwd.
+            catalog::set_cwd_override(state, session_id, &dir).await;
+            dir
+        }
+        None => {
+            if let Some(err) = cwd_missing_err(&found_cwd) {
+                return Err(err);
+            }
+            found_cwd
+        }
+    };
     let info = start(
         state,
         &StartOpts {
@@ -155,7 +193,7 @@ pub async fn ensure_live(state: &AppState, session_id: &str) -> Result<LiveSessi
 
 /// ensure_live + prompt (followUp when streaming).
 pub async fn send_prompt(state: &AppState, session_id: &str, text: &str) -> Result<(), String> {
-    let info = ensure_live(state, session_id).await?;
+    let info = ensure_live(state, session_id, None).await?;
     let handle = get_handle(&info.session_id)
         .ok_or_else(|| "session not live after ensure_live".to_string())?;
     let streaming = handle.streaming.load(std::sync::atomic::Ordering::SeqCst);
@@ -234,6 +272,9 @@ pub async fn restart(state: &AppState, session_id: &str) -> Result<LiveSessionIn
     let (file, cwd) = find_session_file(state, session_id)
         .await
         .ok_or_else(|| format!("cannot locate session file for {session_id}"))?;
+    if let Some(err) = cwd_missing_err(&cwd) {
+        return Err(err);
+    }
     let info = start(
         state,
         &StartOpts {
@@ -256,7 +297,7 @@ pub async fn takeover_external(
     if let Some(pid) = meta.as_ref().and_then(|m| m.external_pid) {
         terminate_pid(pid).await;
     }
-    ensure_live(state, session_id).await
+    ensure_live(state, session_id, None).await
 }
 
 /// SIGTERM then SIGKILL after the grace window.
@@ -383,6 +424,18 @@ mod tests {
         assert_eq!(cwd, None);
     }
 
+    #[test]
+    fn cwd_missing_err_only_for_missing_dirs() {
+        // A real directory passes.
+        assert_eq!(cwd_missing_err("/tmp"), None);
+        // Missing directories produce the sentinel the frontend parses.
+        let err = cwd_missing_err("/definitely/not/here/ompws").unwrap();
+        assert!(err.starts_with(CWD_MISSING_PREFIX));
+        assert_eq!(
+            err.strip_prefix(CWD_MISSING_PREFIX).unwrap(),
+            "/definitely/not/here/ompws"
+        );
+    }
     #[test]
     fn registry_stale_monitor_does_not_remove_replacement_handle() {
         let session_id = format!("sess_{}", uuid::Uuid::new_v4());

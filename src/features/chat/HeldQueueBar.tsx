@@ -4,6 +4,7 @@
 import { ArrowDown, ArrowUp, Send, X } from "lucide-react";
 import { useState } from "react";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
+import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { type HeldItem, useHeldQueue } from "./heldQueue";
 import { sendPrompt } from "./send";
@@ -34,7 +35,8 @@ export function HeldQueueBar({
 			clear(sessionId);
 			toast.success("已合并发送暂存消息");
 		} catch (err) {
-			toast.error(`发送失败: ${errMsg(err)}`);
+			if (!isResumeCancelled(err))
+				toast.error(`发送失败: ${errMsg(err)}`);
 		} finally {
 			setSending(false);
 		}
@@ -50,7 +52,8 @@ export function HeldQueueBar({
 			remove(sessionId, index);
 			toast.success("已发送暂存消息");
 		} catch (err) {
-			toast.error(`发送失败: ${errMsg(err)}`);
+			if (!isResumeCancelled(err))
+				toast.error(`发送失败: ${errMsg(err)}`);
 		} finally {
 			setSending(false);
 		}

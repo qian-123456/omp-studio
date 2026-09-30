@@ -34,15 +34,17 @@ import {
 	deleteSession,
 	gitRemoveWorktree,
 	markSeen,
-	rpcEnsureLive,
 	takeoverExternal,
 	updateSessionMeta,
 } from "../../lib/ipc";
+import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { archiveSession } from "./archiveUndo";
 import { inferWorktreeName } from "./grouping";
+import { HoverScrollText } from "../../components/HoverScrollText";
+import { SessionHoverCard } from "./SessionHoverCard";
 interface SessionRowProps {
 	session: SessionMeta;
 	/** Extra left padding (px) for nesting under a subgroup header. */
@@ -172,6 +174,47 @@ export function SessionRow({
 	const [showAssignModal, setShowAssignModal] = useState(false);
 	const [showTakeoverModal, setShowTakeoverModal] = useState(false);
 	const [busy, setBusy] = useState(false);
+
+	// Superset-style HoverCard preview state
+	const [hoverCardOpen, setHoverCardOpen] = useState(false);
+	const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+	const hoverTimer = useRef<number | null>(null);
+	const closeTimer = useRef<number | null>(null);
+
+	const handleRowMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+		if (closeTimer.current !== null) {
+			window.clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+		const rect = e.currentTarget.getBoundingClientRect();
+		hoverTimer.current = window.setTimeout(() => {
+			setAnchorRect(rect);
+			setHoverCardOpen(true);
+		}, 400);
+	};
+
+	const handleRowMouseLeave = () => {
+		if (hoverTimer.current !== null) {
+			window.clearTimeout(hoverTimer.current);
+			hoverTimer.current = null;
+		}
+		closeTimer.current = window.setTimeout(() => {
+			setHoverCardOpen(false);
+		}, 150);
+	};
+
+	const handleCardMouseEnter = () => {
+		if (closeTimer.current !== null) {
+			window.clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+	};
+
+	const handleCardMouseLeave = () => {
+		closeTimer.current = window.setTimeout(() => {
+			setHoverCardOpen(false);
+		}, 150);
+	};
 
 	const menuRef = useRef<HTMLDivElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
@@ -361,10 +404,11 @@ export function SessionRow({
 		setMenuOpen(false);
 		setBusy(true);
 		try {
-			await rpcEnsureLive(session.id);
+			await ensureLive(session.id);
 			selectSession(session.id);
 		} catch (err) {
-			toast.error(`恢复会话失败: ${errMsg(err)}`);
+			if (!isResumeCancelled(err))
+				toast.error(`恢复会话失败: ${errMsg(err)}`);
 		} finally {
 			setBusy(false);
 		}
@@ -451,18 +495,13 @@ export function SessionRow({
 	const updatedAtTs = new Date(
 		session.updatedAt || session.createdAt,
 	).toLocaleString();
-	const rowTooltip = [
-		sessionDisplayName(session),
-		session.parentId ? `分叉自: ${parent ? sessionDisplayName(parent) : "已不在列表中的会话"}` : "",
-		session.git?.branch ? `分支: ${session.git.branch}${session.git.dirty ? ` (+${session.git.dirty})` : ""}` : "",
-		session.result ? `${session.result.kind === "test" ? "测试" : "构建"}: ${session.result.summary || (session.result.ok ? "✓" : "×")}` : "",
-		updatedAtTs,
-	].filter(Boolean).join(" · ");
 	return (
 		<div
 			data-session-id={session.id}
 			onClick={handleRowClick}
 			onContextMenu={handleContextMenu}
+			onMouseEnter={handleRowMouseEnter}
+			onMouseLeave={handleRowMouseLeave}
 			style={{ paddingLeft: `${8 + indent}px` }}
 			className={clsx(
 				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-[8px] min-h-[28px] py-1 pr-2 transition-all",
@@ -487,7 +526,7 @@ export function SessionRow({
 			)}
 
 			{/* Title column — status mark sits adjacent to the title with a small gap. */}
-			<div className="flex min-w-0 flex-1 items-center gap-1.5" title={rowTooltip}>
+			<div className="flex min-w-0 flex-1 items-center gap-1.5">
 				{/* Fork marker — forked sessions are ordinary flat rows; only this
 				 *  small icon (no indent, no toggle) tells them apart. */}
 				{session.parentId && (
@@ -524,21 +563,20 @@ export function SessionRow({
 						className="h-5 min-w-0 flex-1 rounded border border-indigo-500 bg-neutral-900 px-1 py-0 text-xs font-medium text-neutral-100 outline-none"
 					/>
 				) : (
-					<span
+					<HoverScrollText
+						text={sessionDisplayName(session)}
+						title=""
 						onDoubleClick={(e) => {
 							e.stopPropagation();
 							startInlineRename();
 						}}
 						className={clsx(
-							"min-w-0 truncate cursor-text text-xs transition-colors",
+							"min-w-0 flex-1 cursor-text text-xs transition-colors",
 							isSelected
 								? "font-semibold text-[var(--text)]"
 								: "font-normal text-[var(--text)]",
 						)}
-						title={sessionDisplayName(session)}
-					>
-						{sessionDisplayName(session)}
-					</span>
+					/>
 				)}
 				{busy ? (
 					<Loader2 size={11} className="shrink-0 animate-spin text-[var(--text-muted)]" />
@@ -1028,6 +1066,15 @@ export function SessionRow({
 					</div>
 				</div>
 			)}
+			{/* Superset HoverCard preview */}
+			<SessionHoverCard
+				session={session}
+				anchorRect={anchorRect}
+				open={hoverCardOpen && !menuOpen && !isRenaming}
+				workspaces={workspaces}
+				onMouseEnterCard={handleCardMouseEnter}
+				onMouseLeaveCard={handleCardMouseLeave}
+			/>
 		</div>
 	);
 }

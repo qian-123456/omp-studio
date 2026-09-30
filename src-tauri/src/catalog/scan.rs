@@ -246,6 +246,16 @@ pub struct GitInfo {
     pub repo_root: Option<String>,
 }
 
+/// The cwd the session effectively runs in: the persisted resume override
+/// (`session_meta.cwd_override`, chosen after the original worktree dir was
+/// deleted) wins over the cwd recorded in the transcript header.
+pub fn effective_cwd<'a>(head: &'a HeadInfo, row: &'a MetaRow) -> &'a str {
+    row.cwd_override
+        .as_deref()
+        .filter(|c| !c.trim().is_empty())
+        .unwrap_or(&head.cwd)
+}
+
 /// Build the static part of a SessionMeta (status fields are filled by the caller).
 pub fn build_meta(
     s: &Scanned,
@@ -257,11 +267,12 @@ pub fn build_meta(
 ) -> SessionMeta {
     let updated_at = chrono::DateTime::<chrono::Utc>::from(s.mtime)
         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let cwd = effective_cwd(&s.head, row);
     SessionMeta {
         id: s.head.id.clone(),
         tool: "omp".to_string(),
         file: s.path.to_string_lossy().to_string(),
-        cwd: s.head.cwd.clone(),
+        cwd: cwd.to_string(),
         title: resolve_title(s, row),
         label: resolve_label(s, row),
         created_at: s.head.created_at.clone(),
@@ -275,7 +286,7 @@ pub fn build_meta(
             row.workspace_id.as_deref(),
             workspaces,
             git.repo_root.as_deref(),
-            &s.head.cwd,
+            cwd,
             global_dir,
         ),
         repo_root: git.repo_root.clone(),
@@ -442,6 +453,34 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    #[test]
+    fn effective_cwd_prefers_override() {
+        let s = scanned(None, None, None, None);
+        let row = MetaRow {
+            cwd_override: Some("/repo".into()),
+            ..Default::default()
+        };
+        assert_eq!(effective_cwd(&s.head, &row), "/repo");
+        assert_eq!(effective_cwd(&s.head, &MetaRow::default()), "/repo/app");
+        // Blank overrides are ignored.
+        let blank = MetaRow {
+            cwd_override: Some("  ".into()),
+            ..Default::default()
+        };
+        assert_eq!(effective_cwd(&s.head, &blank), "/repo/app");
+        // build_meta puts the override into meta.cwd.
+        let meta = build_meta(&s, &row, &GitInfo::default(), &[], "/g", None);
+        assert_eq!(meta.cwd, "/repo");
+        let meta = build_meta(
+            &s,
+            &MetaRow::default(),
+            &GitInfo::default(),
+            &[],
+            "/g",
+            None,
+        );
+        assert_eq!(meta.cwd, "/repo/app");
+    }
     /// Timing check against the real session store (skipped when absent).
     #[test]
     fn real_sessions_scan_is_fast() {

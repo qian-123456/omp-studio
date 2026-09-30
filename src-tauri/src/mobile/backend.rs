@@ -50,7 +50,7 @@ impl Backend for AppBackend {
         crate::rpc::send_prompt(&self.0, id, text).await
     }
     async fn resume(&self, id: &str) -> Result<serde_json::Value, String> {
-        let info = crate::rpc::ensure_live(&self.0, id).await?;
+        let info = crate::rpc::ensure_live(&self.0, id, None).await?;
         serde_json::to_value(info).map_err(|e| e.to_string())
     }
     fn subscribe(&self) -> broadcast::Receiver<AppEvent> {

@@ -44,17 +44,22 @@ import {
 	removeWorkspace,
 	updateSessionMeta,
 } from "../../lib/ipc";
+import { isInside } from "../../lib/paths";
 import { toast } from "../../lib/toast";
+import { HoverScrollText } from "../../components/HoverScrollText";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useWorktrees } from "../../stores/worktrees";
 import { useArchiveUndo, undoArchive } from "./archiveUndo";
 import {
 	type BranchSubgroup,
 	DELETED_LABEL,
 	UNASSIGNED_LABEL,
 	groupSessions,
+	inferWorktreeName,
 } from "./grouping";
 import { SessionRow } from "./SessionRow";
+import { WorktreeHoverCard } from "../git/WorktreeHoverCard";
 
 /** Sessions shown per section before a "show more" row appears. */
 const RECENT_LIMIT = 3;
@@ -219,12 +224,9 @@ export function SessionSidebar() {
 	// Search & Archive controls
 	const [searchQuery, setSearchQuery] = useState("");
 	const [showArchived, setShowArchived] = useState(false);
-	// Default to false: sessions on deleted worktrees do not clutter the sidebar by default (PLAN.md §66)
-	const [showDeletedWt, setShowDeletedWt] = useState(false);
 	// Group open states (explicit user toggles). Defaults:
 	// - project/global workspaces: open
-	// - unassigned bucket: collapsed
-	// - deleted worktree bucket: collapsed
+	// - unassigned bucket + per-workspace deleted-worktree folders: collapsed
 	const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(() =>
 		readCollapsedGroups(),
 	);
@@ -376,16 +378,51 @@ export function SessionSidebar() {
 			return;
 		}
 	}, Boolean(wsDropdownOpen || filterPopoverOpen || plusMenu || wsMenu || assignAllTarget));
+	// Live worktrees per project workspace: refresh on workspace-list change,
+	// window focus, and (debounced) when a session lands in a worktree dir the
+	// store doesn't know about yet.
+	const worktrees = useWorktrees((s) => s.byWorkspace);
+	useEffect(() => {
+		void useWorktrees.getState().refresh(workspaces);
+	}, [workspaces]);
+	useEffect(() => {
+		const onFocus = () => void useWorktrees.getState().refresh();
+		window.addEventListener("focus", onFocus);
+		return () => window.removeEventListener("focus", onFocus);
+	}, []);
+	const worktreeRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const unmatchedCwdSigRef = useRef<string | null>(null);
+	useEffect(() => {
+		// Sessions whose cwd sits in a `.worktrees/<name>`-style dir that no
+		// known live worktree covers → a worktree was probably just created or
+		// deleted elsewhere; re-list so grouping catches up.
+		const sig = Object.values(sessions)
+			.filter(
+				(s) =>
+					s.workspaceId &&
+					inferWorktreeName(s.cwd) !== null &&
+					!(worktrees[s.workspaceId] ?? []).some((w) => isInside(s.cwd, w.path)),
+			)
+			.map((s) => s.id)
+			.sort()
+			.join(",");
+		if (sig === unmatchedCwdSigRef.current) return;
+		unmatchedCwdSigRef.current = sig;
+		clearTimeout(worktreeRefreshTimer.current ?? undefined);
+		worktreeRefreshTimer.current = setTimeout(() => {
+			void useWorktrees.getState().refresh();
+		}, 500);
+	}, [sessions, worktrees]);
 
 	// Compute grouped tree
 	const grouped = useMemo(() => {
 		return groupSessions(sessions, workspaces, {
 			searchQuery,
 			showArchived,
-			showDeletedWorktrees: showDeletedWt,
+			worktrees,
 			activeWorkspaceId,
 		});
-	}, [sessions, workspaces, searchQuery, showArchived, showDeletedWt, activeWorkspaceId]);
+	}, [sessions, workspaces, searchQuery, showArchived, worktrees, activeWorkspaceId]);
 
 	const isGroupOpen = (id: string, defaultOpen = true) => {
 		if (searching) return true; // expand matches while searching
@@ -420,6 +457,11 @@ export function SessionSidebar() {
 				for (const sg of wg.subgroups) {
 					list.push(...sg.sessions.map((s) => s.id));
 				}
+				if (isGroupOpen(`${wg.workspace.id}|__deleted`, false)) {
+					for (const sg of wg.deletedSubgroups) {
+						list.push(...sg.sessions.map((s) => s.id));
+					}
+				}
 			}
 		}
 		if (isGroupOpen("__unassigned", false)) {
@@ -435,7 +477,10 @@ export function SessionSidebar() {
 		const ids: string[] = [];
 		if (grouped.pinnedSessions.length > 0) ids.push("__pinned");
 		if (grouped.globalGroup) ids.push("__global");
-		for (const wg of grouped.workspaceGroups) ids.push(wg.workspace.id);
+		for (const wg of grouped.workspaceGroups) {
+			ids.push(wg.workspace.id);
+			if (wg.deletedSubgroups.length > 0) ids.push(`${wg.workspace.id}|__deleted`);
+		}
 		ids.push("__unassigned");
 		if (grouped.deletedSessions.length > 0) ids.push("__deleted");
 		return ids;
@@ -444,7 +489,7 @@ export function SessionSidebar() {
 	const areAllCollapsed = useMemo(() => {
 		if (allGroupIds.length === 0) return false;
 		return allGroupIds.every(
-			(id) => !isGroupOpen(id, id !== "__unassigned" && id !== "__deleted"),
+			(id) => !isGroupOpen(id, id !== "__unassigned" && !id.endsWith("__deleted")),
 		);
 	}, [allGroupIds, groupOpen, searching]);
 
@@ -683,6 +728,7 @@ export function SessionSidebar() {
 						`task-${Math.floor(Date.now() / 1000)}`,
 					);
 					cwd = wt.path;
+					void useWorktrees.getState().refresh();
 				}
 			}
 			const { sessionId, stub } = await createSession({
@@ -1061,14 +1107,14 @@ export function SessionSidebar() {
 						}}
 						className={clsx(
 							"relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95",
-							showArchived || showDeletedWt
+							showArchived
 								? "border-amber-500/40 bg-amber-500/15 text-amber-300"
 								: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 						)}
 						title="过滤与显示设置"
 					>
 						<SlidersHorizontal size={13} />
-						{(showArchived || showDeletedWt) && (
+						{showArchived && (
 							<span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-amber-400" />
 						)}
 					</button>
@@ -1246,17 +1292,6 @@ export function SessionSidebar() {
 								<span>显示已归档会话</span>
 							</div>
 							{showArchived && <Check size={13} className="text-indigo-400" />}
-						</button>
-						<button
-							type="button"
-							onClick={() => setShowDeletedWt((v) => !v)}
-							className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left transition-colors hover:bg-neutral-800"
-						>
-							<div className="flex items-center gap-2">
-								<FolderGit2 size={13} className="text-neutral-400" />
-								<span>显示已清理 Worktree</span>
-							</div>
-							{showDeletedWt && <Check size={13} className="text-indigo-400" />}
 						</button>
 						<div className="my-1 border-t border-neutral-800" />
 						<button
@@ -1438,11 +1473,15 @@ export function SessionSidebar() {
 										)
 									)
 								) : activeWs && grouped.workspaceGroups[0] ? (
-									grouped.workspaceGroups[0].totalCount > 0 ? (
-										// Semantics: every worktree/branch subgroup renders as CollapsibleSubgroup even when it is the only subgroup; bare default rows render with SessionList.
-										grouped.workspaceGroups[0].hasMultipleSubgroups ||
+									grouped.workspaceGroups[0].totalCount > 0 ||
+									grouped.workspaceGroups[0].subgroups.length > 1 ||
+									grouped.workspaceGroups[0].deletedSubgroups.length > 0 ? (
+										<>
+										{/* Semantics: every worktree/branch subgroup renders as CollapsibleSubgroup even when it is the only subgroup; a lone default/main checkout renders as a flat list. */}
+										{grouped.workspaceGroups[0].hasMultipleSubgroups ||
 										(grouped.workspaceGroups[0].subgroups[0] &&
-											grouped.workspaceGroups[0].subgroups[0].kind !== "default") ? (
+											grouped.workspaceGroups[0].subgroups[0].kind !== "default" &&
+											!grouped.workspaceGroups[0].subgroups[0].isMain) ? (
 											grouped.workspaceGroups[0].subgroups.map((sub) => (
 												<CollapsibleSubgroup
 													key={sub.key}
@@ -1480,7 +1519,28 @@ export function SessionSidebar() {
 												onRowFocus={focusList}
 												onBatchAction={handleBatchAction}
 											/>
-										)
+										)}
+										<DeletedWorktreesFolder
+											key={`${activeWs.id}|__deleted`}
+											folderKey={`${activeWs.id}|__deleted`}
+											ws={activeWs}
+											subgroups={grouped.workspaceGroups[0].deletedSubgroups}
+											searching={searching}
+											isOpen={isGroupOpen(`${activeWs.id}|__deleted`, false)}
+											onToggle={() => toggleGroup(`${activeWs.id}|__deleted`, false)}
+											onBatchArchive={batchArchiveSessions}
+											renderBubbleBadges={renderBubbleBadges}
+											getGroupStatusCounts={getGroupStatusCounts}
+											expanded={expandedSections}
+											onToggleSection={toggleSection}
+											onSetCount={setSectionCount}
+											workspaces={workspaces}
+											allVisibleIds={allVisibleIds}
+											onRowFocus={focusList}
+											onBatchAction={handleBatchAction}
+											onCreateSession={startSessionAt}
+										/>
+										</>
 									) : (
 										!searchQuery && (
 											<div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500">
@@ -1544,8 +1604,8 @@ export function SessionSidebar() {
 														className={clsx("shrink-0", palette.folderColor)}
 													/>
 													<span
-													className="font-bold text-[12.5px] text-[var(--text)] truncate"
-														title={grouped.globalGroup.workspace.path}
+					className="font-bold text-[12.5px] text-[var(--text)] truncate"
+						title=""
 													>
 														全局工作区
 													</span>
@@ -1634,12 +1694,11 @@ export function SessionSidebar() {
 															className={clsx("shrink-0", palette.folderColor)}
 														/>
 													)}
-													<span
-													className="font-bold text-[12.5px] text-[var(--text)] truncate"
-														title={`${wg.workspace.name} (${wg.workspace.path})`}
-													>
-														{wg.workspace.name}
-													</span>
+													<HoverScrollText
+														text={wg.workspace.name}
+														className="font-bold text-[12.5px] text-[var(--text)] min-w-0 flex-1"
+														title=""
+													/>
 													{renderBubbleBadges(statusCounts)}
 												</div>
 
@@ -1661,50 +1720,76 @@ export function SessionSidebar() {
 											{/* Workspace Group Body */}
 											{isOpen && (
 												<div className="pb-1">
-													{wg.totalCount === 0 ? (
+													{wg.totalCount === 0 &&
+													wg.subgroups.length <= 1 &&
+													wg.deletedSubgroups.length === 0 ? (
 														<div className="px-6 py-2 text-[11px] text-[var(--text-dim)] italic">
 															暂无会话
 														</div>
-													) : wg.hasMultipleSubgroups ||
-													  (wg.subgroups[0] &&
-															wg.subgroups[0].kind !== "default") ? (
-														wg.subgroups.map((sub) => (
-														<CollapsibleSubgroup
-															key={sub.key}
-															sub={sub}
-															scopeKey={`${wg.workspace.id}|${sub.key}`}
+													) : (
+														<>
+														{wg.hasMultipleSubgroups ||
+														(wg.subgroups[0] &&
+															wg.subgroups[0].kind !== "default" &&
+															!wg.subgroups[0].isMain) ? (
+															wg.subgroups.map((sub) => (
+															<CollapsibleSubgroup
+																key={sub.key}
+																sub={sub}
+																scopeKey={`${wg.workspace.id}|${sub.key}`}
+																searching={searching}
+																onSetCount={setSectionCount}
+																expanded={expandedSections}
+																onToggle={toggleSection}
+																onBatchArchive={() =>
+																	batchArchiveSessions(
+																		sub.label,
+																	sub.sessions,
+																	)
+																}
+																workspaces={workspaces}
+																allVisibleIds={allVisibleIds}
+																onRowFocus={focusList}
+																onBatchAction={handleBatchAction}
+																ws={wg.workspace}
+																onCreateSession={startSessionAt}
+															/>
+														))
+														) : (
+															<div className="ml-[22px] pl-2 my-0.5">
+																<SessionList
+																	sessions={wg.subgroups[0]?.sessions ?? []}
+																	scopeKey={`${wg.workspace.id}|default`}
+																	searching={searching}
+																	onSetCount={setSectionCount}
+																	expanded={expandedSections}
+																	workspaces={workspaces}
+																	allVisibleIds={allVisibleIds}
+																	onRowFocus={focusList}
+																	withSpine
+																/>
+															</div>
+														)}
+														<DeletedWorktreesFolder
+															folderKey={`${wg.workspace.id}|__deleted`}
+															ws={wg.workspace}
+															subgroups={wg.deletedSubgroups}
 															searching={searching}
-															onSetCount={setSectionCount}
+															isOpen={isGroupOpen(`${wg.workspace.id}|__deleted`, false)}
+															onToggle={() => toggleGroup(`${wg.workspace.id}|__deleted`, false)}
+															onBatchArchive={batchArchiveSessions}
+															renderBubbleBadges={renderBubbleBadges}
+															getGroupStatusCounts={getGroupStatusCounts}
 															expanded={expandedSections}
-															onToggle={toggleSection}
-															onBatchArchive={() =>
-																batchArchiveSessions(
-																	sub.label,
-																sub.sessions,
-																)
-															}
+															onToggleSection={toggleSection}
+															onSetCount={setSectionCount}
 															workspaces={workspaces}
 															allVisibleIds={allVisibleIds}
 															onRowFocus={focusList}
 															onBatchAction={handleBatchAction}
-															ws={wg.workspace}
 															onCreateSession={startSessionAt}
 														/>
-													))
-													) : (
-														<div className="ml-[22px] pl-2 my-0.5">
-															<SessionList
-																sessions={wg.subgroups[0]?.sessions ?? []}
-																scopeKey={`${wg.workspace.id}|default`}
-																searching={searching}
-																onSetCount={setSectionCount}
-																expanded={expandedSections}
-																workspaces={workspaces}
-																allVisibleIds={allVisibleIds}
-																onRowFocus={focusList}
-																withSpine
-															/>
-														</div>
+														</>
 													)}
 												</div>
 											)}
@@ -2204,12 +2289,58 @@ function CollapsibleSubgroup({
 	const isCollapsed = userExpanded !== undefined ? userExpanded === 1 : sub.deleted;
 	const open = searching || !isCollapsed;
 
+	// Branch / Worktree preview hover card (opens to the RIGHT)
+	const [hoverOpen, setHoverOpen] = useState(false);
+	const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+	const hoverTimer = useRef<number | null>(null);
+	const closeTimer = useRef<number | null>(null);
+
+	const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
+		if (closeTimer.current !== null) {
+			window.clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+		const rect = e.currentTarget.getBoundingClientRect();
+		hoverTimer.current = window.setTimeout(() => {
+			setAnchorRect(rect);
+			setHoverOpen(true);
+		}, 400);
+	};
+
+	const dismissHover = () => {
+		if (hoverTimer.current !== null) {
+			window.clearTimeout(hoverTimer.current);
+			hoverTimer.current = null;
+		}
+		if (closeTimer.current !== null) {
+			window.clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+		setHoverOpen(false);
+		setAnchorRect(null);
+	};
+
+	const handleMouseLeave = () => {
+		if (hoverTimer.current !== null) {
+			window.clearTimeout(hoverTimer.current);
+			hoverTimer.current = null;
+		}
+		closeTimer.current = window.setTimeout(() => {
+			dismissHover();
+		}, 150);
+	};
+
 	return (
-		<div className={clsx("mt-0.5 ml-[14px]", sub.deleted && "opacity-60 hover:opacity-100 transition-opacity")}>
+		<div className={clsx("mt-0.5 ml-[14px]", (sub.deleted || sub.sessions.length === 0) && "opacity-60 hover:opacity-100 transition-opacity")}>
 			<div className="group/sub flex items-center">
 				<button
 					type="button"
-					onClick={() => onToggle(`${scopeKey}|sub`)}
+					onClick={() => {
+						dismissHover();
+						onToggle(`${scopeKey}|sub`);
+					}}
+					onMouseEnter={handleMouseEnter}
+					onMouseLeave={handleMouseLeave}
 					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
 				>
 					{open ? (
@@ -2222,20 +2353,49 @@ function CollapsibleSubgroup({
 					) : (
 						<GitBranch size={12} className="text-purple-600 dark:text-purple-400 shrink-0" />
 					)}
-					<span className="min-w-0 truncate font-mono font-bold text-[var(--text)]">
-						{sub.label}
-					</span>
+					<HoverScrollText
+						text={sub.label}
+						className="min-w-0 flex-1 font-mono font-bold text-[var(--text)]"
+						title=""
+					/>
+					{sub.isMain && (
+						<span className="shrink-0 rounded bg-[var(--bg-hover)] px-1 text-[9px] text-[var(--text-dim)] font-normal">
+							主目录
+						</span>
+					)}
 					{sub.deleted && (
 						<span className="shrink-0 rounded bg-[var(--bg-hover)] px-1 text-[9px] text-[var(--text-dim)] font-normal">
 							已清理
 						</span>
 					)}
+					{!sub.deleted && sub.sessions.length === 0 && (
+						<span className="shrink-0 text-[10px] text-[var(--text-dim)] font-normal italic">
+							暂无会话
+						</span>
+					)}
 					{/* Session count stays hidden until the row is hovered */}
 				</button>
+				{!sub.deleted && sub.path && (
+					<button
+						type="button"
+						onClick={(e) => {
+							dismissHover();
+							e.stopPropagation();
+							revealItemInDir(sub.path!).catch((err) =>
+								toast.error(`在访达中打开失败: ${errMsg(err)}`),
+							);
+						}}
+						className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all duration-150 ease-out hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
+						title="在访达中打开"
+					>
+						<FolderOpen size={12} />
+					</button>
+				)}
 				{!sub.deleted && sub.createCwd && (
 					<button
 						type="button"
 						onClick={(e) => {
+							dismissHover();
 							e.stopPropagation();
 							onCreateSession(ws, sub.createCwd!);
 						}}
@@ -2249,6 +2409,7 @@ function CollapsibleSubgroup({
 					<button
 						type="button"
 						onClick={(e) => {
+							dismissHover();
 							e.stopPropagation();
 							onBatchArchive();
 						}}
@@ -2274,6 +2435,130 @@ function CollapsibleSubgroup({
 						onBatchAction={onBatchAction}
 						withSpine
 					/>
+				</div>
+			)}
+
+			{/* Floating preview card to the RIGHT into the main workspace */}
+			<WorktreeHoverCard
+				title={sub.label}
+				path={sub.path ?? sub.createCwd}
+				sessionCount={sub.sessions.length}
+				anchorRect={anchorRect}
+				open={hoverOpen && anchorRect !== null}
+				side="right"
+				isCurrent={sub.isMain}
+				onClose={dismissHover}
+			/>
+		</div>
+	);
+}
+
+interface GroupStatusCounts {
+	working: number;
+	awaiting: number;
+	review: number;
+	error: number;
+}
+
+interface DeletedWorktreesFolderProps {
+	folderKey: string;
+	ws: Workspace;
+	subgroups: BranchSubgroup[];
+	searching: boolean;
+	isOpen: boolean;
+	onToggle: () => void;
+	onBatchArchive: (title: string, sessions: SessionMeta[]) => Promise<void>;
+	renderBubbleBadges: (counts: GroupStatusCounts) => React.ReactNode;
+	getGroupStatusCounts: (
+		sessions: SessionMeta[] | BranchSubgroup[],
+	) => GroupStatusCounts;
+	expanded: Record<string, number>;
+	onToggleSection: (key: string) => void;
+	onSetCount: (key: string, count: number) => void;
+	workspaces: Workspace[];
+	allVisibleIds?: string[];
+	onRowFocus?: () => void;
+	onBatchAction?: (action: "archive" | "pin" | "delete", ids: string[]) => void;
+	onCreateSession: (ws: Workspace, cwd: string) => void;
+}
+
+/**
+ * Default-collapsed folder at the bottom of a project group listing worktree
+ * subgroups whose directory was deleted (§已清理的工作树). Rows stay readable;
+ * continue-in-repo vs recreate-worktree is handled when resuming.
+ */
+function DeletedWorktreesFolder({
+	folderKey,
+	ws,
+	subgroups,
+	searching,
+	isOpen,
+	onToggle,
+	onBatchArchive,
+	renderBubbleBadges,
+	getGroupStatusCounts,
+	expanded,
+	onToggleSection,
+	onSetCount,
+	workspaces,
+	allVisibleIds,
+	onRowFocus,
+	onBatchAction,
+	onCreateSession,
+}: DeletedWorktreesFolderProps) {
+	if (subgroups.length === 0) return null;
+	const allDeleted = subgroups.flatMap((sg) => sg.sessions);
+	return (
+		<div className="mt-0.5 ml-[14px] opacity-60 hover:opacity-100 transition-opacity">
+			<div className="group/del flex items-center">
+				<button
+					type="button"
+					onClick={onToggle}
+					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
+				>
+					{isOpen || searching ? (
+						<ChevronDown size={11} className="shrink-0 text-[var(--text-dim)]" />
+					) : (
+						<ChevronRight size={11} className="shrink-0 text-[var(--text-dim)]" />
+					)}
+					<FolderGit2 size={12} className="text-[var(--text-dim)] shrink-0" />
+					<span className="min-w-0 truncate text-[var(--text-dim)]">
+						已清理的工作树 ({subgroups.length})
+					</span>
+					{renderBubbleBadges(getGroupStatusCounts(subgroups))}
+				</button>
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						void onBatchArchive("已清理的工作树", allDeleted);
+					}}
+					className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all duration-150 ease-out hover:bg-neutral-700/60 hover:text-amber-300"
+					title="一键归档全部已清理 Worktree 的会话"
+				>
+					<Archive size={11} />
+				</button>
+			</div>
+			{(isOpen || searching) && (
+				<div className="ml-[8px]">
+					{subgroups.map((sub) => (
+						<CollapsibleSubgroup
+							key={`${folderKey}|${sub.key}`}
+							sub={sub}
+							scopeKey={`${folderKey}|${sub.key}`}
+							searching={searching}
+							onSetCount={onSetCount}
+							expanded={expanded}
+							onToggle={onToggleSection}
+							onBatchArchive={() => onBatchArchive(sub.label, sub.sessions)}
+							workspaces={workspaces}
+							allVisibleIds={allVisibleIds}
+							onRowFocus={onRowFocus}
+							onBatchAction={onBatchAction}
+							ws={ws}
+							onCreateSession={onCreateSession}
+						/>
+					))}
 				</div>
 			)}
 		</div>

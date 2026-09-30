@@ -24,10 +24,10 @@ import {
 	backlogBuildPrompt,
 	backlogUpdate,
 	dispatchPrompt,
-	rpcEnsureLive,
 	rpcUiRespond,
 	servicesStop,
 } from "../../lib/ipc";
+import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -209,12 +209,16 @@ export function TodoRow({
 		setBusy(true);
 		setError(null);
 		try {
-			await rpcEnsureLive(todo.sessionId);
+			await ensureLive(todo.sessionId);
 			await actTodo(todo.id, "done");
 			await refreshTodos();
 			toast.success("已恢复会话运行");
 			onAction?.();
 		} catch (e) {
+			if (isResumeCancelled(e)) {
+				setBusy(false);
+				return;
+			}
 			const msg = errMsg(e);
 			setError(msg);
 			toast.error(msg);
