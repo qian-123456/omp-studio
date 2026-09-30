@@ -10,6 +10,7 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { defaultSlug } from "./helpers";
 import { removeWorktreeFlow } from "./removeWorktree";
+import { OrphanBadge } from "./OrphanBadge";
 import { WorktreeGraph } from "./WorktreeGraph";
 
 /** Worktrees of the repo with change counts, session labels, creation and switching.
@@ -89,49 +90,55 @@ export function WorktreeSection({
 	};
 
 	return (
-	<section className="rounded-lg border border-neutral-800 bg-neutral-900/50">
-		<div className="flex items-center justify-between px-3 py-2">
-			<button
-				type="button"
-				onClick={() => setCollapsed(!collapsed)}
-				className="flex items-center gap-1.5 text-xs font-medium text-neutral-300 hover:text-neutral-100"
-			>
-				<ChevronDown
-					size={13}
-					className={clsx("transition-transform text-neutral-400", collapsed && "-rotate-90")}
-				/>
-				<GitBranch size={13} className="text-emerald-400" />
-				<span>并行工作树</span>
-				{worktrees.length > 0 && (
-					<span className="rounded-full bg-neutral-800 px-1.5 py-0.5 text-[10px] font-mono text-neutral-400">
-						{worktrees.length}
-					</span>
-				)}
-				<span
-					title="每个工作树是一份独立代码目录，让多个任务并行互不干扰；点右侧 + 新建"
-					className="text-neutral-500 hover:text-neutral-300 transition-colors"
-					onClick={(e) => {
-						e.stopPropagation();
-					}}
-				>
-					<Info size={12} />
-				</span>
-			</button>
-			{!collapsed && (
+		<section className="space-y-1">
+			<div className="flex items-center justify-between px-1 py-1 text-xs">
 				<button
 					type="button"
-					title="新建并行工作树"
-					aria-label="新建并行工作树"
-					onClick={() => setShowCreate(!showCreate)}
-					className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 focus:opacity-100"
+					onClick={() => setCollapsed(!collapsed)}
+					className="flex items-center gap-1.5 font-medium text-neutral-300 hover:text-neutral-100 transition-colors"
 				>
-					<Plus size={13} />
+					<ChevronDown
+						size={13}
+						className={clsx("transition-transform text-neutral-400", collapsed && "-rotate-90")}
+					/>
+					<GitBranch size={13} className="text-emerald-400" />
+					<span>并行工作树</span>
+					{worktrees.length > 0 && (
+						<span className="rounded-full bg-neutral-800 px-1.5 py-0.2 text-[10px] font-mono text-neutral-400">
+							{worktrees.length}
+						</span>
+					)}
+					<span
+						title="每个工作树是一份独立代码目录，让多个任务并行互不干扰；点右侧 + 新建"
+						className="cursor-help text-neutral-500 hover:text-neutral-300 transition-colors"
+						onClick={(e) => {
+							e.stopPropagation();
+						}}
+					>
+						<Info size={12} />
+					</span>
 				</button>
-			)}
-		</div>
+				<div className="flex items-center gap-1.5">
+					<OrphanBadge cwd={repo} onChanged={onChanged} />
+					{!collapsed && (
+						<button
+							type="button"
+							title="新建并行工作树"
+							aria-label="新建并行工作树"
+							onClick={() => setShowCreate(!showCreate)}
+							className={clsx(
+								"rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors",
+								showCreate && "bg-neutral-800 text-neutral-100",
+							)}
+						>
+							<Plus size={13} />
+						</button>
+					)}
+				</div>
+			</div>
 
-		{!collapsed && (
-			<div className="border-t border-neutral-800 px-3 pb-2 pt-1">
+			{!collapsed && (
+				<div className="px-0.5 pt-0.5 pb-1">
 			{showCreate && (
 				<div className="mb-2 rounded border border-neutral-800 bg-neutral-900/80 p-2 text-xs">
 					<div className="mb-1 text-[11px] text-neutral-400">新建并行工作树</div>

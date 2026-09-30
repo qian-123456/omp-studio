@@ -1,10 +1,11 @@
 import clsx from "clsx";
-import { GitBranch, RefreshCw, Undo2 } from "lucide-react";
+import { FolderTree, RefreshCw, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GitCommit, GitSummary, TmRun, WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { useShortPath } from "../../lib/hooks";
 import { gitDiff, gitListWorktrees, gitLog, gitRepoRoot, gitSummary, tmList } from "../../lib/ipc";
+import { basename } from "../../lib/paths";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -13,7 +14,6 @@ import { ChangesSection } from "./ChangesSection";
 import { CheckpointsCard } from "./CheckpointsCard";
 import { DiffModal } from "./DiffModal";
 import { toplevelFor } from "./helpers";
-import { OrphanBanner } from "./OrphanBanner";
 import { TimelineSection } from "./TimelineSection";
 import { WorktreeSection } from "./WorktreeSection";
 
@@ -158,20 +158,28 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 
 	return (
 		<div>
-			<div className="flex items-center gap-1.5 border-b border-neutral-800 px-3 py-1.5 text-xs">
-				<GitBranch size={13} className="text-neutral-500" />
-				<span className="min-w-0 flex-1 truncate text-[10px] text-neutral-500" title={mainRoot ?? cwd}>
-					{short(mainRoot ?? cwd)}
-				</span>
-				<button
-					type="button"
-					title="刷新"
-					aria-label="刷新"
-					onClick={reloadAll}
-					className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
-				>
-					<RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-				</button>
+			{/* Compact repo header: repo name + path + refresh */}
+			<div className="flex items-center justify-between border-b border-neutral-800/80 bg-neutral-900/40 px-3 py-1.5 text-xs">
+				<div className="flex items-center gap-1.5 min-w-0 flex-1">
+					<FolderTree size={13} className="text-emerald-400 shrink-0" />
+					<span className="font-semibold text-neutral-200 text-xs truncate" title={mainRoot ?? cwd}>
+						{basename(mainRoot ?? cwd)}
+					</span>
+					<span className="text-[10px] text-neutral-500 truncate" title={mainRoot ?? cwd}>
+						· {short(mainRoot ?? cwd)}
+					</span>
+				</div>
+				<div className="flex items-center gap-1 shrink-0 ml-1.5">
+					<button
+						type="button"
+						title="刷新 (⌘R)"
+						aria-label="刷新"
+						onClick={reloadAll}
+						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+					>
+						<RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+					</button>
+				</div>
 			</div>
 
 			{error && (
@@ -194,7 +202,6 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 
 			{isRepo && (
 				<div className="space-y-2.5 p-2.5">
-					<OrphanBanner cwd={cwd} />
 					<WorktreeSection
 						repo={mainRoot ?? cwd}
 						worktrees={worktrees}

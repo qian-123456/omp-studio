@@ -1,10 +1,9 @@
 import clsx from "clsx";
-import { FolderTree, GitBranch, Info, Loader2, PanelRight, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Info, Loader2, PanelRight, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { addWorkspace, gitListBranches } from "../../lib/ipc";
-import { basename } from "../../lib/paths";
 import { toast } from "../../lib/toast";
 import { useExplorer } from "../../stores/explorer";
 import { useSessions } from "../../stores/sessions";
@@ -183,25 +182,6 @@ export function WorktreeGraph({
 
 	return (
 		<div className="text-xs font-sans select-none space-y-2">
-			{/* Top Block: Repo Root Container */}
-			<div className="relative rounded-lg border border-neutral-800 bg-neutral-900/90 px-3 py-2 shadow-sm transition-colors hover:border-neutral-700/80">
-				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-2 min-w-0">
-						<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-							<FolderTree size={12} />
-						</div>
-						<span className="font-semibold text-neutral-100 text-xs truncate" title={repo}>
-							{basename(repo)}
-						</span>
-					</div>
-					{branches && branches.length > 0 && (
-						<span className="text-[10px] text-neutral-500 font-mono shrink-0">
-							{branches.length} 个分支
-						</span>
-					)}
-				</div>
-			</div>
-
 			{/* Section 1: Active Worktrees */}
 			<div className="space-y-0.5">
 				{/* Section Header 1: Concise + Info Circle */}
