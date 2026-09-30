@@ -3,7 +3,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
-import type { SessionStatus, TurnCheckpoint } from "../../lib/contracts";
+import type {
+	PendingUiRequest,
+	SessionStatus,
+	TurnCheckpoint,
+} from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import {
 	getTranscript,
@@ -12,7 +16,7 @@ import {
 	rpcPendingUi,
 	rpcSend,
 } from "../../lib/ipc";
-import { cwdMissingPath } from "../../lib/ensureLive";
+import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
@@ -25,6 +29,8 @@ import { MessageList } from "./MessageList";
 import { PendingUiCard } from "./PendingUiCard";
 import { SelectionToolbar } from "./SelectionToolbar";
 
+const EMPTY_PENDING_UI: PendingUiRequest[] = [];
+
 export function SessionView({
 	sessionId,
 	compact,
@@ -33,8 +39,12 @@ export function SessionView({
 	compact?: boolean;
 }) {
 	const meta = useSessions((s) => s.sessions[sessionId]);
-	const live = useLive((s) => s.sessions[sessionId]);
-	const { setItems, appendItems, setPendingUi } = useLive();
+	const streaming = useLive((s) => s.sessions[sessionId]?.streaming === true);
+	const alive = useLive((s) => s.sessions[sessionId]?.alive === true);
+	const pendingUi = useLive((s) => s.sessions[sessionId]?.pendingUi ?? EMPTY_PENDING_UI);
+	const setItems = useLive((s) => s.setItems);
+	const appendItems = useLive((s) => s.appendItems);
+	const setPendingUi = useLive((s) => s.setPendingUi);
 	const viewMode = useUi(
 		(s) => s.sessionViewMode[sessionId] ?? "chat",
 	);
@@ -43,15 +53,11 @@ export function SessionView({
 		nearBottom: true,
 		hasNewMessages: false,
 	});
-
-	const streaming = live?.streaming === true;
 	const status: SessionStatus =
 		streaming
 			? "working"
-			: (meta?.status ?? (live?.alive ? "working" : "idle"));
+			: (meta?.status ?? (alive ? "working" : "idle"));
 	const external = status === "external";
-	const pendingUi = live?.pendingUi ?? [];
-
 	// Per-turn checkpoint chips (empty outside git worktrees / when the
 	// checkpoints extension is disabled; fetch failures are silent).
 	const [turns, setTurns] = useState<TurnCheckpoint[]>([]);
@@ -137,17 +143,16 @@ export function SessionView({
 
 	// Auto-resume / reconnect if the session is not alive and not external
 	useEffect(() => {
-		if (external) return;
-		if (!live?.alive || status === "interrupted" || status === "suspended") {
+		if (!alive || status === "interrupted" || status === "suspended") {
 			rpcEnsureLive(sessionId).catch((err) => {
 				// Deleted worktree: history stays readable; resume only happens
 				// via the explicit resume dialog (Composer/row actions).
-				if (cwdMissingPath(err) !== null) return;
-				console.warn(`[SessionView] auto-resume ${sessionId} failed:`, err);
-				toast.error("会话自动恢复失败: " + errMsg(err));
+				if (!isResumeCancelled(err)) {
+					toast.error(`自动重连失败: ${errMsg(err)}`);
+				}
 			});
 		}
-	}, [sessionId, external, live?.alive, status]);
+	}, [sessionId, external, alive, status]);
 
 	return (
 		<div className="flex h-full flex-col">

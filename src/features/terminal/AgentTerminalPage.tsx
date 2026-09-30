@@ -23,6 +23,7 @@ import {
 	Search,
 	X,
 } from "lucide-react";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { onTerminalData, onTerminalExit } from "../../lib/events";
@@ -108,7 +109,7 @@ export function AgentTerminalPage() {
 		count: number;
 	} | null>(null);
 	const searchInputRef = useRef<HTMLInputElement | null>(null);
-
+	const searchButtonRef = useRef<HTMLButtonElement | null>(null);
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -551,6 +552,7 @@ export function AgentTerminalPage() {
 
 				{/* Search toggle */}
 				<button
+					ref={searchButtonRef}
 					type="button"
 					onClick={() => {
 						setSearchOpen((o) => {
@@ -634,9 +636,22 @@ export function AgentTerminalPage() {
 			</div>
 
 			{/* Floating Search Bar (Cmd+F) */}
-			{searchOpen && (
+			<FloatingLayer
+				anchor={searchOpen ? (searchButtonRef.current ?? { x: window.innerWidth - 20, y: 40 }) : null}
+				placement="bottom-end"
+				layer="popover"
+				offset={4}
+				onDismiss={() => {
+					getAgentTerminal()?.search.clearDecorations();
+					setSearchOpen(false);
+					setSearchResult(null);
+					getAgentTerminal()?.term.focus();
+				}}
+				ignoreRefs={[searchButtonRef]}
+				className="flex max-w-[calc(100vw-32px)] flex-wrap items-center gap-1.5 p-1.5 shadow-apple-modal"
+			>
 				<div
-					className="absolute top-10 right-4 z-40 flex max-w-[calc(100%-16px)] flex-wrap items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900/95 p-1.5 shadow-2xl backdrop-blur-md"
+					className="flex items-center gap-1.5"
 					onKeyDown={(e) => {
 						if (e.key === "Escape") {
 							e.preventDefault();
@@ -676,7 +691,7 @@ export function AgentTerminalPage() {
 								}
 							}}
 							placeholder="在终端回滚中搜索…"
-							className="w-full rounded bg-neutral-800 px-2 py-1 text-xs text-white placeholder-neutral-500 outline-none focus:ring-1 focus:ring-indigo-500"
+							className="w-full rounded-lg bg-[var(--well-bg)] px-2 py-1 text-xs text-[var(--text)] placeholder-neutral-500 outline-none border border-[var(--border-divider)] focus:border-indigo-500"
 						/>
 					</div>
 
@@ -688,12 +703,12 @@ export function AgentTerminalPage() {
 						</span>
 					)}
 
-					<div className="flex items-center gap-0.5 border-l border-neutral-700 pl-1">
+					<div className="flex items-center gap-0.5 border-l border-[var(--border-divider)] pl-1">
 						<button
 							type="button"
 							onClick={handleFindPrevious}
 							disabled={!searchQuery}
-							className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white disabled:opacity-30"
+							className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-30"
 							title="上一个匹配 (Shift+Enter)"
 						>
 							<ArrowUp size={13} />
@@ -702,14 +717,14 @@ export function AgentTerminalPage() {
 							type="button"
 							onClick={handleFindNext}
 							disabled={!searchQuery}
-							className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white disabled:opacity-30"
+							className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-30"
 							title="下一个匹配 (Enter)"
 						>
 							<ArrowDown size={13} />
 						</button>
 					</div>
 
-					<div className="flex items-center gap-0.5 border-l border-neutral-700 pl-1 text-[10px]">
+					<div className="flex items-center gap-0.5 border-l border-[var(--border-divider)] pl-1 text-[10px]">
 						<button
 							type="button"
 							onClick={() => setSearchCaseSensitive((v) => !v)}
@@ -717,7 +732,7 @@ export function AgentTerminalPage() {
 								"rounded px-1.5 py-0.5 font-mono font-medium transition-colors",
 								searchCaseSensitive
 									? "bg-indigo-600 text-white"
-									: "text-neutral-400 hover:bg-neutral-800 hover:text-white",
+									: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 							)}
 							title="区分大小写 (Alt+C)"
 						>
@@ -730,7 +745,7 @@ export function AgentTerminalPage() {
 								"rounded px-1.5 py-0.5 font-mono font-medium transition-colors",
 								searchWholeWord
 									? "bg-indigo-600 text-white"
-									: "text-neutral-400 hover:bg-neutral-800 hover:text-white",
+									: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 							)}
 							title="全字匹配 (Alt+W)"
 						>
@@ -743,7 +758,7 @@ export function AgentTerminalPage() {
 								"rounded px-1.5 py-0.5 font-mono font-medium transition-colors",
 								searchRegex
 									? "bg-indigo-600 text-white"
-									: "text-neutral-400 hover:bg-neutral-800 hover:text-white",
+									: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 							)}
 							title="正则表达式 (Alt+R)"
 						>
@@ -759,13 +774,13 @@ export function AgentTerminalPage() {
 							setSearchResult(null);
 							getAgentTerminal()?.term.focus();
 						}}
-						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+						className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 						title="关闭搜索 (Esc)"
 					>
 						<X size={13} />
 					</button>
 				</div>
-			)}
+			</FloatingLayer>
 
 			{/* Terminal mounting container */}
 			<div
@@ -829,22 +844,20 @@ export function AgentTerminalPage() {
 			)}
 
 			{/* Terminal Right-Click Context Menu */}
-			{contextMenu && (
-				<div
-					className="fixed inset-0 z-50"
-					onMouseDown={(e) => {
-						if (e.target === e.currentTarget) setContextMenu(null);
-					}}
-				>
-					<div
-						style={{ left: contextMenu.x, top: contextMenu.y }}
-						className="fixed z-50 min-w-40 rounded-md border border-neutral-800 bg-neutral-900 py-1 text-xs shadow-2xl"
-						onClick={(e) => e.stopPropagation()}
-					>
+			<FloatingLayer
+				anchor={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+				layer="menu"
+				placement="bottom-start"
+				offset={2}
+				onDismiss={() => setContextMenu(null)}
+				className="min-w-40 py-1 text-xs shadow-apple-modal"
+			>
+				{contextMenu && (
+					<>
 						<button
 							type="button"
 							onClick={handleCopy}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
 							<ClipboardCopy size={13} className="text-neutral-400" />
 							复制选中内容
@@ -852,7 +865,7 @@ export function AgentTerminalPage() {
 						<button
 							type="button"
 							onClick={handlePaste}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
 							<ClipboardPaste size={13} className="text-neutral-400" />
 							粘贴至终端
@@ -863,7 +876,7 @@ export function AgentTerminalPage() {
 								setContextMenu(null);
 								captureSelection();
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
 							<MessageSquareQuote size={13} className="text-indigo-400" />
 							{parentSessionId ? "引用至批注 (Cmd+Shift+A)" : "复制选中内容"}
@@ -872,52 +885,52 @@ export function AgentTerminalPage() {
 							<button
 								type="button"
 								onClick={handleSendToSideChat}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<GitBranch size={13} className="text-amber-400" />
 								发送到侧聊
 							</button>
 						)}
-						<div className="my-1 border-t border-neutral-800" />
+						<div className="my-1 border-t border-[var(--border-divider)]" />
 						<button
 							type="button"
 							onClick={handleClear}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
 							<Eraser size={13} className="text-neutral-400" />
 							清屏
 						</button>
 						{phase === "exited" && (
 							<>
-								<div className="my-1 border-t border-neutral-800" />
+								<div className="my-1 border-t border-[var(--border-divider)]" />
 								<button
 									type="button"
 									onClick={() => {
 										setContextMenu(null);
 										handleReconnect();
 									}}
-									className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-indigo-400 hover:bg-indigo-950/40 hover:text-indigo-300"
+									className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 transition-colors"
 								>
 									<RefreshCw size={13} />
 									重新连接终端
 								</button>
 							</>
 						)}
-						<div className="my-1 border-t border-neutral-800" />
+						<div className="my-1 border-t border-[var(--border-divider)]" />
 						<button
 							type="button"
 							onClick={() => {
 								setContextMenu(null);
 								void handleClose();
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-950/40 hover:text-rose-300"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors"
 						>
 							<X size={13} />
 							关闭终端
 						</button>
-					</div>
-				</div>
-			)}
+					</>
+				)}
+			</FloatingLayer>
 		</div>
 	);
 }

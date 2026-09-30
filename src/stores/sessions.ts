@@ -28,6 +28,109 @@ interface InFlightLoad {
 	removedIds: Set<string>;
 }
 
+export function isSessionMetaEqual(a: SessionMeta, b: SessionMeta): boolean {
+	if (a === b) return true;
+	const gitSame =
+		a.git === b.git ||
+		(a.git !== null &&
+			b.git !== null &&
+			a.git.branch === b.git.branch &&
+			a.git.dirty === b.git.dirty &&
+			a.git.worktree === b.git.worktree);
+	const resultSame =
+		a.result === b.result ||
+		(a.result !== null &&
+			b.result !== null &&
+			a.result.kind === b.result.kind &&
+			a.result.ok === b.result.ok &&
+			a.result.at === b.result.at &&
+			a.result.summary === b.result.summary);
+	return (
+		a.id === b.id &&
+		a.tool === b.tool &&
+		a.file === b.file &&
+		a.cwd === b.cwd &&
+		a.title === b.title &&
+		a.label === b.label &&
+		a.createdAt === b.createdAt &&
+		a.updatedAt === b.updatedAt &&
+		a.parentId === b.parentId &&
+		a.forkDepth === b.forkDepth &&
+		a.status === b.status &&
+		a.unread === b.unread &&
+		a.pending === b.pending &&
+		a.live === b.live &&
+		a.externalPid === b.externalPid &&
+		a.pinned === b.pinned &&
+		a.archived === b.archived &&
+		a.workspaceId === b.workspaceId &&
+		a.repoRoot === b.repoRoot &&
+		a.lastAssistant === b.lastAssistant &&
+		a.model === b.model &&
+		gitSame &&
+		resultSame
+	);
+}
+
+const COALESCE_WINDOW_MS = 250; // ≤ ~4 flushes/sec
+const pendingMetaUpdates = new Map<string, SessionMeta>();
+let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
+let lastFlushTime = 0;
+
+export function flushCoalescedSessionUpdates(): void {
+	if (coalesceTimer !== null) {
+		clearTimeout(coalesceTimer);
+		coalesceTimer = null;
+	}
+	if (pendingMetaUpdates.size === 0) return;
+	lastFlushTime = Date.now();
+	const batch = Array.from(pendingMetaUpdates.values());
+	pendingMetaUpdates.clear();
+	useSessions.getState().upsert(batch);
+
+	const known = new Set(
+		useSessions.getState().workspaces.map((w) => w.id),
+	);
+	if (batch.some((s) => s.workspaceId && !known.has(s.workspaceId))) {
+		void useSessions.getState().refreshWorkspaces();
+	}
+}
+
+function queueSessionUpdates(sessions: SessionMeta[]): void {
+	const now = Date.now();
+	const elapsed = now - lastFlushTime;
+
+	// In-flight active load tracking is always immediate
+	for (const load of activeLoads) {
+		for (const meta of sessions) {
+			load.updatedIds.add(meta.id);
+			load.removedIds.delete(meta.id);
+		}
+	}
+
+	// Leading edge: if outside the throttle window and no pending queue, apply immediately
+	if (elapsed >= COALESCE_WINDOW_MS && pendingMetaUpdates.size === 0 && coalesceTimer === null) {
+		lastFlushTime = now;
+		useSessions.getState().upsert(sessions);
+		const known = new Set(
+			useSessions.getState().workspaces.map((w) => w.id),
+		);
+		if (sessions.some((s) => s.workspaceId && !known.has(s.workspaceId))) {
+			void useSessions.getState().refreshWorkspaces();
+		}
+		return;
+	}
+
+	// Trailing edge: buffer high-frequency events and flush at end of window
+	for (const s of sessions) {
+		pendingMetaUpdates.set(s.id, s);
+	}
+	if (coalesceTimer === null) {
+		const remaining = Math.max(0, COALESCE_WINDOW_MS - elapsed);
+		coalesceTimer = setTimeout(flushCoalescedSessionUpdates, remaining);
+	}
+}
+
 let workspacesRefreshInFlight: Promise<void> | null = null;
 let nextLoadId = 0;
 let latestAppliedLoadId = 0;
@@ -60,6 +163,7 @@ export const useSessions = create<SessionsState>((set) => ({
 			}
 			latestAppliedLoadId = loadCtx.id;
 
+			flushCoalescedSessionUpdates();
 			set((state) => {
 				const currentSessions = state.sessions;
 				const nextSessions: Record<string, SessionMeta> = {};
@@ -76,9 +180,13 @@ export const useSessions = create<SessionsState>((set) => ({
 							currentSessions[session.id] ?? session;
 						continue;
 					}
-					nextSessions[session.id] = session;
+					const existing = currentSessions[session.id];
+					if (existing && isSessionMetaEqual(existing, session)) {
+						nextSessions[session.id] = existing;
+					} else {
+						nextSessions[session.id] = session;
+					}
 				}
-
 				// Preserve sessions updated/added in flight but missing from snapshot
 				for (const id of loadCtx.updatedIds) {
 					if (!loadCtx.removedIds.has(id) && currentSessions[id]) {
@@ -119,13 +227,32 @@ export const useSessions = create<SessionsState>((set) => ({
 			}
 		}
 		set((s) => {
+			let changed = false;
+			for (const meta of list) {
+				const cur = s.sessions[meta.id];
+				if (!cur || !isSessionMetaEqual(cur, meta)) {
+					changed = true;
+					break;
+				}
+			}
+			if (!changed) {
+				return s;
+			}
 			const sessions = { ...s.sessions };
-			for (const meta of list) sessions[meta.id] = meta;
+			for (const meta of list) {
+				const cur = s.sessions[meta.id];
+				if (!cur || !isSessionMetaEqual(cur, meta)) {
+					sessions[meta.id] = meta;
+				}
+			}
 			return { sessions };
 		});
 	},
 	remove: (ids) => {
 		if (ids.length === 0) return;
+		for (const id of ids) {
+			pendingMetaUpdates.delete(id);
+		}
 		for (const load of activeLoads) {
 			for (const id of ids) {
 				load.removedIds.add(id);
@@ -133,6 +260,14 @@ export const useSessions = create<SessionsState>((set) => ({
 			}
 		}
 		set((s) => {
+			let changed = false;
+			for (const id of ids) {
+				if (id in s.sessions) {
+					changed = true;
+					break;
+				}
+			}
+			if (!changed) return s;
 			const sessions = { ...s.sessions };
 			for (const id of ids) {
 				delete sessions[id];
@@ -156,16 +291,7 @@ export async function startSessionEvents(): Promise<void> {
 	startEventsPromise = (async () => {
 		const results = await Promise.allSettled([
 			onSessionsUpdated((sessions) => {
-				useSessions.getState().upsert(sessions);
-				// A session arriving under a workspaceId we don't know means a
-				// workspace was added externally (CLI, another app window, DB write)
-				// — workspace changes emit no dedicated event, so refetch here.
-				const known = new Set(
-					useSessions.getState().workspaces.map((w) => w.id),
-				);
-				if (sessions.some((s) => s.workspaceId && !known.has(s.workspaceId))) {
-					void useSessions.getState().refreshWorkspaces();
-				}
+				queueSessionUpdates(sessions);
 			}),
 			onSessionsRemoved((ids) => {
 				useSessions.getState().remove(ids);
@@ -218,6 +344,13 @@ export async function stopSessionEvents(): Promise<void> {
 			// ignore failure of in-flight start
 		}
 	}
+	flushCoalescedSessionUpdates();
+	if (coalesceTimer !== null) {
+		clearTimeout(coalesceTimer);
+		coalesceTimer = null;
+	}
+	pendingMetaUpdates.clear();
+	lastFlushTime = 0;
 	if (activeUnlisteners) {
 		const fns = activeUnlisteners;
 		activeUnlisteners = null;

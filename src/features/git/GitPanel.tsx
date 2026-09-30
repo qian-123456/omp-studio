@@ -46,21 +46,67 @@ interface DiffReq {
 	load: () => Promise<string>;
 }
 
-/** Calls the latest `refresh` every POLL_MS while visible, on un-hide and on window focus. */
-function useAutoRefresh(refresh: () => void) {
+/** Calls the latest `refresh` every POLL_MS while visible, on un-hide and on window focus.
+ * Pauses while document.visibilityState === "hidden" and skips overlapping runs.
+ */
+function useAutoRefresh(refresh: () => void | Promise<unknown>) {
 	const latest = useRef(refresh);
 	latest.current = refresh;
+
 	useEffect(() => {
-		const run = () => {
-			if (!document.hidden) latest.current();
+		let timer: number | null = null;
+		let inFlight = false;
+		let cancelled = false;
+
+		const scheduleNext = () => {
+			if (cancelled || document.visibilityState === "hidden") return;
+			timer = window.setTimeout(() => {
+				void run();
+			}, POLL_MS);
 		};
-		const t = setInterval(run, POLL_MS);
-		document.addEventListener("visibilitychange", run);
-		window.addEventListener("focus", run);
+
+		const run = async () => {
+			if (cancelled || document.visibilityState === "hidden") return;
+			if (inFlight) return;
+			inFlight = true;
+			try {
+				await latest.current();
+			} finally {
+				inFlight = false;
+				scheduleNext();
+			}
+		};
+
+		const onVisibility = () => {
+			if (document.visibilityState === "visible") {
+				if (timer !== null) {
+					window.clearTimeout(timer);
+					timer = null;
+				}
+				void run();
+			} else {
+				if (timer !== null) {
+					window.clearTimeout(timer);
+					timer = null;
+				}
+			}
+		};
+
+		const onFocus = () => {
+			if (document.visibilityState === "visible") {
+				void run();
+			}
+		};
+
+		document.addEventListener("visibilitychange", onVisibility);
+		window.addEventListener("focus", onFocus);
+		scheduleNext();
+
 		return () => {
-			clearInterval(t);
-			document.removeEventListener("visibilitychange", run);
-			window.removeEventListener("focus", run);
+			cancelled = true;
+			if (timer !== null) window.clearTimeout(timer);
+			document.removeEventListener("visibilitychange", onVisibility);
+			window.removeEventListener("focus", onFocus);
 		};
 	}, []);
 }
@@ -251,7 +297,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 					<section className="rounded-lg border border-neutral-800 bg-neutral-900/50">
 						{selected !== top && selectedName && (
 							<div className="flex items-center gap-1.5 border-b border-neutral-800 bg-indigo-500/5 px-3 py-1.5 text-[11px] text-indigo-200">
-								<span className="min-w-0 flex-1 truncate">
+								<span className="min-w-0 flex-1 truncate" title={`正在查看: ${selectedName}`}>
 									正在查看 <span className="font-mono">{selectedName}</span>
 								</span>
 								<button

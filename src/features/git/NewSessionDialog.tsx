@@ -2,6 +2,7 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
+import { Z_LAYER } from "../../components/FloatingLayer";
 import { AlertTriangle, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSession, sendFirstPrompt } from "../../lib/createSession";
@@ -384,7 +385,8 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
+			style={{ zIndex: Z_LAYER.modal }}
+			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeModal();
 			}}
@@ -394,7 +396,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="new-session-dialog-title"
-				className="w-[500px] rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
+				className="w-[500px] max-w-[calc(100vw-2rem)] max-h-[min(90vh,760px)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
 				onMouseDown={(e) => e.stopPropagation()}
 				onKeyDown={(e) => {
 					if (isComposing(e)) return;
@@ -420,7 +422,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					}
 				}}
 			>
-				<div className="mb-3 flex items-center">
+				<div className="mb-3 flex items-center shrink-0">
 					<span id="new-session-dialog-title" className="flex-1 text-[15px] font-semibold tracking-tight text-[var(--text)]">新会话</span>
 					<button
 						type="button"
@@ -433,6 +435,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					</button>
 				</div>
 
+				<div className="flex-1 min-h-0 overflow-y-auto pr-1">
 				<div className="mb-1 flex items-center justify-between">
 					<label className="text-[11px] text-neutral-400">工作区 / 目录</label>
 					<button
@@ -664,7 +667,9 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 				{error && <div className="mb-2 text-xs text-rose-400">{error}</div>}
 
-				<div className="flex items-center justify-between">
+				</div>
+
+				<div className="flex items-center justify-between shrink-0 pt-3 border-t border-[var(--border-divider)] mt-2">
 					<span className="text-[11px] text-neutral-400">按 {isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速提交</span>
 					<div className="flex gap-2">
 						<button

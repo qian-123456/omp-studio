@@ -4,6 +4,7 @@ import {
 	CheckCheck,
 	ChevronDown,
 	ChevronUp,
+	Clock,
 	Edit3,
 	HelpCircle,
 	Loader2,
@@ -60,6 +61,7 @@ export function TodoRow({
 	const rowRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const selectSession = useUi((s) => s.selectSession);
+	const setCenter = useUi((s) => s.setCenter);
 	const openModal = useUi((s) => s.openModal);
 	const session = useSessions((s) =>
 		todo.sessionId ? s.sessions[todo.sessionId] : undefined,
@@ -75,6 +77,12 @@ export function TodoRow({
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	const isScheduleRun = todo.kind === "schedule_run";
+	const schedPayload =
+		isScheduleRun && typeof todo.payload === "object" && todo.payload !== null
+			? (todo.payload as { scheduleId?: string; runId?: string; ok?: boolean })
+			: null;
+	const isFailedRun = isScheduleRun && schedPayload?.ok === false;
 	useEffect(() => {
 		if (isFocused && rowRef.current) {
 			rowRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -313,12 +321,13 @@ export function TodoRow({
 					<div className="flex flex-wrap items-center gap-1.5">
 						<span
 							className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
-								KIND_COLOR[todo.kind] ?? "bg-neutral-800 text-neutral-300"
+								isFailedRun
+									? "bg-red-500/15 text-red-300 border border-red-500/30"
+									: KIND_COLOR[todo.kind] ?? "bg-neutral-800 text-neutral-300"
 							}`}
 						>
-							{KIND_LABEL[todo.kind] ?? todo.kind}
+							{isFailedRun ? "定时任务失败" : KIND_LABEL[todo.kind] ?? todo.kind}
 						</span>
-
 						{sessionTitle && (
 							<button
 								type="button"
@@ -650,11 +659,41 @@ export function TodoRow({
 							)}
 						</div>
 					)}
+					{/* Scheduled Run Actions */}
+					{isScheduleRun && (
+						<div className="flex items-center gap-1.5">
+							{todo.sessionId && (
+								<button
+									type="button"
+									onClick={handleGoSession}
+									className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
+								>
+									<ArrowRight className="h-3.5 w-3.5" /> 打开会话
+								</button>
+							)}
+							<button
+								type="button"
+								disabled={busy}
+								onClick={() => handleAct("done")}
+								className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700 disabled:opacity-50"
+							>
+								<Check className="h-3.5 w-3.5" /> 标记已读
+							</button>
+							<button
+								type="button"
+								onClick={() => setCenter("schedules")}
+								className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
+							>
+								<Clock className="h-3.5 w-3.5" /> 查看定时任务
+							</button>
+						</div>
+					)}
 
-					{/* Common Done button (if not already approval/review) */}
+					{/* Common Done button (if not already approval/review/suggestion/schedule_run) */}
 					{todo.kind !== "approval" &&
 						todo.kind !== "review" &&
-						todo.kind !== "suggestion" && (
+						todo.kind !== "suggestion" &&
+						!isScheduleRun && (
 							<button
 								type="button"
 								disabled={busy}
@@ -664,7 +703,6 @@ export function TodoRow({
 								<Check className="h-3.5 w-3.5" /> 完成
 							</button>
 						)}
-
 					{/* Ignore button */}
 					<button
 						type="button"
@@ -677,7 +715,8 @@ export function TodoRow({
 
 					{/* Jump to session if available and not already a session button */}
 					{todo.sessionId &&
-						todo.kind !== "suggestion" && (
+						todo.kind !== "suggestion" &&
+						!isScheduleRun && (
 							<button
 								type="button"
 								onClick={handleGoSession}

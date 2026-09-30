@@ -39,7 +39,7 @@ describe("useBacklog store", () => {
 	const captured: { listener: (() => void) | null } = { listener: null };
 
 	beforeEach(() => {
-		useBacklog.setState({ open: false, items: [], loading: false });
+		useBacklog.setState({ items: [], loading: false });
 		useComposer.setState({ drafts: {}, focusNonce: {} });
 		useUi.setState({ selectedSessionId: null, centerView: "home" });
 		backlogList.mockReset().mockResolvedValue([]);
@@ -50,17 +50,9 @@ describe("useBacklog store", () => {
 		vi.clearAllMocks();
 	});
 
-	it("initializes with open=false and updates state via setOpen and toggle", () => {
-		expect(useBacklog.getState().open).toBe(false);
-
-		useBacklog.getState().setOpen(true);
-		expect(useBacklog.getState().open).toBe(true);
-
-		useBacklog.getState().toggle();
-		expect(useBacklog.getState().open).toBe(false);
-
-		useBacklog.getState().toggle();
-		expect(useBacklog.getState().open).toBe(true);
+	it("initializes with empty items and loading=false", () => {
+		expect(useBacklog.getState().items).toEqual([]);
+		expect(useBacklog.getState().loading).toBe(false);
 	});
 
 	it("load fetches items, flips loading, and subscribes to change events once", async () => {
@@ -103,14 +95,11 @@ describe("useBacklog store", () => {
 			useComposer.getState().setDraft(selectedSessionId, target.text);
 			useComposer.getState().focusComposer(selectedSessionId);
 			useUi.getState().selectSession(selectedSessionId);
-			useBacklog.getState().setOpen(false);
 			toast.success("已填入输入框");
 		};
 
-		useBacklog.getState().setOpen(true);
 		handleFillCurrent(targetItem);
 		expect(toast.error).toHaveBeenCalledWith("没有选中的会话");
-		expect(useBacklog.getState().open).toBe(true);
 
 		// 2. When session is selected
 		useUi.setState({ selectedSessionId: "session-123" });
@@ -121,7 +110,6 @@ describe("useBacklog store", () => {
 		);
 		expect(useComposer.getState().focusNonce["session-123"]).toBe(1);
 		expect(useUi.getState().centerView).toBe("session");
-		expect(useBacklog.getState().open).toBe(false);
 		expect(toast.success).toHaveBeenCalledWith("已填入输入框");
 	});
 });

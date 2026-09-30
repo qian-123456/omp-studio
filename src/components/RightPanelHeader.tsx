@@ -11,10 +11,9 @@ import {
 	Plus,
 	X,
 } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { type RightTab, useUi } from "../stores/ui";
-import { isComposing } from "../lib/hooks";
-
+import { FloatingLayer } from "./FloatingLayer";
 interface RightPanelHeaderProps {
 	activeTab: RightTab;
 	tabBadges: Record<RightTab, number>;
@@ -28,39 +27,7 @@ export function RightPanelHeader({
 	const toggleRight = useUi((s) => s.toggleRight);
 
 	const [menuOpen, setMenuOpen] = useState(false);
-	const menuRef = useRef<HTMLDivElement>(null);
 	const plusBtnRef = useRef<HTMLButtonElement>(null);
-
-	// Close menu on click outside
-	useEffect(() => {
-		if (!menuOpen) return;
-		const onDown = (e: MouseEvent) => {
-			if (
-				menuRef.current &&
-				!menuRef.current.contains(e.target as Node) &&
-				plusBtnRef.current &&
-				!plusBtnRef.current.contains(e.target as Node)
-			) {
-				setMenuOpen(false);
-			}
-		};
-		window.addEventListener("mousedown", onDown);
-		return () => window.removeEventListener("mousedown", onDown);
-	}, [menuOpen]);
-
-	// Close menu on Escape
-	useEffect(() => {
-		if (!menuOpen) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				if (isComposing({ nativeEvent: e, key: e.key })) return;
-				setMenuOpen(false);
-			}
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [menuOpen]);
-
 	const PRIMARY_TABS: {
 		id: RightTab;
 		label: string;
@@ -193,46 +160,50 @@ export function RightPanelHeader({
 			</div>
 
 			{/* Vertical Dropdown Popover matching Image 3 */}
-			{menuOpen && (
-				<div
-					ref={menuRef}
-					className="absolute left-10 top-full z-50 mt-1 w-48 rounded-xl border border-neutral-800 bg-neutral-900/95 p-1.5 shadow-2xl backdrop-blur-md text-xs text-neutral-200 animate-in fade-in zoom-in-95 duration-100"
-				>
-					<div className="space-y-0.5">
-						{PRIMARY_TABS.map((tab) => {
-							const Icon = tab.icon;
-							const badge = tabBadges[tab.id] ?? 0;
-							const isCurrent = activeTab === tab.id;
-							return (
-								<button
-									key={tab.id}
-									type="button"
-									onClick={() => {
-										setRightTab(tab.id);
-										setMenuOpen(false);
-									}}
-									className={clsx(
-										"flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors",
-										isCurrent
-											? "bg-neutral-800 text-neutral-100 font-medium"
-											: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
-									)}
-								>
-									<div className="flex items-center gap-2.5">
-										<Icon size={14} className={tab.iconColor} />
-										<span>{tab.label}</span>
-									</div>
-									{badge > 0 && (
-										<span className="rounded-full bg-neutral-700/80 px-1.5 py-0.2 text-[10px] font-medium leading-tight text-neutral-300">
-											{badge}
-										</span>
-									)}
-								</button>
-							);
-						})}
-					</div>
+			{/* Vertical Dropdown Popover */}
+			<FloatingLayer
+				anchor={menuOpen ? plusBtnRef.current : null}
+				placement="bottom-start"
+				offset={4}
+				layer="popover"
+				ignoreRefs={[plusBtnRef]}
+				onDismiss={() => setMenuOpen(false)}
+				className="w-48 p-1.5 text-xs text-neutral-200"
+			>
+				<div className="space-y-0.5">
+					{PRIMARY_TABS.map((tab) => {
+						const Icon = tab.icon;
+						const badge = tabBadges[tab.id] ?? 0;
+						const isCurrent = activeTab === tab.id;
+						return (
+							<button
+								key={tab.id}
+								type="button"
+								onClick={() => {
+									setRightTab(tab.id);
+									setMenuOpen(false);
+								}}
+								className={clsx(
+									"flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors",
+									isCurrent
+										? "bg-neutral-800 text-neutral-100 font-medium"
+										: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
+								)}
+							>
+								<div className="flex items-center gap-2.5">
+									<Icon size={14} className={tab.iconColor} />
+									<span>{tab.label}</span>
+								</div>
+								{badge > 0 && (
+									<span className="rounded-full bg-neutral-700/80 px-1.5 py-0.2 text-[10px] font-medium leading-tight text-neutral-300">
+										{badge}
+									</span>
+								)}
+							</button>
+						);
+					})}
 				</div>
-			)}
+			</FloatingLayer>
 		</div>
 	);
 }

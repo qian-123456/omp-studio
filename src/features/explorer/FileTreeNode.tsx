@@ -3,7 +3,7 @@ import { ChevronRight, Loader2, MoreHorizontal } from "lucide-react";
 import React, { useState } from "react";
 import type { DirEntry } from "../../lib/contracts";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { useEscapeKey } from "../../lib/hooks";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { toast } from "../../lib/toast";
 import { FileIcon } from "./FileIcon";
 
@@ -43,7 +43,6 @@ export function FileTreeNode({
 		null,
 	);
 
-	useEscapeKey(() => setContextMenu(null), contextMenu !== null);
 
 	const handleClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
@@ -200,64 +199,60 @@ export function FileTreeNode({
 				</div>
 			)}
 
-			{/* Context Menu Backdrop & Popover */}
-			{contextMenu && (
-				<>
-					<div
-						className="fixed inset-0 z-50 cursor-default"
-						onClick={(e) => {
-							e.stopPropagation();
-							setContextMenu(null);
-						}}
-						onContextMenu={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							setContextMenu(null);
-						}}
-					/>
-					<div
-						style={{ left: contextMenu.x, top: contextMenu.y }}
-						className="fixed z-50 min-w-[140px] rounded-lg vibrancy-popover shadow-apple-modal hairline p-1 text-xs text-neutral-200"
-					>
+			{/* Context Menu */}
+			<FloatingLayer
+				anchor={contextMenu}
+				placement="bottom-start"
+				layer="menu"
+				onDismiss={() => setContextMenu(null)}
+				className="min-w-[140px] p-1 text-xs text-neutral-200"
+			>
+				<button
+					type="button"
+					onClick={() => {
+						setContextMenu(null);
+						revealInFinder();
+					}}
+					className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
+				>
+					在访达中显示
+				</button>
+				<button
+					type="button"
+					onClick={() => {
+						setContextMenu(null);
+						void copyRelativePath();
+					}}
+					className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
+				>
+					复制相对路径
+				</button>
+				<button
+					type="button"
+					onClick={() => {
+						setContextMenu(null);
+						void copyAbsolutePath();
+					}}
+					className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
+				>
+					复制完整路径
+				</button>
+				{entry.isDir && (
+					<>
+						<div className="my-0.5 border-t border-[var(--border-divider)]" />
 						<button
 							type="button"
-							onClick={revealInFinder}
+							onClick={() => {
+								setContextMenu(null);
+								onRefreshDir(entry.path);
+							}}
 							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
 						>
-							在访达中显示
+							刷新此目录
 						</button>
-						<button
-							type="button"
-							onClick={copyRelativePath}
-							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
-						>
-							复制相对路径
-						</button>
-						<button
-							type="button"
-							onClick={copyAbsolutePath}
-							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
-						>
-							复制完整路径
-						</button>
-						{entry.isDir && (
-							<>
-								<div className="my-0.5 border-t border-[var(--border-divider)]" />
-								<button
-									type="button"
-									onClick={() => {
-										setContextMenu(null);
-										onRefreshDir(entry.path);
-									}}
-									className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-[0.98]"
-								>
-									刷新此目录
-								</button>
-							</>
-						)}
-					</div>
-				</>
-			)}
+					</>
+				)}
+			</FloatingLayer>
 		</div>
 	);
 }

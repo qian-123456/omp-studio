@@ -23,7 +23,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import React, { type MouseEvent, useEffect, useRef, useState } from "react";
+import React, { type MouseEvent, useRef, useState } from "react";
 import type { SessionMeta, Workspace } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { relativeTime } from "../../lib/format";
@@ -44,6 +44,7 @@ import { useUi } from "../../stores/ui";
 import { archiveSession } from "./archiveUndo";
 import { inferWorktreeName } from "./grouping";
 import { HoverScrollText } from "../../components/HoverScrollText";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { SessionHoverCard } from "./SessionHoverCard";
 interface SessionRowProps {
 	session: SessionMeta;
@@ -132,7 +133,7 @@ export function renderStatusDot(status: SessionMeta["status"]) {
 
 
 
-export function SessionRow({
+function SessionRowComponent({
 	session,
 	indent = 0,
 	withSpine = false,
@@ -141,9 +142,16 @@ export function SessionRow({
 	onRowFocus,
 	onBatchAction,
 }: SessionRowProps) {
-	const selectedSessionId = useUi((s) => s.selectedSessionId);
-	const selectedIds = useUi((s) => s.selectedIds);
-	const highlightId = useUi((s) => s.highlightId);
+	const allVisibleIdsRef = useRef(allVisibleIds);
+	allVisibleIdsRef.current = allVisibleIds;
+
+	const isSelected = useUi((s) => s.selectedSessionId === session.id);
+	const isMultiSelected = useUi(
+		(s) => s.selectedIds.has(session.id) && s.selectedIds.size > 1,
+	);
+	const isHighlighted = useUi(
+		(s) => s.highlightId === session.id && s.selectedSessionId !== session.id,
+	);
 	const selectSession = useUi((s) => s.selectSession);
 	const setSelectedIds = useUi((s) => s.setSelectedIds);
 	const toggleSelectId = useUi((s) => s.toggleSelectId);
@@ -151,18 +159,18 @@ export function SessionRow({
 	const sessionViewMode = useUi((s) => s.sessionViewMode[session.id] ?? "chat");
 	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
 	const openModal = useUi((s) => s.openModal);
-	const parent = useSessions((s) =>
-		session.parentId ? s.sessions[session.parentId] : undefined,
+	const parentTitle = useSessions((s) =>
+		session.parentId
+			? s.sessions[session.parentId]?.title ||
+				s.sessions[session.parentId]?.label ||
+				session.parentId.slice(0, 6)
+			: undefined,
 	);
 
-	const isSelected = selectedSessionId === session.id;
-	const isMultiSelected = selectedIds.has(session.id) && selectedIds.size > 1;
-	const isHighlighted = highlightId === session.id && !isSelected;
 	const deletedWt =
 		!session.git?.worktree &&
 		!session.git?.branch &&
 		inferWorktreeName(session.cwd) !== null;
-
 	// Context menu & action modal states
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuCoords, setMenuCoords] = useState<{ x: number; y: number } | null>(
@@ -216,20 +224,7 @@ export function SessionRow({
 		}, 150);
 	};
 
-	const menuRef = useRef<HTMLDivElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
-
-	useEffect(() => {
-		if (!menuOpen) return;
-		const handleClickOutside = (e: globalThis.MouseEvent) => {
-			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-				setMenuOpen(false);
-			}
-		};
-		window.addEventListener("mousedown", handleClickOutside);
-		return () => window.removeEventListener("mousedown", handleClickOutside);
-	}, [menuOpen]);
-
 	const anyModalOpen =
 		showArchiveModal || showAssignModal || showTakeoverModal;
 
@@ -239,12 +234,8 @@ export function SessionRow({
 		setShowTakeoverModal(false);
 	};
 	useEscapeKey(() => {
-		if (menuOpen) {
-			setMenuOpen(false);
-			return;
-		}
 		closeAll();
-	}, menuOpen || anyModalOpen);
+	}, anyModalOpen);
 
 	const startInlineRename = () => {
 		setRenameDraft(session.title || "");
@@ -268,11 +259,12 @@ export function SessionRow({
 	};
 
 	const selectNextSession = () => {
-		if (selectedSessionId === session.id && allVisibleIds && allVisibleIds.length > 0) {
-			const idx = allVisibleIds.indexOf(session.id);
-			const nextId = allVisibleIds[idx + 1] ?? allVisibleIds[idx - 1] ?? null;
+		const ids = allVisibleIdsRef.current;
+		if (isSelected && ids && ids.length > 0) {
+			const idx = ids.indexOf(session.id);
+			const nextId = ids[idx + 1] ?? ids[idx - 1] ?? null;
 			selectSession(nextId);
-		} else if (selectedSessionId === session.id) {
+		} else if (isSelected) {
 			selectSession(null);
 		}
 	};
@@ -280,14 +272,15 @@ export function SessionRow({
 	const handleRowClick = async (e: React.MouseEvent) => {
 		onRowFocus?.();
 		try {
-			if (e.shiftKey && allVisibleIds && allVisibleIds.length > 0) {
-				const lastId = selectedSessionId || allVisibleIds[0];
-				const fromIdx = allVisibleIds.indexOf(lastId);
-				const toIdx = allVisibleIds.indexOf(session.id);
+			const ids = allVisibleIdsRef.current;
+			if (e.shiftKey && ids && ids.length > 0) {
+				const lastId = useUi.getState().selectedSessionId || ids[0];
+				const fromIdx = ids.indexOf(lastId);
+				const toIdx = ids.indexOf(session.id);
 				if (fromIdx !== -1 && toIdx !== -1) {
 					const start = Math.min(fromIdx, toIdx);
 					const end = Math.max(fromIdx, toIdx);
-					const range = allVisibleIds.slice(start, end + 1);
+					const range = ids.slice(start, end + 1);
 					setSelectedIds(new Set(range));
 					setHighlightId(session.id);
 				} else {
@@ -313,7 +306,8 @@ export function SessionRow({
 		e.preventDefault();
 		e.stopPropagation();
 		onRowFocus?.();
-		if (!selectedIds.has(session.id)) {
+		const currentSelected = useUi.getState().selectedIds;
+		if (!currentSelected.has(session.id)) {
 			selectSession(session.id);
 		}
 		setMenuCoords({ x: e.clientX, y: e.clientY });
@@ -532,7 +526,7 @@ export function SessionRow({
 				{session.parentId && (
 					<span
 						className="shrink-0 text-[var(--text-dim)]"
-						title={`分叉自: ${parent ? sessionDisplayName(parent) : "已不在列表中的会话"}`}
+						title={`分叉自: ${parentTitle || "已不在列表中的会话"}`}
 					>
 						<GitFork size={11} />
 					</span>
@@ -565,7 +559,7 @@ export function SessionRow({
 				) : (
 					<HoverScrollText
 						text={sessionDisplayName(session)}
-						title=""
+						title={sessionDisplayName(session)}
 						onDoubleClick={(e) => {
 							e.stopPropagation();
 							startInlineRename();
@@ -649,27 +643,25 @@ export function SessionRow({
 			</div>
 			{/* Floating Context Menu */}
 			{menuOpen && menuCoords && (
-				<div
-					ref={menuRef}
-					style={{
-						position: "fixed",
-						left: `${Math.min(menuCoords.x, window.innerWidth - 200)}px`,
-						top: `${Math.min(menuCoords.y, window.innerHeight - 340)}px`,
-						zIndex: 50,
-					}}
-					className="w-48 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1 text-xs text-neutral-300"
+				<FloatingLayer
+					anchor={menuCoords}
+					placement="bottom-start"
+					offset={4}
+					layer="menu"
+					onDismiss={() => setMenuOpen(false)}
+					className="w-48 p-1 text-xs text-neutral-300"
 				>
 					{isMultiSelected ? (
 						<>
 							<div className="px-2.5 py-1 font-semibold text-[11px] text-neutral-400 border-b border-[var(--border-divider)]">
-								已选 {selectedIds.size} 个会话
+								已选 {useUi.getState().selectedIds.size} 个会话
 							</div>
 							<button
 								type="button"
 								onClick={(e) => {
 									e.stopPropagation();
 									setMenuOpen(false);
-									onBatchAction?.("archive", Array.from(selectedIds));
+									onBatchAction?.("archive", Array.from(useUi.getState().selectedIds));
 								}}
 								className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
 							>
@@ -681,7 +673,7 @@ export function SessionRow({
 								onClick={(e) => {
 									e.stopPropagation();
 									setMenuOpen(false);
-									onBatchAction?.("pin", Array.from(selectedIds));
+									onBatchAction?.("pin", Array.from(useUi.getState().selectedIds));
 								}}
 								className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
 							>
@@ -694,7 +686,7 @@ export function SessionRow({
 								onClick={(e) => {
 									e.stopPropagation();
 									setMenuOpen(false);
-									onBatchAction?.("delete", Array.from(selectedIds));
+									onBatchAction?.("delete", Array.from(useUi.getState().selectedIds));
 								}}
 								className="flex w-full items-center gap-2 px-3 py-1.5 text-rose-400 hover:bg-rose-950/50 hover:text-rose-300 text-left"
 							>
@@ -887,7 +879,7 @@ export function SessionRow({
 					</button>
 						</>
 					)}
-				</div>
+				</FloatingLayer>
 			)}
 
 
@@ -1078,3 +1070,15 @@ export function SessionRow({
 		</div>
 	);
 }
+
+export const SessionRow = React.memo(SessionRowComponent, (prev, next) => {
+	return (
+		prev.session === next.session &&
+		prev.indent === next.indent &&
+		prev.withSpine === next.withSpine &&
+		prev.workspaces === next.workspaces &&
+		prev.onRowFocus === next.onRowFocus &&
+		prev.onBatchAction === next.onBatchAction
+	);
+});
+SessionRow.displayName = "SessionRow";

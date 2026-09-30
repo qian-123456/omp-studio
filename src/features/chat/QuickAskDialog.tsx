@@ -1,6 +1,7 @@
 /** [D] Quick-ask scratchpad: one-shot `omp -p` Q&A modal, no session, no tools. */
 
 import { Check, Copy, Loader2, MessageCircleQuestion, X } from "lucide-react";
+import { Z_LAYER } from "../../components/FloatingLayer";
 import { useEffect, useRef, useState } from "react";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
@@ -68,22 +69,47 @@ export function QuickAskDialog() {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--overlay)] pt-24 backdrop-blur-xs"
+			style={{ zIndex: Z_LAYER.modal }}
+			className="fixed inset-0 flex items-start justify-center bg-[var(--overlay)] pt-20 p-4 backdrop-blur-sm"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeModal();
 			}}
 		>
 			<div
-				className="flex max-h-[70vh] w-[560px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl bg-[var(--bg-panel)] p-5 shadow-apple-modal hairline"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="quick-ask-title"
+				className="flex max-h-[min(85vh,700px)] w-[580px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl bg-[var(--bg-panel)] p-5 shadow-apple-modal hairline text-[var(--text)]"
 				onClick={(e) => e.stopPropagation()}
+				onKeyDown={(e) => {
+					if (e.key === "Tab") {
+						const controls = Array.from(
+							e.currentTarget.querySelectorAll<HTMLElement>(
+								'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+							),
+						).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
+						if (controls.length === 0) return;
+						const first = controls[0];
+						const last = controls[controls.length - 1];
+						if (e.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement as HTMLElement))) {
+							e.preventDefault();
+							last?.focus();
+						} else if (!e.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement as HTMLElement))) {
+							e.preventDefault();
+							first?.focus();
+						}
+					}
+				}}
 			>
-				<div className="mb-3 flex items-center justify-between">
+				<div className="mb-3 flex items-center justify-between shrink-0">
 					<div className="flex items-center gap-2">
 						<MessageCircleQuestion className="h-4 w-4 text-indigo-400" />
-						<h2 className="text-sm font-semibold text-neutral-100">快速提问</h2>
+						<h2 id="quick-ask-title" className="text-sm font-semibold text-[var(--text)]">快速提问</h2>
 					</div>
 					<button
 						type="button"
+						title="关闭 (Esc)"
+						aria-label="关闭对话框"
 						onClick={closeModal}
 						className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 					>
@@ -92,7 +118,7 @@ export function QuickAskDialog() {
 				</div>
 
 				{error && (
-					<div className="mb-3 rounded-lg border border-rose-800/50 bg-rose-950/20 p-2 text-xs text-rose-300">
+					<div className="mb-3 shrink-0 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 text-xs text-rose-300">
 						{error}
 					</div>
 				)}
@@ -141,7 +167,7 @@ export function QuickAskDialog() {
 									<button
 										type="button"
 										onClick={() => void handleCopy()}
-										className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+										className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 										title="复制回答"
 									>
 										{copied ? (

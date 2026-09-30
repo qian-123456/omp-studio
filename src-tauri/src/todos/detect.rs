@@ -197,6 +197,20 @@ async fn handle(state: &AppState, ev: AppEvent) {
     }
 }
 
+pub fn resolve_status_leaving(conn: &rusqlite::Connection, sid: &str, new: SessionStatus) -> bool {
+    let mut changed = false;
+    if new != SessionStatus::Review {
+        changed |= store::resolve_key(conn, &format!("review:{sid}")).unwrap_or(false);
+    }
+    if new != SessionStatus::Error {
+        changed |= store::resolve_key(conn, &format!("error:{sid}")).unwrap_or(false);
+    }
+    if new != SessionStatus::Interrupted {
+        changed |= store::resolve_key(conn, &format!("interrupted:{sid}")).unwrap_or(false);
+    }
+    changed
+}
+
 async fn on_status(
     state: &AppState,
     sid: &str,
@@ -207,12 +221,7 @@ async fn on_status(
     let mut changed = false;
     {
         let db = state.db.lock();
-        if new != SessionStatus::Error {
-            changed |= store::resolve_key(&db, &format!("error:{sid}")).unwrap_or(false);
-        }
-        if new != SessionStatus::Interrupted {
-            changed |= store::resolve_key(&db, &format!("interrupted:{sid}")).unwrap_or(false);
-        }
+        changed |= resolve_status_leaving(&db, sid, new);
     }
     let kind = match new {
         SessionStatus::Review => TodoKind::Review,
@@ -331,25 +340,18 @@ fn older_than(ts: &str, secs: i64) -> bool {
         .unwrap_or(true)
 }
 
-/// Safety net: sync status todos with catalog pending state and UI todos with RPC state.
-async fn reconcile(state: &AppState) {
-    let sessions = crate::catalog::list(state).await;
-    if sessions.is_empty() {
-        return;
-    }
-    let enabled = state.settings.read().system_detection;
+/// Pure DB sync for reconcile, testable without full AppState.
+pub fn reconcile_db(
+    conn: &rusqlite::Connection,
+    enabled: bool,
+    sessions: &[SessionMeta],
+    live_pending: &[(String, Vec<Value>)],
+    alive_pids: &HashSet<u32>,
+    all_services: &[crate::contracts::ServiceInfo],
+) -> bool {
     let by_id: HashMap<&str, &SessionMeta> = sessions.iter().map(|s| (s.id.as_str(), s)).collect();
     let mut changed = false;
-    let mut live_pending = Vec::new();
-    for s in sessions
-        .iter()
-        .filter(|s| s.live || crate::rpc::is_live(&s.id))
-    {
-        live_pending.push((s.id.clone(), crate::rpc::pending_ui(state, &s.id).await));
-    }
-    let all_services = crate::services::list(false).await;
-    let alive_pids: HashSet<u32> = all_services.iter().map(|s| s.pid).collect();
-    let db = state.db.lock();
+
     if enabled {
         for s in sessions.iter().filter(|s| !s.archived && is_recent(s)) {
             let kind = match s.pending {
@@ -358,13 +360,13 @@ async fn reconcile(state: &AppState) {
                 Some(PendingKind::Interrupted) => TodoKind::Interrupted,
                 _ => continue,
             };
-            changed |= store::insert_absent(&db, &status_key(kind, &s.id), &status_todo(s, kind))
+            changed |= store::insert_absent(conn, &status_key(kind, &s.id), &status_todo(s, kind))
                 .unwrap_or(false);
         }
-        for s in &all_services {
+        for s in all_services {
             if let Some(sid) = s.session_id.as_deref() {
                 if let Some(meta) = by_id.get(sid).copied() {
-                    let is_live = meta.live || crate::rpc::is_live(sid);
+                    let is_live = meta.live || live_pending.iter().any(|(id, _)| id == sid);
                     if meta.archived || !is_live {
                         let name = name_of(Some(meta), sid);
                         let mut t = NewTodo::system(
@@ -376,29 +378,34 @@ async fn reconcile(state: &AppState) {
                         t.payload =
                             json!({ "pid": s.pid, "port": s.port, "url": s.url, "name": s.name });
                         let key = format!("service:{sid}:{}:{}", s.pid, s.port);
-                        changed |= store::insert_absent(&db, &key, &t).unwrap_or(false);
+                        changed |= store::insert_absent(conn, &key, &t).unwrap_or(false);
                     }
                 }
             }
         }
     }
+
+    // 1. Zombie todos: reconcile must resolve Review/Error/Interrupted todos whose
+    // session no longer exists in the catalog.
     let status_kinds = [TodoKind::Review, TodoKind::Error, TodoKind::Interrupted];
-    for (t, key) in store::open_with_keys(&db, &status_kinds).unwrap_or_default() {
+    for (t, key) in store::open_with_keys(conn, &status_kinds).unwrap_or_default() {
         let Some(s) = t
             .session_id
             .as_deref()
             .and_then(|id| by_id.get(id).copied())
         else {
+            changed |= store::resolve_key(conn, &key).unwrap_or(false);
             continue;
         };
         if s.archived || !still_pending(t.kind, s) {
-            changed |= store::resolve_key(&db, &key).unwrap_or(false);
+            changed |= store::resolve_key(conn, &key).unwrap_or(false);
         }
     }
-    for (t, key) in store::open_with_keys(&db, &[TodoKind::ServiceLeft]).unwrap_or_default() {
+
+    for (t, key) in store::open_with_keys(conn, &[TodoKind::ServiceLeft]).unwrap_or_default() {
         let pid = t.payload.get("pid").and_then(Value::as_u64).unwrap_or(0) as u32;
         if !alive_pids.contains(&pid) {
-            changed |= store::resolve_key(&db, &key).unwrap_or(false);
+            changed |= store::resolve_key(conn, &key).unwrap_or(false);
             continue;
         }
         let Some(s) = t
@@ -406,31 +413,42 @@ async fn reconcile(state: &AppState) {
             .as_deref()
             .and_then(|id| by_id.get(id).copied())
         else {
+            changed |= store::resolve_key(conn, &key).unwrap_or(false);
             continue;
         };
-        let is_live = s.live || crate::rpc::is_live(&s.id);
+        let is_live = s.live || live_pending.iter().any(|(id, _)| id == &s.id);
         if is_live && !s.archived {
-            changed |= store::resolve_key(&db, &key).unwrap_or(false);
+            changed |= store::resolve_key(conn, &key).unwrap_or(false);
         }
     }
+
+    // 2. Orphaned ui:* approval/question todos for sessions that are not live must be resolved.
     let ui_open =
-        store::open_with_keys(&db, &[TodoKind::Approval, TodoKind::Question]).unwrap_or_default();
+        store::open_with_keys(conn, &[TodoKind::Approval, TodoKind::Question]).unwrap_or_default();
+    let live_sids: HashSet<&str> = live_pending.iter().map(|(sid, _)| sid.as_str()).collect();
+
+    for (t, key) in &ui_open {
+        let is_live = t
+            .session_id
+            .as_deref()
+            .is_some_and(|sid| live_sids.contains(sid));
+        if !is_live {
+            changed |= store::resolve_key(conn, key).unwrap_or(false);
+        }
+    }
+
+    // For live sessions, sync dialog requests from RPC.
     for (sid, pending) in live_pending {
         let ids: HashSet<String> = pending
             .iter()
-            .filter_map(|p| {
-                p.request
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
+            .filter_map(|p| p.get("id").and_then(Value::as_str).map(str::to_string))
             .collect();
         if enabled {
-            for p in &pending {
-                if let Some((kind, rid)) = dialog_request(&p.request) {
-                    let name = name_of(by_id.get(sid.as_str()).copied(), &sid);
-                    let t = ui_todo(&name, &sid, kind, &p.request);
-                    changed |= store::insert_absent(&db, &ui_key(&sid, &rid), &t).unwrap_or(false);
+            for req in pending {
+                if let Some((kind, rid)) = dialog_request(req) {
+                    let name = name_of(by_id.get(sid.as_str()).copied(), sid);
+                    let t = ui_todo(&name, sid, kind, req);
+                    changed |= store::insert_absent(conn, &ui_key(sid, &rid), &t).unwrap_or(false);
                 }
             }
         }
@@ -440,10 +458,41 @@ async fn reconcile(state: &AppState) {
                 continue;
             };
             if !ids.contains(rid) && older_than(&t.created_at, 30) {
-                changed |= store::resolve_key(&db, key).unwrap_or(false);
+                changed |= store::resolve_key(conn, key).unwrap_or(false);
             }
         }
     }
+
+    changed
+}
+
+/// Safety net: sync status todos with catalog pending state and UI todos with RPC state.
+async fn reconcile(state: &AppState) {
+    let sessions = crate::catalog::list(state).await;
+    let enabled = state.settings.read().system_detection;
+    let mut live_pending = Vec::new();
+    for s in sessions
+        .iter()
+        .filter(|s| s.live || crate::rpc::is_live(&s.id))
+    {
+        let pending = crate::rpc::pending_ui(state, &s.id)
+            .await
+            .into_iter()
+            .map(|p| p.request)
+            .collect();
+        live_pending.push((s.id.clone(), pending));
+    }
+    let all_services = crate::services::list(false).await;
+    let alive_pids: HashSet<u32> = all_services.iter().map(|s| s.pid).collect();
+    let db = state.db.lock();
+    let changed = reconcile_db(
+        &db,
+        enabled,
+        &sessions,
+        &live_pending,
+        &alive_pids,
+        &all_services,
+    );
     drop(db);
     if changed {
         super::notify_changed(state);
@@ -521,5 +570,71 @@ mod tests {
             ..Default::default()
         };
         assert!(archived.archived);
+    }
+
+    #[test]
+    fn zombie_todos_resolved_when_session_missing_from_catalog() {
+        let c = store::test_conn();
+        let t_review = NewTodo::system(
+            TodoKind::Review,
+            "deleted_sess",
+            "Review".into(),
+            String::new(),
+        );
+        let t_error = NewTodo::system(
+            TodoKind::Error,
+            "deleted_sess",
+            "Error".into(),
+            String::new(),
+        );
+        store::upsert(&c, "review:deleted_sess", &t_review, true).unwrap();
+        store::upsert(&c, "error:deleted_sess", &t_error, true).unwrap();
+        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 2);
+
+        // Reconcile with empty catalog (session is gone)
+        let changed = reconcile_db(&c, true, &[], &[], &HashSet::new(), &[]);
+        assert!(changed);
+
+        // Both zombie todos must be resolved
+        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn orphaned_ui_todos_resolved_when_session_not_live() {
+        let c = store::test_conn();
+        let req1 = json!({"type":"extension_ui_request","id":"r1","method":"select","title":"Allow tool: bash","options":["Approve","Deny"]});
+        let req2 =
+            json!({"type":"extension_ui_request","id":"r2","method":"input","title":"Your name?"});
+        let t_appr = ui_todo("name", "dead_sess", TodoKind::Approval, &req1);
+        let t_quest = ui_todo("name", "dead_sess", TodoKind::Question, &req2);
+        store::insert_absent(&c, "ui:dead_sess:r1", &t_appr).unwrap();
+        store::insert_absent(&c, "ui:dead_sess:r2", &t_quest).unwrap();
+        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 2);
+
+        // Session exists in catalog but is not live (live_pending is empty)
+        let s = SessionMeta {
+            id: "dead_sess".into(),
+            status: SessionStatus::Idle,
+            live: false,
+            ..Default::default()
+        };
+        let changed = reconcile_db(&c, true, &[s], &[], &HashSet::new(), &[]);
+        assert!(changed);
+
+        // Both orphaned UI todos must be resolved
+        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn on_status_resolves_review_when_leaving_review() {
+        let c = store::test_conn();
+        let t = NewTodo::system(TodoKind::Review, "s1", "Review".into(), String::new());
+        store::upsert(&c, "review:s1", &t, true).unwrap();
+        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 1);
+
+        // Leaving Review into Idle -> resolves review:s1
+        let changed = resolve_status_leaving(&c, "s1", SessionStatus::Idle);
+        assert!(changed);
+        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 0);
     }
 }

@@ -29,8 +29,8 @@ export const OMP_DESKTOP_CATEGORIES: OmpDesktopCategory[] = [
 	{ id: "context", label: "上下文与记忆", hint: "压缩、上下文与记忆" },
 	{ id: "tools", label: "工具与审批", hint: "工具开关、审批与扩展能力" },
 	{ id: "tasks", label: "任务与子代理", hint: "子代理、隔离与工作树" },
-	{ id: "providers", label: "提供商与网络", hint: "传输、扩展与认证" },
-	{ id: "advanced", label: "高级", hint: "其余桌面相关配置" },
+	{ id: "providers", label: "网络与扩展", hint: "扩展列表与网络服务配置" },
+	{ id: "advanced", label: "其他 OMP 配置", hint: "其他未归类的 OMP 原生配置项" },
 ];
 
 const CATEGORY_BY_ID: Record<string, OmpDesktopCategory> = Object.fromEntries(
@@ -83,6 +83,8 @@ const HIDDEN_KEYS: Record<string, true> = {
 	// Edited by the dedicated Roles UI, not the flat config list.
 	modelRoles: true,
 	"retry.fallbackChains": true,
+	modelRoleStorage: true,
+	cycleOrder: true,
 };
 
 interface CategoryMatch {
@@ -108,8 +110,6 @@ const CATEGORY_MATCH: readonly CategoryMatch[] = [
 			enabledProviders: true,
 			disabledProviders: true,
 			modelTags: true,
-			modelRoleStorage: true,
-			cycleOrder: true,
 			includeModelInPrompt: true,
 		},
 		prefixes: [

@@ -46,6 +46,39 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch("ALTER TABLE session_meta ADD COLUMN cwd_override TEXT;")?;
         conn.pragma_update(None, "user_version", 2)?;
     }
+    // v3: scheduled tasks (schedules and schedule_runs tables).
+    if version < 3 {
+        conn.execute_batch(
+            "CREATE TABLE schedules(
+               id TEXT PRIMARY KEY,
+               name TEXT NOT NULL,
+               prompt TEXT NOT NULL,
+               cwd TEXT NOT NULL,
+               run_mode TEXT NOT NULL DEFAULT 'local',
+               cadence TEXT NOT NULL,
+               model TEXT,
+               thinking TEXT,
+               approval_mode TEXT,
+               enabled INTEGER NOT NULL DEFAULT 1,
+               next_run_at TEXT,
+               last_run_at TEXT,
+               created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL
+             );
+             CREATE TABLE schedule_runs(
+               id TEXT PRIMARY KEY,
+               schedule_id TEXT NOT NULL,
+               session_id TEXT,
+               status TEXT NOT NULL,
+               started_at TEXT NOT NULL,
+               finished_at TEXT,
+               summary TEXT,
+               FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+             );
+             CREATE INDEX idx_schedule_runs_schedule_id ON schedule_runs(schedule_id, started_at DESC);",
+        )?;
+        conn.pragma_update(None, "user_version", 3)?;
+    }
     Ok(())
 }
 
@@ -104,7 +137,7 @@ pub fn ensure_global_workspace(conn: &Connection) -> rusqlite::Result<()> {
 mod tests {
     use super::*;
 
-    /// v1 schema -> migrate() -> v2 adds `cwd_override`, keeps rows.
+    /// v1 schema -> migrate() -> latest; v2 adds `cwd_override`, keeps rows.
     #[test]
     fn migrate_v2_adds_cwd_override() {
         let conn = Connection::open_in_memory().unwrap();
@@ -119,7 +152,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -139,9 +172,27 @@ mod tests {
         // Fresh DB reaches v2 in one pass.
         let fresh = Connection::open_in_memory().unwrap();
         migrate(&fresh).unwrap();
-        let v2: u32 = fresh
+        let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v2, 2);
+        assert_eq!(v3, 3);
+    }
+
+    #[test]
+    fn migrate_v3_adds_schedules_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 3);
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
     }
 }

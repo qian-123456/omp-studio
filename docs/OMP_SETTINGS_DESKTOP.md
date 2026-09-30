@@ -25,24 +25,24 @@
 隐藏规则：
 
 - 前缀：`theme.` `statusLine.` `composer.` `tui.` `display.` `terminal.` `startup.` `keybindings.` `paste.` `shellMinimizer.` `speech.` `stt.` `live.` `ttsr.` `spelling.`
-- 精确键：`symbolPreset` `colorBlindMode` `showHardwareCursor` `autocompleteMaxVisible` `emojiAutocomplete` `treeFilterMode` `autoResume` `doubleEscapeAction` `completion.notify` `error.notify` `readLineNumbers` `read.toolResultPreview` `setupVersion` `modelRoles` `retry.fallbackChains`
+- 精确键：`symbolPreset` `colorBlindMode` `showHardwareCursor` `autocompleteMaxVisible` `emojiAutocomplete` `treeFilterMode` `autoResume` `doubleEscapeAction` `completion.notify` `error.notify` `readLineNumbers` `read.toolResultPreview` `setupVersion` `modelRoles` `retry.fallbackChains` `cycleOrder` `modelRoleStorage`
 
-最后两个（`modelRoles`、`retry.fallbackChains`）由「模型角色与回退链」编辑器接管，不进入扁平列表。
+最后四个（`modelRoles`、`retry.fallbackChains`、`cycleOrder`、`modelRoleStorage`）由「模型角色」专用编辑器接管，不进入扁平列表。
 
 ## 3. 类目表
 
 | id | 中文名 | 覆盖的键（前缀 / 精确，先命中先归类） |
 |---|---|---|
-| `model` | 模型与目录 | `modelProviderOrder` `enabledModels` `enabledProviders` `disabledProviders` `modelTags` `modelRoleStorage` `cycleOrder` `includeModelInPrompt` `model.loopGuard.*` `model.toolCallLoopGuard.*` `features.*` `codexResets.*` |
+| `model` | 模型与目录 | `modelProviderOrder` `enabledModels` `enabledProviders` `disabledProviders` `modelTags` `includeModelInPrompt` `model.loopGuard.*` `model.toolCallLoopGuard.*` `features.*` `codexResets.*` |
 | `thinking` | 思考与采样 | `defaultThinkingLevel` `hideThinkingBlock` `proseOnlyThinking` `omitThinking` `externalThinking` `thinkingBudgets.*` `providers.autoThinkingMaxEffort` `temperature` `topP` `topK` `minP` `presencePenalty` `repetitionPenalty` `textVerbosity` `tier.*` `personality` |
 | `retry` | 重试与回退 | `retry.*` `providers.anthropic.serverSideFallback` `provider.appendOnlyContext` `providers.streamFirstEventTimeoutSeconds` `providers.streamIdleTimeoutSeconds` `providers.maxInFlightRequests` `providers.cacheRetention` |
 | `context` | 上下文与记忆 | `compaction.*` `extendedContext` `contextPromotion.*` `includeWorkspaceTree` `workspace.*` `skillful` `title.*` `recap.*` `memory.*` `hindsight.*` `mnemopi.*` `memories.*` `autolearn.*` `steeringMode` `followUpMode` `interruptMode` `goal.*` |
 | `tools` | 工具与审批 | `tools.*` `bash.*` `eval.*` `python.*` `lsp.*` `edit.*` `read.*` `glob.*` `grep.*` `astGrep.*` `astEdit.*` `find.*` `debug.*` `launch.*` `fetch.*` `vault.*` `github.*` `web_search.*` `security.*` `ask.*` `browser.*` `computer.*` `images.*` `checkpoint.*` `speechgen.*` `generate_image.*` `mcp.*` `async.*` `irc.*` `plan.*` `skills.*` `commands.*` `secrets.*` `tts.*` `todo.*` |
 | `tasks` | 任务与子代理 | `task.*` `tasks.*` `isolation.*` `worktree.*` `prewalk.*` |
-| `providers` | 提供商与网络 | 其余 `providers.*` `searxng.*` `exa.*` `auth.*` `extensions` `disabledExtensions` `extensionHandlers.*` `dev.*` `gc.*` `commit.*` `git.*` |
-| `advanced` | 高级 | 兜底桶：其他桌面相关但未命中以上规则的可见键（如 `shellPath`、`power.*`） |
+| `providers` | 网络与扩展 | 其余 `providers.*` `searxng.*` `exa.*` `auth.*` `extensions` `disabledExtensions` `extensionHandlers.*` `dev.*` `gc.*` `commit.*` `git.*` |
+| `advanced` | 其他 OMP 配置 | 兜底桶：其他桌面相关但未命中以上规则的可见键（如 `shellPath`、`power.*`） |
 
-以上入口与「模型角色」编辑器都是设置页左侧**一级导航项**（紧随「通用」，无二级折叠）：`模型角色` 对应 omp `/model` 的 Roles 视图，管理 `modelRoles.*`、`retry.fallbackChains.*`、`cycleOrder`、`modelRoleStorage`；其余 8 项各对应一个类目的扁平键列表（`advanced` 在导航中显示为 **OMP 其他**，避免与应用自身「高级」混淆）。其中 `cycleOrder`、`modelRoleStorage` 仍同时出现在 `model` 类目的扁平列表中。
+以上入口与「模型角色」编辑器均按新版分组导航进行分类展示：`模型角色` 对应 omp `/model` 的 Roles 视图，管理 `modelRoles.*`、`retry.fallbackChains.*`、`cycleOrder`、`modelRoleStorage`；其余 8 项各对应一个类目的扁平键列表。`cycleOrder`、`modelRoleStorage` 不再重复出现在 `model` 类目的扁平列表中。
 
 ## 4. 模型角色与回退链
 

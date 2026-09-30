@@ -97,3 +97,6 @@ export const onProvidersOauth = (
 	cb: (payload: OauthUiEvent) => void,
 ): Promise<UnlistenFn> =>
 	listen<OauthUiEvent>("providers:oauth", (e) => cb(e.payload));
+
+export const onSchedulesChanged = (cb: () => void): Promise<UnlistenFn> =>
+	listen<null>("schedules:changed", () => cb());

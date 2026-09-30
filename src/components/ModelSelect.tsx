@@ -1,9 +1,8 @@
 import clsx from "clsx";
 import { Check, ChevronDown, ChevronRight, Loader2, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { isComposing } from "../lib/hooks";
+import { useMemo, useRef, useState } from "react";
 import { type ModelOption, toModelKey } from "../lib/models";
-
+import { FloatingLayer } from "./FloatingLayer";
 export interface ModelExtraOption {
 	/** Value reported via onSelect; e.g. "" or "__custom_model". */
 	value: string;
@@ -240,21 +239,6 @@ export function ModelSelect({
 	const [open, setOpen] = useState(false);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 
-	useEffect(() => {
-		if (!open) return;
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				if (isComposing({ nativeEvent: e, key: e.key })) return;
-				e.stopPropagation();
-				e.preventDefault();
-				setOpen(false);
-				buttonRef.current?.focus();
-			}
-		};
-		window.addEventListener("keydown", onKeyDown, true);
-		return () => window.removeEventListener("keydown", onKeyDown, true);
-	}, [open]);
-
 	return (
 		<div className="relative">
 			<button
@@ -267,36 +251,27 @@ export function ModelSelect({
 				{icon && <ChevronDown size={11} className="shrink-0 text-neutral-500" />}
 				<span className="truncate">{label}</span>
 			</button>
-			{open && (
-				<>
-					<div className="fixed inset-0 z-30" onMouseDown={() => setOpen(false)} />
-					<div
-						className={clsx(
-							"absolute z-40 rounded-xl vibrancy-popover shadow-apple-modal hairline py-1.5",
-							widthClass,
-							direction === "up" ? "bottom-full left-0 mb-1" : "left-0 top-full mt-1",
-						)}
-						onKeyDown={(e) => {
-							if (e.key === "Escape") {
-								if (isComposing(e)) return;
-								e.stopPropagation();
-								e.preventDefault();
-								setOpen(false);
-								buttonRef.current?.focus();
-							}
-						}}
-					>
-						<ModelMenuContent
-							{...menu}
-							onSelect={(v) => {
-								menu.onSelect(v);
-								setOpen(false);
-								buttonRef.current?.focus();
-							}}
-						/>
-					</div>
-				</>
-			)}
+			<FloatingLayer
+				anchor={open ? buttonRef.current : null}
+				placement={direction === "up" ? "top-start" : "bottom-start"}
+				offset={4}
+				layer="popover"
+				ignoreRefs={[buttonRef]}
+				onDismiss={() => {
+					setOpen(false);
+					buttonRef.current?.focus();
+				}}
+				className={clsx("py-1.5", widthClass)}
+			>
+				<ModelMenuContent
+					{...menu}
+					onSelect={(v) => {
+						menu.onSelect(v);
+						setOpen(false);
+						buttonRef.current?.focus();
+					}}
+				/>
+			</FloatingLayer>
 		</div>
 	);
 }

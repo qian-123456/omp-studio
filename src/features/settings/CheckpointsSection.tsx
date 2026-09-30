@@ -42,11 +42,14 @@ export function CheckpointsSection() {
 	};
 
 	return (
-		<div className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
+		<div
+			data-field-id="turnCheckpoints"
+			className="space-y-4 rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card transition-all"
+		>
 			<div className="flex items-center justify-between gap-4">
 				<div>
 					<div className="text-xs font-medium text-neutral-200">对话检查点</div>
-					<div className="text-[11px] text-[rgba(235,235,245,0.60)]">
+					<div className="text-[11px] text-neutral-400">
 						每一轮对话悄悄保存现场，可「撤回这一轮」；Agent 同时遵守自动存档规则（验证通过后把自己的改动保存成版本）
 					</div>
 				</div>

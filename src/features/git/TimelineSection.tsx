@@ -20,7 +20,6 @@ import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
-import { ListMore } from "./helpers";
 import { TmRunCard } from "./TmRunCard";
 import { shaToTurnMap } from "./turns";
 
@@ -30,7 +29,7 @@ const btn =
 const HISTORY_KEY = "omp:tm:custom-command-history";
 
 const COMMIT_CAP = 15;
-
+const COMMIT_STEP = 20;
 /** Conventional-commit types rendered as a chip; unknown prefixes stay in the raw subject. */
 const KNOWN_TYPES: Record<string, true> = {
 	feat: true,
@@ -453,7 +452,7 @@ export function TimelineSection({
 	});
 	const [busy, setBusy] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+	const [dayLimits, setDayLimits] = useState<Record<string, number>>({});
 	const [dayToggles, setDayToggles] = useState<Record<string, boolean>>({});
 	/** Turn checkpoints recorded by app-launched sessions in this worktree. */
 	const [turns, setTurns] = useState<TurnCheckpoint[]>([]);
@@ -563,8 +562,9 @@ export function TimelineSection({
 		const group = dayGroups.find((g) => g.items.some((c) => c.sha === commit.sha));
 		if (group) {
 			setDayToggles((prev) => ({ ...prev, [group.key]: true }));
-			if (group.items.findIndex((c) => c.sha === commit.sha) >= COMMIT_CAP) {
-				setExpandedDays((prev) => ({ ...prev, [group.key]: true }));
+			const commitIdx = group.items.findIndex((c) => c.sha === commit.sha);
+			if (commitIdx >= COMMIT_CAP) {
+				setDayLimits((prev) => ({ ...prev, [group.key]: commitIdx + 1 }));
 			}
 		}
 		setFlash(commit.sha);
@@ -743,56 +743,92 @@ export function TimelineSection({
 								</button>
 								{dayOpen && (
 									<ol className="mt-1 space-y-0.5">
-										{(expandedDays[g.key] ? g.items : g.items.slice(0, COMMIT_CAP)).map((c, i, shown) => {
-											const run = runFor(c.sha);
+										{(() => {
+											const limit = dayLimits[g.key] ?? COMMIT_CAP;
+											const shownItems = g.items.slice(0, limit);
+											const remaining = g.items.length - shownItems.length;
 											return (
-												<CommitRow
-													key={c.sha}
-													c={c}
-													turn={turnBySha.get(c.sha)}
-													flash={flash === c.sha}
-													run={run}
-													isFirst={i === 0}
-													isLast={i === shown.length - 1}
-													expanded={open === c.sha}
-													currentCustom={customCommands[c.sha] ?? ""}
-													customFor={customFor === c.sha}
-													busy={busy === c.sha}
-													cmdHistory={cmdHistory}
-													onToggleOpen={() =>
-														setOpen(open === c.sha ? null : c.sha)
-													}
-													onDiff={onDiff}
-													onStart={(sha, cmd) => void start(sha, cmd)}
-													onCustomFor={() =>
-														setCustomFor(customFor === c.sha ? null : c.sha)
-													}
-													onCustomChange={(v) =>
-														setCustomCommands((prev) => ({ ...prev, [c.sha]: v }))
-													}
-													onCustomHistoryPick={(cmd) =>
-														setCustomCommands((prev) => ({ ...prev, [c.sha]: cmd }))
-													}
-													onReset={(cc, mode) => void reset(cc, mode)}
-													onCopySha={(sha, short) => void copySha(sha, short)}
-													onRunGone={(id) =>
-														onRunsChange(runs.filter((r) => r.id !== id))
-													}
-													onRunUpdate={(next) =>
-														onRunsChange(runs.map((r) => (r.id === next.id ? next : r)))
-													}
-													onJumpTurn={jumpToTurn}
-												/>
+												<>
+													{shownItems.map((c, i, shown) => {
+														const run = runFor(c.sha);
+														return (
+															<CommitRow
+																key={c.sha}
+																c={c}
+																turn={turnBySha.get(c.sha)}
+																flash={flash === c.sha}
+																run={run}
+																isFirst={i === 0}
+																isLast={i === shown.length - 1}
+																expanded={open === c.sha}
+																currentCustom={customCommands[c.sha] ?? ""}
+																customFor={customFor === c.sha}
+																busy={busy === c.sha}
+																cmdHistory={cmdHistory}
+																onToggleOpen={() =>
+																	setOpen(open === c.sha ? null : c.sha)
+																}
+																onDiff={onDiff}
+																onStart={(sha, cmd) => void start(sha, cmd)}
+																onCustomFor={() =>
+																	setCustomFor(customFor === c.sha ? null : c.sha)
+																}
+																onCustomChange={(v) =>
+																	setCustomCommands((prev) => ({ ...prev, [c.sha]: v }))
+																}
+																onCustomHistoryPick={(cmd) =>
+																	setCustomCommands((prev) => ({ ...prev, [c.sha]: cmd }))
+																}
+																onReset={(cc, mode) => void reset(cc, mode)}
+																onCopySha={(sha, short) => void copySha(sha, short)}
+																onRunGone={(id) =>
+																	onRunsChange(runs.filter((r) => r.id !== id))
+																}
+																onRunUpdate={(next) =>
+																	onRunsChange(runs.map((r) => (r.id === next.id ? next : r)))
+																}
+																onJumpTurn={jumpToTurn}
+															/>
+														);
+													})}
+													{g.items.length > COMMIT_CAP && (
+														<div className="flex items-center justify-center gap-2 py-1 text-[11px] text-neutral-500">
+															{remaining > 0 && (
+																<button
+																	type="button"
+																	onClick={() =>
+																		setDayLimits((prev) => ({
+																			...prev,
+																			[g.key]: limit + COMMIT_STEP,
+																		}))
+																	}
+																	className="flex items-center gap-1 rounded px-2 py-0.5 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
+																>
+																	<ChevronDown size={12} />
+																	<span>
+																		还有 {remaining} 条 · 展开更多 (+{Math.min(remaining, COMMIT_STEP)})
+																	</span>
+																</button>
+															)}
+															{limit > COMMIT_CAP && (
+																<button
+																	type="button"
+																	onClick={() =>
+																		setDayLimits((prev) => ({
+																			...prev,
+																			[g.key]: COMMIT_CAP,
+																		}))
+																	}
+																	className="rounded px-2 py-0.5 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
+																>
+																	收起
+																</button>
+															)}
+														</div>
+													)}
+												</>
 											);
-										})}
-										<ListMore
-											n={g.items.length - COMMIT_CAP}
-											expanded={!!expandedDays[g.key]}
-											onToggle={() =>
-												setExpandedDays((prev) => ({ ...prev, [g.key]: !prev[g.key] }))
-											}
-											unit="条"
-										/>
+										})()}
 									</ol>
 								)}
 							</div>

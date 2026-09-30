@@ -55,7 +55,7 @@ pub struct ResultBadge {
     pub summary: String,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMeta {
     /// OMP session id (header.id).
@@ -172,6 +172,23 @@ pub struct Usage {
     pub cost: f64,
 }
 
+/// Structured image reference attached to a transcript item.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageAttachment {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptItem {
@@ -188,6 +205,9 @@ pub struct TranscriptItem {
     pub stop_reason: Option<String>,
     /// custom_message display:false, system reminders.
     pub hidden: bool,
+    /// Attached images (blob refs, clip files, or unresolvable markers).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImageAttachment>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -752,6 +772,118 @@ pub struct OmpImportResult {
     pub id: String,
     pub ok: bool,
     pub error: Option<String>,
+}
+
+// ---- E: Schedules (定时任务) ----
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScheduleRunMode {
+    #[default]
+    Local,
+    Worktree,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ScheduleCadence {
+    Interval {
+        minutes: u32,
+    },
+    Daily {
+        time: String,
+        #[serde(default)]
+        weekdays: Vec<u32>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScheduleRunStatus {
+    Running,
+    Ok,
+    Error,
+    Skipped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Schedule {
+    pub id: String,
+    pub name: String,
+    pub prompt: String,
+    pub cwd: String,
+    pub run_mode: ScheduleRunMode,
+    pub cadence: ScheduleCadence,
+    pub model: Option<String>,
+    pub thinking: Option<String>,
+    pub approval_mode: Option<String>,
+    pub enabled: bool,
+    pub next_run_at: Option<String>,
+    pub last_run_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleDraft {
+    pub id: Option<String>,
+    pub name: String,
+    pub prompt: String,
+    pub cwd: String,
+    #[serde(default)]
+    pub run_mode: ScheduleRunMode,
+    pub cadence: ScheduleCadence,
+    pub model: Option<String>,
+    pub thinking: Option<String>,
+    pub approval_mode: Option<String>,
+    #[serde(default = "default_schedule_enabled")]
+    pub enabled: bool,
+}
+
+fn default_schedule_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleRun {
+    pub id: String,
+    pub schedule_id: String,
+    pub session_id: Option<String>,
+    pub status: ScheduleRunStatus,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub summary: Option<String>,
+}
+
+// ---- Skills & Extensions catalog ----
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillItem {
+    pub name: String,
+    pub description: String,
+    pub source: String,
+    pub path: String,
+    pub dir: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionItem {
+    pub name: String,
+    pub path: String,
+    pub source: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillsCatalog {
+    pub skills: Vec<SkillItem>,
+    pub extensions: Vec<ExtensionItem>,
 }
 
 #[cfg(test)]

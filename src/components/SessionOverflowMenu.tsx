@@ -16,12 +16,13 @@ import {
 	RefreshCw,
 	TerminalSquare,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import clsx from "clsx";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { rpcRestart, sessionExportHtml } from "../lib/ipc";
 import { toast } from "../lib/toast";
 import { useUi } from "../stores/ui";
+import { FloatingLayer } from "./FloatingLayer";
 export interface SessionOverflowMenuProps {
 	sessionId: string;
 	cwd?: string | null;
@@ -43,7 +44,7 @@ export function SessionOverflowMenu({
 }: SessionOverflowMenuProps) {
 	const [open, setOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
-	const ref = useRef<HTMLDivElement>(null);
+	const btnRef = useRef<HTMLButtonElement>(null);
 	const sessionViewMode = useUi((s) => s.sessionViewMode[sessionId] ?? "chat");
 	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
 
@@ -58,24 +59,6 @@ export function SessionOverflowMenu({
 			);
 		}
 	};
-
-	useEffect(() => {
-		if (!open) return;
-		const onDown = (e: MouseEvent) => {
-			if (ref.current && !ref.current.contains(e.target as Node)) {
-				setOpen(false);
-			}
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") setOpen(false);
-		};
-		window.addEventListener("mousedown", onDown);
-		window.addEventListener("keydown", onKey);
-		return () => {
-			window.removeEventListener("mousedown", onDown);
-			window.removeEventListener("keydown", onKey);
-		};
-	}, [open]);
 
 	const handleFreshRestart = async () => {
 		if (busy) return;
@@ -121,8 +104,9 @@ export function SessionOverflowMenu({
 	};
 
 	return (
-		<div className={clsx("relative z-20", className)} ref={ref}>
+		<div className={clsx("relative z-20", className)}>
 			<button
+				ref={btnRef}
 				type="button"
 				onClick={() => setOpen((v) => !v)}
 				aria-label="更多会话操作"
@@ -139,12 +123,17 @@ export function SessionOverflowMenu({
 				<MoreHorizontal size={14} />
 			</button>
 
-			{open && (
-				<div
-					role="menu"
-					aria-orientation="vertical"
-					className="absolute right-0 top-full z-[60] mt-1.5 w-60 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1 text-xs"
-				>
+			<FloatingLayer
+				anchor={open ? btnRef.current : null}
+				placement="bottom-end"
+				offset={4}
+				layer="menu"
+				ignoreRefs={[btnRef]}
+				onDismiss={() => setOpen(false)}
+				role="menu"
+				aria-orientation="vertical"
+				className="w-60 p-1 text-xs"
+			>
 					{/* Section 1: 会话弹性与恢复 */}
 					<div className="px-2.5 py-1 text-[10px] font-medium tracking-wider text-neutral-400/80 uppercase">
 						会话连接与维护
@@ -275,8 +264,7 @@ export function SessionOverflowMenu({
 							<span className="flex-1 truncate">手机扫码查看</span>
 						</button>
 					)}
-				</div>
-			)}
+			</FloatingLayer>
 		</div>
 	);
 }

@@ -234,13 +234,13 @@ export function DocView({ path }: { path: string }) {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<div className="flex shrink-0 items-center gap-2 border-b border-neutral-800 px-3 py-1.5">
-				<FileText size={14} className="shrink-0 text-neutral-500" />
-				<span className="truncate text-xs text-neutral-200" title={path}>
+			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-divider)] px-3 py-1.5">
+				<FileText size={14} className="shrink-0 text-neutral-400" />
+				<span className="truncate text-xs text-[var(--text)]" title={path}>
 					{basename(path)}
 					<span className="ml-1.5 text-[10px] text-neutral-500">{short(path)}</span>
 				</span>
-				{dirty && <span className="shrink-0 text-[10px] text-amber-400">● 未保存</span>}
+				{dirty && <span className="shrink-0 text-[10px] text-amber-400 font-medium">● 未保存</span>}
 				{note && (
 					<div className="flex shrink-0 items-center gap-1.5 text-[10px] text-emerald-400">
 						<span>{note}</span>
@@ -256,7 +256,7 @@ export function DocView({ path }: { path: string }) {
 					</div>
 				)}
 				<span className="flex-1" />
-				<div className="flex rounded border border-neutral-700 text-[11px]">
+				<div className="flex rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-0.5 text-[11px]">
 					{(
 						[
 							{ id: "preview", label: "预览" },
@@ -269,10 +269,10 @@ export function DocView({ path }: { path: string }) {
 							type="button"
 							onClick={() => setTab(t.id)}
 							className={clsx(
-								"px-2.5 py-0.5",
+								"px-2.5 py-0.5 rounded-md transition-colors",
 								tab === t.id
-									? "bg-neutral-800 text-neutral-100"
-									: "text-neutral-400 hover:text-neutral-200",
+									? "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium shadow-xs"
+									: "text-neutral-400 hover:text-[var(--text)]",
 							)}
 						>
 							{t.label}
@@ -284,29 +284,29 @@ export function DocView({ path }: { path: string }) {
 					title="保存 (⌘S)"
 					disabled={!dirty || saving}
 					onClick={save}
-					className="rounded p-1 text-neutral-400 hover:bg-neutral-800 disabled:opacity-40"
+					className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-colors"
 				>
-					<Save size={13} />
+					<Save size={14} />
 				</button>
 				<button
 					type="button"
 					title="重新加载"
 					onClick={reload}
-					className="rounded p-1 text-neutral-400 hover:bg-neutral-800"
+					className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 				>
-					<RefreshCw size={13} />
+					<RefreshCw size={14} />
 				</button>
 				<button
 					type="button"
 					title="关闭 (Esc)"
 					onClick={handleClose}
-					className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+					className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 				>
-					<X size={13} />
+					<X size={14} />
 				</button>
 			</div>
 
-			{error && <div className="shrink-0 border-b border-neutral-800 px-3 py-1.5 text-xs text-rose-400">{error}</div>}
+			{error && <div className="shrink-0 border-b border-[var(--border-divider)] px-3 py-1.5 text-xs text-rose-400">{error}</div>}
 			{external && (
 				<div className="flex shrink-0 items-center gap-2 border-b border-amber-800/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-200">
 					<span className="flex-1">文件已在磁盘上被修改</span>
@@ -377,7 +377,7 @@ export function DocView({ path }: { path: string }) {
 			)}
 
 			{sel && (
-				<div className="flex shrink-0 items-end gap-2 border-t border-neutral-800 bg-neutral-900/60 p-2.5 shadow-lg">
+				<div className="flex shrink-0 items-end gap-2 border-t border-[var(--border-divider)] bg-[var(--bg-panel)] p-2.5 shadow-lg">
 					<div className="min-w-0 flex-1">
 						<div className="mb-1 truncate text-[10px] text-neutral-400 font-mono" title={sel.text}>
 							划选片段: 「{sel.text.length > 80 ? `${sel.text.slice(0, 80)}…` : sel.text}」
@@ -388,7 +388,7 @@ export function DocView({ path }: { path: string }) {
 							onChange={(e) => setComment(e.target.value)}
 							placeholder="输入批注内容 (⌘+Enter 提交至会话输入框)..."
 							rows={2}
-							className="w-full resize-none rounded-lg border border-neutral-700 bg-neutral-950 p-2 text-xs text-neutral-200 outline-none focus:border-amber-500"
+							className="w-full resize-none rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-2 text-xs text-[var(--text)] outline-none focus:border-amber-500"
 							onKeyDown={(e) => {
 								if (isComposing(e)) return;
 								if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -436,7 +436,7 @@ export function DocView({ path }: { path: string }) {
 							setComment("");
 							window.getSelection()?.removeAllRanges();
 						}}
-						className="rounded-lg px-2.5 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+						className="rounded-lg px-2.5 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 					>
 						取消
 					</button>

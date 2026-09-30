@@ -14,7 +14,17 @@ use tauri::Emitter;
 use crate::contracts::ServiceInfo;
 use crate::state::{AppEvent, AppState};
 
-const POLL: Duration = Duration::from_secs(10);
+const BASE_POLL: Duration = Duration::from_secs(10);
+const MAX_POLL: Duration = Duration::from_secs(45);
+const STEP_POLL: Duration = Duration::from_secs(10);
+
+static SERVICES_NOTIFY: OnceLock<tokio::sync::Notify> = OnceLock::new();
+
+pub fn notify_services_check() {
+    if let Some(notify) = SERVICES_NOTIFY.get() {
+        notify.notify_one();
+    }
+}
 /// Reuse a scan this fresh instead of re-running lsof.
 const CACHE_TTL: Duration = Duration::from_secs(2);
 
@@ -27,21 +37,38 @@ fn cache() -> &'static ScanCache {
     C.get_or_init(Default::default)
 }
 
-/// Poll listening ports every 10 s and emit `services:changed` on change.
+/// Poll listening ports with adaptive backoff: 10s when dev services are active,
+/// backing off up to 45s when no dev services exist. Emits `services:changed` on diff.
 pub fn init(state: AppState) {
     let _ = STATE.set(state.clone());
+    let notify = SERVICES_NOTIFY.get_or_init(tokio::sync::Notify::new);
     tauri::async_runtime::spawn(async move {
         // ServiceInfo has no PartialEq; compare serialized snapshots.
         let mut last: Option<String> = None;
+        let mut delay = BASE_POLL;
         loop {
             let now = fresh_list(false).await;
             let key = serde_json::to_string(&now).unwrap_or_default();
-            if last.as_deref() != Some(key.as_str()) {
+            let changed = last.as_deref() != Some(key.as_str());
+            if changed {
                 let _ = state.app.emit("services:changed", &now);
                 state.emit(AppEvent::ServicesChanged);
                 last = Some(key);
+                delay = BASE_POLL;
+            } else if now.is_empty() {
+                // No listening dev services found: back off progressively up to 45s
+                delay = (delay + STEP_POLL).min(MAX_POLL);
+            } else {
+                // Dev services running: stay at BASE_POLL (10s) to detect shutdown promptly
+                delay = BASE_POLL;
             }
-            tokio::time::sleep(POLL).await;
+
+            tokio::select! {
+                _ = tokio::time::sleep(delay) => {},
+                _ = notify.notified() => {
+                    delay = BASE_POLL;
+                }
+            }
         }
     });
 }
@@ -106,6 +133,7 @@ pub async fn stop(pid: u32) -> Result<(), String> {
         let rows = fresh_list(false).await;
         let _ = state.app.emit("services:changed", &rows);
         state.emit(AppEvent::ServicesChanged);
+        notify_services_check();
     }
     Ok(())
 }

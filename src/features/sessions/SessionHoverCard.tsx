@@ -1,12 +1,11 @@
 import clsx from "clsx";
 import { GitBranch, GitFork } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { SessionMeta, Workspace } from "../../lib/contracts";
 import { relativeTime } from "../../lib/format";
 import { sessionDisplayName } from "../../lib/sessionName";
 import { shortPath } from "../../lib/paths";
 import { useHomeDir } from "../../lib/hooks";
+import { FloatingLayer } from "../../components/FloatingLayer";
 
 export interface SessionHoverCardProps {
 	session: SessionMeta;
@@ -21,8 +20,8 @@ export interface SessionHoverCardProps {
 
 /**
  * Superset-style floating workspace/session preview card:
- * Renders via React portal into document.body to ensure zero clipping from sidebar overflow.
- * Displays full title, branch, path, status, and timestamp matching Superset Image #1.
+ * Renders via FloatingLayer (layer="hovercard", placement="right-start").
+ * Clamped strictly above the status bar with internal scrolling on overflow.
  */
 export function SessionHoverCard({
 	session,
@@ -33,40 +32,7 @@ export function SessionHoverCard({
 	onMouseLeaveCard,
 	onClose,
 }: SessionHoverCardProps) {
-	const cardRef = useRef<HTMLDivElement>(null);
-	const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 	const home = useHomeDir();
-
-	useLayoutEffect(() => {
-		if (!open || !anchorRect) return;
-
-		const cardEl = cardRef.current;
-		const cardHeight = cardEl ? cardEl.offsetHeight : 160;
-		const viewportHeight = window.innerHeight;
-
-		// Default placement: right of the row, top aligned
-		let top = anchorRect.top;
-		const left = anchorRect.right + 8;
-
-		// Screen boundary collision handling
-		if (top + cardHeight > viewportHeight - 16) {
-			top = Math.max(16, viewportHeight - cardHeight - 16);
-		}
-
-		setPosition({ top, left });
-	}, [open, anchorRect]);
-
-	// Close immediately on any global mouse down
-	useEffect(() => {
-		if (!open) return;
-		const handleGlobalMouseDown = () => {
-			onClose?.();
-		};
-		window.addEventListener("mousedown", handleGlobalMouseDown, { capture: true });
-		return () => {
-			window.removeEventListener("mousedown", handleGlobalMouseDown, { capture: true });
-		};
-	}, [open, onClose]);
 
 	if (!open || !anchorRect) return null;
 
@@ -75,18 +41,16 @@ export function SessionHoverCard({
 	const isWorktree = Boolean(session.git?.worktree);
 	const matchedWs = workspaces.find((w) => w.id === session.workspaceId);
 
-	const cardContent = (
-		<div
-			ref={cardRef}
-			style={{
-				position: "fixed",
-				top: `${position.top}px`,
-				left: `${position.left}px`,
-				zIndex: 40,
-			}}
+	return (
+		<FloatingLayer
+			anchor={open ? anchorRect : null}
+			placement="right-start"
+			offset={8}
+			layer="hovercard"
+			onDismiss={onClose}
 			onMouseEnter={onMouseEnterCard}
 			onMouseLeave={onMouseLeaveCard}
-			className="w-[280px] rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-3 text-xs text-neutral-200 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none space-y-2.5"
+			className="w-[280px] p-3 text-xs text-neutral-200 select-none space-y-2.5 animate-in fade-in zoom-in-95 duration-100"
 		>
 			{/* Header: Full unclipped Title */}
 			<div className="space-y-1">
@@ -143,8 +107,6 @@ export function SessionHoverCard({
 					</span>
 				)}
 			</div>
-		</div>
+		</FloatingLayer>
 	);
-
-	return createPortal(cardContent, document.body);
 }

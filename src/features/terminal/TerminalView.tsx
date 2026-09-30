@@ -23,6 +23,7 @@ import {
 	Search,
 	X,
 } from "lucide-react";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { onTerminalData, onTerminalExit } from "../../lib/events";
@@ -93,7 +94,7 @@ export function TerminalView({
 		count: number;
 	} | null>(null);
 	const searchInputRef = useRef<HTMLInputElement | null>(null);
-
+	const searchButtonRef = useRef<HTMLButtonElement | null>(null);
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -528,6 +529,7 @@ export function TerminalView({
 
 				{/* Search toggle */}
 				<button
+					ref={searchButtonRef}
 					type="button"
 					onClick={() => {
 						setSearchOpen((o) => {
@@ -606,12 +608,31 @@ export function TerminalView({
 				</button>
 			</div>
 			{/* Floating Search Bar (Cmd+F) */}
-			{searchOpen && (
+			<FloatingLayer
+				anchor={searchOpen ? (searchButtonRef.current ?? { x: window.innerWidth - 20, y: 40 }) : null}
+				placement="bottom-end"
+				layer="popover"
+				offset={4}
+				onDismiss={() => {
+					terminalRegistry.get(sessionId)?.search.clearDecorations();
+					setSearchOpen(false);
+					setSearchResult(null);
+					terminalRegistry.get(sessionId)?.term.focus();
+				}}
+				ignoreRefs={[searchButtonRef]}
+				className="flex max-w-[calc(100vw-32px)] flex-wrap items-center gap-1.5 p-1.5 shadow-apple-modal"
+			>
 				<div
-					className={clsx(
-						"absolute top-10 z-40 flex max-w-[calc(100%-16px)] flex-wrap items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900/95 p-1.5 shadow-2xl backdrop-blur-md",
-						compact ? "right-2" : "right-4",
-					)}
+					className="flex items-center gap-1.5"
+					onKeyDown={(e) => {
+						if (e.key === "Escape") {
+							e.preventDefault();
+							terminalRegistry.get(sessionId)?.search.clearDecorations();
+							setSearchOpen(false);
+							setSearchResult(null);
+							terminalRegistry.get(sessionId)?.term.focus();
+						}
+					}}
 				>
 					<input
 						ref={searchInputRef}
@@ -644,7 +665,7 @@ export function TerminalView({
 						}}
 						placeholder="在终端中搜索…"
 						className={clsx(
-							"rounded bg-neutral-950 px-2 py-1 text-xs text-neutral-200 outline-none border border-neutral-800 focus:border-indigo-500",
+							"rounded-lg bg-[var(--well-bg)] px-2 py-1 text-xs text-[var(--text)] outline-none border border-[var(--border-divider)] focus:border-indigo-500",
 							compact ? "w-28" : "w-44",
 						)}
 					/>
@@ -721,12 +742,12 @@ export function TerminalView({
 							terminalRegistry.get(sessionId)?.term.focus();
 						}}
 						title="关闭搜索 (Esc)"
-						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+						className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 					>
 						<X size={13} />
 					</button>
 				</div>
-			)}
+			</FloatingLayer>
 
 			{needsConfirm && (
 				<div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -820,22 +841,20 @@ export function TerminalView({
 			)}
 
 			{/* Terminal Right-Click Context Menu */}
-			{contextMenu && (
-				<div
-					className="fixed inset-0 z-50"
-					onMouseDown={(e) => {
-						if (e.target === e.currentTarget) setContextMenu(null);
-					}}
-				>
-					<div
-						style={{ left: contextMenu.x, top: contextMenu.y }}
-						className="fixed z-50 min-w-40 rounded-md border border-neutral-800 bg-neutral-900 py-1 text-xs shadow-2xl"
-						onClick={(e) => e.stopPropagation()}
-					>
+			<FloatingLayer
+				anchor={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+				layer="menu"
+				placement="bottom-start"
+				offset={2}
+				onDismiss={() => setContextMenu(null)}
+				className="min-w-40 py-1 text-xs shadow-apple-modal"
+			>
+				{contextMenu && (
+					<>
 						<button
 							type="button"
 							onClick={handleCopy}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
 							<ClipboardCopy size={13} className="text-neutral-400" />
 							复制选中内容
@@ -843,7 +862,7 @@ export function TerminalView({
 						<button
 							type="button"
 							onClick={handlePaste}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
 							<ClipboardPaste size={13} className="text-neutral-400" />
 							粘贴至终端
@@ -854,7 +873,7 @@ export function TerminalView({
 								setContextMenu(null);
 								captureSelection();
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
 							<MessageSquareQuote size={13} className="text-indigo-400" />
 							引用至批注 (Cmd+Shift+A)
@@ -863,40 +882,40 @@ export function TerminalView({
 							<button
 								type="button"
 								onClick={handleSendToSideChat}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<GitBranch size={13} className="text-amber-400" />
 								发送到侧聊
 							</button>
 						)}
-						<div className="my-1 border-t border-neutral-800" />
+						<div className="my-1 border-t border-[var(--border-divider)]" />
 						<button
 							type="button"
 							onClick={handleClear}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
 							<Eraser size={13} className="text-neutral-400" />
 							清屏
 						</button>
 						{phase === "exited" && (
 							<>
-								<div className="my-1 border-t border-neutral-800" />
+								<div className="my-1 border-t border-[var(--border-divider)]" />
 								<button
 									type="button"
 									onClick={() => {
 										setContextMenu(null);
 										handleReconnect();
 									}}
-									className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-indigo-400 hover:bg-indigo-950/40 hover:text-indigo-300"
+									className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 transition-colors"
 								>
 									<RefreshCw size={13} />
 									重新连接终端
 								</button>
 							</>
 						)}
-					</div>
-				</div>
-			)}
+					</>
+				)}
+			</FloatingLayer>
 		</div>
 	);
 }

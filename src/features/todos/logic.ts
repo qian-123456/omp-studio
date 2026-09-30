@@ -11,6 +11,7 @@ export const KIND_LABEL: Record<TodoKind, string> = {
 	review: "待验收",
 	suggestion: "监工建议",
 	service_left: "服务残留",
+	schedule_run: "定时任务",
 };
 
 export const KIND_COLOR: Record<TodoKind, string> = {
@@ -21,6 +22,7 @@ export const KIND_COLOR: Record<TodoKind, string> = {
 	review: "bg-orange-500/15 text-orange-300",
 	suggestion: "bg-violet-500/15 text-violet-300",
 	service_left: "bg-teal-500/15 text-teal-300",
+	schedule_run: "bg-blue-500/15 text-blue-300",
 };
 
 /** Open todos by priority desc then age (FIFO); closed ones newest first. */
@@ -31,7 +33,9 @@ export function splitTodos(
 	const scoped =
 		sessionId === undefined
 			? todos
-			: todos.filter((t) => t.sessionId === sessionId);
+			: sessionId === null
+				? []
+				: todos.filter((t) => t.sessionId === sessionId);
 	const open = scoped
 		.filter((t) => t.status === "open")
 		.sort(

@@ -338,4 +338,59 @@ describe("useSessions store", () => {
 		expect(useSessions.getState().sessions).toEqual({ s2 });
 	});
 
+	it("preserves structural sharing: unchanged sessions keep identity and identical upsert does not mutate map", () => {
+		const s1 = createSession("s1");
+		const s2 = createSession("s2");
+		useSessions.getState().upsert([s1, s2]);
+
+		const initialMap = useSessions.getState().sessions;
+		const initialS1 = initialMap.s1;
+
+		// 1. Identical upsert: map reference does NOT change
+		useSessions.getState().upsert([s1, s2]);
+		expect(useSessions.getState().sessions).toBe(initialMap);
+
+		// 2. Partial update to s2: s1 keeps exact reference identity, only s2 updates
+		const s2Updated = { ...s2, title: "New Title" };
+		useSessions.getState().upsert([s2Updated]);
+
+		const nextMap = useSessions.getState().sessions;
+		expect(nextMap).not.toBe(initialMap);
+		expect(nextMap.s1).toBe(initialS1);
+		expect(nextMap.s2).toBe(s2Updated);
+	});
+
+	it("coalesces high-frequency updates from onSessionsUpdated", async () => {
+		vi.useFakeTimers();
+		try {
+			let updateCallback: ((sessions: SessionMeta[]) => void) | undefined;
+			vi.mocked(onSessionsUpdated).mockImplementation(async (cb) => {
+				updateCallback = cb;
+				return vi.fn();
+			});
+			vi.mocked(onSessionsRemoved).mockResolvedValue(vi.fn());
+
+			await startSessionEvents();
+			expect(updateCallback).toBeDefined();
+
+			const s1 = createSession("s1");
+			// First event fires leading-edge immediately
+			updateCallback!([{ ...s1, title: "Title 1" }]);
+			expect(useSessions.getState().sessions.s1?.title).toBe("Title 1");
+
+			// Rapid follow-up events within 250ms are throttled
+			updateCallback!([{ ...s1, title: "Title 2" }]);
+			updateCallback!([{ ...s1, title: "Title 3" }]);
+			expect(useSessions.getState().sessions.s1?.title).toBe("Title 1");
+
+			// Advance past coalesce window
+			vi.advanceTimersByTime(250);
+
+			// Settled with latest state
+			expect(useSessions.getState().sessions.s1?.title).toBe("Title 3");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 });

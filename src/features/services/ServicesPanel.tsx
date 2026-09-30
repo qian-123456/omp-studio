@@ -25,12 +25,13 @@ import { destroyDrawerTerminal } from "../terminal/drawerRegistry";
 export function ServicesPanel() {
 	const [all, setAll] = useState(false);
 	const [rows, setRows] = useState<ServiceInfo[] | null>(null);
+	const sessions = useSessions((s) => s.sessions);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [copiedKey, setCopiedKey] = useState<string | null>(null);
 	const [stoppingPids, setStoppingPids] = useState<Set<number>>(new Set());
 	const [cleaningOrphans, setCleaningOrphans] = useState(false);
-	const sessions = useSessions((s) => s.sessions);
+	const [displayLimit, setDisplayLimit] = useState(50);
 	const selectSession = useUi((s) => s.selectSession);
 	const short = useShortPath();
 	const tabs = useDrawerStore((s) => s.tabs);
@@ -191,19 +192,22 @@ export function ServicesPanel() {
 
 	return (
 		<div className="flex h-full flex-col text-xs">
-			<div className="flex shrink-0 items-center gap-2 border-b border-neutral-800 px-3 py-2">
-				<span className="flex-1 font-medium text-neutral-300">
+			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-divider)] px-3 py-2">
+				<span className="flex-1 font-medium text-[var(--text)]">
 					本地服务{" "}
 					{rows && (
 						<span className="font-mono text-neutral-500">({rows.length})</span>
 					)}
 				</span>
-				<label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-400">
+				<label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-400 select-none">
 					<input
 						type="checkbox"
 						checked={all}
-						onChange={(e) => setAll(e.target.checked)}
-						className="rounded border-neutral-700 bg-neutral-900 text-indigo-600 focus:ring-0"
+						onChange={(e) => {
+							setAll(e.target.checked);
+							setDisplayLimit(50);
+						}}
+						className="rounded border-[var(--border-divider)] bg-[var(--well-bg)] text-[#0A84FF] focus:ring-0"
 					/>
 					显示全部端口
 				</label>
@@ -211,7 +215,7 @@ export function ServicesPanel() {
 					type="button"
 					title="刷新服务列表"
 					onClick={refresh}
-					className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+					className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 				>
 					<RefreshCw size={13} className={loading ? "animate-spin" : ""} />
 				</button>
@@ -329,15 +333,17 @@ export function ServicesPanel() {
 			)}
 
 			{rows?.length === 0 && (
-				<div className="p-4 text-center text-neutral-500 leading-relaxed">
-					{all
-						? "没有检测到监听中的端口"
-						: "没有检测到开发服务（可勾选右上角「显示全部端口」）"}
+				<div className="p-8 text-center text-neutral-500 leading-relaxed">
+					<p className="text-xs">
+						{all
+							? "没有检测到监听中的端口"
+							: "没有检测到开发服务（可勾选右上角「显示全部端口」）"}
+					</p>
 				</div>
 			)}
 
 			<ul className="min-h-0 flex-1 overflow-y-auto">
-				{rows?.map((s) => {
+				{rows?.slice(0, displayLimit).map((s) => {
 					const session = s.sessionId ? sessions[s.sessionId] : undefined;
 					const key = `${s.pid}:${s.port}`;
 					const isStopping = stoppingPids.has(s.pid);
@@ -348,10 +354,10 @@ export function ServicesPanel() {
 						<li
 							key={key}
 							className={clsx(
-								"group border-b border-neutral-800/60 px-3 py-2 transition-colors",
+								"group border-b border-[var(--border-divider)] px-3 py-2 transition-colors",
 								isOrphan
-									? "bg-amber-950/10 hover:bg-amber-950/20"
-									: "hover:bg-neutral-800/40",
+									? "bg-amber-500/5 hover:bg-amber-500/10"
+									: "hover:bg-[var(--bg-hover)]",
 							)}
 						>
 							<div className="flex items-center gap-2">
@@ -434,6 +440,17 @@ export function ServicesPanel() {
 						</li>
 					);
 				})}
+				{rows && rows.length > displayLimit && (
+					<li className="p-3 text-center border-b border-[var(--border-divider)]">
+						<button
+							type="button"
+							onClick={() => setDisplayLimit((n) => n + 50)}
+							className="text-xs text-[#0A84FF] hover:underline font-medium"
+						>
+							展开更多（还有 {rows.length - displayLimit} 个端口）
+						</button>
+					</li>
+				)}
 			</ul>
 		</div>
 	);
@@ -459,12 +476,12 @@ function IconBtn({
 			disabled={disabled}
 			onClick={onClick}
 			className={clsx(
-				"rounded p-1 text-neutral-400 transition-colors focus:opacity-100",
+				"rounded-lg p-1.5 min-w-[26px] min-h-[26px] flex items-center justify-center text-neutral-400 transition-colors focus:opacity-100",
 				disabled && "opacity-40 cursor-not-allowed",
 				!disabled &&
 					(danger
-						? "hover:bg-rose-950/40 hover:text-rose-300"
-						: "hover:bg-neutral-700 hover:text-neutral-100"),
+						? "hover:bg-rose-500/10 hover:text-rose-400"
+						: "hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"),
 			)}
 		>
 			{children}

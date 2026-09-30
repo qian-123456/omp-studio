@@ -402,10 +402,7 @@ pub fn content_text(content: Option<&Value>) -> String {
                         out.push_str(b.get("text").and_then(Value::as_str).unwrap_or_default());
                     }
                     Some("image") => {
-                        if !out.is_empty() {
-                            out.push('\n');
-                        }
-                        out.push_str("[图片]");
+                        // Structured images are handled via parse_images
                     }
                     _ => {}
                 }
@@ -425,6 +422,141 @@ pub fn snippet(text: &str, max: usize) -> String {
     let mut s: String = flat.chars().take(max.saturating_sub(1)).collect();
     s.push('…');
     s
+}
+
+fn image_marker_re() -> &'static Regex {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"\[Image #\d+(?:,\s*\d+x\d+)?\]|\[图片(?::\s*[^\]]+)?\]").unwrap()
+    })
+}
+
+fn marker_detail_re() -> &'static Regex {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"\[Image #\d+(?:,\s*(?P<w>\d+)x(?P<h>\d+))?\]|\[图片(?::\s*(?P<path>[^\]]+))?\]",
+        )
+        .unwrap()
+    })
+}
+
+/// Strip raw image markers (`[Image #N...]`, `[图片...]`) from text.
+pub fn strip_image_markers(text: &str) -> String {
+    let cleaned = image_marker_re().replace_all(text, "");
+    cleaned.trim().to_string()
+}
+
+/// Resolve an image hash to a file in ~/.omp/agent/blobs if it exists.
+pub fn resolve_blob_path(hash: &str) -> Option<String> {
+    let clean = hash.strip_prefix("blob:sha256:").unwrap_or(hash);
+    let home = std::env::var("HOME")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::home_dir)?;
+    let blob_dir = home.join(".omp").join("agent").join("blobs");
+    let direct = blob_dir.join(clean);
+    if direct.is_file() {
+        return Some(direct.to_string_lossy().into_owned());
+    }
+    for ext in &["png", "webp", "jpg", "jpeg", "gif"] {
+        let with_ext = blob_dir.join(format!("{clean}.{ext}"));
+        if with_ext.is_file() {
+            return Some(with_ext.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
+/// Extract structured image attachments from message content (both blocks and markers).
+pub fn parse_images(content: Option<&Value>) -> Vec<crate::contracts::ImageAttachment> {
+    let mut images = Vec::new();
+    let mut idx = 1;
+
+    if let Some(Value::Array(blocks)) = content {
+        for b in blocks {
+            if b.get("type").and_then(Value::as_str) == Some("image") {
+                let data = b.get("data").and_then(Value::as_str);
+                let path_field = b.get("path").and_then(Value::as_str);
+                let mime_type = b
+                    .get("mimeType")
+                    .or_else(|| b.get("mediaType"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+
+                let resolved_path = if let Some(p) = path_field {
+                    Some(p.to_string())
+                } else if let Some(d) = data {
+                    resolve_blob_path(d)
+                } else {
+                    None
+                };
+
+                let marker = format!("[图片 #{idx}]");
+                images.push(crate::contracts::ImageAttachment {
+                    id: format!("img-{idx}"),
+                    marker: Some(marker),
+                    path: resolved_path,
+                    mime_type,
+                    width: None,
+                    height: None,
+                });
+                idx += 1;
+            }
+        }
+    }
+
+    let check_text =
+        |text: &str, images: &mut Vec<crate::contracts::ImageAttachment>, idx: &mut usize| {
+            for caps in marker_detail_re().captures_iter(text) {
+                let whole = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+                let w = caps.name("w").and_then(|m| m.as_str().parse::<u32>().ok());
+                let h = caps.name("h").and_then(|m| m.as_str().parse::<u32>().ok());
+                let raw_path = caps.name("path").map(|m| m.as_str().trim().to_string());
+                let resolved_path = raw_path.filter(|p| Path::new(p).exists());
+
+                if let Some(existing) = images.iter_mut().find(|img| {
+                    img.width.is_none() && (w.is_some() || h.is_some() || resolved_path.is_some())
+                }) {
+                    if existing.width.is_none() {
+                        existing.width = w;
+                    }
+                    if existing.height.is_none() {
+                        existing.height = h;
+                    }
+                    if existing.path.is_none() && resolved_path.is_some() {
+                        existing.path = resolved_path;
+                    }
+                    existing.marker = Some(whole.to_string());
+                } else {
+                    images.push(crate::contracts::ImageAttachment {
+                        id: format!("img-{}", *idx),
+                        marker: Some(whole.to_string()),
+                        path: resolved_path,
+                        mime_type: None,
+                        width: w,
+                        height: h,
+                    });
+                    *idx += 1;
+                }
+            }
+        };
+
+    match content {
+        Some(Value::String(s)) => check_text(s, &mut images, &mut idx),
+        Some(Value::Array(blocks)) => {
+            for b in blocks {
+                if b.get("type").and_then(Value::as_str) == Some("text") {
+                    if let Some(t) = b.get("text").and_then(Value::as_str) {
+                        check_text(t, &mut images, &mut idx);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    images
 }
 
 fn last(role: LastRole, stop_reason: Option<String>, has_tool_calls: bool, ts: String) -> LastMsg {

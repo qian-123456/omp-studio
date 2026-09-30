@@ -1,9 +1,8 @@
 import { GitBranch, GitCommit, Layers } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { WorktreeInfo } from "../../lib/contracts";
 import { useHomeDir } from "../../lib/hooks";
 import { shortPath } from "../../lib/paths";
+import { FloatingLayer } from "../../components/FloatingLayer";
 
 export interface WorktreeHoverCardProps {
 	/** Worktree information or null */
@@ -26,8 +25,8 @@ export interface WorktreeHoverCardProps {
 
 /**
  * Floating hover card for right-side Git worktree and branch items:
- * Renders via React portal into document.body.
- * Opens to the LEFT of the anchor to make full use of the wide center workspace.
+ * Renders via FloatingLayer (layer="hovercard", placement="left-start" or "right-start").
+ * Clamped strictly above the status bar with internal scrolling on overflow.
  */
 export function WorktreeHoverCard({
 	wt,
@@ -42,52 +41,7 @@ export function WorktreeHoverCard({
 	onMouseLeaveCard,
 	onClose,
 }: WorktreeHoverCardProps) {
-	const cardRef = useRef<HTMLDivElement>(null);
-	const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 	const home = useHomeDir();
-
-	const cardWidth = 300;
-
-	useLayoutEffect(() => {
-		if (!open || !anchorRect) return;
-
-		const cardEl = cardRef.current;
-		const cardHeight = cardEl ? cardEl.offsetHeight : 170;
-		const viewportHeight = window.innerHeight;
-
-		const viewportWidth = window.innerWidth;
-		let left: number;
-		if (side === "right") {
-			// Open to the RIGHT of the left-sidebar anchor
-			left = Math.min(viewportWidth - cardWidth - 16, anchorRect.right + 10);
-		} else {
-			// Open to the LEFT of the right-sidebar anchor
-			left = Math.max(16, anchorRect.left - cardWidth - 10);
-		}
-		let top = anchorRect.top - 10;
-
-		// Screen boundary collision handling
-		if (top + cardHeight > viewportHeight - 16) {
-			top = Math.max(16, viewportHeight - cardHeight - 16);
-		}
-		if (top < 16) {
-			top = 16;
-		}
-
-		setPosition({ top, left });
-	}, [open, anchorRect, side]);
-
-	// Close immediately on any global mouse down (e.g. clicking an action button or opening a modal)
-	useEffect(() => {
-		if (!open) return;
-		const handleGlobalMouseDown = () => {
-			onClose?.();
-		};
-		window.addEventListener("mousedown", handleGlobalMouseDown, { capture: true });
-		return () => {
-			window.removeEventListener("mousedown", handleGlobalMouseDown, { capture: true });
-		};
-	}, [open, onClose]);
 
 	if (!open || !anchorRect) return null;
 
@@ -97,84 +51,78 @@ export function WorktreeHoverCard({
 	const effectiveSessionCount = wt?.sessionIds?.length ?? sessionCount ?? 0;
 	const dirtyCount = wt?.dirty ?? 0;
 
-	const cardContent = (
-		<div
-			ref={cardRef}
-			style={{
-				position: "fixed",
-				top: `${position.top}px`,
-				left: `${position.left}px`,
-				width: `${cardWidth}px`,
-				zIndex: 40,
-			}}
+	return (
+		<FloatingLayer
+			anchor={open ? anchorRect : null}
+			placement={side === "right" ? "right-start" : "left-start"}
+			offset={8}
+			layer="hovercard"
+			onDismiss={onClose}
 			onMouseEnter={onMouseEnterCard}
 			onMouseLeave={onMouseLeaveCard}
-			className="rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-3 text-xs text-neutral-200 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none space-y-2.5 pointer-events-none"
+			className="w-[300px] p-3 text-xs text-neutral-200 select-none space-y-2.5 animate-in fade-in zoom-in-95 duration-100"
 		>
-			{/* Header: Full unclipped Branch/Worktree Name */}
+			{/* Top Header: Target Name & Tag */}
 			<div className="space-y-1">
-				<div className="flex items-start gap-1.5 font-mono text-xs font-semibold text-neutral-100 leading-snug">
-					<GitBranch size={13} className={isCurrent ? "text-emerald-400 shrink-0 mt-0.5" : "text-neutral-400 shrink-0 mt-0.5"} />
-					<span className="break-all">{targetBranch}</span>
-				</div>
-				<div className="flex items-center gap-1 text-[10px]">
-					{isMainRepo ? (
-						<span className="rounded bg-neutral-800 px-1.5 py-0.2 text-neutral-300">
-							原始主目录
+				<div className="flex items-center justify-between gap-1.5 min-w-0">
+					<div className="flex items-center gap-1.5 min-w-0">
+						<GitBranch
+							size={13}
+							className={isCurrent ? "text-emerald-400 shrink-0" : "text-neutral-400 shrink-0"}
+						/>
+						<span className="font-mono text-sm font-semibold text-neutral-100 truncate">
+							{targetBranch}
 						</span>
-					) : (
-						<span className="rounded bg-indigo-950/80 border border-indigo-800/60 px-1.5 py-0.2 text-indigo-300">
-							并行工作树
+					</div>
+					{isCurrent && (
+						<span className="shrink-0 rounded bg-emerald-950/80 border border-emerald-800/60 px-1.5 py-0.2 text-[9px] text-emerald-300 font-sans">
+							当前环境
 						</span>
 					)}
-					{isCurrent && (
-						<span className="rounded bg-emerald-950/80 border border-emerald-800/60 px-1.5 py-0.2 text-emerald-300 font-medium">
-							当前检出
+					{isMainRepo && !isCurrent && (
+						<span className="shrink-0 rounded bg-neutral-800 border border-neutral-700 px-1.5 py-0.2 text-[9px] text-neutral-400 font-sans">
+							主仓库
 						</span>
 					)}
 				</div>
 			</div>
 
-			{/* PATH section */}
+			{/* PATH / DIRECTORY Section */}
 			{targetPath && (
-				<div className="space-y-0.5 pt-1.5 border-t border-neutral-800/80">
+				<div className="space-y-0.5 text-[11px] text-neutral-400 pt-1.5 border-t border-neutral-800/80">
 					<div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-						PATH
+						LOCAL DIRECTORY
 					</div>
-					<div className="font-mono text-[11px] text-neutral-300 break-all" title={targetPath}>
+					<div className="font-mono truncate text-[11px] text-neutral-300" title={targetPath}>
 						{shortPath(targetPath, home)}
 					</div>
 				</div>
 			)}
 
-			{/* Status & Metrics */}
-			<div className="pt-1.5 border-t border-neutral-800/80 flex items-center justify-between text-[11px]">
-				<div className="flex items-center gap-1.5">
-					{dirtyCount > 0 ? (
-						<span className="rounded bg-amber-950/70 border border-amber-800/50 px-1.5 py-0.2 text-amber-300 text-[10px]">
-							{dirtyCount} 处未提交改动
-						</span>
-					) : (
-						<span className="text-neutral-500 text-[10px]">工作区干净（无改动）</span>
-					)}
+			{/* STATS Section: Sessions & Head Commit / Status */}
+			<div className="pt-1.5 border-t border-neutral-800/60 flex items-center justify-between text-[11px] text-neutral-400">
+				<div className="flex items-center gap-1">
+					<Layers size={11} className="text-indigo-400" />
+					<span>
+						关联 <strong className="font-mono text-neutral-200">{effectiveSessionCount}</strong> 个会话
+					</span>
 				</div>
-				{effectiveSessionCount > 0 && (
-					<div className="flex items-center gap-1 text-[10px] text-neutral-400">
-						<Layers size={10} className="text-indigo-400" />
-						<span>{effectiveSessionCount} 会话</span>
+
+				{wt?.head && (
+					<div className="flex items-center gap-1 font-mono text-[10px] text-neutral-500">
+						<GitCommit size={10} />
+						<span>{wt.head.slice(0, 7)}</span>
 					</div>
 				)}
 			</div>
 
-			{/* Commit Head if present */}
-			{wt?.head && (
-				<div className="pt-1 border-t border-neutral-800/60 flex items-center gap-1 text-[10px] font-mono text-neutral-500">
-					<GitCommit size={10} />
-					<span>HEAD: {wt.head.slice(0, 7)}</span>
+			{/* Dirty Status Pill if any changes exist */}
+			{dirtyCount > 0 && (
+				<div className="pt-1 flex items-center gap-1 text-[10px] text-amber-400 font-medium">
+					<span className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.5)]" />
+					<span>包含 {dirtyCount} 处未提交的代码改动</span>
 				</div>
 			)}
-		</div>
+		</FloatingLayer>
 	);
-
-	return createPortal(cardContent, document.body);
 }

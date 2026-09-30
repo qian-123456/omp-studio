@@ -18,6 +18,7 @@ import { createSideChat, listModels, listWorkspaceFiles, readTextFile, rpcSend, 
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ContextRing } from "./ContextRing";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
@@ -98,7 +99,7 @@ export function Composer({
 	const thinkingMenuRef = useRef<HTMLDivElement>(null);
 
 	const taRef = useRef<HTMLTextAreaElement>(null);
-
+	const composerCardRef = useRef<HTMLDivElement>(null);
 	// Draft state bound to useComposer store so switching sessions does not lose input
 	const text = useComposer((s) => s.drafts[sessionId] ?? "");
 	const setDraft = useComposer((s) => s.setDraft);
@@ -326,31 +327,6 @@ export function Composer({
 	}, [text, compact]);
 
 	// Close model and thinking dropdowns on outside click or Esc
-	useEffect(() => {
-		if (!modelOpen && !thinkingOpen) return;
-		const onDown = (e: MouseEvent) => {
-			if (modelOpen && !modelMenuRef.current?.contains(e.target as Node)) {
-				setModelOpen(false);
-			}
-			if (thinkingOpen && !thinkingMenuRef.current?.contains(e.target as Node)) {
-				setThinkingOpen(false);
-			}
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				if (isComposing({ nativeEvent: e, key: e.key })) return;
-				e.stopPropagation();
-				setModelOpen(false);
-				setThinkingOpen(false);
-			}
-		};
-		document.addEventListener("mousedown", onDown);
-		document.addEventListener("keydown", onKey);
-		return () => {
-			document.removeEventListener("mousedown", onDown);
-			document.removeEventListener("keydown", onKey);
-		};
-	}, [modelOpen, thinkingOpen]);
 
 	const applySlashCommand = (cmdName: string) => {
 		if (!slashToken) return;
@@ -727,7 +703,14 @@ export function Composer({
 				{/* Slash-command menu floats above the composer box */}
 				{/* @ file-completion menu — same floating-above-box pattern */}
 				{atMenu.length > 0 && atToken && (
-					<div className="absolute bottom-full left-3 right-3 mb-1.5 max-h-64 overflow-y-auto overflow-x-hidden rounded-[12px] vibrancy-popover shadow-apple-modal hairline p-1">
+					<FloatingLayer
+						anchor={composerCardRef.current}
+						placement="top-start"
+						offset={6}
+						layer="popover"
+						onDismiss={() => setMenuDismissed(true)}
+						className="max-h-64 overflow-y-auto overflow-x-hidden rounded-[12px] vibrancy-popover shadow-apple-modal hairline p-1 w-[min(calc(100vw-32px),600px)]"
+					>
 						{atMenu.map((p, i) => (
 							<button
 								key={p}
@@ -746,10 +729,17 @@ export function Composer({
 								<span className="truncate font-mono text-neutral-300">{p}</span>
 							</button>
 						))}
-					</div>
+					</FloatingLayer>
 				)}
 				{menu.length > 0 && slashToken && (
-					<div className="absolute bottom-full left-3 right-3 mb-1.5 overflow-hidden rounded-[12px] vibrancy-popover shadow-apple-modal hairline p-1">
+					<FloatingLayer
+						anchor={composerCardRef.current}
+						placement="top-start"
+						offset={6}
+						layer="popover"
+						onDismiss={() => setMenuDismissed(true)}
+						className="overflow-hidden rounded-[12px] vibrancy-popover shadow-apple-modal hairline p-1 w-[min(calc(100vw-32px),600px)]"
+					>
 						{menu.map((c, i) => (
 							<button
 								key={c.name}
@@ -770,11 +760,12 @@ export function Composer({
 								<span className="truncate text-neutral-500">{c.description}</span>
 							</button>
 						))}
-					</div>
+					</FloatingLayer>
 				)}
 
 				{/* Composer box: textarea on top, bottom bar inside (Codex-style rounded card) */}
 				<div
+					ref={composerCardRef}
 					className={clsx(
 						"relative rounded-[14px] bg-[var(--bg-panel)] shadow-apple-card transition-all duration-200",
 						isDraggingOver
@@ -862,7 +853,15 @@ export function Composer({
 							</button>
 
 								{modelOpen && (
-									<div className="absolute bottom-full right-0 z-30 mb-1 w-[400px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1">
+									<FloatingLayer
+										anchor={modelMenuRef.current}
+										placement="top-end"
+										offset={6}
+										layer="popover"
+										ignoreRefs={[modelMenuRef]}
+										onDismiss={() => setModelOpen(false)}
+										className="w-[400px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1"
+									>
 										<ModelMenuContent
 											models={models}
 											currentValue={current.value}
@@ -884,7 +883,7 @@ export function Composer({
 												setModelOpen(false);
 											}}
 										/>
-									</div>
+									</FloatingLayer>
 								)}
 							</div>
 
@@ -908,7 +907,15 @@ export function Composer({
 								</button>
 
 									{thinkingOpen && (
-										<div className="absolute bottom-full right-0 z-30 mb-1 w-[260px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1">
+										<FloatingLayer
+											anchor={thinkingMenuRef.current}
+											placement="top-end"
+											offset={6}
+											layer="popover"
+											ignoreRefs={[thinkingMenuRef]}
+											onDismiss={() => setThinkingOpen(false)}
+											className="w-[260px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1"
+										>
 											<div className="border-b border-[var(--border-divider)] px-2.5 py-1 text-[11px] font-medium text-neutral-400">
 												思考等级
 											</div>
@@ -943,23 +950,23 @@ export function Composer({
 															<div className="min-w-0 pr-2">
 																<div className="font-medium">{opt.label}</div>
 																{opt.desc && (
- 																	<div className="text-[10px] text-neutral-500">
- 																		{opt.desc}
- 																	</div>
- 																)}
- 															</div>
- 															{isSelected && (
- 																<Check
- 																	size={13}
- 																	className="shrink-0 text-indigo-400"
- 																/>
- 															)}
- 														</button>
- 													);
- 												})}
- 											</div>
- 										</div>
- 									)}
+																	<div className="text-[10px] text-neutral-500">
+																		{opt.desc}
+																	</div>
+																)}
+															</div>
+															{isSelected && (
+																<Check
+																	size={13}
+																	className="shrink-0 text-indigo-400"
+																/>
+															)}
+														</button>
+													);
+												})}
+											</div>
+										</FloatingLayer>
+									)}
  								</div>
  							)}
 

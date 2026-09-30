@@ -37,9 +37,10 @@ export const useTodos = create<TodosState>((set, get) => ({
 				todosList(true),
 				todosCounts(),
 			]);
+			const openCount = todos.filter((t) => t.status === "open").length;
 			set({
 				todos,
-				counts,
+				counts: { open: openCount, total: counts.total },
 				loaded: true,
 				error: null,
 			});
@@ -94,8 +95,7 @@ export async function startTodos(): Promise<void> {
 
 	startTodosPromise = (async () => {
 		try {
-			const unlisten = await onTodosChanged((counts) => {
-				useTodos.setState({ counts });
+			const unlisten = await onTodosChanged(() => {
 				void useTodos.getState().refresh();
 			});
 			if (startTodosPromise === null) {

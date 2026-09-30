@@ -1,6 +1,7 @@
 import clsx from "clsx";
-import { GitBranch, Info, Loader2, PanelRight, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, GitBranch, Info, Loader2, PanelRight, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import type { WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { addWorkspace, gitListBranches } from "../../lib/ipc";
@@ -13,6 +14,7 @@ import { useUi } from "../../stores/ui";
 
 /** Idle (worktree-less) branches beyond this count collapse behind an expander row. */
 const IDLE_BRANCH_CAP = 15;
+const ACTIVE_WORKTREE_CAP = 6;
 
 /**
  * Tree rail stem:
@@ -132,7 +134,8 @@ export function WorktreeGraph({
 
 	const [branches, setBranches] = useState<string[] | null>(null);
 	const [idleExpanded, setIdleExpanded] = useState(false);
-
+	const [wtExpanded, setWtExpanded] = useState(false);
+	const [sessionMenuAnchor, setSessionMenuAnchor] = useState<HTMLElement | null>(null);
 	// WorktreeHoverCard state (opens cleanly to the LEFT)
 	const [hoveredWt, setHoveredWt] = useState<WorktreeInfo | null>(null);
 	const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -239,21 +242,27 @@ export function WorktreeGraph({
 				</div>
 
 				{/* Worktrees Tree */}
-				<div className="flex flex-col">
-					{activeWorktrees.map((wt, index) => {
-						const isLast = index === activeWorktrees.length - 1;
-						const isMain = wt.path === mainPath;
-						const isCurrent = wt.path === current;
-						const isSelected = wt.path === selected;
-						const isCleaning = cleaningPath === wt.path;
+				{(() => {
+					const visibleWorktrees = wtExpanded
+						? activeWorktrees
+						: activeWorktrees.slice(0, ACTIVE_WORKTREE_CAP);
+					const hiddenWtCount = activeWorktrees.length - visibleWorktrees.length;
+					return (
+						<div className="flex flex-col">
+							{visibleWorktrees.map((wt, index) => {
+								const isLast = index === visibleWorktrees.length - 1 && hiddenWtCount === 0;
+								const isMain = wt.path === mainPath;
+								const isCurrent = wt.path === current;
+								const isSelected = wt.path === selected;
+								const isCleaning = cleaningPath === wt.path;
 
-						// Friendly display name: avoid detached jargon
-						const displayName = wt.branch
-							? wt.branch
-							: `历史测试 (版本 ${wt.head.slice(0, 7)})`;
+								// Friendly display name: avoid detached jargon
+								const displayName = wt.branch
+									? wt.branch
+									: `历史测试 (版本 ${wt.head.slice(0, 7)})`;
 
-						return (
-							<div key={wt.path} className="relative flex flex-col">
+								return (
+									<div key={wt.path} className="relative flex flex-col">
 								<div className="group flex items-start min-h-[34px]">
 									{/* Straight line with subtle rounded corner */}
 									<TreeBranchStem
@@ -304,7 +313,7 @@ export function WorktreeGraph({
 														text={displayName}
 														extraEndPadding={78}
 														className="max-w-full"
-														title=""
+														title={displayName}
 													/>
 												</button>
 											</div>
@@ -406,8 +415,9 @@ export function WorktreeGraph({
 												{wt.sessionIds.length > 0 && (
 													<button
 														type="button"
-														onClick={() => {
+														onClick={(e) => {
 															if (wt.sessionIds.length > 1) {
+																setSessionMenuAnchor(e.currentTarget);
 																setSessionMenuWt(
 																	sessionMenuWt === wt.path ? null : wt.path,
 																);
@@ -427,15 +437,25 @@ export function WorktreeGraph({
 
 								{/* Multi-session picker menu popover */}
 								{sessionMenuWt === wt.path && wt.sessionIds.length > 1 && (
-									<div
-										className="relative z-20 mt-1 ml-9 rounded-md border border-neutral-700 bg-neutral-900/95 p-1 shadow-2xl backdrop-blur-md"
-										onClick={(e) => e.stopPropagation()}
+									<FloatingLayer
+										anchor={sessionMenuAnchor}
+										placement="bottom-start"
+										offset={4}
+										layer="popover"
+										onDismiss={() => {
+											setSessionMenuWt(null);
+											setSessionMenuAnchor(null);
+										}}
+										className="w-64 p-1 shadow-2xl"
 									>
-										<div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-neutral-400 border-b border-neutral-800">
+										<div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-neutral-400 border-b border-[var(--border-divider)]">
 											<span>选择该工作树关联的会话 ({wt.sessionIds.length})</span>
 											<button
 												type="button"
-												onClick={() => setSessionMenuWt(null)}
+												onClick={() => {
+													setSessionMenuWt(null);
+													setSessionMenuAnchor(null);
+												}}
 												title="关闭"
 												aria-label="关闭"
 												className="text-neutral-500 hover:text-neutral-300 text-[10px]"
@@ -455,8 +475,9 @@ export function WorktreeGraph({
 														onClick={() => {
 															selectSession(id);
 															setSessionMenuWt(null);
+															setSessionMenuAnchor(null);
 														}}
-														className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-xs text-neutral-200 hover:bg-neutral-800 hover:text-indigo-300 transition-colors"
+														className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-xs text-neutral-200 hover:bg-[var(--bg-hover)] hover:text-indigo-300 transition-colors"
 														title={title}
 													>
 														<span className="shrink-0 font-mono text-[11px] text-indigo-400 bg-indigo-950/60 px-1 py-0.5 rounded border border-indigo-800/40">
@@ -477,21 +498,49 @@ export function WorktreeGraph({
 												type="button"
 												onClick={() => {
 													setSessionMenuWt(null);
+													setSessionMenuAnchor(null);
 													openModal("new-session", { cwd: wt.path });
 												}}
-												className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[11px] text-indigo-400 hover:bg-neutral-800 hover:text-indigo-300 transition-colors border-t border-neutral-800/80 pt-1.5"
+												className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[11px] text-indigo-400 hover:bg-[var(--bg-hover)] hover:text-indigo-300 transition-colors border-t border-[var(--border-divider)] pt-1.5"
 											>
 												<Plus size={11} /> 在此工作树新建会话…
 											</button>
 										</div>
-									</div>
+									</FloatingLayer>
 								)}
 							</div>
 						);
 					})}
-				</div>
-			</div>
 
+					{/* Expander row for active worktrees */}
+					{hiddenWtCount > 0 && (
+						<div className="flex items-center min-h-[32px]">
+							<TreeBranchStem isLast={true} isWorktree={true} />
+							<button
+								type="button"
+								onClick={() => setWtExpanded(true)}
+								className="ml-1 flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
+							>
+								<ChevronDown size={12} />
+								<span>还有 {hiddenWtCount} 个工作树 · 展开剩余 {hiddenWtCount} 个</span>
+							</button>
+						</div>
+					)}
+					{wtExpanded && activeWorktrees.length > ACTIVE_WORKTREE_CAP && (
+						<div className="flex items-center min-h-[28px] pl-7">
+							<button
+								type="button"
+								onClick={() => setWtExpanded(false)}
+								className="rounded px-2 py-0.5 text-[11px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
+							>
+								收起工作树
+							</button>
+						</div>
+					)}
+				</div>
+			);
+		})()}
+			</div>
 			{/* Section 2: Idle Branches */}
 			{idleBranches.length > 0 && (
 				<div className="space-y-0.5 pt-1.5 border-t border-neutral-800/50">

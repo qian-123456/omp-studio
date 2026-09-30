@@ -1,41 +1,55 @@
-/** [B] Virtualized message stream: transcript items + in-flight assistant
- * message + live tool cards. Every row carries `id="msg-<itemId>"` so the
- * heatmap can scroll to it. */
+/** [B] Virtualized message stream: turns + in-flight assistant
+ * message + live tool cards. Every turn and step carries `id="msg-<itemId>"` so the
+ * heatmap and jump navigators can scroll to it. */
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
 	AlertCircle,
-	ChevronRight,
 	Copy,
-	GitFork,
 	Loader2,
 	RotateCcw,
 	Sparkles,
 	Wrench,
 } from "lucide-react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { ToolCall, ToolResultInfo, TranscriptItem, TurnCheckpoint } from "../../lib/contracts";
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import type {
+	ToolCall,
+	ToolResultInfo,
+	TranscriptItem,
+	TurnCheckpoint,
+} from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
-import { createSideChat } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
-import { useLive, type AgentMessage, type LiveTool } from "../../stores/live";
-import { useSessions } from "../../stores/sessions";
+import { useLive, type LiveTool } from "../../stores/live";
 import { useTurnNav } from "../../stores/turnNav";
-import { useUi } from "../../stores/ui";
+import { AnswerFooter } from "./AnswerFooter";
+import { ExecutionDisclosure } from "./ExecutionDisclosure";
+import { ImageChipsList } from "./ImageChips";
 import { Markdown } from "./markdown";
-import { sendPrompt } from "./send";
-import { ToolCard } from "./ToolCard";
 import {
 	buildToolResultsMap,
 	filterVisibleItems,
-	isLastInTurn,
 	resolveToolStatus,
 } from "./messageTrace";
-import { useHeldQueue } from "./heldQueue";
-import { TurnChip } from "./TurnChip";
-import { turnChipTargets, undoableTurn } from "./turnChips";
+import { sendPrompt } from "./send";
+import { ToolCard } from "./ToolCard";
+import {
+	formatShortModel,
+	groupTurnBlocks,
+	type TurnBlock,
+} from "./turnGrouping";
+import { undoableTurn } from "./turnChips";
+
+const EMPTY_ITEMS: TranscriptItem[] = [];
+const EMPTY_ECHOES: TranscriptItem[] = [];
 const EMPTY_TOOLS: Record<string, LiveTool> = {};
 
 const asObj = (v: unknown): Record<string, unknown> =>
@@ -46,552 +60,313 @@ export function messageText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
 	return content
-		.map((p) => {
-			const o = asObj(p);
-			return o.type === "text" && typeof o.text === "string" ? o.text : "";
-		})
-		.filter(Boolean)
+		.filter((p) => asObj(p).type === "text")
+		.map((p) => String(asObj(p).text ?? ""))
 		.join("\n");
 }
 
-function messageThinking(content: unknown): string {
-	if (!Array.isArray(content)) return "";
-	return content
-		.map((p) => {
-			const o = asObj(p);
-			const t = o.type === "thinking" ? o.thinking : o.type === "thought" ? o.text : "";
-			return typeof t === "string" ? t : "";
-		})
-		.filter(Boolean)
-		.join("\n");
+export function messageThinking(content: unknown): string | null {
+	if (!Array.isArray(content)) return null;
+	const parts = content
+		.filter((p) => asObj(p).type === "thinking")
+		.map((p) => String(asObj(p).thinking ?? ""));
+	return parts.length ? parts.join("\n") : null;
 }
 
-function messageToolCalls(content: unknown): ToolCall[] {
+export function messageToolCalls(content: unknown): ToolCall[] {
 	if (!Array.isArray(content)) return [];
 	return content
+		.filter((p) => asObj(p).type === "tool_use" || asObj(p).type === "toolCall")
 		.map((p) => {
 			const o = asObj(p);
-			if (o.type !== "toolCall") return null;
 			return {
-				id: typeof o.id === "string" ? o.id : "",
-				name: typeof o.name === "string" ? o.name : "tool",
-				args: o.arguments,
-				intent:
-					typeof o.intent === "string"
-						? o.intent
-						: typeof asObj(o.arguments).i === "string"
-							? (asObj(o.arguments).i as string)
-							: null,
+				id: String(o.id ?? ""),
+				name: String(o.name ?? ""),
+				args: o.input ?? o.arguments ?? {},
+				intent: null,
 			};
-		})
-		.filter((t): t is ToolCall => t !== null);
+		});
 }
 
-
-/** Newest non-empty line of the in-flight thinking text. */
-function lastNonEmptyLine(text: string): { key: string; text: string } | null {
-	const lines = text.replace(/\r\n?/g, "\n").split("\n");
-	for (let i = lines.length - 1; i >= 0; i--) {
-		const line = lines[i]?.trim() ?? "";
-		if (line) return { key: String(i), text: line };
-	}
-	return null;
+function stripImageMarkers(text: string): string {
+	return text
+		.replace(/\[Image #\d+(?:,\s*\d+x\d+)?\]|\[图片(?::\s*[^\]]+)?\]/g, "")
+		.trim();
 }
 
-function formatTimestamp(ts?: string | number | null): string {
-	if (!ts) return "";
-	const date = new Date(ts);
-	if (isNaN(date.getTime())) return "";
-	const pad = (n: number) => String(n).padStart(2, "0");
-	const hours = pad(date.getHours());
-	const minutes = pad(date.getMinutes());
-	const seconds = pad(date.getSeconds());
-	return `${hours}:${minutes}:${seconds}`;
-}
-
-function ThinkingContent({
-	text,
-	isStreaming,
-}: {
-	text: string;
-	isStreaming?: boolean;
-}) {
-	const contentRef = useRef<HTMLDivElement>(null);
-	const contentFollowRef = useRef(true);
-
-	useEffect(() => {
-		contentFollowRef.current = true;
-	}, []);
-
-	useEffect(() => {
-		const el = contentRef.current;
-		if (!el || !isStreaming || !contentFollowRef.current) return;
-		el.scrollTop = el.scrollHeight;
-	});
-
-	if (!text) return null;
-
-	return (
-		<div className="group/th relative ml-1 rounded-lg bg-[var(--bg-active-fill)]/50 p-2.5">
-			<button
-				type="button"
-				onClick={async () => {
-					try {
-						await copyText(text);
-						toast.success("思考过程已复制");
-					} catch (e) {
-						toast.error(`复制失败: ${errMsg(e)}`);
-					}
-				}}
-				className="press-scale absolute right-2 top-2 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-300 opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:text-neutral-100 focus:opacity-100 group-hover/th:opacity-100"
-				title="复制思考过程"
-			>
-				复制
-			</button>
-			<div
-				ref={contentRef}
-				onScroll={() => {
-					const el = contentRef.current;
-					if (!el) return;
-					contentFollowRef.current =
-						el.scrollHeight - el.scrollTop - el.clientHeight < 8;
-				}}
-				className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-relaxed text-neutral-400 select-text"
-			>
-				{text}
-			</div>
-		</div>
-	);
-}
-
-function TraceExecution({
-	sessionId,
-	thinking,
-	toolCalls,
-	isStreaming,
-	thinkingStartedAt,
-	thinkingEndedAt,
-	toolsExpanded,
-	toolResultsByCallId,
-}: {
-	sessionId: string;
-	thinking: string | null;
-	toolCalls: ToolCall[];
-	isStreaming?: boolean;
-	thinkingStartedAt?: number | null;
-	thinkingEndedAt?: number | null;
-	toolsExpanded?: boolean | null;
-	toolResultsByCallId?: Map<string, ToolResultInfo>;
-}) {
-	const liveTools = useLive(
-		(s) => s.sessions[sessionId]?.tools ?? EMPTY_TOOLS,
-	);
-	// Codex-style: during streaming, keep expanded. Once finished, default collapsed.
-	const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
-
-	const isOpen =
-		toolsExpanded !== null && toolsExpanded !== undefined
-			? toolsExpanded
-			: userExpanded !== null
-				? userExpanded
-				: Boolean(isStreaming);
-
-	const [seconds, setSeconds] = useState<number | null>(null);
-	useEffect(() => {
-		if (!isStreaming) {
-			if (thinkingStartedAt) {
-				const end = thinkingEndedAt ?? Date.now();
-				setSeconds(Math.max(1, Math.ceil((end - thinkingStartedAt) / 1000)));
-			}
-			return;
-		}
-		if (!thinkingStartedAt) return;
-		const tick = () =>
-			setSeconds(
-				Math.max(1, Math.ceil((Date.now() - thinkingStartedAt) / 1000)),
-			);
-		tick();
-		const id = setInterval(tick, 1000);
-		return () => clearInterval(id);
-	}, [isStreaming, thinkingStartedAt, thinkingEndedAt]);
-
-	const stepCount = toolCalls.length;
-	const durationText = seconds == null ? "持续了几秒" : `持续了 ${seconds} 秒`;
-
-	let summaryText = "";
-	if (isStreaming && !thinking && stepCount === 0) {
-		summaryText = "正在思考…";
-	} else if (thinking && stepCount > 0) {
-		summaryText = isStreaming
-			? (stepCount > 0 ? `正在思考 · ${stepCount} 步工具调用` : "正在思考…")
-			: `思考 · ${durationText} · ${stepCount} 步`;
-	} else if (thinking) {
-		summaryText = isStreaming ? "正在思考…" : `思考 · ${durationText}`;
-	} else if (stepCount > 0) {
-		summaryText = isStreaming
-			? `正在执行工具 (${stepCount} 步)`
-			: `工具调用 · ${stepCount} 步`;
-	}
-
-	const marquee = isStreaming && !isOpen ? lastNonEmptyLine(thinking ?? "") : null;
-
-	return (
-		<div className="my-1 border-l-2 border-[var(--border)] pl-2.5 py-0.5 space-y-1">
-			<button
-				type="button"
-				onClick={() => setUserExpanded(!isOpen)}
-				className="group/trace press-scale flex max-w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-left text-[12px] text-neutral-400 transition-colors select-none hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
-			>
-				<Sparkles
-					size={11}
-					className={clsx(
-						"shrink-0",
-						isStreaming ? "animate-pulse text-indigo-400" : "text-neutral-500",
-					)}
-				/>
-				<span className="font-medium text-neutral-300">
-					{summaryText}
-				</span>
-				{marquee && (
-					<span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-neutral-500">
-						<span className="inline-block whitespace-nowrap">
-							{marquee.text}
-						</span>
-					</span>
-				)}
-				<ChevronRight
-					size={12}
-					className={clsx(
-						"shrink-0 text-neutral-500 transition-transform duration-150",
-						isOpen ? "rotate-90" : "rotate-0",
-					)}
-				/>
-			</button>
-
-			{isOpen && (
-				<div className="space-y-1.5 pt-0.5">
-					{thinking && (
-						<ThinkingContent
-							text={thinking}
-							isStreaming={isStreaming}
-						/>
-					)}
-					{stepCount > 0 && (
-						<div
-							className={clsx(
-								"space-y-0.5",
-								isStreaming && "max-h-60 overflow-y-auto",
-							)}
-						>
-							{toolCalls.map((tc) => {
-								const live = liveTools[tc.id];
-								const histResult = toolResultsByCallId?.get(tc.id);
-								const status = resolveToolStatus(live?.status, histResult);
-
-								return (
-									<ToolCard
-										key={tc.id}
-										sessionId={sessionId}
-										name={live?.toolName ?? tc.name}
-										args={live?.args ?? tc.args}
-										intent={tc.intent ?? live?.intent ?? null}
-										status={status}
-										output={histResult?.text || live?.text || ""}
-										details={histResult?.details ?? live?.details}
-										expanded={toolsExpanded ?? undefined}
-										startedAt={live?.startedAt}
-										endedAt={live?.endedAt}
-									/>
-								);
-							})}
-						</div>
-					)}
-				</div>
-			)}
-		</div>
-	);
-}
-
-function AssistantBody({
-	sessionId,
-	text,
-	thinking,
-	toolCalls,
-	toolsExpanded,
-	timestamp,
-	isStreaming,
-	thinkingStartedAt,
-	thinkingEndedAt,
-	toolResultsByCallId,
-	isLastInTurn,
-}: {
-	sessionId: string;
-	text: string;
-	thinking: string | null;
-	toolCalls: ToolCall[];
-	toolsExpanded?: boolean | null;
-	timestamp?: string | null;
-	isStreaming?: boolean;
-	thinkingStartedAt?: number | null;
-	thinkingEndedAt?: number | null;
-	toolResultsByCallId?: Map<string, ToolResultInfo>;
-	isLastInTurn?: boolean;
-}) {
-	const hasVisibleText = Boolean(text && text.trim().length > 0);
-	const shouldShowFooter =
-		!isStreaming && (hasVisibleText || (isLastInTurn && toolCalls.length > 0));
-	const timeStr = formatTimestamp(timestamp);
-
-	return (
-		<div className="group relative">
-			{/* Execution trace: thinking + tool calls auto-collapsed when finished */}
-			{(thinking || toolCalls.length > 0) && (
-				<TraceExecution
-					sessionId={sessionId}
-					thinking={thinking}
-					toolCalls={toolCalls}
-					isStreaming={isStreaming}
-					thinkingStartedAt={thinkingStartedAt}
-					thinkingEndedAt={thinkingEndedAt}
-					toolsExpanded={toolsExpanded}
-					toolResultsByCallId={toolResultsByCallId}
-				/>
-			)}
-
-			{/* When streaming but neither thinking text nor tool calls nor answer text have arrived yet */}
-			{isStreaming && !text && !thinking && toolCalls.length === 0 && (
-				<div className="my-1 border-l-2 border-[var(--border)] pl-2.5 py-0.5 space-y-1">
-					<div className="flex items-center gap-2 py-0.5 text-[12px] text-neutral-400 select-none">
-						<Sparkles size={11} className="shrink-0 animate-pulse text-indigo-400" />
-						<span className="animate-pulse font-medium text-neutral-300">正在思考…</span>
-					</div>
-				</div>
-			)}
-
-			<div className="relative">
-				{text && <Markdown text={text} />}
-				{isStreaming && (
-					<span
-						className="inline-block animate-pulse font-mono text-[13px] text-indigo-400 select-none ml-0.5"
-						title="生成中…"
-					>
-						▍
-					</span>
-				)}
-			</div>
-
-			{shouldShowFooter && (
-				<div className="mt-1 flex items-center justify-start">
-					<div
-						className="flex items-center gap-0.5 rounded-xl hairline vibrancy-popover p-0.5 text-[11px] shadow-sm opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
-						title={timeStr ? `完成时间 ${timeStr}` : undefined}
-					>
-						{text && (
-							<button
-								type="button"
-								onClick={async () => {
-									try {
-										await copyText(text);
-										toast.success("回复已复制");
-									} catch (e) {
-										toast.error(`复制失败: ${errMsg(e)}`);
-									}
-								}}
-								className="press-scale flex h-6 w-6 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus:opacity-100"
-								title={timeStr ? `复制回复 · 完成时间 ${timeStr}` : "复制回复"}
-								aria-label="复制回复"
-							>
-								<Copy size={12} />
-							</button>
-						)}
-						<button
-							type="button"
-							onClick={async () => {
-								try {
-									const snippet = text.slice(0, 60);
-									const prompt = snippet ? `基于回复继续：${snippet}…` : "分叉侧聊";
-									const info = await createSideChat(sessionId, prompt, text || undefined);
-									void useSessions.getState().load().catch(() => {});
-									useUi.getState().setRightTab("sidechat");
-									useUi.getState().selectSession(info.sessionId);
-									toast.success("已分叉到侧聊");
-								} catch (e) {
-									toast.error(`分叉失败: ${errMsg(e)}`);
-								}
-							}}
-							className="press-scale flex h-6 w-6 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus:opacity-100"
-							title={timeStr ? `分叉此回复到侧聊 · 完成时间 ${timeStr}` : "分叉此回复到侧聊"}
-							aria-label="分叉此回复到侧聊"
-						>
-							<GitFork size={12} />
-						</button>
-					</div>
-				</div>
-			)}
-		</div>
-	);
-}
-
-function ItemRow({
+/**
+ * User message bubble with compact image chips and retry/copy actions.
+ */
+const UserRow = React.memo(function UserRow({
 	sessionId,
 	item,
-	toolsExpanded,
-	toolResultsByCallId,
-	isLastInTurn,
 }: {
 	sessionId: string;
 	item: TranscriptItem;
-	toolsExpanded?: boolean | null;
-	toolResultsByCallId?: Map<string, ToolResultInfo>;
-	isLastInTurn?: boolean;
 }) {
-	switch (item.kind) {
-		case "user": {
-			const userText = item.text ?? "";
-			return (
-				<div className="group/user-row relative flex flex-col items-end">
-					<div className="max-w-full rounded-2xl rounded-tr-sm hairline bg-[var(--bg-hover)] shadow-sm px-4 py-2.5 text-[length:var(--chat-user-font-size)] text-[var(--text)] @min-[624px]:max-w-xl">
-						<Markdown text={userText} />
-					</div>
-					<div className="mt-1 flex items-center gap-1 text-[10px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100">
-						<button
-							type="button"
-							onClick={async () => {
-								if (!userText.trim()) return;
-								const ok = await confirmDialog(
-									`确认重新发送该消息？\n\n"${userText.slice(0, 100)}${userText.length > 100 ? "…" : ""}"`,
-									{ okLabel: "重新发送" },
-								);
-								if (!ok) return;
-								try {
-									await sendPrompt(sessionId, userText);
-									toast.success("正在重新发送…");
-								} catch (e) {
-									if (!isResumeCancelled(e))
-										toast.error(`重新发送失败: ${errMsg(e)}`);
-								}
-							}}
-							className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
-							title="重新发送此消息"
-						>
-							<RotateCcw size={10} /> 重新发送
-						</button>
-						<button
-							type="button"
-							onClick={async () => {
-								try {
-									await copyText(userText);
-									toast.success("已复制用户消息");
-								} catch (e) {
-									toast.error(`复制失败: ${errMsg(e)}`);
-								}
-							}}
-							className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
-							title="复制消息"
-						>
-							<Copy size={10} /> 复制
-						</button>
-					</div>
-				</div>
-			);
-		}
-		case "assistant": {
-			const liveSession = useLive.getState().sessions[sessionId];
-			const thinkingTimes = liveSession?.thinkingDurations?.[item.id];
-			return (
-				<AssistantBody
-					sessionId={sessionId}
-					text={item.text ?? ""}
-					thinking={item.thinking}
-					toolCalls={item.toolCalls}
-					toolsExpanded={toolsExpanded}
-					timestamp={item.ts}
-					thinkingStartedAt={thinkingTimes?.startedAt}
-					thinkingEndedAt={thinkingTimes?.endedAt}
-					toolResultsByCallId={toolResultsByCallId}
-					isLastInTurn={isLastInTurn}
-				/>
-			);
-		}
-		case "tool_result":
-		case "bash": {
-			// Orphan tool result that wasn't consumed by any assistant toolCall
-			const r = item.toolResult;
-			const liveSession = useLive.getState().sessions[sessionId];
-			const liveTool = r?.toolCallId
-				? liveSession?.tools?.[r.toolCallId]
-				: undefined;
-			return (
-				<div className="my-1 border-l-2 border-[var(--border)] pl-2.5 py-0.5">
-					<ToolCard
-						sessionId={sessionId}
-						name={r?.toolName ?? item.kind}
-						status={r?.isError ? "error" : "done"}
-						output={r?.text ?? item.text ?? ""}
-						details={r?.details}
-						expanded={toolsExpanded ?? undefined}
-						startedAt={liveTool?.startedAt}
-						endedAt={liveTool?.endedAt}
-					/>
-				</div>
-			);
-		}
-		case "compaction":
-		case "branch_summary":
-		case "model_change":
-		case "thinking_level_change":
-		case "system":
-		case "custom": {
-			// Protocol/system events — quiet inline chips, not raw text. Codex
-			// renders these as dim separators; ours keeps a tiny label so the
-			// event is still discoverable on hover.
-			const label =
-				item.kind === "model_change"
-					? `model → ${item.model ?? item.text ?? "?"}`
-					: item.kind === "thinking_level_change"
-						? `thinking → ${item.text ?? "?"}`
-						: item.kind;
-			return (
-				<div className="py-0.5 text-center text-[10px] text-neutral-700">
-					{label}
-				</div>
-			);
-		}
-		default:
-			return item.text ? (
-				<div className="text-[12px] text-neutral-500">{item.text}</div>
-			) : null;
-	}
-}
+	const rawText = item.text ?? "";
+	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
 
-function StreamingRow({
-	sessionId,
-	message,
-	toolsExpanded,
-	toolResultsByCallId,
-}: {
-	sessionId: string;
-	message: AgentMessage | null;
-	toolsExpanded?: boolean | null;
-	toolResultsByCallId?: Map<string, ToolResultInfo>;
-}) {
-	const live = useLive((s) => s.sessions[sessionId]);
 	return (
-		<div>
-			<AssistantBody
-				sessionId={sessionId}
-				text={messageText(message?.content)}
-				thinking={messageThinking(message?.content)}
-				toolCalls={messageToolCalls(message?.content)}
-				toolsExpanded={toolsExpanded}
-				isStreaming={true}
-				thinkingStartedAt={live?.thinkingStartedAt}
-				thinkingEndedAt={live?.thinkingEndedAt}
-				toolResultsByCallId={toolResultsByCallId}
-			/>
+		<div
+			id={`msg-${item.id}`}
+			className="group/user-row relative flex flex-col items-end py-1"
+		>
+			<div className="max-w-full rounded-2xl rounded-tr-sm hairline bg-[var(--bg-hover)] shadow-sm px-4 py-2.5 text-[length:var(--chat-user-font-size)] text-[var(--text)] @min-[624px]:max-w-xl">
+				<ImageChipsList images={item.images} />
+				{userText ? (
+					<Markdown text={userText} />
+				) : (
+					!item.images?.length && (
+						<span className="text-neutral-500 italic">空消息</span>
+					)
+				)}
+			</div>
+			<div className="mt-1 flex items-center gap-1 text-[10px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100">
+				<button
+					type="button"
+					onClick={async () => {
+						if (!userText.trim()) return;
+						const ok = await confirmDialog(
+							`确认重新发送该消息？\n\n"${userText.slice(0, 100)}${userText.length > 100 ? "…" : ""}"`,
+							{ okLabel: "重新发送" },
+						);
+						if (!ok) return;
+						try {
+							await sendPrompt(sessionId, userText);
+							toast.success("正在重新发送…");
+						} catch (e) {
+							if (!isResumeCancelled(e))
+								toast.error(`重新发送失败: ${errMsg(e)}`);
+						}
+					}}
+					className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
+					title="重新发送此消息"
+				>
+					<RotateCcw size={10} /> 重新发送
+				</button>
+				<button
+					type="button"
+					onClick={async () => {
+						try {
+							await copyText(userText);
+							toast.success("已复制用户消息");
+						} catch (e) {
+							toast.error(`复制失败: ${errMsg(e)}`);
+						}
+					}}
+					className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
+					title="复制消息"
+				>
+					<Copy size={10} /> 复制
+				</button>
+			</div>
 		</div>
 	);
-}
+});
+
+/**
+ * Protocol row for system events like model change or compaction.
+ */
+const ProtocolRow = React.memo(function ProtocolRow({
+	item,
+}: {
+	item: TranscriptItem;
+}) {
+	const label =
+		item.kind === "model_change"
+			? `模型切换 → ${formatShortModel(item.model ?? item.text) || (item.model ?? item.text ?? "?")}`
+			: item.kind === "compaction"
+				? "上下文压缩已完成"
+				: item.kind === "branch_summary"
+					? "分支总结"
+					: item.kind === "thinking_level_change"
+						? `思考等级 → ${item.text ?? "?"}`
+						: item.kind;
+
+	return (
+		<div
+			id={`msg-${item.id}`}
+			className="py-1.5 text-center text-[10px] text-neutral-500"
+		>
+			<span className="inline-block rounded-full hairline bg-[var(--bg-panel)] px-2.5 py-0.5 shadow-xs">
+				{label}
+			</span>
+		</div>
+	);
+});
+
+/**
+ * A full Turn Block in Codex style:
+ * 1. User message bubble
+ * 2. Execution disclosure (collapsed single row: 已处理 X 分 Y 秒 · N 步 ›)
+ * 3. Final assistant answer
+ * 4. Subtle one-line answer footer
+ */
+const TurnBlockRow = React.memo(function TurnBlockRow({
+	sessionId,
+	block,
+	toolsExpanded,
+	toolResultsByCallId,
+	sessionCwd,
+	sessionFile,
+	turnCheckpoint,
+	canUndo,
+	onTurnsChange,
+}: {
+	sessionId: string;
+	block: TurnBlock;
+	toolsExpanded?: boolean | null;
+	toolResultsByCallId?: Map<string, ToolResultInfo>;
+	sessionCwd: string;
+	sessionFile: string;
+	turnCheckpoint?: TurnCheckpoint;
+	canUndo?: boolean;
+	onTurnsChange?: () => void;
+}) {
+	const answerText = useMemo(() => {
+		if (!block.answerItem?.text) return "";
+		return stripImageMarkers(block.answerItem.text);
+	}, [block.answerItem?.text]);
+
+	return (
+		<div className="flex flex-col py-1">
+			{/* User query bubble */}
+			<UserRow sessionId={sessionId} item={block.userItem} />
+
+			{/* Collapsed intermediate execution disclosure */}
+			{block.intermediateSteps.length > 0 && (
+				<ExecutionDisclosure
+					sessionId={sessionId}
+					steps={block.intermediateSteps}
+					durationMs={block.durationMs}
+					forceExpanded={toolsExpanded}
+					toolResultsByCallId={toolResultsByCallId}
+				/>
+			)}
+
+			{/* Assistant answer bubble */}
+			{block.answerItem && (
+				<div
+					id={`msg-${block.answerItem.id}`}
+					className="group/answer relative flex flex-col items-start py-1"
+				>
+					<div className="max-w-full text-[length:var(--chat-font-size)] text-neutral-200 @min-[864px]:max-w-3xl">
+						{answerText ? (
+							<Markdown text={answerText} />
+						) : (
+							<span className="text-neutral-500 italic">空回复</span>
+						)}
+					</div>
+
+					{/* Subtle Answer Footer */}
+					<AnswerFooter
+						sessionId={sessionId}
+						cwd={sessionCwd}
+						sessionFile={sessionFile}
+						turnCheckpoint={turnCheckpoint}
+						canUndo={canUndo}
+						onDoneUndo={onTurnsChange}
+						completionTime={
+							block.answerItem.ts ??
+							block.userItem.ts
+						}
+						durationMs={block.durationMs}
+						model={block.answerItem.model ?? block.userItem.model}
+						answerText={answerText}
+					/>
+				</div>
+			)}
+		</div>
+	);
+});
+
+/**
+ * Isolated StreamingRow: subscribes to streamingMessage directly so MessageList
+ * does NOT re-render on every token!
+ */
+const StreamingRow = React.memo(function StreamingRow({
+	sessionId,
+	toolsExpanded,
+	toolResultsByCallId,
+	onScrollRequest,
+}: {
+	sessionId: string;
+	toolsExpanded?: boolean | null;
+	toolResultsByCallId?: Map<string, ToolResultInfo>;
+	onScrollRequest?: () => void;
+}) {
+	const streamingMessage = useLive(
+		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
+	);
+	const liveTools = useLive(
+		(s) => s.sessions[sessionId]?.tools ?? EMPTY_TOOLS,
+	);
+
+	const text = messageText(streamingMessage?.content);
+	const thinking = messageThinking(streamingMessage?.content);
+	const toolCalls = messageToolCalls(streamingMessage?.content);
+
+	// Throttle scroll request to rAF
+	useEffect(() => {
+		onScrollRequest?.();
+	}, [text, thinking, toolCalls.length, onScrollRequest]);
+
+	return (
+		<div className="space-y-2 py-1">
+			{/* Thinking block if actively thinking */}
+			{thinking && (
+				<div className="rounded-xl hairline bg-[var(--bg-panel)] p-3 text-neutral-300">
+					<div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium text-amber-400">
+						<Sparkles size={11} className="animate-pulse" />
+						<span>正在深度思考…</span>
+					</div>
+					<div className="text-[12px] leading-relaxed text-neutral-400 italic">
+						<Markdown text={thinking} />
+					</div>
+				</div>
+			)}
+
+			{/* Active tool calls */}
+			{toolCalls.length > 0 && (
+				<div className="space-y-1">
+					{toolCalls.map((tc) => {
+						const live = liveTools[tc.id];
+						const histResult = toolResultsByCallId?.get(tc.id);
+						const status = resolveToolStatus(live?.status, histResult);
+
+						return (
+							<ToolCard
+								key={tc.id}
+								sessionId={sessionId}
+								name={live?.toolName ?? tc.name}
+								args={live?.args ?? tc.args}
+								intent={live?.intent ?? null}
+								status={status}
+								output={histResult?.text || live?.text || ""}
+								details={histResult?.details ?? live?.details}
+								expanded={toolsExpanded ?? undefined}
+								startedAt={live?.startedAt}
+								endedAt={live?.endedAt}
+							/>
+						);
+					})}
+				</div>
+			)}
+
+			{/* Streaming text answer */}
+			{text && (
+				<div className="relative max-w-full text-[length:var(--chat-font-size)] text-neutral-200 @min-[864px]:max-w-3xl">
+					<Markdown text={text} />
+					<span
+						className="inline-block h-3.5 w-1.5 ml-0.5 translate-y-0.5 rounded-xs bg-[#0A84FF] animate-pulse"
+						aria-hidden="true"
+					/>
+				</div>
+			)}
+		</div>
+	);
+});
 
 export function MessageList({
 	sessionId,
@@ -611,45 +386,59 @@ export function MessageList({
 	scrollRef: React.RefObject<HTMLDivElement | null>;
 	/** Reserve the left gutter for the ChatTrace dash strip. */
 	traceGutter?: boolean;
-	/** Reports viewport pin state so the host can render a viewport-pinned
-	 * "scroll to bottom" button (the scrolled content must not host it). */
 	onScrollState?: (s: { nearBottom: boolean; hasNewMessages: boolean }) => void;
 	isLoadingTranscript?: boolean;
 	transcriptError?: string | null;
 	onRetryTranscript?: () => void;
-	/** Per-turn checkpoints (oldest first); chips render at each turn's end. */
 	turns?: TurnCheckpoint[];
-	/** Session worktree path (used by the 「已存档」 jump and undo). */
 	sessionCwd?: string;
-	/** Session .jsonl path (undo target). */
 	sessionFile?: string;
-	/** Session mid-turn → hide the undo action. */
 	sessionWorking?: boolean;
-	/** Re-fetch checkpoints after a state change (undo). */
 	onTurnsChange?: () => void;
 }) {
-	const live = useLive((s) => s.sessions[sessionId]);
-	const items = live?.items ?? [];
-	const streamingMessage = live?.streamingMessage ?? null;
-	const pendingEchoes = live?.pendingUserEchoes ?? [];
+	// Narrow subscriptions — NOT subscribing to whole session object!
+	const items = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY_ITEMS);
+	const pendingEchoes = useLive(
+		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
+	);
+	const isStreamingActive = useLive(
+		(s) =>
+			Boolean(
+				s.sessions[sessionId]?.streaming ||
+					s.sessions[sessionId]?.streamingMessage,
+			),
+	);
+	const scrollRequest = useLive((s) => s.sessions[sessionId]?.scrollRequest);
+
 	const [showHidden, setShowHidden] = useState(false);
 	const [toolsExpanded, setToolsExpanded] = useState<boolean | null>(null);
 	const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
 	const isPinnedRef = useRef(true);
-	const prevItemsLen = useRef(items.length);
-	const prevStreamingTextLen = useRef(0);
-	const prevStreamingThinkingLen = useRef(0);
+	const scrollRafRef = useRef(0);
 	const lastHandledScrollReq = useRef<number>(0);
 	const containerRef = useRef<HTMLDivElement>(null);
+
+	// Throttled scroll to bottom using requestAnimationFrame
+	const scrollToBottomThrottled = useCallback(() => {
+		if (scrollRafRef.current) return;
+		scrollRafRef.current = requestAnimationFrame(() => {
+			scrollRafRef.current = 0;
+			const el = scrollRef.current;
+			if (el && isPinnedRef.current) {
+				el.scrollTop = el.scrollHeight;
+			}
+		});
+	}, [scrollRef]);
 
 	// Viewport pin state, mirrored to the host for the scroll-to-bottom pill.
 	const scrollStateRef = useRef({ nearBottom: true, hasNewMessages: false });
 	const onScrollStateRef = useRef(onScrollState);
 	onScrollStateRef.current = onScrollState;
-	const emitScrollState = (
-		patch: { nearBottom?: boolean; hasNewMessages?: boolean },
-	) => {
+	const emitScrollState = (patch: {
+		nearBottom?: boolean;
+		hasNewMessages?: boolean;
+	}) => {
 		const cur = scrollStateRef.current;
 		const next = {
 			nearBottom: patch.nearBottom ?? cur.nearBottom,
@@ -676,24 +465,35 @@ export function MessageList({
 		[items, showHidden],
 	);
 
+	// Group visible items into TurnBlocks and ProtocolBlocks
+	const blocks = useMemo(() => groupTurnBlocks(visible), [visible]);
 
-	// Turn chips keyed by the visible-row index they render after.
-	const chips = useMemo(() => turnChipTargets(visible, turns), [visible, turns]);
+	// Map checkpoints by userItemId
+	const checkpointByUserItem = useMemo(() => {
+		const m = new Map<string, TurnCheckpoint>();
+		for (const t of turns) {
+			if (t.userItemId) {
+				m.set(t.userItemId, t);
+			}
+		}
+		return m;
+	}, [turns]);
+
 	const undoable = useMemo(
 		() => undoableTurn(turns, sessionWorking),
 		[turns, sessionWorking],
 	);
+
 	const hiddenCount = items.length - visible.length;
-	const isStreamingActive = Boolean(live?.streaming || streamingMessage);
 	const hasContent =
-		visible.length > 0 || pendingEchoes.length > 0 || isStreamingActive;
+		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive;
 
 	const virtualizer = useVirtualizer({
-		count: visible.length,
+		count: blocks.length,
 		getScrollElement: () => scrollRef.current,
-		estimateSize: () => 80,
-		overscan: 6,
-		getItemKey: (index) => visible[index]?.id ?? index,
+		estimateSize: () => 100,
+		overscan: 4,
+		getItemKey: (index) => blocks[index]?.id ?? index,
 	});
 
 	// Listen to user scroll in container to maintain pin-to-bottom state
@@ -713,106 +513,91 @@ export function MessageList({
 		return () => el.removeEventListener("scroll", handleScroll);
 	}, [scrollRef]);
 
-	// Stream-following auto scroll: triggers when text, thinking or rows change
-	const streamingText = messageText(streamingMessage?.content);
-	const streamingThinking = messageThinking(streamingMessage?.content);
-
-	useEffect(() => {
-		const el = scrollRef.current;
-		if (!el) return;
-		const itemsGrew = visible.length > prevItemsLen.current;
-		const echoesGrew = pendingEchoes.length > 0;
-		const textGrew = streamingText.length > prevStreamingTextLen.current;
-		const thinkingGrew =
-			(streamingThinking?.length ?? 0) > prevStreamingThinkingLen.current;
-
-		prevItemsLen.current = visible.length;
-		prevStreamingTextLen.current = streamingText.length;
-		prevStreamingThinkingLen.current = streamingThinking?.length ?? 0;
-
-		if (isPinnedRef.current) {
-			el.scrollTop = el.scrollHeight;
-		} else if (itemsGrew || echoesGrew || textGrew || thinkingGrew) {
-			emitScrollState({ hasNewMessages: true });
-		}
-	}, [
-		visible.length,
-		pendingEchoes.length,
-		streamingText,
-		streamingThinking,
-		scrollRef,
-	]);
-
 	// ResizeObserver for dynamic content expansion during streaming
 	useEffect(() => {
 		const el = scrollRef.current;
 		const target = containerRef.current;
 		if (!el || !target) return;
 		const ro = new ResizeObserver(() => {
-			if (isPinnedRef.current) {
-				el.scrollTop = el.scrollHeight;
-			}
+			scrollToBottomThrottled();
 		});
 		ro.observe(target);
-		return () => ro.disconnect();
-	}, [scrollRef]);
+		return () => {
+			ro.disconnect();
+			if (scrollRafRef.current) {
+				cancelAnimationFrame(scrollRafRef.current);
+			}
+		};
+	}, [scrollRef, scrollToBottomThrottled]);
+
+	// Auto-scroll when new blocks arrive
+	useEffect(() => {
+		if (isPinnedRef.current) {
+			scrollToBottomThrottled();
+		} else if (blocks.length > 0 || pendingEchoes.length > 0) {
+			emitScrollState({ hasNewMessages: true });
+		}
+	}, [blocks.length, pendingEchoes.length, scrollToBottomThrottled]);
 
 	// Handle scrollToIndex and highlight from live.scrollRequest
 	useEffect(() => {
-		const req = live?.scrollRequest;
-		if (!req || req.timestamp === lastHandledScrollReq.current) return;
-		lastHandledScrollReq.current = req.timestamp;
+		if (!scrollRequest || scrollRequest.timestamp === lastHandledScrollReq.current)
+			return;
+		lastHandledScrollReq.current = scrollRequest.timestamp;
 
-		const targetIndex = visible.findIndex((r) => {
-			if (r.id === req.itemId) return true;
+		const targetId = scrollRequest.itemId;
+		const targetIndex = blocks.findIndex((b) => {
+			if (b.allItemIds.includes(targetId)) return true;
 			if (
-				r.kind === "assistant" &&
-				r.toolCalls?.some((tc) => {
-					const res = toolResultsByCallId.get(tc.id);
-					return (
-						tc.id === req.itemId ||
-						(res && res.toolCallId === req.itemId)
-					);
-				})
+				b.type === "turn" &&
+				b.intermediateSteps.some(
+					(s) =>
+						s.id === targetId ||
+						(s.kind === "tool" &&
+							(s.call.id === targetId || s.result?.toolCallId === targetId)),
+				)
 			) {
 				return true;
 			}
 			return false;
 		});
+
 		if (targetIndex >= 0) {
 			virtualizer.scrollToIndex(targetIndex, {
 				align: "center",
 				behavior: "smooth",
 			});
-			setHighlightedId(req.itemId);
+			setHighlightedId(targetId);
 			const timer = setTimeout(() => {
 				setHighlightedId(null);
 			}, 2500);
 			useLive.getState().clearScrollRequest(sessionId);
 			return () => clearTimeout(timer);
 		}
-	}, [live?.scrollRequest, visible, virtualizer, sessionId, toolResultsByCallId]);
+	}, [scrollRequest, blocks, virtualizer, sessionId]);
 
-	// Consume cross-feature "jump to chat turn" requests (git timeline →
-	// chat): scroll msg-<userItemId> into view + highlight, then clearTurn.
+	// Consume cross-feature "jump to chat turn" requests (git timeline → chat)
 	const revealTurn = useTurnNav((s) => s.revealTurn);
 	const lastHandledReveal = useRef(0);
 	useEffect(() => {
 		if (!revealTurn || revealTurn.sessionId !== sessionId) return;
 		if (revealTurn.nonce === lastHandledReveal.current) return;
-		// Still loading → wait; the item may arrive with the page.
 		if (isLoadingTranscript) return;
-		const idx = visible.findIndex((r) => r.id === revealTurn.userItemId);
+
+		const idx = blocks.findIndex((b) =>
+			b.allItemIds.includes(revealTurn.userItemId),
+		);
 		lastHandledReveal.current = revealTurn.nonce;
 		useTurnNav.getState().clearTurn();
 		if (idx < 0) return;
+
 		virtualizer.scrollToIndex(idx, { align: "center", behavior: "smooth" });
 		setHighlightedId(revealTurn.userItemId);
 		const timer = setTimeout(() => {
 			setHighlightedId(null);
 		}, 2500);
 		return () => clearTimeout(timer);
-	}, [revealTurn, visible, virtualizer, sessionId, isLoadingTranscript]);
+	}, [revealTurn, blocks, virtualizer, sessionId, isLoadingTranscript]);
 
 	return (
 		<div className="relative flex h-full flex-col">
@@ -839,10 +624,10 @@ export function MessageList({
 						type="button"
 						onClick={() => setToolsExpanded((v) => !v)}
 						className="press-scale flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
-						title={toolsExpanded ? "折叠所有工具卡片" : "展开所有工具卡片"}
+						title={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
 					>
 						<Wrench size={10} />
-						<span>{toolsExpanded ? "全部折叠工具" : "全部展开工具"}</span>
+						<span>{toolsExpanded ? "全部折叠步骤" : "全部展开步骤"}</span>
 					</button>
 				</div>
 			</div>
@@ -903,13 +688,6 @@ export function MessageList({
 								key={prompt}
 								type="button"
 								onClick={async () => {
-									// Mirror Composer: while streaming, park the prompt in the
-									// visible held queue instead of a silent followUp send.
-									if (live?.streaming) {
-										useHeldQueue.getState().push(sessionId, prompt);
-										toast.info("已暂存消息，回合结束后可发送");
-										return;
-									}
 									try {
 										await sendPrompt(sessionId, prompt);
 										toast.info("已发送指令");
@@ -934,15 +712,18 @@ export function MessageList({
 					className="relative mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-4xl"
 				>
 					{/* Virtualized committed transcript */}
-					{visible.length > 0 && (
+					{blocks.length > 0 && (
 						<div
 							style={{ height: virtualizer.getTotalSize() }}
 							className="relative w-full"
 						>
 							{virtualizer.getVirtualItems().map((row) => {
-								const item = visible[row.index];
-								if (!item) return null;
-								const isHighlighted = item.id === highlightedId;
+								const block = blocks[row.index];
+								if (!block) return null;
+								const isHighlighted = block.allItemIds.includes(
+									highlightedId ?? "",
+								);
+
 								return (
 									<div
 										key={row.key}
@@ -955,60 +736,55 @@ export function MessageList({
 											isHighlighted &&
 												"rounded-xl bg-[#0A84FF]/10 ring-1 ring-[#0A84FF]/50 shadow-md shadow-[#0A84FF]/10 transition-[background-color,box-shadow] duration-300",
 										)}
-										id={`msg-${item.id}`}
 									>
-										<ItemRow
-											sessionId={sessionId}
-											item={item}
-											toolsExpanded={toolsExpanded}
-											toolResultsByCallId={toolResultsByCallId}
-											isLastInTurn={isLastInTurn(visible, row.index)}
-										/>
-										{chips.get(row.index)?.map((turn) => (
-											<TurnChip
-												key={turn.turnId}
-												turn={turn}
-												cwd={sessionCwd}
+										{block.type === "turn" ? (
+											<TurnBlockRow
+												sessionId={sessionId}
+												block={block}
+												toolsExpanded={toolsExpanded}
+												toolResultsByCallId={toolResultsByCallId}
+												sessionCwd={sessionCwd}
 												sessionFile={sessionFile}
-												canUndo={turn === undoable}
-												onDone={() => onTurnsChange?.()}
+												turnCheckpoint={checkpointByUserItem.get(
+													block.userItem.id,
+												)}
+												canUndo={
+													checkpointByUserItem.get(block.userItem.id) ===
+													undoable
+												}
+												onTurnsChange={onTurnsChange}
 											/>
-										))}
+										) : (
+											<ProtocolRow item={block.item} />
+										)}
 									</div>
 								);
 							})}
 						</div>
 					)}
 
-					{/* In-flight / pending user bubbles in normal document flow */}
+					{/* In-flight / pending user bubbles */}
 					{pendingEchoes.length > 0 && (
 						<div className="w-full">
-							{pendingEchoes.map((echo, i) => (
+							{pendingEchoes.map((echo) => (
 								<div
 									key={echo.id}
-									data-index={visible.length + i}
 									id={`msg-${echo.id}`}
 									className={clsx(
 										"w-full py-1 opacity-90",
 										traceGutter ? "pl-12 pr-3" : "px-3",
 									)}
 								>
-									<ItemRow
-										sessionId={sessionId}
-										item={echo}
-										toolsExpanded={toolsExpanded}
-										toolResultsByCallId={toolResultsByCallId}
-									/>
+									<UserRow sessionId={sessionId} item={echo} />
 								</div>
 							))}
 						</div>
 					)}
 
-					{/* In-flight assistant streaming / thinking card in normal document flow */}
+					{/* In-flight assistant streaming row */}
 					{isStreamingActive && (
 						<div
 							id="msg-live"
-							data-index={visible.length + pendingEchoes.length}
 							className={clsx(
 								"w-full py-1",
 								traceGutter ? "pl-12 pr-3" : "px-3",
@@ -1016,9 +792,9 @@ export function MessageList({
 						>
 							<StreamingRow
 								sessionId={sessionId}
-								message={streamingMessage}
 								toolsExpanded={toolsExpanded}
 								toolResultsByCallId={toolResultsByCallId}
+								onScrollRequest={scrollToBottomThrottled}
 							/>
 						</div>
 					)}

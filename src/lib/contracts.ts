@@ -123,6 +123,16 @@ export interface Usage {
 	cost: number;
 }
 
+/** Structured image reference attached to a transcript item. */
+export interface ImageAttachment {
+	id: string;
+	marker?: string | null;
+	path?: string | null;
+	mimeType?: string | null;
+	width?: number | null;
+	height?: number | null;
+}
+
 export interface TranscriptItem {
 	id: string;
 	parentId: string | null;
@@ -136,6 +146,8 @@ export interface TranscriptItem {
 	model: string | null;
 	stopReason: string | null;
 	hidden: boolean;
+	/** Structured image attachments. */
+	images?: ImageAttachment[];
 }
 
 export interface TranscriptPage {
@@ -586,4 +598,76 @@ export interface OmpImportResult {
 	id: string;
 	ok: boolean;
 	error: string | null;
+}
+
+// ---- E: Schedules (定时任务) ----
+
+export type ScheduleRunMode = "local" | "worktree";
+
+export type ScheduleCadence =
+	| { kind: "interval"; minutes: number }
+	| { kind: "daily"; time: string; weekdays?: number[] };
+
+export type ScheduleRunStatus = "running" | "ok" | "error" | "skipped";
+
+export interface Schedule {
+	id: string;
+	name: string;
+	prompt: string;
+	cwd: string;
+	runMode: ScheduleRunMode;
+	cadence: ScheduleCadence;
+	model: string | null;
+	thinking: string | null;
+	approvalMode: string | null;
+	enabled: boolean;
+	nextRunAt: string | null;
+	lastRunAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ScheduleDraft {
+	id?: string;
+	name: string;
+	prompt: string;
+	cwd: string;
+	runMode?: ScheduleRunMode;
+	cadence: ScheduleCadence;
+	model?: string | null;
+	thinking?: string | null;
+	approvalMode?: string | null;
+	enabled?: boolean;
+}
+
+export interface ScheduleRun {
+	id: string;
+	scheduleId: string;
+	sessionId: string | null;
+	status: ScheduleRunStatus;
+	startedAt: string;
+	finishedAt: string | null;
+	summary: string | null;
+}
+
+// ---- Skills & Extensions ----
+
+export interface SkillItem {
+	name: string;
+	description: string;
+	source: string;
+	path: string;
+	dir: string;
+}
+
+export interface ExtensionItem {
+	name: string;
+	path: string;
+	source: string;
+	enabled: boolean;
+}
+
+export interface SkillsCatalog {
+	skills: SkillItem[];
+	extensions: ExtensionItem[];
 }

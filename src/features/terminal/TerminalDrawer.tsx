@@ -27,6 +27,7 @@ import {
 	RefreshCw,
 	X,
 } from "lucide-react";
+import { FloatingLayer, Z_LAYER } from "../../components/FloatingLayer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { appPaths, termClose, termOpen, termResize, termWrite, terminalSetCurrentSession } from "../../lib/ipc";
@@ -452,8 +453,9 @@ export function TerminalDrawer() {
 		<>
 			{/* Drawer panel — always mounted so PTYs persist; slides via transform */}
 			<div
-				className="fixed left-0 right-0 z-40 flex flex-col border-t border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-apple-modal"
+				className="fixed left-0 right-0 flex flex-col border-t border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-apple-modal"
 				style={{
+					zIndex: Z_LAYER.drawer,
 					height: maximized ? "calc(100vh - 38px)" : height,
 					bottom: open ? (maximized ? 0 : 28) : 0,
 					transform: open ? "translateY(0)" : "translateY(100%)",
@@ -640,7 +642,10 @@ export function TerminalDrawer() {
 
 					{/* Floating search bar (Cmd+F) */}
 					{searchOpen && (
-						<div className="absolute right-3 top-2 z-20 flex max-w-[calc(100%-16px)] flex-wrap items-center gap-1.5 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1.5">
+						<div
+							style={{ zIndex: Z_LAYER.popover }}
+							className="absolute right-3 top-2 flex max-w-[calc(100%-16px)] flex-wrap items-center gap-1.5 rounded-xl vibrancy-popover shadow-apple-modal hairline p-1.5"
+						>
 							<input
 								ref={searchInputRef}
 								type="text"
@@ -746,18 +751,16 @@ export function TerminalDrawer() {
 				</div>
 
 				{/* Right-click context menu (no annotation capture — that is session-only) */}
-				{contextMenu && (
-					<div
-						className="fixed inset-0 z-50"
-						onMouseDown={(e) => {
-							if (e.target === e.currentTarget) setContextMenu(null);
-						}}
-					>
-						<div
-							style={{ left: contextMenu.x, top: contextMenu.y }}
-							className="fixed z-50 min-w-40 rounded-xl vibrancy-popover shadow-apple-modal hairline py-1 text-xs"
-							onClick={(e) => e.stopPropagation()}
-						>
+				<FloatingLayer
+					anchor={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+					layer="menu"
+					placement="bottom-start"
+					offset={2}
+					onDismiss={() => setContextMenu(null)}
+					className="min-w-40 py-1 text-xs"
+				>
+					{contextMenu && (
+						<>
 							<button
 								type="button"
 								onClick={handleCopy}
@@ -783,9 +786,9 @@ export function TerminalDrawer() {
 								<Eraser size={13} className="text-neutral-400" />
 								清屏
 							</button>
-						</div>
-					</div>
-				)}
+						</>
+					)}
+				</FloatingLayer>
 			</div>
 
 		</>

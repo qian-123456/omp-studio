@@ -138,12 +138,15 @@ export function makeUserEcho(text: string): TranscriptItem {
 	};
 }
 
-const flat = (t: string) => t.replace(/\s+/g, " ").trim();
+const stripMarkers = (t: string) =>
+	t.replace(/\[Image #\d+(?:,\s*\d+x\d+)?\]|\[图片(?::\s*[^\]]+)?\]/g, "");
+
+const flat = (t: string) => stripMarkers(t).replace(/\s+/g, " ").trim();
 
 /** An echo is confirmed once the transcript carries a user item with
  * matching text. `includes` both ways because the agent may prepend
  * `[Image #N]` markers or drop annotation blocks. */
-const echoMatches = (echoText: string, itemText: string): boolean => {
+export const echoMatches = (echoText: string, itemText: string): boolean => {
 	const e = flat(echoText);
 	const u = flat(itemText);
 	return e !== "" && u !== "" && (e === u || u.includes(e) || e.includes(u));

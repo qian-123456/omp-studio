@@ -12,8 +12,10 @@ mod paths;
 mod prompts;
 mod providers;
 mod rpc;
+mod schedules;
 mod services;
 mod settings;
+mod skills;
 mod state;
 mod terminal;
 mod todos;
@@ -118,6 +120,7 @@ pub fn run() {
             services::init(state.clone());
             mobile::init(state.clone());
             terminal::init(state.clone());
+            schedules::init(state.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -238,6 +241,16 @@ pub fn run() {
             terminal::commands::term_open_session,
             terminal::commands::terminal_set_current_session,
             terminal::commands::install_status_extension_globally,
+            // E — schedules (定时任务)
+            schedules::commands::schedules_list,
+            schedules::commands::schedules_save,
+            schedules::commands::schedules_delete,
+            schedules::commands::schedules_set_enabled,
+            schedules::commands::schedules_run_now,
+            schedules::commands::schedule_runs,
+            // F — skills & extensions (技能与扩展)
+            skills::commands::skills_list,
+            skills::commands::skills_read,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

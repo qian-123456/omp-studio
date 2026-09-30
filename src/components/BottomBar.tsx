@@ -6,16 +6,16 @@ import {
 	GitBranch,
 	RefreshCw,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { computeSessionStats, formatTokens } from "../features/chat/sessionStats";
 import { PerfPopover } from "../features/chat/PerfPopover";
 import { SessionStatsPopover } from "../features/chat/SessionStatsPopover";
 import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
-import { getAppMemoryUsage, type ProcessMemoryInfo } from "../lib/ipc";
+import { getAppMemoryUsage, servicesList, type ProcessMemoryInfo } from "../lib/ipc";
+import type { ServiceInfo } from "../lib/contracts";
 import { useZoom } from "../lib/zoom";
-
 
 export function BottomBar() {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
@@ -55,31 +55,71 @@ export function BottomBar() {
 	);
 	// Real OS process physical memory (footprint across app + helpers)
 	const [memoryInfo, setMemoryInfo] = useState<ProcessMemoryInfo | null>(null);
+	const [serviceRows, setServiceRows] = useState<ServiceInfo[] | null>(null);
 	const [perfOpen, setPerfOpen] = useState(false);
+	const statsBtnRef = useRef<HTMLButtonElement>(null);
+	const perfBtnRef = useRef<HTMLButtonElement>(null);
 
+	// Shared poller for memory + services:
+	// - Pauses when document is hidden
+	// - Relaxed interval (10s) when PerfPopover is closed, 4s when open
+	// - Skips overlapping runs
 	useEffect(() => {
 		let cancelled = false;
-		const fetchMemory = async () => {
+		let timer: number | null = null;
+		let inFlight = false;
+
+		const intervalMs = perfOpen ? 4000 : 10000;
+
+		const poll = async () => {
+			if (cancelled || document.visibilityState === "hidden") return;
+			if (inFlight) return;
+			inFlight = true;
+
 			try {
-				const info = await getAppMemoryUsage();
-				if (!cancelled && info?.formatted) {
-					setMemoryInfo(info);
+				const memPromise = getAppMemoryUsage();
+				const srvPromise = perfOpen ? servicesList(true) : null;
+				const [mem, srv] = await Promise.all([memPromise, srvPromise]);
+				if (!cancelled) {
+					if (mem?.formatted) setMemoryInfo(mem);
+					if (srv !== null) setServiceRows(srv);
 				}
 			} catch {
 				/* ignore */
+			} finally {
+				inFlight = false;
+				if (!cancelled && (document.visibilityState as string) !== "hidden") {
+					timer = window.setTimeout(() => {
+						void poll();
+					}, intervalMs);
+				}
 			}
 		};
 
-		void fetchMemory();
-		const timer = setInterval(() => {
-			void fetchMemory();
-		}, 4000);
+		const onVisibilityChange = () => {
+			if (document.visibilityState === "visible") {
+				if (timer !== null) {
+					window.clearTimeout(timer);
+					timer = null;
+				}
+				void poll();
+			} else {
+				if (timer !== null) {
+					window.clearTimeout(timer);
+					timer = null;
+				}
+			}
+		};
+
+		document.addEventListener("visibilitychange", onVisibilityChange);
+		void poll();
 
 		return () => {
 			cancelled = true;
-			clearInterval(timer);
+			if (timer !== null) window.clearTimeout(timer);
+			document.removeEventListener("visibilitychange", onVisibilityChange);
 		};
-	}, []);
+	}, [perfOpen]);
 	const realMemoryStr = memoryInfo?.formatted ?? null;
 
 
@@ -99,6 +139,7 @@ export function BottomBar() {
 			<div className="flex items-center gap-2">
 				{activeSessionId && stats.hasData ? (
 					<button
+						ref={statsBtnRef}
 						type="button"
 						onClick={() => setStatsOpen((v) => !v)}
 						title="点击查看详细会话统计 (模型用时、TTFT、TPS、Token 消耗)"
@@ -139,10 +180,11 @@ export function BottomBar() {
 
 				{/* Floating Session Stats Popover */}
 				<SessionStatsPopover
+					anchor={statsOpen ? statsBtnRef.current : null}
 					stats={stats}
 					open={statsOpen}
 					onClose={() => setStatsOpen(false)}
-					className="bottom-8 left-3"
+					ignoreRefs={[statsBtnRef]}
 				/>
 			</div>
 
@@ -150,6 +192,7 @@ export function BottomBar() {
 			<div className="flex items-center gap-2 text-neutral-400">
 				{/* Performance indicator (Real OS physical memory RSS) — click for per-process breakdown */}
 				<button
+					ref={perfBtnRef}
 					type="button"
 					onClick={() => setPerfOpen((v) => !v)}
 					title={`真实物理内存占用 (对齐活动监视器口径，含本体及 WebView/帮助进程)${memoryInfo?.processes ? ` — 含 ${memoryInfo.processes} 个进程` : ""}，点击查看各进程明细`}
@@ -164,13 +207,14 @@ export function BottomBar() {
 					</span>
 				</button>
 				<PerfPopover
+					anchor={perfOpen ? perfBtnRef.current : null}
 					appMemory={realMemoryStr}
 					processes={memoryInfo?.processes}
+					services={serviceRows}
 					open={perfOpen}
 					onClose={() => setPerfOpen(false)}
-					className="bottom-8 right-3"
+					ignoreRefs={[perfBtnRef]}
 				/>
-
 				<span className="text-neutral-700">·</span>
 
 				{/* Sync state */}

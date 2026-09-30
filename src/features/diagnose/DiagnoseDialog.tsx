@@ -8,6 +8,8 @@ import {
 	Stethoscope,
 	X,
 } from "lucide-react";
+import { Z_LAYER } from "../../components/FloatingLayer";
+import { isComposing } from "../../lib/hooks";
 import { useCallback, useEffect, useState } from "react";
 import { errMsg } from "../../lib/dialogs";
 import { useEscapeKey } from "../../lib/hooks";
@@ -117,22 +119,53 @@ export function DiagnoseDialog() {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-xs"
+			style={{ zIndex: Z_LAYER.modal }}
+			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeModal();
 			}}
 		>
 			<div
-				className="w-full max-w-xl rounded-2xl bg-[var(--bg-panel)] p-6 shadow-apple-modal hairline"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="diagnose-dialog-title"
+				className="w-full max-w-xl max-h-[min(90vh,720px)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-6 shadow-apple-modal hairline text-[var(--text)]"
 				onClick={(e) => e.stopPropagation()}
+				onKeyDown={(e) => {
+					if (isComposing(e)) return;
+					if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+						e.preventDefault();
+						if (!loadingPrompt && !dispatching && prompt && (targetType !== "existing" || selectedExistingId)) {
+							void handleExecuteDiagnose();
+						}
+						return;
+					}
+					if (e.key === "Tab") {
+						const controls = Array.from(
+							e.currentTarget.querySelectorAll<HTMLElement>(
+								'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+							),
+						).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
+						if (controls.length === 0) return;
+						const first = controls[0];
+						const last = controls[controls.length - 1];
+						if (e.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement as HTMLElement))) {
+							e.preventDefault();
+							last?.focus();
+						} else if (!e.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement as HTMLElement))) {
+							e.preventDefault();
+							first?.focus();
+						}
+					}
+				}}
 			>
-				<div className="mb-4 flex items-center justify-between border-b border-[var(--border-divider)] pb-3">
+				<div className="mb-4 flex items-center justify-between border-b border-[var(--border-divider)] pb-3 shrink-0">
 					<div className="flex items-center gap-2.5">
 						<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
 							<Stethoscope className="h-4 w-4" />
 						</div>
 						<div>
-							<h2 className="text-sm font-semibold text-neutral-100">
+							<h2 id="diagnose-dialog-title" className="text-sm font-semibold text-[var(--text)]">
 								诊断异常会话
 							</h2>
 							<p className="text-[11px] text-neutral-400">
@@ -142,12 +175,16 @@ export function DiagnoseDialog() {
 					</div>
 					<button
 						type="button"
+						title="关闭 (Esc)"
+						aria-label="关闭对话框"
 						onClick={closeModal}
 						className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 					>
 						<X className="h-4 w-4" />
 					</button>
 				</div>
+
+				<div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-4">
 
 				{error && (
 					<div className="mb-4 flex items-center justify-between rounded-lg border border-rose-800/50 bg-rose-950/20 p-2.5 text-xs text-rose-300">
@@ -165,7 +202,7 @@ export function DiagnoseDialog() {
 				)}
 
 				{/* Target Session Info Card */}
-				<div className="mb-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3 text-xs">
+				<div className="rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-3 text-xs">
 					<div className="flex items-center justify-between">
 						<span className="font-semibold text-neutral-300">
 							被诊断会话: {targetSession?.title || targetSessionId}
@@ -182,9 +219,8 @@ export function DiagnoseDialog() {
 				</div>
 
 				{/* Prompt Preview Accordion */}
-				<div className="mb-5 rounded-xl border border-neutral-800 bg-neutral-950/40">
+				<div className="rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/60">
 					<button
-						type="button"
 						onClick={() => setShowPromptPreview(!showPromptPreview)}
 						className="flex w-full items-center justify-between p-3 text-xs font-medium text-neutral-400 hover:text-neutral-200"
 					>
@@ -200,7 +236,7 @@ export function DiagnoseDialog() {
 					</button>
 
 					{showPromptPreview && (
-						<div className="border-t border-neutral-800 p-3">
+						<div className="border-t border-[var(--border-divider)] p-3">
 							{loadingPrompt ? (
 								<div className="space-y-3 py-1">
 									<div className="flex items-center gap-2 text-xs text-amber-400">
@@ -247,7 +283,7 @@ export function DiagnoseDialog() {
 						由哪个 Agent 执行诊断？
 					</div>
 
-					<div className="flex rounded-lg border border-neutral-800 bg-neutral-950/60 p-1 text-xs font-medium">
+					<div className="flex rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-1 text-xs font-medium">
 						<button
 							type="button"
 							onClick={() => setTargetType("existing")}
@@ -274,7 +310,7 @@ export function DiagnoseDialog() {
 
 					{targetType === "existing" ? (
 						candidateSessions.length === 0 ? (
-							<div className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3 text-xs text-neutral-500">
+							<div className="rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-3 text-xs text-neutral-500">
 								没有其他可用会话，请选择「新开诊断会话」。
 							</div>
 						) : (
@@ -328,12 +364,14 @@ export function DiagnoseDialog() {
 					)}
 				</div>
 
+				</div>
+
 				{/* Actions */}
-				<div className="mt-6 flex items-center justify-end gap-2 border-t border-[var(--border-divider)] pt-4">
+				<div className="mt-4 flex items-center justify-end gap-2 border-t border-[var(--border-divider)] pt-3 shrink-0">
 					<button
 						type="button"
 						onClick={closeModal}
-						className="rounded-lg px-4 py-2 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
+						className="rounded-lg px-4 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 					>
 						取消
 					</button>
@@ -346,7 +384,7 @@ export function DiagnoseDialog() {
 							(targetType === "existing" && !selectedExistingId)
 						}
 						onClick={handleExecuteDiagnose}
-						className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-neutral-950 hover:bg-amber-400 disabled:opacity-40"
+						className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-1.5 text-xs font-semibold text-neutral-950 hover:bg-amber-400 disabled:opacity-40 transition-colors"
 					>
 						{dispatching ? (
 							<Loader2 className="h-3.5 w-3.5 animate-spin" />

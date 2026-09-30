@@ -67,6 +67,50 @@ describe("todos logic", () => {
 		expect(closed[0].id).toBe("t4"); // updatedAt 09:40 before 09:30
 		expect(closed[1].id).toBe("t3");
 	});
+	it("handles sessionId scoping: null returns empty, undefined returns all, string filters", () => {
+		const todos: Todo[] = [
+			{
+				id: "t1",
+				kind: "review",
+				source: "system",
+				status: "open",
+				sessionId: "sess-1",
+				title: "Review session 1",
+				detail: "",
+				payload: {},
+				priority: 20,
+				createdAt: "2026-09-24T10:00:00Z",
+				updatedAt: "2026-09-24T10:00:00Z",
+			},
+			{
+				id: "t2",
+				kind: "schedule_run",
+				source: "schedule",
+				status: "open",
+				sessionId: "sess-2",
+				title: "Scheduled task run",
+				detail: "",
+				payload: { scheduleId: "sc1", runId: "r1", ok: true },
+				priority: 12,
+				createdAt: "2026-09-24T10:05:00Z",
+				updatedAt: "2026-09-24T10:05:00Z",
+			},
+		];
+
+		// undefined -> all
+		const all = splitTodos(todos, undefined);
+		expect(all.open).toHaveLength(2);
+
+		// null -> empty (no session selected)
+		const none = splitTodos(todos, null);
+		expect(none.open).toHaveLength(0);
+		expect(none.closed).toHaveLength(0);
+
+		// string -> specific session
+		const sess1 = splitTodos(todos, "sess-1");
+		expect(sess1.open).toHaveLength(1);
+		expect(sess1.open[0].id).toBe("t1");
+	});
 	it("buckets subagent statuses correctly", () => {
 		expect(subagentBucket("running")).toBe("running");
 		expect(subagentBucket("completed")).toBe("done");

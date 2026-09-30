@@ -13,6 +13,13 @@ use super::store;
 use crate::paths;
 use crate::state::{AppEvent, AppState};
 
+static EXTERNAL_NOTIFY: std::sync::OnceLock<tokio::sync::Notify> = std::sync::OnceLock::new();
+
+pub fn notify_external_check() {
+    if let Some(notify) = EXTERNAL_NOTIFY.get() {
+        notify.notify_one();
+    }
+}
 pub fn spawn_all(state: AppState) {
     // Subscribe to the bus synchronously so no startup events are missed.
     let bus_rx = state.bus.subscribe();
@@ -84,19 +91,27 @@ async fn run_watcher(state: AppState) {
     }
 
     while rx.recv().await.is_some() {
+        // Coalesce rapid bursts of file modifications
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        while rx.try_recv().is_ok() {}
         super::rebuild(&state).await;
+        notify_external_check();
     }
 }
 
 async fn run_external_loop(state: AppState) {
-    let mut interval = tokio::time::interval(Duration::from_secs(5));
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let notify = EXTERNAL_NOTIFY.get_or_init(tokio::sync::Notify::new);
     let sessions_dir = paths::omp_sessions_dir();
     let status_dir = paths::status_dir();
     let own_pid = std::process::id();
 
+    const MIN_DELAY: Duration = Duration::from_secs(5);
+    const MAX_DELAY: Duration = Duration::from_secs(30);
+    const STEP: Duration = Duration::from_secs(5);
+
+    let mut current_delay = MIN_DELAY;
+
     loop {
-        interval.tick().await;
         let s_dir = sessions_dir.clone();
         let holders = tokio::task::spawn_blocking(move || external::lsof_holders(&s_dir))
             .await
@@ -108,7 +123,7 @@ async fn run_external_loop(state: AppState) {
         let changed = {
             let mut c = cat().lock();
             if c.external != new_ext {
-                c.external = new_ext;
+                c.external = new_ext.clone();
                 true
             } else {
                 false
@@ -117,6 +132,22 @@ async fn run_external_loop(state: AppState) {
 
         if changed {
             super::recompute_async(&state, None).await;
+        }
+
+        // Adaptive backoff:
+        // If external sessions exist or state changed, stay at 5s to promptly detect exit/takeover.
+        // If idle (no external sessions and no change), progressively back off to 30s.
+        if !new_ext.is_empty() || changed {
+            current_delay = MIN_DELAY;
+        } else {
+            current_delay = (current_delay + STEP).min(MAX_DELAY);
+        }
+
+        tokio::select! {
+            _ = tokio::time::sleep(current_delay) => {},
+            _ = notify.notified() => {
+                current_delay = MIN_DELAY;
+            }
         }
     }
 }

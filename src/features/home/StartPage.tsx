@@ -3,13 +3,17 @@ import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	ArrowUp,
+	CalendarClock,
 	Check,
 	ChevronDown,
 	FolderOpen,
 	FolderPlus,
+	Inbox,
 	Loader2,
+	Sparkles,
 } from "lucide-react";
 import { ModelSelect } from "../../components/ModelSelect";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { createSession, sendFirstPrompt } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing, useHomeDir } from "../../lib/hooks";
@@ -28,7 +32,9 @@ const isMac =
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
 export function StartPage() {
 	const workspaces = useSessions((s) => s.workspaces);
+	const sessions = useSessions((s) => s.sessions);
 	const selectSession = useUi((s) => s.selectSession);
+	const setCenter = useUi((s) => s.setCenter);
 	const defaultModel = useSettings((s) => s.settings?.newSessionModel);
 
 	const [prompt, setPrompt] = useState("");
@@ -39,7 +45,7 @@ export function StartPage() {
 	const [customCwd, setCustomCwd] = useState("");
 	const [globalDir, setGlobalDir] = useState("");
 	const [wsOpen, setWsOpen] = useState(false);
-	const wsMenuRef = useRef<HTMLDivElement>(null);
+	const wsButtonRef = useRef<HTMLButtonElement>(null);
 	const home = useHomeDir();
 
 	const [availableModels, setAvailableModels] = useState<ModelOption[]>(() => {
@@ -96,22 +102,11 @@ export function StartPage() {
 		}
 	}, [workspaces, wsSel, customCwd]);
 
-	// Close workspace dropdown on outside click or Esc
-	useEffect(() => {
-		if (!wsOpen) return;
-		const onDown = (e: MouseEvent) => {
-			if (!wsMenuRef.current?.contains(e.target as Node)) setWsOpen(false);
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape" && !e.isComposing) setWsOpen(false);
-		};
-		document.addEventListener("mousedown", onDown);
-		document.addEventListener("keydown", onKey);
-		return () => {
-			document.removeEventListener("mousedown", onDown);
-			document.removeEventListener("keydown", onKey);
-		};
-	}, [wsOpen]);
+	const recentWorkspaces = useMemo(() => {
+		return workspaces
+			.filter((w) => w.kind !== "global" || globalDir)
+			.slice(0, 6);
+	}, [workspaces, globalDir]);
 
 	const cwd = useMemo(() => {
 		if (wsSel === CUSTOM) return customCwd.trim();
@@ -204,13 +199,18 @@ export function StartPage() {
 	const canSubmit = !!cwd && !!prompt.trim() && !busy;
 
 	return (
-		<div className="relative flex h-full w-full flex-col items-center justify-center px-4 select-none">
-			<div className="relative flex w-full max-w-[700px] flex-col items-center">
-				<h1 className="self-start text-xl font-semibold tracking-[-0.018em] text-neutral-100">
-					新会话
-				</h1>
+		<div className="relative flex h-full w-full flex-col items-center overflow-y-auto px-6 py-10 select-none">
+			<div className="relative flex w-full max-w-[700px] flex-col items-center my-auto">
+				<div className="w-full text-left mb-3">
+					<h1 className="text-xl font-semibold tracking-[-0.018em] text-[var(--text)]">
+						新任务
+					</h1>
+					<p className="text-xs text-neutral-400 mt-1">
+						输入任务或需求，选择工作目录与模型快速开启会话
+					</p>
+				</div>
 
-				<div className="relative mt-4 flex w-full flex-wrap items-center gap-2 rounded-[14px] bg-[var(--bg-panel)] shadow-apple-card hairline p-3.5 focus-within:shadow-[0_0_0_0.5px_var(--hairline-strong),var(--shadow-apple-card)] transition-all">
+				<div className="relative mt-2 flex w-full flex-wrap items-center gap-2 rounded-2xl bg-[var(--bg-panel)] shadow-apple-card hairline p-3.5 focus-within:shadow-[0_0_0_0.5px_var(--hairline-strong),var(--shadow-apple-card)] transition-all">
 					<textarea
 						ref={inputRef}
 						autoFocus
@@ -226,12 +226,13 @@ export function StartPage() {
 						}}
 						aria-label="任务内容"
 						placeholder={`输入任务或需求（按 ${isMac ? "Cmd+Enter" : "Ctrl+Enter"} 发送）`}
-						className="w-full resize-none bg-transparent px-1 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
+						className="w-full resize-none bg-transparent px-1 py-2 text-sm text-[var(--text)] outline-none placeholder:text-neutral-500"
 					/>
 
 					{/* Workspace Pill */}
-					<div className="relative shrink-0" ref={wsMenuRef}>
+					<div className="relative shrink-0">
 						<button
+							ref={wsButtonRef}
 							type="button"
 							onClick={() => setWsOpen((v) => !v)}
 							title={`工作目录: ${cwd || "未选择"}`}
@@ -244,66 +245,75 @@ export function StartPage() {
 							<ChevronDown size={11} className="shrink-0 text-neutral-500" />
 						</button>
 
-						{wsOpen && (
-							<div className="absolute bottom-full left-0 z-30 mb-2 w-[280px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1.5">
-								<div className="border-b border-[var(--border-divider)] px-3 py-1 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">
-									工作目录
-								</div>
-								<div className="max-h-60 overflow-y-auto py-1">
-									{workspaces.map((w) => {
-										const label =
-											w.kind === "global"
-												? "全局工作区"
-												: (w.name ?? basename(w.path));
-										const path = w.kind === "global" ? globalDir : w.path;
-										const isSelected = wsSel === w.id;
-										return (
-											<button
-												key={w.id}
-												type="button"
-												onClick={() => {
-													setWsSel(w.id);
-													setWsOpen(false);
-												}}
-												className={clsx(
-													"flex w-[calc(100%-8px)] mx-1 items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
-													isSelected
-														? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
-														: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
-												)}
-											>
-												<div className="min-w-0 pr-2">
-													<div className="truncate font-medium">{label}</div>
-													<div className="truncate font-mono text-[10px] text-neutral-500">
-														{shortPath(path, home)}
-													</div>
-												</div>
-												{isSelected && (
-													<Check
-														size={13}
-														className="shrink-0 text-[#0A84FF]"
-													/>
-												)}
-											</button>
-										);
-									})}
-
-									<div className="my-1 border-t border-[var(--border-divider)]" />
-
-									<button
-										type="button"
-										onClick={() => void pickDirectory()}
-										className="flex w-[calc(100%-8px)] mx-1 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
-									>
-										<FolderPlus
-											size={13}
-											className="shrink-0 text-neutral-400"
-										/>
-										<span>选择其他目录…</span>
-									</button>
-								</div>
+						<FloatingLayer
+							anchor={wsOpen ? wsButtonRef.current : null}
+							layer="popover"
+							placement="bottom-start"
+							offset={6}
+							onDismiss={() => setWsOpen(false)}
+							ignoreRefs={[wsButtonRef]}
+							className="w-[280px] py-1.5 shadow-apple-modal"
+						>
+							<div className="border-b border-[var(--border-divider)] px-3 py-1 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">
+								工作目录
 							</div>
-						)}
+							<div className="max-h-60 overflow-y-auto py-1">
+								{workspaces.map((w) => {
+									const label =
+										w.kind === "global"
+											? "全局工作区"
+											: (w.name ?? basename(w.path));
+									const path = w.kind === "global" ? globalDir : w.path;
+									const isSelected = wsSel === w.id;
+									return (
+										<button
+											key={w.id}
+											type="button"
+											onClick={() => {
+												setWsSel(w.id);
+												setWsOpen(false);
+											}}
+											className={clsx(
+												"flex w-[calc(100%-8px)] mx-1 items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
+												isSelected
+													? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+													: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
+											)}
+										>
+											<div className="min-w-0 pr-2">
+												<div className="truncate font-medium">{label}</div>
+												<div className="truncate font-mono text-[10px] text-neutral-500">
+													{shortPath(path, home)}
+												</div>
+											</div>
+											{isSelected && (
+												<Check
+													size={13}
+													className="shrink-0 text-[#0A84FF]"
+												/>
+											)}
+										</button>
+									);
+								})}
+
+								<div className="my-1 border-t border-[var(--border-divider)]" />
+
+								<button
+									type="button"
+									onClick={() => {
+										setWsOpen(false);
+										void pickDirectory();
+									}}
+									className="flex w-[calc(100%-8px)] mx-1 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
+								>
+									<FolderPlus
+										size={13}
+										className="shrink-0 text-neutral-400"
+									/>
+									<span>选择其他目录…</span>
+								</button>
+							</div>
+						</FloatingLayer>
 					</div>
 
 					{/* Model Selector Chip */}
@@ -374,6 +384,118 @@ export function StartPage() {
 					</button>
 				</div>
 
+				{/* Quick Links */}
+				<div className="grid grid-cols-3 gap-2.5 w-full mt-5">
+					<button
+						type="button"
+						onClick={() => setCenter("inbox")}
+						className="flex items-center gap-3 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/60 p-3 text-left hover:bg-[var(--bg-hover)] transition-all active:scale-[0.99] group"
+					>
+						<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 group-hover:scale-105 transition-transform">
+							<Inbox size={16} />
+						</div>
+						<div className="min-w-0">
+							<div className="text-xs font-medium text-[var(--text)]">收件箱</div>
+							<div className="text-[11px] text-neutral-500 truncate">待办与通知处理</div>
+						</div>
+					</button>
+
+					<button
+						type="button"
+						onClick={() => setCenter("schedules")}
+						className="flex items-center gap-3 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/60 p-3 text-left hover:bg-[var(--bg-hover)] transition-all active:scale-[0.99] group"
+					>
+						<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400 group-hover:scale-105 transition-transform">
+							<CalendarClock size={16} />
+						</div>
+						<div className="min-w-0">
+							<div className="text-xs font-medium text-[var(--text)]">定时任务</div>
+							<div className="text-[11px] text-neutral-500 truncate">自动化周期任务</div>
+						</div>
+					</button>
+
+					<button
+						type="button"
+						onClick={() => setCenter("skills")}
+						className="flex items-center gap-3 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/60 p-3 text-left hover:bg-[var(--bg-hover)] transition-all active:scale-[0.99] group"
+					>
+						<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400 group-hover:scale-105 transition-transform">
+							<Sparkles size={16} />
+						</div>
+						<div className="min-w-0">
+							<div className="text-xs font-medium text-[var(--text)]">技能与扩展</div>
+							<div className="text-[11px] text-neutral-500 truncate">浏览并配置 Skill</div>
+						</div>
+					</button>
+				</div>
+
+				{/* Recent Projects */}
+				{recentWorkspaces.length > 0 && (
+					<div className="w-full mt-6">
+						<div className="flex items-center justify-between mb-2">
+							<span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+								最近项目
+							</span>
+							<button
+								type="button"
+								onClick={() => void pickDirectory()}
+								className="flex items-center gap-1 text-[11px] text-[#0A84FF] hover:underline"
+							>
+								<FolderPlus size={11} />
+								<span>打开项目…</span>
+							</button>
+						</div>
+						<div className="grid grid-cols-2 gap-2">
+							{recentWorkspaces.slice(0, 4).map((w) => {
+								const label =
+									w.kind === "global"
+										? "全局工作区"
+										: (w.name ?? basename(w.path));
+								const path = w.kind === "global" ? globalDir : w.path;
+								const isSelected = wsSel === w.id;
+								const sessionCount = Object.values(sessions).filter(
+									(s) => s.workspaceId === w.id || s.cwd === w.path,
+								).length;
+
+								return (
+									<button
+										key={w.id}
+										type="button"
+										onClick={() => {
+											setWsSel(w.id);
+											inputRef.current?.focus();
+										}}
+										className={clsx(
+											"flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition-all active:scale-[0.99]",
+											isSelected
+												? "border-[#0A84FF]/50 bg-[#0A84FF]/5 shadow-xs"
+												: "border-[var(--border-divider)] bg-[var(--well-bg)]/40 hover:bg-[var(--bg-hover)]",
+										)}
+									>
+										<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-active-fill)] text-amber-400">
+											<FolderOpen size={14} />
+										</div>
+										<div className="min-w-0 flex-1">
+											<div className="flex items-center justify-between gap-1">
+												<span className="truncate text-xs font-medium text-[var(--text)]">
+													{label}
+												</span>
+												{sessionCount > 0 && (
+													<span className="text-[10px] text-neutral-500 font-mono shrink-0">
+														{sessionCount} 会话
+													</span>
+												)}
+											</div>
+											<div className="truncate font-mono text-[10px] text-neutral-500">
+												{shortPath(path, home)}
+											</div>
+										</div>
+									</button>
+								);
+							})}
+						</div>
+					</div>
+				)}
 			</div>
 		</div>
 	);

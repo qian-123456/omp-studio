@@ -184,10 +184,10 @@ export function MobilePanel() {
 
 	return (
 		<section className="flex flex-col gap-4 text-xs">
-			<header className="flex items-center justify-between border-b border-[var(--border-divider)] pb-3">
-				<div className="flex items-center gap-2">
+			<div className="flex items-center justify-between border-b border-[var(--border-divider)] pb-3">
+				<div className="flex items-center gap-2 text-xs font-medium text-neutral-300">
 					<Smartphone className="h-4 w-4 text-amber-400" />
-					<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">手机访问与控制</h2>
+					<span>服务运行状态</span>
 				</div>
 				<span
 					className={
@@ -199,7 +199,7 @@ export function MobilePanel() {
 				>
 					{status?.running ? "● 运行中" : "○ 已停止"}
 				</span>
-			</header>
+			</div>
 
 			{error && (
 				<div className="rounded border border-red-900 bg-red-950/40 px-3 py-2 text-xs text-red-300">
@@ -213,7 +213,10 @@ export function MobilePanel() {
 			)}
 
 			{/* LAN server */}
-			<div className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
+			<div
+				data-field-id="mobileLan"
+				className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card transition-all"
+			>
 				<div className="flex items-center gap-1.5 font-medium text-neutral-300">
 					<Network className="h-3.5 w-3.5 text-neutral-400" />
 					<span>局域网直连 (LAN)</span>
@@ -271,7 +274,10 @@ export function MobilePanel() {
 				</div>
 			</div>
 			{/* Tunnel */}
-			<div className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
+			<div
+				data-field-id="mobileTunnel"
+				className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card transition-all"
+			>
 				<div className="flex items-center gap-1.5 font-medium text-neutral-300">
 					<Globe className="h-3.5 w-3.5 text-neutral-400" />
 					<span>Cloudflare Tunnel 公网隧道</span>
@@ -380,9 +386,11 @@ export function MobilePanel() {
 					</div>
 				</div>
 			)}
-
 			{/* Paired Devices & Access Control */}
-			<div className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
+			<div
+				data-field-id="mobileDevices"
+				className="flex flex-col gap-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card transition-all"
+			>
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<Smartphone className="h-4 w-4 text-amber-400" />

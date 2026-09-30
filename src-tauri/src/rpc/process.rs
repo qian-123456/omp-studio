@@ -289,7 +289,15 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    if let Some(model) = &opts.model {
+    let effective_model = opts.model.as_deref().or_else(|| {
+        let m = settings.new_session_model.as_deref()?.trim();
+        if m.is_empty() {
+            None
+        } else {
+            Some(m)
+        }
+    });
+    if let Some(model) = effective_model {
         cmd.arg("--model").arg(model);
     }
     if let Some(file) = &opts.resume_file {

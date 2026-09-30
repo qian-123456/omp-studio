@@ -189,7 +189,15 @@ function TableBlock({
 	);
 }
 
-export function Markdown({ text }: { text: string }) {
+const REMARK_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["remarkPlugins"]> = [remarkGfm];
+const REHYPE_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]> = [[rehypeHighlight, { detect: false }]];
+const MARKDOWN_COMPONENTS = {
+	pre: PreBlock,
+	a: MarkdownLink,
+	table: TableBlock,
+};
+
+export const Markdown = React.memo(function Markdown({ text }: { text: string }) {
 	return (
 		<div
 			className={clsx(
@@ -225,16 +233,12 @@ export function Markdown({ text }: { text: string }) {
 			)}
 		>
 			<ReactMarkdown
-				remarkPlugins={[remarkGfm]}
-				rehypePlugins={[rehypeHighlight]}
-				components={{
-					pre: PreBlock,
-					a: MarkdownLink,
-					table: TableBlock,
-				}}
+				remarkPlugins={REMARK_PLUGINS}
+				rehypePlugins={REHYPE_PLUGINS}
+				components={MARKDOWN_COMPONENTS}
 			>
 				{text}
 			</ReactMarkdown>
 		</div>
 	);
-}
+});

@@ -411,7 +411,7 @@ fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
 }
 
 fn same_meta(a: &SessionMeta, b: &SessionMeta) -> bool {
-    serde_json::to_value(a).ok() == serde_json::to_value(b).ok()
+    a == b
 }
 
 fn emit_changes(

@@ -12,6 +12,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { useEffect, useRef, useState } from "react";
 import type { SessionMeta } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
@@ -214,7 +215,7 @@ export function SideChatPanel() {
 
 	return (
 		<div className="flex h-full flex-col">
-			<div className="shrink-0 border-b border-neutral-800 px-3 py-2 text-[11px] text-neutral-500">
+			<div className="shrink-0 border-b border-[var(--border-divider)] px-3 py-2 text-[11px] text-neutral-400">
 				{parent
 					? `侧聊 · ${parent.label} ${parent.title}`
 					: "侧聊"}
@@ -242,7 +243,7 @@ export function SideChatPanel() {
 									: e.clientY;
 							setContextMenu({ x, y, session: c });
 						}}
-						className="group mb-1 flex w-full items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900/50 px-2 py-1.5 text-left hover:bg-neutral-800/60 transition-colors"
+						className="group mb-1 flex w-full items-center gap-2 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-2.5 py-1.5 text-left hover:bg-[var(--bg-hover)] transition-colors"
 					>
 						<button
 							type="button"
@@ -268,7 +269,7 @@ export function SideChatPanel() {
 								e.stopPropagation();
 								void handleDelete(c.id, c.label);
 							}}
-							className="shrink-0 rounded p-1 text-neutral-500 opacity-0 group-hover:opacity-100 hover:bg-neutral-800 hover:text-rose-400 focus:opacity-100 transition-opacity"
+							className="shrink-0 rounded p-1 text-neutral-500 opacity-0 group-hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-rose-400 focus:opacity-100 transition-opacity"
 						>
 							<Trash2 size={12} />
 						</button>
@@ -277,25 +278,23 @@ export function SideChatPanel() {
 			</div>
 
 			{/* Context menu for child session */}
-			{contextMenu && (
-				<div
-					className="fixed inset-0 z-50"
-					onMouseDown={(e) => {
-						if (e.target === e.currentTarget) setContextMenu(null);
-					}}
-				>
-					<div
-						style={{ left: contextMenu.x, top: contextMenu.y }}
-						className="fixed z-50 min-w-36 rounded-md border border-neutral-800 bg-neutral-900 py-1 text-xs shadow-xl"
-						onClick={(e) => e.stopPropagation()}
-					>
+			<FloatingLayer
+				anchor={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+				layer="menu"
+				placement="bottom-start"
+				offset={2}
+				onDismiss={() => setContextMenu(null)}
+				className="min-w-36 py-1 text-xs"
+			>
+				{contextMenu && (
+					<>
 						<button
 							type="button"
 							onClick={() => {
 								setChildId(contextMenu.session.id);
 								setContextMenu(null);
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 						>
 							<GitBranch size={13} className="text-indigo-400" />
 							在侧栏查看
@@ -306,7 +305,7 @@ export function SideChatPanel() {
 								selectSession(contextMenu.session.id);
 								setContextMenu(null);
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 						>
 							<ExternalLink size={13} className="text-indigo-400" />
 							在主视图打开
@@ -317,29 +316,32 @@ export function SideChatPanel() {
 								void handleSendBackToParent(contextMenu.session.id);
 								setContextMenu(null);
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-neutral-800 hover:text-white"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
 						>
 							<CornerUpLeft size={13} className="text-indigo-400" />
 							回传给父会话
 						</button>
-						<div className="my-1 border-t border-neutral-800" />
+						<div className="my-1 border-t border-[var(--border-divider)]" />
 						<button
 							type="button"
-							onClick={() =>
-								handleDelete(contextMenu.session.id, contextMenu.session.label)
-							}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-950/40 hover:text-rose-300"
+							onClick={() => {
+								const sid = contextMenu.session.id;
+								const slabel = contextMenu.session.label;
+								setContextMenu(null);
+								void handleDelete(sid, slabel);
+							}}
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors"
 						>
 							<Trash2 size={13} />
 							删除侧聊
 						</button>
-					</div>
-				</div>
-			)}
+					</>
+				)}
+			</FloatingLayer>
 
-			<div className="shrink-0 border-t border-neutral-800 p-2.5">
+			<div className="shrink-0 border-t border-[var(--border-divider)] p-2.5">
 				{tooDeep ? (
-					<div className="flex flex-col items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3 text-center">
+					<div className="flex flex-col items-center gap-2 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-3 text-center">
 						<div className="text-[12px] font-medium text-neutral-300">
 							已达分支嵌套深度上限（3 层）
 						</div>
@@ -361,7 +363,7 @@ export function SideChatPanel() {
 							<div className="mb-2 text-[11px] text-rose-400">{error}</div>
 						)}
 
-						<div className="rounded-xl border border-neutral-800/80 bg-neutral-900/90 shadow-sm focus-within:border-neutral-700 focus-within:ring-1 focus-within:ring-neutral-700/40 p-2.5 transition-all">
+						<div className="rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] shadow-xs focus-within:border-[#0A84FF]/60 focus-within:ring-1 focus-within:ring-[#0A84FF]/30 p-2.5 transition-all">
 							{/* Context inheritance capsule */}
 							{parent && (
 								<div className="mb-2 flex items-center gap-1.5 rounded border border-indigo-900/40 bg-indigo-950/20 px-2 py-1 text-[11px] text-indigo-300">

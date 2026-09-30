@@ -8,6 +8,7 @@
 import clsx from "clsx";
 import { FolderGit2, GitBranch, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Z_LAYER } from "../../components/FloatingLayer";
 import { NativeSelect } from "../../components/NativeSelect";
 import { errMsg } from "../../lib/dialogs";
 import { rejectResume, resolveResume } from "../../lib/ensureLive";
@@ -135,7 +136,8 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
+			style={{ zIndex: Z_LAYER.modal }}
+			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget && !busy) cancel();
 			}}
@@ -145,17 +147,35 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="resume-missing-cwd-title"
-				className="w-[500px] rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
+				className="w-[500px] max-w-[calc(100vw-2rem)] max-h-[min(90vh,640px)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
 				onMouseDown={(e) => e.stopPropagation()}
 				onKeyDown={(e) => {
 					if (isComposing(e)) return;
-					if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+					if (e.key === "Enter") {
 						e.preventDefault();
 						confirm();
+						return;
+					}
+					if (e.key === "Tab") {
+						const controls = Array.from(
+							e.currentTarget.querySelectorAll<HTMLElement>(
+								'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+							),
+						).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
+						if (controls.length === 0) return;
+						const first = controls[0];
+						const last = controls[controls.length - 1];
+						if (e.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement as HTMLElement))) {
+							e.preventDefault();
+							last?.focus();
+						} else if (!e.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement as HTMLElement))) {
+							e.preventDefault();
+							first?.focus();
+						}
 					}
 				}}
 			>
-				<div className="mb-3 flex items-center">
+				<div className="mb-3 flex items-center shrink-0">
 					<span
 						id="resume-missing-cwd-title"
 						className="flex-1 text-[15px] font-semibold tracking-tight text-[var(--text)]"
@@ -174,6 +194,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 					</button>
 				</div>
 
+				<div className="flex-1 min-h-0 overflow-y-auto pr-1">
 				<p className="mb-1 text-[12px] text-neutral-300">
 					该会话原来的工作树目录已被删除：
 				</p>
@@ -283,7 +304,9 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 
 				{error && <div className="mb-2 text-xs text-rose-400">{error}</div>}
 
-				<div className="flex items-center justify-end gap-2">
+				</div>
+
+				<div className="flex items-center justify-end gap-2 shrink-0 pt-3 border-t border-[var(--border-divider)] mt-2">
 					<button
 						type="button"
 						disabled={busy}

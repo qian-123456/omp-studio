@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import {
+	ChevronDown,
 	Copy,
 	FileDiff,
 	FileText,
@@ -10,19 +11,19 @@ import {
 	Send,
 	Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { GitFileChange, GitSummary } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
+import { isComposing } from "../../lib/hooks";
 import { dispatchPrompt, gitCommit, gitCommitSuggest, gitRestoreFile } from "../../lib/ipc";
 import { isInside, isMarkdown, joinPath } from "../../lib/paths";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { ListMore } from "./helpers";
+import { FloatingLayer } from "../../components/FloatingLayer";
 
-const FILE_CAP = 10;
-
+const FILE_CAP = 30;
+const FILE_STEP = 30;
 const STATUS_STYLE: Record<string, string> = {
 	M: "text-amber-400",
 	A: "text-emerald-400",
@@ -194,17 +195,8 @@ export function ChangesSection({
 }) {
 	const openDoc = useUi((s) => s.openDoc);
 	const sessionId = useUi((s) => s.selectedSessionId);
-	const [expandFiles, setExpandFiles] = useState(false);
+	const [fileLimit, setFileLimit] = useState(FILE_CAP);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-
-	useEscapeKey(() => setContextMenu(null));
-
-	useEffect(() => {
-		if (!contextMenu) return;
-		const handleClick = () => setContextMenu(null);
-		window.addEventListener("click", handleClick);
-		return () => window.removeEventListener("click", handleClick);
-	}, [contextMenu]);
 
 	const files = summary.files;
 
@@ -266,7 +258,7 @@ export function ChangesSection({
 								onCommitted={onChanged}
 							/>
 							<ul className="space-y-px">
-								{(expandFiles ? files : files.slice(0, FILE_CAP)).map((f) => {
+								{files.slice(0, fileLimit).map((f) => {
 									const md = isMarkdown(f.path) && f.status !== "D";
 									const fullPath = joinPath(toplevel, f.path);
 									const statusText = f.status === "??" ? "U" : f.status;
@@ -381,93 +373,117 @@ export function ChangesSection({
 									);
 								})}
 						</ul>
-							<ListMore
-								n={files.length - FILE_CAP}
-								expanded={expandFiles}
-								onToggle={() => setExpandFiles((v) => !v)}
-								unit="个文件"
-							/>
+							{files.length > FILE_CAP && (
+								<div className="flex items-center justify-center gap-2 py-1 text-[11px] text-neutral-500">
+									{files.length > fileLimit && (
+										<button
+											type="button"
+											onClick={() => setFileLimit((c) => c + FILE_STEP)}
+											className="flex items-center gap-1 rounded px-2 py-0.5 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
+										>
+											<ChevronDown size={12} />
+											<span>
+												还有 {files.length - fileLimit} 个文件 · 展开更多 (+{Math.min(files.length - fileLimit, FILE_STEP)})
+											</span>
+										</button>
+									)}
+									{fileLimit > FILE_CAP && (
+										<button
+											type="button"
+											onClick={() => setFileLimit(FILE_CAP)}
+											className="rounded px-2 py-0.5 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
+										>
+											收起
+										</button>
+									)}
+								</div>
+							)}
 						</>
 			)}
 
 			{/* Context Menu */}
-			{contextMenu && (
-				<div
-					style={{ left: contextMenu.x, top: contextMenu.y }}
-					className="fixed z-50 min-w-[160px] rounded-lg border border-neutral-700 bg-neutral-900/95 p-1 text-xs text-neutral-300 shadow-2xl backdrop-blur-md"
-					onClick={(e) => e.stopPropagation()}
-				>
-					<button
-						type="button"
-						onClick={() => {
-							onDiff(contextMenu.file.path);
-							setContextMenu(null);
-						}}
-						className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-neutral-800 hover:text-neutral-100"
-					>
-						<FileDiff size={12} />
-						<span>查看 Diff</span>
-					</button>
-					{isMarkdown(contextMenu.file.path) && contextMenu.file.status !== "D" && (
+			<FloatingLayer
+				anchor={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+				placement="bottom-start"
+				layer="menu"
+				offset={2}
+				onDismiss={() => setContextMenu(null)}
+				className="min-w-[160px] p-1 text-xs text-neutral-300"
+			>
+				{contextMenu && (
+					<>
 						<button
 							type="button"
 							onClick={() => {
-								openDoc(joinPath(toplevel, contextMenu.file.path));
+								onDiff(contextMenu.file.path);
 								setContextMenu(null);
 							}}
-							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-neutral-800 hover:text-neutral-100"
+							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 						>
-							<FileText size={12} />
-							<span>在文档编辑器中打开</span>
+							<FileDiff size={12} />
+							<span>查看 Diff</span>
 						</button>
-					)}
-					<button
-						type="button"
-						onClick={() => {
-							void handleCopyPath(contextMenu.file, false);
-							setContextMenu(null);
-						}}
-						className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-neutral-800 hover:text-neutral-100"
-					>
-						<Copy size={12} />
-						<span>复制相对路径</span>
-					</button>
-					<button
-						type="button"
-						onClick={() => {
-							void handleCopyPath(contextMenu.file, true);
-							setContextMenu(null);
-						}}
-						className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-neutral-800 hover:text-neutral-100"
-					>
-						<Copy size={12} />
-						<span>复制完整路径</span>
-					</button>
-					<div className="my-1 border-t border-neutral-800" />
-					<button
-						type="button"
-						onClick={() => {
-							void handleSendToAgent(contextMenu.file);
-							setContextMenu(null);
-						}}
-						className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-amber-300 hover:bg-neutral-800"
-					>
-						<Send size={12} />
-						<span>向 Agent 询问此改动</span>
-					</button>
-					<button
-						type="button"
-						onClick={() => {
-							void handleDiscard(contextMenu.file);
-							setContextMenu(null);
-						}}
-						className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-rose-400 hover:bg-neutral-800"
-					>
-						<RotateCcw size={12} />
-						<span>{contextMenu.file.status === "??" ? "删除未跟踪文件…" : "撤销这个文件的改动"}</span>
-					</button>
-				</div>
-			)}
+						{isMarkdown(contextMenu.file.path) && contextMenu.file.status !== "D" && (
+							<button
+								type="button"
+								onClick={() => {
+									openDoc(joinPath(toplevel, contextMenu.file.path));
+									setContextMenu(null);
+								}}
+								className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
+							>
+								<FileText size={12} />
+								<span>在文档编辑器中打开</span>
+							</button>
+						)}
+						<button
+							type="button"
+							onClick={() => {
+								void handleCopyPath(contextMenu.file, false);
+								setContextMenu(null);
+							}}
+							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
+						>
+							<Copy size={12} />
+							<span>复制相对路径</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								void handleCopyPath(contextMenu.file, true);
+								setContextMenu(null);
+							}}
+							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
+						>
+							<Copy size={12} />
+							<span>复制完整路径</span>
+						</button>
+						<div className="my-1 border-t border-[var(--border-divider)]" />
+						<button
+							type="button"
+							onClick={() => {
+								void handleSendToAgent(contextMenu.file);
+								setContextMenu(null);
+							}}
+							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-amber-300 hover:bg-[var(--bg-hover)] transition-colors"
+						>
+							<Send size={12} />
+							<span>向 Agent 询问此改动</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								void handleDiscard(contextMenu.file);
+								setContextMenu(null);
+							}}
+							className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-rose-400 hover:bg-[var(--bg-hover)] transition-colors"
+						>
+							<RotateCcw size={12} />
+							<span>{contextMenu.file.status === "??" ? "删除未跟踪文件…" : "撤销这个文件的改动"}</span>
+						</button>
+					</>
+				)}
+			</FloatingLayer>
 		</div>
 	);
 }

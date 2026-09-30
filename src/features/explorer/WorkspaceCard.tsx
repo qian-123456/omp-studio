@@ -1,8 +1,9 @@
 import clsx from "clsx";
 import { ChevronDown, Folder } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import type { Workspace } from "../../lib/contracts";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { toast } from "../../lib/toast";
 
 interface WorkspaceCardProps {
@@ -19,19 +20,7 @@ export function WorkspaceCard({
 	gitDirtyCount = 0,
 }: WorkspaceCardProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
-	const menuRef = useRef<HTMLDivElement>(null);
-
-	// Close menu on click outside
-	useEffect(() => {
-		if (!menuOpen) return;
-		const handler = (e: MouseEvent) => {
-			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-				setMenuOpen(false);
-			}
-		};
-		window.addEventListener("mousedown", handler);
-		return () => window.removeEventListener("mousedown", handler);
-	}, [menuOpen]);
+	const cardRef = useRef<HTMLDivElement>(null);
 
 	const name = currentWorkspace?.name || "未选择工作区";
 	const path = currentWorkspace?.path || "";
@@ -49,6 +38,7 @@ export function WorkspaceCard({
 	return (
 		<div className="relative px-2 py-1">
 			<div
+				ref={cardRef}
 				role="button"
 				tabIndex={0}
 				onClick={() => {
@@ -115,10 +105,15 @@ export function WorkspaceCard({
 			</div>
 
 			{/* Workspace dropdown selector */}
-			{menuOpen && workspaces.length > 1 && (
-				<div
-					ref={menuRef}
-					className="absolute left-2 right-2 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg vibrancy-popover shadow-apple-modal hairline p-1"
+			{workspaces.length > 1 && (
+				<FloatingLayer
+					anchor={menuOpen ? cardRef.current : null}
+					placement="bottom-start"
+					offset={4}
+					layer="popover"
+					ignoreRefs={[cardRef]}
+					onDismiss={() => setMenuOpen(false)}
+					className="w-[280px] p-1"
 				>
 					<div className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
 						切换工作区
@@ -150,7 +145,7 @@ export function WorkspaceCard({
 							)}
 						</button>
 					))}
-				</div>
+				</FloatingLayer>
 			)}
 		</div>
 	);

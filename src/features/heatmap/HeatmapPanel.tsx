@@ -6,6 +6,7 @@
 import clsx from "clsx";
 import { ChevronRight, Coins, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import type { TranscriptItem } from "../../lib/contracts";
 import { relativeTime } from "../../lib/format";
 import { useLive } from "../../stores/live";
@@ -492,65 +493,61 @@ export function HeatmapPanel() {
 			</div>
 
 			{/* Floating Tooltip displaying round token decomposition */}
-			{hovered && (
-				<div
-					style={{
-						left: Math.min(
-							Math.max(12, hovered.rect.left),
-							window.innerWidth - 275,
-						),
-						top:
-							hovered.rect.bottom + 6 + 180 > window.innerHeight
-								? Math.max(12, hovered.rect.top - 180)
-								: hovered.rect.bottom + 6,
-					}}
-					className="fixed z-50 pointer-events-none w-64 rounded-lg border border-neutral-700/80 bg-neutral-900/95 p-2.5 text-xs shadow-2xl backdrop-blur-md transition-opacity animate-in fade-in zoom-in-95 duration-100"
-				>
-					<div className="flex items-center justify-between border-b border-neutral-800 pb-1.5 text-[11px] font-medium text-neutral-200">
-						<span className="flex items-center gap-1.5">
-							<Coins size={12} className="text-amber-400" />第{" "}
-							{hovered.round.index} 轮分解
-						</span>
-						<span className="font-mono text-neutral-400">
-							{formatTokens(hovered.round.tokens)} tok · {hovered.pct}%
-						</span>
-					</div>
+			<FloatingLayer
+				anchor={hovered ? hovered.rect : null}
+				layer="hovercard"
+				placement="bottom-start"
+				offset={6}
+				className="pointer-events-none w-64 p-2.5 text-xs shadow-apple-modal"
+			>
+				{hovered && (
+					<>
+						<div className="flex items-center justify-between border-b border-[var(--border-divider)] pb-1.5 text-[11px] font-medium text-[var(--text)]">
+							<span className="flex items-center gap-1.5">
+								<Coins size={12} className="text-amber-400" />第{" "}
+								{hovered.round.index} 轮分解
+							</span>
+							<span className="font-mono text-neutral-400">
+								{formatTokens(hovered.round.tokens)} tok · {hovered.pct}%
+							</span>
+						</div>
 
-					<div className="mt-2 space-y-1.5 text-[11px]">
-						{hovered.analysis.categories.map((cat) => (
-							<div
-								key={cat.key}
-								className={clsx(
-									"flex items-center justify-between",
-									cat.count > 0 ? "text-neutral-300" : "text-neutral-600",
-								)}
-							>
-								<span className="flex items-center gap-1.5">
-									<span className={clsx("h-2 w-2 rounded-full", cat.dotClass)} />
-									<span>{cat.label}</span>
-								</span>
-								<span className="font-mono text-[10.5px]">
-									{cat.count > 0 ? (
-										<span>
-											{cat.count} 条
-											{cat.tokens > 0
-												? ` · ${formatTokens(cat.tokens)} tok`
-												: ""}
-										</span>
-									) : (
-										"无"
+						<div className="mt-2 space-y-1.5 text-[11px]">
+							{hovered.analysis.categories.map((cat) => (
+								<div
+									key={cat.key}
+									className={clsx(
+										"flex items-center justify-between",
+										cat.count > 0 ? "text-neutral-300" : "text-neutral-500",
 									)}
-								</span>
-							</div>
-						))}
-					</div>
+								>
+									<span className="flex items-center gap-1.5">
+										<span className={clsx("h-2 w-2 rounded-full", cat.dotClass)} />
+										<span>{cat.label}</span>
+									</span>
+									<span className="font-mono text-[10.5px]">
+										{cat.count > 0 ? (
+											<span>
+												{cat.count} 条
+												{cat.tokens > 0
+													? ` · ${formatTokens(cat.tokens)} tok`
+													: ""}
+											</span>
+										) : (
+											"无"
+										)}
+									</span>
+								</div>
+							))}
+						</div>
 
-					<div className="mt-2 border-t border-neutral-800/80 pt-1.5 flex items-center justify-between text-[10px] text-neutral-500">
-						<span>共 {hovered.round.items.length} 条消息</span>
-						<span>点击展开消息明细</span>
-					</div>
-				</div>
-			)}
+						<div className="mt-2 border-t border-[var(--border-divider)] pt-1.5 flex items-center justify-between text-[10px] text-neutral-500">
+							<span>共 {hovered.round.items.length} 条消息</span>
+							<span>点击展开消息明细</span>
+						</div>
+					</>
+				)}
+			</FloatingLayer>
 		</div>
 	);
 }

@@ -102,6 +102,7 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                 let clean = super::parse::strip_system_reminders(&raw);
                 item.hidden = clean.is_empty() || raw.trim_start().starts_with("<system-reminder>");
                 item.text = opt(clean.to_string());
+                item.images = super::parse::parse_images(msg.get("content"));
             }
         }
         "developer" => {
@@ -139,11 +140,14 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                     _ => {}
                 }
             }
-            item.text = opt(texts.join("\n\n")).or_else(|| {
+            let raw_text = opt(texts.join("\n\n")).or_else(|| {
                 msg.get("errorMessage")
                     .and_then(Value::as_str)
                     .map(str::to_string)
             });
+            item.text = raw_text
+                .map(|t| super::parse::strip_image_markers(&t))
+                .filter(|t| !t.trim().is_empty());
             item.thinking = opt(thinking.join("\n\n"));
             item.usage = msg.get("usage").map(parse_usage);
             item.model = msg.get("model").and_then(Value::as_str).map(str::to_string);
@@ -299,7 +303,8 @@ mod tests {
             ]
         );
         assert!(items[1].hidden);
-        assert_eq!(items[2].text.as_deref(), Some("do it\n[图片]"));
+        assert_eq!(items[2].text.as_deref(), Some("do it"));
+        assert_eq!(items[2].images.len(), 1);
         let a = &items[3];
         assert_eq!(a.thinking.as_deref(), Some("hmm"));
         assert_eq!(a.tool_calls[0].intent.as_deref(), Some("List"));

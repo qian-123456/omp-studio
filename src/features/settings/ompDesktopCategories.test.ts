@@ -37,8 +37,8 @@ describe("OMP_DESKTOP_CATEGORIES", () => {
 			"上下文与记忆",
 			"工具与审批",
 			"任务与子代理",
-			"提供商与网络",
-			"高级",
+			"网络与扩展",
+			"其他 OMP 配置",
 		]);
 		expect(OMP_DESKTOP_CATEGORIES.every((c) => c.hint.length > 0)).toBe(true);
 	});
@@ -67,6 +67,8 @@ describe("isDesktopRelevant", () => {
 		expect(isDesktopRelevant("doubleEscapeAction")).toBe(false);
 		expect(isDesktopRelevant("completion.notify")).toBe(false);
 		expect(isDesktopRelevant("error.notify")).toBe(false);
+		expect(isDesktopRelevant("cycleOrder")).toBe(false);
+		expect(isDesktopRelevant("modelRoleStorage")).toBe(false);
 	});
 
 	it("keeps near-miss prefixes that only look hidden", () => {

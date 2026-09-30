@@ -17,7 +17,6 @@ import {
 import { createPortal } from "react-dom";
 import type { TranscriptItem } from "../../lib/contracts";
 import { useLive } from "../../stores/live";
-import { messageText } from "./MessageList";
 import { collectChatTraceEntries, type ChatTraceEntry } from "./messageTrace";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
@@ -49,8 +48,8 @@ export function ChatTrace({
 	const pendingEchoes = useLive(
 		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
 	);
-	const streamingMessage = useLive(
-		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
+	const isStreaming = useLive(
+		(s) => Boolean(s.sessions[sessionId]?.streaming),
 	);
 
 	const entries = useMemo(
@@ -58,9 +57,9 @@ export function ChatTrace({
 			collectChatTraceEntries(
 				items,
 				pendingEchoes,
-				streamingMessage ? messageText(streamingMessage.content) : null,
+				isStreaming ? "正在思考 / 回复…" : null,
 			),
-		[items, pendingEchoes, streamingMessage],
+		[items, pendingEchoes, isStreaming],
 	);
 	const dashIds = useMemo(
 		() => new Set(entries.map((e) => e.id)),

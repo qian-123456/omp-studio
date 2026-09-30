@@ -32,6 +32,10 @@ import type {
 	SessionMeta,
 	SessionMetaPatch,
 	Settings,
+	Schedule,
+	ScheduleDraft,
+	ScheduleRun,
+	SkillsCatalog,
 	StartOpts,
 	TmRun,
 	Todo,
@@ -424,3 +428,33 @@ export const terminalSetCurrentSession = (path: string | null) =>
 
 export const installStatusExtensionGlobally = () =>
 	invoke<string>("install_status_extension_globally");
+
+// ---- E — schedules (定时任务) ----
+
+export const listSchedules = () => invoke<Schedule[]>("schedules_list");
+
+export const saveSchedule = (schedule: ScheduleDraft) =>
+	invoke<Schedule>("schedules_save", { schedule });
+
+export const deleteSchedule = (id: string) =>
+	invoke<void>("schedules_delete", { id });
+
+export const setScheduleEnabled = (id: string, enabled: boolean) =>
+	invoke<Schedule>("schedules_set_enabled", { id, enabled });
+
+export const runScheduleNow = (id: string) =>
+	invoke<ScheduleRun>("schedules_run_now", { id });
+
+export const listScheduleRuns = (scheduleId: string, limit?: number) =>
+	invoke<ScheduleRun[]>("schedule_runs", {
+		scheduleId,
+		limit: limit ?? null,
+	});
+
+// ---- F — skills & extensions (技能与扩展) ----
+
+export const skillsList = (cwd?: string | null) =>
+	invoke<SkillsCatalog>("skills_list", { cwd: cwd ?? null });
+
+export const skillsRead = (path: string) =>
+	invoke<string>("skills_read", { path });

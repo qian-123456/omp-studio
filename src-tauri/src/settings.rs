@@ -431,9 +431,12 @@ fn validate_config_value(key: &str, value: &str) -> Result<(), String> {
         return Err(format!("配置 {key} 的值不能包含空字符 (NUL) 或换行符"));
     }
     if value.starts_with('-') {
-        return Err(format!(
-            "配置 {key} 的值不能以 '-' 开头（防止选项参数注入）"
-        ));
+        let is_numeric = value.parse::<f64>().map(|v| v.is_finite()).unwrap_or(false);
+        if !is_numeric {
+            return Err(format!(
+                "配置 {key} 的值不能以 '-' 开头（防止选项参数注入）"
+            ));
+        }
     }
     Ok(())
 }
@@ -539,7 +542,12 @@ pub async fn omp_config_set(
             state.settings.read().omp_binary
         ));
     }
-    run_omp_config(&exe, &path, &["set", &key, &value]).await?;
+    let args: Vec<&str> = if value.starts_with('-') {
+        vec!["set", &key, "--", &value]
+    } else {
+        vec!["set", &key, &value]
+    };
+    run_omp_config(&exe, &path, &args).await?;
     Ok(())
 }
 
@@ -965,10 +973,19 @@ mod tests {
         assert!(validate_config_value("k", "true").is_ok());
         assert!(validate_config_value("k", "{\"a\":1}").is_ok());
 
+        // Negative numeric values are allowed (e.g. presencePenalty = -0.5 or -1)
+        assert!(validate_config_value("presencePenalty", "-0.5").is_ok());
+        assert!(validate_config_value("presencePenalty", "-1").is_ok());
+        assert!(validate_config_value("presencePenalty", "-100.25").is_ok());
+
         assert!(validate_config_value("k", "").is_err());
         assert!(validate_config_value("k", "line\nbreak").is_err());
         assert!(validate_config_value("k", "nul\0byte").is_err());
         assert!(validate_config_value("k", "-x").is_err());
+        assert!(validate_config_value("k", "--help").is_err());
+        assert!(validate_config_value("k", "-").is_err());
+        assert!(validate_config_value("k", "-inf").is_err());
+        assert!(validate_config_value("k", "--version").is_err());
     }
 
     #[test]
