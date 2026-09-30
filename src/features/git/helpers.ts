@@ -1,7 +1,50 @@
 /** Pure helpers shared by the git / services / editor features (module C). */
 
+import clsx from "clsx";
+import { ChevronDown } from "lucide-react";
+import type { ReactNode } from "react";
+import { createElement } from "react";
 import type { SessionMeta } from "../../lib/contracts";
 import { isInside } from "../../lib/paths";
+
+/**
+ * Expander footer row for capped lists: `还有 N {unit} · 展开` toggling to `收起`.
+ * Renders nothing when collapsed and nothing is hidden (n <= 0).
+ * Lives in this .ts file, so it uses createElement instead of JSX.
+ */
+export function ListMore({
+	n,
+	expanded,
+	onToggle,
+	unit = "项",
+	className,
+}: {
+	/** Hidden item count while collapsed. */
+	n: number;
+	expanded: boolean;
+	onToggle: () => void;
+	/** Counter noun, e.g. "个文件" / "条". */
+	unit?: string;
+	className?: string;
+}): ReactNode {
+	if (!expanded && n <= 0) return null;
+	return createElement(
+		"button",
+		{
+			type: "button",
+			onClick: onToggle,
+			className: clsx(
+				"flex w-full items-center justify-center gap-0.5 rounded py-1 text-[11px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors",
+				className,
+			),
+		},
+		createElement(ChevronDown, {
+			size: 12,
+			className: clsx("transition-transform", expanded && "rotate-180"),
+		}),
+		expanded ? "收起" : `还有 ${n} ${unit} · 展开`,
+	);
+}
 
 /** Toplevel of the worktree containing `cwd` (deepest match), else `cwd`. */
 export function toplevelFor(cwd: string, worktreePaths: string[]): string {

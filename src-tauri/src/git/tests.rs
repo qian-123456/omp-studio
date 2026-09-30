@@ -97,10 +97,13 @@ fn summary_log_diff_reset() {
 #[test]
 fn worktree_lifecycle_and_orphans() {
     let repo = temp_repo("wt");
-    assert!(worktree::create(&repo, "x").is_err(), "no commits yet");
+    assert!(
+        worktree::create(&repo, "x", None, None).is_err(),
+        "no commits yet"
+    );
     commit(&repo, "a.txt", "a\n", "init");
 
-    let wt = worktree::create(&repo, "Feature One").unwrap();
+    let wt = worktree::create(&repo, "Feature One", None, None).unwrap();
     assert!(wt.path.ends_with(".worktrees/feature-one"));
     assert_eq!(wt.branch.as_deref(), Some("omp/feature-one"));
     let exclude = std::fs::read_to_string(repo.join(".git/info/exclude")).unwrap();
@@ -118,7 +121,7 @@ fn worktree_lifecycle_and_orphans() {
     );
 
     // Creating from inside the worktree targets the main repo's .worktrees.
-    let wt2 = worktree::create(&wt_path, "two").unwrap();
+    let wt2 = worktree::create(&wt_path, "two", None, None).unwrap();
     assert!(wt2.path.starts_with(&root));
 
     let sessions = vec![("s1".to_string(), format!("{}/sub", wt2.path))];
@@ -135,12 +138,18 @@ fn worktree_lifecycle_and_orphans() {
     assert_eq!(orphans.len(), 1);
     assert_eq!(orphans[0].path, wt.path);
 
-    // Dirty worktree refuses removal without force.
+    // Dirty worktree reports its change count and refuses removal without force.
     std::fs::write(wt_path.join("dirty.txt"), "x").unwrap();
-    assert!(worktree::list(&repo, &[])
-        .unwrap()
-        .iter()
-        .any(|w| w.path == wt.path && w.dirty));
+    std::fs::write(wt_path.join("a.txt"), "changed\n").unwrap();
+    assert_eq!(
+        worktree::list(&repo, &[])
+            .unwrap()
+            .iter()
+            .find(|w| w.path == wt.path)
+            .unwrap()
+            .dirty,
+        2
+    );
     assert!(worktree::remove(&repo, &wt_path, true, false).is_err());
     assert!(
         worktree::remove(&repo, &repo, false, true).is_err(),
@@ -162,8 +171,36 @@ fn worktree_lifecycle_and_orphans() {
     )
     .is_ok());
     // Re-creating reuses the existing branch.
-    let again = worktree::create(&repo, "two").unwrap();
+    let again = worktree::create(&repo, "two", None, None).unwrap();
     assert_eq!(again.branch.as_deref(), Some("omp/two"));
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
+fn worktree_create_honors_branch_and_base() {
+    let repo = temp_repo("wt-branch");
+    let first = commit(&repo, "a.txt", "a\n", "init");
+    git_ok(&repo, &["branch", "release-2"]).unwrap();
+    commit(&repo, "b.txt", "b\n", "second");
+
+    // An existing idle branch is checked out as-is (not forked from HEAD).
+    let rel = worktree::create(&repo, "rel", Some("release-2"), None).unwrap();
+    assert_eq!(rel.branch.as_deref(), Some("release-2"));
+    assert_eq!(rel.head, first);
+    assert!(!Path::new(&rel.path).join("b.txt").exists());
+
+    // A new branch keeps its slash and forks from the chosen base.
+    let feat = worktree::create(&repo, "feat", Some("feature/auth"), Some("release-2")).unwrap();
+    assert_eq!(feat.branch.as_deref(), Some("feature/auth"));
+    assert!(feat.path.ends_with(".worktrees/feat"));
+    assert_eq!(feat.head, first);
+
+    // Branches already checked out elsewhere (incl. the main checkout) are refused.
+    assert!(worktree::create(&repo, "dup", Some("release-2"), None).is_err());
+    assert!(worktree::create(&repo, "main-again", Some("main"), None).is_err());
+    // Unknown base and invalid branch names are refused.
+    assert!(worktree::create(&repo, "nobase", Some("x/y"), Some("no-such-ref")).is_err());
+    assert!(worktree::create(&repo, "bad", Some("bad..name"), None).is_err());
     std::fs::remove_dir_all(&repo).unwrap();
 }
 
@@ -263,5 +300,34 @@ fn list_branches_current_first_and_dedup() {
     assert!(branches.contains(&"main".to_string()));
     assert!(branches.contains(&"feature-b".to_string()));
 
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
+fn pending_diff_covers_everything_a_commit_would_record() {
+    // Unborn repo: new files still show up with their content.
+    let fresh = temp_repo("pending-unborn");
+    std::fs::write(fresh.join("first.txt"), "hello\n").unwrap();
+    let d = commands::pending_diff(&fresh).unwrap();
+    assert!(d.contains("first.txt") && d.contains("+hello"), "{d}");
+    std::fs::remove_dir_all(&fresh).unwrap();
+
+    let repo = temp_repo("pending");
+    commit(&repo, "a.txt", "a\n", "init");
+    std::fs::write(repo.join("a.txt"), "a2\n").unwrap();
+    git_ok(&repo, &["add", "a.txt"]).unwrap();
+    std::fs::write(repo.join("new.txt"), "brand new\n").unwrap();
+
+    let d = commands::pending_diff(&repo).unwrap();
+    assert!(d.contains("+a2"), "staged edit missing: {d}");
+    assert!(d.contains("+brand new"), "untracked content missing: {d}");
+    // The real staging area is untouched: new.txt is still untracked.
+    let st = git_ok(&repo, &["status", "--porcelain"]).unwrap();
+    assert!(st.contains("?? new.txt"), "{st}");
+
+    // Nothing pending → empty.
+    git_ok(&repo, &["add", "-A"]).unwrap();
+    git_ok(&repo, &["commit", "-q", "-m", "save"]).unwrap();
+    assert!(commands::pending_diff(&repo).unwrap().trim().is_empty());
     std::fs::remove_dir_all(&repo).unwrap();
 }

@@ -11,7 +11,16 @@ import { toast } from "../../lib/toast";
 import { appendLog, stripAnsi } from "./helpers";
 
 /** Live view of one time-machine run: log tail, URL, stop/discard. */
-export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
+export function TmRunCard({
+	run,
+	onGone,
+	onUpdate,
+}: {
+	run: TmRun;
+	onGone: () => void;
+	/** Called after a stop so the parent list entry drops its running state. */
+	onUpdate?: (run: TmRun) => void;
+}) {
 	const [log, setLog] = useState<string[]>(() =>
 		run.logTail ? run.logTail.split("\n").map(stripAnsi) : [],
 	);
@@ -47,14 +56,14 @@ export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
 			try {
 				const sum = await gitSummary(info.worktree);
 				if (sum.hasUncommitted && sum.files.length > 0) {
-					dirtyWarning = `\n\n⚠️ 警告：该工作区包含 ${sum.files.length} 个未提交的改动，丢弃后将永久删除！`;
+					dirtyWarning = `\n\n⚠️ 警告：该工作树包含 ${sum.files.length} 个未提交的改动，丢弃后将永久删除！`;
 				}
 			} catch {
 				// Ignore inspection error; proceed to dialog
 			}
-			const ok = await confirmDialog(`丢弃此版本的运行目录？\n${info.worktree}${dirtyWarning}`, {
+			const ok = await confirmDialog(`丢弃此版本的工作树目录？\n${info.worktree}${dirtyWarning}`, {
 				danger: true,
-				title: "丢弃工作区",
+				title: "丢弃工作树",
 				okLabel: "丢弃目录",
 			});
 			if (!ok) return;
@@ -63,8 +72,13 @@ export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
 		setError(null);
 		try {
 			await tmStop(info.id, remove);
-			if (remove) onGone();
-			else setInfo((prev) => ({ ...prev, pid: null }));
+			if (remove) {
+				onGone();
+			} else {
+				const next = { ...info, pid: null };
+				setInfo(next);
+				onUpdate?.(next);
+			}
 		} catch (e) {
 			setError(errMsg(e));
 		} finally {
@@ -108,6 +122,7 @@ export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
 							onClick={copyUrl}
 							className="rounded p-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
 							title="复制地址"
+							aria-label="复制地址"
 						>
 							<Copy size={11} />
 						</button>
@@ -123,6 +138,7 @@ export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
 							onClick={copyAllLogs}
 							className="hover:text-neutral-200"
 							title="复制全部日志"
+							aria-label="复制全部日志"
 						>
 							<Copy size={11} />
 						</button>
@@ -131,6 +147,7 @@ export function TmRunCard({ run, onGone }: { run: TmRun; onGone: () => void }) {
 							onClick={() => setLogExpanded(!logExpanded)}
 							className="hover:text-neutral-200"
 							title={logExpanded ? "收起日志高度" : "展开日志高度"}
+							aria-label={logExpanded ? "收起日志高度" : "展开日志高度"}
 						>
 							{logExpanded ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
 						</button>

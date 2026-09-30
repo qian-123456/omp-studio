@@ -29,7 +29,7 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useSettings } from "../settings/store";
-import { defaultSlug } from "./helpers";
+import { defaultSlug, runningInRepo } from "./helpers";
 
 const CUSTOM = "__custom";
 const CUSTOM_MODEL = "__custom_model";
@@ -38,8 +38,9 @@ const isMac =
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
 
 /**
- * Always mounted; opened via `ui.openModal("new-session" | "newSession", {workspaceId?, cwd?})`.
- * Workspace/cwd picker, model, optional isolated worktree and first prompt.
+ * Always mounted; opened via `ui.openModal("new-session" | "newSession",
+ * {workspaceId?, cwd?, branch?, useWorktree?})`. Workspace/cwd picker, model,
+ * optional isolated worktree and first prompt.
  * Approval mode is not a per-session choice here — it follows Settings.
  */
 export function NewSessionDialog() {
@@ -70,6 +71,12 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 	const propCwd = typeof props.cwd === "string" ? props.cwd : "";
 	const propWs = typeof props.workspaceId === "string" ? props.workspaceId : "";
+	// Opened for an existing idle branch (e.g. 「建工作树」 in the worktree
+	// graph): check that branch out in the new worktree instead of creating one.
+	const propBranch =
+		typeof props.branch === "string" && props.branch.trim()
+			? props.branch.trim()
+			: "";
 
 	const [wsSel, setWsSel] = useState(() => {
 		if (propWs && workspaces.some((w) => w.id === propWs)) return propWs;
@@ -107,6 +114,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	const [isRepo, setIsRepo] = useState<boolean | null>(null);
 	const repoCheck = useRef(0);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: fetch models once per dialog open (sessions read via getState)
 	useEffect(() => {
 		appPaths()
 			.then((p) => setGlobalDir(p.globalDir))
@@ -137,7 +145,9 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 			});
 
 		function fallbackLiveModels(initialErr?: unknown) {
-			const liveSession = Object.values(sessions).find((s) => s.live);
+			const liveSession = Object.values(useSessions.getState().sessions).find(
+				(s) => s.live,
+			);
 			if (liveSession) {
 				rpcSend(liveSession.id, { type: "get_available_models" })
 					.then((resp) => {
@@ -186,7 +196,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				toast.error(`获取可用模型失败${initialErr ? `: ${errMsg(initialErr)}` : ""}`);
 			}
 		}
-	}, [sessions]);
+	}, []);
 
 	// Debounced validatePath on custom cwd
 	useEffect(() => {
@@ -261,14 +271,14 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 
 	// Sessions already running in the same repo → suggest a worktree.
-	const running = useMemo(() => {
-		if (!cwd) return [];
-		return Object.values(sessions).filter(
-			(s) => s.cwd && (s.cwd === cwd || s.cwd.startsWith(`${cwd}/`)),
-		);
-	}, [sessions, cwd]);
+	const running = useMemo(
+		() => runningInRepo(Object.values(sessions), cwd),
+		[sessions, cwd],
+	);
 
-	const slug = defaultSlug(wtName || propCwd || cwd || "session");
+	const slug = defaultSlug(
+		wtName || propBranch || propCwd || cwd || "session",
+	);
 	const effectiveModel = modelSel === CUSTOM_MODEL ? customModel.trim() : modelSel;
 	const canSubmit =
 		!!cwd &&
@@ -281,7 +291,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 			const selected = await open({
 				directory: true,
 				multiple: false,
-				title: "选择工作区目录",
+				title: "选择目录",
 				defaultPath: customCwd || propCwd || undefined,
 			});
 			if (selected && typeof selected === "string") {
@@ -301,8 +311,12 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 		try {
 			let target = cwd;
 			if (useWorktree) {
-				const finalBranchName = `${branchPrefix}${wtName.trim() || slug}`;
-				const wt = await gitCreateWorktree(cwd, finalBranchName);
+				const wt = await gitCreateWorktree(cwd, wtName.trim() || slug, {
+					// Idle-branch mode: check out that branch (it must already exist
+					// in this repo). Otherwise create `prefix + name` from `baseBranch`.
+					branch: propBranch || `${branchPrefix}${wtName.trim() || slug}`,
+					base: propBranch || !baseBranch ? undefined : baseBranch,
+				});
 				target = wt.path;
 			}
 			const { sessionId, stub } = await createSession({
@@ -532,69 +546,81 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 						disabled={isRepo !== true}
 						onChange={(e) => setUseWorktree(e.target.checked)}
 					/>
-					在独立 worktree 中运行
+					在独立工作树中运行
+					<span className="text-[10px] text-neutral-500">（单独的文件夹，改动互不影响）</span>
 					{isRepo === false && <span className="text-[10px]">（所选目录不是 git 仓库）</span>}
 				</label>
 				{useWorktree && (
 					<div className="mb-2.5 rounded-xl hairline bg-[var(--bg)]/60 p-3 space-y-2.5">
-						<div className="grid grid-cols-2 gap-2">
-							<div>
-								<label className="text-[10px] text-neutral-400 block mb-1">
-									基准分支
-								</label>
-								<NativeSelect
-									value={baseBranch}
-									onChange={(e) => setBaseBranch(e.target.value)}
-								>
-									{branches.length > 0 ? (
-										branches.map((b) => (
-											<option key={b} value={b}>
-												{b}
-											</option>
-										))
-									) : (
-										<option value="">当前分支 (HEAD)</option>
-									)}
-								</NativeSelect>
+						{!propBranch && (
+							<div className="grid grid-cols-2 gap-2">
+								<div>
+									<label className="text-[10px] text-neutral-400 block mb-1">
+										从哪个分支分出
+									</label>
+									<NativeSelect
+										value={baseBranch}
+										onChange={(e) => setBaseBranch(e.target.value)}
+									>
+										{branches.length > 0 ? (
+											branches.map((b) => (
+												<option key={b} value={b}>
+													{b}
+												</option>
+											))
+										) : (
+											<option value="">当前所在版本</option>
+										)}
+									</NativeSelect>
+								</div>
+								<div>
+									<label className="text-[10px] text-neutral-400 block mb-1">
+										新分支名前缀
+									</label>
+									<input
+										type="text"
+										value={branchPrefix}
+										onChange={(e) => setBranchPrefix(e.target.value)}
+										placeholder="例如 omp/"
+										className={clsx(input, "font-mono")}
+									/>
+								</div>
 							</div>
-							<div>
-								<label className="text-[10px] text-neutral-400 block mb-1">
-									分支前缀
-								</label>
-								<input
-									type="text"
-									value={branchPrefix}
-									onChange={(e) => setBranchPrefix(e.target.value)}
-									placeholder="例如 omp/"
-									className={clsx(input, "font-mono")}
-								/>
-							</div>
-						</div>
+						)}
 
 						<div>
 							<label className="text-[10px] text-neutral-400 block mb-1">
-								Worktree 名称
+								工作树目录名
 							</label>
 							<input
 								value={wtName}
 								onChange={(e) => {
 									setWtName(e.target.value);
 								}}
-								placeholder={`worktree 名称（默认 ${slug}）`}
+								placeholder={`文件夹名（默认 ${slug}）`}
 								className={clsx(input, "font-mono")}
 							/>
 						</div>
 
 						<div className="text-[11px] text-neutral-400">
-							将创建分支：
-							<span className="font-mono text-[#70b1ff] ml-1">
-								{branchPrefix}
-								{wtName.trim() || slug}
-							</span>
-							{baseBranch && (
-								<span className="text-neutral-500 ml-1">
-									(基于 {baseBranch})
-								</span>
+							{propBranch ? (
+								<>
+									将在新工作树里打开分支
+									<span className="font-mono text-[#70b1ff] ml-1">{propBranch}</span>
+								</>
+							) : (
+								<>
+									将创建新分支：
+									<span className="font-mono text-[#70b1ff] ml-1">
+										{branchPrefix}
+										{wtName.trim() || slug}
+									</span>
+									{baseBranch && (
+										<span className="text-neutral-500 ml-1">
+											（从 {baseBranch} 分出）
+										</span>
+									)}
+								</>
 							)}
 						</div>
 					</div>
@@ -603,7 +629,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				{running.length > 0 && !useWorktree && isRepo === true && (
 					<div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
 						<AlertTriangle size={12} className="shrink-0" />
-						同仓库已有 {running.length} 个会话在跑，建议开 worktree
+						同仓库已有 {running.length} 个会话在运行，建议开独立工作树
 					</div>
 				)}
 

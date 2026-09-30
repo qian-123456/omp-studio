@@ -374,7 +374,8 @@ pub struct WorktreeInfo {
     pub path: String,
     pub branch: Option<String>,
     pub head: String,
-    pub dirty: bool,
+    /// Number of uncommitted changes (0 = clean).
+    pub dirty: u32,
     pub session_ids: Vec<String>,
 }
 

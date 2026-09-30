@@ -269,7 +269,8 @@ export interface WorktreeInfo {
 	path: string;
 	branch: string | null;
 	head: string;
-	dirty: boolean;
+	/** Number of uncommitted changes (0 = clean). */
+	dirty: number;
 	sessionIds: string[];
 }
 

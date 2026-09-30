@@ -196,7 +196,7 @@ pub struct BacklogItem { pub id: String, pub text: String, pub kind: BacklogKind
 pub struct GitFileChange { pub path: String, pub status: String /* M A D R ?? */, pub added: u32, pub deleted: u32 }
 pub struct GitSummary { pub is_repo: bool, pub branch: Option<String>, pub files: Vec<GitFileChange>, pub has_uncommitted: bool }
 pub struct GitCommit { pub sha: String, pub short: String, pub subject: String, pub author: String, pub ts: String }
-pub struct WorktreeInfo { pub path: String, pub branch: Option<String>, pub head: String, pub dirty: bool, pub session_ids: Vec<String> }
+pub struct WorktreeInfo { pub path: String, pub branch: Option<String>, pub head: String, pub dirty: u32 /* uncommitted change count */, pub session_ids: Vec<String> }
 pub struct TmRun { pub id: String, pub repo: String, pub sha: String, pub worktree: String, pub command: String, pub pid: Option<u32>, pub url: Option<String>, pub log_tail: String }
 
 pub struct ServiceInfo { pub pid: u32, pub name: String, pub port: u16, pub cwd: Option<String>, pub command: String, pub url: String, pub session_id: Option<String>, pub started_by_app: bool }
@@ -324,11 +324,15 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **C — git / services:**
 - `git_summary(cwd) -> GitSummary`, `git_log(cwd, limit: u32) -> Vec<GitCommit>`, `git_diff(cwd, path: Option<String>, sha: Option<String>) -> String`
-- `git_create_worktree(repo, name) -> WorktreeInfo`, `git_list_worktrees(repo) -> Vec<WorktreeInfo>`, `git_remove_worktree(repo, path, delete_branch: bool, force: bool)`
+- `git_create_worktree(repo, name, branch: Option<String>, base: Option<String>) -> WorktreeInfo` — `name` becomes the
+  `.worktrees/<slug>` directory; `branch` (default `omp/<slug>`) is checked out when it exists, else created from `base`
+  (default: current HEAD), `git_list_worktrees(repo) -> Vec<WorktreeInfo>`, `git_remove_worktree(repo, path, delete_branch: bool, force: bool)`
 - `git_scan_orphans() -> Vec<WorktreeInfo>` — `.worktrees/*` in registered workspaces with no session whose cwd is inside
 - `git_reset_to(repo, sha, mode: "soft"|"hard")`
-- `git_commit_suggest(cwd) -> String` — one-shot AI commit message from staged/unstaged diff (≤8k chars)
-- `git_commit(cwd, message, stage_all: Option<bool>) -> String` — real `git commit` (argv, no shell)
+- `git_commit_suggest(cwd) -> String` — one-shot English Conventional Commit message from everything a commit would record
+  (`git add -A` into a throwaway index, so new-file content is included and the real index is untouched; ≤8k chars; recent
+  subjects passed as style examples)
+- `git_commit(cwd, message) -> String` — `git add -A` + `git commit` (argv, no shell); always saves every change
 - `tm_run(repo, sha, command: Option<String>) -> TmRun`, `tm_list() -> Vec<TmRun>`, `tm_stop(run_id, remove_worktree: bool)`
 - `services_list(all: bool) -> Vec<ServiceInfo>`, `services_stop(pid)`
 - `read_text_file(path) -> String`, `write_text_file(path, content)` (for the md editor; reject paths > 5 MB)
@@ -536,7 +540,8 @@ export function formatWithAnnotations(text: string, anns: Annotation[]): string;
 ### C — Git, worktrees, time machine, services (backend) + Git/Services panels, md editor, new-session dialog (frontend)
 - Run `git` via `std::process::Command` with `-C <dir>`, `GIT_OPTIONAL_LOCKS=0`, timeouts. `git::badge` cached 5 s per cwd.
 - `git_summary`: `status --porcelain=v1 -z` + `diff --numstat` (staged+unstaged) + untracked line counts (cap). No branch/rebase/stash concepts in UI.
-- Worktrees: `git worktree add -b omp/<name> <repo>/.worktrees/<name>`; ensure `.worktrees/` is ignored via `<repo>/.git/info/exclude`
+- Worktrees: `git worktree add <repo>/.worktrees/<slug>` checking out `branch` (default `omp/<slug>`; when the branch doesn't
+  exist it is created from `base`, default HEAD); ensure `.worktrees/` is ignored via `<repo>/.git/info/exclude`
   (do not edit the repo's .gitignore). Remove: refuse when dirty unless `force`; optionally delete branch.
 - Orphans: for each registered workspace repo, `.worktrees/*` with no session (via `catalog::list`) whose cwd is inside.
   Frontend: on app start, if orphans exist, show a dismissible banner in GitPanel/Home "发现 N 个孤儿 worktree" with 回收 buttons.
@@ -545,9 +550,12 @@ export function formatWithAnnotations(text: string, anns: Annotation[]): string;
   `node_modules` missing (`pnpm install --frozen-lockfile` etc.) before running; stream output via `tm:log`; detect URL `http://localhost:\d+`
   from output. `tm_stop` kills the process group and optionally removes the worktree. `git_reset_to` soft/hard (frontend double-confirm on hard,
   warn on uncommitted changes).
-- `GitPanel` (selected session's cwd): 变更 section — files with +/- and click → diff in a modal or `DocView` for md; 时光机 section — commit
-  timeline with relative timestamps, uncommitted changes on top, per commit: 查看 diff, ▶ 运行此版本 (shows live log + URL + 停止/丢弃),
-  回退到此版本 (软/硬). Worktree section: list worktrees of the repo with dirty flags + 清理.
+- `GitPanel` (selected session's repo): worktree map on top — every worktree with its uncommitted-change count, sessions, 清理; idle
+  branches with 建工作树. Clicking a worktree focuses it; below, a 提交改动 | 版本历史 tab pane shows that worktree: 提交改动 =
+  one-click 存档 (AI-written message by default; hand-written message behind a pencil toggle; warns while a session in the
+  worktree is `working`) + files with +/- (click → diff modal, or `DocView` for md); 版本历史 = commit timeline grouped by day (time
+  gutter + rail); an expanded commit offers 看看 (diff) / 试试 (▶ run this version: live log + URL + 停止/丢弃) / 回到 (keep later
+  changes, or discard everything after it). Refreshes every 10 s while visible, on focus and on session activity.
 - Services: every 10 s `lsof -iTCP -sTCP:LISTEN -P -n -F pcn` + cwd `lsof -a -p <pid> -d cwd -Fn`; default filter dev-like processes
   (node, bun, deno, python, ruby, java, go, cargo/rust binaries, vite, next, `tokentracker`), `all=true` shows everything. Map to sessions
   when cwd is inside a session cwd. Emit `services:changed` on diff. When a session's process exits (RpcProcess running=false) or the session

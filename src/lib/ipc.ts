@@ -167,8 +167,17 @@ export const gitDiff = (cwd: string, path?: string, sha?: string) =>
 		sha: sha ?? null,
 	});
 
-export const gitCreateWorktree = (repo: string, name: string) =>
-	invoke<WorktreeInfo>("git_create_worktree", { repo, name });
+export const gitCreateWorktree = (
+	repo: string,
+	name: string,
+	opts?: { branch?: string; base?: string },
+) =>
+	invoke<WorktreeInfo>("git_create_worktree", {
+		repo,
+		name,
+		branch: opts?.branch ?? null,
+		base: opts?.base ?? null,
+	});
 
 export const gitListWorktrees = (repo: string) =>
 	invoke<WorktreeInfo[]>("git_list_worktrees", { repo });
@@ -196,12 +205,9 @@ export const gitListBranches = (repo: string) =>
 export const gitCommitSuggest = (cwd: string) =>
 	invoke<string>("git_commit_suggest", { cwd });
 
-export const gitCommit = (cwd: string, message: string, stageAll?: boolean) =>
-	invoke<string>("git_commit", {
-		cwd,
-		message,
-		stageAll: stageAll ?? null,
-	});
+/** Commits every uncommitted change (new files included). */
+export const gitCommit = (cwd: string, message: string) =>
+	invoke<string>("git_commit", { cwd, message });
 
 export const tmRun = (repo: string, sha: string, command?: string) =>
 	invoke<TmRun>("tm_run", { repo, sha, command: command ?? null });

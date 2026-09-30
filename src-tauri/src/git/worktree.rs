@@ -146,11 +146,32 @@ pub fn list_entries(repo: &Path) -> Result<Vec<WtEntry>, String> {
     Ok(parse_worktree_list(out.as_bytes()))
 }
 
+/// Number of uncommitted changes (tracked or untracked) in a worktree.
+pub fn dirty_count(path: &Path) -> u32 {
+    git(path, &["status", "--porcelain", "-z"])
+        .ok()
+        .filter(|o| o.ok())
+        .map(|o| porcelain_z_entries(&o.stdout))
+        .unwrap_or(0)
+}
+
 /// Whether a worktree has uncommitted changes (tracked or untracked).
 pub fn is_dirty(path: &Path) -> bool {
-    git(path, &["status", "--porcelain"])
-        .map(|o| o.ok() && !o.stdout.is_empty())
-        .unwrap_or(false)
+    dirty_count(path) > 0
+}
+
+/// Count entries in `git status --porcelain -z` output. Renames/copies carry
+/// an extra NUL-terminated source path that must not be counted twice.
+fn porcelain_z_entries(out: &[u8]) -> u32 {
+    let mut n = 0;
+    let mut fields = out.split(|&b| b == 0).filter(|f| !f.is_empty());
+    while let Some(entry) = fields.next() {
+        n += 1;
+        if entry.len() >= 2 && matches!(entry[..2], [b'R' | b'C', _] | [_, b'R' | b'C']) {
+            fields.next();
+        }
+    }
+    n
 }
 
 /// Assign each session to the deepest worktree path containing its cwd.
@@ -182,7 +203,7 @@ pub fn list(repo: &Path, sessions: &[(String, String)]) -> Result<Vec<WorktreeIn
         .into_iter()
         .zip(paths.iter())
         .map(|(e, p)| WorktreeInfo {
-            dirty: p.is_dir() && is_dirty(p),
+            dirty: if p.is_dir() { dirty_count(p) } else { 0 },
             session_ids: sessions_for(p, &paths, sessions),
             path: p.to_string_lossy().into_owned(),
             branch: e.branch,
@@ -224,8 +245,15 @@ fn info_for(path: &Path, sessions: &[(String, String)]) -> Result<WorktreeInfo, 
         .ok_or_else(|| "worktree not found after creation".to_string())
 }
 
-/// `git worktree add -b omp/<name> <root>/.worktrees/<name>`.
-pub fn create(repo: &Path, name: &str) -> Result<WorktreeInfo, String> {
+/// `git worktree add` into `<root>/.worktrees/<slug>` checking out `branch`
+/// (default `omp/<slug>`). When the branch doesn't exist yet it is created
+/// from `base` (default: current HEAD).
+pub fn create(
+    repo: &Path,
+    name: &str,
+    branch: Option<&str>,
+    base: Option<&str>,
+) -> Result<WorktreeInfo, String> {
     let info = repo_info(repo).ok_or("不是 git 仓库")?;
     let slug = slugify(name);
     if slug.is_empty() {
@@ -240,7 +268,27 @@ pub fn create(repo: &Path, name: &str) -> Result<WorktreeInfo, String> {
     if target.exists() {
         return Err(format!("目录已存在：{}", target.display()));
     }
-    let branch = format!("omp/{slug}");
+    // `branch` is a real ref name (slashes allowed), not a slug.
+    let branch = match branch.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => b.to_string(),
+        None => format!("omp/{slug}"),
+    };
+    let valid = git(&root, &["check-ref-format", "--branch", &branch])
+        .map(|o| o.ok())
+        .unwrap_or(false);
+    if !valid {
+        return Err(format!("分支名无效：{branch}"));
+    }
+    // Friendlier message than git's "already checked out at ...".
+    if let Some(holder) = list_entries(&root)?
+        .into_iter()
+        .find(|e| e.branch.as_deref() == Some(branch.as_str()))
+    {
+        return Err(format!(
+            "分支 {branch} 已被另一个工作树使用：{}",
+            holder.path
+        ));
+    }
     let target_s = target.to_string_lossy().into_owned();
     let branch_exists = git(
         &root,
@@ -253,12 +301,24 @@ pub fn create(repo: &Path, name: &str) -> Result<WorktreeInfo, String> {
     )
     .map(|o| o.ok())
     .unwrap_or(false);
-    let args: Vec<&str> = if branch_exists {
-        vec!["worktree", "add", &target_s, &branch]
+    if branch_exists {
+        git_ok(&root, &["worktree", "add", &target_s, &branch])?;
     } else {
-        vec!["worktree", "add", "-b", &branch, &target_s]
-    };
-    git_ok(&root, &args)?;
+        let base = base
+            .map(str::trim)
+            .filter(|b| !b.is_empty())
+            .unwrap_or("HEAD");
+        let base_exists = git(
+            &root,
+            &["rev-parse", "--verify", "-q", &format!("{base}^{{commit}}")],
+        )
+        .map(|o| o.ok())
+        .unwrap_or(false);
+        if !base_exists {
+            return Err(format!("基准分支不存在：{base}"));
+        }
+        git_ok(&root, &["worktree", "add", "-b", &branch, &target_s, base])?;
+    }
     info_for(&target, &[])
 }
 

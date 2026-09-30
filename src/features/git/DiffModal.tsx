@@ -22,6 +22,9 @@ const ROW_STYLE: Record<DiffLine["kind"], string> = {
 	meta: "text-neutral-500",
 };
 
+/** Diff rows rendered per increment; large diffs paginate via "show more". */
+const RENDER_CHUNK = 2000;
+
 /**
  * Full-screen diff viewer.
  * Supports Unified / Split view toggle, keyword syntax highlighting,
@@ -43,23 +46,40 @@ export function DiffModal({
 	const [note, setNote] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
 	const [viewMode, setViewMode] = useState<"unified" | "split">("unified");
+	const [visibleCount, setVisibleCount] = useState(RENDER_CHUNK);
 
 	const sessionId = useUi((s) => s.selectedSessionId);
 	const addAnnotation = useComposer((s) => s.addAnnotation);
 
 	useEscapeKey(onClose);
-
 	useEffect(() => {
+		let alive = true;
 		load()
-			.then(setText)
-			.catch((e) => setError(errMsg(e)));
+			.then((t) => {
+				if (alive) setText(t);
+			})
+			.catch((e) => {
+				if (alive) setError(errMsg(e));
+			});
+		return () => {
+			alive = false;
+		};
 	}, [load]);
 
 	const lines = useMemo(() => (text ? parseUnifiedDiff(text) : []), [text]);
-	const splitRows = useMemo(() => {
-		if (viewMode !== "split") return [];
-		return buildUnifiedSplitRows(lines);
-	}, [lines, viewMode]);
+	// Build both views' row lists once per diff so toggling views never re-parses.
+	const splitRows = useMemo(() => buildUnifiedSplitRows(lines), [lines]);
+	// Re-paginate from the top when a new diff loads or the view switches.
+	useEffect(() => {
+		setVisibleCount(RENDER_CHUNK);
+	}, [text, viewMode]);
+
+	const visibleLines =
+		viewMode === "unified" ? lines.slice(0, visibleCount) : [];
+	const visibleSplitRows =
+		viewMode === "split" ? splitRows.slice(0, visibleCount) : [];
+	const rowCount = viewMode === "unified" ? lines.length : splitRows.length;
+	const remaining = Math.max(0, rowCount - visibleCount);
 
 	const inSel = (i: number) =>
 		sel !== null && i >= Math.min(...sel) && i <= Math.max(...sel);
@@ -210,7 +230,7 @@ export function DiffModal({
 
 					{/* Unified View */}
 					{viewMode === "unified" &&
-						lines.map((l, i) => {
+						visibleLines.map((l, i) => {
 							const isHeader = l.kind === "meta" || l.kind === "hunk";
 							return (
 								<div
@@ -238,8 +258,8 @@ export function DiffModal({
 													e.stopPropagation();
 													setSel([i, i]);
 												}}
-												className="press-scale absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 group-hover/row:flex"
-												title="为此行添加批注 (+)"
+												className="press-scale absolute left-1 top-0.5 flex h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100"
+												title="为此行添加批注"
 												aria-label="为此行添加批注"
 											>
 												<Plus size={10} />
@@ -262,7 +282,7 @@ export function DiffModal({
 
 					{/* Split View */}
 					{viewMode === "split" &&
-						splitRows.map((row, i) => {
+						visibleSplitRows.map((row, i) => {
 							if (row.type === "header") {
 								return (
 									<div
@@ -316,8 +336,8 @@ export function DiffModal({
 															e.stopPropagation();
 															setSel([left.origIdx, left.origIdx]);
 														}}
-														className="press-scale absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 group-hover/left:flex"
-														title="为此行添加批注 (+)"
+														className="press-scale absolute left-1 top-0.5 flex h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 opacity-0 transition-opacity group-hover/left:opacity-100 focus-within:opacity-100"
+														title="为此行添加批注"
 														aria-label="为此行添加批注"
 													>
 														<Plus size={10} />
@@ -364,8 +384,8 @@ export function DiffModal({
 															e.stopPropagation();
 															setSel([right.origIdx, right.origIdx]);
 														}}
-														className="press-scale absolute left-1 top-0.5 hidden h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 group-hover/right:flex"
-														title="为此行添加批注 (+)"
+														className="press-scale absolute left-1 top-0.5 flex h-4 w-4 items-center justify-center rounded-md bg-[#0A84FF] text-white shadow hover:bg-[#0A84FF]/90 opacity-0 transition-opacity group-hover/right:opacity-100 focus-within:opacity-100"
+														title="为此行添加批注"
 														aria-label="为此行添加批注"
 													>
 														<Plus size={10} />
@@ -385,6 +405,21 @@ export function DiffModal({
 								</div>
 							);
 						})}
+
+					{/* Incremental rendering for very large diffs */}
+					{remaining > 0 && (
+						<div className="flex justify-center py-3">
+							<button
+								type="button"
+								onClick={() =>
+									setVisibleCount((c) => c + RENDER_CHUNK)
+								}
+								className="press-scale rounded-lg hairline bg-[var(--bg-active-fill)] px-4 py-1.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] transition-colors"
+							>
+								显示更多（还有 {remaining} 行）
+							</button>
+						</div>
+					)}
 				</div>
 
 				{/* Selection & Annotation Bar */}
