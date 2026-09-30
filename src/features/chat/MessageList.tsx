@@ -15,12 +15,13 @@ import {
 	Wrench,
 } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { ToolCall, ToolResultInfo, TranscriptItem } from "../../lib/contracts";
+import type { ToolCall, ToolResultInfo, TranscriptItem, TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { createSideChat } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useLive, type AgentMessage, type LiveTool } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
+import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
 import { Markdown } from "./markdown";
 import { sendPrompt } from "./send";
@@ -32,6 +33,8 @@ import {
 	resolveToolStatus,
 } from "./messageTrace";
 import { useHeldQueue } from "./heldQueue";
+import { TurnChip } from "./TurnChip";
+import { turnChipTargets, undoableTurn } from "./turnChips";
 const EMPTY_TOOLS: Record<string, LiveTool> = {};
 
 const asObj = (v: unknown): Record<string, unknown> =>
@@ -596,6 +599,11 @@ export function MessageList({
 	isLoadingTranscript = false,
 	transcriptError = null,
 	onRetryTranscript,
+	turns = [],
+	sessionCwd = "",
+	sessionFile = "",
+	sessionWorking = false,
+	onTurnsChange,
 }: {
 	sessionId: string;
 	scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -607,6 +615,16 @@ export function MessageList({
 	isLoadingTranscript?: boolean;
 	transcriptError?: string | null;
 	onRetryTranscript?: () => void;
+	/** Per-turn checkpoints (oldest first); chips render at each turn's end. */
+	turns?: TurnCheckpoint[];
+	/** Session worktree path (used by the 「已存档」 jump and undo). */
+	sessionCwd?: string;
+	/** Session .jsonl path (undo target). */
+	sessionFile?: string;
+	/** Session mid-turn → hide the undo action. */
+	sessionWorking?: boolean;
+	/** Re-fetch checkpoints after a state change (undo). */
+	onTurnsChange?: () => void;
 }) {
 	const live = useLive((s) => s.sessions[sessionId]);
 	const items = live?.items ?? [];
@@ -656,6 +674,13 @@ export function MessageList({
 		[items, showHidden],
 	);
 
+
+	// Turn chips keyed by the visible-row index they render after.
+	const chips = useMemo(() => turnChipTargets(visible, turns), [visible, turns]);
+	const undoable = useMemo(
+		() => undoableTurn(turns, sessionWorking),
+		[turns, sessionWorking],
+	);
 	const hiddenCount = items.length - visible.length;
 	const isStreamingActive = Boolean(live?.streaming || streamingMessage);
 	const hasContent =
@@ -765,6 +790,27 @@ export function MessageList({
 			return () => clearTimeout(timer);
 		}
 	}, [live?.scrollRequest, visible, virtualizer, sessionId, toolResultsByCallId]);
+
+	// Consume cross-feature "jump to chat turn" requests (git timeline →
+	// chat): scroll msg-<userItemId> into view + highlight, then clearTurn.
+	const revealTurn = useTurnNav((s) => s.revealTurn);
+	const lastHandledReveal = useRef(0);
+	useEffect(() => {
+		if (!revealTurn || revealTurn.sessionId !== sessionId) return;
+		if (revealTurn.nonce === lastHandledReveal.current) return;
+		// Still loading → wait; the item may arrive with the page.
+		if (isLoadingTranscript) return;
+		const idx = visible.findIndex((r) => r.id === revealTurn.userItemId);
+		lastHandledReveal.current = revealTurn.nonce;
+		useTurnNav.getState().clearTurn();
+		if (idx < 0) return;
+		virtualizer.scrollToIndex(idx, { align: "center", behavior: "smooth" });
+		setHighlightedId(revealTurn.userItemId);
+		const timer = setTimeout(() => {
+			setHighlightedId(null);
+		}, 2500);
+		return () => clearTimeout(timer);
+	}, [revealTurn, visible, virtualizer, sessionId, isLoadingTranscript]);
 
 	return (
 		<div className="relative flex h-full flex-col">
@@ -915,6 +961,16 @@ export function MessageList({
 											toolResultsByCallId={toolResultsByCallId}
 											isLastInTurn={isLastInTurn(visible, row.index)}
 										/>
+										{chips.get(row.index)?.map((turn) => (
+											<TurnChip
+												key={turn.turnId}
+												turn={turn}
+												cwd={sessionCwd}
+												sessionFile={sessionFile}
+												canUndo={turn === undoable}
+												onDone={() => onTurnsChange?.()}
+											/>
+										))}
 									</div>
 								);
 							})}

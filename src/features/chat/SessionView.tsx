@@ -3,10 +3,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
-import type { SessionStatus } from "../../lib/contracts";
+import type { SessionStatus, TurnCheckpoint } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import {
 	getTranscript,
+	gitSessionTurns,
 	rpcEnsureLive,
 	rpcPendingUi,
 	rpcSend,
@@ -49,6 +50,21 @@ export function SessionView({
 			: (meta?.status ?? (live?.alive ? "working" : "idle"));
 	const external = status === "external";
 	const pendingUi = live?.pendingUi ?? [];
+
+	// Per-turn checkpoint chips (empty outside git worktrees / when the
+	// checkpoints extension is disabled; fetch failures are silent).
+	const [turns, setTurns] = useState<TurnCheckpoint[]>([]);
+	const sessionFile = meta?.file ?? "";
+	const loadTurns = useCallback(() => {
+		if (!sessionFile) {
+			setTurns([]);
+			return;
+		}
+		gitSessionTurns(sessionFile)
+			.then((list) => setTurns(list))
+			.catch(() => setTurns([]));
+	}, [sessionFile]);
+	useEffect(loadTurns, [loadTurns]);
 
 	const [isLoadingTranscript, setIsLoadingTranscript] = useState(true);
 	const [transcriptError, setTranscriptError] = useState<string | null>(null);
@@ -112,8 +128,11 @@ export function SessionView({
 				if (page.reset) setItems(sessionId, page.items, page.nextOffset);
 				else appendItems(sessionId, page.items, page.nextOffset);
 			})
-			.catch(() => {});
-	}, [streaming, sessionId, setItems, appendItems]);
+			.catch(() => {})
+			.finally(() => {
+				loadTurns();
+			});
+	}, [streaming, sessionId, setItems, appendItems, loadTurns]);
 
 	// Auto-resume / reconnect if the session is not alive and not external
 	useEffect(() => {
@@ -148,6 +167,11 @@ export function SessionView({
 								isLoadingTranscript={isLoadingTranscript}
 								transcriptError={transcriptError}
 								onRetryTranscript={loadTranscript}
+								turns={turns}
+								sessionCwd={meta?.cwd ?? ""}
+								sessionFile={sessionFile}
+								sessionWorking={status === "working"}
+								onTurnsChange={loadTurns}
 							/>
 							<SelectionToolbar
 								sessionId={sessionId}

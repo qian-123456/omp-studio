@@ -34,6 +34,13 @@ pub fn extension_path() -> PathBuf {
     data_dir().join("extension").join("omp-workspace-status.ts")
 }
 
+/// `~/.omp-workspace/extension/omp-workspace-checkpoints.ts`
+pub fn checkpoints_extension_path() -> PathBuf {
+    data_dir()
+        .join("extension")
+        .join("omp-workspace-checkpoints.ts")
+}
+
 /// `~/.omp-workspace/supervisor-sessions/`
 pub fn supervisor_dir() -> PathBuf {
     data_dir().join("supervisor-sessions")

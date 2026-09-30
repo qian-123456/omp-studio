@@ -49,6 +49,7 @@ src-tauri/src/
 src-tauri/mobile/index.html   mobile web app (single file, vanilla JS)                 [E]
 src-tauri/prompts/*.md + src/prompts.rs  prompt templates + render() ({{var}}, {{#if var}}..{{/if}}) [LEAD]
 extension/omp-workspace-status.ts   OMP status-report extension (§8)                   [E]
+extension/omp-workspace-checkpoints.ts + autocommit-rule.md  turn checkpoints extension (§8.1) [C]
 
 src/
   main.tsx, App.tsx          shell, three-pane layout, top bar                          [LEAD]
@@ -60,6 +61,8 @@ src/
   stores/sessions.ts         SessionMeta map, loaded via list_sessions + events         [LEAD]
   stores/composer.ts         annotations (pills) per session + side-chat requests       [LEAD]
   stores/live.ts             per-session live RPC state (streaming, pending UI, subagents, state) [B]
+  stores/explorer.ts         pinned explorer workspace (Git worktree map → explorer)    [C]
+  stores/turnNav.ts          chat turn ⇄ git commit jump requests (§8.1)                [C]
   features/sessions/         left column                                                [A]
   features/chat/             center session view, composer, tool cards, diff, approvals, held queue [B]
   features/sidechat/         right tab: forks                                           [B]
@@ -93,6 +96,7 @@ Rules for parallel work:
 | `~/.omp-workspace/global/` | cwd for the 🌐 global workspace |
 | `~/.omp-workspace/status/<sessionId>.json` | status files written by the extension (§8) |
 | `~/.omp-workspace/extension/omp-workspace-status.ts` | extension installed at startup from `include_str!` |
+| `~/.omp-workspace/extension/omp-workspace-checkpoints.ts` | turn checkpoints extension (§8.1), installed at startup; loaded only when `settings.turn_checkpoints == Some(true)` |
 | `~/.omp-workspace/supervisor-sessions/` | `--session-dir` for supervisor / summarizer runs |
 | `<repo>/.worktrees/<name>` | session worktrees (branch `omp/<name>`) and time-machine worktrees (`tm-<shortsha>`, detached) |
 
@@ -197,6 +201,11 @@ pub struct GitFileChange { pub path: String, pub status: String /* M A D R ?? */
 pub struct GitSummary { pub is_repo: bool, pub branch: Option<String>, pub files: Vec<GitFileChange>, pub has_uncommitted: bool }
 pub struct GitCommit { pub sha: String, pub short: String, pub subject: String, pub author: String, pub ts: String }
 pub struct WorktreeInfo { pub path: String, pub branch: Option<String>, pub head: String, pub dirty: u32 /* uncommitted change count */, pub session_ids: Vec<String> }
+pub struct TurnFile { pub path: String, pub status: String /* A M D */ }
+pub struct TurnCheckpoint { pub turn_id: String, pub session_id: String, pub user_item_id: Option<String>, pub prompt: String,
+  pub before: String, pub after: String, pub head_before: Option<String>, pub head_after: Option<String>,
+  pub commits: Vec<String> /* newest first */, pub files: Vec<TurnFile>, pub ended_at: String, pub restorable: bool, pub undone: bool }
+pub struct TurnUndoResult { pub restored: Vec<String>, pub deleted: Vec<String>, pub conflicts: Vec<String>, pub head_reset: bool, pub warning: Option<String> }
 pub struct TmRun { pub id: String, pub repo: String, pub sha: String, pub worktree: String, pub command: String, pub pid: Option<u32>, pub url: Option<String>, pub log_tail: String }
 
 pub struct ServiceInfo { pub pid: u32, pub name: String, pub port: u16, pub cwd: Option<String>, pub command: String, pub url: String, pub session_id: Option<String>, pub started_by_app: bool }
@@ -221,6 +230,8 @@ pub struct Settings {
   pub tunnel_mode: String,           // "off" | "quick" | "named"; default "off"
   pub tunnel_name: Option<String>, pub tunnel_hostname: Option<String>,
   pub quick_capture_shortcut: String, // default "CommandOrControl+Shift+I"
+  // … (later fields: see contracts.rs)
+  pub turn_checkpoints: Option<bool>, // default None = never asked; Some(true) loads the checkpoints extension (§8.1)
 }
 ```
 
@@ -333,6 +344,12 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
   (`git add -A` into a throwaway index, so new-file content is included and the real index is untouched; ≤8k chars; recent
   subjects passed as style examples)
 - `git_commit(cwd, message) -> String` — `git add -A` + `git commit` (argv, no shell); always saves every change
+- `git_session_turns(session_file) -> Vec<TurnCheckpoint>` (oldest first), `git_worktree_turns(cwd) -> Vec<TurnCheckpoint>` (every
+  session whose cwd is this worktree) — read `omp-workspace.turn-checkpoint` entries (§8.1); `restorable`/`undone` from hidden refs
+- `git_undo_turn(cwd, session_file, turn_id, force: bool) -> TurnUndoResult` — newest non-undone turn only; restores just that turn's
+  files from its `before` snapshot (created files deleted); files changed since the turn → `conflicts` and nothing touched unless `force`;
+  rolls HEAD back to `head_before` only while HEAD is still `head_after`; writes `refs/omp/undone/<sid>/<turnId>`
+- `checkpoints_rule() -> String` — auto-commit rule text the checkpoints extension injects (consent card / settings)
 - `tm_run(repo, sha, command: Option<String>) -> TmRun`, `tm_list() -> Vec<TmRun>`, `tm_stop(run_id, remove_worktree: bool)`
 - `services_list(all: bool) -> Vec<ServiceInfo>`, `services_stop(pid)`
 - `read_text_file(path) -> String`, `write_text_file(path, content)` (for the md editor; reject paths > 5 MB)
@@ -368,6 +385,20 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 Session id/file come from `ctx.sessionManager` (probe `getSessionId?.()`/`getSessionFile?.()`/`getHeader?.()`
 defensively; see `~/.omp/agent/extensions/session-autoname.ts` for the API style). Never throws.
 Catalog (A) treats a status file as authoritative for External sessions when its `pid` is alive.
+
+### 8.1 Turn checkpoints extension
+
+`extension/omp-workspace-checkpoints.ts`, installed at startup to `~/.omp-workspace/extension/` and passed via `-e` only when
+`settings.turn_checkpoints == Some(true)` (so only app-launched sessions; toggling affects newly started sessions). No-op outside a git
+work tree and in subagent sessions; never throws; git via argv with timeouts.
+- `agent_start` / `agent_end`: snapshot the whole working tree through a temp `GIT_INDEX_FILE` (real index untouched) into hidden refs
+  `refs/omp/turns/<sid>/<turnId>/{before,after}` (`sid` = session id with `[^A-Za-z0-9._-]` → `_`; `turnId` = `t<epoch-ms>`). When the turn
+  changed files or made commits, append session entry `custom` / `omp-workspace.turn-checkpoint`
+  `{ v:1, turnId, sessionId, userItemId, prompt, before, after, headBefore, headAfter, commits, files:[{path,status}], endedAt }`;
+  otherwise delete its refs. Keep the newest 50 turns per session.
+- `before_agent_start`: once per session inject `extension/autocommit-rule.md` (custom_message `omp-workspace.autocommit-rule`,
+  hidden); after an app undo (`refs/omp/undone/<sid>/<turnId>`), inject an undo notice once and record `omp-workspace.turn-undo-notified`.
+- Frontend jumps go through `stores/turnNav.ts` (`showCommit(cwd, sha)` chat → Git 版本历史, `showTurn(sessionId, userItemId)` → chat `msg-<id>`).
 
 ## 9. Cross-module Rust API (stubbed at scaffold; signatures frozen)
 

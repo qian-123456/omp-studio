@@ -8,7 +8,9 @@ import { gitDiff, gitListWorktrees, gitLog, gitRepoRoot, gitSummary, tmList } fr
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useTurnNav } from "../../stores/turnNav";
 import { ChangesSection } from "./ChangesSection";
+import { CheckpointsCard } from "./CheckpointsCard";
 import { DiffModal } from "./DiffModal";
 import { toplevelFor } from "./helpers";
 import { OrphanBanner } from "./OrphanBanner";
@@ -74,6 +76,9 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	/** Bumped to make the focus pane reload (manual refresh, session activity). */
 	const [paneNonce, setPaneNonce] = useState(0);
 	const [diff, setDiff] = useState<DiffReq | null>(null);
+	/** Chat → git jump (contract §Frontend shared pieces). */
+	const revealCommit = useTurnNav((s) => s.revealCommit);
+	const handledReveal = useRef(0);
 	const short = useShortPath();
 	// A response applies only while it is still the newest request.
 	const reqSeq = useRef(0);
@@ -132,6 +137,24 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	const selectedName = selectedWt
 		? (selectedWt.branch ?? `历史版本 ${selectedWt.head.slice(0, 7)}`)
 		: null;
+
+	// Chat → git jump: select the target worktree and open 版本历史. The
+	// timeline flashes the row and clears the request; every revealCommit (not
+	// just the newest) is handled once its worktree list is known.
+	useEffect(() => {
+		if (!revealCommit || revealCommit.nonce <= handledReveal.current) return;
+		if (worktrees.length === 0) return;
+		handledReveal.current = revealCommit.nonce;
+		useUi.getState().setRightTab("git");
+		setFocus(
+			revealCommit.cwd === top
+				? null
+				: worktrees.some((w) => w.path === revealCommit.cwd)
+					? revealCommit.cwd
+					: null,
+		);
+		setTab("history");
+	}, [revealCommit, worktrees, top]);
 
 	return (
 		<div>
@@ -197,6 +220,8 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 								</button>
 							</div>
 						)}
+						{/* First-use turn-checkpoints consent, top of the selected worktree pane. */}
+						<CheckpointsCard />
 						<FocusPane
 							key={selected}
 							path={selected}

@@ -302,6 +302,13 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     if ext.exists() {
         cmd.arg("-e").arg::<PathBuf>(ext);
     }
+    // Turn checkpoints extension: only when the user opted in (§8 contract).
+    if settings.turn_checkpoints == Some(true) {
+        let ext = paths::checkpoints_extension_path();
+        if ext.exists() {
+            cmd.arg("-e").arg::<PathBuf>(ext);
+        }
+    }
     if let Some(ext) = crate::providers::try_extension_path() {
         cmd.arg("-e").arg(ext);
     }

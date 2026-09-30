@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	homeShowCompletedTodos: false,
 	dockBadgeEnabled: true,
 	sessionTurnAutoRefresh: true,
+	turnCheckpoints: null,
 };
 
 export interface SettingsState {

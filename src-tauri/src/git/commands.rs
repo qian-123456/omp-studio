@@ -6,8 +6,10 @@ use std::time::Duration;
 
 use tauri::Emitter;
 
-use super::{badge, history, repo_root, status, tm, worktree};
-use crate::contracts::{GitBadge, GitCommit, GitSummary, TmRun, WorktreeInfo};
+use super::{badge, checkpoints_ext, history, repo_root, status, tm, turns, worktree};
+use crate::contracts::{
+    GitBadge, GitCommit, GitSummary, TmRun, TurnCheckpoint, TurnUndoResult, WorktreeInfo,
+};
 use crate::state::AppState;
 
 /// Run blocking git work off the async runtime.
@@ -368,4 +370,52 @@ pub async fn git_commit(
             .map_err(|e| format!("git commit 失败: {e}"))
     })
     .await
+}
+
+/// Turn checkpoints of one session file (oldest first), enriched with
+/// `restorable`/`undone` from the repo's `refs/omp/*`.
+#[tauri::command]
+pub async fn git_session_turns(
+    _state: tauri::State<'_, AppState>,
+    session_file: String,
+) -> Result<Vec<TurnCheckpoint>, String> {
+    blocking(move || turns::session_turns(&PathBuf::from(session_file))).await
+}
+
+/// Turn checkpoints of every session assigned to the worktree containing
+/// `cwd`, oldest first.
+#[tauri::command]
+pub async fn git_worktree_turns(
+    state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<Vec<TurnCheckpoint>, String> {
+    let sessions = session_cwds(&state).await;
+    blocking(move || turns::worktree_turns(&PathBuf::from(cwd), &sessions)).await
+}
+
+/// Undo the newest turn of a session: restore its files, roll back HEAD when
+/// the turn's commits are still on top, then mark the turn undone.
+#[tauri::command]
+pub async fn git_undo_turn(
+    _state: tauri::State<'_, AppState>,
+    cwd: String,
+    session_file: String,
+    turn_id: String,
+    force: bool,
+) -> Result<TurnUndoResult, String> {
+    blocking(move || {
+        turns::undo_turn(
+            &PathBuf::from(cwd),
+            &PathBuf::from(session_file),
+            &turn_id,
+            force,
+        )
+    })
+    .await
+}
+
+/// Auto-commit rule text the checkpoints extension injects (consent card).
+#[tauri::command]
+pub async fn checkpoints_rule() -> Result<String, String> {
+    Ok(checkpoints_ext::RULE.to_string())
 }

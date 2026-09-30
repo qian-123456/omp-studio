@@ -4,21 +4,25 @@ import {
 	ChevronRight,
 	Copy,
 	FileDiff,
+	MessageSquare,
 	Play,
 	RotateCcw,
 	Search,
 	Terminal,
 	X,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
-import type { GitCommit, GitSummary, TmRun } from "../../lib/contracts";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import type { GitCommit, GitSummary, TmRun, TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { absoluteTime } from "../../lib/format";
+import { gitResetTo, gitWorktreeTurns, tmRun } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
-import { gitResetTo, tmRun } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { useTurnNav } from "../../stores/turnNav";
+import { useUi } from "../../stores/ui";
 import { ListMore } from "./helpers";
 import { TmRunCard } from "./TmRunCard";
+import { shaToTurnMap } from "./turns";
 
 const btn =
 	"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors focus:opacity-100";
@@ -89,6 +93,10 @@ function formatDayLabel(d: Date, now: Date): string {
 
 interface CommitRowProps {
 	c: GitCommit;
+	/** The agent turn that produced this commit, if any (turn checkpoints). */
+	turn: TurnCheckpoint | undefined;
+	/** Highlighted right after a chat → git jump. */
+	flash: boolean;
 	run: TmRun | undefined;
 	isFirst: boolean;
 	isLast: boolean;
@@ -107,6 +115,7 @@ interface CommitRowProps {
 	onCopySha: (sha: string, short: string) => void;
 	onRunGone: (id: string) => void;
 	onRunUpdate: (run: TmRun) => void;
+	onJumpTurn: (turn: TurnCheckpoint) => void;
 }
 
 /** One labelled line of the expanded panel: 看看 / 试试 / 回到. */
@@ -122,6 +131,8 @@ function ActionLine({ label, children }: { label: string; children: ReactNode })
 /** Timeline row: time gutter | rail + dot | subject. Expands into an action panel. */
 function CommitRow({
 	c,
+	turn,
+	flash,
 	run,
 	isFirst,
 	isLast,
@@ -140,12 +151,13 @@ function CommitRow({
 	onCopySha,
 	onRunGone,
 	onRunUpdate,
+	onJumpTurn,
 }: CommitRowProps) {
 	const [resetOpen, setResetOpen] = useState(false);
 	const parsed = parseCommitSubject(c.subject);
 	const when = absoluteTime(c.ts);
 	return (
-		<li className="group/item relative">
+		<li className="group/item relative" data-commit-sha={c.sha}>
 			{/* Rail segment: starts at the first dot and stops at the last one — no dangling ends. */}
 			<span
 				aria-hidden
@@ -160,7 +172,11 @@ function CommitRow({
 			<div
 				className={clsx(
 					"relative flex items-start rounded transition-colors",
-					expanded ? "bg-neutral-800/60" : "hover:bg-neutral-800/40",
+					flash
+						? "bg-indigo-500/15 ring-1 ring-indigo-500/40"
+						: expanded
+							? "bg-neutral-800/60"
+							: "hover:bg-neutral-800/40",
 				)}
 				title={`${c.subject}\n作者 ${c.author} · ${when}\n版本编号 ${c.short}`}
 			>
@@ -234,6 +250,20 @@ function CommitRow({
 					</button>
 				</div>
 			</div>
+			{/* Turn checkpoints: a commit made during an agent turn links back to the conversation. */}
+			{turn && (
+				<button
+					type="button"
+					onClick={() => onJumpTurn(turn)}
+					title={`跳转到这一轮对话\n${turn.prompt}`}
+					className="ml-[50px] mr-1 flex items-center gap-1 rounded px-1 py-0 text-left text-[10px] leading-[18px] text-indigo-400/80 transition-colors hover:bg-indigo-500/10 hover:text-indigo-300"
+				>
+					<MessageSquare size={10} className="shrink-0" />
+					<span className="min-w-0 truncate">
+						来自对话：{turn.prompt || "（空消息）"}
+					</span>
+				</button>
+			)}
 
 			{expanded && (
 				<div className="mb-1.5 ml-[50px] mr-1 mt-1 space-y-1.5 rounded border border-neutral-800 bg-neutral-900/60 p-2 text-[11px]">
@@ -409,6 +439,7 @@ export function TimelineSection({
 	onRunsChange: (runs: TmRun[]) => void;
 	onChanged: () => void;
 }) {
+	const rootRef = useRef<HTMLDivElement>(null);
 	const [open, setOpen] = useState<string | null>(null);
 	const [customFor, setCustomFor] = useState<string | null>(null);
 	const [customCommands, setCustomCommands] = useState<Record<string, string>>({});
@@ -424,6 +455,11 @@ export function TimelineSection({
 	const [error, setError] = useState<string | null>(null);
 	const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 	const [dayToggles, setDayToggles] = useState<Record<string, boolean>>({});
+	/** Turn checkpoints recorded by app-launched sessions in this worktree. */
+	const [turns, setTurns] = useState<TurnCheckpoint[]>([]);
+	const revealCommit = useTurnNav((s) => s.revealCommit);
+	const [flash, setFlash] = useState<string | null>(null);
+	const handledReveal = useRef(0);
 
 	// Filter state
 	const [filterText, setFilterText] = useState("");
@@ -443,6 +479,26 @@ export function TimelineSection({
 			return true;
 		});
 	}, [commits, filterText]);
+
+	// Fetch turn checkpoints alongside the log: keyed by cwd and the commit shas
+	// so polling with unchanged history never refetches.
+	const commitsKey = useMemo(() => commits.map((c) => c.sha).join(","), [commits]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: commitsKey summarizes commits
+	useEffect(() => {
+		let stale = false;
+		gitWorktreeTurns(cwd)
+			.then((ts) => {
+				if (!stale) setTurns(ts);
+			})
+			.catch(() => {
+				if (!stale) setTurns([]);
+			});
+		return () => {
+			stale = true;
+		};
+	}, [cwd, commitsKey]);
+
+	const turnBySha = useMemo(() => shaToTurnMap(turns), [turns]);
 
 	// Group filtered commits by calendar day
 	const dayGroups = useMemo(() => {
@@ -495,6 +551,42 @@ export function TimelineSection({
 		setDayToggles((prev) => ({ ...prev, [key]: !currentOpen }));
 
 	const runFor = (sha: string) => runs.find((r) => r.sha === sha);
+
+	// Chat → git jump: once the target sha is rendered, expand its day group
+	// (and the COMMIT_CAP window) and flag it for the flash/scroll effect.
+	useEffect(() => {
+		if (!revealCommit || revealCommit.cwd !== cwd) return;
+		if (revealCommit.nonce <= handledReveal.current) return;
+		const commit = commits.find((c) => c.sha === revealCommit.sha);
+		if (!commit) return; // keep pending — another log page may load it
+		handledReveal.current = revealCommit.nonce;
+		const group = dayGroups.find((g) => g.items.some((c) => c.sha === commit.sha));
+		if (group) {
+			setDayToggles((prev) => ({ ...prev, [group.key]: true }));
+			if (group.items.findIndex((c) => c.sha === commit.sha) >= COMMIT_CAP) {
+				setExpandedDays((prev) => ({ ...prev, [group.key]: true }));
+			}
+		}
+		setFlash(commit.sha);
+		useTurnNav.getState().clearCommit();
+	}, [revealCommit, commits, dayGroups, cwd]);
+
+	// After flash renders, scroll the row into view, then fade the highlight.
+	useEffect(() => {
+		if (!flash) return;
+		const el = rootRef.current?.querySelector(`[data-commit-sha="${flash}"]`);
+		el?.scrollIntoView({ behavior: "smooth", block: "center" });
+		const t = setTimeout(() => setFlash(null), 2600);
+		return () => clearTimeout(t);
+	}, [flash]);
+
+	// Timeline → chat jump (revealTurn is consumed by the chat side).
+	const jumpToTurn = (turn: TurnCheckpoint) => {
+		useUi.getState().selectSession(turn.sessionId);
+		if (turn.userItemId) {
+			useTurnNav.getState().showTurn(turn.sessionId, turn.userItemId);
+		}
+	};
 
 	const saveHistory = (cmd: string) => {
 		const trimmed = cmd.trim();
@@ -563,7 +655,7 @@ export function TimelineSection({
 	};
 
 	return (
-		<div className="pt-1.5">
+		<div ref={rootRef} className="pt-1.5">
 			{error && <div className="mb-1 text-[11px] text-rose-400">{error}</div>}
 
 					{/* Filter & Search Bar */}
@@ -657,6 +749,8 @@ export function TimelineSection({
 												<CommitRow
 													key={c.sha}
 													c={c}
+													turn={turnBySha.get(c.sha)}
+													flash={flash === c.sha}
 													run={run}
 													isFirst={i === 0}
 													isLast={i === shown.length - 1}
@@ -687,6 +781,7 @@ export function TimelineSection({
 													onRunUpdate={(next) =>
 														onRunsChange(runs.map((r) => (r.id === next.id ? next : r)))
 													}
+													onJumpTurn={jumpToTurn}
 												/>
 											);
 										})}
