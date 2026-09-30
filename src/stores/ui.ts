@@ -4,7 +4,15 @@
 
 import { create } from "zustand";
 
-export type CenterView = "home" | "session" | "doc" | "backlog" | "settings" | "agentTerminal";
+export type CenterView =
+	| "home"
+	| "session"
+	| "doc"
+	| "inbox"
+	| "schedules"
+	| "skills"
+	| "settings"
+	| "agentTerminal";
 export type RightTab = "explorer" | "sidechat" | "heatmap" | "todos" | "git" | "services";
 
 const STORAGE_KEYS = {

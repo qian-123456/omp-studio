@@ -29,6 +29,7 @@ pub fn priority_of(kind: TodoKind) -> i32 {
         TodoKind::Interrupted => 25,
         TodoKind::Review => 20,
         TodoKind::ServiceLeft => 15,
+        TodoKind::ScheduleRun => 12,
         TodoKind::Suggestion => 10,
     }
 }
@@ -185,9 +186,9 @@ pub fn resolve_session_kinds(
 fn source_filter(show_system: bool, show_supervisor: bool) -> &'static str {
     match (show_system, show_supervisor) {
         (true, true) => "1=1",
-        (true, false) => "source = 'system'",
-        (false, true) => "source = 'supervisor'",
-        (false, false) => "0=1",
+        (true, false) => "source IN ('system', 'schedule')",
+        (false, true) => "source IN ('supervisor', 'schedule')",
+        (false, false) => "source = 'schedule'",
     }
 }
 

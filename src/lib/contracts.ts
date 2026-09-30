@@ -183,9 +183,12 @@ export type TodoKind =
 	| "interrupted"
 	| "review"
 	| "suggestion"
-	| "service_left";
+	| "service_left"
+	/** A scheduled-task run finished; payload: {"scheduleId","runId","ok":bool}. */
+	| "schedule_run";
 
-export type TodoSource = "system" | "supervisor";
+/** `schedule` rows are always visible (not gated by system/supervisor switches). */
+export type TodoSource = "system" | "supervisor" | "schedule";
 
 export type TodoStatus = "open" | "done" | "ignored";
 

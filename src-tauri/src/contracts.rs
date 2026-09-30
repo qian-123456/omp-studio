@@ -246,6 +246,8 @@ pub enum TodoKind {
     Review,
     Suggestion,
     ServiceLeft,
+    /// A scheduled-task run finished; payload: {"scheduleId","runId","ok":bool}.
+    ScheduleRun,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -253,6 +255,8 @@ pub enum TodoKind {
 pub enum TodoSource {
     System,
     Supervisor,
+    /// Always visible (not gated by system/supervisor switches).
+    Schedule,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

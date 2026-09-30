@@ -130,6 +130,13 @@
  * are ported from omp-web's palettes (same semantic variable names).
  */
 :root {
+	/* Stacking scale — mirrors Z_LAYER in src/components/FloatingLayer.tsx */
+	--z-drawer: 40;
+	--z-modal: 50;
+	--z-popover: 60;
+	--z-menu: 65;
+	--z-hovercard: 70;
+	--z-toast: 100;
 	--bg: #161618;
 	--bg-panel: #1C1C1E;
 	--bg-hover: #2C2C2E;

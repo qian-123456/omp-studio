@@ -14,18 +14,18 @@ import {
 	X,
 } from "lucide-react";
 import React, {
+	Suspense,
+	lazy,
 	useCallback,
 	useEffect,
 	useRef,
 	useState,
 	type ReactNode,
 } from "react";
-import { BacklogPanel } from "./features/backlog/BacklogPanel";
 import { QuickCapture } from "./features/backlog/QuickCapture";
 import { SessionView } from "./features/chat/SessionView";
 import { QuickAskDialog } from "./features/chat/QuickAskDialog";
 import { DiagnoseDialog } from "./features/diagnose/DiagnoseDialog";
-import { DocView } from "./features/editor/DocView";
 import { FileExplorer } from "./features/explorer/FileExplorer";
 import { GitPanel } from "./features/git/GitPanel";
 import { NewSessionDialog } from "./features/git/NewSessionDialog";
@@ -41,7 +41,6 @@ import { TopCapsule } from "./features/todos/TopCapsule";
 import { startTodos, useTodos } from "./features/todos/store";
 import { destroySessionTerminal } from "./features/terminal/terminalRegistry";
 import { TerminalDrawer } from "./features/terminal/TerminalDrawer";
-import { AgentTerminalPage } from "./features/terminal/AgentTerminalPage";
 import { onServicesChanged, onSessionsRemoved } from "./lib/events";
 import { gitSummary, servicesList } from "./lib/ipc";
 import type { PairingInfo, SessionStatus } from "./lib/contracts";
@@ -58,6 +57,21 @@ import { Toaster } from "./components/Toaster";
 import { BottomBar } from "./components/BottomBar";
 import { RightPanelHeader } from "./components/RightPanelHeader";
 import { RightPanelEmptyState } from "./components/RightPanelEmptyState";
+const DocView = lazy(() =>
+	import("./features/editor/DocView").then((m) => ({ default: m.DocView })),
+);
+const AgentTerminalPage = lazy(() =>
+	import("./features/terminal/AgentTerminalPage").then((m) => ({ default: m.AgentTerminalPage })),
+);
+const InboxPage = lazy(() =>
+	import("./features/inbox/InboxPage").then((m) => ({ default: m.InboxPage })),
+);
+const SchedulesPage = lazy(() =>
+	import("./features/schedules/SchedulesPage").then((m) => ({ default: m.SchedulesPage })),
+);
+const SkillsPage = lazy(() =>
+	import("./features/skills/SkillsPage").then((m) => ({ default: m.SkillsPage })),
+);
 const isMac =
 	typeof navigator !== "undefined" &&
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
@@ -144,23 +158,42 @@ function RightPanelBody({ tab }: { tab: RightTab }) {
 	}
 }
 
+/** Header title for non-session center views. */
+const CENTER_TITLE: Partial<Record<CenterView, string>> = {
+	doc: "文档",
+	inbox: "收件箱",
+	schedules: "定时任务",
+	skills: "技能与扩展",
+	agentTerminal: "Agent 终端",
+};
+
 function MainCenterView({ activeView }: { activeView: CenterView }) {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const docPath = useUi((s) => s.docPath);
+	let view: ReactNode;
 	switch (activeView) {
 		case "session":
-			return selectedSessionId ? (
-				<SessionView sessionId={selectedSessionId} />
-			) : (
-				<StartPage />
-			);
+			view = selectedSessionId ? <SessionView sessionId={selectedSessionId} /> : <StartPage />;
+			break;
 		case "doc":
-			return docPath ? <DocView path={docPath} /> : <StartPage />;
+			view = docPath ? <DocView path={docPath} /> : <StartPage />;
+			break;
+		case "inbox":
+			view = <InboxPage />;
+			break;
+		case "schedules":
+			view = <SchedulesPage />;
+			break;
+		case "skills":
+			view = <SkillsPage />;
+			break;
 		case "agentTerminal":
-			return <AgentTerminalPage />;
+			view = <AgentTerminalPage />;
+			break;
 		default:
-			return <StartPage />;
+			view = <StartPage />;
 	}
+	return <Suspense fallback={null}>{view}</Suspense>;
 }
 
 export default function App() {
@@ -700,15 +733,11 @@ export default function App() {
 											</span>
 										</button>
 									)}
-									<span className="text-[13px] font-medium text-neutral-300 shrink-0">
-										{effectiveCenterView === "doc"
-											? "文档"
-											: effectiveCenterView === "backlog"
-												? "收集箱"
-												: effectiveCenterView === "agentTerminal"
-													? "Agent 终端"
-													: "待办任务"}
-									</span>
+									{CENTER_TITLE[effectiveCenterView] && (
+										<span className="text-[13px] font-medium text-neutral-300 shrink-0">
+											{CENTER_TITLE[effectiveCenterView]}
+										</span>
+									)}
 								</div>
 							)}
 
@@ -918,7 +947,6 @@ export default function App() {
 				</div>
 			)}
 			{/* Global modals — render nothing unless ui.modal matches. */}
-			<BacklogPanel />
 			<QuickCapture />
 			<QuickAskDialog />
 			<DiagnoseDialog />
