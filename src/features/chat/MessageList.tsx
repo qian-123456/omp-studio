@@ -42,8 +42,9 @@ import {
 import { sendPrompt } from "./send";
 import { ToolCard } from "./ToolCard";
 import {
-	formatShortModel,
 	groupTurnBlocks,
+	noticeLabel,
+	noticeSummary,
 	type TurnBlock,
 } from "./turnGrouping";
 import { undoableTurn } from "./turnChips";
@@ -173,24 +174,26 @@ const ProtocolRow = React.memo(function ProtocolRow({
 }: {
 	item: TranscriptItem;
 }) {
-	const label =
-		item.kind === "model_change"
-			? `模型切换 → ${formatShortModel(item.model ?? item.text) || (item.model ?? item.text ?? "?")}`
-			: item.kind === "compaction"
-				? "上下文压缩已完成"
-				: item.kind === "branch_summary"
-					? "分支总结"
-					: item.kind === "thinking_level_change"
-						? `思考等级 → ${item.text ?? "?"}`
-						: item.kind;
+	const label = noticeLabel(item);
+	const summary = noticeSummary(item);
 
 	return (
 		<div
 			id={`msg-${item.id}`}
 			className="py-1.5 text-center text-[10px] text-neutral-500"
 		>
-			<span className="inline-block rounded-full hairline bg-[var(--bg-panel)] px-2.5 py-0.5 shadow-xs">
-				{label}
+			<span
+				className="inline-block max-w-full truncate rounded-full hairline bg-[var(--bg-panel)] px-2.5 py-0.5 shadow-xs"
+				title={summary || label}
+			>
+				{summary ? (
+					<>
+						{label}
+						<span className="text-neutral-600"> · {summary}</span>
+					</>
+				) : (
+					label
+				)}
 			</span>
 		</div>
 	);
@@ -231,8 +234,8 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 
 	return (
 		<div className="flex flex-col py-1">
-			{/* User query bubble */}
-			<UserRow sessionId={sessionId} item={block.userItem} />
+			{/* User query bubble (absent when the turn has no visible user message) */}
+			{block.userItem && <UserRow sessionId={sessionId} item={block.userItem} />}
 
 			{/* Collapsed intermediate execution disclosure */}
 			{block.intermediateSteps.length > 0 && (
@@ -267,12 +270,9 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						turnCheckpoint={turnCheckpoint}
 						canUndo={canUndo}
 						onDoneUndo={onTurnsChange}
-						completionTime={
-							block.answerItem.ts ??
-							block.userItem.ts
-						}
+						completionTime={block.answerItem.ts ?? block.userItem?.ts}
 						durationMs={block.durationMs}
-						model={block.answerItem.model ?? block.userItem.model}
+						model={block.answerItem.model ?? block.userItem?.model}
 						answerText={answerText}
 					/>
 				</div>
@@ -724,6 +724,11 @@ export function MessageList({
 									highlightedId ?? "",
 								);
 
+								const cp =
+									block.type === "turn" && block.userItem
+										? checkpointByUserItem.get(block.userItem.id)
+										: undefined;
+
 								return (
 									<div
 										key={row.key}
@@ -745,13 +750,8 @@ export function MessageList({
 												toolResultsByCallId={toolResultsByCallId}
 												sessionCwd={sessionCwd}
 												sessionFile={sessionFile}
-												turnCheckpoint={checkpointByUserItem.get(
-													block.userItem.id,
-												)}
-												canUndo={
-													checkpointByUserItem.get(block.userItem.id) ===
-													undoable
-												}
+												turnCheckpoint={cp}
+												canUndo={cp !== undefined && cp === undoable}
 												onTurnsChange={onTurnsChange}
 											/>
 										) : (

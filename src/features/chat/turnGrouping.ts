@@ -1,4 +1,9 @@
-import type { ToolCall, ToolResultInfo, TranscriptItem } from "../../lib/contracts";
+import type {
+	ToolCall,
+	ToolResultInfo,
+	TranscriptItem,
+	TranscriptKind,
+} from "../../lib/contracts";
 
 export type TurnStep =
 	| {
@@ -19,12 +24,22 @@ export type TurnStep =
 			kind: "text";
 			item: TranscriptItem;
 			text: string;
+	  }
+	/**
+	 * Protocol/system item that arrived mid-run; id = `notice-${item.id}`.
+	 */
+	| {
+			id: string;
+			kind: "notice";
+			item: TranscriptItem;
 	  };
 
 export interface TurnBlock {
 	type: "turn";
+	/** `turn-${userItem.id}`, or `turn-${first item id}` when userItem is null. */
 	id: string;
-	userItem: TranscriptItem;
+	/** null = agent activity with no preceding visible user message (render no user bubble). */
+	userItem: TranscriptItem | null;
 	intermediateSteps: TurnStep[];
 	answerItem?: TranscriptItem;
 	allItemIds: string[];
@@ -108,24 +123,87 @@ export function computeDurationMs(
 }
 
 /**
+ * True for kinds that form protocol rows between turns / notice steps mid-run:
+ * model_change | compaction | system | custom.
+ */
+export function isProtocolKind(kind: TranscriptKind): boolean {
+	return (
+		kind === "model_change" ||
+		kind === "compaction" ||
+		kind === "system" ||
+		kind === "custom"
+	);
+}
+
+/**
+ * Short Chinese label for a protocol/notice item; never the raw kind.
+ */
+export function noticeLabel(item: TranscriptItem): string {
+	switch (item.kind) {
+		case "model_change":
+			return `模型切换 → ${
+				formatShortModel(item.model ?? item.text) ||
+				(item.model ?? item.text ?? "?")
+			}`;
+		case "compaction":
+			return "上下文压缩已完成";
+		case "branch_summary":
+			return "分支总结";
+		case "thinking_level_change":
+			return `思考等级 → ${item.text ?? "?"}`;
+		default:
+			return "系统通知";
+	}
+}
+
+/**
+ * Item text with one outer `<system-notice>` / `<system-reminder>` wrapper removed.
+ */
+export function noticeBody(item: TranscriptItem): string {
+	const text = item.text?.trim() ?? "";
+	if (!text) return "";
+	const m = text.match(/^<system-(notice|reminder)>([\s\S]*)<\/system-\1>$/);
+	return m ? m[2].trim() : text;
+}
+
+/**
+ * One-line summary: first non-empty line of the notice body for generic notices;
+ * "" when the label already says everything (model_change, compaction, …).
+ */
+export function noticeSummary(item: TranscriptItem): string {
+	if (noticeLabel(item) !== "系统通知") return "";
+	return (
+		noticeBody(item)
+			.split("\n")
+			.map((line) => line.trim())
+			.find((line) => line.length > 0) ?? ""
+	);
+}
+
+/**
  * Groups a linear list of transcript items into DisplayBlocks (TurnBlocks and ProtocolBlocks).
  *
  * Rules:
- * 1. Protocol / system items (e.g. kind="model_change", "compaction", "system", "custom") become ProtocolBlocks.
- * 2. A "user" item begins a TurnBlock.
- * 3. Subsequent items belonging to the turn:
+ * 1. A "user" item begins a TurnBlock; agent activity (assistant/tool_result) with no
+ *    preceding visible user message opens a TurnBlock whose userItem is null.
+ * 2. Items belonging to the turn:
  *    - "assistant" items with thinking/toolCalls become intermediateSteps.
- *    - "tool_result" items pair with the corresponding toolCall in intermediateSteps (or become orphan tool steps).
+ *    - "tool_result" items pair with the corresponding toolCall in intermediateSteps
+ *      (or become orphan-result text steps).
  *    - Intermediate assistant items with text become text steps in intermediateSteps.
  *    - The final "assistant" item with text (or last assistant item) becomes the answerItem.
  *      If that final assistant item also had thinking, the thinking is captured as an intermediateStep!
- * 4. A new "user" item or a standalone protocol item ends the current TurnBlock.
+ *    - Protocol items (isProtocolKind) that arrive mid-run — i.e. assistant/tool activity
+ *      follows before the next user message — become "notice" steps in intermediateSteps.
+ * 3. A new "user" item ends the current TurnBlock.
+ * 4. Protocol items outside a running turn (or with no agent activity after them), and any
+ *    other kind with no active turn, form standalone ProtocolBlocks.
  */
 export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 	const blocks: DisplayBlock[] = [];
 
 	let currentTurn: {
-		userItem: TranscriptItem;
+		userItem: TranscriptItem | null;
 		intermediateSteps: TurnStep[];
 		answerItem?: TranscriptItem;
 		allItemIds: string[];
@@ -150,7 +228,9 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 
 		blocks.push({
 			type: "turn",
-			id: `turn-${currentTurn.userItem.id}`,
+			id: currentTurn.userItem
+				? `turn-${currentTurn.userItem.id}`
+				: `turn-${currentTurn.allItemIds[0]}`,
 			userItem: currentTurn.userItem,
 			intermediateSteps: currentTurn.intermediateSteps,
 			answerItem: currentTurn.answerItem,
@@ -178,6 +258,19 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 		return false;
 	};
 
+	// True when the agent keeps working after index i: scan forward skipping
+	// hidden items; true at the first assistant/tool_result, false at user/end.
+	const hasAgentActivityAfter = (i: number): boolean => {
+		for (let j = i + 1; j < items.length; j++) {
+			const next = items[j];
+			if (next.hidden) continue;
+			if (next.kind === "user") return false;
+			if (next.kind === "assistant" || next.kind === "tool_result")
+				return true;
+		}
+		return false;
+	};
+
 	for (let i = 0; i < items.length; i++) {
 		const item = items[i];
 
@@ -199,40 +292,19 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 			continue;
 		}
 
-		// If no active turn, check if it's protocol or orphan assistant/tool
-		if (!currentTurn) {
-			if (
-				item.kind === "model_change" ||
-				item.kind === "compaction" ||
-				item.kind === "system" ||
-				item.kind === "custom"
-			) {
-				blocks.push({
-					type: "protocol",
-					id: `protocol-${item.id}`,
+		// Protocol item: mid-run it becomes a notice step inside the turn;
+		// otherwise it is a standalone ProtocolBlock between turns.
+		if (isProtocolKind(item.kind)) {
+			if (currentTurn && hasAgentActivityAfter(i)) {
+				currentTurn.intermediateSteps.push({
+					id: `notice-${item.id}`,
+					kind: "notice",
 					item,
-					allItemIds: [item.id],
 				});
-			} else {
-				// Orphan assistant or tool_result without a preceding user message
-				// Wrap into a synthetic turn or protocol block
-				blocks.push({
-					type: "protocol",
-					id: `orphan-${item.id}`,
-					item,
-					allItemIds: [item.id],
-				});
+				currentTurn.allItemIds.push(item.id);
+				if (item.ts) currentTurn.endTime = item.ts;
+				continue;
 			}
-			continue;
-		}
-
-		// Active turn: check if item is protocol that breaks the turn
-		if (
-			item.kind === "model_change" ||
-			item.kind === "compaction" ||
-			item.kind === "system" ||
-			item.kind === "custom"
-		) {
 			finalizeCurrentTurn();
 			blocks.push({
 				type: "protocol",
@@ -241,6 +313,29 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 				allItemIds: [item.id],
 			});
 			continue;
+		}
+
+		if (!currentTurn) {
+			if (item.kind === "assistant" || item.kind === "tool_result") {
+				// Agent activity with no preceding visible user message: open a
+				// userless turn, then handle the item normally below.
+				currentTurn = {
+					userItem: null,
+					intermediateSteps: [],
+					allItemIds: [],
+					startTime: item.ts,
+					endTime: item.ts,
+				};
+			} else {
+				// Any other kind without a turn: standalone protocol row.
+				blocks.push({
+					type: "protocol",
+					id: `protocol-${item.id}`,
+					item,
+					allItemIds: [item.id],
+				});
+				continue;
+			}
 		}
 
 		// If tool result, attach to matching tool call in currentTurn

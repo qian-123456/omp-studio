@@ -1,11 +1,17 @@
 import clsx from "clsx";
-import { ChevronRight, Cpu, Loader2, Sparkles } from "lucide-react";
+import { Bell, ChevronRight, Cpu, Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { ToolResultInfo } from "../../lib/contracts";
 import { useLive } from "../../stores/live";
 import { Markdown } from "./markdown";
 import { ToolCard } from "./ToolCard";
-import { formatDurationChinese, type TurnStep } from "./turnGrouping";
+import {
+	formatDurationChinese,
+	noticeBody,
+	noticeLabel,
+	noticeSummary,
+	type TurnStep,
+} from "./turnGrouping";
 
 export function ExecutionDisclosure({
 	sessionId,
@@ -107,6 +113,16 @@ export function ExecutionDisclosure({
 							);
 						}
 
+						if (step.kind === "notice") {
+							return (
+								<NoticeStep
+									key={step.id}
+									step={step}
+									forceExpanded={forceExpanded}
+								/>
+							);
+						}
+
 						if (step.kind === "tool") {
 							const call = step.call;
 							const res = step.result ?? toolResultsByCallId?.get(call.id);
@@ -137,6 +153,74 @@ export function ExecutionDisclosure({
 						return null;
 					})}
 				</div>
+			)}
+		</div>
+	);
+}
+
+/**
+ * Quiet single-line row for a mid-run system notice. Expands to the full
+ * notice body only when there is more text than the one-line summary shows.
+ */
+function NoticeStep({
+	step,
+	forceExpanded,
+}: {
+	step: Extract<TurnStep, { kind: "notice" }>;
+	forceExpanded?: boolean | null;
+}) {
+	const [isOpen, setIsOpen] = useState(false);
+	const expanded =
+		forceExpanded !== null && forceExpanded !== undefined
+			? forceExpanded
+			: isOpen;
+
+	const label = noticeLabel(step.item);
+	const summary = noticeSummary(step.item);
+	const body = noticeBody(step.item);
+	const expandable = body !== "" && body !== summary;
+
+	const inner = (
+		<>
+			<Bell size={11} className="shrink-0 text-neutral-500" />
+			<span className="shrink-0 font-medium">{label}</span>
+			{summary && (
+				<span className="truncate text-neutral-500" title={summary}>
+					{summary}
+				</span>
+			)}
+			{expandable && (
+				<ChevronRight
+					size={12}
+					className={clsx(
+						"shrink-0 transition-transform duration-200",
+						expanded ? "rotate-90 text-neutral-300" : "text-neutral-500",
+					)}
+				/>
+			)}
+		</>
+	);
+
+	return (
+		<div id={`msg-${step.id}`}>
+			{expandable ? (
+				<button
+					type="button"
+					onClick={() => setIsOpen((prev) => !prev)}
+					className="flex w-full items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-[12px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
+					title={expanded ? "收起通知详情" : "展开通知详情"}
+				>
+					{inner}
+				</button>
+			) : (
+				<div className="flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-[12px] text-neutral-400">
+					{inner}
+				</div>
+			)}
+			{expandable && expanded && (
+				<pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all rounded-xl bg-[var(--bg)] hairline px-2.5 py-2 font-mono text-[11px] text-neutral-300">
+					{body}
+				</pre>
 			)}
 		</div>
 	);

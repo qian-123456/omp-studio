@@ -5,6 +5,8 @@ import {
 	formatDurationChinese,
 	formatShortModel,
 	groupTurnBlocks,
+	noticeBody,
+	noticeSummary,
 } from "./turnGrouping";
 
 function makeItem(partial: Partial<TranscriptItem> & { id: string; kind: TranscriptItem["kind"] }): TranscriptItem {
@@ -107,7 +109,7 @@ describe("turnGrouping", () => {
 		expect(turn.type).toBe("turn");
 		if (turn.type === "turn") {
 			expect(turn.id).toBe("turn-msg-1");
-			expect(turn.userItem.id).toBe("msg-1");
+			expect(turn.userItem?.id).toBe("msg-1");
 			expect(turn.answerItem?.id).toBe("msg-4");
 			expect(turn.durationMs).toBe(8000);
 
@@ -170,11 +172,181 @@ describe("turnGrouping", () => {
 
 		const turn2 = blocks[2];
 		if (turn2.type === "turn") {
-			expect(turn2.userItem.id).toBe("u-2");
+			expect(turn2.userItem?.id).toBe("u-2");
 			expect(turn2.answerItem?.id).toBe("a-2");
 			// Thinking from final assistant message is captured in intermediateSteps
 			expect(turn2.intermediateSteps).toHaveLength(1);
 			expect(turn2.intermediateSteps[0].kind).toBe("thinking");
 		}
+	});
+
+	it("keeps a mid-run visible notice inside the turn as a notice step", () => {
+		const call1: ToolCall = { id: "call-1", name: "run", args: {}, intent: null };
+		const call2: ToolCall = { id: "call-2", name: "run", args: {}, intent: null };
+
+		const items: TranscriptItem[] = [
+			makeItem({ id: "u-1", kind: "user", text: "Run the job" }),
+			makeItem({ id: "a-1", kind: "assistant", toolCalls: [call1] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: {
+					toolCallId: "call-1",
+					toolName: "run",
+					text: "ok",
+					isError: false,
+					details: null,
+				},
+			}),
+			makeItem({
+				id: "n-1",
+				kind: "custom",
+				text: "<system-notice>\nBackground job bg_1 has completed. Resume your work using the result below.\nok\n</system-notice>",
+			}),
+			makeItem({ id: "a-2", kind: "assistant", toolCalls: [call2] }),
+			makeItem({
+				id: "r-2",
+				kind: "tool_result",
+				toolResult: {
+					toolCallId: "call-2",
+					toolName: "run",
+					text: "ok",
+					isError: false,
+					details: null,
+				},
+			}),
+			makeItem({ id: "a-3", kind: "assistant", text: "All done." }),
+		];
+
+		const blocks = groupTurnBlocks(items);
+		expect(blocks).toHaveLength(1);
+
+		const turn = blocks[0];
+		expect(turn.type).toBe("turn");
+		if (turn.type === "turn") {
+			expect(turn.userItem?.id).toBe("u-1");
+			expect(turn.answerItem?.id).toBe("a-3");
+			expect(turn.allItemIds).toEqual([
+				"u-1",
+				"a-1",
+				"r-1",
+				"n-1",
+				"a-2",
+				"r-2",
+				"a-3",
+			]);
+
+			// Steps: tool c1, notice n1, tool c2 — in order.
+			expect(turn.intermediateSteps.map((s) => s.kind)).toEqual([
+				"tool",
+				"notice",
+				"tool",
+			]);
+
+			const notice = turn.intermediateSteps[1];
+			expect(notice.id).toBe("notice-n-1");
+			if (notice.kind === "notice") {
+				expect(notice.item.id).toBe("n-1");
+			}
+
+			const firstTool = turn.intermediateSteps[0];
+			if (firstTool.kind === "tool") {
+				expect(firstTool.call.id).toBe("call-1");
+				expect(firstTool.result?.toolCallId).toBe("call-1");
+			}
+			const secondTool = turn.intermediateSteps[2];
+			if (secondTool.kind === "tool") {
+				expect(secondTool.call.id).toBe("call-2");
+				expect(secondTool.result?.toolCallId).toBe("call-2");
+			}
+		}
+	});
+
+	it("keeps a trailing protocol item as a standalone row", () => {
+		const items: TranscriptItem[] = [
+			makeItem({ id: "u-1", kind: "user", text: "Hi" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "Hello!" }),
+			makeItem({ id: "n-1", kind: "custom", text: "Job finished" }),
+		];
+
+		const blocks = groupTurnBlocks(items);
+		expect(blocks).toHaveLength(2);
+
+		expect(blocks[0].type).toBe("turn");
+		if (blocks[0].type === "turn") {
+			expect(blocks[0].answerItem?.id).toBe("a-1");
+		}
+
+		expect(blocks[1].type).toBe("protocol");
+		if (blocks[1].type === "protocol") {
+			expect(blocks[1].id).toBe("protocol-n-1");
+			expect(blocks[1].item.id).toBe("n-1");
+		}
+	});
+
+	it("groups agent activity with no user message into a userless turn", () => {
+		const call1: ToolCall = { id: "call-1", name: "run", args: {}, intent: null };
+
+		const items: TranscriptItem[] = [
+			makeItem({ id: "a-1", kind: "assistant", toolCalls: [call1] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: {
+					toolCallId: "call-1",
+					toolName: "run",
+					text: "ok",
+					isError: false,
+					details: null,
+				},
+			}),
+			makeItem({ id: "a-2", kind: "assistant", text: "Finished." }),
+		];
+
+		const blocks = groupTurnBlocks(items);
+		expect(blocks).toHaveLength(1);
+
+		const turn = blocks[0];
+		expect(turn.type).toBe("turn");
+		if (turn.type === "turn") {
+			expect(turn.id).toBe("turn-a-1");
+			expect(turn.userItem).toBeNull();
+			expect(turn.answerItem?.id).toBe("a-2");
+			expect(turn.allItemIds).toEqual(["a-1", "r-1", "a-2"]);
+
+			expect(turn.intermediateSteps).toHaveLength(1);
+			const step = turn.intermediateSteps[0];
+			expect(step.kind).toBe("tool");
+			if (step.kind === "tool") {
+				expect(step.call.id).toBe("call-1");
+				expect(step.result?.toolCallId).toBe("call-1");
+			}
+		}
+	});
+
+	it("extracts notice bodies and one-line summaries", () => {
+		const notice = makeItem({
+			id: "n-1",
+			kind: "custom",
+			text: "<system-notice>\nBackground job bg_1 has completed. Resume your work using the result below.\nok\n</system-notice>",
+		});
+
+		expect(noticeSummary(notice)).toBe(
+			"Background job bg_1 has completed. Resume your work using the result below.",
+		);
+
+		const body = noticeBody(notice);
+		expect(body).toContain("ok");
+		expect(body).not.toContain("system-notice");
+
+		expect(
+			noticeSummary(
+				makeItem({
+					id: "m-1",
+					kind: "model_change",
+					model: "claude-3-7-sonnet",
+				}),
+			),
+		).toBe("");
 	});
 });

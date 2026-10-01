@@ -671,10 +671,14 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   `get_transcript` + live frames (use `message_update.message` snapshots for the in-flight assistant message; on terminal `agent_end` re-fetch
   transcript incrementally). Virtualized.
 - Turn grouping (`turnGrouping.ts`): normalizes linear transcript items into `DisplayBlock[]` (`TurnBlock` vs `ProtocolBlock`).
-  Each `TurnBlock` begins with a `user` item, aggregates intermediate `TurnStep`s (collapsible `thinking` blocks, `tool` calls paired with
-  their `tool_result`, intermediate `text` updates), and terminates on the final assistant `answerItem`, computing `stepCount` and total `durationMs`.
-  Standalone protocol items (`model_change`, `compaction`, `custom`, `system`) form `ProtocolBlock`s. Duration is formatted in Chinese via
-  `formatDurationChinese` (e.g. "12 秒", "1 分 23 秒"); model strings are cleaned to display names via `formatShortModel`.
+  Each `TurnBlock` starts at a `user` item — or, for agent activity with no preceding visible user message, has `userItem = null`
+  (render no user bubble) — aggregates intermediate `TurnStep`s (collapsible `thinking` blocks, `tool` calls paired with
+  their `tool_result`, intermediate `text` updates, `notice` steps), and terminates on the final assistant `answerItem`,
+  computing `stepCount` and total `durationMs`. Protocol items (`model_change`, `compaction`, `custom`, `system`) form
+  standalone `ProtocolBlock`s only between turns; one that arrives mid-run (assistant/tool activity follows before the
+  next user message — e.g. `async-result` background-job notices, `launch-completion`, auto-compaction) stays inside the
+  turn as a `notice` step. Labels come from `noticeLabel` (Chinese, never the raw kind). Duration is formatted in Chinese
+  via `formatDurationChinese` (e.g. "12 秒", "1 分 23 秒"); model strings are cleaned to display names via `formatShortModel`.
 - Execution disclosure (`ExecutionDisclosure.tsx`): collapsible drawer displaying intermediate thinking processes, tool call cards
   (with command, args, status, and inline diffs from `toolResult.details.diff`), and execution step counts.
 - Answer footer (`AnswerFooter.tsx`): rendered below each assistant message; displays duration, model badge, Git checkpoint status
