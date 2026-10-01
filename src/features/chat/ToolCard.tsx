@@ -1,14 +1,27 @@
-/** [B] Codex-style tool row: a single muted text line (verb-first Chinese
- * label + dimmed mono object) with a chevron that fades in on hover and
+/** [B] Codex-style tool row: leading muted kind icon, verb-first Chinese
+ * label, dimmer object, and a trailing chevron that fades in on hover and
  * rotates when open. The body expands below, indented ps-6. */
 
 import { openPath } from "@tauri-apps/plugin-opener";
-import clsx from "clsx";
-import { Check, ChevronRight, Copy } from "lucide-react";
+import {
+	Bot,
+	Check,
+	Copy,
+	FileText,
+	FolderOpen,
+	Globe,
+	ListTodo,
+	type LucideIcon,
+	Pencil,
+	Search,
+	Terminal,
+	Wrench,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
+import { ActivityHeader } from "./ActivityHeader";
 import { DiffView } from "./DiffView";
 
 export type ToolStatus = "running" | "done" | "error" | "called";
@@ -48,6 +61,7 @@ const TOOL_FAMILY: Record<string, ToolFamily> = {
 	search: "search",
 	search_files: "search",
 	rg: "search",
+	ast_grep: "search",
 	glob: "find",
 	find: "find",
 	fd: "find",
@@ -59,11 +73,14 @@ const TOOL_FAMILY: Record<string, ToolFamily> = {
 	exec: "run",
 	run: "run",
 	command: "run",
+	eval: "run",
 	edit: "edit",
 	edit_file: "edit",
+	ast_edit: "edit",
 	write: "write",
 	write_file: "write",
 	todo: "todo",
+	todo_write: "todo",
 	todowrite: "todo",
 	webfetch: "web",
 	web_fetch: "web",
@@ -89,6 +106,25 @@ const VERBS: Record<ToolFamily, { doing: string; did: string; base: string }> = 
 
 function toolFamily(name: string): ToolFamily {
 	return TOOL_FAMILY[name.toLowerCase()] ?? "other";
+}
+
+/** Leading kind icon per tool family (Codex `agent-activity` icons). */
+const FAMILY_ICON: Record<ToolFamily, LucideIcon> = {
+	read: FileText,
+	search: Search,
+	find: Search,
+	list: FolderOpen,
+	run: Terminal,
+	edit: Pencil,
+	write: Pencil,
+	todo: ListTodo,
+	web: Globe,
+	task: Bot,
+	other: Wrench,
+};
+
+export function toolIcon(name: string): LucideIcon {
+	return FAMILY_ICON[toolFamily(name)];
 }
 
 /** Human-readable detail (the dimmed object after the verb). */
@@ -216,7 +252,7 @@ export function toolActivityLabel(
 	args: unknown,
 	intent: string | null,
 	status: ToolStatus,
-): { verb: string; object: string } {
+): { verb: string; object: string; objectIsCode: boolean } {
 	const family = toolFamily(name);
 	const verbs = VERBS[family];
 	const verb =
@@ -227,7 +263,13 @@ export function toolActivityLabel(
 				: status === "done"
 					? verbs.did
 					: verbs.base;
-	return { verb, object: toolDetail(family, name, args, intent) };
+	// omp intents are natural-language ("Checking port 1422"); raw paths and
+	// commands read better in mono.
+	return {
+		verb,
+		object: toolDetail(family, name, args, intent),
+		objectIsCode: !intent,
+	};
 }
 
 export function ToolCard({
@@ -272,7 +314,12 @@ export function ToolCard({
 	const diff = typeof det.diff === "string" ? det.diff : null;
 	const file = pick(args, FILE_KEYS);
 	const command = pick(args, ["command", "cmd"]);
-	const { verb, object } = toolActivityLabel(name, args, intent ?? null, status);
+	const { verb, object, objectIsCode } = toolActivityLabel(
+		name,
+		args,
+		intent ?? null,
+		status,
+	);
 	const stat = diffStat(diff);
 
 	const hasBody = Boolean(
@@ -285,53 +332,22 @@ export function ToolCard({
 	);
 
 	return (
-		<div className="group/tool my-px">
-			<button
-				type="button"
-				onClick={() => hasBody && setOpen(!open)}
-				className={clsx(
-					"flex w-full items-center gap-1 rounded px-1 py-0.5 text-left select-none",
-					hasBody ? "cursor-pointer" : "cursor-default",
-				)}
-				aria-expanded={hasBody ? open : undefined}
-			>
-				<ChevronRight
-					size={12}
-					className={clsx(
-						"shrink-0 text-[var(--text-30)] transition-all duration-150",
-						open
-							? "rotate-90 opacity-100"
-							: "rotate-0 opacity-0 group-hover/tool:opacity-100",
-					)}
-				/>
-				<span className="flex min-w-0 items-baseline gap-1.5">
-					<span
-						className={clsx(
-							"shrink-0 text-[length:var(--chat-font-size)] leading-6 transition-colors",
-							status === "running" && "shimmer-text",
-							status === "error" && "text-[var(--status-error)]",
-							status !== "running" &&
-								status !== "error" &&
-								"text-[var(--text-60)] group-hover/tool:text-[var(--text)]",
-						)}
-						title={name}
-					>
-						{verb}
-					</span>
-					{object && (
-						<span
-							className={clsx(
-								"truncate font-mono text-[11px]",
-								status === "running"
-									? "shimmer-text"
-									: "text-[var(--text-40)]",
-							)}
-						>
-							{object}
-						</span>
-					)}
-					{stat && status === "done" && (
-						<span className="shrink-0 font-mono text-[10px] tabular-nums">
+		<div className="my-px">
+			<ActivityHeader
+				icon={FAMILY_ICON[toolFamily(name)]}
+				label={verb}
+				labelTitle={name}
+				object={object}
+				objectIsCode={objectIsCode}
+				running={status === "running"}
+				error={status === "error"}
+				expandable={hasBody}
+				open={open}
+				onToggle={() => setOpen(!open)}
+				accessory={
+					stat &&
+					status === "done" && (
+						<span className="shrink-0 font-mono text-[11px] tabular-nums">
 							<span className="text-[var(--status-success)]">
 								+{stat.adds}
 							</span>{" "}
@@ -339,9 +355,9 @@ export function ToolCard({
 								−{stat.dels}
 							</span>
 						</span>
-					)}
-				</span>
-			</button>
+					)
+				}
+			/>
 
 			{open && hasBody && (
 				<div className="flex flex-col gap-1.5 ps-6 pb-1 pt-0.5">

@@ -5,12 +5,13 @@
  */
 
 import clsx from "clsx";
-import { Check, ChevronRight, Clock, Loader2, Square, X } from "lucide-react";
+import { Bot, Check, Clock, Loader2, Square, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { SubagentSummary } from "../../../lib/contracts";
 import { subagentList } from "../../../lib/ipc";
 import { useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
+import { ActivityHeader } from "../ActivityHeader";
 import { asTaskDetails, mergeAgents, type AgentRow } from "./merge";
 import { SubagentSheet } from "./SubagentSheet";
 import type { AgentProgress, SubagentStatus } from "./types";
@@ -243,50 +244,30 @@ export function TaskToolBlock({
 	const hidden = total - visible.length;
 
 	return (
-		<div className="group/task my-px">
-			<button
-				type="button"
-				onClick={() => setOpen(!open)}
-				className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left select-none"
-				aria-expanded={open}
-			>
-				<ChevronRight
-					size={12}
-					className={clsx(
-						"shrink-0 text-[var(--text-30)] transition-all duration-150",
-						open
-							? "rotate-90 opacity-100"
-							: "rotate-0 opacity-0 group-hover/task:opacity-100",
-					)}
-				/>
-				<span className="flex min-w-0 items-baseline gap-1.5">
-					<span
-						className={clsx(
-							"shrink-0 text-[length:var(--chat-font-size)] leading-6 transition-colors",
-							isActive && "shimmer-text",
-							status === "error" && "text-[var(--status-error)]",
-							!isActive &&
-								status !== "error" &&
-								"text-[var(--text-60)] group-hover/task:text-[var(--text)]",
-						)}
-					>
-						{header}
-					</span>
-					{isActive && running > 0 && (
-						<span className="shrink-0 font-mono text-[11px] text-[var(--text-40)]">
+		<div className="my-px">
+			<ActivityHeader
+				icon={Bot}
+				label={header}
+				running={isActive}
+				error={status === "error"}
+				expandable
+				open={open}
+				onToggle={() => setOpen(!open)}
+				accessory={
+					isActive && running > 0 ? (
+						<span className="shrink-0 text-[12px] text-[var(--text-40)]">
 							{running} 运行中
 						</span>
-					)}
-					{!isActive && failed > 0 && (
-						<span className="shrink-0 text-[11px] text-[var(--status-error)]">
-							· {failed} 失败
+					) : !isActive && failed > 0 ? (
+						<span className="shrink-0 text-[12px] text-[var(--status-error)]">
+							{failed} 失败
 						</span>
-					)}
-				</span>
-			</button>
+					) : null
+				}
+			/>
 
 			{open && (
-				<div className="flex flex-col gap-0.5 ps-6 pb-1 pt-0.5">
+				<div className="flex flex-col gap-0.5 ps-5 pb-1 pt-0.5">
 					{visible.map((row, i) => (
 						<AgentRowView
 							key={row.id}

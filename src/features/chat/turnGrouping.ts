@@ -461,85 +461,130 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 
 // ---- Codex-style activity grouping ---------------------------------------
 
-export type ExplorationKind = "files" | "search";
+/** Row families that fold into one summary row (Codex agent-activity-units). */
+export type ActivityGroupKind = "exploration" | "commands" | "edits";
 
-/** Tool families that fold into one "explored" row (Codex agent-activity-units). */
-const EXPLORATION_KIND: Record<string, ExplorationKind> = {
-	read: "files",
-	read_file: "files",
-	list: "files",
-	ls: "files",
-	list_files: "files",
-	find: "files",
-	fd: "files",
-	grep: "search",
-	search: "search",
-	search_files: "search",
-	rg: "search",
-	glob: "search",
+const GROUP_KIND: Record<string, ActivityGroupKind> = {
+	read: "exploration",
+	read_file: "exploration",
+	list: "exploration",
+	ls: "exploration",
+	list_files: "exploration",
+	find: "exploration",
+	fd: "exploration",
+	grep: "exploration",
+	search: "exploration",
+	search_files: "exploration",
+	rg: "exploration",
+	glob: "exploration",
+	bash: "commands",
+	shell: "commands",
+	exec: "commands",
+	run: "commands",
+	command: "commands",
+	edit: "edits",
+	edit_file: "edits",
+	ast_edit: "edits",
+	write: "edits",
+	write_file: "edits",
 };
 
-/** Exploration bucket for a tool name, undefined when not a browse/search tool. */
-export function explorationKind(name: string): ExplorationKind | undefined {
-	return EXPLORATION_KIND[name.toLowerCase()];
+const SEARCH_TOOLS: Record<string, true> = {
+	grep: true,
+	search: true,
+	search_files: true,
+	rg: true,
+	glob: true,
+};
+
+/** Group bucket for a tool name, undefined when the tool never folds. */
+export function activityGroupKind(name: string): ActivityGroupKind | undefined {
+	return GROUP_KIND[name.toLowerCase()];
 }
 
 /**
- * Chinese summary for a collapsed exploration run:
- * "已浏览 3 个文件" / "已浏览 3 个文件、2 次搜索" / running: "正在浏览…".
+ * Chinese summary for a folded run:
+ * exploration "已浏览 3 个文件、2 次搜索", commands "已运行 3 条命令",
+ * edits "已编辑 2 个文件" (distinct paths); running → "正在浏览…" etc.
  */
-export function explorationSummary(
-	files: number,
-	searches: number,
+export function activityGroupSummary(
+	kind: ActivityGroupKind,
+	steps: { call: { name: string; args: unknown } }[],
 	running: boolean,
 ): string {
+	if (kind === "commands") {
+		return running ? "正在运行命令…" : `已运行 ${steps.length} 条命令`;
+	}
+	if (kind === "edits") {
+		if (running) return "正在编辑…";
+		const paths = new Set(
+			steps.map((s) => {
+				const a = s.call.args as Record<string, unknown> | null;
+				const p = a?.path ?? a?.file ?? a?.filePath;
+				return typeof p === "string" ? p : s.call.name;
+			}),
+		);
+		return `已编辑 ${paths.size} 个文件`;
+	}
 	if (running) return "正在浏览…";
+	const searches = steps.filter(
+		(s) => SEARCH_TOOLS[s.call.name.toLowerCase()],
+	).length;
+	const files = steps.length - searches;
 	const parts: string[] = [];
 	if (files > 0) parts.push(`${files} 个文件`);
 	if (searches > 0) parts.push(`${searches} 次搜索`);
-	return parts.length > 0 ? `已浏览 ${parts.join("、")}` : "已浏览";
+	return `已浏览 ${parts.join("、")}`;
 }
 
 /** One row in the rendered activity list. */
 export type ActivityUnit<T extends { kind: string }> =
 	| { kind: "step"; step: T }
-	| { kind: "exploration"; steps: Extract<T, { kind: "tool" }>[] };
+	| {
+			kind: "group";
+			group: ActivityGroupKind;
+			steps: Extract<T, { kind: "tool" }>[];
+	  };
 
 /**
- * Folds consecutive exploration tool steps (read/search/list/find/grep/glob)
- * into one group row; reasoning steps inside the run are absorbed. Two or
- * more consecutive exploration tools form a group — a lone one stays a row.
- * Works on TurnStep and on live pseudo-steps `{ kind, call?: {name} }`.
+ * Folds consecutive tool steps of the same group kind (exploration /
+ * commands / edits) into one summary row; reasoning inside a run is
+ * absorbed. Two or more consecutive same-kind tools form a group — a lone
+ * one stays a row. Works on TurnStep and on live pseudo-steps.
  */
 export function groupActivityUnits<
 	T extends { kind: string; call?: { name: string } },
 >(steps: T[]): ActivityUnit<T>[] {
 	const units: ActivityUnit<T>[] = [];
 	let pending: T[] = [];
+	let pendingKind: ActivityGroupKind | undefined;
 
 	const flush = () => {
-		if (pending.length === 0) return;
 		if (pending.length === 1) {
 			units.push({ kind: "step", step: pending[0] });
-		} else {
+		} else if (pending.length > 1 && pendingKind) {
 			units.push({
-				kind: "exploration",
+				kind: "group",
+				group: pendingKind,
 				steps: pending as Extract<T, { kind: "tool" }>[],
 			});
 		}
 		pending = [];
+		pendingKind = undefined;
 	};
 
 	for (const step of steps) {
-		if (
-			step.kind === "tool" &&
-			step.call &&
-			explorationKind(step.call.name)
-		) {
+		const group =
+			step.kind === "tool" && step.call
+				? activityGroupKind(step.call.name)
+				: undefined;
+		if (group) {
+			if (group !== pendingKind) flush();
 			pending.push(step);
+			pendingKind = group;
 			continue;
 		}
-		// Reasoning inside an exploration run is absorbed into the group.
+		// Reasoning inside a foldable run is absorbed into the group.
 		if (step.kind === "thinking" && pending.length > 0) {
 			continue;
 		}

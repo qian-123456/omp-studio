@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ToolCall, TranscriptItem } from "../../lib/contracts";
 import {
 	computeDurationMs,
-	explorationSummary,
+	activityGroupSummary,
 	formatDurationChinese,
 	formatDurationCompact,
 	formatShortModel,
@@ -364,20 +364,43 @@ describe("activity grouping", () => {
 		expect(formatDurationCompact(3600000 + 240000)).toBe("1小时4分");
 	});
 
-	it("summarizes exploration runs", () => {
-		expect(explorationSummary(3, 2, false)).toBe("已浏览 3 个文件、2 次搜索");
-		expect(explorationSummary(3, 0, false)).toBe("已浏览 3 个文件");
-		expect(explorationSummary(0, 2, false)).toBe("已浏览 2 次搜索");
-		expect(explorationSummary(1, 1, true)).toBe("正在浏览…");
+	const tool = (
+		id: string,
+		name: string,
+		args: unknown = {},
+	): Extract<TurnStep, { kind: "tool" }> => ({
+		id,
+		kind: "tool",
+		item: makeItem({ id: `${id}-item`, kind: "assistant" }),
+		call: { id, name, args, intent: null },
 	});
 
-	it("groups consecutive exploration tools, absorbs thinking inside a run", () => {
-		const tool = (id: string, name: string): TurnStep => ({
-			id,
-			kind: "tool",
-			item: makeItem({ id: `${id}-item`, kind: "assistant" }),
-			call: { id, name, args: {}, intent: null },
-		});
+	it("summarizes folded runs per kind", () => {
+		const explore = [tool("a", "read"), tool("b", "grep"), tool("c", "glob")];
+		expect(activityGroupSummary("exploration", explore, false)).toBe(
+			"已浏览 1 个文件、2 次搜索",
+		);
+		expect(activityGroupSummary("exploration", explore, true)).toBe(
+			"正在浏览…",
+		);
+		expect(
+			activityGroupSummary("commands", [tool("x", "bash"), tool("y", "bash")], false),
+		).toBe("已运行 2 条命令");
+		// Edits count distinct paths, not calls.
+		expect(
+			activityGroupSummary(
+				"edits",
+				[
+					tool("e1", "edit", { path: "a.ts" }),
+					tool("e2", "edit", { path: "a.ts" }),
+					tool("e3", "write", { path: "b.ts" }),
+				],
+				false,
+			),
+		).toBe("已编辑 2 个文件");
+	});
+
+	it("folds same-kind runs, splits on kind change, absorbs thinking", () => {
 		const thinking: TurnStep = {
 			id: "th-1",
 			kind: "thinking",
@@ -390,20 +413,21 @@ describe("activity grouping", () => {
 			tool("c2", "grep"),
 			thinking,
 			tool("c3", "glob"),
-			tool("c-run", "bash"),
+			tool("r1", "bash"),
+			tool("r2", "bash"),
+			tool("e1", "edit"),
 			tool("c4", "read"),
 		]);
 
-		expect(units).toHaveLength(3);
-		expect(units[0].kind).toBe("exploration");
-		if (units[0].kind === "exploration") {
+		expect(units.map((u) => (u.kind === "group" ? u.group : u.step.id))).toEqual(
+			["exploration", "commands", "e1", "c4"],
+		);
+		if (units[0].kind === "group") {
 			expect(units[0].steps.map((s) => s.call.name)).toEqual([
 				"read",
 				"grep",
 				"glob",
 			]);
 		}
-		expect(units[1].kind).toBe("step");
-		expect(units[2].kind).toBe("step"); // lone exploration tool stays a row
 	});
 });
