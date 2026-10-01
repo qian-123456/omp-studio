@@ -862,6 +862,17 @@ pub struct ScheduleRun {
 
 // ---- Skills & Extensions catalog ----
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillIssue {
+    /// Frontmatter parsed but contains no description.
+    MissingDescription,
+    /// Description exceeds the 1024-char Agent Skills spec limit.
+    DescriptionTooLong,
+    /// SKILL.md missing, unreadable, non-UTF-8, or the skill dir is a dangling symlink.
+    Unreadable,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillItem {
@@ -870,6 +881,34 @@ pub struct SkillItem {
     pub source: String,
     pub path: String,
     pub dir: String,
+    /// Display install root: home-abbreviated (`~/.omp/agent/skills`) or
+    /// project-relative (`./.omp/skills`).
+    pub root: String,
+    /// Number of discovery roots containing a skill with this same name (>= 1).
+    pub copies: u32,
+    /// Health issues; empty means healthy.
+    pub issues: Vec<SkillIssue>,
+    /// Estimated resident system-prompt cost: name + description chars + 4.
+    pub prompt_chars: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillUsage {
+    pub name: String,
+    pub count: u64,
+    /// ISO-8601 timestamp of the most recent in-window trigger.
+    pub last_used_at: Option<String>,
+}
+
+/// Result of `skills_usage`: per-skill trigger counts over `days` days.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillUsageReport {
+    pub days: u32,
+    pub total_triggers: u64,
+    pub scanned_files: u64,
+    pub usage: Vec<SkillUsage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

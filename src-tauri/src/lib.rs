@@ -251,6 +251,7 @@ pub fn run() {
             // F — skills & extensions (技能与扩展)
             skills::commands::skills_list,
             skills::commands::skills_read,
+            skills::usage::skills_usage,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

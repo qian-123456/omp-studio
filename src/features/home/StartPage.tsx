@@ -423,7 +423,7 @@ export function StartPage() {
 							<Sparkles size={16} />
 						</div>
 						<div className="min-w-0">
-							<div className="text-xs font-medium text-[var(--text)]">技能与扩展</div>
+							<div className="text-xs font-medium text-[var(--text)]">Skills 管理</div>
 							<div className="text-[11px] text-neutral-500 truncate">浏览并配置 Skill</div>
 						</div>
 					</button>

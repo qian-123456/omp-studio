@@ -654,12 +654,39 @@ export interface ScheduleRun {
 
 // ---- Skills & Extensions ----
 
+export type SkillIssue =
+	| "missing_description"
+	| "description_too_long"
+	| "unreadable";
+
 export interface SkillItem {
 	name: string;
 	description: string;
 	source: string;
 	path: string;
 	dir: string;
+	/** Display install root, home-abbreviated (e.g. "~/.omp/agent/skills", "./.omp/skills"). */
+	root: string;
+	/** How many discovery roots contain a skill with this same name (>=1); the listed one wins by precedence. */
+	copies: number;
+	/** Empty = healthy. */
+	issues: SkillIssue[];
+	/** name + description char count (+4): estimate of resident system-prompt cost. */
+	promptChars: number;
+}
+
+export interface SkillUsage {
+	name: string;
+	count: number;
+	/** ISO-8601 timestamp of the last trigger, null when never triggered. */
+	lastUsedAt: string | null;
+}
+
+export interface SkillUsageReport {
+	days: number;
+	totalTriggers: number;
+	scannedFiles: number;
+	usage: SkillUsage[];
 }
 
 export interface ExtensionItem {

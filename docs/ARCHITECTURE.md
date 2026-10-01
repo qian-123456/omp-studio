@@ -811,7 +811,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Invocation syntax: slash command `/skill:<name> [arguments]` (registered in omp) or `skill://<name>` URI. UI button inserts `/skill:<name> ` directly into active session composer draft and auto-focuses it.
 - Read path restriction: `skills_read` strictly verifies `is_path_allowed`: target must be a `.md` file, strictly contained within recognized project skill directory structures or standard user home skill roots. Rejects directory traversal (`..`) and paths outside allowed skill roots.
 - Extension disablement: checks `disabledExtensions` array in global/project config (`config.yml` / `settings.json`) matching extension names, module IDs (`extension-module:<name>`), or file paths; files ending in `.disabled` are also treated as disabled. Toggled via `omp_config_set`.
-- Frontend `SkillsPage` (`centerView === "skills"`): searchable catalog grouped by Skills and Extensions, with source badges (项目 / 全局), markdown preview modal (`skills_read`), toggle switches for extensions, and "在当前会话中使用" button.
+- Frontend `SkillsPage` (`centerView === "skills"`): single-column "Skills 管理" center page — stat cards (全部/近期活跃/在吃灰/有问题), resident-context budget meter (~15k chars), source/status segmented filters plus sort menu, a table (name+issues+copies badges, install root, `N 天触发`, last used, row actions), a right-side detail drawer with rendered `skills_read` markdown, and an extensions tab with enable toggles. Usage stats come from `skills_usage`; the page degrades to `—` when it is unavailable. The right dock is hidden on this view (see `CENTER_WITHOUT_RIGHT_PANEL`).
 
 ## 12. UI layering and overlay rules
 

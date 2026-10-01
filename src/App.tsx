@@ -21,7 +21,7 @@ import { useSessions } from "./stores/sessions";
 import { type CenterView, useUi } from "./stores/ui";
 import { Toaster } from "./components/Toaster";
 import { BottomBar } from "./components/BottomBar";
-import { CenterHeader } from "./components/CenterHeader";
+import { CENTER_WITHOUT_RIGHT_PANEL, CenterHeader } from "./components/CenterHeader";
 import { RightAside } from "./components/RightAside";
 
 const DocView = lazy(() =>
@@ -155,7 +155,9 @@ export default function App() {
 		centerView === "settings"
 			? previousCenterView ?? lastNonSettingsCenterView.current
 			: centerView;
-
+	// Full-width views drop the right dock entirely; the persisted `rightOpen`
+	// preference stays untouched so it is restored on the next normal view.
+	const rightVisible = rightOpen && !CENTER_WITHOUT_RIGHT_PANEL.has(effectiveCenterView);
 	// Narrow selector for parentId needed by Cmd+[ shortcut (no whole-map subscription)
 	const parentId = useSessions(
 		useCallback(
@@ -250,7 +252,12 @@ export default function App() {
 			if (e.key.toLowerCase() === "b" && !e.shiftKey && !e.altKey) {
 				e.preventDefault();
 				toggleSidebar();
-			} else if (e.key.toLowerCase() === "j" && !e.shiftKey && !e.altKey) {
+			} else if (
+				e.key.toLowerCase() === "j" &&
+				!e.shiftKey &&
+				!e.altKey &&
+				!CENTER_WITHOUT_RIGHT_PANEL.has(effectiveCenterView)
+			) {
 				e.preventDefault();
 				toggleRight();
 			} else if (e.key === "[" && !e.shiftKey && !e.altKey) {
@@ -280,6 +287,7 @@ export default function App() {
 		};
 	}, [
 		centerView,
+		effectiveCenterView,
 		previousCenterView,
 		selectedSessionId,
 		setCenter,
@@ -404,7 +412,7 @@ export default function App() {
 				</div>
 
 				{/* Right panel — spans the full window height above the BottomBar */}
-				{rightOpen && (
+				{rightVisible && (
 					<>
 						{/* Right panel drag handle */}
 						<div

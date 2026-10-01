@@ -36,6 +36,7 @@ import type {
 	ScheduleDraft,
 	ScheduleRun,
 	SkillsCatalog,
+	SkillUsageReport,
 	StartOpts,
 	TmRun,
 	Todo,
@@ -451,10 +452,14 @@ export const listScheduleRuns = (scheduleId: string, limit?: number) =>
 		limit: limit ?? null,
 	});
 
-// ---- F — skills & extensions (技能与扩展) ----
+// ---- F — skills & extensions (Skills 管理) ----
 
 export const skillsList = (cwd?: string | null) =>
 	invoke<SkillsCatalog>("skills_list", { cwd: cwd ?? null });
 
 export const skillsRead = (path: string) =>
 	invoke<string>("skills_read", { path });
+
+/** Per-skill trigger counts scanned from session transcripts over `days` days. */
+export const skillsUsage = (days = 45) =>
+	invoke<SkillUsageReport>("skills_usage", { days });

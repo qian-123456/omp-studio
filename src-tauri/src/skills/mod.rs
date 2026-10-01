@@ -5,6 +5,7 @@
 //! Enforces path restriction on skills_read so arbitrary files cannot be traversed.
 
 pub mod commands;
+pub mod usage;
 
 #[cfg(test)]
 mod tests;

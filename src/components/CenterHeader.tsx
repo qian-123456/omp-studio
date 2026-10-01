@@ -65,12 +65,19 @@ const STATUS_DOT: Record<SessionStatus, string> = {
 	external: "bg-purple-500",
 };
 
+/** Center views that always use the full width — the right dock is hidden. */
+export const CENTER_WITHOUT_RIGHT_PANEL: ReadonlySet<CenterView> = new Set([
+	"inbox",
+	"schedules",
+	"skills",
+]);
+
 /** Header title for non-session center views. */
 const CENTER_TITLE: Partial<Record<CenterView, string>> = {
 	doc: "文档",
 	inbox: "收件箱",
 	schedules: "定时任务",
-	skills: "技能与扩展",
+	skills: "Skills 管理",
 	agentTerminal: "Agent 终端",
 };
 
@@ -494,8 +501,8 @@ export const CenterHeader = React.memo(function CenterHeader({
 						</button>
 						<TopCapsule />
 
-						{/* Show expand right panel button only when right panel is closed */}
-						{!rightOpen && (
+						{/* Right-panel toggle — hidden on full-width views (skills/inbox/schedules) */}
+						{!rightOpen && !CENTER_WITHOUT_RIGHT_PANEL.has(effectiveCenterView) && (
 							<button
 								type="button"
 								onClick={toggleRight}

@@ -1162,7 +1162,7 @@ export function SessionSidebar() {
 						</div>
 					</div>
 
-					{/* 4. 技能与扩展 */}
+					{/* 4. Skills 管理 */}
 					<div
 						onClick={() => setCenter("skills")}
 						className={clsx(
@@ -1171,7 +1171,7 @@ export function SessionSidebar() {
 								? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
 								: "font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 						)}
-						title="技能与扩展"
+						title="Skills 管理"
 					>
 						<div className="flex items-center gap-2 min-w-0">
 							<Boxes
@@ -1183,7 +1183,7 @@ export function SessionSidebar() {
 										: "text-neutral-400 group-hover:text-neutral-200",
 								)}
 							/>
-							<span className="truncate">技能与扩展</span>
+							<span className="truncate">Skills 管理</span>
 						</div>
 					</div>
 				</div>
@@ -2427,7 +2427,7 @@ function CollapsibleSubgroup({
 					}}
 					onMouseEnter={handleMouseEnter}
 					onMouseLeave={handleMouseLeave}
-					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
+					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-left text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
 				>
 					{open ? (
 						<ChevronDown size={11} className="shrink-0 text-[var(--text-dim)]" />

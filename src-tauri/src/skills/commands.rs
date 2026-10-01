@@ -1,9 +1,9 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-use crate::contracts::{ExtensionItem, SkillItem, SkillsCatalog};
+use crate::contracts::{ExtensionItem, SkillIssue, SkillItem, SkillsCatalog};
 
 /// Parses SKILL.md frontmatter for name and description without loading the entire body.
 pub fn parse_skill_frontmatter(header: &str, fallback_name: &str) -> (String, String) {
@@ -229,51 +229,142 @@ fn collect_project_roots(cwd: &Path) -> Vec<PathBuf> {
     roots
 }
 
+/// Agent Skills spec limit for description length (chars).
+const DESCRIPTION_MAX_CHARS: usize = 1024;
+
+/// Number of SKILL.md bytes read for frontmatter parsing.
+const SKILL_HEADER_BYTES: usize = 4096;
+
+/// Formats a skill root for display: project roots become `./relative`,
+/// user roots abbreviate `$HOME` to `~`.
+pub fn display_skill_root(root: &Path, project_base: Option<&Path>) -> String {
+    if let Some(base) = project_base {
+        if let Ok(rel) = root.strip_prefix(base) {
+            return format!("./{}", rel.to_string_lossy());
+        }
+    }
+    let root_str = root.to_string_lossy();
+    if let Some(home) = dirs::home_dir() {
+        if let Ok(rel) = root.strip_prefix(&home) {
+            let rel_str = rel.to_string_lossy();
+            return if rel_str.is_empty() {
+                "~".to_string()
+            } else {
+                format!("~/{}", rel_str)
+            };
+        }
+    }
+    root_str.to_string()
+}
+
+/// Extracts the leading bytes (max SKILL_HEADER_BYTES) of a SKILL.md file.
+/// `Err` means open/read failed or the bytes are not valid UTF-8.
+fn read_skill_header(skill_md: &Path) -> Result<String, ()> {
+    let mut f = File::open(skill_md).map_err(|_| ())?;
+    let mut buf = Vec::new();
+    f.by_ref()
+        .take(SKILL_HEADER_BYTES as u64)
+        .read_to_end(&mut buf)
+        .map_err(|_| ())?;
+    match String::from_utf8(buf) {
+        Ok(s) => Ok(s),
+        // Byte cap landed mid-codepoint: keep the valid prefix, not a failure.
+        Err(e) if e.utf8_error().error_len().is_none() => {
+            let valid = e.utf8_error().valid_up_to();
+            Ok(String::from_utf8_lossy(&e.into_bytes()[..valid]).into_owned())
+        }
+        Err(_) => Err(()),
+    }
+}
+
 /// Scans SKILL.md entries from a directory containing skill subdirectories.
-fn scan_skills_in_dir(
+/// `index` maps skill name -> position in `skills` for cross-root duplicate
+/// counting; `root_display` is the formatted root copied into each item.
+pub(crate) fn scan_skills_in_dir(
     root: &Path,
     source: &str,
-    seen: &mut HashSet<String>,
+    index: &mut HashMap<String, usize>,
     skills: &mut Vec<SkillItem>,
+    root_display: &str,
 ) {
     let entries = match std::fs::read_dir(root) {
         Ok(e) => e,
         Err(_) => return,
     };
 
+    // Names already attributed to this root, so a duplicate inside the same
+    // root does not inflate `copies` (copies counts roots, not entries).
+    let mut counted: HashSet<String> = HashSet::new();
+
     for entry in entries.flatten() {
         let entry_path = entry.path();
-        let skill_md = entry_path.join("SKILL.md");
-        if !skill_md.is_file() {
-            continue;
-        }
-
         let dir_name = entry.file_name().to_string_lossy().to_string();
         if dir_name.starts_with('.') {
             continue;
         }
 
-        // Read up to 4096 bytes for frontmatter parsing
-        let mut header = String::new();
-        if let Ok(mut f) = File::open(&skill_md) {
-            let mut buf = [0u8; 4096];
-            if let Ok(n) = f.read(&mut buf) {
-                header = String::from_utf8_lossy(&buf[..n]).to_string();
-            }
-        }
-
-        let (name, description) = parse_skill_frontmatter(&header, &dir_name);
-        if seen.contains(&name) {
+        // Dangling symlink (or symlink to a non-dir): list it as unreadable.
+        let dangling =
+            entry.file_type().map(|t| t.is_symlink()).unwrap_or(false) && !entry_path.is_dir();
+        if !dangling && !entry_path.is_dir() {
             continue;
         }
 
-        seen.insert(name.clone());
+        let skill_md = entry_path.join("SKILL.md");
+        let (name, description, issues) = if dangling {
+            (
+                dir_name.clone(),
+                String::new(),
+                vec![SkillIssue::Unreadable],
+            )
+        } else if !skill_md.is_file() {
+            continue;
+        } else {
+            let mut issues = Vec::new();
+            let (name, description) = match read_skill_header(&skill_md) {
+                // No frontmatter `---` block at all = parse failure.
+                Ok(header) if !header.trim_start().starts_with("---") => {
+                    issues.push(SkillIssue::Unreadable);
+                    (dir_name.clone(), String::new())
+                }
+                Ok(header) => {
+                    let (name, desc) = parse_skill_frontmatter(&header, &dir_name);
+                    if desc.is_empty() {
+                        issues.push(SkillIssue::MissingDescription);
+                    } else if desc.chars().count() > DESCRIPTION_MAX_CHARS {
+                        issues.push(SkillIssue::DescriptionTooLong);
+                    }
+                    (name, desc)
+                }
+                Err(_) => {
+                    issues.push(SkillIssue::Unreadable);
+                    (dir_name.clone(), String::new())
+                }
+            };
+            (name, description, issues)
+        };
+
+        if let Some(&idx) = index.get(&name) {
+            // Later root loses precedence but still counts as a copy.
+            if counted.insert(name) {
+                skills[idx].copies += 1;
+            }
+            continue;
+        }
+
+        counted.insert(name.clone());
+        index.insert(name.clone(), skills.len());
+        let prompt_chars = (name.chars().count() + description.chars().count() + 4) as u32;
         skills.push(SkillItem {
             name,
             description,
             source: source.to_string(),
             path: skill_md.to_string_lossy().to_string(),
             dir: entry_path.to_string_lossy().to_string(),
+            root: root_display.to_string(),
+            copies: 1,
+            issues,
+            prompt_chars,
         });
     }
 }
@@ -390,8 +481,9 @@ pub async fn skills_list(cwd: Option<String>) -> Result<SkillsCatalog, String> {
 
     let mut skills = Vec::new();
     let mut extensions = Vec::new();
-    let mut seen_skills = HashSet::new();
     let mut seen_extensions = HashSet::new();
+    // skill name -> index in `skills` (winner); losers still bump `copies`.
+    let mut skill_index: HashMap<String, usize> = HashMap::new();
 
     // 1. Project discovery (if cwd is provided)
     if let Some(p) = cwd_path {
@@ -407,7 +499,14 @@ pub async fn skills_list(cwd: Option<String>) -> Result<SkillsCatalog, String> {
 
             for root in &skill_subdirs {
                 if root.is_dir() {
-                    scan_skills_in_dir(root, "project", &mut seen_skills, &mut skills);
+                    let root_display = display_skill_root(root, Some(&proj_root));
+                    scan_skills_in_dir(
+                        root,
+                        "project",
+                        &mut skill_index,
+                        &mut skills,
+                        &root_display,
+                    );
                 }
             }
 
@@ -437,7 +536,8 @@ pub async fn skills_list(cwd: Option<String>) -> Result<SkillsCatalog, String> {
 
         for root in &user_skill_roots {
             if root.is_dir() {
-                scan_skills_in_dir(root, "user", &mut seen_skills, &mut skills);
+                let root_display = display_skill_root(root, None);
+                scan_skills_in_dir(root, "user", &mut skill_index, &mut skills, &root_display);
             }
         }
 
