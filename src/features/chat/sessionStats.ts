@@ -107,8 +107,10 @@ export function computeSessionStats(
 
 	const steps = assistantCount + toolCallCount;
 
-	// Cache hit rate: cacheRead / (cacheRead + inputTokens)
-	const totalInput = cacheRead + inputTokens;
+	// Cache hit rate: cacheRead / total input. `cacheWrite` tokens were computed
+	// this request (cache miss, now stored) and `input` is the uncached remainder,
+	// so misses = input + cacheWrite, hits = cacheRead.
+	const totalInput = cacheRead + cacheWrite + inputTokens;
 	const cacheHitRate =
 		totalInput > 0 ? Math.min(100, Math.max(0, (cacheRead / totalInput) * 100)) : 0;
 

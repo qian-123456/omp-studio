@@ -109,8 +109,8 @@ describe("computeSessionStats", () => {
 		expect(stats.outputTokens).toBe(500);
 		expect(stats.inputTokens).toBe(1500);
 		expect(stats.cacheRead).toBe(18500);
-		// totalInput = 18500 + 1500 = 20000; cacheRead = 18500 => 92.5%
-		expect(stats.cacheHitRate).toBeCloseTo(92.5, 1);
+		// totalInput = 18500 + 500 (cacheWrite) + 1500 = 20500; 18500/20500 = 90.24%
+		expect(stats.cacheHitRate).toBeCloseTo(90.2, 1);
 		expect(stats.hasData).toBe(true);
 		expect(stats.avgTtftMs).toBe(2500);
 	});
