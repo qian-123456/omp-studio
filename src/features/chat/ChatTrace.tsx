@@ -127,6 +127,31 @@ export function ChatTrace({
 			}
 		};
 	}, [computeActive, scrollRef]);
+	const [scrollable, setScrollable] = useState(false);
+
+	// Codex's thread navigation rail (`r.length < 4`) only appears from the
+	// 4th user message; a one- or two-turn chat doesn't need a minimap.
+	const MIN_ENTRIES = 4;
+
+	// It also stays hidden while everything fits on one screen.
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const update = () =>
+			setScrollable(el.scrollHeight > el.clientHeight + 8);
+		const ro = new ResizeObserver(update);
+		ro.observe(el);
+		update();
+		return () => ro.disconnect();
+	}, [scrollRef]);
+
+	// …and re-check whenever the conversation grows while the container size
+	// stays the same.
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (el) setScrollable(el.scrollHeight > el.clientHeight + 8);
+	}, [scrollRef, entries.length]);
+
 
 	// Keep the active dash visible when the strip itself overflows (the
 	// original scrolls its strip virtualizer with align:"auto").
@@ -184,7 +209,7 @@ export function ChatTrace({
 		[openIndex],
 	);
 
-	if (entries.length === 0) return null;
+	if (entries.length < MIN_ENTRIES || !scrollable) return null;
 
 	const jump = (entry: ChatTraceEntry) => {
 		useLive.getState().scrollToItem(sessionId, entry.id);
