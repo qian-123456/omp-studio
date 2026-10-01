@@ -309,7 +309,7 @@ function EnableInfoButton() {
 				<ul className="list-disc space-y-1 pl-4 text-neutral-400">
 					<li>关掉后，新开的对话里 AI 用不了这个 Skill</li>
 					<li>不删文件，不影响正在进行的对话</li>
-					<li>开关是灰的：被设置里的规则关了，悬停开关看原因</li>
+					<li>开关点不动：这一整类 Skill 在设置里被统一关了，鼠标放上去能看到是哪一项</li>
 					<li>想临时用一次：点 ▶</li>
 				</ul>
 			</FloatingLayer>
