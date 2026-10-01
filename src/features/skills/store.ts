@@ -1,11 +1,20 @@
 import { create } from "zustand";
 import type {
+	OmpConfigListResult,
 	SkillItem,
+	SkillProvider,
 	SkillUsage,
 	SkillUsageReport,
 	SkillsCatalog,
 } from "../../lib/contracts";
-import { skillsList, skillsUsage } from "../../lib/ipc";
+import {
+	ompConfigList,
+	ompConfigSet,
+	skillsList,
+	skillsTrash,
+	skillsUsage,
+} from "../../lib/ipc";
+import { toast } from "../../lib/toast";
 
 /** Suggested resident system-prompt budget for skill name+description entries. */
 export const SKILL_BUDGET_CHARS = 15_000;
@@ -14,7 +23,7 @@ export const SKILL_BUDGET_CHARS = 15_000;
 export const USAGE_DAYS = 45;
 
 export type SkillSourceFilter = "all" | "user" | "project";
-export type SkillStatusFilter = "all" | "active" | "idle" | "issues";
+export type SkillStatusFilter = "all" | "active" | "idle" | "issues" | "disabled";
 export type SkillSort = "count" | "lastUsed" | "name";
 
 /** The detail drawer overlays the page; `path` identifies the target item. */
@@ -33,6 +42,10 @@ export interface SkillsState {
 	statusFilter: SkillStatusFilter;
 	sort: SkillSort;
 	drawer: SkillsDrawerTarget | null;
+	/** OMP config slice deciding per-skill enablement (skills.* + disabledExtensions). */
+	skillConfig: SkillEnableConfig;
+	/** Dirs currently being trashed (in-flight guard). */
+	trashingDirs: string[];
 	/** Trigger stats keyed by skill name. */
 	usage: Record<string, SkillUsage>;
 	usageReport: SkillUsageReport | null;
@@ -53,6 +66,10 @@ export interface SkillsState {
 	openDrawer: (target: SkillsDrawerTarget) => void;
 	closeDrawer: () => void;
 	updateExtensionEnabled: (path: string, enabled: boolean) => void;
+	/** Toggle a skill via disabledExtensions (+ exact ignoredSkills removal on enable). */
+	setSkillEnabled: (skill: SkillItem, enabled: boolean) => Promise<void>;
+	/** Move a skill directory to the OS Trash, then refresh the catalog. */
+	trashSkill: (skill: SkillItem, cwd?: string | null) => Promise<void>;
 }
 
 export interface SkillStats {
@@ -71,12 +88,159 @@ export interface SkillStats {
 	unreadable: number;
 	/** Sum of promptChars across all skills — resident context cost estimate. */
 	budgetUsed: number;
+	/** Skills filtered out of new sessions by config (any reason). */
+	disabled: number;
 }
 
+
+// ---- Skill enablement (OMP config filter pipeline) ----
+
+/** The OMP config slice that decides whether a skill reaches new sessions. */
+export interface SkillEnableConfig {
+	/** `skills.enabled` master switch (default true). */
+	skillsEnabled: boolean;
+	/** `skills.enable*` source toggles, keyed by full config key. */
+	sourceToggles: Record<string, boolean>;
+	/** `skills.ignoredSkills` glob list. */
+	ignored: string[];
+	/** `skills.includeSkills` allowlist (empty = include everything). */
+	include: string[];
+	/** `disabledExtensions` entries (`skill:<name>` marks a disabled skill). */
+	disabledExtensions: string[];
+}
+
+export const DEFAULT_SKILL_CONFIG: SkillEnableConfig = {
+	skillsEnabled: true,
+	sourceToggles: {},
+	ignored: [],
+	include: [],
+	disabledExtensions: [],
+};
+
+/** Why a skill won't reach a new session. Order matches the filter pipeline. */
+export type SkillDisabledReason =
+	| { kind: "disabled" } // disabledExtensions contains skill:<name>
+	| { kind: "source"; key: string } // its source toggle is off
+	| { kind: "ignored"; pattern: string; exact: boolean } // ignoredSkills match
+	| { kind: "not_included" } // includeSkills non-empty and no match
+	| { kind: "all_off" }; // skills.enabled = false
+
+export interface SkillEnablement {
+	enabled: boolean;
+	reason: SkillDisabledReason | null;
+}
+
+/** `(provider, source)` → the OMP `skills.enable*` key gating that root. */
+const PROVIDER_SOURCE_TOGGLE: Record<SkillProvider, Record<string, string>> = {
+	native: { user: "skills.enablePiUser", project: "skills.enablePiProject" },
+	claude: {
+		user: "skills.enableClaudeUser",
+		project: "skills.enableClaudeProject",
+	},
+	agents: {
+		user: "skills.enableAgentsUser",
+		project: "skills.enableAgentsProject",
+	},
+	codex: { user: "skills.enableCodexUser" },
+	github: {},
+	managed: {},
+};
+
+/** Anchored single-segment glob (`*`, `?`; `**` ≡ `*`), case-sensitive. */
+export function skillGlobMatch(pattern: string, name: string): boolean {
+	const re = new RegExp(
+		`^${pattern
+			.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+			.replace(/\*+/g, ".*")
+			.replace(/\?/g, ".")}$`,
+	);
+	return re.test(name);
+}
+
+/** Reads `omp config list` output into the slice needed for enablement. */
+export function parseSkillConfig(list: OmpConfigListResult): SkillEnableConfig {
+	const cfg: SkillEnableConfig = { ...DEFAULT_SKILL_CONFIG, sourceToggles: {} };
+	for (const entry of list.entries) {
+		const strList = () =>
+			Array.isArray(entry.value)
+				? entry.value.filter((v): v is string => typeof v === "string")
+				: [];
+		switch (entry.key) {
+			case "skills.enabled":
+				if (typeof entry.value === "boolean") cfg.skillsEnabled = entry.value;
+				break;
+			case "skills.ignoredSkills":
+				cfg.ignored = strList();
+				break;
+			case "skills.includeSkills":
+				cfg.include = strList();
+				break;
+			case "disabledExtensions":
+				cfg.disabledExtensions = strList();
+				break;
+			default:
+				if (
+					entry.key.startsWith("skills.enable") &&
+					typeof entry.value === "boolean"
+				) {
+					cfg.sourceToggles[entry.key] = entry.value;
+				}
+		}
+	}
+	return cfg;
+}
+
+/**
+ * Applies OMP's session-start filter pipeline to one skill:
+ * skills.enabled → disabledExtensions `skill:<name>` → source toggle →
+ * ignoredSkills globs → includeSkills allowlist. Exported for tests.
+ */
+export function resolveSkillEnablement(
+	skill: SkillItem,
+	cfg: SkillEnableConfig,
+): SkillEnablement {
+	const deny = (reason: SkillDisabledReason): SkillEnablement => ({
+		enabled: false,
+		reason,
+	});
+	if (!cfg.skillsEnabled) return deny({ kind: "all_off" });
+	if (cfg.disabledExtensions.includes(`skill:${skill.name}`))
+		return deny({ kind: "disabled" });
+	const key = PROVIDER_SOURCE_TOGGLE[skill.provider]?.[skill.source];
+	if (key && cfg.sourceToggles[key] === false)
+		return deny({ kind: "source", key });
+	const exact = cfg.ignored.some((p) => p === skill.name);
+	const globbed = cfg.ignored.find((p) => skillGlobMatch(p, skill.name));
+	if (exact) return deny({ kind: "ignored", pattern: skill.name, exact: true });
+	if (globbed) return deny({ kind: "ignored", pattern: globbed, exact: false });
+	if (cfg.include.length > 0 && !cfg.include.some((p) => skillGlobMatch(p, skill.name)))
+		return deny({ kind: "not_included" });
+	return { enabled: true, reason: null };
+}
+
+/**
+ * Read-modify-write helper for OMP config keys holding string lists.
+ * `mutate` returns the next array; returning the same array skips the write.
+ */
+export async function updateOmpListSetting(
+	key: string,
+	mutate: (current: string[]) => string[],
+): Promise<void> {
+	const list = await ompConfigList();
+	const entry = list.entries.find((e) => e.key === key);
+	const current =
+		entry && Array.isArray(entry.value)
+			? entry.value.filter((v): v is string => typeof v === "string")
+			: [];
+	const next = mutate(current);
+	if (next === current) return;
+	await ompConfigSet(key, JSON.stringify(next));
+}
 /** Pure stats used by the stat cards + budget meter; exported for tests. */
 export function computeSkillStats(
 	skills: SkillItem[],
 	usage: Record<string, SkillUsage>,
+	cfg: SkillEnableConfig = DEFAULT_SKILL_CONFIG,
 ): SkillStats {
 	const stats: SkillStats = {
 		total: skills.length,
@@ -90,11 +254,17 @@ export function computeSkillStats(
 		tooLong: 0,
 		unreadable: 0,
 		budgetUsed: 0,
+		disabled: 0,
 	};
 	for (const s of skills) {
 		if (s.source === "project") stats.projectCount++;
 		else if (s.source === "user") stats.userCount++;
-		stats.budgetUsed += s.promptChars;
+		// Disabled skills never reach the system prompt — excluded from budget.
+		if (resolveSkillEnablement(s, cfg).enabled) {
+			stats.budgetUsed += s.promptChars;
+		} else {
+			stats.disabled++;
+		}
 		const issues = s.issues;
 		if (issues.length > 0) {
 			stats.withIssues++;
@@ -117,7 +287,7 @@ export function computeSkillStats(
 export function selectVisibleSkills(
 	state: Pick<
 		SkillsState,
-		"catalog" | "searchQuery" | "sourceFilter" | "statusFilter" | "sort" | "usage"
+		"catalog" | "searchQuery" | "sourceFilter" | "statusFilter" | "sort" | "usage" | "skillConfig"
 	>,
 ): SkillItem[] {
 	const skills = state.catalog?.skills ?? [];
@@ -131,6 +301,11 @@ export function selectVisibleSkills(
 		if (state.statusFilter === "idle" && (usage[s.name]?.count ?? 0) > 0)
 			return false;
 		if (state.statusFilter === "issues" && (s.issues?.length ?? 0) === 0)
+			return false;
+		if (
+			state.statusFilter === "disabled" &&
+			resolveSkillEnablement(s, state.skillConfig).enabled
+		)
 			return false;
 		if (!q) return true;
 		return (
@@ -186,6 +361,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 	usageError: null,
 	usageLoaded: false,
 	lastLoadedCwd: undefined,
+	skillConfig: DEFAULT_SKILL_CONFIG,
+	trashingDirs: [],
 
 	loadCatalog: async (cwd, force = false) => {
 		const state = get();
@@ -196,8 +373,19 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
 		set({ loading: true, error: null });
 		try {
-			const catalog = await skillsList(cwd);
+			const [catalog, configList] = await Promise.all([
+				skillsList(cwd),
+				// Config fetch failure must not block the catalog — fall back to
+				// the all-enabled defaults.
+				Promise.resolve()
+					.then(() => ompConfigList())
+					.catch(() => null),
+			]);
+			const skillConfig = configList
+				? parseSkillConfig(configList)
+				: DEFAULT_SKILL_CONFIG;
 			set((s) => ({
+				skillConfig,
 				catalog,
 				loading: false,
 				error: null,
@@ -285,5 +473,72 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 				},
 			};
 		});
+	},
+
+	setSkillEnabled: async (skill, enabled) => {
+		const prev = get().skillConfig;
+		const marker = `skill:${skill.name}`;
+		// Re-enabling also clears an exact-name ignoredSkills entry so the
+		// skill is actually live (glob matches stay — switch is locked for them).
+		const clearExactIgnored = enabled && prev.ignored.includes(skill.name);
+
+		// Optimistic: reflect the write immediately, roll back on failure.
+		set({
+			skillConfig: {
+				...prev,
+				disabledExtensions: enabled
+					? prev.disabledExtensions.filter((e) => e !== marker)
+					: [...new Set([...prev.disabledExtensions, marker])],
+				ignored: clearExactIgnored
+					? prev.ignored.filter((p) => p !== skill.name)
+					: prev.ignored,
+			},
+		});
+		try {
+			const writes: Promise<void>[] = [
+				updateOmpListSetting("disabledExtensions", (cur) =>
+					enabled
+						? cur.filter((e) => e !== marker)
+						: [...new Set([...cur, marker])],
+				),
+			];
+			if (clearExactIgnored) {
+				writes.push(
+					updateOmpListSetting("skills.ignoredSkills", (cur) =>
+						cur.filter((p) => p !== skill.name),
+					),
+				);
+			}
+			await Promise.all(writes);
+			toast.success(
+				enabled
+					? `已启用 ${skill.name}，新会话生效`
+					: `已停用 ${skill.name}，新会话生效`,
+			);
+		} catch (err) {
+			set({ skillConfig: prev });
+			toast.error(
+				`更新技能状态失败: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	},
+
+	trashSkill: async (skill, cwd) => {
+		if (get().trashingDirs.includes(skill.dir)) return;
+		set((s) => ({ trashingDirs: [...s.trashingDirs, skill.dir] }));
+		try {
+			await skillsTrash(skill.dir);
+			toast.success(`已将「${skill.name}」移到废纸篓`);
+			get().closeDrawer();
+			await get().loadCatalog(cwd, true);
+		} catch (err) {
+			toast.error(
+				`移到废纸篓失败: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		} finally {
+			set((s) => ({
+				trashingDirs: s.trashingDirs.filter((d) => d !== skill.dir),
+			}));
+		}
 	},
 }));

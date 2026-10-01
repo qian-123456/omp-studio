@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-use crate::contracts::{ExtensionItem, SkillIssue, SkillItem, SkillsCatalog};
+use crate::contracts::{ExtensionItem, SkillIssue, SkillItem, SkillProvider, SkillsCatalog};
 
 /// Parses SKILL.md frontmatter for name and description without loading the entire body.
 pub fn parse_skill_frontmatter(header: &str, fallback_name: &str) -> (String, String) {
@@ -283,6 +283,7 @@ fn read_skill_header(skill_md: &Path) -> Result<String, ()> {
 pub(crate) fn scan_skills_in_dir(
     root: &Path,
     source: &str,
+    provider: SkillProvider,
     index: &mut HashMap<String, usize>,
     skills: &mut Vec<SkillItem>,
     root_display: &str,
@@ -359,6 +360,7 @@ pub(crate) fn scan_skills_in_dir(
             name,
             description,
             source: source.to_string(),
+            provider,
             path: skill_md.to_string_lossy().to_string(),
             dir: entry_path.to_string_lossy().to_string(),
             root: root_display.to_string(),
@@ -489,20 +491,36 @@ pub async fn skills_list(cwd: Option<String>) -> Result<SkillsCatalog, String> {
     if let Some(p) = cwd_path {
         for proj_root in collect_project_roots(p) {
             let skill_subdirs = [
-                proj_root.join(".omp").join("skills"),
-                proj_root.join(".agents").join("skills"),
-                proj_root.join(".agent").join("skills"),
-                proj_root.join(".claude").join("skills"),
-                proj_root.join(".codex").join("skills"),
-                proj_root.join(".github").join("skills"),
+                (proj_root.join(".omp").join("skills"), SkillProvider::Native),
+                (
+                    proj_root.join(".agents").join("skills"),
+                    SkillProvider::Agents,
+                ),
+                (
+                    proj_root.join(".agent").join("skills"),
+                    SkillProvider::Agents,
+                ),
+                (
+                    proj_root.join(".claude").join("skills"),
+                    SkillProvider::Claude,
+                ),
+                (
+                    proj_root.join(".codex").join("skills"),
+                    SkillProvider::Codex,
+                ),
+                (
+                    proj_root.join(".github").join("skills"),
+                    SkillProvider::Github,
+                ),
             ];
 
-            for root in &skill_subdirs {
+            for (root, provider) in &skill_subdirs {
                 if root.is_dir() {
                     let root_display = display_skill_root(root, Some(&proj_root));
                     scan_skills_in_dir(
                         root,
                         "project",
+                        *provider,
                         &mut skill_index,
                         &mut skills,
                         &root_display,
@@ -526,18 +544,31 @@ pub async fn skills_list(cwd: Option<String>) -> Result<SkillsCatalog, String> {
     // 2. User discovery (global)
     if let Some(home) = dirs::home_dir() {
         let user_skill_roots = [
-            home.join(".omp").join("agent").join("skills"),
-            home.join(".omp").join("agent").join("managed-skills"),
-            home.join(".agents").join("skills"),
-            home.join(".agent").join("skills"),
-            home.join(".claude").join("skills"),
-            home.join(".codex").join("skills"),
+            (
+                home.join(".omp").join("agent").join("skills"),
+                SkillProvider::Native,
+            ),
+            (
+                home.join(".omp").join("agent").join("managed-skills"),
+                SkillProvider::Managed,
+            ),
+            (home.join(".agents").join("skills"), SkillProvider::Agents),
+            (home.join(".agent").join("skills"), SkillProvider::Agents),
+            (home.join(".claude").join("skills"), SkillProvider::Claude),
+            (home.join(".codex").join("skills"), SkillProvider::Codex),
         ];
 
-        for root in &user_skill_roots {
+        for (root, provider) in &user_skill_roots {
             if root.is_dir() {
                 let root_display = display_skill_root(root, None);
-                scan_skills_in_dir(root, "user", &mut skill_index, &mut skills, &root_display);
+                scan_skills_in_dir(
+                    root,
+                    "user",
+                    *provider,
+                    &mut skill_index,
+                    &mut skills,
+                    &root_display,
+                );
             }
         }
 
@@ -576,4 +607,106 @@ pub async fn skills_read(path: String) -> Result<String, String> {
     }
 
     std::fs::read_to_string(&canonical).map_err(|e| format!("读取技能内容失败：{e}"))
+}
+
+/// Validates that `dir` is a direct child of a known skill root and exists.
+///
+/// Deliberately does NOT canonicalize `dir` itself: a dangling symlink must
+/// still be trashable (the link is trashed, never its target). Instead the
+/// path is normalized lexically and its parent must be exactly one of the
+/// known user skill roots or a `<x>/.omp|.agents|.agent|.claude|.codex|.github/skills`
+/// project root — i.e. only whole skill directories one level below a
+/// discovery root may be trashed, never a root itself or a nested path.
+///
+/// Returns the normalized path ready for `trash::delete`.
+pub(crate) fn validate_skill_dir_for_trash(dir: &Path) -> Result<PathBuf, String> {
+    if !dir.is_absolute() {
+        return Err("删除需要绝对路径".to_string());
+    }
+
+    let norm = normalize_path(dir);
+
+    let file_name = norm.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if file_name.is_empty() || file_name == "." || file_name == ".." {
+        return Err("无效的技能目录名".to_string());
+    }
+
+    let parent = norm
+        .parent()
+        .ok_or_else(|| "无法确定技能目录的父目录".to_string())?;
+
+    // Parent must be exactly a known skill root — same list as `is_path_allowed`.
+    let mut allowed = false;
+    if let Some(home) = dirs::home_dir() {
+        let user_roots = [
+            home.join(".omp").join("agent").join("skills"),
+            home.join(".omp").join("agent").join("managed-skills"),
+            home.join(".agents").join("skills"),
+            home.join(".agent").join("skills"),
+            home.join(".claude").join("skills"),
+            home.join(".codex").join("skills"),
+        ];
+        for root in &user_roots {
+            // Compare both the lexical root and its canonical form: on macOS
+            // $HOME can sit behind /System/Volumes/Data symlinks and the
+            // caller may hand us either spelling.
+            if parent == root.as_path() {
+                allowed = true;
+                break;
+            }
+            if let Ok(canonical_root) = root.canonicalize() {
+                if parent == canonical_root.as_path() {
+                    allowed = true;
+                    break;
+                }
+            }
+        }
+    }
+    if !allowed {
+        // Project skill root: parent itself is `<x>/<dotdir>/skills`.
+        allowed = is_project_skill_root(parent);
+    }
+    if !allowed {
+        return Err("拒绝删除：目录必须直接位于已知的技能根目录之下".to_string());
+    }
+
+    // symlink_metadata follows no links: the entry must exist (a symlink to a
+    // missing target still counts) and a symlink is trashed as the link itself.
+    std::fs::symlink_metadata(&norm).map_err(|e| format!("无法定位技能目录：{e}"))?;
+
+    Ok(norm)
+}
+
+/// True when `p` ends in `<dotdir>/skills` where `dotdir` is a project agent dir.
+fn is_project_skill_root(p: &Path) -> bool {
+    let mut comps = p.components().rev();
+    let Some(last) = comps.next() else {
+        return false;
+    };
+    let Some(prev) = comps.next() else {
+        return false;
+    };
+    let last = last.as_os_str().to_string_lossy();
+    let prev = prev.as_os_str().to_string_lossy();
+    last == "skills"
+        && matches!(
+            prev.as_ref(),
+            ".omp" | ".agents" | ".agent" | ".claude" | ".codex" | ".github"
+        )
+}
+
+/// Tauri command `skills_trash`: moves a whole skill directory to the OS Trash.
+///
+/// Only directories validated by `validate_skill_dir_for_trash` are touched —
+/// a direct child of a known skill root. On macOS this goes through
+/// `NSFileManager trashItemAtURL` (no Finder automation prompt) and the item
+/// can be restored from the Trash.
+#[tauri::command]
+pub async fn skills_trash(dir: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let path = validate_skill_dir_for_trash(Path::new(&dir))?;
+        trash::delete(&path).map_err(|e| format!("移到废纸篓失败：{e}"))
+    })
+    .await
+    .map_err(|e| format!("移到废纸篓失败：{e}"))?
 }

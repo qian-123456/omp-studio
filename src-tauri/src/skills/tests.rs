@@ -4,10 +4,10 @@ use std::collections::HashMap;
 
 use super::commands::{
     display_skill_root, is_path_allowed, normalize_path, parse_disabled_extensions_text,
-    parse_skill_frontmatter, scan_skills_in_dir,
+    parse_skill_frontmatter, scan_skills_in_dir, validate_skill_dir_for_trash,
 };
 use super::usage::{classify_line, scan_sessions_for_test};
-use crate::contracts::{SkillIssue, SkillItem};
+use crate::contracts::{SkillIssue, SkillItem, SkillProvider};
 
 #[test]
 fn test_parse_frontmatter_standard() {
@@ -289,8 +289,22 @@ fn test_skill_copies_count_losing_roots() {
     assert_eq!(display_a, "./.omp/skills");
     assert_eq!(display_b, "./.claude/skills");
 
-    scan_skills_in_dir(&root_a, "project", &mut index, &mut skills, &display_a);
-    scan_skills_in_dir(&root_b, "user", &mut index, &mut skills, &display_b);
+    scan_skills_in_dir(
+        &root_a,
+        "project",
+        SkillProvider::Native,
+        &mut index,
+        &mut skills,
+        &display_a,
+    );
+    scan_skills_in_dir(
+        &root_b,
+        "user",
+        SkillProvider::Claude,
+        &mut index,
+        &mut skills,
+        &display_b,
+    );
 
     assert_eq!(skills.len(), 2);
     let dup = skills.iter().find(|s| s.name == "dup").unwrap();
@@ -322,7 +336,14 @@ fn test_skill_issues_and_prompt_chars() {
 
     let mut index: HashMap<String, usize> = HashMap::new();
     let mut skills: Vec<SkillItem> = Vec::new();
-    scan_skills_in_dir(&root, "project", &mut index, &mut skills, "./.omp/skills");
+    scan_skills_in_dir(
+        &root,
+        "project",
+        SkillProvider::Native,
+        &mut index,
+        &mut skills,
+        "./.omp/skills",
+    );
 
     let nodesc = skills.iter().find(|s| s.name == "nodesc").unwrap();
     assert_eq!(nodesc.issues, vec![SkillIssue::MissingDescription]);
@@ -349,7 +370,14 @@ fn test_skill_dangling_symlink_is_unreadable() {
 
     let mut index: HashMap<String, usize> = HashMap::new();
     let mut skills: Vec<SkillItem> = Vec::new();
-    scan_skills_in_dir(&root, "project", &mut index, &mut skills, "./.omp/skills");
+    scan_skills_in_dir(
+        &root,
+        "project",
+        SkillProvider::Native,
+        &mut index,
+        &mut skills,
+        "./.omp/skills",
+    );
 
     let broken = skills
         .iter()
@@ -370,10 +398,122 @@ fn test_skill_unreadable_frontmatter() {
 
     let mut index: HashMap<String, usize> = HashMap::new();
     let mut skills: Vec<SkillItem> = Vec::new();
-    scan_skills_in_dir(&root, "project", &mut index, &mut skills, "./.omp/skills");
+    scan_skills_in_dir(
+        &root,
+        "project",
+        SkillProvider::Native,
+        &mut index,
+        &mut skills,
+        "./.omp/skills",
+    );
 
     let bare = skills.iter().find(|s| s.name == "bare").unwrap();
     assert_eq!(bare.issues, vec![SkillIssue::Unreadable]);
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+// ---- skills_trash validation ----
+
+#[test]
+fn test_trash_validation_accepts_project_skill_dir() {
+    let base = fresh_test_dir("trash-proj");
+    let skills_root = base.join("proj").join(".omp").join("skills");
+    write_skill(
+        &skills_root,
+        "my-skill",
+        "---\nname: my-skill\ndescription: ok\n---\n",
+    );
+
+    let skill_dir = skills_root.join("my-skill");
+    let validated = validate_skill_dir_for_trash(&skill_dir).unwrap();
+    assert_eq!(validated, skill_dir);
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn test_trash_validation_accepts_user_root_shape() {
+    let Some(home) = dirs::home_dir() else {
+        return; // no HOME in this environment — nothing to assert
+    };
+    // A direct child of a user skill root passes the shape check; a
+    // nonexistent name fails only at the existence check, proving the parent
+    // was accepted.
+    let skill_dir = home
+        .join(".omp")
+        .join("agent")
+        .join("skills")
+        .join("ompws-nonexistent-skill-dir");
+    let err = validate_skill_dir_for_trash(&skill_dir).unwrap_err();
+    assert!(
+        err.contains("无法定位技能目录"),
+        "expected existence failure, got: {err}"
+    );
+    // A name NOT under a skill root is rejected by the shape check first.
+    let outside = home.join(".omp").join("skills").join("anything");
+    assert!(validate_skill_dir_for_trash(&outside).is_err());
+}
+
+#[test]
+fn test_trash_validation_rejects_root_nested_and_traversal() {
+    let base = fresh_test_dir("trash-reject");
+    let root = base.join("proj").join(".omp").join("skills");
+    write_skill(&root, "a", "---\nname: a\ndescription: ok\n---\n");
+
+    // The skill root itself must never be trashable.
+    assert!(validate_skill_dir_for_trash(&root).is_err());
+    // A file nested deeper than one level is rejected.
+    let nested = root.join("a").join("SKILL.md");
+    assert!(validate_skill_dir_for_trash(&nested).is_err());
+    // `..` traversal that escapes the root is rejected (normalizes to a
+    // directory that is not a direct child of a skill root).
+    let escaped = root.join("a").join("..").join("..").join("skills");
+    assert!(validate_skill_dir_for_trash(&escaped).is_err());
+    // A path outside every known root is rejected.
+    let outside = base.join("elsewhere").join("thing");
+    std::fs::create_dir_all(&outside).unwrap();
+    assert!(validate_skill_dir_for_trash(&outside).is_err());
+    // Relative paths are rejected outright.
+    assert!(validate_skill_dir_for_trash(Path::new(".omp/skills/a")).is_err());
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[cfg(unix)]
+#[test]
+fn test_trash_validation_resolves_symlink_to_itself() {
+    use std::os::unix::fs::symlink;
+
+    let base = fresh_test_dir("trash-symlink");
+    let root = base.join("proj").join(".omp").join("skills");
+    // Real target lives OUTSIDE the skill root.
+    let outside_target = base.join("real-target");
+    std::fs::create_dir_all(&outside_target).unwrap();
+    std::fs::write(outside_target.join("keep.txt"), "keep me").unwrap();
+    std::fs::create_dir_all(&root).unwrap();
+
+    // Symlink inside the skill root pointing at the outside dir.
+    let link = root.join("linked-skill");
+    symlink(&outside_target, &link).unwrap();
+    // Plus a dangling symlink to a missing target.
+    let dangling = root.join("dangling-skill");
+    symlink(base.join("missing-target"), &dangling).unwrap();
+
+    // Validation must accept both — trash::delete canonicalizes only the
+    // parent, so the link itself is what gets trashed, never the target.
+    let v_link = validate_skill_dir_for_trash(&link).unwrap();
+    assert_eq!(
+        v_link, link,
+        "validated path must be the link, not its resolved target"
+    );
+    assert_eq!(
+        validate_skill_dir_for_trash(&dangling).unwrap(),
+        dangling,
+        "dangling symlink must be trashable"
+    );
+    // And the target file is untouched (still exists afterwards).
+    assert!(outside_target.join("keep.txt").is_file());
 
     let _ = std::fs::remove_dir_all(&base);
 }

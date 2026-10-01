@@ -277,8 +277,10 @@ pub struct ScheduleRun {
 }
 
 // Skills & Extensions catalog
+pub enum SkillProvider { Native, Claude, Agents, Codex, Github, Managed } // snake_case
 pub struct SkillItem {
   pub name: String, pub description: String, pub source: String /* "project" | "user" */,
+  pub provider: SkillProvider /* ecosystem of the discovery root */,
   pub path: String /* SKILL.md */, pub dir: String,
 }
 pub struct ExtensionItem {
@@ -455,6 +457,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 **F — skills & extensions (技能与扩展):**
 - `skills_list(cwd: Option<String>) -> SkillsCatalog`
 - `skills_read(path: String) -> String`
+- `skills_trash(dir: String)` — moves a skill directory to the OS Trash (validated to be a direct child of a known skill root)
 
 ## 8. Status extension file format
 
@@ -812,6 +815,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Read path restriction: `skills_read` strictly verifies `is_path_allowed`: target must be a `.md` file, strictly contained within recognized project skill directory structures or standard user home skill roots. Rejects directory traversal (`..`) and paths outside allowed skill roots.
 - Extension disablement: checks `disabledExtensions` array in global/project config (`config.yml` / `settings.json`) matching extension names, module IDs (`extension-module:<name>`), or file paths; files ending in `.disabled` are also treated as disabled. Toggled via `omp_config_set`.
 - Frontend `SkillsPage` (`centerView === "skills"`): single-column "Skills 管理" center page — stat cards (全部/近期活跃/在吃灰/有问题), resident-context budget meter (~15k chars), source/status segmented filters plus sort menu, a table (name+issues+copies badges, install root, `N 天触发`, last used, row actions), a right-side detail drawer with rendered `skills_read` markdown, and an extensions tab with enable toggles. Usage stats come from `skills_usage`; the page degrades to `—` when it is unavailable. The right dock is hidden on this view (see `CENTER_WITHOUT_RIGHT_PANEL`).
+- Enablement: the page loads `skills.*` + `disabledExtensions` via `omp_config_list` into `skillConfig` and mirrors OMP's session-start filter (`resolveSkillEnablement` in store.ts): `skills.enabled` → `disabledExtensions` `skill:<name>` → per-source `skills.enable*` toggle (mapped from `SkillProvider` + source scope) → `skills.ignoredSkills` globs (`*`/`?`, single-segment, anchored, case-sensitive) → `skills.includeSkills` allowlist. The table's 启用 switch writes via `omp_config_set` with optimistic update + rollback; enable also removes an exact-name ignoredSkills entry. Disabled rows render dimmed with a reason badge; the budget meter counts enabled skills only; the status filter gains 已停用.
+- `skills_trash(dir)`: `validate_skill_dir_for_trash` accepts only absolute paths that are a direct child of a known skill root (the `is_path_allowed` root list or any `<x>/.omp|.agents|.agent|.claude|.codex|.github/skills`), never the root itself; `symlink_metadata` gates existence so symlinks are trashed as the link (the `trash` crate canonicalizes the parent only). Runs in `spawn_blocking`; UI confirms via FloatingLayer popover (row) / inline panel (drawer) and notes surviving same-name copies when `copies > 1`.
 
 ## 12. UI layering and overlay rules
 

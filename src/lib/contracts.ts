@@ -659,6 +659,15 @@ export type SkillIssue =
 	| "description_too_long"
 	| "unreadable";
 
+
+/** Which agent ecosystem's discovery root the skill was found in. */
+export type SkillProvider =
+	| "native"
+	| "claude"
+	| "agents"
+	| "codex"
+	| "github"
+	| "managed";
 export interface SkillItem {
 	name: string;
 	description: string;
@@ -669,6 +678,8 @@ export interface SkillItem {
 	root: string;
 	/** How many discovery roots contain a skill with this same name (>=1); the listed one wins by precedence. */
 	copies: number;
+	/** Agent ecosystem of the discovery root (independent of `source`). */
+	provider: SkillProvider;
 	/** Empty = healthy. */
 	issues: SkillIssue[];
 	/** name + description char count (+4): estimate of resident system-prompt cost. */

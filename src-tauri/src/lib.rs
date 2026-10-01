@@ -252,6 +252,7 @@ pub fn run() {
             skills::commands::skills_list,
             skills::commands::skills_read,
             skills::usage::skills_usage,
+            skills::commands::skills_trash,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

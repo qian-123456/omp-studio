@@ -460,6 +460,10 @@ export const skillsList = (cwd?: string | null) =>
 export const skillsRead = (path: string) =>
 	invoke<string>("skills_read", { path });
 
+/** Moves a whole skill directory to the OS Trash (restorable). */
+export const skillsTrash = (dir: string) =>
+	invoke<void>("skills_trash", { dir });
+
 /** Per-skill trigger counts scanned from session transcripts over `days` days. */
 export const skillsUsage = (days = 45) =>
 	invoke<SkillUsageReport>("skills_usage", { days });

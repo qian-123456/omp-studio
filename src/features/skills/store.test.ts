@@ -2,15 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SkillItem, SkillsCatalog, SkillUsageReport } from "../../lib/contracts";
 import * as ipc from "../../lib/ipc";
 import {
+	DEFAULT_SKILL_CONFIG,
 	computeSkillStats,
+	resolveSkillEnablement,
 	selectVisibleSkills,
 	useSkillsStore,
+	type SkillEnableConfig,
 } from "./store";
 
 vi.mock("../../lib/ipc", () => ({
 	skillsList: vi.fn(),
 	skillsRead: vi.fn(),
 	skillsUsage: vi.fn(),
+	skillsTrash: vi.fn(),
 	ompConfigList: vi.fn(),
 	ompConfigSet: vi.fn(),
 }));
@@ -22,6 +26,7 @@ const skill = (over: Partial<SkillItem>): SkillItem => ({
 	path: "/home/.omp/agent/skills/skill/SKILL.md",
 	dir: "/home/.omp/agent/skills/skill",
 	root: "~/.omp/agent/skills",
+	provider: "native",
 	copies: 1,
 	issues: [],
 	promptChars: 10,
@@ -100,6 +105,8 @@ const resetState = () =>
 		usageLoading: false,
 		usageError: null,
 		usageLoaded: false,
+		skillConfig: DEFAULT_SKILL_CONFIG,
+		trashingDirs: [],
 		lastLoadedCwd: undefined,
 	});
 
@@ -241,6 +248,7 @@ describe("selectVisibleSkills", () => {
 		sourceFilter: "all" as const,
 		statusFilter: "all" as const,
 		sort: "name" as const,
+		skillConfig: DEFAULT_SKILL_CONFIG,
 		usage: {
 			"ego-browser": {
 				name: "ego-browser",
@@ -320,5 +328,266 @@ describe("selectVisibleSkills", () => {
 				(s) => s.name,
 			),
 		).toEqual(["broken", "ego-browser", "eli5"]);
+	});
+});
+
+describe("resolveSkillEnablement", () => {
+	const cfg = (over: Partial<SkillEnableConfig> = {}): SkillEnableConfig => ({
+		...DEFAULT_SKILL_CONFIG,
+		...over,
+	});
+	const s = (over: Partial<SkillItem> = {}) => skill(over);
+
+	it("enabled by default", () => {
+		expect(resolveSkillEnablement(s(), cfg())).toEqual({
+			enabled: true,
+			reason: null,
+		});
+	});
+
+	it("all_off wins over every other reason", () => {
+		const c = cfg({
+			skillsEnabled: false,
+			disabledExtensions: ["skill:x"],
+			ignored: ["x"],
+		});
+		expect(resolveSkillEnablement(s({ name: "x" }), c)).toEqual({
+			enabled: false,
+			reason: { kind: "all_off" },
+		});
+	});
+
+	it("disabledExtensions marker beats source/ignored/include", () => {
+		const c = cfg({
+			disabledExtensions: ["skill:x"],
+			sourceToggles: { "skills.enablePiUser": false },
+			ignored: ["x"],
+			include: ["other"],
+		});
+		expect(resolveSkillEnablement(s({ name: "x" }), c)).toEqual({
+			enabled: false,
+			reason: { kind: "disabled" },
+		});
+	});
+
+	it("source toggle off reports the key, per provider+scope", () => {
+		const c = cfg({ sourceToggles: { "skills.enableClaudeUser": false } });
+		expect(
+			resolveSkillEnablement(s({ provider: "claude", source: "user" }), c)
+				.reason,
+		).toEqual({ kind: "source", key: "skills.enableClaudeUser" });
+		// project scope uses a different key — unaffected
+		expect(
+			resolveSkillEnablement(s({ provider: "claude", source: "project" }), c)
+				.enabled,
+		).toBe(true);
+		// managed/github have no toggle
+		expect(resolveSkillEnablement(s({ provider: "managed" }), c).enabled).toBe(
+			true,
+		);
+		expect(resolveSkillEnablement(s({ provider: "github" }), c).enabled).toBe(
+			true,
+		);
+	});
+
+	it("ignored: exact name entry reports exact=true", () => {
+		const r = resolveSkillEnablement(
+			s({ name: "playwright" }),
+			cfg({ ignored: ["playwright", "foo*"] }),
+		);
+		expect(r).toEqual({
+			enabled: false,
+			reason: { kind: "ignored", pattern: "playwright", exact: true },
+		});
+	});
+
+	it("ignored: glob match reports exact=false; exact wins over earlier glob", () => {
+		const both = resolveSkillEnablement(
+			s({ name: "playwright-core" }),
+			cfg({ ignored: ["playwright-*", "playwright-core"] }),
+		);
+		expect(both.reason).toEqual({
+			kind: "ignored",
+			pattern: "playwright-core",
+			exact: true,
+		});
+		const g = resolveSkillEnablement(
+			s({ name: "playwright-core" }),
+			cfg({ ignored: ["playwright-*"] }),
+		);
+		expect(g.reason).toEqual({
+			kind: "ignored",
+			pattern: "playwright-*",
+			exact: false,
+		});
+	});
+
+	it("include allowlist excludes non-matches", () => {
+		const c = cfg({ include: ["keep-*"] });
+		expect(resolveSkillEnablement(s({ name: "keep-me" }), c).enabled).toBe(
+			true,
+		);
+		expect(resolveSkillEnablement(s({ name: "other" }), c).reason).toEqual({
+			kind: "not_included",
+		});
+		// include evaluated after ignored
+		const both = cfg({ include: ["keep-*"], ignored: ["keep-x"] });
+		expect(
+			resolveSkillEnablement(s({ name: "keep-x" }), both).reason?.kind,
+		).toBe("ignored");
+	});
+
+	it("glob semantics: * ? single-segment, case-sensitive, anchored", () => {
+		const q = cfg({ ignored: ["a?c"] });
+		expect(resolveSkillEnablement(s({ name: "abc" }), q).enabled).toBe(false);
+		expect(resolveSkillEnablement(s({ name: "ac" }), q).enabled).toBe(true);
+		const star = cfg({ ignored: ["x*"] });
+		expect(resolveSkillEnablement(s({ name: "xyz" }), star).enabled).toBe(
+			false,
+		);
+		const ci = cfg({ ignored: ["Play*"] });
+		expect(resolveSkillEnablement(s({ name: "play" }), ci).enabled).toBe(true);
+		const anchored = cfg({ ignored: ["lay"] });
+		expect(resolveSkillEnablement(s({ name: "play" }), anchored).enabled).toBe(
+			true,
+		);
+	});
+});
+
+describe("setSkillEnabled", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetState();
+	});
+
+	const target = () => skill({ name: "foo" });
+	const listWith = (entries: Record<string, unknown>) => ({
+		found: true,
+		error: null,
+		entries: Object.entries(entries).map(([key, value]) => ({
+			key,
+			value,
+			valueType: "array",
+			description: "",
+			redacted: false,
+			tab: "",
+		})),
+	});
+
+	it("disable appends skill:<name> to disabledExtensions", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(
+			listWith({ disabledExtensions: ["ext-a"] }),
+		);
+		vi.mocked(ipc.ompConfigSet).mockResolvedValue(undefined);
+
+		await useSkillsStore.getState().setSkillEnabled(target(), false);
+
+		expect(ipc.ompConfigSet).toHaveBeenCalledWith(
+			"disabledExtensions",
+			JSON.stringify(["ext-a", "skill:foo"]),
+		);
+		expect(
+			useSkillsStore.getState().skillConfig.disabledExtensions,
+		).toContain("skill:foo");
+	});
+
+	it("enable removes the marker plus the exact ignored entry", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(
+			listWith({
+				disabledExtensions: ["skill:foo"],
+				"skills.ignoredSkills": ["foo", "keep-*"],
+			}),
+		);
+		vi.mocked(ipc.ompConfigSet).mockResolvedValue(undefined);
+		useSkillsStore.setState({
+			skillConfig: {
+				...DEFAULT_SKILL_CONFIG,
+				disabledExtensions: ["skill:foo"],
+				ignored: ["foo", "keep-*"],
+			},
+		});
+
+		await useSkillsStore.getState().setSkillEnabled(target(), true);
+
+		expect(ipc.ompConfigSet).toHaveBeenCalledWith(
+			"disabledExtensions",
+			JSON.stringify([]),
+		);
+		expect(ipc.ompConfigSet).toHaveBeenCalledWith(
+			"skills.ignoredSkills",
+			JSON.stringify(["keep-*"]),
+		);
+		expect(useSkillsStore.getState().skillConfig.ignored).toEqual(["keep-*"]);
+	});
+
+	it("does not touch ignoredSkills when the match is a glob", async () => {
+		useSkillsStore.setState({
+			skillConfig: {
+				...DEFAULT_SKILL_CONFIG,
+				disabledExtensions: ["skill:foo"],
+				ignored: ["fo*"],
+			},
+		});
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(
+			listWith({ disabledExtensions: ["skill:foo"] }),
+		);
+		vi.mocked(ipc.ompConfigSet).mockResolvedValue(undefined);
+
+		await useSkillsStore.getState().setSkillEnabled(target(), true);
+
+		expect(ipc.ompConfigSet).toHaveBeenCalledTimes(1);
+		expect(ipc.ompConfigSet).toHaveBeenCalledWith(
+			"disabledExtensions",
+			JSON.stringify([]),
+		);
+		expect(useSkillsStore.getState().skillConfig.ignored).toEqual(["fo*"]);
+	});
+
+	it("rolls back optimistic state when ompConfigSet rejects", async () => {
+		useSkillsStore.setState({
+			skillConfig: {
+				...DEFAULT_SKILL_CONFIG,
+				disabledExtensions: ["skill:foo"],
+			},
+		});
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(
+			listWith({ disabledExtensions: ["skill:foo"] }),
+		);
+		vi.mocked(ipc.ompConfigSet).mockRejectedValue(new Error("write failed"));
+
+		await useSkillsStore.getState().setSkillEnabled(target(), true);
+
+		expect(useSkillsStore.getState().skillConfig.disabledExtensions).toEqual([
+			"skill:foo",
+		]);
+	});
+});
+
+describe("budget excludes disabled skills", () => {
+	it("disabled promptChars don't count", () => {
+		const cfg: SkillEnableConfig = {
+			...DEFAULT_SKILL_CONFIG,
+			disabledExtensions: ["skill:eli5"],
+		};
+		const stats = computeSkillStats(mockCatalog.skills, {}, cfg);
+		// 500 (ego-browser) + 100 (broken); eli5's 300 excluded
+		expect(stats.budgetUsed).toBe(600);
+		expect(stats.disabled).toBe(1);
+	});
+
+	it("status filter 'disabled' lists only non-enabled skills", () => {
+		const names = selectVisibleSkills({
+			catalog: mockCatalog,
+			searchQuery: "",
+			sourceFilter: "all",
+			statusFilter: "disabled",
+			sort: "name",
+			usage: {},
+			skillConfig: {
+				...DEFAULT_SKILL_CONFIG,
+				disabledExtensions: ["skill:broken"],
+			},
+		}).map((s) => s.name);
+		expect(names).toEqual(["broken"]);
 	});
 });

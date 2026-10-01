@@ -873,12 +873,33 @@ pub enum SkillIssue {
     Unreadable,
 }
 
+/// Which agent ecosystem provided the discovery root this skill was found in.
+/// Classified from the root path, independent of `source` (project vs user).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillProvider {
+    /// ~/.omp/agent/skills or <proj>/.omp/skills
+    Native,
+    /// ~/.claude/skills or <proj>/.claude/skills
+    Claude,
+    /// ~/.agents|~/.agent/skills or <proj>/.agents|.agent/skills
+    Agents,
+    /// ~/.codex/skills or <proj>/.codex/skills
+    Codex,
+    /// <proj>/.github/skills
+    Github,
+    /// ~/.omp/agent/managed-skills
+    Managed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillItem {
     pub name: String,
     pub description: String,
     pub source: String,
+    /// Agent ecosystem of the discovery root (e.g. "native", "claude").
+    pub provider: SkillProvider,
     pub path: String,
     pub dir: String,
     /// Display install root: home-abbreviated (`~/.omp/agent/skills`) or

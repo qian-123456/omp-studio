@@ -17,16 +17,17 @@ import {
 	RefreshCw,
 	Search,
 	Sparkles,
+	Trash2,
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FloatingLayer, Z_LAYER } from "../../components/FloatingLayer";
-import type { ExtensionItem, SkillIssue } from "../../lib/contracts";
+import type { ExtensionItem, SkillIssue, SkillItem } from "../../lib/contracts";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { absoluteTime } from "../../lib/format";
 import { useEscapeKey } from "../../lib/hooks";
-import { ompConfigList, ompConfigSet, skillsRead } from "../../lib/ipc";
+import { skillsRead } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
@@ -38,8 +39,11 @@ import {
 	SKILL_BUDGET_CHARS,
 	USAGE_DAYS,
 	computeSkillStats,
+	resolveSkillEnablement,
 	selectVisibleSkills,
+	updateOmpListSetting,
 	useSkillsStore,
+	type SkillDisabledReason,
 	type SkillSort,
 	type SkillsDrawerTarget,
 } from "./store";
@@ -86,6 +90,133 @@ const SORT_OPTIONS: { value: SkillSort; label: string }[] = [
 	{ value: "name", label: "按名称" },
 ];
 
+/** Short badge + explanatory text for why a skill is off for new sessions. */
+function describeDisabledReason(reason: SkillDisabledReason): {
+	badge: string;
+	detail: string;
+} {
+	switch (reason.kind) {
+		case "disabled":
+			return { badge: "已停用", detail: "已在 disabledExtensions 中停用" };
+		case "source":
+			return {
+				badge: "来源已关闭",
+				detail: `来源已关闭：${reason.key} = false`,
+			};
+		case "ignored":
+			return reason.exact
+				? {
+						badge: "已忽略",
+						detail: "已被 skills.ignoredSkills 按名称忽略",
+					}
+				: {
+						badge: "已忽略",
+						detail: `被忽略规则 ${reason.pattern} 匹配`,
+					};
+		case "not_included":
+			return {
+				badge: "未纳入",
+				detail: "不在 skills.includeSkills 白名单内",
+			};
+		case "all_off":
+			return {
+				badge: "全部关闭",
+				detail: "skills.enabled = false，所有技能已整体关闭",
+			};
+	}
+}
+
+/** A locked Switch can't take a title — wrap it so tooltips still work. */
+function SkillSwitch({
+	skill,
+	enabled,
+	reason,
+	pending,
+	onToggle,
+}: {
+	skill: SkillItem;
+	enabled: boolean;
+	reason: SkillDisabledReason | null;
+	pending: boolean;
+	onToggle: (skill: SkillItem, next: boolean) => void;
+}) {
+	const locked =
+		reason !== null &&
+		reason.kind !== "disabled" &&
+		!(reason.kind === "ignored" && reason.exact);
+	return (
+		<span
+			className="inline-flex"
+			title={
+				pending
+					? "更新中…"
+					: reason
+						? describeDisabledReason(reason).detail
+						: enabled
+							? "停用后新会话不再加载该技能"
+							: undefined
+			}
+		>
+			<Switch
+				checked={enabled}
+				disabled={pending || locked}
+				onChange={(next) => onToggle(skill, next)}
+			/>
+		</span>
+	);
+}
+
+
+/** Shared delete-confirm body: popover (row) and inline panel (drawer). */
+function DeleteConfirmBody({
+	skill,
+	busy,
+	onCancel,
+	onConfirm,
+}: {
+	skill: SkillItem;
+	busy: boolean;
+	onCancel: () => void;
+	onConfirm: () => void;
+}) {
+	return (
+		<div className="w-64">
+			<p className="text-xs leading-relaxed text-neutral-200">
+				将把「{skill.name}」整个目录移到废纸篓，可从废纸篓恢复。
+			</p>
+			<p
+				className="mt-1.5 truncate font-mono text-[11px] text-neutral-500"
+				title={skill.dir}
+			>
+				{skill.dir}
+			</p>
+			{skill.copies > 1 && (
+				<p className="mt-1.5 text-[11px] leading-relaxed text-amber-400/90">
+					另有 {skill.copies - 1} 处同名副本不受影响，删除后可能由它们生效
+				</p>
+			)}
+			<div className="mt-3 flex items-center justify-end gap-1.5">
+				<button
+					type="button"
+					onClick={onCancel}
+					disabled={busy}
+					className="rounded-md px-2.5 py-1 text-xs font-medium text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 disabled:opacity-50"
+				>
+					取消
+				</button>
+				<button
+					type="button"
+					onClick={onConfirm}
+					disabled={busy}
+					className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+				>
+					<Trash2 size={12} />
+					移到废纸篓
+				</button>
+			</div>
+		</div>
+	);
+}
 /** Insert `/skill:<name> ` into the selected session's composer draft. */
 function insertSkillIntoComposer(skillName: string) {
 	const selectedSessionId = useUi.getState().selectedSessionId;
@@ -171,17 +302,27 @@ function DetailDrawer({
 	onClose,
 	onToggleExtension,
 	togglingPath,
+	onToggleSkill,
+	togglingSkill,
+	onTrashSkill,
+	trashingDirs,
 }: {
 	target: SkillsDrawerTarget;
 	onClose: () => void;
 	onToggleExtension: (ext: ExtensionItem) => void;
 	togglingPath: string | null;
+	onToggleSkill: (skill: SkillItem, next: boolean) => void;
+	togglingSkill: string | null;
+	onTrashSkill: (skill: SkillItem) => void;
+	trashingDirs: string[];
 }) {
 	const catalog = useSkillsStore((s) => s.catalog);
+	const skillConfig = useSkillsStore((s) => s.skillConfig);
 	const usageError = useSkillsStore((s) => s.usageError);
 	const usageReport = useSkillsStore((s) => s.usageReport);
 	const usage = useSkillsStore((s) => s.usage);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
+	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	const skill =
 		target.kind === "skill"
@@ -236,6 +377,12 @@ function DetailDrawer({
 	const dirName =
 		skill?.dir.split(/[\\/]/).filter(Boolean).pop() ?? skill?.name ?? "";
 	const issues = skill?.issues ?? [];
+	const enablement = skill ? resolveSkillEnablement(skill, skillConfig) : null;
+	const skillLocked =
+		enablement?.reason !== null &&
+		enablement?.reason !== undefined &&
+		enablement.reason.kind !== "disabled" &&
+		!(enablement.reason.kind === "ignored" && enablement.reason.exact);
 
 	return createPortal(
 		<div className="fixed inset-0" style={{ zIndex: Z_LAYER.drawer }}>
@@ -459,6 +606,31 @@ function DetailDrawer({
 								<span>在当前会话中使用</span>
 							</button>
 						)}
+						{skill && enablement && (
+							<span
+								className="inline-flex"
+								title={
+									skillLocked && enablement.reason
+										? describeDisabledReason(enablement.reason).detail
+										: "启用/停用写入 OMP 配置，对新会话生效"
+								}
+							>
+								<button
+									type="button"
+									disabled={skillLocked || togglingSkill === skill.path}
+									onClick={() => onToggleSkill(skill, !enablement.enabled)}
+									className={clsx(
+										"flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-apple-card hairline transition-all active:scale-95 disabled:opacity-50",
+										enablement.enabled
+											? "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+											: "bg-emerald-600 text-white hover:bg-emerald-500",
+									)}
+								>
+									<Power size={13} />
+									<span>{enablement.enabled ? "停用" : "启用"}</span>
+								</button>
+							</span>
+						)}
 						{extension && (
 							<button
 								type="button"
@@ -487,7 +659,30 @@ function DetailDrawer({
 							<FolderOpen size={13} />
 							<span>在访达中显示</span>
 						</button>
+						{skill && (
+							<button
+								type="button"
+								disabled={trashingDirs.includes(skill.dir)}
+								onClick={() => setConfirmDelete(true)}
+								title="把该技能目录移到废纸篓"
+								className="flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
+							>
+								<Trash2 size={13} />
+								<span>删除</span>
+							</button>
+						)}
 					</div>
+					{/* Inline delete confirmation */}
+					{skill && confirmDelete && (
+						<div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/5 p-3.5">
+							<DeleteConfirmBody
+								skill={skill}
+								busy={trashingDirs.includes(skill.dir)}
+								onCancel={() => setConfirmDelete(false)}
+								onConfirm={() => onTrashSkill(skill)}
+							/>
+						</div>
+					)}
 
 					{/* Rendered SKILL.md */}
 					{skill && (
@@ -538,7 +733,7 @@ function DetailDrawer({
 }
 
 const SKILL_COLS =
-	"grid-cols-[minmax(0,2.6fr)_minmax(0,1.6fr)_minmax(88px,0.5fr)_minmax(96px,0.6fr)_96px]";
+	"grid-cols-[minmax(0,2.4fr)_minmax(0,1.5fr)_minmax(88px,0.5fr)_minmax(96px,0.6fr)_52px_132px]";
 const EXT_COLS =
 	"grid-cols-[minmax(0,1.8fr)_minmax(80px,0.4fr)_minmax(0,2fr)_minmax(110px,0.6fr)]";
 
@@ -549,6 +744,10 @@ export function SkillsPage() {
 	const activeTab = useSkillsStore((s) => s.activeTab);
 	const searchQuery = useSkillsStore((s) => s.searchQuery);
 	const sourceFilter = useSkillsStore((s) => s.sourceFilter);
+	const skillConfig = useSkillsStore((s) => s.skillConfig);
+	const trashingDirs = useSkillsStore((s) => s.trashingDirs);
+	const setSkillEnabled = useSkillsStore((s) => s.setSkillEnabled);
+	const trashSkill = useSkillsStore((s) => s.trashSkill);
 	const statusFilter = useSkillsStore((s) => s.statusFilter);
 	const sort = useSkillsStore((s) => s.sort);
 	const drawer = useSkillsStore((s) => s.drawer);
@@ -585,8 +784,8 @@ export function SkillsPage() {
 	}, [loadUsage]);
 
 	const stats = useMemo(
-		() => computeSkillStats(catalog?.skills ?? [], usage),
-		[catalog?.skills, usage],
+		() => computeSkillStats(catalog?.skills ?? [], usage, skillConfig),
+		[catalog?.skills, usage, skillConfig],
 	);
 
 	const visibleSkills = useMemo(
@@ -598,8 +797,9 @@ export function SkillsPage() {
 				statusFilter,
 				sort,
 				usage,
+				skillConfig,
 			}),
-		[catalog, searchQuery, sourceFilter, statusFilter, sort, usage],
+		[catalog, searchQuery, sourceFilter, statusFilter, sort, usage, skillConfig],
 	);
 
 	const filteredExtensions = useMemo(() => {
@@ -622,32 +822,41 @@ export function SkillsPage() {
 		if (togglingPath) return;
 		setTogglingPath(ext.path);
 		try {
-			// Read current disabledExtensions from omp config
-			const configList = await ompConfigList();
-			const entry = configList.entries.find(
-				(e) => e.key === "disabledExtensions",
+			await updateOmpListSetting("disabledExtensions", (currentDisabled) =>
+				ext.enabled
+					? Array.from(new Set([...currentDisabled, ext.name]))
+					: currentDisabled.filter(
+							(id) =>
+								id !== ext.name &&
+								id !== `extension-module:${ext.name}` &&
+								id !== ext.path,
+						),
 			);
-			const currentDisabled =
-				entry && Array.isArray(entry.value)
-					? entry.value.filter((v): v is string => typeof v === "string")
-					: [];
-
-			const nextDisabled = ext.enabled
-				? Array.from(new Set([...currentDisabled, ext.name]))
-				: currentDisabled.filter(
-						(id) =>
-							id !== ext.name &&
-							id !== `extension-module:${ext.name}` &&
-							id !== ext.path,
-					);
-
-			await ompConfigSet("disabledExtensions", JSON.stringify(nextDisabled));
 			updateExtensionEnabled(ext.path, !ext.enabled);
-			toast.success(ext.enabled ? `已禁用扩展 ${ext.name}` : `已启用扩展 ${ext.name}`);
+			toast.success(
+				ext.enabled ? `已禁用扩展 ${ext.name}` : `已启用扩展 ${ext.name}`,
+			);
 		} catch (err) {
 			toast.error(`更新扩展状态失败: ${errMsg(err)}`);
 		} finally {
 			setTogglingPath(null);
+		}
+	};
+
+	// Skill toggle in-flight tracker + per-row delete popover anchor
+	const [togglingSkill, setTogglingSkill] = useState<string | null>(null);
+	const [deleteAnchor, setDeleteAnchor] = useState<{
+		skill: SkillItem;
+		el: HTMLElement;
+	} | null>(null);
+
+	const handleToggleSkill = async (skill: SkillItem, next: boolean) => {
+		if (togglingSkill) return;
+		setTogglingSkill(skill.path);
+		try {
+			await setSkillEnabled(skill, next);
+		} finally {
+			setTogglingSkill(null);
 		}
 	};
 
@@ -877,6 +1086,7 @@ export function SkillsPage() {
 										label: `未触发 ${usageUnavailable ? "—" : usagePending ? "…" : stats.idle}`,
 									},
 									{ value: "issues", label: `有问题 ${stats.withIssues}` },
+									{ value: "disabled", label: `已停用 ${stats.disabled}` },
 								]}
 							/>
 							<div className="flex-1" />
@@ -925,6 +1135,10 @@ export function SkillsPage() {
 							</FloatingLayer>
 						</div>
 
+						<p className="mt-2 px-1 text-[11px] text-neutral-600">
+							启用/停用写入 OMP 配置，对新会话生效
+						</p>
+
 						{/* Skills table */}
 						<div className="mt-3 overflow-hidden rounded-xl hairline bg-[var(--bg-panel)]/30">
 							<div
@@ -943,6 +1157,9 @@ export function SkillsPage() {
 									<Info size={11} className="text-neutral-600" />
 								</span>
 								<span className="text-right">最后触发</span>
+								<span className="text-right" title="启用/停用写入 OMP 配置，对新会话生效">
+									启用
+								</span>
 								<span className="text-right">操作</span>
 							</div>
 
@@ -979,6 +1196,8 @@ export function SkillsPage() {
 							) : (
 								visibleSkills.map((skill) => {
 									const u = usage[skill.name];
+									const enablement = resolveSkillEnablement(skill, skillConfig);
+									const reason = enablement.reason;
 									return (
 										<div
 											key={skill.path}
@@ -998,6 +1217,7 @@ export function SkillsPage() {
 											className={clsx(
 												"grid cursor-pointer items-center gap-3 border-b border-[var(--border-divider)]/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]/60",
 												SKILL_COLS,
+												!enablement.enabled && "opacity-60",
 											)}
 										>
 											{/* Name + badges + description */}
@@ -1013,6 +1233,14 @@ export function SkillsPage() {
 															title="多个发现位置包含同名技能，按优先级生效此处"
 														>
 															{skill.copies} 处副本
+														</span>
+													)}
+													{reason && (
+														<span
+															className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-1 py-px text-[10px] font-medium text-neutral-400"
+															title={describeDisabledReason(reason).detail}
+														>
+															{describeDisabledReason(reason).badge}
 														</span>
 													)}
 												</div>
@@ -1074,6 +1302,17 @@ export function SkillsPage() {
 												)}
 											</div>
 
+											{/* Enable switch */}
+											<div className="flex justify-end">
+												<SkillSwitch
+													skill={skill}
+													enabled={enablement.enabled}
+													reason={reason}
+													pending={togglingSkill === skill.path}
+													onToggle={handleToggleSkill}
+												/>
+											</div>
+
 											{/* Row actions */}
 											<div className="flex items-center justify-end gap-0.5">
 												<button
@@ -1102,6 +1341,18 @@ export function SkillsPage() {
 													className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
 												>
 													<FolderOpen size={13} />
+												</button>
+												<button
+													type="button"
+													disabled={trashingDirs.includes(skill.dir)}
+													onClick={(e) => {
+														e.stopPropagation();
+														setDeleteAnchor({ skill, el: e.currentTarget });
+													}}
+													title="移到废纸篓"
+													className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-30"
+												>
+													<Trash2 size={13} />
 												</button>
 												<button
 													type="button"
@@ -1243,8 +1494,35 @@ export function SkillsPage() {
 					onClose={closeDrawer}
 					onToggleExtension={handleToggleExtension}
 					togglingPath={togglingPath}
+					onToggleSkill={handleToggleSkill}
+					togglingSkill={togglingSkill}
+					onTrashSkill={(s) => void trashSkill(s, projectCwd)}
+					trashingDirs={trashingDirs}
 				/>
 			)}
+
+			{/* Row delete confirmation popover */}
+			<FloatingLayer
+				anchor={deleteAnchor?.el ?? null}
+				placement="bottom-end"
+				layer="popover"
+				offset={6}
+				onDismiss={() => setDeleteAnchor(null)}
+				className="p-3.5"
+			>
+				{deleteAnchor && (
+					<DeleteConfirmBody
+						skill={deleteAnchor.skill}
+						busy={trashingDirs.includes(deleteAnchor.skill.dir)}
+						onCancel={() => setDeleteAnchor(null)}
+						onConfirm={() => {
+							const s = deleteAnchor.skill;
+							setDeleteAnchor(null);
+							void trashSkill(s, projectCwd);
+						}}
+					/>
+				)}
+			</FloatingLayer>
 		</div>
 	);
 }
