@@ -303,56 +303,15 @@ function EnableInfoButton() {
 				onMouseLeave={leave}
 				role="dialog"
 				aria-label="启用开关说明"
-				className="w-[340px] rounded-xl border border-neutral-700 bg-neutral-900 p-3.5 text-left text-[11.5px] font-normal normal-case leading-relaxed tracking-normal text-neutral-300 shadow-2xl"
+				className="w-[260px] rounded-xl border border-neutral-700 bg-neutral-900 p-3 text-left text-[12px] font-normal normal-case leading-relaxed tracking-normal text-neutral-300 shadow-2xl"
 			>
-				<div className="mb-1.5 text-[12.5px] font-semibold text-neutral-100">
-					启用开关管什么
-				</div>
-				<p className="text-neutral-400">
-					只决定 OMP 在<b className="text-neutral-200">新会话启动时</b>
-					是否加载这个 Skill，不动文件。
-				</p>
-
-				<div className="mt-2.5 font-medium text-neutral-200">原理</div>
-				<p className="text-neutral-400">
-					会话启动时 OMP 依次检查：总开关 → 是否被停用 → 来源开关 → 忽略规则 → 白名单，全部通过才加载。关闭 = 往全局配置
-					<code className="mx-0.5 rounded bg-neutral-800 px-1 font-mono text-[10.5px]">disabledExtensions</code>
-					写入
-					<code className="mx-0.5 rounded bg-neutral-800 px-1 font-mono text-[10.5px]">skill:名称</code>
-					（~/.omp/agent/config.yml）。
-				</p>
-
-				<div className="mt-2.5 font-medium text-neutral-200">关闭后会</div>
-				<ul className="list-disc space-y-0.5 pl-4 text-neutral-400">
-					<li>从 AI 的技能清单里消失，也不再占常驻上下文</li>
-					<li>
-						<code className="font-mono text-[10.5px]">/skill:名称</code> 命令不再注册，AI 也读不到{" "}
-						<code className="font-mono text-[10.5px]">skill://名称</code>
-					</li>
-					<li>子代理同样拿不到；对所有项目生效</li>
+				<div className="mb-1.5 font-semibold text-neutral-100">这个开关做什么</div>
+				<ul className="list-disc space-y-1 pl-4 text-neutral-400">
+					<li>关掉后，新开的对话里 AI 用不了这个 Skill</li>
+					<li>不删文件，不影响正在进行的对话</li>
+					<li>开关是灰的：被设置里的规则关了，悬停开关看原因</li>
+					<li>想临时用一次：点 ▶</li>
 				</ul>
-
-				<div className="mt-2.5 font-medium text-neutral-200">不会影响</div>
-				<ul className="list-disc space-y-0.5 pl-4 text-neutral-400">
-					<li>文件本身（删除才会移到废纸篓）</li>
-					<li>已经在运行的会话（新开会话才生效）</li>
-					<li>Claude Code、Codex 等其他工具</li>
-					<li>历史触发统计</li>
-				</ul>
-
-				<div className="mt-2.5 font-medium text-neutral-200">开关是灰的？</div>
-				<p className="text-neutral-400">
-					说明被更大的规则整体关闭（来源开关或通配忽略规则），悬停开关可看原因，需去设置里调整。
-				</p>
-
-				<div className="mt-2.5 font-medium text-neutral-200">已停用但想临时用一次</div>
-				<p className="text-neutral-400">
-					点行尾 ▶：会插入“请先读取这个 SKILL.md 文件”的指令，AI 读完照做，无需打开开关。
-				</p>
-
-				<p className="mt-2.5 border-t border-neutral-800 pt-2 text-[10.5px] text-neutral-500">
-					项目里的 .omp/config.yml 也可能单独停用 Skill，这里不显示也不修改。
-				</p>
 			</FloatingLayer>
 		</>
 	);
