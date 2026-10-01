@@ -848,7 +848,7 @@ export function Composer({
 									layer="popover"
 									ignoreRefs={[modelMenuRef]}
 									onDismiss={() => setModelOpen(false)}
-									className="w-[400px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--popover-glass,var(--bg-panel))] py-1"
+									className="w-[400px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
 								>
 									<ModelMenuContent
 										models={models}
@@ -902,7 +902,7 @@ export function Composer({
 										layer="popover"
 										ignoreRefs={[thinkingMenuRef]}
 										onDismiss={() => setThinkingOpen(false)}
-										className="w-[260px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--popover-glass,var(--bg-panel))] py-1"
+										className="w-[260px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
 									>
 										<div className="border-b border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
 											思考等级
@@ -1058,7 +1058,7 @@ export function Composer({
 					offset={6}
 					layer="popover"
 					onDismiss={() => setMenuDismissed(true)}
-					className="max-h-64 overflow-y-auto overflow-x-hidden rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--popover-glass,var(--bg-panel))] p-1 w-[min(calc(100vw-32px),600px)]"
+					className="max-h-64 overflow-y-auto overflow-x-hidden rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] p-1 w-[min(calc(100vw-32px),600px)]"
 				>
 					{atMenu.map((p, i) => (
 						<button

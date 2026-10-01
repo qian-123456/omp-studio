@@ -43,7 +43,7 @@ export function SlashMenu({
 			offset={6}
 			layer="popover"
 			onDismiss={onDismiss}
-			className="w-[min(calc(100vw-32px),560px)] !overflow-hidden rounded-xl border-[var(--line,var(--border))] !bg-[var(--popover-glass,var(--bg-panel))] p-1"
+			className="w-[min(calc(100vw-32px),560px)] !overflow-hidden rounded-xl border-[var(--line,var(--border))] !bg-[var(--bg-panel)] p-1"
 			role="listbox"
 			aria-label="斜杠命令"
 		>

@@ -262,7 +262,7 @@ export function ModelSelect({
 					buttonRef.current?.focus();
 				}}
 				className={clsx(
-					"py-1.5 rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--popover-glass,var(--bg-panel))]",
+					"py-1.5 rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)]",
 					widthClass,
 				)}
 			>
