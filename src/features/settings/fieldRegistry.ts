@@ -230,6 +230,57 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		description: "打开应用数据目录、导出或导入工作台设置、恢复默认偏好",
 		keywords: ["data", "export", "import", "reset", "数据目录", "导出", "导入", "重置", "恢复默认"],
 	},
+
+	// Deep-link anchors used by settingsTargets.ts (mcp / plugins / providers / roles)
+	{
+		id: "providerList",
+		sectionId: "providers",
+		label: "供应商列表",
+		description: "API 供应商与密钥管理",
+		keywords: ["provider", "api", "key", "密钥", "供应商", "凭证", "oauth"],
+	},
+	{
+		id: "modelRolesPanel",
+		sectionId: "omp-roles",
+		label: "模型角色与回退链",
+		description: "为每类任务指定主力模型与回退顺序",
+		keywords: ["model", "role", "角色", "模型", "回退", "fallback", "default", "task"],
+	},
+	{
+		id: "mcpServerList",
+		sectionId: "mcp",
+		label: "MCP 服务器列表",
+		description: "已配置的 MCP 服务器及其来源文件",
+		keywords: ["mcp", "server", "服务器", "stdio", "http", "工具服务"],
+	},
+	{
+		id: "mcpRuntimeOptions",
+		sectionId: "mcp",
+		label: "MCP 运行时选项",
+		description: "启动超时、通知与结果渲染等 mcp.* 设置",
+		keywords: ["mcp", "timeout", "超时", "startupTimeout", "notification", "通知"],
+	},
+	{
+		id: "pluginList",
+		sectionId: "plugins",
+		label: "已安装插件",
+		description: "npm/link/marketplace 安装的 OMP 插件，可启用或停用",
+		keywords: ["plugin", "插件", "npm", "marketplace", "安装"],
+	},
+	{
+		id: "extensionList",
+		sectionId: "plugins",
+		label: "扩展模块",
+		description: "OMP 扩展脚本（extensions 目录中的 .ts/.js），可启用或停用",
+		keywords: ["extension", "扩展", "脚本", "模块"],
+	},
+	{
+		id: "extensionsConfig",
+		sectionId: "plugins",
+		label: "显式加载的扩展路径",
+		description: "omp config 的 extensions / disabledExtensions 列表",
+		keywords: ["extensions", "disabledExtensions", "路径", "配置"],
+	},
 ];
 
 /** Extract all searchable keywords for a native section. */

@@ -7,12 +7,12 @@
 
 pub mod commands;
 mod external;
-mod parse;
+pub(crate) mod parse;
 mod scan;
 mod status;
 mod store;
 mod tasks;
-mod transcript;
+pub(crate) mod transcript;
 mod usage;
 
 use std::collections::{HashMap, HashSet};

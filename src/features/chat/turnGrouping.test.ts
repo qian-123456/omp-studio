@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { ToolCall, TranscriptItem } from "../../lib/contracts";
 import {
 	computeDurationMs,
+	explorationSummary,
 	formatDurationChinese,
+	formatDurationCompact,
 	formatShortModel,
+	groupActivityUnits,
 	groupTurnBlocks,
 	noticeBody,
 	noticeSummary,
+	type TurnStep,
 } from "./turnGrouping";
 
 function makeItem(partial: Partial<TranscriptItem> & { id: string; kind: TranscriptItem["kind"] }): TranscriptItem {
@@ -348,5 +352,58 @@ describe("turnGrouping", () => {
 				}),
 			),
 		).toBe("");
+	});
+});
+
+describe("activity grouping", () => {
+	it("formats compact durations for the worked-for divider", () => {
+		expect(formatDurationCompact(0)).toBe("0秒");
+		expect(formatDurationCompact(500)).toBe("1秒");
+		expect(formatDurationCompact(123000)).toBe("2分3秒");
+		expect(formatDurationCompact(60000)).toBe("1分");
+		expect(formatDurationCompact(3600000 + 240000)).toBe("1小时4分");
+	});
+
+	it("summarizes exploration runs", () => {
+		expect(explorationSummary(3, 2, false)).toBe("已浏览 3 个文件、2 次搜索");
+		expect(explorationSummary(3, 0, false)).toBe("已浏览 3 个文件");
+		expect(explorationSummary(0, 2, false)).toBe("已浏览 2 次搜索");
+		expect(explorationSummary(1, 1, true)).toBe("正在浏览…");
+	});
+
+	it("groups consecutive exploration tools, absorbs thinking inside a run", () => {
+		const tool = (id: string, name: string): TurnStep => ({
+			id,
+			kind: "tool",
+			item: makeItem({ id: `${id}-item`, kind: "assistant" }),
+			call: { id, name, args: {}, intent: null },
+		});
+		const thinking: TurnStep = {
+			id: "th-1",
+			kind: "thinking",
+			item: makeItem({ id: "th-item", kind: "assistant" }),
+			thinking: "…",
+		};
+
+		const units = groupActivityUnits([
+			tool("c1", "read"),
+			tool("c2", "grep"),
+			thinking,
+			tool("c3", "glob"),
+			tool("c-run", "bash"),
+			tool("c4", "read"),
+		]);
+
+		expect(units).toHaveLength(3);
+		expect(units[0].kind).toBe("exploration");
+		if (units[0].kind === "exploration") {
+			expect(units[0].steps.map((s) => s.call.name)).toEqual([
+				"read",
+				"grep",
+				"glob",
+			]);
+		}
+		expect(units[1].kind).toBe("step");
+		expect(units[2].kind).toBe("step"); // lone exploration tool stays a row
 	});
 });

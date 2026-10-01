@@ -86,6 +86,8 @@ export interface UiState {
 	sessionViewMode: Record<string, "chat" | "terminal">;
 	/** Settings section to show when the settings view opens (e.g. from the theme menu). */
 	settingsSection: string | null;
+	/** Field/omp-config key to scroll to and highlight inside the settings view. */
+	settingsFocus: string | null;
 	modal: { name: string; props: Record<string, unknown> } | null;
 	selectSession(id: string | null): void;
 	setSelectedIds(ids: Set<string> | string[]): void;
@@ -94,7 +96,7 @@ export interface UiState {
 	returnToSession(): void;
 	openDoc(path: string): void;
 	setCenter(v: CenterView): void;
-	openSettings(section?: string): void;
+	openSettings(section?: string, opts?: { focusKey?: string }): void;
 	closeSettings(): void;
 	setRightTab(t: RightTab | null): void;
 	toggleRight(): void;
@@ -123,6 +125,7 @@ export const useUi = create<UiState>((set) => ({
 	sidebarWidth: readNumber(STORAGE_KEYS.sidebarWidth, 280, 180, 600),
 	sessionViewMode: {},
 	settingsSection: null,
+	settingsFocus: null,
 	modal: null,
 	selectSession: (id) => {
 		if (id) writeStorage(STORAGE_KEYS.lastSession, id);
@@ -169,18 +172,19 @@ export const useUi = create<UiState>((set) => ({
 					: s.previousCenterView,
 			centerView: v,
 		})),
-	openSettings: (section) =>
+	openSettings: (section, opts) =>
 		set((s) => ({
 			previousCenterView:
 				s.centerView !== "settings" ? s.centerView : s.previousCenterView,
 			centerView: "settings",
 			settingsSection: section ?? null,
+			settingsFocus: opts?.focusKey ?? null,
 		})),
 	closeSettings: () =>
 		set((s) => {
 			const prev =
 				s.previousCenterView ?? (s.selectedSessionId ? "session" : "home");
-			return { centerView: prev, settingsSection: null };
+			return { centerView: prev, settingsSection: null, settingsFocus: null };
 		}),
 	setRightTab: (t) => {
 		if (t) {

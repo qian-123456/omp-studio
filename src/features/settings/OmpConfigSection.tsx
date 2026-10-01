@@ -187,7 +187,7 @@ function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () 
 	};
 
 	return (
-		<div className="transition-all">
+		<div className="transition-all" data-omp-key={entry.key}>
 			{/* Collapsed row: title + value/switch */}
 			<div
 				role="button"
@@ -456,15 +456,27 @@ export function OmpConfigSection({
 	onGroupChange,
 	query,
 	seedQuery,
+	keyPrefix,
+	keysOnly,
+	title,
+	hint,
 }: {
 	activeTab: string;
 	onTabChange: (tab: string) => void;
-	/** Schema sub-group (Theme / Composer / …); null shows the whole tab. */
+	/** Schema sub-group (Theme / Composer / …); controlled when defined — pass
+	 * `null` to force "all groups". Omit to let the panel manage it locally. */
 	activeGroupName?: string | null;
 	onGroupChange?: (group: string | null) => void;
 	/** External search query from the nav search box. */
 	query?: string;
 	seedQuery?: string;
+	/** Restrict the listing to keys with this dotted prefix (e.g. "mcp."). */
+	keyPrefix?: string;
+	/** Restrict the listing to exactly these keys. */
+	keysOnly?: readonly string[];
+	/** Header overrides for embedded/prefix-filtered listings. */
+	title?: string;
+	hint?: string;
 }) {
 	const entries = useOmpConfigStore((s) => s.entries);
 	const loading = useOmpConfigStore((s) => s.loading);
@@ -474,9 +486,7 @@ export function OmpConfigSection({
 
 	const [localGroupName, setLocalGroupName] = useState<string | null>(null);
 	const effectiveGroupName =
-		activeGroupName !== undefined && activeGroupName !== null
-			? activeGroupName
-			: localGroupName;
+		activeGroupName !== undefined ? activeGroupName : localGroupName;
 	const setGroupName = onGroupChange ?? setLocalGroupName;
 
 	const effectiveQuery = (query ?? seedQuery ?? "").trim().toLowerCase();
@@ -491,13 +501,19 @@ export function OmpConfigSection({
 
 	const allGroups = useMemo(
 		() =>
-			groupByDesktopCategory(entries).map((g) => ({
+			groupByDesktopCategory(
+				keyPrefix
+					? entries.filter((e) => e.key.startsWith(keyPrefix))
+					: keysOnly
+						? entries.filter((e) => keysOnly.includes(e.key))
+						: entries,
+			).map((g) => ({
 				id: g.category.id,
 				label: g.category.label,
 				hint: g.category.hint,
 				entries: g.entries,
 			})),
-		[entries],
+		[entries, keyPrefix, keysOnly],
 	);
 	const activeGroup =
 		allGroups.find((g) => g.id === activeTab) ?? allGroups[0] ?? null;
@@ -626,7 +642,7 @@ export function OmpConfigSection({
 				<div>
 					<div className="flex items-baseline gap-1.5">
 						<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">
-							{activeGroup?.label}
+							{title ?? activeGroup?.label}
 						</h2>
 						{effectiveGroupName && (
 							<>
@@ -635,9 +651,9 @@ export function OmpConfigSection({
 							</>
 						)}
 					</div>
-					{activeGroup?.hint && (
+					{(hint ?? activeGroup?.hint) && (
 						<p className="mt-0.5 text-xs text-neutral-400">
-							{activeGroup.hint}
+							{hint ?? activeGroup?.hint}
 						</p>
 					)}
 				</div>

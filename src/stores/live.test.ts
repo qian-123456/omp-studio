@@ -109,23 +109,150 @@ describe("live reducer — pending UI", () => {
 });
 
 describe("live reducer — subagents + commands + tools", () => {
-	it("subagent_lifecycle/progress populate subagents", () => {
+	it("subagent_lifecycle/progress populate subagents from payload frames", () => {
+		// Real omp frames: {type, payload:{...}}; lifecycle "started" => running.
 		frame({
 			type: "subagent_lifecycle",
-			subagentId: "sa1",
-			event: "start",
-			label: "explorer",
-		});
-		expect(live().subagents.sa1.status).toBe("start");
-		expect(live().subagents.sa1.label).toBe("explorer");
-		frame({
-			type: "subagent_progress",
-			subagentId: "sa1",
-			status: "running",
-			progress: 0.5,
+			payload: {
+				id: "sa1",
+				agent: "task",
+				agentSource: "user",
+				description: "Explorer agent",
+				status: "started",
+				sessionFile: "/tmp/x/sa1.jsonl",
+				parentToolCallId: "call_1",
+				index: 0,
+			},
 		});
 		expect(live().subagents.sa1.status).toBe("running");
-		expect(live().subagents.sa1.label).toBe("explorer");
+		expect(live().subagents.sa1.label).toBe("Explorer agent");
+		expect(live().subagents.sa1.parentToolCallId).toBe("call_1");
+		expect(live().subagents.sa1.sessionFile).toBe("/tmp/x/sa1.jsonl");
+
+		frame({
+			type: "subagent_progress",
+			payload: {
+				index: 0,
+				agent: "task",
+				agentSource: "user",
+				task: "Sweep the codebase",
+				assignment: "Read everything",
+				parentToolCallId: "call_1",
+				sessionFile: "/tmp/x/sa1.jsonl",
+				progress: {
+					index: 0,
+					id: "sa1",
+					agent: "task",
+					agentSource: "user",
+					status: "running",
+					task: "Sweep the codebase",
+					assignment: "Read everything",
+					currentTool: "read",
+					currentToolIntent: "Reading live.ts",
+					recentTools: [],
+					recentOutput: [],
+					toolCount: 7,
+					requests: 3,
+					tokens: 1200,
+					cost: 0.04,
+					durationMs: 9000,
+					resolvedModel: "prov/mid:high",
+					resolvedModelIdentity: "prov/mid",
+					resolvedThinkingLevel: "high",
+				},
+			},
+		});
+		const sa = live().subagents.sa1;
+		expect(sa.status).toBe("running");
+		expect(sa.progress?.toolCount).toBe(7);
+		expect(sa.progress?.currentTool).toBe("read");
+		expect(sa.progress?.resolvedModelIdentity).toBe("prov/mid");
+		expect(sa.task).toBe("Sweep the codebase");
+		expect(sa.assignment).toBe("Read everything");
+
+		// Terminal lifecycle maps status but keeps the agent (client-side).
+		frame({
+			type: "subagent_lifecycle",
+			payload: {
+				id: "sa1",
+				agent: "task",
+				agentSource: "user",
+				status: "completed",
+				sessionFile: "/tmp/x/sa1.jsonl",
+				parentToolCallId: "call_1",
+				index: 0,
+			},
+		});
+		expect(live().subagents.sa1.status).toBe("completed");
+		expect(live().subagents.sa1.progress?.toolCount).toBe(7);
+	});
+
+	it("get_subagents response seeds running agents", () => {
+		frame({
+			type: "response",
+			command: "get_subagents",
+			success: true,
+			data: {
+				subagents: [
+					{
+						id: "sa2",
+						index: 1,
+						agent: "scout",
+						agentSource: "user",
+						description: "Scout",
+						status: "running",
+						task: "Map code",
+						sessionFile: "/tmp/x/sa2.jsonl",
+						parentToolCallId: "call_9",
+						lastUpdate: 5,
+					},
+				],
+			},
+		});
+		const sa = live().subagents.sa2;
+		expect(sa.status).toBe("running");
+		expect(sa.agent).toBe("scout");
+		expect(sa.parentToolCallId).toBe("call_9");
+	});
+
+	it("tool_execution_update keeps partialResult.details", () => {
+		frame({
+			type: "tool_execution_start",
+			toolCallId: "t1",
+			toolName: "task",
+			args: { context: "", tasks: [] },
+		});
+		frame({
+			type: "tool_execution_update",
+			toolCallId: "t1",
+			partialResult: {
+				content: [{ type: "text", text: "Spawned 2 agents" }],
+				details: {
+					projectAgentsDir: null,
+					results: [],
+					totalDurationMs: 1,
+					progress: [
+						{
+							index: 0,
+							id: "A",
+							agent: "task",
+							status: "pending",
+							task: "x",
+							recentTools: [],
+							recentOutput: [],
+							toolCount: 0,
+							requests: 0,
+							tokens: 0,
+							cost: 0,
+							durationMs: 0,
+						},
+					],
+				},
+			},
+		});
+		expect(live().tools.t1.text).toBe("Spawned 2 agents");
+		const details = live().tools.t1.details as { progress: { id: string }[] };
+		expect(details.progress[0].id).toBe("A");
 	});
 
 	it("available_commands_update fills commands", () => {
@@ -268,5 +395,136 @@ describe("live reducer — pending user echoes", () => {
 	it("message_end without a tracked stream is a no-op", () => {
 		frame({ type: "message_end" });
 		expect(live().streamingMessage).toBeNull();
+	});
+});
+
+describe("live reducer — command_output / config_update / session_info_update", () => {
+	it("command_output becomes an ephemeral entry tagged with the sent command", () => {
+		useLive.getState().noteCommandSent(SID, "context");
+		frame({ type: "command_output", text: "上下文占用 42%" });
+		expect(live().commandOutputs).toHaveLength(1);
+		expect(live().commandOutputs[0].command).toBe("context");
+		expect(live().commandOutputs[0].kind).toBe("omp");
+		expect(live().commandOutputs[0].text).toContain("42%");
+	});
+
+	it("command_output without a known command stays anonymous; blank is dropped", () => {
+		frame({ type: "command_output", text: "   " });
+		frame({ type: "command_output", text: "plain" });
+		expect(live().commandOutputs).toHaveLength(1);
+		expect(live().commandOutputs[0].command).toBeUndefined();
+	});
+
+	it("config_update refreshes model and thinkingLevel on state", () => {
+		frame({
+			type: "response",
+			command: "get_state",
+			success: true,
+			data: { sessionId: SID, model: "a/one", thinkingLevel: "low" },
+		});
+		frame({
+			type: "config_update",
+			model: "b/two",
+			thinkingLevel: "high",
+		});
+		expect(live().state?.model).toBe("b/two");
+		expect(live().state?.thinkingLevel).toBe("high");
+	});
+
+	it("session_info_update refreshes sessionName on state", () => {
+		frame({
+			type: "response",
+			command: "get_state",
+			success: true,
+			data: { sessionId: SID, sessionName: "old" },
+		});
+		frame({ type: "session_info_update", title: "新名字", sessionId: SID });
+		expect(live().state?.sessionName).toBe("新名字");
+	});
+
+	it("prompt_result error is surfaced as an output for a pending command", () => {
+		useLive.getState().noteCommandSent(SID, "compact");
+		frame({
+			type: "prompt_result",
+			agentInvoked: false,
+			status: "error",
+			error: "压缩失败",
+		});
+		expect(live().pendingCommand).toBeNull();
+		expect(live().commandOutputs).toHaveLength(1);
+		expect(live().commandOutputs[0].text).toBe("压缩失败");
+	});
+
+	it("prompt_result clears the pending command on success", () => {
+		useLive.getState().noteCommandSent(SID, "retry");
+		frame({ type: "prompt_result", agentInvoked: true, status: "completed" });
+		expect(live().pendingCommand).toBeNull();
+		expect(live().commandOutputs).toHaveLength(0);
+	});
+
+	it("prompt response clears pending command for handled slash commands (agentInvoked: false)", () => {
+		useLive.getState().noteCommandSent(SID, "context");
+		frame({
+			type: "response",
+			command: "prompt",
+			success: true,
+			data: { agentInvoked: false },
+		});
+		expect(live().pendingCommand).toBeNull();
+	});
+
+	it("prompt response surfaces error and clears pending command on failure", () => {
+		useLive.getState().noteCommandSent(SID, "model");
+		frame({
+			type: "response",
+			command: "prompt",
+			success: false,
+			error: "未知模型",
+		});
+		expect(live().pendingCommand).toBeNull();
+		expect(live().commandOutputs).toHaveLength(1);
+		expect(live().commandOutputs[0].command).toBe("model");
+		expect(live().commandOutputs[0].text).toBe("未知模型");
+	});
+
+	it("addCommandOutput appends app entries; dismissCommandOutput removes", () => {
+		useLive.getState().addCommandOutput(SID, "status", "模型: x");
+		const id = live().commandOutputs[0].id;
+		expect(live().commandOutputs[0].kind).toBe("app");
+		expect(live().commandOutputs[0].command).toBe("status");
+		useLive.getState().dismissCommandOutput(SID, id);
+		expect(live().commandOutputs).toHaveLength(0);
+	});
+
+	it("commands normalize input.hint into hint", () => {
+		frame({
+			type: "available_commands_update",
+			commands: [
+				{
+					name: "translator",
+					description: "翻译",
+					input: { hint: "<文本>" },
+					source: "file",
+				},
+			],
+		});
+		const c = live().commands[0];
+		expect(c.hint).toBe("<文本>");
+		expect(c.input?.hint).toBe("<文本>");
+		expect(c.source).toBe("file");
+	});
+
+	it("get_available_commands response normalizes and keeps old list when empty", () => {
+		frame({
+			type: "available_commands_update",
+			commands: [{ name: "compact" }],
+		});
+		frame({
+			type: "response",
+			command: "get_available_commands",
+			success: true,
+			data: { commands: [] },
+		});
+		expect(live().commands.map((c) => c.name)).toEqual(["compact"]);
 	});
 });

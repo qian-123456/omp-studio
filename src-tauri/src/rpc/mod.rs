@@ -8,6 +8,7 @@ mod frame;
 mod live_test;
 mod process;
 mod sidechat;
+mod subagents;
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};

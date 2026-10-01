@@ -79,6 +79,25 @@ export function formatDurationChinese(ms: number): string {
 }
 
 /**
+ * Compact Chinese duration for the turn-activity rows: "2分3秒" / "5秒" / "1小时4分".
+ */
+export function formatDurationCompact(ms: number): string {
+	if (ms <= 0) return "0秒";
+	const totalSec = Math.round(ms / 1000);
+	if (totalSec < 60) return `${Math.max(1, totalSec)}秒`;
+	const minutes = Math.floor(totalSec / 60);
+	const seconds = totalSec % 60;
+	if (minutes < 60) {
+		return seconds > 0 ? `${minutes}分${seconds}秒` : `${minutes}分`;
+	}
+	const hours = Math.floor(minutes / 60);
+	const remainingMinutes = minutes % 60;
+	return remainingMinutes > 0
+		? `${hours}小时${remainingMinutes}分`
+		: `${hours}小时`;
+}
+
+/**
  * Formats a full model string (e.g. "anthropic/claude-3-5-sonnet-20241022" or "claude-3-7-sonnet")
  * into a clean, short display name (e.g. "Claude 3.5 Sonnet", "Claude 3.7 Sonnet").
  */
@@ -438,4 +457,95 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 	finalizeCurrentTurn();
 
 	return blocks;
+}
+
+// ---- Codex-style activity grouping ---------------------------------------
+
+export type ExplorationKind = "files" | "search";
+
+/** Tool families that fold into one "explored" row (Codex agent-activity-units). */
+const EXPLORATION_KIND: Record<string, ExplorationKind> = {
+	read: "files",
+	read_file: "files",
+	list: "files",
+	ls: "files",
+	list_files: "files",
+	find: "files",
+	fd: "files",
+	grep: "search",
+	search: "search",
+	search_files: "search",
+	rg: "search",
+	glob: "search",
+};
+
+/** Exploration bucket for a tool name, undefined when not a browse/search tool. */
+export function explorationKind(name: string): ExplorationKind | undefined {
+	return EXPLORATION_KIND[name.toLowerCase()];
+}
+
+/**
+ * Chinese summary for a collapsed exploration run:
+ * "已浏览 3 个文件" / "已浏览 3 个文件、2 次搜索" / running: "正在浏览…".
+ */
+export function explorationSummary(
+	files: number,
+	searches: number,
+	running: boolean,
+): string {
+	if (running) return "正在浏览…";
+	const parts: string[] = [];
+	if (files > 0) parts.push(`${files} 个文件`);
+	if (searches > 0) parts.push(`${searches} 次搜索`);
+	return parts.length > 0 ? `已浏览 ${parts.join("、")}` : "已浏览";
+}
+
+/** One row in the rendered activity list. */
+export type ActivityUnit<T extends { kind: string }> =
+	| { kind: "step"; step: T }
+	| { kind: "exploration"; steps: Extract<T, { kind: "tool" }>[] };
+
+/**
+ * Folds consecutive exploration tool steps (read/search/list/find/grep/glob)
+ * into one group row; reasoning steps inside the run are absorbed. Two or
+ * more consecutive exploration tools form a group — a lone one stays a row.
+ * Works on TurnStep and on live pseudo-steps `{ kind, call?: {name} }`.
+ */
+export function groupActivityUnits<
+	T extends { kind: string; call?: { name: string } },
+>(steps: T[]): ActivityUnit<T>[] {
+	const units: ActivityUnit<T>[] = [];
+	let pending: T[] = [];
+
+	const flush = () => {
+		if (pending.length === 0) return;
+		if (pending.length === 1) {
+			units.push({ kind: "step", step: pending[0] });
+		} else {
+			units.push({
+				kind: "exploration",
+				steps: pending as Extract<T, { kind: "tool" }>[],
+			});
+		}
+		pending = [];
+	};
+
+	for (const step of steps) {
+		if (
+			step.kind === "tool" &&
+			step.call &&
+			explorationKind(step.call.name)
+		) {
+			pending.push(step);
+			continue;
+		}
+		// Reasoning inside an exploration run is absorbed into the group.
+		if (step.kind === "thinking" && pending.length > 0) {
+			continue;
+		}
+		flush();
+		units.push({ kind: "step", step });
+	}
+	flush();
+	return units;
 }

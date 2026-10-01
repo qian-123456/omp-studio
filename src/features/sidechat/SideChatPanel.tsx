@@ -170,7 +170,7 @@ export function SideChatPanel() {
 
 	if (!selectedId) {
 		return (
-			<div className="p-3 text-xs text-neutral-500">选择一个会话后可开侧聊</div>
+			<div className="p-3 text-xs text-[var(--text-40)]">选择一个会话后可开侧聊</div>
 		);
 	}
 
@@ -178,12 +178,12 @@ export function SideChatPanel() {
 	if (childId) {
 		return (
 			<div className="flex h-full flex-col">
-				<div className="flex shrink-0 items-center gap-1 border-b border-neutral-800 px-2 py-1">
+				<div className="flex shrink-0 items-center gap-1 border-b border-[var(--line)] px-2 py-1">
 					<button
 						type="button"
 						onClick={() => setChildId(null)}
 						title="返回侧聊列表 (Esc)"
-						className="rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+						className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
 					>
 						← 返回列表 (Esc)
 					</button>
@@ -192,7 +192,7 @@ export function SideChatPanel() {
 						type="button"
 						onClick={() => void handleSendBackToParent(childId)}
 						title="将侧聊最后一条助手回复回传至父会话输入框"
-						className="flex items-center gap-1 rounded border border-indigo-500/40 bg-indigo-600/20 px-2 py-0.5 text-[11px] text-indigo-300 hover:bg-indigo-600/30 hover:text-indigo-200 transition-colors"
+						className="flex items-center gap-1 rounded border border-[var(--line)] px-2 py-0.5 text-[11px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
 					>
 						<CornerUpLeft size={11} />
 						回传给父会话
@@ -201,7 +201,7 @@ export function SideChatPanel() {
 						type="button"
 						onClick={() => selectSession(childId)}
 						title="在主聊天视图中打开此侧聊"
-						className="rounded px-1.5 py-0.5 text-[11px] text-indigo-400 hover:bg-neutral-800 hover:text-indigo-300 transition-colors"
+						className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
 					>
 						在主视图打开
 					</button>
@@ -215,14 +215,14 @@ export function SideChatPanel() {
 
 	return (
 		<div className="flex h-full flex-col">
-			<div className="shrink-0 border-b border-[var(--border-divider)] px-3 py-2 text-[11px] text-neutral-400">
+			<div className="shrink-0 border-b border-[var(--line)] px-3 py-2 text-[11px] text-[var(--text-40)]">
 				{parent
 					? `侧聊 · ${parent.label} ${parent.title}`
 					: "侧聊"}
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto p-2">
 				{children.length === 0 && (
-					<div className="py-4 text-center text-[11px] text-neutral-600">
+					<div className="py-4 text-center text-[11px] text-[var(--text-40)]">
 						还没有侧聊。在正文中划选文字或在下方快速提问。
 					</div>
 				)}
@@ -243,19 +243,19 @@ export function SideChatPanel() {
 									: e.clientY;
 							setContextMenu({ x, y, session: c });
 						}}
-						className="group mb-1 flex w-full items-center gap-2 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-2.5 py-1.5 text-left hover:bg-[var(--bg-hover)] transition-colors"
+						className="group mb-1 flex w-full items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--bg)] px-2.5 py-1.5 text-left hover:bg-[var(--ghost-hover)] transition-colors"
 					>
 						<button
 							type="button"
 							onClick={() => setChildId(c.id)}
 							className="flex min-w-0 flex-1 items-center gap-2 text-left"
 						>
-							<GitBranch size={12} className="shrink-0 text-indigo-400" />
-							<span className="shrink-0 font-mono text-[11px] text-indigo-300">
+							<GitBranch size={12} className="shrink-0 text-[var(--text-40)]" />
+							<span className="shrink-0 font-mono text-[11px] text-[var(--text-60)]">
 								{c.label}
 							</span>
 							<span
-								className="min-w-0 flex-1 truncate text-[12px] text-neutral-300"
+								className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-60)]"
 								title={c.title}
 							>
 								{c.title}
@@ -269,7 +269,7 @@ export function SideChatPanel() {
 								e.stopPropagation();
 								void handleDelete(c.id, c.label);
 							}}
-							className="shrink-0 rounded p-1 text-neutral-500 opacity-0 group-hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-rose-400 focus:opacity-100 transition-opacity"
+							className="shrink-0 rounded p-1 text-[var(--text-40)] opacity-0 group-hover:opacity-100 hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] focus:opacity-100 transition-opacity"
 						>
 							<Trash2 size={12} />
 						</button>
@@ -294,9 +294,9 @@ export function SideChatPanel() {
 								setChildId(contextMenu.session.id);
 								setContextMenu(null);
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
 						>
-							<GitBranch size={13} className="text-indigo-400" />
+							<GitBranch size={13} className="text-[var(--text-40)]" />
 							在侧栏查看
 						</button>
 						<button
@@ -305,9 +305,9 @@ export function SideChatPanel() {
 								selectSession(contextMenu.session.id);
 								setContextMenu(null);
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
 						>
-							<ExternalLink size={13} className="text-indigo-400" />
+							<ExternalLink size={13} className="text-[var(--text-40)]" />
 							在主视图打开
 						</button>
 						<button
@@ -316,12 +316,12 @@ export function SideChatPanel() {
 								void handleSendBackToParent(contextMenu.session.id);
 								setContextMenu(null);
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
 						>
-							<CornerUpLeft size={13} className="text-indigo-400" />
+							<CornerUpLeft size={13} className="text-[var(--text-40)]" />
 							回传给父会话
 						</button>
-						<div className="my-1 border-t border-[var(--border-divider)]" />
+						<div className="my-1 border-t border-[var(--line)]" />
 						<button
 							type="button"
 							onClick={() => {
@@ -330,7 +330,7 @@ export function SideChatPanel() {
 								setContextMenu(null);
 								void handleDelete(sid, slabel);
 							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors"
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--status-error)] hover:bg-[var(--ghost-hover)] transition-colors"
 						>
 							<Trash2 size={13} />
 							删除侧聊
@@ -339,19 +339,19 @@ export function SideChatPanel() {
 				)}
 			</FloatingLayer>
 
-			<div className="shrink-0 border-t border-[var(--border-divider)] p-2.5">
+			<div className="shrink-0 border-t border-[var(--line)] p-2.5">
 				{tooDeep ? (
-					<div className="flex flex-col items-center gap-2 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-3 text-center">
-						<div className="text-[12px] font-medium text-neutral-300">
+					<div className="flex flex-col items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--bg)] p-3 text-center">
+						<div className="text-[12px] font-medium text-[var(--text)]">
 							已达分支嵌套深度上限（3 层）
 						</div>
-						<div className="text-[11px] leading-relaxed text-neutral-400">
+						<div className="text-[11px] leading-relaxed text-[var(--text-40)]">
 							侧聊分支最多支持 3 层嵌套，无法在此分支下继续创建子侧聊。请创建新的主会话以继续开展工作。
 						</div>
 						<button
 							type="button"
 							onClick={() => openModal("newSession")}
-							className="mt-1 flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-indigo-500 transition-colors"
+							className="mt-1 flex items-center gap-1.5 rounded-md bg-[var(--text)] px-3 py-1.5 text-[12px] font-medium text-[var(--bg)] hover:opacity-90 transition-opacity"
 						>
 							<Plus size={13} />
 							新建主会话
@@ -360,14 +360,14 @@ export function SideChatPanel() {
 				) : (
 					<>
 						{error && (
-							<div className="mb-2 text-[11px] text-rose-400">{error}</div>
+							<div className="mb-2 text-[11px] text-[var(--status-error)]">{error}</div>
 						)}
 
-						<div className="rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] shadow-xs focus-within:border-[#0A84FF]/60 focus-within:ring-1 focus-within:ring-[#0A84FF]/30 p-2.5 transition-all">
+						<div className="rounded-xl border border-[var(--line)] bg-[var(--bg)] focus-within:border-[var(--text-30)] p-2.5 transition-colors">
 							{/* Context inheritance capsule */}
 							{parent && (
-								<div className="mb-2 flex items-center gap-1.5 rounded border border-indigo-900/40 bg-indigo-950/20 px-2 py-1 text-[11px] text-indigo-300">
-									<GitBranch size={11} className="shrink-0 text-indigo-400" />
+								<div className="mb-2 flex items-center gap-1.5 rounded border border-[var(--line)] bg-[var(--bg-panel)] px-2 py-1 text-[11px] text-[var(--text-40)]">
+									<GitBranch size={11} className="shrink-0 text-[var(--text-40)]" />
 									<span className="min-w-0 truncate">
 										摘要继承: {parent.label}
 										{parent.title ? ` · ${parent.title}` : ""}
@@ -377,12 +377,12 @@ export function SideChatPanel() {
 
 							{/* Removable quote capsule */}
 							{pendingSelection && (
-								<div className="mb-2 flex items-start gap-1.5 rounded border border-neutral-800 bg-neutral-900/80 px-2 py-1.5 text-[11px] text-neutral-400">
-									<span className="shrink-0 font-medium text-indigo-400">
+								<div className="mb-2 flex items-start gap-1.5 rounded border border-[var(--line)] bg-[var(--bg-panel)] px-2 py-1.5 text-[11px] text-[var(--text-40)]">
+									<span className="shrink-0 font-medium text-[var(--text-60)]">
 										引用：
 									</span>
 									<span
-										className="min-w-0 flex-1 line-clamp-2 break-all text-neutral-300"
+										className="min-w-0 flex-1 line-clamp-2 break-all text-[var(--text-60)]"
 										title={pendingSelection}
 									>
 										{pendingSelection}
@@ -391,7 +391,7 @@ export function SideChatPanel() {
 										type="button"
 										title="移除引用"
 										onClick={() => setPendingSelection(null)}
-										className="shrink-0 rounded p-0.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 focus:opacity-100 transition-colors"
+										className="shrink-0 rounded p-0.5 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] focus:opacity-100 transition-colors"
 									>
 										<X size={12} />
 									</button>
@@ -415,12 +415,12 @@ export function SideChatPanel() {
 								}}
 								placeholder="输入侧聊提问... (Enter 发送，Shift+Enter 换行)"
 								rows={1}
-								className="w-full resize-none bg-transparent text-[12px] leading-relaxed text-neutral-100 placeholder:text-neutral-500/60 outline-none max-h-32 min-h-[44px]"
+								className="w-full resize-none bg-transparent text-[12px] leading-relaxed text-[var(--text)] placeholder:text-[var(--text-30)] outline-none max-h-32 min-h-[44px]"
 							/>
 
-							<div className="mt-1 flex items-center justify-between gap-2 pt-1 text-[11px] text-neutral-500">
-								<div className="flex items-center gap-1 text-[11px] text-neutral-500 select-none">
-									<span>💡 独立侧聊分支</span>
+							<div className="mt-1 flex items-center justify-between gap-2 pt-1 text-[11px] text-[var(--text-40)]">
+								<div className="flex items-center gap-1 text-[11px] text-[var(--text-40)] select-none">
+									<span>独立侧聊分支</span>
 								</div>
 								<button
 									type="button"
@@ -430,14 +430,14 @@ export function SideChatPanel() {
 									className={clsx(
 										"h-6 w-6 rounded-full flex items-center justify-center transition-all duration-150",
 										busy
-											? "bg-neutral-800 text-neutral-400 cursor-not-allowed"
+											? "bg-[var(--bg-hover)] text-[var(--text-40)] cursor-not-allowed"
 											: question.trim()
-												? "bg-white text-neutral-950 hover:bg-neutral-200 active:scale-95 shadow-sm"
-												: "bg-neutral-800 text-neutral-500 cursor-not-allowed",
+												? "bg-[var(--text)] text-[var(--bg)] hover:opacity-90 active:scale-95"
+												: "bg-[var(--bg-hover)] text-[var(--text-30)] cursor-not-allowed",
 									)}
 								>
 									{busy ? (
-										<Loader2 size={12} className="animate-spin text-neutral-400" />
+										<Loader2 size={12} className="animate-spin text-[var(--text-40)]" />
 									) : (
 										<ArrowUp size={13} />
 									)}
@@ -461,6 +461,6 @@ function ChildStatus({
 	const streaming = useLive((s) => s.sessions[id]?.streaming === true);
 	const label = streaming ? "运行中" : fallback === "idle" ? "空闲" : fallback;
 	return (
-		<span className="shrink-0 text-[10px] text-neutral-500">{label}</span>
+		<span className="shrink-0 text-[10px] text-[var(--text-40)]">{label}</span>
 	);
 }

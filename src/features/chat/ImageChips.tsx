@@ -34,7 +34,7 @@ export function ImageChip({ image }: { image: ImageAttachment }) {
 				onClick={() => {
 					if (src) setExpanded(true);
 				}}
-				className="group/img press-scale flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] p-1 pr-2 text-[11px] text-neutral-300 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-100"
+				className="group/img press-scale flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg-panel)] p-1 pr-2 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 				title={src ? `点击预览: ${image.path}` : (image.path ?? label)}
 			>
 				{src ? (
@@ -51,11 +51,11 @@ export function ImageChip({ image }: { image: ImageAttachment }) {
 						</div>
 					</div>
 				) : (
-					<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-neutral-800 text-neutral-400">
+					<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-[var(--bg-hover)] text-[var(--text-40)]">
 						<ImageIcon size={14} />
 					</div>
 				)}
-				<span className="font-mono text-[10px] text-neutral-400 group-hover/img:text-neutral-200">
+				<span className="font-mono text-[10px] text-[var(--text-40)] group-hover/img:text-[var(--text)]">
 					{label}
 				</span>
 			</button>
@@ -70,7 +70,7 @@ export function ImageChip({ image }: { image: ImageAttachment }) {
 						onClick={() => setExpanded(false)}
 					>
 					<div
-						className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 p-2 shadow-2xl"
+						className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-2 shadow-apple-modal"
 						onClick={(e) => e.stopPropagation()}
 					>
 						<img
@@ -78,20 +78,20 @@ export function ImageChip({ image }: { image: ImageAttachment }) {
 							alt={label}
 							className="max-h-[80vh] max-w-full rounded object-contain"
 						/>
-						<div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400">
+						<div className="mt-2 flex items-center justify-between text-[11px] text-[var(--text-40)]">
 							<span className="truncate max-w-xs">{image.path}</span>
 							<div className="flex items-center gap-2">
 								<button
 									type="button"
 									onClick={() => image.path && void openPath(image.path)}
-									className="rounded px-2 py-0.5 hover:bg-neutral-800 hover:text-neutral-200"
+									className="rounded px-2 py-0.5 hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 								>
 									在系统查看
 								</button>
 								<button
 									type="button"
 									onClick={() => setExpanded(false)}
-									className="rounded px-2 py-0.5 hover:bg-neutral-800 hover:text-neutral-200"
+									className="rounded px-2 py-0.5 hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 								>
 									关闭
 								</button>

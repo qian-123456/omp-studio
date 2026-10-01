@@ -153,18 +153,22 @@ export function PendingUiCard({
 
 	const btn =
 		"inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs disabled:opacity-50 transition-colors font-medium";
+	// Primary = neutral solid (text-coloured bg, bg-coloured text); secondary =
+	// ghost with a --line hairline. Codex quiet-panel palette, no hues.
+	const btnPrimary = `${btn} bg-[var(--text)] text-[var(--bg)] hover:opacity-90`;
+	const btnGhost = `${btn} border border-[var(--line)] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]`;
 	return (
 		<div
 			onKeyDown={onCardKeyDown}
-			className="my-2 rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-3 text-neutral-200 shadow-xl backdrop-blur-md"
+			className="my-2 rounded-2xl border border-[var(--line)] bg-[var(--bg-panel)] p-3 text-[var(--text)]"
 		>
 			{title && (
-				<div className="whitespace-pre-wrap text-[13px] font-medium text-neutral-100">
+				<div className="whitespace-pre-wrap text-[13px] font-medium text-[var(--text)]">
 					{title}
 				</div>
 			)}
 			{message && (
-				<div className="mt-1 whitespace-pre-wrap text-[12px] text-neutral-300">
+				<div className="mt-1 whitespace-pre-wrap text-[12px] text-[var(--text-40)]">
 					{message}
 				</div>
 			)}
@@ -177,7 +181,7 @@ export function PendingUiCard({
 						type="button"
 						disabled={busy}
 						onClick={handleApprovalApprove}
-						className={`${btn} bg-emerald-700 text-white hover:bg-emerald-600 focus:opacity-100 focus:ring-2 focus:ring-emerald-400 focus:outline-none`}
+						className={btnPrimary}
 						title="仅允许本次执行 (快捷键: y 或 Enter)"
 					>
 						{busy && <Loader2 size={12} className="animate-spin" />}
@@ -201,7 +205,7 @@ export function PendingUiCard({
 								void respond({ confirmed: true, always: true });
 							}
 						}}
-						className={`${btn} bg-indigo-600 text-white hover:bg-indigo-500 focus:opacity-100`}
+						className={btnGhost}
 						title="本会话内不再询问此工具"
 					>
 						{busy && <Loader2 size={12} className="animate-spin" />}
@@ -231,7 +235,7 @@ export function PendingUiCard({
 									});
 								}
 							}}
-							className={`${btn} bg-purple-700 text-white hover:bg-purple-600 focus:opacity-100`}
+							className={btnGhost}
 							title="永久加入全局允许名单"
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
@@ -242,7 +246,7 @@ export function PendingUiCard({
 						type="button"
 						disabled={busy}
 						onClick={handleApprovalReject}
-						className={`${btn} bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white focus:opacity-100 focus:outline-none`}
+						className={btnGhost}
 						title="拒绝本次执行 (快捷键: n)"
 					>
 						拒绝
@@ -258,11 +262,11 @@ export function PendingUiCard({
 							type="button"
 							disabled={busy}
 							onClick={() => respond({ value: opt })}
-							className={`${btn} bg-neutral-800 text-left text-neutral-200 hover:bg-neutral-700 focus:opacity-100`}
+							className={`${btn} w-full text-left text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]`}
 						>
 							{opt}
 							{optionDetails[i]?.description && (
-								<span className="ml-2 text-neutral-400">
+								<span className="ml-2 text-[var(--text-40)]">
 									{optionDetails[i].description}
 								</span>
 							)}
@@ -280,7 +284,7 @@ export function PendingUiCard({
 							type="button"
 							disabled={busy}
 							onClick={() => respond({ confirmed: true })}
-							className={`${btn} bg-emerald-700 text-white hover:bg-emerald-600 focus:opacity-100 focus:ring-2 focus:ring-emerald-400 focus:outline-none`}
+							className={btnPrimary}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
 							确认
@@ -289,7 +293,7 @@ export function PendingUiCard({
 							type="button"
 							disabled={busy}
 							onClick={() => respond({ confirmed: false })}
-							className={`${btn} bg-neutral-800 text-neutral-200 hover:bg-neutral-700 focus:opacity-100`}
+							className={btnGhost}
 						>
 							取消
 						</button>
@@ -329,10 +333,10 @@ export function PendingUiCard({
 										: "请输入内容 (直接回车可跳过/默认，Esc 取消)…"
 						}
 						rows={method === "editor" ? 8 : 2}
-						className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 font-mono text-[12px] text-neutral-200 outline-none focus:border-indigo-500"
+						className="w-full rounded-md border border-[var(--line)] bg-[var(--bg)] px-2 py-1 font-mono text-[12px] text-[var(--text)] outline-none focus:border-[var(--text-30)]"
 					/>
 					{validationError && (
-						<div className="text-[11px] text-red-400">
+						<div className="text-[11px] text-[var(--status-error)]">
 							{validationError}
 						</div>
 					)}
@@ -341,7 +345,7 @@ export function PendingUiCard({
 							type="button"
 							disabled={busy}
 							onClick={submitText}
-							className={`${btn} bg-indigo-600 text-white hover:bg-indigo-500`}
+							className={btnPrimary}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
 							提交
@@ -350,7 +354,7 @@ export function PendingUiCard({
 							type="button"
 							disabled={busy}
 							onClick={() => respond({ cancelled: true })}
-							className={`${btn} bg-neutral-800 text-neutral-300 hover:bg-neutral-700`}
+							className={btnGhost}
 						>
 							取消
 						</button>

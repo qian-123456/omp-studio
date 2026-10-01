@@ -15,6 +15,8 @@ mod rpc;
 mod schedules;
 mod services;
 mod settings;
+mod settings_mcp;
+mod settings_plugins;
 mod skills;
 mod state;
 mod terminal;
@@ -157,6 +159,8 @@ pub fn run() {
             rpc::commands::rpc_list_live,
             rpc::commands::takeover_external,
             rpc::commands::create_side_chat,
+            rpc::commands::subagent_list,
+            rpc::commands::subagent_transcript,
             // C — git + time machine
             git::commands::git_summary,
             git::commands::git_badge,
@@ -253,6 +257,13 @@ pub fn run() {
             skills::commands::skills_read,
             skills::usage::skills_usage,
             skills::commands::skills_trash,
+            // D — MCP servers + plugin enablement (OMP-managed config files)
+            settings_mcp::mcp_config_list,
+            settings_mcp::mcp_server_upsert,
+            settings_mcp::mcp_server_remove,
+            settings_mcp::mcp_server_set_enabled,
+            settings_plugins::plugins_list,
+            settings_plugins::plugin_set_enabled,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

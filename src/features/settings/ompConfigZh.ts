@@ -542,6 +542,7 @@ export const OMP_CONFIG_KEY_ZH: Record<string, string> = {
 	"mcp.notificationDebounceMs": "MCP 通知防抖（毫秒）",
 	"mcp.notifications": "MCP 更新注入",
 	"mcp.renderMarkdownResults": "MCP 结果渲染 Markdown",
+	"mcp.startupTimeoutMs": "MCP 启动连接等待（毫秒）",
 	"tools.xdev": "xd:// 工具",
 	"tools.xdevDocs": "xd:// 提示文档",
 	"tools.xdevInlineDevices": "xd:// 内联设备",

@@ -4,14 +4,7 @@
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
-import {
-	AlertCircle,
-	Copy,
-	Loader2,
-	RotateCcw,
-	Sparkles,
-	Wrench,
-} from "lucide-react";
+import { Copy, RotateCcw } from "lucide-react";
 import React, {
 	useCallback,
 	useEffect,
@@ -20,7 +13,6 @@ import React, {
 	useState,
 } from "react";
 import type {
-	ToolCall,
 	ToolResultInfo,
 	TranscriptItem,
 	TurnCheckpoint,
@@ -31,16 +23,19 @@ import { toast } from "../../lib/toast";
 import { useLive, type LiveTool } from "../../stores/live";
 import { useTurnNav } from "../../stores/turnNav";
 import { AnswerFooter } from "./AnswerFooter";
-import { ExecutionDisclosure } from "./ExecutionDisclosure";
+import {
+	ExecutionDisclosure,
+	TurnSteps,
+	type StepShape,
+} from "./ExecutionDisclosure";
 import { ImageChipsList } from "./ImageChips";
 import { Markdown } from "./markdown";
 import {
 	buildToolResultsMap,
 	filterVisibleItems,
-	resolveToolStatus,
 } from "./messageTrace";
 import { sendPrompt } from "./send";
-import { ToolCard } from "./ToolCard";
+import { CommandOutputList } from "./slash/CommandOutputList";
 import {
 	groupTurnBlocks,
 	noticeLabel,
@@ -56,39 +51,6 @@ const EMPTY_TOOLS: Record<string, LiveTool> = {};
 const asObj = (v: unknown): Record<string, unknown> =>
 	typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
 
-/** Extract text parts from an AgentMessage content (string | parts array). */
-export function messageText(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.filter((p) => asObj(p).type === "text")
-		.map((p) => String(asObj(p).text ?? ""))
-		.join("\n");
-}
-
-export function messageThinking(content: unknown): string | null {
-	if (!Array.isArray(content)) return null;
-	const parts = content
-		.filter((p) => asObj(p).type === "thinking")
-		.map((p) => String(asObj(p).thinking ?? ""));
-	return parts.length ? parts.join("\n") : null;
-}
-
-export function messageToolCalls(content: unknown): ToolCall[] {
-	if (!Array.isArray(content)) return [];
-	return content
-		.filter((p) => asObj(p).type === "tool_use" || asObj(p).type === "toolCall")
-		.map((p) => {
-			const o = asObj(p);
-			return {
-				id: String(o.id ?? ""),
-				name: String(o.name ?? ""),
-				args: o.input ?? o.arguments ?? {},
-				intent: null,
-			};
-		});
-}
-
 function stripImageMarkers(text: string): string {
 	return text
 		.replace(/\[Image #\d+(?:,\s*\d+x\d+)?\]|\[图片(?::\s*[^\]]+)?\]/g, "")
@@ -96,7 +58,9 @@ function stripImageMarkers(text: string): string {
 }
 
 /**
- * User message bubble with compact image chips and retry/copy actions.
+ * User message: right-aligned Codex bubble (70% max width, 22px radius,
+ * --chat-user-bg). Long text collapses to a few lines behind 查看更多.
+ * Image chips sit right-aligned above the bubble.
  */
 const UserRow = React.memo(function UserRow({
 	sessionId,
@@ -107,23 +71,55 @@ const UserRow = React.memo(function UserRow({
 }) {
 	const rawText = item.text ?? "";
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
+	const [expanded, setExpanded] = useState(false);
+	const [collapsible, setCollapsible] = useState(false);
+	const textRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const el = textRef.current;
+		if (!el) return;
+		setCollapsible(el.scrollHeight > el.clientHeight + 1);
+	}, [userText]);
 
 	return (
 		<div
 			id={`msg-${item.id}`}
-			className="group/user-row relative flex flex-col items-end py-1"
+			className="group/user-row relative flex w-full flex-col items-end gap-1 py-1"
 		>
-			<div className="max-w-full rounded-2xl rounded-tr-sm hairline bg-[var(--bg-hover)] shadow-sm px-4 py-2.5 text-[length:var(--chat-user-font-size)] text-[var(--text)] @min-[624px]:max-w-xl">
-				<ImageChipsList images={item.images} />
-				{userText ? (
-					<Markdown text={userText} />
-				) : (
-					!item.images?.length && (
-						<span className="text-neutral-500 italic">空消息</span>
-					)
-				)}
-			</div>
-			<div className="mt-1 flex items-center gap-1 text-[10px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100">
+			{item.images && item.images.length > 0 && (
+				<div className="flex w-full justify-end">
+					<ImageChipsList images={item.images} />
+				</div>
+			)}
+			{userText || !item.images?.length ? (
+				<div className="min-w-0 max-w-[70%] rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)]">
+					{userText ? (
+						<>
+							<div
+								ref={textRef}
+								className={clsx(
+									"whitespace-pre-wrap break-words",
+									!expanded && "line-clamp-4",
+								)}
+							>
+								{userText}
+							</div>
+							{collapsible && (
+								<button
+									type="button"
+									onClick={() => setExpanded((v) => !v)}
+									className="mt-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:text-[var(--text-60)]"
+								>
+									{expanded ? "收起" : "查看更多"}
+								</button>
+							)}
+						</>
+					) : (
+						<span className="italic text-[var(--text-40)]">空消息</span>
+					)}
+				</div>
+			) : null}
+			<div className="flex items-center gap-1 text-[11px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100">
 				<button
 					type="button"
 					onClick={async () => {
@@ -141,10 +137,10 @@ const UserRow = React.memo(function UserRow({
 								toast.error(`重新发送失败: ${errMsg(e)}`);
 						}
 					}}
-					className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
+					className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:text-[var(--text-60)]"
 					title="重新发送此消息"
 				>
-					<RotateCcw size={10} /> 重新发送
+					<RotateCcw size={11} /> 重新发送
 				</button>
 				<button
 					type="button"
@@ -156,10 +152,10 @@ const UserRow = React.memo(function UserRow({
 							toast.error(`复制失败: ${errMsg(e)}`);
 						}
 					}}
-					className="press-scale flex items-center gap-1 px-1 text-neutral-500 transition-colors hover:text-neutral-300 focus:opacity-100"
+					className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:text-[var(--text-60)]"
 					title="复制消息"
 				>
-					<Copy size={10} /> 复制
+					<Copy size={11} /> 复制
 				</button>
 			</div>
 		</div>
@@ -167,7 +163,8 @@ const UserRow = React.memo(function UserRow({
 });
 
 /**
- * Protocol row for system events like model change or compaction.
+ * Protocol row for system events (model change, compaction, …): centered
+ * small tertiary text between hairlines — no pill, no icon tile.
  */
 const ProtocolRow = React.memo(function ProtocolRow({
 	item,
@@ -176,39 +173,36 @@ const ProtocolRow = React.memo(function ProtocolRow({
 }) {
 	const label = noticeLabel(item);
 	const summary = noticeSummary(item);
+	const text = summary ? `${label} · ${summary}` : label;
 
 	return (
 		<div
 			id={`msg-${item.id}`}
-			className="py-1.5 text-center text-[10px] text-neutral-500"
+			className="my-1.5 flex items-center gap-2 py-0.5"
 		>
+			<div className="h-px flex-1 bg-[var(--line)]" />
 			<span
-				className="inline-block max-w-full truncate rounded-full hairline bg-[var(--bg-panel)] px-2.5 py-0.5 shadow-xs"
-				title={summary || label}
+				className="shrink-0 truncate px-1 text-[11px] text-[var(--text-30)]"
+				title={text}
 			>
-				{summary ? (
-					<>
-						{label}
-						<span className="text-neutral-600"> · {summary}</span>
-					</>
-				) : (
-					label
-				)}
+				{text}
 			</span>
+			<div className="h-px flex-1 bg-[var(--line)]" />
 		</div>
 	);
 });
 
 /**
- * A full Turn Block in Codex style:
- * 1. User message bubble
- * 2. Execution disclosure (collapsed single row: 已处理 X 分 Y 秒 · N 步 ›)
- * 3. Final assistant answer
- * 4. Subtle one-line answer footer
+ * A full turn in Codex style:
+ * 1. Right-aligned user bubble
+ * 2. Collapsed "已处理 …" divider over intermediate activity rows
+ * 3. Plain assistant markdown answer (no bubble, no avatar)
+ * 4. Hover-only ghost footer (copy/fork/meta)
  */
 const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionId,
 	block,
+	isLatestTurn,
 	toolsExpanded,
 	toolResultsByCallId,
 	sessionCwd,
@@ -219,6 +213,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 }: {
 	sessionId: string;
 	block: TurnBlock;
+	isLatestTurn?: boolean;
 	toolsExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 	sessionCwd: string;
@@ -237,7 +232,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 			{/* User query bubble (absent when the turn has no visible user message) */}
 			{block.userItem && <UserRow sessionId={sessionId} item={block.userItem} />}
 
-			{/* Collapsed intermediate execution disclosure */}
+			{/* Collapsed intermediate steps under the worked-for divider */}
 			{block.intermediateSteps.length > 0 && (
 				<ExecutionDisclosure
 					sessionId={sessionId}
@@ -248,21 +243,21 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 				/>
 			)}
 
-			{/* Assistant answer bubble */}
+			{/* Assistant answer — plain prose on the thread column */}
 			{block.answerItem && (
 				<div
 					id={`msg-${block.answerItem.id}`}
 					className="group/answer relative flex flex-col items-start py-1"
 				>
-					<div className="max-w-full text-[length:var(--chat-font-size)] text-neutral-200 @min-[864px]:max-w-3xl">
+					<div className="max-w-full text-[length:var(--chat-font-size)] text-[var(--text)]">
 						{answerText ? (
 							<Markdown text={answerText} />
 						) : (
-							<span className="text-neutral-500 italic">空回复</span>
+							<span className="italic text-[var(--text-40)]">空回复</span>
 						)}
 					</div>
 
-					{/* Subtle Answer Footer */}
+					{/* Hover-only ghost footer */}
 					<AnswerFooter
 						sessionId={sessionId}
 						cwd={sessionCwd}
@@ -274,6 +269,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						durationMs={block.durationMs}
 						model={block.answerItem.model ?? block.userItem?.model}
 						answerText={answerText}
+						isLatestTurn={isLatestTurn}
 					/>
 				</div>
 			)}
@@ -283,8 +279,11 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 
 /**
  * Isolated StreamingRow: subscribes to streamingMessage directly so MessageList
- * does NOT re-render on every token!
+ * does NOT re-render on every token. Renders the in-flight turn as Codex
+ * activity rows (thinking / tools / text) via the shared TurnSteps list.
  */
+type LivePseudoStep = StepShape;
+
 const StreamingRow = React.memo(function StreamingRow({
 	sessionId,
 	toolsExpanded,
@@ -302,66 +301,105 @@ const StreamingRow = React.memo(function StreamingRow({
 	const liveTools = useLive(
 		(s) => s.sessions[sessionId]?.tools ?? EMPTY_TOOLS,
 	);
+	const thinkingStartedAt = useLive(
+		(s) => s.sessions[sessionId]?.thinkingStartedAt ?? null,
+	);
+	const thinkingEndedAt = useLive(
+		(s) => s.sessions[sessionId]?.thinkingEndedAt ?? null,
+	);
 
-	const text = messageText(streamingMessage?.content);
-	const thinking = messageThinking(streamingMessage?.content);
-	const toolCalls = messageToolCalls(streamingMessage?.content);
+
+	// Build interleaved pseudo-steps from the streaming message content:
+	// thinking parts → thinking steps, tool_use parts → tool steps, text parts
+	// → plain markdown text. Live tools without a matching call are appended.
+	const steps = useMemo<LivePseudoStep[]>(() => {
+		const out: LivePseudoStep[] = [];
+		const content = Array.isArray(streamingMessage?.content)
+			? (streamingMessage.content as unknown[])
+			: [];
+		const seen = new Set<string>();
+		let partIdx = 0;
+		for (const part of content) {
+			const o = asObj(part);
+			const t = o.type;
+			partIdx += 1;
+			if (t === "thinking" || t === "thought") {
+				const thinking = String(o.thinking ?? o.text ?? "");
+				if (!thinking) continue;
+				out.push({
+					id: `live-thinking-${partIdx}`,
+					kind: "thinking",
+					thinking,
+					running: !thinkingEndedAt,
+					durationMs:
+						thinkingStartedAt && thinkingEndedAt
+							? thinkingEndedAt - thinkingStartedAt
+							: undefined,
+				});
+			} else if (t === "tool_use" || t === "toolCall") {
+				const id = String(o.id ?? "");
+				if (!id) continue;
+				seen.add(id);
+				const live = liveTools[id];
+				const hist = toolResultsByCallId?.get(id);
+				out.push({
+					id: `live-tool-${id}`,
+					kind: "tool",
+					call: {
+						id,
+						name: live?.toolName ?? String(o.name ?? ""),
+						args: live?.args ?? o.input ?? o.arguments ?? {},
+						intent: live?.intent ?? null,
+					},
+					result: hist,
+				});
+			} else if (t === "text") {
+				const txt = String(o.text ?? "");
+				if (!txt.trim()) continue;
+				out.push({ id: `live-text-${partIdx}`, kind: "text", text: txt });
+			}
+		}
+		// Live tools never declared in the streaming message still render.
+		for (const [id, live] of Object.entries(liveTools)) {
+			if (seen.has(id)) continue;
+			out.push({
+				id: `live-tool-${id}`,
+				kind: "tool",
+				call: {
+					id,
+					name: live.toolName,
+					args: live.args,
+					intent: live.intent,
+				},
+				result: toolResultsByCallId?.get(id),
+			});
+		}
+		return out;
+	}, [
+		streamingMessage,
+		liveTools,
+		toolResultsByCallId,
+		thinkingStartedAt,
+		thinkingEndedAt,
+	]);
 
 	// Throttle scroll request to rAF
 	useEffect(() => {
 		onScrollRequest?.();
-	}, [text, thinking, toolCalls.length, onScrollRequest]);
+	}, [steps.length, onScrollRequest]);
 
 	return (
-		<div className="space-y-2 py-1">
-			{/* Thinking block if actively thinking */}
-			{thinking && (
-				<div className="rounded-xl hairline bg-[var(--bg-panel)] p-3 text-neutral-300">
-					<div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium text-amber-400">
-						<Sparkles size={11} className="animate-pulse" />
-						<span>正在深度思考…</span>
-					</div>
-					<div className="text-[12px] leading-relaxed text-neutral-400 italic">
-						<Markdown text={thinking} />
-					</div>
-				</div>
-			)}
-
-			{/* Active tool calls */}
-			{toolCalls.length > 0 && (
-				<div className="space-y-1">
-					{toolCalls.map((tc) => {
-						const live = liveTools[tc.id];
-						const histResult = toolResultsByCallId?.get(tc.id);
-						const status = resolveToolStatus(live?.status, histResult);
-
-						return (
-							<ToolCard
-								key={tc.id}
-								sessionId={sessionId}
-								name={live?.toolName ?? tc.name}
-								args={live?.args ?? tc.args}
-								intent={live?.intent ?? null}
-								status={status}
-								output={histResult?.text || live?.text || ""}
-								details={histResult?.details ?? live?.details}
-								expanded={toolsExpanded ?? undefined}
-								startedAt={live?.startedAt}
-								endedAt={live?.endedAt}
-							/>
-						);
-					})}
-				</div>
-			)}
-
-			{/* Streaming text answer */}
-			{text && (
-				<div className="relative max-w-full text-[length:var(--chat-font-size)] text-neutral-200 @min-[864px]:max-w-3xl">
-					<Markdown text={text} />
-					<span
-						className="inline-block h-3.5 w-1.5 ml-0.5 translate-y-0.5 rounded-xs bg-[#0A84FF] animate-pulse"
-						aria-hidden="true"
-					/>
+		<div className="flex flex-col py-1">
+			<TurnSteps
+				sessionId={sessionId}
+				steps={steps}
+				forceExpanded={toolsExpanded}
+				toolResultsByCallId={toolResultsByCallId}
+			/>
+			{/* Idle streaming state: session is working but nothing emitted yet */}
+			{steps.length === 0 && (
+				<div className="px-1 py-0.5 text-[length:var(--chat-font-size)] leading-6">
+					<span className="shimmer-text">正在思考</span>
 				</div>
 			)}
 		</div>
@@ -496,6 +534,14 @@ export function MessageList({
 		getItemKey: (index) => blocks[index]?.id ?? index,
 	});
 
+	// Last turn block — its footer stays visible even without hover.
+	const lastTurnId = useMemo(() => {
+		for (let i = blocks.length - 1; i >= 0; i--) {
+			if (blocks[i].type === "turn") return blocks[i].id;
+		}
+		return null;
+	}, [blocks]);
+
 	// Listen to user scroll in container to maintain pin-to-bottom state
 	useEffect(() => {
 		const el = scrollRef.current;
@@ -604,7 +650,7 @@ export function MessageList({
 			{/* Top toolbar */}
 			<div
 				className={clsx(
-					"mx-auto flex w-full shrink-0 items-center justify-between py-1 text-[11px] text-neutral-500 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-4xl",
+					"mx-auto flex w-full shrink-0 items-center justify-between py-1 text-[11px] text-[var(--text-30)] @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl",
 					traceGutter ? "pl-12 pr-3" : "px-3",
 				)}
 			>
@@ -612,70 +658,60 @@ export function MessageList({
 					<button
 						type="button"
 						onClick={() => setShowHidden((v) => !v)}
-						className="press-scale rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
+						className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
 					>
 						{showHidden ? "隐藏系统消息" : `显示 ${hiddenCount} 条隐藏消息`}
 					</button>
 				) : (
 					<div />
 				)}
-				<div className="flex items-center gap-1.5">
-					<button
-						type="button"
-						onClick={() => setToolsExpanded((v) => !v)}
-						className="press-scale flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
-						title={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
-					>
-						<Wrench size={10} />
-						<span>{toolsExpanded ? "全部折叠步骤" : "全部展开步骤"}</span>
-					</button>
-				</div>
+				<button
+					type="button"
+					onClick={() => setToolsExpanded((v) => !v)}
+					className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
+					title={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
+				>
+					{toolsExpanded ? "全部折叠步骤" : "全部展开步骤"}
+				</button>
 			</div>
 
 			{/* Loading transcript affordance */}
 			{isLoadingTranscript && !hasContent && (
-				<div className="flex h-full flex-col items-center justify-center p-6 text-center text-neutral-400">
-					<Loader2 size={24} className="mb-2.5 animate-spin text-neutral-500" />
-					<div className="text-[13px] text-neutral-400">正在加载会话记录…</div>
+				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
+					<span className="shimmer-text text-[13px]">正在加载会话记录…</span>
 				</div>
 			)}
 
-			{/* Error state with retry affordance */}
+			{/* Error state with retry affordance — plain status text, no tile */}
 			{!isLoadingTranscript && transcriptError && !hasContent && (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
-					<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-400">
-						<AlertCircle size={24} />
-					</div>
-					<h3 className="mb-1 text-[14px] font-medium text-neutral-200">
+					<p className="text-[13px] font-medium text-[var(--text-60)]">
 						加载会话记录失败
-					</h3>
-					<p className="mb-4 max-w-sm text-[12px] leading-normal text-rose-400/90">
+					</p>
+					<p className="mt-1 max-w-sm text-[12px] leading-normal text-[var(--status-error)]">
 						{transcriptError}
 					</p>
 					{onRetryTranscript && (
 						<button
 							type="button"
 							onClick={onRetryTranscript}
-							className="press-scale flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs text-neutral-200 hover:bg-[var(--bg-hover)] transition-colors"
+							className="mt-3 flex items-center gap-1 rounded px-2 py-1 text-[12px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						>
-							<RotateCcw size={13} />
+							<RotateCcw size={12} />
 							<span>重试加载</span>
 						</button>
 					)}
 				</div>
 			)}
 
-			{/* Empty state guidance */}
+			{/* Empty state guidance — plain centered tertiary text, no icon tile */}
 			{!isLoadingTranscript && !transcriptError && !hasContent && (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
-					<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-400">
-						<Sparkles size={24} />
-					</div>
-					<h3 className="mb-1 text-[14px] font-medium text-neutral-200">
+					<p className="text-[14px] font-medium text-[var(--text-60)]">
 						准备就绪，随时提问
-					</h3>
-					<p className="mb-4 max-w-sm text-[12px] leading-normal text-neutral-500">
-						你可以直接在下方输入框描述你的任务，或者点击以下快捷指令开始：
+					</p>
+					<p className="mt-1 mb-5 max-w-sm text-[12px] leading-normal text-[var(--text-30)]">
+						在下方输入框描述你的任务，或者点击以下快捷指令开始
 					</p>
 					<div className="grid w-full max-w-md grid-cols-2 gap-2 text-left">
 						{[
@@ -696,7 +732,7 @@ export function MessageList({
 											toast.error(`发送失败: ${errMsg(e)}`);
 									}
 								}}
-								className="press-scale cursor-pointer rounded-xl hairline bg-[var(--bg-panel)] p-3 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100"
+								className="cursor-pointer rounded-[10px] border border-[var(--line)] bg-transparent p-3 text-[11px] leading-5 text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 							>
 								{prompt}
 							</button>
@@ -709,7 +745,7 @@ export function MessageList({
 			<div className="relative min-h-0 flex-1">
 				<div
 					ref={containerRef}
-					className="relative mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-4xl"
+					className="relative mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
 				>
 					{/* Virtualized committed transcript */}
 					{blocks.length > 0 && (
@@ -736,16 +772,17 @@ export function MessageList({
 										ref={virtualizer.measureElement}
 										style={{ transform: `translateY(${row.start}px)` }}
 										className={clsx(
-											"absolute left-0 top-0 w-full py-1",
+											"absolute left-0 top-0 w-full py-1 transition-colors duration-300",
 											traceGutter ? "pl-12 pr-3" : "px-3",
 											isHighlighted &&
-												"rounded-xl bg-[#0A84FF]/10 ring-1 ring-[#0A84FF]/50 shadow-md shadow-[#0A84FF]/10 transition-[background-color,box-shadow] duration-300",
+												"rounded-[10px] bg-[var(--ghost-hover)]",
 										)}
 									>
 										{block.type === "turn" ? (
 											<TurnBlockRow
 												sessionId={sessionId}
 												block={block}
+												isLatestTurn={block.id === lastTurnId}
 												toolsExpanded={toolsExpanded}
 												toolResultsByCallId={toolResultsByCallId}
 												sessionCwd={sessionCwd}
@@ -798,6 +835,16 @@ export function MessageList({
 							/>
 						</div>
 					)}
+
+					{/* Inline slash-command output (omp command_output / app-local results) */}
+					<div
+						className={clsx(
+							"w-full",
+							traceGutter ? "pl-12 pr-3" : "px-3",
+						)}
+					>
+						<CommandOutputList sessionId={sessionId} />
+					</div>
 				</div>
 			</div>
 		</div>

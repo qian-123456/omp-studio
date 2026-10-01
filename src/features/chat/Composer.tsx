@@ -1,4 +1,4 @@
-/** [B] Composer: annotation pills, slash autocomplete, held queue,
+/** [B] Composer: annotation pills, slash menu, held queue,
  * steer/stop, model + thinking pickers, /fork interception. */
 
 import clsx from "clsx";
@@ -14,7 +14,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createSideChat, listModels, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
+import { listModels, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ContextRing } from "./ContextRing";
@@ -25,7 +25,6 @@ import { isComposing } from "../../lib/hooks";
 import { formatWithAnnotations, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
-import { useUi } from "../../stores/ui";
 import { useHeldQueue } from "./heldQueue";
 import { abortTurn, sendPrompt, useAbortState } from "./send";
 import {
@@ -37,6 +36,9 @@ import {
 	toModelKey,
 } from "../../lib/models";
 import { ModelMenuContent } from "../../components/ModelSelect";
+import { buildSlashSections, flattenSections, type SlashMenuItem } from "./slash/menu";
+import { SlashMenu } from "./slash/SlashMenu";
+import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
 /** Tooltip descriptions for known thinking levels. The visible label is the
  * raw omp level name (low/high/xhigh/…), English, matching the omp TUI. */
 const THINKING_DESCS: Record<string, string> = {
@@ -98,6 +100,9 @@ export function Composer({
 	const [thinkingOpen, setThinkingOpen] = useState(false);
 	const thinkingMenuRef = useRef<HTMLDivElement>(null);
 
+	/** Hint line shown after picking an arg-taking command (`/name <arg>`). */
+	const [argHintLine, setArgHintLine] = useState<string | null>(null);
+
 	const taRef = useRef<HTMLTextAreaElement>(null);
 	const composerCardRef = useRef<HTMLDivElement>(null);
 	// Draft state bound to useComposer store so switching sessions does not lose input
@@ -124,8 +129,6 @@ export function Composer({
 
 	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
 	const setDismissed = useHeldQueue((s) => s.setDismissed);
-	const selectSession = useUi((s) => s.selectSession);
-	const setRightTab = useUi((s) => s.setRightTab);
 
 
 	// @ file-completion state
@@ -183,6 +186,19 @@ export function Composer({
 		};
 	}, [sessionId, streaming]);
 
+	// Pull the slash-command list once when the session comes up empty —
+	// available_commands_update only arrives when the list changes.
+	const commandsRequested = useRef(false);
+	useEffect(() => {
+		commandsRequested.current = false;
+	}, [sessionId]);
+	useEffect(() => {
+		if (!live?.alive || commandsRequested.current) return;
+		if ((live.commands?.length ?? 0) > 0) return;
+		commandsRequested.current = true;
+		void rpcSend(sessionId, { type: "get_available_commands" }).catch(() => {});
+	}, [sessionId, live?.alive, live?.commands?.length]);
+
 	// Plus button: attach file or insert @
 	const handleAddAttachment = async () => {
 		try {
@@ -218,26 +234,30 @@ export function Composer({
 		}
 	}, [focusNonce]);
 
-	// Slash autocomplete at cursor position
+	// Slash token at cursor position (opens the command menu)
 	const slashToken = useMemo(() => {
 		if (menuDismissed) return null;
 		return getSlashToken(text, cursorPos);
 	}, [text, cursorPos, menuDismissed]);
 
-	const menu = useMemo(() => {
+	/** True when the composer holds text outside the `/query` token —
+	 * hides `requiresEmptyComposer` commands. */
+	const composerHasOtherText = useMemo(() => {
+		if (!slashToken) return false;
+		return (
+			text.slice(0, slashToken.start).trim().length > 0 ||
+			text.slice(slashToken.end).trim().length > 0
+		);
+	}, [text, slashToken]);
+
+	const slashSections = useMemo(() => {
 		if (!slashToken) return [];
-		const q = slashToken.query.toLowerCase();
-		return [
-			{ name: "fork", description: "分叉一个侧聊", hint: "<问题>" },
-			...commands.map((c) => ({
-				name: c.name,
-				description: c.description ?? "",
-				hint: c.hint ?? "",
-			})),
-		]
-			.filter((c) => c.name.toLowerCase().startsWith(q))
-			.slice(0, 8);
-	}, [slashToken, commands]);
+		return buildSlashSections(slashToken.query, commands, composerHasOtherText);
+	}, [slashToken, commands, composerHasOtherText]);
+	const slashItems = useMemo(
+		() => flattenSections(slashSections),
+		[slashSections],
+	);
 
 	useEffect(() => setMenuIndex(0), [slashToken?.query]);
 
@@ -326,24 +346,103 @@ export function Composer({
 		ta.style.overflowY = ta.scrollHeight > maxH ? "auto" : "hidden";
 	}, [text, compact]);
 
-	// Close model and thinking dropdowns on outside click or Esc
+	/** Registry-facing hooks: pickers, text insertion. Fresh closure per call
+	 * so executors always see current state. */
+	const makeSlashDeps = (): SlashDeps => ({
+		openModelPicker: () => {
+			setModelOpen(true);
+			if (!models || models.length === 0) void loadModels();
+		},
+		openThinkingPicker: () => setThinkingOpen(true),
+		insertText: (t) =>
+			setText(`${useComposer.getState().drafts[sessionId] ?? ""}${t}`),
+	});
 
-	const applySlashCommand = (cmdName: string) => {
+	/** Menu selection: arg commands fill `/name ` + hint; the rest run now,
+	 * removing only the `/token` and keeping any other draft text. */
+	const selectSlashItem = (item: SlashMenuItem) => {
 		if (!slashToken) return;
+		setArgHintLine(null);
+		if (item.argHint) {
+			const before = text.slice(0, slashToken.start);
+			const after = text.slice(slashToken.end);
+			const replacement = `/${item.name} `;
+			const nextText = `${before}${replacement}${after}`;
+			setText(nextText);
+			const nextCursor = before.length + replacement.length;
+			setCursorPos(nextCursor);
+			setMenuDismissed(true);
+			setArgHintLine(`/${item.name} ${item.argHint}`);
+			setTimeout(() => {
+				if (taRef.current) {
+					taRef.current.focus();
+					taRef.current.setSelectionRange(nextCursor, nextCursor);
+				}
+			}, 0);
+			return;
+		}
 		const before = text.slice(0, slashToken.start);
 		const after = text.slice(slashToken.end);
-		const replacement = `/${cmdName} `;
-		const nextText = `${before}${replacement}${after}`;
-		setText(nextText);
-		const nextCursor = before.length + replacement.length;
-		setCursorPos(nextCursor);
+		setText(`${before}${after}`);
+		setCursorPos(before.length);
 		setMenuDismissed(true);
-		setTimeout(() => {
-			if (taRef.current) {
-				taRef.current.focus();
-				taRef.current.setSelectionRange(nextCursor, nextCursor);
+		void (async () => {
+			try {
+				if (item.registry) {
+					await runSlashInput(sessionId, `/${item.name}`, makeSlashDeps());
+				} else {
+					pushHistory(`/${item.name}`);
+					await sendSlashPrompt(sessionId, `/${item.name}`);
+				}
+			} catch (err) {
+				if (!isResumeCancelled(err))
+					toast.error(`/${item.name} 失败: ${errMsg(err)}`);
 			}
-		}, 0);
+			setTimeout(() => taRef.current?.focus(), 0);
+		})();
+	};
+	const submit = async (steer: boolean) => {
+		const raw = text;
+		if (!raw.trim() || busy) return;
+		const trimmedRaw = raw.trim();
+		setArgHintLine(null);
+		if (trimmedRaw.startsWith("/")) {
+			// Registry command (/fork, /status, …) — run natively or forward.
+			setBusy(true);
+			try {
+				const outcome = await runSlashInput(
+					sessionId,
+					trimmedRaw,
+					makeSlashDeps(),
+				);
+				if (outcome === "keep") return;
+				if (outcome === null) {
+					// Unknown `/x`: send to omp so its own builtins still run.
+					pushHistory(trimmedRaw);
+					await sendSlashPrompt(sessionId, trimmedRaw);
+				}
+				clearDraft(sessionId);
+				clearAnnotations(sessionId);
+			} catch (err) {
+				if (!isResumeCancelled(err))
+					toast.error(`发送失败: ${errMsg(err)}`);
+			} finally {
+				setBusy(false);
+			}
+			return;
+		}
+		const message = formatWithAnnotations(raw, annotations);
+		setBusy(true);
+		try {
+			await sendPrompt(sessionId, message, { steer });
+			pushHistory(raw.trim());
+			clearDraft(sessionId);
+			clearAnnotations(sessionId);
+		} catch (err) {
+			if (!isResumeCancelled(err)) toast.error(`发送失败: ${errMsg(err)}`);
+		} finally {
+			setBusy(false);
+		}
 	};
 
 	// @ completion: replace the @token with @"<path>" and keep typing.
@@ -361,48 +460,6 @@ export function Composer({
 			taRef.current?.focus();
 			taRef.current?.setSelectionRange(nextCursor, nextCursor);
 		}, 0);
-	};
-
-	const fork = async (question: string) => {
-		try {
-			const info = await createSideChat(sessionId, question.trim());
-			clearDraft(sessionId);
-			setRightTab("sidechat");
-			selectSession(info.sessionId);
-		} catch (err) {
-			toast.error(`创建侧聊失败: ${errMsg(err)}`);
-		}
-	};
-
-	const submit = async (steer: boolean) => {
-		const raw = text;
-		if (!raw.trim() || busy) return;
-		const trimmedRaw = raw.trim();
-		if (
-			trimmedRaw === "/fork" ||
-			trimmedRaw.startsWith("/fork ") ||
-			trimmedRaw.startsWith("/fork\t")
-		) {
-			const question = trimmedRaw.replace(/^\/fork\s*/, "").trim();
-			if (!question) {
-				toast.info("用法: /fork <问题>");
-				return;
-			}
-			await fork(question);
-			return;
-		}
-		const message = formatWithAnnotations(raw, annotations);
-		setBusy(true);
-		try {
-			await sendPrompt(sessionId, message, { steer });
-			pushHistory(raw.trim());
-			clearDraft(sessionId);
-			clearAnnotations(sessionId);
-		} catch (err) {
-			if (!isResumeCancelled(err)) toast.error(`发送失败: ${errMsg(err)}`);
-		} finally {
-			setBusy(false);
-		}
 	};
 
 	const handleAbort = async () => {
@@ -527,17 +584,21 @@ export function Composer({
 		}
 
 		// Slash menu keyboard navigation
-		if (menu.length > 0 && slashToken) {
+		if (slashItems.length > 0 && slashToken) {
 			if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 				e.preventDefault();
 				setMenuIndex(
-					(i) => (i + (e.key === "ArrowDown" ? 1 : -1) + menu.length) % menu.length,
+					(i) =>
+						(i + (e.key === "ArrowDown" ? 1 : -1) + slashItems.length) %
+						slashItems.length,
 				);
 				return;
 			}
 			if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
 				e.preventDefault();
-				applySlashCommand(menu[menuIndex].name);
+				const item =
+					slashItems[Math.min(menuIndex, slashItems.length - 1)];
+				if (item) selectSlashItem(item);
 				return;
 			}
 			if (e.key === "Escape") {
@@ -595,461 +656,445 @@ export function Composer({
 
 	if (readonly) {
 		return (
-			<div className="border-t border-[var(--border-divider)] px-3 py-2 text-center text-[12px] text-neutral-500">
+			<div className="border-t border-[var(--border-divider)] px-3 py-2 text-center text-[12px] text-[var(--text-40,var(--text-dim))]">
 				只读观察 — 接管后可操作
 			</div>
 		);
 	}
 
-
 	return (
-		<div className="shrink-0 border-t border-[var(--border-divider)] bg-transparent">
-			{/* Model / thinking / held controls live inside the composer box's
-			    bottom bar (Codex-style) — rendered below the textarea. */}
-
-			{/* Annotation pills. Clickable to navigate to original message or in-place edit comment. */}
-			{annotations.length > 0 && (
-				<div className="flex flex-wrap gap-1 px-3 pt-2">
-					{annotations.map((a, i) => {
-						const isEditing = editingAnnId === a.id;
-						if (isEditing) {
-							return (
-								<div
-									key={a.id}
-									className="flex items-center gap-1 rounded-full border border-indigo-500 bg-neutral-900 px-2 py-0.5 text-[11px] shadow-sm"
-								>
-									<span className="shrink-0 text-neutral-400">
-										[{i + 1}] {a.file ?? a.source}
-										{a.lines ? ` ${a.lines}` : ""}:
-									</span>
-									<input
-										type="text"
-										autoFocus
-										value={editingComment}
-										placeholder="输入批注 (Enter保存, Esc取消)..."
-										onChange={(e) => setEditingComment(e.target.value)}
-										onKeyDown={(e) => {
-											if (e.key === "Enter") {
-												if (isComposing(e)) return;
-												e.preventDefault();
-												e.stopPropagation();
+		<div className="shrink-0 px-3 pb-3 pt-1">
+			<div
+				ref={composerCardRef}
+				className={clsx(
+					"relative rounded-[22px] border bg-[var(--bg-panel)] transition-colors duration-150",
+					isDraggingOver
+						? "border-[var(--text-30,var(--border))]"
+						: "border-[var(--line,var(--border))]",
+				)}
+			>
+				{/* Annotation pills — clickable to edit the attached comment. */}
+				{annotations.length > 0 && (
+					<div className="flex flex-wrap gap-1 px-3 pt-2.5">
+						{annotations.map((a, i) => {
+							const isEditing = editingAnnId === a.id;
+							if (isEditing) {
+								return (
+									<div
+										key={a.id}
+										className="flex items-center gap-1 rounded-full border border-[var(--text-30,var(--border))] bg-[var(--bg)] px-2 py-0.5 text-[11px]"
+									>
+										<span className="shrink-0 text-[var(--text-40,var(--text-dim))]">
+											[{i + 1}] {a.file ?? a.source}
+											{a.lines ? ` ${a.lines}` : ""}:
+										</span>
+										<input
+											type="text"
+											autoFocus
+											value={editingComment}
+											placeholder="输入批注 (Enter保存, Esc取消)..."
+											onChange={(e) => setEditingComment(e.target.value)}
+											onKeyDown={(e) => {
+												if (e.key === "Enter") {
+													if (isComposing(e)) return;
+													e.preventDefault();
+													e.stopPropagation();
+													updateAnnotation(sessionId, a.id, {
+														comment: editingComment.trim() || undefined,
+													});
+													setEditingAnnId(null);
+												} else if (e.key === "Escape") {
+													e.preventDefault();
+													e.stopPropagation();
+													setEditingAnnId(null);
+												}
+											}}
+											onBlur={() => {
 												updateAnnotation(sessionId, a.id, {
 													comment: editingComment.trim() || undefined,
 												});
 												setEditingAnnId(null);
-											} else if (e.key === "Escape") {
-												e.preventDefault();
+											}}
+											className="w-32 bg-transparent text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))] focus:w-48 transition-all"
+										/>
+									</div>
+								);
+							}
+							return (
+								<span
+									key={a.id}
+									onClick={() => {
+										setEditingAnnId(a.id);
+										setEditingComment(a.comment ?? "");
+									}}
+									title={`点击修改批注${a.comment ? `\n批注: ${a.comment}` : ""}${a.text ? `\n原内容: ${a.text}` : ""}`}
+									className="group flex max-w-72 cursor-pointer items-center gap-1 rounded-full border border-[var(--line,var(--border))] bg-[var(--bg)] px-2 py-0.5 text-[11px] text-[var(--text-60,var(--text-muted))] hover:border-[var(--text-30,var(--border))] hover:text-[var(--text)]"
+								>
+									<span className="truncate">
+										[{i + 1}] {a.file ?? a.source}
+										{a.lines ? ` ${a.lines}` : ""}
+										{a.comment ? `：${a.comment}` : ""}
+									</span>
+									{a.itemId && (
+										<button
+											type="button"
+											onClick={(e) => {
 												e.stopPropagation();
-												setEditingAnnId(null);
-											}
-										}}
-										onBlur={() => {
-											updateAnnotation(sessionId, a.id, {
-												comment: editingComment.trim() || undefined,
-											});
-											setEditingAnnId(null);
-										}}
-										className="w-32 bg-transparent text-neutral-100 outline-none placeholder:text-neutral-600 focus:w-48 transition-all"
-									/>
-								</div>
-							);
-						}
-						return (
-							<span
-								key={a.id}
-								onClick={() => {
-									setEditingAnnId(a.id);
-									setEditingComment(a.comment ?? "");
-								}}
-								title={`点击修改批注${a.comment ? `\n批注: ${a.comment}` : ""}${a.text ? `\n原内容: ${a.text}` : ""}`}
-								className="group flex max-w-72 cursor-pointer items-center gap-1 rounded-full border border-neutral-700 bg-neutral-800/70 px-2 py-0.5 text-[11px] text-neutral-300 hover:border-indigo-500 hover:text-neutral-100"
-							>
-								<span className="truncate">
-									[{i + 1}] {a.file ?? a.source}
-									{a.lines ? ` ${a.lines}` : ""}
-									{a.comment ? `：${a.comment}` : ""}
-								</span>
-								{a.itemId && (
+												scrollToItem(sessionId, a.itemId!);
+											}}
+											title="定位到原消息"
+											className="text-[var(--text-30,var(--text-dim))] hover:text-[var(--text)]"
+										>
+											<CornerDownRight size={10} />
+										</button>
+									)}
 									<button
 										type="button"
 										onClick={(e) => {
 											e.stopPropagation();
-											scrollToItem(sessionId, a.itemId!);
+											removeAnnotation(sessionId, a.id);
 										}}
-										title="定位到原消息"
-										className="text-neutral-500 hover:text-indigo-300"
+										title="删除引用"
+										className="text-[var(--text-30,var(--text-dim))] hover:text-[var(--text)]"
 									>
-										<CornerDownRight size={10} />
+										<X size={10} />
 									</button>
-								)}
-								<button
-									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
-										removeAnnotation(sessionId, a.id);
-									}}
-									title="删除引用"
-									className="text-neutral-500 hover:text-neutral-200"
-								>
-									<X size={10} />
-								</button>
-							</span>
-						);
-					})}
-				</div>
-			)}
-
-			<div className="relative px-3 py-2">
-				{/* Slash-command menu floats above the composer box */}
-				{/* @ file-completion menu — same floating-above-box pattern */}
-				{atMenu.length > 0 && atToken && (
-					<FloatingLayer
-						anchor={composerCardRef.current}
-						placement="top-start"
-						offset={6}
-						layer="popover"
-						onDismiss={() => setMenuDismissed(true)}
-						className="max-h-64 overflow-y-auto overflow-x-hidden rounded-[12px] vibrancy-popover shadow-apple-modal hairline p-1 w-[min(calc(100vw-32px),600px)]"
-					>
-						{atMenu.map((p, i) => (
-							<button
-								key={p}
-								type="button"
-								onMouseDown={(e) => {
-									e.preventDefault();
-									applyAtCompletion(p);
-								}}
-								className={clsx(
-									"flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] transition-colors",
-									i === menuIndex
-										? "bg-[var(--bg-hover)] text-neutral-100"
-										: "text-neutral-300 hover:bg-[var(--bg-active-fill)]",
-								)}
-							>
-								<span className="truncate font-mono text-neutral-300">{p}</span>
-							</button>
-						))}
-					</FloatingLayer>
-				)}
-				{menu.length > 0 && slashToken && (
-					<FloatingLayer
-						anchor={composerCardRef.current}
-						placement="top-start"
-						offset={6}
-						layer="popover"
-						onDismiss={() => setMenuDismissed(true)}
-						className="overflow-hidden rounded-[12px] vibrancy-popover shadow-apple-modal hairline p-1 w-[min(calc(100vw-32px),600px)]"
-					>
-						{menu.map((c, i) => (
-							<button
-								key={c.name}
-								type="button"
-								onMouseDown={(e) => {
-									e.preventDefault();
-									applySlashCommand(c.name);
-								}}
-								className={clsx(
-									"flex w-full items-baseline gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] transition-colors",
-									i === menuIndex
-										? "bg-[var(--bg-hover)] text-neutral-100"
-										: "text-neutral-300 hover:bg-[var(--bg-active-fill)]",
-								)}
-							>
-								<span className="font-mono text-indigo-300">/{c.name}</span>
-								{c.hint && <span className="text-neutral-500">{c.hint}</span>}
-								<span className="truncate text-neutral-500">{c.description}</span>
-							</button>
-						))}
-					</FloatingLayer>
+								</span>
+							);
+						})}
+					</div>
 				)}
 
-				{/* Composer box: textarea on top, bottom bar inside (Codex-style rounded card) */}
-				<div
-					ref={composerCardRef}
-					className={clsx(
-						"relative rounded-[14px] bg-[var(--bg-panel)] shadow-apple-card transition-all duration-200",
-						isDraggingOver
-							? "ring-2 ring-[#0A84FF]/60 shadow-[0_0_0_0.5px_var(--hairline-strong),0_6px_24px_rgba(10,132,255,0.25)]"
-							: "focus-within:shadow-[0_0_0_0.5px_var(--hairline-strong),var(--shadow-apple-card)]",
-					)}
-				>
-					<textarea
-						ref={taRef}
-						data-composer={sessionId}
-						value={text}
-						onChange={(e) => {
-							setText(e.target.value);
-							setCursorPos(e.target.selectionStart ?? e.target.value.length);
-							setMenuDismissed(false);
-							if (historyIdx !== -1) setHistoryIdx(-1);
-						}}
-						onSelect={(e) =>
-							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-						}
-						onKeyUp={(e) =>
-							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-						}
-						onClick={(e) =>
-							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-						}
-						onKeyDown={onKeyDown}
-						onDragOver={onDragOver}
-						onDragLeave={onDragLeave}
-						onDrop={(e) => void onDrop(e)}
-						onPaste={(e) => void onPaste(e)}
-						rows={1}
-						placeholder={
-							streaming
-								? "输入后续消息..."
-								: "提出后续修改要求... (Enter 发送，Shift+Enter 换行，/ 命令，@ 文件)"
-						}
-						style={{ outline: "none", boxShadow: "none" }}
-						className="w-full resize-none bg-transparent px-3.5 pt-2.5 pb-1 text-[13px] leading-relaxed text-neutral-100 outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-neutral-500/60"
-					/>
+				<textarea
+					ref={taRef}
+					data-composer={sessionId}
+					value={text}
+					onChange={(e) => {
+						setText(e.target.value);
+						setCursorPos(e.target.selectionStart ?? e.target.value.length);
+						setMenuDismissed(false);
+						setArgHintLine(null);
+						if (historyIdx !== -1) setHistoryIdx(-1);
+					}}
+					onSelect={(e) =>
+						setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
+					}
+					onKeyUp={(e) =>
+						setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
+					}
+					onClick={(e) =>
+						setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
+					}
+					onKeyDown={onKeyDown}
+					onDragOver={onDragOver}
+					onDragLeave={onDragLeave}
+					onDrop={(e) => void onDrop(e)}
+					onPaste={(e) => void onPaste(e)}
+					rows={1}
+					placeholder={
+						streaming
+							? "输入后续消息…"
+							: "输入消息，/ 命令，@ 引用文件"
+					}
+					style={{ outline: "none", boxShadow: "none" }}
+					className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-[var(--chat-font-size,14px)] leading-[1.5] text-[var(--text)] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]"
+				/>
 
-					{/* Bottom bar: + button, permission pill, context ring (left); model/thinking pills, send/stop (right) */}
-					<div className="flex items-center justify-between gap-2 px-3 pb-2 pt-0.5 text-[11px] text-neutral-500">
-						{/* Left side actions */}
-						<div className="flex items-center gap-1.5">
-							{/* Plus button for attachments / annotations */}
+				{/* Arg hint shown after picking `/name <arg>` from the menu. */}
+				{argHintLine && (
+					<div className="px-4 pb-1 font-mono text-[11px] text-[var(--text-40,var(--text-dim))]">
+						{argHintLine}
+					</div>
+				)}
+
+				{/* Bottom toolbar: attach / model / thinking (left); held pill,
+				 * context ring and send/stop (right). */}
+				<div className="flex items-center justify-between gap-2 px-2.5 pb-2 text-[12px]">
+					<div className="flex items-center gap-0.5">
+						<button
+							type="button"
+							onClick={() => void handleAddAttachment()}
+							aria-label="添加附件"
+							title="添加附件或引用文件 (@ 文件)"
+							className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
+						>
+							<Plus size={15} />
+						</button>
+
+						{/* Model picker */}
+						<div className="relative" ref={modelMenuRef}>
 							<button
 								type="button"
-								onClick={() => void handleAddAttachment()}
-								aria-label="添加附件"
-								title="添加附件或引用文件 (@ 文件)"
-								className="flex h-6 w-6 items-center justify-center rounded-full text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
-							>
-								<Plus size={14} />
-							</button>
-						</div>
-
-						{/* Right side actions */}
-						<div className="flex items-center gap-1.5">
-							{/* Context Ring (极简圆环图案) */}
-							<ContextRing
-								percent={contextPct}
-								usageObj={contextUsageObj}
-								totalTokensStr={totalTokensStr}
-								className="shrink-0"
-							/>
-
-							{/* Model picker pill (always visible) */}
-							<div className="relative" ref={modelMenuRef}>
-								<button
-									type="button"
-									onClick={() => {
-										setModelOpen((v) => !v);
-										if (!models || models.length === 0) void loadModels();
-									}}
-									title={current.label || sessionMeta?.model || "选择模型"}
-								className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
+								onClick={() => {
+									setModelOpen((v) => !v);
+									if (!models || models.length === 0) void loadModels();
+								}}
+								title={current.label || sessionMeta?.model || "选择模型"}
+								className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 							>
 								<span className={clsx("truncate", compact ? "max-w-24" : "max-w-36")}>
 									{current.label ||
 										sessionMeta?.model ||
 										(models === null ? "加载中…" : "选择模型…")}
 								</span>
-								<ChevronDown size={10} className="shrink-0 text-neutral-500" />
+								<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
 							</button>
 
-								{modelOpen && (
-									<FloatingLayer
-										anchor={modelMenuRef.current}
-										placement="top-end"
-										offset={6}
-										layer="popover"
-										ignoreRefs={[modelMenuRef]}
-										onDismiss={() => setModelOpen(false)}
-										className="w-[400px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1"
-									>
-										<ModelMenuContent
-											models={models}
-											currentValue={current.value}
-											onSelect={async (key) => {
-												const payload = buildSetModelPayload(key, models);
-												if (payload) {
-													try {
-														if (!live?.alive) {
-															await ensureLive(sessionId);
-														}
-														await rpcSend(sessionId, payload);
-														await rpcSend(sessionId, { type: "get_state" });
-														toast.success("已切换模型");
-													} catch (err) {
-														if (!isResumeCancelled(err))
-															toast.error(`切换模型失败: ${errMsg(err)}`);
+							{modelOpen && (
+								<FloatingLayer
+									anchor={modelMenuRef.current}
+									placement="top-start"
+									offset={6}
+									layer="popover"
+									ignoreRefs={[modelMenuRef]}
+									onDismiss={() => setModelOpen(false)}
+									className="w-[400px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--popover-glass,var(--bg-panel))] py-1"
+								>
+									<ModelMenuContent
+										models={models}
+										currentValue={current.value}
+										onSelect={async (key) => {
+											const payload = buildSetModelPayload(key, models);
+											if (payload) {
+												try {
+													if (!live?.alive) {
+														await ensureLive(sessionId);
 													}
+													await rpcSend(sessionId, payload);
+													await rpcSend(sessionId, { type: "get_state" });
+													toast.success("已切换模型");
+												} catch (err) {
+													if (!isResumeCancelled(err))
+														toast.error(`切换模型失败: ${errMsg(err)}`);
 												}
-												setModelOpen(false);
-											}}
-										/>
-									</FloatingLayer>
-								)}
-							</div>
+											}
+											setModelOpen(false);
+										}}
+									/>
+								</FloatingLayer>
+							)}
+						</div>
 
-							{/* Thinking-level picker (per-model levels) */}
-							{thinkingLevels.length > 0 && (
-								<div className="relative" ref={thinkingMenuRef}>
-									<button
-										type="button"
-										onClick={() => setThinkingOpen((v) => !v)}
-										title={
-											curThinkingObj
-												? `思考等级: ${curThinkingObj.label}${curThinkingObj.desc ? ` (${curThinkingObj.desc})` : ""}`
-												: "配置思考等级"
-										}
-									className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
+						{/* Thinking-level picker (per-model levels) */}
+						{thinkingLevels.length > 0 && (
+							<div className="relative" ref={thinkingMenuRef}>
+								<button
+									type="button"
+									onClick={() => setThinkingOpen((v) => !v)}
+									title={
+										curThinkingObj
+											? `思考等级: ${curThinkingObj.label}${curThinkingObj.desc ? ` (${curThinkingObj.desc})` : ""}`
+											: "配置思考等级"
+									}
+									className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 								>
 									<span className="truncate">
 										{curThinkingObj?.label ?? "思考等级"}
 									</span>
-									<ChevronDown size={10} className="shrink-0 text-neutral-500" />
+									<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
 								</button>
 
-									{thinkingOpen && (
-										<FloatingLayer
-											anchor={thinkingMenuRef.current}
-											placement="top-end"
-											offset={6}
-											layer="popover"
-											ignoreRefs={[thinkingMenuRef]}
-											onDismiss={() => setThinkingOpen(false)}
-											className="w-[260px] rounded-xl vibrancy-popover shadow-apple-modal hairline py-1"
-										>
-											<div className="border-b border-[var(--border-divider)] px-2.5 py-1 text-[11px] font-medium text-neutral-400">
-												思考等级
-											</div>
-											<div className="py-0.5">
-												{thinkingLevels.map((level) => {
-													const opt = thinkingLabel(level);
-													const isSelected = currentThinking === level;
-													return (
-														<button
-															key={level}
-															type="button"
-															onClick={async () => {
-																if (live?.alive) {
-																	try {
-																		await rpcSend(sessionId, {
-																			type: "set_thinking_level",
-																			level,
-																		});
-																	} catch (err) {
-																		toast.error(errMsg(err));
-																	}
-																}
-																setThinkingOpen(false);
-															}}
-															className={clsx(
-																"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
-																isSelected
-																	? "bg-indigo-600/20 text-indigo-300"
-																	: "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100",
-															)}
-														>
-															<div className="min-w-0 pr-2">
-																<div className="font-medium">{opt.label}</div>
-																{opt.desc && (
-																	<div className="text-[10px] text-neutral-500">
-																		{opt.desc}
-																	</div>
-																)}
-															</div>
-															{isSelected && (
-																<Check
-																	size={13}
-																	className="shrink-0 text-indigo-400"
-																/>
-															)}
-														</button>
-													);
-												})}
-											</div>
-										</FloatingLayer>
-									)}
- 								</div>
- 							)}
-
- 							{/* Held queue count pill (clickable to un-dismiss) */}
-							{held.length > 0 && (
-								<button
-									type="button"
-									onClick={() => setDismissed(sessionId, false)}
-									aria-label="查看排队消息"
-									title="点击查看排队消息"
-									className="flex items-center gap-1 rounded-full hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
-								>
-									<CornerDownRight size={11} className="text-neutral-400" />
-									<span>排队 {held.length}</span>
-								</button>
-							)}
-
-							{/* Send / streaming controls (Codex circular button with ArrowUp) */}
-							<div className="flex items-center gap-1.5">
-								{streaming ? (
-									<>
-										<button
-											type="button"
-											onClick={() => void handleAbort()}
-											disabled={isAborting}
-											aria-label="停止当前回合"
-											title={isAborting ? "正在停止当前回合…" : "停止当前回合"}
-											className="flex h-7 w-7 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-400 transition-all hover:bg-rose-500/20 active:scale-95 disabled:opacity-50"
-										>
-											{isAborting ? (
-												<Loader2 size={13} className="animate-spin" />
-											) : (
-												<Square size={11} />
-											)}
-										</button>
-										{text.trim() && (
-											<>
-												<button
-													type="button"
-													onClick={() => void submit(false)}
-													disabled={busy}
-													aria-label="排队消息"
-													title="排队消息，待本回合结束后自动处理 (Enter)"
-													className="flex items-center gap-1 rounded-full hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 disabled:opacity-40 transition-all"
-												>
-													<CornerDownRight size={11} className="text-neutral-400" />
-													<span>排队</span>
-												</button>
-												<button
-													type="button"
-													onClick={() => void submit(true)}
-													disabled={busy}
-													aria-label="立即插队"
-													title="立即插队发送打断 (⌘Enter)"
-													className="flex items-center gap-1 rounded-full bg-[#0A84FF] px-2.5 py-1 text-[11px] text-white hover:bg-[#0A84FF]/90 active:scale-95 disabled:opacity-40 shadow-sm transition-all"
-												>
-													<Zap size={11} />
-													<span>插队</span>
-												</button>
-											</>
-										)}
-									</>
-								) : (
-									<button
-										type="button"
-										onClick={() => void submit(false)}
-										disabled={busy || !text.trim()}
-										aria-label="发送消息"
-										title="发送消息 (Enter)"
-										className={clsx(
-											text.trim() && !busy
-												? "flex h-7 w-7 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-90 active:scale-95 shadow-sm transition-all duration-150"
-												: "flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-active-fill)] text-neutral-500 cursor-not-allowed transition-all duration-200",
-										)}
+								{thinkingOpen && (
+									<FloatingLayer
+										anchor={thinkingMenuRef.current}
+										placement="top-start"
+										offset={6}
+										layer="popover"
+										ignoreRefs={[thinkingMenuRef]}
+										onDismiss={() => setThinkingOpen(false)}
+										className="w-[260px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--popover-glass,var(--bg-panel))] py-1"
 									>
-										<ArrowUp size={14} />
-									</button>
+										<div className="border-b border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
+											思考等级
+										</div>
+										<div className="py-0.5">
+											{thinkingLevels.map((level) => {
+												const opt = thinkingLabel(level);
+												const isSelected = currentThinking === level;
+												return (
+													<button
+														key={level}
+														type="button"
+														onClick={async () => {
+															if (live?.alive) {
+																try {
+																	await rpcSend(sessionId, {
+																		type: "set_thinking_level",
+																		level,
+																	});
+																} catch (err) {
+																	toast.error(errMsg(err));
+																}
+															}
+															setThinkingOpen(false);
+														}}
+														className={clsx(
+															"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
+															isSelected
+																? "bg-[var(--bg-active-fill)] text-[var(--text)]"
+																: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
+														)}
+													>
+														<div className="min-w-0 pr-2">
+															<div className="font-medium">{opt.label}</div>
+															{opt.desc && (
+																<div className="text-[10px] text-[var(--text-40,var(--text-dim))]">
+																	{opt.desc}
+																</div>
+															)}
+														</div>
+														{isSelected && (
+															<Check
+																size={13}
+																className="shrink-0 text-[var(--text-60,var(--text-muted))]"
+															/>
+														)}
+													</button>
+												);
+											})}
+										</div>
+									</FloatingLayer>
 								)}
 							</div>
+						)}
+					</div>
+
+					{/* Right side actions */}
+					<div className="flex items-center gap-1.5">
+						{/* Held queue count pill (clickable to un-dismiss) */}
+						{held.length > 0 && (
+							<button
+								type="button"
+								onClick={() => setDismissed(sessionId, false)}
+								aria-label="查看排队消息"
+								title="点击查看排队消息"
+								className="flex items-center gap-1 rounded-full bg-[var(--ghost-hover,var(--bg-active-fill))] px-2 py-0.5 text-[11px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
+							>
+								<CornerDownRight size={11} />
+								<span>排队 {held.length}</span>
+							</button>
+						)}
+
+						{/* Context ring */}
+						<ContextRing
+							percent={contextPct}
+							usageObj={contextUsageObj}
+							totalTokensStr={totalTokensStr}
+							className="shrink-0"
+						/>
+
+						{/* Send / streaming controls (Codex circular button) */}
+						<div className="flex items-center gap-1.5">
+							{streaming ? (
+								<>
+									{text.trim() && (
+										<>
+											<button
+												type="button"
+												onClick={() => void submit(false)}
+												disabled={busy}
+												aria-label="排队消息"
+												title="排队消息，待本回合结束后自动处理 (Enter)"
+												className="flex items-center gap-1 rounded-full bg-[var(--ghost-hover,var(--bg-active-fill))] px-2.5 py-1 text-[11px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-colors"
+											>
+												<CornerDownRight size={11} />
+												<span>排队</span>
+											</button>
+											<button
+												type="button"
+												onClick={() => void submit(true)}
+												disabled={busy}
+												aria-label="立即插队"
+												title="立即插队发送打断 (⌘Enter)"
+												className="flex items-center gap-1 rounded-full bg-[var(--text)] px-2.5 py-1 text-[11px] text-[var(--bg)] hover:opacity-85 disabled:opacity-40 transition-opacity"
+											>
+												<Zap size={11} />
+												<span>插队</span>
+											</button>
+										</>
+									)}
+									<button
+										type="button"
+										onClick={() => void handleAbort()}
+										disabled={isAborting}
+										aria-label="停止当前回合"
+										title={isAborting ? "正在停止当前回合…" : "停止当前回合"}
+										className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg)] hover:opacity-85 disabled:opacity-50 transition-opacity"
+									>
+										{isAborting ? (
+											<Loader2 size={13} className="animate-spin" />
+										) : (
+											<Square size={11} />
+										)}
+									</button>
+								</>
+							) : (
+								<button
+									type="button"
+									onClick={() => void submit(false)}
+									disabled={busy || !text.trim()}
+									aria-label="发送消息"
+									title="发送消息 (Enter)"
+									className={clsx(
+										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150",
+										text.trim() && !busy
+											? "bg-[var(--text)] text-[var(--bg)] hover:opacity-85 active:scale-95"
+											: "bg-[var(--bg-active-fill)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed",
+									)}
+								>
+									<ArrowUp size={14} />
+								</button>
+							)}
 						</div>
 					</div>
 				</div>
 			</div>
+
+			{/* @ file-completion menu — floats above the composer box. */}
+			{atMenu.length > 0 && atToken && (
+				<FloatingLayer
+					anchor={composerCardRef.current}
+					placement="top-start"
+					offset={6}
+					layer="popover"
+					onDismiss={() => setMenuDismissed(true)}
+					className="max-h-64 overflow-y-auto overflow-x-hidden rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--popover-glass,var(--bg-panel))] p-1 w-[min(calc(100vw-32px),600px)]"
+				>
+					{atMenu.map((p, i) => (
+						<button
+							key={p}
+							type="button"
+							onMouseDown={(e) => {
+								e.preventDefault();
+								applyAtCompletion(p);
+							}}
+							className={clsx(
+								"flex w-full items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[12px] transition-colors",
+								i === menuIndex
+									? "bg-[var(--ghost-hover,var(--bg-hover))] text-[var(--text)]"
+									: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))]",
+							)}
+						>
+							<span className="truncate font-mono">{p}</span>
+						</button>
+					))}
+				</FloatingLayer>
+			)}
+
+			{/* Slash-command menu — Codex-style grouped popup. */}
+			{slashToken && (
+				<SlashMenu
+					anchor={composerCardRef.current}
+					sections={slashSections}
+					activeIndex={Math.min(
+						menuIndex,
+						Math.max(0, slashItems.length - 1),
+					)}
+					empty={slashItems.length === 0}
+					onSelect={selectSlashItem}
+					onDismiss={() => setMenuDismissed(true)}
+				/>
+			)}
 		</div>
 	);
 }

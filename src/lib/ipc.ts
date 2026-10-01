@@ -15,6 +15,8 @@ import type {
 	GitBadge,
 	GitSummary,
 	LiveSessionInfo,
+	McpConfigSnapshot,
+	McpServerPatch,
 	MobileStatus,
 	Model,
 	OauthLoginProvider,
@@ -25,6 +27,7 @@ import type {
 	PairingInfo,
 	PathCheck,
 	PendingUiRequest,
+	PluginCatalog,
 	ProviderConfig,
 	ProcessMemoryInfo,
 	ProviderTestResult,
@@ -38,6 +41,8 @@ import type {
 	SkillsCatalog,
 	SkillUsageReport,
 	StartOpts,
+	SubagentSummary,
+	SubagentTranscript,
 	TmRun,
 	Todo,
 	TodoCounts,
@@ -149,6 +154,22 @@ export const createSideChat = (
 		parentSessionId,
 		question,
 		selection: selection ?? null,
+	});
+
+/** Contract C5: subagent sessions spawned by a parent session file. */
+export const subagentList = (parentFile: string) =>
+	invoke<SubagentSummary[]>("subagent_list", { parentFile });
+
+/** Contract C5: normalized subagent transcript; `fromByte` for tailing. */
+export const subagentTranscript = (
+	parentFile: string,
+	agentId: string,
+	fromByte?: number,
+) =>
+	invoke<SubagentTranscript>("subagent_transcript", {
+		parentFile,
+		agentId,
+		fromByte: fromByte ?? null,
 	});
 
 // ---- C — git / time machine ----
@@ -467,3 +488,39 @@ export const skillsTrash = (dir: string) =>
 /** Per-skill trigger counts scanned from session transcripts over `days` days. */
 export const skillsUsage = (days = 45) =>
 	invoke<SkillUsageReport>("skills_usage", { days });
+
+// ---- D — MCP servers + plugin enablement (omp-managed config files) ----
+
+/** OMP-managed mcp.json files and their servers (secrets masked). */
+export const mcpConfigList = (cwd?: string | null) =>
+	invoke<McpConfigSnapshot>("mcp_config_list", { cwd: cwd ?? null });
+
+/** Add/update a server entry; `patch` merges (`null` deletes; env/headers merge per key). */
+export const mcpServerUpsert = (
+	path: string,
+	name: string,
+	patch: McpServerPatch,
+	cwd?: string | null,
+) =>
+	invoke<void>("mcp_server_upsert", { cwd: cwd ?? null, path, name, patch });
+
+export const mcpServerRemove = (path: string, name: string, cwd?: string | null) =>
+	invoke<void>("mcp_server_remove", { cwd: cwd ?? null, path, name });
+
+/** Toggle `enabled` on the file defining `name` (sweeps stale user overrides). */
+export const mcpServerSetEnabled = (
+	name: string,
+	enabled: boolean,
+	cwd?: string | null,
+) => invoke<void>("mcp_server_set_enabled", { cwd: cwd ?? null, name, enabled });
+
+/** Installed npm/link/marketplace plugins across user + project roots. */
+export const pluginsList = (cwd?: string | null) =>
+	invoke<PluginCatalog>("plugins_list", { cwd: cwd ?? null });
+
+/** Toggle `plugins.<name>.enabled` in that scope's omp-plugins.lock.json. */
+export const pluginSetEnabled = (
+	name: string,
+	enabled: boolean,
+	cwd?: string | null,
+) => invoke<void>("plugin_set_enabled", { cwd: cwd ?? null, name, enabled });

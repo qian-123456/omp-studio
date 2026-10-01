@@ -113,20 +113,20 @@ export function PerfPopover({
 			ignoreRefs={ignoreRefs}
 			onDismiss={onClose}
 			className={clsx(
-				"w-80 p-3.5 text-neutral-200 select-none animate-in fade-in zoom-in-95 duration-100",
+				"w-80 p-3.5 text-[var(--text)] select-none animate-in fade-in zoom-in-95 duration-100",
 				className,
 			)}
 		>
 			{/* Header */}
-			<div className="mb-3 flex items-center justify-between border-b border-[var(--border-divider)] pb-2">
-				<div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-100">
-					<Activity size={14} className="text-emerald-400" />
+			<div className="mb-3 flex items-center justify-between border-b border-[var(--line)] pb-2">
+				<div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text)]">
+					<Activity size={14} className="text-[var(--text-60)]" />
 					<span>性能</span>
 				</div>
 				<button
 					type="button"
 					onClick={onClose}
-					className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
+					className="rounded-md p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] active:scale-95 transition-all"
 				>
 					<X size={12} />
 				</button>
@@ -138,30 +138,30 @@ export function PerfPopover({
 				title={`含 ${processes} 个进程（本体+WebView/帮助进程）`}
 			>
 				<div className="flex min-w-0 items-center gap-1.5">
-					<AppWindow size={12} className="shrink-0 text-[#0A84FF]" />
+					<AppWindow size={12} className="shrink-0 text-[var(--text-60)]" />
 					<span
-						className="truncate text-neutral-300"
+						className="truncate text-[var(--text-60)]"
 						title={`含 ${processes} 个进程（本体+WebView/帮助进程）`}
 					>
 						omp-workspace (本体)
 					</span>
 				</div>
-				<span className="shrink-0 font-mono tabular-nums text-neutral-200">
+				<span className="shrink-0 font-mono tabular-nums text-[var(--text)]">
 					{appMemory ?? "—"}
 				</span>
 			</div>
 
 			{/* Service processes */}
-			<div className="mt-3 border-t border-[var(--border-divider)] pt-2.5">
-				<div className="mb-1.5 text-[10px] font-medium tracking-wide text-neutral-500">
+			<div className="mt-3 border-t border-[var(--line)] pt-2.5">
+				<div className="mb-1.5 text-[10px] font-medium tracking-wide text-[var(--text-40)]">
 					服务进程
 				</div>
 				{rows === null ? (
-					<div className="py-2 text-center text-[11px] text-neutral-500">
+					<div className="py-2 text-center text-[11px] text-[var(--text-40)]">
 						加载中…
 					</div>
 				) : procs.length === 0 ? (
-					<div className="py-2 text-center text-[11px] text-neutral-500">
+					<div className="py-2 text-center text-[11px] text-[var(--text-40)]">
 						未发现本应用启动的进程
 					</div>
 				) : (
@@ -178,18 +178,18 @@ export function PerfPopover({
 										className={clsx(
 											"shrink-0",
 											p.startedByApp
-												? "text-emerald-400"
-												: "text-neutral-500",
+												? "text-[var(--status-success)]"
+												: "text-[var(--text-40)]",
 										)}
 									/>
-									<span className="truncate text-neutral-300">
+									<span className="truncate text-[var(--text-60)]">
 										{p.name}
 									</span>
-									<span className="shrink-0 font-mono text-neutral-500">
+									<span className="shrink-0 font-mono text-[var(--text-40)]">
 										:{p.ports.join(",:")}
 									</span>
 								</div>
-								<span className="shrink-0 font-mono tabular-nums text-neutral-200">
+								<span className="shrink-0 font-mono tabular-nums text-[var(--text)]">
 									{formatKb(p.memoryKb)}
 								</span>
 							</div>

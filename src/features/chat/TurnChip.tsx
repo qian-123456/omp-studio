@@ -1,5 +1,6 @@
 /** [B] Compact chip rendered at the end of a checkpointed agent turn:
- * files changed, commits saved, and 「撤回这一轮」 on the newest turn. */
+ * files changed, commits saved, and 「撤回这一轮」 on the newest turn.
+ * Neutral tertiary text — status color only on the per-file letter. */
 import { ChevronRight, RotateCcw, Save } from "lucide-react";
 import { useState } from "react";
 import type { TurnCheckpoint } from "../../lib/contracts";
@@ -8,15 +9,10 @@ import { gitUndoTurn } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useTurnNav } from "../../stores/turnNav";
 
-const STATUS_STYLE: Record<string, string> = {
-	A: "text-emerald-400",
-	M: "text-amber-400",
-	D: "text-rose-400",
-};
-const STATUS_LABEL: Record<string, string> = {
-	A: "新建",
-	M: "修改",
-	D: "删除",
+const STATUS_LETTER_STYLE: Record<string, string> = {
+	A: "text-[var(--status-success)]",
+	M: "text-[var(--status-warning)]",
+	D: "text-[var(--status-error)]",
 };
 
 async function undoTurn(
@@ -80,11 +76,14 @@ export function TurnChip({
 	const [busy, setBusy] = useState(false);
 	const commit = turn.commits[0];
 
+	const rowCls =
+		"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]";
+
 	return (
 		<div className="flex flex-col items-start gap-0.5">
 			<div className="flex flex-wrap items-center gap-1">
 				{turn.undone && (
-					<span className="rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-600">
+					<span className="px-1.5 py-0.5 text-[11px] text-[var(--text-30)]">
 						已撤回
 					</span>
 				)}
@@ -92,11 +91,11 @@ export function TurnChip({
 					<button
 						type="button"
 						onClick={() => setOpen((v) => !v)}
-						className="press-scale flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
+						className={rowCls}
 						title={open ? "收起这一轮改动的文件列表" : "查看这一轮改动的文件"}
 					>
 						<ChevronRight
-							size={10}
+							size={11}
 							className={open ? "rotate-90 transition-transform" : "transition-transform"}
 						/>
 						<span>改了 {turn.files.length} 个文件</span>
@@ -106,10 +105,10 @@ export function TurnChip({
 					<button
 						type="button"
 						onClick={() => useTurnNav.getState().showCommit(cwd, commit)}
-						className="press-scale flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
+						className={rowCls}
 						title="在版本历史里查看这一轮存下的改动"
 					>
-						<Save size={10} />
+						<Save size={11} />
 						<span>
 							已存档{" "}
 							<span className="font-mono">{commit.slice(0, 7)}</span>
@@ -127,28 +126,28 @@ export function TurnChip({
 								if (done) onDone();
 							});
 						}}
-						className="press-scale flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] text-rose-300/90 transition-colors hover:bg-rose-500/10 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-50"
 						title="把这一轮改动的文件恢复回这一轮开始前的样子"
 					>
-						<RotateCcw size={10} />
+						<RotateCcw size={11} />
 						<span>{busy ? "正在撤回…" : "撤回这一轮"}</span>
 					</button>
 				)}
 			</div>
 			{open && !turn.undone && turn.files.length > 0 && (
-				<ul className="mt-0.5 w-full max-w-md space-y-px rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-1">
+				<ul className="mt-0.5 w-full max-w-md space-y-px rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2 py-1">
 					{turn.files.map((f) => (
 						<li
 							key={f.path}
-							className="flex items-center gap-1.5 text-[10px] leading-4"
+							className="flex items-center gap-1.5 text-[11px] leading-4"
 						>
 							<span
-								className={`shrink-0 font-mono ${STATUS_STYLE[f.status] ?? "text-neutral-400"}`}
+								className={`shrink-0 font-mono ${STATUS_LETTER_STYLE[f.status] ?? "text-[var(--text-40)]"}`}
 							>
-								{STATUS_LABEL[f.status] ?? f.status}
+								{f.status}
 							</span>
 							<span
-								className="truncate font-mono text-neutral-400"
+								className="truncate font-mono text-[var(--text-40)]"
 								title={f.path}
 							>
 								{f.path}

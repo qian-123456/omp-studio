@@ -122,9 +122,9 @@ describe("todos logic", () => {
 		expect(subagentBucket("succeeded")).toBe("done");
 		expect(subagentBucket("working")).toBe("running");
 		const counts = subagentCounts({
-			s1: { id: "s1", label: "Subagent 1", status: "running" },
-			s2: { id: "s2", label: "Subagent 2", status: "finished" },
-			s3: { id: "s3", label: "Subagent 3", status: "error" },
+			s1: { label: "Subagent 1", status: "running" },
+			s2: { label: "Subagent 2", status: "completed" },
+			s3: { label: "Subagent 3", status: "failed" },
 		});
 		expect(counts).toEqual({ running: 1, done: 1, failed: 1 });
 	});

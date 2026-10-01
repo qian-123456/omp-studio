@@ -220,6 +220,72 @@ pub struct TranscriptPage {
     pub reset: bool,
 }
 
+/// Inferred lifecycle of a subagent session file.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubagentStatus {
+    #[default]
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Aborted,
+}
+
+/// Lightweight per-agent summary for `subagent_list` (contract C5).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentSummary {
+    pub id: String,
+    pub status: SubagentStatus,
+    /// From `model_change` (e.g. "provider/model-id").
+    pub model: Option<String>,
+    /// From `thinking_level_change`.
+    pub thinking_level: Option<String>,
+    /// First user message, whitespace-collapsed preview (≤160 chars).
+    pub prompt: Option<String>,
+    pub message_count: u32,
+    /// toolCall blocks in assistant messages.
+    pub tool_call_count: u32,
+    /// Assistant messages = model requests.
+    pub request_count: u32,
+    /// input + output + cacheWrite (cacheRead excluded), AgentProgress.tokens style.
+    pub tokens: u64,
+    /// USD, summed over assistant usage.
+    pub cost: f64,
+    /// First / last entry timestamps in the jsonl.
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    /// `<id>.md|.json` artifact when present.
+    pub output_path: Option<String>,
+    /// Absolute path of `<id>.jsonl`.
+    pub file_path: String,
+}
+
+/// `subagent_transcript` payload (contract C5).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentTranscript {
+    pub agent_id: String,
+    /// Absolute path of `<id>.jsonl`.
+    pub file: String,
+    pub summary: SubagentSummary,
+    /// `session_init` entry, when the file carries one.
+    pub system_prompt: Option<String>,
+    /// First user message verbatim (the spawned assignment).
+    pub prompt: Option<String>,
+    /// Normalized entries at/after `fromByte` (same shape as `get_transcript`).
+    pub items: Vec<TranscriptItem>,
+    /// `<id>.md|.json` content, else the last assistant text.
+    pub output: Option<String>,
+    /// Artifact path when the output came from a file.
+    pub output_path: Option<String>,
+    /// Byte cursor for incremental tailing.
+    pub next_byte: u64,
+    /// True when `fromByte` exceeded file size and the read restarted at 0.
+    pub reset: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveSessionInfo {
