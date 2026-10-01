@@ -60,7 +60,7 @@ export function WorktreeHoverCard({
 			onDismiss={onClose}
 			onMouseEnter={onMouseEnterCard}
 			onMouseLeave={onMouseLeaveCard}
-			className="w-[300px] p-3 text-xs text-neutral-200 select-none space-y-2.5 animate-in fade-in zoom-in-95 duration-100"
+			className="w-[300px] p-3 text-xs text-neutral-200 select-none space-y-2.5"
 		>
 			{/* Top Header: Target Name & Tag */}
 			<div className="space-y-1">

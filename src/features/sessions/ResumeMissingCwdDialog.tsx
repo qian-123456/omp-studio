@@ -8,6 +8,7 @@
 import clsx from "clsx";
 import { FolderGit2, GitBranch, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Z_LAYER } from "../../components/FloatingLayer";
 import { NativeSelect } from "../../components/NativeSelect";
 import { errMsg } from "../../lib/dialogs";
@@ -32,6 +33,7 @@ export function ResumeMissingCwdDialog() {
 
 function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 	const dialogRef = useRef<HTMLDivElement>(null);
+	const confirmBtnRef = useRef<HTMLButtonElement>(null);
 	const closeModal = useUi((s) => s.closeModal);
 
 	const sessionId = typeof props.sessionId === "string" ? props.sessionId : "";
@@ -61,8 +63,20 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 	useEffect(() => () => rejectResume(sessionId), [sessionId]);
 
 	useEffect(() => {
-		(dialogRef.current?.querySelector<HTMLElement>("button:not([disabled])"))
-			?.focus();
+		if (confirmBtnRef.current && !confirmBtnRef.current.disabled) {
+			confirmBtnRef.current.focus();
+		} else {
+			const selectedRadio = dialogRef.current?.querySelector<HTMLElement>(
+				'input[type="radio"]:checked',
+			);
+			if (selectedRadio) {
+				selectedRadio.focus();
+			} else {
+				dialogRef.current
+					?.querySelector<HTMLElement>("button:not([disabled])")
+					?.focus();
+			}
+		}
 	}, []);
 
 	// Load the repo's branches for the recreate option. The default pick is an
@@ -134,7 +148,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 		else void submitWorktree();
 	};
 
-	return (
+	return createPortal(
 		<div
 			style={{ zIndex: Z_LAYER.modal }}
 			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
@@ -150,8 +164,21 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 				className="w-[500px] max-w-[calc(100vw-2rem)] max-h-[min(90vh,640px)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
 				onMouseDown={(e) => e.stopPropagation()}
 				onKeyDown={(e) => {
+					e.stopPropagation();
 					if (isComposing(e)) return;
 					if (e.key === "Enter") {
+						const target = e.target as HTMLElement | null;
+						if (
+							target &&
+							target.tagName === "BUTTON" &&
+							target !== confirmBtnRef.current
+						) {
+							// Focused on Cancel, close X, etc. — let the button activate normally
+							return;
+						}
+						if (target && target.tagName === "SELECT") {
+							return;
+						}
 						e.preventDefault();
 						confirm();
 						return;
@@ -316,6 +343,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 						取消
 					</button>
 					<button
+						ref={confirmBtnRef}
 						type="button"
 						disabled={!canConfirm}
 						onClick={confirm}
@@ -326,6 +354,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 					</button>
 				</div>
 			</div>
-		</div>
+		</div>,
+		document.body,
 	);
 }

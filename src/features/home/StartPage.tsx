@@ -157,6 +157,7 @@ export function StartPage() {
 				model: effectiveModel || defaultModel || null,
 				approvalMode: null,
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
+				prompt: targetPrompt,
 			});
 			createdSessionId = sessionId;
 			useSessions.getState().upsert([stub]);

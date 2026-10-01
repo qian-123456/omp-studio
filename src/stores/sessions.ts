@@ -7,7 +7,8 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { SessionMeta, Workspace } from "../lib/contracts";
 import { onSessionsRemoved, onSessionsUpdated } from "../lib/events";
-import { listSessions, listWorkspaces } from "../lib/ipc";
+import { listSessions, listWorkspaces, markSeen } from "../lib/ipc";
+import { useUi } from "./ui";
 
 export interface SessionsState {
 	sessions: Record<string, SessionMeta>;
@@ -70,6 +71,25 @@ export function isSessionMetaEqual(a: SessionMeta, b: SessionMeta): boolean {
 		gitSame &&
 		resultSame
 	);
+}
+
+export function isWorkspaceEqual(a: Workspace, b: Workspace): boolean {
+	return (
+		a.id === b.id &&
+		a.path === b.path &&
+		a.name === b.name &&
+		a.kind === b.kind &&
+		a.sort === b.sort
+	);
+}
+
+export function areWorkspacesEqual(a: Workspace[], b: Workspace[]): boolean {
+	if (a === b) return true;
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (!isWorkspaceEqual(a[i], b[i])) return false;
+	}
+	return true;
 }
 
 const COALESCE_WINDOW_MS = 250; // ≤ ~4 flushes/sec
@@ -135,11 +155,98 @@ let workspacesRefreshInFlight: Promise<void> | null = null;
 let nextLoadId = 0;
 let latestAppliedLoadId = 0;
 const activeLoads = new Set<InFlightLoad>();
+const inFlightMarkSeen = new Set<string>();
+/** A session is only marked seen once the user actually dwells on it —
+ * peeking and switching away must not drop the unread cue. */
+const MARK_SEEN_DWELL_MS = 2000;
+let markSeenTimer: number | null = null;
+let markSeenTargetId: string | null = null;
+
+function scheduleMarkSessionSeen(sessionId: string | null): void {
+	if (typeof window === "undefined") return;
+	if (markSeenTargetId === sessionId) return;
+	markSeenTargetId = sessionId;
+	if (markSeenTimer !== null) {
+		window.clearTimeout(markSeenTimer);
+		markSeenTimer = null;
+	}
+	if (!sessionId) return;
+	markSeenTimer = window.setTimeout(() => {
+		markSeenTimer = null;
+		const s = useSessions.getState().sessions[sessionId];
+		if (s?.unread) void markSessionSeen(sessionId);
+	}, MARK_SEEN_DWELL_MS);
+}
+
+export async function markSessionSeen(sessionId: string): Promise<void> {
+	if (!sessionId || inFlightMarkSeen.has(sessionId)) return;
+	const current = useSessions.getState().sessions[sessionId];
+	if (!current || !current.unread) return;
+
+	inFlightMarkSeen.add(sessionId);
+	useSessions.getState().upsert([{ ...current, unread: false }]);
+
+	try {
+		if (typeof markSeen === "function") {
+			await markSeen(sessionId);
+		}
+	} catch (err) {
+		console.error(`Failed to mark session ${sessionId} as seen:`, err);
+	} finally {
+		inFlightMarkSeen.delete(sessionId);
+	}
+}
+
+export function checkAndMarkSelectedSession(): void {
+	const ui = useUi.getState();
+	if (ui.selectedSessionId && ui.centerView === "session") {
+		scheduleMarkSessionSeen(ui.selectedSessionId);
+	} else {
+		scheduleMarkSessionSeen(null);
+	}
+}
+
+let uiUnsubscribe: (() => void) | null = null;
+let windowFocusListener: (() => void) | null = null;
+
+export function setupMarkSeenSubscription(): () => void {
+	if (!uiUnsubscribe) {
+		uiUnsubscribe = useUi.subscribe((state) => {
+			if (state.selectedSessionId && state.centerView === "session") {
+				scheduleMarkSessionSeen(state.selectedSessionId);
+			} else {
+				// Leaving the session view or clearing selection cancels the pending mark.
+				scheduleMarkSessionSeen(null);
+			}
+		});
+	}
+
+	if (typeof window !== "undefined" && !windowFocusListener) {
+		windowFocusListener = () => {
+			checkAndMarkSelectedSession();
+		};
+		window.addEventListener("focus", windowFocusListener);
+	}
+
+	return () => {
+		if (uiUnsubscribe) {
+			uiUnsubscribe();
+			uiUnsubscribe = null;
+		}
+		if (windowFocusListener && typeof window !== "undefined") {
+			window.removeEventListener("focus", windowFocusListener);
+			windowFocusListener = null;
+		}
+	};
+}
+
+// Initialize mark-seen subscription eagerly at module scope
+setupMarkSeenSubscription();
+
 
 export const useSessions = create<SessionsState>((set) => ({
 	sessions: {},
 	workspaces: [],
-	usages: {},
 	hasLoaded: false,
 	load: async () => {
 		const loadCtx: InFlightLoad = {
@@ -194,11 +301,15 @@ export const useSessions = create<SessionsState>((set) => ({
 					}
 				}
 
+				const nextWorkspaces = areWorkspacesEqual(state.workspaces, workspaces)
+					? state.workspaces
+					: workspaces;
 				return {
 					sessions: nextSessions,
-					workspaces,
+					workspaces: nextWorkspaces,
 				};
 			});
+			checkAndMarkSelectedSession();
 		} finally {
 			activeLoads.delete(loadCtx);
 			set({ hasLoaded: true });
@@ -209,7 +320,12 @@ export const useSessions = create<SessionsState>((set) => ({
 		workspacesRefreshInFlight = (async () => {
 			try {
 				const workspaces = await listWorkspaces();
-				set({ workspaces });
+				set((state) => {
+					if (areWorkspacesEqual(state.workspaces, workspaces)) {
+						return state;
+					}
+					return { workspaces };
+				});
 			} catch {
 				// non-fatal: sidebar keeps last-known groups
 			} finally {
@@ -247,6 +363,20 @@ export const useSessions = create<SessionsState>((set) => ({
 			}
 			return { sessions };
 		});
+			for (const meta of list) {
+				if (meta.unread) {
+					const ui = useUi.getState();
+					if (
+						meta.id === ui.selectedSessionId &&
+						ui.centerView === "session" &&
+						typeof document !== "undefined" &&
+						typeof document.hasFocus === "function" &&
+						document.hasFocus()
+					) {
+						void markSessionSeen(meta.id);
+					}
+				}
+			}
 	},
 	remove: (ids) => {
 		if (ids.length === 0) return;
@@ -281,6 +411,7 @@ let activeUnlisteners: UnlistenFn[] | null = null;
 let startEventsPromise: Promise<void> | null = null;
 /** Wire `sessions:updated`/`sessions:removed` once; call at app start. */
 export async function startSessionEvents(): Promise<void> {
+	setupMarkSeenSubscription();
 	if (activeUnlisteners) {
 		return;
 	}
@@ -365,4 +496,12 @@ export async function stopSessionEvents(): Promise<void> {
 	activeLoads.clear();
 	nextLoadId = 0;
 	latestAppliedLoadId = 0;
+	if (uiUnsubscribe) {
+		uiUnsubscribe();
+		uiUnsubscribe = null;
+	}
+	if (windowFocusListener && typeof window !== "undefined") {
+		window.removeEventListener("focus", windowFocusListener);
+		windowFocusListener = null;
+	}
 }

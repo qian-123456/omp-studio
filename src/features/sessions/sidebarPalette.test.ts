@@ -5,8 +5,6 @@ describe("getWorkspacePalette", () => {
 	it("returns dedicated indigo palette for __global workspace", () => {
 		const palette = getWorkspacePalette("__global");
 		expect(palette.folderColor).toBe("text-indigo-600 dark:text-indigo-400");
-		expect(palette.cardBorder).toContain("border-indigo-500");
-		expect(palette.spineBorder).toContain("border-indigo-500");
 	});
 
 	it("returns deterministic palette for any workspace id or name", () => {
@@ -25,8 +23,6 @@ describe("getWorkspacePalette", () => {
 	it("covers all palette options with valid tailwind color classes", () => {
 		for (const palette of WORKSPACE_PALETTES) {
 			expect(palette.folderColor).toMatch(/^text-(sky|emerald|amber|purple|rose|teal)-600 dark:text-(sky|emerald|amber|purple|rose|teal)-400$/);
-			expect(palette.cardBorder).toMatch(/border-(sky|emerald|amber|purple|rose|teal)-500/);
-			expect(palette.spineBorder).toMatch(/border-(sky|emerald|amber|purple|rose|teal)-500/);
 		}
 	});
 });

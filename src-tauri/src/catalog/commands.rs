@@ -221,7 +221,8 @@ pub async fn rescan_sessions(state: tauri::State<'_, AppState>) -> Result<(), St
 }
 
 /// Permanently delete a session: transcript files + meta row.
-/// Refuses while the session is still managed by a live RPC process.
+/// Stops a live-but-idle RPC process first; refuses only while the session is
+/// mid-turn or has an open dialog.
 #[tauri::command]
 pub async fn delete_session(
     state: tauri::State<'_, AppState>,

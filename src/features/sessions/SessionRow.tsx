@@ -1,10 +1,8 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
-	AlertTriangle,
 	Archive,
 	ArchiveRestore,
-	Check,
 	CheckCircle2,
 	Copy,
 	ExternalLink,
@@ -21,49 +19,53 @@ import {
 	Stethoscope,
 	Terminal,
 	Trash2,
-	X,
 } from "lucide-react";
-import React, { type MouseEvent, useRef, useState } from "react";
+import React, { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { SessionMeta, Workspace } from "../../lib/contracts";
-import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
-import { relativeTime } from "../../lib/format";
+import { copyText, errMsg } from "../../lib/dialogs";
+import { absoluteTime, relativeTime } from "../../lib/format";
+import { isSessionBusy } from "../../lib/createSession";
 import { sessionDisplayName } from "../../lib/sessionName";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
-import {
-	acceptSession,
-	deleteSession,
-	gitRemoveWorktree,
-	markSeen,
-	takeoverExternal,
-	updateSessionMeta,
-} from "../../lib/ipc";
+import { isComposing } from "../../lib/hooks";
+import { acceptSession, updateSessionMeta } from "../../lib/ipc";
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { archiveSession } from "./archiveUndo";
-import { inferWorktreeName } from "./grouping";
 import { HoverScrollText } from "../../components/HoverScrollText";
-import { FloatingLayer } from "../../components/FloatingLayer";
+import {
+	FloatingLayer,
+	type Anchor,
+	type Placement,
+} from "../../components/FloatingLayer";
 import { SessionHoverCard } from "./SessionHoverCard";
-interface SessionRowProps {
+import { restoreSidebarFocus } from "./SessionDialogs";
+import { archiveSessions } from "./archiveUndo";
+import { useMinuteTick } from "./useMinuteTick";
+import { getVisibleSessionIds } from "./visibleRows";
+import {
+	requestArchive,
+	requestAssign,
+	requestDelete,
+	requestTakeover,
+	useSessionActions,
+} from "./sessionActions";
+
+export interface SessionRowProps {
 	session: SessionMeta;
-	/** Extra left padding (px) for nesting under a subgroup header. */
-	indent?: number;
 	/** Draw this row's segment of the subgroup guide line at the row's left edge. */
 	withSpine?: boolean;
 	workspaces: Workspace[];
-	allVisibleIds?: string[];
 	onRowFocus?: () => void;
-	onBatchAction?: (action: "archive" | "pin" | "delete", ids: string[]) => void;
+	onBatchAction: (action: "archive" | "pin" | "delete", ids: string[]) => void;
 }
 
 /**
- * Status marks — final spec (RFC S3–S7 + grilling round 2026-09-28):
+ * Status marks — final spec (RFC P8):
  * - working: neutral monochrome spinner, label reveals on hover.
  * - awaiting_approval/awaiting_answer: persistent sky-blue 待回复 pill, no dot.
- * - review: solid green #10b981 dot + persistent 待验收 label.
- * - error/interrupted: solid red #ef4444 dot + persistent label (异常 / 已中断).
+ * - review: solid green #10b981 dot (bare mark).
+ * - error/interrupted: solid red #ef4444 dot (bare mark).
  * - suspended/external/idle: no mark at all.
  * - Unread stays a blue dot in the trailing zone (rendered by SessionRow).
  * - Status mark sits adjacent to the title, not flush-right.
@@ -81,13 +83,13 @@ const STATUS_CONFIG: Record<SessionMeta["status"], StatusMark> = {
 		kind: "dot",
 		label: "待验收",
 		dotCls: "bg-emerald-500",
-		pillCls: "bg-emerald-500/15 text-emerald-500",
+		pillCls: "bg-emerald-500/15 text-emerald-400",
 	},
 	error: {
 		kind: "dot",
 		label: "异常",
 		dotCls: "bg-red-500",
-		pillCls: "bg-red-500/15 text-red-500",
+		pillCls: "bg-red-500/15 text-red-400",
 	},
 	interrupted: {
 		kind: "dot",
@@ -111,9 +113,7 @@ export function renderStatusDot(status: SessionMeta["status"]) {
 
 	if (cfg.kind === "pill") {
 		return (
-			<span
-				className="shrink-0 whitespace-nowrap rounded-[4px] bg-sky-500/15 px-1 text-[9px] font-semibold leading-[14px] text-sky-600 dark:text-sky-300"
-			>
+			<span className="shrink-0 whitespace-nowrap rounded-[4px] bg-sky-500/15 px-1 text-[9px] font-semibold leading-[14px] text-sky-400">
 				{cfg.label}
 			</span>
 		);
@@ -121,37 +121,39 @@ export function renderStatusDot(status: SessionMeta["status"]) {
 
 	const mark =
 		cfg.kind === "spinner" ? (
-			<Loader2 size={11} className="shrink-0 animate-spin text-[var(--text-muted)]" />
+			<Loader2
+				size={11}
+				className="shrink-0 animate-spin text-[var(--text-muted)]"
+			/>
 		) : (
-			<span className={clsx("h-[7px] w-[7px] shrink-0 rounded-full", cfg.dotCls)} />
+			<span
+				className={clsx("h-[7px] w-[7px] shrink-0 rounded-full", cfg.dotCls)}
+			/>
 		);
 
-	/* Dots and spinner are bare marks — no expanding label. Hover context is
-	 * provided by the row tray, which prints the status name itself. */
 	return <span className="flex shrink-0 items-center">{mark}</span>;
 }
 
-
-
 function SessionRowComponent({
 	session,
-	indent = 0,
 	withSpine = false,
 	workspaces,
-	allVisibleIds,
 	onRowFocus,
 	onBatchAction,
 }: SessionRowProps) {
-	const allVisibleIdsRef = useRef(allVisibleIds);
-	allVisibleIdsRef.current = allVisibleIds;
+	// Re-evaluate relative time on shared minute ticks (R3)
+	useMinuteTick();
 
-	const isSelected = useUi((s) => s.selectedSessionId === session.id);
-	const isMultiSelected = useUi(
-		(s) => s.selectedIds.has(session.id) && s.selectedIds.size > 1,
-	);
-	const isHighlighted = useUi(
-		(s) => s.highlightId === session.id && s.selectedSessionId !== session.id,
-	);
+	const selectedIds = useUi((s) => s.selectedIds);
+	const isInSelectedSet = selectedIds.has(session.id);
+	const isPrimarySelected = useUi((s) => s.selectedSessionId === session.id);
+
+	// Derive selection styling: primary accent only when in set (R24, C4)
+	const isSelected =
+		isPrimarySelected && (selectedIds.size <= 1 || isInSelectedSet);
+	const isMultiSelected =
+		isInSelectedSet && selectedIds.size > 1 && !isSelected;
+	const isHighlighted = useUi((s) => s.highlightId === session.id);
 	const selectSession = useUi((s) => s.selectSession);
 	const setSelectedIds = useUi((s) => s.setSelectedIds);
 	const toggleSelectId = useUi((s) => s.toggleSelectId);
@@ -159,6 +161,7 @@ function SessionRowComponent({
 	const sessionViewMode = useUi((s) => s.sessionViewMode[session.id] ?? "chat");
 	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
 	const openModal = useUi((s) => s.openModal);
+
 	const parentTitle = useSessions((s) =>
 		session.parentId
 			? s.sessions[session.parentId]?.title ||
@@ -167,20 +170,30 @@ function SessionRowComponent({
 			: undefined,
 	);
 
-	const deletedWt =
-		!session.git?.worktree &&
-		!session.git?.branch &&
-		inferWorktreeName(session.cwd) !== null;
-	// Context menu & action modal states
+	// Rows inside the 已清理的工作树 bucket are dimmed by that bucket's own
+	// wrapper opacity — no per-row heuristic (a cwd merely shaped like a
+	// worktree path must never dim a live row).
+
+	const rowRef = useRef<HTMLDivElement>(null);
+	const menuBtnRef = useRef<HTMLButtonElement>(null);
+	const menuContainerRef = useRef<HTMLDivElement>(null);
+	const prevActiveElementRef = useRef<HTMLElement | null>(null);
+
+	// Context menu state
 	const [menuOpen, setMenuOpen] = useState(false);
-	const [menuCoords, setMenuCoords] = useState<{ x: number; y: number } | null>(
-		null,
-	);
+	const [menuAnchor, setMenuAnchor] = useState<Anchor | null>(null);
+	const [menuPlacement, setMenuPlacement] = useState<Placement>("bottom-start");
+
+	const closeMenu = (restoreFocus = true) => {
+		setMenuOpen(false);
+		if (restoreFocus) {
+			restoreSidebarFocus(prevActiveElementRef.current);
+		}
+	};
 	const [isRenaming, setIsRenaming] = useState(false);
-	const [renameDraft, setRenameDraft] = useState(session.title || "");
-	const [showArchiveModal, setShowArchiveModal] = useState(false);
-	const [showAssignModal, setShowAssignModal] = useState(false);
-	const [showTakeoverModal, setShowTakeoverModal] = useState(false);
+	const [renameDraft, setRenameDraft] = useState("");
+	const renameInputRef = useRef<HTMLInputElement>(null);
+
 	const [busy, setBusy] = useState(false);
 
 	// Superset-style HoverCard preview state
@@ -189,14 +202,73 @@ function SessionRowComponent({
 	const hoverTimer = useRef<number | null>(null);
 	const closeTimer = useRef<number | null>(null);
 
+	// Subscriptions to programmatic requests (R7, Contract 3)
+	const isRenameRequested = useSessionActions(
+		(s) => s.renameSessionId === session.id,
+	);
+	const isMenuRequested = useSessionActions(
+		(s) => s.menuSessionId === session.id,
+	);
+	const hasActiveDialog = useSessionActions(
+		(s) =>
+			s.archiveWorktreeTarget !== null ||
+			s.assignSessionIds !== null ||
+			s.takeoverSessionId !== null,
+	);
+
+	useEffect(() => {
+		if (isRenameRequested) {
+			useSessionActions.getState().setRenameSessionId(null);
+			startInlineRename();
+		}
+	}, [isRenameRequested]);
+
+	useEffect(() => {
+		if (isMenuRequested) {
+			prevActiveElementRef.current =
+				(document.activeElement as HTMLElement) ?? null;
+			useSessionActions.getState().setMenuSessionId(null);
+			if (rowRef.current) {
+				const rect = rowRef.current.getBoundingClientRect();
+				setMenuAnchor({ x: rect.left + 24, y: rect.bottom });
+				setMenuPlacement("bottom-start");
+				setMenuOpen(true);
+			}
+		}
+	}, [isMenuRequested]);
+
+	// Context menu keyboard focus on open (R20)
+	useEffect(() => {
+		if (menuOpen) {
+			// Suppress hover card when menu opens (R10)
+			if (hoverTimer.current !== null) {
+				window.clearTimeout(hoverTimer.current);
+				hoverTimer.current = null;
+			}
+			setHoverCardOpen(false);
+
+			const timer = window.setTimeout(() => {
+				const firstItem =
+					menuContainerRef.current?.querySelector<HTMLElement>(
+						'button[role="menuitem"]:not([disabled])',
+					);
+				firstItem?.focus();
+			}, 0);
+			return () => clearTimeout(timer);
+		}
+	}, [menuOpen]);
+
 	const handleRowMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+		if (hasActiveDialog || menuOpen || isRenaming) return;
 		if (closeTimer.current !== null) {
 			window.clearTimeout(closeTimer.current);
 			closeTimer.current = null;
 		}
-		const rect = e.currentTarget.getBoundingClientRect();
+		// Measure lazily inside the timer: the row may scroll during the 400ms
+		// hover delay, and a stale rect makes the card flash at the wrong spot.
+		const rowEl = e.currentTarget;
 		hoverTimer.current = window.setTimeout(() => {
-			setAnchorRect(rect);
+			setAnchorRect(rowEl.getBoundingClientRect());
 			setHoverCardOpen(true);
 		}, 400);
 	};
@@ -224,56 +296,46 @@ function SessionRowComponent({
 		}, 150);
 	};
 
-	const renameInputRef = useRef<HTMLInputElement>(null);
-	const anyModalOpen =
-		showArchiveModal || showAssignModal || showTakeoverModal;
-
-	const closeAll = () => {
-		setShowArchiveModal(false);
-		setShowAssignModal(false);
-		setShowTakeoverModal(false);
-	};
-	useEscapeKey(() => {
-		closeAll();
-	}, anyModalOpen);
-
 	const startInlineRename = () => {
-		setRenameDraft(session.title || "");
+		// Seed with displayed name (R17)
+		setRenameDraft(sessionDisplayName(session));
 		setIsRenaming(true);
 		setMenuOpen(false);
+		if (hoverTimer.current !== null) {
+			window.clearTimeout(hoverTimer.current);
+			hoverTimer.current = null;
+		}
+		setHoverCardOpen(false);
 	};
 
 	const saveInlineRename = async () => {
 		const trimmed = renameDraft.trim();
-		setIsRenaming(false);
-		if (!trimmed || trimmed === session.title) return;
+		const currentDisplay = sessionDisplayName(session);
+		if (trimmed === currentDisplay) {
+			setIsRenaming(false);
+			return;
+		}
 		try {
+			// Empty value clears custom title (customName: "") (R17)
 			const updated = await updateSessionMeta(session.id, {
-				customName: trimmed,
+				customName: trimmed === "" ? "" : trimmed,
 			});
 			useSessions.getState().upsert([updated]);
-			toast.success("已重命名");
+			setIsRenaming(false);
+			toast.success(trimmed === "" ? "已恢复默认标题" : "已重命名");
 		} catch (err) {
+			// Stay in rename mode on failure so text is not lost (R17)
 			toast.error(`重命名失败: ${errMsg(err)}`);
 		}
 	};
 
-	const selectNextSession = () => {
-		const ids = allVisibleIdsRef.current;
-		if (isSelected && ids && ids.length > 0) {
-			const idx = ids.indexOf(session.id);
-			const nextId = ids[idx + 1] ?? ids[idx - 1] ?? null;
-			selectSession(nextId);
-		} else if (isSelected) {
-			selectSession(null);
-		}
-	};
-
-	const handleRowClick = async (e: React.MouseEvent) => {
+	const handleRowClick = (e: React.MouseEvent) => {
 		onRowFocus?.();
-		try {
-			const ids = allVisibleIdsRef.current;
-			if (e.shiftKey && ids && ids.length > 0) {
+
+		// Shift-click range select uses getVisibleSessionIds() at event time (R4, R5)
+		if (e.shiftKey) {
+			const ids = getVisibleSessionIds();
+			if (ids.length > 0) {
 				const lastId = useUi.getState().selectedSessionId || ids[0];
 				const fromIdx = ids.indexOf(lastId);
 				const toIdx = ids.indexOf(session.id);
@@ -286,19 +348,29 @@ function SessionRowComponent({
 				} else {
 					selectSession(session.id);
 				}
-			} else if (e.metaKey || e.ctrlKey) {
-				toggleSelectId(session.id);
-				setHighlightId(session.id);
 			} else {
 				selectSession(session.id);
 			}
-			if (session.unread) {
-				await markSeen(session.id);
-				useSessions.getState().upsert([{ ...session, unread: false }]);
+		} else if (e.metaKey || e.ctrlKey) {
+			// Cmd/Ctrl-click: update primary selection if deselected (R24)
+			const currentSet = useUi.getState().selectedIds;
+			if (currentSet.has(session.id)) {
+				toggleSelectId(session.id);
+				if (useUi.getState().selectedSessionId === session.id) {
+					const remaining = Array.from(currentSet).filter(
+						(id) => id !== session.id,
+					);
+					selectSession(remaining[0] ?? null);
+					setSelectedIds(remaining);
+				}
+			} else {
+				toggleSelectId(session.id);
 			}
-		} catch (err) {
-			toast.error(`选择会话失败: ${errMsg(err)}`);
+			setHighlightId(session.id);
+		} else {
+			selectSession(session.id);
 		}
+		// Notice: markSeen is centralized in store (slice C / R11)
 	};
 
 	// Right-click selects the row if not in multi-selection, then opens the menu.
@@ -306,25 +378,31 @@ function SessionRowComponent({
 		e.preventDefault();
 		e.stopPropagation();
 		onRowFocus?.();
+		prevActiveElementRef.current =
+			(document.activeElement as HTMLElement) ?? null;
 		const currentSelected = useUi.getState().selectedIds;
 		if (!currentSelected.has(session.id)) {
 			selectSession(session.id);
 		}
-		setMenuCoords({ x: e.clientX, y: e.clientY });
+		setMenuAnchor({ x: e.clientX, y: e.clientY });
+		setMenuPlacement("bottom-start");
 		setMenuOpen(true);
 	};
+
+	// "…" trigger toggles menu anchored to button with bottom-end (R8)
 	const handleMenuBtnClick = (e: MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
-		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		setMenuCoords({ x: rect.right - 180, y: rect.bottom + 4 });
+		onRowFocus?.();
+		prevActiveElementRef.current =
+			(document.activeElement as HTMLElement) ?? null;
+		setMenuAnchor(menuBtnRef.current);
+		setMenuPlacement("bottom-end");
 		setMenuOpen((prev) => !prev);
 	};
 
-
-	// 2. Pin / Unpin
 	const handleTogglePin = async () => {
-		setMenuOpen(false);
+		closeMenu(true);
 		try {
 			const updated = await updateSessionMeta(session.id, {
 				pinned: !session.pinned,
@@ -335,139 +413,46 @@ function SessionRowComponent({
 		}
 	};
 
-	// 3. Archive / Unarchive — archiving shows an Undo bar at the sidebar.
-	const handleArchiveClick = () => {
-		setMenuOpen(false);
-		if (session.archived) {
-			updateSessionMeta(session.id, { archived: false })
-				.then((updated) => useSessions.getState().upsert([updated]))
-				.catch((err) => toast.error(`取消归档失败: ${errMsg(err)}`));
-			return;
-		}
-		if (session.git?.worktree) {
-			setShowArchiveModal(true);
-		} else {
-			selectNextSession();
-			archiveSession(session).catch((err) =>
-				toast.error(`归档失败: ${errMsg(err)}`),
-			);
-		}
-	};
-
-	const [archiving, setArchiving] = useState(false);
-	const executeArchiveWithWorktree = async (cleanWorktree: boolean) => {
-		if (archiving) return;
-		setArchiving(true);
-		try {
-			if (cleanWorktree && session.git?.worktree) {
-				const repo = session.repoRoot || session.cwd;
-				await gitRemoveWorktree(repo, session.git.worktree, false, false);
-			}
-			selectNextSession();
-			await archiveSession(session);
-			setShowArchiveModal(false);
-		} catch (err) {
-			toast.error(`归档及清理失败: ${errMsg(err)}`);
-		} finally {
-			setArchiving(false);
-		}
-	};
-
-	// 4. Assign Workspace
-	const handleAssignWorkspace = async (workspaceId: string | null) => {
-		setShowAssignModal(false);
-		try {
-			const updated = await updateSessionMeta(session.id, {
-				workspaceId: workspaceId ?? undefined,
-			});
-			useSessions.getState().upsert([updated]);
-		} catch (err) {
-			toast.error(`分配工作区失败: ${errMsg(err)}`);
-		}
-	};
-
-	// 5. Diagnose
-	const handleDiagnose = () => {
-		setMenuOpen(false);
-		openModal("diagnose", { sessionId: session.id });
-	};
-
-	// 6. Resume — inline spinner while the RPC channel comes back.
 	const handleResume = async () => {
 		if (busy) return;
-		setMenuOpen(false);
+		closeMenu(true);
 		setBusy(true);
 		try {
 			await ensureLive(session.id);
 			selectSession(session.id);
 		} catch (err) {
-			if (!isResumeCancelled(err))
+			if (!isResumeCancelled(err)) {
 				toast.error(`恢复会话失败: ${errMsg(err)}`);
+			}
 		} finally {
 			setBusy(false);
 		}
 	};
 
-	// 7. Toggle Terminal / Chat
 	const handleToggleTerminal = () => {
-		setMenuOpen(false);
+		closeMenu(true);
 		const targetMode = sessionViewMode === "terminal" ? "chat" : "terminal";
 		setSessionViewMode(session.id, targetMode);
 		selectSession(session.id);
 	};
 
-	// 8. Takeover External
-	const handleTakeoverConfirm = async () => {
-		if (busy) return;
-		setBusy(true);
+	const handleAccept = async () => {
+		closeMenu(true);
 		try {
-			await takeoverExternal(session.id);
-			setShowTakeoverModal(false);
-			selectSession(session.id);
-		} catch (err) {
-			toast.error(`接管会话失败: ${errMsg(err)}`);
-		} finally {
-			setBusy(false);
-		}
-	};
-
-	// 9. Accept (review) — one click closes the turn; optional archive after.
-	const handleAccept = async (archive: boolean) => {
-		setMenuOpen(false);
-		try {
-			await acceptSession(session.id, archive);
-			toast.success(archive ? "已验收并归档" : "已验收");
+			// P13: acceptSession(id, false) then archiveSessions([id]) for undo + neighbor selection
+			await acceptSession(session.id, false);
+			await archiveSessions([session.id]);
+			toast.success("已验收并归档");
 		} catch (err) {
 			toast.error(`验收失败: ${errMsg(err)}`);
 		}
 	};
 
-	// 10. Delete session — permanent; confirm first, refuse while live.
-	const handleDelete = async () => {
-		if (session.live || session.status === "working" || busy) {
-			toast.info("会话仍在运行，请先挂起或停止");
-			return;
-		}
-		const ok = await confirmDialog(
-			`永久删除会话「${sessionDisplayName(session)}」？\n该操作会删除 transcript 文件与全部记录，无法恢复。`,
-			{ danger: true, okLabel: "永久删除", title: "删除会话" },
-		);
-		if (!ok) return;
-		setBusy(true);
-		try {
-			await deleteSession(session.id);
-			useSessions.getState().remove([session.id]);
-			selectNextSession();
-			toast.success("会话已删除");
-		} catch (err) {
-			toast.error(`删除会话失败: ${errMsg(err)}`);
-		} finally {
-			setBusy(false);
-		}
-	};
-
-	const handleCopy = async (text: string | null | undefined, label: string) => {
-		setMenuOpen(false);
+	const handleCopy = async (
+		text: string | null | undefined,
+		label: string,
+	) => {
+		closeMenu(true);
 		if (!text) return;
 		try {
 			await copyText(text);
@@ -478,7 +463,7 @@ function SessionRowComponent({
 	};
 
 	const handleReveal = async () => {
-		setMenuOpen(false);
+		closeMenu(true);
 		try {
 			await revealItemInDir(session.cwd);
 		} catch (err) {
@@ -486,32 +471,57 @@ function SessionRowComponent({
 		}
 	};
 
-	const updatedAtTs = new Date(
+	// Consistent background class for row and hover-tray (R12, K1)
+	const rowBgCls = isSelected
+		? "bg-[var(--bg-selected)]"
+		: isMultiSelected
+			? "bg-[color-mix(in_srgb,var(--accent)_20%,var(--bg))]"
+			: isHighlighted
+				? "bg-[var(--bg-active-fill)]"
+				: "hover:bg-[var(--bg-hover)]";
+
+	const trayBgCls = isSelected
+		? "bg-[var(--bg-selected)]"
+		: isMultiSelected
+			? "bg-[color-mix(in_srgb,var(--accent)_20%,var(--bg))]"
+			: isHighlighted
+				? "bg-[color-mix(in_srgb,var(--bg-active-fill),var(--bg))]"
+				: "bg-[var(--bg-hover)]";
+
+	const timestampText = relativeTime(
 		session.updatedAt || session.createdAt,
-	).toLocaleString();
+	);
+	const timestampTooltip = absoluteTime(
+		session.updatedAt || session.createdAt,
+	);
+
 	return (
 		<div
+			ref={rowRef}
+			id={`session-row-${session.id}`}
 			data-session-id={session.id}
+			role="option"
+			aria-selected={isInSelectedSet || isSelected}
 			onClick={handleRowClick}
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleRowMouseEnter}
 			onMouseLeave={handleRowMouseLeave}
-			style={{ paddingLeft: `${8 + indent}px` }}
 			className={clsx(
-				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-[8px] min-h-[28px] py-1 pr-2 transition-all",
+				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-[8px] min-h-[28px] py-1 pl-2 pr-2 transition-all",
+				rowBgCls,
 				isSelected
-					? "bg-[var(--bg-selected)] text-[var(--text)]"
+					? "font-semibold text-[var(--text)]"
 					: isMultiSelected
-						? "bg-[#0A84FF]/20 text-white"
+						? "text-[var(--text)]"
 						: isHighlighted
-							? "bg-[var(--bg-active-fill)] text-neutral-200"
-							: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
-				deletedWt && "opacity-50",
+							? "text-[var(--text)]"
+							: "text-[var(--text-muted)] hover:text-[var(--text)]",
+				session.archived && "opacity-60",
+				isHighlighted &&
+					"group-focus-visible/list:ring-2 group-focus-visible/list:ring-[var(--primary)] group-focus-visible/list:ring-inset",
 			)}
 		>
-			{/* Subgroup guide line segment — real element, positioned 4px left of
-			 *  the row edge so it lands under the branch icon's center, and only
-			 *  spans this row so no tail extends past the last session. */}
+			{/* Subgroup guide line segment (P9/P10) */}
 			{withSpine && (
 				<span
 					aria-hidden
@@ -519,10 +529,8 @@ function SessionRowComponent({
 				/>
 			)}
 
-			{/* Title column — status mark sits adjacent to the title with a small gap. */}
+			{/* Title column: status mark sits directly after title text (U3 / R13) */}
 			<div className="flex min-w-0 flex-1 items-center gap-1.5">
-				{/* Fork marker — forked sessions are ordinary flat rows; only this
-				 *  small icon (no indent, no toggle) tells them apart. */}
 				{session.parentId && (
 					<span
 						className="shrink-0 text-[var(--text-dim)]"
@@ -540,32 +548,38 @@ function SessionRowComponent({
 						onClick={(e) => e.stopPropagation()}
 						onDoubleClick={(e) => e.stopPropagation()}
 						onChange={(e) => setRenameDraft(e.target.value)}
-						onBlur={saveInlineRename}
+						onBlur={() => {
+							void saveInlineRename();
+							restoreSidebarFocus(null);
+						}}
 						onKeyDown={(e) => {
 							if (isComposing(e)) return;
 							if (e.key === "Enter") {
 								e.preventDefault();
 								e.stopPropagation();
-								void saveInlineRename();
+								void saveInlineRename().then(() => {
+									restoreSidebarFocus(null);
+								});
 							} else if (e.key === "Escape") {
 								e.preventDefault();
 								e.stopPropagation();
 								setIsRenaming(false);
-								setRenameDraft(session.title || "");
+								setRenameDraft(sessionDisplayName(session));
+								restoreSidebarFocus(null);
 							}
 						}}
-						className="h-5 min-w-0 flex-1 rounded border border-indigo-500 bg-neutral-900 px-1 py-0 text-xs font-medium text-neutral-100 outline-none"
+						className="h-5 min-w-0 flex-1 rounded border border-[var(--primary)] bg-[var(--well-bg)] px-1 py-0 text-xs font-medium text-[var(--text)] outline-none"
 					/>
 				) : (
 					<HoverScrollText
 						text={sessionDisplayName(session)}
-						title={sessionDisplayName(session)}
+						title=""
 						onDoubleClick={(e) => {
 							e.stopPropagation();
 							startInlineRename();
 						}}
 						className={clsx(
-							"min-w-0 flex-1 cursor-text text-xs transition-colors",
+							"min-w-0 flex-initial max-w-full cursor-text text-xs transition-colors",
 							isSelected
 								? "font-semibold text-[var(--text)]"
 								: "font-normal text-[var(--text)]",
@@ -573,54 +587,70 @@ function SessionRowComponent({
 					/>
 				)}
 				{busy ? (
-					<Loader2 size={11} className="shrink-0 animate-spin text-[var(--text-muted)]" />
+					<Loader2
+						size={11}
+						className="shrink-0 animate-spin text-[var(--text-muted)]"
+					/>
 				) : (
 					renderStatusDot(session.status)
 				)}
+				{session.archived && (
+					<span title="已归档" className="shrink-0 flex items-center text-[var(--text-dim)]">
+						<Archive size={11} />
+					</span>
+				)}
 			</div>
 
-			{/* Trailing zone: permanent relative-time stamp with the bare "…" menu button overlaid
-			 *  (Time Swap — zero extra layout width). Quick actions reveal on hover. */}
-			<div className="relative flex shrink-0 items-center ml-1">
-				{/* Rest state: unread dot only on rows that carry no status mark. */}
-				{session.unread && STATUS_CONFIG[session.status].kind === "none" && !session.live && !busy && (
+			{/* Trailing zone: permanent relative-time stamp with time-swap hover tray (T2, Q12) */}
+			<div className="relative flex shrink-0 items-center ml-1 @max-[220px]:ml-0.5">
+				{/* Unread dot: show on every unread session, alongside any status
+				 * mark — peeking at a row must not silently drop the unread cue. */}
+				{session.unread && !busy && (
 					<span
-						className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 mr-1"
+						className={clsx(
+							"h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 mr-1 transition-opacity duration-150",
+							menuOpen
+								? "opacity-0"
+								: isRenaming
+									? "opacity-100"
+									: "group-hover:opacity-0 group-focus-within:opacity-0",
+						)}
 						title="未读"
 					/>
 				)}
 				<span
-					title={updatedAtTs}
-					className="ml-1 text-[10px] tabular-nums font-mono whitespace-nowrap text-[var(--text-dim)]"
+					title={timestampTooltip}
+					className={clsx(
+						"ml-1 @max-[220px]:ml-0 text-[10px] tabular-nums font-mono whitespace-nowrap text-[var(--text-dim)] transition-opacity duration-150",
+						menuOpen
+							? "opacity-0"
+							: isRenaming
+								? "opacity-100"
+								: "group-hover:opacity-0 group-focus-within:opacity-0",
+					)}
 				>
-					{relativeTime(session.updatedAt || session.createdAt)}
+					{timestampText}
 				</span>
 
-				{/* Hover overlay: status label + quick actions + "…" — absolutely
-				 *  positioned over the title's tail so nothing eats title width.
-				 *  (RFC T2 Time Swap applied to the whole trailing cluster.) */}
+				{/* Hover overlay tray: status label + pin + "…" menu button */}
 				<div
 					className={clsx(
-						"absolute inset-y-0 right-0 z-10 flex items-center gap-1 pl-3 rounded-r-[8px] transition-opacity duration-150",
-						isSelected
-							? "bg-[var(--bg-selected)]"
-							: "bg-[var(--bg-hover)]",
+						"absolute inset-y-0 right-0 z-10 flex items-center gap-1 pl-2.5 rounded-r-[8px] transition-opacity duration-150",
+						trayBgCls,
 						menuOpen
 							? "opacity-100"
-							: "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
+							: isRenaming
+								? "opacity-0 pointer-events-none"
+								: "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
 					)}
 				>
 					{(() => {
 						const m = STATUS_CONFIG[session.status];
-						/* awaiting_* renders the pill beside the title already;
-						 * skip repeating it in the tray. All actions live in the
-						 * context menu or inside the session view — the tray only
-						 * displays status, never offers decisions. */
 						if (m.kind === "none" || m.kind === "pill") return null;
 						return (
 							<span
 								className={clsx(
-									"shrink-0 whitespace-nowrap rounded-[4px] px-1 text-[9px] font-semibold leading-[14px]",
+									"shrink-0 whitespace-nowrap rounded-[4px] px-1 text-[9px] font-semibold leading-[14px] @max-[220px]:hidden",
 									m.pillCls,
 								)}
 							>
@@ -629,440 +659,364 @@ function SessionRowComponent({
 						);
 					})()}
 					{session.pinned && (
-						<Pin size={11} className="shrink-0 fill-amber-400/40 text-amber-400" />
+						<Pin
+							size={11}
+							className="shrink-0 fill-amber-400/40 text-amber-400 @max-[220px]:hidden"
+						/>
 					)}
 					<button
+						ref={menuBtnRef}
+						tabIndex={-1}
 						type="button"
 						onClick={handleMenuBtnClick}
-						className="flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)]"
+						className="press-scale flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)] transition-colors p-0.5"
 						title="操作菜单"
 					>
 						<MoreHorizontal size={14} />
 					</button>
 				</div>
 			</div>
-			{/* Floating Context Menu */}
-			{menuOpen && menuCoords && (
+
+			{/* Floating Context Menu (R8, R9, R20) */}
+			{menuOpen && menuAnchor && (
 				<FloatingLayer
-					anchor={menuCoords}
-					placement="bottom-start"
+					anchor={menuAnchor}
+					placement={menuPlacement}
 					offset={4}
 					layer="menu"
-					onDismiss={() => setMenuOpen(false)}
-					className="w-48 p-1 text-xs text-neutral-300"
+					ignoreRefs={menuBtnRef.current ? [menuBtnRef] : undefined}
+					onDismiss={() => closeMenu(true)}
 				>
-					{isMultiSelected ? (
-						<>
-							<div className="px-2.5 py-1 font-semibold text-[11px] text-neutral-400 border-b border-[var(--border-divider)]">
-								已选 {useUi.getState().selectedIds.size} 个会话
-							</div>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									setMenuOpen(false);
-									onBatchAction?.("archive", Array.from(useUi.getState().selectedIds));
-								}}
-								className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-							>
-								<Archive size={13} />
-								批量归档
-							</button>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									setMenuOpen(false);
-									onBatchAction?.("pin", Array.from(useUi.getState().selectedIds));
-								}}
-								className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-							>
-								<Pin size={13} />
-								批量置顶 / 取消置顶
-							</button>
-							<div className="my-1 border-t border-neutral-800" />
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									setMenuOpen(false);
-									onBatchAction?.("delete", Array.from(useUi.getState().selectedIds));
-								}}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-rose-400 hover:bg-rose-950/50 hover:text-rose-300 text-left"
-							>
-								<Trash2 size={13} />
-								批量删除…
-							</button>
-						</>
-					) : (
-						<>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									startInlineRename();
-								}}
-								className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-							>
-								<Pencil size={13} />
-								重命名
-							</button>
-
-					<button
-						type="button"
-						onClick={(e) => {
+					<div
+						ref={menuContainerRef}
+						role="menu"
+						tabIndex={-1}
+						aria-label="会话操作"
+						onClick={(e) => e.stopPropagation()}
+						onContextMenu={(e) => {
+							e.preventDefault();
 							e.stopPropagation();
-							handleTogglePin();
 						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-					>
-						{session.pinned ? <PinOff size={13} /> : <Pin size={13} />}
-						{session.pinned ? "取消置顶" : "置顶会话"}
-					</button>
-
-					<button
-						type="button"
-						onClick={(e) => {
+						onKeyDown={(e) => {
 							e.stopPropagation();
-							handleArchiveClick();
+							if (e.key === "Escape") {
+								e.preventDefault();
+								closeMenu(true);
+								return;
+							}
+							if (
+								e.key === "ArrowDown" ||
+								e.key === "ArrowUp" ||
+								e.key === "Home" ||
+								e.key === "End"
+							) {
+								e.preventDefault();
+								const items = Array.from(
+									e.currentTarget.querySelectorAll<HTMLElement>(
+										'button[role="menuitem"]:not([disabled])',
+									),
+								);
+								if (items.length === 0) return;
+								const curIdx = items.indexOf(
+									document.activeElement as HTMLElement,
+								);
+								if (e.key === "Home") {
+									items[0]?.focus();
+								} else if (e.key === "End") {
+									items[items.length - 1]?.focus();
+								} else if (e.key === "ArrowDown") {
+									const nextIdx =
+										curIdx < items.length - 1 ? curIdx + 1 : 0;
+									items[nextIdx]?.focus();
+								} else if (e.key === "ArrowUp") {
+									const prevIdx =
+										curIdx > 0 ? curIdx - 1 : items.length - 1;
+									items[prevIdx]?.focus();
+								}
+							}
 						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
 					>
-						{session.archived ? (
-							<ArchiveRestore size={13} />
+						{selectedIds.size > 1 && isInSelectedSet ? (
+							<>
+								<div className="px-2.5 py-1 font-semibold text-[11px] text-[var(--text-muted)] border-b border-[var(--border-divider)]">
+									已选 {selectedIds.size} 个会话
+								</div>
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										closeMenu(true);
+										onBatchAction(
+											"archive",
+											Array.from(selectedIds),
+										);
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									<Archive size={13} />
+									批量归档
+								</button>
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										closeMenu(true);
+										onBatchAction(
+											"pin",
+											Array.from(selectedIds),
+										);
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									<Pin size={13} />
+									批量置顶 / 取消置顶
+								</button>
+								<div className="my-1 border-t border-[var(--border-divider)]" />
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										closeMenu(true);
+										onBatchAction(
+											"delete",
+											Array.from(selectedIds),
+										);
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 text-left transition-colors"
+								>
+									<Trash2 size={13} />
+									批量删除…
+								</button>
+							</>
 						) : (
-							<Archive size={13} />
+							<>
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										closeMenu(false);
+										startInlineRename();
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									<Pencil size={13} />
+									重命名
+								</button>
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										void handleTogglePin();
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									{session.pinned ? (
+										<PinOff size={13} />
+									) : (
+										<Pin size={13} />
+									)}
+									{session.pinned ? "取消置顶" : "置顶会话"}
+								</button>
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										closeMenu(true);
+										requestArchive(session.id);
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									{session.archived ? (
+										<ArchiveRestore size={13} />
+									) : (
+										<Archive size={13} />
+									)}
+									{session.archived ? "取消归档" : "归档会话"}
+								</button>
+
+								{/* R15: Emerald accept color */}
+								{session.status === "review" && (
+									<button
+										role="menuitem"
+										tabIndex={-1}
+										type="button"
+										onClick={() => {
+											void handleAccept();
+										}}
+										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-emerald-400 hover:bg-[var(--bg-hover)] text-left transition-colors"
+									>
+										<CheckCircle2 size={13} />
+										验收并归档
+									</button>
+								)}
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										closeMenu(true);
+										requestAssign([session.id]);
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									<FolderInput size={13} />
+									归入工作区…
+								</button>
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										closeMenu(true);
+										openModal("diagnose", { sessionId: session.id });
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									<Stethoscope size={13} />
+									诊断此会话
+								</button>
+
+								{(session.status === "interrupted" ||
+									session.status === "suspended") && (
+									<button
+										role="menuitem"
+										tabIndex={-1}
+										type="button"
+										onClick={() => {
+											void handleResume();
+										}}
+										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-emerald-400 hover:bg-[var(--bg-hover)] text-left transition-colors"
+									>
+										<Play size={13} />
+										恢复会话
+									</button>
+								)}
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										handleToggleTerminal();
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									<Terminal size={13} />
+									{sessionViewMode === "terminal"
+										? "切换聊天视图"
+										: "终端视图"}
+								</button>
+
+								{(session.status === "external" ||
+									session.externalPid != null) && (
+									<button
+										role="menuitem"
+										tabIndex={-1}
+										type="button"
+										onClick={() => {
+											closeMenu(true);
+											requestTakeover(session.id);
+										}}
+										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-purple-400 hover:bg-[var(--bg-hover)] text-left transition-colors"
+									>
+										<ExternalLink size={13} />
+										接管会话…
+									</button>
+								)}
+
+								<div className="my-1 border-t border-[var(--border-divider)]" />
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										void handleCopy(session.id, "会话 ID");
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									<Copy size={13} />
+									复制会话 ID
+								</button>
+
+								{session.git?.branch && (
+									<button
+										role="menuitem"
+										tabIndex={-1}
+										type="button"
+										onClick={() => {
+											void handleCopy(
+												session.git?.branch,
+												"分支名",
+											);
+										}}
+										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+									>
+										<GitBranch size={13} />
+										复制分支名
+									</button>
+								)}
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									onClick={() => {
+										void handleReveal();
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+								>
+									<FolderOpen size={13} />
+									在访达中打开
+								</button>
+
+								<div className="my-1 border-t border-[var(--border-divider)]" />
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									disabled={isSessionBusy(session)}
+									title={
+										isSessionBusy(session)
+											? "会话仍在运行，请先停止当前回合"
+											: undefined
+									}
+									onClick={() => {
+										closeMenu(true);
+										void requestDelete([session.id]);
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+								>
+									<Trash2 size={13} />
+									删除会话…
+								</button>
+							</>
 						)}
-						{session.archived ? "取消归档" : "归档会话"}
-					</button>
-
-					{session.status === "review" && (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								handleAccept(true);
-							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-orange-300 hover:bg-neutral-800 text-left"
-						>
-							<CheckCircle2 size={13} />
-							验收并归档
-						</button>
-					)}
-
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							setMenuOpen(false);
-							setShowAssignModal(true);
-						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-					>
-						<FolderInput size={13} />
-						归入工作区…
-					</button>
-
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							handleDiagnose();
-						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-					>
-						<Stethoscope size={13} />
-						诊断此会话
-					</button>
-
-					{(session.status === "interrupted" ||
-						session.status === "suspended") && (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								handleResume();
-							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-emerald-400 hover:bg-neutral-800 hover:text-emerald-300 text-left"
-						>
-							<Play size={13} />
-							恢复会话
-						</button>
-					)}
-
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							handleToggleTerminal();
-						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-					>
-						<Terminal size={13} />
-						{sessionViewMode === "terminal" ? "切换聊天视图" : "终端视图"}
-					</button>
-
-					{(session.status === "external" || session.externalPid != null) && (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								setMenuOpen(false);
-								setShowTakeoverModal(true);
-							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-purple-400 hover:bg-neutral-800 hover:text-purple-300 text-left"
-						>
-							<ExternalLink size={13} />
-							接管会话…
-						</button>
-					)}
-
-					<div className="my-1 border-t border-neutral-800" />
-
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							handleCopy(session.id, "会话 ID");
-						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-					>
-						<Copy size={13} />
-						复制会话 ID
-					</button>
-
-					{session.git?.branch && (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								handleCopy(session.git?.branch, "分支名");
-							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-						>
-							<GitBranch size={13} />
-							复制分支名
-						</button>
-					)}
-
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							handleReveal();
-						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-					>
-						<FolderOpen size={13} />
-						在访达中打开
-					</button>
-
-					<div className="my-1 border-t border-neutral-800" />
-
-					<button
-						type="button"
-						disabled={session.live || session.status === "working"}
-						title={
-							session.live || session.status === "working"
-								? "会话仍在运行，请先挂起或停止"
-								: undefined
-						}
-						onClick={(e) => {
-							e.stopPropagation();
-							setMenuOpen(false);
-							handleDelete();
-						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 text-rose-400 hover:bg-rose-950/50 hover:text-rose-300 text-left disabled:cursor-not-allowed disabled:opacity-40"
-					>
-						<Trash2 size={13} />
-						删除会话…
-					</button>
-						</>
-					)}
+					</div>
 				</FloatingLayer>
 			)}
 
-
-			{/* Modal 2: Archive with Worktree Confirmation */}
-			{showArchiveModal && (
-				<div
-					onMouseDown={(e) => {
-						if (e.target === e.currentTarget) setShowArchiveModal(false);
-					}}
-					onClick={(e) => e.stopPropagation()}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
-				>
-					<div className="w-full max-w-md rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-200 shadow-apple-modal hairline">
-						<div className="flex items-center gap-2 pb-2 text-amber-400 font-semibold text-sm">
-							<AlertTriangle size={18} />
-							<span>归档会话与工作树清理</span>
-						</div>
-						<p className="text-xs text-neutral-300 leading-relaxed">
-							此会话关联了工作树：
-							<code className="mx-1 rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-200">
-								{session.git?.worktree}
-							</code>
-						</p>
-
-						{session.git && session.git.dirty > 0 && (
-							<div className="my-3 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
-								⚠️ 警告：该工作树包含{" "}
-								<span className="font-bold">{session.git.dirty}</span>{" "}
-								个未提交的改动 (dirty)！系统拒绝静默删除，若清理将永久丢失改动。
-							</div>
-						)}
-
-						<div className="mt-4 flex flex-col gap-2 text-xs">
-							<button
-								type="button"
-								disabled={archiving}
-								onClick={() => executeArchiveWithWorktree(false)}
-								className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-left hover:bg-neutral-700 disabled:opacity-50"
-							>
-								<div className="font-semibold text-neutral-200">
-									仅归档会话 (保留工作树)
-								</div>
-								<div className="text-[11px] text-neutral-400">
-									会话归档，但保留工作树文件与本地分支。
-								</div>
-							</button>
-
-							<button
-								type="button"
-								disabled={archiving}
-								onClick={() => executeArchiveWithWorktree(true)}
-								className="rounded border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-left hover:bg-rose-900/40 text-rose-200 disabled:opacity-50"
-							>
-								<div className="font-semibold flex items-center gap-1.5">
-									{archiving ? (
-										<Loader2 size={13} className="animate-spin" />
-									) : (
-										<Trash2 size={13} />
-									)}
-									归档并清理工作树
-								</div>
-								<div className="text-[11px] text-rose-300/80">
-									执行安全删除 (无强制 force)，若工作树未落盘将中止。
-								</div>
-							</button>
-
-							<button
-								type="button"
-								onClick={() => setShowArchiveModal(false)}
-								className="mt-1 rounded px-3 py-1.5 text-neutral-400 hover:bg-neutral-800 text-center"
-							>
-								取消
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
-
-			{/* Modal 3: Assign to Workspace */}
-			{showAssignModal && (
-				<div
-					onMouseDown={(e) => {
-						if (e.target === e.currentTarget) setShowAssignModal(false);
-					}}
-					onClick={(e) => e.stopPropagation()}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
-				>
-					<div className="w-full max-w-sm rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-200 shadow-apple-modal hairline">
-						<div className="flex items-center justify-between pb-3">
-							<span className="font-semibold text-sm">归入工作区</span>
-							<button
-								type="button"
-								onClick={() => setShowAssignModal(false)}
-								className="text-neutral-400 hover:text-neutral-200"
-								title="关闭"
-							>
-								<X size={16} />
-							</button>
-						</div>
-						<div className="max-h-60 overflow-y-auto space-y-1">
-							{workspaces.map((ws) => (
-								<button
-									key={ws.id}
-									type="button"
-									onClick={() => handleAssignWorkspace(ws.id)}
-									className={clsx(
-										"flex w-full items-center justify-between rounded px-3 py-2 text-left text-xs hover:bg-neutral-800",
-										session.workspaceId === ws.id
-											? "bg-indigo-950/40 text-indigo-300"
-											: "text-neutral-300",
-									)}
-								>
-									<span className="truncate">
-										{ws.kind === "global" ? `🌐 ${ws.name}` : `📁 ${ws.name}`}
-									</span>
-									{session.workspaceId === ws.id && <Check size={14} />}
-								</button>
-							))}
-
-							<button
-								type="button"
-								onClick={() => handleAssignWorkspace(null)}
-								className={clsx(
-									"flex w-full items-center justify-between rounded px-3 py-2 text-left text-xs hover:bg-neutral-800",
-									session.workspaceId == null
-										? "bg-indigo-950/40 text-indigo-300"
-										: "text-neutral-400",
-								)}
-							>
-								<span>未归档 (移除工作区关联)</span>
-								{session.workspaceId == null && <Check size={14} />}
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
-
-			{/* Modal 4: Takeover Confirmation */}
-			{showTakeoverModal && (
-				<div
-					onMouseDown={(e) => {
-						if (e.target === e.currentTarget) setShowTakeoverModal(false);
-					}}
-					onClick={(e) => e.stopPropagation()}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
-				>
-					<div className="w-full max-w-sm rounded-lg border border-purple-500/40 bg-neutral-900 p-4 text-neutral-200 shadow-2xl">
-						<div className="flex items-center gap-2 pb-2 text-purple-400 font-semibold text-sm">
-							<ExternalLink size={18} />
-							<span>接管外部会话</span>
-						</div>
-						<p className="text-xs text-neutral-300 leading-relaxed">
-							接管外部会话：
-							<strong className="text-rose-400">可能丢失未落盘状态</strong>
-							。接管后该会话将由本应用作为主控进程管理。确定要继续接管吗？
-						</p>
-						<div className="mt-4 flex justify-end gap-2 text-xs">
-							<button
-								type="button"
-								disabled={busy}
-								onClick={() => setShowTakeoverModal(false)}
-								className="rounded px-3 py-1.5 text-neutral-400 hover:bg-neutral-800"
-							>
-								取消
-							</button>
-							<button
-								type="button"
-								disabled={busy}
-								onClick={handleTakeoverConfirm}
-								className="flex items-center gap-1.5 rounded bg-purple-600 px-3 py-1.5 text-white hover:bg-purple-500 disabled:opacity-60"
-							>
-								{busy && <Loader2 size={12} className="animate-spin" />}
-								确定接管
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
-			{/* Superset HoverCard preview */}
+			{/* Superset HoverCard preview (R10) */}
 			<SessionHoverCard
 				session={session}
 				anchorRect={anchorRect}
-				open={hoverCardOpen && !menuOpen && !isRenaming}
+				open={
+					hoverCardOpen &&
+					!menuOpen &&
+					!isRenaming &&
+					!hasActiveDialog
+				}
 				workspaces={workspaces}
 				onMouseEnterCard={handleCardMouseEnter}
 				onMouseLeaveCard={handleCardMouseLeave}
@@ -1074,7 +1028,6 @@ function SessionRowComponent({
 export const SessionRow = React.memo(SessionRowComponent, (prev, next) => {
 	return (
 		prev.session === next.session &&
-		prev.indent === next.indent &&
 		prev.withSpine === next.withSpine &&
 		prev.workspaces === next.workspaces &&
 		prev.onRowFocus === next.onRowFocus &&

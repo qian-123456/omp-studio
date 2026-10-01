@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Workspace, SessionMeta } from "../../lib/contracts";
 import { groupSessions } from "./grouping";
+import {
+	isGlobalGroupVisibleInAll,
+	isWorkspaceGroupVisibleInAll,
+} from "./sidebarVisibility";
 
 function makeSession(partial: Partial<SessionMeta>): SessionMeta {
 	return {
@@ -62,22 +66,14 @@ describe("Sidebar Navigation & Filtering logic", () => {
 			activeWorkspaceId: "all",
 		});
 
-		// In 'all' mode:
 		// 1. globalGroup has 0 sessions -> should be hidden from UI
-		expect(grouped.globalGroup?.totalCount).toBe(0);
-		const showGlobalInAll = Boolean(grouped.globalGroup && grouped.globalGroup.totalCount > 0);
-		expect(showGlobalInAll).toBe(false);
+		expect(isGlobalGroupVisibleInAll(grouped.globalGroup)).toBe(false);
 
-		// 2. emptyWs has 0 sessions -> should be filtered out from visibleWorkspaceGroups
-		const visibleInAll = grouped.workspaceGroups.filter(
-			(wg) =>
-				wg.totalCount > 0 ||
-				wg.subgroups.some((s) => s.sessions.length > 0) ||
-				wg.deletedSubgroups.length > 0,
-		);
+		// 2. emptyWs has 0 sessions -> filtered out by real visibility helper
+		const visibleInAll = grouped.workspaceGroups.filter(isWorkspaceGroupVisibleInAll);
 		expect(visibleInAll.map((w) => w.workspace.id)).toEqual(["proj1"]);
 
-		// When emptyWs is explicitly selected as active filter:
+		// 3. When emptyWs is explicitly selected as active filter:
 		const groupedFiltered = groupSessions([session], [projWs, emptyWs, globalWs], {
 			activeWorkspaceId: "proj2",
 		});
@@ -93,7 +89,24 @@ describe("Sidebar Navigation & Filtering logic", () => {
 		});
 
 		expect(grouped.globalGroup?.totalCount).toBe(1);
-		const showGlobalInAll = Boolean(grouped.globalGroup && grouped.globalGroup.totalCount > 0);
-		expect(showGlobalInAll).toBe(true);
+		expect(isGlobalGroupVisibleInAll(grouped.globalGroup)).toBe(true);
+	});
+
+	it("includes empty worktree subgroups when worktrees are provided (C2)", () => {
+		const session = makeSession({ id: "s1", workspaceId: "proj1", cwd: "/repo/my-proj" });
+		const worktrees = [
+			{ path: "/repo/my-proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [] },
+			{ path: "/repo/my-proj/.worktrees/feat-x", branch: "feat-x", head: "bbb", dirty: 0, sessionIds: [] },
+		];
+		const grouped = groupSessions([session], [projWs], {
+			worktrees: { proj1: worktrees },
+		});
+
+		const wg = grouped.workspaceGroups[0];
+		expect(wg.subgroups).toHaveLength(2);
+		expect(wg.subgroups[0].label).toBe("main");
+		expect(wg.subgroups[0].isMain).toBe(true);
+		expect(wg.subgroups[1].label).toBe("feat-x");
+		expect(wg.subgroups[1].sessions).toHaveLength(0);
 	});
 });

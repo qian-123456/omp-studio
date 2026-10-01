@@ -96,6 +96,7 @@ export function WorktreeGraph({
 	worktrees,
 	current,
 	selected,
+	selectedExplicit = true,
 	onSelect,
 	cleaningPath,
 	sessionMenuWt,
@@ -107,6 +108,8 @@ export function WorktreeGraph({
 	current: string;
 	/** Worktree whose changes/history the panel below is showing. */
 	selected: string;
+	/** True when the user clicked a worktree; false = default (repo root). */
+	selectedExplicit?: boolean;
 	onSelect: (path: string) => void;
 	cleaningPath: string | null;
 	sessionMenuWt: string | null;
@@ -277,9 +280,11 @@ export function WorktreeGraph({
 										onMouseLeave={handleItemMouseLeave}
 										className={clsx(
 											"relative flex min-w-0 flex-1 flex-col justify-center rounded border px-2 py-1.5 transition-colors",
-											isSelected
+											isSelected && selectedExplicit
 												? "border-indigo-500/50 bg-indigo-500/10 shadow-sm"
-												: "border-transparent hover:bg-neutral-800/40",
+												: isSelected
+													? "border-neutral-700/60 bg-neutral-800/30"
+													: "border-transparent hover:bg-neutral-800/40",
 										)}
 									>
 										{/* Line 1: Git branch icon + Full Branch Name + Right Hover Actions */}

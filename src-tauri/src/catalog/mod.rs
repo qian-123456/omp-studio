@@ -27,7 +27,7 @@ use crate::contracts::{PendingKind, SessionMeta, SessionStatus};
 use crate::paths;
 use crate::state::{AppEvent, AppState};
 use scan::{FileMap, GitInfo, Scanned};
-use status::{DeriveInput, Runtime};
+use status::{DeriveInput, Phase, Runtime};
 use store::MetaRow;
 
 /// Git facts are refreshed at most this often per cwd.
@@ -42,6 +42,9 @@ struct Catalog {
     git: HashMap<String, (Instant, GitInfo)>,
     metas: HashMap<String, SessionMeta>,
     ready: bool,
+    /// Ids deleted through `catalog::delete` — guards the bus loop against a
+    /// process-exit event that lands after we purged the session's state.
+    deleted: HashSet<String>,
 }
 
 fn cat() -> &'static Mutex<Catalog> {
@@ -464,14 +467,39 @@ pub(crate) fn file_of(session_id: &str) -> Option<PathBuf> {
         .filter(|p| !p.as_os_str().is_empty())
 }
 
-/// Permanently delete a session: refuse while live, remove its transcript
-/// files and `session_meta` row, then emit `sessions:removed`.
+/// Permanently delete a session. A live but idle runtime (not `Working`, no
+/// open dialogs) is stopped via `rpc::stop` first; a busy one is refused. Then
+/// remove its transcript files and `session_meta` row and emit
+/// `sessions:removed`. Sessions with no transcript on disk yet are still
+/// deletable while live — the handle's destined `session_file` is removed too
+/// (NotFound tolerated).
 pub(crate) async fn delete(state: &AppState, session_id: &str) -> Result<(), String> {
     if !cat().lock().ready {
         rebuild(state).await;
     }
-    if crate::rpc::is_live(session_id) {
-        return Err("会话仍在运行，请先挂起或停止".to_string());
+
+    // A live process mid-turn or waiting on a dialog owns state we cannot
+    // silently drop; anything else is safe to stop and delete.
+    let mut was_live = false;
+    let mut handle_file = None;
+    if let Some(handle) = crate::rpc::get_handle(session_id) {
+        if handle.alive.load(std::sync::atomic::Ordering::SeqCst) {
+            let busy = cat()
+                .lock()
+                .runtime
+                .get(session_id)
+                .is_some_and(|rt| rt.phase == Phase::Working || !rt.dialogs.is_empty());
+            if busy {
+                return Err("会话仍在运行，请先停止当前回合".to_string());
+            }
+            // Capture before stop: the monitor clears registry state on exit.
+            let f = PathBuf::from(handle.session_file.read().clone());
+            if !f.as_os_str().is_empty() {
+                handle_file = Some(f);
+            }
+            crate::rpc::stop(&handle).await?;
+            was_live = true;
+        }
     }
 
     // Collect every transcript file for this session id.
@@ -486,11 +514,15 @@ pub(crate) async fn delete(state: &AppState, session_id: &str) -> Result<(), Str
         let meta_file = c.metas.get(session_id).map(|m| PathBuf::from(&m.file));
         (files, meta_file)
     };
-    if paths.is_empty() && meta_file.is_none() {
+    if paths.is_empty() && meta_file.is_none() && !was_live {
         return Err(format!("session not found: {session_id}"));
     }
     let mut gone = std::collections::HashSet::new();
-    for path in paths.iter().chain(meta_file.iter()) {
+    for path in paths
+        .iter()
+        .chain(meta_file.iter())
+        .chain(handle_file.iter())
+    {
         match std::fs::remove_file(path) {
             Ok(()) => {
                 gone.insert(path.to_string_lossy().to_string());
@@ -515,6 +547,7 @@ pub(crate) async fn delete(state: &AppState, session_id: &str) -> Result<(), Str
         c.metas.remove(session_id);
         c.runtime.remove(session_id);
         c.external.retain(|p, _| !gone.contains(p));
+        c.deleted.insert(session_id.to_string());
     }
     emit_changes(state, Vec::new(), vec![session_id.to_string()], Vec::new());
     Ok(())

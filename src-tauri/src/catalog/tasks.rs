@@ -181,6 +181,11 @@ async fn run_bus_loop(state: AppState, mut bus: tokio::sync::broadcast::Receiver
 
         let change = {
             let mut c = cat().lock();
+            // Deleted session: a process-exit event may land after purge; never
+            // resurrect its runtime or persist a new session_meta row.
+            if c.deleted.contains(&session_id) {
+                continue;
+            }
             let cur_pending = c.metas.get(&session_id).and_then(|m| m.pending);
             let rt = c.runtime.entry(session_id.clone()).or_default();
             status::apply(rt, cur_pending, &live_ev)

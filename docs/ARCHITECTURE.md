@@ -618,7 +618,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Title: `session_meta.custom_name` > title slot > latest `title_change` > first user text (≤40 chars) > "未命名".
 - Label: `#<n>` from title regex `^#(\d+)`; else `#L<seq>` from `session_meta.seq`. Side chats keep the stored label.
 - Workspace membership: explicit `session_meta.workspace_id` > registered workspace whose path equals/contains `repo_root ?? cwd` >
-  Global if cwd under `global_dir()` > None (未归档). Global workspace row is created at startup (`kind=global`).
+  Global if cwd under `global_dir()` > None (未归入工作区). Global workspace row is created at startup (`kind=global`).
 - External detection: every 5 s run `lsof -c omp -F pn` (names ending `.jsonl` under sessions dir) → pid per file.
   Files held by an app-owned pid are not External.
 - Status derivation (live sessions, from bus): `agent_start`→Working; dialog `extension_ui_request` (`select|confirm|input|editor`)
@@ -635,16 +635,25 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   except it is used for status). Incremental reads from `from_offset` must only return complete lines.
 - `session_usage`: try Token Tracker on `http://localhost:7680` (discover the API; e.g. inspect its HTML/JS bundle for `/api/...`
   routes); on failure sum `usage` from the transcript (`source:"transcript"`). Never error.
-- Frontend `SessionSidebar`: 🌐 全局 group fixed on top; registered workspaces; inside each group, sub-groups by worktree/branch
-  (`git.worktree` / branch) when more than one; sessions with a `parent_id` (omp forks, side chats) are NOT nested — they are flat rows sorted with everything else and carry a small fork icon (tooltip "分叉自: <parent title>") before the title, with labels `#3.1`;
-  "未归档" bucket collapsed by default, grouped by cwd with an "添加为工作区" button and per-session "归入工作区…".
-  Row: status dot (Working green pulse, AwaitingApproval 🟡, AwaitingAnswer 💬, Review 🟠, Error red, Interrupted grey-red,
-  Suspended hollow, External purple outline) + 🔵 unread dot + name + second line `3分钟前 · branch` + dirty `●N` + ✅/❌ badge.
-  Pinned first. Context menu: 重命名, 置顶, 归档 (if session has a worktree → ask whether to clean it via `git_remove_worktree`,
-  refuse silent delete when dirty), 归入工作区, 诊断此会话 (`ui.openModal("diagnose",{sessionId})`), 接管 (External, double confirm
-  with "可能丢失未落盘状态"), 恢复 (Interrupted/Suspended → `rpc_ensure_live`), 终端视图. Header: "+ 新会话" per workspace →
-  `ui.openModal("new-session", {workspaceId, cwd})`, "添加工作区" via dialog plugin folder picker, search box, 显示归档 toggle.
-  Selecting a row → `ui.selectSession(id)` + `mark_seen`.
+- Frontend `SessionSidebar` (`SessionSidebar.tsx` + `GroupHeader.tsx`, `sidebarStore.ts`, `sidebarShortcuts.ts`,
+  `newSession.ts`, `sessionActions.ts`, `SessionDialogs.tsx`, `archiveUndo.ts`/`ArchiveUndoBar.tsx`, `visibleRows.ts`,
+  `useMinuteTick.ts`, `sidebarVisibility.ts`, `grouping.ts`): pinned 🌐 全局 group on top, then 已置顶,
+  registered workspaces, then 未归入工作区 (per-cwd subgroups via `unassignedGroups`); inside each workspace,
+  sub-groups by live worktree (`GroupingOptions.worktrees`, `WorktreeInfo.sessionIds` first then cwd containment);
+  sessions in deleted worktree dirs fold into a default-collapsed 已清理的工作树 subgroup. Forks (`parentId`) are
+  flat rows with a fork icon + tooltip. Rows: fork icon → title (marquee) → status mark next to title
+  (RFC palette: sky 待回复 capsule, emerald 待验收 dot, red 异常/已中断 dot, grey spinner 运行中, blue unread dot
+  only on unmarked rows) → timestamp with hover time-swap `…` menu; second line only inside `SessionHoverCard`.
+  Paging: `needsAttention` (working/awaiting/review/error/interrupted/unread) and the selected row stay rendered
+  past the limit with a `···` gap marker; `展开 N 条` counts only rows that will appear. Collapsed group headers
+  show per-status count bubbles. While the pointer is over the list, ordering freezes (`frozenOrder`/`snapshotOrder`).
+  Selection/`visible` truth = the DOM (`data-sidebar-list` + `#session-row-<id>`); keyboard ⌘N/⌘⇧K/⌘F global
+  (registered in `sidebarShortcuts`), list owns ↑/↓/Enter/←/→/Delete(archive)/Shift+Delete/F2/Shift+F10.
+  `archiveSessions` (busy/awaiting → confirm) + `undoArchive` merge within 8 s; `requestArchive`/`requestDelete`/
+  `requestAssign`/`requestRename`/`requestRowMenu` in `sessionActions.ts`; dialogs portaled in `SessionDialogs.tsx`.
+  Mark-seen is centralized in the sessions store: selecting any session marks it seen.
+  Selecting a row → `ui.selectSession(id)`; `SessionSidebar` reveals the selected row on selection change
+  (expands group + scrolls into view).
 
 ### B — RPC channel (backend) + chat, side chat, heatmap (frontend)
 - Spawn `settings.omp_binary --mode rpc --approval-mode <mode> [--model m] [--resume file] --cwd <cwd>` with `current_dir(cwd)`.

@@ -290,6 +290,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 						worktrees={worktrees}
 						current={top}
 						selected={selected}
+						selectedExplicit={focus !== null}
 						onSelect={(path) => setFocus(path === top ? null : path)}
 						onChanged={() => void load(false)}
 					/>

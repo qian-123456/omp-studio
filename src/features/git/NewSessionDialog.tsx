@@ -341,6 +341,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				approvalMode: null, // per-session approval removed — Settings owns it
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
 				planYolo: planYolo || null,
+				prompt,
 			});
 			createdSessionId = sessionId;
 			upsert([stub]);

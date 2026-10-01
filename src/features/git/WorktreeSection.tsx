@@ -21,6 +21,7 @@ export function WorktreeSection({
 	worktrees,
 	current,
 	selected,
+	selectedExplicit = true,
 	onSelect,
 	onChanged,
 }: {
@@ -28,6 +29,8 @@ export function WorktreeSection({
 	worktrees: WorktreeInfo[];
 	current: string;
 	selected: string;
+	/** True when the user clicked a worktree; false = default (repo root). */
+	selectedExplicit?: boolean;
 	onSelect: (path: string) => void;
 	onChanged: () => void;
 }) {
@@ -219,6 +222,7 @@ export function WorktreeSection({
 				worktrees={worktrees}
 				current={current}
 				selected={selected}
+				selectedExplicit={selectedExplicit}
 				onSelect={onSelect}
 				cleaningPath={cleaningPath}
 				sessionMenuWt={sessionMenuWt}

@@ -1,20 +1,30 @@
+/**
+ * Left sidebar column: complete session list grouped by workspace (§11 A).
+ * - 🌐 Global workspace fixed on top (PLAN.md §67)
+ * - Registered workspaces with right-click actions (Finder, remove)
+ * - Worktree/branch subgrouping
+ * - Unassigned ("未归入工作区") bucket collapsed by default
+ * - Deleted worktree bucket ("已清理的工作树") kept visible (dimmed)
+ * - Search + Archive toggle
+ * - Keyboard navigation (↑/↓ to select, Enter to open, Delete to archive, Shift+Delete to delete)
+ * - Accessibility: role="listbox", real button headers, aria-activedescendant
+ * - Single source of truth for rendered rows via visibleRows.ts
+ */
+
 import { open } from "@tauri-apps/plugin-dialog";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import clsx from "clsx";
 import {
 	AlertCircle,
 	Archive,
 	Boxes,
 	Check,
 	ChevronDown,
-	ChevronRight,
 	Clock,
-	FoldVertical,
 	Folder,
 	FolderGit2,
-	FolderInput,
 	FolderOpen,
 	FolderPlus,
+	FolderInput,
+	FolderSearch,
 	GitBranch,
 	Globe,
 	Inbox,
@@ -27,146 +37,88 @@ import {
 	Settings as SettingsIcon,
 	SlidersHorizontal,
 	Trash2,
-	Undo2,
 	UnfoldVertical,
+	FoldVertical,
 	X,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SessionMeta, Workspace } from "../../lib/contracts";
-import { createSession } from "../../lib/createSession";
-import { confirmDialog, errMsg } from "../../lib/dialogs";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
-import { sessionDisplayName } from "../../lib/sessionName";
-import {
-	addWorkspace,
-	deleteSession,
-	gitCreateWorktree,
-	gitSummary,
-	removeWorkspace,
-	updateSessionMeta,
-} from "../../lib/ipc";
-import { isInside } from "../../lib/paths";
-import { toast } from "../../lib/toast";
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import clsx from "clsx";
+import type { Anchor } from "../../components/FloatingLayer";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { HoverScrollText } from "../../components/HoverScrollText";
-import { FloatingLayer, type Anchor } from "../../components/FloatingLayer";
+import type { Workspace, SessionMeta } from "../../lib/contracts";
+import { confirmDialog, errMsg } from "../../lib/dialogs";
+import { isInside } from "../../lib/paths";
+import { isComposing } from "../../lib/hooks";
+import { addWorkspace, removeWorkspace, updateSessionMeta } from "../../lib/ipc";
+import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
-import { useArchiveUndo, undoArchive } from "./archiveUndo";
+import { WorktreeHoverCard } from "../git/WorktreeHoverCard";
 import { useInboxBadge } from "../inbox/useInboxBadge";
+import { ArchiveUndoBar } from "./ArchiveUndoBar";
+import { archiveSessions } from "./archiveUndo";
+import { GroupHeader, getGroupStatusCounts } from "./GroupHeader";
 import {
 	type BranchSubgroup,
+	type GroupedSessionsResult,
 	DELETED_LABEL,
 	UNASSIGNED_LABEL,
+	filterSessions,
 	groupSessions,
 	inferWorktreeName,
+	needsAttention,
+	snapshotOrder,
 } from "./grouping";
+import {
+	startNewSessionFromContext,
+	startSessionAt,
+	startSessionInDir,
+} from "./newSession";
+import {
+	requestArchive,
+	requestAssign,
+	requestDelete,
+	requestRename,
+	requestRowMenu,
+} from "./sessionActions";
+import { SessionDialogs } from "./SessionDialogs";
 import { SessionRow } from "./SessionRow";
-import { WorktreeHoverCard } from "../git/WorktreeHoverCard";
+import "./sidebarShortcuts";
+import { useSidebarStore } from "./sidebarStore";
+import {
+	isGlobalGroupVisibleInAll,
+	isWorkspaceGroupVisibleInAll,
+} from "./sidebarVisibility";
+import { SIDEBAR_LIST_ATTR, getVisibleSessionIds } from "./visibleRows";
 
-/** Sessions shown per section before a "show more" row appears. */
 const RECENT_LIMIT = 3;
-/** Extra sessions revealed per "show more" click — never dumps the whole list. */
 const RECENT_STEP = 5;
-const COLLAPSED_GROUPS_KEY = "ompws:collapsed-groups";
-const ACTIVE_WORKSPACE_KEY = "ompws:active-workspace-id";
 
-function readActiveWorkspaceId(): string {
-	try {
-		return localStorage.getItem(ACTIVE_WORKSPACE_KEY) || "all";
-	} catch {
-		return "all";
-	}
-}
-
-function writeActiveWorkspaceId(id: string) {
-	try {
-		localStorage.setItem(ACTIVE_WORKSPACE_KEY, id);
-	} catch {
-		/* ignore */
-	}
-}
-
-
-function readCollapsedGroups(): Record<string, boolean> {
-	try {
-		const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY);
-		if (raw) {
-			const parsed = JSON.parse(raw);
-			if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-				return parsed;
-			}
-		}
-	} catch {
-		/* ignore */
-	}
-	return {
-		__unassigned: false,
-		__deleted: false,
-	};
-}
-
-function writeCollapsedGroups(state: Record<string, boolean>) {
-	try {
-		localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(state));
-	} catch {
-		/* ignore */
-	}
-}
 export interface WorkspacePalette {
-	cardBorder: string;
 	folderColor: string;
-	spineBorder: string;
-	leftAccent: string;
 }
 
 export const WORKSPACE_PALETTES: WorkspacePalette[] = [
-	{
-		cardBorder: "border-sky-500/35 hover:border-sky-500/55 dark:border-sky-500/25 dark:hover:border-sky-500/40",
-		folderColor: "text-sky-600 dark:text-sky-400",
-		spineBorder: "border-sky-500/30 dark:border-sky-500/30",
-		leftAccent: "border-l-[3px] border-l-sky-500",
-	},
-	{
-		cardBorder: "border-emerald-500/35 hover:border-emerald-500/55 dark:border-emerald-500/25 dark:hover:border-emerald-500/40",
-		folderColor: "text-emerald-600 dark:text-emerald-400",
-		spineBorder: "border-emerald-500/30 dark:border-emerald-500/30",
-		leftAccent: "border-l-[3px] border-l-emerald-500",
-	},
-	{
-		cardBorder: "border-amber-500/35 hover:border-amber-500/55 dark:border-amber-500/25 dark:hover:border-amber-500/40",
-		folderColor: "text-amber-600 dark:text-amber-400",
-		spineBorder: "border-amber-500/30 dark:border-amber-500/30",
-		leftAccent: "border-l-[3px] border-l-amber-500",
-	},
-	{
-		cardBorder: "border-purple-500/35 hover:border-purple-500/55 dark:border-purple-500/25 dark:hover:border-purple-500/40",
-		folderColor: "text-purple-600 dark:text-purple-400",
-		spineBorder: "border-purple-500/30 dark:border-purple-500/30",
-		leftAccent: "border-l-[3px] border-l-purple-500",
-	},
-	{
-		cardBorder: "border-rose-500/35 hover:border-rose-500/55 dark:border-rose-500/25 dark:hover:border-rose-500/40",
-		folderColor: "text-rose-600 dark:text-rose-400",
-		spineBorder: "border-rose-500/30 dark:border-rose-500/30",
-		leftAccent: "border-l-[3px] border-l-rose-500",
-	},
-	{
-		cardBorder: "border-teal-500/35 hover:border-teal-500/55 dark:border-teal-500/25 dark:hover:border-teal-500/40",
-		folderColor: "text-teal-600 dark:text-teal-400",
-		spineBorder: "border-teal-500/30 dark:border-teal-500/30",
-		leftAccent: "border-l-[3px] border-l-teal-500",
-	},
+	{ folderColor: "text-sky-600 dark:text-sky-400" },
+	{ folderColor: "text-emerald-600 dark:text-emerald-400" },
+	{ folderColor: "text-amber-600 dark:text-amber-400" },
+	{ folderColor: "text-purple-600 dark:text-purple-400" },
+	{ folderColor: "text-rose-600 dark:text-rose-400" },
+	{ folderColor: "text-teal-600 dark:text-teal-400" },
 ];
 
 export function getWorkspacePalette(idOrName: string): WorkspacePalette {
 	if (idOrName === "__global") {
-		return {
-			cardBorder: "border-indigo-500/35 hover:border-indigo-500/55 dark:border-indigo-500/25 dark:hover:border-indigo-500/40",
-			folderColor: "text-indigo-600 dark:text-indigo-400",
-			spineBorder: "border-indigo-500/30 dark:border-indigo-500/30",
-			leftAccent: "border-l-[3px] border-l-indigo-500",
-		};
+		return { folderColor: "text-indigo-600 dark:text-indigo-400" };
 	}
 	let hash = 0;
 	for (let i = 0; i < idOrName.length; i++) {
@@ -177,8 +129,6 @@ export function getWorkspacePalette(idOrName: string): WorkspacePalette {
 	return WORKSPACE_PALETTES[idx];
 }
 
-
-
 interface PlusMenuState {
 	ws: Workspace;
 	anchor: Anchor;
@@ -188,96 +138,179 @@ interface WsMenuState {
 	ws: Workspace;
 	anchor: Anchor;
 }
-
 /**
- * [A] Left column: complete session list grouped by workspace (§11 A).
- * - 🌐 Global workspace fixed on top (PLAN.md §67)
- * - Registered workspaces with right-click actions (Finder, remove)
- * - Worktree/branch subgrouping
- * - Unassigned ("未归档会话") bucket collapsed by default (PLAN.md §66)
- * - Deleted worktree bucket ("已清理的 Worktree") kept visible instead of vanishing
- * - Search + Archive toggle + Clearer "已清理" toggle
- * - Keyboard navigation (↑/↓ to select, Enter to open, Delete to archive)
- * - Skeleton rows while loading to eliminate cold-start flash
- * - Bottom Undo bar for archive recovery
+ * Accessible menu container with autofocus and keyboard arrow navigation (Q08).
  */
+function MenuContainer({
+	children,
+	ariaLabel,
+	onClose,
+	triggerRef,
+	className,
+}: {
+	children: React.ReactNode;
+	ariaLabel: string;
+	onClose: () => void;
+	triggerRef?: React.RefObject<HTMLElement | null>;
+	className?: string;
+}) {
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const timer = window.setTimeout(() => {
+			const items = menuRef.current?.querySelectorAll<HTMLElement>(
+				'[role="menuitem"]:not([disabled])',
+			);
+			items?.[0]?.focus();
+		}, 0);
+		return () => {
+			clearTimeout(timer);
+			triggerRef?.current?.focus();
+		};
+	}, [triggerRef]);
+
+	const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+		const items = Array.from(
+			menuRef.current?.querySelectorAll<HTMLElement>(
+				'[role="menuitem"]:not([disabled])',
+			) ?? [],
+		);
+		if (items.length === 0) return;
+		const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			e.stopPropagation();
+			const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+			items[nextIndex]?.focus();
+		} else if (e.key === "ArrowUp") {
+			e.preventDefault();
+			e.stopPropagation();
+			const prevIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+			items[prevIndex]?.focus();
+		} else if (e.key === "Home") {
+			e.preventDefault();
+			e.stopPropagation();
+			items[0]?.focus();
+		} else if (e.key === "End") {
+			e.preventDefault();
+			e.stopPropagation();
+			items[items.length - 1]?.focus();
+		} else if (e.key === "Escape") {
+			e.preventDefault();
+			e.stopPropagation();
+			onClose();
+		}
+	};
+
+	return (
+		<div
+			ref={menuRef}
+			role="menu"
+			aria-label={ariaLabel}
+			onKeyDown={handleKeyDown}
+			className={clsx("focus:outline-none", className)}
+		>
+			{children}
+		</div>
+	);
+}
+
+
 export function SessionSidebar() {
 	const sessions = useSessions((s) => s.sessions);
 	const workspaces = useSessions((s) => s.workspaces);
 	const hasLoaded = useSessions((s) => s.hasLoaded);
 	const loadSessions = useSessions((s) => s.load);
-	const openModal = useUi((s) => s.openModal);
+
 	const selectSession = useUi((s) => s.selectSession);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const highlightId = useUi((s) => s.highlightId);
 	const setHighlightId = useUi((s) => s.setHighlightId);
 	const centerView = useUi((s) => s.centerView);
 	const setCenter = useUi((s) => s.setCenter);
-	const undoItem = useArchiveUndo((s) => s.item);
+	const openSettings = useUi((s) => s.openSettings);
+	const closeSettings = useUi((s) => s.closeSettings);
+	const openModal = useUi((s) => s.openModal);
+
 	const inboxBadge = useInboxBadge();
-	// Load data on initial mount
-	useEffect(() => {
-		loadSessions().catch((err) => {
-			setErrorMessage(`加载会话列表失败: ${errMsg(err)}`);
-		});
-	}, [loadSessions]);
 
-	// Search & Archive controls
-	const [searchQuery, setSearchQuery] = useState("");
-	const [showArchived, setShowArchived] = useState(false);
-	// Group open states (explicit user toggles). Defaults:
-	// - project/global workspaces: open
-	// - unassigned bucket + per-workspace deleted-worktree folders: collapsed
-	const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(() =>
-		readCollapsedGroups(),
-	);
-
-	// Per-section disclosure state, keyed per subgroup:
-	// - `…|more` stores how many top-level session blocks are visible (default RECENT_LIMIT)
-	// - `…|older` / `…|sub` are 0/1 open flags
-	const [expandedSections, setExpandedSections] = useState<
-		Record<string, number>
-	>({});
-	const toggleSection = (key: string) =>
-		setExpandedSections((prev) => ({ ...prev, [key]: prev[key] ? 0 : 1 }));
-	const setSectionCount = (key: string, count: number) =>
-		setExpandedSections((prev) => ({ ...prev, [key]: count }));
+	// Persistent sidebar store state (survives Cmd+B)
+	const activeWorkspaceId = useSidebarStore((s) => s.activeWorkspaceId);
+	const setActiveWorkspaceId = useSidebarStore((s) => s.setActiveWorkspaceId);
+	const checkWorkspaceFallback = useSidebarStore((s) => s.checkWorkspaceFallback);
+	// groupOpen subscribed selector (C1, Q02)
+	const groupOpen = useSidebarStore((s) => s.groupOpen);
+	const setGroupOpen = useSidebarStore((s) => s.setGroupOpen);
+	const toggleGroup = useSidebarStore((s) => s.toggleGroup);
+	const searchQuery = useSidebarStore((s) => s.searchQuery);
+	const setSearchQuery = useSidebarStore((s) => s.setSearchQuery);
+	const showArchived = useSidebarStore((s) => s.showArchived);
+	const setShowArchived = useSidebarStore((s) => s.setShowArchived);
+	const expandedSections = useSidebarStore((s) => s.expandedSections);
+	const setSectionCount = useSidebarStore((s) => s.setSectionCount);
+	const toggleSection = useSidebarStore((s) => s.toggleSection);
+	const creatingKey = useSidebarStore((s) => s.creatingKey);
 
 	const searching = searchQuery.trim().length > 0;
 
-	// In-flight workspace creation indicator
-	const [creatingWs, setCreatingWs] = useState<string | null>(null);
-
-	// Visible error message banner
-	const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-	// Active workspace selection ("all", "__global", or workspace.id)
-	const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string>(() =>
-		readActiveWorkspaceId(),
+	// C1, C3 / Q03: derive isGroupOpen from groupOpen and force open while searching
+	const isGroupOpen = useCallback(
+		(key: string, defaultOpen = true) => {
+			if (searching) return true;
+			const open = groupOpen[key];
+			return open !== undefined ? open : defaultOpen;
+		},
+		[groupOpen, searching],
 	);
-	const setActiveWorkspaceId = (id: string) => {
-		setActiveWorkspaceIdState(id);
-		writeActiveWorkspaceId(id);
-	};
+	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [loadError, setLoadError] = useState<string | null>(null);
 
+	// Dropdown and menu state
 	const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
 	const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
-
-	// Popover menus: "+" button and workspace header right-click
 	const [plusMenu, setPlusMenu] = useState<PlusMenuState | null>(null);
 	const [wsMenu, setWsMenu] = useState<WsMenuState | null>(null);
-	const [assignAllTarget, setAssignAllTarget] = useState<string[] | null>(null);
+	const wsMenuTriggerRef = useRef<HTMLElement | null>(null);
+
+	// Frozen order during hover to prevent row reshuffling under mouse (G14)
+	const [frozenOrder, setFrozenOrder] = useState<ReadonlyMap<string, number> | undefined>(undefined);
+	const lastGroupedRef = useRef<GroupedSessionsResult | null>(null);
 
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const wsSwitcherRef = useRef<HTMLButtonElement>(null);
 	const filterBtnRef = useRef<HTMLButtonElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
-	const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const plusTriggerRef = useRef<HTMLElement | null>(null);
+	const debounceTimerRef = useRef<number | null>(null);
+
 	const focusList = useCallback(() => scrollRef.current?.focus(), []);
+
+	// Initial data load (P5: record loadError for retryable inline empty state)
+	useEffect(() => {
+		loadSessions()
+			.then(() => {
+				setLoadError(null);
+				setErrorMessage(null);
+			})
+			.catch((err) => {
+				const msg = errMsg(err);
+				setLoadError(msg);
+				setErrorMessage(`加载会话列表失败: ${msg}`);
+			});
+	}, [loadSessions]);
+	// Workspace fallback (S26: only when workspaces actually loaded)
+	useEffect(() => {
+		if (hasLoaded) {
+			checkWorkspaceFallback(workspaces);
+		}
+	}, [hasLoaded, workspaces, checkWorkspaceFallback]);
+
 	const globalWs = useMemo(
 		() => workspaces.find((w) => w.kind === "global") ?? null,
 		[workspaces],
 	);
+
 	const projectWorkspaces = useMemo(
 		() =>
 			workspaces
@@ -302,58 +335,56 @@ export function SessionSidebar() {
 		return map;
 	}, [sessions]);
 
-	// Fallback to "all" if active workspace was deleted
-	useEffect(() => {
-		if (
-			hasLoaded &&
-			activeWorkspaceId !== "all" &&
-			activeWorkspaceId !== "__global" &&
-			!workspaces.some((w) => w.id === activeWorkspaceId)
-		) {
-			setActiveWorkspaceId("all");
-		}
-	}, [hasLoaded, workspaces, activeWorkspaceId]);
-
-	// Auto-follow active session's workspace when selection changes
-	const prevSelectedIdRef = useRef<string | null>(selectedSessionId);
+	// Auto-follow active session's workspace (Q04: initialize with initial selected/last session id)
+	const prevSelectedIdRef = useRef<string | null>(
+		useUi.getState().selectedSessionId ?? useUi.getState().lastSessionId ?? null,
+	);
 	useEffect(() => {
 		if (selectedSessionId && selectedSessionId !== prevSelectedIdRef.current) {
 			prevSelectedIdRef.current = selectedSessionId;
 			const current = sessions[selectedSessionId];
-			if (
-				current?.workspaceId &&
-				activeWorkspaceId !== "all" &&
-				current.workspaceId !== activeWorkspaceId
-			) {
-				setActiveWorkspaceId(current.workspaceId);
+			if (current?.workspaceId && activeWorkspaceId !== "all") {
+				const targetWsId =
+					current.workspaceId === "global" ? "__global" : current.workspaceId;
+				if (targetWsId !== activeWorkspaceId) {
+					setActiveWorkspaceId(targetWsId);
+				}
 			}
 		} else {
 			prevSelectedIdRef.current = selectedSessionId;
 		}
-	}, [selectedSessionId, sessions, activeWorkspaceId]);
+	}, [selectedSessionId, sessions, activeWorkspaceId, setActiveWorkspaceId]);
 
-	useEscapeKey(() => {
-		if (assignAllTarget) {
-			setAssignAllTarget(null);
+	// S10: Cancel pending arrow-key selection timer whenever selection changes or on unmount
+	useEffect(() => {
+		if (debounceTimerRef.current !== null) {
+			clearTimeout(debounceTimerRef.current);
+			debounceTimerRef.current = null;
 		}
-	}, Boolean(assignAllTarget));
-	// window focus, and (debounced) when a session lands in a worktree dir the
-	// store doesn't know about yet.
+		return () => {
+			if (debounceTimerRef.current !== null) {
+				clearTimeout(debounceTimerRef.current);
+				debounceTimerRef.current = null;
+			}
+		};
+	}, [selectedSessionId]);
+
+	// Worktree status sync
 	const worktrees = useWorktrees((s) => s.byWorkspace);
 	useEffect(() => {
 		void useWorktrees.getState().refresh(workspaces);
 	}, [workspaces]);
+
 	useEffect(() => {
 		const onFocus = () => void useWorktrees.getState().refresh();
 		window.addEventListener("focus", onFocus);
 		return () => window.removeEventListener("focus", onFocus);
 	}, []);
-	const worktreeRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	// Background worktree mismatch sync (C12: ref-based debounce independent of sessions identity)
+	const worktreeRefreshTimer = useRef<number | null>(null);
 	const unmatchedCwdSigRef = useRef<string | null>(null);
 	useEffect(() => {
-		// Sessions whose cwd sits in a `.worktrees/<name>`-style dir that no
-		// known live worktree covers → a worktree was probably just created or
-		// deleted elsewhere; re-list so grouping catches up.
 		const sig = Object.values(sessions)
 			.filter(
 				(s) =>
@@ -364,233 +395,364 @@ export function SessionSidebar() {
 			.map((s) => s.id)
 			.sort()
 			.join(",");
-		if (sig === unmatchedCwdSigRef.current) return;
-		unmatchedCwdSigRef.current = sig;
-		clearTimeout(worktreeRefreshTimer.current ?? undefined);
-		worktreeRefreshTimer.current = setTimeout(() => {
-			void useWorktrees.getState().refresh();
-		}, 500);
-	}, [sessions, worktrees]);
 
-	// Compute grouped tree
+		if (sig.length === 0) {
+			unmatchedCwdSigRef.current = "";
+			clearTimeout(worktreeRefreshTimer.current ?? undefined);
+			worktreeRefreshTimer.current = null;
+			return;
+		}
+
+		if (sig === unmatchedCwdSigRef.current) {
+			// Sig didn't change: keep any existing debounce timer running
+			return;
+		}
+
+		unmatchedCwdSigRef.current = sig;
+
+		clearTimeout(worktreeRefreshTimer.current ?? undefined);
+		worktreeRefreshTimer.current = window.setTimeout(() => {
+			worktreeRefreshTimer.current = null;
+			void useWorktrees.getState().refresh(useSessions.getState().workspaces);
+		}, 500);
+	}, [sessions, worktrees, workspaces]);
+
+	useEffect(() => {
+		return () => {
+			clearTimeout(worktreeRefreshTimer.current ?? undefined);
+			worktreeRefreshTimer.current = null;
+		};
+	}, []);
+
+	// Compute grouped sessions with optional frozen order (C2: pass worktrees)
+	const sessionsList = useMemo(() => Object.values(sessions), [sessions]);
 	const grouped = useMemo(() => {
-		return groupSessions(sessions, workspaces, {
+		const res = groupSessions(sessionsList, workspaces, {
 			searchQuery,
 			showArchived,
-			worktrees,
 			activeWorkspaceId,
+			frozenOrder,
+			worktrees,
 		});
-	}, [sessions, workspaces, searchQuery, showArchived, worktrees, activeWorkspaceId]);
+		lastGroupedRef.current = res;
+		return res;
+	}, [sessionsList, workspaces, searchQuery, showArchived, activeWorkspaceId, frozenOrder, worktrees]);
 
-	// Project workspace groups visible in "all" mode (hide empty ones unless active)
+	// Filter workspace groups visible in "all" mode
 	const visibleWorkspaceGroups = useMemo(() => {
 		if (activeWorkspaceId !== "all") {
 			return grouped.workspaceGroups;
 		}
-		return grouped.workspaceGroups.filter(
-			(wg) =>
-				wg.totalCount > 0 ||
-				wg.subgroups.some((s) => s.sessions.length > 0) ||
-				wg.deletedSubgroups.length > 0,
-		);
+		return grouped.workspaceGroups.filter(isWorkspaceGroupVisibleInAll);
 	}, [grouped.workspaceGroups, activeWorkspaceId]);
-	const isGroupOpen = (id: string, defaultOpen = true) => {
-		if (searching) return true; // expand matches while searching
-		const val = groupOpen[id];
-		return val === undefined ? defaultOpen : val;
-	};
 
-	const toggleGroup = (id: string, defaultOpen = true) => {
-		setGroupOpen((prev) => {
-			const current = prev[id] === undefined ? defaultOpen : prev[id];
-			const next = { ...prev, [id]: !current };
-			writeCollapsedGroups(next);
-			return next;
-		});
-	};
+	const showGlobalInAll = useMemo(() => {
+		return isGlobalGroupVisibleInAll(grouped.globalGroup);
+	}, [grouped.globalGroup]);
 
-	const allVisibleIds = useMemo(() => {
-		const list: string[] = [];
-		if (grouped.pinnedSessions.length > 0 && isGroupOpen("__pinned", true)) {
-			list.push(...grouped.pinnedSessions.map((s) => s.id));
-		}
-		if (
-			grouped.globalGroup &&
-			(activeWorkspaceId === "__global" ||
-				(grouped.globalGroup.totalCount > 0 && isGroupOpen("__global", true)))
-		) {
-			for (const sg of grouped.globalGroup.subgroups) {
-				list.push(...sg.sessions.map((s) => s.id));
-			}
-		}
-		for (const wg of visibleWorkspaceGroups) {
-			if (activeWorkspaceId !== "all" || isGroupOpen(wg.workspace.id, true)) {
-				for (const sg of wg.subgroups) {
-					list.push(...sg.sessions.map((s) => s.id));
-				}
-				if (isGroupOpen(`${wg.workspace.id}|__deleted`, false)) {
-					for (const sg of wg.deletedSubgroups) {
-						list.push(...sg.sessions.map((s) => s.id));
-					}
-				}
-			}
-		}
-		if (isGroupOpen("__unassigned", false)) {
-			list.push(...grouped.unassigned.map((s) => s.id));
-		}
-		if (isGroupOpen("__deleted", false)) {
-			list.push(...grouped.deletedSessions.map((s) => s.id));
-		}
-		return Array.from(new Set(list));
-	}, [grouped, groupOpen, searching, activeWorkspaceId]);
-
-	const allGroupIds = useMemo(() => {
-		const ids: string[] = [];
-		if (grouped.pinnedSessions.length > 0) ids.push("__pinned");
-		if (grouped.globalGroup) ids.push("__global");
+	// Collect group keys for expand/collapse all
+	const allGroupKeys = useMemo(() => {
+		const keys: string[] = [];
+		if (grouped.pinnedSessions.length > 0) keys.push("__pinned");
+		if (grouped.globalGroup) keys.push("__global");
 		for (const wg of grouped.workspaceGroups) {
-			ids.push(wg.workspace.id);
-			if (wg.deletedSubgroups.length > 0) ids.push(`${wg.workspace.id}|__deleted`);
+			keys.push(wg.workspace.id);
+			if (wg.subgroups.some((s) => !s.deleted && s.sessions.length === 0))
+				keys.push(`${wg.workspace.id}|__empty`);
+			if (wg.deletedSubgroups.length > 0) keys.push(`${wg.workspace.id}|__deleted`);
 		}
-		ids.push("__unassigned");
-		if (grouped.deletedSessions.length > 0) ids.push("__deleted");
-		return ids;
+		keys.push("__unassigned");
+		if (grouped.deletedSessions.length > 0) keys.push("__deleted");
+		return keys;
 	}, [grouped]);
 
 	const areAllCollapsed = useMemo(() => {
-		if (allGroupIds.length === 0) return false;
-		return allGroupIds.every(
-			(id) => !isGroupOpen(id, id !== "__unassigned" && !id.endsWith("__deleted")),
+		if (allGroupKeys.length === 0) return false;
+		return allGroupKeys.every(
+			(id) =>
+				!isGroupOpen(
+					id,
+					id !== "__unassigned" &&
+						!id.endsWith("__deleted") &&
+						!id.endsWith("__empty"),
+				),
 		);
-	}, [allGroupIds, groupOpen, searching]);
+	}, [allGroupKeys, isGroupOpen, groupOpen]);
 
+	// S13: Merge into previous state, covers subgroups, no-op while searching
 	const handleToggleAllGroups = () => {
-		const next: Record<string, boolean> = {};
+		if (searching) return;
 		const shouldExpand = areAllCollapsed;
-		for (const id of allGroupIds) {
-			next[id] = shouldExpand;
-		}
-		setGroupOpen(next);
-		writeCollapsedGroups(next);
-	};
-
-	interface GroupStatusCounts {
-		working: number;
-		awaiting: number;
-		review: number;
-		error: number;
-	}
-
-	const getGroupStatusCounts = (
-		sessions: SessionMeta[] | BranchSubgroup[],
-	): GroupStatusCounts => {
-		let working = 0;
-		let awaiting = 0;
-		let review = 0;
-		let error = 0;
-		const check = (s: SessionMeta) => {
-			if (s.status === "working") working++;
-			else if (s.status === "awaiting_approval" || s.status === "awaiting_answer") awaiting++;
-			else if (s.status === "review") review++;
-			else if (s.status === "error") error++;
-		};
-		for (const item of sessions) {
-			if ("sessions" in item) {
-				for (const s of item.sessions) check(s);
-			} else {
-				check(item);
+		setGroupOpen((prev) => {
+			const next = { ...prev };
+			for (const id of allGroupKeys) {
+				next[id] = shouldExpand;
+			}
+			return next;
+		});
+		// Also expand/collapse all subgroups
+		const subKeys: string[] = [];
+		for (const wg of grouped.workspaceGroups) {
+			for (const sub of wg.subgroups) {
+				// Empty live subgroups render inside the "__empty" folder and
+				// get that folder's scope prefix instead.
+				subKeys.push(
+					!sub.deleted && sub.sessions.length === 0
+						? `${wg.workspace.id}|__empty|${sub.key}|sub`
+						: `${wg.workspace.id}|${sub.key}|sub`,
+				);
+			}
+			for (const sub of wg.deletedSubgroups) {
+				subKeys.push(`${wg.workspace.id}|__deleted|${sub.key}|sub`);
 			}
 		}
-		return { working, awaiting, review, error };
+		if (subKeys.length > 0) {
+			for (const key of subKeys) {
+				setSectionCount(key, shouldExpand ? 1 : 0);
+			}
+		}
 	};
 
-	const renderBubbleBadges = (counts: GroupStatusCounts) => {
-		if (
-			counts.working === 0 &&
-			counts.awaiting === 0 &&
-			counts.review === 0 &&
-			counts.error === 0
-		)
-			return null;
-		// Capsule with colored number only — the tiny dot inside is dropped so
-		// the badge stays compact; color still carries the meaning.
-		const badge = (n: number, cls: string, tip: string) => (
-			<span
-				key={tip}
-				className={`rounded-full px-1.5 py-0.5 text-[9.5px] font-mono font-bold border ${cls}`}
-				title={tip}
-			>
-				{n}
-			</span>
-		);
-		return (
-			<div className="flex items-center gap-1 ml-auto shrink-0 mr-1">
-				{counts.working > 0 &&
-					badge(counts.working, "bg-[var(--bg-hover)] text-[var(--text-muted)] border-[var(--border)]", `${counts.working} 个运行中会话`)}
-				{counts.awaiting > 0 &&
-					badge(counts.awaiting, "bg-sky-500/15 dark:bg-sky-500/25 text-sky-600 dark:text-sky-300 border-sky-500/40", `${counts.awaiting} 个待审批或回复`)}
-				{counts.review > 0 &&
-					badge(counts.review, "bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-300 border-emerald-500/35", `${counts.review} 个待验收`)}
-				{counts.error > 0 &&
-					badge(counts.error, "bg-rose-500/15 dark:bg-rose-500/25 text-rose-600 dark:text-rose-300 border-rose-500/35", `${counts.error} 个异常会话`)}
-			</div>
-		);
-	};
-
+	// Centralized batch actions (C7, C8: stable deps, toggle pinned)
 	const handleBatchAction = useCallback(
 		async (action: "archive" | "pin" | "delete", ids: string[]) => {
 			if (ids.length === 0) return;
 			if (action === "archive") {
-				try {
-					for (const id of ids) {
-						const updated = await updateSessionMeta(id, { archived: true });
-						useSessions.getState().upsert([updated]);
-					}
-					toast.success(`已归档 ${ids.length} 个会话`);
-				} catch (err) {
-					toast.error(`批量归档失败: ${errMsg(err)}`);
-				}
-			} else if (action === "pin") {
-				try {
-					const currentSessions = useSessions.getState().sessions;
-					const allPinned = ids.every((id) => currentSessions[id]?.pinned);
-					for (const id of ids) {
-						const updated = await updateSessionMeta(id, { pinned: !allPinned });
-						useSessions.getState().upsert([updated]);
-					}
-					toast.success(allPinned ? "已取消置顶" : "已批量置顶");
-				} catch (err) {
-					toast.error(`批量置顶失败: ${errMsg(err)}`);
-				}
+				await archiveSessions(ids, { title: `批量归档 (${ids.length})` });
 			} else if (action === "delete") {
-				const ok = await confirmDialog(
-					`永久删除选中的 ${ids.length} 个会话？此操作不可恢复。`,
-					{
-						danger: true,
-						okLabel: "批量删除",
-						title: "批量删除会话",
-					},
+				await requestDelete(ids);
+			} else if (action === "pin") {
+				const currentSessions = useSessions.getState().sessions;
+				const allPinned = ids.every((id) => currentSessions[id]?.pinned);
+				const nextPinned = !allPinned;
+				const results = await Promise.allSettled(
+					ids.map((id) => updateSessionMeta(id, { pinned: nextPinned })),
 				);
-				if (!ok) return;
-				try {
-					for (const id of ids) {
-						await deleteSession(id);
+				const successes: SessionMeta[] = [];
+				let failCount = 0;
+				results.forEach((res, idx) => {
+					if (res.status === "fulfilled") {
+						const meta = res.value;
+						if (meta) {
+							successes.push(meta);
+						} else {
+							const existing = useSessions.getState().sessions[ids[idx]];
+							if (existing) successes.push({ ...existing, pinned: nextPinned });
+						}
+					} else {
+						failCount++;
 					}
-					useSessions.getState().remove(ids);
-					const currSelected = useUi.getState().selectedSessionId;
-					if (currSelected && ids.includes(currSelected)) {
-						useUi.getState().selectSession(null);
-					}
-					toast.success(`已删除 ${ids.length} 个会话`);
-				} catch (err) {
-					toast.error(`批量删除失败: ${errMsg(err)}`);
+				});
+				if (successes.length > 0) {
+					useSessions.getState().upsert(successes);
+					toast.success(
+						nextPinned
+							? `已置顶 ${successes.length} 个会话`
+							: `已取消置顶 ${successes.length} 个会话`,
+					);
+				}
+				if (failCount > 0) {
+					toast.error(
+						nextPinned
+							? `置顶失败 ${failCount} 个会话`
+							: `取消置顶失败 ${failCount} 个会话`,
+					);
 				}
 			}
 		},
 		[],
 	);
 
-	// Add workspace via folder picker
+	const batchArchiveSessions = async (title: string, sessionList: SessionMeta[]) => {
+		if (sessionList.length === 0) return;
+		const unarchived = sessionList.filter((s) => !s.archived);
+		if (unarchived.length === 0) {
+			toast.info("该分组下无需要归档的会话");
+			return;
+		}
+		const ok = await confirmDialog(
+			`确定批量归档「${title}」下的 ${unarchived.length} 个会话？`,
+			{ title: "批量归档", danger: true, okLabel: `归档 ${unarchived.length} 个会话` },
+		);
+		if (!ok) return;
+		await archiveSessions(unarchived.map((s) => s.id), {
+			title: `批量归档「${title}」`,
+		});
+	};
+
+	// Reset frozen order on filter/workspace changes, blur, pointerdown outside, or menu interactions (C9)
+	useEffect(() => {
+		setFrozenOrder(undefined);
+	}, [searchQuery, showArchived, activeWorkspaceId]);
+
+	useEffect(() => {
+		const handleBlur = () => setFrozenOrder(undefined);
+		const handlePointerDown = (e: PointerEvent) => {
+			if (scrollRef.current && !scrollRef.current.contains(e.target as Node)) {
+				setFrozenOrder(undefined);
+			}
+		};
+		window.addEventListener("blur", handleBlur);
+		window.addEventListener("pointerdown", handlePointerDown);
+		return () => {
+			window.removeEventListener("blur", handleBlur);
+			window.removeEventListener("pointerdown", handlePointerDown);
+		};
+	}, []);
+
+	useEffect(() => {
+		if (wsMenu || plusMenu || filterPopoverOpen || wsDropdownOpen) {
+			setFrozenOrder(undefined);
+		}
+	}, [wsMenu, plusMenu, filterPopoverOpen, wsDropdownOpen]);
+
+	// Q06 + reveal: when selectedSessionId changes and its row is not rendered,
+	// expand the containing workspace/group and subgroup, then scroll into view.
+	const prevRevealedIdRef = useRef<string | null>(null);
+	// First effect run = app boot / sidebar remount: treat the restored
+	// selection as already-seen and do NOT auto-scroll, otherwise every launch
+	// jumps the list mid-way and hides the group headers.
+	const didInitRevealRef = useRef(false);
+	useEffect(() => {
+		if (!selectedSessionId) {
+			prevRevealedIdRef.current = null;
+			return;
+		}
+
+		if (!didInitRevealRef.current) {
+			didInitRevealRef.current = true;
+			prevRevealedIdRef.current = selectedSessionId;
+			return;
+		}
+
+		const target = sessions[selectedSessionId];
+		if (!target) return;
+
+		if (selectedSessionId === prevRevealedIdRef.current) return;
+		prevRevealedIdRef.current = selectedSessionId;
+
+		// 1. Filter checks: do nothing if filtered out by search / archived / workspace scope
+		if (target.archived && !showArchived) return;
+		if (searching && filterSessions([target], { searchQuery, showArchived }).length === 0) return;
+
+		if (activeWorkspaceId !== "all") {
+			if (activeWorkspaceId === "__global") {
+				if (target.workspaceId !== globalWs?.id && target.workspaceId !== "global") return;
+			} else {
+				if (target.workspaceId !== activeWorkspaceId) return;
+			}
+		}
+
+		// 2. Identify containing group and subgroup
+		let groupKeyToExpand: string | null = null;
+		let subgroupKeyToExpand: string | null = null;
+		let isSubgroupInGroupOpen = false;
+
+		if (target.pinned) {
+			groupKeyToExpand = "__pinned";
+		} else if (target.workspaceId === globalWs?.id || target.workspaceId === "global") {
+			groupKeyToExpand = "__global";
+		} else if (target.workspaceId) {
+			groupKeyToExpand = target.workspaceId;
+			const wg = grouped.workspaceGroups.find((w) => w.workspace.id === target.workspaceId);
+			if (wg) {
+				const liveSub = wg.subgroups.find((sub) =>
+					sub.sessions.some((s) => s.id === selectedSessionId),
+				);
+				if (liveSub) {
+					if (wg.hasMultipleSubgroups || liveSub.kind !== "default" || !liveSub.isMain) {
+						subgroupKeyToExpand = `${wg.workspace.id}|${liveSub.key}|sub`;
+					}
+				} else {
+					const delSub = wg.deletedSubgroups.find((sub) =>
+						sub.sessions.some((s) => s.id === selectedSessionId),
+					);
+					if (delSub) {
+						const folderKey = `${wg.workspace.id}|__deleted`;
+						if (!groupOpen[folderKey]) {
+							setGroupOpen((prev) => ({ ...prev, [folderKey]: true }));
+						}
+						subgroupKeyToExpand = `${wg.workspace.id}|__deleted|${delSub.key}|sub`;
+					}
+				}
+			}
+		} else {
+			// Unassigned
+			const inDeleted = grouped.deletedSessions.some((s) => s.id === selectedSessionId);
+			if (inDeleted) {
+				groupKeyToExpand = "__deleted";
+			} else {
+				groupKeyToExpand = "__unassigned";
+				const unassignedGrp = grouped.unassignedGroups?.find((grp) =>
+					grp.sessions.some((s) => s.id === selectedSessionId),
+				);
+				if (unassignedGrp) {
+					subgroupKeyToExpand = `__unassigned|${unassignedGrp.key}`;
+					isSubgroupInGroupOpen = true;
+				}
+			}
+		}
+
+		// 3. Expand containing group if collapsed
+		if (groupKeyToExpand) {
+			const isTopLevelOpen =
+				groupOpen[groupKeyToExpand] !== undefined
+					? groupOpen[groupKeyToExpand]
+					: groupKeyToExpand !== "__unassigned" && !groupKeyToExpand.endsWith("__deleted");
+			if (!isTopLevelOpen) {
+				setGroupOpen((prev) => ({ ...prev, [groupKeyToExpand!]: true }));
+			}
+		}
+
+		// 4. Expand containing subgroup if collapsed
+		if (subgroupKeyToExpand) {
+			if (isSubgroupInGroupOpen) {
+				const isSubOpen =
+					groupOpen[subgroupKeyToExpand] !== undefined
+						? groupOpen[subgroupKeyToExpand]
+						: true;
+				if (!isSubOpen) {
+					setGroupOpen((prev) => ({ ...prev, [subgroupKeyToExpand!]: true }));
+				}
+			} else {
+				const isSubOpen =
+					expandedSections[subgroupKeyToExpand] !== undefined
+						? expandedSections[subgroupKeyToExpand] === 1
+						: true;
+				if (!isSubOpen) {
+					setSectionCount(subgroupKeyToExpand, 1);
+				}
+			}
+		}
+
+		// 5. Scroll into view on #session-row-<id>
+		requestAnimationFrame(() => {
+			const row = document.getElementById(`session-row-${selectedSessionId}`);
+			if (row) {
+				row.scrollIntoView({ block: "nearest" });
+			} else {
+				window.setTimeout(() => {
+					const el = document.getElementById(`session-row-${selectedSessionId}`);
+					el?.scrollIntoView({ block: "nearest" });
+				}, 60);
+			}
+		});
+	}, [
+		selectedSessionId,
+		sessions,
+		grouped,
+		groupOpen,
+		expandedSections,
+		showArchived,
+		searching,
+		searchQuery,
+		activeWorkspaceId,
+		globalWs,
+		setGroupOpen,
+		setSectionCount,
+	]);
+
+	// Workspace management actions
 	const handleAddWorkspace = async () => {
 		try {
 			let selectedPath: string | null = null;
@@ -620,128 +782,6 @@ export function SessionSidebar() {
 		}
 	};
 
-	const handleHeaderNewSession = (e?: React.MouseEvent) => {
-		if (activeWorkspaceId === "__global") {
-			if (globalWs) void startSessionInDir(globalWs, false);
-			return;
-		}
-		if (activeWs) {
-			if (e) {
-				handlePlusClick(activeWs, e);
-			} else {
-				void startSessionInDir(activeWs, false);
-			}
-			return;
-		}
-		if (projectWorkspaces.length === 1 && projectWorkspaces[0]) {
-			if (e) {
-				handlePlusClick(projectWorkspaces[0], e);
-			} else {
-				void startSessionInDir(projectWorkspaces[0], false);
-			}
-			return;
-		}
-		openModal("new-session");
-	};
-
-	useEffect(() => {
-		const onGlobalKeyDown = (e: KeyboardEvent) => {
-			if (isComposing(e)) return;
-			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
-				const target = e.target as HTMLElement | null;
-				if (
-					target &&
-					(target.tagName === "INPUT" ||
-						target.tagName === "TEXTAREA" ||
-						target.isContentEditable)
-				) {
-					return;
-				}
-				e.preventDefault();
-				handleHeaderNewSession();
-			} else if (
-				(e.metaKey || e.ctrlKey) &&
-				e.shiftKey &&
-				e.key.toLowerCase() === "k"
-			) {
-				e.preventDefault();
-				openModal("quick-ask");
-			}
-		};
-		window.addEventListener("keydown", onGlobalKeyDown);
-		return () => window.removeEventListener("keydown", onGlobalKeyDown);
-	}, [activeWorkspaceId, activeWs, globalWs, projectWorkspaces, openModal]);
-
-	// "+" button click: opens a popover menu (current dir vs new worktree)
-	// instead of silently mutating git state on disk.
-	const handlePlusClick = (ws: Workspace, e: React.MouseEvent) => {
-		e.stopPropagation();
-		e.preventDefault();
-		if (e.altKey) {
-			openModal("new-session", { workspaceId: ws.id, cwd: ws.path });
-			return;
-		}
-		setPlusMenu({
-			ws,
-			anchor: e.currentTarget as HTMLElement,
-		});
-	};
-
-	// Create session under workspace: either directly in cwd or in a fresh worktree.
-	const startSessionInDir = async (ws: Workspace, isolatedWorktree: boolean) => {
-		setPlusMenu(null);
-		if (creatingWs) return;
-		setCreatingWs(ws.id);
-		try {
-			let cwd = ws.path;
-			if (isolatedWorktree && ws.kind !== "global") {
-				const summary = await gitSummary(ws.path).catch(() => null);
-				if (summary?.isRepo) {
-					const wt = await gitCreateWorktree(
-						ws.path,
-						`task-${Math.floor(Date.now() / 1000)}`,
-					);
-					cwd = wt.path;
-					void useWorktrees.getState().refresh();
-				}
-			}
-			const { sessionId, stub } = await createSession({
-				cwd,
-				workspaceId: ws.id,
-			});
-			useSessions.getState().upsert([stub]);
-			selectSession(sessionId);
-		} catch (err) {
-			toast.error(`创建会话失败: ${errMsg(err)}`);
-		} finally {
-			setCreatingWs(null);
-		}
-	};
-	// Quick-create a session inside an existing worktree/branch checkout
-	// (subgroup header "+"). Skips the dialog: reuses createSession directly.
-	const startSessionAt = useCallback(async (ws: Workspace, cwd: string) => {
-		try {
-			const { sessionId, stub } = await createSession({
-				cwd,
-				workspaceId: ws.id,
-			});
-			useSessions.getState().upsert([stub]);
-			useUi.getState().selectSession(sessionId);
-		} catch (err) {
-			toast.error(`创建会话失败: ${errMsg(err)}`);
-		}
-	}, []);
-
-	// Workspace header right-click menu: Finder, remove workspace
-	const handleWorkspaceContextMenu = (ws: Workspace, e: React.MouseEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-		setWsMenu({
-			ws,
-			anchor: { x: e.clientX, y: e.clientY },
-		});
-	};
-
 	const handleRemoveWorkspace = async (ws: Workspace) => {
 		setWsMenu(null);
 		if (ws.kind === "global") {
@@ -749,7 +789,7 @@ export function SessionSidebar() {
 			return;
 		}
 		const ok = await confirmDialog(
-			`确定从工作区列表中移除「${ws.name}」？\n所属会话将变为未归档，磁盘文件不受影响。`,
+			`确定从工作区列表中移除「${ws.name}」？\n所属会话将变为未归入工作区，磁盘文件不受影响。`,
 			{ title: "移除工作区", danger: true, okLabel: "移除" },
 		);
 		if (!ok) return;
@@ -774,197 +814,166 @@ export function SessionSidebar() {
 		}
 	};
 
-	// Batch archive with confirmation (PLAN / audit 🔴 2)
-	const batchArchiveSessions = async (
-		title: string,
-		sessionList: SessionMeta[],
-	) => {
-		if (sessionList.length === 0) return;
-		const unarchived = sessionList.filter((s) => !s.archived);
-		if (unarchived.length === 0) {
-			toast.info("该分组下无需要归档的会话");
+	// Popover menu opening
+	const handlePlusClick = (ws: Workspace, e: React.MouseEvent) => {
+		e.stopPropagation();
+		e.preventDefault();
+		if (e.altKey) {
+			openModal("new-session", { workspaceId: ws.id, cwd: ws.path });
 			return;
 		}
-		const ok = await confirmDialog(
-			`确定批量归档「${title}」下的 ${unarchived.length} 个会话？`,
-			{ title: "批量归档", danger: true, okLabel: `归档 ${unarchived.length} 个会话` },
+		const anchorEl = e.currentTarget as HTMLElement;
+		plusTriggerRef.current = anchorEl;
+		// S28: toggle its own menu
+		setPlusMenu((prev) =>
+			prev?.ws.id === ws.id ? null : { ws, anchor: anchorEl },
 		);
-		if (!ok) return;
-		try {
-			for (const s of unarchived) {
-				const updated = await updateSessionMeta(s.id, { archived: true });
-				useSessions.getState().upsert([updated]);
-			}
-			toast.success(`已归档 ${unarchived.length} 个会话`);
-		} catch (err) {
-			toast.error(`批量归档失败: ${errMsg(err)}`);
-		}
 	};
 
-	// Batch assign all unassigned sessions to a workspace
-	const handleBatchAssign = async (workspaceId: string) => {
-		const targetIds = assignAllTarget ?? [];
-		setAssignAllTarget(null);
-		if (targetIds.length === 0) return;
-		try {
-			for (const id of targetIds) {
-				const updated = await updateSessionMeta(id, { workspaceId });
-				useSessions.getState().upsert([updated]);
-			}
-			toast.success(`已将 ${targetIds.length} 个会话归入工作区`);
-		} catch (err) {
-			toast.error(`归入工作区失败: ${errMsg(err)}`);
-		}
+	const handleWorkspaceContextMenu = (ws: Workspace, e: React.MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		wsMenuTriggerRef.current = e.currentTarget as HTMLElement;
+		setWsMenu({
+			ws,
+			anchor: { x: e.clientX, y: e.clientY },
+		});
 	};
 
-	// Keyboard navigation: ↑/↓ move highlight, Enter opens, Delete archives, Shift+Delete permanently deletes
-	const handleListKeyDown = (e: React.KeyboardEvent) => {
+	// List container keyboard navigation (S2, S8, S10, S11, S12/G17, S21)
+	const handleListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+		// S8: only handle when list container itself has focus
+		if (e.target !== e.currentTarget) return;
+
 		const container = scrollRef.current;
 		if (!container) return;
-		const target = e.target as HTMLElement;
-		if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
 
-		const rowElements = Array.from(
-			container.querySelectorAll<HTMLElement>("[data-session-id]"),
-		);
-		if (rowElements.length === 0) return;
+		const visibleIds = getVisibleSessionIds();
+		if (visibleIds.length === 0) return;
 
-		const ids = rowElements.map((el) => el.getAttribute("data-session-id")!);
 		const activeId = highlightId ?? selectedSessionId ?? "";
-		const currentIndex = ids.indexOf(activeId);
+		const currentIndex = visibleIds.indexOf(activeId);
 
 		if (e.key === "ArrowDown") {
 			e.preventDefault();
+			e.stopPropagation(); // S11
 			const nextIdx =
-				currentIndex < 0 ? 0 : Math.min(currentIndex + 1, ids.length - 1);
-			const nextId = ids[nextIdx];
+				currentIndex < 0 ? 0 : Math.min(currentIndex + 1, visibleIds.length - 1);
+			const nextId = visibleIds[nextIdx];
 			setHighlightId(nextId);
-			rowElements[nextIdx]?.scrollIntoView({ block: "nearest" });
-			clearTimeout(debounceTimerRef.current ?? undefined);
-			debounceTimerRef.current = setTimeout(() => {
+			const el = document.getElementById(`session-row-${nextId}`);
+			el?.scrollIntoView({ block: "nearest" });
+
+			if (debounceTimerRef.current !== null) {
+				clearTimeout(debounceTimerRef.current);
+			}
+			debounceTimerRef.current = window.setTimeout(() => {
 				selectSession(nextId);
 			}, 300);
 		} else if (e.key === "ArrowUp") {
 			e.preventDefault();
+			e.stopPropagation(); // S11
 			const prevIdx =
 				currentIndex < 0 ? 0 : Math.max(currentIndex - 1, 0);
-			const prevId = ids[prevIdx];
+			const prevId = visibleIds[prevIdx];
 			setHighlightId(prevId);
-			rowElements[prevIdx]?.scrollIntoView({ block: "nearest" });
-			clearTimeout(debounceTimerRef.current ?? undefined);
-			debounceTimerRef.current = setTimeout(() => {
+			const el = document.getElementById(`session-row-${prevId}`);
+			el?.scrollIntoView({ block: "nearest" });
+
+			if (debounceTimerRef.current !== null) {
+				clearTimeout(debounceTimerRef.current);
+			}
+			debounceTimerRef.current = window.setTimeout(() => {
 				selectSession(prevId);
 			}, 300);
 		} else if (e.key === "Enter") {
 			const targetId = highlightId ?? selectedSessionId;
 			if (targetId) {
 				e.preventDefault();
-				clearTimeout(debounceTimerRef.current ?? undefined);
+				e.stopPropagation(); // S11
+				if (debounceTimerRef.current !== null) {
+					clearTimeout(debounceTimerRef.current);
+					debounceTimerRef.current = null;
+				}
 				selectSession(targetId);
 			}
-		} else if (e.key === "ArrowLeft") {
-			e.preventDefault();
+		} else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+			// S12/G17: toggle the group the highlighted row actually lives in
+			if (searching) return;
 			const targetId = highlightId ?? selectedSessionId;
-			if (targetId) {
-				const meta = sessions[targetId];
-				// Collapse the group it belongs to
-				if (meta?.workspaceId && isGroupOpen(meta.workspaceId, true)) {
-					toggleGroup(meta.workspaceId, true);
-				} else if (!meta?.workspaceId && isGroupOpen("__unassigned", false)) {
-					toggleGroup("__unassigned", false);
+			if (!targetId) return;
+
+			const rowEl = document.getElementById(`session-row-${targetId}`);
+			const groupEl = rowEl?.closest<HTMLElement>("[data-group-key]");
+			const groupKey = groupEl?.dataset.groupKey;
+			if (!groupKey) return;
+
+			e.preventDefault();
+			e.stopPropagation(); // S11
+
+			if (groupKey.includes("|sub")) {
+				// Subgroup
+				const isSubOpen =
+					expandedSections[groupKey] !== undefined
+						? expandedSections[groupKey] === 1
+						: true;
+				if (e.key === "ArrowLeft" && isSubOpen) {
+					setSectionCount(groupKey, 0);
+				} else if (e.key === "ArrowRight" && !isSubOpen) {
+					setSectionCount(groupKey, 1);
 				}
-			}
-		} else if (e.key === "ArrowRight") {
-			e.preventDefault();
-			const targetId = highlightId ?? selectedSessionId;
-			if (targetId) {
-				const meta = sessions[targetId];
-				if (meta?.workspaceId && !isGroupOpen(meta.workspaceId, true)) {
-					toggleGroup(meta.workspaceId, true);
-				} else if (!meta?.workspaceId && !isGroupOpen("__unassigned", false)) {
-					toggleGroup("__unassigned", false);
+			} else {
+				// Group header
+				const isCurrentlyOpen = isGroupOpen(
+					groupKey,
+					groupKey !== "__unassigned" && !groupKey.endsWith("__deleted"),
+				);
+				if (e.key === "ArrowLeft" && isCurrentlyOpen) {
+					setGroupOpen((prev) => ({ ...prev, [groupKey]: false }));
+				} else if (e.key === "ArrowRight" && !isCurrentlyOpen) {
+					setGroupOpen((prev) => ({ ...prev, [groupKey]: true }));
 				}
 			}
 		} else if (e.shiftKey && (e.key === "Delete" || e.key === "Backspace")) {
-			// Shift+Delete: Permanent delete confirmation
+			// Shift+Delete: Permanent delete
 			const targetId = highlightId ?? selectedSessionId;
 			if (!targetId) return;
-			const meta = sessions[targetId];
-			if (!meta) return;
 			e.preventDefault();
-			if (meta.live || meta.status === "working") {
-				toast.info("会话仍在运行，请先挂起或停止");
-				return;
-			}
-			confirmDialog(
-					`永久删除会话「${sessionDisplayName(meta)}」？\n此操作不可恢复。`,
-				{ danger: true, okLabel: "永久删除", title: "永久删除会话" },
-			).then(async (ok) => {
-				if (!ok) return;
-				try {
-					await deleteSession(targetId);
-					useSessions.getState().remove([targetId]);
-					const nextIdx = currentIndex < ids.length - 1 ? currentIndex : currentIndex - 1;
-					const nextId = ids[nextIdx] ?? null;
-					selectSession(nextId);
-					setHighlightId(nextId);
-					toast.success("会话已永久删除");
-				} catch (err) {
-					toast.error(`删除会话失败: ${errMsg(err)}`);
-				}
-			});
+			e.stopPropagation(); // S11
+			void requestDelete([targetId]);
 		} else if (e.key === "Delete" || e.key === "Backspace") {
-			// Regular Delete: Archive session
+			// Delete: Archive session (S21, P12)
 			const targetId = highlightId ?? selectedSessionId;
 			if (!targetId) return;
-			const meta = sessions[targetId];
-			if (!meta || meta.archived) return;
+			// P12: Delete/Backspace on an already archived row is a no-op
+			if (sessions[targetId]?.archived) return;
 			e.preventDefault();
-			const nextIdx = currentIndex < ids.length - 1 ? currentIndex : currentIndex - 1;
-			const nextId = ids[nextIdx] ?? null;
-			selectSession(nextId);
-			setHighlightId(nextId);
-			if (meta.git?.worktree) {
-				confirmDialog(
-						`归档会话「${sessionDisplayName(meta)}」？\n（关联工作树将被保留）`,
-					{ title: "归档会话", okLabel: "仅归档会话" },
-				).then((ok) => {
-					if (!ok) return;
-					updateSessionMeta(meta.id, { archived: true })
-						.then((updated) => {
-							useSessions.getState().upsert([updated]);
-							useArchiveUndo.getState().show({
-								sessionId: meta.id,
-								title: sessionDisplayName(meta),
-							});
-						})
-						.catch((err) => toast.error(`归档失败: ${errMsg(err)}`));
-				});
-			} else {
-				updateSessionMeta(meta.id, { archived: true })
-					.then((updated) => {
-						useSessions.getState().upsert([updated]);
-						useArchiveUndo.getState().show({
-							sessionId: meta.id,
-							title: sessionDisplayName(meta),
-						});
-					})
-					.catch((err) => toast.error(`归档失败: ${errMsg(err)}`));
-			}
+			e.stopPropagation(); // S11
+			requestArchive(targetId);
+		} else if (e.key === "F2") {
+			// F2: Rename (C16: only if rendered in DOM)
+			const targetId = highlightId ?? selectedSessionId;
+			if (!targetId) return;
+			if (!document.getElementById(`session-row-${targetId}`)) return;
+			e.preventDefault();
+			e.stopPropagation(); // S11
+			requestRename(targetId);
+		} else if (
+			(e.shiftKey && e.key === "F10") ||
+			e.key === "ContextMenu"
+		) {
+			// Context menu key (C16: only if rendered in DOM)
+			const targetId = highlightId ?? selectedSessionId;
+			if (!targetId) return;
+			if (!document.getElementById(`session-row-${targetId}`)) return;
+			e.preventDefault();
+			e.stopPropagation(); // S11
+			requestRowMenu(targetId);
 		}
 	};
 
 	return (
-		<div
-			onKeyDown={(e) => {
-				if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
-					e.preventDefault();
-					searchInputRef.current?.focus();
-					searchInputRef.current?.select();
-				}
-			}}
-			className="flex h-full flex-col bg-transparent text-neutral-300 text-xs select-none"
-		>
+		<aside className="@container flex h-full flex-col bg-transparent text-neutral-300 text-xs select-none">
 			{/* Top Bar: Workspace Switcher Card + Search & Filters */}
 			<div className="relative border-b border-[var(--border-divider)] bg-transparent p-2 space-y-1.5">
 				{/* Workspace Switcher */}
@@ -972,11 +981,13 @@ export function SessionSidebar() {
 					<button
 						ref={wsSwitcherRef}
 						type="button"
+						aria-haspopup="menu"
+						aria-expanded={wsDropdownOpen}
 						onClick={() => {
 							setWsDropdownOpen((v) => !v);
 							setFilterPopoverOpen(false);
 						}}
-						className="group flex min-w-0 flex-1 items-center justify-between rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-left transition-all hover:bg-[var(--bg-hover)] active:scale-[0.99]"
+						className="group flex min-w-0 flex-1 items-center justify-between rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-left transition-all hover:bg-[var(--bg-hover)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 						title={
 							activeWorkspaceId === "__global"
 								? "全局工作区 (点击切换或管理)"
@@ -1012,6 +1023,7 @@ export function SessionSidebar() {
 						/>
 					</button>
 				</div>
+
 				{/* Search & Filter Bar */}
 				<div className="flex items-center gap-1.5">
 					<div className="relative flex min-w-0 flex-1 items-center">
@@ -1022,20 +1034,27 @@ export function SessionSidebar() {
 						<input
 							ref={searchInputRef}
 							type="text"
+							data-sidebar-search="true"
 							value={searchQuery}
 							onChange={(e) => setSearchQuery(e.target.value)}
 							onKeyDown={(e) => {
 								if (isComposing(e)) return;
-								if (e.key === "Escape") {
+								if (e.key === "ArrowDown") {
 									e.preventDefault();
-									if (searchQuery) {
-										setSearchQuery("");
-									} else {
-										scrollRef.current?.focus();
-									}
+									scrollRef.current?.focus();
+									const visibleIds = getVisibleSessionIds();
+									if (visibleIds[0]) setHighlightId(visibleIds[0]);
+								} else if (e.key === "Enter") {
+									e.preventDefault();
+									const visibleIds = getVisibleSessionIds();
+									if (visibleIds[0]) selectSession(visibleIds[0]);
+								} else if (e.key === "Escape") {
+									e.preventDefault();
+									setSearchQuery("");
+									scrollRef.current?.focus();
 								}
 							}}
-							placeholder="搜索会话、分支... (Cmd+F)"
+							placeholder="搜索会话、分支... (⌘F)"
 							className="w-full rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500/70 transition-colors focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 						/>
 						{searchQuery && (
@@ -1054,12 +1073,14 @@ export function SessionSidebar() {
 					<button
 						ref={filterBtnRef}
 						type="button"
+						aria-haspopup="menu"
+						aria-expanded={filterPopoverOpen}
 						onClick={() => {
 							setFilterPopoverOpen((v) => !v);
 							setWsDropdownOpen(false);
 						}}
 						className={clsx(
-							"relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95",
+							"relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 							showArchived
 								? "border-amber-500/40 bg-amber-500/15 text-amber-300"
 								: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
@@ -1073,45 +1094,49 @@ export function SessionSidebar() {
 					</button>
 				</div>
 
-				{/* First-class Navigation List (Codex-style vertical nav) */}
+				{/* First-class Navigation List (S22: real accessible buttons, no button-in-button) */}
 				<div className="pt-0.5 space-y-0.5">
 					{/* 1. 新建会话 */}
-					<div
-						onClick={(e) => handleHeaderNewSession(e)}
-						className="group flex h-7 min-h-[28px] cursor-pointer select-none items-center justify-between rounded-lg px-2 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
-						title={
-							activeWs
-								? `在「${activeWs.name}」新建会话 (⌘N)`
-								: "新建会话 (⌘N)"
-						}
-					>
-						<div className="flex items-center gap-2 min-w-0">
-							<Plus size={14} className="shrink-0 text-neutral-400 group-hover:text-neutral-200 transition-colors" />
+					<div className="group flex h-7 min-h-[28px] items-center justify-between rounded-lg px-2 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors">
+						<button
+							type="button"
+							onClick={(e) =>
+								void startNewSessionFromContext((ws) => handlePlusClick(ws, e))
+							}
+							className="flex flex-1 items-center gap-2 min-w-0 text-left focus-visible:outline-none focus-visible:underline"
+							title={
+								activeWs
+									? `在「${activeWs.name}」新建会话 (⌘N)`
+									: "新建会话 (⌘N)"
+							}
+						>
+							<Plus
+								size={14}
+								className="shrink-0 text-neutral-400 group-hover:text-neutral-200 transition-colors"
+							/>
 							<span className="truncate">新建会话</span>
-						</div>
+						</button>
 						<div className="flex items-center gap-1.5 shrink-0">
 							<button
 								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									openModal("quick-ask");
-								}}
+								onClick={() => openModal("quick-ask")}
 								title="快速提问 (⌘⇧K)"
-								className="flex h-5 w-5 items-center justify-center rounded text-neutral-500 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 transition-colors"
+								className="flex h-5 w-5 items-center justify-center rounded text-neutral-500 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400"
 							>
 								<MessageCircleQuestion size={13} />
 							</button>
-							<span className="font-mono text-[10px] text-neutral-400 select-none">
+							<span className="font-mono text-[10px] text-neutral-400 select-none @max-[220px]:hidden">
 								⌘N
 							</span>
 						</div>
 					</div>
 
 					{/* 2. 收件箱 */}
-					<div
+					<button
+						type="button"
 						onClick={() => setCenter("inbox")}
 						className={clsx(
-							"group flex h-7 min-h-[28px] cursor-pointer select-none items-center justify-between rounded-lg px-2 text-xs transition-colors",
+							"flex h-7 min-h-[28px] w-full items-center justify-between rounded-lg px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 							centerView === "inbox"
 								? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
 								: "font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
@@ -1135,13 +1160,14 @@ export function SessionSidebar() {
 								{inboxBadge}
 							</span>
 						)}
-					</div>
+					</button>
 
 					{/* 3. 定时任务 */}
-					<div
+					<button
+						type="button"
 						onClick={() => setCenter("schedules")}
 						className={clsx(
-							"group flex h-7 min-h-[28px] cursor-pointer select-none items-center justify-between rounded-lg px-2 text-xs transition-colors",
+							"flex h-7 min-h-[28px] w-full items-center justify-between rounded-lg px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 							centerView === "schedules"
 								? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
 								: "font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
@@ -1160,13 +1186,14 @@ export function SessionSidebar() {
 							/>
 							<span className="truncate">定时任务</span>
 						</div>
-					</div>
+					</button>
 
 					{/* 4. Skills 管理 */}
-					<div
+					<button
+						type="button"
 						onClick={() => setCenter("skills")}
 						className={clsx(
-							"group flex h-7 min-h-[28px] cursor-pointer select-none items-center justify-between rounded-lg px-2 text-xs transition-colors",
+							"flex h-7 min-h-[28px] w-full items-center justify-between rounded-lg px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 							centerView === "skills"
 								? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
 								: "font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
@@ -1185,9 +1212,8 @@ export function SessionSidebar() {
 							/>
 							<span className="truncate">Skills 管理</span>
 						</div>
-					</div>
+					</button>
 				</div>
-
 			</div>
 
 			{/* Workspace Switcher Dropdown */}
@@ -1206,6 +1232,11 @@ export function SessionSidebar() {
 					}}
 					className="p-1.5 text-xs text-neutral-300"
 				>
+					<div
+						role="menu"
+						aria-label="工作区切换"
+						className="space-y-0.5 focus:outline-none"
+					>
 						<div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
 							工作区切换
 						</div>
@@ -1213,6 +1244,7 @@ export function SessionSidebar() {
 						{/* All Workspaces */}
 						<button
 							type="button"
+							role="menuitem"
 							onClick={() => {
 								setActiveWorkspaceId("all");
 								setWsDropdownOpen(false);
@@ -1237,6 +1269,7 @@ export function SessionSidebar() {
 						{globalWs && (
 							<button
 								type="button"
+								role="menuitem"
 								onClick={() => {
 									setActiveWorkspaceId("__global");
 									setWsDropdownOpen(false);
@@ -1270,6 +1303,7 @@ export function SessionSidebar() {
 								return (
 									<div
 										key={ws.id}
+										role="menuitem"
 										className={clsx(
 											"group flex items-center justify-between rounded-md px-2 py-1.5 transition-colors",
 											isSelected
@@ -1283,7 +1317,7 @@ export function SessionSidebar() {
 												setActiveWorkspaceId(ws.id);
 												setWsDropdownOpen(false);
 											}}
-											className="flex min-w-0 flex-1 items-center gap-2 text-left"
+											className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:underline"
 										>
 											<Folder
 												size={13}
@@ -1300,7 +1334,7 @@ export function SessionSidebar() {
 											</span>
 										</button>
 
-										<div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+										<div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100">
 											<button
 												type="button"
 												onClick={(e) => {
@@ -1308,7 +1342,7 @@ export function SessionSidebar() {
 													handleRevealWorkspace(ws);
 												}}
 												title="在访达中打开"
-												className="rounded p-1 text-neutral-400 hover:bg-neutral-700/60 hover:text-neutral-200"
+												className="rounded p-1 text-neutral-400 hover:bg-neutral-700/60 hover:text-neutral-200 focus-visible:opacity-100"
 											>
 												<FolderOpen size={12} />
 											</button>
@@ -1319,7 +1353,7 @@ export function SessionSidebar() {
 													handleRemoveWorkspace(ws);
 												}}
 												title="移除工作区"
-												className="rounded p-1 text-rose-400 hover:bg-rose-950/60 hover:text-rose-300"
+												className="rounded p-1 text-rose-400 hover:bg-rose-950/60 hover:text-rose-300 focus-visible:opacity-100"
 											>
 												<Trash2 size={12} />
 											</button>
@@ -1341,15 +1375,17 @@ export function SessionSidebar() {
 						{/* Add Workspace Action */}
 						<button
 							type="button"
+							role="menuitem"
 							onClick={() => {
 								setWsDropdownOpen(false);
-								handleAddWorkspace();
+								void handleAddWorkspace();
 							}}
 							className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-indigo-400 transition-colors hover:bg-indigo-950/40 hover:text-indigo-300"
 						>
 							<FolderPlus size={13} />
-							<span>添加项目目录…</span>
+							<span>添加工作区目录…</span>
 						</button>
+					</div>
 				</FloatingLayer>
 			)}
 
@@ -1364,12 +1400,18 @@ export function SessionSidebar() {
 					onDismiss={() => setFilterPopoverOpen(false)}
 					className="w-56 p-2 text-xs text-neutral-300"
 				>
+					<div
+						role="menu"
+						aria-label="显示与过滤"
+						className="space-y-0.5 focus:outline-none"
+					>
 						<div className="px-1 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
 							显示与过滤
 						</div>
 						<button
 							type="button"
-							onClick={() => setShowArchived((v) => !v)}
+							role="menuitem"
+							onClick={() => setShowArchived(!showArchived)}
 							className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left transition-colors hover:bg-neutral-800"
 						>
 							<div className="flex items-center gap-2">
@@ -1381,6 +1423,7 @@ export function SessionSidebar() {
 						<div className="my-1 border-t border-neutral-800" />
 						<button
 							type="button"
+							role="menuitem"
 							onClick={() => {
 								handleToggleAllGroups();
 								setFilterPopoverOpen(false);
@@ -1399,6 +1442,7 @@ export function SessionSidebar() {
 								</>
 							)}
 						</button>
+					</div>
 				</FloatingLayer>
 			)}
 
@@ -1419,14 +1463,40 @@ export function SessionSidebar() {
 				</div>
 			)}
 
-			{/* Session Groups Scroll Area (keyboard accessible) */}
+			{/* Session Groups Scroll Area: listbox with visible ring */}
 			<div
 				ref={scrollRef}
 				tabIndex={0}
+				role="listbox"
+				aria-activedescendant={highlightId ? `session-row-${highlightId}` : undefined}
+				{...{ [SIDEBAR_LIST_ATTR]: "true" }}
+				onFocus={(e) => {
+					// K2: when list container receives focus and nothing is highlighted,
+					// highlight selected row or first visible row so per-row ring is the only focus indicator
+					if (e.target === e.currentTarget && !useUi.getState().highlightId) {
+						const currentSelected = useUi.getState().selectedSessionId;
+						if (currentSelected) {
+							setHighlightId(currentSelected);
+						} else {
+							const visibleIds = getVisibleSessionIds();
+							if (visibleIds.length > 0) {
+								setHighlightId(visibleIds[0]);
+							}
+						}
+					}
+				}}
 				onKeyDown={handleListKeyDown}
-				className="flex-1 overflow-y-auto divide-y divide-neutral-800/40 focus:outline-none pb-8"
+				onPointerEnter={() => {
+					if (lastGroupedRef.current) {
+						setFrozenOrder(snapshotOrder(lastGroupedRef.current));
+					}
+				}}
+				onPointerLeave={() => {
+					setFrozenOrder(undefined);
+				}}
+				className="group/list flex-1 overflow-y-auto divide-y divide-neutral-800/40 pb-8 focus:outline-none"
 			>
-				{/* Cold-start skeleton rows: realistic two-line rows with status dots */}
+				{/* Cold-start skeleton rows */}
 				{!hasLoaded && (
 					<div className="p-2 space-y-3 animate-pulse">
 						<div className="flex items-center gap-2 mb-2 px-1">
@@ -1438,7 +1508,6 @@ export function SessionSidebar() {
 								key={i}
 								className="flex flex-col gap-1.5 px-2 py-1.5 rounded bg-neutral-800/20"
 							>
-								{/* Line 1: Status dot + #id + title */}
 								<div className="flex items-center gap-2">
 									<div className="h-2 w-2 rounded-full bg-neutral-700/80 shrink-0" />
 									<div className="h-2.5 w-6 rounded bg-neutral-700/60 shrink-0" />
@@ -1448,7 +1517,6 @@ export function SessionSidebar() {
 									/>
 									<div className="h-2 w-8 rounded bg-neutral-800 ml-auto shrink-0" />
 								</div>
-								{/* Line 2: branch + model + usage */}
 								<div className="flex items-center gap-1.5 pl-4">
 									<div className="h-2 w-12 rounded bg-neutral-800/70" />
 									<div className="h-2 w-14 rounded bg-neutral-800/60" />
@@ -1464,72 +1532,66 @@ export function SessionSidebar() {
 						{/* 0. 📌 Pinned Sessions: fixed on the very top */}
 						{grouped.pinnedSessions.length > 0 && (
 							<div className="mt-0.5">
-								<div
-									onClick={() => toggleGroup("__pinned", true)}
-								className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
-								>
-									<div className="flex items-center gap-1.5 min-w-0 flex-1">
-										{isGroupOpen("__pinned", true) ? (
-											<ChevronDown
-												size={13}
-												className="text-[var(--text-dim)] shrink-0"
-											/>
-										) : (
-											<ChevronRight
-												size={13}
-												className="text-[var(--text-dim)] shrink-0"
-											/>
-										)}
+								<GroupHeader
+									groupKey="__pinned"
+									title="已置顶"
+									icon={
 										<Pin
 											size={13}
 											className="text-amber-500 dark:text-amber-400 fill-amber-500/30 shrink-0"
 										/>
-									<span className="font-bold text-[12.5px] text-[var(--text)] truncate">
-											已置顶
-										</span>
-										{renderBubbleBadges(
-											getGroupStatusCounts(grouped.pinnedSessions),
-										)}
-									</div>
-								</div>
+									}
+									isOpen={isGroupOpen("__pinned", true)}
+									onToggle={() => toggleGroup("__pinned", true)}
+									statusCounts={getGroupStatusCounts(grouped.pinnedSessions)}
+								/>
 
 								{isGroupOpen("__pinned", true) && (
-									<div className="pb-1">
-										<SessionList
-											sessions={grouped.pinnedSessions}
-											scopeKey="__pinned"
-											searching={searching}
-											onSetCount={setSectionCount}
-											expanded={expandedSections}
-											workspaces={workspaces}
-											allVisibleIds={allVisibleIds}
-											onRowFocus={focusList}
-											onBatchAction={handleBatchAction}
-										/>
+									<div className="pb-1 ml-[14px]" data-group-key="__pinned">
+										<div className="ml-[8px] pl-2 my-0.5">
+											<SessionList
+												sessions={grouped.pinnedSessions}
+												scopeKey="__pinned"
+												searching={searching}
+												onSetCount={setSectionCount}
+												expanded={expandedSections}
+												workspaces={workspaces}
+												onRowFocus={focusList}
+												onBatchAction={handleBatchAction}
+												withSpine
+											/>
+										</div>
 									</div>
 								)}
 							</div>
 						)}
-						{/* Single Workspace Mode: focused, calm view */}
+
+						{/* Single Workspace Mode: focused view */}
 						{activeWorkspaceId !== "all" && (
 							<div className="py-1">
 								{activeWorkspaceId === "__global" ? (
 									grouped.globalGroup && grouped.globalGroup.totalCount > 0 ? (
-										<SessionList
-											sessions={grouped.globalGroup.subgroups.flatMap(
-												(group) => group.sessions,
-											)}
-											scopeKey="__global"
-											searching={searching}
-											onSetCount={setSectionCount}
-											expanded={expandedSections}
-											workspaces={workspaces}
-											allVisibleIds={allVisibleIds}
-											onRowFocus={focusList}
-											onBatchAction={handleBatchAction}
-										/>
+										<div className="ml-[14px]">
+											<div className="ml-[8px] pl-2 my-0.5">
+												<SessionList
+													sessions={grouped.globalGroup.subgroups.flatMap(
+														(group) => group.sessions,
+													)}
+													scopeKey="__global"
+													searching={searching}
+													onSetCount={setSectionCount}
+													expanded={expandedSections}
+													workspaces={workspaces}
+													onRowFocus={focusList}
+													onBatchAction={handleBatchAction}
+													withSpine
+												/>
+											</div>
+										</div>
 									) : (
-										!searchQuery && (
+										// G7: consider pinned count
+										!searchQuery &&
+										grouped.pinnedSessions.length === 0 && (
 											<div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500">
 												<div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-800/80 text-indigo-400">
 													<Globe size={18} />
@@ -1543,90 +1605,110 @@ export function SessionSidebar() {
 												<button
 													type="button"
 													onClick={() =>
-														globalWs && startSessionInDir(globalWs, false)
+														globalWs && void startSessionInDir(globalWs, false)
 													}
 													className="mt-4 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm"
 												>
 													<Plus size={13} />
 													新建会话
-													<span className="ml-0.5 text-[10px] text-neutral-400 font-mono">
+													<span className="ml-0.5 text-[10px] text-neutral-400 font-mono @max-[220px]:hidden">
 														⌘N
 													</span>
 												</button>
 											</div>
 										)
 									)
-								) : activeWs && grouped.workspaceGroups[0] ? (
-									grouped.workspaceGroups[0].totalCount > 0 ||
-									grouped.workspaceGroups[0].subgroups.length > 1 ||
-									grouped.workspaceGroups[0].deletedSubgroups.length > 0 ? (
-										<>
-										{/* Semantics: every worktree/branch subgroup renders as CollapsibleSubgroup even when it is the only subgroup; a lone default/main checkout renders as a flat list. */}
-										{grouped.workspaceGroups[0].hasMultipleSubgroups ||
-										(grouped.workspaceGroups[0].subgroups[0] &&
-											grouped.workspaceGroups[0].subgroups[0].kind !== "default" &&
-											!grouped.workspaceGroups[0].subgroups[0].isMain) ? (
-											grouped.workspaceGroups[0].subgroups.map((sub) => (
-												<CollapsibleSubgroup
-													key={sub.key}
-													sub={sub}
-													scopeKey={`${activeWs.id}|${sub.key}`}
-													searching={searching}
-													onSetCount={setSectionCount}
-													expanded={expandedSections}
-													onToggle={toggleSection}
-													onBatchArchive={() =>
-														batchArchiveSessions(
-															sub.label,
-														sub.sessions,
-														)
-													}
-													workspaces={workspaces}
-													allVisibleIds={allVisibleIds}
-													onRowFocus={focusList}
-													onBatchAction={handleBatchAction}
-													ws={activeWs}
-													onCreateSession={startSessionAt}
-												/>
-											))
-										) : (
-											<SessionList
-											sessions={
-												grouped.workspaceGroups[0].subgroups[0]?.sessions ?? []
-											}
-												scopeKey={`${activeWs.id}|default`}
+								) : activeWs && grouped.workspaceGroups[0] ? (() => {
+									const wg = grouped.workspaceGroups[0];
+									const liveSubs = wg.subgroups.filter((s) => !s.deleted && s.sessions.length > 0);
+									const emptySubs = wg.subgroups.filter((s) => !s.deleted && s.sessions.length === 0);
+									const hasContent =
+										wg.totalCount > 0 ||
+										(wg.pinnedCount ?? 0) > 0 ||
+										liveSubs.length > 0 ||
+										emptySubs.length > 0 ||
+										wg.deletedSubgroups.length > 0;
+									return hasContent ? (
+										<div>
+											{liveSubs.length > 1 ||
+											(liveSubs[0] && liveSubs[0].kind !== "default" && !liveSubs[0].isMain) ? (
+												liveSubs.map((sub) => (
+													<CollapsibleSubgroup
+														key={sub.key}
+														sub={sub}
+														scopeKey={`${activeWs.id}|${sub.key}`}
+														searching={searching}
+														onSetCount={setSectionCount}
+														expanded={expandedSections}
+														onToggle={toggleSection}
+														onBatchArchive={() =>
+															void batchArchiveSessions(sub.label, sub.sessions)
+														}
+														workspaces={workspaces}
+														onRowFocus={focusList}
+														onBatchAction={handleBatchAction}
+														ws={activeWs}
+														onCreateSession={startSessionAt}
+														creatingKey={creatingKey}
+													/>
+												))
+											) : (
+												<div className="ml-[22px] pl-2 my-0.5">
+													<SessionList
+														sessions={liveSubs[0]?.sessions ?? []}
+														scopeKey={`${activeWs.id}|default`}
+														searching={searching}
+														onSetCount={setSectionCount}
+														expanded={expandedSections}
+														workspaces={workspaces}
+														onRowFocus={focusList}
+														onBatchAction={handleBatchAction}
+														withSpine
+													/>
+												</div>
+											)}
+											<EmptyWorktreesFolder
+												folderKey={`${activeWs.id}|__empty`}
+												ws={activeWs}
+												subgroups={emptySubs}
 												searching={searching}
-												onSetCount={setSectionCount}
+												isOpen={isGroupOpen(`${activeWs.id}|__empty`, false)}
+												onToggle={() =>
+													toggleGroup(`${activeWs.id}|__empty`, false)
+												}
 												expanded={expandedSections}
+												onToggleSection={toggleSection}
+												onSetCount={setSectionCount}
 												workspaces={workspaces}
-												allVisibleIds={allVisibleIds}
 												onRowFocus={focusList}
 												onBatchAction={handleBatchAction}
+												onCreateSession={startSessionAt}
+												creatingKey={creatingKey}
 											/>
-										)}
-										<DeletedWorktreesFolder
-											key={`${activeWs.id}|__deleted`}
-											folderKey={`${activeWs.id}|__deleted`}
-											ws={activeWs}
-											subgroups={grouped.workspaceGroups[0].deletedSubgroups}
-											searching={searching}
-											isOpen={isGroupOpen(`${activeWs.id}|__deleted`, false)}
-											onToggle={() => toggleGroup(`${activeWs.id}|__deleted`, false)}
-											onBatchArchive={batchArchiveSessions}
-											renderBubbleBadges={renderBubbleBadges}
-											getGroupStatusCounts={getGroupStatusCounts}
-											expanded={expandedSections}
-											onToggleSection={toggleSection}
-											onSetCount={setSectionCount}
-											workspaces={workspaces}
-											allVisibleIds={allVisibleIds}
-											onRowFocus={focusList}
-											onBatchAction={handleBatchAction}
-											onCreateSession={startSessionAt}
-										/>
-										</>
+											<DeletedWorktreesFolder
+												folderKey={`${activeWs.id}|__deleted`}
+												ws={activeWs}
+												subgroups={grouped.workspaceGroups[0].deletedSubgroups}
+												searching={searching}
+												isOpen={isGroupOpen(`${activeWs.id}|__deleted`, false)}
+												onToggle={() =>
+													toggleGroup(`${activeWs.id}|__deleted`, false)
+												}
+												onBatchArchive={batchArchiveSessions}
+												expanded={expandedSections}
+												onToggleSection={toggleSection}
+												onSetCount={setSectionCount}
+												workspaces={workspaces}
+												onRowFocus={focusList}
+												onBatchAction={handleBatchAction}
+												onCreateSession={startSessionAt}
+												creatingKey={creatingKey}
+											/>
+										</div>
 									) : (
-										!searchQuery && (
+										// G7: consider pinned count
+										!searchQuery &&
+										(grouped.workspaceGroups[0].pinnedCount ?? 0) === 0 && (
 											<div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500">
 												<div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-800/80 text-amber-400">
 													<Folder size={18} />
@@ -1639,101 +1721,85 @@ export function SessionSidebar() {
 												</div>
 												<button
 													type="button"
-													onClick={() => startSessionInDir(activeWs, false)}
+													onClick={() => void startSessionInDir(activeWs, false)}
 													className="mt-4 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm"
 												>
 													<Plus size={13} />
 													新建会话
-													<span className="ml-0.5 text-[10px] text-neutral-400 font-mono">
+													<span className="ml-0.5 text-[10px] text-neutral-400 font-mono @max-[220px]:hidden">
 														⌘N
 													</span>
 												</button>
 											</div>
 										)
-									)
-								) : null}
+									);
+								})() : null}
 							</div>
 						)}
 
 						{/* All Workspaces Mode: multi-project overview */}
 						{activeWorkspaceId === "all" && (
 							<>
-								{/* 1. Global Workspace */}
-								{grouped.globalGroup && grouped.globalGroup.totalCount > 0 && (() => {
+								{/* 1. Global Workspace (S15/G6: render all subgroups) */}
+								{grouped.globalGroup && showGlobalInAll && (() => {
 									const palette = getWorkspacePalette("__global");
 									const isOpen = isGroupOpen("__global", true);
-									const statusCounts = getGroupStatusCounts(
-										grouped.globalGroup.subgroups,
+									const allGlobalSessions = grouped.globalGroup.subgroups.flatMap(
+										(g) => g.sessions,
 									);
+									const statusCounts = getGroupStatusCounts(allGlobalSessions);
+									const isCreatingHeader =
+										creatingKey ===
+										`${grouped.globalGroup.workspace.id}|${grouped.globalGroup.workspace.path}`;
+
 									return (
 										<div className="mt-0.5">
-											<div
-												onClick={() => toggleGroup("__global", true)}
-											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
-											>
-												<div className="flex items-center gap-1.5 min-w-0 flex-1">
-													{isOpen ? (
-														<ChevronDown
-															size={13}
-															className="text-[var(--text-dim)] shrink-0"
-														/>
-													) : (
-														<ChevronRight
-															size={13}
-															className="text-[var(--text-dim)] shrink-0"
-														/>
-													)}
+											<GroupHeader
+												groupKey="__global"
+												title="全局工作区"
+												icon={
 													<Globe
 														size={14}
 														className={clsx("shrink-0", palette.folderColor)}
 													/>
-													<span
-					className="font-bold text-[12.5px] text-[var(--text)] truncate"
-						title="全局工作区"
+												}
+												isOpen={isOpen}
+												onToggle={() => toggleGroup("__global", true)}
+												statusCounts={statusCounts}
+												actionButton={
+													<button
+														type="button"
+														onClick={(e) =>
+															handlePlusClick(grouped.globalGroup!.workspace, e)
+														}
+														title="新建会话"
+														disabled={creatingKey !== null}
+														className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
 													>
-														全局工作区
-													</span>
-													{renderBubbleBadges(statusCounts)}
-												</div>
-
-												<button
-													type="button"
-													onClick={(e) =>
-														handlePlusClick(grouped.globalGroup!.workspace, e)
-													}
-													title="新建会话"
-													disabled={
-														creatingWs === grouped.globalGroup.workspace.id
-													}
-													className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100"
-												>
-													{creatingWs === grouped.globalGroup.workspace.id ? (
-														<Loader2 size={13} className="animate-spin" />
-													) : (
-														<Plus size={13} />
-													)}
-												</button>
-											</div>
+														{isCreatingHeader ? (
+															<Loader2 size={13} className="animate-spin" />
+														) : (
+															<Plus size={13} />
+														)}
+													</button>
+												}
+											/>
 
 											{isOpen && (
-												<div className="pb-1">
-													{grouped.globalGroup.totalCount === 0 ? (
-														<div className="px-6 py-2 text-[11px] text-[var(--text-dim)] italic">
-															暂无会话
-														</div>
-													) : (
+												<div className="pb-1 ml-[14px]" data-group-key="__global">
+													<div className="ml-[8px] pl-2 my-0.5">
 														<SessionList
-															sessions={grouped.globalGroup.subgroups[0]?.sessions ?? []}
+															sessions={allGlobalSessions}
 															scopeKey="__global"
 															searching={searching}
 															onSetCount={setSectionCount}
 															expanded={expandedSections}
 															workspaces={workspaces}
-															allVisibleIds={allVisibleIds}
 															onRowFocus={focusList}
 															onBatchAction={handleBatchAction}
+															withSpine
 														/>
-													)}
+													</div>
 												</div>
 											)}
 										</div>
@@ -1742,32 +1808,21 @@ export function SessionSidebar() {
 
 								{/* 2. Registered Project Workspaces */}
 								{visibleWorkspaceGroups.map((wg) => {
-									const palette = getWorkspacePalette(wg.workspace.id || wg.workspace.name);
+									const palette = getWorkspacePalette(
+										wg.workspace.id || wg.workspace.name,
+									);
 									const isOpen = isGroupOpen(wg.workspace.id, true);
 									const statusCounts = getGroupStatusCounts(wg.subgroups);
+									const isCreatingHeader =
+										creatingKey === `${wg.workspace.id}|${wg.workspace.path}`;
+
 									return (
 										<div key={wg.workspace.id} className="mt-0.5">
-											{/* Workspace Group Header (Codex unified style) */}
-											<div
-												onClick={() => toggleGroup(wg.workspace.id, true)}
-												onContextMenu={(e) =>
-													handleWorkspaceContextMenu(wg.workspace, e)
-												}
-											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
-											>
-												<div className="flex items-center gap-1.5 min-w-0 flex-1">
-													{isOpen ? (
-														<ChevronDown
-															size={13}
-															className="text-[var(--text-dim)] shrink-0"
-														/>
-													) : (
-														<ChevronRight
-															size={13}
-															className="text-[var(--text-dim)] shrink-0"
-														/>
-													)}
-													{isOpen ? (
+											<GroupHeader
+												groupKey={wg.workspace.id}
+												title={wg.workspace.name}
+												icon={
+													isOpen ? (
 														<FolderOpen
 															size={14}
 															className={clsx("shrink-0", palette.folderColor)}
@@ -1777,231 +1832,362 @@ export function SessionSidebar() {
 															size={14}
 															className={clsx("shrink-0", palette.folderColor)}
 														/>
-													)}
+													)
+												}
+												titleElement={
 													<HoverScrollText
 														text={wg.workspace.name}
 														className="font-bold text-[12.5px] text-[var(--text)] min-w-0 flex-1"
 														title={wg.workspace.name}
 													/>
-													{renderBubbleBadges(statusCounts)}
-												</div>
-
-												<button
-													type="button"
-													onClick={(e) => handlePlusClick(wg.workspace, e)}
-													title="新建会话（选择当前目录或独立 Worktree）"
-													disabled={creatingWs === wg.workspace.id}
-													className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100"
-												>
-													{creatingWs === wg.workspace.id ? (
-														<Loader2 size={13} className="animate-spin" />
-													) : (
-														<Plus size={13} />
-													)}
-												</button>
-											</div>
+												}
+												isOpen={isOpen}
+												onToggle={() => toggleGroup(wg.workspace.id, true)}
+												statusCounts={statusCounts}
+												onContextMenu={(e) =>
+													handleWorkspaceContextMenu(wg.workspace, e)
+												}
+												actionButton={
+													<button
+														type="button"
+														onClick={(e) => handlePlusClick(wg.workspace, e)}
+														title="新建会话（选择当前目录或独立工作树）"
+														disabled={creatingKey !== null}
+														className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
+													>
+														{isCreatingHeader ? (
+															<Loader2 size={13} className="animate-spin" />
+														) : (
+															<Plus size={13} />
+														)}
+													</button>
+												}
+											/>
 
 											{/* Workspace Group Body */}
-											{isOpen && (
-												<div className="pb-1">
-													{wg.totalCount === 0 &&
-													wg.subgroups.length <= 1 &&
-													wg.deletedSubgroups.length === 0 ? (
+											{isOpen && (() => {
+												const liveSubs = wg.subgroups.filter((s) => !s.deleted && s.sessions.length > 0);
+												const emptySubs = wg.subgroups.filter((s) => !s.deleted && s.sessions.length === 0);
+												const isTrulyEmpty =
+													wg.totalCount === 0 &&
+													(wg.pinnedCount ?? 0) === 0 &&
+													liveSubs.length === 0 &&
+													emptySubs.length === 0 &&
+													wg.deletedSubgroups.length === 0;
+												return (
+												<div className="pb-1" data-group-key={wg.workspace.id}>
+													{isTrulyEmpty ? (
 														<div className="px-6 py-2 text-[11px] text-[var(--text-dim)] italic">
 															暂无会话
 														</div>
 													) : (
 														<>
-														{wg.hasMultipleSubgroups ||
-														(wg.subgroups[0] &&
-															wg.subgroups[0].kind !== "default" &&
-															!wg.subgroups[0].isMain) ? (
-															wg.subgroups.map((sub) => (
-															<CollapsibleSubgroup
-																key={sub.key}
-																sub={sub}
-																scopeKey={`${wg.workspace.id}|${sub.key}`}
+															{liveSubs.length > 1 ||
+															(liveSubs[0] && liveSubs[0].kind !== "default" && !liveSubs[0].isMain) ? (
+																liveSubs.map((sub) => (
+																	<CollapsibleSubgroup
+																		key={sub.key}
+																		sub={sub}
+																		scopeKey={`${wg.workspace.id}|${sub.key}`}
+																		searching={searching}
+																		onSetCount={setSectionCount}
+																		expanded={expandedSections}
+																		onToggle={toggleSection}
+																		onBatchArchive={() =>
+																			void batchArchiveSessions(
+																				sub.label,
+																				sub.sessions,
+																			)
+																		}
+																		workspaces={workspaces}
+																		onRowFocus={focusList}
+																		onBatchAction={handleBatchAction}
+																		ws={wg.workspace}
+																		onCreateSession={startSessionAt}
+																		creatingKey={creatingKey}
+																	/>
+																))
+															) : (
+																<div className="ml-[22px] pl-2 my-0.5">
+																	<SessionList
+																		sessions={liveSubs[0]?.sessions ?? []}
+																		scopeKey={`${wg.workspace.id}|default`}
+																		searching={searching}
+																		onSetCount={setSectionCount}
+																		expanded={expandedSections}
+																		workspaces={workspaces}
+																		onRowFocus={focusList}
+																		onBatchAction={handleBatchAction}
+																		withSpine
+																	/>
+																</div>
+															)}
+															<EmptyWorktreesFolder
+																folderKey={`${wg.workspace.id}|__empty`}
+																ws={wg.workspace}
+																subgroups={emptySubs}
 																searching={searching}
-																onSetCount={setSectionCount}
-																expanded={expandedSections}
-																onToggle={toggleSection}
-																onBatchArchive={() =>
-																	batchArchiveSessions(
-																		sub.label,
-																	sub.sessions,
+																isOpen={isGroupOpen(
+																	`${wg.workspace.id}|__empty`,
+																	false,
+																)}
+																onToggle={() =>
+																	toggleGroup(
+																		`${wg.workspace.id}|__empty`,
+																		false,
 																	)
 																}
+																expanded={expandedSections}
+																onToggleSection={toggleSection}
+																onSetCount={setSectionCount}
 																workspaces={workspaces}
-																allVisibleIds={allVisibleIds}
 																onRowFocus={focusList}
 																onBatchAction={handleBatchAction}
-																ws={wg.workspace}
 																onCreateSession={startSessionAt}
+																creatingKey={creatingKey}
 															/>
-														))
-														) : (
-															<div className="ml-[22px] pl-2 my-0.5">
-																<SessionList
-																	sessions={wg.subgroups[0]?.sessions ?? []}
-																	scopeKey={`${wg.workspace.id}|default`}
-																	searching={searching}
-																	onSetCount={setSectionCount}
-																	expanded={expandedSections}
-																	workspaces={workspaces}
-																	allVisibleIds={allVisibleIds}
-																	onRowFocus={focusList}
-																	withSpine
-																/>
-															</div>
-														)}
-														<DeletedWorktreesFolder
-															folderKey={`${wg.workspace.id}|__deleted`}
-															ws={wg.workspace}
-															subgroups={wg.deletedSubgroups}
-															searching={searching}
-															isOpen={isGroupOpen(`${wg.workspace.id}|__deleted`, false)}
-															onToggle={() => toggleGroup(`${wg.workspace.id}|__deleted`, false)}
-															onBatchArchive={batchArchiveSessions}
-															renderBubbleBadges={renderBubbleBadges}
-															getGroupStatusCounts={getGroupStatusCounts}
-															expanded={expandedSections}
-															onToggleSection={toggleSection}
-															onSetCount={setSectionCount}
-															workspaces={workspaces}
-															allVisibleIds={allVisibleIds}
-															onRowFocus={focusList}
-															onBatchAction={handleBatchAction}
-															onCreateSession={startSessionAt}
-														/>
+															<DeletedWorktreesFolder
+																folderKey={`${wg.workspace.id}|__deleted`}
+																ws={wg.workspace}
+																subgroups={wg.deletedSubgroups}
+																searching={searching}
+																isOpen={isGroupOpen(
+																	`${wg.workspace.id}|__deleted`,
+																	false,
+																)}
+																onToggle={() =>
+																	toggleGroup(
+																		`${wg.workspace.id}|__deleted`,
+																		false,
+																	)
+																}
+																onBatchArchive={batchArchiveSessions}
+																expanded={expandedSections}
+																onToggleSection={toggleSection}
+																onSetCount={setSectionCount}
+																workspaces={workspaces}
+																onRowFocus={focusList}
+																onBatchAction={handleBatchAction}
+																onCreateSession={startSessionAt}
+																creatingKey={creatingKey}
+															/>
 														</>
 													)}
 												</div>
-											)}
+												);
+											})()}
 										</div>
 									);
 								})}
 
-								{/* 3. Unassigned Bucket (PLAN.md §66 未归档桶): collapsed by default */}
-								{grouped.unassigned.length > 0 && (
+								{/* 3. Unassigned Bucket (G15: per-cwd subgroups under UNASSIGNED_LABEL) */}
+								{(grouped.unassigned.length > 0 ||
+									(grouped.unassignedGroups &&
+										grouped.unassignedGroups.length > 0)) && (
 									<div className="mt-0.5">
-										<div
-											onClick={() => toggleGroup("__unassigned", false)}
-											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
-										>
-											<div className="flex items-center gap-1.5 min-w-0 flex-1">
-												{isGroupOpen("__unassigned", false) ? (
-													<ChevronDown
-														size={13}
-														className="text-[var(--text-dim)] shrink-0"
-													/>
-												) : (
-													<ChevronRight
-														size={13}
-														className="text-[var(--text-dim)] shrink-0"
-													/>
-												)}
-												<Clock size={14} className="text-[var(--text-dim)] shrink-0" />
-												<span className="font-bold text-[12.5px] text-[var(--text)] truncate">
-													{UNASSIGNED_LABEL}
-												</span>
-												{renderBubbleBadges(
-													getGroupStatusCounts(grouped.unassigned),
-												)}
-											</div>
-
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													setAssignAllTarget(
-														grouped.unassigned.map((s) => s.id),
-													);
-												}}
-												className="rounded p-1 text-neutral-500 opacity-50 hover:opacity-100 hover:bg-neutral-700/60 hover:text-neutral-200 focus:opacity-100 ml-1 shrink-0 transition-opacity"
-												title="将全部未归档会话归入某个工作区…"
-											>
-												<FolderInput size={13} />
-											</button>
-										</div>
-
-										{isGroupOpen("__unassigned", false) && (
-											<div className="pb-1">
-												<SessionList
-													sessions={grouped.unassigned}
-													scopeKey="__unassigned"
-													searching={searching}
-													onSetCount={setSectionCount}
-													expanded={expandedSections}
-													workspaces={workspaces}
-												allVisibleIds={allVisibleIds}
-												onRowFocus={focusList}
-												onBatchAction={handleBatchAction}
+										<GroupHeader
+											groupKey="__unassigned"
+											title={UNASSIGNED_LABEL}
+											icon={
+												<FolderSearch
+													size={14}
+													className="text-[var(--text-dim)] shrink-0"
 												/>
+											}
+											isOpen={isGroupOpen("__unassigned", false)}
+											onToggle={() => toggleGroup("__unassigned", false)}
+											statusCounts={getGroupStatusCounts(grouped.unassigned)}
+										/>
+
+										{isGroupOpen("__unassigned", false) && (() => {
+											// Cap rendered directory subgroups (user: bucket can hold
+											// hundreds of sessions across dozens of directories).
+											const UNASSIGNED_DIR_LIMIT = 10;
+											const UNASSIGNED_DIR_STEP = 10;
+											const dirMoreKey = "__unassigned|dir_more";
+											const dirGroups = grouped.unassignedGroups ?? [];
+											const visibleDirCount = Math.min(
+												Math.max(
+													expandedSections[dirMoreKey] ?? UNASSIGNED_DIR_LIMIT,
+													UNASSIGNED_DIR_LIMIT,
+												),
+												dirGroups.length,
+											);
+											const hiddenDirs = dirGroups.length - visibleDirCount;
+											const shownDirs = searching
+												? dirGroups
+												: dirGroups.slice(0, visibleDirCount);
+											return (
+											<div className="pb-1" data-group-key="__unassigned">
+												{dirGroups.length > 0 ? (
+													shownDirs.map((grp) => {
+														const subKey = `__unassigned|${grp.key}`;
+														// Default collapsed so the bucket renders as a
+														// compact list of directory headers, not a wall
+														// of session rows ("线性堆叠太多").
+														const isSubOpen = searching || isGroupOpen(subKey, false);
+														return (
+															<UnassignedDirSubgroup
+																key={grp.key}
+																grp={grp}
+																subKey={subKey}
+																searching={searching}
+																isSubOpen={isSubOpen}
+																onToggle={() => toggleGroup(subKey, false)}
+																onSetCount={setSectionCount}
+																expanded={expandedSections}
+																workspaces={workspaces}
+																onRowFocus={focusList}
+																onBatchAction={handleBatchAction}
+																onArchive={() =>
+																	void batchArchiveSessions(grp.label, grp.sessions)
+																}
+																onAddWorkspace={async () => {
+																	try {
+																		await addWorkspace(grp.cwd);
+																		await loadSessions();
+																		toast.success(`已添加工作区「${grp.label}」`);
+																	} catch (err) {
+																		toast.error(`添加工作区失败: ${errMsg(err)}`);
+																	}
+																}}
+															/>
+														);
+													})
+												) : (
+													<div className="ml-[22px] pl-2 my-0.5">
+														<SessionList
+															sessions={grouped.unassigned}
+															scopeKey="__unassigned"
+															searching={searching}
+															onSetCount={setSectionCount}
+															expanded={expandedSections}
+															workspaces={workspaces}
+															onRowFocus={focusList}
+															onBatchAction={handleBatchAction}
+															withSpine
+														/>
+													</div>
+												)}
+												{dirGroups.length > UNASSIGNED_DIR_LIMIT && !searching && (
+													<div className="flex items-center py-1.5 px-3 ml-[14px] text-[11px] font-medium select-none">
+														<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
+														{hiddenDirs > 0 && (
+															<button
+																type="button"
+																onClick={() =>
+																	setSectionCount(dirMoreKey, visibleDirCount + UNASSIGNED_DIR_STEP)
+																}
+																className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+															>
+																<Plus size={11} className="shrink-0" />
+																<span>
+																	展开 {Math.min(UNASSIGNED_DIR_STEP, hiddenDirs)} 个目录
+																</span>
+															</button>
+														)}
+														{hiddenDirs > 0 && visibleDirCount > UNASSIGNED_DIR_LIMIT && (
+															<span className="mx-1.5 text-[var(--text-dim)] opacity-40">｜</span>
+														)}
+														{visibleDirCount > UNASSIGNED_DIR_LIMIT && (
+															<button
+																type="button"
+																onClick={() => setSectionCount(dirMoreKey, UNASSIGNED_DIR_LIMIT)}
+																className="flex items-center gap-0.5 rounded-md px-2 py-1 text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+															>
+																<ChevronDown size={11} className="shrink-0 rotate-180" />
+																<span>收起</span>
+															</button>
+														)}
+														<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
+													</div>
+												)}
+												{/* Bucket-wide actions live in a footer instead of the
+												 * header — header icons crowded the row (user feedback). */}
+												<div className="flex items-center py-1.5 px-3 ml-[14px] text-[11px] font-medium select-none">
+													<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
+													<button
+														type="button"
+														onClick={() =>
+															void batchArchiveSessions(
+																UNASSIGNED_LABEL,
+																grouped.unassigned,
+															)
+														}
+														className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-amber-300 hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+													>
+														<Archive size={11} className="shrink-0" />
+														<span className="whitespace-nowrap">全部归档 ({grouped.unassigned.length})</span>
+													</button>
+													<span className="mx-1.5 text-[var(--text-dim)] opacity-40">｜</span>
+													<button
+														type="button"
+														onClick={() =>
+															requestAssign(grouped.unassigned.map((s) => s.id))
+														}
+														className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+													>
+														<FolderInput size={11} className="shrink-0" />
+														<span className="whitespace-nowrap">归入工作区…</span>
+													</button>
+													<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
+												</div>
 											</div>
-										)}
+											);
+										})()}
 									</div>
 								)}
 
-								{/* 4. Deleted Worktrees Bucket: kept visible (dimmed) instead of vanishing */}
+								{/* 4. Deleted Worktrees Bucket: DELETED_LABEL */}
 								{grouped.deletedSessions.length > 0 && (
 									<div className="mt-0.5 opacity-60 hover:opacity-100 transition-opacity">
-										<div
-											onClick={() => toggleGroup("__deleted", false)}
-											className="group flex cursor-pointer select-none items-center justify-between mx-1 px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors"
-										>
-											<div className="flex items-center gap-1.5 min-w-0 flex-1">
-												{isGroupOpen("__deleted", false) ? (
-													<ChevronDown
-														size={13}
-														className="text-[var(--text-dim)] shrink-0"
-													/>
-												) : (
-													<ChevronRight
-														size={13}
-														className="text-[var(--text-dim)] shrink-0"
-													/>
-												)}
+										<GroupHeader
+											groupKey="__deleted"
+											title={DELETED_LABEL}
+											icon={
 												<FolderGit2
 													size={14}
 													className="text-[var(--text-dim)] shrink-0"
 												/>
-												<span className="font-bold text-[12.5px] text-[var(--text)] truncate">
-													{DELETED_LABEL}
-												</span>
-												{renderBubbleBadges(
-													getGroupStatusCounts(grouped.deletedSessions),
-												)}
-											</div>
-
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													batchArchiveSessions(
-														DELETED_LABEL,
-														grouped.deletedSessions,
-													);
-												}}
-												className="mr-1 rounded p-1 text-neutral-500 opacity-50 hover:opacity-100 hover:bg-neutral-700/60 hover:text-amber-300 focus:opacity-100 transition-opacity"
-												title="一键归档全部已清理 Worktree 的会话"
-											>
-												<Archive size={12} />
-											</button>
-										</div>
+											}
+											isOpen={isGroupOpen("__deleted", false)}
+											onToggle={() => toggleGroup("__deleted", false)}
+											statusCounts={getGroupStatusCounts(
+												grouped.deletedSessions,
+											)}
+											actionButton={
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														void batchArchiveSessions(
+															DELETED_LABEL,
+															grouped.deletedSessions,
+														);
+													}}
+													className="mr-1 rounded p-1 text-neutral-500 opacity-50 hover:opacity-100 hover:bg-neutral-700/60 hover:text-amber-300 focus:opacity-100 transition-opacity"
+													title="一键归档全部已清理工作树的会话"
+												>
+													<Archive size={12} />
+												</button>
+											}
+										/>
 
 										{isGroupOpen("__deleted", false) && (
-											<div className="pb-1">
-												<SessionList
-													sessions={grouped.deletedSessions}
-													scopeKey="__deleted"
-													searching={searching}
-													onSetCount={setSectionCount}
-													expanded={expandedSections}
-													workspaces={workspaces}
-												allVisibleIds={allVisibleIds}
-												onRowFocus={focusList}
-												onBatchAction={handleBatchAction}
-												/>
+											<div className="pb-1" data-group-key="__deleted">
+												<div className="ml-[22px] pl-2 my-0.5">
+													<SessionList
+														sessions={grouped.deletedSessions}
+														scopeKey="__deleted"
+														searching={searching}
+														onSetCount={setSectionCount}
+														expanded={expandedSections}
+														workspaces={workspaces}
+														onRowFocus={focusList}
+														onBatchAction={handleBatchAction}
+														withSpine
+													/>
+												</div>
 											</div>
 										)}
 									</div>
@@ -2009,29 +2195,107 @@ export function SessionSidebar() {
 							</>
 						)}
 
-						{/* Global Empty State */}
+						{/* Search with 0 hits or Empty State (G11, S20) */}
 						{grouped.totalVisible === 0 && (
 							<div className="flex flex-col items-center justify-center p-6 text-center text-neutral-500">
 								{searchQuery ? (
-									<>
-										<Search size={24} className="mb-2 text-neutral-600" />
-										<div className="text-xs">未找到匹配会话</div>
-										<button
-											type="button"
-											onClick={() => setSearchQuery("")}
-											className="mt-2 text-[11px] text-indigo-400 hover:underline"
-										>
-											清空搜索条件
-										</button>
-									</>
+									(() => {
+										const allSessionsList = Object.values(sessions);
+										const allMatches = filterSessions(allSessionsList, {
+											searchQuery,
+											showArchived: true,
+										});
+										const otherWsMatches = allMatches.filter(
+											(s) =>
+												!s.archived && s.workspaceId !== activeWorkspaceId,
+										);
+										const archivedMatches = allMatches.filter((s) => s.archived);
+
+										return (
+											<div className="space-y-2">
+												<Search size={24} className="mx-auto text-neutral-600" />
+												<div className="text-xs">未找到匹配会话</div>
+												{otherWsMatches.length > 0 &&
+													activeWorkspaceId !== "all" && (
+														<button
+															type="button"
+															onClick={() => setActiveWorkspaceId("all")}
+															className="block mx-auto text-[11px] text-indigo-400 hover:underline"
+														>
+															其他工作区有 {otherWsMatches.length} 条匹配 · 搜索全部
+														</button>
+													)}
+												{archivedMatches.length > 0 && !showArchived && (
+													<button
+														type="button"
+														onClick={() => setShowArchived(true)}
+														className="block mx-auto text-[11px] text-amber-400 hover:underline"
+													>
+														含归档 {archivedMatches.length} 条 · 显示归档
+													</button>
+												)}
+												<button
+													type="button"
+													onClick={() => setSearchQuery("")}
+													className="block mx-auto mt-2 text-[11px] text-neutral-400 hover:underline"
+												>
+													清空搜索条件
+												</button>
+											</div>
+										);
+									})()
 								) : activeWorkspaceId === "all" ? (
-									<>
-										<Inbox size={24} className="mb-2 text-neutral-600" />
-										<div className="text-xs">暂无任何会话</div>
-										<div className="mt-1 text-[11px] text-neutral-600">
-											点击工作区旁 "+ " 开始探索
+									Object.keys(sessions).length === 0 && loadError ? (
+										// P5: retryable inline error block when loading failed
+										<div className="space-y-2">
+											<AlertCircle size={24} className="mx-auto text-rose-500" />
+											<div className="text-xs font-medium text-rose-300">
+												加载会话列表失败
+											</div>
+											<div className="text-[11px] text-neutral-400">
+												{loadError}
+											</div>
+											<button
+												type="button"
+												onClick={async () => {
+													setLoadError(null);
+													setErrorMessage(null);
+													try {
+														await loadSessions();
+													} catch (err) {
+														const msg = errMsg(err);
+														setLoadError(msg);
+														setErrorMessage(`加载会话列表失败: ${msg}`);
+													}
+												}}
+												className="mt-3 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm mx-auto"
+											>
+												重试
+											</button>
 										</div>
-									</>
+									) : (
+										// S20: Empty state copy points to real affordances + primary button
+										<div className="space-y-2">
+											<Inbox size={24} className="mx-auto text-neutral-600" />
+											<div className="text-xs font-medium text-neutral-200">
+												暂无任何会话
+											</div>
+											<div className="text-[11px] text-neutral-500">
+												通过顶部导航「新建会话」或添加工作区目录开始
+											</div>
+											<button
+												type="button"
+												onClick={() => void startNewSessionFromContext()}
+												className="mt-3 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm mx-auto"
+											>
+												<Plus size={13} />
+												新建会话
+												<span className="ml-0.5 text-[10px] text-neutral-400 font-mono @max-[220px]:hidden">
+													⌘N
+												</span>
+											</button>
+										</div>
+									)
 								) : null}
 							</div>
 						)}
@@ -2039,47 +2303,21 @@ export function SessionSidebar() {
 				)}
 			</div>
 
-			{/* Undo bar for recent single-session archive (§交互约定 4) */}
-			{undoItem && (
-				<div className="flex items-center justify-between border-t border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200">
-					<div className="truncate pr-2">
-						已归档「
-						<span className="text-neutral-100 font-medium">
-							{undoItem.title}
-						</span>
-						」
-					</div>
-					<button
-						type="button"
-						onClick={() => undoArchive(undoItem.sessionId)}
-						className="flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-indigo-300 hover:bg-neutral-700 shrink-0"
-					>
-						<Undo2 size={12} />
-						撤销
-					</button>
-				</div>
-			)}
-			{/* Bottom footer: Settings — whole row is the click target (button
-				onClick bubbles up; button keeps focus + active styling) */}
-			<div
-				onClick={() =>
-					setCenter(
-						centerView === "settings"
-							? selectedSessionId
-								? "session"
-								: "home"
-							: "settings",
-					)
-				}
-				className="group flex shrink-0 cursor-pointer items-center justify-between border-t border-neutral-800/80 px-3 py-2 bg-neutral-900/50 hover:bg-neutral-800/60 transition-colors"
-			>
+			{/* Undo bar for recent archive (Contract 4, S25) */}
+			<ArchiveUndoBar />
+
+			{/* Settings footer (S18: single accessible button) */}
+			<div className="shrink-0 border-t border-neutral-800/80 p-2 bg-neutral-900/50">
 				<button
 					type="button"
+					onClick={() =>
+						centerView === "settings" ? closeSettings() : openSettings()
+					}
 					className={clsx(
-						"flex w-full items-center justify-start gap-2 rounded-md px-2 py-1 text-xs transition-colors",
+						"flex w-full items-center justify-start gap-2 rounded-md px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 						centerView === "settings"
 							? "bg-neutral-800 text-neutral-100 font-medium"
-							: "text-neutral-400 group-hover:text-neutral-200",
+							: "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60",
 					)}
 				>
 					<SettingsIcon size={14} />
@@ -2087,39 +2325,68 @@ export function SessionSidebar() {
 				</button>
 			</div>
 
-
-			{/* Popover: "+" New Session Options */}
+			{/* Popover: "+" New Session Options (S28: ignoreRefs to toggle itself) */}
 			{plusMenu && (
 				<FloatingLayer
 					anchor={plusMenu.anchor}
 					placement="bottom-start"
 					offset={4}
 					layer="menu"
+					ignoreRefs={plusTriggerRef.current ? [plusTriggerRef] : undefined}
 					onDismiss={() => setPlusMenu(null)}
 					className="w-48 py-1 text-xs text-neutral-300"
 				>
-					<div className="px-3 py-1 text-[10px] text-neutral-500 font-semibold uppercase tracking-wider">
-						新建会话
-					</div>
-					<button
-						type="button"
-						onClick={() => startSessionInDir(plusMenu.ws, false)}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+					<MenuContainer
+						ariaLabel="新建会话选项"
+						onClose={() => setPlusMenu(null)}
+						triggerRef={plusTriggerRef}
 					>
-						<Folder size={13} className="text-amber-400" />
-						在当前目录创建
-					</button>
-
-					{plusMenu.ws.kind !== "global" && (
+						<div className="px-3 py-1 text-[10px] text-neutral-500 font-semibold uppercase tracking-wider">
+							新建会话
+						</div>
 						<button
 							type="button"
-							onClick={() => startSessionInDir(plusMenu.ws, true)}
-							className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+							role="menuitem"
+							onClick={() => {
+								const ws = plusMenu.ws;
+								setPlusMenu(null);
+								void startSessionInDir(ws, false);
+							}}
+							disabled={creatingKey !== null}
+							className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left disabled:opacity-40"
 						>
-							<FolderGit2 size={13} className="text-indigo-400" />
-							在独立 Worktree 创建
+							<Folder size={13} className="text-amber-400" />
+							在当前目录创建
 						</button>
-					)}
+
+						{plusMenu.ws.kind !== "global" && (() => {
+							const liveWts =
+								useWorktrees.getState().byWorkspace[plusMenu.ws.id] ?? [];
+							const hasGitWorktrees = liveWts.length > 0;
+
+							return (
+								<button
+									type="button"
+									role="menuitem"
+									disabled={!hasGitWorktrees || creatingKey !== null}
+									onClick={() => {
+										const ws = plusMenu.ws;
+										setPlusMenu(null);
+										void startSessionInDir(ws, true);
+									}}
+									className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left disabled:opacity-40 disabled:hover:bg-transparent"
+									title={
+										!hasGitWorktrees
+											? "该工作区无 Git 仓库支持独立工作树"
+											: undefined
+									}
+								>
+									<FolderGit2 size={13} className="text-indigo-400" />
+									在独立工作树创建
+								</button>
+							);
+						})()}
+					</MenuContainer>
 				</FloatingLayer>
 			)}
 
@@ -2133,92 +2400,59 @@ export function SessionSidebar() {
 					onDismiss={() => setWsMenu(null)}
 					className="w-44 py-1 text-xs text-neutral-300"
 				>
-					<button
-						type="button"
-						onClick={() => {
-							const ws = wsMenu.ws;
-							setWsMenu(null);
-							openModal("new-session", {
-								workspaceId: ws.id,
-								cwd: ws.path,
-							});
-						}}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+					<MenuContainer
+						ariaLabel="工作区管理"
+						onClose={() => setWsMenu(null)}
+						triggerRef={wsMenuTriggerRef}
 					>
-						<Plus size={13} />
-						新建会话…
-					</button>
+						<button
+							type="button"
+							role="menuitem"
+							onClick={() => {
+								const ws = wsMenu.ws;
+								setWsMenu(null);
+								openModal("new-session", {
+									workspaceId: ws.id,
+									cwd: ws.path,
+								});
+							}}
+							className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+						>
+							<Plus size={13} />
+							新建会话…
+						</button>
 
-					<button
-						type="button"
-						onClick={() => handleRevealWorkspace(wsMenu.ws)}
-						className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
-					>
-						<FolderOpen size={13} />
-						在访达中打开
-					</button>
+						<button
+							type="button"
+							role="menuitem"
+							onClick={() => void handleRevealWorkspace(wsMenu.ws)}
+							className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+						>
+							<FolderOpen size={13} />
+							在访达中打开
+						</button>
 
-					{wsMenu.ws.kind !== "global" && (
-						<>
-							<div className="my-1 border-t border-neutral-800" />
-							<button
-								type="button"
-								onClick={() => handleRemoveWorkspace(wsMenu.ws)}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-[var(--status-error)] hover:bg-rose-500/15 text-left"
-							>
-								<Trash2 size={13} />
-								从工作区中移除
-							</button>
-						</>
-					)}
+						{wsMenu.ws.kind !== "global" && (
+							<>
+								<div className="my-1 border-t border-neutral-800" />
+								<button
+									type="button"
+									role="menuitem"
+									onClick={() => void handleRemoveWorkspace(wsMenu.ws)}
+									className="flex w-full items-center gap-2 px-3 py-1.5 text-[var(--status-error)] hover:bg-rose-500/15 text-left"
+								>
+									<Trash2 size={13} />
+									从工作区中移除
+								</button>
+							</>
+						)}
+					</MenuContainer>
 				</FloatingLayer>
 			)}
 
-			{/* Modal: Batch Assign unassigned sessions */}
-			{assignAllTarget && (
-				<div
-					onMouseDown={(e) => {
-						if (e.target === e.currentTarget) setAssignAllTarget(null);
-					}}
-					className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
-				>
-					<div
-						onClick={(e) => e.stopPropagation()}
-						className="w-full max-w-sm rounded-lg border border-neutral-700 bg-neutral-900 p-4 text-neutral-200 shadow-2xl"
-					>
-						<div className="flex items-center justify-between pb-3">
-							<span className="font-semibold text-sm">
-								将 {assignAllTarget.length} 个会话归入工作区
-							</span>
-							<button
-								type="button"
-								onClick={() => setAssignAllTarget(null)}
-								className="text-neutral-400 hover:text-neutral-200"
-							>
-								<X size={16} />
-							</button>
-						</div>
-						<div className="max-h-60 overflow-y-auto space-y-1">
-							{workspaces.map((ws) => (
-								<button
-									key={ws.id}
-									type="button"
-									onClick={() => handleBatchAssign(ws.id)}
-									className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs hover:bg-neutral-800 text-neutral-200"
-								>
-									{ws.kind === "global" ? (
-										<Globe size={13} className="text-indigo-400 shrink-0" />
-									) : (
-										<Folder size={13} className="text-amber-400 shrink-0" />
-									)}
-									<span className="truncate">{ws.name}</span>
-								</button>
-							))}
-						</div>
-					</div>
-				</div>
-			)}
-		</div>
+			{/* Global dialogs rendered portaled once (Contract 3, S7) */}
+			<SessionDialogs />
+		</aside>
 	);
 }
 
@@ -2228,45 +2462,27 @@ interface SessionListProps {
 	searching: boolean;
 	expanded: Record<string, number>;
 	onSetCount: (key: string, count: number) => void;
-	indent?: number;
-	/** Draw the subgroup guide line as a per-row segment (stops at last row). */
 	withSpine?: boolean;
 	workspaces: Workspace[];
-	allVisibleIds?: string[];
 	onRowFocus?: () => void;
-	onBatchAction?: (action: "archive" | "pin" | "delete", ids: string[]) => void;
+	onBatchAction: (action: "archive" | "pin" | "delete", ids: string[]) => void;
 }
 
 /**
- * Renders a flat list of sessions with progressive disclosure (RECENT_LIMIT
- * rows initially, +RECENT_STEP per "show more" click). Forked sessions are
- * ordinary rows; SessionRow marks them with a small fork icon.
+ * Renders a list of sessions with progressive disclosure and attention-row pinning (G5).
  */
 function SessionList({
 	sessions,
 	scopeKey,
 	searching,
-	indent = 0,
 	withSpine = false,
 	expanded,
 	onSetCount,
 	workspaces,
-	allVisibleIds,
 	onRowFocus,
 	onBatchAction,
 }: SessionListProps) {
-	const renderSession = (session: SessionMeta) => (
-		<SessionRow
-			key={session.id}
-			session={session}
-			indent={indent}
-			withSpine={withSpine}
-			workspaces={workspaces}
-			allVisibleIds={allVisibleIds}
-			onRowFocus={onRowFocus}
-			onBatchAction={onBatchAction}
-		/>
-	);
+	const selectedSessionId = useUi((s) => s.selectedSessionId);
 
 	const SEARCH_LIMIT = 8;
 	const SEARCH_STEP = 10;
@@ -2274,64 +2490,104 @@ function SessionList({
 	const step = searching ? SEARCH_STEP : RECENT_STEP;
 
 	const moreKey = `${scopeKey}|more`;
-
 	const visibleCount = Math.min(
 		Math.max(expanded[moreKey] ?? limit, limit),
 		sessions.length,
 	);
-	const visibleSessions = sessions.slice(0, visibleCount);
-	// Progressive-disclosure footer: "show N more" while sessions remain, and a
-	// collapse row whenever the list is expanded beyond the limit.
-	const renderPagingFooter = (
-		count: number,
-		hidden: number,
-		moreKey: string,
-		onCollapse: () => void,
-	) => {
-		const expandable = Math.min(step, hidden);
-		const showExpand = hidden > 0;
-		const showCollapse = count > limit;
-		if (!showExpand && !showCollapse) return null;
-		return (
-			<div className="flex items-center py-1.5 px-3 text-[11px] font-medium select-none">
-				<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
-				{showExpand && (
-					<button
-						type="button"
-						onClick={() => onSetCount(moreKey, count + step)}
-						className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95"
-					>
-						<Plus size={11} className="shrink-0" />
-						<span>展开 {expandable} 条</span>
-						{hidden > expandable && (
-							<span className="text-[var(--text-dim)]">
-								(剩余 {hidden - expandable})
-							</span>
-						)}
-					</button>
-				)}
-				{showExpand && showCollapse && (
-					<span className="mx-1.5 text-[var(--text-dim)] opacity-40">｜</span>
-				)}
-				{showCollapse && (
-					<button
-						type="button"
-						onClick={onCollapse}
-						className="flex items-center gap-0.5 rounded-md px-2 py-1 text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95"
-					>
-						<ChevronDown size={11} className="shrink-0 rotate-180" />
-						<span>收起</span>
-					</button>
-				)}
-				<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
-			</div>
-		);
-	};
+
+	// G5, P4: Rows beyond the limit remain rendered if needsAttention(s) or s.id === selectedSessionId
+	const isRowRendered = (s: SessionMeta, idx: number) =>
+		idx < visibleCount || needsAttention(s) || s.id === selectedSessionId;
+
+	const renderedSessions = sessions.filter(isRowRendered);
+	const hiddenCount = sessions.length - renderedSessions.length;
+
+	// C17: 展开 N 条 label = number of not-yet-rendered rows that the click will reveal
+	const nextVisibleCount = Math.min(visibleCount + step, sessions.length);
+	const newlyRevealedInWindow = sessions
+		.slice(visibleCount, nextVisibleCount)
+		.filter((s) => !needsAttention(s) && s.id !== selectedSessionId).length;
+	const expandable =
+		newlyRevealedInWindow > 0
+			? newlyRevealedInWindow
+			: Math.min(step, hiddenCount);
+	const showExpand = hiddenCount > 0;
+	const showCollapse = visibleCount > limit;
+
+	// Q11: where a sticky row sits above rows still hidden by paging, draw a
+	// hairline gap row labelled with the skipped count at that exact gap —
+	// once per gap, not the earlier per-row "···" that read as broken rows.
+	const skippedBefore = new Map<number, number>();
+	let skipped = 0;
+	for (let i = 0; i < sessions.length; i++) {
+		if (isRowRendered(sessions[i], i)) {
+			if (skipped > 0) {
+				skippedBefore.set(i, skipped);
+				skipped = 0;
+			}
+		} else {
+			skipped++;
+		}
+	}
+
 	return (
 		<>
-			{visibleSessions.map(renderSession)}
-			{renderPagingFooter(visibleCount, sessions.length - visibleCount, moreKey, () =>
-				onSetCount(moreKey, limit),
+			{sessions.map((session, idx) => {
+				if (!isRowRendered(session, idx)) return null;
+
+				const gap = skippedBefore.get(idx);
+				return (
+					<React.Fragment key={session.id}>
+						{gap !== undefined && (
+							<div
+								aria-hidden="true"
+								className="mx-3 my-0.5 flex items-center gap-2 select-none"
+							>
+								<span className="h-px flex-1 bg-[var(--border-divider)] opacity-50" />
+								<span className="text-[9px] text-[var(--text-dim)] opacity-70 whitespace-nowrap">
+									{gap} 条未显示
+								</span>
+								<span className="h-px flex-1 bg-[var(--border-divider)] opacity-50" />
+							</div>
+						)}
+						<SessionRow
+							session={session}
+							withSpine={withSpine}
+							workspaces={workspaces}
+							onRowFocus={onRowFocus}
+							onBatchAction={onBatchAction}
+						/>
+					</React.Fragment>
+				);
+			})}
+			{(showExpand || showCollapse) && (
+				<div className="flex items-center py-1.5 px-3 text-[11px] font-medium select-none">
+					<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
+					{showExpand && (
+						<button
+							type="button"
+							onClick={() => onSetCount(moreKey, visibleCount + step)}
+							className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+						>
+							<Plus size={11} className="shrink-0" />
+							<span>展开 {expandable} 条</span>
+						</button>
+					)}
+					{showExpand && showCollapse && (
+						<span className="mx-1.5 text-[var(--text-dim)] opacity-40">｜</span>
+					)}
+					{showCollapse && (
+						<button
+							type="button"
+							onClick={() => onSetCount(moreKey, limit)}
+							className="flex items-center gap-0.5 rounded-md px-2 py-1 text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+						>
+							<ChevronDown size={11} className="shrink-0 rotate-180" />
+							<span>收起</span>
+						</button>
+					)}
+					<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
+				</div>
 			)}
 		</>
 	);
@@ -2342,181 +2598,195 @@ interface CollapsibleSubgroupProps {
 	scopeKey: string;
 	searching: boolean;
 	expanded: Record<string, number>;
-	onToggle: (key: string) => void;
+	onToggle: (key: string, defaultOpen?: boolean) => void;
 	onSetCount: (key: string, count: number) => void;
-	onBatchArchive: () => void;
+	onBatchArchive?: () => void;
 	workspaces: Workspace[];
-	allVisibleIds?: string[];
 	onRowFocus?: () => void;
-	onBatchAction?: (action: "archive" | "pin" | "delete", ids: string[]) => void;
+	onBatchAction: (action: "archive" | "pin" | "delete", ids: string[]) => void;
 	ws: Workspace;
 	onCreateSession: (ws: Workspace, cwd: string) => void;
+	creatingKey: string | null;
 }
 
 /**
- * A worktree/branch subgroup collapsible header.
+ * A worktree/branch subgroup collapsible header (S5, S16, S22).
  */
 function CollapsibleSubgroup({
 	sub,
 	scopeKey,
 	searching,
 	expanded,
-	onToggle,
 	onSetCount,
 	onBatchArchive,
 	workspaces,
-	allVisibleIds,
 	onRowFocus,
 	onBatchAction,
 	ws,
 	onCreateSession,
+	creatingKey,
 }: CollapsibleSubgroupProps) {
+	// S5: Explicit open flag (1 = open, 0 = collapsed); deleted and empty
+	// subgroups start collapsed — an empty subgroup's body is always empty.
 	const userExpanded = expanded[`${scopeKey}|sub`];
-	const isCollapsed = userExpanded !== undefined ? userExpanded === 1 : sub.deleted;
+	const isCollapsed =
+		userExpanded !== undefined
+			? userExpanded === 0
+			: sub.deleted || sub.sessions.length === 0;
 	const open = searching || !isCollapsed;
 
-	// Branch / Worktree preview hover card (opens to the RIGHT)
 	const [hoverOpen, setHoverOpen] = useState(false);
 	const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
 	const hoverTimer = useRef<number | null>(null);
 	const closeTimer = useRef<number | null>(null);
 
-	const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
-		if (closeTimer.current !== null) {
-			window.clearTimeout(closeTimer.current);
-			closeTimer.current = null;
-		}
-		const rect = e.currentTarget.getBoundingClientRect();
+	const isCreatingSubgroup =
+		creatingKey !== null && sub.createCwd
+			? creatingKey === `${ws.id}|${sub.createCwd}`
+			: false;
+
+	const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+		clearTimeout(closeTimer.current ?? undefined);
+		closeTimer.current = null;
+		const el = e.currentTarget;
 		hoverTimer.current = window.setTimeout(() => {
-			setAnchorRect(rect);
+			// Measure lazily: the header may scroll during the 400ms dwell, a
+			// stale rect flashes the card at the wrong spot.
+			setAnchorRect(el.getBoundingClientRect());
 			setHoverOpen(true);
 		}, 400);
 	};
 
 	const dismissHover = () => {
-		if (hoverTimer.current !== null) {
-			window.clearTimeout(hoverTimer.current);
-			hoverTimer.current = null;
-		}
-		if (closeTimer.current !== null) {
-			window.clearTimeout(closeTimer.current);
-			closeTimer.current = null;
-		}
+		clearTimeout(hoverTimer.current ?? undefined);
+		hoverTimer.current = null;
+		clearTimeout(closeTimer.current ?? undefined);
+		closeTimer.current = null;
 		setHoverOpen(false);
 		setAnchorRect(null);
 	};
 
 	const handleMouseLeave = () => {
-		if (hoverTimer.current !== null) {
-			window.clearTimeout(hoverTimer.current);
-			hoverTimer.current = null;
-		}
+		clearTimeout(hoverTimer.current ?? undefined);
+		hoverTimer.current = null;
 		closeTimer.current = window.setTimeout(() => {
 			dismissHover();
 		}, 150);
 	};
 
+	// Deleted worktree folder dims the whole wrapper; inside it don't re-dim
+	// the subgroup itself. Empty (live) subgroups dim their header only.
+	const shouldDim = sub.sessions.length === 0 && !sub.deleted;
+
 	return (
-		<div className={clsx("mt-0.5 ml-[14px]", (sub.deleted || sub.sessions.length === 0) && "opacity-60 hover:opacity-100 transition-opacity")}>
-			<div className="group/sub flex items-center">
-				<button
-					type="button"
-					onClick={() => {
-						dismissHover();
-						onToggle(`${scopeKey}|sub`);
-					}}
-					onMouseEnter={handleMouseEnter}
-					onMouseLeave={handleMouseLeave}
-					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-left text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
-				>
-					{open ? (
-						<ChevronDown size={11} className="shrink-0 text-[var(--text-dim)]" />
+		<div
+			data-group-key={`${scopeKey}|sub`}
+			className={clsx(
+				"mt-0.5 ml-[14px]",
+				shouldDim && "opacity-60 hover:opacity-100 transition-opacity",
+			)}
+		>
+			<GroupHeader
+				groupKey={`${scopeKey}|sub`}
+				isSubgroup
+				title={sub.label}
+				icon={
+					sub.kind === "worktree" ? (
+						<FolderGit2
+							size={12}
+							className="text-indigo-600 dark:text-indigo-400 shrink-0"
+						/>
 					) : (
-						<ChevronRight size={11} className="shrink-0 text-[var(--text-dim)]" />
-					)}
-					{sub.kind === "worktree" ? (
-						<FolderGit2 size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-					) : (
-						<GitBranch size={12} className="text-purple-600 dark:text-purple-400 shrink-0" />
-					)}
-					<HoverScrollText
-						text={sub.label}
-						className="min-w-0 flex-1 font-mono font-bold text-[var(--text)]"
-						title={sub.label}
-					/>
-					{sub.isMain && (
-						<span className="shrink-0 rounded bg-[var(--bg-hover)] px-1 text-[9px] text-[var(--text-dim)] font-normal">
-							主目录
-						</span>
-					)}
-					{sub.deleted && (
-						<span className="shrink-0 rounded bg-[var(--bg-hover)] px-1 text-[9px] text-[var(--text-dim)] font-normal">
-							已清理
-						</span>
-					)}
-					{!sub.deleted && sub.sessions.length === 0 && (
-						<span className="shrink-0 text-[10px] text-[var(--text-dim)] font-normal italic">
-							暂无会话
-						</span>
-					)}
-					{/* Session count stays hidden until the row is hovered */}
-				</button>
-				{!sub.deleted && sub.path && (
-					<button
-						type="button"
-						onClick={(e) => {
-							dismissHover();
-							e.stopPropagation();
-							revealItemInDir(sub.path!).catch((err) =>
-								toast.error(`在访达中打开失败: ${errMsg(err)}`),
-							);
-						}}
-						className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all duration-150 ease-out hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
-						title="在访达中打开"
+						<GitBranch
+							size={12}
+							className="text-purple-600 dark:text-purple-400 shrink-0"
+						/>
+					)
+				}
+				titleElement={
+					<span
+						onMouseEnter={handleMouseEnter}
+						onMouseLeave={handleMouseLeave}
+						className="flex min-w-0 flex-1 items-center gap-1 text-left"
 					>
-						<FolderOpen size={12} />
-					</button>
-				)}
-				{!sub.deleted && sub.createCwd && (
-					<button
-						type="button"
-						onClick={(e) => {
-							dismissHover();
-							e.stopPropagation();
-							onCreateSession(ws, sub.createCwd!);
-						}}
-						className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all duration-150 ease-out hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
-						title="在该分支创建新会话"
-					>
-						<Plus size={12} />
-					</button>
-				)}
-				{sub.deleted && (
-					<button
-						type="button"
-						onClick={(e) => {
-							dismissHover();
-							e.stopPropagation();
-							onBatchArchive();
-						}}
-						className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all duration-150 ease-out hover:bg-neutral-700/60 hover:text-amber-300"
-						title="归档该分支全部会话"
-					>
-						<Archive size={11} />
-					</button>
-				)}
-			</div>
+						<HoverScrollText
+							text={sub.label}
+							className="min-w-0 flex-1 font-mono font-bold text-[var(--text)]"
+							title={sub.label}
+						/>
+						{sub.isMain && (
+							<span className="shrink-0 rounded bg-[var(--bg-hover)] px-1 text-[9px] text-[var(--text-dim)] font-normal">
+								主目录
+							</span>
+						)}
+						{sub.deleted && (
+							<span className="shrink-0 rounded bg-[var(--bg-hover)] px-1 text-[9px] text-[var(--text-dim)] font-normal">
+								已清理
+							</span>
+						)}
+						{!sub.deleted && sub.sessions.length === 0 && (
+							<span className="shrink-0 text-[10px] text-[var(--text-dim)] font-normal italic">
+								暂无会话
+							</span>
+						)}
+					</span>
+				}
+				isOpen={open}
+				onToggle={() => {
+					dismissHover();
+					onSetCount(`${scopeKey}|sub`, open ? 0 : 1);
+				}}
+				statusCounts={getGroupStatusCounts(sub.sessions)}
+				actionButton={
+					<div className="flex items-center gap-0.5 shrink-0 ml-1">
+						{/* 在访达中打开 removed per user: kept only on the row context
+						 * menu and workspace header menu. */}
+						{!sub.deleted && sub.createCwd && (
+							<button
+								type="button"
+								disabled={creatingKey !== null}
+								onClick={(e) => {
+									dismissHover();
+									e.stopPropagation();
+									onCreateSession(ws, sub.createCwd!);
+								}}
+								className="shrink-0 rounded p-1 text-[var(--text-muted)] opacity-55 hover:opacity-100 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 focus-visible:opacity-100"
+								title="在该分支创建新会话"
+							>
+								{isCreatingSubgroup ? (
+									<Loader2 size={14} className="animate-spin" />
+								) : (
+									<Plus size={14} strokeWidth={2.4} />
+								)}
+							</button>
+						)}
+						{sub.deleted && onBatchArchive && (
+							<button
+								type="button"
+								onClick={(e) => {
+									dismissHover();
+									e.stopPropagation();
+									onBatchArchive();
+								}}
+								className="shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all hover:bg-neutral-700/60 hover:text-amber-300 focus-visible:opacity-100"
+								title="归档该分支全部会话"
+							>
+								<Archive size={11} />
+							</button>
+						)}
+					</div>
+				}
+			/>
+
 			{open && (
 				<div className="ml-[22px] pl-2 my-0.5">
 					<SessionList
 						sessions={sub.sessions}
 						scopeKey={scopeKey}
 						searching={searching}
-						indent={0}
 						expanded={expanded}
 						onSetCount={onSetCount}
 						workspaces={workspaces}
-						allVisibleIds={allVisibleIds}
 						onRowFocus={onRowFocus}
 						onBatchAction={onBatchAction}
 						withSpine
@@ -2524,7 +2794,6 @@ function CollapsibleSubgroup({
 				</div>
 			)}
 
-			{/* Floating preview card to the RIGHT into the main workspace */}
 			<WorktreeHoverCard
 				title={sub.label}
 				path={sub.path ?? sub.createCwd}
@@ -2539,13 +2808,6 @@ function CollapsibleSubgroup({
 	);
 }
 
-interface GroupStatusCounts {
-	working: number;
-	awaiting: number;
-	review: number;
-	error: number;
-}
-
 interface DeletedWorktreesFolderProps {
 	folderKey: string;
 	ws: Workspace;
@@ -2554,24 +2816,18 @@ interface DeletedWorktreesFolderProps {
 	isOpen: boolean;
 	onToggle: () => void;
 	onBatchArchive: (title: string, sessions: SessionMeta[]) => Promise<void>;
-	renderBubbleBadges: (counts: GroupStatusCounts) => React.ReactNode;
-	getGroupStatusCounts: (
-		sessions: SessionMeta[] | BranchSubgroup[],
-	) => GroupStatusCounts;
 	expanded: Record<string, number>;
-	onToggleSection: (key: string) => void;
+	onToggleSection: (key: string, defaultOpen?: boolean) => void;
 	onSetCount: (key: string, count: number) => void;
 	workspaces: Workspace[];
-	allVisibleIds?: string[];
 	onRowFocus?: () => void;
-	onBatchAction?: (action: "archive" | "pin" | "delete", ids: string[]) => void;
+	onBatchAction: (action: "archive" | "pin" | "delete", ids: string[]) => void;
 	onCreateSession: (ws: Workspace, cwd: string) => void;
+	creatingKey: string | null;
 }
 
 /**
- * Default-collapsed folder at the bottom of a project group listing worktree
- * subgroups whose directory was deleted (§已清理的工作树). Rows stay readable;
- * continue-in-repo vs recreate-worktree is handled when resuming.
+ * Default-collapsed folder at the bottom of a project group for deleted worktrees (§DELETED_LABEL).
  */
 function DeletedWorktreesFolder({
 	folderKey,
@@ -2581,16 +2837,14 @@ function DeletedWorktreesFolder({
 	isOpen,
 	onToggle,
 	onBatchArchive,
-	renderBubbleBadges,
-	getGroupStatusCounts,
 	expanded,
 	onToggleSection,
 	onSetCount,
 	workspaces,
-	allVisibleIds,
 	onRowFocus,
 	onBatchAction,
 	onCreateSession,
+	creatingKey,
 }: DeletedWorktreesFolderProps) {
 	if (subgroups.length === 0) return null;
 	const allDeleted = subgroups.flatMap((sg) => sg.sessions);
@@ -2603,39 +2857,38 @@ function DeletedWorktreesFolder({
 	);
 	const visibleSubgroups = subgroups.slice(0, visibleSubgroupsCount);
 	const hiddenSubgroups = subgroups.length - visibleSubgroupsCount;
+
 	return (
 		<div className="mt-0.5 ml-[14px] opacity-60 hover:opacity-100 transition-opacity">
-			<div className="group/del flex items-center">
-				<button
-					type="button"
-					onClick={onToggle}
-					className="flex min-w-0 flex-1 items-center gap-1.5 mx-1 px-2 py-1 text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
-				>
-					{isOpen || searching ? (
-						<ChevronDown size={11} className="shrink-0 text-[var(--text-dim)]" />
-					) : (
-						<ChevronRight size={11} className="shrink-0 text-[var(--text-dim)]" />
-					)}
-					<FolderGit2 size={12} className="text-[var(--text-dim)] shrink-0" />
-					<span className="min-w-0 truncate text-[var(--text-dim)]">
-						已清理的工作树 ({subgroups.length})
-					</span>
-					{renderBubbleBadges(getGroupStatusCounts(subgroups))}
-				</button>
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						void onBatchArchive("已清理的工作树", allDeleted);
-					}}
-					className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all duration-150 ease-out hover:bg-neutral-700/60 hover:text-amber-300"
-					title="一键归档全部已清理 Worktree 的会话"
-				>
-					<Archive size={11} />
-				</button>
-			</div>
+			<GroupHeader
+				groupKey={folderKey}
+				title={`${DELETED_LABEL} (${subgroups.length})`}
+				icon={
+					<FolderGit2
+						size={12}
+						className="text-[var(--text-dim)] shrink-0"
+					/>
+				}
+				isOpen={isOpen || searching}
+				onToggle={onToggle}
+				statusCounts={getGroupStatusCounts(subgroups)}
+				actionButton={
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							void onBatchArchive(DELETED_LABEL, allDeleted);
+						}}
+						className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all hover:bg-neutral-700/60 hover:text-amber-300 focus-visible:opacity-100"
+						title="一键归档全部已清理工作树的会话"
+					>
+						<Archive size={11} />
+					</button>
+				}
+			/>
+
 			{(isOpen || searching) && (
-				<div className="ml-[8px]">
+				<div className="ml-[8px]" data-group-key={folderKey}>
 					{visibleSubgroups.map((sub) => (
 						<CollapsibleSubgroup
 							key={`${folderKey}|${sub.key}`}
@@ -2647,11 +2900,11 @@ function DeletedWorktreesFolder({
 							onToggle={onToggleSection}
 							onBatchArchive={() => onBatchArchive(sub.label, sub.sessions)}
 							workspaces={workspaces}
-							allVisibleIds={allVisibleIds}
 							onRowFocus={onRowFocus}
 							onBatchAction={onBatchAction}
 							ws={ws}
 							onCreateSession={onCreateSession}
+							creatingKey={creatingKey}
 						/>
 					))}
 					{subgroups.length > DELETED_WT_LIMIT && (
@@ -2663,17 +2916,12 @@ function DeletedWorktreesFolder({
 									onClick={() =>
 										onSetCount(wtMoreKey, visibleSubgroupsCount + DELETED_WT_STEP)
 									}
-									className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95"
+									className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 								>
 									<Plus size={11} className="shrink-0" />
 									<span>
 										展开 {Math.min(DELETED_WT_STEP, hiddenSubgroups)} 个工作树
 									</span>
-									{hiddenSubgroups > DELETED_WT_STEP && (
-										<span className="text-[var(--text-dim)]">
-											(剩余 {hiddenSubgroups - DELETED_WT_STEP})
-										</span>
-									)}
 								</button>
 							)}
 							{hiddenSubgroups > 0 && visibleSubgroupsCount > DELETED_WT_LIMIT && (
@@ -2683,7 +2931,7 @@ function DeletedWorktreesFolder({
 								<button
 									type="button"
 									onClick={() => onSetCount(wtMoreKey, DELETED_WT_LIMIT)}
-									className="flex items-center gap-0.5 rounded-md px-2 py-1 text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95"
+									className="flex items-center gap-0.5 rounded-md px-2 py-1 text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 								>
 									<ChevronDown size={11} className="shrink-0 rotate-180" />
 									<span>收起</span>
@@ -2694,6 +2942,228 @@ function DeletedWorktreesFolder({
 					)}
 				</div>
 			)}
+		</div>
+	);
+}
+
+interface EmptyWorktreesFolderProps {
+	folderKey: string;
+	ws: Workspace;
+	subgroups: BranchSubgroup[];
+	searching: boolean;
+	isOpen: boolean;
+	onToggle: () => void;
+	expanded: Record<string, number>;
+	onToggleSection: (key: string, defaultOpen?: boolean) => void;
+	onSetCount: (key: string, count: number) => void;
+	workspaces: Workspace[];
+	onRowFocus?: () => void;
+	onBatchAction: (action: "archive" | "pin" | "delete", ids: string[]) => void;
+	onCreateSession: (ws: Workspace, cwd: string) => void;
+	creatingKey: string | null;
+}
+
+/**
+ * Default-collapsed folder for empty worktree subgroups ("暂无会话") so they
+ * stop occupying one row each under every project (user-reported clutter).
+ * Each entry keeps its "+" create-session affordance.
+ */
+function EmptyWorktreesFolder({
+	folderKey,
+	ws,
+	subgroups,
+	searching,
+	isOpen,
+	onToggle,
+	expanded,
+	onToggleSection,
+	onSetCount,
+	workspaces,
+	onRowFocus,
+	onBatchAction,
+	onCreateSession,
+	creatingKey,
+}: EmptyWorktreesFolderProps) {
+	if (subgroups.length === 0) return null;
+
+	return (
+		<div className="mt-0.5 ml-[14px] opacity-70 hover:opacity-100 transition-opacity">
+			<GroupHeader
+				groupKey={folderKey}
+				title={`空闲工作树 (${subgroups.length})`}
+				icon={
+					<GitBranch
+						size={12}
+						className="text-[var(--text-dim)] shrink-0"
+					/>
+				}
+				isOpen={isOpen || searching}
+				onToggle={onToggle}
+			/>
+
+			{(isOpen || searching) && (
+				<div className="ml-[8px]" data-group-key={folderKey}>
+					{subgroups.map((sub) => (
+						<CollapsibleSubgroup
+							key={`${folderKey}|${sub.key}`}
+							sub={sub}
+							scopeKey={`${folderKey}|${sub.key}`}
+							searching={searching}
+							onSetCount={onSetCount}
+							expanded={expanded}
+							onToggle={onToggleSection}
+							workspaces={workspaces}
+							onRowFocus={onRowFocus}
+							onBatchAction={onBatchAction}
+							ws={ws}
+							onCreateSession={onCreateSession}
+							creatingKey={creatingKey}
+						/>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+interface UnassignedDirSubgroupProps {
+	grp: { key: string; cwd: string; label: string; sessions: SessionMeta[] };
+	subKey: string;
+	searching: boolean;
+	isSubOpen: boolean;
+	onToggle: () => void;
+	onSetCount: (key: string, count: number) => void;
+	expanded: Record<string, number>;
+	workspaces: Workspace[];
+	onRowFocus?: () => void;
+	onBatchAction: (action: "archive" | "pin" | "delete", ids: string[]) => void;
+	onArchive: () => void;
+	onAddWorkspace: () => void | Promise<void>;
+}
+
+/**
+ * One directory subgroup under 未归入工作区: default-collapsed header with a
+ * hover-scroll title, archive + add-as-workspace icon buttons, and the same
+ * floating hover card used by worktree subgroups (400ms dwell, lazy rect).
+ */
+function UnassignedDirSubgroup({
+	grp,
+	subKey,
+	searching,
+	isSubOpen,
+	onToggle,
+	onSetCount,
+	expanded,
+	workspaces,
+	onRowFocus,
+	onBatchAction,
+	onArchive,
+	onAddWorkspace,
+}: UnassignedDirSubgroupProps) {
+	const [hoverOpen, setHoverOpen] = useState(false);
+	const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+	const hoverTimer = useRef<number | null>(null);
+	const closeTimer = useRef<number | null>(null);
+
+	const dismissHover = () => {
+		clearTimeout(hoverTimer.current ?? undefined);
+		hoverTimer.current = null;
+		clearTimeout(closeTimer.current ?? undefined);
+		closeTimer.current = null;
+		setHoverOpen(false);
+		setAnchorRect(null);
+	};
+
+	return (
+		<div className="mt-0.5 ml-[14px]" data-group-key={subKey}>
+			<GroupHeader
+				groupKey={subKey}
+				isSubgroup
+				title={grp.label}
+				icon={<Folder size={12} className="text-neutral-400 shrink-0" />}
+				titleElement={
+					<span
+						onMouseEnter={(e) => {
+							clearTimeout(closeTimer.current ?? undefined);
+							closeTimer.current = null;
+							const el = e.currentTarget;
+							hoverTimer.current = window.setTimeout(() => {
+								// Measure lazily: the row may scroll during the dwell.
+								setAnchorRect(el.getBoundingClientRect());
+								setHoverOpen(true);
+							}, 400);
+						}}
+						onMouseLeave={() => {
+							clearTimeout(hoverTimer.current ?? undefined);
+							hoverTimer.current = null;
+							closeTimer.current = window.setTimeout(dismissHover, 150);
+						}}
+						className="flex min-w-0 flex-1 items-center gap-1 text-left"
+					>
+						<HoverScrollText
+							text={grp.label}
+							className="min-w-0 flex-1 font-mono font-bold text-[11px] text-[var(--text)]"
+							title={grp.label}
+						/>
+					</span>
+				}
+				isOpen={isSubOpen}
+				onToggle={onToggle}
+				statusCounts={getGroupStatusCounts(grp.sessions)}
+				actionButton={
+					<div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								dismissHover();
+								onArchive();
+							}}
+							className="rounded p-0.5 text-[var(--text-dim)] opacity-60 hover:opacity-100 hover:bg-neutral-700/60 hover:text-amber-300 transition-all"
+							title="归档该目录下全部会话"
+						>
+							<Archive size={11} />
+						</button>
+						<button
+							type="button"
+							onClick={async (e) => {
+								e.stopPropagation();
+								dismissHover();
+								await onAddWorkspace();
+							}}
+							className="rounded p-0.5 text-indigo-400 hover:bg-indigo-950/50 hover:text-indigo-300 transition-colors"
+							title={`将 ${grp.cwd} 添加为工作区`}
+						>
+							<FolderPlus size={12} />
+						</button>
+					</div>
+				}
+			/>
+			{isSubOpen && (
+				<div className="ml-[22px] pl-2 my-0.5">
+					<SessionList
+						sessions={grp.sessions}
+						scopeKey={subKey}
+						searching={searching}
+						onSetCount={onSetCount}
+						expanded={expanded}
+						workspaces={workspaces}
+						onRowFocus={onRowFocus}
+						onBatchAction={onBatchAction}
+						withSpine
+					/>
+				</div>
+			)}
+
+			<WorktreeHoverCard
+				title={grp.label}
+				path={grp.cwd}
+				sessionCount={grp.sessions.length}
+				anchorRect={anchorRect}
+				open={hoverOpen && anchorRect !== null}
+				side="right"
+				onClose={dismissHover}
+			/>
 		</div>
 	);
 }

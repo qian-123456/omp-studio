@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { SessionMeta, Workspace } from "../../lib/contracts";
 import {
+	DELETED_LABEL,
+	UNASSIGNED_LABEL,
 	createSubgroups,
 	filterSessions,
 	groupSessions,
 	inferWorktreeName,
 	matchesSearch,
+	needsAttention,
+	snapshotOrder,
 } from "./grouping";
 
 function makeSession(partial: Partial<SessionMeta>): SessionMeta {
@@ -140,29 +144,6 @@ describe("createSubgroups", () => {
 	});
 });
 
-describe("createSubgroups", () => {
-	it("detects single subgroup when all sessions share the same branch", () => {
-		const s1 = makeSession({ id: "s1", git: { branch: "main", dirty: 0, worktree: null } });
-		const s2 = makeSession({ id: "s2", git: { branch: "main", dirty: 1, worktree: null } });
-
-		const { subgroups, hasMultipleSubgroups } = createSubgroups([s1, s2]);
-		expect(hasMultipleSubgroups).toBe(false);
-		expect(subgroups).toHaveLength(1);
-		expect(subgroups[0].label).toBe("main");
-	});
-
-	it("detects multiple subgroups when sessions span different branches or worktrees", () => {
-		const s1 = makeSession({ id: "s1", git: { branch: "main", dirty: 0, worktree: null } });
-		const s2 = makeSession({
-			id: "s2",
-			git: { branch: "feat", dirty: 0, worktree: "/repo/.worktrees/feat" },
-		});
-
-		const { subgroups, hasMultipleSubgroups } = createSubgroups([s1, s2]);
-		expect(hasMultipleSubgroups).toBe(true);
-		expect(subgroups.length).toBeGreaterThanOrEqual(2);
-	});
-});
 
 describe("groupSessions", () => {
 	const globalWs: Workspace = {
@@ -520,5 +501,255 @@ describe("archive cascading & pinning", () => {
 		expect(
 			result.workspaceGroups[0].subgroups.flatMap((s) => s.sessions.map((x) => x.id)),
 		).toEqual(["p1", "n1"]);
+	});
+});
+
+describe("needsAttention", () => {
+	it("returns true only for statuses that need the user now", () => {
+		expect(needsAttention(makeSession({ status: "working" }))).toBe(true);
+		expect(needsAttention(makeSession({ status: "awaiting_approval" }))).toBe(true);
+		expect(needsAttention(makeSession({ status: "awaiting_answer" }))).toBe(true);
+		// review/error/interrupted/unread are not sticky: they keep their dot
+		// and collapsed-group bubble but stay folded by paging.
+		expect(needsAttention(makeSession({ status: "review", unread: false }))).toBe(false);
+		expect(needsAttention(makeSession({ status: "error", unread: false }))).toBe(false);
+		expect(needsAttention(makeSession({ status: "interrupted", unread: false }))).toBe(false);
+		expect(needsAttention(makeSession({ status: "idle", unread: true }))).toBe(false);
+		expect(needsAttention(makeSession({ status: "idle", unread: false }))).toBe(false);
+	});
+});
+
+describe("snapshotOrder & frozenOrder", () => {
+	it("records snapshotOrder across all lists in render order", () => {
+		const p1 = makeSession({ id: "p1", pinned: true, updatedAt: "2026-09-25T12:00:00Z" });
+		const g1 = makeSession({ id: "g1", workspaceId: "global", updatedAt: "2026-09-25T11:00:00Z" });
+		const s1 = makeSession({ id: "s1", workspaceId: "proj1", updatedAt: "2026-09-25T10:00:00Z" });
+		const u1 = makeSession({ id: "u1", workspaceId: null, updatedAt: "2026-09-25T09:00:00Z" });
+		const d1 = makeSession({ id: "d1", workspaceId: null, cwd: "/repo/.cache/wt-dead", git: null });
+
+		const wsG: Workspace = { id: "global", name: "Global", path: "/global", kind: "global", sort: 0 };
+		const wsP: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 1 };
+
+		const res = groupSessions([p1, g1, s1, u1, d1], [wsG, wsP]);
+		const order = snapshotOrder(res);
+
+		expect(order.get("p1")).toBe(0);
+		expect(order.get("g1")).toBe(1);
+		expect(order.get("s1")).toBe(2);
+		expect(order.get("u1")).toBe(3);
+		expect(order.get("d1")).toBe(4);
+	});
+
+	it("preserves rank for existing ids while placing new ids on top by updatedAt desc and keeping pinned first", () => {
+		// Existing sessions: s1 (rank 0), s2 (rank 1), s3 (rank 2)
+		const frozenOrder = new Map([
+			["s1", 0],
+			["s2", 1],
+			["s3", 2],
+		]);
+
+		// New session s_new has newer timestamp than s1
+		const sNew = makeSession({ id: "s_new", workspaceId: "proj1", updatedAt: "2026-09-25T15:00:00Z" });
+		// s2 received an update making it newer than s1, but frozenOrder should preserve its rank after s1
+		const s2Updated = makeSession({ id: "s2", workspaceId: "proj1", updatedAt: "2026-09-25T14:00:00Z" });
+		const s1 = makeSession({ id: "s1", workspaceId: "proj1", updatedAt: "2026-09-25T10:00:00Z" });
+		const s3 = makeSession({ id: "s3", workspaceId: "proj1", updatedAt: "2026-09-25T08:00:00Z" });
+		const pNew = makeSession({ id: "p_new", pinned: true, workspaceId: "proj1", updatedAt: "2026-09-25T16:00:00Z" });
+
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
+		const res = groupSessions([s1, s2Updated, s3, sNew, pNew], [ws], { frozenOrder });
+
+		expect(res.pinnedSessions.map((s) => s.id)).toEqual(["p_new"]);
+		// In proj1: new session on top, then existing in rank order s1, s2, s3
+		const projSessions = res.workspaceGroups[0].subgroups[0].sessions.map((s) => s.id);
+		expect(projSessions).toEqual(["s_new", "s1", "s2", "s3"]);
+	});
+});
+
+describe("global-id filter mode (G1 backstop)", () => {
+	it("treats activeWorkspaceId === globalWs.id identically to '__global'", () => {
+		const wsG: Workspace = { id: "global", name: "Global", path: "/global", kind: "global", sort: 0 };
+		const wsP: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 1 };
+
+		const g1 = makeSession({ id: "g1", workspaceId: "global" });
+		const p1 = makeSession({ id: "p1", workspaceId: "proj1" });
+
+		const resRawId = groupSessions([g1, p1], [wsG, wsP], { activeWorkspaceId: "global" });
+		const resSentinel = groupSessions([g1, p1], [wsG, wsP], { activeWorkspaceId: "__global" });
+
+		expect(resRawId.globalGroup?.workspace.id).toBe("global");
+		expect(resRawId.workspaceGroups).toHaveLength(0);
+		expect(resRawId.totalVisible).toBe(1);
+		expect(resRawId.globalGroup?.subgroups[0]?.sessions.map((s) => s.id)).toEqual(["g1"]);
+
+		expect(resRawId).toEqual(resSentinel);
+	});
+});
+
+describe("pinnedCount under filters", () => {
+	it("counts pinned sessions belonging to the workspace after filters", () => {
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
+		const p1 = makeSession({ id: "p1", pinned: true, workspaceId: "proj1", title: "match needle" });
+		const p2 = makeSession({ id: "p2", pinned: true, workspaceId: "proj1", title: "other" });
+		const s1 = makeSession({ id: "s1", pinned: false, workspaceId: "proj1", title: "match needle" });
+
+		const res = groupSessions([p1, p2, s1], [ws], { searchQuery: "needle" });
+		const wg = res.workspaceGroups[0];
+		expect(wg.pinnedCount).toBe(1); // only p1 matches search
+		expect(wg.totalCount).toBe(1); // s1 matches search
+		expect(res.pinnedSessions.map((s) => s.id)).toEqual(["p1"]);
+	});
+});
+
+describe("canonical path containment & sessionIds attachment (G8)", () => {
+	it("attaches session to worktree when cwd has /tmp vs /private/tmp", () => {
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/tmp/proj", kind: "project", sort: 0 };
+		const worktrees = [
+			{ path: "/private/tmp/proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [] },
+			{ path: "/private/tmp/proj/.worktrees/feat", branch: "feat", head: "bbb", dirty: 0, sessionIds: [] },
+		];
+
+		const s1 = makeSession({ id: "s1", workspaceId: "proj1", cwd: "/tmp/proj" });
+		const s2 = makeSession({ id: "s2", workspaceId: "proj1", cwd: "/tmp/proj/.worktrees/feat" });
+
+		const res = groupSessions([s1, s2], [ws], { worktrees: { proj1: worktrees } });
+		const wg = res.workspaceGroups[0];
+
+		// Does not create duplicate fallback buckets
+		expect(wg.subgroups.map((g) => g.label)).toEqual(["main", "feat"]);
+		expect(wg.subgroups.find((g) => g.label === "main")?.sessions.map((s) => s.id)).toEqual(["s1"]);
+		expect(wg.subgroups.find((g) => g.label === "feat")?.sessions.map((s) => s.id)).toEqual(["s2"]);
+	});
+
+	it("attaches session directly via WorktreeInfo.sessionIds first", () => {
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/proj", kind: "project", sort: 0 };
+		const worktrees = [
+			{ path: "/proj", branch: "main", head: "aaa", dirty: 0, sessionIds: ["s_in_custom"] },
+			{ path: "/proj/.worktrees/custom", branch: "custom", head: "bbb", dirty: 0, sessionIds: ["s_in_custom"] },
+		];
+
+		const sCustom = makeSession({ id: "s_in_custom", workspaceId: "proj1", cwd: "/weird/non-nested/path" });
+		const res = groupSessions([sCustom], [ws], { worktrees: { proj1: worktrees } });
+		const wg = res.workspaceGroups[0];
+
+		const customSub = wg.subgroups.find((g) => g.label === "custom");
+		expect(customSub?.sessions.map((s) => s.id)).toEqual(["s_in_custom"]);
+	});
+});
+
+describe("stale-badge deleted inference (G9)", () => {
+	it("treats cwd in wt-dir as deleted when missing from non-empty live worktree list", () => {
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/repo", kind: "project", sort: 0 };
+		const worktrees = [
+			{ path: "/repo", branch: "main", head: "aaa", dirty: 0, sessionIds: [] },
+		];
+
+		// Session has stale git badge pointing to wt-removed which no longer exists in live worktrees
+		const s = makeSession({
+			id: "s1",
+			workspaceId: "proj1",
+			cwd: "/repo/.worktrees/wt-removed",
+			git: { branch: "omp/removed", worktree: "wt-removed", dirty: 0 },
+		});
+
+		const res = groupSessions([s], [ws], { worktrees: { proj1: worktrees } });
+		const wg = res.workspaceGroups[0];
+		expect(wg.deletedSubgroups).toHaveLength(1);
+		expect(wg.deletedSubgroups[0].label).toBe("wt-removed");
+		expect(wg.deletedSubgroups[0].deleted).toBe(true);
+	});
+});
+
+describe("multi-token search without absolute prefix (G10)", () => {
+	it("matches tokens with AND logic and never matches home dir prefix", () => {
+		const s = makeSession({
+			id: "s1",
+			title: "Fix the sidebar layout",
+			cwd: "/Users/qianhairui/Documents/omp-workspace",
+			workspaceId: "proj1",
+		});
+		const ws: Workspace = {
+			id: "proj1",
+			name: "omp-workspace",
+			path: "/Users/qianhairui/Documents/omp-workspace",
+			kind: "project",
+			sort: 0,
+		};
+
+		// "sidebar fix" matches both tokens in title
+		expect(matchesSearch(s, "sidebar fix", ws.path)).toBe(true);
+		// "doc" or "qianhairui" or "user" does not match the parent directory
+		expect(matchesSearch(s, "doc", ws.path)).toBe(false);
+		expect(matchesSearch(s, "qianhairui", ws.path)).toBe(false);
+		expect(matchesSearch(s, "user", ws.path)).toBe(false);
+		// "workspace" matches basename of workspace cwd
+		expect(matchesSearch(s, "workspace", ws.path)).toBe(true);
+	});
+});
+
+describe("archive cascade exemption (G13)", () => {
+	it("never hides a child that is live, pinned, pending, working or awaiting", () => {
+		const parent = makeSession({ id: "p1", archived: true });
+		const liveChild = makeSession({ id: "c_live", parentId: "p1", live: true, archived: false });
+		const pinnedChild = makeSession({ id: "c_pinned", parentId: "p1", pinned: true, archived: false });
+		const pendingChild = makeSession({ id: "c_pending", parentId: "p1", pending: "approval", archived: false });
+		const workingChild = makeSession({ id: "c_working", parentId: "p1", status: "working", archived: false });
+		const awaitingChild = makeSession({ id: "c_awaiting", parentId: "p1", status: "awaiting_approval", archived: false });
+		const idleChild = makeSession({ id: "c_idle", parentId: "p1", status: "idle", archived: false });
+
+		const filtered = filterSessions(
+			[parent, liveChild, pinnedChild, pendingChild, workingChild, awaitingChild, idleChild],
+			{ showArchived: false },
+		);
+
+		const keptIds = filtered.map((s) => s.id);
+		expect(keptIds).toContain("c_live");
+		expect(keptIds).toContain("c_pinned");
+		expect(keptIds).toContain("c_pending");
+		expect(keptIds).toContain("c_working");
+		expect(keptIds).toContain("c_awaiting");
+		expect(keptIds).not.toContain("c_idle");
+		expect(keptIds).not.toContain("p1");
+	});
+});
+
+describe("unassignedGroups grouping (G15 / Contract 5)", () => {
+	it("groups unassigned sessions by repoRoot ?? cwd, newest group first", () => {
+		const s1 = makeSession({
+			id: "s1",
+			workspaceId: null,
+			cwd: "/dirA/sub1",
+			repoRoot: "/dirA",
+			updatedAt: "2026-09-25T10:00:00Z",
+		});
+		const s2 = makeSession({
+			id: "s2",
+			workspaceId: null,
+			cwd: "/dirA/sub2",
+			repoRoot: "/dirA",
+			updatedAt: "2026-09-25T12:00:00Z",
+		});
+		const s3 = makeSession({
+			id: "s3",
+			workspaceId: null,
+			cwd: "/dirB",
+			repoRoot: null,
+			updatedAt: "2026-09-25T14:00:00Z", // newest group
+		});
+
+		const res = groupSessions([s1, s2, s3], []);
+		expect(res.unassignedGroups).toHaveLength(2);
+		expect(res.unassignedGroups[0].key).toBe("/dirB");
+		expect(res.unassignedGroups[0].label).toBe("dirB");
+		expect(res.unassignedGroups[0].sessions.map((s) => s.id)).toEqual(["s3"]);
+
+		expect(res.unassignedGroups[1].key).toBe("/dirA");
+		expect(res.unassignedGroups[1].label).toBe("dirA");
+		expect(res.unassignedGroups[1].sessions.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+		// Flat unassigned list stays intact
+		expect(res.unassigned.map((s) => s.id)).toEqual(["s3", "s2", "s1"]);
+		expect(UNASSIGNED_LABEL).toBe("未归入工作区");
+		expect(DELETED_LABEL).toBe("已清理的工作树");
 	});
 });

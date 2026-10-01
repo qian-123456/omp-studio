@@ -12,7 +12,7 @@ import { Markdown } from "../chat/markdown";
 
 /**
  * [D] Global quick-ask modal. Always mounted; opens via `ui.modal === "quick-ask"`,
- * the sidebar header button, or Cmd+Shift+K (registered in SessionSidebar).
+ * the sidebar header button, or Cmd+Shift+K (registered in sidebarShortcuts).
  */
 export function QuickAskDialog() {
 	const modal = useUi((s) => s.modal);

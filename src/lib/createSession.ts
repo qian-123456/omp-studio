@@ -38,7 +38,8 @@ export interface CreateSessionOpts {
 	model?: string | null;
 	approvalMode?: string | null;
 	workspaceId?: string | null;
-	/** Optional first prompt, sent right after start. */
+	/** Optional first prompt. `createSession` only reads it to mark the stub
+	 * `working` (vs `idle`); callers still send it via `sendFirstPrompt`. */
 	prompt?: string;
 	planYolo?: boolean | null;
 }
@@ -82,7 +83,9 @@ export async function createSession(
 		updatedAt: now,
 		parentId: null,
 		forkDepth: 0,
-		status: "working",
+		// Prompted sessions start a turn immediately; a bare stub stays idle so
+		// it doesn't spin "运行中" forever while the lazy transcript is absent.
+		status: opts.prompt?.trim() ? "working" : "idle",
 		unread: false,
 		pending: null,
 		live: true,
@@ -99,6 +102,45 @@ export async function createSession(
 		model: opts.model?.trim() || null,
 	};
 	return { sessionId: live.sessionId, stub };
+}
+
+/** A session counts as "busy" — untouchable by delete — only while a turn or
+ * an interactive dialog is in flight. `live` alone (an idle RPC process or a
+ * fresh stub whose transcript was never written) must not block it. */
+export function isSessionBusy(s: Pick<SessionMeta, "status">): boolean {
+	return (
+		s.status === "working" ||
+		s.status === "awaiting_approval" ||
+		s.status === "awaiting_answer"
+	);
+}
+
+/**
+ * Find a reusable "empty draft" session already running in `cwd`: live,
+ * unarchived, idle, unnamed, and with no user/assistant activity seen by the
+ * live store. Lets "new session" select the existing draft instead of
+ * stacking another empty 未命名会话 on the same directory.
+ */
+export function findEmptyDraft(cwd: string): SessionMeta | null {
+	const sessions = useSessions.getState().sessions;
+	const lives = useLive.getState().sessions;
+	for (const s of Object.values(sessions)) {
+		if (s.cwd !== cwd) continue;
+		if (!s.live || s.archived || s.status !== "idle") continue;
+		if (s.title.trim() || s.label.trim() || s.lastAssistant) continue;
+		const live = lives[s.id];
+		if (
+			live &&
+			(live.items.length > 0 ||
+				live.pendingUserEchoes.length > 0 ||
+				live.streaming ||
+				live.streamingMessage !== null)
+		) {
+			continue;
+		}
+		return s;
+	}
+	return null;
 }
 
 /** Send the first prompt to a freshly started session, if provided. */

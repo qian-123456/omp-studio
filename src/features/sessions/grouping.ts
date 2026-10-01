@@ -1,5 +1,6 @@
 import type { SessionMeta, WorktreeInfo, Workspace } from "../../lib/contracts";
 import { basename, isInside } from "../../lib/paths";
+
 export interface BranchSubgroup {
 	key: string;
 	kind: "worktree" | "branch" | "default";
@@ -28,8 +29,8 @@ export interface WorkspaceGroup {
 	deletedSubgroups: BranchSubgroup[];
 	hasMultipleSubgroups: boolean;
 	totalCount: number;
+	pinnedCount: number;
 }
-
 
 export interface GroupedSessionsResult {
 	/** Dedicated pinned sessions list displayed at the very top of the sidebar. */
@@ -38,6 +39,13 @@ export interface GroupedSessionsResult {
 	globalGroup: WorkspaceGroup | null;
 	/** Sessions belonging to no project workspace (newest first). */
 	unassigned: SessionMeta[];
+	/** Unassigned sessions grouped by repoRoot ?? cwd, newest group first. */
+	unassignedGroups: {
+		key: string;
+		cwd: string;
+		label: string;
+		sessions: SessionMeta[];
+	}[];
 	/** Unassigned sessions whose worktree was deleted (dimmed bucket). */
 	deletedSessions: SessionMeta[];
 	workspaceGroups: WorkspaceGroup[];
@@ -54,32 +62,145 @@ export interface GroupingOptions {
 	 */
 	worktrees?: Record<string, WorktreeInfo[]>;
 	/**
-	 * Filter sessions to a specific workspace ("all", "__global", "__unassigned", or a workspace.id).
+	 * Filter sessions to a specific workspace ("all", "__global", or a workspace.id).
 	 * When set to a specific workspace, only that workspace's sessions and relevant pins are returned.
 	 */
 	activeWorkspaceId?: string;
+	/**
+	 * When set, inside every list keep pinned-first, then ids present in the map
+	 * by rank asc, ids absent (new) first by updatedAt desc.
+	 */
+	frozenOrder?: ReadonlyMap<string, number>;
+	workspaces?: Workspace[];
 }
 
 /** Label for the collapsed unassigned bucket (PLAN.md §66 未归档桶). */
-export const UNASSIGNED_LABEL = "未归档会话";
+export const UNASSIGNED_LABEL = "未归入工作区";
 
 /** Label for the bucket holding sessions whose worktree dir was deleted. */
-export const DELETED_LABEL = "已清理的 Worktree";
+export const DELETED_LABEL = "已清理的工作树";
 
-/** Matches session against a search query across title, label, branch, cwd, model, etc. */
-export function matchesSearch(session: SessionMeta, query: string): boolean {
+/** True when the session needs the user *now*: a turn in flight or a pending
+ * question. Terminal marks (review/error/interrupted/unread) stay folded by
+ * paging — unread is signalled by the blue dot + collapsed-group unread
+ * bubble, and making it sticky flooded real libraries where nearly every
+ * past session is interrupted-with-unread. */
+export function needsAttention(s: SessionMeta): boolean {
+	return (
+		s.status === "working" ||
+		s.status === "awaiting_approval" ||
+		s.status === "awaiting_answer"
+	);
+}
+
+/** Rank of every session id in the current grouped output, all lists, in render order. */
+export function snapshotOrder(g: GroupedSessionsResult): Map<string, number> {
+	const order = new Map<string, number>();
+	let rank = 0;
+
+	const add = (id: string) => {
+		if (!order.has(id)) {
+			order.set(id, rank++);
+		}
+	};
+
+	for (const s of g.pinnedSessions) {
+		add(s.id);
+	}
+
+	if (g.globalGroup) {
+		for (const sub of g.globalGroup.subgroups) {
+			for (const s of sub.sessions) add(s.id);
+		}
+		for (const sub of g.globalGroup.deletedSubgroups) {
+			for (const s of sub.sessions) add(s.id);
+		}
+	}
+
+	for (const wg of g.workspaceGroups) {
+		for (const sub of wg.subgroups) {
+			for (const s of sub.sessions) add(s.id);
+		}
+		for (const sub of wg.deletedSubgroups) {
+			for (const s of sub.sessions) add(s.id);
+		}
+	}
+
+	for (const s of g.unassigned) {
+		add(s.id);
+	}
+
+	for (const s of g.deletedSessions) {
+		add(s.id);
+	}
+
+	return order;
+}
+
+function normalizePath(p: string): string {
+	const clean = p.replace(/\/+$/, "");
+	if (clean.startsWith("/private/")) {
+		return clean.slice("/private".length);
+	}
+	return clean;
+}
+
+function isInsideCanon(child: string, parent: string): boolean {
+	if (isInside(child, parent)) return true;
+	return isInside(normalizePath(child), normalizePath(parent));
+}
+
+/** Matches session against a search query across title, label, branch, worktree, model, lastAssistant, and cwd relative to workspace/basename. */
+export function matchesSearch(
+	session: SessionMeta,
+	query: string,
+	workspacePath?: string,
+): boolean {
 	const q = query.trim().toLowerCase();
 	if (!q) return true;
 
-	if (session.title?.toLowerCase().includes(q)) return true;
-	if (session.label?.toLowerCase().includes(q)) return true;
-	if (session.git?.branch?.toLowerCase().includes(q)) return true;
-	if (session.git?.worktree?.toLowerCase().includes(q)) return true;
-	if (session.cwd?.toLowerCase().includes(q)) return true;
-	if (session.model?.toLowerCase().includes(q)) return true;
-	if (session.lastAssistant?.toLowerCase().includes(q)) return true;
+	const tokens = q.split(/\s+/).filter(Boolean);
+	if (tokens.length === 0) return true;
 
-	return false;
+	// CWD: match relative to workspace path or basename — never the shared absolute prefix (G10).
+	let cwdTerm = "";
+	if (session.cwd) {
+		if (workspacePath && isInsideCanon(session.cwd, workspacePath)) {
+			const normCwd = normalizePath(session.cwd);
+			const normWs = normalizePath(workspacePath);
+			const rel = normCwd.startsWith(normWs)
+				? normCwd.slice(normWs.length).replace(/^\/+/, "")
+				: "";
+			cwdTerm = rel ? `${rel} ${basename(session.cwd)}` : basename(session.cwd);
+		} else {
+			cwdTerm = basename(session.cwd);
+		}
+	}
+
+	const title = session.title?.toLowerCase() ?? "";
+	const label = session.label?.toLowerCase() ?? "";
+	const branch = session.git?.branch?.toLowerCase() ?? "";
+	const worktree = session.git?.worktree?.toLowerCase() ?? "";
+	const model = session.model?.toLowerCase() ?? "";
+	const lastAssistant = session.lastAssistant?.toLowerCase() ?? "";
+	const searchableCwd = cwdTerm.toLowerCase();
+
+	// AND matching for whitespace-separated tokens
+	for (const token of tokens) {
+		const matchesToken =
+			title.includes(token) ||
+			label.includes(token) ||
+			branch.includes(token) ||
+			worktree.includes(token) ||
+			model.includes(token) ||
+			lastAssistant.includes(token) ||
+			searchableCwd.includes(token);
+		if (!matchesToken) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 /** Filters a session list by search query, archive status, and deleted worktrees. */
@@ -87,16 +208,32 @@ export function filterSessions(
 	sessions: SessionMeta[],
 	options: GroupingOptions = {},
 ): SessionMeta[] {
-	const { searchQuery = "", showArchived = false } = options;
+	const { searchQuery = "", showArchived = false, workspaces = [] } = options;
 
 	const sessionById = new Map<string, SessionMeta>();
 	for (const s of sessions) {
 		sessionById.set(s.id, s);
 	}
 
-	// Cascades archive state: if any ancestor is archived, children are also treated as archived
+	const wsPathMap = new Map<string, string>();
+	for (const ws of workspaces) {
+		wsPathMap.set(ws.id, ws.path);
+	}
+
+	// Cascades archive state: if any ancestor is archived, children are also treated as archived.
+	// Archive cascade never hides a child that is live, pinned, pending, working or awaiting (G13).
 	const isArchivedCascaded = (s: SessionMeta): boolean => {
 		if (s.archived) return true;
+		if (
+			s.live ||
+			s.pinned ||
+			Boolean(s.pending) ||
+			s.status === "working" ||
+			s.status === "awaiting_approval" ||
+			s.status === "awaiting_answer"
+		) {
+			return false;
+		}
 		let curr = s;
 		const visited = new Set<string>([s.id]);
 		while (curr.parentId) {
@@ -114,23 +251,61 @@ export function filterSessions(
 		if (!showArchived && isArchivedCascaded(session)) {
 			return false;
 		}
-		if (searchQuery && !matchesSearch(session, searchQuery)) {
-			return false;
+		if (searchQuery) {
+			const wsPath = session.workspaceId ? wsPathMap.get(session.workspaceId) : undefined;
+			if (!matchesSearch(session, searchQuery, wsPath)) {
+				return false;
+			}
 		}
 		return true;
 	});
 }
 
-/** Sort helper: pinned first, then by updatedAt descending. */
-function compareSessions(a: SessionMeta, b: SessionMeta): number {
-	if (a.pinned !== b.pinned) {
-		return a.pinned ? -1 : 1;
-	}
-	const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-	const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-	return timeB - timeA;
+function parseTimestamp(ts: string | null | undefined): number {
+	if (!ts) return 0;
+	const n = Date.parse(ts);
+	return Number.isNaN(n) ? 0 : n;
 }
 
+function buildSessionTimeMap(sessions: readonly SessionMeta[]): Map<string, number> {
+	const map = new Map<string, number>();
+	for (const s of sessions) {
+		map.set(s.id, parseTimestamp(s.updatedAt || s.createdAt));
+	}
+	return map;
+}
+
+function createSessionComparator(
+	timeMap: ReadonlyMap<string, number>,
+	frozenOrder?: ReadonlyMap<string, number>,
+): (a: SessionMeta, b: SessionMeta) => number {
+	return (a: SessionMeta, b: SessionMeta): number => {
+		if (a.pinned !== b.pinned) {
+			return a.pinned ? -1 : 1;
+		}
+
+		if (frozenOrder) {
+			const rankA = frozenOrder.get(a.id);
+			const rankB = frozenOrder.get(b.id);
+
+			if (rankA !== undefined && rankB !== undefined) {
+				if (rankA !== rankB) return rankA - rankB;
+				return a.id.localeCompare(b.id);
+			}
+
+			if (rankA === undefined && rankB !== undefined) {
+				return -1; // absent (new) first
+			}
+			if (rankA !== undefined && rankB === undefined) {
+				return 1;
+			}
+		}
+
+		const timeA = timeMap.get(a.id) ?? 0;
+		const timeB = timeMap.get(b.id) ?? 0;
+		return timeB - timeA;
+	};
+}
 
 /**
  * Recover a worktree name from a cwd path when live git metadata is gone
@@ -151,47 +326,82 @@ export function inferWorktreeName(cwd: string): string | null {
  * When `worktrees` (a live `git_list_worktrees` result; first entry = main
  * checkout) is given, every listed worktree yields a subgroup — including
  * ones with zero sessions — keyed `wtp:<path>`, labeled by branch name
- * (falling back to the dir basename). Sessions attach by deepest cwd
- * containment; sessions matching no listed worktree fall back to the
+ * (falling back to the dir basename). Sessions attach by sessionIds first,
+ * then deepest cwd containment; sessions matching no listed worktree fall back to the
  * badge/inferred bucketing below.
  */
 export function createSubgroups(
 	sessions: SessionMeta[],
 	worktrees?: WorktreeInfo[],
+	customCompare?: (a: SessionMeta, b: SessionMeta) => number,
 ): { subgroups: BranchSubgroup[]; hasMultipleSubgroups: boolean } {
 	if (sessions.length === 0 && (!worktrees || worktrees.length === 0)) {
 		return { subgroups: [], hasMultipleSubgroups: false };
 	}
+
+	const timeMap = customCompare ? null : buildSessionTimeMap(sessions);
+	const compare = customCompare ?? createSessionComparator(timeMap!);
+
 	const bucketMap = new Map<
 		string,
 		{
 			kind: "worktree" | "branch" | "default";
 			label: string;
 			deleted: boolean;
+			isMain: boolean;
 			items: SessionMeta[];
 		}
 	>();
 
-	// Deepest-worktree-path-first so a nested checkout wins over its parents.
+	// G8: Precompute WorktreeInfo.sessionIds lookup
+	const wtBySessionId = new Map<string, WorktreeInfo>();
+	if (worktrees) {
+		for (const w of worktrees) {
+			if (w.sessionIds) {
+				for (const sid of w.sessionIds) {
+					wtBySessionId.set(sid, w);
+				}
+			}
+		}
+	}
+
+	// G20: Precompute path length sort, normalized path, and isWtDir once
 	const liveWorktrees = worktrees
-		? [...worktrees].sort((a, b) => b.path.length - a.path.length)
+		? worktrees
+				.map((w) => ({
+					wt: w,
+					normPath: normalizePath(w.path),
+					isWtDir: inferWorktreeName(w.path) !== null,
+				}))
+				.sort((a, b) => b.wt.path.length - a.wt.path.length)
 		: null;
+
 	const worktreeItems = new Map<string, SessionMeta[]>();
+	const hasLiveList = Boolean(liveWorktrees && liveWorktrees.length > 0);
+
 	for (const s of sessions) {
-		if (liveWorktrees) {
-			// A cwd inside a `.worktrees/<name>` / `.cache/wt-<name>` dir can only
-			// belong to a live worktree that is itself inside such a dir — the
-			// main checkout must not swallow sessions from deleted worktrees.
+		// 1. Direct sessionIds attachment (G8)
+		const directWt = wtBySessionId.get(s.id);
+		if (directWt) {
+			const items = worktreeItems.get(directWt.path) ?? [];
+			items.push(s);
+			worktreeItems.set(directWt.path, items);
+			continue;
+		}
+
+		// 2. Canonical-aware deepest cwd containment (G8)
+		if (liveWorktrees && liveWorktrees.length > 0) {
 			const inWtDir = inferWorktreeName(s.cwd) !== null;
-			const wt = liveWorktrees.find(
+			const normCwd = normalizePath(s.cwd);
+			const matched = liveWorktrees.find(
 				(w) =>
-					isInside(s.cwd, w.path) &&
-					(!inWtDir || inferWorktreeName(w.path) !== null),
+					(isInside(s.cwd, w.wt.path) || isInside(normCwd, w.normPath)) &&
+					(!inWtDir || w.isWtDir),
 			);
-			if (wt) {
-				const items = worktreeItems.get(wt.path) ?? [];
+			if (matched) {
+				const items = worktreeItems.get(matched.wt.path) ?? [];
 				items.push(s);
-				worktreeItems.set(wt.path, items);
+				worktreeItems.set(matched.wt.path, items);
 				continue;
 			}
 		}
@@ -200,8 +410,17 @@ export function createSubgroups(
 		let kind: "worktree" | "branch" | "default" = "default";
 		let label = "其他";
 		let deleted = false;
+		let isMain = false;
 
-		if (s.git?.worktree) {
+		// G9: A cwd inside a `.worktrees/<n>` / `.cache/wt-<n>` dir that matches no
+		// entry of a non-empty live list is deleted, even with a stale git badge.
+		const inferred = inferWorktreeName(s.cwd);
+		if (hasLiveList && inferred !== null) {
+			key = `wt:${inferred}`;
+			kind = "worktree";
+			label = inferred;
+			deleted = true;
+		} else if (s.git?.worktree) {
 			key = `wt:${s.git.worktree}`;
 			kind = "worktree";
 			const parts = s.git.worktree.split(/[/\\]/);
@@ -210,10 +429,12 @@ export function createSubgroups(
 			key = `br:${s.git.branch}`;
 			kind = "branch";
 			label = s.git.branch;
+			// G18: before the worktree list loads (worktrees === undefined),
+			// main-checkout badge buckets are treated as main so there's no layout jump.
+			if (worktrees === undefined) {
+				isMain = true;
+			}
 		} else {
-			// Git badge unavailable (e.g. worktree merged & deleted): recover the
-			// group from the cwd path — `.worktrees/<name>` or `.cache/wt-<name>`.
-			const inferred = inferWorktreeName(s.cwd);
 			if (inferred) {
 				key = `wt:${inferred}`;
 				kind = "worktree";
@@ -224,7 +445,7 @@ export function createSubgroups(
 
 		let bucket = bucketMap.get(key);
 		if (!bucket) {
-			bucket = { kind, label, deleted, items: [] };
+			bucket = { kind, label, deleted, isMain, items: [] };
 			bucketMap.set(key, bucket);
 		}
 		bucket.items.push(s);
@@ -245,7 +466,7 @@ export function createSubgroups(
 				isMain: index === 0,
 				path: wt.path,
 				createCwd: wt.path,
-				sessions: [...(worktreeItems.get(wt.path) ?? [])].sort(compareSessions),
+				sessions: [...(worktreeItems.get(wt.path) ?? [])].sort(compare),
 				totalCount: worktreeItems.get(wt.path)?.length ?? 0,
 			},
 		}));
@@ -262,9 +483,9 @@ export function createSubgroups(
 			kind: bucket.kind,
 			label: bucket.label,
 			deleted: bucket.deleted,
-			isMain: false,
+			isMain: bucket.isMain,
 			createCwd: bucket.items[0]?.cwd,
-			sessions: [...bucket.items].sort(compareSessions),
+			sessions: [...bucket.items].sort(compare),
 			totalCount: bucket.items.length,
 		})),
 	);
@@ -293,7 +514,7 @@ export function createSubgroups(
  * 3. Project workspaces follow in sort order, subgroups by live worktree
  *    (`GroupingOptions.worktrees`) or worktree/branch badge; sessions whose
  *    worktree dir is gone land in `deletedSubgroups` per workspace.
- * 4. Unassigned ("未归档") bucket + "已清理的 Worktree" bucket for unassigned
+ * 4. Unassigned ("未归入工作区") bucket + "已清理的工作树" bucket for unassigned
  *    sessions whose worktree directory is gone — kept visible (dimmed)
  *    instead of silently evaporating.
  */
@@ -306,7 +527,13 @@ export function groupSessions(
 		? allSessions
 		: Object.values(allSessions);
 
-	const visibleSessions = filterSessions(sessionList, options);
+	const timeMap = buildSessionTimeMap(sessionList);
+	const compare = createSessionComparator(timeMap, options.frozenOrder);
+
+	const visibleSessions = filterSessions(sessionList, {
+		...options,
+		workspaces,
+	});
 
 	const globalWs = workspaces.find((w) => w.kind === "global") ?? null;
 	const projectWorkspaces = workspaces
@@ -331,20 +558,64 @@ export function groupSessions(
 		}
 	}
 
-	const isPinned = (s: SessionMeta) => s.pinned;
-
 	// Split unassigned: sessions on deleted worktrees go to a dedicated dimmed
 	// bucket instead of vanishing (or polluting the live list).
 	const isDeletedWt = (s: SessionMeta) =>
 		!s.git?.worktree && !s.git?.branch && inferWorktreeName(s.cwd) !== null;
-	const unassignedLive = unassignedSessions.filter((s) => !isPinned(s) && !isDeletedWt(s));
-	const unassignedDeleted = unassignedSessions.filter((s) => !isPinned(s) && isDeletedWt(s));
+	const unassignedLive = unassignedSessions.filter((s) => !s.pinned && !isDeletedWt(s));
+	const unassignedDeleted = unassignedSessions.filter((s) => !s.pinned && isDeletedWt(s));
 
 	const pinnedSessions = visibleSessions
-		.filter((s) => isPinned(s))
-		.sort(compareSessions);
-	const unassigned = [...unassignedLive].sort(compareSessions);
-	const deletedSessions = [...unassignedDeleted].sort(compareSessions);
+		.filter((s) => s.pinned)
+		.sort(compare);
+	const unassigned = [...unassignedLive].sort(compare);
+	const deletedSessions = [...unassignedDeleted].sort(compare);
+
+	// Group unassigned live sessions by repoRoot ?? cwd (Contract 5 / G15)
+	const unassignedGroupMap = new Map<string, SessionMeta[]>();
+	for (const s of unassignedLive) {
+		const root = s.repoRoot ?? s.cwd;
+		let arr = unassignedGroupMap.get(root);
+		if (!arr) {
+			arr = [];
+			unassignedGroupMap.set(root, arr);
+		}
+		arr.push(s);
+	}
+
+	const rawUnassignedGroups: {
+		key: string;
+		cwd: string;
+		label: string;
+		sessions: SessionMeta[];
+		newestTime: number;
+	}[] = [];
+
+	for (const [cwd, items] of unassignedGroupMap.entries()) {
+		const sorted = [...items].sort(compare);
+		let newest = 0;
+		for (const item of items) {
+			const t = timeMap.get(item.id) ?? 0;
+			if (t > newest) newest = t;
+		}
+		rawUnassignedGroups.push({
+			key: cwd,
+			cwd,
+			label: basename(cwd) || cwd,
+			sessions: sorted,
+			newestTime: newest,
+		});
+	}
+
+	// Newest group first
+	rawUnassignedGroups.sort((a, b) => b.newestTime - a.newestTime);
+	const unassignedGroups = rawUnassignedGroups.map(({ key, cwd, label, sessions }) => ({
+		key,
+		cwd,
+		label,
+		sessions,
+	}));
+
 	// While searching, drop empty subgroups so only real matches show.
 	const searching = (options.searchQuery ?? "").trim().length > 0;
 	const splitSubgroups = (
@@ -361,9 +632,12 @@ export function groupSessions(
 		}
 		return { live, deleted };
 	};
+
 	const workspaceGroups: WorkspaceGroup[] = projectWorkspaces.map((ws) => {
-		const items = (sessionMap.get(ws.id) ?? []).filter((s) => !isPinned(s));
-		const { subgroups } = createSubgroups(items, options.worktrees?.[ws.id]);
+		const allWsSessions = sessionMap.get(ws.id) ?? [];
+		const pinnedCount = allWsSessions.filter((s) => s.pinned).length;
+		const items = allWsSessions.filter((s) => !s.pinned);
+		const { subgroups } = createSubgroups(items, options.worktrees?.[ws.id], compare);
 		const { live, deleted } = splitSubgroups(subgroups);
 		return {
 			workspace: ws,
@@ -372,13 +646,15 @@ export function groupSessions(
 			deletedSubgroups: deleted,
 			hasMultipleSubgroups: live.length > 1,
 			totalCount: items.length,
+			pinnedCount,
 		};
 	});
 
 	const globalGroup: WorkspaceGroup | null = globalWs
 		? (() => {
-				const items = globalSessions.filter((s) => !isPinned(s));
-				const { subgroups } = createSubgroups(items);
+				const pinnedCount = globalSessions.filter((s) => s.pinned).length;
+				const items = globalSessions.filter((s) => !s.pinned);
+				const { subgroups } = createSubgroups(items, undefined, compare);
 				const { live, deleted } = splitSubgroups(subgroups);
 				return {
 					workspace: globalWs,
@@ -387,33 +663,39 @@ export function groupSessions(
 					deletedSubgroups: deleted,
 					hasMultipleSubgroups: live.length > 1,
 					totalCount: items.length,
+					pinnedCount,
 				};
 			})()
 		: null;
+
 	let finalPinnedSessions = pinnedSessions;
 	let finalGlobalGroup = globalGroup;
 	let finalWorkspaceGroups = workspaceGroups;
 	let finalUnassigned = unassigned;
+	let finalUnassignedGroups = unassignedGroups;
 	let finalDeletedSessions = deletedSessions;
 
 	const { activeWorkspaceId } = options;
+	// G1: treat activeWorkspaceId === globalWs.id exactly like "__global"
+	const isGlobalFilter =
+		activeWorkspaceId === "__global" ||
+		(Boolean(globalWs) && activeWorkspaceId === globalWs?.id);
+
 	if (activeWorkspaceId && activeWorkspaceId !== "all") {
-		if (activeWorkspaceId === "__global") {
+		if (isGlobalFilter) {
 			finalPinnedSessions = pinnedSessions.filter((s) => s.workspaceId === globalWs?.id);
 			finalWorkspaceGroups = [];
 			finalUnassigned = [];
+			finalUnassignedGroups = [];
 			finalDeletedSessions = [];
-		} else if (activeWorkspaceId === "__unassigned") {
-			finalPinnedSessions = pinnedSessions.filter((s) => !s.workspaceId);
-			finalWorkspaceGroups = [];
-			finalGlobalGroup = null;
-			finalDeletedSessions = [];
+			finalGlobalGroup = globalGroup;
 		} else {
 			const targetGroup = workspaceGroups.find((g) => g.workspace.id === activeWorkspaceId);
 			finalWorkspaceGroups = targetGroup ? [targetGroup] : [];
 			finalGlobalGroup = null;
 			finalPinnedSessions = pinnedSessions.filter((s) => s.workspaceId === activeWorkspaceId);
 			finalUnassigned = [];
+			finalUnassignedGroups = [];
 			finalDeletedSessions = [];
 		}
 	}
@@ -429,6 +711,7 @@ export function groupSessions(
 		pinnedSessions: finalPinnedSessions,
 		globalGroup: finalGlobalGroup,
 		unassigned: finalUnassigned,
+		unassignedGroups: finalUnassignedGroups,
 		deletedSessions: finalDeletedSessions,
 		workspaceGroups: finalWorkspaceGroups,
 		totalVisible,
