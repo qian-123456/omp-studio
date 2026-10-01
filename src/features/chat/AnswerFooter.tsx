@@ -2,13 +2,7 @@
  * visible on the latest turn), tertiary meta text, neutral checkpoint
  * affordances — no colored pills. */
 
-import {
-	ChevronRight,
-	Copy,
-	GitBranch,
-	RotateCcw,
-	Save,
-} from "lucide-react";
+import { ChevronRight, Copy, RotateCcw, Save } from "lucide-react";
 import { useState } from "react";
 import type { TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
@@ -25,6 +19,13 @@ const STATUS_LETTER_STYLE: Record<string, string> = {
 	M: "text-[var(--status-warning)]",
 	D: "text-[var(--status-error)]",
 };
+
+/** Codex's "Branch in new chat" glyph (app-initial `KW`), verbatim path. */
+const BranchIcon = () => (
+	<svg width={13} height={13} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+		<path d="M15.8 11.535c.367 0 .665.298.665.665v5a.665.665 0 0 1-.665.665h-5a.665.665 0 1 1 0-1.33h3.394l-3.565-3.564a.666.666 0 0 1 .942-.942l3.564 3.565V12.2c0-.367.298-.665.665-.665Zm0-9.4c.367 0 .665.298.665.665v5a.665.665 0 0 1-1.33 0V4.405l-5.128 5.128c-.323.324-.558.565-.842.74a2.668 2.668 0 0 1-.771.319c-.324.078-.662.073-1.12.073H1.93a.665.665 0 1 1 0-1.33h5.345c.52 0 .673-.005.809-.037.136-.033.266-.086.385-.16.12-.072.23-.177.598-.545l5.128-5.128H10.8a.665.665 0 0 1 0-1.33h5Z" />
+	</svg>
+);
 
 async function undoTurn(
 	cwd: string,
@@ -257,7 +258,7 @@ export function AnswerFooter({
 						title="分叉此回复到侧聊"
 						aria-label="分叉此回复到侧聊"
 					>
-						<GitBranch size={12} />
+						<BranchIcon />
 					</button>
 				</div>
 			</div>
