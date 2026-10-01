@@ -167,6 +167,21 @@
 	--shadow-apple-card: 0 0 0 0.5px var(--hairline), 0 4px 16px rgba(0, 0, 0, 0.35);
 	--shadow-apple-modal: 0 0 0 0.5px var(--hairline-strong), 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.25);
 
+	/* Derived chat tokens (Codex-style). These mix against each theme's
+	 * --text, so every light/dark palette resolves them automatically:
+	 *   --text-60  activity summary / secondary text
+	 *   --text-40  completed tool rows / meta text
+	 *   --text-30  children / tertiary text
+	 *   --line        1px hairline borders & dividers
+	 *   --ghost-hover quiet row hover fill
+	 *   --chat-user-bg user message bubble */
+	--text-60: color-mix(in oklab, var(--text) 60%, transparent);
+	--text-40: color-mix(in oklab, var(--text) 40%, transparent);
+	--text-30: color-mix(in oklab, var(--text) 30%, transparent);
+	--line: color-mix(in oklab, var(--text) 8%, transparent);
+	--ghost-hover: color-mix(in oklab, var(--text) 6%, transparent);
+	--chat-user-bg: color-mix(in oklab, var(--text) 8%, transparent);
+	--status-info: var(--accent);
 
 	/* scrollbars use native WKWebView overlay appearance — no tokens needed */
 	/* Apple HIG spring & sheet curves */
@@ -177,10 +192,10 @@
 	 * Tailwind v4 operates without @tailwindcss/typography; markdown styling is handled
 	 * via [&_*] child selectors in src/features/chat/markdown.tsx.
 	 */
-	--chat-font-size: 13px;
-	--chat-line-height: 1.7;
-	--chat-code-font-size: 12px;
-	--chat-user-font-size: 13px;
+	--chat-font-size: 14px;
+	--chat-line-height: 22px;
+	--chat-code-font-size: 12.5px;
+	--chat-user-font-size: 14px;
 }
 
 html[data-theme="omp"] {
@@ -854,24 +869,25 @@ textarea {
 	display: none !important;
 }
 
-/* Chat font-size presets (settings → 外观). */
+/* Chat font-size presets (settings → 外观). Line height tracks the Codex
+ * base (font-size + 8px). */
 html[data-font-size="sm"] {
 	--chat-font-size: 12px;
-	--chat-line-height: 1.65;
+	--chat-line-height: 20px;
 	--chat-code-font-size: 11px;
 	--chat-user-font-size: 12px;
 }
 
 html[data-font-size="lg"] {
 	--chat-font-size: 15px;
-	--chat-line-height: 1.7;
+	--chat-line-height: 24px;
 	--chat-code-font-size: 13.5px;
 	--chat-user-font-size: 15px;
 }
 
 html[data-font-size="xl"] {
 	--chat-font-size: 17px;
-	--chat-line-height: 1.75;
+	--chat-line-height: 28px;
 	--chat-code-font-size: 15px;
 	--chat-user-font-size: 17px;
 }
@@ -969,4 +985,208 @@ html[data-ui-scale="large"] {
 /* Tabular nums */
 .tabular-nums {
 	font-variant-numeric: tabular-nums;
+}
+
+/* Codex-style text shimmer for in-flight activity labels (正在思考, 正在运行…).
+ * A left-to-right highlight sweep over --text-60; reduced-motion keeps the
+ * static dimmed label. */
+@keyframes shimmer-sweep {
+	0% {
+		background-position: 140% 0;
+	}
+	100% {
+		background-position: -105% 0;
+	}
+}
+.shimmer-text {
+	background-image: linear-gradient(
+		90deg,
+		var(--text-60) 35%,
+		var(--text) 50%,
+		var(--text-60) 65%
+	);
+	background-size: 200% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: shimmer-sweep 2.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+	.shimmer-text {
+		animation: none;
+		background-image: none;
+		color: var(--text-60);
+	}
+}
+
+/* Fade the thread scroll edges (top 1rem, bottom 22px above the composer)
+ * with masks instead of borders/shadows. */
+.thread-fade-mask {
+	-webkit-mask-image: linear-gradient(
+		to bottom,
+		transparent 0,
+		black 1rem,
+		black calc(100% - 22px),
+		transparent 100%
+	);
+	mask-image: linear-gradient(
+		to bottom,
+		transparent 0,
+		black 1rem,
+		black calc(100% - 22px),
+		transparent 100%
+	);
+}
+
+/* highlight.js syntax colors, scoped per mode so both dark and light themes
+ * stay readable (github-dark tokens on dark, github tokens on light). */
+.hljs-keyword,
+.hljs-doctag,
+.hljs-meta .hljs-keyword,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-variable.language_ {
+	color: #ff7b72;
+}
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_ {
+	color: #d2a8ff;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-operator,
+.hljs-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id {
+	color: #79c0ff;
+}
+.hljs-regexp,
+.hljs-string,
+.hljs-meta .hljs-string {
+	color: #a5d6ff;
+}
+.hljs-built_in,
+.hljs-symbol {
+	color: #ffa657;
+}
+.hljs-comment,
+.hljs-code,
+.hljs-formula {
+	color: #8b949e;
+}
+.hljs-name,
+.hljs-quote,
+.hljs-selector-tag,
+.hljs-selector-pseudo {
+	color: #7ee787;
+}
+.hljs-subst,
+.hljs-params {
+	color: var(--text);
+}
+.hljs-section {
+	color: #79c0ff;
+	font-weight: bold;
+}
+.hljs-bullet {
+	color: #f2cc60;
+}
+.hljs-emphasis {
+	font-style: italic;
+}
+.hljs-strong {
+	font-weight: bold;
+}
+.hljs-addition {
+	color: #7ee787;
+}
+.hljs-deletion {
+	color: #ffa198;
+}
+
+html[data-mode="light"],
+html[data-theme="light"],
+html[data-theme="one-light"],
+html[data-theme="catppuccin-latte"],
+html[data-theme="rose-pine-dawn"],
+html[data-theme="solarized-light"],
+html[data-theme="github-light"],
+html[data-theme="nord-light"],
+html[data-theme="tokyo-night-light"],
+html[data-theme="ayu-light"],
+html[data-theme="gruvbox-light"],
+html[data-theme="everforest-light"],
+html[data-theme="sakura"],
+html[data-theme="glacier"],
+html[data-theme="lavender"] {
+	.hljs-keyword,
+	.hljs-doctag,
+	.hljs-meta .hljs-keyword,
+	.hljs-template-tag,
+	.hljs-template-variable,
+	.hljs-type,
+	.hljs-variable.language_ {
+		color: #d73a49;
+	}
+	.hljs-title,
+	.hljs-title.class_,
+	.hljs-title.class_.inherited__,
+	.hljs-title.function_ {
+		color: #6f42c1;
+	}
+	.hljs-attr,
+	.hljs-attribute,
+	.hljs-literal,
+	.hljs-meta,
+	.hljs-number,
+	.hljs-operator,
+	.hljs-variable,
+	.hljs-selector-attr,
+	.hljs-selector-class,
+	.hljs-selector-id {
+		color: #005cc5;
+	}
+	.hljs-regexp,
+	.hljs-string,
+	.hljs-meta .hljs-string {
+		color: #032f62;
+	}
+	.hljs-built_in,
+	.hljs-symbol {
+		color: #e36209;
+	}
+	.hljs-comment,
+	.hljs-code,
+	.hljs-formula {
+		color: #6a737d;
+	}
+	.hljs-name,
+	.hljs-quote,
+	.hljs-selector-tag,
+	.hljs-selector-pseudo {
+		color: #22863a;
+	}
+	.hljs-subst,
+	.hljs-params {
+		color: var(--text);
+	}
+	.hljs-section {
+		color: #005cc5;
+	}
+	.hljs-bullet {
+		color: #735c0f;
+	}
+	.hljs-addition {
+		color: #22863a;
+	}
+	.hljs-deletion {
+		color: #b31d28;
+	}
 }

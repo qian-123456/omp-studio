@@ -115,6 +115,8 @@ describe("ompDesktopCategoryFor", () => {
 
 		expect(ompDesktopCategoryFor("task.maxConcurrency").id).toBe("tasks");
 		expect(ompDesktopCategoryFor("task.isolation.enabled").id).toBe("tasks");
+		expect(ompDesktopCategoryFor("advisor.enabled").id).toBe("tasks");
+		expect(ompDesktopCategoryFor("async.enabled").id).toBe("tasks");
 		expect(ompDesktopCategoryFor("worktree.base").id).toBe("tasks");
 
 		expect(ompDesktopCategoryFor("searxng.endpoint").id).toBe("providers");

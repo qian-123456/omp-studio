@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::cmd::{git, git_ok};
 use super::status::{diff_base, status};
-use crate::contracts::GitCommit;
+use crate::contracts::{GitCommit, GitHistory};
 
 /// Max diff size returned to the UI.
 const MAX_DIFF_BYTES: usize = 2 * 1024 * 1024;
@@ -53,6 +53,51 @@ pub fn log(dir: &Path, limit: u32) -> Vec<GitCommit> {
     )
     .map(|t| parse_log(&t))
     .unwrap_or_default()
+}
+
+/// The branch a worktree's history forks from: `origin/HEAD`'s target, else
+/// local `main`/`master`. None when HEAD itself is the base branch.
+pub fn fork_base(dir: &Path) -> Option<String> {
+    let short = |full: &str| full.trim_start_matches("refs/remotes/").to_string();
+    let base = git_ok(dir, &["symbolic-ref", "-q", "refs/remotes/origin/HEAD"])
+        .ok()
+        .map(|t| short(t.trim()))
+        .or_else(|| {
+            ["main", "master"]
+                .into_iter()
+                .find(|b| {
+                    git_ok(dir, &["rev-parse", "--verify", "-q", b])
+                        .map(|s| !s.trim().is_empty())
+                        .unwrap_or(false)
+                })
+                .map(str::to_string)
+        })?;
+    // Don't fork a worktree against itself (the base's own worktree view).
+    // Detached HEAD keeps the base — it can still have a fork point.
+    let head_branch = git_ok(dir, &["symbolic-ref", "-q", "--short", "HEAD"])
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    if !head_branch.is_empty()
+        && (head_branch == base || head_branch == base.trim_start_matches("origin/"))
+    {
+        return None;
+    }
+    Some(base)
+}
+
+pub fn history(dir: &Path, limit: u32) -> GitHistory {
+    let base = fork_base(dir);
+    let fork_point = base.as_deref().and_then(|b| {
+        git_ok(dir, &["merge-base", "HEAD", b]).ok().and_then(|s| {
+            let sha = s.trim();
+            (!sha.is_empty()).then(|| sha.to_string())
+        })
+    });
+    GitHistory {
+        commits: log(dir, limit),
+        fork_point,
+        base,
+    }
 }
 
 fn cap(mut s: String) -> String {

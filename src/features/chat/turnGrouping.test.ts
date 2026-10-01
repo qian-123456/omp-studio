@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { ToolCall, TranscriptItem } from "../../lib/contracts";
 import {
 	computeDurationMs,
+	activityGroupSummary,
 	formatDurationChinese,
+	formatDurationCompact,
 	formatShortModel,
+	groupActivityUnits,
 	groupTurnBlocks,
 	noticeBody,
 	noticeSummary,
+	type TurnStep,
 } from "./turnGrouping";
 
 function makeItem(partial: Partial<TranscriptItem> & { id: string; kind: TranscriptItem["kind"] }): TranscriptItem {
@@ -348,5 +352,82 @@ describe("turnGrouping", () => {
 				}),
 			),
 		).toBe("");
+	});
+});
+
+describe("activity grouping", () => {
+	it("formats compact durations for the worked-for divider", () => {
+		expect(formatDurationCompact(0)).toBe("0秒");
+		expect(formatDurationCompact(500)).toBe("1秒");
+		expect(formatDurationCompact(123000)).toBe("2分3秒");
+		expect(formatDurationCompact(60000)).toBe("1分");
+		expect(formatDurationCompact(3600000 + 240000)).toBe("1小时4分");
+	});
+
+	const tool = (
+		id: string,
+		name: string,
+		args: unknown = {},
+	): Extract<TurnStep, { kind: "tool" }> => ({
+		id,
+		kind: "tool",
+		item: makeItem({ id: `${id}-item`, kind: "assistant" }),
+		call: { id, name, args, intent: null },
+	});
+
+	it("summarizes folded runs per kind", () => {
+		const explore = [tool("a", "read"), tool("b", "grep"), tool("c", "glob")];
+		expect(activityGroupSummary("exploration", explore, false)).toBe(
+			"已浏览 1 个文件、2 次搜索",
+		);
+		expect(activityGroupSummary("exploration", explore, true)).toBe(
+			"正在浏览…",
+		);
+		expect(
+			activityGroupSummary("commands", [tool("x", "bash"), tool("y", "bash")], false),
+		).toBe("已运行 2 条命令");
+		// Edits count distinct paths, not calls.
+		expect(
+			activityGroupSummary(
+				"edits",
+				[
+					tool("e1", "edit", { path: "a.ts" }),
+					tool("e2", "edit", { path: "a.ts" }),
+					tool("e3", "write", { path: "b.ts" }),
+				],
+				false,
+			),
+		).toBe("已编辑 2 个文件");
+	});
+
+	it("folds same-kind runs, splits on kind change, absorbs thinking", () => {
+		const thinking: TurnStep = {
+			id: "th-1",
+			kind: "thinking",
+			item: makeItem({ id: "th-item", kind: "assistant" }),
+			thinking: "…",
+		};
+
+		const units = groupActivityUnits([
+			tool("c1", "read"),
+			tool("c2", "grep"),
+			thinking,
+			tool("c3", "glob"),
+			tool("r1", "bash"),
+			tool("r2", "bash"),
+			tool("e1", "edit"),
+			tool("c4", "read"),
+		]);
+
+		expect(units.map((u) => (u.kind === "group" ? u.group : u.step.id))).toEqual(
+			["exploration", "commands", "e1", "c4"],
+		);
+		if (units[0].kind === "group") {
+			expect(units[0].steps.map((s) => s.call.name)).toEqual([
+				"read",
+				"grep",
+				"glob",
+			]);
+		}
 	});
 });

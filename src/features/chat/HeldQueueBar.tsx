@@ -88,11 +88,11 @@ export function HeldQueueBar({
 
 
 	return (
-		<div className="shrink-0 border-t border-neutral-800 bg-neutral-900/90 px-3 py-1.5 text-[12px] text-neutral-300 backdrop-blur-md">
+		<div className="shrink-0 border-t border-[var(--line)] bg-[var(--bg-panel)] px-3 py-1.5 text-[12px] text-[var(--text-60)]">
 			<div className="flex items-center gap-2">
-				<span className="font-medium text-neutral-200">排队队列 ({items.length})</span>
+				<span className="font-medium text-[var(--text)]">排队队列 ({items.length})</span>
 				{streaming && (
-					<span className="text-[11px] text-neutral-400">
+					<span className="text-[11px] text-[var(--text-40)]">
 						（回合进行中，将按序执行）
 					</span>
 				)}
@@ -101,28 +101,28 @@ export function HeldQueueBar({
 					disabled={sending || streaming}
 					onClick={() => void sendMerged()}
 					title={streaming ? "回合进行中，结束后可发送" : "合并为一条并立即发送"}
-					className="rounded bg-indigo-600 px-2 py-0.5 text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+					className="rounded border border-[var(--line)] px-2 py-0.5 text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					立即发送(合并为一条)
 				</button>
 				<button
 					type="button"
 					onClick={() => setDismissed(sessionId, true)}
-					className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-300 hover:bg-neutral-700"
+					className="rounded px-2 py-0.5 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 				>
 					继续暂存
 				</button>
 				<button
 					type="button"
 					onClick={() => setExpanded((v) => !v)}
-					className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-300 hover:bg-neutral-700"
+					className="rounded px-2 py-0.5 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 				>
 					{expanded ? "收起" : "逐条确认"}
 				</button>
 				<button
 					type="button"
 					onClick={() => void handleClearAll()}
-					className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-400 hover:bg-red-950/60 hover:text-red-300"
+					className="rounded px-2 py-0.5 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 				>
 					清空
 				</button>
@@ -132,13 +132,13 @@ export function HeldQueueBar({
 					{items.map((item, i) => (
 						<div
 							key={item.id}
-							className="flex items-start gap-1 rounded border border-neutral-800 bg-neutral-900/60 p-1"
+							className="flex items-start gap-1 rounded border border-[var(--line)] bg-[var(--bg)] p-1"
 						>
 							<textarea
 								value={item.text}
 								onChange={(e) => update(sessionId, i, e.target.value)}
 								rows={Math.min(4, item.text.split("\n").length + 1)}
-								className="min-w-0 flex-1 resize-none bg-transparent px-1 py-0.5 text-[12px] text-neutral-200 outline-none"
+								className="min-w-0 flex-1 resize-none bg-transparent px-1 py-0.5 text-[12px] text-[var(--text)] outline-none"
 							/>
 							<div className="flex shrink-0 flex-col gap-0.5">
 								<button
@@ -146,7 +146,7 @@ export function HeldQueueBar({
 									aria-label="上移"
 									title="上移"
 									onClick={() => move(sessionId, i, -1)}
-									className="text-neutral-500 hover:text-neutral-200"
+									className="text-[var(--text-40)] hover:text-[var(--text)]"
 								>
 									<ArrowUp size={12} />
 								</button>
@@ -155,7 +155,7 @@ export function HeldQueueBar({
 									aria-label="下移"
 									title="下移"
 									onClick={() => move(sessionId, i, 1)}
-									className="text-neutral-500 hover:text-neutral-200"
+									className="text-[var(--text-40)] hover:text-[var(--text)]"
 								>
 									<ArrowDown size={12} />
 								</button>
@@ -166,7 +166,7 @@ export function HeldQueueBar({
 								title={streaming ? "回合进行中，结束后可发送" : "发送此条"}
 								disabled={sending || streaming}
 								onClick={() => void sendOne(i)}
-								className="shrink-0 rounded bg-indigo-700 p-1 text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+								className="shrink-0 rounded border border-[var(--line)] p-1 text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								<Send size={12} />
 							</button>
@@ -175,7 +175,7 @@ export function HeldQueueBar({
 								aria-label="删除此条"
 								title="删除"
 								onClick={() => void handleRemoveOne(i)}
-								className="shrink-0 p-1 text-neutral-500 hover:text-red-400"
+								className="shrink-0 p-1 text-[var(--text-40)] hover:text-[var(--text)]"
 							>
 								<X size={12} />
 							</button>

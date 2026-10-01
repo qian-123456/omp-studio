@@ -127,6 +127,31 @@ export function ChatTrace({
 			}
 		};
 	}, [computeActive, scrollRef]);
+	const [scrollable, setScrollable] = useState(false);
+
+	// Codex's thread navigation rail (`r.length < 4`) only appears from the
+	// 4th user message; a one- or two-turn chat doesn't need a minimap.
+	const MIN_ENTRIES = 4;
+
+	// It also stays hidden while everything fits on one screen.
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const update = () =>
+			setScrollable(el.scrollHeight > el.clientHeight + 8);
+		const ro = new ResizeObserver(update);
+		ro.observe(el);
+		update();
+		return () => ro.disconnect();
+	}, [scrollRef]);
+
+	// …and re-check whenever the conversation grows while the container size
+	// stays the same.
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (el) setScrollable(el.scrollHeight > el.clientHeight + 8);
+	}, [scrollRef, entries.length]);
+
 
 	// Keep the active dash visible when the strip itself overflows (the
 	// original scrolls its strip virtualizer with align:"auto").
@@ -184,7 +209,7 @@ export function ChatTrace({
 		[openIndex],
 	);
 
-	if (entries.length === 0) return null;
+	if (entries.length < MIN_ENTRIES || !scrollable) return null;
 
 	const jump = (entry: ChatTraceEntry) => {
 		useLive.getState().scrollToItem(sessionId, entry.id);
@@ -240,12 +265,12 @@ export function ChatTrace({
 									onPointerEnter={() => hoverIndex(i)}
 									onFocus={() => hoverIndex(i)}
 									onBlur={clearHover}
-									className="flex h-2.5 w-9 items-center justify-start rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+									className="flex h-2.5 w-9 items-center justify-start rounded-sm"
 								>
 									<span
 										className={clsx(
 											"block h-0.5 w-3 origin-left rounded-full transition-[height,opacity,transform,background-color] duration-150 ease-out motion-reduce:transition-none",
-											colored ? "bg-neutral-200" : "bg-neutral-700",
+											colored ? "bg-[var(--text)]" : "bg-[var(--text-30)]",
 										)}
 										style={{
 											opacity:
@@ -277,7 +302,7 @@ export function ChatTrace({
 					);
 					return createPortal(
 						<div
-							className="pointer-events-none fixed z-50 w-80 max-w-[calc(100vw-2rem)] -translate-y-1/2 rounded-md border border-neutral-800 bg-neutral-900 p-3 text-neutral-100 shadow-lg"
+							className="pointer-events-none fixed z-50 w-80 max-w-[calc(100vw-2rem)] -translate-y-1/2 rounded-md border border-[var(--line)] bg-[var(--bg-panel)] p-3 text-[var(--text)] shadow-apple-card"
 							style={{ left: x, top: y }}
 						>
 							<div className="space-y-2">
@@ -288,8 +313,8 @@ export function ChatTrace({
 									className={clsx(
 										"line-clamp-3 whitespace-pre-line text-[13px] leading-5",
 										entry.assistantPreviewKind === "text"
-											? "text-neutral-100/80"
-											: "text-neutral-500",
+											? "text-[var(--text-60)]"
+											: "text-[var(--text-40)]",
 									)}
 								>
 									{entry.assistantPreview}

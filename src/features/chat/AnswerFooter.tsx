@@ -1,10 +1,8 @@
-import {
-	ChevronRight,
-	Copy,
-	GitFork,
-	RotateCcw,
-	Save,
-} from "lucide-react";
+/** [B] Codex-style turn footer: hover-only ghost icon buttons (always
+ * visible on the latest turn), tertiary meta text, neutral checkpoint
+ * affordances — no colored pills. */
+
+import { ChevronRight, Copy, RotateCcw, Save } from "lucide-react";
 import { useState } from "react";
 import type { TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
@@ -13,19 +11,21 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
-import { formatDurationChinese, formatShortModel } from "./turnGrouping";
+import { formatDurationCompact, formatShortModel } from "./turnGrouping";
 
-const STATUS_STYLE: Record<string, string> = {
-	A: "text-emerald-400",
-	M: "text-amber-400",
-	D: "text-rose-400",
+/** Tiny status letters in the changed-files list; color only on the letter. */
+const STATUS_LETTER_STYLE: Record<string, string> = {
+	A: "text-[var(--status-success)]",
+	M: "text-[var(--status-warning)]",
+	D: "text-[var(--status-error)]",
 };
 
-const STATUS_LABEL: Record<string, string> = {
-	A: "新建",
-	M: "修改",
-	D: "删除",
-};
+/** Codex's "Branch in new chat" glyph (app-initial `KW`), verbatim path. */
+const BranchIcon = () => (
+	<svg width={13} height={13} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+		<path d="M15.8 11.535c.367 0 .665.298.665.665v5a.665.665 0 0 1-.665.665h-5a.665.665 0 1 1 0-1.33h3.394l-3.565-3.564a.666.666 0 0 1 .942-.942l3.564 3.565V12.2c0-.367.298-.665.665-.665Zm0-9.4c.367 0 .665.298.665.665v5a.665.665 0 0 1-1.33 0V4.405l-5.128 5.128c-.323.324-.558.565-.842.74a2.668 2.668 0 0 1-.771.319c-.324.078-.662.073-1.12.073H1.93a.665.665 0 1 1 0-1.33h5.345c.52 0 .673-.005.809-.037.136-.033.266-.086.385-.16.12-.072.23-.177.598-.545l5.128-5.128H10.8a.665.665 0 0 1 0-1.33h5Z" />
+	</svg>
+);
 
 async function undoTurn(
 	cwd: string,
@@ -80,6 +80,7 @@ export function AnswerFooter({
 	durationMs,
 	model,
 	answerText,
+	isLatestTurn,
 }: {
 	sessionId: string;
 	cwd: string;
@@ -91,18 +92,16 @@ export function AnswerFooter({
 	durationMs?: number;
 	model?: string | null;
 	answerText?: string;
+	/** Always-visible footer on the newest turn (Codex shows it without hover). */
+	isLatestTurn?: boolean;
 }) {
 	const [filesOpen, setFilesOpen] = useState(false);
 	const [undoBusy, setUndoBusy] = useState(false);
 
-	// Format completion time to e.g. "14:32"
 	let formattedTime = "";
 	if (completionTime) {
 		try {
-			const d =
-				typeof completionTime === "number"
-					? new Date(completionTime)
-					: new Date(completionTime);
+			const d = new Date(completionTime);
 			if (!isNaN(d.getTime())) {
 				formattedTime = d.toLocaleTimeString([], {
 					hour: "2-digit",
@@ -115,75 +114,79 @@ export function AnswerFooter({
 		}
 	}
 
-	const durationStr = durationMs ? formatDurationChinese(durationMs) : "";
+	const durationStr = durationMs ? formatDurationCompact(durationMs) : "";
 	const shortModel = formatShortModel(model);
 	const commit = turnCheckpoint?.commits?.[0];
+	const meta = [formattedTime, durationStr, shortModel].filter(Boolean);
 
 	return (
-		<div className="group/footer mt-2 flex flex-col gap-1 text-[11px] text-neutral-500">
+		<div
+			className={
+				"mt-1.5 flex min-h-5 flex-col gap-1 text-[11px] text-[var(--text-30)] " +
+				(isLatestTurn
+					? "opacity-100"
+					: "opacity-0 transition-opacity group-hover/answer:opacity-100 focus-within:opacity-100")
+			}
+		>
 			<div className="flex flex-wrap items-center justify-between gap-2">
-				{/* Metadata & Checkpoint Chips */}
+				{/* Meta + checkpoint affordances — neutral tertiary text */}
 				<div className="flex flex-wrap items-center gap-1.5 leading-none">
-					{formattedTime && (
-						<span className="font-mono text-neutral-500" title={`完成时间 ${formattedTime}`}>
-							{formattedTime}
+					{meta.length > 0 && (
+						<span className="tabular-nums" title={model ?? undefined}>
+							{meta.join(" · ")}
 						</span>
 					)}
 
-					{durationStr && (
-						<>
-							<span className="text-neutral-700">·</span>
-							<span className="text-neutral-500" title={`耗时 ${durationStr}`}>
-								{durationStr}
-							</span>
-						</>
-					)}
-
-					{shortModel && (
-						<>
-							<span className="text-neutral-700">·</span>
-							<span className="text-neutral-500" title={`模型: ${model}`}>
-								{shortModel}
-							</span>
-						</>
-					)}
-
-					{/* Git Checkpoint Status */}
 					{turnCheckpoint && (
 						<>
 							{turnCheckpoint.undone && (
-								<span className="rounded hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-500">
-									已撤回
-								</span>
+								<span className="text-[var(--text-30)]">已撤回</span>
 							)}
 
 							{!turnCheckpoint.undone && commit && (
 								<button
 									type="button"
-									onClick={() => useTurnNav.getState().showCommit(cwd, commit)}
-									className="press-scale flex items-center gap-1 rounded hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
+									onClick={() =>
+										useTurnNav.getState().showCommit(cwd, commit)
+									}
+									className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
 									title="在版本历史里查看这一轮存档"
 								>
-									<Save size={10} />
-									<span>已存档</span>
-									<span className="font-mono">{commit.slice(0, 7)}</span>
+									<Save size={11} />
+									<span>
+										已存档{" "}
+										<span className="font-mono">
+											{commit.slice(0, 7)}
+										</span>
+									</span>
 								</button>
 							)}
 
-							{!turnCheckpoint.undone && turnCheckpoint.files.length > 0 && (
-								<button
-									type="button"
-									onClick={() => setFilesOpen((v) => !v)}
-									className="press-scale flex items-center gap-1 rounded hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
-									title={filesOpen ? "收起改动文件" : "查看这一轮改动的文件"}
-								>
-									<ChevronRight
-										size={10}
-										className={filesOpen ? "rotate-90 transition-transform" : "transition-transform"}
-									/>
-									<span>改了 {turnCheckpoint.files.length} 个文件</span>
-								</button>
-							)}
+							{!turnCheckpoint.undone &&
+								turnCheckpoint.files.length > 0 && (
+									<button
+										type="button"
+										onClick={() => setFilesOpen((v) => !v)}
+										className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
+										title={
+											filesOpen
+												? "收起改动文件"
+												: "查看这一轮改动的文件"
+										}
+									>
+										<ChevronRight
+											size={11}
+											className={
+												filesOpen
+													? "rotate-90 transition-transform"
+													: "transition-transform"
+											}
+										/>
+										<span>
+											改了 {turnCheckpoint.files.length} 个文件
+										</span>
+									</button>
+								)}
 
 							{canUndo && !turnCheckpoint.undone && (
 								<button
@@ -191,15 +194,17 @@ export function AnswerFooter({
 									disabled={undoBusy}
 									onClick={() => {
 										setUndoBusy(true);
-										void undoTurn(cwd, sessionFile, turnCheckpoint).then((done) => {
-											setUndoBusy(false);
-											if (done) onDoneUndo?.();
-										});
+										void undoTurn(cwd, sessionFile, turnCheckpoint).then(
+											(done) => {
+												setUndoBusy(false);
+												if (done) onDoneUndo?.();
+											},
+										);
 									}}
-									className="press-scale flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-rose-400/90 hover:bg-rose-500/10 hover:text-rose-300 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+									className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-50"
 									title="把这一轮改动的文件恢复回这一轮开始前的样子"
 								>
-									<RotateCcw size={10} />
+									<RotateCcw size={11} />
 									<span>{undoBusy ? "正在撤回…" : "撤回这一轮"}</span>
 								</button>
 							)}
@@ -207,8 +212,8 @@ export function AnswerFooter({
 					)}
 				</div>
 
-				{/* Copy / Fork Actions (subtle on hover) */}
-				<div className="flex items-center gap-0.5 opacity-0 group-hover/footer:opacity-100 focus-within:opacity-100 transition-opacity">
+				{/* Copy / fork ghost icon buttons */}
+				<div className="flex items-center gap-0.5">
 					{answerText && (
 						<button
 							type="button"
@@ -220,7 +225,7 @@ export function AnswerFooter({
 									toast.error(`复制失败: ${errMsg(e)}`);
 								}
 							}}
-							className="press-scale flex h-5 w-5 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
+							className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 							title="复制回复"
 							aria-label="复制回复"
 						>
@@ -233,8 +238,14 @@ export function AnswerFooter({
 						onClick={async () => {
 							try {
 								const snippet = answerText ? answerText.slice(0, 60) : "";
-								const prompt = snippet ? `基于回复继续：${snippet}…` : "分叉侧聊";
-								const info = await createSideChat(sessionId, prompt, answerText || undefined);
+								const prompt = snippet
+									? `基于回复继续：${snippet}…`
+									: "分叉侧聊";
+								const info = await createSideChat(
+									sessionId,
+									prompt,
+									answerText || undefined,
+								);
 								void useSessions.getState().load().catch(() => {});
 								useUi.getState().setRightTab("sidechat");
 								useUi.getState().selectSession(info.sessionId);
@@ -243,38 +254,41 @@ export function AnswerFooter({
 								toast.error(`分叉失败: ${errMsg(e)}`);
 							}
 						}}
-						className="press-scale flex h-5 w-5 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
+						className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						title="分叉此回复到侧聊"
 						aria-label="分叉此回复到侧聊"
 					>
-						<GitFork size={12} />
+						<BranchIcon />
 					</button>
 				</div>
 			</div>
 
-			{/* Expandable Files Changed List */}
-			{filesOpen && turnCheckpoint && !turnCheckpoint.undone && turnCheckpoint.files.length > 0 && (
-				<ul className="mt-1 w-full max-w-md space-y-px rounded-lg hairline bg-[var(--bg-panel)] p-2">
-					{turnCheckpoint.files.map((f) => (
-						<li
-							key={f.path}
-							className="flex items-center gap-1.5 text-[10px] leading-4"
-						>
-							<span
-								className={`shrink-0 font-mono ${STATUS_STYLE[f.status] ?? "text-neutral-400"}`}
+			{/* Expandable changed-files list — status letter carries the color */}
+			{filesOpen &&
+				turnCheckpoint &&
+				!turnCheckpoint.undone &&
+				turnCheckpoint.files.length > 0 && (
+					<ul className="mt-1 w-full max-w-md space-y-px rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] p-2">
+						{turnCheckpoint.files.map((f) => (
+							<li
+								key={f.path}
+								className="flex items-center gap-1.5 text-[11px] leading-4"
 							>
-								{STATUS_LABEL[f.status] ?? f.status}
-							</span>
-							<span
-								className="truncate font-mono text-neutral-400"
-								title={f.path}
-							>
-								{f.path}
-							</span>
-						</li>
-					))}
-				</ul>
-			)}
+								<span
+									className={`shrink-0 font-mono ${STATUS_LETTER_STYLE[f.status] ?? "text-[var(--text-40)]"}`}
+								>
+									{f.status}
+								</span>
+								<span
+									className="truncate font-mono text-[var(--text-40)]"
+									title={f.path}
+								>
+									{f.path}
+								</span>
+							</li>
+						))}
+					</ul>
+				)}
 		</div>
 	);
 }

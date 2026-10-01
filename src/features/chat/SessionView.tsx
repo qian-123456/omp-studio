@@ -166,7 +166,7 @@ export function SessionView({
 						)}
 						<div
 							ref={scrollRef}
-							className="relative h-full overflow-y-auto"
+							className="thread-fade-mask relative h-full overflow-y-auto"
 						>
 							<MessageList
 								sessionId={sessionId}
@@ -202,20 +202,20 @@ export function SessionView({
 											behavior: "smooth",
 										});
 								}}
-								className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-neutral-700 bg-neutral-900 p-2 text-neutral-300 shadow-lg transition-colors hover:bg-neutral-800 hover:text-white"
+								className="absolute bottom-3 left-1/2 z-20 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--bg-panel)] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 							>
 								<ArrowDown size={16} />
 								{scrollPill.hasNewMessages && (
-									<span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-neutral-900 bg-indigo-500" />
+									<span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-[var(--bg-panel)] bg-[var(--text-40)]" />
 								)}
 							</button>
 						)}
 					</div>
 
 					{/* Pending dialogs at the stream bottom. */}
-					<div className="mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-4xl">
+					<div className="mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl">
 						{pendingUi.length > 0 && (
-							<div className="shrink-0 border-t border-neutral-800 px-3 pb-1">
+							<div className="shrink-0 border-t border-[var(--line)] px-3 pb-1">
 								{pendingUi.map((req, i) => (
 									<PendingUiCard
 										key={`${(req.request as { id?: string }).id ?? i}`}

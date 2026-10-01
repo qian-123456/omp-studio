@@ -8,7 +8,7 @@ use tauri::Emitter;
 
 use super::{badge, checkpoints_ext, history, repo_root, status, tm, turns, worktree};
 use crate::contracts::{
-    GitBadge, GitCommit, GitSummary, TmRun, TurnCheckpoint, TurnUndoResult, WorktreeInfo,
+    GitBadge, GitHistory, GitSummary, TmRun, TurnCheckpoint, TurnUndoResult, WorktreeInfo,
 };
 use crate::state::AppState;
 
@@ -75,8 +75,8 @@ pub async fn git_log(
     _state: tauri::State<'_, AppState>,
     cwd: String,
     limit: u32,
-) -> Result<Vec<GitCommit>, String> {
-    blocking(move || Ok(history::log(&PathBuf::from(cwd), limit))).await
+) -> Result<GitHistory, String> {
+    blocking(move || Ok(history::history(&PathBuf::from(cwd), limit))).await
 }
 
 #[tauri::command]

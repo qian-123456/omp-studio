@@ -11,7 +11,7 @@ import {
 	Terminal,
 	X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { GitCommit, GitSummary, TmRun, TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { absoluteTime } from "../../lib/format";
@@ -97,6 +97,8 @@ interface CommitRowProps {
 	/** Highlighted right after a chat → git jump. */
 	flash: boolean;
 	run: TmRun | undefined;
+	/** Below the worktree's fork point — dimmed as inherited history. */
+	inherited?: boolean;
 	isFirst: boolean;
 	isLast: boolean;
 	expanded: boolean;
@@ -131,6 +133,7 @@ function ActionLine({ label, children }: { label: string; children: ReactNode })
 function CommitRow({
 	c,
 	turn,
+	inherited,
 	flash,
 	run,
 	isFirst,
@@ -198,7 +201,10 @@ function CommitRow({
 					type="button"
 					onClick={onToggleOpen}
 					aria-expanded={expanded}
-					className="min-w-0 flex-1 py-0.5 pl-1 pr-1 text-left"
+					className={clsx(
+						"min-w-0 flex-1 py-0.5 pl-1 pr-1 text-left",
+						inherited && "opacity-55",
+					)}
 				>
 					<span
 						className={clsx(
@@ -419,6 +425,8 @@ export function TimelineSection({
 	cwd,
 	summary,
 	commits,
+	forkPoint,
+	baseBranch,
 	runs,
 	hasMore,
 	loadingMore,
@@ -430,6 +438,9 @@ export function TimelineSection({
 	cwd: string;
 	summary: GitSummary;
 	commits: GitCommit[];
+	/** merge-base of this worktree's HEAD with `baseBranch`; null = none. */
+	forkPoint?: string | null;
+	baseBranch?: string | null;
 	runs: TmRun[];
 	hasMore?: boolean;
 	loadingMore?: boolean;
@@ -534,6 +545,25 @@ export function TimelineSection({
 
 	const hasRecent = useMemo(() => dayGroups.some((g) => g.isRecent), [dayGroups]);
 	const isSearching = filterText.trim().length > 0;
+
+	// Commits at or below the fork point are inherited from the base branch —
+	// they get a divider above the fork row and a dimmed row style.
+	const forkIdx = useMemo(() => {
+		if (isSearching || !forkPoint) return -1;
+		const i = filteredCommits.findIndex((c) => c.sha === forkPoint);
+		return i > 0 ? i : -1;
+	}, [filteredCommits, forkPoint, isSearching]);
+	const baseLabel = baseBranch?.replace(/^origin\//, "") ?? "主干";
+	// sha→true for commits inherited from the base (fork point included).
+	const inherited = useMemo<Record<string, true>>(
+		() =>
+			forkIdx >= 0
+				? Object.fromEntries(
+						filteredCommits.slice(forkIdx).map((c) => [c.sha, true as const]),
+					)
+				: {},
+		[filteredCommits, forkIdx],
+	);
 
 	const isGroupOpen = (g: (typeof dayGroups)[number], index: number) => {
 		if (dayToggles[g.key] !== undefined) {
@@ -752,9 +782,23 @@ export function TimelineSection({
 													{shownItems.map((c, i, shown) => {
 														const run = runFor(c.sha);
 														return (
-															<CommitRow
-																key={c.sha}
-																c={c}
+															<Fragment key={c.sha}>
+																{c.sha === forkPoint && (
+																	<li aria-hidden className="relative">
+																		<span
+																			className="absolute bottom-0 left-[44px] top-0 w-px bg-neutral-800"
+																		/>
+																		<div className="ml-[50px] flex items-center gap-2 py-1 pr-1">
+																			<span className="h-px flex-1 border-t border-dashed border-neutral-800" />
+																			<span className="shrink-0 font-mono text-[10px] text-neutral-600">
+																				以下继承自 {baseLabel}
+																			</span>
+																		</div>
+																	</li>
+																)}
+																<CommitRow
+																	inherited={inherited[c.sha] === true}
+																	c={c}
 																turn={turnBySha.get(c.sha)}
 																flash={flash === c.sha}
 																run={run}
@@ -789,6 +833,7 @@ export function TimelineSection({
 																}
 																onJumpTurn={jumpToTurn}
 															/>
+																</Fragment>
 														);
 													})}
 													{g.items.length > COMMIT_CAP && (

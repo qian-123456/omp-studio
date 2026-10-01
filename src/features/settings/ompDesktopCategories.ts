@@ -98,8 +98,8 @@ interface CategoryMatch {
 /**
  * Membership rules, evaluated in nav order — first match wins. Order matters:
  * `providers.*` carve-outs living in `thinking`/`retry` must run before the
- * `providers` catch-all, and `tools` claims `read.*`/`edit.*`/`task.*`…
- * before the `tasks`/`advanced` buckets see them.
+ * `providers` catch-all; `tools` claims `read.*`/`edit.*`/`bash.*`… before the
+ * `tasks`/`advanced` buckets see them.
  */
 const CATEGORY_MATCH: readonly CategoryMatch[] = [
 	{
@@ -206,7 +206,6 @@ const CATEGORY_MATCH: readonly CategoryMatch[] = [
 			"speechgen.",
 			"generate_image.",
 			"mcp.",
-			"async.",
 			"irc.",
 			"plan.",
 			"skills.",
@@ -219,7 +218,17 @@ const CATEGORY_MATCH: readonly CategoryMatch[] = [
 	{
 		id: "tasks",
 		exact: {},
-		prefixes: ["task.", "tasks.", "isolation.", "worktree.", "prewalk."],
+		// async.* jobs and advisor.* agents behave like subagent infrastructure,
+		// so they sit beside task.* under 任务与子代理 rather than the tools bag.
+		prefixes: [
+			"task.",
+			"tasks.",
+			"isolation.",
+			"worktree.",
+			"prewalk.",
+			"async.",
+			"advisor.",
+		],
 	},
 	{
 		id: "providers",

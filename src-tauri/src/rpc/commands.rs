@@ -2,7 +2,9 @@
 
 use serde_json::Value;
 
-use crate::contracts::{LiveSessionInfo, PendingUiRequest, StartOpts};
+use crate::contracts::{
+    LiveSessionInfo, PendingUiRequest, StartOpts, SubagentSummary, SubagentTranscript,
+};
 use crate::state::{AppEvent, AppState};
 
 #[tauri::command]
@@ -108,4 +110,27 @@ pub async fn create_side_chat(
     question: String,
 ) -> Result<LiveSessionInfo, String> {
     crate::rpc::sidechat::create(&state, &parent_session_id, selection, question).await
+}
+
+/// Contract C5: subagent sessions of a parent session file
+/// (`<parentFile without .jsonl>/<AgentId>.jsonl`).
+#[tauri::command]
+pub async fn subagent_list(
+    _state: tauri::State<'_, AppState>,
+    parent_file: String,
+) -> Result<Vec<SubagentSummary>, String> {
+    crate::rpc::subagents::list(&parent_file)
+}
+
+/// Contract C5: normalized subagent transcript + meta + final output.
+/// `from_byte` is an incremental cursor (returns only complete lines
+/// appended since that offset; `reset` marks a truncation restart).
+#[tauri::command]
+pub async fn subagent_transcript(
+    _state: tauri::State<'_, AppState>,
+    parent_file: String,
+    agent_id: String,
+    from_byte: Option<u64>,
+) -> Result<SubagentTranscript, String> {
+    crate::rpc::subagents::transcript(&parent_file, &agent_id, from_byte)
 }

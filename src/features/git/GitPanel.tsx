@@ -366,6 +366,8 @@ function FocusPane({
 }) {
 	const [summary, setSummary] = useState<GitSummary | null>(null);
 	const [commits, setCommits] = useState<GitCommit[]>([]);
+	const [forkPoint, setForkPoint] = useState<string | null>(null);
+	const [baseBranch, setBaseBranch] = useState<string | null>(null);
 	const [hasMore, setHasMore] = useState(false);
 	const [loadingMore, setLoadingMore] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -378,8 +380,10 @@ function FocusPane({
 			const [s, log] = await Promise.all([gitSummary(path), gitLog(path, limit.current)]);
 			if (seq !== reqSeq.current) return;
 			setSummary(s);
-			setCommits(log);
-			setHasMore(log.length >= limit.current);
+			setCommits(log.commits);
+			setForkPoint(log.forkPoint);
+			setBaseBranch(log.base);
+			setHasMore(log.commits.length >= limit.current);
 			setError(null);
 		} catch (e) {
 			if (seq === reqSeq.current) setError(errMsg(e));
@@ -400,9 +404,10 @@ function FocusPane({
 		setLoadingMore(true);
 		try {
 			const log = await gitLog(path, limit.current);
-			if (seq !== reqSeq.current) return;
-			setCommits(log);
-			setHasMore(log.length >= limit.current);
+			setCommits(log.commits);
+			setForkPoint(log.forkPoint);
+			setBaseBranch(log.base);
+			setHasMore(log.commits.length >= limit.current);
 		} catch (e) {
 			if (seq === reqSeq.current) toast.error(errMsg(e));
 		} finally {
@@ -479,6 +484,8 @@ function FocusPane({
 							cwd={path}
 							summary={summary}
 							commits={commits}
+							forkPoint={forkPoint}
+							baseBranch={baseBranch}
 							runs={runs}
 							hasMore={hasMore}
 							loadingMore={loadingMore}

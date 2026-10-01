@@ -126,13 +126,13 @@ export function SelectionToolbar({
 
 	if (!sel) return null;
 	const itemCls =
-		"flex items-center gap-1 rounded px-2 py-1 text-[11px] text-neutral-200 hover:bg-neutral-700";
+		"flex items-center gap-1 rounded px-2 py-1 text-[11px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
 
 	return (
 		<div
 			ref={boxRef}
 			style={{ left: sel.x, top: sel.y }}
-			className="absolute z-20 flex -translate-x-1/2 -translate-y-full gap-0.5 rounded-md border border-neutral-700 bg-neutral-900 p-0.5 shadow-lg"
+			className="absolute z-20 flex -translate-x-1/2 -translate-y-full gap-0.5 rounded-md border border-[var(--line)] bg-[var(--bg-panel)] p-0.5 shadow-apple-card"
 		>
 			{isAnnotating ? (
 				<form
@@ -158,19 +158,19 @@ export function SelectionToolbar({
 							}
 						}}
 						placeholder="添加批注（可选，Enter 确认）…"
-						className="w-48 rounded border border-neutral-700 bg-neutral-950 px-2 py-0.5 text-[11px] text-neutral-200 outline-none focus:border-indigo-500"
+						className="w-48 rounded border border-[var(--line)] bg-[var(--bg)] px-2 py-0.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--text-30)]"
 					/>
 					<button
 						type="button"
 						onClick={commitAnnotation}
-						className="rounded bg-indigo-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-indigo-500 transition-colors"
+						className="rounded bg-[var(--text)] px-2 py-0.5 text-[11px] font-medium text-[var(--bg)] hover:opacity-90 transition-colors"
 					>
 						引用
 					</button>
 					<button
 						type="button"
 						onClick={() => setIsAnnotating(false)}
-						className="rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] text-neutral-400 hover:text-neutral-200 transition-colors"
+						className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
 					>
 						取消
 					</button>

@@ -108,6 +108,7 @@ describe("SideChat actions", () => {
 						},
 					],
 					pendingUserEchoes: [],
+					commandOutputs: [],
 					nextOffset: 0,
 					alive: false,
 				},

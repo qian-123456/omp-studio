@@ -95,6 +95,40 @@ fn summary_log_diff_reset() {
 }
 
 #[test]
+fn history_fork_point() {
+    let repo = temp_repo("fork");
+    let init = commit(&repo, "a.txt", "a\n", "init");
+    // Base worktree (main itself): no fork line.
+    let h = history::history(&repo, 10);
+    assert_eq!(h.commits.len(), 1);
+    assert_eq!(h.base, None);
+    assert_eq!(h.fork_point, None);
+
+    // A branch off `init` forks there; commits after it are its own.
+    git_ok(&repo, &["checkout", "-q", "-b", "feat"]).unwrap();
+    let own = commit(&repo, "a.txt", "b\n", "own");
+    let h = history::history(&repo, 10);
+    assert_eq!(h.base.as_deref(), Some("main"));
+    assert_eq!(h.fork_point.as_deref(), Some(init.as_str()));
+    assert_eq!(h.commits[0].sha, own);
+    assert_eq!(h.commits[1].sha, init);
+
+    // Detached HEAD still resolves a fork point.
+    git_ok(&repo, &["checkout", "-q", "--detach"]).unwrap();
+    let h = history::history(&repo, 10);
+    assert_eq!(h.fork_point.as_deref(), Some(init.as_str()));
+
+    // Fork point is not in the loaded page.
+    for i in 0..3 {
+        commit(&repo, "a.txt", &format!("{i}\n"), &format!("own{i}"));
+    }
+    let h = history::history(&repo, 2);
+    assert_eq!(h.commits.len(), 2);
+    assert_eq!(h.fork_point.as_deref(), Some(init.as_str()));
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
 fn worktree_lifecycle_and_orphans() {
     let repo = temp_repo("wt");
     assert!(

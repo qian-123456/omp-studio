@@ -49,15 +49,19 @@ export function ContextRing({
 
 	const pctInt = Math.round(percentage);
 
-	// Ring color based on thresholds (percentage: 0 - 100%)
+	// Ring colour: neutral --text-60 normally; status hues only near limits.
 	const ringColor =
-		percentage > 80
-			? "stroke-rose-500 text-rose-400"
-			: percentage > 50
-				? "stroke-amber-500 text-amber-400"
-				: percentage > 20
-					? "stroke-sky-400 text-sky-400"
-					: "stroke-emerald-400 text-emerald-400";
+		percentage >= 85
+			? "stroke-[var(--status-error)]"
+			: percentage >= 70
+				? "stroke-[var(--status-warning)]"
+				: "stroke-[var(--text-60)]";
+	const barColor =
+		percentage >= 85
+			? "bg-[var(--status-error)]"
+			: percentage >= 70
+				? "bg-[var(--status-warning)]"
+				: "bg-[var(--text-60)]";
 
 	// SVG circle parameters
 	const size = 18;
@@ -73,7 +77,7 @@ export function ContextRing({
 				type="button"
 				onClick={() => setOpen((v) => !v)}
 				title={`上下文占用: ${pctInt}%${totalTokensStr ? ` (${totalTokensStr})` : ""}`}
-				className="group flex items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[11px] text-neutral-400 transition-colors hover:bg-neutral-800/80 hover:text-neutral-200"
+				className="group flex items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 			>
 				{/* Circular Progress Ring */}
 				<div className="relative flex h-[18px] w-[18px] items-center justify-center">
@@ -90,7 +94,7 @@ export function ContextRing({
 							r={radius}
 							fill="none"
 							strokeWidth={strokeWidth}
-							className="stroke-neutral-800"
+							className="stroke-[var(--bg-selected)]"
 						/>
 						{/* Progress Arc */}
 						<circle
@@ -106,7 +110,7 @@ export function ContextRing({
 						/>
 					</svg>
 				</div>
-				<span className="font-mono text-[11px] text-neutral-400 group-hover:text-neutral-200">
+				<span className="font-mono text-[11px] text-[var(--text-40)] group-hover:text-[var(--text)]">
 					{pctInt}%
 				</span>
 			</button>
@@ -125,17 +129,17 @@ export function ContextRing({
 					<div
 						ref={popoverRef}
 						onClick={(e) => e.stopPropagation()}
-						className="absolute bottom-full left-0 z-40 mb-2 w-64 rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-3 shadow-2xl backdrop-blur-md"
+						className="absolute bottom-full left-0 z-40 mb-2 w-64 rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-3 shadow-apple-card"
 					>
-						<div className="mb-2.5 flex items-center justify-between border-b border-neutral-800 pb-2">
-							<div className="flex items-center gap-1.5 text-xs font-medium text-neutral-200">
-								<PieChart size={13} className="text-indigo-400" />
+						<div className="mb-2.5 flex items-center justify-between border-b border-[var(--line)] pb-2">
+							<div className="flex items-center gap-1.5 text-xs font-medium text-[var(--text)]">
+								<PieChart size={13} className="text-[var(--text-60)]" />
 								<span>上下文占用明细</span>
 							</div>
 							<button
 								type="button"
 								onClick={() => setOpen(false)}
-								className="rounded-md p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+								className="rounded-md p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 							>
 								<X size={12} />
 							</button>
@@ -143,56 +147,52 @@ export function ContextRing({
 
 						<div className="space-y-2.5 text-xs">
 							<div>
-								<div className="mb-1 flex justify-between text-[11px] text-neutral-400">
+								<div className="mb-1 flex justify-between text-[11px] text-[var(--text-40)]">
 									<span>窗口容量占比</span>
-									<span className="font-mono font-medium text-neutral-200">
+									<span className="font-mono font-medium text-[var(--text)]">
 										{percentage.toFixed(1)}%
 									</span>
 								</div>
-								<div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+								<div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-selected)]">
 									<div
 										style={{ width: `${Math.min(100, percentage)}%` }}
 										className={clsx(
 											"h-full rounded-full transition-all duration-300",
-											percentage > 80
-												? "bg-rose-500"
-												: percentage > 50
-													? "bg-amber-500"
-													: "bg-emerald-500",
+											barColor,
 										)}
 									/>
 								</div>
 							</div>
 
 							{typeof rawTokens === "number" && typeof rawWindow === "number" ? (
-								<div className="space-y-1.5 border-t border-neutral-800/80 pt-2 text-[11px]">
+								<div className="space-y-1.5 border-t border-[var(--line)] pt-2 text-[11px]">
 									<div className="flex justify-between">
-										<span className="text-neutral-500">已使用 Token:</span>
-										<span className="font-mono text-neutral-200">
+										<span className="text-[var(--text-40)]">已使用 Token:</span>
+										<span className="font-mono text-[var(--text)]">
 											{formatTokens(rawTokens)}
 										</span>
 									</div>
 									<div className="flex justify-between">
-										<span className="text-neutral-500">窗口总量上限:</span>
-										<span className="font-mono text-neutral-400">
+										<span className="text-[var(--text-40)]">窗口总量上限:</span>
+										<span className="font-mono text-[var(--text-60)]">
 											{formatTokens(rawWindow)}
 										</span>
 									</div>
 									<div className="flex justify-between">
-										<span className="text-neutral-500">剩余可用容量:</span>
-										<span className="font-mono text-emerald-400/90">
+										<span className="text-[var(--text-40)]">剩余可用容量:</span>
+										<span className="font-mono text-[var(--text-60)]">
 											{formatTokens(Math.max(0, rawWindow - rawTokens))}
 										</span>
 									</div>
 								</div>
 							) : usageObj ? (
-								<div className="space-y-1 border-t border-neutral-800/80 pt-2 text-[11px]">
+								<div className="space-y-1 border-t border-[var(--line)] pt-2 text-[11px]">
 									{Object.entries(usageObj)
 										.filter(([k]) => k !== "percent")
 										.map(([k, v]) => (
 											<div key={k} className="flex justify-between">
-												<span className="text-neutral-500">{k}</span>
-												<span className="font-mono text-neutral-300">
+												<span className="text-[var(--text-40)]">{k}</span>
+												<span className="font-mono text-[var(--text-60)]">
 													{String(v)}
 												</span>
 											</div>
@@ -201,9 +201,9 @@ export function ContextRing({
 							) : null}
 
 							{totalTokensStr && (
-								<div className="flex justify-between border-t border-neutral-800/80 pt-2 text-[11px]">
-									<span className="text-neutral-500">累计 Token:</span>
-									<span className="font-mono font-medium text-neutral-200">
+								<div className="flex justify-between border-t border-[var(--line)] pt-2 text-[11px]">
+									<span className="text-[var(--text-40)]">累计 Token:</span>
+									<span className="font-mono font-medium text-[var(--text)]">
 										{totalTokensStr}
 									</span>
 								</div>

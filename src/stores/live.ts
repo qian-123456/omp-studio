@@ -9,6 +9,13 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { PendingUiRequest, TranscriptItem } from "../lib/contracts";
+import type {
+	AgentProgress,
+	SubagentInfo,
+	SubagentLifecyclePayload,
+	SubagentProgressPayload,
+	SubagentStatus,
+} from "../features/chat/subagents/types";
 import type * as IpcModule from "../lib/ipc";
 import {
 	onRpcFrame,
@@ -17,19 +24,33 @@ import {
 	type RpcProcessPayload,
 } from "../lib/events";
 
+/** Slash command advertised by omp via `get_available_commands` /
+ * `available_commands_update` (RpcAvailableSlashCommand). */
 export interface SlashCommand {
 	name: string;
-	description?: string;
-	hint?: string;
-	source?: string;
 	aliases?: string[];
+	description?: string;
+	/** Real wire shape: `{input?: {hint?}}`. `hint` is a normalized mirror. */
+	input?: { hint?: string };
+	hint?: string;
+	subcommands?: { name: string; description?: string; usage?: string }[];
+	source?: string;
 }
 
-export interface SubagentInfo {
-	status: string;
-	label: string;
-	[key: string]: unknown;
+/** Ephemeral output block produced by a slash command — omp `command_output`
+ * frames or app-local results (e.g. the /status card). Rendered inline by
+ * CommandOutputList, not persisted to the transcript. */
+export interface CommandOutputEntry {
+	id: number;
+	/** Slash command name that produced it, when known. */
+	command?: string;
+	text: string;
+	ts: number;
+	kind: "omp" | "app";
 }
+
+// Re-exported for existing consumers (todos/logic.ts, TopCapsule).
+export type { SubagentInfo } from "../features/chat/subagents/types";
 
 export interface LiveTool {
 	toolCallId: string;
@@ -67,8 +88,12 @@ export interface SessionLive {
 	/** Optimistic user bubbles waiting for the transcript fetch to confirm
 	 * them (rpc prompt accepted but not yet visible in the jsonl page). */
 	pendingUserEchoes: TranscriptItem[];
-	/** From available_commands_update. */
+	/** From available_commands_update / get_available_commands. */
 	commands: SlashCommand[];
+	/** Ephemeral slash-command outputs shown at the end of the thread. */
+	commandOutputs: CommandOutputEntry[];
+	/** Slash command last sent as a prompt; annotates command_output frames. */
+	pendingCommand?: string | null;
 	/** Live tool executions keyed by toolCallId (reset each turn). */
 	tools: Record<string, LiveTool>;
 	/** Transcript cache filled by SessionView; shared with HeatmapPanel. */
@@ -92,6 +117,8 @@ export const emptySessionLive = (): SessionLive => ({
 	subagents: {},
 	streamingMessage: null,
 	commands: [],
+	commandOutputs: [],
+	pendingCommand: null,
 	tools: {},
 	items: [],
 	pendingUserEchoes: [],
@@ -118,6 +145,72 @@ const resultText = (result: unknown): string => {
 		.filter(Boolean)
 		.join("\n");
 };
+
+let nextOutputId = 1;
+
+/** omp ships the arg hint under `input.hint`; mirror it onto `hint`. */
+function normalizeCommand(raw: unknown): SlashCommand | null {
+	const c = asFrame(raw);
+	const name = str(c.name);
+	if (!name) return null;
+	const input = asFrame(c.input);
+	return {
+		name,
+		aliases: Array.isArray(c.aliases)
+			? c.aliases.map(str).filter(Boolean)
+			: undefined,
+		description: str(c.description) || undefined,
+		input: input.hint != null ? { hint: str(input.hint) } : undefined,
+		hint: str(input.hint) || str(c.hint) || undefined,
+		subcommands: Array.isArray(c.subcommands)
+			? c.subcommands.map(asFrame).map((s) => ({
+					name: str(s.name),
+					description: str(s.description) || undefined,
+					usage: str(s.usage) || undefined,
+				}))
+			: undefined,
+		source: str(c.source) || undefined,
+	};
+}
+
+function normalizeCommands(list: unknown): SlashCommand[] {
+	if (!Array.isArray(list)) return [];
+	const out: SlashCommand[] = [];
+	for (const raw of list) {
+		const c = normalizeCommand(raw);
+		if (c) out.push(c);
+	}
+	return out;
+}
+
+/** Human label for a subagent row: description, else agent type, else task
+ * first line, else the id. Kept populated for TopCapsule consumers. */
+function subagentLabel(
+	id: string,
+	parts: { description?: string; agent?: string; task?: string },
+): string {
+	const desc = parts.description?.trim();
+	if (desc) return desc;
+	const taskLine = parts.task?.split("\n")[0]?.trim();
+	if (taskLine) return taskLine.length > 80 ? `${taskLine.slice(0, 80)}…` : taskLine;
+	return parts.agent?.trim() || id;
+}
+
+/** Normalize lifecycle/progress status strings ("started" = running); unknown
+ * values fall back so UI lookups never crash. */
+const SUB_STATUSES = new Set<SubagentStatus>([
+	"pending",
+	"running",
+	"completed",
+	"failed",
+	"aborted",
+]);
+function subStatus(v: unknown, fallback: SubagentStatus): SubagentStatus {
+	if (v === "started") return "running";
+	return SUB_STATUSES.has(v as SubagentStatus)
+		? (v as SubagentStatus)
+		: fallback;
+}
 let nextEchoId = 1;
 
 /** Build the optimistic user bubble for a just-accepted prompt. */
@@ -283,11 +376,17 @@ function reduce(
 			const id = str(frame.toolCallId);
 			const tool = live.tools[id];
 			if (!tool) return live;
+			const partial = asFrame(frame.partialResult);
 			return {
 				...live,
 				tools: {
 					...live.tools,
-					[id]: { ...tool, text: resultText(frame.partialResult) },
+					[id]: {
+						...tool,
+						text: resultText(partial),
+						// TaskToolDetails arrive here (progress/results), keep them.
+						details: partial.details ?? tool.details,
+					},
 				},
 			};
 		}
@@ -351,30 +450,170 @@ function reduce(
 			};
 		}
 		case "available_commands_update": {
-			const commands = Array.isArray(frame.commands)
-				? (frame.commands as SlashCommand[])
-				: [];
-			return { ...live, commands };
+			return { ...live, commands: normalizeCommands(frame.commands) };
 		}
-		case "subagent_lifecycle":
-		case "subagent_progress": {
-			const id = str(frame.subagentId ?? frame.id);
+		case "command_output": {
+			// Slash commands executed by omp emit their text here instead of as a
+			// normal message. Surface it as an ephemeral block in the thread.
+			const text = str(frame.text);
+			if (!text.trim()) return live;
+			return {
+				...live,
+				commandOutputs: [
+					...live.commandOutputs,
+					{
+						id: nextOutputId++,
+						command: live.pendingCommand ?? undefined,
+						text,
+						ts: Date.now(),
+						kind: "omp",
+					} satisfies CommandOutputEntry,
+				].slice(-50),
+			};
+		}
+		case "config_update": {
+			// `{model?, thinkingLevel?}` — refresh the cached get_state fields.
+			const state = { ...(live.state ?? {}) };
+			if ("model" in frame && frame.model !== undefined)
+				state.model = frame.model;
+			if (typeof frame.thinkingLevel === "string")
+				state.thinkingLevel = frame.thinkingLevel;
+			return { ...live, state };
+		}
+		case "session_info_update": {
+			// `{title?, sessionId?}` from e.g. `set_session_name`.
+			const sessionName =
+				str(frame.sessionName) || str(frame.title) || undefined;
+			if (!sessionName || !live.state) return live;
+			return { ...live, state: { ...live.state, sessionName } };
+		}
+		case "prompt_result": {
+			const pendingCommand = live.pendingCommand ?? null;
+			if (
+				pendingCommand &&
+				frame.status === "error" &&
+				str(frame.error).trim()
+			) {
+				return {
+					...live,
+					pendingCommand: null,
+					commandOutputs: [
+						...live.commandOutputs,
+						{
+							id: nextOutputId++,
+							command: pendingCommand,
+							text: str(frame.error),
+							ts: Date.now(),
+							kind: "omp",
+						} satisfies CommandOutputEntry,
+					].slice(-50),
+				};
+			}
+			if (!pendingCommand) return live;
+			return { ...live, pendingCommand: null };
+		}
+		case "subagent_lifecycle": {
+			// Frame: {type, payload:{id, agent, agentSource, description?, status,
+			// sessionFile?, parentToolCallId?, index, detached?}}; "started" = running.
+			// Finished agents are kept client-side: omp's get_subagents snapshot
+			// drops terminal entries.
+			const p = asFrame(frame.payload) as unknown as SubagentLifecyclePayload;
+			const id = typeof p.id === "string" ? p.id : "";
 			if (!id) return live;
-			const prev = live.subagents[id] ?? { status: "", label: "" };
+			const prev = live.subagents[id];
+			const status = subStatus(p.status, prev?.status ?? "pending");
 			return {
 				...live,
 				subagents: {
 					...live.subagents,
 					[id]: {
 						...prev,
-						...frame,
-						status: str(frame.status ?? frame.event ?? prev.status),
-						label: str(frame.label ?? frame.task ?? prev.label),
+						status,
+						index: p.index ?? prev?.index,
+						agent: p.agent ?? prev?.agent,
+						agentSource: p.agentSource ?? prev?.agentSource,
+						description: p.description ?? prev?.description,
+						sessionFile: p.sessionFile ?? prev?.sessionFile,
+						parentToolCallId:
+							p.parentToolCallId ?? prev?.parentToolCallId,
+						label: subagentLabel(id, { ...prev, description: p.description ?? prev?.description, agent: p.agent ?? prev?.agent, task: prev?.task }),
+						lastUpdate: Date.now(),
+					},
+				},
+			};
+		}
+		case "subagent_progress": {
+			// Frame: {type, payload:{index, agent, agentSource, task,
+			// parentToolCallId?, assignment?, progress: AgentProgress, sessionFile?}}.
+			const p = asFrame(frame.payload) as unknown as SubagentProgressPayload;
+			const prog = asFrame(p.progress) as unknown as AgentProgress;
+			const id =
+				typeof prog.id === "string"
+					? prog.id
+					: typeof p.id === "string"
+						? p.id
+						: "";
+			if (!id) return live;
+			const prev = live.subagents[id];
+			const status = subStatus(prog.status, prev?.status ?? "running");
+			const desc = prog.description ?? p.description ?? prev?.description;
+			return {
+				...live,
+				subagents: {
+					...live.subagents,
+					[id]: {
+						...prev,
+						status,
+						index: p.index ?? prog.index ?? prev?.index,
+						agent: p.agent ?? prog.agent ?? prev?.agent,
+						agentSource:
+							p.agentSource ?? prog.agentSource ?? prev?.agentSource,
+						description: desc,
+						task: p.task ?? prog.task ?? prev?.task,
+						assignment:
+							p.assignment ?? prog.assignment ?? prev?.assignment,
+						sessionFile: p.sessionFile ?? prev?.sessionFile,
+						parentToolCallId:
+							p.parentToolCallId ?? prev?.parentToolCallId,
+						progress: prog,
+						label: subagentLabel(id, {
+							description: desc,
+							agent: p.agent ?? prog.agent ?? prev?.agent,
+							task: p.task ?? prog.task ?? prev?.task,
+						}),
+						lastUpdate: Date.now(),
 					},
 				},
 			};
 		}
 		case "response": {
+			if (frame.command === "prompt") {
+				const pendingCommand = live.pendingCommand ?? null;
+				if (frame.success !== true) {
+					return {
+						...live,
+						pendingCommand: null,
+						commandOutputs:
+							pendingCommand && str(frame.error).trim()
+								? [
+										...live.commandOutputs,
+										{
+											id: nextOutputId++,
+											command: pendingCommand,
+											text: str(frame.error),
+											ts: Date.now(),
+											kind: "omp",
+										} satisfies CommandOutputEntry,
+									].slice(-50)
+								: live.commandOutputs,
+					};
+				}
+				const data = asFrame(frame.data);
+				if (data.agentInvoked === false && pendingCommand) {
+					return { ...live, pendingCommand: null };
+				}
+				return live;
+			}
 			const data = asFrame(frame.data);
 			if (frame.success !== true) return live;
 			switch (frame.command) {
@@ -387,22 +626,53 @@ function reduce(
 				case "get_available_commands":
 					return {
 						...live,
-						commands: Array.isArray(data.commands)
-							? (data.commands as SlashCommand[])
-							: live.commands,
+						commands:
+							normalizeCommands(data.commands).length > 0
+								? normalizeCommands(data.commands)
+								: live.commands,
 					};
 				case "get_subagents": {
+					// Only running agents are listed; finished ones stay client-side.
 					if (!Array.isArray(data.subagents)) return live;
 					const subagents = { ...live.subagents };
 					for (const raw of data.subagents) {
 						const sa = asFrame(raw);
-						const id = str(sa.id ?? sa.subagentId);
+						const id = str(sa.id);
 						if (!id) continue;
+						const prev = subagents[id];
+						const prog =
+							typeof sa.progress === "object" && sa.progress !== null
+								? (sa.progress as AgentProgress)
+								: prev?.progress;
 						subagents[id] = {
-							...(subagents[id] ?? { status: "", label: "" }),
-							...sa,
-							status: str(sa.status),
-							label: str(sa.label ?? sa.task),
+							...prev,
+							status: subStatus(sa.status, prev?.status ?? "running"),
+							index:
+								typeof sa.index === "number"
+									? sa.index
+									: prev?.index,
+							agent: str(sa.agent) || prev?.agent,
+							agentSource: str(sa.agentSource) || prev?.agentSource,
+							description:
+								str(sa.description) || prev?.description,
+							task: str(sa.task) || prev?.task,
+							assignment: str(sa.assignment) || prev?.assignment,
+							sessionFile:
+								str(sa.sessionFile) || prev?.sessionFile,
+							parentToolCallId:
+								str(sa.parentToolCallId) ||
+								prev?.parentToolCallId,
+							progress: prog ?? prev?.progress,
+							label: subagentLabel(id, {
+								description:
+									str(sa.description) || prev?.description,
+								agent: str(sa.agent) || prev?.agent,
+								task: str(sa.task) || prev?.task,
+							}),
+							lastUpdate:
+								typeof sa.lastUpdate === "number"
+									? sa.lastUpdate
+									: Date.now(),
 						};
 					}
 					return { ...live, subagents };
@@ -437,21 +707,47 @@ export interface LiveState {
 	scrollToItem(sessionId: string, itemId: string): void;
 	/** Consume/clear the scroll request for a session. */
 	clearScrollRequest(sessionId: string): void;
+	/** Remember the slash command just sent as a prompt so the following
+	 * `command_output` frames can be labelled with it. */
+	noteCommandSent(sessionId: string, name: string): void;
+	/** Push an app-local command result (/status card, action confirmations). */
+	addCommandOutput(sessionId: string, command: string, text: string): void;
+	/** Dismiss one ephemeral command output block. */
+	dismissCommandOutput(sessionId: string, id: number): void;
 }
 
 export const useLive = create<LiveState>((set) => ({
 	sessions: {},
-	reduceFrame: ({ sessionId, frame }) =>
+	reduceFrame: ({ sessionId, frame }) => {
+		const f = asFrame(frame);
 		set((s) => ({
 			sessions: {
 				...s.sessions,
 				[sessionId]: reduce(
 					s.sessions[sessionId] ?? { ...emptySessionLive(), alive: true },
-					asFrame(frame),
+					f,
 					sessionId,
 				),
 			},
-		})),
+		}));
+		// `session_info_update` carries a new title from /rename —
+		// patch the session list optimistically; the file watcher follows.
+		if (f.type === "session_info_update") {
+			const title = str(f.sessionName) || str(f.title);
+			if (title) {
+				void import("./sessions")
+					.then(({ useSessions }) => {
+						const meta = useSessions.getState().sessions[sessionId];
+						if (meta && meta.title !== title) {
+							useSessions
+								.getState()
+								.upsert([{ ...meta, title }]);
+						}
+					})
+					.catch(() => {});
+			}
+		}
+	},
 	reduceProcess: ({ sessionId, running, exitCode }) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
@@ -581,6 +877,55 @@ export const useLive = create<LiveState>((set) => ({
 			};
 		});
 	},
+	noteCommandSent: (sessionId, name) =>
+		set((s) => {
+			const live = s.sessions[sessionId] ?? emptySessionLive();
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: { ...live, pendingCommand: name },
+				},
+			};
+		}),
+	addCommandOutput: (sessionId, command, text) =>
+		set((s) => {
+			const live = s.sessions[sessionId] ?? emptySessionLive();
+			if (!text.trim()) return s;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						commandOutputs: [
+							...live.commandOutputs,
+							{
+								id: nextOutputId++,
+								command,
+								text,
+								ts: Date.now(),
+								kind: "app",
+						} satisfies CommandOutputEntry,
+						].slice(-50),
+					},
+				},
+			};
+		}),
+	dismissCommandOutput: (sessionId, id) =>
+		set((s) => {
+			const live = s.sessions[sessionId];
+			if (!live) return s;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						commandOutputs: live.commandOutputs.filter(
+							(o) => o.id !== id,
+						),
+					},
+				},
+			};
+		}),
 }));
 
 let ipcMod: Promise<typeof IpcModule> | null = null;
@@ -611,7 +956,19 @@ export function startLiveEvents(): void {
 					.catch(() => {});
 			}
 		}),
-		onRpcProcess(reduceProcess),
+		onRpcProcess((payload) => {
+			reduceProcess(payload);
+			// On (re)attach, seed the subagent map: lifecycle frames before our
+			// attach are missed and get_subagents lists the running ones.
+			if (payload.running) {
+				ipcMod ??= import("../lib/ipc");
+				void ipcMod
+					.then((m) =>
+						m.rpcSend(payload.sessionId, { type: "get_subagents" }),
+					)
+					.catch(() => {});
+			}
+		}),
 	];
 }
 

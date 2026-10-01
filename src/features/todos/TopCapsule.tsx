@@ -187,9 +187,9 @@ export function TopCapsule() {
 												<span>复制</span>
 											</button>
 										</div>
-										{Boolean(sub.error) && (
-											<div className="rounded border border-rose-800/50 bg-rose-950/40 p-1.5 text-rose-300">
-												错误: {String(sub.error)}
+										{sub.progress?.retryFailure?.errorMessage && (
+											<div className="rounded border border-[var(--line)] p-1.5 text-[var(--status-error)]">
+												错误: {sub.progress.retryFailure.errorMessage}
 											</div>
 										)}
 									</div>

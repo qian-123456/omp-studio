@@ -13,9 +13,11 @@ import {
 	ListTree,
 	Network,
 	Palette,
+	Puzzle,
 	RefreshCw,
 	RotateCcw,
 	Search,
+	Server,
 	Settings2,
 	Sliders,
 	Smartphone,
@@ -46,6 +48,7 @@ import {
 import { toModelKey } from "../../lib/models";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
+import { useSessions } from "../../stores/sessions";
 import { ThemePicker } from "../../components/ThemePicker";
 import { ModelSelect, type ModelExtraOption } from "../../components/ModelSelect";
 import { NativeSelect } from "../../components/NativeSelect";
@@ -60,9 +63,11 @@ import { ompDesktopCategoryFor } from "./ompDesktopCategories";
 import { BUILTIN_ROLES, asRecord, customRoles } from "./modelRoles";
 import { ompConfigDescription, ompConfigTitle } from "./ompConfigMeta";
 import { ProviderPanel } from "../providers/ProviderPanel";
+import { McpSection } from "./McpSection";
+import { PluginsSection } from "./PluginsSection";
 import { useZoom } from "../../lib/zoom";
 import { validateSettingsShape } from "./validation";
-import { findMatchingField, registryKeywordsForSection } from "./fieldRegistry";
+import { FIELD_REGISTRY, findMatchingField, registryKeywordsForSection } from "./fieldRegistry";
 
 interface NavItem {
 	id: string;
@@ -110,6 +115,8 @@ const NAV_GROUPS: NavGroup[] = [
 		items: [
 			{ id: "mobile", label: "手机访问", icon: Smartphone },
 			{ id: "omp-providers", label: "网络与扩展", icon: Globe },
+			{ id: "mcp", label: "MCP 服务器", icon: Server },
+			{ id: "plugins", label: "插件", icon: Puzzle },
 		],
 	},
 	{
@@ -180,11 +187,17 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 	const [extInstallResult, setExtInstallResult] = useState<string | null>(null);
 
 	const [activeSection, setActiveSection] = useState<string>(initialSection ?? "general");
+	// OMP category's schema sub-group filter (controlled into OmpConfigSection
+	// so deep links can force it back to "all").
+	const [ompGroupName, setOmpGroupName] = useState<string | null>(null);
+	// Pending deep-link focus: scrolls the row into view and briefly flashes it.
+	const [focusFlash, setFocusFlash] = useState<{ key: string; n: number } | null>(null);
 	const contentRef = useRef<HTMLDivElement>(null);
 
 	// Switching sections always lands at the top of the new section.
 	useEffect(() => {
 		contentRef.current?.scrollTo({ top: 0 });
+		setOmpGroupName(null);
 	}, [activeSection]);
 
 	const ompCategory =
@@ -202,17 +215,74 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 
 	const [saveNotice, setSaveNotice] = useState<string | null>(null);
 	const pendingSection = useUi((s) => s.settingsSection);
+	const pendingFocus = useUi((s) => s.settingsFocus);
 	const fontSize = useFontSize();
 	const uiScale = useUiScale();
 	const closeSettings = useUi((s) => s.closeSettings);
 
-	// Jump to the section requested via openSettings(section).
+	// Project scope follows the selected (or last viewed) session's cwd —
+	// same rule as SkillsPage — for project mcp.json / plugin roots.
+	const scopeSessionId = useUi((s) => s.selectedSessionId ?? s.lastSessionId);
+	const projectCwd = useSessions((s) =>
+		scopeSessionId ? (s.sessions[scopeSessionId]?.cwd ?? null) : null,
+	);
+
+	// Jump to the section requested via openSettings(section, {focusKey}).
 	useEffect(() => {
-		if (pendingSection) {
-			setActiveSection(pendingSection);
-			useUi.setState({ settingsSection: null });
+		if (!pendingSection && !pendingFocus) return;
+		let target = pendingSection;
+		const isOmpKey =
+			pendingFocus &&
+			target?.startsWith("omp-") &&
+			!FIELD_REGISTRY.some((f) => f.id === pendingFocus);
+		if (pendingFocus && isOmpKey) {
+			// OMP config rows carry data-omp-key; if the key belongs to another
+			// desktop category, switch there and clear nav search/group filter so
+			// the row is actually rendered.
+			const cat = ompDesktopCategoryFor(pendingFocus).id;
+			const wanted = `omp-${cat}`;
+			if (target !== wanted) target = wanted;
+			setNavQuery("");
+			setOmpGroupName(null);
 		}
-	}, [pendingSection]);
+		if (target) setActiveSection(target);
+		if (pendingFocus)
+			setFocusFlash((f) => ({ key: pendingFocus, n: (f?.n ?? 0) + 1 }));
+		useUi.setState({ settingsSection: null, settingsFocus: null });
+	}, [pendingSection, pendingFocus]);
+
+	// Scroll the focused row into view and briefly highlight it. Retries for
+	// ~3s because OmpConfigSection rows render after `omp config list` returns.
+	useEffect(() => {
+		if (!focusFlash || !contentRef.current) return;
+		const selector = `[data-field-id="${CSS.escape(focusFlash.key)}"],[data-omp-key="${CSS.escape(focusFlash.key)}"]`;
+		let found = false;
+		const tryScroll = () => {
+			const el = contentRef.current?.querySelector<HTMLElement>(selector);
+			if (!el) return false;
+			found = true;
+			el.scrollIntoView({ behavior: "smooth", block: "center" });
+			el.style.transition = "background-color 0.9s ease";
+			el.style.backgroundColor =
+				"var(--ghost-hover, color-mix(in oklab, currentColor 6%, transparent))";
+			setTimeout(() => {
+				el.style.backgroundColor = "";
+				setTimeout(() => {
+					el.style.transition = "";
+				}, 950);
+			}, 900);
+			return true;
+		};
+		if (tryScroll()) return;
+		const t = setInterval(() => {
+			if (tryScroll() || found) clearInterval(t);
+		}, 160);
+		const stop = setTimeout(() => clearInterval(t), 3000);
+		return () => {
+			clearInterval(t);
+			clearTimeout(stop);
+		};
+	}, [focusFlash, activeSection]);
 
 	// Model catalog for shared ModelSelect pickers
 	const [models, setModels] = useState<Model[]>([]);
@@ -541,6 +611,19 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 						ompConfigDescription(e.key, e.description),
 					]);
 			}
+			if (id === "mcp") {
+				// MCP runtime keys (mcp.*) render inside this section too.
+				return [
+					...registryKeywordsForSection(id),
+					...ompEntries
+						.filter((e) => e.key.startsWith("mcp."))
+						.flatMap((e) => [
+							e.key,
+							ompConfigTitle(e.key),
+							ompConfigDescription(e.key, e.description),
+						]),
+				];
+			}
 			if (id === "providers") {
 				return [
 					"API",
@@ -860,11 +943,15 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 					)}
 
 					{/* 3. API providers */}
-					{activeSection === "providers" && <ProviderPanel />}
+					{activeSection === "providers" && (
+						<div data-field-id="providerList">
+							<ProviderPanel />
+						</div>
+					)}
 
 					{/* 4. Model Roles */}
 					{activeSection === "omp-roles" && (
-						<div className="space-y-6">
+						<div className="space-y-6" data-field-id="modelRolesPanel">
 							<div>
 								<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">
 									模型角色与回退链
@@ -1303,6 +1390,28 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 						</div>
 					)}
 
+					{/* MCP servers (own section; not an omp-* config category) */}
+					{activeSection === "mcp" && (
+						<McpSection
+							cwd={projectCwd}
+							query={navQuery.trim()}
+							onNavigateSection={(id) =>
+								setActiveSection(id.startsWith("omp-") ? id : `omp-${id}`)
+							}
+						/>
+					)}
+
+					{/* Plugins + extensions */}
+					{activeSection === "plugins" && (
+						<PluginsSection
+							cwd={projectCwd}
+							query={navQuery.trim()}
+							onNavigateSection={(id) =>
+								setActiveSection(id.startsWith("omp-") ? id : `omp-${id}`)
+							}
+						/>
+					)}
+
 					{/* 9. OMP category sections (model, thinking, retry, context, tools, tasks, providers, advanced) */}
 					{ompCategory !== null && (
 						<OmpConfigSection
@@ -1311,6 +1420,8 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 								setActiveSection(tab.startsWith("omp-") ? tab : `omp-${tab}`)
 							}
 							query={navQuery.trim()}
+							activeGroupName={ompGroupName}
+							onGroupChange={setOmpGroupName}
 						/>
 					)}
 

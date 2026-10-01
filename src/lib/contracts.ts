@@ -158,6 +158,45 @@ export interface TranscriptPage {
 	reset: boolean;
 }
 
+export type SubagentStatus =
+	| "pending"
+	| "running"
+	| "completed"
+	| "failed"
+	| "aborted";
+
+/** `subagent_list` entry (contract C5). */
+export interface SubagentSummary {
+	id: string;
+	status: SubagentStatus;
+	model: string | null;
+	thinkingLevel: string | null;
+	prompt: string | null;
+	messageCount: number;
+	toolCallCount: number;
+	requestCount: number;
+	tokens: number;
+	cost: number;
+	startedAt: string | null;
+	endedAt: string | null;
+	outputPath: string | null;
+	filePath: string;
+}
+
+/** `subagent_transcript` payload (contract C5). */
+export interface SubagentTranscript {
+	agentId: string;
+	file: string;
+	summary: SubagentSummary;
+	systemPrompt: string | null;
+	prompt: string | null;
+	items: TranscriptItem[];
+	output: string | null;
+	outputPath: string | null;
+	nextByte: number;
+	reset: boolean;
+}
+
 export interface LiveSessionInfo {
 	sessionId: string;
 	sessionFile: string;
@@ -278,6 +317,15 @@ export interface GitCommit {
 	subject: string;
 	author: string;
 	ts: string;
+}
+
+/** Commit page plus where this worktree branched off its base branch. */
+export interface GitHistory {
+	commits: GitCommit[];
+	/** merge-base of HEAD with `base`; null when there is no base. */
+	forkPoint: string | null;
+	/** Branch the history forked from ("main" / "origin/main"); null = HEAD is the base. */
+	base: string | null;
 }
 
 export interface WorktreeInfo {
@@ -710,4 +758,80 @@ export interface ExtensionItem {
 export interface SkillsCatalog {
 	skills: SkillItem[];
 	extensions: ExtensionItem[];
+}
+
+// ---- D — MCP server + plugin settings (omp-managed config files) ----
+
+/** env/header entry; `value` is null when masked as a likely secret. */
+export interface McpKv {
+	key: string;
+	value: string | null;
+	masked: boolean;
+}
+
+export interface McpServerItem {
+	name: string;
+	transport: "stdio" | "http" | "sse" | string;
+	command: string | null;
+	args: string[];
+	url: string | null;
+	cwd: string | null;
+	timeoutMs: number | null;
+	instructions: boolean;
+	enabled: boolean;
+	shadowed: boolean;
+	denylisted: boolean;
+	allowlisted: boolean;
+	env: McpKv[];
+	headers: McpKv[];
+	hasAuth: boolean;
+	hasOauth: boolean;
+	sourceFile: string;
+	scope: "user" | "project" | string;
+	error: string | null;
+}
+
+export interface McpFileInfo {
+	path: string;
+	scope: "user" | "project" | string;
+	exists: boolean;
+	parseError: string | null;
+	disabledServers: string[];
+	enabledServers: string[];
+}
+
+export interface McpConfigSnapshot {
+	/** Where "add server" writes by default (user-level mcp.json). */
+	defaultWritePath: string;
+	files: McpFileInfo[];
+	servers: McpServerItem[];
+}
+
+/** Add/update payload for `mcp_server_upsert`; `null` deletes a key, env/headers merge per key. */
+export type McpServerPatch = Record<string, unknown>;
+
+export interface PluginItem {
+	name: string;
+	spec: string | null;
+	version: string | null;
+	description: string | null;
+	hasManifest: boolean;
+	kind: "npm" | "link" | "marketplace" | "unknown" | string;
+	scope: "user" | "project" | string;
+	enabled: boolean;
+	projectDisabled: boolean;
+	enabledFeatures: string[] | null;
+	dir: string | null;
+}
+
+export interface PluginRootInfo {
+	dir: string;
+	scope: string;
+	lockPath: string;
+	lockExists: boolean;
+}
+
+export interface PluginCatalog {
+	roots: PluginRootInfo[];
+	plugins: PluginItem[];
 }

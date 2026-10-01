@@ -91,11 +91,11 @@ export function ModelMenuContent({
 				type="button"
 				onClick={() => onSelect(key)}
 				className={clsx(
-					"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors rounded-md",
+					"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors rounded-[8px]",
 					indent && "pl-4",
 					isSelected
-						? "bg-[#0A84FF]/15 text-[#70b1ff] font-medium"
-						: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
+						? "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium"
+						: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
 				)}
 			>
 				<div className="min-w-0 pr-2">
@@ -109,7 +109,7 @@ export function ModelMenuContent({
 						</div>
 					)}
 				</div>
-				{isSelected && <Check size={13} className="shrink-0 text-[#0A84FF]" />}
+				{isSelected && <Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />}
 			</button>
 		);
 	};
@@ -195,10 +195,10 @@ export function ModelMenuContent({
 							type="button"
 							onClick={() => onSelect(x.value)}
 							className={clsx(
-								"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors rounded-md",
+								"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors rounded-[8px]",
 								currentValue === x.value
-									? "bg-[#0A84FF]/15 text-[#70b1ff] font-medium"
-									: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
+									? "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium"
+									: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
 							)}
 						>
 							<span className="truncate">{x.label}</span>
@@ -207,7 +207,7 @@ export function ModelMenuContent({
 									{x.hint}
 								</span>
 							) : currentValue === x.value ? (
-								<Check size={13} className="shrink-0 text-[#0A84FF]" />
+								<Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />
 							) : null}
 						</button>
 					))}
@@ -261,7 +261,10 @@ export function ModelSelect({
 					setOpen(false);
 					buttonRef.current?.focus();
 				}}
-				className={clsx("py-1.5", widthClass)}
+				className={clsx(
+					"py-1.5 rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)]",
+					widthClass,
+				)}
 			>
 				<ModelMenuContent
 					{...menu}

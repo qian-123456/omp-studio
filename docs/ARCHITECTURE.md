@@ -38,7 +38,7 @@ src-tauri/src/
   db.rs             SQLite open + migrations (§6)                                      [LEAD]
   paths.rs          data dirs (§3)                                                     [LEAD]
   catalog/          session scan/parse/watch/status/workspaces/usage                   [A]
-  rpc/              omp --mode rpc process manager, idle suspend, takeover             [B]
+  rpc/              omp --mode rpc process manager, idle suspend, takeover; subagents.rs reads subagent transcripts [B]
   git/              git status/log/diff/worktrees/time machine                         [C]
   services/         local port/process listing, stop, reminders                        [C]
   todos/            smart todo queue, system detection, supervisor, summaries, diagnose [D]
@@ -48,6 +48,8 @@ src-tauri/src/
   terminal/         PTY sessions                                                       [E]
   schedules/        scheduled tasks, cadence, runner, background scheduler (§11 F)     [E]
   skills/           skills & extensions catalog, frontmatter parse, reader (§11 G)     [F]
+  settings_mcp.rs   OMP-managed mcp.json files: list/upsert/remove/enable servers (masked secrets, atomic writes) [D]
+  settings_plugins.rs  OMP plugin roots + lockfiles: list/enable plugins                  [D]
 src-tauri/mobile/index.html   mobile web app (single file, vanilla JS)                 [E]
 src-tauri/prompts/*.md + src/prompts.rs  prompt templates + render() ({{var}}, {{#if var}}..{{/if}}) [LEAD]
 extension/omp-workspace-status.ts   OMP status-report extension (§8)                   [E]
@@ -215,6 +217,7 @@ pub struct BacklogItem { pub id: String, pub text: String, pub kind: BacklogKind
 pub struct GitFileChange { pub path: String, pub status: String /* M A D R ?? */, pub added: u32, pub deleted: u32 }
 pub struct GitSummary { pub is_repo: bool, pub branch: Option<String>, pub files: Vec<GitFileChange>, pub has_uncommitted: bool }
 pub struct GitCommit { pub sha: String, pub short: String, pub subject: String, pub author: String, pub ts: String }
+pub struct GitHistory { pub commits: Vec<GitCommit>, pub fork_point: Option<String> /* merge-base of HEAD with `base` */, pub base: Option<String> /* e.g. "main" */ }
 pub struct WorktreeInfo { pub path: String, pub branch: Option<String>, pub head: String, pub dirty: u32 /* uncommitted change count */, pub session_ids: Vec<String> }
 pub struct TurnFile { pub path: String, pub status: String /* A M D */ }
 pub struct TurnCheckpoint { pub turn_id: String, pub session_id: String, pub user_item_id: Option<String>, pub prompt: String,
@@ -289,6 +292,22 @@ pub struct ExtensionItem {
 pub struct SkillsCatalog {
   pub skills: Vec<SkillItem>, pub extensions: Vec<ExtensionItem>,
 }
+
+// Subagents (B) — read from `<parent session file without .jsonl>/<AgentId>.jsonl` (+ `<AgentId>.md|.json` output)
+pub enum SubagentStatus { Pending, Running, Completed, Failed, Aborted } // snake_case
+pub struct SubagentSummary {
+  pub id: String, pub status: SubagentStatus, pub model: Option<String>, pub thinking_level: Option<String>,
+  pub prompt: Option<String> /* first user message preview */, pub message_count: u32, pub tool_call_count: u32,
+  pub request_count: u32, pub tokens: u64 /* input+output+cacheWrite */, pub cost: f64,
+  pub started_at: Option<String>, pub ended_at: Option<String>, pub output_path: Option<String>, pub file_path: String,
+}
+pub struct SubagentTranscript {
+  pub agent_id: String, pub file: String, pub summary: SubagentSummary, pub system_prompt: Option<String> /* session_init */,
+  pub prompt: Option<String>, pub items: Vec<TranscriptItem>, pub output: Option<String>, pub output_path: Option<String>,
+  pub next_byte: u64 /* incremental tail cursor */, pub reset: bool,
+}
+// MCP / plugin settings types (McpConfigSnapshot, McpServerItem, McpFileInfo, McpKv, PluginCatalog, PluginItem,
+// PluginRootInfo) live in settings_mcp.rs / settings_plugins.rs, mirrored in lib/contracts.ts.
 ```
 
 ## 5. AppState and events
@@ -402,11 +421,15 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `rpc_restart(session_id) -> LiveSessionInfo` — stop + `--resume` (the `/fresh` equivalent; resets provider/stream state, keeps history)
 
 - `rpc_list_live() -> Vec<LiveSessionInfo>`
+- `subagent_list(parent_file: String) -> Vec<SubagentSummary>` — scans the parent session's subagent dir; status inferred
+  (output file → completed; fresh lock/jsonl ≤5 min → running; last stopReason error/aborted → failed/aborted)
+- `subagent_transcript(parent_file: String, agent_id: String, from_byte: Option<u64>) -> SubagentTranscript` — `parent_file`
+  must be an existing `.jsonl` under `~/.omp/agent/sessions`; `agent_id` rejects separators/leading dot
 - `takeover_external(session_id) -> LiveSessionInfo` — SIGTERM external pid, wait ≤5s (SIGKILL after), then `rpc_start` with resume
 - `create_side_chat(parent_session_id, selection: Option<String>, question: String) -> LiveSessionInfo` — §B spec
 
 **C — git / services:**
-- `git_summary(cwd) -> GitSummary`, `git_log(cwd, limit: u32) -> Vec<GitCommit>`, `git_diff(cwd, path: Option<String>, sha: Option<String>) -> String`
+- `git_summary(cwd) -> GitSummary`, `git_log(cwd, limit: u32) -> GitHistory` (commits + `fork_point`/`base` for the timeline's "inherited from base" divider), `git_diff(cwd, path: Option<String>, sha: Option<String>) -> String`
 - `git_create_worktree(repo, name, branch: Option<String>, base: Option<String>) -> WorktreeInfo` — `name` becomes the
   `.worktrees/<slug>` directory; `branch` (default `omp/<slug>`) is checked out when it exists, else created from `base`
   (default: current HEAD), `git_list_worktrees(repo) -> Vec<WorktreeInfo>`, `git_remove_worktree(repo, path, delete_branch: bool, force: bool)`
@@ -458,6 +481,12 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `skills_list(cwd: Option<String>) -> SkillsCatalog`
 - `skills_read(path: String) -> String`
 - `skills_trash(dir: String)` — moves a skill directory to the OS Trash (validated to be a direct child of a known skill root)
+
+**D — MCP servers & plugins (settings):**
+- `mcp_config_list(cwd: Option<String>) -> McpConfigSnapshot` — servers across project `.omp/mcp.json`/`.mcp.json` and user mcp files
+- `mcp_server_upsert(cwd, path, name, patch: Value)` — merge patch (null deletes; env/headers merge per key; masked values preserved)
+- `mcp_server_remove(cwd, path, name)`, `mcp_server_set_enabled(cwd, name, enabled: bool)`
+- `plugins_list(cwd: Option<String>) -> PluginCatalog`, `plugin_set_enabled(cwd, name, enabled: bool)` — writes `plugins.<name>.enabled` in the scope lockfile
 
 ## 8. Status extension file format
 
@@ -686,12 +715,22 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   computing `stepCount` and total `durationMs`. Protocol items (`model_change`, `compaction`, `custom`, `system`) form
   standalone `ProtocolBlock`s only between turns; one that arrives mid-run (assistant/tool activity follows before the
   next user message — e.g. `async-result` background-job notices, `launch-completion`, auto-compaction) stays inside the
-  turn as a `notice` step. Labels come from `noticeLabel` (Chinese, never the raw kind). Duration is formatted in Chinese
-  via `formatDurationChinese` (e.g. "12 秒", "1 分 23 秒"); model strings are cleaned to display names via `formatShortModel`.
-- Execution disclosure (`ExecutionDisclosure.tsx`): collapsible drawer displaying intermediate thinking processes, tool call cards
-  (with command, args, status, and inline diffs from `toolResult.details.diff`), and execution step counts.
-- Answer footer (`AnswerFooter.tsx`): rendered below each assistant message; displays duration, model badge, Git checkpoint status
-  (`TurnCheckpoint`: saved commit badge jumping to git timeline via `useTurnNav.showCommit`, modified files count toggle, single-click "撤回这一轮"
+  turn as a `notice` step. Labels come from `noticeLabel` (Chinese, never the raw kind). Durations: `formatDurationChinese`
+  ("12 秒") and `formatDurationCompact` ("2分3秒"); model strings are cleaned via `formatShortModel`. `groupActivityUnits` folds
+  consecutive read/search/list/find/grep/glob tools into one exploration unit ("已浏览 3 个文件、2 次搜索").
+- Visual language is Codex-like (tokens in `index.css`: `--text-60/40/30`, `--line`, `--ghost-hover`, `--chat-user-bg`,
+  `.shimmer-text`, `.thread-fade-mask`): user = right bubble (max 70%, radius 22px); assistant = plain prose; activity =
+  single muted rows with hover chevron; no gradients/glows/colored cards; color only on small status icons.
+- Execution disclosure (`ExecutionDisclosure.tsx`): `TurnSteps` renders activity rows for finished turns and live streaming
+  (ThinkingRow, ToolCard rows, ExplorationGroupRow, NoticeStep); finished turns collapse under a "已处理 2分3秒" ghost divider.
+  `task`/`agent` tool calls render `subagents/TaskToolBlock` and are never folded into groups.
+- Subagents (`features/chat/subagents/`): `TaskToolBlock {sessionId, toolCallId, args, status, details, resultText?, startedAt?, endedAt?}`
+  merges task args < `details.progress/results` < `subagent_list` summaries < live `subagents` (by `parentToolCallId`), renders an
+  omp-TUI-style tree (├─/└─, status icon, id, agent badge, current tool, model·thinking·tools·tokens·duration·cost).
+  Clicking a row opens `SubagentSheet` (right slide-over, `Z_LAYER.modal`): 概览 / 提示词 / 过程 / 输出, tailing
+  `subagent_transcript` every 1.5 s while running.
+- Answer footer (`AnswerFooter.tsx`): hover-only (always visible on the latest turn); duration, model, Git checkpoint status
+  (`TurnCheckpoint`: saved commit jumping to git timeline via `useTurnNav.showCommit`, modified files toggle, single-click "撤回这一轮"
   undo with conflict detection), copy button, and side-chat fork button.
 - Image attachments: `ImageAttachment` (blob refs, clip files, mimeType, width, height) rendered via `ImageChips.tsx` with Tauri asset
   protocol (`protocol-asset` feature, scope `$HOME/.omp/agent/blobs/**`, `$APPCACHE/ompws-clip/**`) and full preview portaled at `Z_LAYER.modal`.
@@ -699,16 +738,27 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Diff view component: line numbers, +/- colors; select lines → "批注" → comment textarea → adds Annotation `{source:"diff", file, lines, comment, text}`.
 - Text selection anywhere in the stream → floating toolbar "引用" (addAnnotation) / "在侧聊中提问" (`requestSideChat`) / "记到收集箱" (open
   QuickCapture via `ui.openModal("quick-capture", {text, sessionId})`).
-- Composer: annotation pills above input (remove ×), textarea (Enter send, Shift+Enter newline), slash-command autocomplete from
-  `available_commands_update`, `/fork <question>` intercepted → side chat. Model picker (`get_available_models`/`set_model`), thinking
+- Slash commands (`features/chat/slash/`): `registry.ts` defines app commands (会话 /new /fork /rename /compact /handoff /export /copy
+  /retry; 模型 /model /thinking /fast /advisor; 状态 /status /context /usage /tools /jobs /todo /stats; 集成 /mcp /plugins /memory
+  /browser /computer /extended-context; 设置 /agents /approvals /login /settings), each with optional `settingsTarget`. `menu.ts`
+  merges them with omp `available_commands_update` entries (`{name, aliases?, description?, input?:{hint?}, subcommands?, source}`;
+  skill → 技能, custom/file → 自定义命令, extension/mcp_prompt → 扩展, other builtins → 更多 OMP 命令). `SlashMenu` is the Codex-style
+  popup (gear "去设置" → `openSettingsTarget`). Unknown `/x` is sent to omp as a prompt; `command_output` frames render in
+  `CommandOutputList` at the end of the thread.
+- Composer: Codex-style single container; annotation pills above input (remove ×), textarea (Enter send, Shift+Enter newline), bottom
+  toolbar (attach, model picker, thinking level, held pill, context ring, round send/stop). Model picker (`get_available_models`/`set_model`), thinking
   level (`set_thinking_level`). If session not live → `rpc_ensure_live` first. While streaming: Enter puts the message in the **held queue**
   (zustand, persisted to localStorage per session), Cmd+Enter = steer now, Stop button = `abort`. When a turn ends and held items exist, show a
   bar "有 N 条暂存" with 立即发送(合并为一条)/继续暂存/逐条确认; items editable, deletable, reorderable (drag or ↑↓).
   External sessions: composer disabled with "只读观察 — 接管后可操作".
 - Pending dialogs: render approval card (Approve/Deny, show title body), select (options + optionDetails), confirm, input/editor
   (textarea) inline at the stream bottom; respond via `rpc_ui_respond`. Also load `rpc_pending_ui` on open.
-- `stores/live.ts`: per session `{ streaming, state (last get_state), pendingUi[], subagents: Record<id,{status,label,…}>, streamingMessage, commands[] }`
-  reducing `rpc:frame`/`rpc:process`. Subagent frames (`subagent_lifecycle`/`subagent_progress`) feed `subagents` (D's capsule reads it).
+- `stores/live.ts`: per session `{ streaming, state (last get_state), pendingUi[], subagents: Record<id, SubagentInfo>, streamingMessage,
+  commands[], commandOutputs[], pendingCommand }` reducing `rpc:frame`/`rpc:process`. Subagent frames are `{type, payload}`:
+  `subagent_lifecycle` (payload.id; `started` → running) and `subagent_progress` (payload.progress: AgentProgress) feed `subagents`
+  (kept after completion; seeded via `get_subagents` on attach). `tool_execution_update` keeps `partialResult.details`.
+  `command_output` → `commandOutputs` (tagged with `pendingCommand`), `config_update` → model/thinking, `session_info_update` → title,
+  `prompt_result` errors → output entry.
 - `SideChatPanel`: lists children of the selected session (label, title, status); "新建侧聊" input; consumes `composer.sideChatRequest`;
   shows the selected child as a compact embedded `SessionView` (prop `compact`). Depth > 3 → "请开新主会话".
 - `HeatmapPanel`: one cell per transcript message (grid, ~10px squares), user=blue, assistant brightness ∝ log(total tokens),
@@ -784,8 +834,12 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   - 常规: `general` (通用), `appearance` (外观), `notifications` (通知)
   - 模型: `providers` (API 供应商), `omp-roles` (模型角色), `omp-model` (模型与目录), `omp-thinking` (思考与采样), `omp-retry` (重试与回退)
   - Agent: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `omp-context` (上下文与记忆), `omp-tools` (工具与审批), `omp-tasks` (任务与子代理)
-  - 连接: `mobile` (手机访问; renders `MobilePanel`), `omp-providers` (网络与扩展)
+  - 连接: `mobile` (手机访问; renders `MobilePanel`), `omp-providers` (网络与扩展), `mcp` (MCP 服务器), `plugins` (插件)
   - 高级: `advanced` (高级), `omp-advanced` (其他 OMP 配置)
+- Deep links: `ui.openSettings(section?, opts?: { focusKey?: string })` scrolls to and briefly highlights `[data-field-id]` (native)
+  or `[data-omp-key]` (omp config rows; clears search/group filter). `settingsTargets.ts` maps `SettingsTarget`
+  (models, thinking, fastMode, advisor, extendedContext, browser, computerUse, memory, mcp, plugins, subagents, approvals,
+  providers, compaction) to section + focus key via `openSettingsTarget(target)`.
 
 ### E — Mobile access, terminal, status extension
 - `mobile`: axum server bound to `0.0.0.0:<mobile_port>` on `mobile_start`. Pairing: `mobile_create_pairing` makes a random 32-byte code
