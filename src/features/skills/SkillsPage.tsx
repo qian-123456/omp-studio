@@ -217,15 +217,22 @@ function DeleteConfirmBody({
 		</div>
 	);
 }
-/** Insert `/skill:<name> ` into the selected session's composer draft. */
-function insertSkillIntoComposer(skillName: string) {
+/**
+ * Insert a skill invocation into the selected session's composer draft.
+ * Enabled skills use `/skill:<name>`. OMP does not register that command for
+ * disabled skills, so for those we insert an instruction to read SKILL.md by
+ * absolute path instead (the `read` tool accepts any file).
+ */
+function insertSkillIntoComposer(skill: SkillItem, enabled: boolean) {
 	const selectedSessionId = useUi.getState().selectedSessionId;
 	if (!selectedSessionId) {
 		toast.error("当前未选择会话，请先在侧边栏选择一个会话");
 		return;
 	}
 	const existingDraft = useComposer.getState().drafts[selectedSessionId] ?? "";
-	const invocation = `/skill:${skillName} `;
+	const invocation = enabled
+		? `/skill:${skill.name} `
+		: `请先读取 Skill 文件 \`${skill.path}\`，并按其中的说明完成下面的任务（该 Skill 在 OMP 中已停用，本次临时使用；文中的相对路径以 \`${skill.dir}\` 为基准）：\n`;
 	useComposer
 		.getState()
 		.setDraft(
@@ -234,7 +241,121 @@ function insertSkillIntoComposer(skillName: string) {
 		);
 	useComposer.getState().focusComposer(selectedSessionId);
 	useUi.getState().setCenter("session");
-	toast.success(`已插入 /skill:${skillName} 到会话输入框`);
+	toast.success(
+		enabled
+			? `已插入 /skill:${skill.name} 到会话输入框`
+			: `「${skill.name}」已停用，已插入“读取该 Skill 文件”的指令`,
+	);
+}
+
+const skillUseTitle = (skill: SkillItem, enabled: boolean, hasSession: boolean) =>
+	!hasSession
+		? "请先在侧边栏选择一个会话"
+		: enabled
+			? `在当前会话插入 /skill:${skill.name}`
+			: "已停用：/skill 命令不可用，将插入“读取该 Skill 文件”的指令临时使用";
+
+/** Info circle next to the 启用 column header explaining what the switch does. */
+function EnableInfoButton() {
+	const btnRef = useRef<HTMLButtonElement>(null);
+	const [hover, setHover] = useState(false);
+	const [pinned, setPinned] = useState(false);
+	const closeTimer = useRef<number | null>(null);
+	const enter = () => {
+		if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+		closeTimer.current = null;
+		setHover(true);
+	};
+	const leave = () => {
+		closeTimer.current = window.setTimeout(() => setHover(false), 150);
+	};
+	useEffect(
+		() => () => {
+			if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+		},
+		[],
+	);
+	const open = hover || pinned;
+	return (
+		<>
+			<button
+				ref={btnRef}
+				type="button"
+				aria-label="启用开关说明"
+				onMouseEnter={enter}
+				onMouseLeave={leave}
+				onClick={() => setPinned((p) => !p)}
+				className={clsx(
+					"flex h-4 w-4 items-center justify-center rounded-full normal-case transition-colors hover:text-neutral-300",
+					open ? "text-neutral-300" : "text-neutral-600",
+				)}
+			>
+				<Info size={11} />
+			</button>
+			<FloatingLayer
+				anchor={open ? btnRef.current : null}
+				placement="left-start"
+				offset={8}
+				layer="hovercard"
+				onDismiss={pinned ? () => setPinned(false) : undefined}
+				ignoreRefs={[btnRef]}
+				onMouseEnter={enter}
+				onMouseLeave={leave}
+				role="dialog"
+				aria-label="启用开关说明"
+				className="w-[340px] rounded-xl border border-neutral-700 bg-neutral-900 p-3.5 text-left text-[11.5px] font-normal normal-case leading-relaxed tracking-normal text-neutral-300 shadow-2xl"
+			>
+				<div className="mb-1.5 text-[12.5px] font-semibold text-neutral-100">
+					启用开关管什么
+				</div>
+				<p className="text-neutral-400">
+					只决定 OMP 在<b className="text-neutral-200">新会话启动时</b>
+					是否加载这个 Skill，不动文件。
+				</p>
+
+				<div className="mt-2.5 font-medium text-neutral-200">原理</div>
+				<p className="text-neutral-400">
+					会话启动时 OMP 依次检查：总开关 → 是否被停用 → 来源开关 → 忽略规则 → 白名单，全部通过才加载。关闭 = 往全局配置
+					<code className="mx-0.5 rounded bg-neutral-800 px-1 font-mono text-[10.5px]">disabledExtensions</code>
+					写入
+					<code className="mx-0.5 rounded bg-neutral-800 px-1 font-mono text-[10.5px]">skill:名称</code>
+					（~/.omp/agent/config.yml）。
+				</p>
+
+				<div className="mt-2.5 font-medium text-neutral-200">关闭后会</div>
+				<ul className="list-disc space-y-0.5 pl-4 text-neutral-400">
+					<li>从 AI 的技能清单里消失，也不再占常驻上下文</li>
+					<li>
+						<code className="font-mono text-[10.5px]">/skill:名称</code> 命令不再注册，AI 也读不到{" "}
+						<code className="font-mono text-[10.5px]">skill://名称</code>
+					</li>
+					<li>子代理同样拿不到；对所有项目生效</li>
+				</ul>
+
+				<div className="mt-2.5 font-medium text-neutral-200">不会影响</div>
+				<ul className="list-disc space-y-0.5 pl-4 text-neutral-400">
+					<li>文件本身（删除才会移到废纸篓）</li>
+					<li>已经在运行的会话（新开会话才生效）</li>
+					<li>Claude Code、Codex 等其他工具</li>
+					<li>历史触发统计</li>
+				</ul>
+
+				<div className="mt-2.5 font-medium text-neutral-200">开关是灰的？</div>
+				<p className="text-neutral-400">
+					说明被更大的规则整体关闭（来源开关或通配忽略规则），悬停开关可看原因，需去设置里调整。
+				</p>
+
+				<div className="mt-2.5 font-medium text-neutral-200">已停用但想临时用一次</div>
+				<p className="text-neutral-400">
+					点行尾 ▶：会插入“请先读取这个 SKILL.md 文件”的指令，AI 读完照做，无需打开开关。
+				</p>
+
+				<p className="mt-2.5 border-t border-neutral-800 pt-2 text-[10.5px] text-neutral-500">
+					项目里的 .omp/config.yml 也可能单独停用 Skill，这里不显示也不修改。
+				</p>
+			</FloatingLayer>
+		</>
+	);
 }
 
 async function revealInFinder(path: string) {
@@ -434,7 +555,19 @@ function DetailDrawer({
 							)}
 						</div>
 						{skill && (
-							<span className="mt-1 inline-block rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-px font-mono text-[11px] text-sky-400">
+							<span
+								className={clsx(
+									"mt-1 inline-block rounded border px-1.5 py-px font-mono text-[11px]",
+									enablement?.enabled === false
+										? "border-neutral-700 bg-neutral-800/60 text-neutral-500 line-through"
+										: "border-sky-500/20 bg-sky-500/10 text-sky-400",
+								)}
+								title={
+									enablement?.enabled === false
+										? "已停用：OMP 不会注册这个命令"
+										: undefined
+								}
+							>
 								/skill:{skill.name}
 							</span>
 						)}
@@ -588,13 +721,9 @@ function DetailDrawer({
 						{skill && (
 							<button
 								type="button"
-								onClick={() => insertSkillIntoComposer(skill.name)}
+								onClick={() => insertSkillIntoComposer(skill, enablement?.enabled ?? true)}
 								disabled={!selectedSessionId}
-								title={
-									selectedSessionId
-										? `在当前会话插入 /skill:${skill.name}`
-										: "请先在侧边栏选择一个会话"
-								}
+								title={skillUseTitle(skill, enablement?.enabled ?? true, !!selectedSessionId)}
 								className={clsx(
 									"flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-apple-card hairline transition-all active:scale-95",
 									selectedSessionId
@@ -1157,8 +1286,9 @@ export function SkillsPage() {
 									<Info size={11} className="text-neutral-600" />
 								</span>
 								<span className="text-right">最后触发</span>
-								<span className="text-right" title="启用/停用写入 OMP 配置，对新会话生效">
+								<span className="flex items-center justify-end gap-1">
 									启用
+									<EnableInfoButton />
 								</span>
 								<span className="text-right">操作</span>
 							</div>
@@ -1320,13 +1450,9 @@ export function SkillsPage() {
 													disabled={!selectedSessionId}
 													onClick={(e) => {
 														e.stopPropagation();
-														insertSkillIntoComposer(skill.name);
+														insertSkillIntoComposer(skill, enablement.enabled);
 													}}
-													title={
-														selectedSessionId
-															? "在当前会话中使用"
-															: "请先在侧边栏选择一个会话"
-													}
+													title={skillUseTitle(skill, enablement.enabled, !!selectedSessionId)}
 													className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-[var(--bg-active-fill)] hover:text-amber-300 disabled:opacity-30"
 												>
 													<Play size={13} />
