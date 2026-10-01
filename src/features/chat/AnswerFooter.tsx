@@ -5,7 +5,7 @@
 import {
 	ChevronRight,
 	Copy,
-	GitFork,
+	GitBranch,
 	RotateCcw,
 	Save,
 } from "lucide-react";
@@ -257,7 +257,7 @@ export function AnswerFooter({
 						title="分叉此回复到侧聊"
 						aria-label="分叉此回复到侧聊"
 					>
-						<GitFork size={12} />
+						<GitBranch size={12} />
 					</button>
 				</div>
 			</div>
