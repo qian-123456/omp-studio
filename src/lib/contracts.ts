@@ -319,6 +319,15 @@ export interface GitCommit {
 	ts: string;
 }
 
+/** Commit page plus where this worktree branched off its base branch. */
+export interface GitHistory {
+	commits: GitCommit[];
+	/** merge-base of HEAD with `base`; null when there is no base. */
+	forkPoint: string | null;
+	/** Branch the history forked from ("main" / "origin/main"); null = HEAD is the base. */
+	base: string | null;
+}
+
 export interface WorktreeInfo {
 	path: string;
 	branch: string | null;

@@ -11,7 +11,7 @@ import type {
 	BacklogPatch,
 	BacklogRef,
 	DirEntry,
-	GitCommit,
+	GitHistory,
 	GitBadge,
 	GitSummary,
 	LiveSessionInfo,
@@ -186,7 +186,7 @@ export const gitRepoRoot = (cwd: string) =>
 	invoke<string | null>("git_repo_root", { cwd });
 
 export const gitLog = (cwd: string, limit: number) =>
-	invoke<GitCommit[]>("git_log", { cwd, limit });
+	invoke<GitHistory>("git_log", { cwd, limit });
 
 export const gitDiff = (cwd: string, path?: string, sha?: string) =>
 	invoke<string>("git_diff", {

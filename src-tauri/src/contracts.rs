@@ -458,6 +458,18 @@ pub struct GitCommit {
     pub ts: String,
 }
 
+/// Commit log page plus where this worktree branched off its base.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHistory {
+    pub commits: Vec<GitCommit>,
+    /// merge-base of HEAD with `base`; None when there is no base or it fails.
+    pub fork_point: Option<String>,
+    /// The branch the timeline forked from (e.g. "main" or "origin/main");
+    /// None means HEAD is the base / could not be resolved.
+    pub base: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeInfo {
