@@ -6,6 +6,7 @@ import { useSessions } from "../../stores/sessions";
 import type { SessionMeta, Todo as TodoItem } from "../../lib/contracts";
 import { useTodos } from "../todos/store";
 import type { RightTab } from "../../stores/ui";
+import { useDrawerStore, countLiveCommandTabs } from "../terminal/drawerStore";
 
 export function computeTodosBadge(
 	counts: { open: number },
@@ -162,6 +163,7 @@ export function useTabBadges(
 	const servicesCount = useServicesBadge();
 	const sidechatCount = useSidechatBadge(selectedSessionId);
 	const heatmapCount = useHeatmapBadge(selectedSessionId);
+	const terminalCount = useDrawerStore((s) => countLiveCommandTabs(s.tabs));
 
 	return useMemo(
 		() => ({
@@ -171,7 +173,8 @@ export function useTabBadges(
 			todos: todosBadge,
 			git: gitDirtyCount,
 			services: servicesCount,
+			terminal: terminalCount,
 		}),
-		[todosBadge, gitDirtyCount, servicesCount, sidechatCount, heatmapCount],
+		[todosBadge, gitDirtyCount, servicesCount, sidechatCount, heatmapCount, terminalCount],
 	);
 }

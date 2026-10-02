@@ -100,6 +100,7 @@ export async function createSession(
 		result: null,
 		lastAssistant: null,
 		model: opts.model?.trim() || null,
+		attention: opts.prompt?.trim() ? "running" : null,
 	};
 	return { sessionId: live.sessionId, stub };
 }

@@ -58,8 +58,8 @@ extension/omp-workspace-checkpoints.ts + autocommit-rule.md  turn checkpoints ex
 src/
   main.tsx, App.tsx          shell, three-pane layout, top bar                          [LEAD]
   components/FloatingLayer.tsx  stacking portal, usableViewport clamp, Z_LAYER tiers (§12) [LEAD]
-  components/CenterHeader.tsx   top bar with window drag & sidebar/right toggles        [LEAD]
-  components/RightAside.tsx     collapsible right tab container                         [LEAD]
+  components/CenterHeader.tsx   top bar with window drag & sidebar/right toggles; "终端" icon button (toggles right tab "terminal") [LEAD]
+  components/RightAside.tsx     collapsible right tab container (incl. "terminal" = 终端) [LEAD]
   components/Segmented.tsx      generic pill segmented control (settings, skills)       [LEAD]
   lib/contracts.ts           TS mirror of contracts.rs                                  [LEAD]
   lib/ipc.ts                 typed wrappers for EVERY command in §7                     [LEAD]
@@ -81,8 +81,8 @@ src/
   features/services/         right tab: services                                        [C]
   features/editor/           center "文档" view: md preview/annotate/edit               [C]
   features/todos/            queue store, smart detection logic, top capsule, todo row  [D]
-  features/inbox/            merged queue + backlog center page, useInboxBadge (§11 D)  [D]
-  features/backlog/          backlog store, quick capture modal (BacklogPanel removed)  [D]
+  features/inbox/            session-status hub center page (tabs), attention helper, useInboxBadge (§11 D) [D]
+  features/backlog/          backlog store, quick capture modal, top-bar 想法 capsule + dropdown [D]
   features/schedules/        scheduled tasks center page, cadence editor, run history (§11 F) [E]
   features/skills/           skills & extensions browser center page (§11 G)            [F]
   features/diagnose/         diagnose dialog                                            [D]
@@ -96,7 +96,7 @@ src/
     useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
     settingsNav.ts           SettingsNavContext / useSettingsNav (search query + navigate)
   features/mobile/           pairing / tunnel panel (inside settings or its own modal)  [E]
-  features/terminal/         terminal drawer & agent terminal center view               [E]
+  features/terminal/         right-panel command terminal & agent terminal center view  [E]
 ```
 
 Rules for parallel work:
@@ -171,7 +171,9 @@ pub struct SessionMeta {                // #[derive(Debug, Clone, Default, Parti
   pub result: Option<ResultBadge>,
   pub last_assistant: Option<String>, // ≤200 chars snippet
   pub model: Option<String>,
+  pub attention: Option<Attention>, // derived by A; see "Inbox (status hub)" in §11 D
 }
+pub enum Attention { Awaiting, Error, Unread, Running } // snake_case; precedence awaiting > error > unread > running
 
 pub enum WorkspaceKind { Project, Global }
 pub struct Workspace { pub id: String, pub path: String, pub name: String, pub kind: WorkspaceKind, pub sort: i64 }
@@ -221,7 +223,7 @@ pub struct TodoCounts { pub open: u32, pub total: u32 }
 pub enum BacklogKind { Idea, Bug, Todo }
 pub enum BacklogStatus { Inbox, Dispatched, Done, Closed }
 pub struct BacklogRef { pub kind: String /* "session" | "file" | "annotation" */, pub session_id: Option<String>, pub path: Option<String>, pub text: Option<String>, pub lines: Option<String> }
-pub struct BacklogItem { pub id: String, pub text: String, pub kind: BacklogKind, pub refs: Vec<BacklogRef>, pub status: BacklogStatus, pub target_session_id: Option<String>, pub created_at: String, pub updated_at: String }
+pub struct BacklogItem { pub id: String, pub text: String, pub kind: BacklogKind, pub refs: Vec<BacklogRef>, pub status: BacklogStatus, pub target_session_id: Option<String>, pub project_dir: Option<String> /* cwd at capture; current-project-first sort */, pub created_at: String, pub updated_at: String }
 
 pub struct GitFileChange { pub path: String, pub status: String /* M A D R ?? */, pub added: u32, pub deleted: u32 }
 pub struct GitSummary { pub is_repo: bool, pub branch: Option<String>, pub files: Vec<GitFileChange>, pub has_uncommitted: bool }
@@ -257,6 +259,7 @@ pub struct Settings {
   pub tunnel_mode: String,           // "off" | "quick" | "named"; default "off"
   pub tunnel_name: Option<String>, pub tunnel_hostname: Option<String>,
   pub quick_capture_shortcut: String, // default "CommandOrControl+Shift+I"
+  pub inbox_window_hours: u32,       // default 24; 1..=720; non-awaiting sessions idle longer than this leave the inbox + badge
   // … (later fields: see contracts.rs)
   pub turn_checkpoints: Option<bool>, // default None = never asked; Some(true) loads the checkpoints extension (§8.1)
 }
@@ -377,7 +380,7 @@ CREATE TABLE todos(id TEXT PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL
   title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL DEFAULT '{}', priority INTEGER NOT NULL DEFAULT 0,
   dedupe_key TEXT UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE backlog(id TEXT PRIMARY KEY, text TEXT NOT NULL, kind TEXT NOT NULL, refs TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL,
-  target_session_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  target_session_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);  -- later migration adds: backlog.project_dir TEXT
 CREATE TABLE summaries(session_id TEXT PRIMARY KEY, summary TEXT NOT NULL, upto_offset INTEGER NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- single row key='settings' holding Settings JSON
 CREATE TABLE mobile_devices(token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, last_seen_at TEXT);
@@ -409,7 +412,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `list_sessions() -> Vec<SessionMeta>`
 - `get_transcript(session_id, from_offset: Option<u64>) -> TranscriptPage` — full parse from 0 or incremental from byte offset
 - `update_session_meta(session_id, patch: {customName?, pinned?, archived?, workspaceId?})  -> SessionMeta`
-- `mark_seen(session_id)` — clears `unread`
+- `mark_seen(session_id)` — clears `unread`, stamps `session_meta.last_seen_at`; if pending is Review, also runs the `accept_session(id, false)` logic (view = accept; emits `SessionAccepted`). The frontend calls it after every 2 s dwell on a session
 - `accept_session(session_id, archive: bool)` — clears `pending=Review`, sets Idle, emits `SessionAccepted`
 - `list_workspaces() -> Vec<Workspace>`, `add_workspace(path) -> Workspace`, `remove_workspace(id)`, `reorder_workspaces(ids: Vec<String>)`
 - `session_usage(session_id) -> UsageSummary`
@@ -417,6 +420,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **A — catalog (added):**
 - `session_export_html(session_id) -> String` — runs `omp --export <file>`, returns the produced HTML path
+- `session_share(session_id) -> String` — runs `omp share <file>` (same as `/share`: E2E-encrypted snapshot uploaded to the configured share store), returns the share link
 - `quick_ask(prompt: String) -> String` — one-shot `omp -p --no-tools --no-session` (supervisor/smol model)
 
 
@@ -463,15 +467,15 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `supervisor_refresh()`
 - `summary_get(session_id, ensure: bool) -> Option<String>`
 - `diagnose_build_prompt(target_session_id) -> String`
-- `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(id) -> String`
+- `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(id) -> String`
 - `notify_test()`
 
 **E — mobile / terminal:**
 - `mobile_start() -> MobileStatus`, `mobile_stop()`, `mobile_status() -> MobileStatus`, `mobile_create_pairing() -> PairingInfo`, `mobile_revoke_all()`
 - `tunnel_start() -> MobileStatus`, `tunnel_stop()`
 - `term_open(cwd, command: Vec<String>, cols: u16, rows: u16) -> String /* termId */`, `term_write(term_id, data: String /* utf8 */)`, `term_resize(term_id, cols, rows)`, `term_close(term_id)`
-- `term_open_session(session_id, cols, rows) -> String` — stops the RPC process for that session if live, then runs `omp --resume <file> -e <extension_path> [-e <providers ext>]` in a PTY (provider keys + `OMP_WORKSPACE_PROVIDERS` via extra env)
-- `terminal_set_current_session(path: Option<String>)` — writes/clears `~/.omp-workspace/current-session`; `term_open` drawer shells source generated `zdot/`/`bashrc`/`terminal-init.*` so bare `omp`/`claude`/`codex` resume that transcript (session terminals unaffected — they run `omp --resume` directly)
+- `term_open_session(session_id, agent: String /* "omp"|"claude"|"codex" */, cols, rows) -> String` — one agent terminal per session (reopening, even with another agent, replaces the PTY); unknown agent → `Err("未知的 Agent: …")`. `omp`: stops the RPC process for that session if live, then runs `omp --resume <file> -e <extension_path> [-e <providers ext>]`; `claude`: `claude --continue`; `codex`: `codex resume --last` (RPC process untouched). All run in the session cwd (fallback home) with provider extra env; claude/codex are resolved against the login-shell-augmented PATH first and a missing CLI returns a Chinese `Err` before anything is torn down
+- `terminal_set_current_session(path: Option<String>)` — writes/clears `~/.omp-workspace/current-session`; `term_open` command-terminal shells (right panel) source generated `zdot/`/`bashrc`/`terminal-init.*` so bare `omp`/`claude`/`codex` resume that transcript (session terminals unaffected — they run `term_open_session` directly)
 
 **Providers (added module — §2 ownership):**
 - `provider_list() -> Vec<ProviderConfig>`, `provider_save(config, api_key: Option<String>) -> ProviderConfig`, `provider_delete(id)`, `provider_test(id) -> ProviderTestResult`, `provider_import_env(text) -> Vec<ProviderConfig>`, `provider_export_env_text(ids: Option<Vec<String>>) -> String`
@@ -576,13 +580,14 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/home/StartPage` | center when `ui.centerView === "home"` (default composer-first screen) |
 | `features/chat/SessionView` (props `{ sessionId }`) | center when `ui.centerView === "session"` (or `StartPage` if none selected) |
 | `features/editor/DocView` (props `{ path }`) | center when `centerView === "doc"` (or `StartPage` if none selected) |
-| `features/inbox/InboxPage` | center when `centerView === "inbox"` (merged queue + backlog) |
+| `features/inbox/InboxPage` | center when `centerView === "inbox"` (session status hub) |
 | `features/schedules/SchedulesPage` | center when `centerView === "schedules"` |
 | `features/skills/SkillsPage` | center when `centerView === "skills"` |
-| `features/terminal/AgentTerminalPage` | center when `centerView === "agentTerminal"` |
 | `features/settings/SettingsOverlay` | overlay when `centerView === "settings"`, keeps underlying center view mounted |
-| `features/terminal/TerminalDrawer` | global bottom-drawer terminal (Codex-style overlay) |
+| `features/terminal/CommandTerminalPanel` | 终端: body of RightTab `"terminal"` in `RightAside` (multi-tab login shells; tab strip — tabs, status, "+" new tab (added synchronously, cwd resolved at spawn), close kills PTY, fold to background service — lives in `terminalTabs.ts` (`addTerminalTab`/`closeTerminalTab`/`detachTerminalTab`); `RightPanelHeader` renders each visible terminal as its own Chrome-style tab while the terminal panel tab is active, so there is a single header row; agent ops: quote selection to composer annotation ⌘⇧A, send selection to side chat; search ⌘F; context menu). xterm/PTY instances live in `drawerRegistry` and are re-attached + re-fitted when the panel remounts, so processes and scrollback survive right-panel tab switches, closing the panel and session switches. Showing the tab with zero visible command tabs spawns one; closing/folding the last one closes the panel tab. Tab metas in `drawerStore` (persisted `ompws:drawer-tabs`). Entry: header 终端图标按钮 or ⌘` (toggles the right panel on this tab). Right-panel badge = live command tabs. |
+| `components/CenterHeader` 终端图标按钮 | Toggles RightTab `"terminal"` in the right panel (`setRightTab("terminal")`, or closes right panel if already showing). No badge. Shortcut ⌘`. |
 | `features/todos/TopCapsule` | top bar, right |
+| `features/backlog/IdeasCapsule` | top bar, right (next to TopCapsule) |
 | `features/backlog/QuickCapture` | global modal (always mounted) |
 | `features/diagnose/DiagnoseDialog` | global modal (always mounted; opened via `ui.openModal("diagnose", {sessionId})`) |
 | `features/git/QuickAskDialog` | global modal (opened via `ui.openModal("quick-ask")` or ⌘⇧K) |
@@ -592,14 +597,13 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/services/ServicesPanel` | right tab `services` |
 | `features/todos/TodoPanel` | right tab `todos` |
 | `features/explorer/FileExplorer` | right tab `explorer` |
-| `features/terminal/TerminalView` (props `{ sessionId }`) | center, when `ui.sessionViewMode[sessionId] === "terminal"` (SessionView renders it) |
 | `features/mobile/MobilePanel` | inside SettingsPage (under `mobile` section) |
 | `features/git/NewSessionDialog` | global modal (`ui.openModal("new-session", {workspaceId?, cwd?})`) |
 | `features/sessions/ResumeMissingCwdDialog` | global modal (`ui.openModal("resume-missing-cwd", {sessionId, cwd, repoRoot, worktreeName?})`, driven by `lib/ensureLive.ts`) |
 
 Sidebar navigation (Codex-style vertical nav list at the top of the left sidebar):
 1. **新建会话** (`⌘N`): opens new session flow; right-side button **快速提问** (`⌘⇧K`) opens `QuickAskDialog`.
-2. **收件箱**: `setCenter("inbox")`; unread badge via `useInboxBadge()` reading `useTodos.counts.open`.
+2. **收件箱**: `setCenter("inbox")`; badge via `useInboxBadge()` (awaiting + error + unread sessions within the window).
 3. **定时任务**: `setCenter("schedules")`; management for automated schedule runs.
 4. **技能与扩展**: `setCenter("skills")`; browser for available skills and extension plugins.
 
@@ -612,16 +616,16 @@ type CenterView =
   | "inbox"
   | "schedules"
   | "skills"
-  | "settings"
-  | "agentTerminal";
-type RightTab = "explorer" | "sidechat" | "heatmap" | "todos" | "git" | "services";
+  | "settings";
+type RightTab = "explorer" | "sidechat" | "heatmap" | "todos" | "git" | "services" | "terminal";
 interface UiState {
   centerView: CenterView; selectedSessionId: string | null; docPath: string | null;
-  rightTab: RightTab; rightOpen: boolean;
+  rightTab: RightTab | null; openRightTabs: RightTab[]; rightOpen: boolean;  // Chrome-style open tabs, persisted (ompws:right-tabs / ompws:right-tab)
   sessionViewMode: Record<string, "chat" | "terminal">;
   modal: { name: string; props: Record<string, unknown> } | null;
   selectSession(id: string | null): void; openDoc(path: string): void; setCenter(v: CenterView): void;
-  setRightTab(t: RightTab): void; toggleRight(): void; setSessionViewMode(id: string, m: "chat" | "terminal"): void;
+  setRightTab(t: RightTab | null): void;  // opens (appends) + activates, never replaces
+  closeRightTab(t: RightTab): void;  // activates right neighbour, else left, else null (empty state) toggleRight(): void; setSessionViewMode(id: string, m: "chat" | "terminal"): void;
   openModal(name: string, props?: Record<string, unknown>): void; closeModal(): void;
 }
 ```
@@ -831,15 +835,22 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   stop reasons, session_exit records), last assistant text. `DiagnoseDialog`: choose diagnoser: existing session (list) or new session
   (model input; cwd = target cwd) → send via `rpc_start` + `rpc_send prompt`; then navigate to the diagnoser session.
 - Backlog: CRUD + `backlog_build_prompt` (`prompts/backlog_dispatch.md`: item text + kind + each ref: session → label/title/summary,
-  file → path (+ first 200 lines if small), annotation → quoted text). Auto-mark Done when target session is accepted (`SessionAccepted`).
+  file → path (+ first 200 lines if small), annotation → quoted text). Dispatched items (shown as 进行中) stay until the user marks them done manually.
 - `QuickCapture`: global shortcut (`global-shortcut` plugin, `settings.quick_capture_shortcut`) shows+focuses window, emits `quick-capture`;
   modal also opened via `ui.openModal("quick-capture", {text?, sessionId?})`. One line + kind + auto-ref to current session.
 - Notifications: on `SessionStatusChanged` → Review (turn end), AwaitingApproval/AwaitingAnswer, Error/Interrupted (exit), per settings;
-  skip when the main window is focused AND that session is selected. Dock badge = open todo count (`window.set_badge_count`). Optional sound (`sound: "default"`). `notify_test` command.
-- `InboxPage` (center when `centerView === "inbox"`): unified center page replacing separate TodoHome and BacklogPage.
-  Combines 智能待办 (system & supervisor todos + `schedule_run`, with direct actions: 审批, 验收, 恢复, 查看定时任务) and
-  需求与想法 (BacklogItems: idea/bug/todo, with dispatch to new/existing session); gear button navigates to Settings section `"inbox"`.
-- `useInboxBadge()`: reactive hook returning `useTodos((s) => s.counts.open)` for the sidebar 收件箱 unread badge.
+  skip when the main window is focused AND that session is selected. Dock badge = sessions with attention awaiting/error/unread within
+  `inbox_window_hours` (pure fn `inbox_badge_count`, refreshed on `SessionsChanged` and a 60 s tick). Optional sound (`sound: "default"`). `notify_test` command.
+- Inbox (status hub): `SessionMeta.attention` is derived by A — `awaiting` (awaiting_approval/answer; leaves when answered), `error`
+  (error/interrupted not viewed since `pending_since`; viewing hides it from the inbox only, the sidebar red marker stays), `unread`
+  (unread or pending Review — one concept, one blue dot everywhere; viewing clears it globally via `mark_seen`), `running` (working).
+  Consumers drop non-awaiting sessions whose `updated_at` is older than `inbox_window_hours`; archived sessions excluded. Todos are not shown.
+- `InboxPage`: tabs 全部 / 未读 / 中断 / 待回复 with counts; 全部 groups 待回复 → 报错 / 中断 → 已完成，未查看 → 运行中. Compact two-line
+  rows (symbol, title, project · branch, time; one-line snippet), click opens the session, no inline actions; gear → Settings `"inbox"`.
+- `IdeasCapsule`: top-bar pill 「想法」 with the count of `inbox`-status backlog items; dropdown: quick add, all non-closed items
+  (current project first by `project_dir` vs selected session cwd), 填入当前会话, 派发 (existing/new session), 进行中 items show the
+  linked session's status and a done checkbox, collapsed 已完成 section.
+- `useInboxBadge()`: sidebar 收件箱 badge from `useSessions` via the same attention + window rule as the Dock badge.
 - `TopCapsule`: pill `待处理 open/total` (hidden if `!capsule_visible`), click → popover with the compact queue; second segment shows the selected
   session's subagents from `stores/live.ts` (运行中/完成/失败 counts, click → details list).
 - `TodoPanel` (right tab): same queue filtered to the selected session.
@@ -869,11 +880,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   If `cloudflared` is missing, return an error explaining `brew install cloudflared`. `MobilePanel` UI: start/stop server, LAN URL, "生成配对二维码"
   (render SVG), tunnel mode selector + start/stop + public URL + pairing QR for the public URL, 撤销所有设备, and a short guide text:
   局域网直连 / Cloudflare Tunnel（有域名绑子域名、无域名用临时隧道；建议配 Cloudflare Access）.
-- Terminal: `portable-pty`, reader thread → `terminal:data` (base64); `TerminalView` with xterm + fit addon, resize → `term_resize`.
-  `term_open_session`: if the session is live, `rpc_stop` it first (warn in UI "切换到终端会挂起结构化通道"), then run
-  `omp --resume <file> -e <extension_path>` in the session cwd with the same PATH augmentation as B. Leaving terminal view → close PTY
-  (confirm) and switch back to chat (structured view re-reads the transcript).
-  Quote capture: in `TerminalView`, Cmd+Shift+A (and a toolbar button) adds the current xterm selection as an Annotation `{source:"terminal"}`.
+- Terminal: `portable-pty`, reader thread → `terminal:data` (base64); multi-tab command terminal runs in `RightAside` as RightTab `"terminal"` (`CommandTerminalPanel`). Processes persist when panel/tab is hidden.
+  Quote capture: Cmd+Shift+A (and floating/context buttons) adds the current selection as an Annotation `{source:"terminal"}` to the composer, or sends to side chat.
 - Extension (§8) + install at startup to `extension_path()` (overwrite when content differs) + `install_status_extension_globally`.
 
 ### F — Scheduled tasks (backend + frontend)
@@ -905,7 +913,7 @@ All floating and layered surfaces throughout the desktop app MUST adhere to the 
 - **FloatingLayer portal**: All floating surfaces (menus, popovers, hovercards, context menus, tooltips, dialogs) MUST use `FloatingLayer` portaled to `document.body`, never inline absolute positioning.
 - **Viewport containment**: `FloatingLayer` automatically computes placement, flips to the opposite side when the preferred side lacks space, and clamps within `usableViewport()`. The usable viewport explicitly excludes the app bottom status bar (`[data-app-bottombar]`), ensuring floating surfaces never slide underneath it.
 - **Stacking tiers (`Z_LAYER`)**: Stacking order is strictly governed by `Z_LAYER` (mirrored as `--z-*` CSS variables in `index.css`), never ad-hoc integers:
-  - `drawer`: 40 (`--z-drawer: 40`) — e.g. global `TerminalDrawer`
+  - `drawer`: 40 (`--z-drawer: 40`) — e.g. `SkillsPage` detail drawer
   - `modal`: 50 (`--z-modal: 50`) — e.g. `NewSessionDialog`, `QuickAskDialog`, `DiagnoseDialog`, `ResumeMissingCwdDialog`, `ScheduleEditorModal`, `ImageChip` full preview
   - `popover`: 60 (`--z-popover: 60`) — e.g. `PerfPopover`, `SessionStatsPopover`, filter popovers
   - `menu`: 65 (`--z-menu: 65`) — e.g. context menus, dropdown action menus (`plusMenu`, `wsMenu`, `ModelSelect`, `ThemeMenu`)

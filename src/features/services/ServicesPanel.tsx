@@ -169,6 +169,7 @@ export function ServicesPanel() {
 	const handleReattachTerminal = useCallback(
 		(tabId: string, title: string) => {
 			reattachTab(tabId);
+			useUi.getState().setRightTab("terminal");
 			toast.success(`已恢复终端「${title}」`);
 		},
 		[reattachTab],
@@ -228,7 +229,7 @@ export function ServicesPanel() {
 							<TerminalSquare size={13} className="text-[#0A84FF]" />
 							后台终端 ({detachedTabs.length})
 						</span>
-						<span className="text-[10px] text-neutral-500">已从命令终端折叠</span>
+						<span className="text-[10px] text-neutral-500">已从终端折叠</span>
 					</div>
 					<div className="space-y-1.5">
 						{detachedTabs.map((tab) => (
@@ -264,7 +265,7 @@ export function ServicesPanel() {
 										type="button"
 										onClick={() => handleReattachTerminal(tab.id, tab.title)}
 										className="flex items-center gap-1 rounded bg-[#0A84FF] px-2 py-0.5 text-[11px] font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-xs"
-										title="恢复到命令终端"
+										title="恢复到终端"
 									>
 										<RotateCcw size={10} />
 										恢复

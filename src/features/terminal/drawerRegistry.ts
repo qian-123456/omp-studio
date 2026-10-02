@@ -1,8 +1,10 @@
 /**
- * [E] Module-level registry for global-drawer terminals, keyed by tab id.
- * Keeps PTY/xterm instances alive while the drawer is closed or the user
- * switches tabs. A single event bridge fans `terminal:data`/`terminal:exit`
- * out to every entry and mirrors exits into the drawer store.
+ * [E] Module-level registry for right-panel command terminals, keyed by tab
+ * id. Keeps PTY/xterm instances alive while the panel body is unmounted
+ * (right-panel tab switch, panel closed) or the user switches command tabs;
+ * the panel re-attaches `term.element` to its new host on mount. A single
+ * event bridge fans `terminal:data`/`terminal:exit` out to every entry and
+ * mirrors exits into the command terminal store.
  */
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
@@ -25,6 +27,8 @@ export interface DrawerTerminalEntry {
 	phase: DrawerTerminalPhase;
 	exitCode: number | null;
 	error: string | null;
+	/** True once the user submitted a line (Enter) in this shell. */
+	used?: boolean;
 }
 
 export const drawerRegistry = new Map<string, DrawerTerminalEntry>();
@@ -64,9 +68,9 @@ export function ensureDrawerEventBridge(): void {
 }
 
 /**
- * Destroy a drawer terminal: stop observing, close the backend PTY, dispose
+ * Destroy a command terminal: stop observing, close the backend PTY, dispose
  * xterm and remove from the registry. Called when a tab is closed explicitly
- * or reconnected — never on drawer unmount (PTYs survive app-view changes).
+ * or reconnected — never on panel unmount (PTYs survive right-panel changes).
  */
 export function destroyDrawerTerminal(tabId: string): void {
 	const entry = drawerRegistry.get(tabId);

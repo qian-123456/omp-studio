@@ -374,6 +374,20 @@ fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
             meta.pending = pending;
             meta.live = is_live;
             meta.external_pid = external_pid;
+            // A freshly changed pending gets pending_since = now when written,
+            // so it is necessarily unseen.
+            let error_since = if pending == row.pending {
+                row.pending_since.as_deref().unwrap_or(&meta.updated_at)
+            } else {
+                "9999-12-31T23:59:59.999Z"
+            };
+            meta.attention = status::attention(
+                meta.status,
+                pending,
+                meta.unread,
+                row.last_seen_at.as_deref(),
+                error_since,
+            );
             if pending != row.pending {
                 pending_writes.push((id.clone(), pending));
             }

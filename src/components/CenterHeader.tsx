@@ -7,6 +7,7 @@ import {
 	FolderOpen,
 	PanelLeftOpen,
 	PanelRightOpen,
+	Link2,
 	QrCode,
 	Share2,
 	Terminal,
@@ -21,6 +22,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { FloatingLayer } from "./FloatingLayer";
 import { TopCapsule } from "../features/todos/TopCapsule";
+import { IdeasCapsule } from "../features/backlog/IdeasCapsule";
 import { formatSessionMarkdown } from "../features/chat/exportMarkdown";
 import { sessionDisplayName } from "../lib/sessionName";
 import { useLive } from "../stores/live";
@@ -32,10 +34,13 @@ import { isComposing, useEscapeKey } from "../lib/hooks";
 import {
 	mobileCreatePairing,
 	sessionExportHtml,
+	sessionShare,
 	takeoverExternal,
 	updateSessionMeta,
 } from "../lib/ipc";
 import { toast } from "../lib/toast";
+
+
 
 const isMac =
 	typeof navigator !== "undefined" &&
@@ -78,7 +83,6 @@ const CENTER_TITLE: Partial<Record<CenterView, string>> = {
 	inbox: "收件箱",
 	schedules: "定时任务",
 	skills: "Skills 管理",
-	agentTerminal: "Agent 终端",
 };
 
 export interface CenterHeaderProps {
@@ -101,6 +105,15 @@ export const CenterHeader = React.memo(function CenterHeader({
 	const selectSession = useUi((s) => s.selectSession);
 	const returnToSession = useUi((s) => s.returnToSession);
 	const setCenter = useUi((s) => s.setCenter);
+	const isTerminalOpen = useUi((s) => s.rightOpen && s.rightTab === "terminal");
+	const handleToggleTerminal = useCallback(() => {
+		const { rightOpen, rightTab, setRightOpen, setRightTab } = useUi.getState();
+		if (rightOpen && rightTab === "terminal") {
+			setRightOpen(false);
+		} else {
+			setRightTab("terminal");
+		}
+	}, []);
 
 	// Track the underlying view so when settings overlay opens, the center view stays mounted
 	const lastNonSettingsCenterView = useRef<CenterView>("home");
@@ -255,6 +268,24 @@ export const CenterHeader = React.memo(function CenterHeader({
 		}
 	};
 
+	const handleShareLink = async () => {
+		setShareOpen(false);
+		if (!activeSession) return;
+		const ok = await confirmDialog(
+			"将把本会话加密后上传到 OMP 分享服务（与 /share 相同）。拿到链接的任何人都能查看内容，已知密钥会自动脱敏。继续？",
+			{ title: "创建分享链接", okLabel: "创建并复制" },
+		);
+		if (!ok) return;
+		toast.info("正在生成分享链接…");
+		try {
+			const url = await sessionShare(activeSession.id);
+			await copyText(url);
+			toast.success("分享链接已复制");
+		} catch (err) {
+			toast.error(`创建分享链接失败: ${errMsg(err)}`);
+		}
+	};
+
 	const handleMobilePair = async () => {
 		setShareOpen(false);
 		try {
@@ -367,7 +398,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 						</div>
 					) : (
 						<div className="flex min-w-0 items-center gap-2">
-							{activeSession && (
+							{activeSession ? (
 								<button
 									type="button"
 									onClick={returnToSession}
@@ -379,6 +410,20 @@ export const CenterHeader = React.memo(function CenterHeader({
 										返回 {sessionDisplayName(activeSession)}
 									</span>
 								</button>
+							) : (
+								effectiveCenterView !== "home" && (
+									// No session to return to (e.g. right after a restart):
+									// still offer a way out of full-page views.
+									<button
+										type="button"
+										onClick={() => setCenter("home")}
+										className="flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-0.5 text-xs text-indigo-300 hover:bg-indigo-500/20 hover:text-indigo-200 active:scale-95 transition-all"
+										title="返回首页"
+									>
+										<ArrowLeft size={13} />
+										<span>返回首页</span>
+									</button>
+								)
 							)}
 							{CENTER_TITLE[effectiveCenterView] && (
 								<span className="text-[13px] font-medium text-neutral-300 shrink-0">
@@ -445,6 +490,14 @@ export const CenterHeader = React.memo(function CenterHeader({
 								>
 									<button
 										type="button"
+										onClick={handleShareLink}
+										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+									>
+										<Link2 size={13} />
+										<span>创建分享链接</span>
+									</button>
+									<button
+										type="button"
 										onClick={handleCopyMarkdown}
 										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
 									>
@@ -471,35 +524,23 @@ export const CenterHeader = React.memo(function CenterHeader({
 							</>
 						)}
 
-						{/* Agent Terminal Center Page Toggle */}
+						{/* Terminal entry: toggle command terminal (right panel) */}
 						<button
 							type="button"
-							onClick={() => {
-								if (effectiveCenterView === "agentTerminal") {
-									const prev = previousCenterView ?? (selectedSessionId ? "session" : "home");
-									setCenter(prev === "agentTerminal" ? (selectedSessionId ? "session" : "home") : prev);
-								} else {
-									setCenter("agentTerminal");
-								}
-							}}
-							aria-label={effectiveCenterView === "agentTerminal" ? "返回主视图" : "打开 Agent 终端"}
-							aria-pressed={effectiveCenterView === "agentTerminal"}
-							title={
-								effectiveCenterView === "agentTerminal"
-									? "返回主视图"
-									: "打开 Agent 终端（全屏中心页，可输入 omp/claude/codex 接管）"
-							}
+							onClick={handleToggleTerminal}
+							aria-label="终端"
+							title={`终端 (${isMac ? "⌘" : "Ctrl+"}\`)`}
 							className={clsx(
-								"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium active:scale-95 transition-all",
-								effectiveCenterView === "agentTerminal"
+								"relative flex h-7 w-7 items-center justify-center rounded-lg active:scale-95 transition-all",
+								isTerminalOpen
 									? "border border-indigo-500/40 bg-indigo-600/20 text-indigo-300"
 									: "text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200",
 							)}
 						>
-							<Terminal size={13} />
-							<span>终端</span>
+							<Terminal size={15} />
 						</button>
 						<TopCapsule />
+						<IdeasCapsule />
 
 						{/* Right-panel toggle — hidden on full-width views (skills/inbox/schedules) */}
 						{!rightOpen && !CENTER_WITHOUT_RIGHT_PANEL.has(effectiveCenterView) && (

@@ -8,7 +8,7 @@
 use serde_json::Value;
 
 use super::parse::TailState;
-use crate::contracts::{PendingKind, SessionStatus};
+use crate::contracts::{Attention, PendingKind, SessionStatus};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Phase {
@@ -269,12 +269,87 @@ pub fn derive(i: &DeriveInput) -> (SessionStatus, Option<PendingKind>) {
     (S::Idle, None)
 }
 
+/// Inbox attention kind (precedence awaiting > error > unread > running).
+/// `error_since` is when the error/interrupted state began (pending_since,
+/// falling back to the session's updated_at); an error stays attention-worthy
+/// until the user viewed the session at or after that moment.
+pub fn attention(
+    status: SessionStatus,
+    pending: Option<PendingKind>,
+    unread: bool,
+    last_seen_at: Option<&str>,
+    error_since: &str,
+) -> Option<Attention> {
+    use SessionStatus as S;
+    let ts = |s: &str| chrono::DateTime::parse_from_rfc3339(s).ok();
+    match status {
+        S::AwaitingApproval | S::AwaitingAnswer => return Some(Attention::Awaiting),
+        S::Error | S::Interrupted => {
+            let seen = match (last_seen_at.and_then(ts), ts(error_since)) {
+                (Some(seen), Some(since)) => seen >= since,
+                _ => false,
+            };
+            if !seen {
+                return Some(Attention::Error);
+            }
+        }
+        _ => {}
+    }
+    if unread || status == S::Review || pending == Some(PendingKind::Review) {
+        return Some(Attention::Unread);
+    }
+    (status == S::Working).then_some(Attention::Running)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
     use PendingKind as P;
     use SessionStatus as S;
+
+    #[test]
+    fn attention_precedence_and_seen() {
+        let t0 = "2026-01-01T00:00:00.000Z";
+        let t1 = "2026-01-01T00:00:01.000Z";
+        // Awaiting beats unread.
+        assert_eq!(
+            attention(S::AwaitingAnswer, Some(P::Question), true, None, t0),
+            Some(Attention::Awaiting)
+        );
+        // Error until viewed at/after it started; unread still surfaces afterwards.
+        assert_eq!(
+            attention(S::Error, Some(P::Error), true, None, t0),
+            Some(Attention::Error)
+        );
+        assert_eq!(
+            attention(S::Interrupted, None, false, Some(t0), t1),
+            Some(Attention::Error)
+        );
+        assert_eq!(
+            attention(S::Error, Some(P::Error), false, Some(t1), t0),
+            None
+        );
+        assert_eq!(attention(S::Error, None, false, Some(t0), t0), None);
+        assert_eq!(
+            attention(S::Error, None, true, Some(t1), t0),
+            Some(Attention::Unread)
+        );
+        // Review or unread → Unread; unread beats running.
+        assert_eq!(
+            attention(S::Review, Some(P::Review), false, Some(t1), t0),
+            Some(Attention::Unread)
+        );
+        assert_eq!(
+            attention(S::Working, None, true, None, t0),
+            Some(Attention::Unread)
+        );
+        assert_eq!(
+            attention(S::Working, None, false, None, t0),
+            Some(Attention::Running)
+        );
+        assert_eq!(attention(S::Idle, None, false, None, t0), None);
+    }
 
     fn frame(v: Value) -> LiveEvent {
         LiveEvent::Frame(v)

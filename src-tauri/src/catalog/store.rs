@@ -25,6 +25,8 @@ pub struct MetaRow {
     /// Resume-directory override (§3): set when the user chose to continue a
     /// session whose original worktree dir was deleted in the repo's main dir.
     pub cwd_override: Option<String>,
+    /// Last time the user viewed the session (`mark_seen`).
+    pub last_seen_at: Option<String>,
 }
 
 pub fn pending_to_str(p: PendingKind) -> &'static str {
@@ -67,7 +69,7 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
     let mut stmt = conn.prepare_cached(
         "SELECT session_id, custom_name, label, pinned, archived, parent_session_id, fork_depth,
                 workspace_id, unread, pending_kind, pending_since, accepted_at, suspended, seq,
-                cwd_override
+                cwd_override, last_seen_at
          FROM session_meta WHERE ?1 IS NULL OR session_id = ?1",
     )?;
     let rows = stmt.query_map(params![id], |r| {
@@ -89,6 +91,7 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
                 suspended: r.get::<_, i64>(12)? != 0,
                 seq: r.get(13)?,
                 cwd_override: r.get(14)?,
+                last_seen_at: r.get(15)?,
             },
         ))
     })?;
@@ -178,6 +181,18 @@ pub fn accept(conn: &Connection, id: &str, archive: bool) -> rusqlite::Result<()
         params![id, now(), archive as i64],
     )?;
     Ok(())
+}
+
+/// Viewing a session: clear unread + stamp `last_seen_at`; a pending Review
+/// (or derived Review status, `review_status`) is accepted like
+/// `accept(id, false)`. Returns whether the session was accepted.
+pub fn mark_seen(conn: &Connection, id: &str, review_status: bool) -> rusqlite::Result<bool> {
+    set_unread(conn, id, false)?;
+    let review = review_status || load_meta_row(conn, id).pending == Some(PendingKind::Review);
+    if review {
+        accept(conn, id, false)?;
+    }
+    Ok(review)
 }
 
 /// Apply a user patch. `workspaceId: ""` clears the explicit override;
@@ -345,6 +360,25 @@ pub mod tests {
         )
         .unwrap();
         conn
+    }
+
+    #[test]
+    fn mark_seen_accepts_review() {
+        let c = test_conn();
+        set_pending(&c, "s1", Some(PendingKind::Review)).unwrap();
+        set_unread(&c, "s1", true).unwrap();
+        assert!(mark_seen(&c, "s1", false).unwrap());
+        let r = load_meta_row(&c, "s1");
+        assert_eq!((r.pending, r.unread), (None, false));
+        assert!(r.accepted_at.is_some() && r.last_seen_at.is_some());
+        assert!(!r.archived);
+        // Non-review: only unread cleared, pending kept.
+        set_pending(&c, "s2", Some(PendingKind::Error)).unwrap();
+        set_unread(&c, "s2", true).unwrap();
+        assert!(!mark_seen(&c, "s2", false).unwrap());
+        let r = load_meta_row(&c, "s2");
+        assert_eq!((r.pending, r.unread), (Some(PendingKind::Error), false));
+        assert!(r.accepted_at.is_none());
     }
 
     #[test]

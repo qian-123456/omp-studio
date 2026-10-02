@@ -24,7 +24,8 @@ export type SettingsTarget =
 	| "subagents"
 	| "approvals"
 	| "providers"
-	| "compaction";
+	| "compaction"
+	| "modelContext";
 
 export const SETTINGS_TARGETS: Record<
 	SettingsTarget,
@@ -105,6 +106,11 @@ export const SETTINGS_TARGETS: Record<
 		section: "omp-context",
 		focusKey: "compaction.enabled",
 		label: "上下文压缩",
+	},
+	modelContext: {
+		section: "model-context",
+		focusKey: "modelContextGroups",
+		label: "统一模型上下文",
 	},
 };
 

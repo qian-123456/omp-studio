@@ -13,9 +13,7 @@ import { SessionView } from "./features/chat/SessionView";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
 import { StartPage } from "./features/home/StartPage";
 import { startTodos } from "./features/todos/store";
-import { destroySessionTerminal } from "./features/terminal/terminalRegistry";
-import { TerminalDrawer } from "./features/terminal/TerminalDrawer";
-import { onSessionsRemoved } from "./lib/events";
+
 import { terminalSetCurrentSession } from "./lib/ipc";
 import { useSessions } from "./stores/sessions";
 import { type CenterView, useUi } from "./stores/ui";
@@ -26,9 +24,6 @@ import { RightAside } from "./components/RightAside";
 
 const DocView = lazy(() =>
 	import("./features/editor/DocView").then((m) => ({ default: m.DocView })),
-);
-const AgentTerminalPage = lazy(() =>
-	import("./features/terminal/AgentTerminalPage").then((m) => ({ default: m.AgentTerminalPage })),
 );
 const InboxPage = lazy(() =>
 	import("./features/inbox/InboxPage").then((m) => ({ default: m.InboxPage })),
@@ -119,9 +114,6 @@ function MainCenterView({ activeView }: { activeView: CenterView }) {
 		case "skills":
 			view = <SkillsPage />;
 			break;
-		case "agentTerminal":
-			view = <AgentTerminalPage />;
-			break;
 		default:
 			view = <StartPage />;
 	}
@@ -144,7 +136,6 @@ export default function App() {
 	const lastSessionId = useUi((s) => s.lastSessionId);
 	const returnToSession = useUi((s) => s.returnToSession);
 	const selectSession = useUi((s) => s.selectSession);
-	const setCenter = useUi((s) => s.setCenter);
 
 	// Track the underlying view so when settings overlay opens, the center view stays mounted
 	const lastNonSettingsCenterView = useRef<CenterView>("home");
@@ -244,6 +235,7 @@ export default function App() {
 	}, [setSidebarWidth, setRightWidth]);
 
 	// Global keyboard shortcuts: Cmd+B (left sidebar) / Cmd+J (right panel) / Cmd+[ (return to session/parent)
+	// Cmd+` (right-panel command terminal) / Cmd+Shift+` (selected session: chat ⇄ Agent terminal)
 	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
 			if (centerView === "settings") return;
@@ -267,18 +259,12 @@ export default function App() {
 				} else {
 					returnToSession();
 				}
-			} else if (
-				(e.key === "~" || e.key === "`" || e.code === "Backquote") &&
-				e.shiftKey &&
-				!e.altKey
-			) {
+
+			} else if ((e.key === "`" || e.code === "Backquote") && !e.shiftKey && !e.altKey) {
 				e.preventDefault();
-				if (centerView === "agentTerminal") {
-					const prev = previousCenterView ?? (selectedSessionId ? "session" : "home");
-					setCenter(prev === "agentTerminal" ? (selectedSessionId ? "session" : "home") : prev);
-				} else {
-					setCenter("agentTerminal");
-				}
+				const ui = useUi.getState();
+				if (ui.rightOpen && ui.rightTab === "terminal") ui.setRightOpen(false);
+				else ui.setRightTab("terminal");
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);
@@ -288,9 +274,6 @@ export default function App() {
 	}, [
 		centerView,
 		effectiveCenterView,
-		previousCenterView,
-		selectedSessionId,
-		setCenter,
 		toggleSidebar,
 		toggleRight,
 		parentId,
@@ -303,24 +286,7 @@ export default function App() {
 		startTodos();
 	}, []);
 
-	// Clean up terminal PTY sessions when sessions are permanently removed
-	useEffect(() => {
-		let unlisten: (() => void) | undefined;
-		onSessionsRemoved((ids) => {
-			for (const id of ids) {
-				destroySessionTerminal(id);
-			}
-		})
-			.then((un) => {
-				unlisten = un;
-			})
-			.catch((err) => {
-				console.error("Failed to listen on sessions:removed for terminal cleanup", err);
-			});
-		return () => {
-			if (unlisten) unlisten();
-		};
-	}, []);
+
 
 	// Keep ~/.omp-workspace/current-session in sync with selected session
 	const selectedSessionFile = useSessions(
@@ -429,9 +395,6 @@ export default function App() {
 			<BottomBar />
 			{/* Global notifications stack */}
 			<Toaster />
-			{/* Global bottom-drawer terminal (Codex-style overlay) */}
-			<TerminalDrawer />
-
 			{/* Global modals — render nothing unless ui.modal matches. Lazy loaded in Suspense */}
 			<QuickCapture />
 			<Suspense fallback={null}>

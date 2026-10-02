@@ -1,22 +1,13 @@
 /**
- * [E] Zustand store for the global bottom-drawer terminal (Codex-style).
- * Holds UI state only (open/height/tab metas); PTY/xterm instances live in
- * drawerRegistry. open/height/tab metas persist to localStorage — tab
- * statuses are transient (restored tabs spawn their shell lazily on open).
+ * [E] Zustand store for the right-panel command terminal (RightTab "terminal").
+ * Holds tab metas only; PTY/xterm instances live in drawerRegistry so they
+ * survive the panel body unmounting. Tab metas persist to localStorage and are
+ * loaded when the store is created — statuses are transient (restored tabs
+ * spawn their shell lazily when the panel shows them).
  */
 import { create } from "zustand";
 
-const STORAGE_KEYS = {
-	open: "ompws:drawer-open",
-	height: "ompws:drawer-height",
-	tabs: "ompws:drawer-tabs",
-	maximized: "ompws:drawer-maximized",
-} as const;
-
-export const DRAWER_HEIGHT_MIN = 140;
-export const DEFAULT_DRAWER_HEIGHT_VH = 0.4;
-export const MAXIMIZED_DRAWER_HEIGHT_VH = 0.7;
-export const MAX_DRAWER_HEIGHT_VH = 0.8;
+const TABS_STORAGE_KEY = "ompws:drawer-tabs";
 
 export type DrawerTabStatus = "opening" | "ready" | "exited" | "error";
 
@@ -36,53 +27,9 @@ interface PersistedTab {
 	detached?: boolean;
 }
 
-function readNumber(key: string, fallback: number, min: number, max: number): number {
-	try {
-		if (typeof localStorage === "undefined") return fallback;
-		const v = Number(localStorage.getItem(key));
-		if (!Number.isNaN(v) && v >= min && v <= max) return v;
-	} catch {
-		/* storage unavailable */
-	}
-	return fallback;
-}
-
-function readBool(key: string, fallback: boolean): boolean {
-	try {
-		if (typeof localStorage === "undefined") return fallback;
-		const v = localStorage.getItem(key);
-		if (v === "true") return true;
-		if (v === "false") return false;
-	} catch {
-		/* storage unavailable */
-	}
-	return fallback;
-}
-
-function writeStorage(key: string, val: string | number | boolean): void {
-	try {
-		if (typeof localStorage !== "undefined") {
-			localStorage.setItem(key, String(val));
-		}
-	} catch {
-		/* storage quota exceeded / unavailable */
-	}
-}
-
-/** Upper height bound in px (80vh), used by clampHeight. */
-export function maxHeightPx(): number {
-	if (typeof window === "undefined") return 800;
-	return Math.floor(window.innerHeight * MAX_DRAWER_HEIGHT_VH);
-}
-
-/** Clamp a drawer height into [140px, 80vh]. */
-export function clampHeight(h: number): number {
-	return Math.min(maxHeightPx(), Math.max(DRAWER_HEIGHT_MIN, Math.round(h)));
-}
-
-function defaultHeight(): number {
-	if (typeof window === "undefined") return 480;
-	return clampHeight(window.innerHeight * DEFAULT_DRAWER_HEIGHT_VH);
+/** Command tabs shown in the panel (not detached) whose shell is running. */
+export function countLiveCommandTabs(tabs: DrawerTab[]): number {
+	return tabs.filter((t) => !t.detached && t.status === "ready").length;
 }
 
 function newTabId(): string {
@@ -101,24 +48,42 @@ function persistTabs(tabs: DrawerTab[]): void {
 	}));
 	try {
 		if (typeof localStorage !== "undefined") {
-			localStorage.setItem(STORAGE_KEYS.tabs, JSON.stringify(metas));
+			localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(metas));
 		}
 	} catch {
 		/* storage quota exceeded / unavailable */
 	}
 }
 
+function loadTabs(): DrawerTab[] {
+	try {
+		if (typeof localStorage === "undefined") return [];
+		const raw = localStorage.getItem(TABS_STORAGE_KEY);
+		if (!raw) return [];
+		const metas = JSON.parse(raw) as PersistedTab[];
+		return metas
+			.filter((t) => t && typeof t.id === "string" && typeof t.cwd === "string")
+			.map((t) => ({
+				id: t.id,
+				cwd: t.cwd,
+				title: t.title,
+				status: "opening" as const,
+				exitCode: null,
+				detached: Boolean(t.detached),
+			}));
+	} catch {
+		/* corrupted metas — start clean */
+		return [];
+	}
+}
+
+function firstVisibleId(tabs: DrawerTab[]): string | null {
+	return tabs.find((t) => !t.detached)?.id ?? null;
+}
+
 export interface DrawerState {
-	open: boolean;
-	height: number;
-	maximized: boolean;
 	tabs: DrawerTab[];
 	activeTabId: string | null;
-	toggle(): void;
-	setOpen(open: boolean): void;
-	setHeight(h: number): void;
-	setMaximized(maximized: boolean): void;
-	toggleMaximized(): void;
 	/** Append a tab and activate it; returns the new tab id. */
 	addTab(cwd: string, title: string): string;
 	/** Drop a tab (PTY teardown is the caller's job via drawerRegistry). */
@@ -131,42 +96,17 @@ export interface DrawerState {
 	): void;
 	/** Detach a tab to run headless in background services. */
 	detachTab(id: string): void;
-	/** Reattach a detached tab and bring drawer up focused on it. */
+	/** Reattach a detached tab and make it active (caller shows the panel). */
 	reattachTab(id: string): void;
-	/** Restore open/height/maximized/tab metas from localStorage (call once on mount). */
+	/** Re-read tab metas from localStorage (already done at store creation). */
 	hydrate(): void;
 }
 
-export const useDrawerStore = create<DrawerState>((set, get) => ({
-	open: false,
-	height: defaultHeight(),
-	maximized: false,
-	tabs: [],
-	activeTabId: null,
-	toggle: () => get().setOpen(!get().open),
-	setOpen: (open) => {
-		writeStorage(STORAGE_KEYS.open, open);
-		set({ open });
-	},
-	setHeight: (h) => {
-		const clamped = clampHeight(h);
-		writeStorage(STORAGE_KEYS.height, clamped);
-		if (get().maximized) {
-			writeStorage(STORAGE_KEYS.maximized, false);
-			set({ height: clamped, maximized: false });
-		} else {
-			set({ height: clamped });
-		}
-	},
-	setMaximized: (maximized) => {
-		writeStorage(STORAGE_KEYS.maximized, maximized);
-		set({ maximized });
-	},
-	toggleMaximized: () => {
-		const next = !get().maximized;
-		writeStorage(STORAGE_KEYS.maximized, next);
-		set({ maximized: next });
-	},
+const initialTabs = loadTabs();
+
+export const useDrawerStore = create<DrawerState>((set) => ({
+	tabs: initialTabs,
+	activeTabId: firstVisibleId(initialTabs),
 	addTab: (cwd, title) => {
 		const id = newTabId();
 		set((s) => {
@@ -200,51 +140,17 @@ export const useDrawerStore = create<DrawerState>((set, get) => ({
 		set((s) => {
 			const tabs = s.tabs.map((t) => (t.id === id ? { ...t, detached: true } : t));
 			persistTabs(tabs);
-			const visible = tabs.filter((t) => !t.detached);
-			const activeTabId =
-				s.activeTabId === id ? (visible[0]?.id ?? null) : s.activeTabId;
-			const open = visible.length > 0 ? s.open : false;
-			if (!open && s.open) {
-				writeStorage(STORAGE_KEYS.open, false);
-			}
-			return { tabs, activeTabId, open };
+			const activeTabId = s.activeTabId === id ? firstVisibleId(tabs) : s.activeTabId;
+			return { tabs, activeTabId };
 		}),
-	reattachTab: (id) => {
-		writeStorage(STORAGE_KEYS.open, true);
+	reattachTab: (id) =>
 		set((s) => {
 			const tabs = s.tabs.map((t) => (t.id === id ? { ...t, detached: false } : t));
 			persistTabs(tabs);
-			return { tabs, activeTabId: id, open: true };
-		});
-	},
+			return { tabs, activeTabId: id };
+		}),
 	hydrate: () => {
-		const open = readBool(STORAGE_KEYS.open, false);
-		const height = readNumber(STORAGE_KEYS.height, defaultHeight(), DRAWER_HEIGHT_MIN, maxHeightPx());
-		const maximized = readBool(STORAGE_KEYS.maximized, false);
-		let tabs: DrawerTab[] = [];
-		try {
-			const raw = localStorage.getItem(STORAGE_KEYS.tabs);
-			if (raw) {
-				const metas = JSON.parse(raw) as PersistedTab[];
-				tabs = metas
-					.filter((t) => t && typeof t.id === "string" && typeof t.cwd === "string")
-					.map((t) => ({
-						id: t.id,
-						cwd: t.cwd,
-						title: t.title,
-						status: "opening" as const,
-						exitCode: null,
-						detached: Boolean(t.detached),
-					}));
-			}
-		} catch {
-			/* corrupted metas — start clean */
-		}
-		writeStorage(STORAGE_KEYS.open, open);
-		writeStorage(STORAGE_KEYS.height, height);
-		writeStorage(STORAGE_KEYS.maximized, maximized);
-		const visible = tabs.filter((t) => !t.detached);
-		set({ open, height, maximized, tabs, activeTabId: visible[0]?.id ?? null });
+		const tabs = loadTabs();
+		set({ tabs, activeTabId: firstVisibleId(tabs) });
 	},
-
 }));

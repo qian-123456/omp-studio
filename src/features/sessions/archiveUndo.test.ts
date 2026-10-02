@@ -35,6 +35,7 @@ function makeSession(partial: Partial<SessionMeta>): SessionMeta {
 		result: partial.result ?? null,
 		lastAssistant: partial.lastAssistant ?? null,
 		model: partial.model ?? null,
+		attention: null,
 		...partial,
 	};
 }

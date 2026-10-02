@@ -20,8 +20,6 @@ import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
-import { useUi } from "../../stores/ui";
-import { TerminalView } from "../terminal/TerminalView";
 import { ChatTrace } from "./ChatTrace";
 import { Composer } from "./Composer";
 import { HeldQueueBar } from "./HeldQueueBar";
@@ -45,9 +43,7 @@ export function SessionView({
 	const setItems = useLive((s) => s.setItems);
 	const appendItems = useLive((s) => s.appendItems);
 	const setPendingUi = useLive((s) => s.setPendingUi);
-	const viewMode = useUi(
-		(s) => s.sessionViewMode[sessionId] ?? "chat",
-	);
+
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [scrollPill, setScrollPill] = useState({
 		nearBottom: true,
@@ -156,10 +152,6 @@ export function SessionView({
 
 	return (
 		<div className="flex h-full flex-col">
-			{viewMode === "terminal" ? (
-				<TerminalView sessionId={sessionId} />
-			) : (
-				<>
 					<div className="relative min-h-0 flex-1 @container">
 						{!compact && (
 							<ChatTrace sessionId={sessionId} scrollRef={scrollRef} />
@@ -233,8 +225,7 @@ export function SessionView({
 							compact={compact}
 						/>
 					</div>
-				</>
-			)}
+
 		</div>
 	);
 }

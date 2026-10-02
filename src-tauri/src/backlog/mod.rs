@@ -6,28 +6,13 @@ pub mod shortcut;
 pub mod store;
 
 use tauri::Emitter as _;
-use tokio::sync::broadcast::error::RecvError;
 
 use crate::state::{AppEvent, AppState};
 
-/// Auto-complete dispatched items on `SessionAccepted`; register the global shortcut.
+/// Register the global quick-capture shortcut. Dispatched items are completed
+/// only manually by the user (no auto-complete on session acceptance).
 pub fn init(state: AppState) {
-    let mut rx = state.bus.subscribe();
-    shortcut::spawn(state.clone());
-    tauri::async_runtime::spawn(async move {
-        loop {
-            match rx.recv().await {
-                Ok(AppEvent::SessionAccepted { session_id }) => {
-                    let changed = store::complete_for_session(&state.db.lock(), &session_id);
-                    if changed {
-                        notify_changed(&state);
-                    }
-                }
-                Ok(_) | Err(RecvError::Lagged(_)) => continue,
-                Err(RecvError::Closed) => break,
-            }
-        }
-    });
+    shortcut::spawn(state);
 }
 
 /// Emit `backlog:changed` (frontend) + `AppEvent::BacklogChanged` (bus).

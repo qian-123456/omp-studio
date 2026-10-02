@@ -1,11 +1,25 @@
 /** Settings ▸ 会话 (`sessions`): idle suspend, summary refresh, turn checkpoints. */
+import { useEffect } from "react";
+import { describeStrategy, readThreshold } from "../autoCompactionLogic";
 import { CheckpointsSection } from "../CheckpointsSection";
+import { useOmpConfigStore } from "../ompConfigStore";
+import { openSettingsTarget } from "../settingsTargets";
 import { useAppSettings } from "../useAppSettings";
-import { CommitInput, SectionHeader, SettingRow, SettingsCard, ToggleRow } from "../ui";
+import { CommitInput, SETTINGS_BUTTON_CLASS, SectionHeader, SettingRow, SettingsCard, ToggleRow } from "../ui";
 
 export function SessionsSection() {
 	const { settings, save } = useAppSettings();
 	const minutes = settings?.idleSuspendMinutes ?? 0;
+	const ompEntries = useOmpConfigStore((s) => s.entries);
+	const loadOmp = useOmpConfigStore((s) => s.load);
+	useEffect(() => {
+		void loadOmp();
+	}, [loadOmp]);
+	const ompValue = (key: string) => ompEntries.find((e) => e.key === key)?.value;
+	const compactionStrategy = describeStrategy(
+		readThreshold(ompValue("compaction.thresholdTokens"), ompValue("compaction.thresholdPercent")),
+		ompValue("compaction.enabled") !== false,
+	);
 
 	return (
 		<div className="space-y-6">
@@ -38,6 +52,19 @@ export function SessionsSection() {
 					description="每轮回答结束后，在后台重新总结一下对话，让左侧列表的标题保持贴切。"
 					checked={settings?.sessionTurnAutoRefresh ?? true}
 					onChange={(v) => save({ sessionTurnAutoRefresh: v })}
+				/>
+			</SettingsCard>
+			<SettingsCard title="上下文压缩">
+				<SettingRow
+					fieldId="sessionCompaction"
+					label="自动上下文压缩"
+					description="长对话接近模型上下文上限时，自动把较早内容总结成摘要，会话可以持续进行。"
+					hint={compactionStrategy}
+					control={
+						<button type="button" className={SETTINGS_BUTTON_CLASS} onClick={() => openSettingsTarget("compaction")}>
+							配置压缩阈值
+						</button>
+					}
 				/>
 			</SettingsCard>
 

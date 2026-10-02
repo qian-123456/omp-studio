@@ -95,6 +95,22 @@ pub struct SessionMeta {
     /// ≤200 chars snippet.
     pub last_assistant: Option<String>,
     pub model: Option<String>,
+    /// Inbox attention kind (derived; time window applied by consumers via `updated_at`).
+    pub attention: Option<Attention>,
+}
+
+/// Per-session inbox attention kind (sidebar status marker hub).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Attention {
+    /// 待回复: awaiting approval/answer.
+    Awaiting,
+    /// 中断: error/interrupted not yet viewed since it happened.
+    Error,
+    /// 已完成未查看: unread output or pending review.
+    Unread,
+    /// 运行中.
+    Running,
 }
 
 /// Patch for `update_session_meta` (§7 A).
@@ -371,7 +387,7 @@ pub struct Todo {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TodoCounts {
     pub open: u32,
@@ -415,6 +431,8 @@ pub struct BacklogItem {
     pub refs: Vec<BacklogRef>,
     pub status: BacklogStatus,
     pub target_session_id: Option<String>,
+    /// Project directory the item belongs to (None = global).
+    pub project_dir: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -635,6 +653,14 @@ pub struct Settings {
     /// checkpoints extension). None = never asked; Some(false) = declined/off.
     #[serde(default)]
     pub turn_checkpoints: Option<bool>,
+    /// Inbox window in hours (default 24, valid 1..=720): non-blocking todos older
+    /// than this are hidden from the inbox.
+    #[serde(default = "default_inbox_window_hours")]
+    pub inbox_window_hours: u32,
+}
+
+fn default_inbox_window_hours() -> u32 {
+    24
 }
 
 impl Default for Settings {
@@ -666,6 +692,7 @@ impl Default for Settings {
             dock_badge_enabled: true,
             session_turn_auto_refresh: true,
             turn_checkpoints: None,
+            inbox_window_hours: default_inbox_window_hours(),
         }
     }
 }

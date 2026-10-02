@@ -2,7 +2,7 @@
 
 use super::{store, transcript, usage};
 use crate::contracts::{
-    Model, SessionMeta, SessionMetaPatch, TranscriptPage, UsageSummary, Workspace,
+    Model, SessionMeta, SessionMetaPatch, SessionStatus, TranscriptPage, UsageSummary, Workspace,
 };
 use crate::state::AppState;
 
@@ -53,14 +53,23 @@ pub async fn mark_seen(
     state: tauri::State<'_, AppState>,
     session_id: String,
 ) -> Result<(), String> {
-    {
+    let review_status = crate::catalog::get(&state, &session_id)
+        .await
+        .is_some_and(|m| m.status == SessionStatus::Review);
+    let accepted = {
         let db = state.db.lock();
-        store::set_unread(&db, &session_id, false)
-            .map_err(|e| format!("mark_seen {session_id}: {e}"))?;
+        store::mark_seen(&db, &session_id, review_status)
+            .map_err(|e| format!("mark_seen {session_id}: {e}"))?
+    };
+    if accepted {
+        state.emit(crate::state::AppEvent::SessionAccepted {
+            session_id: session_id.clone(),
+        });
     }
     crate::catalog::recompute_async(&state, Some(vec![session_id])).await;
     Ok(())
 }
+
 /// Workspace file list for the composer's `@` completion. Walks `cwd`
 /// recursively, skipping heavy/irrelevant dirs and respecting nothing beyond
 /// a fixed skip-list (no .gitignore parsing — dependency-free). Returns
@@ -495,12 +504,16 @@ fn parse_export_output(stdout: &str, working_dir: &std::path::Path) -> Option<st
     None
 }
 
-#[tauri::command]
-pub async fn session_export_html(
-    state: tauri::State<'_, AppState>,
-    session_id: String,
-) -> Result<String, String> {
-    let (file, cwd) = crate::rpc::find_session_file(&state, &session_id)
+/// Runs `omp <args…> <session file>` for a saved session and returns
+/// (stdout, working dir). `action` labels error messages (e.g. "导出").
+async fn run_omp_on_session(
+    state: &AppState,
+    session_id: &str,
+    args: &[&str],
+    timeout_secs: u64,
+    action: &str,
+) -> Result<(String, std::path::PathBuf), String> {
+    let (file, cwd) = crate::rpc::find_session_file(state, session_id)
         .await
         .ok_or_else(|| format!("找不到会话文件: {session_id}"))?;
 
@@ -522,7 +535,7 @@ pub async fn session_export_html(
     };
 
     let mut cmd = tokio::process::Command::new(&exe);
-    cmd.arg("--export")
+    cmd.args(args)
         .arg(&file)
         .current_dir(&working_dir)
         .env("PATH", &path_env)
@@ -536,11 +549,13 @@ pub async fn session_export_html(
         .spawn()
         .map_err(|e| format!("执行 omp 失败 ({}): {e}", exe.display()))?;
 
-    let timeout = std::time::Duration::from_secs(60);
-    let out = tokio::time::timeout(timeout, child.wait_with_output())
-        .await
-        .map_err(|_| "omp 导出超时 (60s)".to_string())?
-        .map_err(|e| format!("omp 执行错误: {e}"))?;
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        child.wait_with_output(),
+    )
+    .await
+    .map_err(|_| format!("omp {action}超时 ({timeout_secs}s)"))?
+    .map_err(|e| format!("omp 执行错误: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if !out.status.success() {
@@ -553,8 +568,18 @@ pub async fn session_export_html(
             .into_iter()
             .rev()
             .collect();
-        return Err(format!("导出失败 ({}): {}", out.status, tail.trim()));
+        return Err(format!("{action}失败 ({}): {}", out.status, tail.trim()));
     }
+    Ok((stdout, working_dir))
+}
+
+#[tauri::command]
+pub async fn session_export_html(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    let (stdout, working_dir) =
+        run_omp_on_session(&state, &session_id, &["--export"], 60, "导出").await?;
 
     if let Some(path) = parse_export_output(&stdout, &working_dir) {
         if path.exists() {
@@ -567,6 +592,25 @@ pub async fn session_export_html(
     } else {
         Ok(stdout)
     }
+}
+
+/// First http(s) URL in `omp share` output (the link carries its key in `#…`).
+fn parse_share_url(stdout: &str) -> Option<String> {
+    stdout
+        .split_whitespace()
+        .find(|w| w.starts_with("https://") || w.starts_with("http://"))
+        .map(|w| w.trim_end_matches(['.', ',', ')', '"', '\'']).to_string())
+}
+
+/// Runs `omp share <file>` (same as the `/share` slash command): uploads an
+/// end-to-end encrypted snapshot and returns the share link.
+#[tauri::command]
+pub async fn session_share(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    let (stdout, _) = run_omp_on_session(&state, &session_id, &["share"], 120, "分享").await?;
+    parse_share_url(&stdout).ok_or_else(|| format!("未能从 omp 输出中解析分享链接: {stdout}"))
 }
 
 /// One-shot throwaway question to the supervisor model (`omp -p` scratchpad).
@@ -593,6 +637,16 @@ pub async fn quick_ask(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_share_url_keeps_key_fragment_and_skips_prose() {
+        let out = "Uploading snapshot…\nShare link: https://my.omp.sh/s/abc123#k3y-_Z.\n";
+        assert_eq!(
+            parse_share_url(out).as_deref(),
+            Some("https://my.omp.sh/s/abc123#k3y-_Z")
+        );
+        assert_eq!(parse_share_url("no link here"), None);
+    }
 
     #[test]
     fn test_parse_models_value_models_key() {

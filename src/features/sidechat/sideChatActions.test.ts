@@ -39,6 +39,7 @@ function meta(overrides: Partial<SessionMeta> = {}): SessionMeta {
 		result: null,
 		lastAssistant: null,
 		model: null,
+		attention: null,
 		...overrides,
 	};
 }

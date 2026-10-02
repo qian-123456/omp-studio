@@ -83,21 +83,72 @@ pub async fn term_close(term_id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Stops the RPC process for the session if live, then runs
-/// `omp --resume <file> -e <extension_path>` in a PTY. Returns termId.
+/// Agent CLI a session terminal runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminalAgent {
+    Omp,
+    Claude,
+    Codex,
+}
+
+impl TerminalAgent {
+    fn parse(agent: &str) -> Result<Self, String> {
+        match agent {
+            "omp" => Ok(Self::Omp),
+            "claude" => Ok(Self::Claude),
+            "codex" => Ok(Self::Codex),
+            other => Err(format!("未知的 Agent: {other}")),
+        }
+    }
+
+    /// argv for the non-omp agents (resume the latest conversation in cwd).
+    fn foreign_argv(self) -> Option<Vec<String>> {
+        let v: &[&str] = match self {
+            Self::Omp => return None,
+            Self::Claude => &["claude", "--continue"],
+            Self::Codex => &["codex", "resume", "--last"],
+        };
+        Some(v.iter().map(|s| s.to_string()).collect())
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Omp => "omp",
+            Self::Claude => "Claude Code",
+            Self::Codex => "Codex",
+        }
+    }
+}
+
+/// Opens the session's agent terminal (one per session; reopening replaces it).
+/// `omp`: stops the RPC process, then runs `omp --resume <file> -e <ext>`.
+/// `claude` / `codex`: run `claude --continue` / `codex resume --last` in the
+/// session cwd without touching the RPC process. Returns termId.
 #[tauri::command]
 pub async fn term_open_session(
     state: tauri::State<'_, AppState>,
     session_id: String,
+    agent: String,
     cols: u16,
     rows: u16,
 ) -> Result<String, String> {
+    let agent = TerminalAgent::parse(&agent)?;
     let lock = crate::rpc::session_resume_lock(&session_id);
     let _guard = lock.lock().await;
     let meta = crate::catalog::get(&state, &session_id)
         .await
         .ok_or_else(|| format!("找不到会话 {session_id}"))?;
-    if let Some(handle) = crate::rpc::get_handle(&session_id) {
+    let foreign = agent.foreign_argv();
+    if let Some(argv) = &foreign {
+        // Resolve against the login-shell PATH before tearing anything down.
+        if crate::terminal::env::which(&argv[0]).is_none() {
+            return Err(format!(
+                "找不到 {} 命令行（{}），请先安装并确认它在登录 Shell 的 PATH 中",
+                agent.label(),
+                argv[0]
+            ));
+        }
+    } else if let Some(handle) = crate::rpc::get_handle(&session_id) {
         if let Err(e) = crate::rpc::stop(&handle).await {
             if e != "session is not live" && e != "session process is not running" {
                 return Err(format!("停止结构化通道失败: {e}"));
@@ -110,20 +161,26 @@ pub async fn term_open_session(
         pty::close(&old);
         forget_term(&old);
     }
-    let ext = crate::paths::extension_path();
-    let _ = extension::install_to(&ext);
-    let binary = state.settings.read().omp_binary.clone();
-    let mut argv = vec![
-        binary,
-        "--resume".to_string(),
-        meta.file.clone(),
-        "-e".to_string(),
-        ext.to_string_lossy().to_string(),
-    ];
-    if let Some(provider_ext) = crate::providers::try_extension_path() {
-        argv.push("-e".to_string());
-        argv.push(provider_ext.to_string_lossy().to_string());
-    }
+    let argv = match foreign {
+        Some(argv) => argv,
+        None => {
+            let ext = crate::paths::extension_path();
+            let _ = extension::install_to(&ext);
+            let binary = state.settings.read().omp_binary.clone();
+            let mut argv = vec![
+                binary,
+                "--resume".to_string(),
+                meta.file.clone(),
+                "-e".to_string(),
+                ext.to_string_lossy().to_string(),
+            ];
+            if let Some(provider_ext) = crate::providers::try_extension_path() {
+                argv.push("-e".to_string());
+                argv.push(provider_ext.to_string_lossy().to_string());
+            }
+            argv
+        }
+    };
     let extra_env: Vec<(String, String)> =
         crate::providers::terminal_extra_env().into_iter().collect();
     let cwd = if std::path::Path::new(&meta.cwd).is_dir() {
@@ -136,6 +193,35 @@ pub async fn term_open_session(
     let term_id = pty::open(&cwd, &argv, cols, rows, app_sink(&state), &extra_env)?;
     session_terms().lock().insert(session_id, term_id.clone());
     Ok(term_id)
+}
+
+#[cfg(test)]
+mod agent_tests {
+    use super::TerminalAgent;
+
+    #[test]
+    fn parses_known_agents_and_rejects_others() {
+        assert_eq!(TerminalAgent::parse("omp"), Ok(TerminalAgent::Omp));
+        assert_eq!(TerminalAgent::parse("claude"), Ok(TerminalAgent::Claude));
+        assert_eq!(TerminalAgent::parse("codex"), Ok(TerminalAgent::Codex));
+        assert_eq!(
+            TerminalAgent::parse("Claude"),
+            Err("未知的 Agent: Claude".to_string())
+        );
+    }
+
+    #[test]
+    fn foreign_agents_resume_latest_conversation() {
+        assert_eq!(TerminalAgent::Omp.foreign_argv(), None);
+        assert_eq!(
+            TerminalAgent::Claude.foreign_argv().unwrap(),
+            ["claude", "--continue"]
+        );
+        assert_eq!(
+            TerminalAgent::Codex.foreign_argv().unwrap(),
+            ["codex", "resume", "--last"]
+        );
+    }
 }
 
 /// Copies the status extension into `~/.omp/agent/extensions/` (opt-in button).

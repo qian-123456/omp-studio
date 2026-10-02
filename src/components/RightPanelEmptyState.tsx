@@ -7,6 +7,7 @@ import {
 	GitBranch,
 	MessageSquare,
 	PanelRightClose,
+	SquareTerminal,
 } from "lucide-react";
 import React from "react";
 import { type RightTab, useUi } from "../stores/ui";
@@ -60,6 +61,12 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 			label: "Token 用量",
 			icon: Coins,
 			iconColor: "text-amber-400",
+		},
+		{
+			id: "terminal",
+			label: "终端",
+			icon: SquareTerminal,
+			iconColor: "text-emerald-400",
 		},
 	];
 

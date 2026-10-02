@@ -95,7 +95,7 @@ export function QuickCapture() {
 			if (attachSession && targetSessionId) {
 				refs.push({ kind: "session", sessionId: targetSessionId, path: null, text: null, lines: null });
 			}
-			await backlogAdd(trimmed, kind, refs);
+			await backlogAdd(trimmed, kind, refs, currentSession?.cwd ?? null);
 			toast.success("已记入收集箱");
 			closeModal();
 		} catch (err) {

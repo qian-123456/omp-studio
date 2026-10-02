@@ -15,6 +15,7 @@ import {
 	Plus,
 	RefreshCw,
 	Search,
+	SlidersHorizontal,
 	Trash2,
 } from "lucide-react";
 import type {
@@ -31,6 +32,7 @@ import { API_LABELS, presetById } from "./presets";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders, type TestStatus } from "./store";
 import { formatTokens, modelEntryId, modelEntrySpec } from "./modelEntry";
+import { openSettingsTarget } from "../settings/settingsTargets";
 
 const PRIVACY_NOTE =
 	"密钥使用 macOS 钥匙串加密后存于 ~/.omp-workspace/env/keys.env，明文仅在内存中出现，不会写入数据库或日志。";
@@ -157,6 +159,15 @@ export function ProviderPanel() {
 					title="API 供应商"
 					description={`共 ${totalCount} 个（${managedCount} 个的密钥由工作台加密保管）。供应商就是提供模型的服务商，配好后新会话即可使用其模型。`}
 				/>
+				<button
+					type="button"
+					onClick={() => openSettingsTarget("modelContext")}
+					className="flex w-full items-center gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-2 text-left text-xs text-neutral-300 hover:bg-[var(--bg-hover)]"
+				>
+					<SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+					<span className="flex-1">同一模型在多个供应商里名字不同？到「统一模型上下文」一次性统一它们的上下文窗口。</span>
+					<span className="text-[var(--accent)]">前往 →</span>
+				</button>
 				<div className="flex flex-wrap items-center justify-end gap-3">
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
 						<div className="relative">

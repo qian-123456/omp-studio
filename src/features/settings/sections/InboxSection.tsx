@@ -58,6 +58,27 @@ export function InboxSection() {
 					checked={settings?.homeShowCompletedTodos ?? false}
 					onChange={(v) => save({ homeShowCompletedTodos: v })}
 				/>
+				<SettingRow
+					fieldId="inboxWindowHours"
+					label="自动移出时间（小时）"
+					description="超过这个时间没动静的会话不再出现在收件箱；待回复的不受影响"
+					hint="可填 1–720（30 天）"
+					control={
+						<div className="flex items-center gap-1.5">
+							<CommitInput
+								type="number"
+								min={1}
+								max={720}
+								className="w-24"
+								aria-label="收件箱自动移出时间（小时）"
+								value={String(settings?.inboxWindowHours ?? 24)}
+								normalize={normalizeWindowHours}
+								onCommit={(v) => save({ inboxWindowHours: Number(v) })}
+							/>
+							<span className="text-xs text-neutral-500">小时</span>
+						</div>
+					}
+				/>
 			</SettingsCard>
 			<SettingsCard
 				title="监工建议"
@@ -146,4 +167,11 @@ function normalizeInterval(raw: string): string {
 	const n = parseInt(raw, 10);
 	if (!Number.isFinite(n) || n <= 0) return "0";
 	return String(Math.min(10080, Math.max(5, n)));
+}
+
+/** Clamp to [1, 720]; garbage falls back to the 24h default. */
+function normalizeWindowHours(raw: string): string {
+	const n = parseInt(raw, 10);
+	if (!Number.isFinite(n)) return "24";
+	return String(Math.min(720, Math.max(1, n)));
 }

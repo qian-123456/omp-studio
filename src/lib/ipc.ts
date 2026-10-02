@@ -116,6 +116,10 @@ export const deleteSession = (sessionId: string) =>
 export const sessionExportHtml = (sessionId: string) =>
 	invoke<string>("session_export_html", { sessionId });
 
+/** `omp share <file>`: uploads an E2E-encrypted snapshot, returns the share link. */
+export const sessionShare = (sessionId: string) =>
+	invoke<string>("session_share", { sessionId });
+
 /** One-shot throwaway question to the supervisor model (scratchpad, no session). */
 export const quickAsk = (prompt: string, model?: string) =>
 	invoke<string>("quick_ask", { prompt, model });
@@ -306,6 +310,7 @@ export const todosAct = (id: string, action: "done" | "ignore" | "reopen") =>
 
 export const todosCounts = () => invoke<TodoCounts>("todos_counts");
 
+
 export const supervisorRefresh = () => invoke<void>("supervisor_refresh");
 
 export const summaryGet = (sessionId: string, ensure: boolean) =>
@@ -330,7 +335,14 @@ export const backlogAdd = (
 	text: string,
 	kind: BacklogKind,
 	refs: BacklogRef[],
-) => invoke<BacklogItem>("backlog_add", { text, kind, refs });
+	projectDir?: string | null,
+) =>
+	invoke<BacklogItem>("backlog_add", {
+		text,
+		kind,
+		refs,
+		projectDir: projectDir ?? null,
+	});
 
 export const backlogUpdate = (id: string, patch: BacklogPatch) =>
 	invoke<BacklogItem>("backlog_update", { id, patch });
@@ -466,8 +478,12 @@ export const termResize = (termId: string, cols: number, rows: number) =>
 export const termClose = (termId: string) =>
 	invoke<void>("term_close", { termId });
 
-export const termOpenSession = (sessionId: string, cols: number, rows: number) =>
-	invoke<string>("term_open_session", { sessionId, cols, rows });
+export const termOpenSession = (
+	sessionId: string,
+	agent: string = "omp",
+	cols: number = 80,
+	rows: number = 24,
+) => invoke<string>("term_open_session", { sessionId, agent, cols, rows });
 
 /** Records/clears the transcript the drawer's bare `omp` should resume. */
 export const terminalSetCurrentSession = (path: string | null) =>

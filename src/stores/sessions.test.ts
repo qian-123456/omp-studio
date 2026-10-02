@@ -46,6 +46,7 @@ function createSession(
 		result: null,
 		lastAssistant: null,
 		model: null,
+		attention: null,
 		...overrides,
 	};
 }

@@ -66,7 +66,12 @@ export interface SessionMeta {
 	result: ResultBadge | null;
 	lastAssistant: string | null;
 	model: string | null;
+	/** Derived inbox attention kind (no time window applied). */
+	attention: Attention | null;
 }
+
+/** Inbox / sidebar attention kind, one per session (precedence top→bottom). */
+export type Attention = "awaiting" | "error" | "unread" | "running";
 
 /** Patch for `update_session_meta`. */
 export interface SessionMetaPatch {
@@ -284,6 +289,8 @@ export interface BacklogItem {
 	refs: BacklogRef[];
 	status: BacklogStatus;
 	targetSessionId: string | null;
+	/** Project (cwd) the item was captured in; null = global. */
+	projectDir: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -459,6 +466,8 @@ export interface Settings {
 	quickCaptureShortcut: string;
 	/** 0 = manual refresh only. */
 	supervisorIntervalMinutes: number;
+	/** Hours before non-blocking inbox todos auto-hide (1..=720). */
+	inboxWindowHours: number;
 	/** "HH:MM" quiet-hours window; null or half-open pair = off. */
 	notifyQuietFrom: string | null;
 	notifyQuietTo: string | null;

@@ -11,7 +11,6 @@ import type { SessionMeta } from "../../lib/contracts";
 export interface GroupStatusCounts {
 	working: number;
 	awaiting: number;
-	review: number;
 	error: number;
 	unread: number;
 }
@@ -22,18 +21,16 @@ export function getGroupStatusCounts(
 ): GroupStatusCounts {
 	let working = 0;
 	let awaiting = 0;
-	let review = 0;
 	let error = 0;
 	let unread = 0;
 
 	const check = (s: SessionMeta) => {
 		if (s.status === "working") working++;
 		else if (s.status === "awaiting_approval" || s.status === "awaiting_answer") awaiting++;
-		else if (s.status === "review") review++;
 		else if (s.status === "error" || s.status === "interrupted") error++;
-		// Unread is independent of status — count it separately so a row that
-		// is both "待回复" and unread still shows its blue bubble.
-		if (s.unread) unread++;
+		// Unread and 待验收 are one concept (blue dot), counted once per session
+		// and independent of status so a 待回复 + unread row keeps its bubble.
+		if (s.unread || s.status === "review" || s.pending === "review") unread++;
 	};
 
 	for (const item of sessions) {
@@ -43,7 +40,7 @@ export function getGroupStatusCounts(
 			check(item);
 		}
 	}
-	return { working, awaiting, review, error, unread };
+	return { working, awaiting, error, unread };
 }
 
 /** Renders status bubbles per RFC palette (V2, R15) - only shown when group is collapsed */
@@ -51,7 +48,6 @@ export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
 	const hasAny =
 		counts.working > 0 ||
 		counts.awaiting > 0 ||
-		counts.review > 0 ||
 		counts.error > 0 ||
 		counts.unread > 0;
 	if (!hasAny) return null;
@@ -74,15 +70,6 @@ export function StatusBubbles({ counts }: { counts: GroupStatusCounts }) {
 				>
 					<span>{counts.awaiting}</span>
 					<span className="@max-[220px]:hidden"> 待回复</span>
-				</span>
-			)}
-			{counts.review > 0 && (
-				<span
-					title={`${counts.review} 个待验收会话`}
-					className="inline-flex items-center gap-1 text-emerald-400 font-mono text-[10px] font-medium"
-				>
-					<span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
-					<span>{counts.review}</span>
 				</span>
 			)}
 			{counts.unread > 0 && (

@@ -21,6 +21,7 @@ import { groupByDesktopCategory, isDesktopRelevant } from "./ompDesktopCategorie
 import { JsonEditor, RecordEditor, SecretInput, StringListEditor } from "./ompValueEditors";
 import { CommitInput, SaveIndicator, useSaveStatus } from "./ui";
 import { useSettingsProjectCwd } from "./useAppSettings";
+import { AutoCompactionCard } from "./AutoCompactionCard";
 
 /** Project-layer value for a key from `<cwd>/.omp/config.yml`. */
 interface ProjectOverride {
@@ -901,6 +902,7 @@ export function OmpConfigSection({
 								)}
 								{!isCollapsed && (
 									<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card divide-y divide-[var(--border-divider)] overflow-hidden">
+										{activeTab === "context" && group === "上下文压缩" && <AutoCompactionCard />}
 										{list.map((entry) => {
 											const dep = PARENT_CHILD_MAP[entry.key];
 											const hierarchyDisabled = dep ? !parentValues[dep.parent] : false;

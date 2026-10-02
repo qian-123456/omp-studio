@@ -15,8 +15,9 @@ pub async fn backlog_add(
     text: String,
     kind: BacklogKind,
     refs: Vec<BacklogRef>,
+    project_dir: Option<String>,
 ) -> Result<BacklogItem, String> {
-    let item = store::add(&state.db.lock(), &text, kind, &refs)?;
+    let item = store::add(&state.db.lock(), &text, kind, &refs, project_dir.as_deref())?;
     notify_changed(&state);
     Ok(item)
 }

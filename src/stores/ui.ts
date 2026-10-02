@@ -11,9 +11,16 @@ export type CenterView =
 	| "inbox"
 	| "schedules"
 	| "skills"
-	| "settings"
-	| "agentTerminal";
-export type RightTab = "explorer" | "sidechat" | "heatmap" | "todos" | "git" | "services";
+	| "settings";
+export type RightTab =
+	| "explorer"
+	| "sidechat"
+	| "heatmap"
+	| "todos"
+	| "git"
+	| "services"
+	| "terminal";
+
 
 const STORAGE_KEYS = {
 	sidebarWidth: "ompws:sidebar-width",
@@ -22,7 +29,42 @@ const STORAGE_KEYS = {
 	rightOpen: "ompws:right-open",
 	lastSession: "ompws:last-session",
 	rightTab: "ompws:right-tab",
+	rightTabs: "ompws:right-tabs",
 };
+
+const RIGHT_TABS: readonly RightTab[] = [
+	"explorer",
+	"sidechat",
+	"heatmap",
+	"todos",
+	"git",
+	"services",
+	"terminal",
+];
+
+/** Restore open panel tabs + active tab; the active tab is always among the open ones. */
+function readRightTabs(): { open: RightTab[]; active: RightTab | null } {
+	const stored = readString(STORAGE_KEYS.rightTab);
+	const active = stored === null ? "explorer" : RIGHT_TABS.find((t) => t === stored) ?? null;
+	let open: RightTab[] = [];
+	try {
+		const raw: unknown = JSON.parse(readString(STORAGE_KEYS.rightTabs) ?? "null");
+		if (Array.isArray(raw)) {
+			open = RIGHT_TABS.filter((t) => raw.includes(t)).sort((a, b) => raw.indexOf(a) - raw.indexOf(b));
+		}
+	} catch {
+		/* corrupt value: fall back to the active tab only */
+	}
+	if (active && !open.includes(active)) open.push(active);
+	return { open, active };
+}
+
+function persistRightTabs(open: RightTab[], active: RightTab | null): void {
+	writeStorage(STORAGE_KEYS.rightTabs, JSON.stringify(open));
+	writeStorage(STORAGE_KEYS.rightTab, active ?? "");
+}
+
+const initialRightTabs = readRightTabs();
 
 function readNumber(
 	key: string,
@@ -79,11 +121,14 @@ export interface UiState {
 	lastSessionId: string | null;
 	docPath: string | null;
 	rightTab: RightTab | null;
+	/** Open right-panel tabs in display order (Chrome-style); `rightTab` is the active one. */
+	openRightTabs: RightTab[];
 	rightOpen: boolean;
 	rightWidth: number;
 	sidebarOpen: boolean;
 	sidebarWidth: number;
 	sessionViewMode: Record<string, "chat" | "terminal">;
+
 	/** Settings section to show when the settings view opens (e.g. from the theme menu). */
 	settingsSection: string | null;
 	/** Field/omp-config key to scroll to and highlight inside the settings view. */
@@ -98,7 +143,10 @@ export interface UiState {
 	setCenter(v: CenterView): void;
 	openSettings(section?: string, opts?: { focusKey?: string }): void;
 	closeSettings(): void;
+	/** Open (if needed) and activate `t`; never replaces another open tab. `null` deactivates. */
 	setRightTab(t: RightTab | null): void;
+	/** Close `t`; if it was active, activate its right neighbour, else left, else none. */
+	closeRightTab(t: RightTab): void;
 	toggleRight(): void;
 	setRightOpen(open: boolean): void;
 	setRightWidth(w: number): void;
@@ -106,6 +154,7 @@ export interface UiState {
 	setSidebarOpen(open: boolean): void;
 	setSidebarWidth(w: number): void;
 	setSessionViewMode(id: string, m: "chat" | "terminal"): void;
+
 	openModal(name: string, props?: Record<string, unknown>): void;
 	closeModal(): void;
 }
@@ -118,7 +167,8 @@ export const useUi = create<UiState>((set) => ({
 	highlightId: null,
 	lastSessionId: readString(STORAGE_KEYS.lastSession),
 	docPath: null,
-	rightTab: (readString(STORAGE_KEYS.rightTab) as RightTab | null) ?? "explorer",
+	rightTab: initialRightTabs.active,
+	openRightTabs: initialRightTabs.open,
 	rightOpen: readBool(STORAGE_KEYS.rightOpen, true),
 	rightWidth: readNumber(STORAGE_KEYS.rightWidth, 360, 260, 720),
 	sidebarOpen: readBool(STORAGE_KEYS.sidebarOpen, true),
@@ -159,7 +209,7 @@ export const useUi = create<UiState>((set) => ({
 					centerView: "session",
 				};
 			}
-			return { centerView: "session" };
+			return { centerView: "home" };
 		}),
 	openDoc: (path) => set({ docPath: path, centerView: "doc" }),
 	setCenter: (v) =>
@@ -186,15 +236,27 @@ export const useUi = create<UiState>((set) => ({
 				s.previousCenterView ?? (s.selectedSessionId ? "session" : "home");
 			return { centerView: prev, settingsSection: null, settingsFocus: null };
 		}),
-	setRightTab: (t) => {
-		if (t) {
-			writeStorage(STORAGE_KEYS.rightTab, t);
+	setRightTab: (t) =>
+		set((s) => {
+			if (!t) {
+				persistRightTabs(s.openRightTabs, null);
+				return { rightTab: null };
+			}
+			const openRightTabs = s.openRightTabs.includes(t) ? s.openRightTabs : [...s.openRightTabs, t];
+			persistRightTabs(openRightTabs, t);
 			writeStorage(STORAGE_KEYS.rightOpen, true);
-			set({ rightTab: t, rightOpen: true });
-		} else {
-			set({ rightTab: null });
-		}
-	},
+			return { rightTab: t, openRightTabs, rightOpen: true };
+		}),
+	closeRightTab: (t) =>
+		set((s) => {
+			const idx = s.openRightTabs.indexOf(t);
+			if (idx < 0) return {};
+			const openRightTabs = s.openRightTabs.filter((x) => x !== t);
+			const rightTab =
+				s.rightTab === t ? (openRightTabs[idx] ?? openRightTabs[idx - 1] ?? null) : s.rightTab;
+			persistRightTabs(openRightTabs, rightTab);
+			return { openRightTabs, rightTab };
+		}),
 	toggleRight: () =>
 		set((s) => {
 			const next = !s.rightOpen;
@@ -227,6 +289,7 @@ export const useUi = create<UiState>((set) => ({
 	},
 	setSessionViewMode: (id, m) =>
 		set((s) => ({ sessionViewMode: { ...s.sessionViewMode, [id]: m } })),
+
 	openModal: (name, props = {}) => set({ modal: { name, props } }),
 	closeModal: () => set({ modal: null }),
 }));

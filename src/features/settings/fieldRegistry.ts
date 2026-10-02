@@ -206,6 +206,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["interval", "触发间隔", "巡检间隔", "频率", "去抖", "分钟"],
 	},
 	{
+		id: "inboxWindowHours",
+		sectionId: "inbox",
+		label: "自动移出时间（小时）",
+		description: "非审批/提问的事项超过这么久没有新动态就从收件箱移出",
+		keywords: ["window", "expire", "过期", "移出", "小时", "收件箱"],
+	},
+	{
 		id: "homeShowCompletedTodos",
 		sectionId: "inbox",
 		label: "默认展开已处理待办",

@@ -38,7 +38,9 @@ async fn save_settings(
     state: tauri::State<'_, AppState>,
     settings: Settings,
 ) -> Result<Settings, String> {
-    settings::save(&state, settings).await
+    let saved = settings::save(&state, settings).await?;
+    notify::refresh_badge(&state).await;
+    Ok(saved)
 }
 
 #[tauri::command]
@@ -147,6 +149,7 @@ pub fn run() {
             catalog::commands::list_models,
             catalog::commands::list_workspace_files,
             catalog::commands::session_export_html,
+            catalog::commands::session_share,
             catalog::commands::quick_ask,
             // B — rpc
             rpc::commands::rpc_start,

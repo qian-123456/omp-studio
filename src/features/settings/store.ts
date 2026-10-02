@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	tunnelHostname: null,
 	quickCaptureShortcut: "CommandOrControl+Shift+I",
 	supervisorIntervalMinutes: 30,
+	inboxWindowHours: 24,
 	notifyQuietFrom: null,
 	notifyQuietTo: null,
 	newSessionModel: null,

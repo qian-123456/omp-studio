@@ -9,6 +9,7 @@ import { HeatmapPanel } from "../features/heatmap/HeatmapPanel";
 import { TodoPanel } from "../features/todos/TodoPanel";
 import { GitPanel } from "../features/git/GitPanel";
 import { ServicesPanel } from "../features/services/ServicesPanel";
+import { CommandTerminalPanel } from "../features/terminal/CommandTerminalPanel";
 
 class ErrorBoundary extends React.Component<
 	{ children: ReactNode; label: string },
@@ -52,6 +53,8 @@ function RightPanelBody({ tab }: { tab: RightTab }) {
 			return <GitPanel />;
 		case "services":
 			return <ServicesPanel />;
+		case "terminal":
+			return <CommandTerminalPanel />;
 	}
 }
 

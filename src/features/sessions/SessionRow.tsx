@@ -17,7 +17,6 @@ import {
 	PinOff,
 	Play,
 	Stethoscope,
-	Terminal,
 	Trash2,
 } from "lucide-react";
 import React, { type MouseEvent, useEffect, useRef, useState } from "react";
@@ -64,10 +63,10 @@ export interface SessionRowProps {
  * Status marks — final spec (RFC P8):
  * - working: neutral monochrome spinner, label reveals on hover.
  * - awaiting_approval/awaiting_answer: persistent sky-blue 待回复 pill, no dot.
- * - review: solid green #10b981 dot (bare mark).
+ * - review: no status mark — merged into the trailing blue unread dot.
  * - error/interrupted: solid red #ef4444 dot (bare mark).
  * - suspended/external/idle: no mark at all.
- * - Unread stays a blue dot in the trailing zone (rendered by SessionRow).
+ * - Unread (incl. 待验收) is a blue dot in the trailing zone (rendered by SessionRow).
  * - Status mark sits adjacent to the title, not flush-right.
  */
 type StatusMark =
@@ -79,12 +78,7 @@ type StatusMark =
 const STATUS_CONFIG: Record<SessionMeta["status"], StatusMark> = {
 	awaiting_approval: { kind: "pill", label: "待回复" },
 	awaiting_answer: { kind: "pill", label: "待回复" },
-	review: {
-		kind: "dot",
-		label: "待验收",
-		dotCls: "bg-emerald-500",
-		pillCls: "bg-emerald-500/15 text-emerald-400",
-	},
+	review: { kind: "none" },
 	error: {
 		kind: "dot",
 		label: "异常",
@@ -158,8 +152,7 @@ function SessionRowComponent({
 	const setSelectedIds = useUi((s) => s.setSelectedIds);
 	const toggleSelectId = useUi((s) => s.toggleSelectId);
 	const setHighlightId = useUi((s) => s.setHighlightId);
-	const sessionViewMode = useUi((s) => s.sessionViewMode[session.id] ?? "chat");
-	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
+
 	const openModal = useUi((s) => s.openModal);
 
 	const parentTitle = useSessions((s) =>
@@ -429,12 +422,7 @@ function SessionRowComponent({
 		}
 	};
 
-	const handleToggleTerminal = () => {
-		closeMenu(true);
-		const targetMode = sessionViewMode === "terminal" ? "chat" : "terminal";
-		setSessionViewMode(session.id, targetMode);
-		selectSession(session.id);
-	};
+
 
 	const handleAccept = async () => {
 		closeMenu(true);
@@ -603,9 +591,10 @@ function SessionRowComponent({
 
 			{/* Trailing zone: permanent relative-time stamp with time-swap hover tray (T2, Q12) */}
 			<div className="relative flex shrink-0 items-center ml-1 @max-[220px]:ml-0.5">
-				{/* Unread dot: show on every unread session, alongside any status
-				 * mark — peeking at a row must not silently drop the unread cue. */}
-				{session.unread && !busy && (
+				{/* Unread dot (unread or 待验收): show alongside any status mark —
+				 * peeking at a row must not silently drop the unread cue. */}
+				{(session.unread || session.status === "review" || session.pending === "review") &&
+					!busy && (
 					<span
 						className={clsx(
 							"h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 mr-1 transition-opacity duration-150",
@@ -902,20 +891,6 @@ function SessionRowComponent({
 									</button>
 								)}
 
-								<button
-									role="menuitem"
-									tabIndex={-1}
-									type="button"
-									onClick={() => {
-										handleToggleTerminal();
-									}}
-									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
-								>
-									<Terminal size={13} />
-									{sessionViewMode === "terminal"
-										? "切换聊天视图"
-										: "终端视图"}
-								</button>
 
 								{(session.status === "external" ||
 									session.externalPid != null) && (

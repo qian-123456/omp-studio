@@ -8,7 +8,7 @@ use tauri::Manager as _;
 use tauri_plugin_notification::NotificationExt as _;
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::contracts::{SessionStatus, Settings};
+use crate::contracts::{Attention, SessionMeta, SessionStatus, Settings};
 use crate::state::{AppEvent, AppState};
 
 /// Ignore status churn from the catalog's initial scan.
@@ -28,16 +28,25 @@ pub fn message_for(new: SessionStatus, s: &Settings) -> Option<&'static str> {
     }
 }
 
-/// Status-change → notification subscriber; TodosChanged → dock badge.
+/// Status-change → notification subscriber; SessionsChanged + 60 s tick → dock badge.
 pub fn init(state: AppState) {
     let started = Instant::now();
     let mut rx = state.bus.subscribe();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(3)).await;
-        update_badge(&state);
+        refresh_badge(&state).await;
+        // Window expiry changes the count without any session event.
+        let mut tick = tokio::time::interval(Duration::from_secs(60));
         loop {
-            match rx.recv().await {
-                Ok(AppEvent::TodosChanged) => update_badge(&state),
+            let ev = tokio::select! {
+                _ = tick.tick() => {
+                    refresh_badge(&state).await;
+                    continue;
+                }
+                ev = rx.recv() => ev,
+            };
+            match ev {
+                Ok(AppEvent::SessionsChanged { .. }) => refresh_badge(&state).await,
                 Ok(AppEvent::SessionStatusChanged {
                     session_id,
                     old,
@@ -52,6 +61,28 @@ pub fn init(state: AppState) {
             }
         }
     });
+}
+
+/// Inbox badge: non-archived sessions whose attention is awaiting/error/unread;
+/// non-awaiting ones count only if `updated_at` is within `window_hours` of `now`.
+pub fn inbox_badge_count(
+    metas: &[SessionMeta],
+    now: chrono::DateTime<chrono::Utc>,
+    window_hours: u32,
+) -> u32 {
+    let cutoff = now - chrono::Duration::hours(window_hours.clamp(1, 720) as i64);
+    let in_window = |m: &SessionMeta| {
+        chrono::DateTime::parse_from_rfc3339(&m.updated_at).is_ok_and(|t| t >= cutoff)
+    };
+    metas
+        .iter()
+        .filter(|m| !m.archived)
+        .filter(|m| match m.attention {
+            Some(Attention::Awaiting) => true,
+            Some(Attention::Error | Attention::Unread) => in_window(m),
+            Some(Attention::Running) | None => false,
+        })
+        .count() as u32
 }
 
 /// True when `hm` ("HH:MM") falls inside the [from, to) quiet window.
@@ -135,22 +166,53 @@ pub fn send(state: &AppState, title: &str, body: &str, sound: bool) -> Result<()
     b.show().map_err(|e| e.to_string())
 }
 
-fn update_badge(state: &AppState) {
-    if !state.settings.read().dock_badge_enabled {
-        if let Some(w) = state.app.get_webview_window("main") {
-            let _ = w.set_badge_count(None);
-        }
-        return;
-    }
-    let open = crate::todos::counts_sync(state).open;
+/// Recompute and set the macOS Dock badge (cleared when disabled).
+pub async fn refresh_badge(state: &AppState) {
+    let (enabled, window) = {
+        let s = state.settings.read();
+        (s.dock_badge_enabled, s.inbox_window_hours)
+    };
+    let count = if enabled {
+        let metas = crate::catalog::list(state).await;
+        inbox_badge_count(&metas, chrono::Utc::now(), window)
+    } else {
+        0
+    };
     if let Some(w) = state.app.get_webview_window("main") {
-        let _ = w.set_badge_count((open > 0).then_some(open as i64));
+        let _ = w.set_badge_count((count > 0).then_some(count as i64));
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn badge_count_window_and_kinds() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-01-02T00:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let mk = |a: Option<Attention>, updated: &str, archived: bool| SessionMeta {
+            attention: a,
+            updated_at: updated.into(),
+            archived,
+            ..Default::default()
+        };
+        let recent = "2026-01-01T12:00:00Z";
+        let edge = "2026-01-01T00:00:00Z"; // exactly 24 h old: still in window
+        let old = "2025-12-31T23:59:59Z";
+        let metas = vec![
+            mk(Some(Attention::Awaiting), old, false), // never expires
+            mk(Some(Attention::Error), recent, false),
+            mk(Some(Attention::Unread), edge, false),
+            mk(Some(Attention::Unread), old, false), // expired
+            mk(Some(Attention::Running), recent, false), // not counted
+            mk(None, recent, false),
+            mk(Some(Attention::Awaiting), recent, true), // archived
+        ];
+        assert_eq!(inbox_badge_count(&metas, now, 24), 3);
+        assert_eq!(inbox_badge_count(&metas, now, 48), 4);
+    }
 
     #[test]
     fn respects_toggles() {

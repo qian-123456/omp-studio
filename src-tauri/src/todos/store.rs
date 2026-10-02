@@ -275,7 +275,7 @@ pub fn test_conn() -> Connection {
           title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL DEFAULT '{}', priority INTEGER NOT NULL DEFAULT 0,
           dedupe_key TEXT UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
          CREATE TABLE backlog(id TEXT PRIMARY KEY, text TEXT NOT NULL, kind TEXT NOT NULL, refs TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL,
-          target_session_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+          target_session_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, project_dir TEXT);
          CREATE TABLE summaries(session_id TEXT PRIMARY KEY, summary TEXT NOT NULL, upto_offset INTEGER NOT NULL, updated_at TEXT NOT NULL);",
     )
     .unwrap();

@@ -10,18 +10,16 @@ import {
 	Eraser,
 	FileDown,
 	FolderOpen,
-	MessageSquare,
 	MoreHorizontal,
 	QrCode,
 	RefreshCw,
-	TerminalSquare,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import clsx from "clsx";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { rpcRestart, sessionExportHtml } from "../lib/ipc";
 import { toast } from "../lib/toast";
-import { useUi } from "../stores/ui";
+
 import { FloatingLayer } from "./FloatingLayer";
 export interface SessionOverflowMenuProps {
 	sessionId: string;
@@ -29,7 +27,7 @@ export interface SessionOverflowMenuProps {
 	onOpenInFinder?: () => void;
 	onCopyMarkdown?: () => void;
 	onMobilePair?: () => void;
-	onToggleSessionTerminal?: () => void;
+
 	className?: string;
 }
 
@@ -39,26 +37,13 @@ export function SessionOverflowMenu({
 	onOpenInFinder,
 	onCopyMarkdown,
 	onMobilePair,
-	onToggleSessionTerminal,
+
 	className,
 }: SessionOverflowMenuProps) {
 	const [open, setOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const btnRef = useRef<HTMLButtonElement>(null);
-	const sessionViewMode = useUi((s) => s.sessionViewMode[sessionId] ?? "chat");
-	const setSessionViewMode = useUi((s) => s.setSessionViewMode);
 
-	const handleToggleTerminal = () => {
-		setOpen(false);
-		if (onToggleSessionTerminal) {
-			onToggleSessionTerminal();
-		} else {
-			setSessionViewMode(
-				sessionId,
-				sessionViewMode === "terminal" ? "chat" : "terminal",
-			);
-		}
-	};
 
 	const handleFreshRestart = async () => {
 		if (busy) return;
@@ -155,30 +140,7 @@ export function SessionOverflowMenu({
 						<span className="flex-1 truncate">重置流连接（保留历史）</span>
 					</button>
 
-					{/* 会话终端接管 / 返回聊天视图 */}
-					<button
-						type="button"
-						role="menuitem"
-						onClick={handleToggleTerminal}
-						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-200 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-all active:scale-[0.98]"
-						title={
-							sessionViewMode === "terminal"
-								? "返回聊天视图"
-								: "用完整终端接管此会话（omp --resume，可交互操作 Agent）"
-						}
-					>
-						{sessionViewMode === "terminal" ? (
-							<>
-								<MessageSquare size={13} className="shrink-0 text-indigo-400" />
-								<span className="flex-1 truncate">返回聊天视图</span>
-							</>
-						) : (
-							<>
-								<TerminalSquare size={13} className="shrink-0 text-neutral-400" />
-								<span className="flex-1 truncate">在会话终端中打开</span>
-							</>
-						)}
-					</button>
+
 
 					{/* /clear equivalent: 清空上下文（保留会话） */}
 					<button

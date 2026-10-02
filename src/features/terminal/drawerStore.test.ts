@@ -10,25 +10,11 @@ globalThis.localStorage = {
 	},
 } as Storage;
 
-// Stub window for height clamping before exercising the store
-(globalThis as { window?: unknown }).window = { innerHeight: 1000 };
-
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-	clampHeight,
-	DRAWER_HEIGHT_MIN,
-	useDrawerStore,
-	type DrawerTab,
-} from "./drawerStore";
+import { countLiveCommandTabs, useDrawerStore } from "./drawerStore";
 
-function reset(overrides: Partial<{ open: boolean; height: number; tabs: DrawerTab[]; activeTabId: string | null }> = {}) {
-	useDrawerStore.setState({
-		open: false,
-		height: 400,
-		tabs: [],
-		activeTabId: null,
-		...overrides,
-	});
+function reset() {
+	useDrawerStore.setState({ tabs: [], activeTabId: null });
 }
 
 describe("drawerStore", () => {
@@ -37,33 +23,27 @@ describe("drawerStore", () => {
 		reset();
 	});
 
-	it("clamps height into [140px, 80vh]", () => {
-		expect(clampHeight(10)).toBe(DRAWER_HEIGHT_MIN);
-		expect(clampHeight(50)).toBe(DRAWER_HEIGHT_MIN);
-		// innerHeight 1000 → max 800
-		expect(clampHeight(5000)).toBe(800);
-		expect(clampHeight(500)).toBe(500);
-		expect(clampHeight(400.6)).toBe(401);
+	it("countLiveCommandTabs counts only visible tabs with a running shell", () => {
+		const a = useDrawerStore.getState().addTab("/tmp/a", "a");
+		const b = useDrawerStore.getState().addTab("/tmp/b", "b");
+		useDrawerStore.getState().addTab("/tmp/c", "c");
+		useDrawerStore.getState().updateTab(a, { status: "ready" });
+		useDrawerStore.getState().updateTab(b, { status: "ready" });
+		expect(countLiveCommandTabs(useDrawerStore.getState().tabs)).toBe(2);
+		useDrawerStore.getState().detachTab(b);
+		expect(countLiveCommandTabs(useDrawerStore.getState().tabs)).toBe(1);
+		useDrawerStore.getState().updateTab(a, { status: "exited", exitCode: 0 });
+		expect(countLiveCommandTabs(useDrawerStore.getState().tabs)).toBe(0);
 	});
 
-	it("toggles and persists open state", () => {
-		const s = useDrawerStore.getState();
-		s.setOpen(true);
-		expect(useDrawerStore.getState().open).toBe(true);
-		expect(mem.get("ompws:drawer-open")).toBe("true");
-
-		useDrawerStore.getState().toggle();
-		expect(useDrawerStore.getState().open).toBe(false);
-		expect(mem.get("ompws:drawer-open")).toBe("false");
-	});
-
-	it("clamps and persists height on setHeight", () => {
-		useDrawerStore.getState().setHeight(50);
-		expect(useDrawerStore.getState().height).toBe(DRAWER_HEIGHT_MIN);
-		expect(Number(mem.get("ompws:drawer-height"))).toBe(DRAWER_HEIGHT_MIN);
-
-		useDrawerStore.getState().setHeight(600);
-		expect(useDrawerStore.getState().height).toBe(600);
+	it("detachTab moves the active tab to the first visible one; reattachTab activates it", () => {
+		const a = useDrawerStore.getState().addTab("/tmp/a", "a");
+		const b = useDrawerStore.getState().addTab("/tmp/b", "b");
+		useDrawerStore.getState().detachTab(b);
+		expect(useDrawerStore.getState().activeTabId).toBe(a);
+		useDrawerStore.getState().reattachTab(b);
+		expect(useDrawerStore.getState().activeTabId).toBe(b);
+		expect(useDrawerStore.getState().tabs.every((t) => !t.detached)).toBe(true);
 	});
 
 	it("addTab appends, activates and persists tab metas", () => {
@@ -114,29 +94,26 @@ describe("drawerStore", () => {
 		expect(tab.cwd).toBe("/tmp/a");
 	});
 
-	it("hydrate restores open/height/tabs from localStorage with fresh statuses", () => {
-		mem.set("ompws:drawer-open", "true");
-		mem.set("ompws:drawer-height", "300");
+	it("hydrate restores tabs from localStorage with fresh statuses", () => {
 		mem.set(
 			"ompws:drawer-tabs",
-			JSON.stringify([{ id: "t1", cwd: "/tmp/x", title: "x" }]),
+			JSON.stringify([
+				{ id: "t0", cwd: "/tmp/w", title: "w", detached: true },
+				{ id: "t1", cwd: "/tmp/x", title: "x" },
+			]),
 		);
 
 		useDrawerStore.getState().hydrate();
 		const s = useDrawerStore.getState();
-		expect(s.open).toBe(true);
-		expect(s.height).toBe(300);
-		expect(s.tabs).toHaveLength(1);
-		expect(s.tabs[0]).toMatchObject({ id: "t1", cwd: "/tmp/x", title: "x", status: "opening", exitCode: null });
+		expect(s.tabs).toHaveLength(2);
+		expect(s.tabs[1]).toMatchObject({ id: "t1", cwd: "/tmp/x", title: "x", status: "opening", exitCode: null });
 		expect(s.activeTabId).toBe("t1");
 	});
 
-	it("hydrate falls back to defaults when storage is empty or corrupted", () => {
+	it("hydrate starts clean when storage is corrupted", () => {
 		mem.set("ompws:drawer-tabs", "not json");
 		useDrawerStore.getState().hydrate();
 		const s = useDrawerStore.getState();
-		expect(s.open).toBe(false);
-		expect(s.height).toBeGreaterThanOrEqual(DRAWER_HEIGHT_MIN);
 		expect(s.tabs).toHaveLength(0);
 		expect(s.activeTabId).toBeNull();
 	});

@@ -10,6 +10,7 @@ import { GeneralSection } from "./GeneralSection";
 import { InboxSection } from "./InboxSection";
 import { McpSettingsSection } from "./McpSettingsSection";
 import { MobileSettingsSection } from "./MobileSettingsSection";
+import { ModelContextSection } from "./ModelContextSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { PluginsSettingsSection } from "./PluginsSettingsSection";
 import { ProvidersSection } from "./ProvidersSection";
@@ -21,6 +22,7 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	appearance: AppearanceSection,
 	notifications: NotificationsSection,
 	providers: ProvidersSection,
+	"model-context": ModelContextSection,
 	"omp-roles": RolesSection,
 	sessions: SessionsSection,
 	inbox: InboxSection,

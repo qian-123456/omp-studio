@@ -68,6 +68,7 @@ export function isSessionMetaEqual(a: SessionMeta, b: SessionMeta): boolean {
 		a.repoRoot === b.repoRoot &&
 		a.lastAssistant === b.lastAssistant &&
 		a.model === b.model &&
+		a.attention === b.attention &&
 		gitSame &&
 		resultSame
 	);
@@ -173,18 +174,23 @@ function scheduleMarkSessionSeen(sessionId: string | null): void {
 	if (!sessionId) return;
 	markSeenTimer = window.setTimeout(() => {
 		markSeenTimer = null;
-		const s = useSessions.getState().sessions[sessionId];
-		if (s?.unread) void markSessionSeen(sessionId);
+		// Always record the view: besides clearing `unread`, it stamps
+		// `last_seen_at` (hides 中断 from the inbox) and accepts a pending review.
+		if (useSessions.getState().sessions[sessionId]) {
+			void markSessionSeen(sessionId);
+		}
 	}, MARK_SEEN_DWELL_MS);
 }
 
 export async function markSessionSeen(sessionId: string): Promise<void> {
 	if (!sessionId || inFlightMarkSeen.has(sessionId)) return;
 	const current = useSessions.getState().sessions[sessionId];
-	if (!current || !current.unread) return;
+	if (!current) return;
 
 	inFlightMarkSeen.add(sessionId);
-	useSessions.getState().upsert([{ ...current, unread: false }]);
+	if (current.unread) {
+		useSessions.getState().upsert([{ ...current, unread: false }]);
+	}
 
 	try {
 		if (typeof markSeen === "function") {

@@ -108,6 +108,14 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		out.supervisorIntervalMinutes = val;
 	}
 
+	if ("inboxWindowHours" in raw) {
+		const val = raw.inboxWindowHours;
+		if (typeof val !== "number" || !Number.isInteger(val) || val < 1 || val > 720) {
+			return { ok: false, error: "收件箱自动移出时间必须是 1 到 720 小时之间的整数" };
+		}
+		out.inboxWindowHours = val;
+	}
+
 	if ("idleSuspendMinutes" in raw) {
 		const val = raw.idleSuspendMinutes;
 		if (typeof val !== "number" || !Number.isInteger(val) || val < 0 || val > 1440) {

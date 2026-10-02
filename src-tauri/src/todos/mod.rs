@@ -74,7 +74,6 @@ pub async fn summary(state: &AppState, session_id: &str, ensure: bool) -> Option
 
 /// Emit `todos:changed` (frontend) + `AppEvent::TodosChanged` (bus).
 pub fn notify_changed(state: &AppState) {
-    let counts = counts_sync(state);
-    let _ = state.app.emit("todos:changed", counts);
+    let _ = state.app.emit("todos:changed", counts_sync(state));
     state.emit(AppEvent::TodosChanged);
 }

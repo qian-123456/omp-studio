@@ -5,7 +5,8 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::contracts::{BacklogItem, BacklogKind, BacklogPatch, BacklogRef, BacklogStatus};
 use crate::todos::store::{enum_str, now, parse_enum};
 
-const COLS: &str = "id, text, kind, refs, status, target_session_id, created_at, updated_at";
+const COLS: &str =
+    "id, text, kind, refs, status, target_session_id, created_at, updated_at, project_dir";
 
 fn row_to_item(r: &Row) -> rusqlite::Result<BacklogItem> {
     let kind: String = r.get(2)?;
@@ -18,6 +19,7 @@ fn row_to_item(r: &Row) -> rusqlite::Result<BacklogItem> {
         refs: serde_json::from_str(&refs).unwrap_or_default(),
         status: parse_enum(&status).unwrap_or(BacklogStatus::Inbox),
         target_session_id: r.get(5)?,
+        project_dir: r.get(8)?,
         created_at: r.get(6)?,
         updated_at: r.get(7)?,
     })
@@ -45,6 +47,7 @@ pub fn add(
     text: &str,
     kind: BacklogKind,
     refs: &[BacklogRef],
+    project_dir: Option<&str>,
 ) -> Result<BacklogItem, String> {
     let text = text.trim();
     if text.is_empty() {
@@ -52,15 +55,17 @@ pub fn add(
     }
     let id = uuid::Uuid::new_v4().to_string();
     let ts = now();
+    let project_dir = project_dir.map(str::trim).filter(|p| !p.is_empty());
     conn.execute(
-        "INSERT INTO backlog(id, text, kind, refs, status, target_session_id, created_at, updated_at)
-         VALUES(?1, ?2, ?3, ?4, 'inbox', NULL, ?5, ?5)",
+        "INSERT INTO backlog(id, text, kind, refs, status, target_session_id, created_at, updated_at, project_dir)
+         VALUES(?1, ?2, ?3, ?4, 'inbox', NULL, ?5, ?5, ?6)",
         params![
             id,
             text,
             enum_str(kind),
             serde_json::to_string(refs).unwrap_or_else(|_| "[]".into()),
-            ts
+            ts,
+            project_dir
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -110,35 +115,28 @@ pub fn delete(conn: &Connection, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Dispatched items targeting `session_id` become Done (session accepted).
-pub fn complete_for_session(conn: &Connection, session_id: &str) -> bool {
-    conn.execute(
-        "UPDATE backlog SET status = 'done', updated_at = ?2
-         WHERE status = 'dispatched' AND target_session_id = ?1",
-        params![session_id, now()],
-    )
-    .map(|n| n > 0)
-    .unwrap_or(false)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::todos::store::test_conn;
 
     #[test]
-    fn crud_and_auto_complete() {
+    fn crud_and_project_dir() {
         let c = test_conn();
-        assert!(add(&c, "  ", BacklogKind::Idea, &[]).is_err());
+        assert!(add(&c, "  ", BacklogKind::Idea, &[], None).is_err());
         let r = BacklogRef {
             kind: "file".into(),
             path: Some("/tmp/a.md".into()),
             ..Default::default()
         };
-        let a = add(&c, " fix login ", BacklogKind::Bug, &[r]).unwrap();
+        let a = add(&c, " fix login ", BacklogKind::Bug, &[r], Some("/repo")).unwrap();
         assert_eq!(a.text, "fix login");
         assert_eq!(a.refs[0].path.as_deref(), Some("/tmp/a.md"));
         assert_eq!(a.status, BacklogStatus::Inbox);
+        assert_eq!(a.project_dir.as_deref(), Some("/repo"));
+        let g = add(&c, "global", BacklogKind::Idea, &[], Some("  ")).unwrap();
+        assert_eq!(g.project_dir, None);
+        delete(&c, &g.id).unwrap();
         let patch = BacklogPatch {
             status: Some(BacklogStatus::Dispatched),
             target_session_id: Some("s1".into()),
@@ -146,9 +144,7 @@ mod tests {
         };
         let u = update(&c, &a.id, &patch).unwrap();
         assert_eq!(u.target_session_id.as_deref(), Some("s1"));
-        assert!(!complete_for_session(&c, "s2"));
-        assert!(complete_for_session(&c, "s1"));
-        assert_eq!(get(&c, &a.id).unwrap().unwrap().status, BacklogStatus::Done);
+        assert_eq!(u.status, BacklogStatus::Dispatched);
         assert_eq!(list(&c).unwrap().len(), 1);
         delete(&c, &a.id).unwrap();
         assert!(list(&c).unwrap().is_empty());
