@@ -1,8 +1,17 @@
+const mem = new Map<string, string>();
+globalThis.localStorage = {
+	getItem: (k: string) => mem.get(k) ?? null,
+	setItem: (k: string, v: string) => void mem.set(k, String(v)),
+	removeItem: (k: string) => void mem.delete(k),
+	clear: () => mem.clear(),
+	key: () => null,
+	get length() {
+		return mem.size;
+	},
+} as Storage;
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BacklogItem } from "../../lib/contracts";
-import { toast } from "../../lib/toast";
-import { useComposer } from "../../stores/composer";
-import { useUi } from "../../stores/ui";
 import { useBacklog } from "./backlogStore";
 
 const item = (over: Partial<BacklogItem> = {}): BacklogItem => ({
@@ -41,8 +50,6 @@ describe("useBacklog store", () => {
 
 	beforeEach(() => {
 		useBacklog.setState({ items: [], loading: false });
-		useComposer.setState({ drafts: {}, focusNonce: {} });
-		useUi.setState({ selectedSessionId: null, centerView: "home" });
 		backlogList.mockReset().mockResolvedValue([]);
 		onBacklogChanged.mockReset().mockImplementation(async (cb: () => void) => {
 			captured.listener = cb;
@@ -83,34 +90,31 @@ describe("useBacklog store", () => {
 		expect(backlogList).toHaveBeenCalledTimes(2);
 	});
 
-	it("handles fill current session workflow correctly", () => {
-		const targetItem = item();
+	it("persists draft and last kind, restoring them on a fresh module load", async () => {
+		mem.clear();
+		useBacklog.getState().setLastKind("bug");
+		useBacklog.getState().setDraft({ text: "半句话", images: ["/tmp/a.png"] });
+		useBacklog.getState().setDraft({ kind: "idea" });
 
-		// 1. When no session is selected
-		const handleFillCurrent = (target: BacklogItem) => {
-			const selectedSessionId = useUi.getState().selectedSessionId;
-			if (!selectedSessionId) {
-				toast.error("没有选中的会话");
-				return;
-			}
-			useComposer.getState().setDraft(selectedSessionId, target.text);
-			useComposer.getState().focusComposer(selectedSessionId);
-			useUi.getState().selectSession(selectedSessionId);
-			toast.success("已填入输入框");
-		};
+		vi.resetModules();
+		const fresh = (await import("./backlogStore")).useBacklog.getState();
+		expect(fresh.lastKind).toBe("bug");
+		expect(fresh.draft).toEqual({ text: "半句话", kind: "idea", images: ["/tmp/a.png"] });
 
-		handleFillCurrent(targetItem);
-		expect(toast.error).toHaveBeenCalledWith("没有选中的会话");
+		fresh.clearDraft();
+		expect(fresh.lastKind).toBe("bug");
+		vi.resetModules();
+		const cleared = (await import("./backlogStore")).useBacklog.getState();
+		expect(cleared.draft).toEqual({ text: "", kind: "bug", images: [] });
+	});
 
-		// 2. When session is selected
-		useUi.setState({ selectedSessionId: "session-123" });
-		handleFillCurrent(targetItem);
-
-		expect(useComposer.getState().drafts["session-123"]).toBe(
-			"Fix the top bar overflow issue",
-		);
-		expect(useComposer.getState().focusNonce["session-123"]).toBe(1);
-		expect(useUi.getState().centerView).toBe("session");
-		expect(toast.success).toHaveBeenCalledWith("已填入输入框");
+	it("ignores corrupt stored values and defaults to todo", async () => {
+		mem.clear();
+		mem.set("ompws:backlog-last-kind", "nope");
+		mem.set("ompws:backlog-draft", "{broken");
+		vi.resetModules();
+		const fresh = (await import("./backlogStore")).useBacklog.getState();
+		expect(fresh.lastKind).toBe("todo");
+		expect(fresh.draft).toEqual({ text: "", kind: "todo", images: [] });
 	});
 });

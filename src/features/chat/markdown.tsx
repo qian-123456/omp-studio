@@ -4,6 +4,7 @@
  * --accent. hljs token colors are scoped per theme in index.css. */
 
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import React, { useState } from "react";
@@ -181,10 +182,24 @@ function TableBlock({
 
 const REMARK_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["remarkPlugins"]> = [remarkGfm];
 const REHYPE_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]> = [[rehypeHighlight, { detect: false }]];
+function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
+	if (typeof src !== "string" || !src) return null;
+	const resolved = /^(?:https?|data|asset):/i.test(src) ? src : convertFileSrc(src);
+	return (
+		<img
+			src={resolved}
+			alt={alt ?? ""}
+			loading="lazy"
+			className="my-2 max-h-80 max-w-full rounded-xl border border-[var(--line)] object-contain"
+		/>
+	);
+}
+
 const MARKDOWN_COMPONENTS = {
 	pre: PreBlock,
 	a: MarkdownLink,
 	table: TableBlock,
+	img: MarkdownImage,
 };
 
 export const Markdown = React.memo(function Markdown({ text }: { text: string }) {

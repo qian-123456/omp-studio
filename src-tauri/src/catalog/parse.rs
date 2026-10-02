@@ -441,9 +441,19 @@ fn marker_detail_re() -> &'static Regex {
     })
 }
 
-/// Strip raw image markers (`[Image #N...]`, `[图片...]`) from text.
+fn image_annotation_re() -> &'static Regex {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)\[\d+\]\s*\([^\)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^\)]*\)\s*\n?>?\s*")
+            .unwrap()
+    })
+}
+
+/// Strip raw image markers (`[Image #N...]`, `[图片...]`) and leftover image
+/// annotation headers (`[1] (/tmp/x.png)\n> `) from text.
 pub fn strip_image_markers(text: &str) -> String {
-    let cleaned = image_marker_re().replace_all(text, "");
+    let without_headers = image_annotation_re().replace_all(text, "");
+    let cleaned = image_marker_re().replace_all(&without_headers, "");
     cleaned.trim().to_string()
 }
 
@@ -602,6 +612,16 @@ fn read_up_to(f: &mut File, buf: &mut [u8]) -> std::io::Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_image_markers_removes_image_annotation_headers() {
+        let text = "[1] (/var/folders/x/shot.PNG)\n> [图片: /var/folders/x/shot.PNG]\n看看这个";
+        assert_eq!(strip_image_markers(text), "看看这个");
+        assert_eq!(
+            strip_image_markers("[2] (src/a.ts)\n> code"),
+            "[2] (src/a.ts)\n> code"
+        );
+    }
 
     const HEAD: &str = r##"{"type":"title","v":1,"title":"#90-demo 计划","source":"user","pad":"   "}
 {"type":"session","version":3,"id":"sess-1","timestamp":"2026-09-21T18:04:50.877Z","cwd":"/work/demo","title":"old"}

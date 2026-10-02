@@ -16,7 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { NativeSelect } from "../../components/NativeSelect";
-import type { BacklogItem, BacklogKind, BacklogStatus, Workspace } from "../../lib/contracts";
+import type { BacklogItem, BacklogKind, BacklogRef, BacklogStatus, Workspace } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import {
 	backlogAdd,
@@ -27,12 +27,23 @@ import {
 	listWorkspaces,
 	rpcStart,
 } from "../../lib/ipc";
+import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useBacklog } from "./backlogStore";
-import { linkedSessionStatus, partitionIdeas } from "./ideasLogic";
+import { AddImageButton, ImageThumbs, useImageAttach } from "./IdeaImages";
+import {
+	appendToDraft,
+	filterIdeas,
+	formatAddedTime,
+	groupIdeasByProject,
+	type IdeasFilter,
+	ideaImages,
+	linkedSessionStatus,
+	partitionIdeas,
+} from "./ideasLogic";
 
 const KIND_META: Record<BacklogKind, { label: string; icon: typeof Lightbulb; cls: string }> = {
 	todo: { label: "待办", icon: ListTodo, cls: "bg-sky-500/15 text-sky-300 border border-sky-500/30" },
@@ -149,26 +160,51 @@ function IdeasPanel({
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const selectSession = useUi((s) => s.selectSession);
 	const sessions = useSessions((s) => s.sessions);
-	const { active, finished } = useMemo(
-		() => partitionIdeas(items, currentProject),
-		[items, currentProject],
+	const draft = useBacklog((s) => s.draft);
+	const setDraft = useBacklog((s) => s.setDraft);
+	const setLastKind = useBacklog((s) => s.setLastKind);
+	const { text, kind, images } = draft;
+
+	const [filter, setFilter] = useState<IdeasFilter>("all");
+	// "current" without a current project degrades to "all".
+	const view: IdeasFilter = filter === "current" && !currentProject ? "all" : filter;
+	const { active, finished } = useMemo(() => partitionIdeas(items), [items]);
+	const visibleActive = useMemo(() => filterIdeas(active, view, currentProject), [active, view, currentProject]);
+	const visibleFinished = useMemo(
+		() => filterIdeas(finished, view, currentProject),
+		[finished, view, currentProject],
+	);
+	const groups = useMemo(
+		() => (view === "project" ? groupIdeasByProject(visibleActive, currentProject) : null),
+		[view, visibleActive, currentProject],
 	);
 
-	const [text, setText] = useState("");
-	const [kind, setKind] = useState<BacklogKind>("todo");
 	const [adding, setAdding] = useState(false);
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
 	const [showFinished, setShowFinished] = useState(false);
 
+	const attach = useImageAttach((paths) => {
+		const cur = useBacklog.getState().draft.images;
+		setDraft({ images: [...cur, ...paths.filter((p) => !cur.includes(p))] });
+	});
+
 	const add = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (isComposing({ key: "Enter" })) return;
 		const trimmed = text.trim();
-		if (!trimmed) return;
+		if (!trimmed && images.length === 0) return;
 		setAdding(true);
 		try {
-			await backlogAdd(trimmed, kind, [], currentProject);
-			setText("");
+			const refs: BacklogRef[] = images.map((path) => ({
+				kind: "image",
+				path,
+				text: null,
+				lines: null,
+				sessionId: null,
+			}));
+			await backlogAdd(trimmed || "（图片）", kind, refs, currentProject);
+			useBacklog.getState().clearDraft();
 			await useBacklog.getState().load();
 		} catch (err) {
 			toast.error(`添加失败: ${errMsg(err)}`);
@@ -195,8 +231,13 @@ function IdeasPanel({
 	const fillCurrent = async (item: BacklogItem) => {
 		if (!selectedSessionId) return;
 		try {
-			useComposer.getState().setDraft(selectedSessionId, item.text);
-			useComposer.getState().focusComposer(selectedSessionId);
+			const composer = useComposer.getState();
+			const existing = composer.drafts[selectedSessionId] ?? "";
+			composer.setDraft(selectedSessionId, appendToDraft(existing, item.text));
+			for (const imgPath of ideaImages(item)) {
+				composer.addAnnotation(selectedSessionId, { source: "doc", file: imgPath, text: `[图片: ${imgPath}]` });
+			}
+			composer.focusComposer(selectedSessionId);
 			await backlogUpdate(item.id, { status: "dispatched", targetSessionId: selectedSessionId });
 			await useBacklog.getState().load();
 			onClose();
@@ -206,6 +247,118 @@ function IdeasPanel({
 	};
 
 	const iconBtn = "rounded p-1 text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]";
+	const filterTabs: { id: IdeasFilter; label: string; disabled?: boolean }[] = [
+		{ id: "all", label: "全部" },
+		{ id: "current", label: "当前项目", disabled: !currentProject },
+		{ id: "project", label: "按项目归类" },
+	];
+
+	const renderAdded = (item: BacklogItem) => {
+		const at = item.createdAt || item.updatedAt;
+		return (
+			<span className="text-[10px] text-[var(--text-dim)]" title={new Date(at).toLocaleString()}>
+				{formatAddedTime(at)}
+			</span>
+		);
+	};
+
+	const renderItem = (item: BacklogItem, index: number) => {
+		const meta = KIND_META[item.kind];
+		const linked = item.targetSessionId ? sessions[item.targetSessionId] : undefined;
+		const otherProject = view !== "project" && item.projectDir && item.projectDir !== currentProject;
+		return (
+			<div key={item.id} className="rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] p-2">
+				<div className="flex items-start gap-2">
+					{item.status === "dispatched" && (
+						<input
+							type="checkbox"
+							className="mt-0.5"
+							title="标记完成"
+							onChange={() => void setStatus(item.id, "done")}
+						/>
+					)}
+					<div className="min-w-0 flex-1 space-y-1">
+						<div className="flex flex-wrap items-center gap-1.5">
+							<span className="font-mono text-[10px] font-semibold text-[var(--text-40)]">#{index + 1}</span>
+							<span className={`rounded px-1 text-[10px] ${meta.cls}`}>{meta.label}</span>
+							{item.status === "dispatched" && (
+								<button
+									type="button"
+									disabled={!item.targetSessionId}
+									onClick={() => item.targetSessionId && selectSession(item.targetSessionId)}
+									className="rounded bg-emerald-500/15 px-1 text-[10px] text-emerald-300 hover:underline"
+									title={linked?.title}
+								>
+									进行中 · {linkedSessionStatus(linked)}
+								</button>
+							)}
+							{otherProject && (
+								<span className="truncate text-[10px] text-[var(--text-dim)]" title={item.projectDir ?? ""}>
+									{item.projectDir?.split("/").pop()}
+								</span>
+							)}
+							<span className="ml-auto">{renderAdded(item)}</span>
+						</div>
+						{editingId === item.id ? (
+							<input
+								autoFocus
+								value={editText}
+								onChange={(e) => setEditText(e.target.value)}
+								onKeyDown={(e) => {
+									if (isComposing(e)) return;
+									if (e.key === "Enter") void saveEdit(item.id);
+									if (e.key === "Escape") setEditingId(null);
+								}}
+								onBlur={() => setEditingId(null)}
+								className="w-full rounded border border-sky-500 bg-[var(--bg)] px-1.5 py-0.5 text-[var(--text)] focus:outline-none"
+							/>
+						) : (
+							<p className="break-words text-[var(--text)]">{item.text}</p>
+						)}
+						<ImageThumbs paths={ideaImages(item)} size="h-10 w-10" />
+					</div>
+				</div>
+				<div className="mt-1 flex items-center justify-end gap-0.5">
+					{item.status === "inbox" && (
+						<>
+							<button
+								type="button"
+								disabled={!selectedSessionId}
+								onClick={() => void fillCurrent(item)}
+								className={`${iconBtn} inline-flex items-center gap-1 disabled:opacity-40`}
+								title={selectedSessionId ? "追加到当前会话输入框" : "当前未选择会话"}
+							>
+								<CornerDownLeft className="h-3 w-3" />
+								填入当前会话
+							</button>
+							<button
+								type="button"
+								onClick={() => onDispatch(item)}
+								className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-sky-300 hover:bg-sky-500/10"
+							>
+								<Send className="h-3 w-3" />
+								派发
+							</button>
+						</>
+					)}
+					<button
+						type="button"
+						onClick={() => {
+							setEditingId(item.id);
+							setEditText(item.text);
+						}}
+						className={iconBtn}
+						title="编辑"
+					>
+						<Edit3 className="h-3 w-3" />
+					</button>
+					<button type="button" onClick={() => void deleteIdea(item.id)} className={`${iconBtn} hover:text-rose-400`} title="删除">
+						<Trash2 className="h-3 w-3" />
+					</button>
+				</div>
+			</div>
+		);
+	};
 
 	return (
 		<div className="space-y-3 text-xs">
@@ -216,23 +369,33 @@ function IdeasPanel({
 				</button>
 			</div>
 
-			<form onSubmit={add} className="space-y-2">
+			<form
+				onSubmit={add}
+				{...attach.dropProps}
+				className={`space-y-2 rounded-lg ${attach.dragging ? "outline-dashed outline-1 outline-sky-500" : ""}`}
+			>
 				<div className="flex items-center gap-1.5">
 					<input
 						value={text}
-						onChange={(e) => setText(e.target.value)}
-						placeholder="随手记一条，稍后派给 Agent…"
+						onChange={(e) => setDraft({ text: e.target.value })}
+						onPaste={attach.onPaste}
+						onKeyDown={(e) => {
+							// Enter that commits an IME candidate must not submit the form.
+							if (isComposing(e) && e.key === "Enter") e.preventDefault();
+						}}
+						placeholder="随手记一条，可粘贴/拖入图片…"
 						className="flex-1 rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] px-2.5 py-1.5 text-[var(--text)] placeholder:text-[var(--text-dim)] focus:border-sky-500 focus:outline-none"
 					/>
 					<button
 						type="submit"
-						disabled={adding || !text.trim()}
+						disabled={adding || (!text.trim() && images.length === 0)}
 						className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1.5 font-medium text-white hover:bg-sky-500 disabled:opacity-50"
 					>
 						{adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
 						记录
 					</button>
 				</div>
+				<ImageThumbs paths={images} onRemove={(p) => setDraft({ images: images.filter((x) => x !== p) })} />
 				<div className="flex items-center gap-1.5">
 					{KINDS.map((k) => {
 						const meta = KIND_META[k];
@@ -241,7 +404,10 @@ function IdeasPanel({
 							<button
 								key={k}
 								type="button"
-								onClick={() => setKind(k)}
+								onClick={() => {
+									setDraft({ kind: k });
+									setLastKind(k);
+								}}
 								className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 ${
 									kind === k ? meta.cls : "text-[var(--text-dim)] hover:bg-[var(--bg-hover)]"
 								}`}
@@ -251,110 +417,54 @@ function IdeasPanel({
 							</button>
 						);
 					})}
+					<AddImageButton
+						onClick={attach.pick}
+						className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
+					/>
+					{attach.fileInput}
 				</div>
 			</form>
 
+			<div className="flex items-center gap-1 rounded-lg bg-[var(--bg)] p-0.5">
+				{filterTabs.map((t) => (
+					<button
+						key={t.id}
+						type="button"
+						disabled={t.disabled}
+						onClick={() => setFilter(t.id)}
+						title={t.disabled ? "当前未选择项目会话" : t.id === "current" ? (currentProject ?? "") : undefined}
+						className={`flex-1 rounded-md px-2 py-0.5 disabled:opacity-40 ${
+							view === t.id ? "bg-[var(--bg-hover)] font-medium text-[var(--text)]" : "text-[var(--text-dim)] hover:text-[var(--text)]"
+						}`}
+					>
+						{t.label}
+					</button>
+				))}
+			</div>
+
 			<div className="max-h-[60vh] space-y-1.5 overflow-y-auto">
-				{active.length === 0 && (
+				{visibleActive.length === 0 && (
 					<div className="rounded-lg border border-dashed border-[var(--border-divider)] p-4 text-center text-[var(--text-dim)]">
-						还没有想法，在上面随手记一条吧
+						{view === "current" ? "当前项目还没有想法" : "还没有想法，在上面随手记一条吧"}
 					</div>
 				)}
-				{active.map((item) => {
-					const meta = KIND_META[item.kind];
-					const linked = item.targetSessionId ? sessions[item.targetSessionId] : undefined;
-					const otherProject = item.projectDir && item.projectDir !== currentProject;
-					return (
-						<div key={item.id} className="rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] p-2">
-							<div className="flex items-start gap-2">
-								{item.status === "dispatched" && (
-									<input
-										type="checkbox"
-										className="mt-0.5"
-										title="标记完成"
-										onChange={() => void setStatus(item.id, "done")}
-									/>
-								)}
-								<div className="min-w-0 flex-1 space-y-1">
-									<div className="flex flex-wrap items-center gap-1.5">
-										<span className={`rounded px-1 text-[10px] ${meta.cls}`}>{meta.label}</span>
-										{item.status === "dispatched" && (
-											<button
-												type="button"
-												disabled={!item.targetSessionId}
-												onClick={() => item.targetSessionId && selectSession(item.targetSessionId)}
-												className="rounded bg-emerald-500/15 px-1 text-[10px] text-emerald-300 hover:underline"
-												title={linked?.title}
-											>
-												进行中 · {linkedSessionStatus(linked)}
-											</button>
-										)}
-										{otherProject && (
-											<span className="truncate text-[10px] text-[var(--text-dim)]" title={item.projectDir ?? ""}>
-												{item.projectDir?.split("/").pop()}
-											</span>
-										)}
-									</div>
-									{editingId === item.id ? (
-										<input
-											autoFocus
-											value={editText}
-											onChange={(e) => setEditText(e.target.value)}
-											onKeyDown={(e) => {
-												if (e.key === "Enter") void saveEdit(item.id);
-												if (e.key === "Escape") setEditingId(null);
-											}}
-											onBlur={() => setEditingId(null)}
-											className="w-full rounded border border-sky-500 bg-[var(--bg)] px-1.5 py-0.5 text-[var(--text)] focus:outline-none"
-										/>
-									) : (
-										<p className="break-words text-[var(--text)]">{item.text}</p>
-									)}
-								</div>
-							</div>
-							<div className="mt-1 flex items-center justify-end gap-0.5">
-								{item.status === "inbox" && (
-									<>
-										<button
-											type="button"
-											disabled={!selectedSessionId}
-											onClick={() => void fillCurrent(item)}
-											className={`${iconBtn} inline-flex items-center gap-1 disabled:opacity-40`}
-											title={selectedSessionId ? "填入当前会话输入框" : "当前未选择会话"}
-										>
-											<CornerDownLeft className="h-3 w-3" />
-											填入当前会话
-										</button>
-										<button
-											type="button"
-											onClick={() => onDispatch(item)}
-											className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-sky-300 hover:bg-sky-500/10"
-										>
-											<Send className="h-3 w-3" />
-											派发
-										</button>
-									</>
-								)}
-								<button
-									type="button"
-									onClick={() => {
-										setEditingId(item.id);
-										setEditText(item.text);
-									}}
-									className={iconBtn}
-									title="编辑"
+				{groups
+					? groups.map((g) => (
+							<div key={g.project ?? "__global"} className="space-y-1.5">
+								<div
+									className="flex items-center gap-1.5 pt-1 text-[10px] font-semibold text-[var(--text-dim)]"
+									title={g.project ?? ""}
 								>
-									<Edit3 className="h-3 w-3" />
-								</button>
-								<button type="button" onClick={() => void deleteIdea(item.id)} className={`${iconBtn} hover:text-rose-400`} title="删除">
-									<Trash2 className="h-3 w-3" />
-								</button>
+									<span className="truncate">{g.label}</span>
+									{g.isCurrent && <span className="rounded bg-sky-500/15 px-1 text-sky-300">当前</span>}
+									<span>({g.items.length})</span>
+								</div>
+								{g.items.map(renderItem)}
 							</div>
-						</div>
-					);
-				})}
+						))
+					: visibleActive.map(renderItem)}
 
-				{finished.length > 0 && (
+				{visibleFinished.length > 0 && (
 					<div className="pt-1">
 						<button
 							type="button"
@@ -362,24 +472,29 @@ function IdeasPanel({
 							className="inline-flex items-center gap-1 text-[var(--text-dim)] hover:text-[var(--text)]"
 						>
 							{showFinished ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-							已完成 ({finished.length})
+							已完成 ({visibleFinished.length})
 						</button>
 						{showFinished &&
-							finished.map((item) => (
-								<div key={item.id} className="mt-1 flex items-center gap-2 rounded px-1 py-1 opacity-70">
-									<span className="min-w-0 flex-1 truncate text-[var(--text-dim)] line-through">{item.text}</span>
-									<button
-										type="button"
-										onClick={() => void setStatus(item.id, "inbox")}
-										className={`${iconBtn} inline-flex items-center gap-1`}
-										title="放回待派发"
-									>
-										<RotateCcw className="h-3 w-3" />
-										放回
-									</button>
-									<button type="button" onClick={() => void deleteIdea(item.id)} className={`${iconBtn} hover:text-rose-400`} title="删除">
-										<Trash2 className="h-3 w-3" />
-									</button>
+							visibleFinished.map((item, index) => (
+								<div key={item.id} className="mt-1 rounded px-1 py-1 opacity-70">
+									<div className="flex items-center gap-2">
+										<span className="font-mono text-[10px] font-semibold text-[var(--text-40)]">#{index + 1}</span>
+										<span className="min-w-0 flex-1 truncate text-[var(--text-dim)] line-through">{item.text}</span>
+										{renderAdded(item)}
+										<button
+											type="button"
+											onClick={() => void setStatus(item.id, "inbox")}
+											className={`${iconBtn} inline-flex items-center gap-1`}
+											title="放回待派发"
+										>
+											<RotateCcw className="h-3 w-3" />
+											放回
+										</button>
+										<button type="button" onClick={() => void deleteIdea(item.id)} className={`${iconBtn} hover:text-rose-400`} title="删除">
+											<Trash2 className="h-3 w-3" />
+										</button>
+									</div>
+									<ImageThumbs paths={ideaImages(item)} size="h-8 w-8" />
 								</div>
 							))}
 					</div>

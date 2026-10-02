@@ -15,6 +15,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listModels, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import type { ImageAttachment } from "../../lib/contracts";
+
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
+const isImageAnnotation = (a: { file?: string; text?: string }) =>
+	(!!a.file && IMAGE_EXT_RE.test(a.file)) || !!a.text?.includes("[图片:");
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ContextRing } from "./ContextRing";
@@ -210,6 +216,17 @@ export function Composer({
 			if (!selected) return;
 			const filePath = typeof selected === "string" ? selected : selected[0];
 			if (!filePath) return;
+			if (IMAGE_EXT_RE.test(filePath)) {
+				try {
+					// Binary files can't go through readTextFile; load via the asset protocol.
+					const res = await fetch(convertFileSrc(filePath));
+					if (!res.ok) throw new Error(`HTTP ${res.status}`);
+					await processImageFile(await res.blob());
+				} catch (imgErr) {
+					toast.error(`读取图片失败: ${errMsg(imgErr)}`);
+				}
+				return;
+			}
 			try {
 				const content = await readTextFile(filePath);
 				addAnnotation(sessionId, {
@@ -434,7 +451,14 @@ export function Composer({
 		const message = formatWithAnnotations(raw, annotations);
 		setBusy(true);
 		try {
-			await sendPrompt(sessionId, message, { steer });
+			const images: ImageAttachment[] = annotations
+				.filter(isImageAnnotation)
+				.map((a, i) => ({
+					id: `pending-img-${i}`,
+					path: a.file ?? null,
+					marker: `[图片: ${a.file}]`,
+				}));
+			await sendPrompt(sessionId, message, { steer, images });
 			pushHistory(raw.trim());
 			clearDraft(sessionId);
 			clearAnnotations(sessionId);
@@ -730,10 +754,19 @@ export function Composer({
 									title={`点击修改批注${a.comment ? `\n批注: ${a.comment}` : ""}${a.text ? `\n原内容: ${a.text}` : ""}`}
 									className="group flex max-w-72 cursor-pointer items-center gap-1 rounded-full border border-[var(--line,var(--border))] bg-[var(--bg)] px-2 py-0.5 text-[11px] text-[var(--text-60,var(--text-muted))] hover:border-[var(--text-30,var(--border))] hover:text-[var(--text)]"
 								>
-									<span className="truncate">
+									<span className="flex min-w-0 items-center gap-1 truncate">
+										{isImageAnnotation(a) && a.file && (
+											<img
+												src={convertFileSrc(a.file)}
+												alt=""
+												className="h-8 w-8 shrink-0 rounded object-cover"
+											/>
+										)}
+										<span className="truncate">
 										[{i + 1}] {a.file ?? a.source}
 										{a.lines ? ` ${a.lines}` : ""}
 										{a.comment ? `：${a.comment}` : ""}
+										</span>
 									</span>
 									{a.itemId && (
 										<button

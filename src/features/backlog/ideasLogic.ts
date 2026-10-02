@@ -1,27 +1,90 @@
 import type { BacklogItem, SessionMeta, SessionStatus } from "../../lib/contracts";
 
+/** Newest captured first; falls back to updatedAt for legacy items. */
+export const byCreatedDesc = (a: BacklogItem, b: BacklogItem) =>
+	(b.createdAt || b.updatedAt).localeCompare(a.createdAt || a.updatedAt);
+
 /**
  * Split backlog items for the 「想法」 dropdown. `active` = not done/closed,
- * items captured in `currentProject` first, then newest first; `finished`
- * = done/closed, newest first.
+ * `finished` = done/closed; both strictly newest-created first.
  */
-export function partitionIdeas(
-	items: BacklogItem[],
-	currentProject: string | null,
-): { active: BacklogItem[]; finished: BacklogItem[] } {
-	const newestFirst = (a: BacklogItem, b: BacklogItem) =>
-		b.updatedAt.localeCompare(a.updatedAt);
-	const active = items.filter((i) => i.status === "inbox" || i.status === "dispatched");
+export function partitionIdeas(items: BacklogItem[]): { active: BacklogItem[]; finished: BacklogItem[] } {
+	const active = items
+		.filter((i) => i.status === "inbox" || i.status === "dispatched")
+		.sort(byCreatedDesc);
 	const finished = items
 		.filter((i) => i.status === "done" || i.status === "closed")
-		.sort(newestFirst);
-	active.sort((a, b) => {
-		const aHere = currentProject !== null && a.projectDir === currentProject;
-		const bHere = currentProject !== null && b.projectDir === currentProject;
-		if (aHere !== bHere) return aHere ? -1 : 1;
-		return newestFirst(a, b);
-	});
+		.sort(byCreatedDesc);
 	return { active, finished };
+}
+
+export type IdeasFilter = "all" | "current" | "project";
+
+/** Items visible under `filter`; "current" keeps only `currentProject` items. */
+export function filterIdeas(
+	items: BacklogItem[],
+	filter: IdeasFilter,
+	currentProject: string | null,
+): BacklogItem[] {
+	if (filter !== "current") return items;
+	return currentProject === null ? [] : items.filter((i) => i.projectDir === currentProject);
+}
+
+export interface IdeaGroup {
+	/** projectDir, or null for global items. */
+	project: string | null;
+	label: string;
+	isCurrent: boolean;
+	items: BacklogItem[];
+}
+
+/**
+ * Group items by projectDir, each group newest-created first. Current project
+ * first, then other projects by their newest item, global (null) last.
+ */
+export function groupIdeasByProject(items: BacklogItem[], currentProject: string | null): IdeaGroup[] {
+	const groups = new Map<string | null, BacklogItem[]>();
+	for (const it of [...items].sort(byCreatedDesc)) {
+		const list = groups.get(it.projectDir);
+		if (list) list.push(it);
+		else groups.set(it.projectDir, [it]);
+	}
+	const rank = (p: string | null) => (p === null ? 2 : p === currentProject ? 0 : 1);
+	// Map keeps insertion order = order of each group's newest item.
+	return [...groups.entries()]
+		.map(([project, list]) => ({
+			project,
+			label: project === null ? "未关联项目" : (project.split("/").filter(Boolean).pop() ?? project),
+			isCurrent: project !== null && project === currentProject,
+			items: list,
+		}))
+		.sort((a, b) => rank(a.project) - rank(b.project));
+}
+
+const IMAGE_TAG = /\[图片:\s*([^\]]+?)\s*\]/g;
+
+/** Image paths attached to an item: `image` refs plus inline `[图片: path]` tags, deduped. */
+export function ideaImages(item: BacklogItem): string[] {
+	const out = item.refs.flatMap((r) => (r.kind === "image" && r.path ? [r.path] : []));
+	for (const m of item.text.matchAll(IMAGE_TAG)) out.push(m[1]);
+	return [...new Set(out)];
+}
+
+/** Append `text` to an existing composer draft on a new line, never overwriting it. */
+export function appendToDraft(existing: string, text: string): string {
+	return existing.trim().length > 0 ? `${existing.trimEnd()}\n${text}` : text;
+}
+
+/** "刚刚" / "N分钟前" / "N小时前" within a day, else "MM-DD HH:mm". */
+export function formatAddedTime(iso: string, now: Date = new Date()): string {
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return "";
+	const mins = Math.floor((now.getTime() - d.getTime()) / 60000);
+	if (mins >= 0 && mins < 1) return "刚刚";
+	if (mins >= 0 && mins < 60) return `${mins}分钟前`;
+	if (mins >= 0 && mins < 24 * 60) return `${Math.floor(mins / 60)}小时前`;
+	const p = (n: number) => String(n).padStart(2, "0");
+	return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 const STATUS_LABEL: Record<SessionStatus, string> = {

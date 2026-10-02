@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useLive } from "./live";
+import { makeUserEcho, useLive } from "./live";
 
 const SID = "s1";
 
@@ -526,5 +526,27 @@ describe("live reducer — command_output / config_update / session_info_update"
 			data: { commands: [] },
 		});
 		expect(live().commands.map((c) => c.name)).toEqual(["compact"]);
+	});
+});
+
+describe("makeUserEcho images", () => {
+	it("parses image paths from text and keeps passed attachments without duplicates", () => {
+		const item = makeUserEcho(
+			"look [图片: /tmp/a.png] and ![x](/tmp/b.jpg) [Image #3]",
+			[{ id: "given", path: "/tmp/a.png", marker: "[图片: /tmp/a.png]" }],
+		);
+		expect(item.images?.map((i) => i.path)).toEqual(["/tmp/a.png", "/tmp/b.jpg", null]);
+		expect(item.images?.[0].id).toBe("given");
+		expect(item.images?.[2].marker).toBe("[Image #3]");
+	});
+
+	it("omits images when the text has none", () => {
+		expect(makeUserEcho("plain").images).toBeUndefined();
+	});
+
+	it("addUserEcho forwards attachments to the pending echo", () => {
+		useLive.getState().addUserEcho("img-s", "hi", [{ id: "p", path: "/tmp/c.png" }]);
+		const echoes = useLive.getState().sessions["img-s"].pendingUserEchoes;
+		expect(echoes[echoes.length - 1]?.images).toEqual([{ id: "p", path: "/tmp/c.png" }]);
 	});
 });
