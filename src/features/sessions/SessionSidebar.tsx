@@ -2307,14 +2307,14 @@ export function SessionSidebar() {
 			<ArchiveUndoBar />
 
 			{/* Settings footer (S18: single accessible button) */}
-			<div className="shrink-0 border-t border-neutral-800/80 p-2 bg-neutral-900/50">
+			<div className="shrink-0 border-t border-neutral-800/80 bg-neutral-900/50">
 				<button
 					type="button"
 					onClick={() =>
 						centerView === "settings" ? closeSettings() : openSettings()
 					}
 					className={clsx(
-						"flex w-full items-center justify-start gap-2 rounded-md px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+						"flex w-full items-center justify-start gap-2 px-4 py-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--border-active)]",
 						centerView === "settings"
 							? "bg-neutral-800 text-neutral-100 font-medium"
 							: "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60",

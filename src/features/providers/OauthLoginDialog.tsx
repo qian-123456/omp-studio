@@ -345,7 +345,7 @@ export function OauthLoginDialog({ onClose }: Props) {
 				{/* Dialog Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
 					<div className="flex items-center gap-2">
-						<LogIn className="h-4 w-4 text-[#0A84FF]" />
+						<LogIn className="h-4 w-4 text-[var(--accent)]" />
 						<div
 							id="oauth-dialog-title"
 							className="text-xs font-semibold tracking-[-0.018em] text-neutral-100"
@@ -454,7 +454,7 @@ export function OauthLoginDialog({ onClose }: Props) {
 								{/* In-progress spinner if no prompt and not completed */}
 								{!flowState.completed && !flowState.pendingPrompt && (
 									<div className="flex flex-col items-center justify-center py-6 text-center space-y-2">
-										<Loader2 className="h-6 w-6 animate-spin text-[#0A84FF]" />
+										<Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
 										<div className="text-xs text-neutral-300">
 											{flowState.url
 												? "已在浏览器打开授权页面，请完成登录…"
@@ -476,7 +476,7 @@ export function OauthLoginDialog({ onClose }: Props) {
 													if (flowState.url)
 														void oauthLoginOpenUrl(flowState.url);
 												}}
-												className="inline-flex items-center gap-1 text-[11px] text-[#0A84FF] hover:underline"
+												className="inline-flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline"
 											>
 												<span>在浏览器打开</span>
 												<ExternalLink className="h-3 w-3" />
@@ -532,7 +532,7 @@ export function OauthLoginDialog({ onClose }: Props) {
 													placeholder={
 														flowState.pendingPrompt.placeholder || ""
 													}
-													className="w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
+													className="w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none"
 												/>
 												<div className="flex items-center justify-end gap-2">
 													<button
@@ -553,7 +553,7 @@ export function OauthLoginDialog({ onClose }: Props) {
 																value: inputValue.trim(),
 															})
 														}
-														className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 disabled:opacity-40"
+														className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1 text-xs font-medium text-[var(--bg)] hover:opacity-90 disabled:opacity-40"
 													>
 														{submittingPrompt && (
 															<Loader2 className="h-3 w-3 animate-spin" />
@@ -589,7 +589,7 @@ export function OauthLoginDialog({ onClose }: Props) {
 														onClick={() =>
 															void handlePromptResponse({ confirmed: true })
 														}
-														className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 disabled:opacity-40"
+														className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1 text-xs font-medium text-[var(--bg)] hover:opacity-90 disabled:opacity-40"
 													>
 														{submittingPrompt && (
 															<Loader2 className="h-3 w-3 animate-spin" />
@@ -681,7 +681,7 @@ export function OauthLoginDialog({ onClose }: Props) {
 						<button
 							type="button"
 							onClick={() => void handleDismiss()}
-							className="rounded-lg bg-[#0A84FF] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
+							className="rounded-lg bg-[var(--accent)] px-4 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-sm"
 						>
 							完成
 						</button>

@@ -51,7 +51,7 @@ function blankConfig(): ProviderConfig {
 }
 
 const inputCls =
-	"mt-1.5 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all";
+	"mt-1.5 w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all";
 const labelCls = "block text-xs font-medium text-neutral-200";
 const hintCls = "mt-0.5 text-[11px] text-neutral-400";
 
@@ -572,7 +572,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 											onClick={() => applyPreset(p.id)}
 											className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-all active:scale-95 ${
 												selectedPresetId === p.id
-													? "border-[#0A84FF]/60 bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
+													? "border-[color-mix(in_srgb,var(--accent)_60%,transparent)] bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-[var(--accent)] font-medium"
 													: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 											}`}
 										>
@@ -750,7 +750,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 												<button
 													type="button"
 													onClick={handleAddModelRow}
-													className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-[#0A84FF] hover:bg-[#0A84FF]/10 active:scale-95 transition-all"
+													className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] active:scale-95 transition-all"
 												>
 													<Plus className="h-3 w-3" />
 													<span>添加模型</span>
@@ -779,7 +779,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 														onChange={(e) =>
 															handleModelRowChange(index, "id", e.target.value)
 														}
-														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all"
 														placeholder="例如: gpt-4o"
 													/>
 													<input
@@ -790,7 +790,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 														onChange={(e) =>
 															handleModelRowChange(index, "contextWindow", e.target.value)
 														}
-														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all"
 														placeholder="默认"
 													/>
 													<input
@@ -801,7 +801,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 														onChange={(e) =>
 															handleModelRowChange(index, "maxTokens", e.target.value)
 														}
-														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+														className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all"
 														placeholder="默认"
 													/>
 													<button
@@ -871,7 +871,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 							type="button"
 							disabled={importable === 0 || importing}
 							onClick={() => void handleImport()}
-							className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
+							className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
 						>
 							{importing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
 							<span>确认导入（{importable}）</span>
@@ -881,7 +881,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 							type="button"
 							disabled={saving}
 							onClick={() => void handleSave()}
-							className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
+							className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
 						>
 							{saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
 							<span>保存{apiKey.trim() ? "并加密密钥" : ""}</span>

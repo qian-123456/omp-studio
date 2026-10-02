@@ -4,16 +4,22 @@ export function Switch({
 	checked,
 	onChange,
 	disabled = false,
+	title,
+	ariaLabel,
 }: {
 	checked: boolean;
 	onChange: (next: boolean) => void;
 	disabled?: boolean;
+	title?: string;
+	ariaLabel?: string;
 }) {
 	return (
 		<button
 			type="button"
 			role="switch"
 			aria-checked={checked}
+			aria-label={ariaLabel}
+			title={title}
 			disabled={disabled}
 			onClick={(e) => {
 				// Contained in clickable rows; never double-toggle the row.

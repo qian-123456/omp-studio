@@ -315,7 +315,7 @@ function ConfigRow({
 				"px-3.5 py-2.5 outline-none transition-colors",
 				hierarchyDisabled
 					? "pointer-events-none opacity-50 pl-6 border-l-2 border-neutral-700/50"
-					: "focus-visible:bg-[var(--bg-hover)] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0A84FF]/40"
+					: "focus-visible:bg-[var(--bg-hover)] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)]"
 			)}
 		>
 			<div className="flex items-start justify-between gap-3">

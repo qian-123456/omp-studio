@@ -12,7 +12,7 @@ interface Props {
 }
 
 const inputCls =
-	"w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all";
+	"w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] focus:outline-none transition-all";
 
 export function ModelPickerModal({
 	models,
@@ -119,7 +119,7 @@ export function ModelPickerModal({
 								<button
 									type="button"
 									onClick={handleSelectAll}
-									className="rounded px-2 py-1 text-xs text-[#0A84FF] hover:bg-[#0A84FF]/10 active:scale-95 transition-all"
+									className="rounded px-2 py-1 text-xs text-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] active:scale-95 transition-all"
 								>
 									全选
 								</button>
@@ -157,7 +157,7 @@ export function ModelPickerModal({
 											<div
 												className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-all ${
 													isSelected
-														? "border-[#0A84FF] bg-[#0A84FF]"
+														? "border-[var(--accent)] bg-[var(--accent)]"
 														: "hairline bg-[var(--well-bg)]"
 												}`}
 											>
@@ -222,7 +222,7 @@ export function ModelPickerModal({
 						type="button"
 						disabled={selected.size === 0}
 						onClick={handleReplace}
-						className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
+						className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shadow-sm"
 					>
 						覆盖当前列表
 					</button>

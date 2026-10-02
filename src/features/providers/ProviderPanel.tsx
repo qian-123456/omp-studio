@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { SectionHeader } from "../settings/ui";
+import { Switch } from "../settings/Switch";
 import {
 	Activity,
 	CircleCheck,
@@ -166,7 +167,7 @@ export function ProviderPanel() {
 								onChange={(e) => setQuery(e.target.value)}
 								placeholder="筛选…"
 								aria-label="筛选供应商"
-								className="w-32 rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-7 pr-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#0A84FF]/50"
+								className="w-32 rounded-lg hairline bg-[var(--bg-active-fill)] py-1.5 pl-7 pr-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)]"
 							/>
 						</div>
 						{eligibleOmpIds.length > 0 && (
@@ -214,7 +215,7 @@ export function ProviderPanel() {
 						<button
 							type="button"
 							onClick={() => setDialog({ mode: "add" })}
-							className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
+							className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-sm"
 						>
 							<Plus className="h-3.5 w-3.5" />
 							<span>添加供应商</span>
@@ -270,7 +271,7 @@ export function ProviderPanel() {
 							<button
 								type="button"
 								onClick={() => setDialog({ mode: "add" })}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-[#0A84FF]/90 active:scale-95"
+								className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] shadow-sm transition-all hover:opacity-90 active:scale-95"
 							>
 								<Plus className="h-3.5 w-3.5" />
 								<span>添加供应商</span>
@@ -282,7 +283,7 @@ export function ProviderPanel() {
 							<button
 								type="button"
 								onClick={() => setQuery("")}
-								className="text-[#0A84FF] hover:underline"
+								className="text-[var(--accent)] hover:underline"
 							>
 								清除筛选
 							</button>
@@ -459,7 +460,7 @@ function UnifiedProviderRow({
 					}
 				}}
 				title="点击展开查看模型与详情"
-				className="group flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0A84FF]/60"
+				className="group flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--accent)_60%,transparent)]"
 			>
 
 				{/* Left items: Preset dot + Name + Auth badge + host + {N} 模型 */}
@@ -667,7 +668,7 @@ function UnifiedProviderRow({
 	return (
 		<div
 			id={`provider-row-${row.key}`}
-			className="group rounded-xl hairline border-l-[3px] border-l-[#0A84FF] bg-[var(--well-bg)] p-3 transition-colors"
+			className="group rounded-xl hairline border-l-[3px] border-l-[var(--accent)] bg-[var(--well-bg)] p-3 transition-colors"
 		>
 
 			{/* Header bar — clicking toggles collapse */}
@@ -1020,26 +1021,12 @@ function EnabledToggle({
 	onChange: (next: boolean) => void;
 }) {
 	return (
-		<button
-			type="button"
-			role="switch"
-			aria-label={`启用 ${provider.name}`}
-			aria-checked={provider.enabled}
+		<Switch
+			checked={provider.enabled}
+			onChange={onChange}
+			ariaLabel={`启用 ${provider.name}`}
 			title={provider.enabled ? "已启用（新会话注入密钥）" : "已停用"}
-			onClick={(e) => {
-				e.stopPropagation();
-				onChange(!provider.enabled);
-			}}
-			className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${
-				provider.enabled ? "bg-[#0A84FF]" : "bg-neutral-700/80"
-			}`}
-		>
-			<span
-				className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.4)] transition-transform duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] ${
-					provider.enabled ? "translate-x-[18px]" : "translate-x-[3px]"
-				}`}
-			/>
-		</button>
+		/>
 	);
 }
 

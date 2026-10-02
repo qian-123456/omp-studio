@@ -504,6 +504,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					</label>
 					<ModelSelect
 						direction="down"
+						align="start"
 						widthClass="w-full"
 						icon={false}
 						label={

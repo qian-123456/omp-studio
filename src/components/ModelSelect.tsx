@@ -138,7 +138,7 @@ export function ModelMenuContent({
 			)}
 
 			{searching ? (
-				<div ref={listRef} className="max-h-64 overflow-y-auto py-0.5">
+				<div ref={listRef} className="max-h-56 overflow-y-auto py-0.5">
 					{searchHits.length === 0 ? (
 						<div className="px-3 py-2 text-center text-xs text-neutral-500">
 							无匹配模型
@@ -148,9 +148,9 @@ export function ModelMenuContent({
 					)}
 				</div>
 			) : (
-				<div className="flex max-h-64">
+				<div className="flex max-h-56">
 					{/* Provider column */}
-					<div className="w-auto min-w-36 max-w-52 shrink-0 overflow-y-auto border-r border-[var(--border-divider)] py-0.5">
+					<div className="w-36 shrink-0 overflow-y-auto border-r border-[var(--border-divider)] py-0.5">
 						{providers.map(([provider, list]) => {
 							const active = provider === effectiveProvider;
 							return (
@@ -224,6 +224,8 @@ interface SelectProps extends MenuProps {
 	icon?: boolean;
 	/** Popover direction; Composer opens upward. */
 	direction?: "up" | "down";
+	/** Horizontal alignment relative to trigger button; defaults to "end" to keep right-aligned dropdowns inside dialogs. */
+	align?: "start" | "end";
 	widthClass?: string;
 }
 
@@ -233,11 +235,13 @@ export function ModelSelect({
 	buttonClass,
 	icon = true,
 	direction = "down",
-	widthClass = "w-[420px]",
+	align = "end",
+	widthClass = "w-[380px]",
 	...menu
 }: SelectProps) {
 	const [open, setOpen] = useState(false);
 	const buttonRef = useRef<HTMLButtonElement>(null);
+	const placement = `${direction === "up" ? "top" : "bottom"}-${align}` as const;
 
 	return (
 		<div className="relative">
@@ -253,7 +257,7 @@ export function ModelSelect({
 			</button>
 			<FloatingLayer
 				anchor={open ? buttonRef.current : null}
-				placement={direction === "up" ? "top-start" : "bottom-start"}
+				placement={placement}
 				offset={4}
 				layer="popover"
 				ignoreRefs={[buttonRef]}

@@ -244,7 +244,7 @@ export function PluginsSection({
 								onChange={(e) => setFilter(e.target.value)}
 								placeholder="搜索插件…"
 								aria-label="搜索插件和扩展"
-								className="w-32 rounded-lg hairline bg-[var(--well-bg)] py-1 pl-7 pr-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#0A84FF]/50"
+								className="w-32 rounded-lg hairline bg-[var(--well-bg)] py-1 pl-7 pr-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)]"
 							/>
 						</div>
 						<button

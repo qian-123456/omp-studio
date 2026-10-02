@@ -49,7 +49,7 @@ const TUNNEL_MODES: { value: TunnelMode; label: string; explain: string }[] = [
 ];
 
 const PRIMARY_BTN =
-	"inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-[#0A84FF]/90 active:scale-95 disabled:opacity-40";
+	"inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-40";
 const DANGER_BTN =
 	"inline-flex items-center gap-1.5 rounded-lg border border-rose-800/40 bg-rose-950/20 px-3 py-1.5 text-xs font-medium text-rose-300 transition-all hover:bg-rose-950/40 active:scale-95 disabled:opacity-40";
 

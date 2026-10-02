@@ -321,6 +321,7 @@ export function StartPage() {
 					<div className="shrink-0">
 						<ModelSelect
 							direction="up"
+							align="start"
 							widthClass="w-[min(360px,calc(100vw-40px))]"
 							label={
 								modelSel === CUSTOM_MODEL

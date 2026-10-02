@@ -10,14 +10,14 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	// 通用
 	{
 		id: "ompBinary",
-		sectionId: "general",
+		sectionId: "advanced",
 		label: "omp 程序位置",
 		description: "本应用启动 AI 会话所用的 omp 命令或完整路径，并显示是否找到及版本",
 		keywords: ["binary", "omp", "path", "可执行", "路径", "命令行", "版本", "version"],
 	},
 	{
 		id: "ompConfigFiles",
-		sectionId: "general",
+		sectionId: "advanced",
 		label: "omp 配置文件",
 		description: "在访达中显示 ~/.omp/agent/config.yml 与 omp 数据目录，重新读取 OMP 配置",
 		keywords: ["config.yml", "配置文件", "agent", "目录", "重新读取", "刷新", "reload"],
@@ -25,9 +25,9 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "newSessionModel",
 		sectionId: "general",
-		label: "新会话默认模型",
-		description: "新对话一开始使用的模型；不指定时由 omp 的 default 角色决定",
-		keywords: ["model", "默认模型", "新会话", "模型选择", "主力模型"],
+		label: "全局默认模型 (主力模型)",
+		description: "新对话与常规问答默认使用的主力模型（对应 OMP 全局角色 default）",
+		keywords: ["model", "默认模型", "全局模型", "主力模型", "模型选择", "default"],
 	},
 	{
 		id: "newSessionThinkingLevel",
@@ -46,9 +46,9 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "capsuleVisible",
 		sectionId: "general",
-		label: "顶部状态胶囊",
-		description: "窗口顶部显示一个小条，随时看到正在运行的对话和提醒",
-		keywords: ["capsule", "胶囊", "top capsule", "顶部胶囊", "状态栏"],
+		label: "顶部子任务胶囊",
+		description: "对话产生并发子任务（Subagent）时，在窗口顶部显示胶囊指示条与进度",
+		keywords: ["capsule", "胶囊", "top capsule", "顶部胶囊", "子任务", "subagent", "状态栏"],
 	},
 	{
 		id: "smartContextRouting",
