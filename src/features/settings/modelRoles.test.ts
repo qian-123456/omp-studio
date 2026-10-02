@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+	applyProjectRole,
+	parseProjectRoles,
 	BUILTIN_ROLES,
 	customRoles,
 	joinRoleValue,
@@ -219,5 +221,43 @@ describe("withChain", () => {
 		});
 		expect(withChain(chains, "web", null)).toEqual({ tiny: [] });
 		expect(chains).toEqual({ web: ["web/exa"], tiny: [] });
+	});
+});
+
+describe("project modelRoles YAML", () => {
+	const src = `# project config\ntheme: dark # keep\nmodelRoles:\n  # main model\n  default: anthropic/a\n  task: openai/b\n`;
+
+	it("parses roles and preserves comments when setting", () => {
+		expect(parseProjectRoles(src)).toEqual({
+			ok: true,
+			roles: { default: "anthropic/a", task: "openai/b" },
+		});
+		const out = applyProjectRole(src, "smol", "x/y:high");
+		expect(out).toContain("# project config");
+		expect(out).toContain("theme: dark # keep");
+		expect(out).toContain("# main model");
+		expect(parseProjectRoles(out)).toEqual({
+			ok: true,
+			roles: { default: "anthropic/a", task: "openai/b", smol: "x/y:high" },
+		});
+	});
+
+	it("removing the last role drops modelRoles", () => {
+		let out = applyProjectRole(src, "default", null);
+		out = applyProjectRole(out, "task", null);
+		expect(out).not.toContain("modelRoles");
+		expect(out).toContain("theme: dark");
+	});
+
+	it("creates modelRoles from an empty file", () => {
+		const out = applyProjectRole("", "default", "a/b");
+		expect(parseProjectRoles(out)).toEqual({ ok: true, roles: { default: "a/b" } });
+	});
+
+	it("rejects invalid YAML and non-mapping top level", () => {
+		expect(parseProjectRoles("a: [1,\n").ok).toBe(false);
+		expect(parseProjectRoles("- a\n- b\n").ok).toBe(false);
+		expect(() => applyProjectRole("a: [1,\n", "default", "x")).toThrow();
+		expect(() => applyProjectRole("- a\n", "default", "x")).toThrow();
 	});
 });

@@ -38,10 +38,11 @@ function ThemeCard({
 			type="button"
 			onClick={() => onSelect(theme.id)}
 			title={theme.name}
+			aria-pressed={active}
 			className={`rounded-lg border p-2 text-left transition-colors ${
 				active
-					? "border-amber-500"
-					: "border-neutral-700/60 hover:border-neutral-600"
+					? "border-amber-500 ring-1 ring-amber-500/40"
+					: "border-[var(--border-divider)] hover:border-neutral-500"
 			}`}
 		>
 			<span
@@ -114,10 +115,12 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 				if (id === "system") setTheme("system");
 				setTab(id);
 			}}
+			aria-pressed={tab === id}
+			title={live ? `${label}（当前使用中）` : label}
 			className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
 				tab === id
-					? "bg-neutral-800 text-neutral-100"
-					: "text-neutral-400 hover:text-neutral-200"
+					? "bg-[var(--bg-active-fill)] text-neutral-100 shadow-sm"
+					: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 			}`}
 		>
 			{icon}
@@ -132,7 +135,7 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 
 	return (
 		<div>
-			<div className="flex rounded-lg border border-neutral-700 p-0.5">
+			<div className="flex rounded-lg hairline bg-[var(--well-bg)] p-0.5">
 				{tabBtn("dark", <Moon size={13} />, "深色", chosen?.dark === true)}
 				{tabBtn("light", <Sun size={13} />, "浅色", chosen != null && !chosen.dark)}
 				{tabBtn("system", <Monitor size={13} />, "跟随系统", choice === "system")}
@@ -174,8 +177,8 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 							)}
 						</div>
 					</div>
-					<p className="px-0.5 text-[10px] text-neutral-600">
-						按系统明暗在以上两套主题间自动切换
+					<p className="px-0.5 text-[11px] text-neutral-500">
+						按系统明暗在以上两套主题间自动切换；黄点表示当前正在使用
 					</p>
 				</div>
 			)}

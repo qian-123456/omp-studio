@@ -88,7 +88,7 @@ pub struct McpConfigSnapshot {
 
 /// `PI_CODING_AGENT_DIR` relocates the agent dir; a profile env narrows it to
 /// `~/.omp/profiles/<name>/agent`.
-fn agent_dir() -> PathBuf {
+pub(crate) fn agent_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR") {
         if !dir.trim().is_empty() {
             return PathBuf::from(dir);

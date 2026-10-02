@@ -57,7 +57,7 @@ omp config set retry.fallbackChains '{"web":["web/parallel","web/exa"]}'        
 
 - **思考后缀**：chat 类选择器可带 `:minimal|:low|:medium|:high|:xhigh|:max` 后缀（如 `anthropic/claude-opus-4-5:high`）；model-kind 角色（image / web / speech / dictation / judge）不使用。链条目还支持 `@role` 别名（如 `@tiny`、`@default`）。
 - **回退链三态**：未设置（model-kind 角色走内置优先级表，chat 角色可继承 `default` 链）/ `[]`（显式不回退）/ 自定义列表。
-- **`modelRoleStorage` 与 project 覆盖（实测）**：`omp config set` 无论 `modelRoleStorage` 取值、无论 cwd 在哪，**一律写全局** `config.yml`（project 写入例外只属于 TUI 内 `/model` 选择器流程）。风险不在写入位置，而在读取：会话读的是「全局 ← 项目」合并后的有效值——当仓库的 `.omp/config.yml` 带角色覆盖（`modelRoleStorage: project` 时由 TUI 写入）时，它压过全局，桌面端的修改对该仓库不生效。UI 在 project 态弹警告并支持一键切回 global；已存在项目覆盖的仓库需手动删除其中的 `modelRoles` 段才能真正回归全局值。另注意 UI 读到的是有效值，整记录重写会把项目覆盖的值一并固化进全局（显示不变，语义等价）。
+- **作用范围：全局 / 当前项目**：`omp config set` 无论 `modelRoleStorage` 取值，**一律写全局** `config.yml`；`modelRoleStorage` 只决定 TUI 内 `/model` 选择器把角色存到哪。会话读的是「项目 → 全局」合并后的有效值，项目 `<cwd>/.omp/config.yml` 里的 `modelRoles` 逐角色压过全局（未覆盖的角色继承全局）。因此 UI 顶部提供「作用范围」切换：全局走 `omp config set`；当前项目（= 当前选中会话的 cwd，与 MCP/插件页同规则）通过 `omp_project_config_read/write` 直接编辑该文件的 `modelRoles`（前端用 `yaml` Document API，保留注释与其他键；`modelRoles` 清空后删除该键；YAML 无效时拒绝写入）。全局视图下若当前项目有覆盖，顶部提示并在对应行标「项目已覆盖」。`omp_config_*` 在不含 `.omp/` 的中性目录下执行，所以页面读到的就是纯全局值，整记录重写不会把项目覆盖固化进全局。`modelRoleStorage` 开关降级到底部「高级」卡片，名为「命令行 /model 保存位置」。
 - **清除语义**：`omp config reset` 是把 schema 默认值**写回**而不是删键，UI 不用它做清除；单角色/单链的移除走上面的 record 整体重写。`cycleOrder` 为普通数组键，直接 `omp config set cycleOrder '<json>'`。
 
 ## 5. 维护指南
@@ -66,9 +66,10 @@ omp 升级后按序执行：
 
 1. 重新跑 `omp config list --json`，对比键集合变化（新增 / 改名 / 删除）。
 2. 新键默认落入 `advanced`（高级）兜底桶：在 `src/features/settings/ompDesktopCategories.ts` 的归属规则里手动归类；若是新的 TUI 专用键，补进隐藏前缀或精确键列表。
-3. 按 `ompConfigMeta.ts` 头部注释重新生成元数据：从已安装 omp 二进制中重新提取内嵌 settings schema 的 `label:` 条目（`strings ~/.local/bin/omp`，条目形如 `"key.path": { type, default, ui: { tab, group, label, description, options } }`）；新键的中文标题与描述分别在 `ompConfigZh.ts`、`ompConfigDescZh.ts` 中补充。
+3. 按 `ompConfigMeta.ts` 头部注释重新生成元数据：从已安装 omp 二进制中重新提取内嵌 settings schema 的 `label:` 条目（`strings ~/.local/bin/omp`，条目形如 `"key.path": { type, default, ui: { tab, group, label, description, options } }`）；新键的中文标题与描述分别在 `ompConfigZh.ts`、`ompConfigDescZh.ts` 中补充。同一来源的 `default` 值重新生成到 `ompConfigDefaults.ts`（`omp config list --json` 不含默认值，「默认 / 已修改」徽标依赖此表；缺失的键不显示徽标）。
 4. 类目增删、改名或调整覆盖范围时，同步更新本文 §3 的表与 §2 的隐藏清单。
 
 ## 6. 变更记录
 
 - 2026-09-28：初始拆分（分支 `omp/desktop-settings`）——omp 配置键按桌面相关性重排为 8 个类目，TUI 专用键隐藏，`modelRoles` / `retry.fallbackChains` 抽出为独立编辑器。
+- 2026-10-02：设置页整体改版——`SettingsPage` 拆为 `sections/*` + 共享原语（`ui.tsx`）；模型角色支持「当前项目」作用范围；OMP 配置行内直接编辑（数组/记录用结构化编辑器，保留「编辑 JSON」兜底）、「默认 / 已修改」徽标与「本项目已覆盖」提示；新增「规则文件 AGENTS.md」编辑页；「通用」页收拢 omp 程序位置、新会话默认模型/思考深度/审批模式与快捷键。

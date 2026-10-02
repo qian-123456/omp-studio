@@ -7,20 +7,69 @@ export interface FieldDefinition {
 }
 
 export const FIELD_REGISTRY: FieldDefinition[] = [
-	// 常规
+	// 通用
+	{
+		id: "ompBinary",
+		sectionId: "general",
+		label: "omp 程序位置",
+		description: "本应用启动 AI 会话所用的 omp 命令或完整路径，并显示是否找到及版本",
+		keywords: ["binary", "omp", "path", "可执行", "路径", "命令行", "版本", "version"],
+	},
+	{
+		id: "ompConfigFiles",
+		sectionId: "general",
+		label: "omp 配置文件",
+		description: "在访达中显示 ~/.omp/agent/config.yml 与 omp 数据目录，重新读取 OMP 配置",
+		keywords: ["config.yml", "配置文件", "agent", "目录", "重新读取", "刷新", "reload"],
+	},
+	{
+		id: "newSessionModel",
+		sectionId: "general",
+		label: "新会话默认模型",
+		description: "新对话一开始使用的模型；不指定时由 omp 的 default 角色决定",
+		keywords: ["model", "默认模型", "新会话", "模型选择", "主力模型"],
+	},
+	{
+		id: "newSessionThinkingLevel",
+		sectionId: "general",
+		label: "思考深度 (Thinking Level)",
+		description: "支持思考的模型在回答前推理多久（omp defaultThinkingLevel）",
+		keywords: ["thinking", "思考", "推理", "深度", "defaultThinkingLevel"],
+	},
+	{
+		id: "defaultApprovalMode",
+		sectionId: "general",
+		label: "默认审批模式 (Approval Mode)",
+		description: "AI 改文件或执行命令前是否先征得你同意（每步都问 / 改动前问 / 全自动）",
+		keywords: ["approval", "always-ask", "write", "yolo", "审批模式", "权限", "模式"],
+	},
 	{
 		id: "capsuleVisible",
 		sectionId: "general",
-		label: "顶部胶囊 (Top Capsule)",
-		description: "在窗口顶部显示轻量胶囊栏，提供全局状态、快捷切换与通知",
+		label: "顶部状态胶囊",
+		description: "窗口顶部显示一个小条，随时看到正在运行的对话和提醒",
 		keywords: ["capsule", "胶囊", "top capsule", "顶部胶囊", "状态栏"],
 	},
 	{
 		id: "smartContextRouting",
 		sectionId: "general",
-		label: "智能上下文路由",
-		description: "新会话自动检测关联项目并注入最近工作区上下文",
-		keywords: ["smart context", "路由", "上下文路由", "工作区", "关联项目"],
+		label: "自动关联项目",
+		description: "新开对话时自动识别所在项目，并把最近的相关工作告诉 AI",
+		keywords: ["smart context", "路由", "上下文路由", "智能上下文", "工作区", "关联项目"],
+	},
+	{
+		id: "quickCaptureShortcut",
+		sectionId: "general",
+		label: "快速记录快捷键",
+		description: "在任何应用里按下即可弹出快速记录窗口的全局快捷键",
+		keywords: ["shortcut", "快捷键", "快速捕获", "快速记录", "全局", "热键"],
+	},
+	{
+		id: "agentsMdShortcut",
+		sectionId: "general",
+		label: "AGENTS.md（给 AI 的长期指令）",
+		description: "编辑 AI 每次都会遵守的规则文件",
+		keywords: ["agents.md", "agents", "规则", "指令", "rules"],
 	},
 
 	// 外观
@@ -57,28 +106,28 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "notifyTurnEnd",
 		sectionId: "notifications",
-		label: "轮次结束通知",
-		description: "Agent 执行完一轮任务或等待用户输入时发送系统通知",
-		keywords: ["turn", "轮次", "完成", "结束", "输入"],
+		label: "完成一轮回复",
+		description: "Agent 做完一轮工作、等你查看结果时发送系统通知",
+		keywords: ["turn", "轮次", "完成", "结束", "输入", "回复"],
 	},
 	{
 		id: "notifyApproval",
 		sectionId: "notifications",
-		label: "审批与提问通知",
+		label: "需要你批准或回答",
 		description: "Agent 请求执行受限命令或需要您确认时发送通知",
 		keywords: ["approval", "审批", "确认", "提问", "授权"],
 	},
 	{
 		id: "notifyExit",
 		sectionId: "notifications",
-		label: "异常与中断通知",
+		label: "出错或意外中断",
 		description: "进程异常退出、超限或执行出错时发送通知",
 		keywords: ["error", "exit", "异常", "中断", "报错", "退出"],
 	},
 	{
 		id: "notifySound",
 		sectionId: "notifications",
-		label: "通知提示音",
+		label: "提示音",
 		description: "发送通知时播放系统提示声音",
 		keywords: ["sound", "声音", "提示音", "静音"],
 	},
@@ -93,45 +142,31 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		id: "notifyQuiet",
 		sectionId: "notifications",
 		label: "免打扰时段",
-		description: "在指定时间段内静音所有应用通知",
+		description: "在指定时间段内不弹系统通知，可跨夜（如 22:00–08:00）",
 		keywords: ["quiet", "免打扰", "安静时段", "时段", "静音", "夜间"],
 	},
 	{
 		id: "notifyTest",
 		sectionId: "notifications",
-		label: "测试通知权限与提示音",
-		description: "测试系统通知权限与提示音",
-		keywords: ["test", "测试", "权限", "声音测试"],
+		label: "发送一条测试通知",
+		description: "确认系统通知和提示音是否正常；收不到时附带系统设置指引",
+		keywords: ["test", "测试", "权限", "声音测试", "收不到通知"],
 	},
 
 	// 会话 (含 对话检查点)
 	{
-		id: "defaultApprovalMode",
-		sectionId: "sessions",
-		label: "默认审批模式 (Approval Mode)",
-		description: "新会话启动时使用的默认工具执行权限（always-ask / write / yolo）",
-		keywords: ["approval", "always-ask", "write", "yolo", "审批模式", "权限", "模式"],
-	},
-	{
 		id: "idleSuspendMinutes",
 		sectionId: "sessions",
-		label: "空闲挂起时长 (分钟)",
-		description: "无交互持续达到该时长后自动挂起后台 RPC 进程以节省内存（0 为不挂起）",
-		keywords: ["idle", "suspend", "空闲", "挂起", "内存", "时长", "后台"],
+		label: "闲置多久后休眠（分钟）",
+		description: "对话闲置达到该时长后暂停后台进程以省内存，发消息时自动恢复（0 为永不休眠）",
+		keywords: ["idle", "suspend", "空闲", "闲置", "挂起", "休眠", "内存", "时长", "后台"],
 	},
 	{
 		id: "sessionTurnAutoRefresh",
 		sectionId: "sessions",
-		label: "自动刷新会话摘要",
-		description: "每一轮对话完成后在后台自动提取最新摘要并更新列表标题",
+		label: "自动更新对话标题与摘要",
+		description: "每轮回答结束后在后台重新总结对话，保持列表标题贴切",
 		keywords: ["refresh", "summary", "摘要", "标题", "自动刷新", "总结"],
-	},
-	{
-		id: "newSessionModel",
-		sectionId: "sessions",
-		label: "新会话默认模型",
-		description: "每次新建会话时预选的模型标识，留空使用 OMP 内置默认或 default 角色",
-		keywords: ["model", "默认模型", "新会话", "模型选择", "主力模型"],
 	},
 	{
 		id: "turnCheckpoints",
@@ -145,8 +180,8 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "systemDetection",
 		sectionId: "inbox",
-		label: "系统待办检测",
-		description: "监听错误、未处理异常与中断事件，自动生成待办项",
+		label: "自动收集待办",
+		description: "审批请求、提问、报错、中断或等你验收时自动加入收件箱",
 		keywords: ["system", "detection", "系统待办", "待办检测", "错误", "监听"],
 	},
 	{
@@ -166,8 +201,8 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "supervisorIntervalMinutes",
 		sectionId: "inbox",
-		label: "监工触发间隔 (分钟)",
-		description: "状态变化后触发监工分析的去抖间隔，最短 5 分钟；0 表示仅手动刷新",
+		label: "分析间隔（分钟）",
+		description: "会话状态变化后至少隔多久再分析一次；0 表示只手动刷新",
 		keywords: ["interval", "触发间隔", "巡检间隔", "频率", "去抖", "分钟"],
 	},
 	{
@@ -182,40 +217,26 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "mobileLan",
 		sectionId: "mobile",
-		label: "局域网直连 (LAN)",
-		description: "局域网直连访问与端口配置，生成局域网配对二维码",
-		keywords: ["lan", "port", "局域网", "端口", "直连", "配对码", "二维码"],
+		label: "手机访问服务",
+		description: "启动/停止手机访问、修改端口、生成局域网配对二维码",
+		keywords: ["lan", "port", "局域网", "端口", "直连", "配对码", "二维码", "启动", "停止"],
 	},
 	{
 		id: "mobileTunnel",
 		sectionId: "mobile",
-		label: "Cloudflare Tunnel 公网隧道",
+		label: "公网隧道（不在同一网络时访问）",
 		description: "通过 Cloudflare 隧道公网访问，支持快速临时隧道或自建命名隧道",
 		keywords: ["tunnel", "cloudflare", "公网", "隧道", "配对码", "远程"],
 	},
 	{
 		id: "mobileDevices",
 		sectionId: "mobile",
-		label: "已配对设备与访问控制",
-		description: "管理通过配对码连接的手机移动端凭据，一键撤销全部设备",
+		label: "已配对的手机",
+		description: "撤销所有已配对手机的访问权限，需重新扫码",
 		keywords: ["devices", "pairing", "已配对", "设备", "撤销", "凭据", "解绑"],
 	},
 
 	// 高级
-	{
-		id: "quickCaptureShortcut",
-		sectionId: "advanced",
-		label: "全局快捷键 (快速捕获)",
-		description: "在系统任意界面呼出快速记录面板的全局热键组合",
-		keywords: ["shortcut", "快捷键", "快速捕获", "全局", "热键"],
-	},
-	{
-		id: "ompBinary",
-		sectionId: "advanced",
-		label: "OMP 命令行程序 (omp binary)",
-		description: "指定 omp 可执行文件路径，留空则自动从 PATH 中探测",
-		keywords: ["binary", "omp", "path", "可执行", "路径", "命令行"],
-	},
 	{
 		id: "installStatusExtension",
 		sectionId: "advanced",
@@ -226,9 +247,16 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "dataManagement",
 		sectionId: "advanced",
-		label: "数据管理",
-		description: "打开应用数据目录、导出或导入工作台设置、恢复默认偏好",
-		keywords: ["data", "export", "import", "reset", "数据目录", "导出", "导入", "重置", "恢复默认"],
+		label: "本应用的设置与数据",
+		description: "打开数据目录、导出或导入设置备份",
+		keywords: ["data", "export", "import", "数据目录", "导出", "导入", "备份"],
+	},
+	{
+		id: "resetSettings",
+		sectionId: "advanced",
+		label: "恢复默认设置",
+		description: "把本应用的所有设置恢复成刚安装时的样子（无法撤销）",
+		keywords: ["reset", "重置", "恢复默认", "默认值"],
 	},
 
 	// Deep-link anchors used by settingsTargets.ts (mcp / plugins / providers / roles)
@@ -243,8 +271,8 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		id: "modelRolesPanel",
 		sectionId: "omp-roles",
 		label: "模型角色与回退链",
-		description: "为每类任务指定主力模型与回退顺序",
-		keywords: ["model", "role", "角色", "模型", "回退", "fallback", "default", "task"],
+		description: "为每类任务指定主力模型与回退顺序，可按项目覆盖",
+		keywords: ["model", "role", "角色", "模型", "回退", "fallback", "default", "task", "项目", "project", "全局"],
 	},
 	{
 		id: "mcpServerList",
@@ -280,6 +308,29 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		label: "显式加载的扩展路径",
 		description: "omp config 的 extensions / disabledExtensions 列表",
 		keywords: ["extensions", "disabledExtensions", "路径", "配置"],
+	},
+
+	// 规则文件 AGENTS.md
+	{
+		id: "agentsMdScope",
+		sectionId: "agents-md",
+		label: "AGENTS.md 范围（全局 / 当前项目）",
+		description: "选择编辑全局 ~/.omp/agent/AGENTS.md 还是当前项目的 AGENTS.md",
+		keywords: ["agents.md", "agents", "规则", "规则文件", "指令", "上下文文件", "context file", "全局", "项目"],
+	},
+	{
+		id: "agentsMdProjectFile",
+		sectionId: "agents-md",
+		label: "项目文件位置",
+		description: "项目根目录 AGENTS.md 或 .omp/AGENTS.md；两者都有内容时 omp 只读后者",
+		keywords: [".omp", "native", "位置", "覆盖"],
+	},
+	{
+		id: "agentsMdEditor",
+		sectionId: "agents-md",
+		label: "编辑 AGENTS.md",
+		description: "查看、编辑并保存 agent 的长期说明，新会话生效",
+		keywords: ["编辑", "保存", "预览", "markdown", "instructions", "长期说明", "约定"],
 	},
 ];
 

@@ -456,6 +456,7 @@ async fn run_omp_config(
     args: &[&str],
 ) -> Result<String, String> {
     let mut cmd = tokio::process::Command::new(exe);
+    cmd.current_dir(neutral_cwd()?);
     cmd.args(["config"])
         .args(args)
         .env("PATH", path_env)
@@ -569,9 +570,149 @@ pub async fn omp_config_reset(
     Ok(())
 }
 
+/// Dedicated empty working directory for `omp config` so omp's project layer
+/// (`<cwd>/.omp/config.yml`) never merges in: results reflect global settings only.
+fn neutral_cwd() -> Result<std::path::PathBuf, String> {
+    let dir = std::env::temp_dir().join("ompws-omp-config-cwd");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建中立工作目录：{e}"))?;
+    let stray = dir.join(".omp");
+    if stray.exists() {
+        let _ = std::fs::remove_dir_all(&stray);
+    }
+    Ok(dir)
+}
+
+/// Raw contents of a project-level omp config (`<cwd>/.omp/config.yml`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpProjectConfigFile {
+    pub path: String,
+    pub exists: bool,
+    pub content: String,
+}
+
+/// Validates `cwd` (absolute, existing directory) and returns `<cwd>/.omp/config.yml`.
+fn project_config_path(cwd: &str) -> Result<std::path::PathBuf, String> {
+    let dir = crate::services::files::resolve(cwd.trim())?;
+    if !dir.is_dir() {
+        return Err(format!("项目目录不存在：{}", dir.display()));
+    }
+    Ok(dir.join(".omp").join("config.yml"))
+}
+
+fn project_config_read_blocking(cwd: &str) -> Result<OmpProjectConfigFile, String> {
+    let path = project_config_path(cwd)?;
+    let display = path.to_string_lossy().into_owned();
+    if !path.exists() {
+        return Ok(OmpProjectConfigFile {
+            path: display,
+            exists: false,
+            content: String::new(),
+        });
+    }
+    let content = crate::services::files::read_text(&path)?;
+    Ok(OmpProjectConfigFile {
+        path: display,
+        exists: true,
+        content,
+    })
+}
+
+fn project_config_write_blocking(cwd: &str, content: &str) -> Result<(), String> {
+    let path = project_config_path(cwd)?;
+    let omp_dir = path.parent().ok_or("invalid path")?;
+    std::fs::create_dir_all(omp_dir).map_err(|e| format!("无法创建 .omp 目录：{e}"))?;
+    // Preserve a symlinked config: write through to the link target instead of
+    // replacing the link with a regular file (temp+rename would clobber it).
+    let target = match std::fs::symlink_metadata(&path) {
+        Ok(meta) if meta.file_type().is_symlink() => match std::fs::canonicalize(&path) {
+            Ok(resolved) => resolved,
+            Err(_) => {
+                let link =
+                    std::fs::read_link(&path).map_err(|e| format!("无法解析符号链接：{e}"))?;
+                omp_dir.join(link)
+            }
+        },
+        _ => path,
+    };
+    crate::services::files::write_text(&target, content)
+}
+
+/// `omp_project_config_read` (§7 D): reads `<cwd>/.omp/config.yml`; missing → `exists: false`.
+#[tauri::command]
+pub async fn omp_project_config_read(cwd: String) -> Result<OmpProjectConfigFile, String> {
+    tokio::task::spawn_blocking(move || project_config_read_blocking(&cwd))
+        .await
+        .map_err(|e| format!("读取项目配置失败：{e}"))?
+}
+
+/// `omp_project_config_write` (§7 D): atomically writes `<cwd>/.omp/config.yml`, creating `.omp/`.
+#[tauri::command]
+pub async fn omp_project_config_write(cwd: String, content: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || project_config_write_blocking(&cwd, &content))
+        .await
+        .map_err(|e| format!("写入项目配置失败：{e}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn project_test_dir(name: &str) -> std::path::PathBuf {
+        let dir =
+            std::path::PathBuf::from(format!("/tmp/ompws-test-d/{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_project_config_read_missing() {
+        let dir = project_test_dir("read-missing");
+        let r = project_config_read_blocking(dir.to_str().unwrap()).unwrap();
+        assert!(!r.exists);
+        assert!(r.content.is_empty());
+        assert!(r.path.ends_with(".omp/config.yml"));
+    }
+
+    #[test]
+    fn test_project_config_write_roundtrip() {
+        let dir = project_test_dir("roundtrip");
+        let cwd = dir.to_str().unwrap();
+        let yaml = "# keep\nmodelRoles:\n  default: a/b\n";
+        project_config_write_blocking(cwd, yaml).unwrap();
+        assert!(dir.join(".omp").is_dir());
+        let r = project_config_read_blocking(cwd).unwrap();
+        assert!(r.exists);
+        assert_eq!(r.content, yaml);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_project_config_write_preserves_symlink() {
+        let dir = project_test_dir("symlink");
+        std::fs::create_dir_all(dir.join(".omp")).unwrap();
+        let real = dir.join("real.yml");
+        std::fs::write(&real, "old").unwrap();
+        let link = dir.join(".omp/config.yml");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        project_config_write_blocking(dir.to_str().unwrap(), "new").unwrap();
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "new");
+    }
+
+    #[test]
+    fn test_project_config_write_rejects_bad_cwd() {
+        assert!(project_config_write_blocking("relative/dir", "x").is_err());
+        assert!(project_config_write_blocking("", "x").is_err());
+        assert!(
+            project_config_write_blocking("/tmp/ompws-test-d/definitely-missing-dir", "x").is_err()
+        );
+        assert!(!std::path::Path::new("/tmp/ompws-test-d/definitely-missing-dir").exists());
+    }
 
     #[test]
     fn test_validate_default_settings() {
@@ -807,6 +948,19 @@ mod tests {
         settings.quick_capture_shortcut = "Alt+Space".to_string();
         assert!(validate(&settings).is_ok());
 
+        // Formats produced by the settings key recorder (ShortcutRecorder.tsx).
+        for s in [
+            "CommandOrControl+Shift+Space",
+            "CommandOrControl+Control+Alt+Shift+K",
+            "Super+Alt+7",
+            "CommandOrControl+BracketLeft",
+            "CommandOrControl+ArrowUp",
+            "F5",
+        ] {
+            settings.quick_capture_shortcut = s.to_string();
+            assert!(validate(&settings).is_ok(), "{s}");
+        }
+
         // Invalid shortcut formats
         settings.quick_capture_shortcut = "InvalidKeyComboThatCannotParse".to_string();
         assert!(validate(&settings).unwrap_err().contains("快捷键格式无效"));
@@ -1028,4 +1182,63 @@ mod tests {
         assert_eq!(tabs.len(), 1);
         assert!(tabs.contains_key("temperature"));
     }
+}
+
+/// Return value of `omp_info`: where omp lives and which version answers.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpInfo {
+    /// The resolved binary exists on disk.
+    pub found: bool,
+    /// Resolved absolute path (or the raw setting when unresolved).
+    pub resolved_path: String,
+    /// First line of `omp --version`; None when not found or the call failed.
+    pub version: Option<String>,
+    /// omp agent dir (`~/.omp/agent`, honoring PI_CODING_AGENT_DIR / profiles).
+    pub agent_dir: String,
+    /// Global config file `<agentDir>/config.yml`.
+    pub config_path: String,
+    pub config_exists: bool,
+}
+
+/// `omp_info` (§7): resolves the configured omp binary and probes `omp --version`.
+#[tauri::command]
+pub async fn omp_info(state: tauri::State<'_, AppState>) -> Result<OmpInfo, String> {
+    let (exe, path) = omp_exe(&state);
+    let agent_dir = crate::settings_mcp::agent_dir();
+    let config = agent_dir.join("config.yml");
+    let found = exe.is_file();
+    let version = if found {
+        let mut cmd = tokio::process::Command::new(&exe);
+        cmd.current_dir(neutral_cwd()?)
+            .arg("--version")
+            .env("PATH", &path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        match cmd.spawn() {
+            Ok(child) => {
+                match tokio::time::timeout(OMP_CONFIG_TIMEOUT, child.wait_with_output()).await {
+                    Ok(Ok(out)) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+                        .lines()
+                        .map(str::trim)
+                        .find(|l| !l.is_empty())
+                        .map(str::to_string),
+                    _ => None,
+                }
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+    Ok(OmpInfo {
+        found,
+        resolved_path: exe.to_string_lossy().to_string(),
+        version,
+        agent_dir: agent_dir.to_string_lossy().to_string(),
+        config_exists: config.is_file(),
+        config_path: config.to_string_lossy().to_string(),
+    })
 }

@@ -15,32 +15,43 @@ import {
 	AlertTriangle,
 	Check,
 	ChevronDown,
+	ChevronLeft,
+	ChevronRight,
 	ChevronUp,
 	Plus,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { OmpConfigEntry } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
-import { listModels, ompConfigSet } from "../../lib/ipc";
+import {
+	listModels,
+	ompConfigSet,
+	ompProjectConfigRead,
+	ompProjectConfigWrite,
+} from "../../lib/ipc";
 import { parseModels, toModelKey, type ModelOption } from "../../lib/models";
 import { toast } from "../../lib/toast";
 import { ModelSelect } from "../../components/ModelSelect";
 import { NativeSelect } from "../../components/NativeSelect";
+import { Segmented } from "../../components/Segmented";
 import {
 	BUILTIN_ROLES,
 	THINKING_SUFFIXES,
+	applyProjectRole,
 	asRecord,
 	asStringList,
 	customRoles,
 	joinRoleValue,
 	parseChain,
+	parseProjectRoles,
 	roleValue,
 	splitRoleValue,
 	withChain,
 	withRoleAssignment,
 } from "./modelRoles";
+import { useSessions } from "../../stores/sessions";
 import { useOmpConfigStore } from "./ompConfigStore";
 
 const CUSTOM_VALUE = "__custom__";
@@ -65,45 +76,26 @@ function groupModelsByProvider(
 	return order.map((provider) => ({ provider, models: byProvider[provider] }));
 }
 
-/** Small labeled segmented control, matching the settings-page pill style. */
-function Segmented({
-	options,
-	value,
-	disabled,
-	onPick,
-}: {
-	options: { id: string; label: string; title?: string }[];
-	value: string;
-	disabled?: boolean;
-	onPick: (id: string) => void;
-}) {
-	return (
-		<div className="inline-flex rounded-lg hairline bg-[var(--well-bg)] p-0.5">
-			{options.map((o) => (
-				<button
-					key={o.id}
-					type="button"
-					disabled={disabled}
-					title={o.title}
-					onClick={() => onPick(o.id)}
-					className={`rounded-md px-2.5 py-1 text-[11px] transition-all active:scale-95 disabled:opacity-50 ${
-						value === o.id
-							? "bg-[var(--bg-active-fill)] text-neutral-100 shadow-sm font-medium"
-							: "text-neutral-400 hover:text-neutral-200"
-					}`}
-				>
-					{o.label}
-				</button>
-			))}
-		</div>
-	);
-}
-
 const ICON_BTN =
 	"rounded-md p-1 text-neutral-500 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none";
 
 const SAVE_BTN =
-	"rounded-lg bg-[#0A84FF] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm disabled:opacity-50";
+	"shrink-0 whitespace-nowrap rounded-lg bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-sm disabled:opacity-50";
+
+type Scope = "global" | "project";
+
+/** Pretty name for catalog selectors; raw selector (with suffix) otherwise. */
+function modelDisplayName(
+	value: string | null,
+	models: ModelOption[],
+	catalogKeys: Set<string>,
+): string {
+	if (value === null) return "未设置";
+	const { selector, thinkingSuffix } = splitRoleValue(value);
+	if (!catalogKeys.has(selector)) return value;
+	const name = models.find((m) => toModelKey(m.provider, m.id) === selector)?.name ?? selector;
+	return thinkingSuffix ? `${name}:${thinkingSuffix}` : name;
+}
 
 function flashSaved(setter: (v: boolean) => void) {
 	setter(true);
@@ -182,13 +174,14 @@ function ChainPanel({
 		<div className="mt-2 space-y-1.5 border-t border-[var(--border-divider)] pt-2">
 			<div className="flex flex-wrap items-center gap-2">
 				<Segmented
+					size="sm"
 					value={committed.state === "list" ? "list" : committed.state}
 					disabled={busy}
-					onPick={(m) => void pickMode(m)}
+					onChange={(m) => void pickMode(m)}
 					options={[
-						{ id: "unset", label: "未设置", title: "继承：模型职能角色用内置候选，对话角色跟随 default 链" },
-						{ id: "empty", label: "不回退", title: "显式空链 []：此角色失败时不回退" },
-						{ id: "list", label: "自定义", title: "按顺序尝试的回退模型（provider/id[:level] 或 @角色）" },
+						{ value: "unset", label: "未设置", title: "继承：模型职能角色用内置候选，对话角色跟随 default 链" },
+						{ value: "empty", label: "不回退", title: "显式空链 []：此角色失败时不回退" },
+						{ value: "list", label: "自定义", title: "按顺序尝试的回退模型（provider/id[:level] 或 @角色）" },
 					]}
 				/>
 				<button
@@ -228,7 +221,7 @@ function ChainPanel({
 						}}
 						spellCheck={false}
 						placeholder="provider/id[:level] 或 @角色"
-						className="flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+						className="flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all"
 					/>
 					<button
 						type="button"
@@ -337,9 +330,13 @@ function RoleRow({
 	description,
 	kind,
 	isCustom = false,
-	roles,
+	scope,
+	current,
+	inherited = null,
+	projectOverride = null,
 	chains,
 	models,
+	writeRole,
 	onSaved,
 }: {
 	roleId: string;
@@ -347,12 +344,19 @@ function RoleRow({
 	description: string;
 	kind: "chat" | "modelKind";
 	isCustom?: boolean;
-	roles: Record<string, unknown>;
+	scope: Scope;
+	/** Value stored in the edited scope (null = absent there). */
+	current: string | null;
+	/** Project scope only: global value inherited when not overridden. */
+	inherited?: string | null;
+	/** Global scope only: project override shadowing this role, if any. */
+	projectOverride?: string | null;
 	chains: Record<string, unknown>;
 	models: ModelOption[];
+	/** Persist the role value in the edited scope; null removes the key. Throws on failure. */
+	writeRole: (roleId: string, value: string | null) => Promise<void>;
 	onSaved: () => void;
 }) {
-	const current = roleValue(roles, roleId);
 	const [thinking, setThinking] = useState(
 		() => splitRoleValue(current ?? "").thinkingSuffix ?? "",
 	);
@@ -373,13 +377,18 @@ function RoleRow({
 	const baseSelector = splitRoleValue(current ?? "").selector;
 	const isCustomValue =
 		current !== null && current !== "" && !catalogKeys.has(baseSelector);
+	const isProject = scope === "project";
+	const overridden = isProject && current !== null;
 
-	const writeRoles = async (
-		next: Record<string, unknown>,
-	): Promise<boolean> => {
+	/** Commit a full role value (selector + suffix); empty removes the role. */
+	const commit = async (value: string): Promise<boolean> => {
+		if (kind === "modelKind" && splitRoleValue(value).thinkingSuffix) {
+			toast.error("模型职能角色不支持 :thinking 后缀");
+			return false;
+		}
 		setBusy(true);
 		try {
-			await ompConfigSet("modelRoles", JSON.stringify(next));
+			await writeRole(roleId, value || null);
 			flashSaved(setSavedTick);
 			onSaved();
 			return true;
@@ -391,24 +400,19 @@ function RoleRow({
 		}
 	};
 
-	/** Commit a full role value (selector + suffix); empty removes the role. */
-	const commit = async (value: string): Promise<boolean> => {
-		if (kind === "modelKind" && splitRoleValue(value).thinkingSuffix) {
-			toast.error("模型职能角色不支持 :thinking 后缀");
-			return false;
-		}
-		return writeRoles(withRoleAssignment(roles, roleId, value || null));
-	};
+	const pretty = (v: string | null) => modelDisplayName(v, models, catalogKeys);
 
 	// Trigger label: pretty name for catalog picks, raw selector otherwise.
 	const modelLabel = customDraft
 		? "自定义选择器…"
 		: current === null
-			? "未设置（内置默认）"
-			: isCustomValue
-				? current
-				: (models.find((m) => toModelKey(m.provider, m.id) === baseSelector)
-						?.name ?? baseSelector);
+			? isProject
+				? `继承全局：${inherited === null ? "未设置" : pretty(inherited)}`
+				: "未设置（内置默认）"
+			: pretty(current);
+	const unsetExtra = isProject
+		? { value: "", label: "继承全局（不覆盖）", hint: "inherit" }
+		: { value: "", label: "未设置（内置默认）", hint: "unset" };
 
 	const onPickModel = async (key: string) => {
 		if (key === CUSTOM_VALUE) {
@@ -455,6 +459,19 @@ function RoleRow({
 							自定义
 						</span>
 					)}
+					{overridden && (
+						<span className="rounded bg-sky-500/15 px-1 py-px text-[9px] font-normal text-sky-300">
+							项目覆盖
+						</span>
+					)}
+					{projectOverride !== null && (
+						<span
+							title={`项目设置：${pretty(projectOverride)}（在该项目里以此为准）`}
+							className="rounded bg-amber-500/15 px-1 py-px text-[9px] font-normal text-amber-300"
+						>
+							项目已覆盖
+						</span>
+					)}
 				</span>
 				{savedTick && (
 					<Check className="h-3 w-3 shrink-0 text-emerald-400" />
@@ -466,11 +483,11 @@ function RoleRow({
 						widthClass="w-[360px]"
 						icon={false}
 						label={modelLabel}
-						buttonClass={`h-7 flex min-w-[140px] max-w-[240px] items-center justify-between rounded-lg hairline bg-[var(--well-bg)] px-2.5 text-left text-[11px] text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all ${busy ? "pointer-events-none opacity-50" : ""}`}
+						buttonClass={`h-7 flex min-w-[140px] max-w-[240px] items-center justify-between rounded-lg hairline bg-[var(--well-bg)] px-2.5 text-left text-[11px] hover:bg-[var(--bg-hover)] active:scale-95 transition-all ${isProject && !overridden ? "italic text-neutral-500" : "text-neutral-200"} ${busy ? "pointer-events-none opacity-50" : ""}`}
 						models={models}
 						currentValue={catalogKeys.has(baseSelector) ? baseSelector : ""}
 						extras={[
-							{ value: "", label: "未设置（内置默认）", hint: "unset" },
+							unsetExtra,
 							{ value: CUSTOM_VALUE, label: "自定义选择器…", hint: "手动输入" },
 						]}
 						onSelect={(v) => void onPickModel(v)}
@@ -492,22 +509,35 @@ function RoleRow({
 							))}
 						</NativeSelect>
 					)}
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => setChainOpen((v) => !v)}
-						title="回退链：未设置=继承内置默认 · 不回退=失败即停 · N 项=按序尝试"
-						className={`inline-flex shrink-0 items-center gap-1 rounded-lg hairline px-2 py-1 text-[11px] transition-all active:scale-95 disabled:opacity-50 ${
-							chainOpen
-								? "bg-[var(--bg-active-fill)] text-neutral-100"
-								: "bg-[var(--well-bg)] text-neutral-400 hover:text-neutral-200"
-						}`}
-					>
-						回退 · {chainChipLabel(chain.state, chain.items.length)}
-						<ChevronDown
-							className={`h-2.5 w-2.5 transition-transform ${chainOpen ? "rotate-180" : ""}`}
-						/>
-					</button>
+					{overridden && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => void commit("")}
+							title={`删除项目里的 modelRoles.${roleId}，改用全局设置`}
+							className="shrink-0 whitespace-nowrap rounded-lg hairline bg-[var(--well-bg)] px-2 py-1 text-[11px] text-neutral-400 hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
+						>
+							恢复继承
+						</button>
+					)}
+					{!isProject && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => setChainOpen((v) => !v)}
+							title="回退链：未设置=继承内置默认 · 不回退=失败即停 · N 项=按序尝试"
+							className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg hairline px-2 py-1 text-[11px] transition-all active:scale-95 disabled:opacity-50 ${
+								chainOpen
+									? "bg-[var(--bg-active-fill)] text-neutral-100"
+									: "bg-[var(--well-bg)] text-neutral-400 hover:text-neutral-200"
+							}`}
+						>
+							回退 · {chainChipLabel(chain.state, chain.items.length)}
+							<ChevronDown
+								className={`h-2.5 w-2.5 transition-transform ${chainOpen ? "rotate-180" : ""}`}
+							/>
+						</button>
+					)}
 				</div>
 			</div>
 
@@ -531,7 +561,7 @@ function RoleRow({
 						}}
 						spellCheck={false}
 						placeholder="provider/id[:level]、web/duckduckgo、@smol"
-						className="flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+						className="flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all"
 					/>
 					<button
 						type="button"
@@ -553,7 +583,7 @@ function RoleRow({
 				</div>
 			)}
 
-			{chainOpen && (
+			{chainOpen && !isProject && (
 				<ChainPanel
 					roleId={roleId}
 					chains={chains}
@@ -626,30 +656,34 @@ function CycleOrderEditor({
 				>
 					角色切换顺序
 				</span>
+				<span className="text-[11px] text-neutral-500">会话内切换模型时按此顺序轮换</span>
 				{savedTick && <Check className="h-2.5 w-2.5 text-emerald-400" />}
 			</div>
 			<div className="mt-1.5 flex flex-wrap items-center gap-1">
 				{items.map((r, i) => (
 					<span
 						key={`${r}-${i}`}
-						className="inline-flex items-center gap-0.5 rounded-lg hairline bg-[var(--well-bg)] px-1.5 py-1"
+						className="inline-flex items-center gap-0.5 rounded-lg hairline bg-[var(--well-bg)] py-0.5 pl-1.5 pr-0.5"
 					>
+						<span className="text-[10px] tabular-nums text-neutral-500">{i + 1}</span>
 						<button
 							type="button"
 							disabled={busy || i === 0}
 							onClick={() => move(i, -1)}
+							title="前移"
 							className={ICON_BTN}
 						>
-							<ChevronUp className="h-2.5 w-2.5" />
+							<ChevronLeft className="h-2.5 w-2.5" />
 						</button>
-						<span className="px-0.5 font-mono text-[11px] text-neutral-200">{r}</span>
+						<span className="font-mono text-[11px] text-neutral-200">{r}</span>
 						<button
 							type="button"
 							disabled={busy || i === items.length - 1}
 							onClick={() => move(i, 1)}
+							title="后移"
 							className={ICON_BTN}
 						>
-							<ChevronDown className="h-2.5 w-2.5" />
+							<ChevronRight className="h-2.5 w-2.5" />
 						</button>
 						<button
 							type="button"
@@ -666,19 +700,19 @@ function CycleOrderEditor({
 					<span className="text-[11px] text-neutral-600">（空）</span>
 				)}
 			</div>
-			<div className="mt-1.5 flex items-center gap-1.5">
+			<div className="mt-2 flex flex-nowrap items-center gap-1.5">
 				<NativeSelect
 					value=""
-					disabled={busy}
+					disabled={busy || addable.length === 0}
 					onChange={(e) => {
 						const v = e.target.value;
 						if (v) setItems([...items, v]);
 						e.target.value = "";
 					}}
 					className="text-[11px]"
-					containerClassName="w-44"
+					containerClassName="w-28 shrink-0"
 				>
-					<option value="">添加角色…</option>
+					<option value="">＋ 角色</option>
 					{addable.map((r) => (
 						<option key={r} value={r}>
 							{r}
@@ -699,7 +733,7 @@ function CycleOrderEditor({
 					}}
 					spellCheck={false}
 					placeholder="自定义角色名"
-					className="w-28 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
+					className="w-28 shrink-0 rounded-lg hairline bg-[var(--well-bg)] px-2 py-1 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all"
 				/>
 				<button
 					type="button"
@@ -710,6 +744,7 @@ function CycleOrderEditor({
 				>
 					<Plus className="h-3 w-3" />
 				</button>
+				<span className="flex-1" />
 				<button
 					type="button"
 					disabled={busy || !dirty}
@@ -756,7 +791,14 @@ function RoleGroup({
  * and an ordered fallback chain. Backed by `modelRoles` + `retry.fallbackChains`
  * (both record-typed — single-role writes rewrite the whole record).
  */
-export function ModelRolesSection({ query = "" }: { query?: string }) {
+export function ModelRolesSection({
+	query = "",
+	cwd,
+}: {
+	query?: string;
+	/** Current project dir (selected/last session's cwd); null disables project scope. */
+	cwd: string | null;
+}) {
 	const entries = useOmpConfigStore((s) => s.entries);
 	const loading = useOmpConfigStore((s) => s.loading);
 	const loaded = useOmpConfigStore((s) => s.loaded);
@@ -765,6 +807,10 @@ export function ModelRolesSection({ query = "" }: { query?: string }) {
 
 	const [models, setModels] = useState<ModelOption[]>([]);
 	const [storageBusy, setStorageBusy] = useState(false);
+	const [scopePick, setScopePick] = useState<Scope>("global");
+	const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
+	const [project, setProject] = useState<ProjectState>({ status: "idle" });
+	const scope: Scope = cwd ? scopePick : "global";
 
 	useEffect(() => {
 		void load();
@@ -784,12 +830,49 @@ export function ModelRolesSection({ query = "" }: { query?: string }) {
 		};
 	}, []);
 
+	// Initialize active project path when switching to project scope or cwd changes
+	useEffect(() => {
+		if (scope === "project" && cwd && !activeProjectPath) {
+			setActiveProjectPath(cwd);
+		}
+	}, [scope, cwd, activeProjectPath]);
+
+	// Latest active path for project operations
+	const activePathRef = useRef(activeProjectPath);
+	activePathRef.current = activeProjectPath;
+
+	const loadProject = useCallback(async (dir: string | null) => {
+		if (!dir) {
+			setProject({ status: "idle" });
+			return;
+		}
+		try {
+			const file = await ompProjectConfigRead(dir);
+			if (activePathRef.current !== dir) return;
+			const parsed = parseProjectRoles(file.content);
+			setProject(
+				parsed.ok
+					? { status: "ok", path: file.path, roles: parsed.roles }
+					: { status: "error", path: file.path, error: parsed.error },
+			);
+		} catch (e) {
+			if (activePathRef.current !== dir) return;
+			setProject({ status: "error", path: projectConfigPath(dir), error: errMsg(e) });
+		}
+	}, []);
+
+	useEffect(() => {
+		setProject({ status: "idle" });
+		void loadProject(activeProjectPath);
+	}, [activeProjectPath, loadProject]);
+
 	// Mirror OmpConfigSection.handleChanged: force a reload after each write.
 	const handleChanged = () => {
 		void useOmpConfigStore.getState().load(true);
 	};
 
 	const roles = useMemo(() => asRecord(entryValue(entries, "modelRoles")), [entries]);
+	const projectRoles = project.status === "ok" ? project.roles : EMPTY_ROLES;
 	const chains = useMemo(
 		() => asRecord(entryValue(entries, "retry.fallbackChains")),
 		[entries],
@@ -799,7 +882,15 @@ export function ModelRolesSection({ query = "" }: { query?: string }) {
 		return v === "project" ? "project" : "global";
 	}, [entries]);
 	const cycle = useMemo(() => asStringList(entryValue(entries, "cycleOrder")), [entries]);
-	const customIds = useMemo(() => customRoles(roles), [roles]);
+	const isProject = scope === "project";
+	const customIds = useMemo(
+		() => customRoles(isProject ? { ...roles, ...projectRoles } : roles),
+		[roles, projectRoles, isProject],
+	);
+	const overrideIds = useMemo(
+		() => Object.keys(projectRoles).filter((id) => roleValue(projectRoles, id) !== null),
+		[projectRoles],
+	);
 
 	const q = query.trim().toLowerCase();
 	const matchRole = (r: { id: string; zhLabel: string; description: string }) =>
@@ -812,8 +903,8 @@ export function ModelRolesSection({ query = "" }: { query?: string }) {
 	const customRows = useMemo(() => customIds.filter((id) => matchRole({ id, zhLabel: id, description: "" })), [customIds, q]);
 
 	const allRoleIds = useMemo(
-		() => [...BUILTIN_ROLES.map((r) => r.id), ...customIds],
-		[customIds],
+		() => [...BUILTIN_ROLES.map((r) => r.id), ...customRoles(roles)],
+		[roles],
 	);
 
 	const setStorage = async (mode: string) => {
@@ -829,8 +920,159 @@ export function ModelRolesSection({ query = "" }: { query?: string }) {
 		}
 	};
 
+	const writeGlobalRole = async (roleId: string, value: string | null) => {
+		await ompConfigSet("modelRoles", JSON.stringify(withRoleAssignment(roles, roleId, value)));
+	};
+
+	// Re-read before every write so edits made elsewhere are never clobbered;
+	// applyProjectRole throws on invalid YAML, so nothing is written then.
+	const writeProjectRole = async (roleId: string, value: string | null) => {
+		const targetPath = activeProjectPath;
+		if (!targetPath) throw new Error("没有选中的项目");
+		try {
+			const file = await ompProjectConfigRead(targetPath);
+			await ompProjectConfigWrite(targetPath, applyProjectRole(file.content, roleId, value));
+		} finally {
+			await loadProject(targetPath);
+		}
+	};
+
+	const workspaces = useSessions((s) => s.workspaces);
+	const activeProject = activeProjectPath
+		? workspaces.find((w) => w.path === activeProjectPath) ?? null
+		: null;
+	const projectName = activeProject?.name ?? (activeProjectPath ? basename(activeProjectPath) : "");
+	const projectPath =
+		project.status === "idle"
+			? activeProjectPath
+				? projectConfigPath(activeProjectPath)
+				: ""
+			: project.path;
+
+	const renderRow = (
+		r: { id: string; label: string; description: string; kind: "chat" | "modelKind" },
+		isCustom = false,
+	) => (
+		<RoleRow
+			key={`${scope}:${r.id}`}
+			roleId={r.id}
+			label={r.label}
+			description={r.description}
+			kind={r.kind}
+			isCustom={isCustom}
+			scope={scope}
+			current={roleValue(isProject ? projectRoles : roles, r.id)}
+			inherited={isProject ? roleValue(roles, r.id) : null}
+			projectOverride={isProject ? null : roleValue(projectRoles, r.id)}
+			chains={chains}
+			models={models}
+			writeRole={isProject ? writeProjectRole : writeGlobalRole}
+			onSaved={handleChanged}
+		/>
+	);
+
 	return (
 		<div className="space-y-4">
+			{/* modelRoleStorage prominently */}
+			<div className="space-y-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
+				<div>
+					<div className="mb-1.5 flex items-center gap-2">
+						<span className="text-[11px] font-semibold text-neutral-300">角色保存策略</span>
+						<span className="text-[10px] text-neutral-500">(modelRoleStorage)</span>
+					</div>
+					<div className="flex items-center gap-3">
+						<Segmented
+							size="sm"
+							value={storage}
+							disabled={storageBusy}
+							onChange={(m) => void setStorage(m)}
+							options={[
+								{ value: "global", label: "全局统一" },
+								{ value: "project", label: "按项目决定" },
+							]}
+						/>
+					</div>
+					<p className="mt-1.5 text-[11px] leading-[1.4] text-neutral-500">
+						{storage === "global"
+							? "所有会话与终端 /model 默认使用全局配置"
+							: "终端 /model 优先写入当前项目 .omp/config.yml，实现仓库专属模型"}
+					</p>
+				</div>
+			</div>
+
+			{/* scope switcher */}
+			<div className="space-y-1.5 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
+				<div className="flex items-center gap-3">
+					<span className="text-[11px] font-medium text-neutral-300">作用范围</span>
+					<Segmented<Scope>
+						size="sm"
+						value={scope}
+						onChange={(v) => {
+							setScopePick(v);
+							if (v === "project" && cwd && !activeProjectPath) {
+								setActiveProjectPath(cwd);
+							}
+						}}
+						options={[
+							{ value: "global", label: "全局" },
+							{
+								value: "project",
+								label: "项目",
+								disabled: !cwd && workspaces.length === 0,
+								title:
+									!cwd && workspaces.length === 0
+										? "先在左侧选中一个会话，或注册一个项目"
+										: undefined,
+							},
+						]}
+					/>
+				</div>
+				{isProject ? (
+					<>
+						{/* Workspace picker */}
+						<div className="space-y-1.5">
+							<span className="text-[10px] font-medium text-neutral-400">选择要配置的项目</span>
+							<NativeSelect
+								value={activeProjectPath ?? ""}
+								onChange={(e) => setActiveProjectPath(e.target.value || null)}
+								className="w-full text-[11px]"
+							>
+								{cwd && (
+									<option value={cwd}>
+										当前活跃会话所在项目 ({basename(cwd)})
+									</option>
+								)}
+								{workspaces
+									.filter((w) => w.path !== cwd)
+									.map((w) => (
+										<option key={w.id} value={w.path}>
+											{w.name} — {w.path}
+										</option>
+									))}
+							</NativeSelect>
+						</div>
+						<div className="min-w-0 text-[11px] leading-5 text-neutral-400">
+							<div className="flex min-w-0 items-baseline gap-1.5">
+								<span className="shrink-0 font-medium text-neutral-200">{projectName}</span>
+								<span title={projectPath} className="min-w-0 truncate font-mono text-neutral-500">
+									{projectPath}
+								</span>
+							</div>
+							<div>仅对在该目录启动的会话生效；未覆盖的角色继承全局</div>
+						</div>
+					</>
+				) : (
+					<div className="text-[11px] leading-5 text-neutral-400">
+						写入 <span className="font-mono text-neutral-300">~/.omp/agent/config.yml</span>（所有项目共用）
+						{storage === "project" && (
+							<div className="mt-1 text-neutral-500">
+								💡 当前策略为「按项目决定」，终端 /model 会写入项目配置；上方「项目」范围可为任意项目预设角色
+							</div>
+						)}
+					</div>
+				)}
+			</div>
+
 			{error && (
 				<div className="flex items-start gap-1.5 rounded-xl hairline bg-rose-950/20 px-3 py-2 text-[11px] text-rose-300">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -843,114 +1085,116 @@ export function ModelRolesSection({ query = "" }: { query?: string }) {
 				</div>
 			)}
 
-			{loaded && (
-				<>
-					{/* storage + cycle order */}
-					<div className="space-y-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
-						<div className="flex items-center gap-3">
-							<span
-								title="modelRoleStorage：TUI 里 /model 选择器的保存位置；此处编辑始终写入全局配置"
-								className="text-[11px] font-medium text-neutral-300"
-							>
-								角色保存位置
-							</span>
-							<Segmented
-								value={storage}
-								disabled={storageBusy}
-								onPick={(m) => void setStorage(m)}
-								options={[
-									{ id: "global", label: "global" },
-									{ id: "project", label: "project" },
-								]}
-							/>
-						</div>
-						{storage === "project" && (
-							<div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-5 text-amber-200">
-								<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-								<div className="flex-1">
-									仓库 .omp/config.yml 里的角色会覆盖全局——此处的修改对带项目覆盖的仓库不生效。建议 global。
-									<button
-										type="button"
-										disabled={storageBusy}
-										onClick={() => void setStorage("global")}
-										className="ml-1.5 inline-flex rounded-md bg-amber-500/20 px-1.5 py-0.5 font-medium text-amber-100 hover:bg-amber-500/30 active:scale-95 transition-all disabled:opacity-50"
-									>
-										切换为 global
-									</button>
-								</div>
-							</div>
-						)}
-						<div className="border-t border-[var(--border-divider)] pt-3">
-							<CycleOrderEditor
-								value={cycle}
-								availableRoles={allRoleIds}
-								onSaved={handleChanged}
-							/>
-						</div>
+			{isProject && project.status === "error" && (
+				<div className="flex items-start gap-1.5 rounded-xl hairline bg-rose-950/20 px-3 py-2 text-[11px] leading-5 text-rose-300">
+					<AlertTriangle className="mt-1 h-3 w-3 shrink-0" />
+					<div className="min-w-0 flex-1">
+						<div>无法使用项目配置（为免覆盖已停止写入）：{project.error}</div>
+						<div className="break-all font-mono text-rose-300/70">{project.path}</div>
 					</div>
+					<button
+						type="button"
+						onClick={() => void loadProject(activeProjectPath)}
+						className="shrink-0 whitespace-nowrap rounded-md bg-rose-500/20 px-1.5 py-0.5 font-medium text-rose-100 hover:bg-rose-500/30 active:scale-95 transition-all"
+					>
+						重新读取
+					</button>
+				</div>
+			)}
+			{isProject && project.status === "idle" && (
+				<div className="text-xs text-neutral-500">正在读取项目配置…</div>
+			)}
+
+			{loaded && (!isProject || project.status === "ok") && (
+				<>
+					{!isProject && overrideIds.length > 0 && (
+						<div className="flex items-center gap-2 rounded-xl hairline bg-sky-500/10 px-3 py-2 text-[11px] leading-5 text-sky-200">
+							<span className="min-w-0 flex-1">
+								当前项目「{projectName}」单独设置了 {overrideIds.length} 个角色（
+								<span className="font-mono">{overrideIds.join(", ")}</span>
+								），在该项目里以项目设置为准
+							</span>
+							<button
+								type="button"
+								onClick={() => setScopePick("project")}
+								className="shrink-0 whitespace-nowrap rounded-md bg-sky-500/20 px-2 py-0.5 font-medium text-sky-100 hover:bg-sky-500/30 active:scale-95 transition-all"
+							>
+								查看项目设置
+							</button>
+						</div>
+					)}
 
 					<p className="px-1 text-[11px] leading-4 text-neutral-500">
-						选模型后立即保存；「回退」徽章展开该角色的回退链（未设置 = 用内置默认，不回退 = 失败即停，N 项 = 按顺序尝试）。
+						{isProject
+							? "选模型即为本项目创建覆盖，「恢复继承」删除覆盖。回退链与切换顺序只支持全局设置。"
+							: "选模型后立即保存；「回退」徽章展开该角色的回退链（未设置 = 用内置默认，不回退 = 失败即停，N 项 = 按顺序尝试）。"}
 					</p>
 
-					<RoleGroup
-						title="对话角色"
-						titleHint="chat roles — 可带 :thinking 后缀"
-					>
-						{chatRows.map((r) => (
-							<RoleRow
-								key={r.id}
-								roleId={r.id}
-								label={r.zhLabel}
-								description={r.description}
-								kind={r.kind}
-								roles={roles}
-								chains={chains}
-								models={models}
-								onSaved={handleChanged}
-							/>
-						))}
-					</RoleGroup>
+					{chatRows.length > 0 && (
+						<RoleGroup title="对话角色" titleHint="chat roles — 可带 :thinking 后缀">
+							{chatRows.map((r) =>
+								renderRow({ id: r.id, label: r.zhLabel, description: r.description, kind: r.kind }),
+							)}
+						</RoleGroup>
+					)}
 
-					<RoleGroup
-						title="模型职能角色"
-						titleHint="model-kind roles — 图像 / 搜索 / 语音等专用运行器"
-					>
-						{kindRows.map((r) => (
-							<RoleRow
-								key={r.id}
-								roleId={r.id}
-								label={r.zhLabel}
-								description={r.description}
-								kind={r.kind}
-								roles={roles}
-								chains={chains}
-								models={models}
-								onSaved={handleChanged}
-							/>
-						))}
-					</RoleGroup>
+					{kindRows.length > 0 && (
+						<RoleGroup
+							title="模型职能角色"
+							titleHint="model-kind roles — 图像 / 搜索 / 语音等专用运行器"
+						>
+							{kindRows.map((r) =>
+								renderRow({ id: r.id, label: r.zhLabel, description: r.description, kind: r.kind }),
+							)}
+						</RoleGroup>
+					)}
 
 					{customRows.length > 0 && (
 						<RoleGroup title="自定义角色" titleHint="modelRoles 中的非内置键">
-							{customRows.map((id) => (
-								<RoleRow
-									key={id}
-									roleId={id}
-									label={id}
-									description="用户自定义角色（modelRoles 中的非内置键）"
-									kind="chat"
-									isCustom
-									roles={roles}
-									chains={chains}
-									models={models}
+							{customRows.map((id) =>
+								renderRow(
+									{
+										id,
+										label: id,
+										description: "用户自定义角色（modelRoles 中的非内置键）",
+										kind: "chat",
+									},
+									true,
+								),
+							)}
+						</RoleGroup>
+					)}
+
+					{!isProject && (
+						<div>
+							<h3 className="mb-1.5 px-1 text-[11px] font-semibold text-neutral-400">高级</h3>
+							<div className="space-y-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
+								<CycleOrderEditor
+									value={cycle}
+									availableRoles={allRoleIds}
 									onSaved={handleChanged}
 								/>
-							))}
-						</RoleGroup>
+							</div>
+						</div>
 					)}
 				</>
 			)}
 		</div>
 	);
+}
+
+/** idle = not yet read (or no cwd); ok/error carry the resolved file path. */
+type ProjectState =
+	| { status: "idle" }
+	| { status: "ok"; path: string; roles: Record<string, unknown> }
+	| { status: "error"; path: string; error: string };
+
+const EMPTY_ROLES: Record<string, unknown> = {};
+
+function projectConfigPath(dir: string): string {
+	return `${dir.replace(/[\\/]+$/, "")}/.omp/config.yml`;
+}
+
+function basename(dir: string): string {
+	return dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || dir;
 }

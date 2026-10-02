@@ -16,8 +16,11 @@
 import {
 	AlertTriangle,
 	ExternalLink,
+	FolderOpen,
+	Loader2,
 	Puzzle,
 	RefreshCw,
+	Search,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -37,6 +40,8 @@ import {
 import { toast } from "../../lib/toast";
 import { Switch } from "./Switch";
 import { OmpConfigSection } from "./OmpConfigSection";
+import { projectName } from "./mcpDraft";
+import { SectionHeader } from "./ui";
 
 const KIND_LABELS: Record<string, string> = {
 	npm: "npm",
@@ -80,9 +85,12 @@ export function PluginsSection({
 	const [catalog, setCatalog] = useState<PluginCatalog | null>(null);
 	const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
 	const [loadError, setLoadError] = useState<string | null>(null);
+	const [loading, setLoading] = useState(false);
 	const [busy, setBusy] = useState<string | null>(null);
+	const [filter, setFilter] = useState("");
 
 	const reload = useCallback(async () => {
+		setLoading(true);
 		try {
 			const [cat, skills] = await Promise.all([
 				pluginsList(cwd),
@@ -93,6 +101,8 @@ export function PluginsSection({
 			setLoadError(null);
 		} catch (e) {
 			setLoadError(errMsg(e));
+		} finally {
+			setLoading(false);
 		}
 	}, [cwd]);
 
@@ -100,7 +110,8 @@ export function PluginsSection({
 		void reload();
 	}, [reload]);
 
-	const q = query.trim().toLowerCase();
+	const q = (filter.trim() || query.trim()).toLowerCase();
+
 	const plugins = useMemo(
 		() =>
 			(catalog?.plugins ?? []).filter(
@@ -173,21 +184,45 @@ export function PluginsSection({
 		);
 	};
 
+	const busyIcon = <Loader2 className="h-3 w-3 animate-spin text-neutral-500" aria-label="正在保存" />;
+
 	return (
 		<div className="space-y-6">
-			<div>
-				<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">
-					插件
-				</h2>
-				<p className="text-xs text-neutral-400">
-					OMP 插件包（npm / 本地链接 / 市场安装）与扩展模块；停用对新会话生效
-				</p>
+			<div className="space-y-2">
+				<SectionHeader
+					title="插件"
+					description="插件和扩展模块能给 AI 增加新命令、工具或行为。开关改动只对之后新开的会话生效。"
+				/>
+				<div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
+					<FolderOpen className="h-3 w-3 shrink-0" />
+					{cwd ? (
+						<span className="truncate" title={cwd}>
+							当前项目：<span className="text-neutral-200">{projectName(cwd)}</span>
+							<span className="ml-1 text-neutral-500">（同时显示该项目自己安装的插件）</span>
+						</span>
+					) : (
+						<span className="text-neutral-500">
+							未选择项目：只显示全局插件。在侧栏选中一个会话后，可查看该项目的插件。
+						</span>
+					)}
+				</div>
 			</div>
 
 			{loadError && (
-				<div className="flex items-start gap-1.5 rounded-xl hairline bg-rose-950/20 px-3 py-2 text-[11px] text-rose-300">
+				<div
+					role="alert"
+					className="flex items-start gap-1.5 rounded-xl hairline bg-rose-950/20 px-3 py-2 text-[11px] text-rose-300"
+				>
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-					<span className="break-all">{loadError}</span>
+					<span className="min-w-0 flex-1 break-all">读取插件失败：{loadError}</span>
+					<button
+						type="button"
+						onClick={() => void reload()}
+						className="inline-flex shrink-0 items-center gap-1 text-rose-200 hover:underline"
+					>
+						<RefreshCw className="h-3 w-3" />
+						重试
+					</button>
 				</div>
 			)}
 
@@ -201,36 +236,53 @@ export function PluginsSection({
 						</span>
 					</div>
 					<div className="flex items-center gap-1.5">
+						<div className="relative">
+							<Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-500" />
+							<input
+								type="text"
+								value={filter}
+								onChange={(e) => setFilter(e.target.value)}
+								placeholder="搜索插件…"
+								aria-label="搜索插件和扩展"
+								className="w-32 rounded-lg hairline bg-[var(--well-bg)] py-1 pl-7 pr-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#0A84FF]/50"
+							/>
+						</div>
 						<button
 							type="button"
 							onClick={() => void reload()}
-							disabled={busy !== null}
-							title="重新扫描"
+							disabled={busy !== null || loading}
+							title="重新扫描插件目录"
+							aria-label="重新扫描插件目录"
 							className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-50"
 						>
-							<RefreshCw className="h-3.5 w-3.5" />
+							<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
 						</button>
 						{catalog?.roots.map((r) => (
 							<button
 								key={r.dir}
 								type="button"
 								onClick={() => reveal(r.dir)}
-								title={`${r.scope === "project" ? "项目" : "用户"}插件目录：${r.dir}`}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
+								title={r.dir}
+								className="inline-flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 transition-all"
 							>
-								<ExternalLink className="h-3.5 w-3.5" />
+								<ExternalLink className="h-3 w-3" />
+								{r.scope === "project" ? "项目插件目录" : "全局插件目录"}
 							</button>
 						))}
 					</div>
 				</div>
 
 				<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card divide-y divide-[var(--border-divider)] overflow-hidden">
-					{plugins.length === 0 ? (
+					{!catalog && !loadError ? (
+						<div className="flex justify-center py-5 text-neutral-500">
+							<Loader2 aria-label="加载插件" className="h-4 w-4 animate-spin" />
+						</div>
+					) : plugins.length === 0 ? (
 						<div className="flex items-center gap-2 px-3.5 py-4 text-xs text-neutral-500">
 							<Puzzle className="h-3.5 w-3.5" />
 							{q
-								? "没有匹配的插件"
-								: "未安装插件。可用 omp plugin install <包名> 或 omp plugin link <路径> 安装"}
+								? `没有匹配「${q}」的插件`
+								: "还没有安装插件。可在终端运行 omp plugin install <包名> 安装，装好后点上方刷新按钮。"}
 						</div>
 					) : (
 						plugins.map((p) => (
@@ -248,17 +300,23 @@ export function PluginsSection({
 												v{p.version}
 											</span>
 										)}
-										<span className="shrink-0 rounded bg-[var(--well-bg)] px-1 py-0.2 text-[9px] text-neutral-400">
+										<span
+											title="安装来源"
+											className="shrink-0 rounded bg-[var(--well-bg)] px-1 py-0.5 text-[9px] text-neutral-400"
+										>
 											{pluginSourceLabel(p)}
 										</span>
-										{p.scope === "project" && (
-											<span className="shrink-0 rounded bg-[var(--well-bg)] px-1 py-0.2 text-[9px] text-neutral-400">
-												项目
-											</span>
-										)}
+										<span
+											title={p.scope === "project" ? "只在当前项目的会话中加载" : "所有项目的会话都会加载"}
+											className={`shrink-0 rounded px-1 py-0.5 text-[9px] ${
+												p.scope === "project" ? "bg-sky-500/15 text-sky-300" : "bg-[var(--well-bg)] text-neutral-400"
+											}`}
+										>
+											{p.scope === "project" ? "项目" : "全局"}
+										</span>
 										{!p.hasManifest && (
 											<span
-												title="package.json 缺少 omp/pi 清单，运行时不加载该插件"
+												title="插件缺少 omp 清单 (package.json 中的 omp/pi 字段)，运行时不会加载"
 												className="shrink-0 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] text-amber-300"
 											>
 												无清单
@@ -266,7 +324,7 @@ export function PluginsSection({
 										)}
 										{p.projectDisabled && (
 											<span
-												title="项目 plugin-overrides.json 已禁用"
+												title="当前项目的 plugin-overrides.json 禁用了它，需在该文件中解除"
 												className="shrink-0 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] text-amber-300"
 											>
 												项目已禁用
@@ -281,7 +339,7 @@ export function PluginsSection({
 									{p.enabledFeatures != null &&
 										p.enabledFeatures.length > 0 && (
 											<div className="mt-0.5 truncate font-mono text-[10px] text-neutral-600">
-												features:{" "}
+												已启用功能：{" "}
 												{p.enabledFeatures.join(", ")}
 											</div>
 										)}
@@ -291,20 +349,29 @@ export function PluginsSection({
 										<button
 											type="button"
 											onClick={() => reveal(p.dir!)}
-											title={p.dir}
+											title={`在访达中显示：${p.dir}`}
+											aria-label={`在访达中显示 ${p.name}`}
 											className="rounded-lg p-1 text-neutral-500 hover:bg-[var(--bg-hover)] hover:text-neutral-300 active:scale-95 transition-all"
 										>
 											<ExternalLink className="h-3 w-3" />
 										</button>
 									)}
-									<Switch
-										checked={p.enabled}
-										disabled={
-											busy === `plugin:${p.name}` ||
+									{busy === `plugin:${p.name}` && busyIcon}
+									<span
+										title={
 											p.projectDisabled
+												? "已被项目覆盖配置禁用，无法在此开启"
+												: p.enabled
+													? "已启用，点击停用"
+													: "已停用，点击启用"
 										}
-										onChange={() => void togglePlugin(p)}
-									/>
+									>
+										<Switch
+											checked={p.enabled}
+											disabled={busy !== null || p.projectDisabled}
+											onChange={() => void togglePlugin(p)}
+										/>
+									</span>
 								</div>
 							</div>
 						))
@@ -317,13 +384,13 @@ export function PluginsSection({
 				<div className="px-1 text-xs font-medium text-neutral-200">
 					扩展模块
 					<span className="ml-1.5 text-[10px] font-normal text-neutral-500">
-						{extensions.length} 个 · 用户/项目 extensions 目录
+						{extensions.length} 个 · 放在 extensions 目录中的脚本模块
 					</span>
 				</div>
 				<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card divide-y divide-[var(--border-divider)] overflow-hidden">
 					{exts.length === 0 ? (
 						<div className="px-3.5 py-4 text-xs text-neutral-500">
-							{q ? "没有匹配的扩展" : "未发现扩展模块"}
+							{q ? `没有匹配「${q}」的扩展` : "未发现扩展模块"}
 						</div>
 					) : (
 						exts.map((ext) => (
@@ -336,10 +403,12 @@ export function PluginsSection({
 										<span className="truncate text-xs font-semibold text-neutral-100">
 											{ext.name}
 										</span>
-										<span className="shrink-0 rounded bg-[var(--well-bg)] px-1 py-0.2 text-[9px] text-neutral-400">
-											{ext.source === "project"
-												? "项目"
-												: "用户"}
+										<span
+											className={`shrink-0 rounded px-1 py-0.5 text-[9px] ${
+												ext.source === "project" ? "bg-sky-500/15 text-sky-300" : "bg-[var(--well-bg)] text-neutral-400"
+											}`}
+										>
+											{ext.source === "project" ? "项目" : "全局"}
 										</span>
 									</div>
 									<div
@@ -358,9 +427,10 @@ export function PluginsSection({
 									>
 										<ExternalLink className="h-3 w-3" />
 									</button>
+									{busy === `ext:${ext.path}` && busyIcon}
 									<Switch
 										checked={ext.enabled}
-										disabled={busy === `ext:${ext.path}`}
+										disabled={busy !== null}
 										onChange={() => void toggleExtension(ext)}
 									/>
 								</div>

@@ -1,4 +1,4 @@
-/** [D] Apple HIG toggle switch — h-5 w-9, white knob, #0A84FF on-track, spring transition. */
+/** [D] Apple HIG toggle switch — h-5 w-9, white knob, theme-adaptive --accent on-track, spring transition. */
 
 export function Switch({
 	checked,
@@ -20,8 +20,8 @@ export function Switch({
 				e.stopPropagation();
 				onChange(!checked);
 			}}
-			className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0A84FF]/50 ${
-				checked ? "bg-[#0A84FF]" : "bg-[var(--switch-off,#39393D)]"
+			className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] ${
+				checked ? "bg-[var(--accent)]" : "bg-[var(--switch-off,#39393D)]"
 			} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer press-scale"}`}
 		>
 			<span

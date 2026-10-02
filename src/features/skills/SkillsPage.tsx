@@ -23,6 +23,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FloatingLayer, Z_LAYER } from "../../components/FloatingLayer";
+import { Segmented } from "../../components/Segmented";
 import type { ExtensionItem, SkillIssue, SkillItem } from "../../lib/contracts";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { absoluteTime } from "../../lib/format";
@@ -323,36 +324,6 @@ async function revealInFinder(path: string) {
 	} catch (err) {
 		toast.error(`在访达中显示失败: ${errMsg(err)}`);
 	}
-}
-
-function Segmented<T extends string>({
-	options,
-	value,
-	onChange,
-}: {
-	options: { value: T; label: string }[];
-	value: T;
-	onChange: (v: T) => void;
-}) {
-	return (
-		<div className="flex items-center gap-0.5 rounded-lg bg-[var(--well-bg)] p-0.5 hairline">
-			{options.map((o) => (
-				<button
-					key={o.value}
-					type="button"
-					onClick={() => onChange(o.value)}
-					className={clsx(
-						"whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-						value === o.value
-							? "bg-[var(--bg-active-fill)] text-neutral-100 shadow-xs"
-							: "text-neutral-400 hover:text-neutral-200",
-					)}
-				>
-					{o.label}
-				</button>
-			))}
-		</div>
-	);
 }
 
 function IssueBadges({ issues }: { issues: SkillIssue[] }) {

@@ -212,6 +212,9 @@ pub fn run() {
             settings::omp_config_list,
             settings::omp_config_set,
             settings::omp_config_reset,
+            settings::omp_project_config_read,
+            settings::omp_project_config_write,
+            settings::omp_info,
             // providers (API provider manager + encrypted vault)
             providers::commands::provider_list,
             providers::commands::provider_save,
@@ -220,6 +223,7 @@ pub fn run() {
             providers::commands::provider_reorder,
             providers::commands::provider_test,
             providers::commands::provider_test_model,
+            providers::commands::provider_fetch_models,
             providers::commands::provider_export_env_text,
             providers::commands::omp_providers_list,
             providers::commands::provider_import_omp,

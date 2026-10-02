@@ -10,6 +10,7 @@ import type {
 	BacklogKind,
 	BacklogPatch,
 	BacklogRef,
+	DiscoveredModel,
 	DirEntry,
 	GitHistory,
 	GitBadge,
@@ -22,12 +23,14 @@ import type {
 	OauthLoginProvider,
 	OauthLoginStatus,
 	OmpConfigListResult,
+	OmpProjectConfigFile,
 	OmpProviderInfo,
 	OmpImportResult,
 	PairingInfo,
 	PathCheck,
 	PendingUiRequest,
 	PluginCatalog,
+	ProviderApi,
 	ProviderConfig,
 	ProcessMemoryInfo,
 	ProviderTestResult,
@@ -352,6 +355,14 @@ export const ompConfigSet = (key: string, value: string) =>
 export const ompConfigReset = (key: string) =>
 	invoke<void>("omp_config_reset", { key });
 
+/** Read `<cwd>/.omp/config.yml` verbatim (exists=false when missing). */
+export const ompProjectConfigRead = (cwd: string) =>
+	invoke<OmpProjectConfigFile>("omp_project_config_read", { cwd });
+
+/** Atomically write `<cwd>/.omp/config.yml`, creating `.omp/` when missing. */
+export const ompProjectConfigWrite = (cwd: string, content: string) =>
+	invoke<void>("omp_project_config_write", { cwd, content });
+
 // ---- providers ----
 
 export const providerList = () => invoke<ProviderConfig[]>("provider_list");
@@ -376,6 +387,20 @@ export const providerTest = (id: string) =>
 /** Real HTTP probe for a specific model under a provider. */
 export const providerTestModel = (id: string, modelId: string) =>
 	invoke<ProviderTestResult>("provider_test_model", { id, modelId });
+
+/** Fetches model list directly from the provider's API endpoint (without CORS restrictions). */
+export const providerFetchModels = (
+	baseUrl: string,
+	api: ProviderApi,
+	apiKey?: string | null,
+	providerId?: string | null,
+) =>
+	invoke<DiscoveredModel[]>("provider_fetch_models", {
+		baseUrl,
+		apiKey: apiKey ?? null,
+		api,
+		providerId: providerId ?? null,
+	});
 
 /** Plaintext .env text (clipboard only — never persisted by the app). */
 export const providerExportEnvText = (ids?: string[] | null) =>
@@ -524,3 +549,6 @@ export const pluginSetEnabled = (
 	enabled: boolean,
 	cwd?: string | null,
 ) => invoke<void>("plugin_set_enabled", { cwd: cwd ?? null, name, enabled });
+
+/** Resolve the configured omp binary, probe `omp --version`, and report agent-dir paths. */
+export const ompInfo = () => invoke<import("./contracts").OmpInfo>("omp_info");

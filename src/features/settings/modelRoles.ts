@@ -14,6 +14,68 @@
  * `JSON.stringify`. There is no `omp config set modelRoles.<role>`.
  */
 
+import { isMap, parseDocument, type Document } from "yaml";
+
+export type ProjectRolesParse =
+	| { ok: true; roles: Record<string, unknown> }
+	| { ok: false; error: string };
+
+/** Parse a project `.omp/config.yml` and validate the top level is a mapping. */
+function parseProjectDoc(
+	content: string,
+): { ok: true; doc: Document } | { ok: false; error: string } {
+	const doc = parseDocument(content);
+	if (doc.errors.length > 0) {
+		return { ok: false, error: `YAML 解析失败：${doc.errors[0].message}` };
+	}
+	if (doc.contents !== null && !isMap(doc.contents)) {
+		return { ok: false, error: "配置文件顶层必须是键值映射（mapping）" };
+	}
+	const roles = doc.get("modelRoles");
+	if (roles !== undefined && roles !== null && !isMap(roles)) {
+		return { ok: false, error: "modelRoles 必须是键值映射（mapping）" };
+	}
+	return { ok: true, doc };
+}
+
+/** Extract `modelRoles` from project config YAML content ({} when absent). */
+export function parseProjectRoles(content: string): ProjectRolesParse {
+	const r = parseProjectDoc(content);
+	if (!r.ok) return r;
+	return { ok: true, roles: asRecord(r.doc.toJS()?.modelRoles) };
+}
+
+/**
+ * Set (`value` string) or delete (`null`) `modelRoles.<role>` in project YAML
+ * content, preserving comments and other keys. Drops `modelRoles` when it
+ * becomes empty. Throws a Chinese message on invalid content.
+ */
+export function applyProjectRole(
+	content: string,
+	role: string,
+	value: string | null,
+): string {
+	const r = parseProjectDoc(content);
+	if (!r.ok) throw new Error(r.error);
+	const { doc } = r;
+	if (value === null) {
+		doc.deleteIn(["modelRoles", role]);
+		const roles = doc.get("modelRoles");
+		if (roles === null || (isMap(roles) && roles.items.length === 0)) {
+			doc.delete("modelRoles");
+		}
+	} else {
+		if (doc.contents === null) doc.contents = doc.createNode({});
+		if (doc.get("modelRoles") === null) doc.delete("modelRoles");
+		doc.setIn(["modelRoles", role], value);
+	}
+	if (doc.contents === null || (isMap(doc.contents) && doc.contents.items.length === 0)) {
+		// Keep comments-only files intact; otherwise produce an empty file.
+		return doc.commentBefore || doc.comment ? doc.toString() : "";
+	}
+	return doc.toString();
+}
+
 export interface BuiltinRole {
 	id: string;
 	/** Short Chinese label for the role. */

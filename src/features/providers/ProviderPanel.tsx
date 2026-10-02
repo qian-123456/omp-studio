@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { SectionHeader } from "../settings/ui";
 import {
 	Activity,
 	CircleCheck,
@@ -151,16 +152,11 @@ export function ProviderPanel() {
 		<div className="space-y-4">
 			{/* Fixed action bar — always visible, never scrolled away. */}
 			<div className="space-y-3">
-				<div className="flex flex-wrap items-center justify-between gap-3">
-					<div>
-						<h2 className="text-sm font-semibold text-neutral-100">
-							API 供应商
-						</h2>
-						<p className="mt-0.5 text-xs text-neutral-400">
-							{totalCount} 个（{managedCount} 个已由工作台托管密钥）·
-							读取 ~/.omp/agent 与 providers.json
-						</p>
-					</div>
+				<SectionHeader
+					title="API 供应商"
+					description={`共 ${totalCount} 个（${managedCount} 个的密钥由工作台加密保管）。供应商就是提供模型的服务商，配好后新会话即可使用其模型。`}
+				/>
+				<div className="flex flex-wrap items-center justify-end gap-3">
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
 						<div className="relative">
 							<Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-500" />
@@ -266,8 +262,32 @@ export function ProviderPanel() {
 			)}
 
 			{!isLoading && !combinedError && filteredRows.length === 0 && (
-				<div className="rounded-xl hairline bg-[var(--well-bg)]/40 py-6 text-center text-xs text-neutral-500">
-					{rows.length === 0 ? "暂无供应商" : "没有匹配的供应商"}
+				<div className="rounded-xl hairline bg-[var(--well-bg)]/40 px-4 py-8 text-center text-xs text-neutral-400">
+					{rows.length === 0 ? (
+						<div className="space-y-3">
+							<p className="text-sm text-neutral-200">还没有配置任何供应商</p>
+							<p>添加一个模型服务商（如 Anthropic、OpenAI 或公司网关）并填入 API 密钥，即可开始对话。</p>
+							<button
+								type="button"
+								onClick={() => setDialog({ mode: "add" })}
+								className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-[#0A84FF]/90 active:scale-95"
+							>
+								<Plus className="h-3.5 w-3.5" />
+								<span>添加供应商</span>
+							</button>
+						</div>
+					) : (
+						<div className="space-y-2">
+							<p>没有匹配「{query.trim()}」的供应商</p>
+							<button
+								type="button"
+								onClick={() => setQuery("")}
+								className="text-[#0A84FF] hover:underline"
+							>
+								清除筛选
+							</button>
+						</div>
+					)}
 				</div>
 			)}
 
@@ -427,8 +447,19 @@ function UnifiedProviderRow({
 		return (
 			<div
 				id={`provider-row-${row.key}`}
+				role="button"
+				tabIndex={0}
+				aria-expanded={false}
 				onClick={onToggleExpand}
-				className="group flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)]"
+				onKeyDown={(e) => {
+					if (e.target !== e.currentTarget) return;
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						onToggleExpand();
+					}
+				}}
+				title="点击展开查看模型与详情"
+				className="group flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0A84FF]/60"
 			>
 
 				{/* Left items: Preset dot + Name + Auth badge + host + {N} 模型 */}
@@ -503,8 +534,26 @@ function UnifiedProviderRow({
 
 					{/* Model count */}
 					<span className="shrink-0 font-mono text-[10px] text-neutral-500">
-						{allModels.length} 模型
+						{allModels.length} 个模型
 					</span>
+
+					{/* Last connection test result stays visible after the spinner ends. */}
+					{test?.state === "done" && (
+						<span
+							title={`${test.result.detail}（${test.result.latencyMs}ms）`}
+							className={clsx(
+								"inline-flex shrink-0 items-center gap-1 text-[10px]",
+								test.result.ok ? "text-emerald-400" : "text-rose-400",
+							)}
+						>
+							{test.result.ok ? (
+								<CircleCheck className="h-3 w-3" />
+							) : (
+								<CircleX className="h-3 w-3" />
+							)}
+							{test.result.ok ? "连接正常" : "连接失败"}
+						</span>
+					)}
 				</div>
 
 				{/* Actions zone: hover reveal + always-visible toggle/import */}
@@ -518,7 +567,7 @@ function UnifiedProviderRow({
 								"flex items-center gap-1 transition-opacity duration-150",
 								test?.state === "testing"
 									? "opacity-100"
-									: "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+									: "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
 							)}
 						>
 							<button

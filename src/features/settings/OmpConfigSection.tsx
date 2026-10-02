@@ -1,446 +1,479 @@
-import {
-	AlertTriangle,
-	Check,
-	KeyRound,
-	Pencil,
-	RefreshCw,
-	RotateCcw,
-	X,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
+import { AlertTriangle, Braces, ChevronRight, FolderGit2, KeyRound, RefreshCw, RotateCcw, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OmpConfigEntry } from "../../lib/contracts";
-import { confirmDialog, errMsg } from "../../lib/dialogs";
-import { isComposing } from "../../lib/hooks";
-import { ompConfigReset, ompConfigSet } from "../../lib/ipc";
+import { confirmDialog } from "../../lib/dialogs";
+import { ompConfigReset, ompConfigSet, ompProjectConfigRead } from "../../lib/ipc";
 import { NativeSelect } from "../../components/NativeSelect";
+import { Segmented } from "../../components/Segmented";
 import { Switch } from "./Switch";
 import { useOmpConfigStore } from "./ompConfigStore";
 import {
+	OMP_CONFIG_META,
 	ompConfigDescription,
 	ompConfigGroup,
 	ompConfigOptionLabel,
 	ompConfigOptions,
 	ompConfigTitle,
 } from "./ompConfigMeta";
-import { groupByDesktopCategory } from "./ompDesktopCategories";
+import { defaultState, defaultText, isStringList, lookupDotPath, parseProjectConfig, toStringList } from "./ompConfigEdit";
+import { groupByDesktopCategory, isDesktopRelevant } from "./ompDesktopCategories";
+import { JsonEditor, RecordEditor, SecretInput, StringListEditor } from "./ompValueEditors";
+import { CommitInput, SaveIndicator, useSaveStatus } from "./ui";
+import { useSettingsProjectCwd } from "./useAppSettings";
 
-const TYPE_BADGE: Record<string, string> = {
-	boolean: "bg-emerald-500/15 text-emerald-300",
-	number: "bg-sky-500/15 text-sky-300",
-	string: "bg-neutral-700/60 text-neutral-300",
-	enum: "bg-violet-500/15 text-violet-300",
-	array: "bg-amber-500/15 text-amber-300",
-	record: "bg-rose-500/15 text-rose-300",
-};
-
-const TYPE_LABEL: Record<string, string> = {
-	boolean: "开关",
-	number: "数字",
-	string: "文本",
-	enum: "枚举",
-	array: "数组",
-	record: "对象",
-};
-
-function formatValue(entry: OmpConfigEntry): string {
-	if (entry.redacted) return "••••••";
-	if (entry.value === null || entry.value === undefined) return "未设置";
-	if (typeof entry.value === "string") return entry.value;
-	return JSON.stringify(entry.value);
+/** Project-layer value for a key from `<cwd>/.omp/config.yml`. */
+interface ProjectOverride {
+	path: string;
+	value: unknown;
 }
 
-/** Short summary for the collapsed value column; the full value stays in the tooltip. */
-function formatValueSummary(entry: OmpConfigEntry): string {
-	if (entry.redacted) return "••••••";
-	if (entry.value === null || entry.value === undefined) return "未设置";
-	if (Array.isArray(entry.value)) return `[${entry.value.length} 项]`;
-	if (typeof entry.value === "object") {
-		return `{${Object.keys(entry.value as Record<string, unknown>).length} 键}`;
-	}
-	if (typeof entry.value === "string") return entry.value;
-	return JSON.stringify(entry.value);
-}
-
-/** Draft text shown when entering edit mode for an entry. */
-function draftFor(entry: OmpConfigEntry): string {
-	if (entry.redacted) return "";
-	if (entry.value === null || entry.value === undefined) {
-		return entry.valueType === "array" ? "[]" : entry.valueType === "record" ? "{}" : "";
-	}
-	if (typeof entry.value === "string") return entry.value;
-	// Pretty-print structured values so the JSON editor stays readable.
-	return JSON.stringify(entry.value, null, 2);
-}
-
-/**
- * One config entry. Collapsed by default: readable title left, current value /
- * switch right. Clicking the row expands the long description plus the program
- * key and type badges; booleans toggle via the macOS-style switch directly.
- */
 /** Sentinel select value for the "type a custom value" escape hatch. */
 const CUSTOM_VALUE = "__custom__";
 
-function ConfigRow({ entry, onChanged }: { entry: OmpConfigEntry; onChanged: () => void }) {
-	const [open, setOpen] = useState(false);
-	const [editing, setEditing] = useState(false);
-	const [draft, setDraft] = useState("");
-	const [showValue, setShowValue] = useState(false);
-	const [custom, setCustom] = useState(false);
-	const [busy, setBusy] = useState(false);
-	const [savedTick, setSavedTick] = useState(false);
-	const [rowError, setRowError] = useState<string | null>(null);
+function displayValue(value: unknown): string {
+	if (value === null || value === undefined) return "未设置";
+	if (typeof value === "string") return value;
+	return JSON.stringify(value);
+}
 
-	const flashSaved = () => {
-		setSavedTick(true);
-		setTimeout(() => setSavedTick(false), 2000);
-	};
+/** Readable label for one option: curated Chinese, with the raw value appended when it differs. */
+function optionText(key: string, o: { value: string; label?: string }): string {
+	const label = ompConfigOptionLabel(key, o);
+	if (label === o.value || (o.label !== undefined && label === o.label)) return label;
+	return `${label}（${o.value}）`;
+}
 
-	const startEdit = () => {
-		const next = draftFor(entry);
-		setDraft(next);
-		setCustom(
-			options !== null && !options.some((o) => o.value === next),
-		);
-		setRowError(null);
-		setEditing(true);
-	};
+const SECRET_KEY = /(?:token|password|apikey|secret)$/i;
 
-	const save = async (value: string) => {
-		let finalValue = value;
-		if (entry.valueType === "array" || entry.valueType === "record") {
-			try {
-				finalValue = JSON.stringify(JSON.parse(value));
-			} catch {
-				setRowError("JSON 格式不正确，请检查后重试");
-				return;
-			}
-		}
-		setBusy(true);
-		setRowError(null);
-		try {
-			await ompConfigSet(entry.key, finalValue);
-			flashSaved();
-			setEditing(false);
-			onChanged();
-		} catch (e) {
-			setRowError(errMsg(e));
-		} finally {
-			setBusy(false);
-		}
-	};
+const CHIP = "inline-flex shrink-0 items-center gap-0.5 rounded px-1.5 py-px text-[10px] font-medium";
 
-	const saveBoolean = async (value: boolean) => {
-		if (busy) return;
-		setBusy(true);
-		setRowError(null);
-		try {
-			await ompConfigSet(entry.key, value ? "true" : "false");
-			flashSaved();
-			onChanged();
-		} catch (e) {
-			setRowError(errMsg(e));
-		} finally {
-			setBusy(false);
-		}
-	};
+/** Parent-child dependencies: when parent is off, children are indented and disabled. */
+const PARENT_CHILD_MAP: Record<string, { parent: string; reason: string }> = {
+	// compaction.enabled is master switch
+	"compaction.asyncEnabled": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.dropUseless": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.experimentalContextManagement": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.handoffSaveToDisk": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.idleEnabled": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.methodOrder": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.midTurnEnabled": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.remoteStreamingV2Enabled": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.supersedeReads": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.thresholdPercent": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	"compaction.thresholdTokens": { parent: "compaction.enabled", reason: "「自动压缩」总开关已关闭，此设置暂不生效" },
+	// compaction.idleEnabled sub-hierarchy
+	"compaction.idleThresholdTokens": { parent: "compaction.idleEnabled", reason: "开启「空闲压缩」后生效" },
+	"compaction.idleTimeoutSeconds": { parent: "compaction.idleEnabled", reason: "开启「空闲压缩」后生效" },
+	// bash.autoBackground hierarchy
+	"bash.autoBackground.thresholdMs": { parent: "bash.autoBackground.enabled", reason: "开启「自动后台运行」后生效" },
+	// autolearn hierarchy
+	"autolearn.autoContinue": { parent: "autolearn.enabled", reason: "开启「自主学习」后生效" },
+	// contextPromotion hierarchy
+	"contextPromotion.maxPromotions": { parent: "contextPromotion.enabled", reason: "开启「上下文提升」后生效" },
+	"contextPromotion.promotionStrategy": { parent: "contextPromotion.enabled", reason: "开启「上下文提升」后生效" },
+};
 
-	const reset = async () => {
+/** Macro-group resolver to avoid 25+ tiny micro-pills in large categories like tools & context. */
+function ompCategorySubGroup(category: string, key: string): string {
+	if (category === "tools") {
+		if (key.startsWith("tools.")) return "可用工具与审批";
 		if (
-			!(await confirmDialog(`将「${ompConfigTitle(entry.key)}」(${entry.key}) 重置为 OMP 默认值？`, {
-				danger: true,
-				okLabel: "重置",
-			}))
+			key.startsWith("bash.") ||
+			key.startsWith("eval.") ||
+			key.startsWith("python.") ||
+			key.startsWith("lsp.") ||
+			key.startsWith("launch.") ||
+			key.startsWith("debug.")
 		) {
-			return;
+			return "终端与代码运行";
 		}
+		if (
+			key.startsWith("web_search.") ||
+			key.startsWith("browser.") ||
+			key.startsWith("fetch.") ||
+			key.startsWith("find.")
+		) {
+			return "搜索与网络工具";
+		}
+		if (
+			key.startsWith("images.") ||
+			key.startsWith("generate_image.") ||
+			key.startsWith("computer.") ||
+			key.startsWith("speechgen.") ||
+			key.startsWith("tts.")
+		) {
+			return "视觉与多模态";
+		}
+		if (
+			key.startsWith("edit.") ||
+			key.startsWith("read.") ||
+			key.startsWith("astEdit.") ||
+			key.startsWith("astGrep.")
+		) {
+			return "文件与代码编辑";
+		}
+		if (
+			key.startsWith("mcp.") ||
+			key.startsWith("skills.") ||
+			key.startsWith("commands.")
+		) {
+			return "扩展与插件配置";
+		}
+		return "其他工具设置";
+	}
+	if (category === "context") {
+		if (key.startsWith("compaction.")) return "上下文压缩";
+		if (key.startsWith("memory.") || key.startsWith("mnemopi.") || key.startsWith("hindsight.") || key.startsWith("memories.")) {
+			return "记忆系统";
+		}
+		if (key.startsWith("autolearn.")) return "自主学习";
+		if (key.startsWith("context.") || key.startsWith("prompt.") || key.startsWith("input.")) {
+			return "上下文控制";
+		}
+	}
+	return ompConfigGroup(key) ?? "其他";
+}
+
+/** Group display order for specific categories (prioritize core tools & compaction). */
+const GROUP_ORDER: Record<string, string[]> = {
+	context: ["上下文压缩", "上下文控制", "记忆系统", "自主学习", "其他"],
+	tools: [
+		"可用工具与审批",
+		"终端与代码运行",
+		"搜索与网络工具",
+		"文件与代码编辑",
+		"视觉与多模态",
+		"扩展与插件配置",
+		"其他工具设置",
+	],
+};
+
+/**
+ * One config entry, laid out like a TUI /settings row: title + state badges,
+ * one-line description, raw key; the control edits in place and autosaves.
+ * Arrays/records get structured editors under the text with a JSON escape hatch.
+ */
+function ConfigRow({
+	entry,
+	override,
+	onChanged,
+	hierarchyDisabled = false,
+	hierarchyReason,
+}: {
+	entry: OmpConfigEntry;
+	override: ProjectOverride | null;
+	onChanged: () => void;
+	hierarchyDisabled?: boolean;
+	hierarchyReason?: string;
+}) {
+	const save = useSaveStatus();
+	const [busy, setBusy] = useState(false);
+	const [jsonMode, setJsonMode] = useState(false);
+	const [custom, setCustom] = useState(false);
+	const [expanded, setExpanded] = useState(false);
+
+	const persist = async (raw: string) => {
 		setBusy(true);
-		setRowError(null);
 		try {
-			await ompConfigReset(entry.key);
-			flashSaved();
-			onChanged();
-		} catch (e) {
-			setRowError(errMsg(e));
+			const ok = await save.run(() => ompConfigSet(entry.key, raw));
+			if (ok) onChanged();
+			return ok;
 		} finally {
 			setBusy(false);
 		}
 	};
+	const persistJson = (value: unknown) => persist(JSON.stringify(value));
 
 	const title = ompConfigTitle(entry.key);
-	const detailDescription = ompConfigDescription(entry.key, entry.description).trim();
-	const badge = TYPE_BADGE[entry.valueType] ?? TYPE_BADGE.string;
-	const badgeLabel = TYPE_LABEL[entry.valueType] ?? entry.valueType;
-	const isBool = entry.valueType === "boolean";
-	const isJson = entry.valueType === "array" || entry.valueType === "record";
+	const description = ompConfigDescription(entry.key, entry.description).trim();
+	const state = defaultState(entry.key, entry.value, entry.redacted);
+	const defText = defaultText(entry.key);
 	const isUnset = entry.value === null || entry.value === undefined;
-	// Dropdown choices from the embedded schema (strict enums, or presets for
-	// numbers/strings); redacted and JSON fields stay free-form.
-	const options = isJson || entry.redacted ? null : ompConfigOptions(entry.key);
-	const optionLabel = (o: { value: string; label?: string }) => {
-		const label = ompConfigOptionLabel(entry.key, o);
-		// Schema-authored labels (e.g. "10%", "8x8 repeated, black") already present
-		// the value; only curated Chinese labels get the raw value appended.
-		if (label === o.value || (o.label !== undefined && label === o.label)) {
-			return label;
+	// Unknown defaults: only offer reset when something is actually set.
+	const canReset = state === "modified" || (state === "unknown" && !isUnset);
+
+	const reset = async () => {
+		const target = defText ? `默认值「${defText}」` : "OMP 默认值";
+		if (!(await confirmDialog(`将「${title}」恢复为${target}？`, { danger: true, okLabel: "恢复默认" }))) return;
+		setBusy(true);
+		try {
+			const ok = await save.run(() => ompConfigReset(entry.key));
+			if (ok) {
+				setJsonMode(false);
+				setCustom(false);
+				onChanged();
+			}
+		} finally {
+			setBusy(false);
 		}
-		return `${label}（${o.value}）`;
 	};
 
+	const isStructured = entry.valueType === "array" || entry.valueType === "record";
+	// omp redacts stored credentials; unset ones arrive as plain empty strings, so
+	// credential-looking keys stay write-only too.
+	const secret = entry.redacted || SECRET_KEY.test(entry.key);
+	const strict = (OMP_CONFIG_META[entry.key]?.values?.length ?? 0) > 0 || entry.valueType === "enum";
+	const options = isStructured || secret ? null : ompConfigOptions(entry.key);
+	const current = isUnset ? "" : typeof entry.value === "string" ? entry.value : JSON.stringify(entry.value);
+	const inOptions = options?.some((o) => o.value === current) ?? false;
+
+	let control: React.ReactNode = null;
+	if (secret && !isStructured) {
+		control = <SecretInput isSet={entry.redacted || !isUnset} busy={busy} label={title} onSave={persist} />;
+	} else if (entry.valueType === "boolean") {
+		control = (
+			<Switch checked={entry.value === true} disabled={busy} onChange={(v) => void persist(v ? "true" : "false")} />
+		);
+	} else if (options && strict && options.length <= 4 && options.every((o) => optionText(entry.key, o).length <= 10)) {
+		control = (
+			<Segmented
+				size="sm"
+				aria-label={title}
+				disabled={busy}
+				value={current}
+				options={options.map((o) => ({ value: o.value, label: optionText(entry.key, o), title: o.description }))}
+				onChange={(v) => void persist(v)}
+			/>
+		);
+	} else if (options) {
+		const showCustom = !strict && (custom || (!inOptions && !isUnset));
+		control = (
+			<div className="flex items-center gap-1.5">
+				<NativeSelect
+					aria-label={title}
+					value={showCustom ? CUSTOM_VALUE : inOptions ? current : ""}
+					disabled={busy}
+					onChange={(e) => {
+						if (e.target.value === CUSTOM_VALUE) {
+							setCustom(true);
+						} else if (e.target.value) {
+							setCustom(false);
+							void persist(e.target.value);
+						}
+					}}
+					containerClassName="w-48"
+					className="text-[11px]"
+				>
+					{!inOptions && !showCustom && <option value="">{isUnset ? "未设置" : current}</option>}
+					{options.map((o) => (
+						<option key={o.value} value={o.value} title={o.description}>
+							{optionText(entry.key, o)}
+						</option>
+					))}
+					{!strict && <option value={CUSTOM_VALUE}>自定义…</option>}
+				</NativeSelect>
+				{showCustom && (
+					<CommitInput
+						className="w-28"
+						type={entry.valueType === "number" ? "number" : "text"}
+						mono
+						value={current}
+						aria-label={`${title}（自定义）`}
+						validate={(v) => (entry.valueType === "number" && !Number.isFinite(Number(v)) ? "请输入数字" : null)}
+						onCommit={async (v) => {
+							if (!(await persist(v))) throw new Error(save.error ?? "保存失败");
+						}}
+					/>
+				)}
+			</div>
+		);
+	} else if (entry.valueType === "number") {
+		control = (
+			<CommitInput
+				className="w-36"
+				type="number"
+				value={current}
+				placeholder={defText && state !== "default" ? `默认 ${defText}` : undefined}
+				aria-label={title}
+				validate={(v) => (v === "" || Number.isFinite(Number(v)) ? null : "请输入数字")}
+				onCommit={(v) => (v === "" ? ompConfigReset(entry.key).then(onChanged) : ompConfigSet(entry.key, v).then(onChanged))}
+			/>
+		);
+	} else if (!isStructured) {
+		control = (
+			<CommitInput
+				className="w-64"
+				mono
+				value={current}
+				placeholder={defText && defText !== "未设置" ? `默认 ${defText}` : "未设置"}
+				aria-label={title}
+				onCommit={(v) => ompConfigSet(entry.key, v).then(onChanged)}
+			/>
+		);
+	}
+
+	const stringList = entry.valueType === "array" && isStringList(entry.value);
+
 	return (
-		<div className="transition-all" data-omp-key={entry.key}>
-			{/* Collapsed row: title + value/switch */}
-			<div
-				role="button"
-				tabIndex={0}
-				onClick={() => setOpen(!open)}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						setOpen(!open);
-					}
-				}}
-				className="flex cursor-pointer items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-[var(--bg-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0A84FF]/40"
-			>
+		<div
+			data-omp-key={entry.key}
+			data-omp-row=""
+			data-omp-type={entry.valueType}
+			tabIndex={hierarchyDisabled ? undefined : -1}
+			className={clsx(
+				"px-3.5 py-2.5 outline-none transition-colors",
+				hierarchyDisabled
+					? "pointer-events-none opacity-50 pl-6 border-l-2 border-neutral-700/50"
+					: "focus-visible:bg-[var(--bg-hover)] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0A84FF]/40"
+			)}
+		>
+			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0 flex-1">
-					<div className="flex min-w-0 items-center gap-2">
-						<span className="truncate text-xs font-semibold tracking-[-0.01em] text-neutral-100" title={entry.key}>
-							{title}
-						</span>
-						{entry.redacted && (
-							<span
-								className="shrink-0"
-								title="凭据字段：值被 OMP 遮蔽，仅可覆盖写入"
-							>
-								<KeyRound className="h-3 w-3 text-amber-300/80" />
+					<div className="flex min-w-0 flex-wrap items-center gap-1.5">
+						<span className="text-xs font-semibold tracking-[-0.01em] text-neutral-100" title={entry.key}>{title}</span>
+						{state === "modified" && (
+							<span className={clsx(CHIP, "bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--accent)] font-medium")} title={defText ? `默认值：${defText}` : undefined}>
+								已修改
 							</span>
 						)}
-						{savedTick && (
-							<span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-400">
-								<Check className="h-2.5 w-2.5" />
-								<span>已保存</span>
+						{state === "default" && <span className={clsx(CHIP, "bg-neutral-700/40 text-neutral-500")}>默认</span>}
+						{secret && (entry.redacted || !isUnset) && (
+							<span className={clsx(CHIP, "bg-emerald-500/15 text-emerald-300")}>已设置</span>
+						)}
+						{secret && (
+							<span className={clsx(CHIP, "bg-amber-500/15 text-amber-300")} title="凭据只写不读：界面不会显示已保存的内容">
+								<KeyRound className="h-2.5 w-2.5" />
+								凭据
 							</span>
+						)}
+						{override && (
+							<span
+								className={clsx(CHIP, "bg-violet-500/15 text-violet-300")}
+								title={`当前项目的 ${override.path} 设置了：${displayValue(override.value)}\n在这个项目里会优先使用该值，这里的全局修改不会生效。`}
+							>
+								<FolderGit2 className="h-2.5 w-2.5" />
+								本项目已覆盖
+							</span>
+						)}
+						<SaveIndicator status={save.status} error={save.error} />
+						{canReset && (
+							<button
+								type="button"
+								disabled={busy}
+								onClick={() => void reset()}
+								title={defText ? `恢复为默认值：${defText}` : "恢复为 OMP 默认值"}
+								className="inline-flex items-center gap-0.5 rounded px-1 text-[10px] text-neutral-500 transition-colors hover:text-amber-300 disabled:opacity-50"
+							>
+								<RotateCcw className="h-2.5 w-2.5" />
+								恢复默认
+							</button>
 						)}
 					</div>
-					{isBool && (
-						<div className="mt-0.5 font-mono text-[10px] text-neutral-600">
-							{entry.value === true ? "已开启" : entry.value === false ? "已关闭" : "未设置"}
+					{description && (
+						<button
+							type="button"
+							onClick={() => setExpanded(!expanded)}
+							title={expanded ? undefined : description}
+							className={clsx(
+								"mt-0.5 block w-full cursor-default text-left text-[11px] leading-[1.45] text-neutral-400",
+								!expanded && "line-clamp-1",
+							)}
+						>
+							{description}
+						</button>
+					)}
+					{hierarchyDisabled && hierarchyReason && (
+						<div className="mt-1 text-[11px] text-amber-400/70">
+							{hierarchyReason}
+						</div>
+					)}
+					{save.status === "error" && save.error && (
+						<div className="mt-1 flex items-start gap-1 text-[11px] text-rose-300">
+							<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+							<span className="break-all">{save.error}</span>
 						</div>
 					)}
 				</div>
+				{control && <div className="flex shrink-0 items-center pt-0.5">{control}</div>}
+			</div>
 
-				<div
-					className="flex shrink-0 items-center gap-1"
-					onClick={(e) => e.stopPropagation()}
-				>
-					{!isBool && (
-						<span
-							className={`max-w-80 truncate font-mono text-[11px] ${
-								isUnset
-									? "text-neutral-600"
-									: entry.redacted
-										? "text-amber-300/70"
-										: "text-neutral-400"
-							}`}
-							title={formatValue(entry)}
-						>
-							{formatValueSummary(entry)}
-						</span>
-					)}
-					{isBool ? (
-						<Switch
-							checked={entry.value === true}
-							disabled={busy}
-							onChange={saveBoolean}
+			{isStructured && (
+				<div className="mt-2">
+					{entry.redacted ? (
+						<SecretJson entry={entry} busy={busy} onSave={persistJson} />
+					) : jsonMode ? (
+						<JsonEditor
+							value={entry.value}
+							valueType={entry.valueType}
+							busy={busy}
+							onSave={persistJson}
+							onClose={() => setJsonMode(false)}
 						/>
 					) : (
 						<>
+							{entry.valueType === "array" && stringList ? (
+								<StringListEditor value={toStringList(entry.value)} busy={busy} onSave={persistJson} />
+							) : entry.valueType === "record" ? (
+								<RecordEditor value={entry.value} busy={busy} onSave={persistJson} />
+							) : (
+								<pre className="max-h-40 overflow-auto rounded-lg bg-[var(--well-bg)] p-2 font-mono text-[11px] text-neutral-300 hairline">
+									{JSON.stringify(entry.value, null, 2)}
+								</pre>
+							)}
 							<button
 								type="button"
-								disabled={busy || editing}
-								onClick={startEdit}
-								title={entry.redacted ? "输入以覆盖已配置的值" : "编辑"}
-								className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
+								onClick={() => setJsonMode(true)}
+								className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-neutral-500 hover:text-neutral-200"
+								title="直接编辑原始 JSON（高级）"
 							>
-								<Pencil className="h-3 w-3" />
-							</button>
-							<button
-								type="button"
-								disabled={busy || editing}
-								onClick={reset}
-								title="重置为默认值"
-								className="rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-amber-300 active:scale-95 transition-all disabled:opacity-50"
-							>
-								<RotateCcw className="h-3 w-3" />
+								<Braces className="h-3 w-3" />
+								编辑 JSON
 							</button>
 						</>
 					)}
 				</div>
-			</div>
-
-			{/* Expanded detail: description + program key + badges */}
-			{open && !editing && (
-				<div className="space-y-1.5 border-t border-[var(--border-divider)] bg-[var(--well-bg)]/40 px-3.5 py-2.5">
-					{detailDescription && (
-						<p className="text-[11px] leading-5 text-neutral-400">{detailDescription}</p>
-					)}
-					<div className="flex flex-wrap items-center gap-1.5">
-						<span
-							className={`shrink-0 rounded px-1 py-0.2 text-[9px] font-medium ${badge}`}
-						>
-							{badgeLabel}
-						</span>
-						{entry.redacted && (
-							<span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] text-amber-300">
-								<KeyRound className="h-2.5 w-2.5" />
-								<span>凭据</span>
-							</span>
-						)}
-						<span className="break-all font-mono text-[10px] text-neutral-600">
-							{entry.key}
-						</span>
-					</div>
-				</div>
-			)}
-
-			{/* Inline editor */}
-			{editing ? (
-				<div className="space-y-2 border-t border-[var(--border-divider)] bg-[var(--well-bg)]/40 px-3.5 py-3">
-					{isJson ? (
-						<textarea
-							value={draft}
-							onChange={(e) => setDraft(e.target.value)}
-							rows={4}
-							spellCheck={false}
-							placeholder={entry.valueType === "array" ? '["a","b"]' : '{"k":"v"}'}
-							className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
-						/>
-					) : options ? (
-						<div className="space-y-1.5">
-							<NativeSelect
-								value={
-									custom || !options.some((o) => o.value === draft)
-										? CUSTOM_VALUE
-										: draft
-								}
-								disabled={busy}
-								onChange={(e) => {
-									if (e.target.value === CUSTOM_VALUE) {
-										setCustom(true);
-									} else {
-										setCustom(false);
-										setDraft(e.target.value);
-									}
-								}}
-								className="text-[11px]"
-							>
-								{options.map((o) => (
-									<option key={o.value} value={o.value}>
-										{optionLabel(o)}
-									</option>
-								))}
-								<option value={CUSTOM_VALUE}>自定义…</option>
-							</NativeSelect>
-							{custom && (
-								<input
-									type="text"
-									value={draft}
-									onChange={(e) => setDraft(e.target.value)}
-									onKeyDown={(e) => {
-										if (isComposing(e)) return;
-										if (e.key === "Enter") {
-											e.preventDefault();
-											void save(draft);
-										}
-										if (e.key === "Escape") {
-											setEditing(false);
-										}
-									}}
-									spellCheck={false}
-									autoFocus
-									placeholder="输入自定义值"
-									className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
-								/>
-							)}
-						</div>
-					) : (
-						<input
-							type={entry.redacted && !showValue ? "password" : "text"}
-							value={draft}
-							onChange={(e) => setDraft(e.target.value)}
-							onKeyDown={(e) => {
-								if (isComposing(e)) return;
-								if (e.key === "Enter") {
-									e.preventDefault();
-									void save(draft);
-								}
-								if (e.key === "Escape") {
-									setEditing(false);
-								}
-							}}
-							spellCheck={false}
-							autoFocus
-							placeholder={
-								entry.redacted ? "•••••• 已配置，输入以覆盖" : "输入新值"
-							}
-							className="w-full rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none transition-all"
-						/>
-					)}
-					{entry.valueType === "enum" && !options && (
-						<div className="text-[10px] text-neutral-500">
-							枚举值需与 OMP 允许值完全匹配（可先运行 omp config set 查看错误提示中的可选值）
-						</div>
-					)}
-					<div className="flex items-center gap-2">
-						<button
-							type="button"
-							disabled={busy}
-							onClick={() => void save(draft)}
-							className="rounded-lg bg-[#0A84FF] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
-						>
-							{busy ? "保存中..." : "保存"}
-						</button>
-						{entry.redacted && (
-							<button
-								type="button"
-								onClick={() => setShowValue(!showValue)}
-								className="inline-flex items-center gap-1 text-[11px] text-neutral-500 hover:text-neutral-300"
-							>
-								{showValue ? (
-									<>
-										<X className="h-3 w-3" />
-										<span>隐藏输入</span>
-									</>
-								) : (
-									<>
-										<KeyRound className="h-3 w-3" />
-										<span>显示输入</span>
-									</>
-								)}
-							</button>
-						)}
-						<button
-							type="button"
-							disabled={busy}
-							onClick={() => {
-								setEditing(false);
-								setRowError(null);
-							}}
-							className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
-						>
-							取消
-						</button>
-					</div>
-				</div>
-			) : null}
-
-			{rowError && (
-				<div className="flex items-start gap-1 border-t border-rose-800/40 bg-rose-950/20 px-3 py-1.5 text-[11px] text-rose-300">
-					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-					<span className="break-all">{rowError}</span>
-				</div>
 			)}
 		</div>
 	);
+}
+
+/** Write-only JSON input for redacted structured credentials (never pre-filled). */
+function SecretJson({ entry, busy, onSave }: { entry: OmpConfigEntry; busy: boolean; onSave: (v: unknown) => Promise<boolean> }) {
+	const [open, setOpen] = useState(false);
+	if (!open) {
+		return (
+			<button
+				type="button"
+				onClick={() => setOpen(true)}
+				className="inline-flex items-center gap-1 text-[11px] text-neutral-500 hover:text-neutral-200"
+			>
+				<KeyRound className="h-3 w-3" />
+				已设置的内容不会显示 · 点击整体替换（JSON）
+			</button>
+		);
+	}
+	return <JsonEditor value={entry.valueType === "array" ? [] : {}} valueType={entry.valueType} busy={busy} onSave={onSave} onClose={() => setOpen(false)} />;
+}
+
+/** Row-level keyboard: ↑/↓ move between rows, Space toggles switches, Enter focuses the control. */
+function handleRowKeys(e: React.KeyboardEvent<HTMLDivElement>) {
+	const target = e.target as HTMLElement;
+	const row = target.closest<HTMLElement>("[data-omp-row]");
+	if (!row) return;
+	const inField = target !== row && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+	if (inField) return;
+	if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+		const rows = [...e.currentTarget.querySelectorAll<HTMLElement>("[data-omp-row]")];
+		const next = rows[rows.indexOf(row) + (e.key === "ArrowDown" ? 1 : -1)];
+		if (next) {
+			e.preventDefault();
+			next.focus();
+			next.scrollIntoView({ block: "nearest" });
+		}
+		return;
+	}
+	if (target !== row) return;
+	if (e.key === " " && row.dataset.ompType === "boolean") {
+		e.preventDefault();
+		row.querySelector<HTMLButtonElement>('[role="switch"]')?.click();
+	} else if (e.key === "Enter") {
+		const field = row.querySelector<HTMLElement>("input, select, textarea, [role=radio][aria-checked=true], [role=switch]");
+		if (field) {
+			e.preventDefault();
+			field.focus();
+		}
+	}
 }
 
 /**
@@ -489,15 +522,61 @@ export function OmpConfigSection({
 		activeGroupName !== undefined ? activeGroupName : localGroupName;
 	const setGroupName = onGroupChange ?? setLocalGroupName;
 
-	const effectiveQuery = (query ?? seedQuery ?? "").trim().toLowerCase();
+	const [filter, setFilter] = useState("");
+	const [listRef, setListRef] = useState<HTMLDivElement | null>(null);
+	const terms = useMemo(
+		() => [(query ?? seedQuery ?? "").trim().toLowerCase(), filter.trim().toLowerCase()].filter(Boolean),
+		[query, seedQuery, filter],
+	);
+	const matches = useCallback(
+		(e: OmpConfigEntry) =>
+			terms.every(
+				(t) =>
+					e.key.toLowerCase().includes(t) ||
+					ompConfigTitle(e.key).toLowerCase().includes(t) ||
+					ompConfigDescription(e.key, e.description).toLowerCase().includes(t) ||
+					(ompConfigGroup(e.key) ?? "").toLowerCase().includes(t),
+			),
+		[terms],
+	);
 
 	useEffect(() => {
 		setLocalGroupName(null);
+		setFilter("");
 	}, [activeTab]);
 
 	useEffect(() => {
 		void load();
 	}, [load]);
+
+	// Project layer: `<cwd>/.omp/config.yml` wins over the global config in that project.
+	const cwd = useSettingsProjectCwd();
+	const [project, setProject] = useState<{ path: string; data: Record<string, unknown> } | null>(null);
+	const [projectTick, setProjectTick] = useState(0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: projectTick re-reads after edits
+	useEffect(() => {
+		if (!cwd) {
+			setProject(null);
+			return;
+		}
+		let alive = true;
+		ompProjectConfigRead(cwd)
+			.then((f) => {
+				if (alive) setProject(f.exists ? { path: f.path, data: parseProjectConfig(f.content) } : null);
+			})
+			.catch(() => {
+				if (alive) setProject(null);
+			});
+		return () => {
+			alive = false;
+		};
+	}, [cwd, projectTick]);
+	const overrideFor = (key: string): ProjectOverride | null => {
+		if (!project) return null;
+		const hit = lookupDotPath(project.data, key);
+		return hit.found ? { path: project.path, value: hit.value } : null;
+	};
+	const hiddenCount = useMemo(() => entries.filter((e) => !isDesktopRelevant(e.key)).length, [entries]);
 
 	const allGroups = useMemo(
 		() =>
@@ -521,11 +600,26 @@ export function OmpConfigSection({
 	const groupCounts = useMemo(() => {
 		const map = new Map<string, number>();
 		for (const e of activeGroup?.entries ?? []) {
-			const g = ompConfigGroup(e.key) ?? "其他";
+			const g = ompCategorySubGroup(activeTab, e.key);
 			map.set(g, (map.get(g) ?? 0) + 1);
 		}
+		const order = GROUP_ORDER[activeTab];
+		if (order) {
+			const sorted: { name: string; count: number }[] = [];
+			for (const name of order) {
+				const count = map.get(name);
+				if (count) {
+					sorted.push({ name, count });
+					map.delete(name);
+				}
+			}
+			for (const [name, count] of map.entries()) {
+				sorted.push({ name, count });
+			}
+			return sorted;
+		}
 		return [...map.entries()].map(([name, count]) => ({ name, count }));
-	}, [activeGroup]);
+	}, [activeGroup, activeTab]);
 
 	// Recover from a stale group (disappeared after omp upgrade).
 	useEffect(() => {
@@ -544,26 +638,19 @@ export function OmpConfigSection({
 	const rows = useMemo(() => {
 		const base = effectiveGroupName
 			? (activeGroup?.entries ?? []).filter(
-					(e) => (ompConfigGroup(e.key) ?? "其他") === effectiveGroupName,
+					(e) => ompCategorySubGroup(activeTab, e.key) === effectiveGroupName,
 				)
 			: (activeGroup?.entries ?? []);
-		if (!effectiveQuery) return base;
-		return base.filter(
-			(e) =>
-				e.key.toLowerCase().includes(effectiveQuery) ||
-				e.description.toLowerCase().includes(effectiveQuery) ||
-				ompConfigTitle(e.key).toLowerCase().includes(effectiveQuery) ||
-				ompConfigDescription(e.key, e.description).toLowerCase().includes(effectiveQuery),
-		);
-	}, [activeGroup, effectiveGroupName, effectiveQuery]);
-	// Sub-groups by schema group ("Theme", "Composer", …); settings without UI
-	// metadata land in a trailing 其他 bucket instead of raw key-name headers.
+		return terms.length === 0 ? base : base.filter(matches);
+	}, [activeGroup, activeTab, effectiveGroupName, terms, matches]);
+
+	// Group entries by macro-group or schema group; ordering applied per GROUP_ORDER.
 	const grouped = useMemo(() => {
 		const named = new Map<string, OmpConfigEntry[]>();
 		const other: OmpConfigEntry[] = [];
 		for (const entry of rows) {
-			const group = ompConfigGroup(entry.key);
-			if (group) {
+			const group = ompCategorySubGroup(activeTab, entry.key);
+			if (group && group !== "其他" && group !== "其他工具设置") {
 				const list = named.get(group);
 				if (list) {
 					list.push(entry);
@@ -574,31 +661,58 @@ export function OmpConfigSection({
 				other.push(entry);
 			}
 		}
-		const result = [...named.entries()];
-		if (other.length > 0) result.push(["其他", other]);
+		const order = GROUP_ORDER[activeTab];
+		let result: [string, OmpConfigEntry[]][];
+		if (order) {
+			result = [];
+			for (const groupName of order) {
+				const list = named.get(groupName);
+				if (list) {
+					result.push([groupName, list]);
+					named.delete(groupName);
+				}
+			}
+			result.push(...named.entries());
+		} else {
+			result = [...named.entries()];
+		}
+		if (other.length > 0) result.push([activeTab === "tools" ? "其他工具设置" : "其他", other]);
 		return result;
-	}, [rows]);
+	}, [rows, activeTab]);
+
+	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+	const toggleGroupCollapse = (groupName: string) => {
+		setCollapsedGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(groupName)) next.delete(groupName);
+			else next.add(groupName);
+			return next;
+		});
+	};
+
+	// Calculate parent values for hierarchy checking
+	const parentValues = useMemo(() => {
+		const values: Record<string, boolean> = {};
+		for (const entry of entries) {
+			if (entry.valueType === "boolean") {
+				values[entry.key] = entry.value === true;
+			}
+		}
+		return values;
+	}, [entries]);
 
 	// When the current tab has no matches, point at other tabs that do.
 	const suggestions = useMemo(() => {
-		if (!effectiveQuery) return [];
+		if (terms.length === 0) return [];
 		return allGroups
 			.filter((g) => g.id !== activeGroup?.id)
-			.map((g) => ({
-				id: g.id,
-				label: g.label,
-				count: g.entries.filter(
-					(e) =>
-						e.key.toLowerCase().includes(effectiveQuery) ||
-						e.description.toLowerCase().includes(effectiveQuery) ||
-						ompConfigTitle(e.key).toLowerCase().includes(effectiveQuery),
-				).length,
-			}))
+			.map((g) => ({ id: g.id, label: g.label, count: g.entries.filter(matches).length }))
 			.filter((s) => s.count > 0);
-	}, [allGroups, activeGroup, effectiveQuery]);
+	}, [allGroups, activeGroup, terms, matches]);
 	const handleChanged = () => {
 		// Re-list so edited values (and switches elsewhere) stay in sync with omp.
 		void load(true);
+		setProjectTick((t) => t + 1);
 	};
 
 	if (loading && !loaded) {
@@ -673,13 +787,13 @@ export function OmpConfigSection({
 			</div>
 
 			{groupCounts.length > 1 && (
-				<div className="flex flex-wrap items-center gap-1.5">
+				<div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
 					<button
 						type="button"
 						onClick={() => setGroupName(null)}
-						className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
+						className={`shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
 							effectiveGroupName === null
-								? "bg-[#0A84FF] text-white shadow-sm"
+								? "bg-[var(--accent)] text-[var(--bg)] font-medium shadow-sm"
 								: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 						}`}
 					>
@@ -690,9 +804,9 @@ export function OmpConfigSection({
 							key={g.name}
 							type="button"
 							onClick={() => setGroupName(g.name)}
-							className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
+							className={`shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
 								effectiveGroupName === g.name
-									? "bg-[#0A84FF] text-white shadow-sm"
+									? "bg-[var(--accent)] text-[var(--bg)] font-medium shadow-sm"
 									: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 							}`}
 						>
@@ -701,6 +815,39 @@ export function OmpConfigSection({
 						</button>
 					))}
 				</div>
+			)}
+
+			<div className="relative">
+				<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
+				<input
+					value={filter}
+					onChange={(e) => setFilter(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === "Escape" && filter) {
+							e.stopPropagation();
+							setFilter("");
+						} else if (e.key === "ArrowDown") {
+							const first = listRef?.querySelector<HTMLElement>("[data-omp-row]");
+							if (first) {
+								e.preventDefault();
+								first.focus();
+							}
+						}
+					}}
+					spellCheck={false}
+					placeholder={`筛选本页 ${activeGroup?.entries.length ?? 0} 项（名称、说明或键名）· ↓ 进入列表，↑↓ 切换，空格开关，回车编辑`}
+					className="w-full rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-8 pr-3 text-xs text-neutral-200 placeholder:text-neutral-500 transition-all focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)]"
+				/>
+			</div>
+
+			{project && (
+				<p className="flex items-start gap-1.5 text-[11px] text-neutral-500">
+					<FolderGit2 className="mt-0.5 h-3 w-3 shrink-0 text-violet-300" />
+					<span>
+						这里修改的是全局设置。当前项目有自己的配置文件（<span className="font-mono">{project.path}</span>），
+						标有「本项目已覆盖」的项在该项目中以项目文件为准。
+					</span>
+				</p>
 			)}
 
 			{rows.length === 0 ? (
@@ -728,29 +875,58 @@ export function OmpConfigSection({
 					)}
 				</div>
 			) : (
-				<div className="space-y-4">
-					{grouped.map(([group, list]) => (
-						<div key={group} className="space-y-2">
-							{grouped.length > 1 && (
-								<div className="px-1 text-[11px] font-semibold text-neutral-400">
-									{group}
-									<span className="ml-1.5 text-[10px] font-normal text-neutral-600">
-										{list.length} 项
-									</span>
-								</div>
-							)}
-							<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card divide-y divide-[var(--border-divider)] overflow-hidden">
-								{list.map((entry) => (
-									<ConfigRow
-										key={entry.key}
-										entry={entry}
-										onChanged={handleChanged}
-									/>
-								))}
+				// biome-ignore lint/a11y/noStaticElementInteractions: delegates row keyboard navigation
+				<div ref={setListRef} className="space-y-4" onKeyDown={handleRowKeys}>
+					{grouped.map(([group, list]) => {
+						const isCollapsed = collapsedGroups.has(group) && !filter.trim();
+						return (
+							<div key={group} className="space-y-2">
+								{grouped.length > 1 && (
+									<button
+										type="button"
+										onClick={() => toggleGroupCollapse(group)}
+										className="flex w-full items-center justify-between px-1 text-left group cursor-pointer select-none"
+									>
+										<span className="flex items-center gap-2 text-[11px] font-semibold text-neutral-300 group-hover:text-neutral-100 transition-colors">
+											<ChevronRight className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
+											<span>{group}</span>
+											<span className="rounded bg-neutral-800/80 px-1.5 py-0.5 text-[10px] font-normal text-neutral-400">
+												{list.length} 项
+											</span>
+										</span>
+										<span className="text-[10px] text-neutral-500 opacity-0 group-hover:opacity-100 transition-opacity">
+											{isCollapsed ? "展开" : "折叠"}
+										</span>
+									</button>
+								)}
+								{!isCollapsed && (
+									<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card divide-y divide-[var(--border-divider)] overflow-hidden">
+										{list.map((entry) => {
+											const dep = PARENT_CHILD_MAP[entry.key];
+											const hierarchyDisabled = dep ? !parentValues[dep.parent] : false;
+											return (
+												<ConfigRow
+													key={entry.key}
+													entry={entry}
+													override={overrideFor(entry.key)}
+													onChanged={handleChanged}
+													hierarchyDisabled={hierarchyDisabled}
+													hierarchyReason={hierarchyDisabled ? dep?.reason : undefined}
+												/>
+											);
+										})}
+									</div>
+								)}
 							</div>
-						</div>
-					))}
+						);
+					})}
 				</div>
+			)}
+			{activeTab === "advanced" && !keyPrefix && !keysOnly && hiddenCount > 0 && (
+				<p className="px-1 text-[11px] leading-5 text-neutral-500">
+					另有 {hiddenCount} 项只对终端界面有效的设置（主题、状态栏、快捷键、输入框等）在这里不显示，
+					请在终端运行 omp 后输入 /settings 修改；模型角色与备用模型请到「模型角色」页设置。
+				</p>
 			)}
 		</div>
 	);

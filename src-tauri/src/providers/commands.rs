@@ -490,6 +490,168 @@ fn count_models(body: &str, api: ProviderApi) -> Option<usize> {
     list.as_array().map(|a| a.len())
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredModel {
+    pub id: String,
+    pub name: Option<String>,
+}
+
+/// Fetches available models directly from the provider's API endpoint (without CORS restrictions).
+#[tauri::command]
+pub async fn provider_fetch_models(
+    base_url: String,
+    api_key: Option<String>,
+    api: ProviderApi,
+    provider_id: Option<String>,
+) -> Result<Vec<DiscoveredModel>, String> {
+    let base = base_url.trim().trim_end_matches('/');
+    if base.is_empty() {
+        return Err("Base URL 不能为空".to_string());
+    }
+
+    let mut key = api_key.and_then(|k| {
+        let trimmed = k.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    });
+
+    if key.is_none() {
+        if let Some(pid) = provider_id {
+            if let Some(config) = store::load().into_iter().find(|p| p.id == pid) {
+                if vault::contains(&config.slug) {
+                    if let Ok(Some(k)) = vault::read_entry(&config.slug) {
+                        key = Some(k);
+                    }
+                }
+            }
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
+
+    let response = match api {
+        ProviderApi::OpenaiCompletions | ProviderApi::OpenaiResponses => {
+            let mut req = client.get(format!("{base}/models"));
+            if let Some(k) = &key {
+                req = req.bearer_auth(k);
+            }
+            req.send().await
+        }
+        ProviderApi::Anthropic => {
+            let mut req = client
+                .get(format!("{base}/v1/models"))
+                .header("anthropic-version", "2023-06-01");
+            if let Some(k) = &key {
+                req = req.header("x-api-key", k);
+            }
+            req.send().await
+        }
+        ProviderApi::Gemini => {
+            let mut req = client.get(format!("{base}/v1beta/models"));
+            if let Some(k) = &key {
+                req = req.header("x-goog-api-key", k);
+            }
+            req.send().await
+        }
+        ProviderApi::Ollama => client.get(format!("{base}/api/tags")).send().await,
+    };
+
+    let response = response.map_err(|e| format!("请求失败: {}", e.without_url()))?;
+    let status = response.status();
+    if !status.is_success() {
+        let detail = match status.as_u16() {
+            401 | 403 => "鉴权失败：密钥无效或无权限".to_string(),
+            404 => "接口不存在：请检查 Base URL 是否正确".to_string(),
+            429 => "请求过于频繁或额度受限".to_string(),
+            code => format!("HTTP {code}"),
+        };
+        return Err(format!("获取模型失败 ({detail})"));
+    }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("响应非有效 JSON: {e}"))?;
+
+    let mut models = Vec::new();
+    let mut seen = HashSet::new();
+
+    match api {
+        ProviderApi::Gemini => {
+            if let Some(list) = value.get("models").and_then(|v| v.as_array()) {
+                for item in list {
+                    if let Some(name) = item.get("name").and_then(|s| s.as_str()) {
+                        let id = name.strip_prefix("models/").unwrap_or(name).to_string();
+                        let display_name = item
+                            .get("displayName")
+                            .and_then(|s| s.as_str())
+                            .map(|s| s.to_string());
+                        if seen.insert(id.clone()) {
+                            models.push(DiscoveredModel {
+                                id,
+                                name: display_name,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        ProviderApi::Ollama => {
+            if let Some(list) = value.get("models").and_then(|v| v.as_array()) {
+                for item in list {
+                    if let Some(name) = item.get("name").and_then(|s| s.as_str()) {
+                        let id = name.to_string();
+                        if seen.insert(id.clone()) {
+                            models.push(DiscoveredModel { id, name: None });
+                        }
+                    }
+                }
+            }
+        }
+        ProviderApi::OpenaiCompletions | ProviderApi::OpenaiResponses | ProviderApi::Anthropic => {
+            let list = value
+                .get("data")
+                .or_else(|| value.get("models"))
+                .and_then(|v| v.as_array())
+                .or_else(|| value.as_array());
+
+            if let Some(items) = list {
+                for item in items {
+                    let id_opt = item
+                        .get("id")
+                        .or_else(|| item.get("name"))
+                        .and_then(|s| s.as_str());
+                    if let Some(raw_id) = id_opt {
+                        let id = raw_id.to_string();
+                        let display = item
+                            .get("display_name")
+                            .or_else(|| item.get("name"))
+                            .and_then(|s| s.as_str())
+                            .filter(|d| *d != raw_id)
+                            .map(|s| s.to_string());
+                        if seen.insert(id.clone()) {
+                            models.push(DiscoveredModel { id, name: display });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(models)
+}
+
 /// In-memory decrypt + real HTTP probe for a specific model (30s timeout).
 /// Returns a concise Chinese detail; key material never appears in errors or results.
 #[tauri::command]

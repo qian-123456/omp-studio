@@ -495,6 +495,15 @@ export interface OmpConfigListResult {
 	error: string | null;
 }
 
+/** Raw `<cwd>/.omp/config.yml` (omp project settings layer). */
+export interface OmpProjectConfigFile {
+	/** Absolute path of `<cwd>/.omp/config.yml`. */
+	path: string;
+	/** false when the file does not exist yet (content is then ""). */
+	exists: boolean;
+	content: string;
+}
+
 /** Return value of `app_paths`. */
 export interface AppPaths {
 	dataDir: string;
@@ -535,6 +544,11 @@ export interface ModelSpec {
 	name?: string | null;
 	contextWindow?: number | null;
 	maxTokens?: number | null;
+}
+
+export interface DiscoveredModel {
+	id: string;
+	name?: string | null;
 }
 
 /** A provider model entry: bare id or a spec with per-model limits. */
@@ -834,4 +848,16 @@ export interface PluginRootInfo {
 export interface PluginCatalog {
 	roots: PluginRootInfo[];
 	plugins: PluginItem[];
+}
+
+/** Return value of `omp_info`: resolved omp binary, `omp --version`, agent dir paths. */
+export interface OmpInfo {
+	found: boolean;
+	resolvedPath: string;
+	/** First line of `omp --version` (e.g. "omp/18.4.4"); null when unavailable. */
+	version: string | null;
+	agentDir: string;
+	/** `<agentDir>/config.yml` */
+	configPath: string;
+	configExists: boolean;
 }

@@ -1,4 +1,4 @@
-import { ChevronDown, Eye, EyeOff, Loader2, Plus, X } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Loader2, Plus, RefreshCw, X } from "lucide-react";
 import { NativeSelect } from "../../components/NativeSelect";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderApi, ProviderConfig } from "../../lib/contracts";
@@ -13,6 +13,9 @@ import {
 	modelEntriesToRows,
 	rowsToModelEntries,
 } from "./modelEntry";
+import { ModelPickerModal } from "./ModelPickerModal";
+import type { DiscoveredModel } from "../../lib/contracts";
+import { providerFetchModels } from "../../lib/ipc";
 
 export type ProviderDialogTarget =
 	| { mode: "add" }
@@ -90,6 +93,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 	// Import mode state.
 	const [pasteText, setPasteText] = useState("");
 	const [importing, setImporting] = useState(false);
+
+	// Model discovery state.
+	const [fetchingModels, setFetchingModels] = useState(false);
+	const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[] | null>(null);
 
 	const isDirty = useMemo(() => {
 		if (target.mode === "import") {
@@ -241,6 +248,54 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 	const handleRemoveModelRow = (index: number) => {
 		setModelRows((prev) => prev.filter((_, i) => i !== index));
+	};
+
+	const handleFetchModels = async () => {
+		const trimmedUrl = baseUrl.trim();
+		if (!trimmedUrl) {
+			toast.error("请先填写 Base URL");
+			return;
+		}
+		setFetchingModels(true);
+		try {
+			const models = await providerFetchModels(
+				trimmedUrl,
+				api,
+				apiKey.trim() || null,
+				target.mode === "edit" ? target.provider.id : null,
+			);
+			setDiscoveredModels(models);
+		} catch (err) {
+			toast.error(`获取模型失败：${errMsg(err)}`);
+		} finally {
+			setFetchingModels(false);
+		}
+	};
+
+	const handleModelPickerAppend = (selectedIds: string[]) => {
+		const existingIds = new Set(modelRows.map((r) => r.id.trim()).filter(Boolean));
+		const toAdd = selectedIds.filter((id) => !existingIds.has(id));
+		const newRows = toAdd.map((id) => ({
+			id,
+			name: null,
+			contextWindow: "",
+			maxTokens: "",
+		}));
+		setModelRows((prev) => [...prev, ...newRows]);
+		setDiscoveredModels(null);
+		if (formError) setFormError(null);
+	};
+
+	const handleModelPickerReplace = (selectedIds: string[]) => {
+		const newRows = selectedIds.map((id) => ({
+			id,
+			name: null,
+			contextWindow: "",
+			maxTokens: "",
+		}));
+		setModelRows(newRows);
+		setDiscoveredModels(null);
+		if (formError) setFormError(null);
 	};
 
 	const uniqueSlug = (base: string): string => {
@@ -597,8 +652,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 										{showKey ? <EyeOff size={14} /> : <Eye size={14} />}
 									</button>
 								</div>
-								{editing?.hasKey && editing.keyHint && (
-									<div className={hintCls}>已配置 (…{editing.keyHint})</div>
+								{editing?.hasKey && (
+									<div className={`${hintCls} text-emerald-400/90`}>
+										✓ 已保存{editing.keyHint ? `（末尾 …${editing.keyHint}）` : ""}，留空则继续使用
+									</div>
 								)}
 							</div>
 						</div>
@@ -676,14 +733,29 @@ export function ProviderDialog({ target, onClose }: Props) {
 									<div>
 										<div className="flex items-center justify-between">
 											<label className={labelCls}>模型列表</label>
-											<button
-												type="button"
-												onClick={handleAddModelRow}
-												className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-[#0A84FF] hover:bg-[#0A84FF]/10 active:scale-95 transition-all"
-											>
-												<Plus className="h-3 w-3" />
-												<span>添加模型</span>
-											</button>
+											<div className="flex items-center gap-2">
+												<button
+													type="button"
+													onClick={() => void handleFetchModels()}
+													disabled={fetchingModels}
+													className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-40 transition-all"
+												>
+													{fetchingModels ? (
+														<Loader2 className="h-3 w-3 animate-spin" />
+													) : (
+														<RefreshCw className="h-3 w-3" />
+													)}
+													<span>获取模型列表</span>
+												</button>
+												<button
+													type="button"
+													onClick={handleAddModelRow}
+													className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-[#0A84FF] hover:bg-[#0A84FF]/10 active:scale-95 transition-all"
+												>
+													<Plus className="h-3 w-3" />
+													<span>添加模型</span>
+												</button>
+											</div>
 										</div>
 										<p className={hintCls}>配置模型 ID；各模型上下文窗口和输出上限若留空，将继承上方供应商默认值。</p>
 
@@ -817,6 +889,16 @@ export function ProviderDialog({ target, onClose }: Props) {
 					)}
 				</div>
 			</div>
+
+			{discoveredModels && (
+				<ModelPickerModal
+					models={discoveredModels}
+					existingModelIds={new Set(modelRows.map((r) => r.id.trim()).filter(Boolean))}
+					onClose={() => setDiscoveredModels(null)}
+					onAppend={handleModelPickerAppend}
+					onReplace={handleModelPickerReplace}
+				/>
+			)}
 		</div>
 	);
 }

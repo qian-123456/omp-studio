@@ -10,7 +10,15 @@ export interface NativeSelectProps
 export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
 	({ className, containerClassName, children, disabled, ...props }, ref) => {
 		return (
-			<div className={clsx("relative w-full", containerClassName)}>
+			// `w-full` and a caller width (e.g. `w-28`) are equal-specificity utilities whose
+			// winner depends on stylesheet order, so drop the default when one is given.
+			<div
+				className={clsx(
+					"relative",
+					!/(^|\s)!?w-/.test(containerClassName ?? "") && "w-full",
+					containerClassName,
+				)}
+			>
 				<select
 					ref={ref}
 					disabled={disabled}

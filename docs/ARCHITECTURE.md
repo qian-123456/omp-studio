@@ -60,6 +60,7 @@ src/
   components/FloatingLayer.tsx  stacking portal, usableViewport clamp, Z_LAYER tiers (§12) [LEAD]
   components/CenterHeader.tsx   top bar with window drag & sidebar/right toggles        [LEAD]
   components/RightAside.tsx     collapsible right tab container                         [LEAD]
+  components/Segmented.tsx      generic pill segmented control (settings, skills)       [LEAD]
   lib/contracts.ts           TS mirror of contracts.rs                                  [LEAD]
   lib/ipc.ts                 typed wrappers for EVERY command in §7                     [LEAD]
   lib/events.ts              typed `listen` helpers for §5 events                       [LEAD]
@@ -86,6 +87,14 @@ src/
   features/skills/           skills & extensions browser center page (§11 G)            [F]
   features/diagnose/         diagnose dialog                                            [D]
   features/settings/         settings page & overlay (categorized IA, §11 D)            [D]
+    SettingsPage.tsx         shell only: nav sidebar/search (⌘F/⌘K), deep-link flash, routing
+    navigation.ts            NAV_GROUPS + per-section search terms, ompCategoryOf/ompSectionId
+    sections/                one component per nav id; sections/index.ts = id → component map
+      AgentsMdSection.tsx    `agents-md`: edit global ~/.omp/agent/AGENTS.md or project <cwd>/AGENTS.md | <cwd>/.omp/AGENTS.md (agentsMd.ts = target/conflict helpers)
+      ShortcutRecorder.tsx   key-combo recorder → Tauri accelerator string (used by 通用 「快速记录快捷键」)
+    ui.tsx                   SectionHeader, SettingsCard, SettingRow, ToggleRow, CommitInput, useSaveStatus/SaveIndicator
+    useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
+    settingsNav.ts           SettingsNavContext / useSettingsNav (search query + navigate)
   features/mobile/           pairing / tunnel panel (inside settings or its own modal)  [E]
   features/terminal/         terminal drawer & agent terminal center view               [E]
 ```
@@ -487,6 +496,10 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `mcp_server_upsert(cwd, path, name, patch: Value)` — merge patch (null deletes; env/headers merge per key; masked values preserved)
 - `mcp_server_remove(cwd, path, name)`, `mcp_server_set_enabled(cwd, name, enabled: bool)`
 - `plugins_list(cwd: Option<String>) -> PluginCatalog`, `plugin_set_enabled(cwd, name, enabled: bool)` — writes `plugins.<name>.enabled` in the scope lockfile
+- `omp_config_list() -> OmpConfigListResult`, `omp_config_set(key, value)`, `omp_config_reset(key)` — shell out to `omp config` in a neutral empty cwd (`$TMPDIR/ompws-omp-config-cwd`, no `.omp/`) so they reflect global settings only
+- `omp_project_config_read(cwd) -> OmpProjectConfigFile { path, exists, content }` — reads fixed `<cwd>/.omp/config.yml` (cwd must be an existing absolute dir); missing file → `exists: false, content: ""`
+- `omp_project_config_write(cwd, content)` — atomic (temp+rename) write of fixed `<cwd>/.omp/config.yml`, creating `.omp/`; a symlinked config is written through to its target (link preserved)
+- `omp_info() -> OmpInfo { found, resolvedPath, version, agentDir, configPath, configExists }` — resolves `settings.ompBinary` on the augmented PATH, runs `omp --version` (first line; null on failure), reports the omp agent dir (honors `PI_CODING_AGENT_DIR` / profile env) and `<agentDir>/config.yml`; used by Settings ▸ 通用 「OMP 环境」
 
 ## 8. Status extension file format
 
@@ -833,7 +846,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `SettingsPage`: navigation organized into 5 top-level groups:
   - 常规: `general` (通用), `appearance` (外观), `notifications` (通知)
   - 模型: `providers` (API 供应商), `omp-roles` (模型角色), `omp-model` (模型与目录), `omp-thinking` (思考与采样), `omp-retry` (重试与回退)
-  - Agent: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `omp-context` (上下文与记忆), `omp-tools` (工具与审批), `omp-tasks` (任务与子代理)
+  - Agent: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `omp-context` (上下文与记忆), `agents-md` (规则文件 AGENTS.md), `omp-tools` (工具与审批), `omp-tasks` (任务与子代理)
   - 连接: `mobile` (手机访问; renders `MobilePanel`), `omp-providers` (网络与扩展), `mcp` (MCP 服务器), `plugins` (插件)
   - 高级: `advanced` (高级), `omp-advanced` (其他 OMP 配置)
 - Deep links: `ui.openSettings(section?, opts?: { focusKey?: string })` scrolls to and briefly highlights `[data-field-id]` (native)
