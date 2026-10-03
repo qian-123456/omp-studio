@@ -963,51 +963,45 @@ export function Composer({
 					</div>
 				)}
 
-				{/* Attached image cards gallery (omp-tui style) */}
+				{/* Attached image cards gallery (Codex style) */}
 				{composerImages.length > 0 && (
-					<div className="flex flex-wrap items-center gap-3 px-3.5 pt-3 pb-2.5 border-b border-[var(--line)] bg-[var(--bg-panel)]/50">
+					<div className="flex flex-wrap items-center gap-2.5 px-3.5 pt-3 pb-2 border-b border-[var(--line)] bg-[var(--bg-panel)]/40">
 						{composerImages.map((img, i) => {
 							const num = i + 1;
-							const dimsText =
-								img.width && img.height ? `${img.width}×${img.height}` : null;
 							return (
 								<div
 									key={img.id || `${num}-${img.path}`}
-									className="group/imgcard relative flex flex-col items-center rounded-xl border border-amber-500/40 bg-[var(--bg-panel)] p-1.5 shadow-sm hover:border-amber-400 transition-all"
+									className="group/imgcard relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm transition-all select-none cursor-pointer"
+									onClick={() => setPreviewModalPath(img.path)}
+									title="点击放大查看"
 								>
-									{/* Top label: 🖼️ #1 */}
-									<div className="flex w-full items-center justify-between pb-1 px-0.5 text-[11px] font-semibold text-[var(--text)]">
-										<span className="flex items-center gap-1 font-mono text-amber-400">
-											<span>🖼️</span>
-											<span>#{num}</span>
-										</span>
-										<button
-											type="button"
-											onClick={() => removeImageByIndex(i)}
-											className="rounded p-0.5 text-[var(--text-30)] hover:bg-rose-500/20 hover:text-rose-400 transition-colors cursor-pointer"
-											title="移除图片"
-										>
-											<X size={12} />
-										</button>
+									{/* Thumbnail image */}
+									<img
+										src={convertFileSrc(img.path)}
+										alt={`图片 #${num}`}
+										className="h-full w-full object-cover transition-transform duration-200 group-hover/imgcard:scale-105"
+									/>
+
+									{/* Hover overlay: slightly whiter to indicate hover */}
+									<div className="absolute inset-0 bg-white/20 opacity-0 transition-opacity duration-150 group-hover/imgcard:opacity-100 pointer-events-none" />
+
+									{/* Codex-style subtle index badge */}
+									<div className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white/90 backdrop-blur-md shadow-xs border border-white/10 pointer-events-none">
+										<span>#{num}</span>
 									</div>
-									{/* Thumbnail */}
-									<div
-										className="relative h-24 w-28 overflow-hidden rounded-lg bg-black/10 cursor-pointer"
-										onClick={() => setPreviewModalPath(img.path)}
-										title="点击放大查看"
+
+									{/* Codex-style delete button (only visible on hover at top-right) */}
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											removeImageByIndex(i);
+										}}
+										className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white/80 opacity-0 shadow-sm backdrop-blur-md transition-all duration-150 hover:scale-110 hover:bg-black hover:text-white group-hover/imgcard:opacity-100 cursor-pointer"
+										title="移除图片"
 									>
-										<img
-											src={convertFileSrc(img.path)}
-											alt={`图片 #${num}`}
-											className="h-full w-full object-cover hover:scale-105 transition-transform"
-										/>
-									</div>
-									{/* Bottom dimensions */}
-									{dimsText && (
-										<span className="pt-1 font-mono text-[10px] text-[var(--text-40)]">
-											{dimsText}
-										</span>
-									)}
+										<X size={12} strokeWidth={2.5} />
+									</button>
 								</div>
 							);
 						})}
