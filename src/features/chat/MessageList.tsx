@@ -23,6 +23,7 @@ import { toast } from "../../lib/toast";
 import { useLive, type LiveTool } from "../../stores/live";
 import { useTurnNav } from "../../stores/turnNav";
 import { AnswerFooter } from "./AnswerFooter";
+import { getImageTokenPalette } from "./Composer";
 import {
 	ExecutionDisclosure,
 	TurnSteps,
@@ -208,10 +209,13 @@ const UserRow = React.memo(function UserRow({
 					>
 						{tokens.map((token, i) => {
 							if (token.type === "image") {
+								const num = parseInt(token.num, 10);
+								const palette = getImageTokenPalette(num);
 								return (
 									<span
 										key={i}
-										className="inline-flex items-center gap-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 text-[11px] font-mono font-medium mx-0.5 align-baseline shadow-xs"
+										className="inline-block font-mono font-medium underline decoration-2 underline-offset-[3px] mx-0.5"
+										style={{ color: palette.hex, textDecorationColor: palette.hex }}
 										title={token.path ? `图片 #${token.num}: ${token.path}` : `图片 #${token.num}`}
 									>
 										🖼️ #{token.num}
