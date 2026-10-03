@@ -5,6 +5,7 @@ import { ensureLive } from "../../lib/ensureLive";
 import { rpcSend } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
+import type { ImageAttachment } from "../../lib/contracts";
 
 export interface AbortState {
 	aborting: Record<string, boolean>;
@@ -39,13 +40,13 @@ export const useAbortState = create<AbortState>((set) => ({
 export async function sendPrompt(
 	sessionId: string,
 	text: string,
-	opts?: { steer?: boolean },
+	opts?: { steer?: boolean; images?: ImageAttachment[] },
 ): Promise<void> {
 	const trimmed = text.trim();
 	if (!trimmed) return;
 	// Optimistic echo: add immediately before network calls so the user bubble
 	// appears synchronously and never disappears or arrives after assistant stream.
-	useLive.getState().addUserEcho(sessionId, trimmed);
+	useLive.getState().addUserEcho(sessionId, trimmed, opts?.images);
 	if (!useLive.getState().sessions[sessionId]?.alive) {
 		await ensureLive(sessionId);
 	}

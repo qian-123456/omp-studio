@@ -274,7 +274,7 @@ export type BacklogKind = "idea" | "bug" | "todo";
 export type BacklogStatus = "inbox" | "dispatched" | "done" | "closed";
 
 export interface BacklogRef {
-	/** "session" | "file" | "annotation" */
+	/** "session" | "file" | "annotation" | "image" */
 	kind: string;
 	sessionId: string | null;
 	path: string | null;

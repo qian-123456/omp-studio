@@ -28,7 +28,11 @@ import {
 	TurnSteps,
 	type StepShape,
 } from "./ExecutionDisclosure";
-import { ImageChipsList } from "./ImageChips";
+import { ImageChip } from "./ImageChips";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { createPortal } from "react-dom";
+import { Z_LAYER } from "../../components/FloatingLayer";
+import type { ImageAttachment } from "../../lib/contracts";
 import { Markdown } from "./markdown";
 import {
 	buildToolResultsMap,
@@ -53,8 +57,57 @@ const asObj = (v: unknown): Record<string, unknown> =>
 
 function stripImageMarkers(text: string): string {
 	return text
+		.replace(
+			/\[\d+\]\s*\([^)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^)]*\)\s*\n?>?\s*(?:\[图片:[^\]]+\])?/gi,
+			"",
+		)
 		.replace(/\[Image #\d+(?:,\s*\d+x\d+)?\]|\[图片(?::\s*[^\]]+)?\]/g, "")
 		.trim();
+}
+
+/** Inline thumbnail card for a user image; click opens a full-size modal. */
+function UserImagePreview({ image }: { image: ImageAttachment }) {
+	const [failed, setFailed] = useState(false);
+	const [open, setOpen] = useState(false);
+	useEffect(() => {
+		if (!open) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") setOpen(false);
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [open]);
+	if (!image.path || failed) return <ImageChip image={image} />;
+	const src = convertFileSrc(image.path);
+	return (
+		<>
+			<img
+				src={src}
+				alt={image.marker ?? "图片"}
+				title={image.path}
+				loading="lazy"
+				onError={() => setFailed(true)}
+				onClick={() => setOpen(true)}
+				className="max-h-64 max-w-sm cursor-pointer rounded-xl border border-[var(--line)] bg-black/5 object-contain shadow-sm hover:opacity-95 dark:bg-white/5"
+			/>
+			{open &&
+				createPortal(
+					<div
+						className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4"
+						style={{ zIndex: Z_LAYER.modal }}
+						onClick={() => setOpen(false)}
+					>
+						<img
+							src={src}
+							alt={image.marker ?? "图片"}
+							className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-apple-modal"
+							onClick={(e) => e.stopPropagation()}
+						/>
+					</div>,
+					document.body,
+				)}
+		</>
+	);
 }
 
 /**
@@ -87,8 +140,10 @@ const UserRow = React.memo(function UserRow({
 			className="group/user-row relative flex w-full flex-col items-end gap-1 py-1"
 		>
 			{item.images && item.images.length > 0 && (
-				<div className="flex w-full justify-end">
-					<ImageChipsList images={item.images} />
+				<div className="flex w-full flex-wrap justify-end gap-2">
+					{item.images.map((img) => (
+						<UserImagePreview key={img.id} image={img} />
+					))}
 				</div>
 			)}
 			{userText || !item.images?.length ? (

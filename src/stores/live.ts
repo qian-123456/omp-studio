@@ -8,7 +8,11 @@
 
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
-import type { PendingUiRequest, TranscriptItem } from "../lib/contracts";
+import type {
+	ImageAttachment,
+	PendingUiRequest,
+	TranscriptItem,
+} from "../lib/contracts";
 import type {
 	AgentProgress,
 	SubagentInfo,
@@ -213,8 +217,23 @@ function subStatus(v: unknown, fallback: SubagentStatus): SubagentStatus {
 }
 let nextEchoId = 1;
 
+const ECHO_IMAGE_RE =
+	/\[图片:\s*([^\]]+)\]|\[Image #\d+(?:,\s*\d+x\d+)?\]|!\[[^\]]*\]\(([^)\s]+)\)/g;
+
 /** Build the optimistic user bubble for a just-accepted prompt. */
-export function makeUserEcho(text: string): TranscriptItem {
+export function makeUserEcho(
+	text: string,
+	images?: ImageAttachment[],
+): TranscriptItem {
+	const all: ImageAttachment[] = [...(images ?? [])];
+	const known = new Set(all.map((img) => img.path).filter(Boolean));
+	let i = all.length;
+	for (const m of text.matchAll(ECHO_IMAGE_RE)) {
+		const path = (m[1] ?? m[2])?.trim() || null;
+		if (path && known.has(path)) continue;
+		if (path) known.add(path);
+		all.push({ id: `pending-img-${i++}`, path, marker: m[0] });
+	}
 	return {
 		id: `pending-echo-${nextEchoId++}`,
 		parentId: null,
@@ -228,6 +247,7 @@ export function makeUserEcho(text: string): TranscriptItem {
 		model: null,
 		stopReason: null,
 		hidden: false,
+		...(all.length > 0 ? { images: all } : {}),
 	};
 }
 
@@ -702,7 +722,7 @@ export interface LiveState {
 	appendItems(sessionId: string, items: TranscriptItem[], nextOffset: number): void;
 	/** Optimistically append a user bubble after rpc_send accepts a prompt;
 	 * dropped once a transcript page confirms a matching user item. */
-	addUserEcho(sessionId: string, text: string): void;
+	addUserEcho(sessionId: string, text: string, images?: ImageAttachment[]): void;
 	/** Scroll the message stream to a transcript item (used by HeatmapPanel). */
 	scrollToItem(sessionId: string, itemId: string): void;
 	/** Consume/clear the scroll request for a session. */
@@ -830,7 +850,7 @@ export const useLive = create<LiveState>((set) => ({
 				},
 			};
 		}),
-	addUserEcho: (sessionId, text) =>
+	addUserEcho: (sessionId, text, images) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			const trimmed = text.trim();
@@ -842,7 +862,7 @@ export const useLive = create<LiveState>((set) => ({
 						...live,
 						pendingUserEchoes: [
 							...live.pendingUserEchoes,
-							makeUserEcho(trimmed),
+							makeUserEcho(trimmed, images),
 						],
 					},
 				},

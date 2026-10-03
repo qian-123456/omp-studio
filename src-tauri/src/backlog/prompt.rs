@@ -67,6 +67,10 @@ pub fn format_annotation(text: &str, path: Option<&str>, lines: Option<&str>) ->
     format!("- Quote{src}:\n{}", quoted.join("\n"))
 }
 
+pub fn format_image(path: &str) -> String {
+    format!("- Attached Image: [图片: {path}]")
+}
+
 pub async fn build(state: &AppState, item: &BacklogItem) -> String {
     let mut parts = Vec::new();
     for r in &item.refs {
@@ -89,6 +93,11 @@ pub async fn build(state: &AppState, item: &BacklogItem) -> String {
             "file" => {
                 if let Some(p) = r.path.as_deref() {
                     parts.push(format_file(p, r.lines.as_deref()));
+                }
+            }
+            "image" => {
+                if let Some(p) = r.path.as_deref() {
+                    parts.push(format_image(p));
                 }
             }
             _ => {
@@ -121,6 +130,10 @@ mod tests {
         let s = format_session(&meta, Some("a\nb"));
         assert!(s.starts_with("- Session #3 \"登录\""));
         assert!(s.ends_with("  a\n  b"));
+        assert_eq!(
+            format_image("/tmp/a.png"),
+            "- Attached Image: [图片: /tmp/a.png]"
+        );
         let a = format_annotation("x\ny", Some("src/a.ts"), Some("3-4"));
         assert_eq!(a, "- Quote (from `src/a.ts` lines 3-4):\n  > x\n  > y");
     }

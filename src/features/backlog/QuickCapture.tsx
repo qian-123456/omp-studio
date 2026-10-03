@@ -8,6 +8,8 @@ import { backlogAdd } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useBacklog } from "./backlogStore";
+import { AddImageButton, ImageThumbs, useImageAttach } from "./IdeaImages";
 
 const KIND_META: Record<
 	BacklogKind,
@@ -49,14 +51,17 @@ export function QuickCapture() {
 			: selectedSessionId;
 
 	const [text, setText] = useState("");
-	const [kind, setKind] = useState<BacklogKind>("todo");
+	const [kind, setKind] = useState<BacklogKind>(() => useBacklog.getState().lastKind);
+	const [images, setImages] = useState<string[]>([]);
 	const [attachSession, setAttachSession] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const inputRef = useRef<HTMLInputElement>(null);
 	useEscapeKey(closeModal, isVisible);
-
+	const attach = useImageAttach((paths) =>
+		setImages((cur) => [...cur, ...paths.filter((p) => !cur.includes(p))]),
+	);
 
 	// Listen to global quick-capture shortcut event from Tauri
 	useEffect(() => {
@@ -72,6 +77,8 @@ export function QuickCapture() {
 	useEffect(() => {
 		if (isVisible) {
 			setText(initialText);
+			setKind(useBacklog.getState().lastKind);
+			setImages([]);
 			setError(null);
 			setSubmitting(false);
 			setTimeout(() => {
@@ -86,8 +93,9 @@ export function QuickCapture() {
 
 	const handleSubmit = async (e?: React.FormEvent) => {
 		if (e) e.preventDefault();
+		if (isComposing({ key: "Enter" })) return;
 		const trimmed = text.trim();
-		if (!trimmed) return;
+		if (!trimmed && images.length === 0) return;
 		setSubmitting(true);
 		setError(null);
 		try {
@@ -95,7 +103,10 @@ export function QuickCapture() {
 			if (attachSession && targetSessionId) {
 				refs.push({ kind: "session", sessionId: targetSessionId, path: null, text: null, lines: null });
 			}
-			await backlogAdd(trimmed, kind, refs, currentSession?.cwd ?? null);
+			for (const path of images) {
+				refs.push({ kind: "image", path, text: null, lines: null, sessionId: null });
+			}
+			await backlogAdd(trimmed || "（图片）", kind, refs, currentSession?.cwd ?? null);
 			toast.success("已记入收集箱");
 			closeModal();
 		} catch (err) {
@@ -141,23 +152,33 @@ export function QuickCapture() {
 					</div>
 				)}
 
-				<form onSubmit={handleSubmit} className="space-y-3">
+				<form
+					onSubmit={handleSubmit}
+					{...attach.dropProps}
+					className={`space-y-3 rounded-lg ${attach.dragging ? "outline-dashed outline-1 outline-amber-500" : ""}`}
+				>
 					<input
 						ref={inputRef}
 						autoFocus
 						type="text"
 						value={text}
 						onChange={(e) => setText(e.target.value)}
-						placeholder="记下一句话想法、待办或缺陷..."
+						onPaste={attach.onPaste}
+						placeholder="记下一句话想法、待办或缺陷，可粘贴/拖入图片..."
 						className="w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-2 text-xs text-neutral-100 placeholder-neutral-500 focus:ring-1 focus:ring-amber-500 focus:outline-none transition-all"
 						onKeyDown={(e) => {
+							if (isComposing(e)) {
+								if (e.key === "Enter") e.preventDefault();
+								return;
+							}
 							if (e.key === "Enter") {
 								e.preventDefault();
-								if (isComposing(e)) return;
-								handleSubmit();
+								void handleSubmit();
 							}
 						}}
 					/>
+
+					<ImageThumbs paths={images} onRemove={(p) => setImages((cur) => cur.filter((x) => x !== p))} />
 
 					<div className="flex items-center justify-between pt-1">
 						{/* Kind Selector */}
@@ -170,7 +191,10 @@ export function QuickCapture() {
 									<button
 										key={k}
 										type="button"
-										onClick={() => setKind(k)}
+										onClick={() => {
+											setKind(k);
+											useBacklog.getState().setLastKind(k);
+										}}
 										className={`flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
 											isSelected
 												? meta.color
@@ -182,6 +206,11 @@ export function QuickCapture() {
 									</button>
 								);
 							})}
+							<AddImageButton
+								onClick={attach.pick}
+								className="flex items-center gap-1 rounded-full hairline bg-[var(--well-bg)] px-2.5 py-0.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)]"
+							/>
+							{attach.fileInput}
 						</div>
 
 						{/* Session Ref Toggle */}
@@ -211,7 +240,7 @@ export function QuickCapture() {
 						</button>
 						<button
 							type="submit"
-							disabled={submitting || !text.trim()}
+							disabled={submitting || (!text.trim() && images.length === 0)}
 							className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3.5 py-1.5 text-xs font-semibold text-neutral-950 hover:bg-amber-400 disabled:opacity-40"
 						>
 							{submitting ? (
