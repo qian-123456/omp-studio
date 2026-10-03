@@ -14,6 +14,12 @@ export interface Annotation {
 	comment?: string;
 }
 
+export interface ComposerImage {
+	id: string;
+	path: string;
+	name?: string;
+}
+
 export interface ComposerState {
 	/** By sessionId. */
 	annotations: Record<string, Annotation[]>;
@@ -25,6 +31,11 @@ export interface ComposerState {
 	): void;
 	removeAnnotation(sessionId: string, id: string): void;
 	clearAnnotations(sessionId: string): void;
+	/** Image attachments per session with ordered index (1, 2, 3...). */
+	images: Record<string, ComposerImage[]>;
+	addImage(sessionId: string, path: string, name?: string): ComposerImage;
+	removeImage(sessionId: string, idOrPath: string): void;
+	clearImages(sessionId: string): void;
 	/** Drafts per session so switching sessions does not lose typed input. */
 	drafts: Record<string, string>;
 	setDraft(sessionId: string, text: string): void;
@@ -114,6 +125,34 @@ export const useComposer = create<ComposerState>((set) => ({
 	clearAnnotations: (sessionId) =>
 		set((s) => ({
 			annotations: { ...s.annotations, [sessionId]: [] },
+		})),
+	images: {},
+	addImage: (sessionId, path, name) => {
+		const img: ComposerImage = {
+			id: `cimg-${nextId++}`,
+			path,
+			name,
+		};
+		set((s) => ({
+			images: {
+				...s.images,
+				[sessionId]: [...(s.images[sessionId] ?? []), img],
+			},
+		}));
+		return img;
+	},
+	removeImage: (sessionId, idOrPath) =>
+		set((s) => ({
+			images: {
+				...s.images,
+				[sessionId]: (s.images[sessionId] ?? []).filter(
+					(img) => img.id !== idOrPath && img.path !== idOrPath,
+				),
+			},
+		})),
+	clearImages: (sessionId) =>
+		set((s) => ({
+			images: { ...s.images, [sessionId]: [] },
 		})),
 	drafts: {},
 	setDraft: (sessionId, text) =>
