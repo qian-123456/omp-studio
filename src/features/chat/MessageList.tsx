@@ -112,7 +112,7 @@ function UserImagePreview({ image, index }: { image: ImageAttachment; index?: nu
 	if (!image.path || failed) return <ImageChip image={image} />;
 	const src = convertFileSrc(image.path);
 	return (
-		<div className="relative group/user-img inline-block">
+		<div className="relative group/user-img inline-block overflow-hidden rounded-xl border border-[var(--line)] bg-black/5 dark:bg-white/5 shadow-sm select-none cursor-pointer">
 			<img
 				src={src}
 				alt={image.marker ?? (index ? `图片 #${index}` : "图片")}
@@ -120,11 +120,15 @@ function UserImagePreview({ image, index }: { image: ImageAttachment; index?: nu
 				loading="lazy"
 				onError={() => setFailed(true)}
 				onClick={() => setOpen(true)}
-				className="max-h-72 max-w-sm cursor-pointer rounded-xl border border-[var(--line)] bg-black/5 object-contain shadow-sm hover:opacity-95 dark:bg-white/5"
+				className="max-h-72 max-w-sm object-contain transition-transform duration-200 group-hover/user-img:scale-[1.02]"
+			/>
+			{/* Hover overlay: subtle white brightening */}
+			<div
+				className="absolute inset-0 bg-white/15 opacity-0 transition-opacity duration-150 group-hover/user-img:opacity-100 pointer-events-none"
 			/>
 			{index !== undefined && (
-				<span className="absolute top-2 left-2 flex h-5 min-w-5 items-center justify-center rounded-md bg-amber-500 px-1 text-[11px] font-bold text-black shadow-md">
-					{index}
+				<span className="absolute bottom-2 left-2 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white/90 backdrop-blur-md shadow-xs border border-white/10 pointer-events-none">
+					#{index}
 				</span>
 			)}
 			{open &&
