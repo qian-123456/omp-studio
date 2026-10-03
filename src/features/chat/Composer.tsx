@@ -73,6 +73,28 @@ export function renderHighlightedText(content: string) {
 	}
 	return parts;
 }
+export function getImageTokenRanges(content: string): Array<{
+	start: number;
+	end: number;
+	num: number;
+	token: string;
+}> {
+	const regex = /(?:🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+\])/gu;
+	const ranges: Array<{ start: number; end: number; num: number; token: string }> = [];
+	let match: RegExpExecArray | null;
+	while ((match = regex.exec(content)) !== null) {
+		const numMatch = /\d+/.exec(match[0]);
+		const num = numMatch ? parseInt(numMatch[0], 10) : 1;
+		ranges.push({
+			start: match.index,
+			end: match.index + match[0].length,
+			num,
+			token: match[0],
+		});
+	}
+	return ranges;
+}
+
 
 
 export const INLINE_IMAGE_RE =
@@ -637,7 +659,7 @@ export function Composer({
 		for (let i = num + 1; i <= curImages.length; i++) {
 			const oldRe1 = new RegExp(`🖼️\\s*#${i}\\b`, "gu");
 			const oldRe2 = new RegExp(`(\\[(?:Image|图片)\\s*#)${i}(\\b|\\]|:)`, "gu");
-			nextText = nextText.replace(oldRe1, `🖼️ #${i - 1}`).replace(oldRe2, `$1${i - 1}$2`);
+			nextText = nextText.replace(oldRe1, `🖼️#${i - 1}`).replace(oldRe2, `$1${i - 1}$2`);
 		}
 		setText(nextText);
 		setDraft(sessionId, nextText);
@@ -672,7 +694,7 @@ export function Composer({
 				after.length > 0 && !after.startsWith(" ") && !after.startsWith("\n")
 					? " "
 					: "";
-			const marker = `${spacerBefore}🖼️ #${nextNum}${spacerAfter}`;
+			const marker = `${spacerBefore}🖼️#${nextNum}${spacerAfter}`;
 			const nextText = `${before}${marker}${after}`;
 			setText(nextText);
 			setDraft(sessionId, nextText);
@@ -752,6 +774,38 @@ export function Composer({
 
 	const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
 		if (isComposing(e)) return;
+		// Atomic ArrowLeft navigation across image token
+		if (e.key === "ArrowLeft" && !e.altKey && !e.metaKey) {
+			const ta = taRef.current;
+			if (ta && !e.shiftKey && ta.selectionStart === ta.selectionEnd) {
+				const pos = ta.selectionStart;
+				const ranges = getImageTokenRanges(text);
+				const token = ranges.find((r) => r.start < pos && pos <= r.end);
+				if (token) {
+					e.preventDefault();
+					ta.setSelectionRange(token.start, token.start);
+					setCursorPos(token.start);
+					return;
+				}
+			}
+		}
+
+		// Atomic ArrowRight navigation across image token
+		if (e.key === "ArrowRight" && !e.altKey && !e.metaKey) {
+			const ta = taRef.current;
+			if (ta && !e.shiftKey && ta.selectionStart === ta.selectionEnd) {
+				const pos = ta.selectionStart;
+				const ranges = getImageTokenRanges(text);
+				const token = ranges.find((r) => r.start <= pos && pos < r.end);
+				if (token) {
+					e.preventDefault();
+					ta.setSelectionRange(token.end, token.end);
+					setCursorPos(token.end);
+					return;
+				}
+			}
+		}
+
 		// Atomic backspace for image token `🖼️ #N` or `[Image #N]`
 		if (e.key === "Backspace" && !e.shiftKey && !e.metaKey && !e.altKey) {
 			const ta = taRef.current;
@@ -1144,15 +1198,57 @@ export function Composer({
 								}
 							}
 						}}
-						onSelect={(e) =>
-							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-						}
-						onKeyUp={(e) =>
-							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-						}
-						onClick={(e) =>
-							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-						}
+						onSelect={(e) => {
+							const ta = e.target as HTMLTextAreaElement;
+							if (ta.selectionStart !== ta.selectionEnd) {
+								setCursorPos(ta.selectionStart);
+								return;
+							}
+							const pos = ta.selectionStart;
+							const ranges = getImageTokenRanges(text);
+							const token = ranges.find((r) => r.start < pos && pos < r.end);
+							if (token) {
+								const snapPos = pos - token.start < token.end - pos ? token.start : token.end;
+								ta.setSelectionRange(snapPos, snapPos);
+								setCursorPos(snapPos);
+							} else {
+								setCursorPos(pos);
+							}
+						}}
+						onKeyUp={(e) => {
+							const ta = e.target as HTMLTextAreaElement;
+							if (ta.selectionStart !== ta.selectionEnd) {
+								setCursorPos(ta.selectionStart);
+								return;
+							}
+							const pos = ta.selectionStart;
+							const ranges = getImageTokenRanges(text);
+							const token = ranges.find((r) => r.start < pos && pos < r.end);
+							if (token) {
+								const snapPos = pos - token.start < token.end - pos ? token.start : token.end;
+								ta.setSelectionRange(snapPos, snapPos);
+								setCursorPos(snapPos);
+							} else {
+								setCursorPos(pos);
+							}
+						}}
+						onClick={(e) => {
+							const ta = e.target as HTMLTextAreaElement;
+							if (ta.selectionStart !== ta.selectionEnd) {
+								setCursorPos(ta.selectionStart);
+								return;
+							}
+							const pos = ta.selectionStart;
+							const ranges = getImageTokenRanges(text);
+							const token = ranges.find((r) => r.start < pos && pos < r.end);
+							if (token) {
+								const snapPos = pos - token.start < token.end - pos ? token.start : token.end;
+								ta.setSelectionRange(snapPos, snapPos);
+								setCursorPos(snapPos);
+							} else {
+								setCursorPos(pos);
+							}
+						}}
 						onKeyDown={onKeyDown}
 						onDragOver={onDragOver}
 						onDragLeave={onDragLeave}
