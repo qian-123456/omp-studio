@@ -196,12 +196,23 @@ export const useComposer = create<ComposerState>((set) => ({
  * Render the composer text plus annotation pills as markdown quote blocks,
  * numbered [1]..[n]. Diff comments render as "文件 path 第 lines 行：comment".
  */
+const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
+
+function isImageAnnotation(a: Annotation): boolean {
+	return (
+		(!!a.file && IMAGE_FILE_RE.test(a.file)) ||
+		!!a.text?.startsWith("[图片:") ||
+		!!a.text?.startsWith("[Image #")
+	);
+}
+
 export function formatWithAnnotations(
 	text: string,
 	anns: Annotation[],
 ): string {
-	if (anns.length === 0) return text;
-	const blocks = anns.map((a, i) => {
+	const nonImageAnns = anns.filter((a) => !isImageAnnotation(a));
+	if (nonImageAnns.length === 0) return text;
+	const blocks = nonImageAnns.map((a, i) => {
 		const n = i + 1;
 		const lines: string[] = [];
 		if (a.source === "diff" && a.file) {

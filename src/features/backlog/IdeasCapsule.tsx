@@ -28,6 +28,7 @@ import {
 	rpcStart,
 } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
+import { parseInlineImages } from "../chat/Composer";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
@@ -233,10 +234,22 @@ function IdeasPanel({
 		try {
 			const composer = useComposer.getState();
 			const existing = composer.drafts[selectedSessionId] ?? "";
-			composer.setDraft(selectedSessionId, appendToDraft(existing, item.text));
-			for (const imgPath of ideaImages(item)) {
-				composer.addAnnotation(selectedSessionId, { source: "doc", file: imgPath, text: `[图片: ${imgPath}]` });
+			const imgs = ideaImages(item);
+			let imagePlaceholders = "";
+			if (imgs.length > 0) {
+				const existingParsed = parseInlineImages(existing);
+				const startIdx =
+					existingParsed.length > 0
+						? Math.max(...existingParsed.map((t) => t.index)) + 1
+						: 1;
+				imagePlaceholders = imgs
+					.map((p, i) => `[Image #${startIdx + i}: ${p}]`)
+					.join(" ");
 			}
+			const itemContent = imagePlaceholders
+				? `${item.text} ${imagePlaceholders}`
+				: item.text;
+			composer.setDraft(selectedSessionId, appendToDraft(existing, itemContent));
 			composer.focusComposer(selectedSessionId);
 			await backlogUpdate(item.id, { status: "dispatched", targetSessionId: selectedSessionId });
 			await useBacklog.getState().load();

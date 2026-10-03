@@ -289,7 +289,7 @@ describe("parseUserMessageTokens", () => {
 		const tokens = parseUserMessageTokens("分析 [Image #1: /tmp/a.png] 这里的报错");
 		expect(tokens).toEqual([
 			{ type: "text", text: "分析 " },
-			{ type: "image", num: "1" },
+			{ type: "image", num: "1", path: "/tmp/a.png" },
 			{ type: "text", text: " 这里的报错" },
 		]);
 	});
