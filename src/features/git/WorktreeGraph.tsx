@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { ChevronDown, GitBranch, Info, Loader2, PanelRight, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, GitBranch, Info, Loader2, PanelRight, Plus, SquareTerminal, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { WorktreeInfo } from "../../lib/contracts";
@@ -11,6 +11,7 @@ import { WorktreeHoverCard } from "./WorktreeHoverCard";
 import { useExplorer } from "../../stores/explorer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { addTerminalTabWithCwd } from "../terminal/terminalTabs";
 
 /** Idle (worktree-less) branches beyond this count collapse behind an expander row. */
 const IDLE_BRANCH_CAP = 15;
@@ -335,6 +336,23 @@ export function WorktreeGraph({
 													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 												>
 													<PanelRight size={12} />
+												</button>
+
+												<button
+													type="button"
+													onClick={() => {
+														dismissHover();
+														const name = wt.branch || wt.path.split(/[\\/]/).filter(Boolean).pop() || wt.path;
+														if (addTerminalTabWithCwd(wt.path, name)) {
+															setRightTab("terminal");
+															toast.success(`已在「${name}」工作树打开终端`);
+														}
+													}}
+													title="在此工作树打开终端 / 运行开发服务"
+													aria-label="在此工作树打开终端 / 运行开发服务"
+													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
+												>
+													<SquareTerminal size={12} />
 												</button>
 
 												<button

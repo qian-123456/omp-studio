@@ -247,8 +247,8 @@ function CommitRow({
 						type="button"
 						disabled={busy}
 						onClick={() => onStart(c.sha)}
-						title="运行这个版本"
-						aria-label="运行这个版本"
+						title="在隔离的临时目录（.worktrees/tm-xxxx）中运行该历史版本的快照，不影响当前工作树代码"
+						aria-label="时光机快照预览"
 						className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-emerald-300 transition-colors"
 					>
 						<Play size={12} />
@@ -309,9 +309,9 @@ function CommitRow({
 							className={btn}
 							disabled={busy}
 							onClick={() => onStart(c.sha)}
-							title="自动识别启动命令（例如 pnpm dev），在单独的文件夹里运行这个版本"
+							title="在隔离的临时目录（.worktrees/tm-xxxx）中运行该历史版本的快照，不影响当前工作树代码"
 						>
-							<Play size={12} /> {busy ? "启动中…" : "运行这个版本"}
+							<Play size={12} /> {busy ? "启动时光机快照…" : "时光机快照预览"}
 						</button>
 						<button type="button" className={btn} onClick={onCustomFor}>
 							<Terminal size={12} /> 用自定义命令运行

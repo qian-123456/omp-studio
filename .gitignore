@@ -7,3 +7,7 @@ src-tauri/target/
 .omp/config.yml.lock
 .omp/
 .cache/
+
+# AOCI agent host integration (machine-bound; do not commit)
+.mcp.json
+.mcp.json.backup.*

@@ -90,8 +90,36 @@ fn has_dev_script(dir: &Path) -> bool {
         .is_some_and(|v| v["scripts"]["dev"].is_string())
 }
 
+/// Custom run command from `.omp-workspace/run.json` or `.omp/run.json`.
+fn custom_command(dir: &Path) -> Option<String> {
+    [".omp-workspace/run.json", ".omp/run.json"].iter().find_map(|p| {
+        let s = std::fs::read_to_string(dir.join(p)).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+        let c = v["command"].as_str()?.trim();
+        (!c.is_empty()).then(|| c.to_string())
+    })
+}
+
+/// Whether `dir` is a Tauri desktop project.
+pub fn is_tauri(dir: &Path) -> bool {
+    dir.join("src-tauri/tauri.conf.json").exists()
+        || dir.join("src-tauri/Cargo.toml").exists()
+        || dir.join("tauri.conf.json").exists()
+}
+
 /// Detected run command (no install step), or None when nothing is runnable.
 pub fn detect_command(dir: &Path) -> Option<String> {
+    if let Some(c) = custom_command(dir) {
+        return Some(c);
+    }
+    if is_tauri(dir) {
+        return Some(match package_manager(dir) {
+            "pnpm" => "pnpm tauri dev".into(),
+            "yarn" => "yarn tauri dev".into(),
+            "bun" => "bun run tauri dev".into(),
+            _ => "npm run tauri dev".into(),
+        });
+    }
     if has_dev_script(dir) {
         return Some(match package_manager(dir) {
             "pnpm" => "pnpm dev".into(),
@@ -104,6 +132,12 @@ pub fn detect_command(dir: &Path) -> Option<String> {
         return Some("cargo run".into());
     }
     None
+}
+
+/// Isolated data dir for a time-machine Tauri child, so it never contends
+/// for the main instance's SQLite lock.
+pub fn isolated_data_dir(sha: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("ompws-tm-{sha}"))
 }
 
 /// Full shell command: optional dependency install followed by the run command.
@@ -246,6 +280,9 @@ pub fn run(repo: &Path, sha: &str, command: Option<&str>, sink: LogSink) -> Resu
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if is_tauri(&wt) {
+        cmd.env("OMPWS_DATA_DIR", isolated_data_dir(&info.sha));
+    }
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
@@ -383,5 +420,47 @@ mod tests {
             Some("make run")
         );
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn fresh(name: &str) -> PathBuf {
+        let dir = PathBuf::from(format!(
+            "/tmp/ompws-test-c/tm-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn detects_project_kinds() {
+        let web = fresh("web");
+        std::fs::write(web.join("package.json"), r#"{"scripts":{"dev":"vite"}}"#).unwrap();
+        std::fs::write(web.join("pnpm-lock.yaml"), "").unwrap();
+        assert_eq!(detect_command(&web).as_deref(), Some("pnpm dev"));
+
+        let tauri = fresh("tauri");
+        std::fs::write(tauri.join("package.json"), r#"{"scripts":{"dev":"vite"}}"#).unwrap();
+        std::fs::write(tauri.join("pnpm-lock.yaml"), "").unwrap();
+        std::fs::create_dir_all(tauri.join("src-tauri")).unwrap();
+        std::fs::write(tauri.join("src-tauri/tauri.conf.json"), "{}").unwrap();
+        assert!(is_tauri(&tauri));
+        assert_eq!(detect_command(&tauri).as_deref(), Some("pnpm tauri dev"));
+
+        let cargo = fresh("cargo");
+        std::fs::write(cargo.join("Cargo.toml"), "[package]").unwrap();
+        assert!(!is_tauri(&cargo));
+        assert_eq!(detect_command(&cargo).as_deref(), Some("cargo run"));
+
+        std::fs::create_dir_all(tauri.join(".omp")).unwrap();
+        std::fs::write(tauri.join(".omp/run.json"), r#"{"command":"make serve"}"#).unwrap();
+        assert_eq!(detect_command(&tauri).as_deref(), Some("make serve"));
+        std::fs::create_dir_all(tauri.join(".omp-workspace")).unwrap();
+        std::fs::write(tauri.join(".omp-workspace/run.json"), r#"{"command":"just dev"}"#).unwrap();
+        assert_eq!(detect_command(&tauri).as_deref(), Some("just dev"));
+
+        for d in [web, tauri, cargo] {
+            std::fs::remove_dir_all(d).unwrap();
+        }
     }
 }

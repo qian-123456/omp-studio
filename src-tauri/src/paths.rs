@@ -9,8 +9,14 @@ fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// `~/.omp-workspace`
+/// `~/.omp-workspace` (overridable via `OMPWS_DATA_DIR` for isolated dev/preview instances)
 pub fn data_dir() -> PathBuf {
+    if let Ok(val) = std::env::var("OMPWS_DATA_DIR") {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
     home().join(".omp-workspace")
 }
 
@@ -60,4 +66,20 @@ pub fn ensure_dirs() -> io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_data_dir_default_and_override() {
+        let default_dir = data_dir();
+        assert!(default_dir.ends_with(".omp-workspace"));
+
+        std::env::set_var("OMPWS_DATA_DIR", "/tmp/ompws-test-env");
+        assert_eq!(data_dir(), PathBuf::from("/tmp/ompws-test-env"));
+        std::env::remove_var("OMPWS_DATA_DIR");
+        assert_eq!(data_dir(), default_dir);
+    }
 }

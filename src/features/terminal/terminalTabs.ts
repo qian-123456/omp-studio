@@ -50,6 +50,23 @@ export function addTerminalTab(): string | null {
 	return useDrawerStore.getState().addTab(cwd, `终端 ${n}`);
 }
 
+/**
+ * Open a terminal tab rooted at an explicit directory (e.g. a worktree), so
+ * dev servers run in-place there. Same visible-tab cap as addTerminalTab.
+ */
+export function addTerminalTabWithCwd(cwd: string, title?: string): string | null {
+	const visible = useDrawerStore.getState().tabs.filter((t) => !t.detached);
+	if (visible.length >= MAX_VISIBLE_TERMINALS) {
+		toast.info(`最多同时打开 ${MAX_VISIBLE_TERMINALS} 个终端，请先关闭或折叠一个`);
+		return null;
+	}
+	const titles = new Set(useDrawerStore.getState().tabs.map((t) => t.title));
+	const base = title?.trim() || "终端";
+	let label = base;
+	for (let n = 2; titles.has(label); n++) label = `${base} ${n}`;
+	return useDrawerStore.getState().addTab(cwd, label);
+}
+
 /** Fold a terminal into a background service; closes the panel tab when none stay visible. */
 export function detachTerminalTab(tabId: string): void {
 	drawerRegistry.get(tabId)?.term.element?.remove();
