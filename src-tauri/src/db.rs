@@ -28,6 +28,7 @@ CREATE TABLE pairing_codes(code TEXT PRIMARY KEY, expires_at TEXT NOT NULL, used
 /// Open (creating if needed) the app database and run pending migrations.
 pub fn open() -> rusqlite::Result<Connection> {
     let conn = Connection::open(paths::db_path())?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     migrate(&conn)?;

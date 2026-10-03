@@ -5,7 +5,9 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
+		"dev:preview": "VITE_PORT=1425 OMPWS_DATA_DIR=$HOME/.omp-workspace-dev tauri dev -c '{\"build\":{\"devUrl\":\"http://localhost:1425\"}}'",
 		"build": "tsc --noEmit && vite build",
+		"build:app": "tsc --noEmit && vite build && tauri build",
 		"preview": "vite preview",
 		"test": "vitest run",
 		"tauri": "tauri"

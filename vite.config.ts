@@ -11,7 +11,7 @@ export default defineConfig({
 	// Tauri expects a fixed dev port and fails if it is taken.
 	clearScreen: false,
 	server: {
-		port: 1421,
+		port: process.env.VITE_PORT ? parseInt(process.env.VITE_PORT, 10) : 1421,
 		strictPort: true,
 		watch: {
 			// NOTE: do not ignore "**/.worktrees/**" here — when the dev server runs
