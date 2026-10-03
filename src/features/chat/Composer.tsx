@@ -22,6 +22,58 @@ export interface InlineImageToken {
 	index: number;
 	path?: string;
 }
+export const IMAGE_TOKEN_PALETTES = [
+	{ text: "text-amber-400", decoration: "decoration-amber-400", hex: "#fbbf24" }, // #1: Amber/Peach
+	{ text: "text-sky-400", decoration: "decoration-sky-400", hex: "#38bdf8" },     // #2: Sky Blue
+	{ text: "text-emerald-400", decoration: "decoration-emerald-400", hex: "#34d399" }, // #3: Emerald
+	{ text: "text-purple-400", decoration: "decoration-purple-400", hex: "#c084fc" }, // #4: Purple
+	{ text: "text-rose-400", decoration: "decoration-rose-400", hex: "#fb7185" },     // #5: Rose Pink
+	{ text: "text-teal-400", decoration: "decoration-teal-400", hex: "#2dd4bf" },     // #6: Teal
+	{ text: "text-yellow-300", decoration: "decoration-yellow-300", hex: "#fde047" }, // #7: Yellow
+	{ text: "text-indigo-400", decoration: "decoration-indigo-400", hex: "#818cf8" }, // #8: Indigo
+];
+
+export function getImageTokenPalette(index: number) {
+	const i = Math.max(1, index);
+	return IMAGE_TOKEN_PALETTES[(i - 1) % IMAGE_TOKEN_PALETTES.length];
+}
+
+export function renderHighlightedText(content: string) {
+	const regex = /(🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+\])/gu;
+	const parts: React.ReactNode[] = [];
+	let lastIdx = 0;
+	let match: RegExpExecArray | null;
+
+	while ((match = regex.exec(content)) !== null) {
+		if (match.index > lastIdx) {
+			parts.push(content.slice(lastIdx, match.index));
+		}
+		const tokenText = match[0];
+		const numMatch = /\d+/.exec(tokenText);
+		const num = numMatch ? parseInt(numMatch[0], 10) : 1;
+		const palette = getImageTokenPalette(num);
+
+		parts.push(
+			<span
+				key={match.index}
+				className="inline-block font-mono font-medium underline decoration-2 underline-offset-[3px]"
+				style={{ color: palette.hex, textDecorationColor: palette.hex }}
+			>
+				{tokenText}
+			</span>,
+		);
+		lastIdx = regex.lastIndex;
+	}
+
+	if (lastIdx < content.length) {
+		parts.push(content.slice(lastIdx));
+	}
+	if (content.endsWith("\n")) {
+		parts.push("\n ");
+	}
+	return parts;
+}
+
 
 export const INLINE_IMAGE_RE =
 	/(?:\[(?:Image|图片)\s*#(?<num1>\d+)\]|🖼️\s*#(?<num2>\d+)|\[(?:Image|图片)\s*#(?<num3>\d+)(?:,\s*\d+x\d+)?:\s*(?<path3>[^\]]+)\])/gu;
@@ -138,9 +190,14 @@ export function Composer({
 	const [argHintLine, setArgHintLine] = useState<string | null>(null);
 
 	const taRef = useRef<HTMLTextAreaElement>(null);
+	const backdropRef = useRef<HTMLDivElement>(null);
 	const composerCardRef = useRef<HTMLDivElement>(null);
 	// Draft state bound to useComposer store so switching sessions does not lose input
 	const text = useComposer((s) => s.drafts[sessionId] ?? "");
+	const hasImageTokens = useMemo(
+		() => /(?:🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+\])/u.test(text),
+		[text],
+	);
 	const setDraft = useComposer((s) => s.setDraft);
 	const clearDraft = useComposer((s) => s.clearDraft);
 	const setText = (nextText: string) => setDraft(sessionId, nextText);
@@ -399,8 +456,11 @@ export function Composer({
 		const nextH = Math.min(Math.max(ta.scrollHeight, minH), maxH);
 		ta.style.height = `${nextH}px`;
 		ta.style.overflowY = ta.scrollHeight > maxH ? "auto" : "hidden";
+		if (backdropRef.current) {
+			backdropRef.current.style.height = `${nextH}px`;
+			backdropRef.current.scrollTop = ta.scrollTop;
+		}
 	}, [text, compact]);
-
 	/** Registry-facing hooks: pickers, text insertion. Fresh closure per call
 	 * so executors always see current state. */
 	const makeSlashDeps = (): SlashDeps => ({
@@ -968,6 +1028,7 @@ export function Composer({
 					<div className="flex flex-wrap items-center gap-2.5 px-3.5 pt-3 pb-2 border-b border-[var(--line)] bg-[var(--bg-panel)]/40">
 						{composerImages.map((img, i) => {
 							const num = i + 1;
+							const palette = getImageTokenPalette(num);
 							return (
 								<div
 									key={img.id || `${num}-${img.path}`}
@@ -986,10 +1047,12 @@ export function Composer({
 									<div className="absolute inset-0 bg-white/20 opacity-0 transition-opacity duration-150 group-hover/imgcard:opacity-100 pointer-events-none" />
 
 									{/* Codex-style subtle index badge */}
-									<div className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white/90 backdrop-blur-md shadow-xs border border-white/10 pointer-events-none">
+									<div
+										className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-mono font-bold backdrop-blur-md shadow-xs border border-white/10 pointer-events-none"
+										style={{ color: palette.hex }}
+									>
 										<span>#{num}</span>
 									</div>
-
 									{/* Codex-style delete button (only visible on hover at top-right) */}
 									<button
 										type="button"
@@ -1036,54 +1099,80 @@ export function Composer({
 						</div>,
 						document.body,
 					)}
-				<textarea
-					ref={taRef}
-					data-composer={sessionId}
-					value={text}
-					onChange={(e) => {
-						const next = e.target.value;
-						setText(next);
-						setDraft(sessionId, next);
-						setCursorPos(e.target.selectionStart ?? next.length);
-						setMenuDismissed(false);
-						setArgHintLine(null);
-						if (historyIdx !== -1) setHistoryIdx(-1);
-						// Sync composerImages if tokens were completely deleted from text
-						const curImages = useComposer.getState().images[sessionId] ?? [];
-						if (curImages.length > 0) {
-							const remainingTokens = parseInlineImages(next);
-							const presentIndices = new Set(remainingTokens.map((t) => t.index));
-							if (curImages.some((_, idx) => !presentIndices.has(idx + 1))) {
-								const filtered = curImages.filter((_, idx) =>
-									presentIndices.has(idx + 1),
-								);
-								useComposer.getState().setImages(sessionId, filtered);
+				{/* Textarea container with mirrored syntax-highlighting backdrop */}
+				<div className="relative w-full">
+					{hasImageTokens && (
+						<div
+							ref={backdropRef}
+							aria-hidden="true"
+							className="pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] text-[var(--text)] select-none"
+							style={{
+								boxSizing: "border-box",
+								wordBreak: "break-word",
+							}}
+						>
+							{renderHighlightedText(text)}
+						</div>
+					)}
+					<textarea
+						ref={taRef}
+						data-composer={sessionId}
+						value={text}
+						onScroll={() => {
+							if (backdropRef.current && taRef.current) {
+								backdropRef.current.scrollTop = taRef.current.scrollTop;
 							}
+						}}
+						onChange={(e) => {
+							const next = e.target.value;
+							setText(next);
+							setDraft(sessionId, next);
+							setCursorPos(e.target.selectionStart ?? next.length);
+							setMenuDismissed(false);
+							setArgHintLine(null);
+							if (historyIdx !== -1) setHistoryIdx(-1);
+							// Sync composerImages if tokens were completely deleted from text
+							const curImages = useComposer.getState().images[sessionId] ?? [];
+							if (curImages.length > 0) {
+								const remainingTokens = parseInlineImages(next);
+								const presentIndices = new Set(remainingTokens.map((t) => t.index));
+								if (curImages.some((_, idx) => !presentIndices.has(idx + 1))) {
+									const filtered = curImages.filter((_, idx) =>
+										presentIndices.has(idx + 1),
+									);
+									useComposer.getState().setImages(sessionId, filtered);
+								}
+							}
+						}}
+						onSelect={(e) =>
+							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
 						}
-					}}
-					onSelect={(e) =>
-						setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-					}
-					onKeyUp={(e) =>
-						setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-					}
-					onClick={(e) =>
-						setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
-					}
-					onKeyDown={onKeyDown}
-					onDragOver={onDragOver}
-					onDragLeave={onDragLeave}
-					onDrop={(e) => void onDrop(e)}
-					onPaste={(e) => void onPaste(e)}
-					rows={1}
-					placeholder={
-						streaming
-							? "输入后续消息…"
-							: "输入消息，/ 命令，@ 引用文件"
-					}
-					style={{ outline: "none", boxShadow: "none" }}
-					className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-[var(--chat-font-size,14px)] leading-[1.5] text-[var(--text)] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]"
-				/>
+						onKeyUp={(e) =>
+							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
+						}
+						onClick={(e) =>
+							setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
+						}
+						onKeyDown={onKeyDown}
+						onDragOver={onDragOver}
+						onDragLeave={onDragLeave}
+						onDrop={(e) => void onDrop(e)}
+						onPaste={(e) => void onPaste(e)}
+						rows={1}
+						placeholder={
+							streaming
+								? "输入后续消息…"
+								: "输入消息，/ 命令，@ 引用文件"
+						}
+						style={{ outline: "none", boxShadow: "none" }}
+						className={clsx(
+							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]",
+							hasImageTokens
+								? "relative z-10 text-transparent caret-[var(--text)] selection:bg-sky-500/30 selection:text-transparent"
+								: "text-[var(--text)]",
+						)}
+					/>
+				</div>
 
 				{/* Arg hint shown after picking `/name <arg>` from the menu. */}
 				{argHintLine && (
