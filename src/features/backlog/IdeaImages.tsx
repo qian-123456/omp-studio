@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { ImagePlus, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { FloatingLayer } from "../../components/FloatingLayer";
+import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { errMsg } from "../../lib/dialogs";
 import { saveClipboardImage } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
@@ -114,7 +114,7 @@ export function ImageThumbs({
 	onRemove?: (path: string) => void;
 	size?: string;
 }) {
-	const [preview, setPreview] = useState<string | null>(null);
+	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	if (paths.length === 0) return null;
 	return (
 		<div className="flex flex-wrap gap-1.5">
@@ -122,7 +122,7 @@ export function ImageThumbs({
 				<div key={p} className={`group relative ${size} shrink-0`}>
 					<button
 						type="button"
-						onClick={() => setPreview(p)}
+						onClick={() => setPreviewIndex(paths.indexOf(p))}
 						className="h-full w-full overflow-hidden rounded-md border border-[var(--border-divider)] bg-[var(--bg)]"
 						title={p}
 					>
@@ -140,30 +140,15 @@ export function ImageThumbs({
 					)}
 				</div>
 			))}
-			{preview && (
-				<FloatingLayer
-					anchor={{ x: window.innerWidth / 2, y: window.innerHeight / 2 }}
-					placement="bottom-start"
-					layer="modal"
-					onDismiss={() => setPreview(null)}
-					className="-translate-x-1/2 -translate-y-1/2 p-2 shadow-apple-modal"
-				>
-					<div className="relative">
-						<img
-							src={convertFileSrc(preview)}
-							alt={preview}
-							className="max-h-[80vh] max-w-[85vw] rounded-lg object-contain"
-						/>
-						<button
-							type="button"
-							onClick={() => setPreview(null)}
-							className="absolute right-1 top-1 rounded-full bg-neutral-900/80 p-1 text-neutral-200 hover:text-white"
-							title="关闭预览"
-						>
-							<X className="h-4 w-4" />
-						</button>
-					</div>
-				</FloatingLayer>
+			{previewIndex !== null && (
+				<ImagePreviewModal
+					images={paths.map((p, idx) => ({
+						path: p,
+						marker: `图片 #${idx + 1}`,
+					}))}
+					initialIndex={previewIndex}
+					onClose={() => setPreviewIndex(null)}
+				/>
 			)}
 		</div>
 	);

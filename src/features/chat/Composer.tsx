@@ -125,8 +125,8 @@ const isImageAnnotation = (a: { file?: string; text?: string }) =>
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ContextRing } from "./ContextRing";
-import { createPortal } from "react-dom";
-import { FloatingLayer, Z_LAYER } from "../../components/FloatingLayer";
+import { ImagePreviewModal } from "../../components/ImagePreviewModal";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
@@ -247,7 +247,7 @@ export function Composer({
 		() => annotations.filter((a) => !isImageAnnotation(a)),
 		[annotations],
 	);
-	const [previewModalPath, setPreviewModalPath] = useState<string | null>(null);
+	const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
 	const scrollToItem = useLive((s) => s.scrollToItem);
 
 	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
@@ -1087,7 +1087,7 @@ export function Composer({
 								<div
 									key={img.id || `${num}-${img.path}`}
 									className="group/imgcard relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm transition-all select-none cursor-pointer"
-									onClick={() => setPreviewModalPath(img.path)}
+									onClick={() => setPreviewImageIndex(i)}
 									title="点击放大查看"
 								>
 									{/* Thumbnail image */}
@@ -1124,35 +1124,17 @@ export function Composer({
 						})}
 					</div>
 				)}
-				{previewModalPath &&
-					createPortal(
-						<div
-							className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4"
-							style={{ zIndex: Z_LAYER.modal }}
-							onClick={() => setPreviewModalPath(null)}
-						>
-							<div
-								className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-2 shadow-apple-modal"
-								onClick={(e) => e.stopPropagation()}
-							>
-								<img
-									src={convertFileSrc(previewModalPath)}
-									alt="预览"
-									className="max-h-[80vh] max-w-full rounded object-contain"
-								/>
-								<div className="mt-2 flex items-center justify-end">
-									<button
-										type="button"
-										onClick={() => setPreviewModalPath(null)}
-										className="rounded px-2.5 py-1 text-xs hover:bg-[var(--ghost-hover)]"
-									>
-										关闭
-									</button>
-								</div>
-							</div>
-						</div>,
-						document.body,
-					)}
+				{previewImageIndex !== null && (
+					<ImagePreviewModal
+						images={composerImages.map((img, i) => ({
+							path: img.path,
+							name: img.name,
+							marker: `🖼️#${i + 1}`,
+						}))}
+						initialIndex={previewImageIndex}
+						onClose={() => setPreviewImageIndex(null)}
+					/>
+				)}
 				{/* Textarea container with mirrored syntax-highlighting backdrop */}
 				<div className="relative w-full">
 					{hasImageTokens && (
