@@ -18,6 +18,8 @@ export interface ComposerImage {
 	id: string;
 	path: string;
 	name?: string;
+	width?: number;
+	height?: number;
 }
 
 export interface ComposerState {
@@ -33,7 +35,13 @@ export interface ComposerState {
 	clearAnnotations(sessionId: string): void;
 	/** Image attachments per session with ordered index (1, 2, 3...). */
 	images: Record<string, ComposerImage[]>;
-	addImage(sessionId: string, path: string, name?: string): ComposerImage;
+	addImage(
+		sessionId: string,
+		path: string,
+		name?: string,
+		dimensions?: { width?: number; height?: number },
+	): ComposerImage;
+	setImages(sessionId: string, images: ComposerImage[]): void;
 	removeImage(sessionId: string, idOrPath: string): void;
 	clearImages(sessionId: string): void;
 	/** Drafts per session so switching sessions does not lose typed input. */
@@ -127,11 +135,13 @@ export const useComposer = create<ComposerState>((set) => ({
 			annotations: { ...s.annotations, [sessionId]: [] },
 		})),
 	images: {},
-	addImage: (sessionId, path, name) => {
+	addImage: (sessionId, path, name, dimensions) => {
 		const img: ComposerImage = {
 			id: `cimg-${nextId++}`,
 			path,
 			name,
+			width: dimensions?.width,
+			height: dimensions?.height,
 		};
 		set((s) => ({
 			images: {
@@ -141,6 +151,10 @@ export const useComposer = create<ComposerState>((set) => ({
 		}));
 		return img;
 	},
+	setImages: (sessionId, images) =>
+		set((s) => ({
+			images: { ...s.images, [sessionId]: images },
+		})),
 	removeImage: (sessionId, idOrPath) =>
 		set((s) => ({
 			images: {

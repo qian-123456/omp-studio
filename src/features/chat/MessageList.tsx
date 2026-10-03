@@ -62,14 +62,14 @@ function stripImageMarkers(text: string): string {
 			"",
 		)
 		.replace(
-			/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?::\s*[^\]]+)?\]/gi,
+			/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?::\s*[^\]]+)?\]|🖼️\s*#\d+/gu,
 			"",
 		)
 		.trim();
 }
 
 const IMAGE_TOKEN_RE =
-	/\[(?:Image|图片)\s*#(?<num1>\d+)(?:,\s*\d+x\d+)?(?::\s*(?<path1>[^\]]+))?\]|\[图片(?:\s*#(?<num2>\d+))?(?::\s*(?<path2>[^\]]+))?\]/g;
+	/\[(?:Image|图片)\s*#(?<num1>\d+)(?:,\s*\d+x\d+)?(?::\s*(?<path1>[^\]]+))?\]|\[图片(?:\s*#(?<num2>\d+))?(?::\s*(?<path2>[^\]]+))?\]|🖼️\s*#(?<num3>\d+)/gu;
 export function parseUserMessageTokens(text: string): Array<{ type: "text"; text: string } | { type: "image"; num: string; path?: string }> {
 	const cleaned = text
 		.replace(

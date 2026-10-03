@@ -20,22 +20,27 @@ import type { ImageAttachment } from "../../lib/contracts";
 export interface InlineImageToken {
 	match: string;
 	index: number;
-	path: string;
+	path?: string;
 }
 
 export const INLINE_IMAGE_RE =
-	/\[(?:Image|图片)\s*#(?<num>\d+)(?:,\s*\d+x\d+)?:\s*(?<path>[^\]]+)\]/g;
+	/(?:\[(?:Image|图片)\s*#(?<num1>\d+)\]|🖼️\s*#(?<num2>\d+)|\[(?:Image|图片)\s*#(?<num3>\d+)(?:,\s*\d+x\d+)?:\s*(?<path3>[^\]]+)\])/gu;
 
-export function parseInlineImages(text: string): InlineImageToken[] {
+export function parseInlineImages(
+	text: string,
+	knownImages?: Array<{ path: string }>,
+): InlineImageToken[] {
 	const tokens: InlineImageToken[] = [];
-	const re = new RegExp(INLINE_IMAGE_RE.source, "g");
+	const re = new RegExp(INLINE_IMAGE_RE.source, "gu");
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(text)) !== null) {
-		const num = parseInt(m.groups?.num || "1", 10);
-		const path = (m.groups?.path || "").trim();
-		if (path) {
-			tokens.push({ match: m[0], index: num, path });
+		const numStr = m.groups?.num1 || m.groups?.num2 || m.groups?.num3 || "1";
+		const num = parseInt(numStr, 10);
+		let path = (m.groups?.path3 || "").trim() || undefined;
+		if (!path && knownImages && knownImages[num - 1]) {
+			path = knownImages[num - 1].path;
 		}
+		tokens.push({ match: m[0], index: num, path });
 	}
 	return tokens;
 }
@@ -154,7 +159,11 @@ export function Composer({
 	const updateAnnotation = useComposer((s) => s.updateAnnotation);
 	const removeAnnotation = useComposer((s) => s.removeAnnotation);
 	const clearAnnotations = useComposer((s) => s.clearAnnotations);
-	const inlineImages = useMemo(() => parseInlineImages(text), [text]);
+	const composerImages = useComposer(
+		(s) => s.images[sessionId] ?? EMPTY_LIST,
+	);
+	const addImage = useComposer((s) => s.addImage);
+	const clearImages = useComposer((s) => s.clearImages);
 	const textAnnotations = useMemo(
 		() => annotations.filter((a) => !isImageAnnotation(a)),
 		[annotations],
@@ -469,6 +478,7 @@ export function Composer({
 				}
 				clearDraft(sessionId);
 				clearAnnotations(sessionId);
+				clearImages(sessionId);
 			} catch (err) {
 				if (!isResumeCancelled(err))
 					toast.error(`发送失败: ${errMsg(err)}`);
@@ -477,20 +487,26 @@ export function Composer({
 			}
 			return;
 		}
-		const inlineImages = parseInlineImages(raw);
-		const imageAttachments: ImageAttachment[] = inlineImages.map((img) => ({
-			id: `img-${img.index}`,
+		const currentSessionImages = useComposer.getState().images[sessionId] ?? [];
+		// Convert `🖼️ #N` to standard OMP token `[Image #N]`
+		const outgoingRaw = raw.replace(/🖼️\s*#(\d+)/gu, "[Image #$1]");
+
+		const imageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
+			id: img.id || `img-${i + 1}`,
 			path: img.path,
-			marker: `[Image #${img.index}]`,
+			marker: `[Image #${i + 1}]`,
+			width: img.width,
+			height: img.height,
 		}));
 
-		const message = formatWithAnnotations(raw, annotations);
+		const message = formatWithAnnotations(outgoingRaw, textAnnotations);
 		setBusy(true);
 		try {
 			await sendPrompt(sessionId, message, { steer, images: imageAttachments });
 			pushHistory(raw.trim());
 			clearDraft(sessionId);
 			clearAnnotations(sessionId);
+			clearImages(sessionId);
 		} catch (err) {
 			if (!isResumeCancelled(err)) toast.error(`发送失败: ${errMsg(err)}`);
 		} finally {
@@ -535,15 +551,53 @@ export function Composer({
 			reader.readAsDataURL(file);
 		});
 
+	const getImageDimensions = (src: string): Promise<{ width: number; height: number }> =>
+		new Promise<{ width: number; height: number }>((resolve) => {
+			const img = new Image();
+			img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+			img.onerror = () => resolve({ width: 0, height: 0 });
+			img.src = src;
+		});
+
+	const removeImageByIndex = (imageIndex: number, currentText?: string) => {
+		const textToUse = currentText !== undefined ? currentText : text;
+		const curImages = useComposer.getState().images[sessionId] ?? [];
+		if (imageIndex < 0 || imageIndex >= curImages.length) return;
+		const num = imageIndex + 1;
+		const nextImages = curImages.filter((_, idx) => idx !== imageIndex);
+		useComposer.getState().setImages(sessionId, nextImages);
+
+		// Remove token for this image from text: `🖼️ #1` or `[Image #1]`
+		const tokenRe = new RegExp(
+			`\\s*(?:🖼️\\s*#${num}|\\[(?:Image|图片)\\s*#${num}(?:,[^\\]]*)?(?::[^\\]]*)?\\])\\s*`,
+			"gu",
+		);
+		let nextText = textToUse.replace(tokenRe, " ").trim();
+		// Renumber remaining tokens > num
+		for (let i = num + 1; i <= curImages.length; i++) {
+			const oldRe1 = new RegExp(`🖼️\\s*#${i}\\b`, "gu");
+			const oldRe2 = new RegExp(`(\\[(?:Image|图片)\\s*#)${i}(\\b|\\]|:)`, "gu");
+			nextText = nextText.replace(oldRe1, `🖼️ #${i - 1}`).replace(oldRe2, `$1${i - 1}$2`);
+		}
+		setText(nextText);
+		setDraft(sessionId, nextText);
+	};
+
 	const processImageFile = async (file: File | Blob) => {
 		try {
 			const base64 = await fileToBase64(file);
 			const savedPath = await saveClipboardImage(base64);
-			const existing = parseInlineImages(text);
-			const nextNum =
-				existing.length > 0
-					? Math.max(...existing.map((t) => t.index)) + 1
-					: 1;
+			const dims = await getImageDimensions(convertFileSrc(savedPath));
+			const dimensions = dims.width > 0 && dims.height > 0 ? dims : undefined;
+
+			addImage(
+				sessionId,
+				savedPath,
+				file instanceof File ? file.name : undefined,
+				dimensions,
+			);
+			const currentImages = useComposer.getState().images[sessionId] ?? [];
+			const nextNum = currentImages.length;
 
 			const ta = taRef.current;
 			const start = ta ? ta.selectionStart : cursorPos;
@@ -558,7 +612,7 @@ export function Composer({
 				after.length > 0 && !after.startsWith(" ") && !after.startsWith("\n")
 					? " "
 					: "";
-			const marker = `${spacerBefore}[Image #${nextNum}: ${savedPath}]${spacerAfter}`;
+			const marker = `${spacerBefore}🖼️ #${nextNum}${spacerAfter}`;
 			const nextText = `${before}${marker}${after}`;
 			setText(nextText);
 			setDraft(sessionId, nextText);
@@ -638,6 +692,64 @@ export function Composer({
 
 	const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
 		if (isComposing(e)) return;
+		// Atomic backspace for image token `🖼️ #N` or `[Image #N]`
+		if (e.key === "Backspace" && !e.shiftKey && !e.metaKey && !e.altKey) {
+			const ta = taRef.current;
+			if (ta && ta.selectionStart === ta.selectionEnd) {
+				const pos = ta.selectionStart;
+				const before = text.slice(0, pos);
+				const match = /(?:🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+(?:,[^\]]*)?\])\s*$/.exec(before);
+				if (match) {
+					e.preventDefault();
+					const tokenStr = match[0];
+					const startIdx = pos - tokenStr.length;
+					const numMatch = /\d+/.exec(tokenStr);
+					const imgNum = numMatch ? parseInt(numMatch[0], 10) : null;
+
+					const nextText = text.slice(0, startIdx) + text.slice(pos);
+					setText(nextText);
+					setDraft(sessionId, nextText);
+					setCursorPos(startIdx);
+					setTimeout(() => {
+						ta.setSelectionRange(startIdx, startIdx);
+					}, 0);
+					if (imgNum !== null) {
+						removeImageByIndex(imgNum - 1, nextText);
+					}
+					return;
+				}
+			}
+		}
+
+		// Atomic delete for image token `🖼️ #N` or `[Image #N]`
+		if (e.key === "Delete" && !e.shiftKey && !e.metaKey && !e.altKey) {
+			const ta = taRef.current;
+			if (ta && ta.selectionStart === ta.selectionEnd) {
+				const pos = ta.selectionStart;
+				const after = text.slice(pos);
+				const match = /^\s*(?:🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+(?:,[^\]]*)?\])/.exec(after);
+				if (match) {
+					e.preventDefault();
+					const tokenStr = match[0];
+					const endIdx = pos + tokenStr.length;
+					const numMatch = /\d+/.exec(tokenStr);
+					const imgNum = numMatch ? parseInt(numMatch[0], 10) : null;
+
+					const nextText = text.slice(0, pos) + text.slice(endIdx);
+					setText(nextText);
+					setDraft(sessionId, nextText);
+					setCursorPos(pos);
+					setTimeout(() => {
+						ta.setSelectionRange(pos, pos);
+					}, 0);
+					if (imgNum !== null) {
+						removeImageByIndex(imgNum - 1, nextText);
+					}
+					return;
+				}
+			}
+		}
+
 
 		// @ file-completion navigation — takes precedence over slash.
 		if (atMenu.length > 0 && atToken) {
@@ -851,37 +963,54 @@ export function Composer({
 					</div>
 				)}
 
-				{/* Attached images gallery above textarea */}
-				{inlineImages.length > 0 && (
-					<div className="flex flex-wrap items-center gap-3 px-3 pt-2.5 pb-1 border-b border-[var(--line)]">
-						{inlineImages.map((img) => (
-							<div
-								key={`${img.index}-${img.path}`}
-								className="group/imgcard relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm hover:border-[var(--accent)] transition-all"
-							>
-								<img
-									src={convertFileSrc(img.path)}
-									alt={`Image #${img.index}`}
-									className="h-full w-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-									onClick={() => setPreviewModalPath(img.path)}
-								/>
-								<span className="absolute top-1 left-1 flex h-5 min-w-5 items-center justify-center rounded-md bg-amber-500 px-1 text-[11px] font-bold text-black shadow">
-									{img.index}
-								</span>
-								<button
-									type="button"
-									onClick={() => {
-										const nextText = text.replace(img.match, "").trim();
-										setText(nextText);
-										setDraft(sessionId, nextText);
-									}}
-									className="absolute top-1 right-1 rounded-full bg-black/75 p-0.5 text-white opacity-0 transition-opacity hover:bg-rose-600 group-hover/imgcard:opacity-100"
-									title="删除图片"
+				{/* Attached image cards gallery (omp-tui style) */}
+				{composerImages.length > 0 && (
+					<div className="flex flex-wrap items-center gap-3 px-3.5 pt-3 pb-2.5 border-b border-[var(--line)] bg-[var(--bg-panel)]/50">
+						{composerImages.map((img, i) => {
+							const num = i + 1;
+							const dimsText =
+								img.width && img.height ? `${img.width}×${img.height}` : null;
+							return (
+								<div
+									key={img.id || `${num}-${img.path}`}
+									className="group/imgcard relative flex flex-col items-center rounded-xl border border-amber-500/40 bg-[var(--bg-panel)] p-1.5 shadow-sm hover:border-amber-400 transition-all"
 								>
-									<X size={12} />
-								</button>
-							</div>
-						))}
+									{/* Top label: 🖼️ #1 */}
+									<div className="flex w-full items-center justify-between pb-1 px-0.5 text-[11px] font-semibold text-[var(--text)]">
+										<span className="flex items-center gap-1 font-mono text-amber-400">
+											<span>🖼️</span>
+											<span>#{num}</span>
+										</span>
+										<button
+											type="button"
+											onClick={() => removeImageByIndex(i)}
+											className="rounded p-0.5 text-[var(--text-30)] hover:bg-rose-500/20 hover:text-rose-400 transition-colors cursor-pointer"
+											title="移除图片"
+										>
+											<X size={12} />
+										</button>
+									</div>
+									{/* Thumbnail */}
+									<div
+										className="relative h-24 w-28 overflow-hidden rounded-lg bg-black/10 cursor-pointer"
+										onClick={() => setPreviewModalPath(img.path)}
+										title="点击放大查看"
+									>
+										<img
+											src={convertFileSrc(img.path)}
+											alt={`图片 #${num}`}
+											className="h-full w-full object-cover hover:scale-105 transition-transform"
+										/>
+									</div>
+									{/* Bottom dimensions */}
+									{dimsText && (
+										<span className="pt-1 font-mono text-[10px] text-[var(--text-40)]">
+											{dimsText}
+										</span>
+									)}
+								</div>
+							);
+						})}
 					</div>
 				)}
 				{previewModalPath &&
@@ -918,11 +1047,25 @@ export function Composer({
 					data-composer={sessionId}
 					value={text}
 					onChange={(e) => {
-						setText(e.target.value);
-						setCursorPos(e.target.selectionStart ?? e.target.value.length);
+						const next = e.target.value;
+						setText(next);
+						setDraft(sessionId, next);
+						setCursorPos(e.target.selectionStart ?? next.length);
 						setMenuDismissed(false);
 						setArgHintLine(null);
 						if (historyIdx !== -1) setHistoryIdx(-1);
+						// Sync composerImages if tokens were completely deleted from text
+						const curImages = useComposer.getState().images[sessionId] ?? [];
+						if (curImages.length > 0) {
+							const remainingTokens = parseInlineImages(next);
+							const presentIndices = new Set(remainingTokens.map((t) => t.index));
+							if (curImages.some((_, idx) => !presentIndices.has(idx + 1))) {
+								const filtered = curImages.filter((_, idx) =>
+									presentIndices.has(idx + 1),
+								);
+								useComposer.getState().setImages(sessionId, filtered);
+							}
+						}
 					}}
 					onSelect={(e) =>
 						setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)
