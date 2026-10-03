@@ -218,8 +218,7 @@ function subStatus(v: unknown, fallback: SubagentStatus): SubagentStatus {
 let nextEchoId = 1;
 
 const ECHO_IMAGE_RE =
-	/\[图片:\s*([^\]]+)\]|\[Image #\d+(?:,\s*\d+x\d+)?\]|!\[[^\]]*\]\(([^)\s]+)\)/g;
-
+	/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*([^\]]+))?\]|\[图片:\s*([^\]]+)\]|!\[[^\]]*\]\(([^)\s]+)\)/g;
 /** Build the optimistic user bubble for a just-accepted prompt. */
 export function makeUserEcho(
 	text: string,
@@ -229,7 +228,7 @@ export function makeUserEcho(
 	const known = new Set(all.map((img) => img.path).filter(Boolean));
 	let i = all.length;
 	for (const m of text.matchAll(ECHO_IMAGE_RE)) {
-		const path = (m[1] ?? m[2])?.trim() || null;
+		const path = (m[1] ?? m[2] ?? m[3])?.trim() || null;
 		if (path && known.has(path)) continue;
 		if (path) known.add(path);
 		all.push({ id: `pending-img-${i++}`, path, marker: m[0] });
@@ -252,7 +251,10 @@ export function makeUserEcho(
 }
 
 const stripMarkers = (t: string) =>
-	t.replace(/\[Image #\d+(?:,\s*\d+x\d+)?\]|\[图片(?::\s*[^\]]+)?\]/g, "");
+	t.replace(
+		/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?::\s*[^\]]+)?\]/gi,
+		"",
+	);
 
 const flat = (t: string) => stripMarkers(t).replace(/\s+/g, " ").trim();
 

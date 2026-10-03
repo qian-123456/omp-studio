@@ -134,4 +134,20 @@ describe("useComposer store", () => {
 		expect(hist[19]).toBe("prompt 39");
 		expect(localStorage.getItem("ompws:composer-history")).toContain("prompt 39");
 	});
+
+	it("manages image attachments per session (add, remove, clear)", () => {
+		const c = useComposer.getState();
+		const img1 = c.addImage("s1", "/path/1.png");
+		const img2 = c.addImage("s1", "/path/2.png");
+		expect(useComposer.getState().images["s1"]).toHaveLength(2);
+		expect(useComposer.getState().images["s1"][0].path).toBe("/path/1.png");
+		expect(useComposer.getState().images["s1"][1].path).toBe("/path/2.png");
+
+		c.removeImage("s1", img1.id);
+		expect(useComposer.getState().images["s1"]).toHaveLength(1);
+		expect(useComposer.getState().images["s1"][0].id).toBe(img2.id);
+
+		c.clearImages("s1");
+		expect(useComposer.getState().images["s1"]).toEqual([]);
+	});
 });

@@ -61,14 +61,16 @@ function stripImageMarkers(text: string): string {
 			/\[\d+\]\s*\([^)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^)]*\)\s*\n?>?\s*(?:\[图片:[^\]]+\])?/gi,
 			"",
 		)
-		.replace(/\[Image #\d+(?:,\s*\d+x\d+)?\]|\[图片(?::\s*[^\]]+)?\]/g, "")
+		.replace(
+			/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?::\s*[^\]]+)?\]/gi,
+			"",
+		)
 		.trim();
 }
 
 const IMAGE_TOKEN_RE =
-	/\[(?:Image|图片)\s*#(?<num1>\d+)(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?:\s*#(?<num2>\d+))?(?::\s*[^\]]+)?\]/g;
-
-export function parseUserMessageTokens(text: string): Array<{ type: "text"; text: string } | { type: "image"; num: string }> {
+	/\[(?:Image|图片)\s*#(?<num1>\d+)(?:,\s*\d+x\d+)?(?::\s*(?<path1>[^\]]+))?\]|\[图片(?:\s*#(?<num2>\d+))?(?::\s*(?<path2>[^\]]+))?\]/g;
+export function parseUserMessageTokens(text: string): Array<{ type: "text"; text: string } | { type: "image"; num: string; path?: string }> {
 	const cleaned = text
 		.replace(
 			/\[\d+\]\s*\([^)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^)]*\)\s*\n?>?\s*(?:\[图片:[^\]]+\])?/gi,
@@ -76,7 +78,7 @@ export function parseUserMessageTokens(text: string): Array<{ type: "text"; text
 		)
 		.trim();
 	if (!cleaned) return [];
-	const tokens: Array<{ type: "text"; text: string } | { type: "image"; num: string }> = [];
+	const tokens: Array<{ type: "text"; text: string } | { type: "image"; num: string; path?: string }> = [];
 	let lastIndex = 0;
 	const re = new RegExp(IMAGE_TOKEN_RE.source, "g");
 	let match: RegExpExecArray | null;
@@ -85,7 +87,8 @@ export function parseUserMessageTokens(text: string): Array<{ type: "text"; text
 			tokens.push({ type: "text", text: cleaned.slice(lastIndex, match.index) });
 		}
 		const num = match.groups?.num1 || match.groups?.num2 || "1";
-		tokens.push({ type: "image", num });
+		const path = (match.groups?.path1 || match.groups?.path2 || "").trim() || undefined;
+		tokens.push({ type: "image", num, path });
 		lastIndex = re.lastIndex;
 	}
 	if (lastIndex < cleaned.length) {
@@ -204,8 +207,8 @@ const UserRow = React.memo(function UserRow({
 								return (
 									<span
 										key={i}
-										className="inline-flex items-center gap-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.2 text-[11px] font-mono font-medium mx-0.5 align-baseline shadow-xs"
-										title={`图片 #${token.num}`}
+										className="inline-flex items-center gap-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 text-[11px] font-mono font-medium mx-0.5 align-baseline shadow-xs"
+										title={token.path ? `图片 #${token.num}: ${token.path}` : `图片 #${token.num}`}
 									>
 										🖼️ #{token.num}
 									</span>
