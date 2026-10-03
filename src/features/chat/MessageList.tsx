@@ -24,6 +24,7 @@ import { useLive, type LiveTool } from "../../stores/live";
 import { useTurnNav } from "../../stores/turnNav";
 import { AnswerFooter } from "./AnswerFooter";
 import { getImageTokenPalette } from "./Composer";
+import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
 	ExecutionDisclosure,
 	TurnSteps,
@@ -31,8 +32,6 @@ import {
 } from "./ExecutionDisclosure";
 import { ImageChip } from "./ImageChips";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { createPortal } from "react-dom";
-import { Z_LAYER } from "../../components/FloatingLayer";
 import type { ImageAttachment } from "../../lib/contracts";
 import { Markdown } from "./markdown";
 import {
@@ -99,55 +98,38 @@ export function parseUserMessageTokens(text: string): Array<{ type: "text"; text
 }
 
 /** Inline thumbnail card for a user image; click opens a full-size modal. */
-function UserImagePreview({ image, index }: { image: ImageAttachment; index?: number }) {
+function UserImagePreview({
+	image,
+	index,
+	onClick,
+}: {
+	image: ImageAttachment;
+	index?: number;
+	onClick?: () => void;
+}) {
 	const [failed, setFailed] = useState(false);
-	const [open, setOpen] = useState(false);
-	useEffect(() => {
-		if (!open) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") setOpen(false);
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, [open]);
 	if (!image.path || failed) return <ImageChip image={image} />;
 	const src = convertFileSrc(image.path);
 	return (
-		<div className="relative group/user-img inline-block overflow-hidden rounded-xl border border-[var(--line)] bg-black/5 dark:bg-white/5 shadow-sm select-none cursor-pointer">
+		<div
+			className="relative group/user-img inline-block overflow-hidden rounded-xl border border-[var(--line)] bg-black/5 dark:bg-white/5 shadow-sm select-none cursor-pointer"
+			onClick={onClick}
+		>
 			<img
 				src={src}
 				alt={image.marker ?? (index ? `图片 #${index}` : "图片")}
 				title={image.path}
 				loading="lazy"
 				onError={() => setFailed(true)}
-				onClick={() => setOpen(true)}
 				className="max-h-72 max-w-sm object-contain transition-transform duration-200 group-hover/user-img:scale-[1.02]"
 			/>
 			{/* Hover overlay: subtle white brightening */}
-			<div
-				className="absolute inset-0 bg-white/15 opacity-0 transition-opacity duration-150 group-hover/user-img:opacity-100 pointer-events-none"
-			/>
+			<div className="absolute inset-0 bg-white/15 opacity-0 transition-opacity duration-150 group-hover/user-img:opacity-100 pointer-events-none" />
 			{index !== undefined && (
 				<span className="absolute bottom-2 left-2 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white/90 backdrop-blur-md shadow-xs border border-white/10 pointer-events-none">
 					#{index}
 				</span>
 			)}
-			{open &&
-				createPortal(
-					<div
-						className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4"
-						style={{ zIndex: Z_LAYER.modal }}
-						onClick={() => setOpen(false)}
-					>
-						<img
-							src={src}
-							alt={image.marker ?? "图片"}
-							className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-apple-modal"
-							onClick={(e) => e.stopPropagation()}
-						/>
-					</div>,
-					document.body,
-				)}
 		</div>
 	);
 }
@@ -176,6 +158,7 @@ const UserRow = React.memo(function UserRow({
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
 	const [expanded, setExpanded] = useState(false);
 	const [collapsible, setCollapsible] = useState(false);
+	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -194,9 +177,26 @@ const UserRow = React.memo(function UserRow({
 			{item.images && item.images.length > 0 && (
 				<div className="flex w-full flex-wrap justify-end gap-2.5 pb-0.5">
 					{item.images.map((img, i) => (
-						<UserImagePreview key={img.id} image={img} index={i + 1} />
+						<UserImagePreview
+							key={img.id}
+							image={img}
+							index={i + 1}
+							onClick={() => setPreviewIndex(i)}
+						/>
 					))}
 				</div>
+			)}
+			{previewIndex !== null && item.images && (
+				<ImagePreviewModal
+					images={item.images
+						.filter((img): img is ImageAttachment & { path: string } => !!img.path)
+						.map((img, idx) => ({
+							path: img.path,
+							marker: img.marker ?? `图片 #${idx + 1}`,
+						}))}
+					initialIndex={previewIndex}
+					onClose={() => setPreviewIndex(null)}
+				/>
 			)}
 			{showBubble ? (
 				<div className="min-w-0 max-w-[70%] rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)]">
