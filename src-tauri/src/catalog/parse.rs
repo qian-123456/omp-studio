@@ -427,7 +427,10 @@ pub fn snippet(text: &str, max: usize) -> String {
 fn image_marker_re() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"\[Image #\d+(?:,\s*\d+x\d+)?\]|\[图片(?::\s*[^\]]+)?\]").unwrap()
+        Regex::new(
+            r"\[Image #\d+(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?:\s*#\d+)?(?::\s*[^\]]+)?\]",
+        )
+        .unwrap()
     })
 }
 
@@ -435,7 +438,7 @@ fn marker_detail_re() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"\[Image #\d+(?:,\s*(?P<w>\d+)x(?P<h>\d+))?\]|\[图片(?::\s*(?P<path>[^\]]+))?\]",
+            r"\[Image #(?P<num1>\d+)(?:,\s*(?P<w>\d+)x(?P<h>\d+))?(?::\s*(?P<path1>[^\]]+))?\]|\[图片(?:\s*#(?P<num2>\d+))?(?::\s*(?P<path2>[^\]]+))?\]",
         )
         .unwrap()
     })
@@ -522,7 +525,10 @@ pub fn parse_images(content: Option<&Value>) -> Vec<crate::contracts::ImageAttac
                 let whole = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
                 let w = caps.name("w").and_then(|m| m.as_str().parse::<u32>().ok());
                 let h = caps.name("h").and_then(|m| m.as_str().parse::<u32>().ok());
-                let raw_path = caps.name("path").map(|m| m.as_str().trim().to_string());
+                let raw_path = caps
+                    .name("path1")
+                    .or_else(|| caps.name("path2"))
+                    .map(|m| m.as_str().trim().to_string());
                 let resolved_path = raw_path.filter(|p| Path::new(p).exists());
 
                 if let Some(existing) = images.iter_mut().find(|img| {

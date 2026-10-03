@@ -1,3 +1,4 @@
+import { parseUserMessageTokens } from "./MessageList";
 import { describe, expect, it } from "vitest";
 import type { TranscriptItem } from "../../lib/contracts";
 import {
@@ -269,5 +270,44 @@ describe("messageTrace helpers", () => {
 		expect(live[1].isRunning).toBe(true);
 		expect(live[1].assistantPreviewKind).toBe("running");
 		expect(live[1].assistantPreview).toBe("助手仍在工作");
+	});
+});
+
+describe("parseUserMessageTokens", () => {
+	it("splits text with [Image #N] markers anywhere in the text", () => {
+		const tokens = parseUserMessageTokens("看看这张 [Image #1] 以及 [Image #2] 差别");
+		expect(tokens).toEqual([
+			{ type: "text", text: "看看这张 " },
+			{ type: "image", num: "1" },
+			{ type: "text", text: " 以及 " },
+			{ type: "image", num: "2" },
+			{ type: "text", text: " 差别" },
+		]);
+	});
+
+	it("handles expanded markers with file paths", () => {
+		const tokens = parseUserMessageTokens("分析 [Image #1: /tmp/a.png] 这里的报错");
+		expect(tokens).toEqual([
+			{ type: "text", text: "分析 " },
+			{ type: "image", num: "1" },
+			{ type: "text", text: " 这里的报错" },
+		]);
+	});
+
+	it("handles chinese [图片 #N] markers", () => {
+		const tokens = parseUserMessageTokens("[图片 #3] 效果图");
+		expect(tokens).toEqual([
+			{ type: "image", num: "3" },
+			{ type: "text", text: " 效果图" },
+		]);
+	});
+
+	it("cleans leftover annotation headers before parsing", () => {
+		const text = "[1] (/Users/x/clip.png)\n> [图片: /Users/x/clip.png]\n请看 [Image #1]";
+		const tokens = parseUserMessageTokens(text);
+		expect(tokens).toEqual([
+			{ type: "text", text: "请看 " },
+			{ type: "image", num: "1" },
+		]);
 	});
 });

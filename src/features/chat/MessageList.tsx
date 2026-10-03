@@ -65,8 +65,37 @@ function stripImageMarkers(text: string): string {
 		.trim();
 }
 
+const IMAGE_TOKEN_RE =
+	/\[(?:Image|图片)\s*#(?<num1>\d+)(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?:\s*#(?<num2>\d+))?(?::\s*[^\]]+)?\]/g;
+
+export function parseUserMessageTokens(text: string): Array<{ type: "text"; text: string } | { type: "image"; num: string }> {
+	const cleaned = text
+		.replace(
+			/\[\d+\]\s*\([^)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^)]*\)\s*\n?>?\s*(?:\[图片:[^\]]+\])?/gi,
+			"",
+		)
+		.trim();
+	if (!cleaned) return [];
+	const tokens: Array<{ type: "text"; text: string } | { type: "image"; num: string }> = [];
+	let lastIndex = 0;
+	const re = new RegExp(IMAGE_TOKEN_RE.source, "g");
+	let match: RegExpExecArray | null;
+	while ((match = re.exec(cleaned)) !== null) {
+		if (match.index > lastIndex) {
+			tokens.push({ type: "text", text: cleaned.slice(lastIndex, match.index) });
+		}
+		const num = match.groups?.num1 || match.groups?.num2 || "1";
+		tokens.push({ type: "image", num });
+		lastIndex = re.lastIndex;
+	}
+	if (lastIndex < cleaned.length) {
+		tokens.push({ type: "text", text: cleaned.slice(lastIndex) });
+	}
+	return tokens;
+}
+
 /** Inline thumbnail card for a user image; click opens a full-size modal. */
-function UserImagePreview({ image }: { image: ImageAttachment }) {
+function UserImagePreview({ image, index }: { image: ImageAttachment; index?: number }) {
 	const [failed, setFailed] = useState(false);
 	const [open, setOpen] = useState(false);
 	useEffect(() => {
@@ -80,16 +109,21 @@ function UserImagePreview({ image }: { image: ImageAttachment }) {
 	if (!image.path || failed) return <ImageChip image={image} />;
 	const src = convertFileSrc(image.path);
 	return (
-		<>
+		<div className="relative group/user-img inline-block">
 			<img
 				src={src}
-				alt={image.marker ?? "图片"}
+				alt={image.marker ?? (index ? `图片 #${index}` : "图片")}
 				title={image.path}
 				loading="lazy"
 				onError={() => setFailed(true)}
 				onClick={() => setOpen(true)}
-				className="max-h-64 max-w-sm cursor-pointer rounded-xl border border-[var(--line)] bg-black/5 object-contain shadow-sm hover:opacity-95 dark:bg-white/5"
+				className="max-h-72 max-w-sm cursor-pointer rounded-xl border border-[var(--line)] bg-black/5 object-contain shadow-sm hover:opacity-95 dark:bg-white/5"
 			/>
+			{index !== undefined && (
+				<span className="absolute top-2 left-2 flex h-5 min-w-5 items-center justify-center rounded-md bg-amber-500 px-1 text-[11px] font-bold text-black shadow-md">
+					{index}
+				</span>
+			)}
 			{open &&
 				createPortal(
 					<div
@@ -106,7 +140,7 @@ function UserImagePreview({ image }: { image: ImageAttachment }) {
 					</div>,
 					document.body,
 				)}
-		</>
+		</div>
 	);
 }
 
@@ -123,6 +157,14 @@ const UserRow = React.memo(function UserRow({
 	item: TranscriptItem;
 }) {
 	const rawText = item.text ?? "";
+	const tokens = useMemo(() => parseUserMessageTokens(rawText), [rawText]);
+	const hasProseText = useMemo(() => {
+		const nonImages = tokens
+			.filter((t) => t.type === "text")
+			.map((t) => t.text.trim())
+			.join("");
+		return nonImages.length > 0;
+	}, [tokens]);
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
 	const [expanded, setExpanded] = useState(false);
 	const [collapsible, setCollapsible] = useState(false);
@@ -132,45 +174,54 @@ const UserRow = React.memo(function UserRow({
 		const el = textRef.current;
 		if (!el) return;
 		setCollapsible(el.scrollHeight > el.clientHeight + 1);
-	}, [userText]);
+	}, [tokens]);
+
+	const showBubble = tokens.length > 0 && (hasProseText || !item.images?.length);
 
 	return (
 		<div
 			id={`msg-${item.id}`}
-			className="group/user-row relative flex w-full flex-col items-end gap-1 py-1"
+			className="group/user-row relative flex w-full flex-col items-end gap-1.5 py-1"
 		>
 			{item.images && item.images.length > 0 && (
-				<div className="flex w-full flex-wrap justify-end gap-2">
-					{item.images.map((img) => (
-						<UserImagePreview key={img.id} image={img} />
+				<div className="flex w-full flex-wrap justify-end gap-2.5 pb-0.5">
+					{item.images.map((img, i) => (
+						<UserImagePreview key={img.id} image={img} index={i + 1} />
 					))}
 				</div>
 			)}
-			{userText || !item.images?.length ? (
+			{showBubble ? (
 				<div className="min-w-0 max-w-[70%] rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)]">
-					{userText ? (
-						<>
-							<div
-								ref={textRef}
-								className={clsx(
-									"whitespace-pre-wrap break-words",
-									!expanded && "line-clamp-4",
-								)}
-							>
-								{userText}
-							</div>
-							{collapsible && (
-								<button
-									type="button"
-									onClick={() => setExpanded((v) => !v)}
-									className="mt-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:text-[var(--text-60)]"
-								>
-									{expanded ? "收起" : "查看更多"}
-								</button>
-							)}
-						</>
-					) : (
-						<span className="italic text-[var(--text-40)]">空消息</span>
+					<div
+						ref={textRef}
+						className={clsx(
+							"whitespace-pre-wrap break-words",
+							!expanded && "line-clamp-4",
+						)}
+					>
+						{tokens.map((token, i) => {
+							if (token.type === "image") {
+								return (
+									<span
+										key={i}
+										className="inline-flex items-center gap-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.2 text-[11px] font-mono font-medium mx-0.5 align-baseline shadow-xs"
+										title={`图片 #${token.num}`}
+									>
+										🖼️ #{token.num}
+									</span>
+								);
+							}
+							return <span key={i}>{token.text}</span>;
+						})}
+					</div>
+					{collapsible && (
+						<button
+							type="button"
+							onClick={() => setExpanded((v) => !v)}
+							className="mt-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:text-[var(--text-60)]"
+						>
+							{expanded ? "收起" : "查看更多"}
+						</button>
 					)}
 				</div>
 			) : null}

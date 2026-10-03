@@ -24,7 +24,8 @@ const isImageAnnotation = (a: { file?: string; text?: string }) =>
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ContextRing } from "./ContextRing";
-import { FloatingLayer } from "../../components/FloatingLayer";
+import { createPortal } from "react-dom";
+import { FloatingLayer, Z_LAYER } from "../../components/FloatingLayer";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
@@ -131,6 +132,13 @@ export function Composer({
 	const updateAnnotation = useComposer((s) => s.updateAnnotation);
 	const removeAnnotation = useComposer((s) => s.removeAnnotation);
 	const clearAnnotations = useComposer((s) => s.clearAnnotations);
+	const composerImages = useComposer(
+		(s) => s.images[sessionId] ?? EMPTY_LIST,
+	);
+	const addImage = useComposer((s) => s.addImage);
+	const removeImage = useComposer((s) => s.removeImage);
+	const clearImages = useComposer((s) => s.clearImages);
+	const [previewModalPath, setPreviewModalPath] = useState<string | null>(null);
 	const scrollToItem = useLive((s) => s.scrollToItem);
 
 	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
@@ -218,10 +226,11 @@ export function Composer({
 			if (!filePath) return;
 			if (IMAGE_EXT_RE.test(filePath)) {
 				try {
-					// Binary files can't go through readTextFile; load via the asset protocol.
 					const res = await fetch(convertFileSrc(filePath));
 					if (!res.ok) throw new Error(`HTTP ${res.status}`);
-					await processImageFile(await res.blob());
+					const blob = await res.blob();
+					const fileName = filePath.split("/").pop();
+					await processImageFile(blob, fileName);
 				} catch (imgErr) {
 					toast.error(`读取图片失败: ${errMsg(imgErr)}`);
 				}
@@ -448,20 +457,35 @@ export function Composer({
 			}
 			return;
 		}
-		const message = formatWithAnnotations(raw, annotations);
+		let messageText = raw;
+		const imageAttachments: ImageAttachment[] = [];
+		composerImages.forEach((img, idx) => {
+			const num = idx + 1;
+			const placeholder = `[Image #${num}]`;
+			const cnPlaceholder = `[图片 #${num}]`;
+			const expanded = `[Image #${num}: ${img.path}]`;
+			if (messageText.includes(placeholder)) {
+				messageText = messageText.replaceAll(placeholder, expanded);
+			} else if (messageText.includes(cnPlaceholder)) {
+				messageText = messageText.replaceAll(cnPlaceholder, expanded);
+			} else {
+				messageText = messageText ? `${messageText} ${expanded}` : expanded;
+			}
+			imageAttachments.push({
+				id: img.id,
+				path: img.path,
+				marker: placeholder,
+			});
+		});
+
+		const message = formatWithAnnotations(messageText, annotations);
 		setBusy(true);
 		try {
-			const images: ImageAttachment[] = annotations
-				.filter(isImageAnnotation)
-				.map((a, i) => ({
-					id: `pending-img-${i}`,
-					path: a.file ?? null,
-					marker: `[图片: ${a.file}]`,
-				}));
-			await sendPrompt(sessionId, message, { steer, images });
+			await sendPrompt(sessionId, message, { steer, images: imageAttachments });
 			pushHistory(raw.trim());
 			clearDraft(sessionId);
 			clearAnnotations(sessionId);
+			clearImages(sessionId);
 		} catch (err) {
 			if (!isResumeCancelled(err)) toast.error(`发送失败: ${errMsg(err)}`);
 		} finally {
@@ -506,18 +530,33 @@ export function Composer({
 			reader.readAsDataURL(file);
 		});
 
-	const processImageFile = async (file: File | Blob) => {
+	const processImageFile = async (file: File | Blob, customName?: string) => {
 		try {
 			const base64 = await fileToBase64(file);
 			const savedPath = await saveClipboardImage(base64);
-			addAnnotation(sessionId, {
-				source: "doc",
-				file: savedPath,
-				text: `[图片: ${savedPath}]`,
-			});
-			toast.success(
-				`已附加图片: ${file instanceof File ? file.name : "剪贴板图片"}`,
-			);
+			const name = customName ?? (file instanceof File ? file.name : undefined);
+			const img = addImage(sessionId, savedPath, name);
+			const currentImages = useComposer.getState().images[sessionId] ?? [];
+			const imgIndex = currentImages.findIndex((i) => i.id === img.id) + 1;
+
+			const ta = taRef.current;
+			const start = ta ? ta.selectionStart : cursorPos;
+			const end = ta ? ta.selectionEnd : cursorPos;
+			const before = text.slice(0, start);
+			const after = text.slice(end);
+			const marker = `[Image #${imgIndex}] `;
+			const nextText = `${before}${marker}${after}`;
+			setText(nextText);
+			setDraft(sessionId, nextText);
+			const nextCursor = before.length + marker.length;
+			setCursorPos(nextCursor);
+			setTimeout(() => {
+				if (taRef.current) {
+					taRef.current.focus();
+					taRef.current.setSelectionRange(nextCursor, nextCursor);
+				}
+			}, 0);
+			toast.success(`已附加图片 #${imgIndex}`);
 		} catch (err) {
 			toast.error(`处理图片失败: ${errMsg(err)}`);
 		}
@@ -798,6 +837,79 @@ export function Composer({
 					</div>
 				)}
 
+				{/* Attached images gallery above textarea */}
+				{composerImages.length > 0 && (
+					<div className="flex flex-wrap items-center gap-2.5 px-3 pt-2.5 pb-1 border-b border-[var(--line)]">
+						{composerImages.map((img, idx) => {
+							const num = idx + 1;
+							return (
+								<div
+									key={img.id}
+									className="group/imgcard relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm hover:border-[var(--accent)] transition-all"
+								>
+									<img
+										src={convertFileSrc(img.path)}
+										alt={img.name ?? `Image #${num}`}
+										className="h-full w-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+										onClick={() => setPreviewModalPath(img.path)}
+									/>
+									<span className="absolute top-1 left-1 flex h-5 min-w-5 items-center justify-center rounded-md bg-amber-500 px-1 text-[11px] font-bold text-black shadow">
+										{num}
+									</span>
+									<button
+										type="button"
+										onClick={() => {
+											removeImage(sessionId, img.id);
+											const nextText = text
+												.replace(new RegExp(`\\[(?:Image|图片)\\s*#${num}\\]\\s*`, "g"), "")
+												.trimEnd();
+											setText(nextText);
+											setDraft(sessionId, nextText);
+										}}
+										className="absolute top-1 right-1 rounded-full bg-black/75 p-0.5 text-white opacity-0 transition-opacity hover:bg-rose-600 group-hover/imgcard:opacity-100"
+										title="删除图片"
+									>
+										<X size={12} />
+									</button>
+									{img.name && (
+										<div className="absolute bottom-0 inset-x-0 bg-black/70 px-1 py-0.5 text-[9px] text-white/90 truncate text-center">
+											{img.name}
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				)}
+				{previewModalPath &&
+					createPortal(
+						<div
+							className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4"
+							style={{ zIndex: Z_LAYER.modal }}
+							onClick={() => setPreviewModalPath(null)}
+						>
+							<div
+								className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-2 shadow-apple-modal"
+								onClick={(e) => e.stopPropagation()}
+							>
+								<img
+									src={convertFileSrc(previewModalPath)}
+									alt="预览"
+									className="max-h-[80vh] max-w-full rounded object-contain"
+								/>
+								<div className="mt-2 flex items-center justify-end">
+									<button
+										type="button"
+										onClick={() => setPreviewModalPath(null)}
+										className="rounded px-2.5 py-1 text-xs hover:bg-[var(--ghost-hover)]"
+									>
+										关闭
+									</button>
+								</div>
+							</div>
+						</div>,
+						document.body,
+					)}
 				<textarea
 					ref={taRef}
 					data-composer={sessionId}
