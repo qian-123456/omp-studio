@@ -2,7 +2,7 @@
  * held-queue bar + composer. `compact` = embedded side-chat mode. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, Loader2 } from "lucide-react";
 import type {
 	PendingUiRequest,
 	SessionStatus,
@@ -25,6 +25,7 @@ import { Composer } from "./Composer";
 import { HeldQueueBar } from "./HeldQueueBar";
 import { MessageList } from "./MessageList";
 import { PendingUiCard } from "./PendingUiCard";
+import { AskPanel, useAskRouting } from "./ask/AskPanel";
 import { SelectionToolbar } from "./SelectionToolbar";
 
 const EMPTY_PENDING_UI: PendingUiRequest[] = [];
@@ -43,6 +44,10 @@ export function SessionView({
 	const setItems = useLive((s) => s.setItems);
 	const appendItems = useLive((s) => s.appendItems);
 	const setPendingUi = useLive((s) => s.setPendingUi);
+	const ask = useAskRouting(sessionId, pendingUi);
+	const askReq = ask.route?.req;
+	const otherPendingUi = askReq ? pendingUi.filter((r) => r !== askReq) : pendingUi;
+	const askActive = Boolean(ask.route) || ask.awaiting;
 
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [scrollPill, setScrollPill] = useState({
@@ -206,9 +211,9 @@ export function SessionView({
 
 					{/* Pending dialogs at the stream bottom. */}
 					<div className="mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl">
-						{pendingUi.length > 0 && (
+						{otherPendingUi.length > 0 && (
 							<div className="shrink-0 border-t border-[var(--line)] px-3 pb-1">
-								{pendingUi.map((req, i) => (
+								{otherPendingUi.map((req, i) => (
 									<PendingUiCard
 										key={`${(req.request as { id?: string }).id ?? i}`}
 										sessionId={sessionId}
@@ -217,13 +222,34 @@ export function SessionView({
 								))}
 							</div>
 						)}
+						{ask.route ? (
+							<div className="shrink-0 px-3">
+								<AskPanel
+									key={ask.route.spec.toolCallId}
+									spec={ask.route.spec}
+									startIndex={ask.route.match.qIndex}
+									busy={ask.route.resolution.kind === "auto"}
+									onSubmit={ask.submit}
+									onCancel={ask.cancel}
+								/>
+							</div>
+						) : (
+							ask.awaiting && (
+								<div className="flex shrink-0 items-center gap-2 px-5 py-3 text-[12px] text-[var(--text-40)]">
+									<Loader2 size={12} className="animate-spin" />
+									正在提交回答…
+								</div>
+							)
+						)}
 
 						<HeldQueueBar sessionId={sessionId} streaming={streaming} />
-						<Composer
-							sessionId={sessionId}
-							readonly={external}
-							compact={compact}
-						/>
+						<div className={askActive ? "hidden" : undefined}>
+							<Composer
+								sessionId={sessionId}
+								readonly={external}
+								compact={compact}
+							/>
+						</div>
 					</div>
 
 		</div>

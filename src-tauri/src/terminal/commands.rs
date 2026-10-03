@@ -12,15 +12,25 @@ use super::pty::{self, Sink, TermEvent};
 use super::shell_init;
 use crate::state::AppState;
 
-/// session_id → termId for terminals opened via `term_open_session`.
-fn session_terms() -> &'static parking_lot::Mutex<HashMap<String, String>> {
-    static MAP: std::sync::OnceLock<parking_lot::Mutex<HashMap<String, String>>> =
-        std::sync::OnceLock::new();
+/// session_id → (termId, runs omp) for terminals opened via `term_open_session`.
+type SessionTerms = parking_lot::Mutex<HashMap<String, (String, bool)>>;
+fn session_terms() -> &'static SessionTerms {
+    // OnceLock: MSRV 1.77 predates LazyLock.
+    static MAP: std::sync::OnceLock<SessionTerms> = std::sync::OnceLock::new();
     MAP.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
 }
 
 fn forget_term(term_id: &str) {
-    session_terms().lock().retain(|_, t| t != term_id);
+    session_terms().lock().retain(|_, (t, _)| t != term_id);
+}
+
+/// True while this session's `omp --resume` terminal runs: it writes the same
+/// JSONL, so the RPC process must not be spawned alongside it.
+pub fn omp_terminal_open(session_id: &str) -> bool {
+    session_terms()
+        .lock()
+        .get(session_id)
+        .is_some_and(|(_, omp)| *omp)
 }
 
 /// Sink that forwards PTY output as `terminal:data` / `terminal:exit` events.
@@ -157,10 +167,11 @@ pub async fn term_open_session(
     }
     // Re-opening a session terminal replaces the previous one.
     let old = session_terms().lock().get(&session_id).cloned();
-    if let Some(old) = old {
+    if let Some((old, _)) = old {
         pty::close(&old);
         forget_term(&old);
     }
+    let is_omp = foreign.is_none();
     let argv = match foreign {
         Some(argv) => argv,
         None => {
@@ -191,7 +202,9 @@ pub async fn term_open_session(
             .unwrap_or_else(|| "/".to_string())
     };
     let term_id = pty::open(&cwd, &argv, cols, rows, app_sink(&state), &extra_env)?;
-    session_terms().lock().insert(session_id, term_id.clone());
+    session_terms()
+        .lock()
+        .insert(session_id, (term_id.clone(), is_omp));
     Ok(term_id)
 }
 

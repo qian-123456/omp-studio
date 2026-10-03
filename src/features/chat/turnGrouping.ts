@@ -209,8 +209,9 @@ export function noticeSummary(item: TranscriptItem): string {
  *    - "assistant" items with thinking/toolCalls become intermediateSteps.
  *    - "tool_result" items pair with the corresponding toolCall in intermediateSteps
  *      (or become orphan-result text steps).
- *    - Intermediate assistant items with text become text steps in intermediateSteps.
- *    - The final "assistant" item with text (or last assistant item) becomes the answerItem.
+ *    - Assistant items followed by another assistant item in the turn: text becomes a text step.
+ *    - The last assistant item becomes the answerItem; when it carries toolCalls (e.g. `ask`)
+ *      it is the answer only if it has text, and its calls still become tool steps.
  *      If that final assistant item also had thinking, the thinking is captured as an intermediateStep!
  *    - Protocol items (isProtocolKind) that arrive mid-run — i.e. assistant/tool activity
  *      follows before the next user message — become "notice" steps in intermediateSteps.
@@ -401,7 +402,11 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 			}
 
 			const hasToolCalls = (item.toolCalls && item.toolCalls.length > 0) || false;
-			const isIntermediate = hasSubsequentAssistantOrUser || hasToolCalls;
+			const hasText = (item.text?.trim().length ?? 0) > 0;
+			// Only a later assistant item demotes this one to a step. The last
+			// assistant item's prose is the answer even when it also carries tool
+			// calls (e.g. the `ask` call that hands the turn to the human).
+			const isIntermediate = hasSubsequentAssistantOrUser;
 
 			// If it has thinking, extract thinking as a step
 			if (item.thinking && item.thinking.trim().length > 0) {
@@ -415,14 +420,17 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 
 			// If it has tool calls, each tool call becomes a step
 			if (hasToolCalls && item.toolCalls) {
-				// If there's also intermediate text before tool calls, add it as a text step
-				if (item.text && item.text.trim().length > 0) {
-					currentTurn.intermediateSteps.push({
-						id: `text-${item.id}`,
-						kind: "text",
-						item,
-						text: item.text,
-					});
+				if (hasText) {
+					if (isIntermediate) {
+						currentTurn.intermediateSteps.push({
+							id: `text-${item.id}`,
+							kind: "text",
+							item,
+							text: item.text ?? "",
+						});
+					} else {
+						currentTurn.answerItem = item;
+					}
 				}
 
 				for (const call of item.toolCalls) {

@@ -92,12 +92,14 @@ fn has_dev_script(dir: &Path) -> bool {
 
 /// Custom run command from `.omp-workspace/run.json` or `.omp/run.json`.
 fn custom_command(dir: &Path) -> Option<String> {
-    [".omp-workspace/run.json", ".omp/run.json"].iter().find_map(|p| {
-        let s = std::fs::read_to_string(dir.join(p)).ok()?;
-        let v: serde_json::Value = serde_json::from_str(&s).ok()?;
-        let c = v["command"].as_str()?.trim();
-        (!c.is_empty()).then(|| c.to_string())
-    })
+    [".omp-workspace/run.json", ".omp/run.json"]
+        .iter()
+        .find_map(|p| {
+            let s = std::fs::read_to_string(dir.join(p)).ok()?;
+            let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+            let c = v["command"].as_str()?.trim();
+            (!c.is_empty()).then(|| c.to_string())
+        })
 }
 
 /// Whether `dir` is a Tauri desktop project.
@@ -456,7 +458,11 @@ mod tests {
         std::fs::write(tauri.join(".omp/run.json"), r#"{"command":"make serve"}"#).unwrap();
         assert_eq!(detect_command(&tauri).as_deref(), Some("make serve"));
         std::fs::create_dir_all(tauri.join(".omp-workspace")).unwrap();
-        std::fs::write(tauri.join(".omp-workspace/run.json"), r#"{"command":"just dev"}"#).unwrap();
+        std::fs::write(
+            tauri.join(".omp-workspace/run.json"),
+            r#"{"command":"just dev"}"#,
+        )
+        .unwrap();
         assert_eq!(detect_command(&tauri).as_deref(), Some("just dev"));
 
         for d in [web, tauri, cargo] {

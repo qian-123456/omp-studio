@@ -12,6 +12,7 @@ import {
 	Globe,
 	ListTodo,
 	type LucideIcon,
+	MessageCircleQuestion,
 	Pencil,
 	Search,
 	Terminal,
@@ -21,6 +22,7 @@ import { useEffect, useState } from "react";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
+import { askResultSummary } from "./ask/askDriver";
 import { ActivityHeader } from "./ActivityHeader";
 import { DiffView } from "./DiffView";
 
@@ -272,7 +274,27 @@ export function toolActivityLabel(
 	};
 }
 
-export function ToolCard({
+/** `ask` results render as a compact Q→A summary instead of raw output. */
+export function ToolCard(props: Parameters<typeof ToolCardBody>[0]) {
+	const qa = props.name === "ask" ? askResultSummary(props.details) : null;
+	if (!qa) return <ToolCardBody {...props} />;
+	return (
+		<div className="my-1 flex flex-col gap-0.5 text-[12px]">
+			{qa.map((p, i) => (
+				<div key={`${i}:${p.question}`} className="flex min-w-0 items-baseline gap-1.5">
+					<MessageCircleQuestion size={12} className="shrink-0 self-center text-[var(--text-40)]" />
+					<span className="min-w-0 truncate text-[var(--text-60)]">{p.question}</span>
+					<span className="shrink-0 text-[var(--text-40)]">→</span>
+					<span className="min-w-0 truncate text-[var(--text)]">
+						{p.answer || "（未回答）"}
+					</span>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function ToolCardBody({
 	sessionId,
 	name,
 	args,

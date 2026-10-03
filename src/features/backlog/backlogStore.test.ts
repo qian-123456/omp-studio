@@ -117,4 +117,32 @@ describe("useBacklog store", () => {
 		expect(fresh.lastKind).toBe("todo");
 		expect(fresh.draft).toEqual({ text: "", kind: "todo", images: [] });
 	});
+
+	it("restores edit buffer and capture draft after a simulated reload, clearing them on save/cancel", async () => {
+		mem.clear();
+		useBacklog.getState().setEditBuffer({ id: "a", text: "改到一半" });
+		useBacklog.getState().setCaptureDraft({ text: "速记", kind: "bug", images: ["/tmp/b.png"] });
+
+		vi.resetModules();
+		const fresh = (await import("./backlogStore")).useBacklog;
+		expect(fresh.getState().editBuffer).toEqual({ id: "a", text: "改到一半" });
+		expect(fresh.getState().captureDraft).toEqual({ text: "速记", kind: "bug", images: ["/tmp/b.png"] });
+
+		fresh.getState().clearEditBuffer();
+		fresh.getState().clearCaptureDraft();
+		vi.resetModules();
+		const cleared = (await import("./backlogStore")).useBacklog.getState();
+		expect(cleared.editBuffer).toBeNull();
+		expect(cleared.captureDraft.text).toBe("");
+	});
+
+	it("drops the edit buffer on load when its item no longer exists", async () => {
+		mem.clear();
+		useBacklog.getState().setEditBuffer({ id: "gone", text: "x" });
+		backlogList.mockResolvedValue([item()]);
+		await useBacklog.getState().load();
+		expect(useBacklog.getState().editBuffer).toBeNull();
+		vi.resetModules();
+		expect((await import("./backlogStore")).useBacklog.getState().editBuffer).toBeNull();
+	});
 });

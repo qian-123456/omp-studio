@@ -4,9 +4,12 @@
 //! newest turn — restore its files, roll back HEAD when its commits are still
 //! on top, and write `refs/omp/undone/<sid>/<turnId>` last.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, LazyLock};
+use std::time::SystemTime;
 
+use parking_lot::Mutex;
 use serde_json::Value;
 
 use super::cmd::git_ok;
@@ -105,6 +108,19 @@ fn parse_checkpoint(v: &Value) -> Option<TurnCheckpoint> {
         undone: false,
     })
 }
+#[derive(Clone)]
+struct CacheEntry {
+    mtime: SystemTime,
+    size: u64,
+    parsed: Arc<ParsedSession>,
+}
+
+// LazyLock is stable since 1.80 while the declared MSRV is 1.77.2; the pinned
+// toolchain is newer, so keep the declaration-site initializer and scope the
+// lint to this static.
+#[allow(clippy::incompatible_msrv)]
+static SESSION_CACHE: LazyLock<Mutex<HashMap<PathBuf, CacheEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 struct ParsedSession {
     /// `cwd` from the `type:"session"` header entry.
@@ -115,7 +131,23 @@ struct ParsedSession {
 }
 
 /// Read a session .jsonl; malformed lines/entries are skipped.
-fn parse_file(path: &Path) -> Result<ParsedSession, String> {
+/// Results are cached in memory keyed by (mtime, size) to avoid re-reading
+/// and re-parsing large historical session files repeatedly.
+fn parse_file(path: &Path) -> Result<Arc<ParsedSession>, String> {
+    let metadata = std::fs::metadata(path).map_err(|e| format!("读取会话记录失败: {e}"))?;
+    let mtime = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+    let size = metadata.len();
+
+    // Check in-memory cache
+    {
+        let cache = SESSION_CACHE.lock();
+        if let Some(entry) = cache.get(path) {
+            if entry.mtime == mtime && entry.size == size {
+                return Ok(entry.parsed.clone());
+            }
+        }
+    }
+
     let text = std::fs::read_to_string(path).map_err(|e| format!("读取会话记录失败: {e}"))?;
     let mut parsed = ParsedSession {
         cwd: None,
@@ -125,6 +157,13 @@ fn parse_file(path: &Path) -> Result<ParsedSession, String> {
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() {
+            continue;
+        }
+        // Fast pre-filter: skip lines that cannot be a checkpoint or session header,
+        // avoiding expensive serde_json::from_str parsing on message/tool output rows.
+        if !line.contains(CHECKPOINT_TYPE)
+            && (parsed.cwd.is_some() || !line.contains("\"session\""))
+        {
             continue;
         }
         let Ok(v) = serde_json::from_str::<Value>(line) else {
@@ -151,7 +190,28 @@ fn parse_file(path: &Path) -> Result<ParsedSession, String> {
             t.session_id = parsed.id.clone();
         }
     }
-    Ok(parsed)
+
+    let parsed_arc = Arc::new(parsed);
+    {
+        let mut cache = SESSION_CACHE.lock();
+        if cache.len() > 1000 {
+            cache.clear();
+        }
+        cache.insert(
+            path.to_path_buf(),
+            CacheEntry {
+                mtime,
+                size,
+                parsed: parsed_arc.clone(),
+            },
+        );
+    }
+    Ok(parsed_arc)
+}
+
+#[cfg(test)]
+pub(crate) fn clear_session_cache_for_test() {
+    SESSION_CACHE.lock().clear();
 }
 
 /// All `refs/omp/**` refs of the repo containing `dir` (empty on failure).
@@ -179,7 +239,7 @@ fn enrich(dir: &Path, turns: &mut [TurnCheckpoint]) {
 /// Ref enrichment happens in the repo of the session's own cwd.
 pub fn session_turns(session_file: &Path) -> Result<Vec<TurnCheckpoint>, String> {
     let parsed = parse_file(session_file)?;
-    let mut turns = parsed.turns;
+    let mut turns = parsed.turns.clone();
     sort_turns(&mut turns);
     if let Some(cwd) = parsed.cwd.as_deref().filter(|c| !c.is_empty()) {
         enrich(Path::new(cwd), &mut turns);
@@ -192,7 +252,7 @@ fn collect_turns(files: &[PathBuf], repo_dir: &Path) -> Vec<TurnCheckpoint> {
     let mut out = Vec::new();
     for f in files {
         if let Ok(parsed) = parse_file(f) {
-            out.extend(parsed.turns);
+            out.extend(parsed.turns.iter().cloned());
         }
     }
     sort_turns(&mut out);
@@ -211,24 +271,31 @@ fn sort_turns(turns: &mut [TurnCheckpoint]) {
 
 /// `git_worktree_turns`: checkpoints of every session assigned to the
 /// (deepest) worktree containing `cwd`, oldest first by `endedAt`.
+/// Efficient: resolves worktree paths and sessions directly without
+/// triggering redundant `git status` checks across all worktrees.
 pub fn worktree_turns(
     cwd: &Path,
     sessions: &[(String, String)],
 ) -> Result<Vec<TurnCheckpoint>, String> {
-    if worktree::repo_info(cwd).is_none() {
+    let Some(info) = worktree::repo_info(cwd) else {
         return Ok(Vec::new());
-    }
+    };
     let dir = worktree::canon(cwd);
-    let entries = worktree::list(cwd, sessions)?;
-    let Some(entry) = entries
+    let main_root = info.main_root();
+    let entries = worktree::list_entries(&main_root)?;
+    let paths: Vec<PathBuf> = entries
         .iter()
-        .filter(|e| worktree::is_inside(&dir, Path::new(&e.path)))
-        .max_by_key(|e| e.path.len())
+        .map(|e| worktree::canon(Path::new(&e.path)))
+        .collect();
+    let Some(entry_path) = paths
+        .iter()
+        .filter(|p| worktree::is_inside(&dir, p))
+        .max_by_key(|p| p.as_os_str().len())
     else {
         return Ok(Vec::new());
     };
-    let files: Vec<PathBuf> = entry
-        .session_ids
+    let session_ids = worktree::sessions_for_path(entry_path, &paths, sessions);
+    let files: Vec<PathBuf> = session_ids
         .iter()
         .filter_map(|id| crate::catalog::file_of(id))
         .collect();
@@ -276,7 +343,7 @@ pub fn undo_turn(
     force: bool,
 ) -> Result<TurnUndoResult, String> {
     let parsed = parse_file(session_file)?;
-    let mut turns = parsed.turns;
+    let mut turns = parsed.turns.clone();
     sort_turns(&mut turns);
     enrich(cwd, &mut turns);
     let Some(idx) = turns.iter().position(|t| t.turn_id == turn_id) else {
@@ -444,6 +511,7 @@ mod tests {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn entry(
         sid: &str,
         turn_id: &str,
@@ -570,6 +638,69 @@ mod tests {
         assert!(turns[0].undone);
         assert!(!turns[1].undone);
         std::fs::remove_dir_all(&repo).unwrap();
+        std::fs::remove_dir_all(&sess).unwrap();
+    }
+
+    #[test]
+    fn parse_file_caches_by_mtime_and_size() {
+        let sess = temp_dir("cache");
+        let sid = "s1";
+        // Distinct turn_id per rewrite, same length so size stays identical.
+        let line = |turn_id: &str| {
+            entry(
+                sid,
+                turn_id,
+                "p",
+                &"0".repeat(40),
+                &"1".repeat(40),
+                None,
+                None,
+                &[],
+                &[("f.txt", "M")],
+                "2026-09-29T10:00:00Z",
+            )
+        };
+        let file = session_file(&sess, &sess, sid, &[line("t1")]);
+        let set_mtime = |t: SystemTime| {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&file)
+                .unwrap()
+                .set_modified(t)
+                .unwrap();
+        };
+
+        clear_session_cache_for_test();
+        // First read parses and populates the cache.
+        let first = parse_file(&file).unwrap();
+        assert_eq!(first.turns[0].turn_id, "t1");
+        // Second read with unchanged file → cache hit: same Arc, no re-parse.
+        let second = parse_file(&file).unwrap();
+        assert!(Arc::ptr_eq(&first, &second));
+
+        // Content changes but (mtime, size) stays identical → still served
+        // from cache, proving the key is metadata, not file contents.
+        let meta = std::fs::metadata(&file).unwrap();
+        let (mtime, size) = (meta.modified().unwrap(), meta.len());
+        std::fs::write(
+            &file,
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .replace("\"t1\"", "\"t9\""),
+        )
+        .unwrap();
+        set_mtime(mtime);
+        assert_eq!(std::fs::metadata(&file).unwrap().len(), size);
+        let third = parse_file(&file).unwrap();
+        assert!(Arc::ptr_eq(&first, &third));
+
+        // An mtime bump alone invalidates the entry → the file is re-parsed
+        // and the updated turn_id is returned.
+        set_mtime(mtime + std::time::Duration::from_secs(60));
+        let fourth = parse_file(&file).unwrap();
+        assert!(!Arc::ptr_eq(&first, &fourth));
+        assert_eq!(fourth.turns[0].turn_id, "t9");
+
         std::fs::remove_dir_all(&sess).unwrap();
     }
 
