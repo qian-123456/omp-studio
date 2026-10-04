@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import {
 	ArrowUp,
+	Check,
+	ChevronDown,
 	CornerUpLeft,
 	ExternalLink,
 	GitBranch,
@@ -13,6 +15,8 @@ import {
 	X,
 } from "lucide-react";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { ModelMenuContent } from "../../components/ModelSelect";
+import { formatShortModel } from "../chat/turnGrouping";
 import { useEffect, useRef, useState } from "react";
 import type { SessionMeta } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
@@ -28,6 +32,26 @@ import { SessionView } from "../chat/SessionView";
 import { compareSessionLabels } from "./labelSort";
 
 const MAX_DEPTH = 3;
+function getThinkingLabel(level: string) {
+	switch (level) {
+		case "off":
+			return { label: "关闭思考", desc: "不启用思考过程" };
+		case "minimal":
+			return { label: "微量思考", desc: "最少思考 tokens" };
+		case "low":
+			return { label: "低档思考", desc: "适度思考" };
+		case "medium":
+			return { label: "中档思考", desc: "平衡思考与速度" };
+		case "high":
+			return { label: "高档思考", desc: "深度思考推理" };
+		case "max":
+			return { label: "最大思考", desc: "极限推理" };
+		case "auto":
+		default:
+			return { label: "思考: 自动", desc: "遵循模型默认设置" };
+	}
+}
+
 
 interface ContextMenuState {
 	x: number;
@@ -53,6 +77,11 @@ export function SideChatPanel() {
 	// "" = inherit the parent session's model.
 	const [selectedModel, setSelectedModel] = useState("");
 	const [thinking, setThinking] = useState("auto");
+	const [modelOpen, setModelOpen] = useState(false);
+	const modelMenuRef = useRef<HTMLDivElement>(null);
+	const [thinkingOpen, setThinkingOpen] = useState(false);
+	const thinkingMenuRef = useRef<HTMLDivElement>(null);
+
 
 	useEffect(() => {
 		let cancelled = false;
@@ -77,6 +106,13 @@ export function SideChatPanel() {
 		.filter((s) => s.parentId === selectedId)
 		.sort((a, b) => compareSessionLabels(a.label, b.label));
 	const tooDeep = (parent?.forkDepth ?? 0) >= MAX_DEPTH;
+	const parentModelName = parent?.model ? formatShortModel(parent.model) : "";
+	const displayModelName = selectedModelOption
+		? (selectedModelOption.name || selectedModelOption.id)
+		: parentModelName
+			? `${parentModelName} (继承)`
+			: "继承父会话模型";
+
 
 	// Esc returns to list when viewing a child session
 	useEscapeKey(() => setChildId(null), childId !== null && contextMenu === null);
@@ -369,9 +405,9 @@ export function SideChatPanel() {
 				)}
 			</FloatingLayer>
 
-			<div className="shrink-0 border-t border-[var(--line)] p-2.5">
+			<div className="shrink-0 border-t border-[var(--line)] px-3 pb-3 pt-2">
 				{tooDeep ? (
-					<div className="flex flex-col items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--bg)] p-3 text-center">
+					<div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-3 text-center">
 						<div className="text-[12px] font-medium text-[var(--text)]">
 							已达分支嵌套深度上限（3 层）
 						</div>
@@ -381,7 +417,7 @@ export function SideChatPanel() {
 						<button
 							type="button"
 							onClick={() => openModal("newSession")}
-							className="mt-1 flex items-center gap-1.5 rounded-md bg-[var(--text)] px-3 py-1.5 text-[12px] font-medium text-[var(--bg)] hover:opacity-90 transition-opacity"
+							className="mt-1 flex items-center gap-1.5 rounded-md bg-[var(--text)] px-3 py-1.5 text-[12px] font-medium text-[var(--bg-panel)] hover:opacity-90 transition-opacity"
 						>
 							<Plus size={13} />
 							新建主会话
@@ -393,38 +429,37 @@ export function SideChatPanel() {
 							<div className="mb-2 text-[11px] text-[var(--status-error)]">{error}</div>
 						)}
 
-						<div className="rounded-xl border border-[var(--line)] bg-[var(--bg)] focus-within:border-[var(--text-30)] p-2.5 transition-colors">
-							{/* Context inheritance capsule */}
-							{parent && (
-								<div className="mb-2 flex items-center gap-1.5 rounded border border-[var(--line)] bg-[var(--bg-panel)] px-2 py-1 text-[11px] text-[var(--text-40)]">
-									<GitBranch size={11} className="shrink-0 text-[var(--text-40)]" />
-									<span className="min-w-0 truncate">
-										摘要继承: {parent.label}
-										{parent.title ? ` · ${parent.title}` : ""}
-									</span>
-								</div>
-							)}
-
-							{/* Removable quote capsule */}
-							{pendingSelection && (
-								<div className="mb-2 flex items-start gap-1.5 rounded border border-[var(--line)] bg-[var(--bg-panel)] px-2 py-1.5 text-[11px] text-[var(--text-40)]">
-									<span className="shrink-0 font-medium text-[var(--text-60)]">
-										引用：
-									</span>
-									<span
-										className="min-w-0 flex-1 line-clamp-2 break-all text-[var(--text-60)]"
-										title={pendingSelection}
-									>
-										{pendingSelection}
-									</span>
-									<button
-										type="button"
-										title="移除引用"
-										onClick={() => setPendingSelection(null)}
-										className="shrink-0 rounded p-0.5 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] focus:opacity-100 transition-colors"
-									>
-										<X size={12} />
-									</button>
+						<div className="relative rounded-[20px] border border-[var(--line,var(--border))] bg-[var(--bg-panel)] shadow-xs transition-colors focus-within:border-[var(--hairline-strong,var(--border))]">
+							{/* Context inheritance & quotation pills */}
+							{(parent || pendingSelection) && (
+								<div className="flex flex-wrap items-center gap-1.5 px-3 pt-2.5 pb-1">
+									{parent && (
+										<span
+											className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-[var(--ghost-hover)] px-2 py-0.5 text-[11px] text-[var(--text-60)] max-w-full truncate select-none"
+											title={`摘要继承自: ${parent.label}${parent.title ? ` · ${parent.title}` : ""}`}
+										>
+											<GitBranch size={11} className="shrink-0 text-indigo-400" />
+											<span className="truncate">
+												摘要继承: {parent.label}
+												{parent.title ? ` · ${parent.title}` : ""}
+											</span>
+										</span>
+									)}
+									{pendingSelection && (
+										<span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-[var(--ghost-hover)] px-2 py-0.5 text-[11px] text-[var(--text-60)] max-w-full">
+											<span className="truncate max-w-[180px]" title={pendingSelection}>
+												引用: {pendingSelection}
+											</span>
+											<button
+												type="button"
+												onClick={() => setPendingSelection(null)}
+												className="shrink-0 text-[var(--text-40)] hover:text-[var(--text)] transition-colors"
+												title="移除引用"
+											>
+												<X size={10} />
+											</button>
+										</span>
+									)}
 								</div>
 							)}
 
@@ -434,7 +469,7 @@ export function SideChatPanel() {
 								onChange={(e) => {
 									setQuestion(e.target.value);
 									e.target.style.height = "auto";
-									e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+									e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
 								}}
 								onKeyDown={(e) => {
 									if (e.key === "Enter" && !e.shiftKey) {
@@ -445,62 +480,123 @@ export function SideChatPanel() {
 								}}
 								placeholder="输入侧聊提问... (Enter 发送，Shift+Enter 换行)"
 								rows={1}
-								className="w-full resize-none bg-transparent text-[12px] leading-relaxed text-[var(--text)] placeholder:text-[var(--text-30)] outline-none max-h-32 min-h-[44px]"
+								className="w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 font-sans text-[13px] leading-[1.5] text-[var(--text)] placeholder:text-[var(--text-30,var(--text-dim))] outline-none max-h-36 min-h-[44px]"
 							/>
 
-							<div className="mt-1 flex items-center justify-between gap-2 pt-1 text-[11px] text-[var(--text-40)]">
-								<div className="flex min-w-0 items-center gap-1 text-[11px] text-[var(--text-40)] select-none">
-									<select
-										value={selectedModel}
-										onChange={(e) => {
-											setSelectedModel(e.target.value);
-											setThinking("auto");
-										}}
-										title="侧聊模型"
-										className="min-w-0 max-w-[140px] truncate rounded-full border border-[var(--line)] bg-transparent px-2 py-0.5 text-[11px] text-[var(--text-60)] outline-none hover:bg-[var(--ghost-hover)]"
-									>
-										<option value="">继承父会话模型</option>
-										{models.map((m) => {
-											const key = toModelKey(m.provider, m.id);
-											return (
-												<option key={key} value={key}>
-													{m.name || m.id}
-												</option>
-											);
-										})}
-									</select>
-									<select
-										value={thinking}
-										onChange={(e) => setThinking(e.target.value)}
-										disabled={!selectedModel}
-										title={selectedModel ? "思考等级" : "选择模型后可设置思考等级"}
-										className="rounded-full border border-[var(--line)] bg-transparent px-2 py-0.5 text-[11px] text-[var(--text-60)] outline-none hover:bg-[var(--ghost-hover)] disabled:opacity-50"
-									>
-										{thinkingLevels.map((l) => (
-											<option key={l} value={l}>
-												{l === "auto" ? "思考: 自动" : `思考: ${l}`}
-											</option>
-										))}
-									</select>
+							<div className="flex items-center justify-between gap-2 px-2.5 pb-2 text-[12px]">
+								<div className="flex items-center gap-1 select-none">
+									{/* Model Picker */}
+									<div className="relative" ref={modelMenuRef}>
+										<button
+											type="button"
+											onClick={() => setModelOpen((v) => !v)}
+											title={`侧聊模型: ${displayModelName}`}
+											className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors select-none"
+										>
+											<span className="truncate max-w-28">{displayModelName}</span>
+											<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
+										</button>
+
+										{modelOpen && (
+											<FloatingLayer
+												anchor={modelMenuRef.current}
+												placement="top-start"
+												offset={6}
+												layer="popover"
+												ignoreRefs={[modelMenuRef]}
+												onDismiss={() => setModelOpen(false)}
+												className="w-[320px] rounded-xl border border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1 shadow-lg"
+											>
+												<ModelMenuContent
+													models={models}
+													currentValue={selectedModel}
+													extras={[{ value: "", label: "继承父会话模型", hint: parentModelName || "跟随主会话" }]}
+													onSelect={(key) => {
+														setSelectedModel(key);
+														setThinking("auto");
+														setModelOpen(false);
+													}}
+												/>
+											</FloatingLayer>
+										)}
+									</div>
+
+									{/* Thinking Level Picker */}
+									{selectedModel && (
+										<div className="relative" ref={thinkingMenuRef}>
+											<button
+												type="button"
+												onClick={() => setThinkingOpen((v) => !v)}
+												title={`思考等级: ${getThinkingLabel(thinking).label}`}
+												className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors select-none"
+											>
+												<span className="truncate">{getThinkingLabel(thinking).label}</span>
+												<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
+											</button>
+
+											{thinkingOpen && (
+												<FloatingLayer
+													anchor={thinkingMenuRef.current}
+													placement="top-start"
+													offset={6}
+													layer="popover"
+													ignoreRefs={[thinkingMenuRef]}
+													onDismiss={() => setThinkingOpen(false)}
+													className="w-[200px] rounded-xl border border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1 shadow-lg"
+												>
+													<div className="border-b border-[var(--line)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-40)]">
+														思考等级
+													</div>
+													<div className="py-0.5">
+														{thinkingLevels.map((lvl) => {
+															const opt = getThinkingLabel(lvl);
+															const isSelected = thinking === lvl;
+															return (
+																<button
+																	key={lvl}
+																	type="button"
+																	onClick={() => {
+																		setThinking(lvl);
+																		setThinkingOpen(false);
+																	}}
+																	className={clsx(
+																		"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
+																		isSelected
+																			? "bg-[var(--ghost-hover)] font-medium text-[var(--text)]"
+																			: "text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]",
+																	)}
+																>
+																	<span>{opt.label}</span>
+																	{isSelected && <Check size={12} className="text-[var(--text)]" />}
+																</button>
+															);
+														})}
+													</div>
+												</FloatingLayer>
+											)}
+										</div>
+									)}
 								</div>
+
+								{/* Send Button */}
 								<button
 									type="button"
 									disabled={busy || !question.trim()}
 									onClick={() => void create()}
 									title={busy ? "正在创建侧聊…" : "创建侧聊 (Enter)"}
 									className={clsx(
-										"h-6 w-6 rounded-full flex items-center justify-center transition-all duration-150",
+										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 shrink-0",
 										busy
 											? "bg-[var(--bg-hover)] text-[var(--text-40)] cursor-not-allowed"
 											: question.trim()
-												? "bg-[var(--text)] text-[var(--bg)] hover:opacity-90 active:scale-95"
-												: "bg-[var(--bg-hover)] text-[var(--text-30)] cursor-not-allowed",
+												? "bg-[var(--text)] text-[var(--bg-panel)] hover:opacity-90 active:scale-95 shadow-xs"
+												: "bg-[var(--bg-hover)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed",
 									)}
 								>
 									{busy ? (
-										<Loader2 size={12} className="animate-spin text-[var(--text-40)]" />
+										<Loader2 size={13} className="animate-spin text-[var(--text-40)]" />
 									) : (
-										<ArrowUp size={13} />
+										<ArrowUp size={14} className="stroke-[2.5]" />
 									)}
 								</button>
 							</div>
