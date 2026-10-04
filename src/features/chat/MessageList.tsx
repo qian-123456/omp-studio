@@ -30,7 +30,6 @@ import {
 	TurnSteps,
 	type StepShape,
 } from "./ExecutionDisclosure";
-import { ImageChip } from "./ImageChips";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment } from "../../lib/contracts";
 import { Markdown } from "./markdown";
@@ -110,12 +109,14 @@ function UserImagePreview({
 	onClick?: () => void;
 }) {
 	const [failed, setFailed] = useState(false);
-	if (!image.path || failed) return <ImageChip image={image} />;
+	if (!image.path || failed) return null;
 	const src = convertFileSrc(image.path);
+	const palette = index ? getImageTokenPalette(index) : null;
 	return (
 		<div
-			className="relative group/user-img inline-block overflow-hidden rounded-xl border border-[var(--line)] bg-black/5 dark:bg-white/5 shadow-sm select-none cursor-pointer"
+			className="group/user-img relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm select-none cursor-pointer"
 			onClick={onClick}
+			title="点击放大查看"
 		>
 			<img
 				src={src}
@@ -123,12 +124,15 @@ function UserImagePreview({
 				title={image.path}
 				loading="lazy"
 				onError={() => setFailed(true)}
-				className="max-h-72 max-w-sm object-contain transition-transform duration-200 group-hover/user-img:scale-[1.02]"
+				className="h-full w-full object-cover transition-transform duration-200 group-hover/user-img:scale-105"
 			/>
 			{/* Hover overlay: subtle white brightening */}
-			<div className="absolute inset-0 bg-white/15 opacity-0 transition-opacity duration-150 group-hover/user-img:opacity-100 pointer-events-none" />
+			<div className="absolute inset-0 bg-white/20 opacity-0 transition-opacity duration-150 group-hover/user-img:opacity-100 pointer-events-none" />
 			{index !== undefined && totalImages > 1 && (
-				<span className="absolute bottom-2 left-2 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white/90 backdrop-blur-md shadow-xs border border-white/10 pointer-events-none">
+				<span
+					className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-mono font-bold backdrop-blur-md shadow-xs border border-white/10 pointer-events-none"
+					style={palette ? { color: palette.hex } : undefined}
+				>
 					#{index}
 				</span>
 			)}
@@ -149,55 +153,51 @@ const UserRow = React.memo(function UserRow({
 	item: TranscriptItem;
 }) {
 	const rawText = item.text ?? "";
-	const tokens = useMemo(() => parseUserMessageTokens(rawText), [rawText]);
-	const hasProseText = useMemo(() => {
-		const nonImages = tokens
-			.filter((t) => t.type === "text")
-			.map((t) => t.text.trim())
-			.join("");
-		return nonImages.length > 0;
-	}, [tokens]);
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
 	const [expanded, setExpanded] = useState(false);
 	const [collapsible, setCollapsible] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
 
-	const hasImages = Boolean(item.images && item.images.length > 0);
+	const validImages = useMemo(
+		() =>
+			(item.images ?? []).filter(
+				(img): img is ImageAttachment & { path: string } => Boolean(img.path),
+			),
+		[item.images],
+	);
 
 	useEffect(() => {
 		const el = textRef.current;
 		if (!el) return;
 		setCollapsible(el.scrollHeight > el.clientHeight + 1);
-	}, [userText, tokens]);
+	}, [userText]);
 
-	const showBubble = hasImages ? hasProseText : tokens.length > 0;
+	const showBubble = userText.trim().length > 0;
 	return (
 		<div
 			id={`msg-${item.id}`}
 			className="group/user-row relative flex w-full flex-col items-end gap-1.5 py-1"
 		>
-			{item.images && item.images.length > 0 && (
+			{validImages.length > 0 && (
 				<div className="flex w-full flex-wrap justify-end gap-2.5 pb-0.5">
-					{item.images.map((img, i) => (
+					{validImages.map((img, i) => (
 						<UserImagePreview
 							key={img.id}
 							image={img}
 							index={i + 1}
-							totalImages={item.images!.length}
+							totalImages={validImages.length}
 							onClick={() => setPreviewIndex(i)}
 						/>
 					))}
 				</div>
 			)}
-			{previewIndex !== null && item.images && (
+			{previewIndex !== null && validImages.length > 0 && (
 				<ImagePreviewModal
-					images={item.images
-						.filter((img): img is ImageAttachment & { path: string } => !!img.path)
-						.map((img, idx) => ({
-							path: img.path,
-							marker: img.marker ?? `图片 #${idx + 1}`,
-						}))}
+					images={validImages.map((img, idx) => ({
+						path: img.path,
+						marker: img.marker ?? `图片 #${idx + 1}`,
+					}))}
 					initialIndex={previewIndex}
 					onClose={() => setPreviewIndex(null)}
 				/>
@@ -211,25 +211,7 @@ const UserRow = React.memo(function UserRow({
 							!expanded && "line-clamp-4",
 						)}
 					>
-						{hasImages
-							? userText
-							: tokens.map((token, i) => {
-									if (token.type === "image") {
-										const num = parseInt(token.num, 10);
-										const palette = getImageTokenPalette(num);
-										return (
-											<span
-												key={i}
-												className="inline-block font-mono font-medium underline decoration-2 underline-offset-[3px] mx-0.5"
-												style={{ color: palette.hex, textDecorationColor: palette.hex }}
-												title={token.path ? `图片 #${token.num}: ${token.path}` : `图片 #${token.num}`}
-											>
-												🖼️ #{token.num}
-											</span>
-										);
-									}
-									return <span key={i}>{token.text}</span>;
-								})}
+						{userText}
 					</div>
 					{collapsible && (
 						<button

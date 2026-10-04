@@ -264,7 +264,14 @@ const flat = (t: string) => stripMarkers(t).replace(/\s+/g, " ").trim();
 export const echoMatches = (echoText: string, itemText: string): boolean => {
 	const e = flat(echoText);
 	const u = flat(itemText);
-	return e !== "" && u !== "" && (e === u || u.includes(e) || e.includes(u));
+	if (e !== "" && u !== "") {
+		return e === u || u.includes(e) || e.includes(u);
+	}
+	if (e === "" && u === "") {
+		const markerRe = /\[(?:Image|图片)\s*#\d+|🖼️\s*#\d+/i;
+		return markerRe.test(echoText) && markerRe.test(itemText);
+	}
+	return false;
 };
 
 /** Consume one pending echo per confirmed user transcript item (FIFO). */

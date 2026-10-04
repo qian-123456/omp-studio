@@ -366,6 +366,13 @@ describe("live reducer — pending user echoes", () => {
 			.setItems(SID, [userItem("u1", "[Image #1, 1568x984] 看看这张图")], 30);
 		expect(live().pendingUserEchoes).toHaveLength(0);
 	});
+	it("reconciles pure image echoes with no prose text", () => {
+		useLive.getState().addUserEcho(SID, "[Image #1: /tmp/a.png]");
+		useLive
+			.getState()
+			.setItems(SID, [userItem("u1", "[Image #1, 800x600: /tmp/a.png]")], 30);
+		expect(live().pendingUserEchoes).toHaveLength(0);
+	});
 
 	it("keeps echo when the arriving user item is a different text", () => {
 		useLive.getState().addUserEcho(SID, "mine");

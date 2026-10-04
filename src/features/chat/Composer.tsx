@@ -571,8 +571,35 @@ export function Composer({
 			return;
 		}
 		const currentSessionImages = useComposer.getState().images[sessionId] ?? [];
-		// Convert `🖼️ #N` to standard OMP token `[Image #N]`
-		const outgoingRaw = raw.replace(/🖼️\s*#(\d+)/gu, "[Image #$1]");
+		// Convert `🖼️ #N` to standard OMP token `[Image #N: path]`
+		let outgoingRaw = raw.replace(/🖼️\s*#(\d+)/gu, (_match, numStr) => {
+			const n = parseInt(numStr, 10);
+			const img = currentSessionImages[n - 1];
+			if (img?.path) {
+				const dimStr = img.width && img.height ? `, ${img.width}x${img.height}` : "";
+				return `[Image #${n}${dimStr}: ${img.path}]`;
+			}
+			return `[Image #${n}]`;
+		});
+
+		// If some images attached in Composer were not referenced in text (e.g. user deleted the token),
+		// ensure they are still included in the outgoing prompt.
+		const missingImages = currentSessionImages.filter((_img, i) => {
+			const n = i + 1;
+			return !outgoingRaw.includes(`[Image #${n}`);
+		});
+		if (missingImages.length > 0) {
+			const missingMarkers = missingImages
+				.map((img) => {
+					const n = currentSessionImages.indexOf(img) + 1;
+					const dimStr = img.width && img.height ? `, ${img.width}x${img.height}` : "";
+					return `[Image #${n}${dimStr}: ${img.path}]`;
+				})
+				.join(" ");
+			outgoingRaw = outgoingRaw.trim()
+				? `${missingMarkers} ${outgoingRaw}`
+				: missingMarkers;
+		}
 
 		const imageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
 			id: img.id || `img-${i + 1}`,

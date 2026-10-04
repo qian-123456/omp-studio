@@ -544,7 +544,7 @@ pub fn parse_images(content: Option<&Value>) -> Vec<crate::contracts::ImageAttac
                         existing.path = resolved_path;
                     }
                     existing.marker = Some(whole.to_string());
-                } else {
+                } else if resolved_path.is_some() {
                     images.push(crate::contracts::ImageAttachment {
                         id: format!("img-{}", *idx),
                         marker: Some(whole.to_string()),
