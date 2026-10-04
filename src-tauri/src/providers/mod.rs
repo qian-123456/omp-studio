@@ -7,6 +7,7 @@
 //! the macOS Keychain). Child processes get decrypted keys via [`env_pairs`].
 
 pub mod commands;
+pub mod models_yml_write;
 pub mod oauth;
 pub mod omp_config;
 pub mod presets;
@@ -202,7 +203,10 @@ mod tests {
             models: vec!["custom-model".into()],
             ..Default::default()
         };
-        assert_eq!(runtime_metadata(&[provider.clone()]).unwrap(), "[]");
+        assert_eq!(
+            runtime_metadata(std::slice::from_ref(&provider)).unwrap(),
+            "[]"
+        );
         let no_models = ProviderConfig {
             enabled: true,
             models: Vec::new(),

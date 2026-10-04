@@ -30,6 +30,8 @@ import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useLive, type LiveTool, type UserEcho } from "../../stores/live";
 import { useTurnNav } from "../../stores/turnNav";
+import { useUi } from "../../stores/ui";
+import { openContextWindowForModel } from "../settings/settingsTargets";
 import { AnswerFooter } from "./AnswerFooter";
 import { AttachmentThumb } from "./ImageChips";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
@@ -43,6 +45,7 @@ import {
 import type { ImageAttachment } from "../../lib/contracts";
 import { getImageTokenPalette } from "./Composer";
 import { Markdown } from "./markdown";
+import { isContextOverflowError, splitModelRef } from "./contextOverflow";
 import {
 	buildToolResultsMap,
 	filterVisibleItems,
@@ -480,6 +483,12 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 							<span className="italic text-[var(--text-40)]">空回复</span>
 						)}
 					</div>
+					{block.answerItem.stopReason === "error" &&
+						isContextOverflowError(block.answerItem.text) && (
+							<ContextOverflowHint
+								modelRef={block.answerItem.model ?? block.userItem?.model}
+							/>
+						)}
 
 					{/* Hover-only ghost footer */}
 					<AnswerFooter
@@ -501,6 +510,27 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		</div>
 	);
 });
+
+/** Hint under a context-overflow error: jump to the model's context-window row. */
+function ContextOverflowHint({ modelRef }: { modelRef: string | null | undefined }) {
+	const onClick = () => {
+		const ref = splitModelRef(modelRef);
+		if (ref) openContextWindowForModel(ref.providerId, ref.modelId);
+		else useUi.getState().openSettings("context-window");
+	};
+	return (
+		<div className="mt-1 text-[12px] text-[var(--text-60)]">
+			可能是该模型的上下文窗口设得过大 →{" "}
+			<button
+				type="button"
+				onClick={onClick}
+				className="cursor-pointer text-[var(--accent)] hover:underline"
+			>
+				去调整
+			</button>
+		</div>
+	);
+}
 
 /**
  * Isolated StreamingRow: subscribes to streamingMessage directly so MessageList

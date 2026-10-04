@@ -26,7 +26,7 @@ export const OMP_DESKTOP_CATEGORIES: OmpDesktopCategory[] = [
 	{ id: "model", label: "模型与目录", hint: "模型目录与选择" },
 	{ id: "thinking", label: "思考与采样", hint: "思考级别、预算与采样参数" },
 	{ id: "retry", label: "重试与回退", hint: "重试、回退与流式限制" },
-	{ id: "context", label: "上下文与记忆", hint: "压缩、上下文与记忆" },
+	{ id: "context", label: "记忆与对话", hint: "记忆、自主学习、对话行为与提示词内容" },
 	{ id: "tools", label: "工具与审批", hint: "工具开关、审批与扩展能力" },
 	{ id: "tasks", label: "任务与子代理", hint: "子代理、隔离与工作树" },
 	{ id: "providers", label: "网络与扩展", hint: "扩展列表与网络服务配置" },
@@ -85,7 +85,12 @@ const HIDDEN_KEYS: Record<string, true> = {
 	"retry.fallbackChains": true,
 	modelRoleStorage: true,
 	cycleOrder: true,
+	// Edited by Settings ▸ 上下文窗口 (context-window page).
+	extendedContext: true,
 };
+
+/** Prefixes edited by Settings ▸ 上下文窗口, never listed in the flat config pages. */
+const CONTEXT_WINDOW_PREFIXES: readonly string[] = ["compaction.", "contextPromotion."];
 
 interface CategoryMatch {
 	id: string;
@@ -154,7 +159,6 @@ const CATEGORY_MATCH: readonly CategoryMatch[] = [
 	{
 		id: "context",
 		exact: {
-			extendedContext: true,
 			includeWorkspaceTree: true,
 			skillful: true,
 			steeringMode: true,
@@ -162,8 +166,6 @@ const CATEGORY_MATCH: readonly CategoryMatch[] = [
 			interruptMode: true,
 		},
 		prefixes: [
-			"compaction.",
-			"contextPromotion.",
 			"workspace.",
 			"title.",
 			"recap.",
@@ -249,9 +251,10 @@ const CATEGORY_MATCH: readonly CategoryMatch[] = [
 	// that matched nothing above (shellPath, power.*, future keys, …).
 ];
 
-/** False when the key is TUI-only or owned by a dedicated editor UI. */
+/** False when the key is TUI-only or owned by a dedicated editor UI (roles, context window). */
 export function isDesktopRelevant(key: string): boolean {
 	if (HIDDEN_KEYS[key]) return false;
+	if (CONTEXT_WINDOW_PREFIXES.some((p) => key.startsWith(p))) return false;
 	return !HIDDEN_PREFIXES.some((p) => key.startsWith(p));
 }
 

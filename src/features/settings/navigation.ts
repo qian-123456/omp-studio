@@ -13,11 +13,11 @@ import {
 	Network,
 	Palette,
 	Puzzle,
+	Ruler,
 	RefreshCw,
 	Server,
 	Settings2,
 	Sliders,
-	SlidersHorizontal,
 	Smartphone,
 	Sparkles,
 	Users,
@@ -28,7 +28,25 @@ import type { OmpConfigEntry } from "../../lib/contracts";
 import { registryKeywordsForSection } from "./fieldRegistry";
 import { BUILTIN_ROLES, asRecord, customRoles } from "./modelRoles";
 import { ompConfigDescription, ompConfigTitle } from "./ompConfigMeta";
-import { ompDesktopCategoryFor } from "./ompDesktopCategories";
+import { isDesktopRelevant, ompDesktopCategoryFor } from "./ompDesktopCategories";
+
+const CONTEXT_WINDOW_SEARCH_TERMS = [
+	"context window",
+	"contextWindow",
+	"上下文窗口",
+	"窗口",
+	"模型上下文",
+	"规则",
+	"压缩",
+	"自动压缩",
+	"compaction",
+	"阈值",
+	"扩展上下文",
+	"extendedContext",
+	"上下文提升",
+	"contextPromotion",
+	"models.yml",
+];
 
 export interface NavItem {
 	id: string;
@@ -56,9 +74,9 @@ export const NAV_GROUPS: NavGroup[] = [
 		items: [
 			{ id: "quota", label: "订阅与 Quota", icon: Gauge },
 			{ id: "providers", label: "API 供应商", icon: KeyRound },
+			{ id: "context-window", label: "上下文窗口", icon: Ruler },
 			{ id: "omp-roles", label: "模型角色", icon: Users },
 			{ id: "omp-model", label: "模型与目录", icon: ListTree },
-			{ id: "model-context", label: "统一模型上下文", icon: SlidersHorizontal },
 			{ id: "omp-thinking", label: "思考与采样", icon: Brain },
 			{ id: "omp-retry", label: "重试与回退", icon: RefreshCw },
 		],
@@ -68,7 +86,7 @@ export const NAV_GROUPS: NavGroup[] = [
 		items: [
 			{ id: "sessions", label: "会话", icon: Bot },
 			{ id: "inbox", label: "收件箱", icon: Sparkles },
-			{ id: "omp-context", label: "上下文与记忆", icon: Library },
+			{ id: "omp-context", label: "记忆与对话", icon: Library },
 			{ id: "agents-md", label: "规则文件 AGENTS.md", icon: FileText },
 			{ id: "omp-tools", label: "工具与审批", icon: Hammer },
 			{ id: "omp-tasks", label: "任务与子代理", icon: Network },
@@ -118,12 +136,22 @@ export function sectionSearchTerms(id: string, ompEntries: OmpConfigEntry[]): st
 		];
 	}
 	const cat = ompCategoryOf(id);
-	if (cat) return ompEntries.filter((e) => ompDesktopCategoryFor(e.key).id === cat).flatMap(ompEntryTerms);
+	if (cat) {
+		return ompEntries.filter((e) => isDesktopRelevant(e.key) && ompDesktopCategoryFor(e.key).id === cat).flatMap(ompEntryTerms);
+	}
 	if (id === "mcp") {
 		// MCP runtime keys (mcp.*) render inside this section too.
 		return [
 			...registryKeywordsForSection(id),
 			...ompEntries.filter((e) => e.key.startsWith("mcp.")).flatMap(ompEntryTerms),
+		];
+	}
+	if (id === "context-window") {
+		return [
+			...CONTEXT_WINDOW_SEARCH_TERMS,
+			...ompEntries
+				.filter((e) => e.key === "extendedContext" || e.key.startsWith("compaction.") || e.key.startsWith("contextPromotion."))
+				.flatMap(ompEntryTerms),
 		];
 	}
 	if (id === "quota") {

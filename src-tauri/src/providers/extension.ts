@@ -44,7 +44,7 @@ export default function (pi: ExtensionContext) {
 		// CONTRACT NOTE (P2 capabilities):
 		// Model capabilities resolve with precedence: per-model `ModelSpec` fields ->
 		// provider-level defaults (`defaultContextWindow` / `defaultMaxTokens`) ->
-		// fallback defaults (`contextWindow: 32768`, `maxTokens: 4096`).
+		// fallback defaults (`contextWindow: 250000`, `maxTokens: 4096`).
 		const specs: ModelSpec[] = provider.models.map((entry) =>
 			typeof entry === "string" ? { id: entry } : entry
 		);
@@ -67,7 +67,7 @@ export default function (pi: ExtensionContext) {
 				reasoning: false,
 				input: ["text"],
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: spec.contextWindow ?? provider.defaultContextWindow ?? 32768,
+				contextWindow: spec.contextWindow ?? provider.defaultContextWindow ?? 250000,
 				maxTokens: spec.maxTokens ?? provider.defaultMaxTokens ?? 4096,
 			})),
 		});

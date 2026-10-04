@@ -8,14 +8,14 @@ import { ask } from "@tauri-apps/plugin-dialog";
 /** Native yes/no dialog; falls back to window.confirm outside Tauri. */
 export async function confirmDialog(
 	message: string,
-	opts: { title?: string; danger?: boolean; okLabel?: string } = {},
+	opts: { title?: string; danger?: boolean; okLabel?: string; cancelLabel?: string } = {},
 ): Promise<boolean> {
 	try {
 		return await ask(message, {
 			title: opts.title ?? "确认",
 			kind: opts.danger ? "warning" : "info",
 			okLabel: opts.okLabel ?? "确定",
-			cancelLabel: "取消",
+			cancelLabel: opts.cancelLabel ?? "取消",
 		});
 	} catch {
 		return window.confirm(message);

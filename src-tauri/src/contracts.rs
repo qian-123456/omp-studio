@@ -722,6 +722,19 @@ pub struct Model {
     /// ["low","medium","high","xhigh","max"]. Empty when unknown/unsupported.
     #[serde(default)]
     pub thinking: Vec<String>,
+    /// Context window in tokens from `omp models --json`; `None` when unknown.
+    #[serde(default)]
+    pub context_window: Option<u64>,
+}
+
+/// One `models.yml` `providers.<providerId>.modelOverrides.<modelId>.contextWindow`
+/// edit; `context_window: None` deletes the override.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelContextWindowEdit {
+    pub provider_id: String,
+    pub model_id: String,
+    pub context_window: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

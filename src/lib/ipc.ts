@@ -20,6 +20,7 @@ import type {
 	McpServerPatch,
 	MobileStatus,
 	Model,
+	ModelContextWindowEdit,
 	OauthLoginProvider,
 	OauthLoginStatus,
 	OmpConfigListResult,
@@ -426,6 +427,13 @@ export const ompProvidersList = () =>
 
 export const providerImportOmp = (ids: string[]) =>
 	invoke<OmpImportResult[]>("provider_import_omp", { ids });
+
+/** Targeted edit of `~/.omp/agent/models.yml` modelOverrides contextWindow (null deletes). */
+export const ompModelsSetContextWindows = (entries: ModelContextWindowEdit[]) =>
+	invoke<void>("omp_models_set_context_windows", { entries });
+/** Existing models.yml modelOverrides contextWindow values (only provider/model/window). */
+export const ompModelsContextWindowOverrides = () =>
+	invoke<ModelContextWindowEdit[]>("omp_models_context_window_overrides");
 
 export const oauthLoginProviders = () =>
 	invoke<OauthLoginProvider[]>("oauth_login_providers");

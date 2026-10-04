@@ -843,7 +843,10 @@ mod tests {
             "\n",
         );
         std::fs::write(&markers_then_text, body).unwrap();
-        assert_eq!(read_first_user(&markers_then_text).as_deref(), Some("next prompt"));
+        assert_eq!(
+            read_first_user(&markers_then_text).as_deref(),
+            Some("next prompt")
+        );
 
         let only_markers = dir.join("c.jsonl");
         std::fs::write(

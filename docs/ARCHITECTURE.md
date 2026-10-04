@@ -318,6 +318,10 @@ pub struct SubagentTranscript {
   pub prompt: Option<String>, pub items: Vec<TranscriptItem>, pub output: Option<String>, pub output_path: Option<String>,
   pub next_byte: u64 /* incremental tail cursor */, pub reset: bool,
 }
+// Catalog model (A); context_window comes from `omp models --json` `contextWindow` (None when unknown)
+pub struct Model { pub provider: String, pub id: String, pub name: String, pub thinking: Vec<String>, pub context_window: Option<u64> }
+// models.yml contextWindow override edit; context_window None = delete the override
+pub struct ModelContextWindowEdit { pub provider_id: String, pub model_id: String, pub context_window: Option<u64> }
 // MCP / plugin settings types (McpConfigSnapshot, McpServerItem, McpFileInfo, McpKv, PluginCatalog, PluginItem,
 // PluginRootInfo) live in settings_mcp.rs / settings_plugins.rs, mirrored in lib/contracts.ts.
 ```
@@ -479,7 +483,9 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **Providers (added module — §2 ownership):**
 - `provider_list() -> Vec<ProviderConfig>`, `provider_save(config, api_key: Option<String>) -> ProviderConfig`, `provider_delete(id)`, `provider_test(id) -> ProviderTestResult`, `provider_import_env(text) -> Vec<ProviderConfig>`, `provider_export_env_text(ids: Option<Vec<String>>) -> String`
-- Provider secrets: AES-256-GCM vault (`providers/vault.rs`, master key in macOS Keychain via security-framework). `env_pairs()` injects decrypted keys only; `OMP_WORKSPACE_PROVIDERS` metadata rides only into omp spawns (rpc/process, catalog list_models, todos/omp run_print, sidechat classify_route, term_open_session). Private extension `~/.omp-workspace/extension/omp-workspace-providers.ts` registers `ompws-<slug>` providers + models with OMP at spawn — never edits `~/.omp/agent/models.yml`.
+- Provider secrets: AES-256-GCM vault (`providers/vault.rs`, master key in macOS Keychain via security-framework). `env_pairs()` injects decrypted keys only; `OMP_WORKSPACE_PROVIDERS` metadata rides only into omp spawns (rpc/process, catalog list_models, todos/omp run_print, sidechat classify_route, term_open_session). Private extension `~/.omp-workspace/extension/omp-workspace-providers.ts` registers `ompws-<slug>` providers + models with OMP at spawn (context window fallback: model spec → `defaultContextWindow` → 250000; maxTokens fallback 4096) — never edits `~/.omp/agent/models.yml`.
+- `omp_models_set_context_windows(entries: Vec<ModelContextWindowEdit>)` (`providers/models_yml_write.rs`) — the only writer of `~/.omp/agent/models.yml`: line-level edit of `providers.<id>.modelOverrides.<modelId>.contextWindow` (None deletes; empty model/`modelOverrides` maps are dropped), all other bytes preserved, `models.yml.bak-<timestamp>` backup alongside, re-parse + verify after write, original restored on failure; never returns file contents. Takes effect in new OMP sessions.
+- `omp_models_context_window_overrides() -> Vec<ModelContextWindowEdit>` (`providers/models_yml_write.rs`) — read-only: returns only existing `providers.*.modelOverrides.*.contextWindow` as providerId/modelId/contextWindow (missing file → empty); nothing else from models.yml leaves the backend. Lets the context-window page distinguish catalog defaults from overrides so undo deletes an override that did not exist before.
 - `install_status_extension_globally() -> String` — copies the extension into `~/.omp/agent/extensions/` (opt-in button)
 
 **E — schedules (定时任务):**
@@ -868,13 +874,13 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `SettingsPage`: navigation organized into 5 top-level groups:
   - 常规: `general` (通用), `appearance` (外观), `notifications` (通知)
   - 模型: `providers` (API 供应商), `omp-roles` (模型角色), `omp-model` (模型与目录), `omp-thinking` (思考与采样), `omp-retry` (重试与回退)
-  - Agent: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `omp-context` (上下文与记忆), `agents-md` (规则文件 AGENTS.md), `omp-tools` (工具与审批), `omp-tasks` (任务与子代理)
+  - Agent: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `omp-context` (记忆与对话; context-window keys live on 模型 ▸ `context-window` 上下文窗口), `agents-md` (规则文件 AGENTS.md), `omp-tools` (工具与审批), `omp-tasks` (任务与子代理)
   - 连接: `mobile` (手机访问; renders `MobilePanel`), `omp-providers` (网络与扩展), `mcp` (MCP 服务器), `plugins` (插件)
   - 高级: `advanced` (高级), `omp-advanced` (其他 OMP 配置)
 - Deep links: `ui.openSettings(section?, opts?: { focusKey?: string })` scrolls to and briefly highlights `[data-field-id]` (native)
   or `[data-omp-key]` (omp config rows; clears search/group filter). `settingsTargets.ts` maps `SettingsTarget`
-  (models, thinking, fastMode, advisor, extendedContext, browser, computerUse, memory, mcp, plugins, subagents, approvals,
-  providers, compaction) to section + focus key via `openSettingsTarget(target)`.
+(models, thinking, fastMode, advisor, extendedContext, browser, computerUse, memory, mcp, plugins, subagents, approvals,
+  providers, compaction, modelContext) to section + focus key via `openSettingsTarget(target)`.
 
 ### E — Mobile access, terminal, status extension
 - `mobile`: axum server bound to `0.0.0.0:<mobile_port>` on `mobile_start`. Pairing: `mobile_create_pairing` makes a random 32-byte code

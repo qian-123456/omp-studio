@@ -166,7 +166,7 @@ export function ProviderPanel() {
 					className="flex w-full items-center gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-2 text-left text-xs text-neutral-300 hover:bg-[var(--bg-hover)]"
 				>
 					<SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
-					<span className="flex-1">同一模型在多个供应商里名字不同？到「统一模型上下文」一次性统一它们的上下文窗口。</span>
+					<span className="flex-1">按型号批量设置各模型的上下文窗口与自动压缩，到「上下文窗口」页。</span>
 					<span className="text-[var(--accent)]">前往 →</span>
 				</button>
 				<div className="flex flex-wrap items-center justify-end gap-3">

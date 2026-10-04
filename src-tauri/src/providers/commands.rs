@@ -1631,7 +1631,7 @@ mod tests {
         // Model id with newline or null is rejected
         c.models = vec![ModelEntry::Id("model\n1".to_string())];
         assert_eq!(validate(&c).unwrap_err(), "模型 ID 不能包含换行或空字符");
-        c.models = vec![ModelEntry::Id("model\01".to_string())];
+        c.models = vec![ModelEntry::Id("model\x001".to_string())];
         assert_eq!(validate(&c).unwrap_err(), "模型 ID 不能包含换行或空字符");
 
         // ModelSpec bounds > 2_000_000

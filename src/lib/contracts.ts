@@ -525,6 +525,15 @@ export interface Model {
 	provider: string;
 	id: string;
 	name: string;
+	/** Context window in tokens from `omp models --json`; null when unknown. */
+	contextWindow?: number | null;
+}
+
+/** models.yml `providers.<providerId>.modelOverrides.<modelId>.contextWindow`; null deletes. */
+export interface ModelContextWindowEdit {
+	providerId: string;
+	modelId: string;
+	contextWindow: number | null;
 }
 
 export interface PathCheck {
