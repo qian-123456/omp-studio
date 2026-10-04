@@ -1,4 +1,4 @@
-import { parseUserMessageTokens } from "./MessageList";
+import { parseUserMessageTokens, stripImageMarkers } from "./MessageList";
 import { describe, expect, it } from "vitest";
 import type { TranscriptItem } from "../../lib/contracts";
 import {
@@ -309,5 +309,23 @@ describe("parseUserMessageTokens", () => {
 			{ type: "text", text: "请看 " },
 			{ type: "image", num: "1" },
 		]);
+	});
+});
+
+describe("stripImageMarkers", () => {
+	it("removes [Image #N] markers with dimensions and leaves clean prose text", () => {
+		const text = "[Image #1, 640x235] 还有就是总感觉这里堆叠太多东西也不好看";
+		expect(stripImageMarkers(text)).toBe("还有就是总感觉这里堆叠太多东西也不好看");
+	});
+
+	it("returns empty string when message contains only image markers", () => {
+		expect(stripImageMarkers("[Image #1]")).toBe("");
+		expect(stripImageMarkers("🖼️ #1")).toBe("");
+		expect(stripImageMarkers("🖼️#1")).toBe("");
+	});
+
+	it("removes inline emoji markers and multiple image tags", () => {
+		const text = "🖼️ #1 看看这个效果 🖼️ #2 以及这个";
+		expect(stripImageMarkers(text)).toBe("看看这个效果  以及这个");
 	});
 });

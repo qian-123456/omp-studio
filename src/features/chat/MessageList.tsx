@@ -55,7 +55,7 @@ const EMPTY_TOOLS: Record<string, LiveTool> = {};
 const asObj = (v: unknown): Record<string, unknown> =>
 	typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
 
-function stripImageMarkers(text: string): string {
+export function stripImageMarkers(text: string): string {
 	return text
 		.replace(
 			/\[\d+\]\s*\([^)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^)]*\)\s*\n?>?\s*(?:\[图片:[^\]]+\])?/gi,
@@ -101,10 +101,12 @@ export function parseUserMessageTokens(text: string): Array<{ type: "text"; text
 function UserImagePreview({
 	image,
 	index,
+	totalImages = 1,
 	onClick,
 }: {
 	image: ImageAttachment;
 	index?: number;
+	totalImages?: number;
 	onClick?: () => void;
 }) {
 	const [failed, setFailed] = useState(false);
@@ -125,7 +127,7 @@ function UserImagePreview({
 			/>
 			{/* Hover overlay: subtle white brightening */}
 			<div className="absolute inset-0 bg-white/15 opacity-0 transition-opacity duration-150 group-hover/user-img:opacity-100 pointer-events-none" />
-			{index !== undefined && (
+			{index !== undefined && totalImages > 1 && (
 				<span className="absolute bottom-2 left-2 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white/90 backdrop-blur-md shadow-xs border border-white/10 pointer-events-none">
 					#{index}
 				</span>
@@ -161,14 +163,15 @@ const UserRow = React.memo(function UserRow({
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
 
+	const hasImages = Boolean(item.images && item.images.length > 0);
+
 	useEffect(() => {
 		const el = textRef.current;
 		if (!el) return;
 		setCollapsible(el.scrollHeight > el.clientHeight + 1);
-	}, [tokens]);
+	}, [userText, tokens]);
 
-	const showBubble = tokens.length > 0 && (hasProseText || !item.images?.length);
-
+	const showBubble = hasImages ? hasProseText : tokens.length > 0;
 	return (
 		<div
 			id={`msg-${item.id}`}
@@ -181,6 +184,7 @@ const UserRow = React.memo(function UserRow({
 							key={img.id}
 							image={img}
 							index={i + 1}
+							totalImages={item.images!.length}
 							onClick={() => setPreviewIndex(i)}
 						/>
 					))}
@@ -207,23 +211,25 @@ const UserRow = React.memo(function UserRow({
 							!expanded && "line-clamp-4",
 						)}
 					>
-						{tokens.map((token, i) => {
-							if (token.type === "image") {
-								const num = parseInt(token.num, 10);
-								const palette = getImageTokenPalette(num);
-								return (
-									<span
-										key={i}
-										className="inline-block font-mono font-medium underline decoration-2 underline-offset-[3px] mx-0.5"
-										style={{ color: palette.hex, textDecorationColor: palette.hex }}
-										title={token.path ? `图片 #${token.num}: ${token.path}` : `图片 #${token.num}`}
-									>
-										🖼️ #{token.num}
-									</span>
-								);
-							}
-							return <span key={i}>{token.text}</span>;
-						})}
+						{hasImages
+							? userText
+							: tokens.map((token, i) => {
+									if (token.type === "image") {
+										const num = parseInt(token.num, 10);
+										const palette = getImageTokenPalette(num);
+										return (
+											<span
+												key={i}
+												className="inline-block font-mono font-medium underline decoration-2 underline-offset-[3px] mx-0.5"
+												style={{ color: palette.hex, textDecorationColor: palette.hex }}
+												title={token.path ? `图片 #${token.num}: ${token.path}` : `图片 #${token.num}`}
+											>
+												🖼️ #{token.num}
+											</span>
+										);
+									}
+									return <span key={i}>{token.text}</span>;
+								})}
 					</div>
 					{collapsible && (
 						<button
