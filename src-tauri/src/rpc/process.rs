@@ -632,8 +632,15 @@ pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
             libc::kill(pid as libc::pid_t, libc::SIGKILL);
         }
     }
-    // Monitor emits rpc:process when wait() returns.
-    Ok(())
+    // Wait for the monitor to observe the exit so callers never respawn while
+    // the old process may still write the session file.
+    for _ in 0..20 {
+        if !handle.alive.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    Err("session process did not exit".to_string())
 }
 
 #[cfg(test)]

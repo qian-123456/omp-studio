@@ -426,7 +426,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **B — rpc:**
 - `rpc_start(opts: StartOpts) -> LiveSessionInfo`
-- `rpc_ensure_live(session_id, cwd: Option<String>) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions). `cwd` overrides the transcript dir: it must exist, is persisted as `session_meta.cwd_override`, and the catalog meta is recomputed. When `cwd` is None and the located dir no longer exists, returns `Err("CWD_MISSING:<dir>")` so the frontend can offer 主目录 / 重建工作树 (`resume-missing-cwd` modal, `src/lib/ensureLive.ts`).
+- `rpc_ensure_live(session_id, cwd: Option<String>) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions). `cwd` overrides the transcript dir: it must exist, is persisted as `session_meta.cwd_override`, and the catalog meta is recomputed. When `cwd` is None and the located dir no longer exists, returns `Err("CWD_MISSING:<dir>")` so the frontend can offer 主目录 / 重建工作树 (`resume-missing-cwd` modal, `src/lib/ensureLive.ts`). Any `--resume` spawn (`rpc_start` with `resumeFile`, `rpc_ensure_live`, restart) first checks lsof holders + status files (§8, excluding this app's children) and returns `Err("SESSION_HELD:<pid>")` without spawning when another process holds the file (two writers corrupt the JSONL); `errMsg` (`src/lib/dialogs.ts`) renders it in Chinese. ensure_live/restart also refuse while this session's `omp` terminal (`term_open_session`) is open.
 - `rpc_send(session_id, command: Value) -> Value` — writes the command with a generated `id`, awaits the matching `response`, returns it (`success:false` → Err(error))
 - `rpc_ui_respond(session_id, response: Value)` — writes an `extension_ui_response`, emits `UiResponded`
 - `rpc_pending_ui(session_id) -> Vec<PendingUiRequest>` — outstanding dialog requests (select/confirm/input/editor)
@@ -712,6 +712,15 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   (remove on response, or on `extension_ui_request method:"cancel"` with matching target). Emit `rpc:process` + `AppEvent::RpcProcess` on start/exit.
 - Approval verified shape: `{"type":"extension_ui_request","id":"…","method":"select","title":"Allow tool: bash\nCommand: echo hi","options":["Approve","Deny"]}`
   → respond `{"type":"extension_ui_response","id":"…","value":"Approve"}`.
+- `ask` tool over RPC (frontend-only; no backend change): omp emits plain `select`/`editor` requests per question (title = question,
+  ` (i/N)` suffix when N>1, `(k selected) ` prefix in multi loops; options = labels with ` (Recommended)` on the recommended one,
+  `<glyph> Done selecting` only for single-question multi, then `Other (type your own)` → follow-up `editor`). `src/features/chat/ask/askDriver.ts`
+  matches such requests to the open `ask` tool call (live `tools` or unanswered transcript `toolCalls`); `AskPanel` replaces the composer,
+  shows every question with local ←/→ / 上一题/下一题 navigation (nothing sent to omp), and only on final 提交 (all questions answered) the
+  driver replays every answer in order, one response per request omp sends (label | per-label toggles + Done | Other + editor text).
+  Multi-select going through Other (custom note, empty selection, or any multi inside a multi-question ask, which has no Done entry) sends
+  editor text `Selected: A, B` / `Selected: none`, plus `; note: <text>` — omp's result keeps only customInput on that path.
+  `跳过`/Esc responds `{cancelled:true}` (cancels the whole ask). Unmatched/out-of-sync requests fall back to `PendingUiCard`.
 - Idle suspend: every 60 s, live sessions not streaming, no pending UI, no activity for `idle_suspend_minutes` → `rpc_stop`, set `session_meta.suspended=1`.
   `rpc_ensure_live` clears it.
 - Side chat: parent must have `fork_depth < 3`. Label = parent label + "." + (count of existing children + 1). Start with

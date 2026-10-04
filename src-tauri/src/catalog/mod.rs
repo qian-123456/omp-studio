@@ -6,7 +6,7 @@
 //! `transcript` (get_transcript), `usage` (session_usage), `tasks` (background loops).
 
 pub mod commands;
-mod external;
+pub(crate) mod external;
 pub(crate) mod parse;
 mod scan;
 mod status;

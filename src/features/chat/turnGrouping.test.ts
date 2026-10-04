@@ -132,6 +132,35 @@ describe("turnGrouping", () => {
 		}
 	});
 
+	it("surfaces text accompanying a final ask call as the answer, call in steps", () => {
+		const ask: ToolCall = { id: "ask-1", name: "ask", args: { question: "继续吗？" }, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "do it" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "需要你确认方案。", toolCalls: [ask] }),
+		]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		expect(turn.answerItem?.id).toBe("a-1");
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["tool"]);
+	});
+
+	it("treats last assistant text with a normal tool call as the answer", () => {
+		const call: ToolCall = { id: "c-1", name: "bash", args: {}, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "go" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "完成，最后跑一下。", toolCalls: [call] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: { toolCallId: "c-1", toolName: "bash", text: "ok", isError: false, details: null },
+			}),
+		]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		expect(turn.answerItem?.id).toBe("a-1");
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["tool"]);
+	});
+
 	it("handles consecutive turns and standalone protocol items", () => {
 		const items: TranscriptItem[] = [
 			makeItem({

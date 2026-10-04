@@ -72,6 +72,7 @@ async function deleteIdea(id: string) {
 	if (!ok) return;
 	try {
 		await backlogDelete(id);
+		if (useBacklog.getState().editBuffer?.id === id) useBacklog.getState().clearEditBuffer();
 		await useBacklog.getState().load();
 	} catch (err) {
 		toast.error(`删除失败: ${errMsg(err)}`);
@@ -86,7 +87,8 @@ export function IdeasCapsule() {
 	const sessions = useSessions((s) => s.sessions);
 	const currentProject = selectedSessionId ? (sessions[selectedSessionId]?.cwd ?? null) : null;
 
-	const [open, setOpen] = useState(false);
+	// Reopen the dropdown after a reload if an unsaved edit was in progress.
+	const [open, setOpen] = useState(() => useBacklog.getState().editBuffer !== null);
 	const [dispatching, setDispatching] = useState<BacklogItem | null>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -181,8 +183,12 @@ function IdeasPanel({
 	);
 
 	const [adding, setAdding] = useState(false);
-	const [editingId, setEditingId] = useState<string | null>(null);
-	const [editText, setEditText] = useState("");
+	// Edit buffer lives in the store (localStorage) so an HMR/page reload keeps unsaved text.
+	const editBuffer = useBacklog((s) => s.editBuffer);
+	const setEditBuffer = useBacklog((s) => s.setEditBuffer);
+	const cancelEdit = useBacklog((s) => s.clearEditBuffer);
+	const editingId = editBuffer?.id ?? null;
+	const editText = editBuffer?.text ?? "";
 	const [showFinished, setShowFinished] = useState(false);
 
 	const attach = useImageAttach((paths) => {
@@ -215,14 +221,14 @@ function IdeasPanel({
 	};
 
 	const saveEdit = async (id: string) => {
-		const trimmed = editText.trim();
+		const trimmed = (useBacklog.getState().editBuffer?.text ?? "").trim();
 		if (!trimmed) {
 			toast.error("内容不能为空");
 			return;
 		}
 		try {
 			await backlogUpdate(id, { text: trimmed });
-			setEditingId(null);
+			if (useBacklog.getState().editBuffer?.id === id) cancelEdit();
 			await useBacklog.getState().load();
 		} catch (err) {
 			toast.error(`更新失败: ${errMsg(err)}`);
@@ -316,13 +322,16 @@ function IdeasPanel({
 							<input
 								autoFocus
 								value={editText}
-								onChange={(e) => setEditText(e.target.value)}
+								onChange={(e) => setEditBuffer({ id: item.id, text: e.target.value })}
 								onKeyDown={(e) => {
 									if (isComposing(e)) return;
 									if (e.key === "Enter") void saveEdit(item.id);
-									if (e.key === "Escape") setEditingId(null);
+									if (e.key === "Escape") cancelEdit();
 								}}
-								onBlur={() => setEditingId(null)}
+								onBlur={() => {
+									// Window lost focus (app switch / reload): keep the buffer.
+									if (document.hasFocus()) cancelEdit();
+								}}
 								className="w-full rounded border border-sky-500 bg-[var(--bg)] px-1.5 py-0.5 text-[var(--text)] focus:outline-none"
 							/>
 						) : (
@@ -357,8 +366,7 @@ function IdeasPanel({
 					<button
 						type="button"
 						onClick={() => {
-							setEditingId(item.id);
-							setEditText(item.text);
+							setEditBuffer({ id: item.id, text: item.text });
 						}}
 						className={iconBtn}
 						title="编辑"

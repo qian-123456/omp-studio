@@ -50,18 +50,26 @@ export function QuickCapture() {
 			? modal.props.sessionId
 			: selectedSessionId;
 
-	const [text, setText] = useState("");
-	const [kind, setKind] = useState<BacklogKind>(() => useBacklog.getState().lastKind);
-	const [images, setImages] = useState<string[]>([]);
+	// Input lives in the store (localStorage) so an HMR/page reload keeps unsaved text.
+	const { text, kind, images } = useBacklog((s) => s.captureDraft);
+	const setCaptureDraft = useBacklog((s) => s.setCaptureDraft);
+	const setText = (t: string) => setCaptureDraft({ text: t });
+	const setKind = (k: BacklogKind) => setCaptureDraft({ kind: k });
 	const [attachSession, setAttachSession] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const inputRef = useRef<HTMLInputElement>(null);
-	useEscapeKey(closeModal, isVisible);
-	const attach = useImageAttach((paths) =>
-		setImages((cur) => [...cur, ...paths.filter((p) => !cur.includes(p))]),
-	);
+	// Explicit cancel (button / Esc) discards the persisted input; backdrop click keeps it.
+	const cancel = () => {
+		useBacklog.getState().clearCaptureDraft();
+		closeModal();
+	};
+	useEscapeKey(cancel, isVisible);
+	const attach = useImageAttach((paths) => {
+		const cur = useBacklog.getState().captureDraft.images;
+		setCaptureDraft({ images: [...cur, ...paths.filter((p) => !cur.includes(p))] });
+	});
 
 	// Listen to global quick-capture shortcut event from Tauri
 	useEffect(() => {
@@ -76,9 +84,8 @@ export function QuickCapture() {
 	// Initialize text and focus input on open
 	useEffect(() => {
 		if (isVisible) {
-			setText(initialText);
-			setKind(useBacklog.getState().lastKind);
-			setImages([]);
+			// Explicit prefill wins; otherwise restore the persisted unsaved input.
+			if (initialText) useBacklog.getState().setCaptureDraft({ text: initialText });
 			setError(null);
 			setSubmitting(false);
 			setTimeout(() => {
@@ -107,6 +114,7 @@ export function QuickCapture() {
 				refs.push({ kind: "image", path, text: null, lines: null, sessionId: null });
 			}
 			await backlogAdd(trimmed || "（图片）", kind, refs, currentSession?.cwd ?? null);
+			useBacklog.getState().clearCaptureDraft();
 			toast.success("已记入收集箱");
 			closeModal();
 		} catch (err) {
@@ -178,7 +186,7 @@ export function QuickCapture() {
 						}}
 					/>
 
-					<ImageThumbs paths={images} onRemove={(p) => setImages((cur) => cur.filter((x) => x !== p))} />
+					<ImageThumbs paths={images} onRemove={(p) => setCaptureDraft({ images: images.filter((x) => x !== p) })} />
 
 					<div className="flex items-center justify-between pt-1">
 						{/* Kind Selector */}
@@ -233,7 +241,7 @@ export function QuickCapture() {
 					<div className="flex items-center justify-end gap-2 border-t border-[var(--border-divider)] pt-3">
 						<button
 							type="button"
-							onClick={closeModal}
+							onClick={cancel}
 							className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 						>
 							取消 (Esc)

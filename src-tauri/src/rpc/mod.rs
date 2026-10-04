@@ -96,7 +96,11 @@ pub async fn shutdown() {
 }
 
 /// Spawn + handshake + register. Emits `rpc:process` running=true.
+/// With `resume_file`, fails with `SESSION_HELD:<pid>` when another process holds it.
 pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo, String> {
+    if let Some(file) = &opts.resume_file {
+        ensure_not_held(file).await?;
+    }
     let handle = process::spawn(state, opts).await?;
     let session_id = handle.session_id.read().clone();
     if session_id.is_empty() {
@@ -137,6 +141,54 @@ fn cwd_missing_err(cwd: &str) -> Option<String> {
     }
 }
 
+/// Error prefix the frontend recognizes when another (non app-owned) omp
+/// process already holds the session file: `SESSION_HELD:<pid>`.
+pub const SESSION_HELD_PREFIX: &str = "SESSION_HELD:";
+
+/// Some(`SESSION_HELD:<pid>`) when a live process not owned by this app
+/// instance (`own_pid` = our pid) holds `file`, per lsof holders + status files.
+fn session_held_err(
+    holders: HashMap<String, catalog::external::Holder>,
+    status: &[catalog::external::StatusFile],
+    alive: impl Fn(u32) -> bool,
+    own_pid: u32,
+    file: &str,
+) -> Option<String> {
+    catalog::external::external_map(holders, status, alive, own_pid)
+        .get(file)
+        .map(|pid| format!("{SESSION_HELD_PREFIX}{pid}"))
+}
+
+/// Refuses to spawn `--resume <file>` while another app instance / terminal
+/// omp writes the same JSONL (two writers corrupt it). lsof runs off the runtime.
+async fn ensure_not_held(file: &str) -> Result<(), String> {
+    let file = file.to_string();
+    let err = tokio::task::spawn_blocking(move || {
+        let holders = catalog::external::lsof_holders(&paths::omp_sessions_dir());
+        let status = catalog::external::read_status_files(&paths::status_dir());
+        session_held_err(
+            holders,
+            &status,
+            catalog::external::pid_alive,
+            std::process::id(),
+            &file,
+        )
+    })
+    .await
+    .unwrap_or(None);
+    err.map_or(Ok(()), Err)
+}
+
+/// Own-instance twin of `SESSION_HELD`: this app's `omp --resume` terminal
+/// already writes the session file (it is an own child, so lsof can't tell).
+fn omp_terminal_guard(session_id: &str) -> Result<(), String> {
+    if crate::terminal::commands::omp_terminal_open(session_id) {
+        Err("该会话的 omp 终端仍在运行，请先关闭终端后再继续".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 /// Start with `--resume <file>` if not live (suspended/interrupted/idle).
 /// Clears the `suspended` flag in session_meta.
 ///
@@ -145,6 +197,7 @@ fn cwd_missing_err(cwd: &str) -> Option<String> {
 /// persisted as `session_meta.cwd_override` and the catalog meta is recomputed.
 /// `cwd = None`: resume in the transcript/override cwd; when that directory no
 /// longer exists this fails with `CWD_MISSING:<cwd>` instead of spawning.
+/// Fails with `SESSION_HELD:<pid>` when another process holds the file.
 pub async fn ensure_live(
     state: &AppState,
     session_id: &str,
@@ -160,6 +213,7 @@ pub async fn ensure_live(
         handle.touch();
         return Ok(handle.info());
     }
+    omp_terminal_guard(session_id)?;
     let (file, found_cwd) = find_session_file(state, session_id)
         .await
         .ok_or_else(|| format!("cannot locate session file for {session_id}"))?;
@@ -270,6 +324,7 @@ pub async fn stop(handle: &Arc<SessionHandle>) -> Result<(), String> {
 pub async fn restart(state: &AppState, session_id: &str) -> Result<LiveSessionInfo, String> {
     let lock = session_resume_lock(session_id);
     let _guard = lock.lock().await;
+    omp_terminal_guard(session_id)?;
     if let Some(handle) = get_handle(session_id) {
         let _ = process::stop_handle(&handle).await;
         for _ in 0..20 {
@@ -277,6 +332,9 @@ pub async fn restart(state: &AppState, session_id: &str) -> Result<LiveSessionIn
                 break;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        if get_handle(session_id).is_some() {
+            return Err("旧进程尚未退出，请稍后重试".to_string());
         }
     }
     let (file, cwd) = find_session_file(state, session_id)
@@ -432,6 +490,44 @@ mod tests {
         let tmp = create_temp(&content);
         let cwd = session_header_cwd(tmp.0.to_str().unwrap());
         assert_eq!(cwd, None);
+    }
+
+    #[test]
+    fn session_held_err_only_for_external_holders() {
+        use catalog::external::{Holder, StatusFile};
+        let file = "/h/.omp/agent/sessions/x/a.jsonl";
+        let own = 999;
+        let holder = |pid, ppid| HashMap::from([(file.to_string(), Holder { pid, ppid })]);
+        // Another app instance's child holds the file → refuse with its pid.
+        assert_eq!(
+            session_held_err(holder(100, Some(555)), &[], |_| true, own, file),
+            Some(format!("{SESSION_HELD_PREFIX}100"))
+        );
+        // Our own child holds it → allowed.
+        assert_eq!(
+            session_held_err(holder(101, Some(own)), &[], |_| true, own, file),
+            None
+        );
+        // Nobody holds it → allowed.
+        assert_eq!(
+            session_held_err(HashMap::new(), &[], |_| true, own, file),
+            None
+        );
+        // Live status file only (lsof missed it) → refuse; dead pid → allowed.
+        let status = [StatusFile {
+            session_id: "s".into(),
+            session_file: file.into(),
+            pid: 42,
+            state: "idle".into(),
+        }];
+        assert_eq!(
+            session_held_err(HashMap::new(), &status, |_| true, own, file),
+            Some(format!("{SESSION_HELD_PREFIX}42"))
+        );
+        assert_eq!(
+            session_held_err(HashMap::new(), &status, |_| false, own, file),
+            None
+        );
     }
 
     #[test]

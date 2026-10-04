@@ -30,8 +30,19 @@ export async function copyText(text: string): Promise<void> {
 	}
 }
 
+/** Mirrors `rpc::SESSION_HELD_PREFIX` (src-tauri/src/rpc/mod.rs). */
+export const SESSION_HELD_PREFIX = "SESSION_HELD:";
+
 export function errMsg(err: unknown): string {
-	if (typeof err === "string") return err;
-	if (err instanceof Error) return err.message;
-	return String(err);
+	const raw =
+		typeof err === "string"
+			? err
+			: err instanceof Error
+				? err.message
+				: String(err);
+	if (raw.startsWith(SESSION_HELD_PREFIX)) {
+		const pid = raw.slice(SESSION_HELD_PREFIX.length);
+		return `该会话正被另一个窗口/进程（PID ${pid}）占用，请在那个窗口操作或先关闭它`;
+	}
+	return raw;
 }

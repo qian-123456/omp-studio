@@ -175,21 +175,39 @@ fn porcelain_z_entries(out: &[u8]) -> u32 {
 }
 
 /// Assign each session to the deepest worktree path containing its cwd.
-fn sessions_for(path: &Path, all_paths: &[PathBuf], sessions: &[(String, String)]) -> Vec<String> {
+/// `sessions` contains pre-canonicalized paths `(session_id, canon_cwd)` to avoid
+/// running `std::fs::canonicalize` repeatedly inside nested loops.
+fn sessions_for_canon(
+    path: &Path,
+    all_paths: &[PathBuf],
+    sessions: &[(&str, PathBuf)],
+) -> Vec<String> {
     sessions
         .iter()
         .filter(|(_, cwd)| {
-            let cwd = canon(Path::new(cwd));
-            if !is_inside(&cwd, path) {
+            if !is_inside(cwd, path) {
                 return false;
             }
             // Not claimed by a deeper worktree nested inside `path`.
             !all_paths
                 .iter()
-                .any(|p| p != path && is_inside(p, path) && is_inside(&cwd, p))
+                .any(|p| p != path && is_inside(p, path) && is_inside(cwd, p))
         })
-        .map(|(id, _)| id.clone())
+        .map(|(id, _)| (*id).to_string())
         .collect()
+}
+
+/// Public helper for callers that need session assignment without running `dirty_count`.
+pub fn sessions_for_path(
+    path: &Path,
+    all_paths: &[PathBuf],
+    sessions: &[(String, String)],
+) -> Vec<String> {
+    let canon_sessions: Vec<(&str, PathBuf)> = sessions
+        .iter()
+        .map(|(id, cwd)| (id.as_str(), canon(Path::new(cwd))))
+        .collect();
+    sessions_for_canon(path, all_paths, &canon_sessions)
 }
 
 /// List worktrees of `repo` with dirty flags and session mapping.
@@ -199,12 +217,17 @@ pub fn list(repo: &Path, sessions: &[(String, String)]) -> Result<Vec<WorktreeIn
         .filter(|e| !e.bare)
         .collect();
     let paths: Vec<PathBuf> = entries.iter().map(|e| canon(Path::new(&e.path))).collect();
+    // Pre-canonicalize session paths once before the loop (avoids O(worktrees * sessions) syscalls)
+    let canon_sessions: Vec<(&str, PathBuf)> = sessions
+        .iter()
+        .map(|(id, cwd)| (id.as_str(), canon(Path::new(cwd))))
+        .collect();
     Ok(entries
         .into_iter()
         .zip(paths.iter())
         .map(|(e, p)| WorktreeInfo {
             dirty: if p.is_dir() { dirty_count(p) } else { 0 },
-            session_ids: sessions_for(p, &paths, sessions),
+            session_ids: sessions_for_canon(p, &paths, &canon_sessions),
             path: p.to_string_lossy().into_owned(),
             branch: e.branch,
             head: e.head,
@@ -427,7 +450,7 @@ mod tests {
             ("s1".to_string(), "/r/src".to_string()),
             ("s2".to_string(), "/r/.worktrees/x/pkg".to_string()),
         ];
-        assert_eq!(sessions_for(&main, &all, &sessions), vec!["s1"]);
-        assert_eq!(sessions_for(&wt, &all, &sessions), vec!["s2"]);
+        assert_eq!(sessions_for_path(&main, &all, &sessions), vec!["s1"]);
+        assert_eq!(sessions_for_path(&wt, &all, &sessions), vec!["s2"]);
     }
 }

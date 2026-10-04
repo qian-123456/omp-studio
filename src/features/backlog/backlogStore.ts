@@ -10,7 +10,14 @@ export interface BacklogDraft {
 	images: string[];
 }
 
+export interface BacklogEditBuffer {
+	id: string;
+	text: string;
+}
+
 const DRAFT_KEY = "ompws:backlog-draft";
+const CAPTURE_KEY = "ompws:backlog-capture-draft";
+const EDIT_KEY = "ompws:backlog-edit-buffer";
 const LAST_KIND_KEY = "ompws:backlog-last-kind";
 const KINDS: readonly BacklogKind[] = ["todo", "bug", "idea"];
 
@@ -25,10 +32,10 @@ function readLastKind(): BacklogKind {
 	}
 }
 
-function readDraft(fallbackKind: BacklogKind): BacklogDraft {
+function readDraft(key: string, fallbackKind: BacklogKind): BacklogDraft {
 	const empty = { text: "", kind: fallbackKind, images: [] };
 	try {
-		const raw = localStorage.getItem(DRAFT_KEY);
+		const raw = localStorage.getItem(key);
 		if (!raw) return empty;
 		const v = JSON.parse(raw) as Partial<BacklogDraft>;
 		return {
@@ -38,6 +45,17 @@ function readDraft(fallbackKind: BacklogKind): BacklogDraft {
 		};
 	} catch {
 		return empty;
+	}
+}
+
+function readEditBuffer(): BacklogEditBuffer | null {
+	try {
+		const raw = localStorage.getItem(EDIT_KEY);
+		if (!raw) return null;
+		const v = JSON.parse(raw) as Partial<BacklogEditBuffer>;
+		return typeof v.id === "string" && typeof v.text === "string" ? { id: v.id, text: v.text } : null;
+	} catch {
+		return null;
 	}
 }
 
@@ -58,6 +76,14 @@ interface BacklogState {
 	draft: BacklogDraft;
 	setDraft(patch: Partial<BacklogDraft>): void;
 	clearDraft(): void;
+	/** Quick-capture modal input, persisted so a page reload does not lose it. */
+	captureDraft: BacklogDraft;
+	setCaptureDraft(patch: Partial<BacklogDraft>): void;
+	clearCaptureDraft(): void;
+	/** Unsaved edit of an existing item; dropped on load() if the item is gone. */
+	editBuffer: BacklogEditBuffer | null;
+	setEditBuffer(buf: BacklogEditBuffer): void;
+	clearEditBuffer(): void;
 	/** Last chosen category; default for new captures. */
 	lastKind: BacklogKind;
 	setLastKind(k: BacklogKind): void;
@@ -73,7 +99,9 @@ export const useBacklog = create<BacklogState>((set, get) => ({
 		set({ loading: true });
 		try {
 			const items = await backlogList();
+			const buf = get().editBuffer;
 			set({ items });
+			if (buf && !items.some((i) => i.id === buf.id)) get().clearEditBuffer();
 		} finally {
 			set({ loading: false });
 		}
@@ -86,7 +114,7 @@ export const useBacklog = create<BacklogState>((set, get) => ({
 			});
 		}
 	},
-	draft: readDraft(initialLastKind),
+	draft: readDraft(DRAFT_KEY, initialLastKind),
 	setDraft: (patch) => {
 		const draft = { ...get().draft, ...patch };
 		set({ draft });
@@ -95,6 +123,25 @@ export const useBacklog = create<BacklogState>((set, get) => ({
 	clearDraft: () => {
 		set({ draft: { text: "", kind: get().lastKind, images: [] } });
 		write(DRAFT_KEY, null);
+	},
+	captureDraft: readDraft(CAPTURE_KEY, initialLastKind),
+	setCaptureDraft: (patch) => {
+		const captureDraft = { ...get().captureDraft, ...patch };
+		set({ captureDraft });
+		write(CAPTURE_KEY, JSON.stringify(captureDraft));
+	},
+	clearCaptureDraft: () => {
+		set({ captureDraft: { text: "", kind: get().lastKind, images: [] } });
+		write(CAPTURE_KEY, null);
+	},
+	editBuffer: readEditBuffer(),
+	setEditBuffer: (buf) => {
+		set({ editBuffer: buf });
+		write(EDIT_KEY, JSON.stringify(buf));
+	},
+	clearEditBuffer: () => {
+		set({ editBuffer: null });
+		write(EDIT_KEY, null);
 	},
 	lastKind: initialLastKind,
 	setLastKind: (k) => {
