@@ -132,8 +132,12 @@ export function formatShortModel(model?: string | null): string {
 	if (lower.includes("o3-mini")) return "o3-mini";
 	if (lower.includes("deepseek-r1")) return "DeepSeek R1";
 	if (lower.includes("deepseek-v3")) return "DeepSeek V3";
-	if (lower.includes("gemini-2.0-flash")) return "Gemini 2.0 Flash";
-	if (lower.includes("gemini-1.5-pro")) return "Gemini 1.5 Pro";
+	const geminiMatch = lower.match(/gemini[_-]?(\d+(?:\.\d+)?)?[_-]?(flash|pro)?/);
+	if (geminiMatch && (geminiMatch[1] || geminiMatch[2])) {
+		const ver = geminiMatch[1] ?? "";
+		const kind = geminiMatch[2] ? geminiMatch[2].charAt(0).toUpperCase() + geminiMatch[2].slice(1) : "";
+		return `Gemini ${ver} ${kind}`.trim();
+	}
 	return raw;
 }
 

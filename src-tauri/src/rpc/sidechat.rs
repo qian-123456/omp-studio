@@ -53,7 +53,7 @@ pub async fn create(
     vars.insert("parent_file", parent_file.clone());
     vars.insert("context", context);
     vars.insert("selection", selection.clone().unwrap_or_default());
-    vars.insert("question", question);
+    vars.insert("question", question.clone());
     let first_prompt = prompts::render(prompts::SIDE_CHAT, &vars);
 
     let info = rpc::start(
@@ -69,26 +69,36 @@ pub async fn create(
     )
     .await?;
 
+    let q = question.trim();
+    let custom_name = if !q.is_empty() {
+        let truncated: String = q.chars().take(40).collect();
+        Some(truncated)
+    } else {
+        None
+    };
+
     // B owns only these session_meta columns; A owns the rest of the row.
     {
         let db = state.db.lock();
         let _ = db.execute(
-		"INSERT INTO session_meta(session_id, file_path, label, parent_session_id, fork_depth, created_by_app)
-		 VALUES(?1, ?2, ?3, ?4, ?5, 1)
-		 ON CONFLICT(session_id) DO UPDATE SET
-		   file_path = excluded.file_path,
-		   label = excluded.label,
-		   parent_session_id = excluded.parent_session_id,
-		   fork_depth = excluded.fork_depth,
-		   created_by_app = 1",
-			rusqlite::params![
-				info.session_id,
-				info.session_file,
-				label,
-				parent_session_id,
-				parent_depth + 1,
-			],
-		);
+            "INSERT INTO session_meta(session_id, file_path, label, custom_name, parent_session_id, fork_depth, created_by_app)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, 1)
+             ON CONFLICT(session_id) DO UPDATE SET
+               file_path = excluded.file_path,
+               label = excluded.label,
+               custom_name = COALESCE(excluded.custom_name, session_meta.custom_name),
+               parent_session_id = excluded.parent_session_id,
+               fork_depth = excluded.fork_depth,
+               created_by_app = 1",
+            rusqlite::params![
+                info.session_id,
+                info.session_file,
+                label,
+                custom_name,
+                parent_session_id,
+                parent_depth + 1,
+            ],
+        );
     }
 
     rpc::send_prompt(state, &info.session_id, &first_prompt).await?;
