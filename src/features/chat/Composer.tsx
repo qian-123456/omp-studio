@@ -961,17 +961,24 @@ export function Composer({
 	if (readonly) {
 		return (
 			<div className="shrink-0 px-3 pb-3 pt-1">
-				<div className="flex items-center justify-between gap-3 rounded-[18px] border border-purple-800/40 bg-purple-950/20 px-4 py-3 text-[13px] backdrop-blur-sm shadow-sm">
-					<div className="flex items-center gap-2 text-[var(--text-60,var(--text-muted))]">
-						<span className="h-2 w-2 rounded-full bg-purple-500 shrink-0 animate-pulse" />
-						<span className="font-medium text-[var(--text)]">外部终端正在运行</span>
+				<div className="flex items-center justify-between gap-3 rounded-[18px] border border-[var(--line,var(--border))] bg-[var(--bg-panel)] px-4 py-3 shadow-sm">
+					<div className="flex items-center gap-2.5">
+						<span className="relative flex h-2.5 w-2.5 items-center justify-center">
+							<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-60" />
+							<span className="relative inline-flex h-2 w-2 rounded-full bg-purple-500" />
+						</span>
+						<span className="text-[13px] font-semibold text-[var(--text)]">
+							外部终端正在运行
+						</span>
 						<span className="text-[var(--text-30,var(--text-dim))]">·</span>
-						<span className="text-[12px] text-[var(--text-50,var(--text-muted))]">当前为只读观察模式</span>
+						<span className="text-[12px] text-[var(--text-muted,var(--text-60))]">
+							当前为只读观察模式
+						</span>
 					</div>
 					<button
 						type="button"
 						onClick={() => requestTakeover(sessionId)}
-						className="flex shrink-0 items-center gap-1.5 rounded-lg border border-purple-700/60 bg-purple-900/50 px-3 py-1.5 text-xs font-medium text-purple-200 hover:bg-purple-800 hover:text-white transition-colors shadow-sm"
+						className="press-scale flex shrink-0 items-center gap-1.5 rounded-lg bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-purple-500 active:bg-purple-700"
 					>
 						<span>接管会话</span>
 					</button>
