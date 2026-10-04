@@ -175,6 +175,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		description: "每一轮对话自动保存现场，可随时撤回；Agent 同时遵守自动存档规则",
 		keywords: ["checkpoint", "检查点", "撤回", "版本", "自动存档", "git", "现场"],
 	},
+	{
+		id: "queueAutoSend",
+		sectionId: "sessions",
+		label: "排队消息自动发送",
+		description: "流式回合中排队的消息在回合结束后自动逐条发送",
+		keywords: ["queue", "排队", "自动发送", "follow-up", "消息"],
+	},
 
 	// 收件箱 (inbox, renamed from todos)
 	{

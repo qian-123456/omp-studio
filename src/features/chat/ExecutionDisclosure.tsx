@@ -54,6 +54,10 @@ export type StepShape =
 
 type ToolStep = Extract<StepShape, { kind: "tool" }>;
 
+/** Shared Codex user-bubble visual (user rows and in-turn steers). */
+export const USER_BUBBLE_CLASS =
+	"min-w-0 max-w-[70%] rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)]";
+
 /** Milliseconds since `startedAt`, re-rendering every second while `active`. */
 export function useElapsedMs(startedAt: number | undefined, active: boolean): number {
 	const [now, setNow] = useState(() => Date.now());
@@ -264,6 +268,7 @@ export function TurnSteps({
 						resultText={res?.text}
 						startedAt={live?.startedAt}
 						endedAt={live?.endedAt}
+						expanded={forceExpanded ?? undefined}
 					/>
 				) : (
 					<ToolCard
@@ -346,8 +351,7 @@ export function TurnSteps({
 								id={`msg-${step.id}`}
 								className="flex justify-end py-1"
 							>
-								<div className="min-w-0 max-w-[70%] rounded-[18px] bg-[var(--chat-user-bg)] px-3 py-1.5 text-[length:var(--chat-font-size)] leading-6 text-[var(--text)]">
-									<div className="text-[11px] text-[var(--text-40)]">插话</div>
+								<div className={USER_BUBBLE_CLASS}>
 									<div className="whitespace-pre-wrap break-words">{step.text}</div>
 								</div>
 							</div>

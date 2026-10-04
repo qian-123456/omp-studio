@@ -8,15 +8,16 @@ import {
 	ChevronDown,
 	CornerDownRight,
 	Loader2,
+	Play,
 	Plus,
 	Square,
 	X,
-	Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listModels, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment } from "../../lib/contracts";
+import { AttachmentThumb } from "./ImageChips";
 export interface InlineImageToken {
 	match: string;
 	index: number;
@@ -56,7 +57,7 @@ export function renderHighlightedText(content: string) {
 		parts.push(
 			<span
 				key={match.index}
-				className="inline-block font-mono font-medium underline decoration-2 underline-offset-[3px]"
+				className="underline decoration-2 underline-offset-[3px]"
 				style={{ color: palette.hex, textDecorationColor: palette.hex }}
 			>
 				{tokenText}
@@ -231,6 +232,18 @@ export function Composer({
 
 	const live = useLive((s) => s.sessions[sessionId]);
 	const streaming = live?.streaming === true;
+	// Codex-style resume affordance: the latest turn ended aborted → the send
+	// button shows ▶ and fires a bare "继续" with empty input.
+	const canResume = useMemo(() => {
+		if (streaming) return false;
+		const items = live?.items ?? [];
+		for (let i = items.length - 1; i >= 0; i--) {
+			const it = items[i];
+			if (it.kind !== "assistant") continue;
+			return it.stopReason === "aborted";
+		}
+		return false;
+	}, [live?.items, streaming]);
 	const commands = live?.commands ?? [];
 	const annotations = useComposer(
 		(s) => s.annotations[sessionId] ?? EMPTY_LIST,
@@ -253,6 +266,7 @@ export function Composer({
 
 	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
 	const setDismissed = useHeldQueue((s) => s.setDismissed);
+	const pushHeld = useHeldQueue((s) => s.push);
 
 
 	// @ file-completion state
@@ -304,7 +318,7 @@ export function Composer({
 					setTotalTokensStr(`${(u.tokens / 1000).toFixed(1)}k tok`);
 				}
 			})
-			.catch(() => {});
+			.catch((err) => console.warn("[composer] session usage fetch failed", err));
 		return () => {
 			cancelled = true;
 		};
@@ -320,7 +334,9 @@ export function Composer({
 		if (!live?.alive || commandsRequested.current) return;
 		if ((live.commands?.length ?? 0) > 0) return;
 		commandsRequested.current = true;
-		void rpcSend(sessionId, { type: "get_available_commands" }).catch(() => {});
+		void rpcSend(sessionId, { type: "get_available_commands" }).catch((err) =>
+			console.warn("[composer] get_available_commands failed", err),
+		);
 	}, [sessionId, live?.alive, live?.commands?.length]);
 
 	// Plus button: attach file or insert @
@@ -610,6 +626,16 @@ export function Composer({
 		}));
 
 		const message = formatWithAnnotations(outgoingRaw, textAnnotations);
+		// Streaming + plain Enter: hold locally (ARCHITECTURE §11 B); the
+		// post-turn HeldQueueBar sends it with its image attachments.
+		if (streaming && !steer) {
+			pushHeld(sessionId, message, imageAttachments);
+			pushHistory(raw.trim());
+			clearDraft(sessionId);
+			clearAnnotations(sessionId);
+			clearImages(sessionId);
+			return;
+		}
 		setBusy(true);
 		try {
 			await sendPrompt(sessionId, message, { steer, images: imageAttachments });
@@ -718,10 +744,9 @@ export function Composer({
 				before.length > 0 && !before.endsWith(" ") && !before.endsWith("\n")
 					? " "
 					: "";
-			const spacerAfter =
-				after.length > 0 && !after.startsWith(" ") && !after.startsWith("\n")
-					? " "
-					: "";
+			// Always leave a space after the token so the caret never sits flush
+			// against it (paste at end-of-text previously had no trailing gap).
+			const spacerAfter = after.startsWith(" ") || after.startsWith("\n") ? "" : " ";
 			const marker = `${spacerBefore}🖼️#${nextNum}${spacerAfter}`;
 			const nextText = `${before}${marker}${after}`;
 			setText(nextText);
@@ -1084,11 +1109,7 @@ export function Composer({
 								>
 									<span className="flex min-w-0 items-center gap-1 truncate">
 										{isImageAnnotation(a) && a.file && (
-											<img
-												src={convertFileSrc(a.file)}
-												alt=""
-												className="h-8 w-8 shrink-0 rounded object-cover"
-											/>
+											<AttachmentThumb path={a.file} index={i + 1} variant="inline" />
 										)}
 										<span className="truncate">
 										[{i + 1}] {a.file ?? a.source}
@@ -1128,49 +1149,18 @@ export function Composer({
 
 				{/* Attached image cards gallery (Codex style) */}
 				{composerImages.length > 0 && (
-					<div className="flex flex-wrap items-center gap-2.5 px-3.5 pt-3 pb-2 border-b border-[var(--line)] bg-[var(--bg-panel)]/40">
-						{composerImages.map((img, i) => {
-							const num = i + 1;
-							const palette = getImageTokenPalette(num);
-							return (
-								<div
-									key={img.id || `${num}-${img.path}`}
-									className="group/imgcard relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm transition-all select-none cursor-pointer"
-									onClick={() => setPreviewImageIndex(i)}
-									title="点击放大查看"
-								>
-									{/* Thumbnail image */}
-									<img
-										src={convertFileSrc(img.path)}
-										alt={`图片 #${num}`}
-										className="h-full w-full object-cover transition-transform duration-200 group-hover/imgcard:scale-105"
-									/>
-
-									{/* Hover overlay: slightly whiter to indicate hover */}
-									<div className="absolute inset-0 bg-white/20 opacity-0 transition-opacity duration-150 group-hover/imgcard:opacity-100 pointer-events-none" />
-
-									{/* Codex-style subtle index badge */}
-									<div
-										className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-mono font-bold backdrop-blur-md shadow-xs border border-white/10 pointer-events-none"
-										style={{ color: palette.hex }}
-									>
-										<span>#{num}</span>
-									</div>
-									{/* Codex-style delete button (only visible on hover at top-right) */}
-									<button
-										type="button"
-										onClick={(e) => {
-											e.stopPropagation();
-											removeImageByIndex(i);
-										}}
-										className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white/80 opacity-0 shadow-sm backdrop-blur-md transition-all duration-150 hover:scale-110 hover:bg-black hover:text-white group-hover/imgcard:opacity-100 cursor-pointer"
-										title="移除图片"
-									>
-										<X size={12} strokeWidth={2.5} />
-									</button>
-								</div>
-							);
-						})}
+					<div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-2.5">
+						{composerImages.map((img, i) => (
+							<AttachmentThumb
+								key={img.id || `${i + 1}-${img.path}`}
+								path={img.path}
+								index={i + 1}
+								showIndex
+								variant="strip"
+								onOpen={() => setPreviewImageIndex(i)}
+								onRemove={() => removeImageByIndex(i)}
+							/>
+						))}
 					</div>
 				)}
 				{previewImageIndex !== null && (
@@ -1462,8 +1452,9 @@ export function Composer({
 
 					{/* Right side actions */}
 					<div className="flex items-center gap-1.5">
-						{/* Held queue count pill (clickable to un-dismiss) */}
-						{held.length > 0 && (
+						{/* Held queue count pill: post-turn only (manual mode, un-dismisses the bar);
+						    while streaming the QueuedBar popover lists the items itself. */}
+						{held.length > 0 && !streaming && (
 							<button
 								type="button"
 								onClick={() => setDismissed(sessionId, false)}
@@ -1488,32 +1479,6 @@ export function Composer({
 						<div className="flex items-center gap-1.5">
 							{streaming ? (
 								<>
-									{text.trim() && (
-										<>
-											<button
-												type="button"
-												onClick={() => void submit(false)}
-												disabled={busy}
-												aria-label="排队消息"
-												title="排队消息，待本回合结束后自动处理 (Enter)"
-												className="flex items-center gap-1 rounded-full bg-[var(--ghost-hover,var(--bg-active-fill))] px-2.5 py-1 text-[11px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-colors"
-											>
-												<CornerDownRight size={11} />
-												<span>排队</span>
-											</button>
-											<button
-												type="button"
-												onClick={() => void submit(true)}
-												disabled={busy}
-												aria-label="立即插队"
-												title="立即插队发送打断 (⌘Enter)"
-												className="flex items-center gap-1 rounded-full bg-[var(--text)] px-2.5 py-1 text-[11px] text-[var(--bg)] hover:opacity-85 disabled:opacity-40 transition-opacity"
-											>
-												<Zap size={11} />
-												<span>插队</span>
-											</button>
-										</>
-									)}
 									<button
 										type="button"
 										onClick={() => void handleAbort()}
@@ -1532,18 +1497,32 @@ export function Composer({
 							) : (
 								<button
 									type="button"
-									onClick={() => void submit(false)}
-									disabled={busy || !text.trim()}
-									aria-label="发送消息"
-									title="发送消息 (Enter)"
+									onClick={() => {
+										if (canResume && !text.trim()) {
+											void sendPrompt(sessionId, "Continue");
+										} else {
+											void submit(false);
+										}
+									}}
+									disabled={busy || (!text.trim() && !canResume)}
+									aria-label={canResume && !text.trim() ? "恢复中断的回合" : "发送消息"}
+									title={
+										canResume && !text.trim()
+											? "恢复中断的回合（发送 Continue）"
+											: "发送消息 (Enter)"
+									}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150",
-										text.trim() && !busy
+										(text.trim() || canResume) && !busy
 											? "bg-[var(--text)] text-[var(--bg)] hover:opacity-85 active:scale-95"
 											: "bg-[var(--bg-active-fill)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed",
 									)}
 								>
-									<ArrowUp size={14} />
+									{canResume && !text.trim() ? (
+										<Play size={11} className="fill-current" />
+									) : (
+										<ArrowUp size={14} />
+									)}
 								</button>
 							)}
 						</div>

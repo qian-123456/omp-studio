@@ -1,4 +1,5 @@
 import type { ToolResultInfo, TranscriptItem } from "../../lib/contracts";
+import { stripImageMarkers } from "./MessageList";
 import type { ToolStatus } from "./ToolCard";
 
 /**
@@ -163,7 +164,7 @@ export function collectChatTraceEntries(
 			const q = unit.queries[i];
 			entries.push({
 				id: q.id,
-				userPreview: buildPreview([q.text ?? ""], "用户输入"),
+				userPreview: buildPreview([stripImageMarkers(q.text ?? "")], "用户输入"),
 				assistantPreview,
 				assistantPreviewKind,
 				isRunning: isRunning && i === unit.queries.length - 1,

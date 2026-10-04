@@ -80,6 +80,9 @@ export interface AgentMessage {
 	[key: string]: unknown;
 }
 
+/** Optimistic user bubble; `steer` marks an in-turn steer echo. */
+export type UserEcho = TranscriptItem & { steer?: boolean };
+
 export interface SessionLive {
 	/** A turn is in flight. */
 	streaming: boolean;
@@ -91,7 +94,7 @@ export interface SessionLive {
 	streamingMessage: AgentMessage | null;
 	/** Optimistic user bubbles waiting for the transcript fetch to confirm
 	 * them (rpc prompt accepted but not yet visible in the jsonl page). */
-	pendingUserEchoes: TranscriptItem[];
+	pendingUserEchoes: UserEcho[];
 	/** From available_commands_update / get_available_commands. */
 	commands: SlashCommand[];
 	/** Ephemeral slash-command outputs shown at the end of the thread. */
@@ -749,7 +752,13 @@ export interface LiveState {
 	appendItems(sessionId: string, items: TranscriptItem[], nextOffset: number): void;
 	/** Optimistically append a user bubble after rpc_send accepts a prompt;
 	 * dropped once a transcript page confirms a matching user item. */
-	addUserEcho(sessionId: string, text: string, images?: ImageAttachment[]): void;
+	addUserEcho(
+		sessionId: string,
+		text: string,
+		images?: ImageAttachment[],
+		/** Sent with streamingBehavior "steer" (lands inside the running turn). */
+		steer?: boolean,
+	): void;
 	/** Scroll the message stream to a transcript item (used by HeatmapPanel). */
 	scrollToItem(sessionId: string, itemId: string): void;
 	/** Consume/clear the scroll request for a session. */
@@ -877,11 +886,15 @@ export const useLive = create<LiveState>((set) => ({
 				},
 			};
 		}),
-	addUserEcho: (sessionId, text, images) =>
+	addUserEcho: (sessionId, text, images, steer) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			const trimmed = text.trim();
 			if (!trimmed) return s;
+			const echo: UserEcho = makeUserEcho(trimmed, images);
+			// Only a steer into an in-flight turn is in-turn; anything else is a
+			// next-turn bubble.
+			if (steer && live.streaming) echo.steer = true;
 			return {
 				sessions: {
 					...s.sessions,
@@ -889,7 +902,7 @@ export const useLive = create<LiveState>((set) => ({
 						...live,
 						pendingUserEchoes: [
 							...live.pendingUserEchoes,
-							makeUserEcho(trimmed, images),
+							echo,
 						],
 					},
 				},

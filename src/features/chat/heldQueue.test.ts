@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { heldItems, useHeldQueue } from "./heldQueue";
+import { heldItems, heldQueueItems, mergeHeldItems, useHeldQueue } from "./heldQueue";
 
 const SID = "s1";
 
@@ -94,5 +94,45 @@ describe("held queue", () => {
 		const idAfter = useHeldQueue.getState().queues[SID][0].id;
 		expect(idAfter).toBe(idBefore);
 		expect(useHeldQueue.getState().queues[SID][0].text).toBe("hello world!");
+	});
+
+	it("persists image attachments and loads legacy items without them", () => {
+		const img = { id: "a", path: "/tmp/a.png", marker: "[Image #1]" };
+		useHeldQueue.getState().push(SID, "[Image #1: /tmp/a.png] 看图", [img]);
+		useHeldQueue.setState({ queues: {} });
+		expect(heldQueueItems(SID)[0].images).toEqual([img]);
+		localStorage.setItem("ompws-held:old", JSON.stringify(["旧", { id: "x", text: "旧2" }]));
+		expect(heldQueueItems("old").map((i) => [i.text, i.images])).toEqual([
+			["旧", undefined],
+			["旧2", undefined],
+		]);
+	});
+
+	it("shift takes items FIFO one at a time and unshift restores the head", () => {
+		const q = useHeldQueue.getState();
+		q.push(SID, "一");
+		q.push(SID, "二");
+		const first = q.shift(SID);
+		expect(first?.text).toBe("一");
+		expect(heldItems(SID)).toEqual(["二"]);
+		q.unshift(SID, first!);
+		expect(heldItems(SID)).toEqual(["一", "二"]);
+		q.shift(SID);
+		expect(q.shift(SID)?.text).toBe("二");
+		expect(q.shift(SID)).toBeUndefined();
+		expect(localStorage.getItem(`ompws-held:${SID}`)).toBeNull();
+	});
+
+	it("merge renumbers later items' image markers and concatenates in order", () => {
+		const merged = mergeHeldItems([
+			{ id: "1", text: "[Image #1: /a.png] 一", images: [{ id: "a", marker: "[Image #1]" }] },
+			{ id: "2", text: "无图" },
+			{ id: "3", text: "[Image #1: /b.png] 三", images: [{ id: "b", marker: "[Image #1]" }] },
+		]);
+		expect(merged.text).toBe("[Image #1: /a.png] 一\n\n---\n\n无图\n\n---\n\n[Image #2: /b.png] 三");
+		expect(merged.images.map((i) => [i.id, i.marker])).toEqual([
+			["a", "[Image #1]"],
+			["b", "[Image #2]"],
+		]);
 	});
 });

@@ -481,6 +481,8 @@ export interface Settings {
 	 * via `-e`). null = never asked (Git panel shows the consent card).
 	 */
 	turnCheckpoints: boolean | null;
+	/** Auto-send queued mid-stream messages when the turn ends (null = enabled). */
+	queueAutoSend: boolean | null;
 }
 
 /** One `omp config list --json` entry. */

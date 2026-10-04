@@ -126,7 +126,7 @@ export function SelectionToolbar({
 
 	if (!sel) return null;
 	const itemCls =
-		"flex items-center gap-1 rounded px-2 py-1 text-[11px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
+		"flex h-7 w-7 items-center justify-center rounded text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
 
 	return (
 		<div
@@ -186,8 +186,10 @@ export function SelectionToolbar({
 							setSel(null);
 							window.getSelection()?.removeAllRanges();
 						}}
+						title="复制"
+						aria-label="复制"
 					>
-						<Copy size={12} /> 复制
+						<Copy size={14} />
 					</button>
 					<button
 						type="button"
@@ -195,8 +197,10 @@ export function SelectionToolbar({
 						onClick={() => {
 							setIsAnnotating(true);
 						}}
+						title="引用"
+						aria-label="引用"
 					>
-						<MessageSquareQuote size={12} /> 引用
+						<MessageSquareQuote size={14} />
 					</button>
 					<button
 						type="button"
@@ -207,8 +211,10 @@ export function SelectionToolbar({
 							setSel(null);
 							window.getSelection()?.removeAllRanges();
 						}}
+						title="在侧聊中提问"
+						aria-label="在侧聊中提问"
 					>
-						<MessagesSquare size={12} /> 在侧聊中提问
+						<MessagesSquare size={14} />
 					</button>
 					<button
 						type="button"
@@ -221,8 +227,10 @@ export function SelectionToolbar({
 							setSel(null);
 							window.getSelection()?.removeAllRanges();
 						}}
+						title="记到收集箱"
+						aria-label="记到收集箱"
 					>
-						<BookmarkPlus size={12} /> 记到收集箱
+						<BookmarkPlus size={14} />
 					</button>
 				</>
 			)}

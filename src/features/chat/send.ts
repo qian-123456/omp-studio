@@ -60,7 +60,10 @@ export async function sendPrompt(
 	}
 	// Optimistic echo: add before network calls so the user bubble appears
 	// immediately and never arrives after the assistant stream.
-	useLive.getState().addUserEcho(sessionId, trimmed, opts?.images);
+	const steerEcho =
+		opts?.steer === true &&
+		useLive.getState().sessions[sessionId]?.streaming === true;
+	useLive.getState().addUserEcho(sessionId, trimmed, opts?.images, steerEcho);
 	if (external) {
 		await takeoverExternal(sessionId);
 	} else if (!useLive.getState().sessions[sessionId]?.alive) {

@@ -4,7 +4,15 @@
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
-import { Copy, Pencil, RotateCcw } from "lucide-react";
+import {
+	ChevronsDownUp,
+	ChevronsUpDown,
+	Copy,
+	Eye,
+	EyeOff,
+	Pencil,
+	RotateCcw,
+} from "lucide-react";
 import React, {
 	useCallback,
 	useEffect,
@@ -20,19 +28,20 @@ import type {
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
-import { useLive, type LiveTool } from "../../stores/live";
+import { useLive, type LiveTool, type UserEcho } from "../../stores/live";
 import { useTurnNav } from "../../stores/turnNav";
 import { AnswerFooter } from "./AnswerFooter";
-import { getImageTokenPalette } from "./Composer";
+import { AttachmentThumb } from "./ImageChips";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
 	ExecutionDisclosure,
 	ProcessingTimer,
 	TurnSteps,
 	type StepShape,
+	USER_BUBBLE_CLASS,
 } from "./ExecutionDisclosure";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment } from "../../lib/contracts";
+import { getImageTokenPalette } from "./Composer";
 import { Markdown } from "./markdown";
 import {
 	buildToolResultsMap,
@@ -41,6 +50,7 @@ import {
 import { abortTurn, sendPrompt } from "./send";
 import { CommandOutputList } from "./slash/CommandOutputList";
 import {
+	formatDurationCompact,
 	groupTurnBlocks,
 	noticeLabel,
 	noticeSummary,
@@ -49,7 +59,17 @@ import {
 import { undoableTurn } from "./turnChips";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
-const EMPTY_ECHOES: TranscriptItem[] = [];
+const EMPTY_ECHOES: UserEcho[] = [];
+
+/** In-flight steer echo as an activity step (same shape as persisted). */
+function steerStep(echo: UserEcho): StepShape {
+	return {
+		id: `steer-${echo.id}`,
+		kind: "steer",
+		item: echo,
+		text: stripImageMarkers(echo.text ?? ""),
+	};
+}
 const EMPTY_TOOLS: Record<string, LiveTool> = {};
 
 const asObj = (v: unknown): Record<string, unknown> =>
@@ -68,78 +88,54 @@ export function stripImageMarkers(text: string): string {
 		.trim();
 }
 
-const IMAGE_TOKEN_RE =
-	/\[(?:Image|图片)\s*#(?<num1>\d+)(?:,\s*\d+x\d+)?(?::\s*(?<path1>[^\]]+))?\]|\[图片(?:\s*#(?<num2>\d+))?(?::\s*(?<path2>[^\]]+))?\]|🖼️\s*#(?<num3>\d+)/gu;
-export function parseUserMessageTokens(text: string): Array<{ type: "text"; text: string } | { type: "image"; num: string; path?: string }> {
+const USER_MARKER_RE =
+	/\[(?:Image|图片)\s*#(\d+)(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|🖼️\s*#(\d+)/gu;
+
+/** User bubble text with image markers kept in place as clickable `#n`
+ *  chips (Composer palette). Annotation-header noise is still stripped. */
+function renderUserTextWithChips(
+	text: string,
+	onOpen: (markerNum: number) => void,
+): React.ReactNode[] {
 	const cleaned = text
 		.replace(
 			/\[\d+\]\s*\([^)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^)]*\)\s*\n?>?\s*(?:\[图片:[^\]]+\])?/gi,
 			"",
 		)
 		.trim();
-	if (!cleaned) return [];
-	const tokens: Array<{ type: "text"; text: string } | { type: "image"; num: string; path?: string }> = [];
-	let lastIndex = 0;
-	const re = new RegExp(IMAGE_TOKEN_RE.source, "g");
-	let match: RegExpExecArray | null;
-	while ((match = re.exec(cleaned)) !== null) {
-		if (match.index > lastIndex) {
-			tokens.push({ type: "text", text: cleaned.slice(lastIndex, match.index) });
-		}
-		const num = match.groups?.num1 || match.groups?.num2 || "1";
-		const path = (match.groups?.path1 || match.groups?.path2 || "").trim() || undefined;
-		tokens.push({ type: "image", num, path });
-		lastIndex = re.lastIndex;
+	const parts: React.ReactNode[] = [];
+	let last = 0;
+	for (const m of cleaned.matchAll(USER_MARKER_RE)) {
+		const at = m.index ?? 0;
+		if (at > last) parts.push(cleaned.slice(last, at));
+		const num = Number.parseInt(m[1] ?? m[2] ?? "1", 10) || 1;
+		const palette = getImageTokenPalette(num);
+		parts.push(
+			<button
+				key={`img-${at}`}
+				type="button"
+				onClick={() => onOpen(num)}
+				title={`查看图片 #${num}`}
+				className="mx-0.5 inline cursor-pointer align-baseline hover:opacity-80"
+				style={{ color: palette.hex }}
+			>
+				<span
+					className="underline decoration-2 underline-offset-[3px]"
+					style={{ color: palette.hex, textDecorationColor: palette.hex }}
+				>
+					{`🖼️#${num}`}
+				</span>
+			</button>,
+		);
+		last = at + m[0].length;
 	}
-	if (lastIndex < cleaned.length) {
-		tokens.push({ type: "text", text: cleaned.slice(lastIndex) });
-	}
-	return tokens;
+	if (last < cleaned.length) parts.push(cleaned.slice(last));
+	return parts;
 }
 
-/** Inline thumbnail card for a user image; click opens a full-size modal. */
-function UserImagePreview({
-	image,
-	index,
-	totalImages = 1,
-	onClick,
-}: {
-	image: ImageAttachment;
-	index?: number;
-	totalImages?: number;
-	onClick?: () => void;
-}) {
-	const [failed, setFailed] = useState(false);
-	if (!image.path || failed) return null;
-	const src = convertFileSrc(image.path);
-	const palette = index ? getImageTokenPalette(index) : null;
-	return (
-		<div
-			className="group/user-img relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm select-none cursor-pointer"
-			onClick={onClick}
-			title="点击放大查看"
-		>
-			<img
-				src={src}
-				alt={image.marker ?? (index ? `图片 #${index}` : "图片")}
-				title={image.path}
-				loading="lazy"
-				onError={() => setFailed(true)}
-				className="h-full w-full object-cover transition-transform duration-200 group-hover/user-img:scale-105"
-			/>
-			{/* Hover overlay: subtle white brightening */}
-			<div className="absolute inset-0 bg-white/20 opacity-0 transition-opacity duration-150 group-hover/user-img:opacity-100 pointer-events-none" />
-			{index !== undefined && totalImages > 1 && (
-				<span
-					className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-mono font-bold backdrop-blur-md shadow-xs border border-white/10 pointer-events-none"
-					style={palette ? { color: palette.hex } : undefined}
-				>
-					#{index}
-				</span>
-			)}
-		</div>
-	);
-}
+/** 20px-square ghost icon button, matching the AnswerFooter actions. */
+const USER_ACTION_BTN =
+	"flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
 
 /**
  * User message: right-aligned Codex bubble (70% max width, 22px radius,
@@ -204,14 +200,15 @@ const UserRow = React.memo(function UserRow({
 			className="group/user-row relative flex w-full flex-col items-end gap-1.5 py-1"
 		>
 			{validImages.length > 0 && (
-				<div className="flex w-full flex-wrap justify-end gap-2.5 pb-0.5">
+				<div className="flex max-w-[70%] flex-wrap justify-end gap-1.5">
 					{validImages.map((img, i) => (
-						<UserImagePreview
+						<AttachmentThumb
 							key={img.id}
-							image={img}
+							path={img.path}
 							index={i + 1}
-							totalImages={validImages.length}
-							onClick={() => setPreviewIndex(i)}
+							showIndex={validImages.length > 1}
+							variant="bubble"
+							onOpen={() => setPreviewIndex(i)}
 						/>
 					))}
 				</div>
@@ -268,7 +265,7 @@ const UserRow = React.memo(function UserRow({
 					</div>
 				</div>
 			) : showBubble ? (
-				<div className="min-w-0 max-w-[70%] rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)]">
+				<div className={USER_BUBBLE_CLASS}>
 					<div
 						ref={textRef}
 						className={clsx(
@@ -276,7 +273,12 @@ const UserRow = React.memo(function UserRow({
 							!expanded && "line-clamp-4",
 						)}
 					>
-						{userText}
+						{renderUserTextWithChips(rawText, (num) => {
+							if (validImages.length === 0) return;
+							setPreviewIndex(
+								Math.min(Math.max(num - 1, 0), validImages.length - 1),
+							);
+						})}
 					</div>
 					{collapsible && (
 						<button
@@ -291,7 +293,7 @@ const UserRow = React.memo(function UserRow({
 			) : null}
 			<div
 				className={clsx(
-					"flex items-center gap-1 text-[11px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
+					"flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
 					editing && "hidden",
 				)}
 			>
@@ -301,10 +303,11 @@ const UserRow = React.memo(function UserRow({
 						setDraft(userText);
 						setEditing(true);
 					}}
-					className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:text-[var(--text-60)]"
+					className={USER_ACTION_BTN}
 					title="编辑并重新发送"
+					aria-label="编辑并重新发送"
 				>
-					<Pencil size={11} /> 编辑
+					<Pencil size={12} />
 				</button>
 				<button
 					type="button"
@@ -323,10 +326,11 @@ const UserRow = React.memo(function UserRow({
 								toast.error(`重新发送失败: ${errMsg(e)}`);
 						}
 					}}
-					className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:text-[var(--text-60)]"
+					className={USER_ACTION_BTN}
 					title="重新发送此消息"
+					aria-label="重新发送此消息"
 				>
-					<RotateCcw size={11} /> 重新发送
+					<RotateCcw size={12} />
 				</button>
 				<button
 					type="button"
@@ -338,10 +342,11 @@ const UserRow = React.memo(function UserRow({
 							toast.error(`复制失败: ${errMsg(e)}`);
 						}
 					}}
-					className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:text-[var(--text-60)]"
+					className={USER_ACTION_BTN}
 					title="复制消息"
+					aria-label="复制消息"
 				>
-					<Copy size={11} /> 复制
+					<Copy size={12} />
 				</button>
 			</div>
 		</div>
@@ -456,6 +461,14 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 
 			{/* Assistant answer — plain prose on the thread column */}
 			{block.answerItem && (
+				block.answerItem.stopReason === "aborted" ? (
+					<div
+						id={`msg-${block.answerItem.id}`}
+						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text-30)]"
+					>
+						已停止{block.durationMs ? ` · ${formatDurationCompact(block.durationMs)}` : ""}
+					</div>
+				) : (
 				<div
 					id={`msg-${block.answerItem.id}`}
 					className="group/answer relative flex flex-col items-start py-1"
@@ -483,6 +496,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						isLatestTurn={isLatestTurn}
 					/>
 				</div>
+				)
 			)}
 		</div>
 	);
@@ -508,6 +522,15 @@ const StreamingRow = React.memo(function StreamingRow({
 }) {
 	const streamingMessage = useLive(
 		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
+	);
+	const echoes = useLive(
+		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
+	);
+	// Step index each in-flight steer was sent at, scoped to the streaming
+	// message it interrupted: the steer stays where persisted grouping will
+	// later place it (after the steps already emitted when it was sent).
+	const steerAnchors = useRef(
+		new Map<string, { msgKey: unknown; at: number }>(),
 	);
 	const liveTools = useLive(
 		(s) => s.sessions[sessionId]?.tools ?? EMPTY_TOOLS,
@@ -586,9 +609,30 @@ const StreamingRow = React.memo(function StreamingRow({
 				result: toolResultsByCallId?.get(id),
 			});
 		}
+		const msgKey = streamingMessage?.timestamp;
+		const anchors = steerAnchors.current;
+		const steers = echoes.filter((e) => e.steer);
+		for (const id of anchors.keys()) {
+			if (!steers.some((e) => e.id === id)) anchors.delete(id);
+		}
+		const placed = steers.map((echo) => {
+			let anchor = anchors.get(echo.id);
+			if (!anchor) {
+				anchor = { msgKey, at: out.length };
+				anchors.set(echo.id, anchor);
+			}
+			// A newer streaming message started after the steer: it sits first.
+			const at = anchor.msgKey === msgKey ? anchor.at : 0;
+			return { at, step: steerStep(echo) };
+		});
+		for (let i = placed.length - 1; i >= 0; i--) {
+			const { at, step } = placed[i];
+			out.splice(Math.min(at, out.length), 0, step);
+		}
 		return out;
 	}, [
 		streamingMessage,
+		echoes,
 		liveTools,
 		toolResultsByCallId,
 		thinkingStartedAt,
@@ -658,6 +702,15 @@ export function MessageList({
 				s.sessions[sessionId]?.streaming ||
 					s.sessions[sessionId]?.streamingMessage,
 			),
+	);
+	// In-turn steers render inside StreamingRow at their step position; only
+	// next-turn echoes (or steers orphaned after the stream ends) sit here.
+	const bottomEchoes = useMemo(
+		() =>
+			isStreamingActive
+				? pendingEchoes.filter((e) => !e.steer)
+				: pendingEchoes,
+		[pendingEchoes, isStreamingActive],
 	);
 	const scrollRequest = useLive((s) => s.sessions[sessionId]?.scrollRequest);
 
@@ -871,9 +924,12 @@ export function MessageList({
 					<button
 						type="button"
 						onClick={() => setShowHidden((v) => !v)}
-						className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
+						className="flex h-5 items-center gap-1 rounded px-1 text-[11px] tabular-nums text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
+						title={showHidden ? "隐藏系统消息" : `显示 ${hiddenCount} 条隐藏消息`}
+						aria-label={showHidden ? "隐藏系统消息" : `显示 ${hiddenCount} 条隐藏消息`}
 					>
-						{showHidden ? "隐藏系统消息" : `显示 ${hiddenCount} 条隐藏消息`}
+						{showHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+						{hiddenCount}
 					</button>
 				) : (
 					<div />
@@ -881,10 +937,15 @@ export function MessageList({
 				<button
 					type="button"
 					onClick={() => setToolsExpanded((v) => !v)}
-					className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
+					className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
 					title={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
+					aria-label={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
 				>
-					{toolsExpanded ? "全部折叠步骤" : "全部展开步骤"}
+					{toolsExpanded ? (
+						<ChevronsDownUp size={12} />
+					) : (
+						<ChevronsUpDown size={12} />
+					)}
 				</button>
 			</div>
 
@@ -958,7 +1019,7 @@ export function MessageList({
 			<div className="relative min-h-0 flex-1">
 				<div
 					ref={containerRef}
-					className="relative mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
+					className="relative mx-auto w-full pb-8 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
 				>
 					{/* Virtualized committed transcript */}
 					{blocks.length > 0 && (
@@ -1014,9 +1075,9 @@ export function MessageList({
 					)}
 
 					{/* In-flight / pending user bubbles */}
-					{pendingEchoes.length > 0 && (
+					{bottomEchoes.length > 0 && (
 						<div className="w-full">
-							{pendingEchoes.map((echo) => (
+							{bottomEchoes.map((echo) => (
 								<div
 									key={echo.id}
 									id={`msg-${echo.id}`}

@@ -1,117 +1,94 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { openPath } from "@tauri-apps/plugin-opener";
-import { ImageIcon, ZoomIn } from "lucide-react";
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { Z_LAYER } from "../../components/FloatingLayer";
-import type { ImageAttachment } from "../../lib/contracts";
+import clsx from "clsx";
+import { ImageOff, X } from "lucide-react";
+import { useState } from "react";
+import { getImageTokenPalette } from "./Composer";
 
-export function ImageChip({ image }: { image: ImageAttachment }) {
-	const [expanded, setExpanded] = useState(false);
-	// Paths outside the asset-protocol scope (or deleted files) fail to load;
-	// fall back to the icon instead of a broken <img>.
+/**
+ * The single render path for image attachments (composer strip + sent user
+ * bubble). Codex-style: compact rounded thumbnail, object-cover. A path that
+ * fails to load (deleted file, outside the asset-protocol scope) collapses to
+ * a compact icon+label chip — never an empty sized box.
+ */
+export function AttachmentThumb({
+	path,
+	index,
+	showIndex,
+	variant,
+	onOpen,
+	onRemove,
+}: {
+	path: string;
+	/** 1-based attachment number (matches the `#n` token). */
+	index: number;
+	showIndex?: boolean;
+	/** `strip`: composer chip (48px); `inline`: annotation pill (32px); `bubble`: sent message (≤200px). */
+	variant: "strip" | "inline" | "bubble";
+	onOpen?: () => void;
+	onRemove?: () => void;
+}) {
 	const [failed, setFailed] = useState(false);
-	const src = image.path && !failed ? convertFileSrc(image.path) : null;
+	const label = `图片 #${index}`;
+	const palette = getImageTokenPalette(index);
 
-	useEffect(() => {
-		if (!expanded) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") setExpanded(false);
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, [expanded]);
-
-	const label =
-		image.width && image.height
-			? `${image.width}×${image.height}`
-			: image.marker ?? "图片";
-
-	return (
-		<>
-			<button
-				type="button"
-				onClick={() => {
-					if (src) setExpanded(true);
-				}}
-				className="group/img press-scale flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg-panel)] p-1 pr-2 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-				title={src ? `点击预览: ${image.path}` : (image.path ?? label)}
-			>
-				{src ? (
-					<div className="relative h-7 w-7 shrink-0 overflow-hidden rounded bg-black/20">
-						<img
-							src={src}
-							alt=""
-							className="h-full w-full object-cover"
-							loading="lazy"
-							onError={() => setFailed(true)}
-						/>
-						<div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover/img:opacity-100">
-							<ZoomIn size={12} className="text-white" />
-						</div>
-					</div>
-				) : (
-					<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-[var(--bg-hover)] text-[var(--text-40)]">
-						<ImageIcon size={14} />
-					</div>
-				)}
-				<span className="font-mono text-[10px] text-[var(--text-40)] group-hover/img:text-[var(--text)]">
-					{label}
-				</span>
-			</button>
-
-			{/* Portaled: rows in the virtualized transcript are transformed, which traps `fixed`. */}
-			{expanded &&
-				src &&
-				createPortal(
-					<div
-						className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4"
-						style={{ zIndex: Z_LAYER.modal }}
-						onClick={() => setExpanded(false)}
-					>
-					<div
-						className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-2 shadow-apple-modal"
-						onClick={(e) => e.stopPropagation()}
-					>
-						<img
-							src={src}
-							alt={label}
-							className="max-h-[80vh] max-w-full rounded object-contain"
-						/>
-						<div className="mt-2 flex items-center justify-between text-[11px] text-[var(--text-40)]">
-							<span className="truncate max-w-xs">{image.path}</span>
-							<div className="flex items-center gap-2">
-								<button
-									type="button"
-									onClick={() => image.path && void openPath(image.path)}
-									className="rounded px-2 py-0.5 hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-								>
-									在系统查看
-								</button>
-								<button
-									type="button"
-									onClick={() => setExpanded(false)}
-									className="rounded px-2 py-0.5 hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-								>
-									关闭
-								</button>
-							</div>
-						</div>
-					</div>
-					</div>,
-					document.body,
-				)}
-		</>
+	const removeBtn = onRemove && (
+		<button
+			type="button"
+			onClick={(e) => {
+				e.stopPropagation();
+				onRemove();
+			}}
+			className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white/80 opacity-0 transition-opacity duration-150 hover:bg-black hover:text-white group-hover/thumb:opacity-100"
+			title="移除图片"
+		>
+			<X size={10} strokeWidth={2.5} />
+		</button>
 	);
-}
 
-export function ImageChipsList({ images }: { images?: ImageAttachment[] }) {
-	if (!images || images.length === 0) return null;
+	if (failed) {
+		return (
+			<div
+				className="group/thumb relative flex h-8 shrink-0 select-none items-center gap-1.5 rounded-lg border border-[var(--line)] px-2 pr-5 text-[12px] text-[var(--text-40)]"
+				title={`无法加载图片：${path}`}
+			>
+				<ImageOff size={13} className="shrink-0" />
+				<span>{label}</span>
+				{removeBtn}
+			</div>
+		);
+	}
+
 	return (
-		<div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-			{images.map((img) => (
-				<ImageChip key={img.id} image={img} />
-			))}
+		<div
+			className={clsx(
+				"group/thumb relative shrink-0 cursor-pointer select-none overflow-hidden border border-[var(--line)]",
+				variant === "strip"
+					? "h-12 w-12 rounded-lg"
+					: variant === "inline"
+						? "h-8 w-8 rounded"
+						: "h-20 w-20 rounded-xl",
+			)}
+			onClick={onOpen}
+			title={onOpen ? "点击放大查看" : label}
+		>
+			<img
+				src={convertFileSrc(path)}
+				alt={label}
+				loading="lazy"
+				draggable={false}
+				onError={() => setFailed(true)}
+				className="block h-full w-full object-cover"
+			/>
+			<div className="pointer-events-none absolute inset-0 bg-white/15 opacity-0 transition-opacity duration-150 group-hover/thumb:opacity-100" />
+			{showIndex && (
+				<span
+					className="pointer-events-none absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 font-mono text-[10px] font-bold leading-4"
+					style={{ color: palette.hex }}
+				>
+					#{index}
+				</span>
+			)}
+			{removeBtn}
 		</div>
 	);
 }

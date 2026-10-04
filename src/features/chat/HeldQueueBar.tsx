@@ -1,12 +1,12 @@
 /** [B] Post-turn held-queue bar: "有 N 条暂存" + 立即发送(合并) / 继续暂存 /
  * 逐条确认 (editable, deletable, reorderable list). */
 
-import { ArrowDown, ArrowUp, Send, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Minus, Send, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
-import { type HeldItem, useHeldQueue } from "./heldQueue";
+import { type HeldItem, mergeHeldItems, useHeldQueue } from "./heldQueue";
 import { sendPrompt } from "./send";
 const EMPTY_LIST: HeldItem[] = [];
 export function HeldQueueBar({
@@ -26,12 +26,11 @@ export function HeldQueueBar({
 
 	const sendMerged = async () => {
 		if (streaming) return;
-		const currentTexts = items.map((i) => i.text.trim()).filter(Boolean);
-		const merged = currentTexts.join("\n\n---\n\n");
+		const { text: merged, images } = mergeHeldItems(items);
 		if (!merged) return;
 		setSending(true);
 		try {
-			await sendPrompt(sessionId, merged);
+			await sendPrompt(sessionId, merged, images.length > 0 ? { images } : undefined);
 			clear(sessionId);
 			toast.success("已合并发送暂存消息");
 		} catch (err) {
@@ -48,7 +47,11 @@ export function HeldQueueBar({
 		if (!item || !item.text.trim()) return;
 		setSending(true);
 		try {
-			await sendPrompt(sessionId, item.text.trim());
+			await sendPrompt(
+				sessionId,
+				item.text.trim(),
+				item.images?.length ? { images: item.images } : undefined,
+			);
 			remove(sessionId, index);
 			toast.success("已发送暂存消息");
 		} catch (err) {
@@ -89,50 +92,59 @@ export function HeldQueueBar({
 
 	return (
 		<div className="shrink-0 border-t border-[var(--line)] bg-[var(--bg-panel)] px-3 py-1.5 text-[12px] text-[var(--text-60)]">
-			<div className="flex items-center gap-2">
+			<div className="flex items-center gap-1">
 				<span className="font-medium text-[var(--text)]">排队队列 ({items.length})</span>
 				{streaming && (
 					<span className="text-[11px] text-[var(--text-40)]">
 						（回合进行中，将按序执行）
 					</span>
 				)}
-				<button
-					type="button"
-					disabled={sending || streaming}
-					onClick={() => void sendMerged()}
-					title={streaming ? "回合进行中，结束后可发送" : "合并为一条并立即发送"}
-					className="rounded border border-[var(--line)] px-2 py-0.5 text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
-				>
-					立即发送(合并为一条)
-				</button>
-				<button
-					type="button"
-					onClick={() => setDismissed(sessionId, true)}
-					className="rounded px-2 py-0.5 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-				>
-					继续暂存
-				</button>
-				<button
-					type="button"
-					onClick={() => setExpanded((v) => !v)}
-					className="rounded px-2 py-0.5 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-				>
-					{expanded ? "收起" : "逐条确认"}
-				</button>
-				<button
-					type="button"
-					onClick={() => void handleClearAll()}
-					className="rounded px-2 py-0.5 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-				>
-					清空
-				</button>
+				<div className="ml-auto flex items-center gap-0.5">
+					<button
+						type="button"
+						aria-label={expanded ? "收起" : "逐条确认"}
+						title={expanded ? "收起" : "逐条确认"}
+						onClick={() => setExpanded((v) => !v)}
+						className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+					>
+						{expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+					</button>
+					<button
+						type="button"
+						aria-label="继续暂存"
+						title="继续暂存（隐藏此栏）"
+						onClick={() => setDismissed(sessionId, true)}
+						className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+					>
+						<Minus size={13} />
+					</button>
+					<button
+						type="button"
+						aria-label="清空"
+						title="清空队列"
+						onClick={() => void handleClearAll()}
+						className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+					>
+						<Trash2 size={13} />
+					</button>
+					<button
+						type="button"
+						disabled={sending || streaming}
+						onClick={() => void sendMerged()}
+						title={streaming ? "回合进行中，结束后可发送" : "合并为一条并立即发送"}
+						className="ml-1 flex items-center gap-1 rounded-full bg-[var(--text)] px-2.5 py-0.5 text-[11px] text-[var(--bg)] hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
+					>
+						<Send size={11} />
+						<span>发送</span>
+					</button>
+				</div>
 			</div>
 			{expanded && (
-				<div className="mt-1.5 flex flex-col gap-1">
+				<div className="mt-1.5 flex flex-col divide-y divide-[var(--line)] overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--bg)]">
 					{items.map((item, i) => (
 						<div
 							key={item.id}
-							className="flex items-start gap-1 rounded border border-[var(--line)] bg-[var(--bg)] p-1"
+							className="flex items-start gap-1.5 px-2.5 py-2"
 						>
 							<textarea
 								value={item.text}
@@ -166,7 +178,7 @@ export function HeldQueueBar({
 								title={streaming ? "回合进行中，结束后可发送" : "发送此条"}
 								disabled={sending || streaming}
 								onClick={() => void sendOne(i)}
-								className="shrink-0 rounded border border-[var(--line)] p-1 text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+								className="shrink-0 rounded p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
 							>
 								<Send size={12} />
 							</button>
@@ -175,7 +187,7 @@ export function HeldQueueBar({
 								aria-label="删除此条"
 								title="删除"
 								onClick={() => void handleRemoveOne(i)}
-								className="shrink-0 p-1 text-[var(--text-40)] hover:text-[var(--text)]"
+								className="shrink-0 rounded p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 							>
 								<X size={12} />
 							</button>

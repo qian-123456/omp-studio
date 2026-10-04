@@ -8,6 +8,5 @@ src-tauri/target/
 .omp/
 .cache/
 
-# AOCI agent host integration (machine-bound; do not commit)
-.mcp.json
+# AOCI agent host integration: .mcp.json is now portable (no machine paths) and committed.
 .mcp.json.backup.*

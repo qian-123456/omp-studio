@@ -774,8 +774,10 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Composer: Codex-style single container; annotation pills above input (remove ×), textarea (Enter send, Shift+Enter newline), bottom
   toolbar (attach, model picker, thinking level, held pill, context ring, round send/stop). Model picker (`get_available_models`/`set_model`), thinking
   level (`set_thinking_level`). If session not live → `rpc_ensure_live` first. While streaming: Enter puts the message in the **held queue**
-  (zustand, persisted to localStorage per session), Cmd+Enter = steer now, Stop button = `abort`. When a turn ends and held items exist, show a
-  bar "有 N 条暂存" with 立即发送(合并为一条)/继续暂存/逐条确认; items editable, deletable, reorderable (drag or ↑↓).
+  (zustand, persisted to localStorage per session), Cmd+Enter = steer now, Stop button = `abort`. While streaming, queued items show as a
+  Codex-style popover list above the composer (text + image count, × remove; no reorder). When the turn ends and `settings.queueAutoSend`
+  is on (default; `undefined` = on) items auto-send one at a time (each send restarts streaming; next turn-end sends the next). With it off,
+  show the manual bar "有 N 条暂存" with 立即发送(合并为一条)/继续暂存/逐条确认; items editable, deletable, reorderable (↑↓).
   External sessions: composer disabled with "只读观察 — 接管后可操作".
 - Pending dialogs: render approval card (Approve/Deny, show title body), select (options + optionDetails), confirm, input/editor
   (textarea) inline at the stream bottom; respond via `rpc_ui_respond`. Also load `rpc_pending_ui` on open.

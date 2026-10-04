@@ -655,6 +655,10 @@ pub struct Settings {
     /// checkpoints extension). None = never asked; Some(false) = declined/off.
     #[serde(default)]
     pub turn_checkpoints: Option<bool>,
+    /// Auto-send queued mid-stream messages one-by-one when the turn ends
+    /// (None = never set → treated as enabled).
+    #[serde(default)]
+    pub queue_auto_send: Option<bool>,
     /// Inbox window in hours (default 24, valid 1..=720): non-blocking todos older
     /// than this are hidden from the inbox.
     #[serde(default = "default_inbox_window_hours")]
@@ -694,6 +698,7 @@ impl Default for Settings {
             dock_badge_enabled: true,
             session_turn_auto_refresh: true,
             turn_checkpoints: None,
+            queue_auto_send: None,
             inbox_window_hours: default_inbox_window_hours(),
         }
     }

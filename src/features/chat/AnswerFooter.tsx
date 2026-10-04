@@ -1,8 +1,8 @@
-/** [B] Codex-style turn footer: hover-only ghost icon buttons (always
- * visible on the latest turn), tertiary meta text, neutral checkpoint
- * affordances — no colored pills. */
+/** [B] Codex-style quiet turn footer: one row of ghost icon buttons
+ * (always visible on the latest turn, hover-reveal otherwise), details in
+ * tooltips — no inline meta text, no colored pills. */
 
-import { ChevronRight, Copy, RotateCcw, Save } from "lucide-react";
+import { Copy, FileDiff, GitCommitHorizontal, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import type { TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
@@ -11,7 +11,6 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
-import { formatDurationCompact, formatShortModel } from "./turnGrouping";
 
 /** Tiny status letters in the changed-files list; color only on the letter. */
 const STATUS_LETTER_STYLE: Record<string, string> = {
@@ -76,9 +75,6 @@ export function AnswerFooter({
 	turnCheckpoint,
 	canUndo,
 	onDoneUndo,
-	completionTime,
-	durationMs,
-	model,
 	answerText,
 	isLatestTurn,
 }: {
@@ -88,6 +84,8 @@ export function AnswerFooter({
 	turnCheckpoint?: TurnCheckpoint;
 	canUndo?: boolean;
 	onDoneUndo?: () => void;
+	/** Accepted for contract stability; no longer rendered (duration lives
+	 * in ExecutionDisclosure). */
 	completionTime?: string | number | null;
 	durationMs?: number;
 	model?: string | null;
@@ -98,26 +96,9 @@ export function AnswerFooter({
 	const [filesOpen, setFilesOpen] = useState(false);
 	const [undoBusy, setUndoBusy] = useState(false);
 
-	let formattedTime = "";
-	if (completionTime) {
-		try {
-			const d = new Date(completionTime);
-			if (!isNaN(d.getTime())) {
-				formattedTime = d.toLocaleTimeString([], {
-					hour: "2-digit",
-					minute: "2-digit",
-					hour12: false,
-				});
-			}
-		} catch {
-			// ignore formatting error
-		}
-	}
-
-	const durationStr = durationMs ? formatDurationCompact(durationMs) : "";
-	const shortModel = formatShortModel(model);
 	const commit = turnCheckpoint?.commits?.[0];
-	const meta = [formattedTime, durationStr, shortModel].filter(Boolean);
+	const iconBtn =
+		"flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
 
 	return (
 		<div
@@ -128,92 +109,72 @@ export function AnswerFooter({
 					: "opacity-0 transition-opacity group-hover/answer:opacity-100 focus-within:opacity-100")
 			}
 		>
-			<div className="flex flex-wrap items-center justify-between gap-2">
-				{/* Meta + checkpoint affordances — neutral tertiary text */}
-				<div className="flex flex-wrap items-center gap-1.5 leading-none">
-					{meta.length > 0 && (
-						<span className="tabular-nums" title={model ?? undefined}>
-							{meta.join(" · ")}
-						</span>
-					)}
+			<div className="flex items-center gap-0.5">
+				{turnCheckpoint && (
+					<>
+						{turnCheckpoint.undone && (
+							<span className="px-1 leading-none">已撤回</span>
+						)}
 
-					{turnCheckpoint && (
-						<>
-							{turnCheckpoint.undone && (
-								<span className="text-[var(--text-30)]">已撤回</span>
-							)}
+						{!turnCheckpoint.undone && turnCheckpoint.files.length > 0 && (
+							<button
+								type="button"
+								onClick={() => setFilesOpen((v) => !v)}
+								className={
+									iconBtn + (filesOpen ? " bg-[var(--ghost-hover)] text-[var(--text)]" : "")
+								}
+								aria-expanded={filesOpen}
+								title={
+									filesOpen
+										? "收起改动文件"
+										: `这一轮改了 ${turnCheckpoint.files.length} 个文件，点击查看`
+								}
+								aria-label={`改了 ${turnCheckpoint.files.length} 个文件`}
+							>
+								<FileDiff size={12} />
+							</button>
+						)}
 
-							{!turnCheckpoint.undone && commit && (
-								<button
-									type="button"
-									onClick={() =>
-										useTurnNav.getState().showCommit(cwd, commit)
-									}
-									className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
-									title="在版本历史里查看这一轮存档"
-								>
-									<Save size={11} />
-									<span>
-										已存档{" "}
-										<span className="font-mono">
-											{commit.slice(0, 7)}
-										</span>
-									</span>
-								</button>
-							)}
+						{!turnCheckpoint.undone && commit && (
+							<button
+								type="button"
+								onClick={() => useTurnNav.getState().showCommit(cwd, commit)}
+								className={iconBtn}
+								title={`已存档 ${commit.slice(0, 7)} · 在版本历史里查看`}
+								aria-label={`已存档 ${commit.slice(0, 7)}`}
+							>
+								<GitCommitHorizontal size={12} />
+							</button>
+						)}
 
-							{!turnCheckpoint.undone &&
-								turnCheckpoint.files.length > 0 && (
-									<button
-										type="button"
-										onClick={() => setFilesOpen((v) => !v)}
-										className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
-										title={
-											filesOpen
-												? "收起改动文件"
-												: "查看这一轮改动的文件"
-										}
-									>
-										<ChevronRight
-											size={11}
-											className={
-												filesOpen
-													? "rotate-90 transition-transform"
-													: "transition-transform"
-											}
-										/>
-										<span>
-											改了 {turnCheckpoint.files.length} 个文件
-										</span>
-									</button>
-								)}
-
-							{canUndo && !turnCheckpoint.undone && (
-								<button
-									type="button"
-									disabled={undoBusy}
-									onClick={() => {
-										setUndoBusy(true);
-										void undoTurn(cwd, sessionFile, turnCheckpoint).then(
-											(done) => {
-												setUndoBusy(false);
-												if (done) onDoneUndo?.();
-											},
-										);
-									}}
-									className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-50"
-									title="把这一轮改动的文件恢复回这一轮开始前的样子"
-								>
-									<RotateCcw size={11} />
-									<span>{undoBusy ? "正在撤回…" : "撤回这一轮"}</span>
-								</button>
-							)}
-						</>
-					)}
-				</div>
+						{canUndo && !turnCheckpoint.undone && (
+							<button
+								type="button"
+								disabled={undoBusy}
+								onClick={() => {
+									setUndoBusy(true);
+									void undoTurn(cwd, sessionFile, turnCheckpoint).then(
+										(done) => {
+											setUndoBusy(false);
+											if (done) onDoneUndo?.();
+										},
+									);
+								}}
+								className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-50"
+								title={
+									undoBusy
+										? "正在撤回…"
+										: "撤回这一轮：把改动的文件恢复回这一轮开始前的样子"
+								}
+								aria-label="撤回这一轮"
+							>
+								<RotateCcw size={12} />
+							</button>
+						)}
+					</>
+				)}
 
 				{/* Copy / fork ghost icon buttons */}
-				<div className="flex items-center gap-0.5">
 					{answerText && (
 						<button
 							type="button"
@@ -260,7 +221,6 @@ export function AnswerFooter({
 					>
 						<BranchIcon />
 					</button>
-				</div>
 			</div>
 
 			{/* Expandable changed-files list — status letter carries the color */}
