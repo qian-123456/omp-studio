@@ -252,7 +252,7 @@ export function QuotaDashboardCard() {
 				{/* Top Section Header */}
 				<SectionHeader
 					title={
-						<span className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-neutral-100">
+						<span className="flex items-center gap-1.5 font-semibold text-neutral-100">
 							<Gauge className="h-4 w-4 text-[var(--accent)]" /> 订阅与 Quota
 						</span>
 					}
@@ -273,17 +273,17 @@ export function QuotaDashboardCard() {
 				/>
 
 				{loading ? (
-					<div className="flex flex-col items-center justify-center py-12 text-xs text-neutral-500 gap-2.5">
+					<div className="flex flex-col items-center justify-center py-12 text-xs text-neutral-400 gap-2.5">
 						<RefreshCw className="h-5 w-5 animate-spin text-[var(--accent)]" />
 						<span>正在从 OMP 获取官方订阅与额度快照…</span>
 					</div>
 				) : error ? (
-					<div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-xs text-red-600 dark:text-red-300 space-y-2">
+					<div className="rounded-xl border border-rose-800/40 bg-rose-950/20 p-4 text-xs text-rose-300 space-y-2">
 						<div className="flex items-center gap-2 font-medium">
-							<AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+							<AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
 							<span>无法获取 OMP 配额快照</span>
 						</div>
-						<div className="text-[11px] text-red-500/80">{error}</div>
+						<div className="text-[11px] text-rose-400/80">{error}</div>
 						<button
 							type="button"
 							className="text-[11px] text-[var(--accent)] underline hover:opacity-80 font-medium"
@@ -293,19 +293,19 @@ export function QuotaDashboardCard() {
 						</button>
 					</div>
 				) : providers.length === 0 ? (
-					<div className="py-10 text-center text-xs text-neutral-500 space-y-2.5">
-						<div className="text-neutral-800 dark:text-neutral-200 font-semibold text-sm">
+					<div className="py-10 text-center text-xs text-neutral-400 space-y-2.5">
+						<div className="text-neutral-100 font-semibold text-sm">
 							暂无已激活的官方订阅或 Coding Plan
 						</div>
-						<div className="text-[11px] text-neutral-500 max-w-md mx-auto leading-relaxed">
+						<div className="text-[11px] text-neutral-400 max-w-md mx-auto leading-relaxed">
 							未检测到 Anthropic、Devin、Google Antigravity、GitHub Copilot
 							等官方订阅账号。可在终端执行{" "}
-							<code className="rounded bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 text-neutral-800 dark:text-neutral-200 font-mono border border-neutral-200 dark:border-neutral-700">
+							<code className="rounded bg-[var(--well-bg)] px-1.5 py-0.5 text-neutral-200 font-mono border border-[var(--border-divider)]">
 								omp login
 							</code>{" "}
 							登录账号，登录后即可在此实时查看官方配额与重置时间。
 						</div>
-						<div className="text-[10px] text-neutral-400">
+						<div className="text-[10px] text-neutral-500">
 							普通 API Key 按量计费结算，不属于 Coding Plan
 							配额，可在左侧「API 供应商」中配置。
 						</div>
@@ -314,49 +314,49 @@ export function QuotaDashboardCard() {
 					<div className="space-y-4">
 						{/* North Star KPI Summary Bar */}
 						<div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-							<div className="rounded-xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 shadow-xs">
-								<div className="text-[11px] text-neutral-500 flex items-center gap-1.5 font-medium">
+							<div className="rounded-xl border border-[var(--border)] bg-[var(--well-bg)] p-3 shadow-xs">
+								<div className="text-[11px] text-neutral-400 flex items-center gap-1.5 font-medium">
 									<Cpu className="h-3.5 w-3.5 text-neutral-400" />
 									<span>活跃服务</span>
 								</div>
-								<div className="mt-1 text-lg font-bold text-neutral-900 dark:text-neutral-100">
+								<div className="mt-1 text-lg font-bold text-neutral-100">
 									{stats.totalProviders}{" "}
-									<span className="text-xs font-normal text-neutral-500">
+									<span className="text-xs font-normal text-neutral-400">
 										家
 									</span>
 								</div>
 							</div>
 
-							<div className="rounded-xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 shadow-xs">
-								<div className="text-[11px] text-neutral-500 flex items-center gap-1.5 font-medium">
+							<div className="rounded-xl border border-[var(--border)] bg-[var(--well-bg)] p-3 shadow-xs">
+								<div className="text-[11px] text-neutral-400 flex items-center gap-1.5 font-medium">
 									<Users className="h-3.5 w-3.5 text-neutral-400" />
 									<span>授权账号</span>
 								</div>
-								<div className="mt-1 text-lg font-bold text-neutral-900 dark:text-neutral-100">
+								<div className="mt-1 text-lg font-bold text-neutral-100">
 									{stats.totalAccounts}{" "}
-									<span className="text-xs font-normal text-neutral-500">
+									<span className="text-xs font-normal text-neutral-400">
 										个
 									</span>
 								</div>
 							</div>
 
-							<div className="rounded-xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 shadow-xs">
-								<div className="text-[11px] text-neutral-500 flex items-center gap-1.5 font-medium">
-									<ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+							<div className="rounded-xl border border-[var(--border)] bg-[var(--well-bg)] p-3 shadow-xs">
+								<div className="text-[11px] text-neutral-400 flex items-center gap-1.5 font-medium">
+									<ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
 									<span>健康状态</span>
 								</div>
-								<div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+								<div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
 									<span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
 									{stats.allHealthy ? "全部充裕" : "部分受限"}
 								</div>
 							</div>
 
-							<div className="rounded-xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 shadow-xs">
-								<div className="text-[11px] text-neutral-500 flex items-center gap-1.5 font-medium">
-									<Sparkles className="h-3.5 w-3.5 text-amber-500" />
+							<div className="rounded-xl border border-[var(--border)] bg-[var(--well-bg)] p-3 shadow-xs">
+								<div className="text-[11px] text-neutral-400 flex items-center gap-1.5 font-medium">
+									<Sparkles className="h-3.5 w-3.5 text-amber-400" />
 									<span>专属权益</span>
 								</div>
-								<div className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-400 truncate">
+								<div className="mt-1 text-xs font-semibold text-amber-400 truncate">
 									{stats.totalCredits > 0
 										? `✦ ${stats.totalCredits} 次重置机会`
 										: "标准额度"}
@@ -366,14 +366,14 @@ export function QuotaDashboardCard() {
 
 						{/* Quick Filter Tabs */}
 						{providers.length > 1 && (
-							<div className="flex flex-wrap items-center gap-1.5 border-b border-neutral-200 dark:border-neutral-800 pb-2.5">
+							<div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border-divider)] pb-2.5">
 								<button
 									type="button"
 									onClick={() => setSelectedTab("all")}
 									className={`rounded-full px-3 py-1 text-xs transition-all ${
 										selectedTab === "all"
-											? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 font-semibold shadow-xs"
-											: "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700"
+											? "bg-[var(--accent)] text-white font-semibold shadow-xs"
+											: "bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 border border-[var(--border-divider)]"
 									}`}
 								>
 									全部 ({providers.length})
@@ -388,7 +388,7 @@ export function QuotaDashboardCard() {
 											className={`rounded-full px-3 py-1 text-xs transition-all flex items-center gap-1.5 ${
 												isSel
 													? "font-semibold shadow-xs"
-													: "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700"
+													: "bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 border border-[var(--border-divider)]"
 											}`}
 											style={
 												isSel
@@ -423,7 +423,7 @@ export function QuotaDashboardCard() {
 								return (
 									<div
 										key={p.providerId}
-										className={`rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm overflow-hidden transition-all duration-200 ${p.brand.borderLClass} border-l-4`}
+										className={`rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-apple-card overflow-hidden transition-all duration-200 ${p.brand.borderLClass} border-l-4`}
 									>
 										{/* Provider Card Header */}
 										<div
@@ -432,9 +432,8 @@ export function QuotaDashboardCard() {
 											<div className="flex items-center gap-3 min-w-0">
 												{/* Brand Icon Box */}
 												<div
-													className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 shadow-xs"
+													className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 shadow-xs border border-[var(--border-divider)] bg-[var(--bg-panel)]"
 													style={{
-														backgroundColor: `${p.brand.color}15`,
 														color: p.brand.color,
 													}}
 												>
@@ -449,7 +448,7 @@ export function QuotaDashboardCard() {
 												{/* Provider Name and Badges */}
 												<div className="min-w-0">
 													<div className="flex items-center gap-2">
-														<span className="font-bold text-sm text-neutral-900 dark:text-neutral-100">
+														<span className="font-bold text-sm text-neutral-100">
 															{p.brand.name}
 														</span>
 														<span
@@ -458,7 +457,7 @@ export function QuotaDashboardCard() {
 															{p.brand.badge}
 														</span>
 													</div>
-													<div className="text-[11px] text-neutral-500 mt-0.5">
+													<div className="text-[11px] text-neutral-400 mt-0.5">
 														{totalAccounts} 个已授权账号
 													</div>
 												</div>
@@ -467,7 +466,7 @@ export function QuotaDashboardCard() {
 											{/* Right Side Actions & Badges */}
 											<div className="flex items-center gap-2.5 shrink-0">
 												{p.totalCredits > 0 && (
-													<span className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 text-[11px] text-amber-600 dark:text-amber-300 font-semibold flex items-center gap-1 shadow-xs">
+													<span className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 text-[11px] text-amber-400 font-semibold flex items-center gap-1 shadow-xs">
 														<Sparkles className="h-3 w-3" />✦ {p.totalCredits}{" "}
 														次重置券
 													</span>
@@ -476,7 +475,7 @@ export function QuotaDashboardCard() {
 												<button
 													type="button"
 													onClick={() => toggleExpanded(p.providerId)}
-													className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+													className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
 													style={{ color: p.brand.color }}
 												>
 													<span>
@@ -494,9 +493,9 @@ export function QuotaDashboardCard() {
 										</div>
 
 										{/* Primary Glanceable Quota Progress Bars */}
-										<div className="p-4 space-y-3 bg-white dark:bg-neutral-900/40">
+										<div className="p-4 space-y-3 bg-[var(--bg-panel)]">
 											{p.primaryLimits.length === 0 ? (
-												<div className="text-xs text-neutral-500 py-1">
+												<div className="text-xs text-neutral-400 py-1">
 													已连接账号，暂无特定时间窗口限额
 												</div>
 											) : (
@@ -513,7 +512,7 @@ export function QuotaDashboardCard() {
 														>
 															<div className="flex items-center justify-between text-xs">
 																<div className="flex items-center gap-1.5">
-																	<span className="font-semibold text-neutral-900 dark:text-neutral-200">
+																	<span className="font-semibold text-neutral-100">
 																		{lim.label}
 																	</span>
 																</div>
@@ -524,14 +523,14 @@ export function QuotaDashboardCard() {
 																	>
 																		{lim.usedPct.toFixed(1)}% 已用
 																	</span>
-																	<span className="text-neutral-500 dark:text-neutral-400 text-[11px]">
+																	<span className="text-neutral-400 text-[11px]">
 																		· {lim.remainingText}
 																	</span>
 																</div>
 															</div>
 
 															{/* Sleek Tactile Progress Track */}
-															<div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700/50">
+															<div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-hover)] border border-[var(--border-divider)]">
 																<div
 																	className="h-full transition-all duration-300 rounded-full"
 																	style={{
@@ -542,12 +541,12 @@ export function QuotaDashboardCard() {
 															</div>
 
 															{/* Reset Countdown Info */}
-															<div className="flex items-center justify-between text-[11px] text-neutral-500 pt-0.5">
+															<div className="flex items-center justify-between text-[11px] text-neutral-400 pt-0.5">
 																<span className="flex items-center gap-1.5 font-medium">
 																	<Timer className="h-3 w-3 text-neutral-400 shrink-0" />
 																	<span>{lim.countdown}</span>
 																</span>
-																<span className="text-[10px] text-neutral-400">
+																<span className="text-[10px] text-neutral-500">
 																	动态滚动窗口
 																</span>
 															</div>
@@ -559,10 +558,10 @@ export function QuotaDashboardCard() {
 
 										{/* Collapsible Account Breakdown */}
 										{isOpen && (
-											<div className="border-t border-neutral-200 dark:border-neutral-800 p-4 space-y-2.5 bg-neutral-50/70 dark:bg-neutral-950/40">
-												<div className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1 flex items-center justify-between">
+											<div className="border-t border-[var(--border-divider)] p-4 space-y-2.5 bg-[var(--well-bg)]">
+												<div className="text-xs font-semibold text-neutral-200 mb-1 flex items-center justify-between">
 													<span>已绑定账号明细</span>
-													<span className="text-[11px] text-neutral-500 font-normal">
+													<span className="text-[11px] text-neutral-400 font-normal">
 														共 {totalAccounts} 个账号
 													</span>
 												</div>
@@ -583,36 +582,36 @@ export function QuotaDashboardCard() {
 														return (
 															<div
 																key={`${email || accountId || rIdx}`}
-																className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 text-xs space-y-2 shadow-2xs"
+																className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel)] p-3 text-xs space-y-2 shadow-2xs"
 															>
 																{/* Account Row Header */}
 																<div className="flex flex-wrap items-center justify-between gap-2">
 																	<div className="flex items-center gap-2 min-w-0">
-																		<span className="truncate font-semibold text-neutral-900 dark:text-neutral-200">
+																		<span className="truncate font-semibold text-neutral-100">
 																			{email || accountId || "主账号"}
 																		</span>
 																		{planType && (
-																			<span className="rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 text-[9px] font-semibold border border-emerald-500/20">
+																			<span className="rounded bg-emerald-500/10 text-emerald-400 px-1.5 py-0.2 text-[9px] font-semibold border border-emerald-500/20">
 																				{planType}
 																			</span>
 																		)}
 																		{orgName && (
-																			<span className="text-[11px] text-neutral-500 truncate max-w-[200px]">
+																			<span className="text-[11px] text-neutral-400 truncate max-w-[200px]">
 																				· {orgName}
 																			</span>
 																		)}
 																	</div>
 
-																	<div className="flex items-center gap-2 text-[10px] text-neutral-500">
+																	<div className="flex items-center gap-2 text-[10px] text-neutral-400">
 																		{resetCredits &&
 																			resetCredits.availableCount > 0 && (
-																				<span className="text-amber-600 dark:text-amber-400 font-semibold">
+																				<span className="text-amber-400 font-semibold">
 																					✦ {resetCredits.availableCount}{" "}
 																					次重置券
 																				</span>
 																			)}
 																		{overage != null && (
-																			<span className="text-neutral-600 dark:text-neutral-400">
+																			<span className="text-neutral-300">
 																				超额: ${overage.toFixed(2)}
 																			</span>
 																		)}
@@ -628,7 +627,7 @@ export function QuotaDashboardCard() {
 
 																{/* Account Limits Chips / Bars */}
 																{uniqueLimits.length > 0 && (
-																	<div className="grid gap-2 sm:grid-cols-2 pt-1 border-t border-neutral-100 dark:border-neutral-800">
+																	<div className="grid gap-2 sm:grid-cols-2 pt-1 border-t border-[var(--border-divider)]">
 																		{uniqueLimits.map((lim) => {
 																			const isPercent =
 																				lim.amount.unit === "percent";
@@ -651,10 +650,10 @@ export function QuotaDashboardCard() {
 																			return (
 																				<div
 																					key={lim.id}
-																					className="rounded-lg bg-neutral-50 dark:bg-neutral-800/60 p-2 space-y-1 border border-neutral-100 dark:border-neutral-700/50"
+																					className="rounded-lg bg-[var(--well-bg)] p-2 space-y-1 border border-[var(--border-divider)]"
 																				>
 																					<div className="flex items-center justify-between text-[11px]">
-																						<span className="text-neutral-700 dark:text-neutral-300 font-medium truncate max-w-[140px]">
+																						<span className="text-neutral-200 font-medium truncate max-w-[140px]">
 																							{lim.label}
 																						</span>
 																						<span
@@ -664,7 +663,7 @@ export function QuotaDashboardCard() {
 																							{usedPct.toFixed(1)}%
 																						</span>
 																					</div>
-																					<div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+																					<div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-hover)]">
 																						<div
 																							className="h-full rounded-full"
 																							style={{
@@ -673,7 +672,7 @@ export function QuotaDashboardCard() {
 																							}}
 																						/>
 																					</div>
-																					<div className="flex items-center justify-between text-[10px] text-neutral-500">
+																					<div className="flex items-center justify-between text-[10px] text-neutral-400">
 																						<span>
 																							{lim.window?.resetsAt
 																								? formatCountdown(
@@ -700,9 +699,9 @@ export function QuotaDashboardCard() {
 													{p.unmetered.map((u, uIdx) => (
 														<div
 															key={`unmetered-${u.enterpriseUrl || uIdx}`}
-															className="rounded-xl border border-dashed border-neutral-300 dark:border-neutral-800 p-2.5 text-xs flex items-center justify-between text-neutral-500 bg-white dark:bg-neutral-900"
+															className="rounded-xl border border-dashed border-[var(--border)] p-2.5 text-xs flex items-center justify-between text-neutral-400 bg-[var(--bg-panel)]"
 														>
-															<span className="truncate font-medium text-neutral-600 dark:text-neutral-400">
+															<span className="truncate font-medium text-neutral-200">
 																{u.enterpriseUrl || `${p.brand.name} 关联账号`}
 															</span>
 															<span className="text-[11px] text-neutral-500 flex items-center gap-1 shrink-0">

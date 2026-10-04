@@ -11,7 +11,7 @@ export interface ProviderBrandConfig {
 	badgeClass: string;
 	headerBgClass: string;
 	progressColor: string;
-	iconType: "anthropic" | "google" | "devin" | "copilot" | "cursor" | "generic";
+	iconType: string;
 }
 
 export const KNOWN_BRAND_CONFIGS: Record<string, ProviderBrandConfig> = {
@@ -20,9 +20,8 @@ export const KNOWN_BRAND_CONFIGS: Record<string, ProviderBrandConfig> = {
 		badge: "Claude Pro/Max",
 		color: "#D97757",
 		borderLClass: "border-l-[#D97757]",
-		badgeClass:
-			"bg-[#D97757]/10 text-[#D97757] border border-[#D97757]/30 dark:bg-[#D97757]/20",
-		headerBgClass: "bg-[#D97757]/[0.05] border-b border-[#D97757]/15",
+		badgeClass: "bg-[#D97757]/10 text-[#D97757] border border-[#D97757]/30",
+		headerBgClass: "bg-[#D97757]/[0.06] border-b border-[#D97757]/15",
 		progressColor: "#D97757",
 		iconType: "anthropic",
 	},
@@ -31,32 +30,29 @@ export const KNOWN_BRAND_CONFIGS: Record<string, ProviderBrandConfig> = {
 		badge: "Gemini / Claude / GPT",
 		color: "#3B82F6",
 		borderLClass: "border-l-[#3B82F6]",
-		badgeClass:
-			"bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/30 dark:bg-[#3B82F6]/20",
-		headerBgClass: "bg-[#3B82F6]/[0.05] border-b border-[#3B82F6]/15",
-		progressColor: "#3B82F6",
-		iconType: "google",
+		badgeClass: "bg-[#3186FF]/10 text-[#3186FF] border border-[#3186FF]/30",
+		headerBgClass: "bg-[#3186FF]/[0.06] border-b border-[#3186FF]/15",
+		progressColor: "#3186FF",
+		iconType: "antigravity",
 	},
 	google: {
 		name: "Google Gemini",
 		badge: "Gemini Code Assist",
 		color: "#3B82F6",
 		borderLClass: "border-l-[#3B82F6]",
-		badgeClass:
-			"bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/30 dark:bg-[#3B82F6]/20",
-		headerBgClass: "bg-[#3B82F6]/[0.05] border-b border-[#3B82F6]/15",
-		progressColor: "#3B82F6",
+		badgeClass: "bg-[#4285F4]/10 text-[#4285F4] border border-[#4285F4]/30",
+		headerBgClass: "bg-[#4285F4]/[0.06] border-b border-[#4285F4]/15",
+		progressColor: "#4285F4",
 		iconType: "google",
 	},
 	devin: {
 		name: "Devin AI",
 		badge: "Cognition Devin",
-		color: "#06B6D4",
-		borderLClass: "border-l-[#06B6D4]",
-		badgeClass:
-			"bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30 dark:bg-[#06B6D4]/20",
-		headerBgClass: "bg-[#06B6D4]/[0.05] border-b border-[#06B6D4]/15",
-		progressColor: "#06B6D4",
+		color: "#10B981",
+		borderLClass: "border-l-[#10B981]",
+		badgeClass: "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30",
+		headerBgClass: "bg-[#10B981]/[0.06] border-b border-[#10B981]/15",
+		progressColor: "#10B981",
 		iconType: "devin",
 	},
 	"github-copilot": {
@@ -64,9 +60,8 @@ export const KNOWN_BRAND_CONFIGS: Record<string, ProviderBrandConfig> = {
 		badge: "Copilot Business/Individual",
 		color: "#6366F1",
 		borderLClass: "border-l-[#6366F1]",
-		badgeClass:
-			"bg-[#6366F1]/10 text-[#6366F1] border border-[#6366F1]/30 dark:bg-[#6366F1]/20",
-		headerBgClass: "bg-[#6366F1]/[0.05] border-b border-[#6366F1]/15",
+		badgeClass: "bg-[#6366F1]/10 text-[#6366F1] border border-[#6366F1]/30",
+		headerBgClass: "bg-[#6366F1]/[0.06] border-b border-[#6366F1]/15",
 		progressColor: "#6366F1",
 		iconType: "copilot",
 	},
@@ -75,9 +70,8 @@ export const KNOWN_BRAND_CONFIGS: Record<string, ProviderBrandConfig> = {
 		badge: "Cursor Pro/Business",
 		color: "#8B5CF6",
 		borderLClass: "border-l-[#8B5CF6]",
-		badgeClass:
-			"bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30 dark:bg-[#8B5CF6]/20",
-		headerBgClass: "bg-[#8B5CF6]/[0.05] border-b border-[#8B5CF6]/15",
+		badgeClass: "bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30",
+		headerBgClass: "bg-[#8B5CF6]/[0.06] border-b border-[#8B5CF6]/15",
 		progressColor: "#8B5CF6",
 		iconType: "cursor",
 	},
@@ -86,44 +80,40 @@ export const KNOWN_BRAND_CONFIGS: Record<string, ProviderBrandConfig> = {
 		badge: "Kimi Coding Plan",
 		color: "#14B8A6",
 		borderLClass: "border-l-[#14B8A6]",
-		badgeClass:
-			"bg-[#14B8A6]/10 text-[#14B8A6] border border-[#14B8A6]/30 dark:bg-[#14B8A6]/20",
-		headerBgClass: "bg-[#14B8A6]/[0.05] border-b border-[#14B8A6]/15",
+		badgeClass: "bg-[#14B8A6]/10 text-[#14B8A6] border border-[#14B8A6]/30",
+		headerBgClass: "bg-[#14B8A6]/[0.06] border-b border-[#14B8A6]/15",
 		progressColor: "#14B8A6",
-		iconType: "generic",
+		iconType: "kimi",
 	},
 	"minimax-code": {
 		name: "MiniMax (名之梦)",
 		badge: "Token Plan",
-		color: "#F97316",
-		borderLClass: "border-l-[#F97316]",
-		badgeClass:
-			"bg-[#F97316]/10 text-[#F97316] border border-[#F97316]/30 dark:bg-[#F97316]/20",
-		headerBgClass: "bg-[#F97316]/[0.05] border-b border-[#F97316]/15",
-		progressColor: "#F97316",
-		iconType: "generic",
+		color: "#E2167E",
+		borderLClass: "border-l-[#E2167E]",
+		badgeClass: "bg-[#E2167E]/10 text-[#E2167E] border border-[#E2167E]/30",
+		headerBgClass: "bg-[#E2167E]/[0.06] border-b border-[#E2167E]/15",
+		progressColor: "#E2167E",
+		iconType: "minimax",
 	},
 	"alibaba-token-plan": {
 		name: "阿里百炼 / Qwen",
 		badge: "Token Plan",
-		color: "#FB923C",
-		borderLClass: "border-l-[#FB923C]",
-		badgeClass:
-			"bg-[#FB923C]/10 text-[#FB923C] border border-[#FB923C]/30 dark:bg-[#FB923C]/20",
-		headerBgClass: "bg-[#FB923C]/[0.05] border-b border-[#FB923C]/15",
-		progressColor: "#FB923C",
-		iconType: "generic",
+		color: "#1677FF",
+		borderLClass: "border-l-[#1677FF]",
+		badgeClass: "bg-[#1677FF]/10 text-[#1677FF] border border-[#1677FF]/30",
+		headerBgClass: "bg-[#1677FF]/[0.06] border-b border-[#1677FF]/15",
+		progressColor: "#1677FF",
+		iconType: "bailian",
 	},
 	"opencode-go": {
 		name: "OpenCode",
 		badge: "OpenCode Go",
 		color: "#10B981",
 		borderLClass: "border-l-[#10B981]",
-		badgeClass:
-			"bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30 dark:bg-[#10B981]/20",
-		headerBgClass: "bg-[#10B981]/[0.05] border-b border-[#10B981]/15",
+		badgeClass: "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30",
+		headerBgClass: "bg-[#10B981]/[0.06] border-b border-[#10B981]/15",
 		progressColor: "#10B981",
-		iconType: "generic",
+		iconType: "opencode-go",
 	},
 };
 
@@ -137,13 +127,12 @@ export function resolveBrandConfig(providerId: string): ProviderBrandConfig {
 	return {
 		name: clean,
 		badge: "账号订阅",
-		color: "#6B7280",
-		borderLClass: "border-l-neutral-400 dark:border-l-neutral-600",
-		badgeClass:
-			"bg-neutral-500/10 text-neutral-600 border border-neutral-300 dark:text-neutral-400 dark:border-neutral-700",
-		headerBgClass: "bg-neutral-500/[0.03] border-b border-neutral-200 dark:border-neutral-800",
-		progressColor: "#6B7280",
-		iconType: "generic",
+		color: "var(--accent)",
+		borderLClass: "border-l-[var(--accent)]",
+		badgeClass: "bg-[var(--well-bg)] text-neutral-300 border border-[var(--border-divider)]",
+		headerBgClass: "bg-[var(--well-bg)] border-b border-[var(--border-divider)]",
+		progressColor: "var(--accent)",
+		iconType: providerId,
 	};
 }
 
