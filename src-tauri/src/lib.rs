@@ -236,6 +236,7 @@ pub fn run() {
             providers::commands::oauth_login_cancel,
             providers::commands::oauth_login_open_url,
             providers::commands::oauth_login_status,
+            providers::commands::omp_usage_report,
             // E — mobile + tunnel
             mobile::commands::mobile_start,
             mobile::commands::mobile_stop,

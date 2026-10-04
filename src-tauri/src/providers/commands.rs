@@ -923,6 +923,57 @@ pub async fn omp_providers_list() -> Result<Vec<crate::contracts::OmpProviderInf
     Ok(super::omp_config::scan())
 }
 
+/// Query live subscription quota and coding plans via `omp usage --json`.
+#[tauri::command]
+pub async fn omp_usage_report(
+    state: tauri::State<'_, crate::state::AppState>,
+    refresh: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let path = crate::terminal::env::augmented_path();
+    let bin_setting = state.settings.read().omp_binary.clone();
+    let bin = if !bin_setting.trim().is_empty() {
+        bin_setting
+    } else {
+        crate::terminal::env::which("omp")
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "omp".to_string())
+    };
+
+    if refresh.unwrap_or(false) {
+        let _ = tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::process::Command::new(&bin)
+                .args(["usage", "invalidate"])
+                .env("PATH", &path)
+                .current_dir(std::env::temp_dir())
+                .output(),
+        )
+        .await;
+    }
+
+    let output = tokio::time::timeout(
+        Duration::from_secs(15),
+        tokio::process::Command::new(&bin)
+            .args(["usage", "--json"])
+            .env("PATH", &path)
+            .current_dir(std::env::temp_dir())
+            .output(),
+    )
+    .await
+    .map_err(|_| "获取 OMP 配额超时".to_string())?
+    .map_err(|e| format!("执行 omp usage 失败: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("omp usage 退出异常 ({}): {stderr}", output.status));
+    }
+
+    let val: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("解析 omp usage 输出失败: {e}"))?;
+
+    Ok(val)
+}
+
 fn normalize_identifier(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_alphanumeric())

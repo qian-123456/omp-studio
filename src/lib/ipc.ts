@@ -26,6 +26,7 @@ import type {
 	OmpProjectConfigFile,
 	OmpProviderInfo,
 	OmpImportResult,
+	OmpUsageReportData,
 	PairingInfo,
 	PathCheck,
 	PendingUiRequest,
@@ -443,6 +444,9 @@ export const oauthLoginOpenUrl = (url: string) =>
 
 export const oauthLoginStatus = () =>
 	invoke<OauthLoginStatus | null>("oauth_login_status");
+
+export const ompUsageReport = (refresh?: boolean) =>
+	invoke<OmpUsageReportData>("omp_usage_report", { refresh: refresh ?? false });
 
 // ---- E — mobile / tunnel ----
 

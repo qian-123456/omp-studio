@@ -671,6 +671,95 @@ export interface OmpImportResult {
 	error: string | null;
 }
 
+export interface OmpUsageLimit {
+	id: string;
+	label: string;
+	scope?: {
+		provider?: string;
+		projectId?: string;
+		accountId?: string;
+		orgId?: string;
+		tier?: string;
+		windowId?: string;
+		shared?: boolean;
+		sharedGroup?: string;
+	};
+	window?: {
+		id: string;
+		label: string;
+		durationMs: number;
+		resetsAt: number;
+	};
+	amount: {
+		unit: string;
+		used?: number;
+		limit?: number;
+		remaining?: number;
+		usedFraction?: number;
+		remainingFraction?: number;
+	};
+	status?: string;
+}
+
+export interface OmpUsageResetCredit {
+	id: string;
+	title: string;
+	program?: string;
+	remainingCount: number;
+	usable: boolean;
+	expiresAt?: string;
+	status?: string;
+}
+
+export interface OmpUsageProviderReport {
+	provider: string;
+	fetchedAt: number;
+	limits: OmpUsageLimit[];
+	notes?: string[];
+	metadata?: {
+		email?: string;
+		accountId?: string;
+		orgId?: string;
+		orgName?: string;
+		planType?: string;
+		planEnd?: number;
+		overageBalanceUsd?: number;
+		projectId?: string;
+		source?: string;
+		endpoint?: string;
+	};
+	resetCredits?: {
+		availableCount: number;
+		redeemableCount?: number;
+		nextCreditId?: string;
+		eligible?: boolean;
+		credits?: OmpUsageResetCredit[];
+	};
+}
+
+export interface OmpUsageAccountWithoutUsage {
+	provider: string;
+	type?: string;
+	enterpriseUrl?: string;
+	authorizedAt?: number;
+}
+
+export interface OmpUsageCapacityWindow {
+	window: string;
+	durationMs: number;
+	accounts: number;
+	usedAccounts: number;
+	remainingAccounts: number;
+}
+
+export interface OmpUsageReportData {
+	generatedAt: number;
+	reports: OmpUsageProviderReport[];
+	accountsWithoutUsage?: OmpUsageAccountWithoutUsage[];
+	disabledCredentials?: unknown[];
+	capacity?: Record<string, OmpUsageCapacityWindow[]>;
+}
+
 // ---- E: Schedules (定时任务) ----
 
 export type ScheduleRunMode = "local" | "worktree";
