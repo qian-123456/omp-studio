@@ -1,8 +1,10 @@
 /** [B] Shared prompt-send helpers for Composer and the held-queue bar. */
 
 import { create } from "zustand";
+import { confirmDialog } from "../../lib/dialogs";
 import { ensureLive } from "../../lib/ensureLive";
-import { rpcSend } from "../../lib/ipc";
+import { rpcSend, takeoverExternal } from "../../lib/ipc";
+import { useSessions } from "../../stores/sessions";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import type { ImageAttachment } from "../../lib/contracts";
@@ -44,10 +46,24 @@ export async function sendPrompt(
 ): Promise<void> {
 	const trimmed = text.trim();
 	if (!trimmed) return;
-	// Optimistic echo: add immediately before network calls so the user bubble
-	// appears synchronously and never disappears or arrives after assistant stream.
+	// Session running in an external terminal: take it over (the backend stops
+	// the external PID and waits for it to flush its exit record) before
+	// resuming an app-owned RPC process. Cancel aborts the send.
+	const meta = useSessions.getState().sessions[sessionId];
+	const external = meta?.status === "external";
+	if (external) {
+		const ok = await confirmDialog(
+			"当前会话正在外部终端运行，发送消息将接管该会话，确认接管？",
+			{ danger: true, okLabel: "接管" },
+		);
+		if (!ok) return;
+	}
+	// Optimistic echo: add before network calls so the user bubble appears
+	// immediately and never arrives after the assistant stream.
 	useLive.getState().addUserEcho(sessionId, trimmed, opts?.images);
-	if (!useLive.getState().sessions[sessionId]?.alive) {
+	if (external) {
+		await takeoverExternal(sessionId);
+	} else if (!useLive.getState().sessions[sessionId]?.alive) {
 		await ensureLive(sessionId);
 	}
 	const streaming = useLive.getState().sessions[sessionId]?.streaming === true;

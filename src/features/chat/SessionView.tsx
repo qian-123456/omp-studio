@@ -12,12 +12,9 @@ import { errMsg } from "../../lib/dialogs";
 import {
 	getTranscript,
 	gitSessionTurns,
-	rpcEnsureLive,
 	rpcPendingUi,
 	rpcSend,
 } from "../../lib/ipc";
-import { isResumeCancelled } from "../../lib/ensureLive";
-import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { ChatTrace } from "./ChatTrace";
@@ -136,19 +133,6 @@ export function SessionView({
 				loadTurns();
 			});
 	}, [streaming, sessionId, setItems, appendItems, loadTurns]);
-
-	// Auto-resume / reconnect if the session is not alive and not external
-	useEffect(() => {
-		if (!alive || status === "interrupted" || status === "suspended") {
-			rpcEnsureLive(sessionId).catch((err) => {
-				// Deleted worktree: history stays readable; resume only happens
-				// via the explicit resume dialog (Composer/row actions).
-				if (!isResumeCancelled(err)) {
-					toast.error(`自动重连失败: ${errMsg(err)}`);
-				}
-			});
-		}
-	}, [sessionId, external, alive, status]);
 
 	return (
 		<div className="flex h-full flex-col">

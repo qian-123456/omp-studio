@@ -67,9 +67,12 @@ async fn run_watcher(state: AppState) {
         move |res: DebounceEventResult| {
             if let Ok(events) = res {
                 let matches = events.iter().any(|ev| {
-                    ev.paths
-                        .iter()
-                        .any(|p| p.extension().and_then(|x| x.to_str()) == Some("jsonl"))
+                    ev.paths.iter().any(|p| {
+                        matches!(
+                            p.extension().and_then(|x| x.to_str()),
+                            Some("jsonl" | "json")
+                        )
+                    })
                 });
                 if matches {
                     let _ = tx.try_send(());
@@ -88,6 +91,9 @@ async fn run_watcher(state: AppState) {
 
     if let Err(e) = debouncer.watch(&sessions_dir, RecursiveMode::Recursive) {
         warn!("failed to watch sessions dir {sessions_dir:?}: {e}");
+    }
+    if let Err(e) = debouncer.watch(&status_dir, RecursiveMode::NonRecursive) {
+        warn!("failed to watch status dir {status_dir:?}: {e}");
     }
 
     while rx.recv().await.is_some() {
@@ -119,6 +125,28 @@ async fn run_external_loop(state: AppState) {
 
         let status_files = external::read_status_files(&status_dir);
         let new_ext = external::external_map(holders, &status_files, external::pid_alive, own_pid);
+
+        // Terminal squeezes GUI offline: an external holder on a file we also
+        // hold via an app-owned RPC child means a single-writer conflict; step
+        // down to read-only observation.
+        let conflicting: Vec<_> = crate::rpc::registry()
+            .read()
+            .values()
+            .filter(|h| {
+                let file = h.session_file.read();
+                !file.is_empty()
+                    && new_ext
+                        .get(file.as_str())
+                        .is_some_and(|&pid| pid != h.pid && pid != own_pid)
+            })
+            .cloned()
+            .collect();
+        for handle in conflicting {
+            let session_id = handle.session_id.read().clone();
+            warn!("external holder detected for {session_id}; stopping app-owned RPC");
+            let _ = crate::rpc::stop(&handle).await;
+            crate::rpc::set_suspended(&state, &session_id, true);
+        }
 
         let changed = {
             let mut c = cat().lock();

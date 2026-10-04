@@ -179,6 +179,15 @@ pub async fn ensure_live(
             found_cwd
         }
     };
+    // Single-writer takeover: an external omp holding the file must exit (and
+    // flush its session_exit record) before our RPC child loads it.
+    if let Some(pid) = catalog::get(state, session_id)
+        .await
+        .and_then(|m| m.external_pid)
+        .filter(|&pid| pid_alive(pid))
+    {
+        terminate_pid(pid).await;
+    }
     let info = start(
         state,
         &StartOpts {
@@ -333,7 +342,7 @@ fn pid_alive(pid: u32) -> bool {
     }
 }
 
-fn set_suspended(state: &AppState, session_id: &str, suspended: bool) {
+pub(crate) fn set_suspended(state: &AppState, session_id: &str, suspended: bool) {
     let db = state.db.lock();
     let _ = db.execute(
         "UPDATE session_meta SET suspended = ?1 WHERE session_id = ?2",

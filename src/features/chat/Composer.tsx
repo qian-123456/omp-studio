@@ -147,6 +147,7 @@ import { ModelMenuContent } from "../../components/ModelSelect";
 import { buildSlashSections, flattenSections, type SlashMenuItem } from "./slash/menu";
 import { SlashMenu } from "./slash/SlashMenu";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
+import { requestTakeover } from "../sessions/sessionActions";
 /** Tooltip descriptions for known thinking levels. The visible label is the
  * raw omp level name (low/high/xhigh/…), English, matching the omp TUI. */
 const THINKING_DESCS: Record<string, string> = {
@@ -959,8 +960,22 @@ export function Composer({
 
 	if (readonly) {
 		return (
-			<div className="border-t border-[var(--border-divider)] px-3 py-2 text-center text-[12px] text-[var(--text-40,var(--text-dim))]">
-				只读观察 — 接管后可操作
+			<div className="shrink-0 px-3 pb-3 pt-1">
+				<div className="flex items-center justify-between gap-3 rounded-[18px] border border-purple-800/40 bg-purple-950/20 px-4 py-3 text-[13px] backdrop-blur-sm shadow-sm">
+					<div className="flex items-center gap-2 text-[var(--text-60,var(--text-muted))]">
+						<span className="h-2 w-2 rounded-full bg-purple-500 shrink-0 animate-pulse" />
+						<span className="font-medium text-[var(--text)]">外部终端正在运行</span>
+						<span className="text-[var(--text-30,var(--text-dim))]">·</span>
+						<span className="text-[12px] text-[var(--text-50,var(--text-muted))]">当前为只读观察模式</span>
+					</div>
+					<button
+						type="button"
+						onClick={() => requestTakeover(sessionId)}
+						className="flex shrink-0 items-center gap-1.5 rounded-lg border border-purple-700/60 bg-purple-900/50 px-3 py-1.5 text-xs font-medium text-purple-200 hover:bg-purple-800 hover:text-white transition-colors shadow-sm"
+					>
+						<span>接管会话</span>
+					</button>
+				</div>
 			</div>
 		);
 	}

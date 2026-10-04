@@ -35,7 +35,6 @@ import {
 	mobileCreatePairing,
 	sessionExportHtml,
 	sessionShare,
-	takeoverExternal,
 	updateSessionMeta,
 } from "../lib/ipc";
 import { toast } from "../lib/toast";
@@ -180,7 +179,6 @@ export const CenterHeader = React.memo(function CenterHeader({
 	const [titleDraft, setTitleDraft] = useState("");
 	const [shareOpen, setShareOpen] = useState(false);
 	const [qrPairing, setQrPairing] = useState<PairingInfo | null>(null);
-	const [busyAction, setBusyAction] = useState(false);
 	const shareBtnRef = useRef<HTMLButtonElement>(null);
 
 	// Reset header state on session change
@@ -296,23 +294,6 @@ export const CenterHeader = React.memo(function CenterHeader({
 		}
 	};
 
-	const takeover = async () => {
-		if (!activeSession) return;
-		const ok = await confirmDialog("接管外部会话可能丢失其未落盘状态，确认接管？", {
-			danger: true,
-			okLabel: "接管",
-		});
-		if (!ok) return;
-		setBusyAction(true);
-		try {
-			await takeoverExternal(activeSession.id);
-			toast.success("已成功接管外部会话");
-		} catch (err) {
-			toast.error(`接管失败: ${errMsg(err)}`);
-		} finally {
-			setBusyAction(false);
-		}
-	};
 
 	return (
 		<>
@@ -440,16 +421,6 @@ export const CenterHeader = React.memo(function CenterHeader({
 					<div className="flex items-center gap-1.5 shrink-0">
 						{isViewingSession && (
 							<>
-								{sessionStatus === "external" && (
-									<button
-										type="button"
-										disabled={busyAction}
-										onClick={() => void takeover()}
-										className="flex shrink-0 items-center gap-1.5 rounded-lg border border-purple-800/50 bg-purple-950/40 px-2 py-1 text-xs font-medium text-purple-300 hover:bg-purple-900/50 disabled:opacity-50 transition-colors"
-									>
-										<span>接管</span>
-									</button>
-								)}
 
 								{/* Finder */}
 								<button
