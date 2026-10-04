@@ -11,7 +11,7 @@ describe("quotaHelpers", () => {
 	describe("resolveProviderMeta", () => {
 		it("resolves known providers with specialized badges", () => {
 			expect(resolveProviderMeta("anthropic")).toEqual({
-				name: "Anthropic (Claude)",
+				name: "Anthropic Claude",
 				badge: "Claude Pro/Max",
 			});
 			expect(resolveProviderMeta("google-antigravity")).toEqual({
@@ -19,7 +19,7 @@ describe("quotaHelpers", () => {
 				badge: "Gemini / Claude / GPT",
 			});
 			expect(resolveProviderMeta("devin")).toEqual({
-				name: "Devin",
+				name: "Devin AI",
 				badge: "Cognition Devin",
 			});
 		});
