@@ -24,8 +24,9 @@ const LOGO_ALIASES: Record<string, string> = {
 	"anthropic-pro": "anthropic",
 	"anthropic-max": "anthropic",
 	"anthropic-channel": "anthropic",
+	"claude-vertex": "anthropic",
 
-	// Google / Antigravity
+	// Google / Antigravity / Vertex AI
 	"google-antigravity": "antigravity",
 	"antigravity": "antigravity",
 	"antigravity-oauth": "antigravity",
@@ -33,6 +34,17 @@ const LOGO_ALIASES: Record<string, string> = {
 	"google-cloud": "google",
 	"google-gemini-cli": "gemini",
 	"gemini": "gemini",
+	"google-vertex": "vertexai",
+	"google-vertex-adc": "vertexai",
+	"vertexai": "vertexai",
+	"vertex-ai": "vertexai",
+
+	// Amazon Bedrock
+	"amazon-bedrock": "bedrock",
+	"bedrock": "bedrock",
+	"bedrock-mantle": "bedrock",
+	"aws-bedrock": "bedrock",
+	"aws-bedrock-mantle": "bedrock",
 
 	// Z.AI / Zhipu / CodeGeeX / Zcode
 	"zai": "zai",
@@ -262,7 +274,7 @@ const LOGO_ALIASES: Record<string, string> = {
 	"yolo-auto": "yolo-auto",
 
 	// Muse Code
-	"muse-code": "muse-code",
+	"muse-code": "meta",
 };
 
 export function resolveLogoId(providerId: string): string {
@@ -390,15 +402,6 @@ export function ProviderBrandLogo({
 		);
 	}
 
-	// 6. Zhipu AI (Official Zhipu Emblem)
-	if (rawId === "zhipu") {
-		return (
-			<svg className={className} viewBox="0 0 24 24" fillRule="evenodd" xmlns="http://www.w3.org/2000/svg">
-				<path fill="#3859FF" d="M12.105 2L9.927 4.953H.653L2.83 2h9.276zM23.254 19.048L21.078 22h-9.242l2.174-2.952h9.244zM24 2L9.264 22H0L14.736 2H24z" />
-			</svg>
-		);
-	}
-
 	// 7. Kimi (Official Teal K with Blue dot)
 	if (rawId === "kimi") {
 		return (
@@ -481,6 +484,34 @@ export function ProviderBrandLogo({
 				<stop offset=".46" stopColor="#FABC12" stopOpacity="0" />
 			</linearGradient>
 		</defs>
+			</svg>
+		);
+	}
+	// 13b. Amazon Bedrock (Official LobeHub Bedrock Logo)
+	if (rawId === "bedrock") {
+		return (
+			<svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+				<defs>
+					<linearGradient id={`lobe-icons-bedrock-_R_0__${uid}`} x1="80%" x2="20%" y1="20%" y2="80%">
+						<stop offset="0%" stopColor="#6350FB" />
+						<stop offset="50%" stopColor="#3D8FFF" />
+						<stop offset="100%" stopColor="#9AD8F8" />
+					</linearGradient>
+				</defs>
+				<path d="M13.05 15.513h3.08c.214 0 .389.177.389.394v1.82a1.704 1.704 0 011.296 1.661c0 .943-.755 1.708-1.685 1.708-.931 0-1.686-.765-1.686-1.708 0-.807.554-1.484 1.297-1.662v-1.425h-2.69v4.663a.395.395 0 01-.188.338l-2.69 1.641a.385.385 0 01-.405-.002l-4.926-3.086a.395.395 0 01-.185-.336V16.3L2.196 14.87A.395.395 0 012 14.555L2 14.528V9.406c0-.14.073-.27.192-.34l2.465-1.462V4.448c0-.129.062-.249.165-.322l.021-.014L9.77 1.058a.385.385 0 01.407 0l2.69 1.603a.395.395 0 01.192.34v3.136l2.462 1.487c.121.07.194.2.194.34v5.122c0 .217-.175.394-.39.394h-2.274V15.513zm-2.274-1.577h3.08c.215 0 .39.177.39.394v1.44c.732.176 1.275.845 1.275 1.642 0 .93-.746 1.685-1.665 1.685s-1.665-.755-1.665-1.685c0-.82.574-1.503 1.33-1.657v-1.03h-2.744v-1.188zm-2.691-1.604v2.793l2.302 1.403v-4.196H8.085zm3.08-4.707v3.918h2.302V8.04l-2.302-1.415zm-2.302 4.707l-2.302-1.4V8.041l2.302 1.403v1.782zm-3.08-4.707v3.918l2.302 1.404V8.04L5.783 6.626zm3.08-1.89L6.561 6.139l2.302 1.403 2.302-1.403-2.302-1.403zm5.383 5.485V8.04l-2.302-1.415v4.196h2.302zm-3.08-1.89L8.863 4.225l2.302 1.403 2.302-1.403-2.302-1.404zm5.383 5.485l-2.302-1.414V8.041l2.302 1.404v1.782z" fill={`url(#lobe-icons-bedrock-_R_0__${uid})`} />
+			</svg>
+		);
+	}
+
+	// 13c. Google Vertex AI (Official LobeHub Vertex AI Logo)
+	if (rawId === "vertexai") {
+		return (
+			<svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+				<path d="M11.995 20.216a1.892 1.892 0 100 3.785 1.892 1.892 0 000-3.785zm0 2.806a.927.927 0 11.927-.914.914.914 0 01-.927.914z" fill="#4285F4" />
+				<path clipRule="evenodd" d="M21.687 14.144c.237.038.452.16.605.344a.978.978 0 01-.18 1.3l-8.24 6.082a1.892 1.892 0 00-1.147-1.508l8.28-6.08a.991.991 0 01.682-.138z" fill="#669DF6" fillRule="evenodd" />
+				<path clipRule="evenodd" d="M10.122 21.842l-8.217-6.066a.952.952 0 01-.206-1.287.978.978 0 011.287-.206l8.28 6.08a1.893 1.893 0 00-1.144 1.479z" fill="#AECBFA" fillRule="evenodd" />
+				<path d="M4.273 4.475a.978.978 0 01-.965-.965V1.09a.978.978 0 111.943 0v2.42a.978.978 0 01-.978.965zM4.247 13.034a.978.978 0 100-1.956.978.978 0 000 1.956zM4.247 10.19a.978.978 0 100-1.956.978.978 0 000 1.956zM4.247 7.347a.978.978 0 100-1.957.978.978 0 000 1.957zM19.742 4.475a.978.978 0 01-.965-.965V1.09a.978.978 0 111.943 0v2.42a.978.978 0 01-.978.965zM19.716 13.034a.978.978 0 100-1.956.978.978 0 000 1.956zM19.716 10.19a.978.978 0 100-1.956.978.978 0 000 1.956zM19.716 7.347a.978.978 0 100-1.957.978.978 0 000 1.957z" fill="#4285F4" />
+				<path d="M4.247 15.918a.978.978 0 100-1.957.978.978 0 000 1.957zM19.716 15.918a.978.978 0 100-1.957.978.978 0 000 1.957z" fill="#4285F4" />
 			</svg>
 		);
 	}
@@ -893,11 +924,11 @@ export function ProviderBrandLogo({
 		);
 	}
 
-	// 45. OpenCode Go (Official Box from NewMax)
+	// 45. OpenCode (Official Logo from lobehub)
 	if (rawId === "opencode-go") {
 		return (
-			<svg className={className} viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<path d="M18 6H6V24H18V6ZM24 30H0V0H24V30Z" fill={color || "currentColor"} />
+			<svg className={className} viewBox="0 0 24 24" fill={color || "currentColor"} xmlns="http://www.w3.org/2000/svg">
+				<path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" />
 			</svg>
 		);
 	}
@@ -1114,17 +1145,15 @@ export function ProviderBrandLogo({
 		);
 	}
 
-	// 64. TypeSafe (Official Isometric Knot)
+	// 64. TypeSafe (Official Isometric Cube from typesafe.ai)
 	if (rawId === "typesafe") {
 		return (
-			<svg className={className} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<circle cx="50" cy="50" r="48" fill="#E03E9D" />
-				<g stroke="#18181B" strokeWidth="6" strokeLinejoin="round" strokeLinecap="round">
-					<path d="M50 15L78 31V63L50 79L22 63V31Z" fill="none"/>
-					<path d="M50 15V47L78 63"/>
-					<path d="M50 47L22 31"/>
-					<path d="M36 39L64 55"/>
-				</g>
+			<svg className={className} viewBox="0 0 99 144" fill={color || "currentColor"} xmlns="http://www.w3.org/2000/svg">
+				<path
+					fillRule="evenodd"
+					clipRule="evenodd"
+					d="M76.4576 17.5651V42.3984L98.8152 56.9225L98.8213 111.911L49.4046 144L22.3637 126.441V100.92L0 86.3963V32.0953L2.12872 30.7086L49.4106 0L76.4576 17.5651ZM35.6044 123.899L49.3985 132.858L85.5624 109.362L71.7744 100.41L35.6044 123.899ZM54.0756 61.9949V86.4024L31.7058 100.927V115.292L67.1155 92.296V53.5286L54.0756 61.9949ZM76.4576 92.3082L89.4732 100.762V61.9888L76.4576 53.5347V92.3082ZM13.2467 83.8601L27.0347 92.8191L40.8289 83.8601L27.0408 74.9072L13.2467 83.8601ZM9.34204 37.1617V75.26L22.3637 66.7998V42.3923L44.7396 27.8561V14.1652L9.34204 37.1617ZM31.7058 66.7937L44.7335 75.2539V61.9888L31.7058 53.5286V66.7937ZM35.6044 44.9225L49.4106 53.8875L63.2048 44.9285L49.4046 35.9635L35.6044 44.9225ZM54.0817 27.8561L67.1155 36.3223V22.6376L54.0817 14.1652V27.8561Z"
+				/>
 			</svg>
 		);
 	}
@@ -1147,27 +1176,33 @@ export function ProviderBrandLogo({
 		);
 	}
 
-	// 66. Umans AI (Official Logomark)
+	// 66. Umans AI (Official Logomark from umans.ai)
 	if (rawId === "umans") {
 		return (
-			<svg className={className} viewBox="0 0 97 121" fill={color || "currentColor"} xmlns="http://www.w3.org/2000/svg">
-				<path d="M0 84C0 83.45 0.45 83 1 83H19V120C19 120.55 18.55 121 18 121H1C0.45 121 0 120.55 0 120V84Z"/>
-				<path d="M78 83H96C96.55 83 97 83.45 97 84V120C97 120.55 96.55 121 96 121H79C78.45 121 78 120.55 78 120V83Z"/>
-				<path d="M18.93 65.69C18.93 65.03 19.71 64.5 20.35 64.5H76.37C77 64.5 78.07 65.03 78.07 65.69V81.81C78.07 82.47 77 83 76.37 83H20.35C19.71 83 18.93 82.47 18.93 81.81V65.69Z"/>
-				<path d="M0 47.19C0 46.53 0.51 46 1.15 46H18.2C18.83 46 19 46.34 19 47L18.93 63.29C18.93 63.95 18.83 64.5 18.2 64.5H1.15C0.51 64.5 0 63.95 0 63.29V47.19Z"/>
-				<path d="M78 47C78 46.34 78.17 46 78.8 46H95.85C96.49 46 97 46.53 97 47.19V63.31C97 63.97 96.49 64.5 95.85 64.5H78.8C78.17 64.5 78 63.97 78 63.31V47Z"/>
-				<path d="M0 1C0 0.45 0.45 0 1 0H18C18.55 0 19 0.45 19 1V49H0V1Z"/>
-				<path d="M78 1C78 0.45 78.45 0 79 0H96C96.55 0 97 0.45 97 1V49H78V1Z"/>
+			<svg className={className} viewBox="0 0 97 121" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0 84C0 83.448 0.447715 83 1 83H19V120C19 120.552 18.5523 121 18 121H1C0.447715 121 0 120.552 0 120V84Z" fill="#FA75AA"/>
+				<path d="M78 83H96C96.5523 83 97 83.448 97 84V120C97 120.552 96.5523 121 96 121H79C78.4477 121 78 120.552 78 120V83Z" fill="#FA75AA"/>
+				<path d="M18.93 65.69C18.93 65.03 19.71 64.5 20.35 64.5H76.37C77 64.5 78.07 65.03 78.07 65.69V81.81C78.07 82.47 77 83 76.37 83H20.35C19.71 83 18.93 82.47 18.93 81.81V65.69Z" fill={color || "currentColor"}/>
+				<path d="M0 47.19C0 46.53 0.51 46 1.15 46H18.2C18.83 46 19 46.34 19 47L18.93 63.29C18.93 63.95 18.83 64.5 18.2 64.5H1.15C0.51 64.5 0 63.95 0 63.29V47.19Z" fill={color || "currentColor"}/>
+				<path d="M78 47C78 46.34 78.17 46 78.8 46H95.85C96.49 46 97 46.53 97 47.19V63.31C97 63.97 96.49 64.5 95.85 64.5H78.8C78.17 64.5 78 63.97 78 63.31V47Z" fill={color || "currentColor"}/>
+				<path d="M0 1C0 0.45 0.45 0 1 0H18C18.55 0 19 0.45 19 1V49H0V1Z" fill={color || "currentColor"}/>
+				<path d="M78 1C78 0.45 78.45 0 79 0H96C96.55 0 97 0.45 97 1V49H78V1Z" fill={color || "currentColor"}/>
 			</svg>
 		);
 	}
 
-	// 67. ai& (Official Geometric "A" Emblem)
+	// 67. ai& (Official Vector Emblem from console.aiand.com)
 	if (rawId === "aiand") {
 		return (
-			<svg className={className} viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<path d="M38 198l158-158c8-8 21-8 29 0l13 13c8 8 8 21 0 29L80 240c-8 8-21 8-29 0l-13-13c-8-8-8-21 0-29z" fill="#BA0E12"/>
-				<path d="M52 226l115-115c6-6 16-6 22 0l37 37v70c0 8-6 14-14 14H66c-8 0-14-6-14-6z" fill={color || "#1F1F1F"}/>
+			<svg className={className} viewBox="0 0 22 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path
+					d="M19.5438 8.27442C20.2053 7.75496 21.1551 8.24355 21.1551 9.10329V22.8574C21.1551 23.4319 20.7055 23.8977 20.1507 23.8977H19.5342C19.4701 23.8977 19.4089 23.8707 19.3645 23.8232L15.428 19.6185C15.1031 19.2715 14.582 19.222 14.2016 19.5022L8.29467 23.8524C8.25466 23.8818 8.20678 23.8977 8.15772 23.8977H2.63793C1.67545 23.8975 1.26417 22.6309 2.03108 22.0286L19.5438 8.27442Z"
+					fill={color || "currentColor"}
+				/>
+				<path
+					d="M19.5813 0.332621C20.1043 -0.0717416 20.8574 0.337903 20.8159 1.02985L20.5696 5.13067C20.5554 5.3684 20.4409 5.58654 20.2583 5.7276L1.23582 20.4212C0.72997 20.8119 3.42004e-05 20.4427 0 19.7741V15.8754C3.18012e-06 15.6196 0.116555 15.3801 0.312637 15.2285L19.5813 0.332621Z"
+					fill="#C70007"
+				/>
 			</svg>
 		);
 	}
@@ -1211,29 +1246,12 @@ export function ProviderBrandLogo({
 		);
 	}
 
-	// 70. Yolo-Auto (Official Geometric Y Badge)
+	// 70. Yolo-Auto (Official Geometric Y Badge from yolo-auto.com)
 	if (rawId === "yolo-auto") {
 		return (
 			<svg className={className} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
 				<rect width="64" height="64" rx="14" fill="#EF5B36" />
-				<path d="M13 15h11l8 15 8-15h11L37 39v11H27V39Z" fill="#FFFFFF" />
-			</svg>
-		);
-	}
-
-	// 71. Meta Muse Code (Official Meta AI Coding Assistant Ring)
-	if (rawId === "muse-code") {
-		const museGradId = `muse_grad_${uid}`;
-		return (
-			<svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<defs>
-					<linearGradient id={museGradId} x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-						<stop stopColor="#0064E0" />
-						<stop offset="1" stopColor="#A033FF" />
-					</linearGradient>
-				</defs>
-				<circle cx="12" cy="12" r="9" stroke={`url(#${museGradId})`} strokeWidth="3" fill="none" />
-				<path d="M10 8.5L16 12L10 15.5V8.5Z" fill={`url(#${museGradId})`} />
+				<path d="M13 15h11l8 15 8-15h11L37 39v11H27V39Z" fill="#20201E" />
 			</svg>
 		);
 	}
