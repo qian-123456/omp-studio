@@ -2372,7 +2372,11 @@ export function SessionSidebar() {
 									onClick={() => {
 										const ws = plusMenu.ws;
 										setPlusMenu(null);
-										void startSessionInDir(ws, true);
+										useUi.getState().openModal("new-session", {
+											workspaceId: ws.id,
+											cwd: ws.path,
+											useWorktree: true,
+										});
 									}}
 									className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left disabled:opacity-40 disabled:hover:bg-transparent"
 									title={

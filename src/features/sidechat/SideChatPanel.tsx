@@ -17,7 +17,8 @@ import { useEffect, useRef, useState } from "react";
 import type { SessionMeta } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
-import { acceptSession, createSideChat, getTranscript } from "../../lib/ipc";
+import { acceptSession, createSideChat, getTranscript, listModels } from "../../lib/ipc";
+import { type ModelOption, parseModels, toModelKey } from "../../lib/models";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
@@ -48,6 +49,28 @@ export function SideChatPanel() {
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 	const [pendingSelection, setPendingSelection] = useState<string | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const [models, setModels] = useState<ModelOption[]>([]);
+	// "" = inherit the parent session's model.
+	const [selectedModel, setSelectedModel] = useState("");
+	const [thinking, setThinking] = useState("auto");
+
+	useEffect(() => {
+		let cancelled = false;
+		listModels()
+			.then((listed) => {
+				if (!cancelled) setModels(parseModels(listed));
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+	const selectedModelOption = models.find(
+		(m) => toModelKey(m.provider, m.id) === selectedModel,
+	);
+	const thinkingLevels = selectedModelOption?.thinking?.length
+		? ["auto", ...selectedModelOption.thinking.filter((l) => l !== "auto"), "off"]
+		: ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
 
 	const parent = selectedId ? sessions[selectedId] : undefined;
 	const children = Object.values(sessions)
@@ -83,10 +106,17 @@ export function SideChatPanel() {
 		setBusy(true);
 		setError(null);
 		try {
+			// omp `--model` accepts a `provider/id:thinking` suffix.
+			const modelArg = selectedModel
+				? thinking !== "auto"
+					? `${selectedModel}:${thinking}`
+					: selectedModel
+				: null;
 			const info = await createSideChat(
 				selectedId,
 				q,
 				pendingSelection ?? undefined,
+				modelArg ?? undefined,
 			);
 			setQuestion("");
 			setPendingSelection(null);
@@ -419,8 +449,39 @@ export function SideChatPanel() {
 							/>
 
 							<div className="mt-1 flex items-center justify-between gap-2 pt-1 text-[11px] text-[var(--text-40)]">
-								<div className="flex items-center gap-1 text-[11px] text-[var(--text-40)] select-none">
-									<span>独立侧聊分支</span>
+								<div className="flex min-w-0 items-center gap-1 text-[11px] text-[var(--text-40)] select-none">
+									<select
+										value={selectedModel}
+										onChange={(e) => {
+											setSelectedModel(e.target.value);
+											setThinking("auto");
+										}}
+										title="侧聊模型"
+										className="min-w-0 max-w-[140px] truncate rounded-full border border-[var(--line)] bg-transparent px-2 py-0.5 text-[11px] text-[var(--text-60)] outline-none hover:bg-[var(--ghost-hover)]"
+									>
+										<option value="">继承父会话模型</option>
+										{models.map((m) => {
+											const key = toModelKey(m.provider, m.id);
+											return (
+												<option key={key} value={key}>
+													{m.name || m.id}
+												</option>
+											);
+										})}
+									</select>
+									<select
+										value={thinking}
+										onChange={(e) => setThinking(e.target.value)}
+										disabled={!selectedModel}
+										title={selectedModel ? "思考等级" : "选择模型后可设置思考等级"}
+										className="rounded-full border border-[var(--line)] bg-transparent px-2 py-0.5 text-[11px] text-[var(--text-60)] outline-none hover:bg-[var(--ghost-hover)] disabled:opacity-50"
+									>
+										{thinkingLevels.map((l) => (
+											<option key={l} value={l}>
+												{l === "auto" ? "思考: 自动" : `思考: ${l}`}
+											</option>
+										))}
+									</select>
 								</div>
 								<button
 									type="button"
@@ -464,3 +525,4 @@ function ChildStatus({
 		<span className="shrink-0 text-[10px] text-[var(--text-40)]">{label}</span>
 	);
 }
+

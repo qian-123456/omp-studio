@@ -4,7 +4,7 @@
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
-import { Copy, RotateCcw } from "lucide-react";
+import { Copy, Pencil, RotateCcw } from "lucide-react";
 import React, {
 	useCallback,
 	useEffect,
@@ -27,6 +27,7 @@ import { getImageTokenPalette } from "./Composer";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
 	ExecutionDisclosure,
+	ProcessingTimer,
 	TurnSteps,
 	type StepShape,
 } from "./ExecutionDisclosure";
@@ -37,7 +38,7 @@ import {
 	buildToolResultsMap,
 	filterVisibleItems,
 } from "./messageTrace";
-import { sendPrompt } from "./send";
+import { abortTurn, sendPrompt } from "./send";
 import { CommandOutputList } from "./slash/CommandOutputList";
 import {
 	groupTurnBlocks,
@@ -158,6 +159,29 @@ const UserRow = React.memo(function UserRow({
 	const [collapsible, setCollapsible] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState("");
+	const [resending, setResending] = useState(false);
+
+	const resendEdited = async () => {
+		const text = draft.trim();
+		if (!text || resending) return;
+		setResending(true);
+		try {
+			// Stop the in-flight turn first so the edited prompt starts fresh
+			// instead of queueing behind the current generation.
+			if (useLive.getState().sessions[sessionId]?.streaming) {
+				await abortTurn(sessionId);
+				await waitForIdle(sessionId);
+			}
+			await sendPrompt(sessionId, text);
+			setEditing(false);
+		} catch (e) {
+			if (!isResumeCancelled(e)) toast.error(`重新发送失败: ${errMsg(e)}`);
+		} finally {
+			setResending(false);
+		}
+	};
 
 	const validImages = useMemo(
 		() =>
@@ -202,7 +226,48 @@ const UserRow = React.memo(function UserRow({
 					onClose={() => setPreviewIndex(null)}
 				/>
 			)}
-			{showBubble ? (
+			{editing ? (
+				<div className="flex w-full max-w-[70%] flex-col gap-2 rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5">
+					<textarea
+						autoFocus
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Escape") {
+								e.preventDefault();
+								e.stopPropagation();
+								setEditing(false);
+							} else if (
+								e.key === "Enter" &&
+								(e.metaKey || e.ctrlKey) &&
+								!e.nativeEvent.isComposing
+							) {
+								e.preventDefault();
+								void resendEdited();
+							}
+						}}
+						rows={Math.min(10, Math.max(2, draft.split("\n").length))}
+						className="w-full resize-y bg-transparent text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)] outline-none"
+					/>
+					<div className="flex justify-end gap-1.5 text-[12px]">
+						<button
+							type="button"
+							onClick={() => setEditing(false)}
+							className="rounded-md px-2.5 py-1 text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+						>
+							取消
+						</button>
+						<button
+							type="button"
+							disabled={resending || !draft.trim()}
+							onClick={() => void resendEdited()}
+							className="rounded-md bg-[var(--text)] px-2.5 py-1 text-[var(--bg)] transition-opacity hover:opacity-90 disabled:opacity-40"
+						>
+							{resending ? "发送中…" : "重新发送"}
+						</button>
+					</div>
+				</div>
+			) : showBubble ? (
 				<div className="min-w-0 max-w-[70%] rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)]">
 					<div
 						ref={textRef}
@@ -224,7 +289,23 @@ const UserRow = React.memo(function UserRow({
 					)}
 				</div>
 			) : null}
-			<div className="flex items-center gap-1 text-[11px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100">
+			<div
+				className={clsx(
+					"flex items-center gap-1 text-[11px] opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
+					editing && "hidden",
+				)}
+			>
+				<button
+					type="button"
+					onClick={() => {
+						setDraft(userText);
+						setEditing(true);
+					}}
+					className="flex items-center gap-1 rounded px-1 py-0.5 text-[var(--text-30)] transition-colors hover:text-[var(--text-60)]"
+					title="编辑并重新发送"
+				>
+					<Pencil size={11} /> 编辑
+				</button>
 				<button
 					type="button"
 					onClick={async () => {
@@ -266,6 +347,22 @@ const UserRow = React.memo(function UserRow({
 		</div>
 	);
 });
+
+/** Resolve once the session's turn has stopped streaming (or after a timeout). */
+function waitForIdle(sessionId: string, timeoutMs = 5000): Promise<void> {
+	return new Promise((resolve) => {
+		if (!useLive.getState().sessions[sessionId]?.streaming) return resolve();
+		const timer = window.setTimeout(done, timeoutMs);
+		const unsub = useLive.subscribe((s) => {
+			if (!s.sessions[sessionId]?.streaming) done();
+		});
+		function done() {
+			window.clearTimeout(timer);
+			unsub();
+			resolve();
+		}
+	});
+}
 
 /**
  * Protocol row for system events (model change, compaction, …): centered
@@ -327,6 +424,13 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	canUndo?: boolean;
 	onTurnsChange?: () => void;
 }) {
+	const streamingThisTurn = useLive(
+		(s) => isLatestTurn === true && s.sessions[sessionId]?.streaming === true,
+	);
+	const turnStartedAt = useMemo(() => {
+		const ts = block.userItem?.ts ? Date.parse(block.userItem.ts) : Number.NaN;
+		return Number.isNaN(ts) ? undefined : ts;
+	}, [block.userItem?.ts]);
 	const answerText = useMemo(() => {
 		if (!block.answerItem?.text) return "";
 		return stripImageMarkers(block.answerItem.text);
@@ -343,6 +447,8 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					sessionId={sessionId}
 					steps={block.intermediateSteps}
 					durationMs={block.durationMs}
+					isStreaming={streamingThisTurn && !block.answerItem}
+					startedAt={turnStartedAt}
 					forceExpanded={toolsExpanded}
 					toolResultsByCallId={toolResultsByCallId}
 				/>
@@ -412,7 +518,8 @@ const StreamingRow = React.memo(function StreamingRow({
 	const thinkingEndedAt = useLive(
 		(s) => s.sessions[sessionId]?.thinkingEndedAt ?? null,
 	);
-
+	// The row mounts when the turn starts streaming; tick from that moment.
+	const [streamStartedAt] = useState(() => Date.now());
 
 	// Build interleaved pseudo-steps from the streaming message content:
 	// thinking parts → thinking steps, tool_use parts → tool steps, text parts
@@ -495,6 +602,7 @@ const StreamingRow = React.memo(function StreamingRow({
 
 	return (
 		<div className="flex flex-col py-1">
+			<ProcessingTimer startedAt={streamStartedAt} />
 			<TurnSteps
 				sessionId={sessionId}
 				steps={steps}

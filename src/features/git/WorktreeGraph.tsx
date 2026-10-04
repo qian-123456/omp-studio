@@ -325,13 +325,21 @@ export function WorktreeGraph({
 											</div>
 
 											{/* Right-side hover actions */}
-											<div className="absolute right-1 top-1 flex items-center gap-1 shrink-0 bg-neutral-900/95 border border-neutral-700/80 rounded px-1 py-0.5 shadow-md opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+											<div
+												onMouseEnter={(e) => {
+													e.stopPropagation();
+													dismissHover();
+												}}
+												onMouseOver={(e) => e.stopPropagation()}
+												className="absolute right-1 top-1 flex items-center gap-1 shrink-0 bg-neutral-900/95 border border-neutral-700/80 rounded px-1 py-0.5 shadow-md opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+											>
 												<button
 													type="button"
 													onClick={() => {
 														dismissHover();
 														openInExplorer(wt.path);
 													}}
+													title="在右侧文件浏览器中打开该工作树目录"
 													aria-label="在右侧文件浏览器中打开该工作树目录"
 													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 												>
@@ -361,6 +369,7 @@ export function WorktreeGraph({
 														dismissHover();
 														openModal("new-session", { cwd: wt.path });
 													}}
+													title="在此工作树新建会话"
 													aria-label="在此工作树新建会话"
 													className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
 												>
@@ -603,6 +612,21 @@ export function WorktreeGraph({
 												className="font-mono text-xs text-neutral-400 group-hover:text-neutral-200 transition-colors"
 												title={branch}
 											/>
+											{/^(remotes\/)?origin\//.test(branch) ? (
+												<span
+													className="shrink-0 rounded border border-sky-500/30 bg-sky-500/10 px-1 text-[9px] text-sky-300"
+													title="云端（远程）分支"
+												>
+													云端
+												</span>
+											) : (
+												<span
+													className="shrink-0 rounded border border-neutral-700/60 bg-neutral-800/60 px-1 text-[9px] text-neutral-400"
+													title="本地分支"
+												>
+													本地
+												</span>
+											)}
 										</div>
 										{/* Action to spawn a worktree on this branch */}
 										<button

@@ -300,6 +300,9 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     if let Some(model) = effective_model {
         cmd.arg("--model").arg(model);
     }
+    if let Some(file) = &opts.fork_file {
+        cmd.arg("--fork").arg(file);
+    }
     if let Some(file) = &opts.resume_file {
         cmd.arg("--resume").arg(file);
     } else if opts.plan_yolo == Some(true) {
@@ -527,11 +530,15 @@ pub async fn spawn_with_sink(
     )
     .await;
     if let Some(parent) = &opts.parent_session_id {
-        send_command(
-            &handle,
-            json!({"type": "new_session", "parentSession": parent}),
-        )
-        .await?;
+        // `--fork` already copied the parent transcript; a blank `new_session`
+        // would discard it and break prefix caching.
+        if opts.fork_file.is_none() {
+            send_command(
+                &handle,
+                json!({"type": "new_session", "parentSession": parent}),
+            )
+            .await?;
+        }
         let state_resp = send_command(&handle, json!({"type": "get_state"})).await?;
         apply_state(&handle, &state_resp);
         drain_pending_frames(&sink, &handle);

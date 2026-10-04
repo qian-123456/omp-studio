@@ -56,9 +56,8 @@ export const TIER_NAMES: Record<ModelTierId, string> = {
 	"claude-opus": "Claude Opus 旗舰系列",
 	"claude-sonnet": "Claude Sonnet 主力系列",
 	"claude-haiku": "Claude Haiku 极速系列",
-	"gpt-flagship": "GPT 旗舰与推理系列 (o1/o3/Astra)",
-	"gpt-balanced": "GPT 主力全能系列 (GPT-4o/5)",
-	"gpt-mini": "GPT Mini 轻量系列",
+	"gpt-flagship": "GPT 推理旗舰 (o3 / o1 / o3-mini)",
+	"gpt-balanced": "GPT 前沿多模态 (GPT-4o / GPT-4o-mini / GPT-5)",
 	"gemini-flash": "Gemini Flash 极速长文",
 	"gemini-pro": "Gemini Pro 旗舰多模态",
 	"deepseek-r1": "DeepSeek R1 深度推理",
@@ -73,79 +72,63 @@ export const PRESET_TIERS: TierDefinition[] = [
 		name: "Claude Opus 旗舰系列",
 		family: "Claude",
 		description: "最高智力与长文深度推演",
-		defaultContextWindow: 300_000,
 	},
 	{
 		id: "claude-sonnet",
 		name: "Claude Sonnet 主力系列",
 		family: "Claude",
 		description: "日常编程主力与深度思考",
-		defaultContextWindow: 250_000,
 	},
 	{
 		id: "claude-haiku",
 		name: "Claude Haiku 极速系列",
 		family: "Claude",
 		description: "高并发轻量快速响应",
-		defaultContextWindow: 200_000,
 	},
 	{
 		id: "gpt-flagship",
-		name: "GPT 旗舰与深度推理 (o1/o3/Astra)",
+		name: "GPT 推理旗舰 (o3 / o1 / o3-mini)",
 		family: "GPT",
-		description: "Astra / o1 / o3 深度思考推理",
-		defaultContextWindow: 272_000,
+		description: "o 系列深度思考推理与旗舰",
 	},
 	{
 		id: "gpt-balanced",
-		name: "GPT 主力全能 (GPT-4o/GPT-5)",
+		name: "GPT 前沿多模态 (GPT-4o / GPT-4o-mini / GPT-5)",
 		family: "GPT",
-		description: "通用生产力旗舰模型",
-		defaultContextWindow: 272_000,
-	},
-	{
-		id: "gpt-mini",
-		name: "GPT Mini 轻量系列",
-		family: "GPT",
-		description: "低延迟极速响应",
-		defaultContextWindow: 128_000,
+		description: "通用生产力与多模态前沿模型",
 	},
 	{
 		id: "gemini-flash",
 		name: "Gemini Flash 极速长文",
 		family: "Gemini",
 		description: "超长上下文极速处理",
-		defaultContextWindow: 500_000,
 	},
 	{
 		id: "gemini-pro",
 		name: "Gemini Pro 旗舰多模态",
 		family: "Gemini",
 		description: "百万 Token 深度多模态大模型",
-		defaultContextWindow: 1_000_000,
 	},
 	{
 		id: "deepseek-r1",
 		name: "DeepSeek R1 深度推理",
 		family: "DeepSeek",
 		description: "开源强化学习深度推理",
-		defaultContextWindow: 128_000,
 	},
 	{
 		id: "deepseek-v3",
 		name: "DeepSeek V3 高效主力",
 		family: "DeepSeek",
 		description: "高性价比通用主力",
-		defaultContextWindow: 128_000,
 	},
 ];
 
-export const PRESET_BRANDS: { family: ModelFamily; name: string; defaultContextWindow: number }[] = [
-	{ family: "Claude", name: "Anthropic Claude", defaultContextWindow: 200_000 },
-	{ family: "GPT", name: "OpenAI GPT / o 系列", defaultContextWindow: 272_000 },
-	{ family: "Gemini", name: "Google Gemini", defaultContextWindow: 500_000 },
-	{ family: "DeepSeek", name: "DeepSeek 深度求索", defaultContextWindow: 128_000 },
-	{ family: "Qwen", name: "阿里通义千问 Qwen", defaultContextWindow: 128_000 },
+export const PRESET_BRANDS: { family: ModelFamily; name: string }[] = [
+	{ family: "Claude", name: "Anthropic Claude" },
+	{ family: "GPT", name: "OpenAI GPT / o 系列" },
+	{ family: "Gemini", name: "Google Gemini" },
+	{ family: "DeepSeek", name: "DeepSeek 深度求索" },
+	{ family: "Qwen", name: "阿里通义千问 Qwen" },
 ];
 
 const CANONICAL_RULES: CanonicalRule[] = [
@@ -195,7 +178,7 @@ const CANONICAL_RULES: CanonicalRule[] = [
 		re: new RegExp(`gpt${D}4o${D}mini`),
 		name: () => "GPT-4o mini",
 		family: "GPT",
-		tier: "gpt-mini",
+		tier: "gpt-balanced",
 	},
 	{
 		re: new RegExp(`gpt${D}4o`),
@@ -213,7 +196,7 @@ const CANONICAL_RULES: CanonicalRule[] = [
 		re: /^o1(?:[-_ .]mini)/,
 		name: () => "OpenAI o1-mini",
 		family: "GPT",
-		tier: "gpt-mini",
+		tier: "gpt-flagship",
 	},
 	{
 		re: /^o1(?:[-_ .]|$)/,
@@ -225,7 +208,7 @@ const CANONICAL_RULES: CanonicalRule[] = [
 		re: new RegExp(`^o3${D}mini`),
 		name: () => "OpenAI o3-mini",
 		family: "GPT",
-		tier: "gpt-mini",
+		tier: "gpt-flagship",
 	},
 	{
 		re: /^o3(?:[-_ .]|$)/,
@@ -281,8 +264,7 @@ function fallbackTierOf(cleaned: string, family: ModelFamily): ModelTierId {
 		if (/haiku/.test(cleaned)) return "claude-haiku";
 	}
 	if (family === "GPT") {
-		if (/mini/.test(cleaned)) return "gpt-mini";
-		if (/o\d|astra/.test(cleaned)) return "gpt-flagship";
+		if (/^o\d|astra/.test(cleaned)) return "gpt-flagship";
 		if (/gpt/.test(cleaned)) return "gpt-balanced";
 	}
 	if (family === "Gemini") {
@@ -445,15 +427,20 @@ export function isPrimaryModel(
 
 // ── Context input parsing ────────────────────────────────────────────
 
-/** Parse `300k`, `30万`, `1M`, `1.5m`, `250,000` into a token count; null when invalid. */
+/**
+ * Parse `300k`, `30万`, `1M`, `1.5m`, `250,000` into a token count; null when invalid.
+ * A bare number below 1000 (e.g. `200`) is read as k tokens; ≥ 1000 is raw tokens.
+ */
 export function parseContextInput(input: string): number | null {
 	const m = input
 		.trim()
 		.replace(/[,，_\s]/g, "")
 		.match(/^(\d+(?:\.\d+)?)(k|m|万|w)?$/i);
 	if (!m) return null;
-	const mult = { k: 1e3, m: 1e6, 万: 1e4, w: 1e4 }[(m[2] ?? "").toLowerCase() as "k"] ?? 1;
-	const n = Math.round(Number(m[1]) * mult);
+	const value = Number(m[1]);
+	const unit = (m[2] ?? "").toLowerCase();
+	const mult = unit ? ({ k: 1e3, m: 1e6, 万: 1e4, w: 1e4 } as Record<string, number>)[unit] : value < 1000 ? 1e3 : 1;
+	const n = Math.round(value * mult);
 	return Number.isFinite(n) && n > 0 ? n : null;
 }
 
@@ -524,7 +511,7 @@ export function resolveGroupContext(
 	return {
 		value: null,
 		source: "none",
-		sourceLabel: "未配置（使用默认 32K）",
+		sourceLabel: "未设置（沿用供应商配置）",
 	};
 }
 

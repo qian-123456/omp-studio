@@ -7,9 +7,8 @@ export type ModelTierId =
 	| "claude-opus"
 	| "claude-sonnet"
 	| "claude-haiku"
-	| "gpt-flagship" // o1, o3, astra
-	| "gpt-balanced" // gpt-4o, gpt-5
-	| "gpt-mini" // gpt-4o-mini, o3-mini
+	| "gpt-flagship" // o3, o1, o3-mini (reasoning)
+	| "gpt-balanced" // gpt-4o, gpt-4o-mini, gpt-5 (frontier multimodal)
 	| "gemini-pro"
 	| "gemini-flash"
 	| "deepseek-r1"
@@ -22,7 +21,6 @@ export interface TierDefinition {
 	name: string;
 	family: ModelFamily;
 	description: string;
-	defaultContextWindow: number;
 }
 
 /** One model entry in one provider. */

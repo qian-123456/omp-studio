@@ -448,7 +448,10 @@ function reduce(
 					: live.thinkingEndedAt;
 			// Tool results are persisted to the transcript; live tool map clears
 			// on the next turn_start implicitly via tool_execution ids.
-			return { ...live, thinkingEndedAt };
+			const terminal = frame.isTerminal === true;
+			return terminal
+				? { ...live, thinkingEndedAt, streaming: false, streamingMessage: null }
+				: { ...live, thinkingEndedAt };
 		}
 		case "agent_end": {
 			if (frame.isTerminal === false) return live;
@@ -525,6 +528,9 @@ function reduce(
 			) {
 				return {
 					...live,
+					streaming: false,
+					streamingMessage: null,
+					tools: {},
 					pendingCommand: null,
 					commandOutputs: [
 						...live.commandOutputs,
@@ -538,8 +544,17 @@ function reduce(
 					].slice(-50),
 				};
 			}
-			if (!pendingCommand) return live;
-			return { ...live, pendingCommand: null };
+			return {
+				...live,
+				streaming: false,
+				streamingMessage: null,
+				tools: {},
+				pendingCommand: null,
+			};
+		}
+		case "error": {
+			// Transport/process errors (e.g. socket closed) must not leave a turn stuck.
+			return { ...live, streaming: false, streamingMessage: null, tools: {} };
 		}
 		case "subagent_lifecycle": {
 			// Frame: {type, payload:{id, agent, agentSource, description?, status,
@@ -621,6 +636,9 @@ function reduce(
 				if (frame.success !== true) {
 					return {
 						...live,
+						streaming: false,
+						streamingMessage: null,
+						tools: {},
 						pendingCommand: null,
 						commandOutputs:
 							pendingCommand && str(frame.error).trim()

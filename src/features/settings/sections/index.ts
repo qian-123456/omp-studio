@@ -14,6 +14,7 @@ import { ModelContextSection } from "./ModelContextSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { PluginsSettingsSection } from "./PluginsSettingsSection";
 import { ProvidersSection } from "./ProvidersSection";
+import { QuotaDashboardCard } from "./QuotaDashboardCard";
 import { RolesSection } from "./RolesSection";
 import { SessionsSection } from "./SessionsSection";
 
@@ -21,6 +22,7 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	general: GeneralSection,
 	appearance: AppearanceSection,
 	notifications: NotificationsSection,
+	quota: QuotaDashboardCard,
 	providers: ProvidersSection,
 	"model-context": ModelContextSection,
 	"omp-roles": RolesSection,

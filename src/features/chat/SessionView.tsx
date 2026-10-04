@@ -17,6 +17,8 @@ import {
 } from "../../lib/ipc";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
+import { toast } from "../../lib/toast";
+import { abortTurn } from "./send";
 import { ChatTrace } from "./ChatTrace";
 import { Composer } from "./Composer";
 import { HeldQueueBar } from "./HeldQueueBar";
@@ -138,6 +140,23 @@ export function SessionView({
 				loadTurns();
 			});
 	}, [streaming, sessionId, setItems, appendItems, loadTurns]);
+
+	// Esc while generating aborts the turn. Capture phase + preventDefault so
+	// macOS WKWebView doesn't treat the key as "exit fullscreen". Only the main
+	// (non-compact) view owns the shortcut to avoid double-aborting.
+	useEffect(() => {
+		if (!streaming || compact) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.isComposing) return;
+			e.preventDefault();
+			e.stopPropagation();
+			abortTurn(sessionId)
+				.then(() => toast.info("已终止对话生成"))
+				.catch((err) => toast.error(`终止失败: ${errMsg(err)}`));
+		};
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
+	}, [streaming, compact, sessionId]);
 
 	return (
 		<div className="flex h-full flex-col">

@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { FolderTree, RefreshCw, Undo2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderTree, RefreshCw, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GitCommit, GitSummary, TmRun, WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
@@ -124,6 +124,8 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	/** Bumped to make the focus pane reload (manual refresh, session activity). */
 	const [paneNonce, setPaneNonce] = useState(0);
 	const [diff, setDiff] = useState<DiffReq | null>(null);
+	const [fileCount, setFileCount] = useState(0);
+	const [worktreesOpen, setWorktreesOpen] = useState(true);
 
 	// Top bar HoverCard state
 	const [topHoverOpen, setTopHoverOpen] = useState(false);
@@ -234,7 +236,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	}, [revealCommit, worktrees, top]);
 
 	return (
-		<div>
+		<div className="flex min-h-full flex-col">
 			{/* Compact repo header: repo name + path + refresh */}
 			<div className="flex items-center justify-between border-b border-neutral-800/80 bg-neutral-900/40 px-3 py-1.5 text-xs">
 				<div
@@ -284,17 +286,30 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 			)}
 
 			{isRepo && (
-				<div className="space-y-2.5 p-2.5">
-					<WorktreeSection
-						repo={mainRoot ?? cwd}
-						worktrees={worktrees}
-						current={top}
-						selected={selected}
-						selectedExplicit={focus !== null}
-						onSelect={(path) => setFocus(path === top ? null : path)}
-						onChanged={() => void load(false)}
-					/>
-
+				<div className="flex-1 space-y-2.5 p-2.5">
+					<section>
+						<button
+							type="button"
+							onClick={() => setWorktreesOpen((v) => !v)}
+							aria-expanded={worktreesOpen}
+							className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200 transition-colors"
+						>
+							{worktreesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+							工作树与分支
+							<span className="font-mono text-[10px] text-neutral-500">({worktrees.length})</span>
+						</button>
+						{worktreesOpen && (
+							<WorktreeSection
+								repo={mainRoot ?? cwd}
+								worktrees={worktrees}
+								current={top}
+								selected={selected}
+								selectedExplicit={focus !== null}
+								onSelect={(path) => setFocus(path === top ? null : path)}
+								onChanged={() => void load(false)}
+							/>
+						)}
+					</section>
 					<section className="rounded-lg border border-neutral-800 bg-neutral-900/50">
 						{selected !== top && selectedName && (
 							<div className="flex items-center gap-1.5 border-b border-neutral-800 bg-indigo-500/5 px-3 py-1.5 text-[11px] text-indigo-200">
@@ -317,8 +332,8 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 							key={selected}
 							path={selected}
 							tab={tab}
-							onTab={setTab}
 							nonce={paneNonce}
+							onFileCount={setFileCount}
 							runs={repoRuns}
 							onRunsChange={(next) =>
 								setRuns([...runs.filter((r) => !repoRuns.includes(r)), ...next])
@@ -327,6 +342,31 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 							onDiff={setDiff}
 						/>
 					</section>
+				</div>
+			)}
+
+			{isRepo && (
+				<div
+					role="tablist"
+					className="sticky bottom-0 z-10 flex items-center gap-1 border-t border-neutral-800 bg-neutral-900 px-2 py-1.5"
+				>
+					{(["changes", "history"] as const).map((t) => (
+						<button
+							key={t}
+							type="button"
+							role="tab"
+							aria-selected={tab === t}
+							onClick={() => setTab(t)}
+							className={clsx(
+								"flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+								tab === t
+									? "bg-neutral-800 font-medium text-neutral-100"
+									: "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
+							)}
+						>
+							{t === "changes" ? `提交改动 (${fileCount})` : "版本历史"}
+						</button>
+					))}
 				</div>
 			)}
 
@@ -348,8 +388,8 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 function FocusPane({
 	path,
 	tab,
-	onTab,
 	nonce,
+	onFileCount,
 	runs,
 	onRunsChange,
 	onRepoChanged,
@@ -357,8 +397,8 @@ function FocusPane({
 }: {
 	path: string;
 	tab: PaneTab;
-	onTab: (tab: PaneTab) => void;
 	nonce: number;
+	onFileCount: (count: number) => void;
 	runs: TmRun[];
 	onRunsChange: (runs: TmRun[]) => void;
 	onRepoChanged: () => void;
@@ -422,32 +462,16 @@ function FocusPane({
 	};
 
 	const fileCount = summary?.files.length ?? 0;
+	useEffect(() => {
+		onFileCount(fileCount);
+	}, [fileCount, onFileCount]);
 
 	return (
 		<div>
-			<div role="tablist" className="flex items-center gap-1 px-2 pt-2">
-				{(["changes", "history"] as const).map((t) => (
-					<button
-						key={t}
-						type="button"
-						role="tab"
-						aria-selected={tab === t}
-						onClick={() => onTab(t)}
-						className={clsx(
-							"flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
-							tab === t
-								? "bg-neutral-800 font-medium text-neutral-100"
-								: "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
-						)}
-					>
-						{t === "changes" ? "提交改动" : "版本历史"}
-						{t === "changes" && fileCount > 0 && (
-							<span className="rounded-full bg-amber-500/15 px-1.5 font-mono text-[10px] text-amber-400">
-								{fileCount}
-							</span>
-						)}
-					</button>
-				))}
+			<div className="flex items-center gap-1 px-2 pt-2">
+				<span className="text-xs font-medium text-neutral-300">
+					{tab === "changes" ? "提交改动" : "版本历史"}
+				</span>
 				<span className="flex-1" />
 				{tab === "changes" && fileCount > 0 && (
 					<button

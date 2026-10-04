@@ -19,6 +19,7 @@ pub async fn create(
     parent_session_id: &str,
     selection: Option<String>,
     question: String,
+    model: Option<String>,
 ) -> Result<LiveSessionInfo, String> {
     let parent = catalog::get(state, parent_session_id).await;
     let parent_depth = parent.as_ref().map(|m| m.fork_depth).unwrap_or(0);
@@ -49,7 +50,7 @@ pub async fn create(
     vars.insert("parent_label", parent_label);
     vars.insert("parent_title", parent_title);
     vars.insert("cwd", cwd.clone());
-    vars.insert("parent_file", parent_file);
+    vars.insert("parent_file", parent_file.clone());
     vars.insert("context", context);
     vars.insert("selection", selection.clone().unwrap_or_default());
     vars.insert("question", question);
@@ -61,6 +62,8 @@ pub async fn create(
             cwd: cwd.clone(),
             parent_session_id: Some(parent_session_id.to_string()),
             label: Some(label.clone()),
+            model: model.filter(|m| !m.trim().is_empty()),
+            fork_file: Some(parent_file).filter(|f| !f.is_empty()),
             ..Default::default()
         },
     )

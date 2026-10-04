@@ -156,11 +156,13 @@ export const createSideChat = (
 	parentSessionId: string,
 	question: string,
 	selection?: string,
+	model?: string,
 ) =>
 	invoke<LiveSessionInfo>("create_side_chat", {
 		parentSessionId,
 		question,
 		selection: selection ?? null,
+		model: model ?? null,
 	});
 
 /** Contract C5: subagent sessions spawned by a parent session file. */

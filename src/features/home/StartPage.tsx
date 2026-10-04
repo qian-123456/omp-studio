@@ -3,12 +3,16 @@ import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	ArrowUp,
+	Bug,
 	CalendarClock,
 	Check,
 	ChevronDown,
+	FlaskConical,
 	FolderOpen,
 	FolderPlus,
+	GitCompare,
 	Inbox,
+	LayoutGrid,
 	Loader2,
 	Sparkles,
 } from "lucide-react";
@@ -30,6 +34,15 @@ const CUSTOM_MODEL = "__custom_model";
 const isMac =
 	typeof navigator !== "undefined" &&
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
+
+/** Codex-style shortcut prompts: clicking one fills the composer and starts the session. */
+const QUICK_PROMPTS = [
+	{ icon: LayoutGrid, color: "text-indigo-400 bg-indigo-500/10", text: "分析当前工作区代码结构与架构" },
+	{ icon: GitCompare, color: "text-emerald-400 bg-emerald-500/10", text: "检查 git 改动并总结变更点" },
+	{ icon: Bug, color: "text-rose-400 bg-rose-500/10", text: "审查最近提交并排查潜在 Bug" },
+	{ icon: FlaskConical, color: "text-amber-400 bg-amber-500/10", text: "为当前项目运行测试并报告问题" },
+] as const;
+
 export function StartPage() {
 	const workspaces = useSessions((s) => s.workspaces);
 	const sessions = useSessions((s) => s.sessions);
@@ -146,8 +159,8 @@ export function StartPage() {
 	const effectiveModel =
 		modelSel === CUSTOM_MODEL ? customModel.trim() : modelSel;
 
-	const submit = async () => {
-		const targetPrompt = prompt.trim();
+	const submit = async (override?: string) => {
+		const targetPrompt = (override ?? prompt).trim();
 		if (!cwd || !targetPrompt || busy) return;
 		setBusy(true);
 		let createdSessionId: string | null = null;
@@ -202,16 +215,38 @@ export function StartPage() {
 	return (
 		<div className="relative flex h-full w-full flex-col items-center overflow-y-auto px-6 py-10 select-none">
 			<div className="relative flex w-full max-w-[700px] flex-col items-center my-auto">
-				<div className="w-full text-left mb-3">
-					<h1 className="text-xl font-semibold tracking-[-0.018em] text-[var(--text)]">
-						新任务
+				<div className="w-full text-center mb-6">
+					<h1 className="text-2xl font-semibold tracking-[-0.018em] text-[var(--text)]">
+						准备就绪，随时提问
 					</h1>
-					<p className="text-xs text-neutral-400 mt-1">
-						输入任务或需求，选择工作目录与模型快速开启会话
+					<p className="text-sm text-neutral-400 mt-2">
+						在下方输入框描述你的任务，或者点击以下快捷指令开始
 					</p>
 				</div>
 
-				<div className="relative mt-2 flex w-full flex-wrap items-center gap-2 rounded-2xl bg-[var(--bg-panel)] shadow-apple-card hairline p-3.5 focus-within:shadow-[0_0_0_0.5px_var(--hairline-strong),var(--shadow-apple-card)] transition-all">
+				{/* Quick prompt cards */}
+				<div className="grid w-full grid-cols-2 gap-2.5 mb-5">
+					{QUICK_PROMPTS.map(({ icon: Icon, color, text }) => (
+						<button
+							key={text}
+							type="button"
+							disabled={busy}
+							onClick={() => {
+								setPrompt(text);
+								if (cwd) void submit(text);
+								else toast.error("请先选择工作目录");
+							}}
+							className="flex items-center gap-3 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/60 p-3 text-left hover:bg-[var(--bg-hover)] transition-all active:scale-[0.99] disabled:opacity-50 group"
+						>
+							<div className={clsx("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg group-hover:scale-105 transition-transform", color)}>
+								<Icon size={16} />
+							</div>
+							<span className="min-w-0 text-xs font-medium text-[var(--text)]">{text}</span>
+						</button>
+					))}
+				</div>
+
+				<div className="sticky bottom-0 z-10 flex w-full flex-wrap items-center gap-2 rounded-2xl bg-[var(--bg-panel)] shadow-apple-card hairline p-3.5 focus-within:shadow-[0_0_0_0.5px_var(--hairline-strong),var(--shadow-apple-card)] transition-all">
 					<textarea
 						ref={inputRef}
 						autoFocus

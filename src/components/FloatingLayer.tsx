@@ -194,6 +194,9 @@ export interface FloatingLayerProps {
 	children: ReactNode;
 }
 
+/** Modal surfaces: FloatingLayer modal tier plus any ARIA modal dialog. */
+const MODAL_SELECTOR = '[data-layer="modal"], [aria-modal="true"]';
+
 /**
  * The single floating primitive: portal + fixed positioning + viewport
  * collision (flip/clamp, status bar aware) + dismissal + z tier.
@@ -214,6 +217,19 @@ export function FloatingLayer({
 }: FloatingLayerProps) {
 	const ref = useRef<HTMLDivElement>(null);
 	const pos = useAnchoredPosition(anchor, ref, placement, offset);
+	const isHovercard = layer === "hovercard";
+	const [modalOpen, setModalOpen] = useState(false);
+
+	// Hover cards sit above popovers, but must never cover an open modal dialog:
+	// hide them while any modal surface is mounted.
+	useEffect(() => {
+		if (!anchor || !isHovercard) return;
+		const check = () => setModalOpen(document.querySelector(MODAL_SELECTOR) !== null);
+		check();
+		const mo = new MutationObserver(check);
+		mo.observe(document.body, { childList: true, subtree: true });
+		return () => mo.disconnect();
+	}, [anchor, isHovercard]);
 
 	useEffect(() => {
 		if (!anchor || !onDismiss) return;
@@ -237,11 +253,12 @@ export function FloatingLayer({
 		};
 	}, [anchor, onDismiss, ignoreRefs]);
 
-	if (!anchor) return null;
+	if (!anchor || (isHovercard && modalOpen)) return null;
 	return createPortal(
 		<div
 			ref={ref}
 			{...rest}
+			data-layer={layer}
 			className={clsx(
 				"fixed overflow-y-auto rounded-xl border border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-apple-modal",
 				className,

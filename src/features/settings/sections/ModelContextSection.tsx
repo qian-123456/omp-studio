@@ -58,6 +58,26 @@ const FAMILIES: ModelFamily[] = ["Claude", "GPT", "Gemini", "DeepSeek", "Qwen", 
 
 const srcKey = (providerId: string, modelId: string) => `${providerId}::${modelId}`;
 const fmt = (n: number | null | undefined) => (n == null ? "未设置" : formatTokens(n).toUpperCase());
+const CONTEXT_PLACEHOLDER = "例如 200 或 200k";
+
+/** Live preview of what a context input will save, e.g. `200k (200,000 tokens)`. */
+function ContextInputPreview({ input, saved }: { input: string; saved: number | undefined }) {
+	if (!input.trim()) {
+		return (
+			<span className="min-w-[140px] text-[11px] text-neutral-500">
+				{saved != null ? `${formatTokens(saved)} (${saved.toLocaleString("en-US")} tokens)` : "未设置（沿用供应商配置）"}
+			</span>
+		);
+	}
+	const parsed = parseContextInput(input);
+	return parsed == null ? (
+		<span className="min-w-[140px] text-[11px] text-amber-400">无法识别</span>
+	) : (
+		<span className="min-w-[140px] text-[11px] text-neutral-300">
+			{formatTokens(parsed)} ({parsed.toLocaleString("en-US")} tokens)
+		</span>
+	);
+}
 
 export function ModelContextSection() {
 	const providers = useProviders((s) => s.providers);
@@ -421,7 +441,6 @@ function TierConfigRow({
 	onChange(val: number | undefined): void;
 }) {
 	const [input, setInput] = useState(value != null ? formatTokens(value) : "");
-	const effectiveVal = value ?? tier.defaultContextWindow;
 
 	useEffect(() => {
 		setInput(value != null ? formatTokens(value) : "");
@@ -447,7 +466,7 @@ function TierConfigRow({
 			<div className="flex items-center gap-2">
 				<input
 					className={`${INPUT_CLASS} w-28 text-right`}
-					placeholder={formatTokens(tier.defaultContextWindow)}
+					placeholder={CONTEXT_PLACEHOLDER}
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
 					onBlur={() => {
@@ -464,13 +483,12 @@ function TierConfigRow({
 						}
 					}}
 				/>
-				<span className="text-[11px] text-neutral-400 min-w-[50px]">
-					{fmt(effectiveVal)}
-				</span>
+				<span className="text-[11px] text-neutral-500">(k tokens)</span>
+				<ContextInputPreview input={input} saved={value} />
 				{value != null && (
 					<button
 						type="button"
-						title="恢复默认推荐值"
+						title="清除设置（沿用供应商配置）"
 						className="p-1 text-neutral-400 hover:text-neutral-200"
 						onClick={() => onChange(undefined)}
 					>
@@ -494,7 +512,6 @@ function BrandConfigRow({
 	onChange(val: number | undefined): void;
 }) {
 	const [input, setInput] = useState(value != null ? formatTokens(value) : "");
-	const effectiveVal = value ?? brand.defaultContextWindow;
 
 	useEffect(() => {
 		setInput(value != null ? formatTokens(value) : "");
@@ -519,7 +536,7 @@ function BrandConfigRow({
 			<div className="flex items-center gap-2">
 				<input
 					className={`${INPUT_CLASS} w-28 text-right`}
-					placeholder={formatTokens(brand.defaultContextWindow)}
+					placeholder={CONTEXT_PLACEHOLDER}
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
 					onBlur={() => {
@@ -536,13 +553,12 @@ function BrandConfigRow({
 						}
 					}}
 				/>
-				<span className="text-[11px] text-neutral-400 min-w-[50px]">
-					{fmt(effectiveVal)}
-				</span>
+				<span className="text-[11px] text-neutral-500">(k tokens)</span>
+				<ContextInputPreview input={input} saved={value} />
 				{value != null && (
 					<button
 						type="button"
-						title="恢复默认推荐值"
+						title="清除设置（沿用供应商配置）"
 						className="p-1 text-neutral-400 hover:text-neutral-200"
 						onClick={() => onChange(undefined)}
 					>
@@ -593,7 +609,7 @@ function ModelGroupRow({
 			case "provider":
 				return <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400">中转站既有</span>;
 			default:
-				return <span className="rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-500">默认 32K</span>;
+				return <span className="rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-500">未设置</span>;
 		}
 	};
 
@@ -675,9 +691,11 @@ function ModelGroupRow({
 							className={`${INPUT_CLASS} w-32`}
 							value={input}
 							onChange={(e) => setInput(e.target.value)}
-							placeholder="如 300k / 30万"
+							placeholder={CONTEXT_PLACEHOLDER}
 							aria-label="独立上下文窗口"
 						/>
+						<span className="text-[11px] text-neutral-500">(k tokens)</span>
+						<ContextInputPreview input={input} saved={undefined} />
 						{PRESETS.map(([label, n]) => (
 							<button
 								key={label}

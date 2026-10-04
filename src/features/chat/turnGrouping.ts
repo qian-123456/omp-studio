@@ -32,6 +32,16 @@ export type TurnStep =
 			id: string;
 			kind: "notice";
 			item: TranscriptItem;
+	  }
+	/**
+	 * Human message injected mid-run (steer) while the agent was still
+	 * executing tools; kept in chronological order inside the turn.
+	 */
+	| {
+			id: string;
+			kind: "steer";
+			item: TranscriptItem;
+			text: string;
 	  };
 
 export interface TurnBlock {
@@ -215,7 +225,10 @@ export function noticeSummary(item: TranscriptItem): string {
  *      If that final assistant item also had thinking, the thinking is captured as an intermediateStep!
  *    - Protocol items (isProtocolKind) that arrive mid-run — i.e. assistant/tool activity
  *      follows before the next user message — become "notice" steps in intermediateSteps.
- * 3. A new "user" item ends the current TurnBlock.
+ *    - A "user" item that interrupts tool execution (previous visible item is a tool call /
+ *      tool result and the agent keeps working after it) is a steer: it becomes a "steer"
+ *      step in chronological order instead of splitting the turn (omp-tui behavior).
+ * 3. Any other new "user" item ends the current TurnBlock.
  * 4. Protocol items outside a running turn (or with no agent activity after them), and any
  *    other kind with no active turn, form standalone ProtocolBlocks.
  */
@@ -284,11 +297,29 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 		for (let j = i + 1; j < items.length; j++) {
 			const next = items[j];
 			if (next.hidden) continue;
-			if (next.kind === "user") return false;
+			if (next.kind === "user") return isSteer(j);
 			if (next.kind === "assistant" || next.kind === "tool_result")
 				return true;
 		}
 		return false;
+	};
+
+	// A user item at index i is a mid-run steer when the agent was executing
+	// tools right before it and continues working after it.
+	const isSteer = (i: number): boolean => {
+		let prev: TranscriptItem | undefined;
+		for (let j = i - 1; j >= 0; j--) {
+			const p = items[j];
+			if (p.hidden || isProtocolKind(p.kind)) continue;
+			prev = p;
+			break;
+		}
+		if (!prev) return false;
+		const midTools =
+			prev.kind === "tool_result" ||
+			Boolean(prev.toolResult) ||
+			(prev.kind === "assistant" && (prev.toolCalls?.length ?? 0) > 0);
+		return midTools && hasAgentActivityAfter(i);
 	};
 
 	for (let i = 0; i < items.length; i++) {
@@ -301,6 +332,17 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 
 		// User message starts a turn
 		if (item.kind === "user") {
+			if (currentTurn && isSteer(i)) {
+				currentTurn.intermediateSteps.push({
+					id: `steer-${item.id}`,
+					kind: "steer",
+					item,
+					text: item.text ?? "",
+				});
+				currentTurn.allItemIds.push(item.id);
+				if (item.ts) currentTurn.endTime = item.ts;
+				continue;
+			}
 			finalizeCurrentTurn();
 			currentTurn = {
 				userItem: item,
@@ -394,7 +436,10 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 			for (let j = i + 1; j < items.length; j++) {
 				const next = items[j];
 				if (next.hidden) continue;
-				if (next.kind === "user") break;
+				if (next.kind === "user") {
+					if (isSteer(j)) continue;
+					break;
+				}
 				if (next.kind === "assistant") {
 					hasSubsequentAssistantOrUser = true;
 					break;

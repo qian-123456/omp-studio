@@ -4,6 +4,7 @@ import {
 	Bot,
 	Brain,
 	FileText,
+	Gauge,
 	Globe,
 	Hammer,
 	KeyRound,
@@ -53,6 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
 	{
 		title: "模型",
 		items: [
+			{ id: "quota", label: "订阅与 Quota", icon: Gauge },
 			{ id: "providers", label: "API 供应商", icon: KeyRound },
 			{ id: "omp-roles", label: "模型角色", icon: Users },
 			{ id: "omp-model", label: "模型与目录", icon: ListTree },
@@ -123,6 +125,9 @@ export function sectionSearchTerms(id: string, ompEntries: OmpConfigEntry[]): st
 			...registryKeywordsForSection(id),
 			...ompEntries.filter((e) => e.key.startsWith("mcp.")).flatMap(ompEntryTerms),
 		];
+	}
+	if (id === "quota") {
+		return ["quota", "额度", "订阅", "subscription", "用量", "限额", "速率", "rate limit", "claude pro", "copilot", "重置"];
 	}
 	if (id === "providers") {
 		return ["API", "密钥", "key", "provider", "anthropic", "openai", "凭证", "oauth", "keychain", "供应商"];

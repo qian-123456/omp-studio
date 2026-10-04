@@ -327,6 +327,8 @@ pub struct StartOpts {
     pub label: Option<String>,
     /// --plan-yolo: read-only plan mode, auto-approving plan into implementation.
     pub plan_yolo: Option<bool>,
+    /// --fork <path>: native fork of the parent session file (keeps prefix cache).
+    pub fork_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
