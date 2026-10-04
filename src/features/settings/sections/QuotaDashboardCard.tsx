@@ -1,8 +1,7 @@
 /**
- * Settings ▸ 订阅与 Quota (`quota`): subscriptions (OAuth accounts + API-key
- * providers), local token usage per quota window, reset countdowns and rate
- * limits. Limits are user-entered (providers expose no quota API); usage is
- * summed from real session transcripts via `session_usage`.
+ * Settings ▸ 订阅与 Quota (`quota`): coding plan & account subscriptions
+ * (aligned with OMP subscription mode; plain API keys excluded).
+ * Usage is summed from real session transcripts via `session_usage`.
  */
 import { Gauge, RefreshCw, Timer, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -10,7 +9,6 @@ import type { OauthLoginProvider } from "../../../lib/contracts";
 import { oauthLoginProviders, sessionUsage } from "../../../lib/ipc";
 import { useSessions } from "../../../stores/sessions";
 import { formatTokens } from "../../providers/modelEntry";
-import { useProviders } from "../../providers/store";
 import type { ModelFamily } from "../modelContextTypes";
 import { normalizeModelName, parseContextInput } from "../modelNormalization";
 import { INPUT_CLASS, SETTINGS_BUTTON_CLASS, SectionHeader, SettingsCard } from "../ui";
@@ -26,7 +24,7 @@ interface QuotaConfig {
 interface Subscription {
 	key: string;
 	name: string;
-	kind: "账号订阅" | "API 密钥";
+	kind: "账号订阅" | "Coding Plan";
 	/** Model family billed to this subscription; null = any model. */
 	family: ModelFamily | null;
 }
@@ -55,6 +53,34 @@ function familyOfSubscription(idAndName: string): ModelFamily | null {
 	if (/qwen|dashscope|aliyun/.test(s)) return "Qwen";
 	return null;
 }
+function isSubscriptionProvider(id: string, name: string): boolean {
+	const lower = `${id} ${name}`.toLowerCase();
+	// Plain pay-as-you-go API key services are NOT subscriptions
+	if (
+		/deepseek|siliconflow|openrouter|together|fireworks\b|moonshot|stepfun|qianfan|venice|novita|deepinfra|cerebras|baseten|huggingface|synthetic|nanogpt/i.test(
+			id,
+		) &&
+		!lower.includes("coding-plan") &&
+		!lower.includes("subscription")
+	) {
+		return false;
+	}
+
+	return (
+		/subscription|coding[\s_-]?plan|token[\s_-]?plan|pass|pro\/max|claude\s*pro|plus\/pro|copilot|antigravity|cloud\s*code|gemini\s*cli|duo|supergrok|premium\+/i.test(
+			lower,
+		) ||
+		id === "openai-codex" ||
+		id === "openai-codex-device" ||
+		id === "anthropic" ||
+		id === "github-copilot" ||
+		id === "google-antigravity" ||
+		id === "google-gemini-cli" ||
+		id === "cursor" ||
+		id === "devin"
+	);
+}
+
 
 /** Start of the current quota window and the moment it resets. */
 function windowBounds(window: QuotaWindow, now: Date, oldestInWindow: number | null): { start: number; reset: number } {
@@ -87,20 +113,12 @@ function formatCountdown(ms: number): string {
 }
 
 export function QuotaDashboardCard() {
-	const providers = useProviders((s) => s.providers);
-	const loaded = useProviders((s) => s.loaded);
-	const load = useProviders((s) => s.load);
 	const sessions = useSessions((s) => s.sessions);
 	const [oauth, setOauth] = useState<OauthLoginProvider[] | null>(null);
 	const [config, setConfig] = useState<Record<string, QuotaConfig>>(loadQuotaConfig);
 	const [usage, setUsage] = useState<Record<string, number>>({});
 	const [editing, setEditing] = useState<string | null>(null);
 	const [now, setNow] = useState(() => new Date());
-
-	useEffect(() => {
-		if (!loaded) void load();
-	}, [loaded, load]);
-
 	const refresh = useCallback(async () => {
 		setNow(new Date());
 		try {
@@ -145,25 +163,23 @@ export function QuotaDashboardCard() {
 	}, [recent]);
 
 	const subscriptions = useMemo<Subscription[]>(() => {
-		const subs: Subscription[] = (oauth ?? [])
-			.filter((p) => p.authenticated)
-			.map((p) => ({
+		const subs: Subscription[] = [];
+		for (const p of oauth ?? []) {
+			// Only include if user ACTUALLY has an authenticated subscription!
+			// Plain API keys or unauthenticated providers MUST NOT be listed.
+			if (!p.authenticated) continue;
+			if (!isSubscriptionProvider(p.id, p.name)) continue;
+
+			const isCodingPlan = /coding[\s_-]?plan|token[\s_-]?plan/i.test(`${p.id} ${p.name}`);
+			subs.push({
 				key: `oauth:${p.id}`,
 				name: p.name,
-				kind: "账号订阅",
+				kind: isCodingPlan ? "Coding Plan" : "账号订阅",
 				family: familyOfSubscription(`${p.id} ${p.name}`),
-			}));
-		for (const p of providers) {
-			if (!p.enabled || !p.hasKey) continue;
-			subs.push({
-				key: `provider:${p.id}`,
-				name: p.name,
-				kind: "API 密钥",
-				family: familyOfSubscription(`${p.presetId ?? ""} ${p.slug} ${p.name}`),
 			});
 		}
 		return subs;
-	}, [oauth, providers]);
+	}, [oauth]);
 
 	const updateConfig = (key: string, next: QuotaConfig) => {
 		const merged = { ...config, [key]: next };
@@ -180,7 +196,7 @@ export function QuotaDashboardCard() {
 							<Gauge className="h-4 w-4 text-[var(--accent)]" /> 订阅与 Quota
 						</span>
 					}
-					description="已登录的账号订阅与已配置密钥的供应商。用量按本机会话记录统计；额度、周期与速率限制按套餐自行填写。"
+					description="已激活的 Coding Plan 与账号订阅配额（对齐 OMP 订阅模式，不含普通 API Key）。用量按本机会话记录统计；额度与周期按订阅套餐管理。"
 					actions={
 						<button type="button" className={SETTINGS_BUTTON_CLASS} onClick={() => void refresh()}>
 							<RefreshCw className="h-3.5 w-3.5" /> 刷新
@@ -190,8 +206,11 @@ export function QuotaDashboardCard() {
 				{oauth === null ? (
 					<div className="py-4 text-center text-xs text-neutral-500">加载订阅中…</div>
 				) : subscriptions.length === 0 ? (
-					<div className="py-4 text-center text-xs text-neutral-500">
-						暂无已登录的订阅或已配置密钥的供应商，可在「API 供应商」中登录账号或添加密钥。
+					<div className="py-6 text-center text-xs text-neutral-400 space-y-1.5">
+						<div>暂无已激活的账号订阅（如 Claude Pro/Max、ChatGPT Plus/Pro、GitHub Copilot、智谱 Coding Plan 等）。</div>
+						<div className="text-[11px] text-neutral-500">
+							普通 API Key 按量计费结算，不属于 Coding Plan 订阅配额，可在「API 供应商」中查看或使用 OAuth 登录账号。
+						</div>
 					</div>
 				) : (
 					<div className="grid gap-3 sm:grid-cols-2">
