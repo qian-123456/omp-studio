@@ -856,13 +856,22 @@ textarea {
 	position: fixed;
 	z-index: 9999;
 	border-radius: 999px;
-	background: light-dark(rgba(0, 0, 0, 0.36), rgba(255, 255, 255, 0.32));
+	background: light-dark(rgba(150, 150, 150, 0.28), rgba(200, 200, 200, 0.26));
 	opacity: 0;
 	transition: opacity 0.18s ease;
 	pointer-events: none;
 }
 .scroll-pill--visible {
 	opacity: 1;
+	pointer-events: auto;
+}
+.scroll-pill--dragging {
+	background: light-dark(rgba(150, 150, 150, 0.45), rgba(200, 200, 200, 0.4));
+}
+body.scroll-pill-drag-active,
+body.scroll-pill-drag-active * {
+	user-select: none !important;
+	-webkit-user-select: none !important;
 }
 .no-scrollbar ~ .scroll-pill,
 .no-scrollbar .scroll-pill {

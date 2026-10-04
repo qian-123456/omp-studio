@@ -67,7 +67,7 @@ export const RightAside = React.memo(function RightAside() {
 	return (
 		<aside
 			style={{ width: rightWidth }}
-			className="flex shrink-0 flex-col border-l border-[var(--border-divider)] vibrancy-chrome"
+			className="flex shrink-0 flex-col vibrancy-chrome"
 		>
 			{rightTab ? (
 				<>
