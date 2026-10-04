@@ -439,6 +439,7 @@ export function QuotaDashboardCard() {
 													}}
 												>
 													<ProviderBrandLogo
+														providerId={p.providerId}
 														iconType={p.brand.iconType}
 														color={p.brand.color}
 														className="h-5 w-5"
