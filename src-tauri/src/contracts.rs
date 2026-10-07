@@ -501,6 +501,60 @@ pub struct WorktreeInfo {
     pub session_ids: Vec<String>,
 }
 
+/// Detailed information about a local or remote Git branch.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchInfo {
+    /// Full ref-derived name (e.g. "main", "dev", "origin/main").
+    pub name: String,
+    /// Short display name without remote prefix.
+    pub display_name: String,
+    /// Whether this is a remote tracking branch.
+    pub is_remote: bool,
+    /// Remote name (e.g. "origin") if is_remote or tracking.
+    pub remote: Option<String>,
+    /// Upstream tracking branch name if local (e.g. "origin/main").
+    pub upstream: Option<String>,
+    /// Whether this branch is currently checked out in a worktree.
+    pub is_current_worktree: bool,
+    /// Absolute path of the worktree checking this branch out (if any).
+    pub worktree_path: Option<String>,
+    /// Last commit SHA (short, ~7 chars).
+    pub last_commit_sha: Option<String>,
+    /// Last commit subject.
+    pub last_commit_message: Option<String>,
+    /// Relative commit time (e.g. "10 minutes ago", "3 days ago").
+    pub last_commit_time: Option<String>,
+    /// Number of commits ahead of upstream.
+    pub ahead: u32,
+    /// Number of commits behind upstream.
+    pub behind: u32,
+    /// Whether this branch is merged into default base (main/master).
+    pub is_merged: bool,
+}
+
+/// Preview of a branch merge operation without touching the working tree.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergePreview {
+    pub can_merge: bool,
+    pub has_conflicts: bool,
+    pub conflicting_files: Vec<String>,
+    pub commits_ahead: u32,
+    pub commits_behind: u32,
+    pub target_branch: String,
+    pub source_branch: String,
+}
+
+/// GitHub PR URL info.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrUrlInfo {
+    pub pr_url: Option<String>,
+    pub remote_url: Option<String>,
+    pub is_github: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnFile {
@@ -663,6 +717,13 @@ pub struct Settings {
     /// than this are hidden from the inbox.
     #[serde(default = "default_inbox_window_hours")]
     pub inbox_window_hours: u32,
+    /// Git delivery mode for main branch: "pr" (default, opens GitHub PR) or "direct" (merges locally and pushes to main).
+    #[serde(default = "default_git_delivery_mode")]
+    pub git_delivery_mode: String,
+}
+
+fn default_git_delivery_mode() -> String {
+    "pr".to_string()
 }
 
 fn default_inbox_window_hours() -> u32 {
@@ -700,6 +761,7 @@ impl Default for Settings {
             turn_checkpoints: None,
             queue_auto_send: None,
             inbox_window_hours: default_inbox_window_hours(),
+            git_delivery_mode: default_git_delivery_mode(),
         }
     }
 }

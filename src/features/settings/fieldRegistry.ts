@@ -44,6 +44,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["approval", "always-ask", "write", "yolo", "审批模式", "权限", "模式"],
 	},
 	{
+		id: "gitDeliveryMode",
+		sectionId: "general",
+		label: "主干交付模式 (Git Delivery Mode)",
+		description: "从功能分支交付到 main 主干时的默认行为方式（GitHub Pull Request / 本地直接合并并推送到 main）",
+		keywords: ["git", "delivery", "pr", "pull request", "merge", "main", "主干", "交付", "推送"],
+	},
+	{
 		id: "capsuleVisible",
 		sectionId: "general",
 		label: "顶部子任务胶囊",

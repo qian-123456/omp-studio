@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { ChevronDown, ChevronRight, FolderTree, RefreshCw, Undo2 } from "lucide-react";
+import { FolderTree, RefreshCw, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GitCommit, GitSummary, TmRun, WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
@@ -17,8 +17,8 @@ import { CheckpointsCard } from "./CheckpointsCard";
 import { DiffModal } from "./DiffModal";
 import { toplevelFor } from "./helpers";
 import { TimelineSection } from "./TimelineSection";
+import { BranchAssetSection } from "./BranchAssetSection";
 import { WorktreeSection } from "./WorktreeSection";
-
 const POLL_MS = 10_000;
 const LOG_PAGE = 50;
 
@@ -125,7 +125,6 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	const [paneNonce, setPaneNonce] = useState(0);
 	const [diff, setDiff] = useState<DiffReq | null>(null);
 	const [fileCount, setFileCount] = useState(0);
-	const [worktreesOpen, setWorktreesOpen] = useState(true);
 
 	// Top bar HoverCard state
 	const [topHoverOpen, setTopHoverOpen] = useState(false);
@@ -287,29 +286,22 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 
 			{isRepo && (
 				<div className="flex-1 space-y-2.5 p-2.5">
-					<section>
-						<button
-							type="button"
-							onClick={() => setWorktreesOpen((v) => !v)}
-							aria-expanded={worktreesOpen}
-							className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200 transition-colors"
-						>
-							{worktreesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-							工作树与分支
-							<span className="font-mono text-[10px] text-neutral-500">({worktrees.length})</span>
-						</button>
-						{worktreesOpen && (
-							<WorktreeSection
-								repo={mainRoot ?? cwd}
-								worktrees={worktrees}
-								current={top}
-								selected={selected}
-								selectedExplicit={focus !== null}
-								onSelect={(path) => setFocus(path === top ? null : path)}
-								onChanged={() => void load(false)}
-							/>
-						)}
-					</section>
+					<WorktreeSection
+						repo={mainRoot ?? cwd}
+						worktrees={worktrees}
+						current={top}
+						selected={selected}
+						selectedExplicit={focus !== null}
+						onSelect={(path) => setFocus(path === top ? null : path)}
+						onChanged={() => void load(false)}
+					/>
+
+					<BranchAssetSection
+						repo={mainRoot ?? cwd}
+						currentWorktreePath={selected}
+						onSelectWorktree={(path) => setFocus(path === top ? null : path)}
+						onWorktreeChanged={() => void load(false)}
+					/>
 					<section className="rounded-lg border border-neutral-800 bg-neutral-900/50">
 						{selected !== top && selectedName && (
 							<div className="flex items-center gap-1.5 border-b border-neutral-800 bg-indigo-500/5 px-3 py-1.5 text-[11px] text-indigo-200">

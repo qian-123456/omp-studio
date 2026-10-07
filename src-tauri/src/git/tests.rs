@@ -365,3 +365,72 @@ fn pending_diff_covers_everything_a_commit_would_record() {
     assert!(commands::pending_diff(&repo).unwrap().trim().is_empty());
     std::fs::remove_dir_all(&repo).unwrap();
 }
+
+#[test]
+fn detailed_branch_listing_and_merge_preview() {
+    let repo = temp_repo("branch-detailed");
+    commit(
+        &repo,
+        "main.txt",
+        "main content\n",
+        "feat: initial commit on main",
+    );
+
+    // Create branch feat-1 and commit
+    git_ok(&repo, &["checkout", "-b", "feat-1"]).unwrap();
+    commit(&repo, "feat1.txt", "feat1\n", "feat: add feature 1");
+
+    // Create branch feat-conflict and commit conflicting change
+    git_ok(&repo, &["checkout", "main"]).unwrap();
+    git_ok(&repo, &["checkout", "-b", "feat-conflict"]).unwrap();
+    commit(
+        &repo,
+        "feat1.txt",
+        "conflicting feat1\n",
+        "feat: conflicting change",
+    );
+
+    git_ok(&repo, &["checkout", "main"]).unwrap();
+
+    // 1. Test list_branches_detailed
+    let branches = commands::list_branches_detailed(&repo).unwrap();
+    assert!(branches.len() >= 3);
+    let main_branch = branches.iter().find(|b| b.name == "main").unwrap();
+    assert_eq!(main_branch.display_name, "main");
+    assert!(!main_branch.is_remote);
+    assert!(main_branch.is_current_worktree);
+    assert_eq!(
+        main_branch.last_commit_message.as_deref(),
+        Some("feat: initial commit on main")
+    );
+
+    let feat1 = branches.iter().find(|b| b.name == "feat-1").unwrap();
+    assert!(!feat1.is_remote);
+    assert_eq!(
+        feat1.last_commit_message.as_deref(),
+        Some("feat: add feature 1")
+    );
+
+    // 2. Test merge_preview: feat-1 into main (should be clean)
+    let preview_clean = commands::merge_preview(&repo, "main", "feat-1").unwrap();
+    assert!(preview_clean.can_merge);
+    assert!(!preview_clean.has_conflicts);
+    assert_eq!(preview_clean.commits_ahead, 1);
+
+    // 3. Test merge_preview: feat-conflict into feat-1 (should conflict on feat1.txt)
+    let preview_conflict = commands::merge_preview(&repo, "feat-1", "feat-conflict").unwrap();
+    assert!(!preview_conflict.can_merge);
+    assert!(preview_conflict.has_conflicts);
+
+    // 4. Test delete_branch
+    git_ok(&repo, &["checkout", "-b", "temp-delete"]).unwrap();
+    git_ok(&repo, &["checkout", "main"]).unwrap();
+    assert!(commands::delete_branch(&repo, "temp-delete", false, true).is_ok());
+    let after_delete = commands::list_branches_detailed(&repo).unwrap();
+    assert!(!after_delete.iter().any(|b| b.name == "temp-delete"));
+
+    // 5. Test get_pr_url fallback (no remote yet)
+    let pr_info = commands::get_pr_url(&repo, "feat-1", Some("main")).unwrap();
+    assert!(!pr_info.is_github);
+    std::fs::remove_dir_all(&repo).unwrap();
+}

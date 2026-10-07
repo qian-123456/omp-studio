@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	sessionTurnAutoRefresh: true,
 	turnCheckpoints: null,
 	queueAutoSend: null,
+	gitDeliveryMode: "pr",
 };
 
 export interface SettingsState {

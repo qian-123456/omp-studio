@@ -206,6 +206,33 @@ export function GeneralSection() {
 				/>
 			</SettingsCard>
 
+			<SettingsCard title="Git 与代码交付">
+				<SettingRow
+					fieldId="gitDeliveryMode"
+					label="主干交付模式"
+					description="从功能分支交付到 main 主干时的默认行为方式。"
+					hint="默认推荐使用 Pull Request，经网页审查后再合流"
+					control={
+						<Segmented
+							value={(settings?.gitDeliveryMode as "pr" | "direct") ?? "pr"}
+							onChange={(v) => void save({ gitDeliveryMode: v })}
+							options={[
+								{
+									value: "pr",
+									label: "GitHub Pull Request (推荐)",
+									title: "推送到云端同名分支并自动打开 GitHub 网页发起 PR 评审",
+								},
+								{
+									value: "direct",
+									label: "本地直接合并入 main 并直推",
+									title: "本地合并入 main 后直接推送到云端 origin/main（适合个人单人极速开发）",
+								},
+							]}
+						/>
+					}
+				/>
+			</SettingsCard>
+
 			<SettingsCard title="长期规则">
 				<SettingRow
 					fieldId="agentsMdShortcut"

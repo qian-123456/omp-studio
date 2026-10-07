@@ -10,6 +10,7 @@ import type {
 	BacklogKind,
 	BacklogPatch,
 	BacklogRef,
+	BranchInfo,
 	DiscoveredModel,
 	DirEntry,
 	GitHistory,
@@ -18,6 +19,7 @@ import type {
 	LiveSessionInfo,
 	McpConfigSnapshot,
 	McpServerPatch,
+	MergePreview,
 	MobileStatus,
 	Model,
 	ModelContextWindowEdit,
@@ -32,10 +34,11 @@ import type {
 	PathCheck,
 	PendingUiRequest,
 	PluginCatalog,
+	ProcessMemoryInfo,
 	ProviderApi,
 	ProviderConfig,
-	ProcessMemoryInfo,
 	ProviderTestResult,
+	PrUrlInfo,
 	ServiceInfo,
 	SessionMeta,
 	SessionMetaPatch,
@@ -240,6 +243,37 @@ export const gitRestoreFile = (repo: string, path: string) =>
 
 export const gitListBranches = (repo: string) =>
 	invoke<string[]>("git_list_branches", { repo });
+
+export const gitListBranchesDetailed = (repo: string) =>
+	invoke<BranchInfo[]>("git_list_branches_detailed", { repo });
+
+export const gitDeleteBranch = (
+	repo: string,
+	branch: string,
+	isRemote = false,
+	force = false,
+) => invoke<void>("git_delete_branch", { repo, branch, isRemote, force });
+
+export const gitSyncBranch = (
+	repo: string,
+	branch: string,
+	action: "fetch" | "pull" | "push",
+) => invoke<string>("git_sync_branch", { repo, branch, action });
+
+export const gitMergePreview = (
+	repo: string,
+	targetBranch: string,
+	sourceBranch: string,
+) => invoke<MergePreview>("git_merge_preview", { repo, targetBranch, sourceBranch });
+
+export const gitMergeBranch = (repo: string, sourceBranch: string) =>
+	invoke<string>("git_merge_branch", { repo, sourceBranch });
+
+export const gitGetPrUrl = (
+	repo: string,
+	sourceBranch: string,
+	targetBranch?: string,
+) => invoke<PrUrlInfo>("git_get_pr_url", { repo, sourceBranch, targetBranch });
 
 export const gitCommitSuggest = (cwd: string) =>
 	invoke<string>("git_commit_suggest", { cwd });

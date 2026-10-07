@@ -8,7 +8,8 @@ use tauri::Emitter;
 
 use super::{badge, checkpoints_ext, history, repo_root, status, tm, turns, worktree};
 use crate::contracts::{
-    GitBadge, GitHistory, GitSummary, TmRun, TurnCheckpoint, TurnUndoResult, WorktreeInfo,
+    BranchInfo, GitBadge, GitHistory, GitSummary, MergePreview, PrUrlInfo, TmRun, TurnCheckpoint,
+    TurnUndoResult, WorktreeInfo,
 };
 use crate::state::AppState;
 
@@ -268,6 +269,369 @@ pub async fn git_list_branches(
     repo: String,
 ) -> Result<Vec<String>, String> {
     blocking(move || list_branches(&PathBuf::from(repo))).await
+}
+
+pub fn list_branches_detailed(repo: &std::path::Path) -> Result<Vec<BranchInfo>, String> {
+    let mut worktree_branch_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    if let Ok(wt_out) = super::cmd::git_ok(repo, &["worktree", "list", "--porcelain"]) {
+        let mut cur_path: Option<String> = None;
+        for line in wt_out.lines() {
+            if let Some(p) = line.strip_prefix("worktree ") {
+                cur_path = Some(p.trim().to_string());
+            } else if let Some(b) = line.strip_prefix("branch refs/heads/") {
+                if let Some(p) = &cur_path {
+                    worktree_branch_map.insert(b.trim().to_string(), p.clone());
+                }
+            } else if line.trim().is_empty() {
+                cur_path = None;
+            }
+        }
+    }
+
+    let merged_set: std::collections::HashSet<String> =
+        super::cmd::git_ok(repo, &["branch", "--merged"])
+            .unwrap_or_default()
+            .lines()
+            .map(|l| l.trim().trim_start_matches('*').trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+    let out = super::cmd::git_ok(
+        repo,
+        &[
+            "for-each-ref",
+            "--format=%(refname)|%(refname:short)|%(upstream:short)|%(upstream:track)|%(committerdate:relative)|%(subject)|%(objectname:short)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+    )?;
+
+    let mut result = Vec::new();
+    for line in out.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.splitn(7, '|').collect();
+        if parts.len() < 7 {
+            continue;
+        }
+        let refname = parts[0];
+        let shortname = parts[1];
+        let upstream = parts[2];
+        let track = parts[3];
+        let date_rel = parts[4];
+        let subject = parts[5];
+        let short_sha = parts[6];
+
+        if shortname.ends_with("/HEAD") || shortname == "HEAD" {
+            continue;
+        }
+
+        let is_remote = refname.starts_with("refs/remotes/");
+        let (name, display_name, remote, is_current_wt, wt_path) = if is_remote {
+            let mut parts_remote = shortname.splitn(2, '/');
+            let rem = parts_remote.next().unwrap_or("origin");
+            let disp = parts_remote.next().unwrap_or(shortname);
+            (
+                shortname.to_string(),
+                disp.to_string(),
+                Some(rem.to_string()),
+                false,
+                None,
+            )
+        } else {
+            let clean_name = shortname.to_string();
+            let wt = worktree_branch_map.get(&clean_name).cloned();
+            let is_cur = wt.is_some();
+            (clean_name.clone(), clean_name, None, is_cur, wt)
+        };
+
+        let mut ahead = 0u32;
+        let mut behind = 0u32;
+        if track.contains("ahead") {
+            if let Some(pos) = track.find("ahead ") {
+                let rest = &track[pos + 6..];
+                let num_str: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                ahead = num_str.parse().unwrap_or(0);
+            }
+        }
+        if track.contains("behind") {
+            if let Some(pos) = track.find("behind ") {
+                let rest = &track[pos + 7..];
+                let num_str: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                behind = num_str.parse().unwrap_or(0);
+            }
+        }
+
+        let is_merged = !is_remote && merged_set.contains(&name);
+
+        result.push(BranchInfo {
+            name,
+            display_name,
+            is_remote,
+            remote,
+            upstream: if upstream.is_empty() {
+                None
+            } else {
+                Some(upstream.to_string())
+            },
+            is_current_worktree: is_current_wt,
+            worktree_path: wt_path,
+            last_commit_sha: if short_sha.is_empty() {
+                None
+            } else {
+                Some(short_sha.to_string())
+            },
+            last_commit_message: if subject.is_empty() {
+                None
+            } else {
+                Some(subject.to_string())
+            },
+            last_commit_time: if date_rel.is_empty() {
+                None
+            } else {
+                Some(date_rel.to_string())
+            },
+            ahead,
+            behind,
+            is_merged,
+        });
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn git_list_branches_detailed(
+    _state: tauri::State<'_, AppState>,
+    repo: String,
+) -> Result<Vec<BranchInfo>, String> {
+    blocking(move || list_branches_detailed(&PathBuf::from(repo))).await
+}
+
+pub fn delete_branch(
+    repo: &std::path::Path,
+    branch: &str,
+    is_remote: bool,
+    force: bool,
+) -> Result<(), String> {
+    if is_remote {
+        let (remote, branch_name) = if let Some((r, b)) = branch.split_once('/') {
+            (r, b)
+        } else {
+            ("origin", branch)
+        };
+        super::cmd::git_ok(repo, &["push", remote, "--delete", branch_name])?;
+    } else {
+        if let Ok(wt_out) = super::cmd::git_ok(repo, &["worktree", "list", "--porcelain"]) {
+            for line in wt_out.lines() {
+                if let Some(b) = line.strip_prefix("branch refs/heads/") {
+                    if b.trim() == branch {
+                        return Err(format!(
+                            "分支「{}」正在被工作树使用，请先清理该工作树后再删除",
+                            branch
+                        ));
+                    }
+                }
+            }
+        }
+        let flag = if force { "-D" } else { "-d" };
+        super::cmd::git_ok(repo, &["branch", flag, branch])?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_delete_branch(
+    _state: tauri::State<'_, AppState>,
+    repo: String,
+    branch: String,
+    is_remote: bool,
+    force: bool,
+) -> Result<(), String> {
+    blocking(move || delete_branch(&PathBuf::from(repo), &branch, is_remote, force)).await
+}
+
+pub fn sync_branch(repo: &std::path::Path, branch: &str, action: &str) -> Result<String, String> {
+    match action {
+        "fetch" => super::cmd::git_ok(repo, &["fetch", "--all", "--prune"]),
+        "pull" => super::cmd::git_ok(repo, &["pull"]),
+        "push" => {
+            let has_upstream = super::cmd::git(
+                repo,
+                &["rev-parse", "--abbrev-ref", &format!("{branch}@{{u}}")],
+            )
+            .map(|r| r.ok())
+            .unwrap_or(false);
+            if has_upstream {
+                super::cmd::git_ok(repo, &["push"])
+            } else {
+                super::cmd::git_ok(repo, &["push", "-u", "origin", branch])
+            }
+        }
+        _ => Err(format!("不支持的同步操作: {}", action)),
+    }
+}
+
+#[tauri::command]
+pub async fn git_sync_branch(
+    _state: tauri::State<'_, AppState>,
+    repo: String,
+    branch: String,
+    action: String,
+) -> Result<String, String> {
+    blocking(move || sync_branch(&PathBuf::from(repo), &branch, &action)).await
+}
+
+pub fn merge_preview(
+    repo: &std::path::Path,
+    target_branch: &str,
+    source_branch: &str,
+) -> Result<MergePreview, String> {
+    let ahead_count = super::cmd::git_ok(
+        repo,
+        &[
+            "rev-list",
+            "--count",
+            &format!("{}..{}", target_branch, source_branch),
+        ],
+    )
+    .ok()
+    .and_then(|s| s.trim().parse::<u32>().ok())
+    .unwrap_or(0);
+
+    let behind_count = super::cmd::git_ok(
+        repo,
+        &[
+            "rev-list",
+            "--count",
+            &format!("{}..{}", source_branch, target_branch),
+        ],
+    )
+    .ok()
+    .and_then(|s| s.trim().parse::<u32>().ok())
+    .unwrap_or(0);
+
+    let merge_tree_res = super::cmd::git(
+        repo,
+        &["merge-tree", "--write-tree", target_branch, source_branch],
+    )?;
+    if merge_tree_res.ok() {
+        Ok(MergePreview {
+            can_merge: true,
+            has_conflicts: false,
+            conflicting_files: Vec::new(),
+            commits_ahead: ahead_count,
+            commits_behind: behind_count,
+            target_branch: target_branch.to_string(),
+            source_branch: source_branch.to_string(),
+        })
+    } else {
+        let mut conflicts = Vec::new();
+        for line in merge_tree_res.text().lines() {
+            let trimmed = line.trim();
+            if trimmed.contains("CONFLICT") {
+                conflicts.push(trimmed.to_string());
+            }
+        }
+        Ok(MergePreview {
+            can_merge: false,
+            has_conflicts: true,
+            conflicting_files: conflicts,
+            commits_ahead: ahead_count,
+            commits_behind: behind_count,
+            target_branch: target_branch.to_string(),
+            source_branch: source_branch.to_string(),
+        })
+    }
+}
+
+#[tauri::command]
+pub async fn git_merge_preview(
+    _state: tauri::State<'_, AppState>,
+    repo: String,
+    target_branch: String,
+    source_branch: String,
+) -> Result<MergePreview, String> {
+    blocking(move || merge_preview(&PathBuf::from(repo), &target_branch, &source_branch)).await
+}
+
+#[tauri::command]
+pub async fn git_merge_branch(
+    _state: tauri::State<'_, AppState>,
+    repo: String,
+    source_branch: String,
+) -> Result<String, String> {
+    blocking(move || super::cmd::git_ok(&PathBuf::from(repo), &["merge", &source_branch])).await
+}
+
+pub fn get_pr_url(
+    repo: &std::path::Path,
+    source_branch: &str,
+    target_branch: Option<&str>,
+) -> Result<PrUrlInfo, String> {
+    let target = target_branch.unwrap_or("main");
+    let remote_url_res = super::cmd::git_ok(repo, &["remote", "get-url", "origin"]);
+    let remote_url = match remote_url_res {
+        Ok(u) => u.trim().to_string(),
+        Err(_) => {
+            return Ok(PrUrlInfo {
+                pr_url: None,
+                remote_url: None,
+                is_github: false,
+            })
+        }
+    };
+
+    let is_github = remote_url.contains("github.com");
+    if !is_github {
+        return Ok(PrUrlInfo {
+            pr_url: None,
+            remote_url: Some(remote_url),
+            is_github: false,
+        });
+    }
+
+    let repo_path = if let Some(stripped) = remote_url.strip_prefix("git@github.com:") {
+        stripped.trim_end_matches(".git")
+    } else if let Some(pos) = remote_url.find("github.com/") {
+        remote_url[pos + 11..].trim_end_matches(".git")
+    } else {
+        return Ok(PrUrlInfo {
+            pr_url: None,
+            remote_url: Some(remote_url),
+            is_github: true,
+        });
+    };
+
+    let pr_url = format!(
+        "https://github.com/{}/compare/{}...{}?expand=1",
+        repo_path, target, source_branch
+    );
+    Ok(PrUrlInfo {
+        pr_url: Some(pr_url),
+        remote_url: Some(remote_url),
+        is_github: true,
+    })
+}
+
+#[tauri::command]
+pub async fn git_get_pr_url(
+    _state: tauri::State<'_, AppState>,
+    repo: String,
+    source_branch: String,
+    target_branch: Option<String>,
+) -> Result<PrUrlInfo, String> {
+    blocking(move || {
+        get_pr_url(
+            &PathBuf::from(repo),
+            &source_branch,
+            target_branch.as_deref(),
+        )
+    })
+    .await
 }
 
 /// Everything `git add -A && git commit` would record, as a stat + patch against HEAD

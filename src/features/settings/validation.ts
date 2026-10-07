@@ -231,5 +231,15 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		out.notifyQuietTo = to;
 	}
 
+	if ("gitDeliveryMode" in raw) {
+		const val = raw.gitDeliveryMode;
+		if (val !== "pr" && val !== "direct" && val !== null && val !== undefined) {
+			return { ok: false, error: "主干交付模式必须为 pr 或 direct" };
+		}
+		if (typeof val === "string") {
+			out.gitDeliveryMode = val;
+		}
+	}
+
 	return { ok: true, value: out };
 }

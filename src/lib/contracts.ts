@@ -344,6 +344,38 @@ export interface WorktreeInfo {
 	sessionIds: string[];
 }
 
+export interface BranchInfo {
+	name: string;
+	displayName: string;
+	isRemote: boolean;
+	remote?: string | null;
+	upstream?: string | null;
+	isCurrentWorktree: boolean;
+	worktreePath?: string | null;
+	lastCommitSha?: string | null;
+	lastCommitMessage?: string | null;
+	lastCommitTime?: string | null;
+	ahead: number;
+	behind: number;
+	isMerged: boolean;
+}
+
+export interface MergePreview {
+	canMerge: boolean;
+	hasConflicts: boolean;
+	conflictingFiles: string[];
+	commitsAhead: number;
+	commitsBehind: number;
+	targetBranch: string;
+	sourceBranch: string;
+}
+
+export interface PrUrlInfo {
+	prUrl: string | null;
+	remoteUrl: string | null;
+	isGithub: boolean;
+}
+
 /** One file changed during an agent turn. */
 export interface TurnFile {
 	path: string;
@@ -483,6 +515,8 @@ export interface Settings {
 	turnCheckpoints: boolean | null;
 	/** Auto-send queued mid-stream messages when the turn ends (null = enabled). */
 	queueAutoSend: boolean | null;
+	/** Git delivery mode: "pr" (default, opens GitHub PR) or "direct" (merges locally and pushes to main). */
+	gitDeliveryMode?: "pr" | "direct" | string;
 }
 
 /** One `omp config list --json` entry. */
