@@ -780,9 +780,12 @@ body {
 }
 
 /* Selection: refined translucent sapphire highlight with natural text contrast */
-::selection {
-	background: rgba(56, 189, 248, 0.32);
-	color: inherit;
+::selection,
+code::selection,
+pre::selection {
+	background: rgba(56, 189, 248, 0.32) !important;
+	color: inherit !important;
+	text-shadow: none !important;
 }
 
 /* Global accessible focus ring for keyboard navigation, excluding text inputs. */
