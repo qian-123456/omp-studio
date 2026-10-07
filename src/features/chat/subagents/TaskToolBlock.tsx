@@ -35,6 +35,8 @@ export interface TaskToolBlockProps {
 	resultText?: string;
 	startedAt?: number | null;
 	endedAt?: number | null;
+	/** Expand-all override; undefined leaves the user's toggle alone. */
+	expanded?: boolean;
 }
 
 /** Cap for the collapsed agent tree (TUI COLLAPSED_AGENT_LIMIT). */
@@ -92,7 +94,7 @@ function NestedRow({ p }: { p: AgentProgress }) {
 	const status: SubagentStatus = p.status ?? "pending";
 	const { Icon, color, spin } = STATUS_ICON[status];
 	return (
-		<div className="flex items-center gap-1.5 ps-[68px] py-0.5">
+		<div className="flex items-center gap-1.5 ps-[52px] py-0.5">
 			<Icon
 				size={11}
 				className={clsx("shrink-0", spin && "animate-spin")}
@@ -177,8 +179,14 @@ export function TaskToolBlock({
 	status,
 	details,
 	resultText,
+	expanded,
 }: TaskToolBlockProps) {
-	const [open, setOpen] = useState(status === "running" || status === "error");
+	// Collapsed by default like every activity row; running/error show via the
+	// header tone. A click or expand-all opens it.
+	const [open, setOpen] = useState(expanded === true);
+	useEffect(() => {
+		if (expanded !== undefined) setOpen(expanded);
+	}, [expanded]);
 	const [expandedAll, setExpandedAll] = useState(false);
 	const [sheetId, setSheetId] = useState<string | null>(null);
 	const [fileList, setFileList] = useState<SubagentSummary[] | null>(null);

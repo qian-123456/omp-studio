@@ -78,6 +78,18 @@ describe("groupIdeasByProject", () => {
 		);
 		expect(groups.map((g) => g.project)).toEqual(["/p/y", "/p/x"]);
 	});
+
+	it("merges worktrees of one repo into the repo group, and current filter spans them", () => {
+		const wt = [
+			item("main", "inbox", "/p/r", "2026-01-01T00:00:00Z"),
+			item("wt", "inbox", "/p/r/.worktrees/feat", "2026-01-02T00:00:00Z"),
+		];
+		const groups = groupIdeasByProject(wt, "/p/r/.worktrees/other");
+		expect(groups.map((g) => [g.project, g.label, g.isCurrent, g.items.map((i) => i.id)])).toEqual([
+			["/p/r", "r", true, ["wt", "main"]],
+		]);
+		expect(filterIdeas(wt, "current", "/p/r").map((i) => i.id)).toEqual(["main", "wt"]);
+	});
 });
 
 describe("ideaImages", () => {

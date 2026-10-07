@@ -69,6 +69,13 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		out.turnCheckpoints = raw.turnCheckpoints as boolean | null;
 	}
 
+	if ("queueAutoSend" in raw) {
+		if (raw.queueAutoSend !== null && typeof raw.queueAutoSend !== "boolean") {
+			return { ok: false, error: "字段 queueAutoSend 必须为布尔值或 null" };
+		}
+		out.queueAutoSend = raw.queueAutoSend as boolean | null;
+	}
+
 	if ("defaultApprovalMode" in raw) {
 		if (
 			typeof raw.defaultApprovalMode !== "string" ||

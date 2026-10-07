@@ -332,7 +332,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					branch: propBranch || `${branchPrefix}${wtName.trim() || slug}`,
 					base: propBranch || !baseBranch ? undefined : baseBranch,
 				});
-				void useWorktrees.getState().refresh();
+				await useWorktrees.getState().refresh().catch(() => {});
 				target = wt.path;
 			}
 			const { sessionId, stub } = await createSession({

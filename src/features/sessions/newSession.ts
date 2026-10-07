@@ -43,7 +43,9 @@ export async function startSessionInDir(
 				`task-${Math.floor(Date.now() / 1000)}`,
 			);
 			cwd = wt.path;
-			void useWorktrees.getState().refresh();
+			// Await so the sidebar groups the new session under its worktree
+			// immediately instead of flashing it as orphaned / bouncing to idle.
+			await useWorktrees.getState().refresh().catch(() => {});
 		} else {
 			const draft = findEmptyDraft(cwd);
 			if (draft) {

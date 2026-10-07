@@ -49,6 +49,11 @@ export function AutoCompactionCard() {
 	const commit = (m: ThresholdMode, value?: number) => write(thresholdWrites(m, value));
 
 	const percentShown = sliderDraft ?? (threshold.percent > 0 ? threshold.percent : 80);
+	const fill = ((percentShown - PERCENT_MIN) / (PERCENT_MAX - PERCENT_MIN)) * 100;
+	const shownThreshold = sliderDraft !== null ? { ...threshold, tokens: 0, percent: sliderDraft } : threshold;
+	const commitDraft = () => {
+		if (sliderDraft !== null) void commit("percent", sliderDraft).finally(() => setSliderDraft(null));
+	};
 
 	return (
 		<div data-omp-key="compaction.enabled" className="space-y-3 px-4 py-3">
@@ -139,19 +144,19 @@ export function AutoCompactionCard() {
 								max={PERCENT_MAX}
 								value={percentShown}
 								onChange={(e) => setSliderDraft(Number(e.target.value))}
-								onPointerUp={() => {
-									if (sliderDraft !== null) void commit("percent", sliderDraft).finally(() => setSliderDraft(null));
+								onPointerUp={commitDraft}
+								onKeyUp={commitDraft}
+								onBlur={commitDraft}
+								style={{
+									background: `linear-gradient(to right, var(--accent) ${fill}%, rgba(255,255,255,0.12) ${fill}%)`,
 								}}
-								onKeyUp={() => {
-									if (sliderDraft !== null) void commit("percent", sliderDraft).finally(() => setSliderDraft(null));
-								}}
-								className="flex-1 accent-[var(--accent)]"
+								className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full accent-[var(--accent)]"
 							/>
 							<CommitInput
 								className="w-20"
 								mono
 								aria-label="压缩阈值百分比"
-								value={storedMode === "percent" ? `${threshold.percent}%` : ""}
+								value={sliderDraft !== null ? `${sliderDraft}%` : storedMode === "percent" ? `${threshold.percent}%` : ""}
 								placeholder={`${PERCENT_MIN}%–${PERCENT_MAX}%`}
 								normalize={(raw) => {
 									const n = parsePercentInput(raw);
@@ -186,7 +191,7 @@ export function AutoCompactionCard() {
 			</div>
 
 			<div className="rounded-lg bg-[var(--well-bg)] px-3 py-2 text-[11px] leading-4 text-neutral-400">
-				{describeStrategy(threshold, enabled)}
+				{describeStrategy(shownThreshold, enabled)}
 			</div>
 		</div>
 	);

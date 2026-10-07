@@ -108,8 +108,9 @@ pub async fn create_side_chat(
     parent_session_id: String,
     selection: Option<String>,
     question: String,
+    model: Option<String>,
 ) -> Result<LiveSessionInfo, String> {
-    crate::rpc::sidechat::create(&state, &parent_session_id, selection, question).await
+    crate::rpc::sidechat::create(&state, &parent_session_id, selection, question, model).await
 }
 
 /// Contract C5: subagent sessions of a parent session file

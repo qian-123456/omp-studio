@@ -167,72 +167,83 @@ export default function App() {
 		),
 	);
 
-	// Resizable sidebars with requestAnimationFrame throttling for 60/120fps smoothness
-	const draggingSide = useRef<"left" | "right" | null>(null);
-	const [isDragging, setIsDragging] = useState(false);
+	// Resizable sidebars: delta-drag (seam keeps its grab offset under the pointer), rAF-throttled
+	// live updates, persistence only on drag end. Cursor/user-select live on the overlay div, so
+	// they disappear with it — no global body styles to leak.
+	const drag = useRef<{ side: "left" | "right"; grabOffsetX: number } | null>(null);
+	const [draggingSide, setDraggingSide] = useState<"left" | "right" | null>(null);
+	const isDragging = draggingSide !== null;
 
 	const onLeftDragStart = useCallback((e: React.MouseEvent) => {
+		if (e.button !== 0) return;
 		e.preventDefault();
-		draggingSide.current = "left";
-		setIsDragging(true);
-		document.body.style.userSelect = "none";
-		document.body.style.cursor = "col-resize";
+		drag.current = { side: "left", grabOffsetX: e.clientX - useUi.getState().sidebarWidth };
+		setDraggingSide("left");
 	}, []);
 
 	const onRightDragStart = useCallback((e: React.MouseEvent) => {
+		if (e.button !== 0) return;
 		e.preventDefault();
-		draggingSide.current = "right";
-		setIsDragging(true);
-		document.body.style.userSelect = "none";
-		document.body.style.cursor = "col-resize";
+		const seamX = window.innerWidth - useUi.getState().rightWidth;
+		drag.current = { side: "right", grabOffsetX: e.clientX - seamX };
+		setDraggingSide("right");
 	}, []);
 
 	useEffect(() => {
+		if (!draggingSide) return;
 		let rafId: number | null = null;
-		let latestClientX = 0;
+		let latestClientX: number | null = null;
 
 		const updateWidth = () => {
 			rafId = null;
-			if (!draggingSide.current) return;
-			if (draggingSide.current === "left") {
-				setSidebarWidth(latestClientX);
-			} else if (draggingSide.current === "right") {
-				setRightWidth(window.innerWidth - latestClientX);
+			const d = drag.current;
+			if (!d || latestClientX === null) return;
+			// Live update without persisting; the store setter (which writes localStorage) runs on end.
+			if (d.side === "left") {
+				const w = Math.min(600, Math.max(180, latestClientX - d.grabOffsetX));
+				useUi.setState({ sidebarWidth: w });
+			} else {
+				const w = Math.min(720, Math.max(260, window.innerWidth - latestClientX + d.grabOffsetX));
+				useUi.setState({ rightWidth: w });
 			}
 		};
 
 		const onMove = (e: MouseEvent) => {
-			if (!draggingSide.current) return;
 			latestClientX = e.clientX;
-			if (rafId === null) {
-				rafId = requestAnimationFrame(updateWidth);
-			}
+			if (rafId === null) rafId = requestAnimationFrame(updateWidth);
 		};
 
-		const onUp = () => {
+		const end = () => {
 			if (rafId !== null) {
 				cancelAnimationFrame(rafId);
-				rafId = null;
+				updateWidth();
 			}
-			if (draggingSide.current) {
-				draggingSide.current = null;
-				setIsDragging(false);
-				document.body.style.userSelect = "";
-				document.body.style.cursor = "";
+			const d = drag.current;
+			drag.current = null;
+			if (d) {
+				const s = useUi.getState();
+				if (d.side === "left") setSidebarWidth(s.sidebarWidth);
+				else setRightWidth(s.rightWidth);
 			}
+			setDraggingSide(null);
 		};
+
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") end();
+		};
+
 		window.addEventListener("mousemove", onMove);
-		window.addEventListener("mouseup", onUp);
+		window.addEventListener("mouseup", end);
+		window.addEventListener("blur", end);
+		window.addEventListener("keydown", onKey);
 		return () => {
-			if (rafId !== null) {
-				cancelAnimationFrame(rafId);
-			}
+			if (rafId !== null) cancelAnimationFrame(rafId);
 			window.removeEventListener("mousemove", onMove);
-			window.removeEventListener("mouseup", onUp);
-			document.body.style.userSelect = "";
-			document.body.style.cursor = "";
+			window.removeEventListener("mouseup", end);
+			window.removeEventListener("blur", end);
+			window.removeEventListener("keydown", onKey);
 		};
-	}, [setSidebarWidth, setRightWidth]);
+	}, [draggingSide, setSidebarWidth, setRightWidth]);
 
 	// Global keyboard shortcuts: Cmd+B (left sidebar) / Cmd+J (right panel) / Cmd+[ (return to session/parent)
 	// Cmd+` (right-panel command terminal) / Cmd+Shift+` (selected session: chat ⇄ Agent terminal)
@@ -332,7 +343,7 @@ export default function App() {
 							{/* Left column topbar — same width with right + bottom border */}
 							<div
 								data-tauri-drag-region
-								className="flex h-10 shrink-0 items-center justify-between border-b border-r border-[var(--border-divider)] px-2.5 select-none"
+								className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-divider)] px-2.5 select-none"
 							>
 								{/* macOS traffic light spacer */}
 								<div className={isMac ? "w-[68px] shrink-0" : "hidden"} />
@@ -347,16 +358,21 @@ export default function App() {
 									<PanelLeftClose size={15} />
 								</button>
 							</div>
-							<aside className="min-h-0 flex-1 border-r border-[var(--border-divider)]">
+							<aside className="min-h-0 flex-1">
 								<SessionSidebar />
 							</aside>
 						</div>
 						{/* Sidebar drag handle */}
 						<div
 							onMouseDown={onLeftDragStart}
-							className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-[#0A84FF]/40 active:bg-[#0A84FF]/60"
+							className="group/handle relative z-40 w-0 shrink-0 cursor-col-resize"
 							title="拖拽调节左栏宽度"
-						/>
+						>
+							<div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2" />
+							<div
+								className={`pointer-events-none absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 transition-colors ${draggingSide === "left" ? "bg-[#0A84FF]/60" : "bg-[var(--border-divider)] group-hover/handle:bg-[#0A84FF]/60"}`}
+							/>
+						</div>
 					</>
 				)}
 
@@ -383,9 +399,14 @@ export default function App() {
 						{/* Right panel drag handle */}
 						<div
 							onMouseDown={onRightDragStart}
-							className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-[#0A84FF]/40 active:bg-[#0A84FF]/60"
+							className="group/handle relative z-40 w-0 shrink-0 cursor-col-resize"
 							title="拖拽调节右栏宽度"
-						/>
+						>
+							<div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2" />
+							<div
+								className={`pointer-events-none absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 transition-colors ${draggingSide === "right" ? "bg-[#0A84FF]/60" : "bg-[var(--border-divider)] group-hover/handle:bg-[#0A84FF]/60"}`}
+							/>
+						</div>
 						<RightAside />
 					</>
 				)}

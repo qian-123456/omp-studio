@@ -35,6 +35,13 @@ export function CheckpointsSection() {
 				checked={settings?.turnCheckpoints === true}
 				onChange={(v) => save({ turnCheckpoints: v })}
 			/>
+			<ToggleRow
+				fieldId="queueAutoSend"
+				label="排队消息自动发送"
+				description="流式回合中输入的消息排队后，回合结束自动逐条发送；关闭则回合结束后手动确认。"
+				checked={settings?.queueAutoSend !== false}
+				onChange={(v) => save({ queueAutoSend: v })}
+			/>
 			<SettingRow
 				label="AI 收到的存档规则"
 				description="开启后，下面这段说明会附加给 AI。"

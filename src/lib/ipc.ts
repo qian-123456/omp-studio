@@ -20,12 +20,14 @@ import type {
 	McpServerPatch,
 	MobileStatus,
 	Model,
+	ModelContextWindowEdit,
 	OauthLoginProvider,
 	OauthLoginStatus,
 	OmpConfigListResult,
 	OmpProjectConfigFile,
 	OmpProviderInfo,
 	OmpImportResult,
+	OmpUsageReportData,
 	PairingInfo,
 	PathCheck,
 	PendingUiRequest,
@@ -156,11 +158,13 @@ export const createSideChat = (
 	parentSessionId: string,
 	question: string,
 	selection?: string,
+	model?: string,
 ) =>
 	invoke<LiveSessionInfo>("create_side_chat", {
 		parentSessionId,
 		question,
 		selection: selection ?? null,
+		model: model ?? null,
 	});
 
 /** Contract C5: subagent sessions spawned by a parent session file. */
@@ -424,6 +428,13 @@ export const ompProvidersList = () =>
 export const providerImportOmp = (ids: string[]) =>
 	invoke<OmpImportResult[]>("provider_import_omp", { ids });
 
+/** Targeted edit of `~/.omp/agent/models.yml` modelOverrides contextWindow (null deletes). */
+export const ompModelsSetContextWindows = (entries: ModelContextWindowEdit[]) =>
+	invoke<void>("omp_models_set_context_windows", { entries });
+/** Existing models.yml modelOverrides contextWindow values (only provider/model/window). */
+export const ompModelsContextWindowOverrides = () =>
+	invoke<ModelContextWindowEdit[]>("omp_models_context_window_overrides");
+
 export const oauthLoginProviders = () =>
 	invoke<OauthLoginProvider[]>("oauth_login_providers");
 
@@ -441,6 +452,9 @@ export const oauthLoginOpenUrl = (url: string) =>
 
 export const oauthLoginStatus = () =>
 	invoke<OauthLoginStatus | null>("oauth_login_status");
+
+export const ompUsageReport = (refresh?: boolean) =>
+	invoke<OmpUsageReportData>("omp_usage_report", { refresh: refresh ?? false });
 
 // ---- E — mobile / tunnel ----
 

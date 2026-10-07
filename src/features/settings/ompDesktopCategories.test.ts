@@ -34,7 +34,7 @@ describe("OMP_DESKTOP_CATEGORIES", () => {
 			"模型与目录",
 			"思考与采样",
 			"重试与回退",
-			"上下文与记忆",
+			"记忆与对话",
 			"工具与审批",
 			"任务与子代理",
 			"网络与扩展",
@@ -71,6 +71,13 @@ describe("isDesktopRelevant", () => {
 		expect(isDesktopRelevant("modelRoleStorage")).toBe(false);
 	});
 
+	it("rejects keys owned by the context-window page", () => {
+		expect(isDesktopRelevant("compaction.enabled")).toBe(false);
+		expect(isDesktopRelevant("compaction.thresholdPercent")).toBe(false);
+		expect(isDesktopRelevant("extendedContext")).toBe(false);
+		expect(isDesktopRelevant("contextPromotion.enabled")).toBe(false);
+	});
+
 	it("keeps near-miss prefixes that only look hidden", () => {
 		// `speech.`/`tts.` are hidden but `speechgen.*`/`tts.*` are tools.
 		expect(isDesktopRelevant("speechgen.enabled")).toBe(true);
@@ -102,11 +109,11 @@ describe("ompDesktopCategoryFor", () => {
 			"retry",
 		);
 
-		expect(ompDesktopCategoryFor("compaction.thresholdPercent").id).toBe(
-			"context",
-		);
 		expect(ompDesktopCategoryFor("memories.enabled").id).toBe("context");
 		expect(ompDesktopCategoryFor("steeringMode").id).toBe("context");
+		expect(ompDesktopCategoryFor("autolearn.enabled").id).toBe("context");
+		expect(ompDesktopCategoryFor("goal.enabled").id).toBe("context");
+		expect(ompDesktopCategoryFor("workspace.tree").id).toBe("context");
 
 		expect(ompDesktopCategoryFor("bash.enabled").id).toBe("tools");
 		expect(ompDesktopCategoryFor("tools.approval").id).toBe("tools");

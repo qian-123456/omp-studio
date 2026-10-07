@@ -11,7 +11,7 @@ import {
 	Search,
 	Terminal,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import type { ToolResultInfo, TranscriptItem } from "../../lib/contracts";
 import { useLive } from "../../stores/live";
 import { ActivityHeader } from "./ActivityHeader";
@@ -43,6 +43,7 @@ export type StepShape =
 	  }
 	| { id: string; kind: "text"; text: string; item?: TranscriptItem }
 	| { id: string; kind: "notice"; item: TranscriptItem }
+	| { id: string; kind: "steer"; text: string; item?: TranscriptItem }
 	| {
 			id: string;
 			kind: "tool";
@@ -52,6 +53,38 @@ export type StepShape =
 	  };
 
 type ToolStep = Extract<StepShape, { kind: "tool" }>;
+
+/** Shared Codex user-bubble visual (user rows and in-turn steers). */
+export const USER_BUBBLE_CLASS =
+	"min-w-0 max-w-[70%] rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)]";
+
+/** Milliseconds since `startedAt`, re-rendering every second while `active`. */
+export function useElapsedMs(startedAt: number | undefined, active: boolean): number {
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		if (!active || startedAt === undefined) return;
+		setNow(Date.now());
+		const timer = window.setInterval(() => setNow(Date.now()), 1000);
+		return () => window.clearInterval(timer);
+	}, [active, startedAt]);
+	return startedAt === undefined ? 0 : Math.max(0, now - startedAt);
+}
+
+function processingLabel(elapsedMs: number): string {
+	return elapsedMs >= 1000
+		? `正在处理 ${formatDurationCompact(elapsedMs)}…`
+		: "正在处理…";
+}
+
+/** Live "正在处理 1分12秒…" line for the in-flight turn. */
+export function ProcessingTimer({ startedAt }: { startedAt: number }) {
+	const elapsed = useElapsedMs(startedAt, true);
+	return (
+		<div className="py-0.5 text-[length:var(--chat-font-size)] leading-6">
+			<span className="shimmer-text">{processingLabel(elapsed)}</span>
+		</div>
+	);
+}
 
 /** Seconds label for reasoning rows ("5秒"). */
 function elapsedLabel(ms: number): string {
@@ -235,6 +268,7 @@ export function TurnSteps({
 						resultText={res?.text}
 						startedAt={live?.startedAt}
 						endedAt={live?.endedAt}
+						expanded={forceExpanded ?? undefined}
 					/>
 				) : (
 					<ToolCard
@@ -310,6 +344,18 @@ export function TurnSteps({
 								forceExpanded={forceExpanded}
 							/>
 						);
+					case "steer":
+						return (
+							<div
+								key={step.id}
+								id={`msg-${step.id}`}
+								className="flex justify-end py-1"
+							>
+								<div className={USER_BUBBLE_CLASS}>
+									<div className="whitespace-pre-wrap break-words">{step.text}</div>
+								</div>
+							</div>
+						);
 					case "tool":
 						return renderTool(step);
 				}
@@ -326,6 +372,7 @@ export function ExecutionDisclosure({
 	sessionId,
 	steps,
 	durationMs,
+	startedAt,
 	isStreaming,
 	forceExpanded,
 	toolResultsByCallId,
@@ -333,11 +380,14 @@ export function ExecutionDisclosure({
 	sessionId: string;
 	steps: StepShape[];
 	durationMs?: number;
+	/** Epoch ms the turn started; drives the live ticker while streaming. */
+	startedAt?: number;
 	isStreaming?: boolean;
 	forceExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 }) {
 	const { open: expanded, toggle } = useDisclosure(forceExpanded);
+	const elapsed = useElapsedMs(startedAt, Boolean(isStreaming));
 
 	if (steps.length === 0) {
 		return null;
@@ -345,7 +395,7 @@ export function ExecutionDisclosure({
 
 	const durationLabel = durationMs ? formatDurationCompact(durationMs) : "";
 	const titleText = isStreaming
-		? `正在处理…`
+		? processingLabel(elapsed)
 		: durationLabel
 			? `已处理 ${durationLabel}`
 			: `已处理 ${steps.length} 个步骤`;

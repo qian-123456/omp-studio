@@ -23,6 +23,7 @@ import {
 	oauthLoginStatus,
 } from "../../lib/ipc";
 import { useProviders } from "./store";
+import { ProviderBrandLogo } from "../settings/sections/ProviderBrandLogo";
 
 interface Props {
 	onClose: () => void;
@@ -345,7 +346,14 @@ export function OauthLoginDialog({ onClose }: Props) {
 				{/* Dialog Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
 					<div className="flex items-center gap-2">
-						<LogIn className="h-4 w-4 text-[var(--accent)]" />
+						{phase === "flow" && flowState ? (
+							<ProviderBrandLogo
+								providerId={flowState.provider.id}
+								className="h-4 w-4"
+							/>
+						) : (
+							<LogIn className="h-4 w-4 text-[var(--accent)]" />
+						)}
 						<div
 							id="oauth-dialog-title"
 							className="text-xs font-semibold tracking-[-0.018em] text-neutral-100"
@@ -414,18 +422,26 @@ export function OauthLoginDialog({ onClose }: Props) {
 										type="button"
 										disabled={!p.available}
 										onClick={() => void startFlow(p)}
-										className={`w-full flex items-center justify-between rounded-xl px-3.5 py-2.5 text-left hairline transition-all ${
+										className={`w-full flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-left hairline transition-all ${
 											p.available
 												? "bg-[var(--well-bg)] hover:bg-[var(--bg-hover)] cursor-pointer active:scale-[0.99]"
 												: "bg-[var(--well-bg)]/40 opacity-50 cursor-not-allowed"
 										}`}
 									>
-										<div className="min-w-0 flex-1">
-											<div className="text-xs font-medium text-neutral-200 truncate">
-												{p.name}
+										<div className="flex items-center gap-3 min-w-0 flex-1">
+											<div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 bg-[var(--bg-panel)] hairline p-1.5 shadow-2xs">
+												<ProviderBrandLogo
+													providerId={p.id}
+													className="h-5 w-5"
+												/>
 											</div>
-											<div className="text-[11px] font-mono text-neutral-500">
-												{p.id}
+											<div className="min-w-0 flex-1">
+												<div className="text-xs font-medium text-neutral-100 truncate">
+													{p.name}
+												</div>
+												<div className="text-[11px] font-mono text-neutral-500">
+													{p.id}
+												</div>
 											</div>
 										</div>
 										<div className="flex items-center gap-2 shrink-0">

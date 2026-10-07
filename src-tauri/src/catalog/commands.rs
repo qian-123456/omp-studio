@@ -301,11 +301,16 @@ fn parse_models_value(
                         .unwrap_or_default()
                     })
                     .unwrap_or_default();
+                let context_window = item
+                    .get("contextWindow")
+                    .and_then(|v| v.as_u64())
+                    .filter(|w| *w > 0);
                 out.push(Model {
                     provider: provider.to_string(),
                     id: id.to_string(),
                     name: name.to_string(),
                     thinking,
+                    context_window,
                 });
             }
         }

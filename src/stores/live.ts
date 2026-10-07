@@ -80,6 +80,9 @@ export interface AgentMessage {
 	[key: string]: unknown;
 }
 
+/** Optimistic user bubble; `steer` marks an in-turn steer echo. */
+export type UserEcho = TranscriptItem & { steer?: boolean };
+
 export interface SessionLive {
 	/** A turn is in flight. */
 	streaming: boolean;
@@ -91,7 +94,7 @@ export interface SessionLive {
 	streamingMessage: AgentMessage | null;
 	/** Optimistic user bubbles waiting for the transcript fetch to confirm
 	 * them (rpc prompt accepted but not yet visible in the jsonl page). */
-	pendingUserEchoes: TranscriptItem[];
+	pendingUserEchoes: UserEcho[];
 	/** From available_commands_update / get_available_commands. */
 	commands: SlashCommand[];
 	/** Ephemeral slash-command outputs shown at the end of the thread. */
@@ -448,7 +451,10 @@ function reduce(
 					: live.thinkingEndedAt;
 			// Tool results are persisted to the transcript; live tool map clears
 			// on the next turn_start implicitly via tool_execution ids.
-			return { ...live, thinkingEndedAt };
+			const terminal = frame.isTerminal === true;
+			return terminal
+				? { ...live, thinkingEndedAt, streaming: false, streamingMessage: null }
+				: { ...live, thinkingEndedAt };
 		}
 		case "agent_end": {
 			if (frame.isTerminal === false) return live;
@@ -525,6 +531,9 @@ function reduce(
 			) {
 				return {
 					...live,
+					streaming: false,
+					streamingMessage: null,
+					tools: {},
 					pendingCommand: null,
 					commandOutputs: [
 						...live.commandOutputs,
@@ -538,8 +547,17 @@ function reduce(
 					].slice(-50),
 				};
 			}
-			if (!pendingCommand) return live;
-			return { ...live, pendingCommand: null };
+			return {
+				...live,
+				streaming: false,
+				streamingMessage: null,
+				tools: {},
+				pendingCommand: null,
+			};
+		}
+		case "error": {
+			// Transport/process errors (e.g. socket closed) must not leave a turn stuck.
+			return { ...live, streaming: false, streamingMessage: null, tools: {} };
 		}
 		case "subagent_lifecycle": {
 			// Frame: {type, payload:{id, agent, agentSource, description?, status,
@@ -621,6 +639,9 @@ function reduce(
 				if (frame.success !== true) {
 					return {
 						...live,
+						streaming: false,
+						streamingMessage: null,
+						tools: {},
 						pendingCommand: null,
 						commandOutputs:
 							pendingCommand && str(frame.error).trim()
@@ -731,7 +752,13 @@ export interface LiveState {
 	appendItems(sessionId: string, items: TranscriptItem[], nextOffset: number): void;
 	/** Optimistically append a user bubble after rpc_send accepts a prompt;
 	 * dropped once a transcript page confirms a matching user item. */
-	addUserEcho(sessionId: string, text: string, images?: ImageAttachment[]): void;
+	addUserEcho(
+		sessionId: string,
+		text: string,
+		images?: ImageAttachment[],
+		/** Sent with streamingBehavior "steer" (lands inside the running turn). */
+		steer?: boolean,
+	): void;
 	/** Scroll the message stream to a transcript item (used by HeatmapPanel). */
 	scrollToItem(sessionId: string, itemId: string): void;
 	/** Consume/clear the scroll request for a session. */
@@ -859,11 +886,15 @@ export const useLive = create<LiveState>((set) => ({
 				},
 			};
 		}),
-	addUserEcho: (sessionId, text, images) =>
+	addUserEcho: (sessionId, text, images, steer) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			const trimmed = text.trim();
 			if (!trimmed) return s;
+			const echo: UserEcho = makeUserEcho(trimmed, images);
+			// Only a steer into an in-flight turn is in-turn; anything else is a
+			// next-turn bubble.
+			if (steer && live.streaming) echo.steer = true;
 			return {
 				sessions: {
 					...s.sessions,
@@ -871,7 +902,7 @@ export const useLive = create<LiveState>((set) => ({
 						...live,
 						pendingUserEchoes: [
 							...live.pendingUserEchoes,
-							makeUserEcho(trimmed, images),
+							echo,
 						],
 					},
 				},

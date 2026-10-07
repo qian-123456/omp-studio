@@ -1,4 +1,5 @@
 import type { TranscriptItem } from "../../lib/contracts";
+import { stripImageMarkers } from "./MessageList";
 
 /**
  * Format session transcript items into readable Markdown.
@@ -14,7 +15,7 @@ export function formatSessionMarkdown(
 	for (const item of items) {
 		if (item.hidden) continue;
 		if (item.kind === "user") {
-			const text = item.text?.trim() || "";
+			const text = stripImageMarkers(item.text ?? "").trim();
 			sections.push(`### User\n\n${text}`);
 		} else if (item.kind === "assistant") {
 			const parts: string[] = [];

@@ -16,6 +16,7 @@ import {
 import { ModelPickerModal } from "./ModelPickerModal";
 import type { DiscoveredModel } from "../../lib/contracts";
 import { providerFetchModels } from "../../lib/ipc";
+import { applyContextWindowsOnSave } from "./contextWindowOnSave";
 
 export type ProviderDialogTarget =
 	| { mode: "add" }
@@ -387,10 +388,15 @@ export function ProviderDialog({ target, onClose }: Props) {
 		}
 		setSaving(true);
 		try {
-			await save(config, apiKey.trim() || null);
+			const { config: toSave, count } = await applyContextWindowsOnSave(
+				editing,
+				config,
+			);
+			await save(toSave, apiKey.trim() || null);
 			toast.success(
 				apiKey.trim() ? "已保存，密钥已加密写入密钥库" : "已保存",
 			);
+			if (count > 0) toast.success(`按规则/目录为 ${count} 个模型设置了窗口`);
 			onClose();
 		} catch (err) {
 			setFormError(errMsg(err));
@@ -440,7 +446,11 @@ export function ProviderDialog({ target, onClose }: Props) {
 						models: item.preset.models,
 						defaultModel: item.preset.defaultModel ?? null,
 					};
-					await save(config, item.entry.value);
+					const { config: toSave, count: windowCount } =
+						await applyContextWindowsOnSave(null, config);
+					await save(toSave, item.entry.value);
+					if (windowCount > 0)
+						toast.success(`按规则/目录为 ${windowCount} 个模型设置了窗口`);
 				}
 				count++;
 			}

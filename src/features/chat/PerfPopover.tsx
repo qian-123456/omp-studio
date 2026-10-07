@@ -65,8 +65,8 @@ export function PerfPopover({
 
 	const rows = services !== undefined ? services : internalRows;
 
-	// Processes that belong to this app: spawned by it, or running out of a
-	// known workspace directory.
+	// Processes that belong to this project: spawned by the app, an `omp`
+	// executable, or running in / referencing an exact workspace path.
 	const procs = useMemo<ProcRow[]>(() => {
 		if (!rows) return [];
 		const byPid = new Map<number, ProcRow>();
@@ -78,23 +78,22 @@ export function PerfPopover({
 				}
 				continue;
 			}
-			const commandLower = s.command.toLowerCase();
-			const isChild =
-				s.startedByApp ||
-				commandLower.includes("omp") ||
-				workspaces.some(
-					(w) =>
-						w.path &&
-						(commandLower.includes(w.path.toLowerCase()) ||
-							commandLower.includes(w.name.toLowerCase())),
-				);
+			const executable = s.command.trim().split(/\s+/, 1)[0] ?? "";
+			const isOmp = /^omp\b/i.test(s.command.trim()) || /^omp\b/i.test(executable.split("/").pop() ?? "");
+			const inProject = workspaces.some(
+				(w) =>
+					w.path &&
+					((s.cwd != null && (s.cwd === w.path || s.cwd.startsWith(`${w.path}/`))) ||
+						s.command.includes(w.path)),
+			);
+			if (!s.startedByApp && !isOmp && !inProject) continue;
 			byPid.set(s.pid, {
 				pid: s.pid,
 				name: s.name,
 				ports: [s.port],
 				command: s.command,
 				memoryKb: s.memoryKb,
-				startedByApp: isChild,
+				startedByApp: s.startedByApp,
 			});
 		}
 		return Array.from(byPid.values()).sort(
@@ -132,6 +131,10 @@ export function PerfPopover({
 				</button>
 			</div>
 
+			<div className="mb-3 rounded-md bg-[var(--ghost-hover)] px-2 py-1.5 text-[10.5px] leading-snug text-[var(--text-60)]">
+				展示客户端本体内存，以及当前项目关联的 Agent 进程与服务端口
+			</div>
+
 			{/* App itself */}
 			<div
 				className="flex items-center justify-between text-xs"
@@ -162,7 +165,7 @@ export function PerfPopover({
 					</div>
 				) : procs.length === 0 ? (
 					<div className="py-2 text-center text-[11px] text-[var(--text-40)]">
-						未发现本应用启动的进程
+						未发现当前项目关联的进程
 					</div>
 				) : (
 					<div className="max-h-48 space-y-1 overflow-y-auto text-[11px]">

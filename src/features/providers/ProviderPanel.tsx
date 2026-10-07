@@ -33,6 +33,7 @@ import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders, type TestStatus } from "./store";
 import { formatTokens, modelEntryId, modelEntrySpec } from "./modelEntry";
 import { openSettingsTarget } from "../settings/settingsTargets";
+import { ProviderBrandLogo } from "../settings/sections/ProviderBrandLogo";
 
 const PRIVACY_NOTE =
 	"密钥使用 macOS 钥匙串加密后存于 ~/.omp-workspace/env/keys.env，明文仅在内存中出现，不会写入数据库或日志。";
@@ -165,7 +166,7 @@ export function ProviderPanel() {
 					className="flex w-full items-center gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-2 text-left text-xs text-neutral-300 hover:bg-[var(--bg-hover)]"
 				>
 					<SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
-					<span className="flex-1">同一模型在多个供应商里名字不同？到「统一模型上下文」一次性统一它们的上下文窗口。</span>
+					<span className="flex-1">按型号批量设置各模型的上下文窗口与自动压缩，到「上下文窗口」页。</span>
 					<span className="text-[var(--accent)]">前往 →</span>
 				</button>
 				<div className="flex flex-wrap items-center justify-end gap-3">
@@ -416,7 +417,6 @@ function UnifiedProviderRow({
 			: (info?.modelIds ?? []);
 	const apiLabel = workbench ? API_LABELS[workbench.api] : info?.api;
 	const preset = workbench ? presetById(workbench.presetId) : undefined;
-	const color = preset?.color ?? "#f59e0b";
 	const isOmpOnly = !workbench && Boolean(info);
 
 	const handleRowImport = async () => {
@@ -476,13 +476,11 @@ function UnifiedProviderRow({
 
 				{/* Left items: Preset dot + Name + Auth badge + host + {N} 模型 */}
 				<div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-
-					{workbench && (
-						<span
-							className="h-2 w-2 shrink-0 rounded-full"
-							style={{ backgroundColor: color }}
-						/>
-					)}
+					<ProviderBrandLogo
+						providerId={row.key}
+						color={preset?.color}
+						className="h-4 w-4 shrink-0"
+					/>
 
 					<span
 						className="max-w-[150px] shrink-0 truncate font-mono text-xs font-semibold text-neutral-100 sm:max-w-[200px]"
@@ -689,12 +687,11 @@ function UnifiedProviderRow({
 			>
 				{/* Left: Dot + Name + Slug + ApiLabel + AuthBadge */}
 				<div className="flex min-w-0 flex-wrap items-center gap-2">
-					{workbench && (
-						<span
-							className="h-2 w-2 shrink-0 rounded-full"
-							style={{ backgroundColor: color }}
-						/>
-					)}
+					<ProviderBrandLogo
+						providerId={row.key}
+						color={preset?.color}
+						className="h-4 w-4 shrink-0"
+					/>
 					<span className="font-mono text-xs font-semibold text-neutral-100">
 						{displayName}
 					</span>

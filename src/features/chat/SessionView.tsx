@@ -17,9 +17,12 @@ import {
 } from "../../lib/ipc";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
+import { toast } from "../../lib/toast";
+import { abortTurn } from "./send";
 import { ChatTrace } from "./ChatTrace";
 import { Composer } from "./Composer";
 import { HeldQueueBar } from "./HeldQueueBar";
+import { QueuedBar, useQueueAutoSend } from "./QueuedBar";
 import { MessageList } from "./MessageList";
 import { PendingUiCard } from "./PendingUiCard";
 import { AskPanel, useAskRouting } from "./ask/AskPanel";
@@ -36,6 +39,7 @@ export function SessionView({
 }) {
 	const meta = useSessions((s) => s.sessions[sessionId]);
 	const streaming = useLive((s) => s.sessions[sessionId]?.streaming === true);
+	useQueueAutoSend(sessionId, streaming);
 	const alive = useLive((s) => s.sessions[sessionId]?.alive === true);
 	const pendingUi = useLive((s) => s.sessions[sessionId]?.pendingUi ?? EMPTY_PENDING_UI);
 	const setItems = useLive((s) => s.setItems);
@@ -133,11 +137,28 @@ export function SessionView({
 				if (page.reset) setItems(sessionId, page.items, page.nextOffset);
 				else appendItems(sessionId, page.items, page.nextOffset);
 			})
-			.catch(() => {})
+			.catch((err) => toast.error(`刷新会话记录失败: ${errMsg(err)}`))
 			.finally(() => {
 				loadTurns();
 			});
 	}, [streaming, sessionId, setItems, appendItems, loadTurns]);
+
+	// Esc while generating aborts the turn. Capture phase + preventDefault so
+	// macOS WKWebView doesn't treat the key as "exit fullscreen". Only the main
+	// (non-compact) view owns the shortcut to avoid double-aborting.
+	useEffect(() => {
+		if (!streaming || compact) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.isComposing) return;
+			e.preventDefault();
+			e.stopPropagation();
+			abortTurn(sessionId)
+				.then(() => toast.info("已终止对话生成"))
+				.catch((err) => toast.error(`终止失败: ${errMsg(err)}`));
+		};
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
+	}, [streaming, compact, sessionId]);
 
 	return (
 		<div className="flex h-full flex-col">
@@ -226,7 +247,13 @@ export function SessionView({
 							)
 						)}
 
-						<HeldQueueBar sessionId={sessionId} streaming={streaming} />
+						{/* Streaming → Codex popover list. Post-turn → manual bar; with auto-send on
+						    the queue is already drained (a failed send restores its item here). */}
+						{streaming ? (
+							<QueuedBar sessionId={sessionId} />
+						) : (
+							<HeldQueueBar sessionId={sessionId} streaming={false} />
+						)}
 						<div className={askActive ? "hidden" : undefined}>
 							<Composer
 								sessionId={sessionId}

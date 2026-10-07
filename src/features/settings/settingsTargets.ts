@@ -9,6 +9,7 @@
  */
 
 import { useUi } from "../../stores/ui";
+import { useProviders } from "../providers/store";
 
 export type SettingsTarget =
 	| "models"
@@ -55,7 +56,7 @@ export const SETTINGS_TARGETS: Record<
 		label: "顾问（Advisor）",
 	},
 	extendedContext: {
-		section: "omp-context",
+		section: "context-window",
 		focusKey: "extendedContext",
 		label: "扩展上下文",
 	},
@@ -103,14 +104,13 @@ export const SETTINGS_TARGETS: Record<
 		label: "API 供应商",
 	},
 	compaction: {
-		section: "omp-context",
-		focusKey: "compaction.enabled",
-		label: "上下文压缩",
+		section: "context-window",
+		focusKey: "compaction",
+		label: "自动压缩",
 	},
 	modelContext: {
-		section: "model-context",
-		focusKey: "modelContextGroups",
-		label: "统一模型上下文",
+		section: "context-window",
+		label: "上下文窗口",
 	},
 };
 
@@ -120,4 +120,25 @@ export function openSettingsTarget(target: SettingsTarget): void {
 	useUi
 		.getState()
 		.openSettings(t.section, t.focusKey ? { focusKey: t.focusKey } : undefined);
+}
+
+/**
+ * Open Settings ▸ 上下文窗口 focused on one model row
+ * (`data-field-id="cw-model:<providerId>/<modelId>"`). With a null providerId
+ * the first configured provider listing `modelId` is used; when no row matches
+ * the page opens unfocused.
+ */
+export function openContextWindowForModel(providerId: string | null, modelId: string): void {
+	const pid = providerId ?? findProviderForModel(modelId);
+	useUi
+		.getState()
+		.openSettings("context-window", pid ? { focusKey: `cw-model:${pid}/${modelId}` } : undefined);
+}
+
+/** First provider (workbench, then OMP-managed) that lists `modelId`. */
+function findProviderForModel(modelId: string): string | null {
+	const { providers, ompProviders } = useProviders.getState();
+	const own = providers.find((p) => p.models.some((m) => (typeof m === "string" ? m : m.id) === modelId));
+	if (own) return own.id;
+	return ompProviders.find((p) => p.modelIds.includes(modelId))?.id ?? null;
 }

@@ -562,12 +562,8 @@ function SessionRowComponent({
 					<HoverScrollText
 						text={sessionDisplayName(session)}
 						title=""
-						onDoubleClick={(e) => {
-							e.stopPropagation();
-							startInlineRename();
-						}}
 						className={clsx(
-							"min-w-0 flex-initial max-w-full cursor-text text-xs transition-colors",
+							"min-w-0 flex-initial max-w-full cursor-pointer text-xs transition-colors",
 							isSelected
 								? "font-semibold text-[var(--text)]"
 								: "font-normal text-[var(--text)]",

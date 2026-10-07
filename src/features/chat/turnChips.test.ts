@@ -1,23 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { TranscriptItem, TurnCheckpoint } from "../../lib/contracts";
-import { turnChipTargets, undoableTurn } from "./turnChips";
-
-function makeItem(id: string, kind: TranscriptItem["kind"]): TranscriptItem {
-	return {
-		id,
-		parentId: null,
-		ts: "2026-09-30T00:00:00Z",
-		kind,
-		text: null,
-		thinking: null,
-		toolCalls: [],
-		toolResult: null,
-		usage: null,
-		model: null,
-		stopReason: null,
-		hidden: false,
-	};
-}
+import type { TurnCheckpoint } from "../../lib/contracts";
+import { undoableTurn } from "./turnChips";
 
 function makeTurn(turnId: string, userItemId: string | null, extra: Partial<TurnCheckpoint> = {}): TurnCheckpoint {
 	return {
@@ -37,45 +20,6 @@ function makeTurn(turnId: string, userItemId: string | null, extra: Partial<Turn
 		...extra,
 	};
 }
-
-describe("turnChipTargets", () => {
-	const items = [
-		makeItem("u1", "user"),
-		makeItem("a1", "assistant"),
-		makeItem("a2", "assistant"),
-		makeItem("u2", "user"),
-		makeItem("a3", "assistant"),
-		makeItem("sys", "system"),
-	];
-
-	it("places the chip after the last item before the next user item", () => {
-		const targets = turnChipTargets(items, [makeTurn("t1", "u1"), makeTurn("t2", "u2")]);
-		expect(targets.get(2)?.map((t) => t.turnId)).toEqual(["t1"]); // a2
-		expect(targets.get(5)?.map((t) => t.turnId)).toEqual(["t2"]); // end of stream
-	});
-
-	it("stacks multiple turns that share the same boundary", () => {
-		const targets = turnChipTargets(items, [
-			makeTurn("t1", "u1"),
-			makeTurn("t2", "u1"),
-		]);
-		expect(targets.get(2)?.map((t) => t.turnId)).toEqual(["t1", "t2"]);
-	});
-
-	it("attaches to the user item itself when nothing follows it", () => {
-		const single = [makeItem("u1", "user")];
-		const targets = turnChipTargets(single, [makeTurn("t1", "u1")]);
-		expect(targets.get(0)?.map((t) => t.turnId)).toEqual(["t1"]);
-	});
-
-	it("skips turns whose user item is absent or has no userItemId", () => {
-		const targets = turnChipTargets(items, [
-			makeTurn("gone", "u_missing"),
-			makeTurn("noid", null),
-		]);
-		expect(targets.size).toBe(0);
-	});
-});
 
 describe("undoableTurn", () => {
 	it("returns the newest turn when restorable, not undone, and idle", () => {

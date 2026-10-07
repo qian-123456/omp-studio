@@ -161,6 +161,27 @@ describe("turnGrouping", () => {
 		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["tool"]);
 	});
 
+	it("keeps a mid-run steer message inside the running turn in order", () => {
+		const call: ToolCall = { id: "c-1", name: "bash", args: {}, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "go" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "先跑一下。", toolCalls: [call] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: { toolCallId: "c-1", toolName: "bash", text: "ok", isError: false, details: null },
+			}),
+			makeItem({ id: "u-2", kind: "user", text: "顺便看下日志" }),
+			makeItem({ id: "a-2", kind: "assistant", text: "好的，已完成。" }),
+			makeItem({ id: "u-3", kind: "user", text: "谢谢" }),
+		]);
+		expect(blocks.map((b) => b.id)).toEqual(["turn-u-1", "turn-u-3"]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["text", "tool", "steer"]);
+		expect(turn.answerItem?.id).toBe("a-2");
+	});
+
 	it("handles consecutive turns and standalone protocol items", () => {
 		const items: TranscriptItem[] = [
 			makeItem({

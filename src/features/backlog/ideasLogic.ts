@@ -1,4 +1,10 @@
 import type { BacklogItem, SessionMeta, SessionStatus } from "../../lib/contracts";
+import { repoRootFromWorktree } from "../git/helpers";
+
+/** Repo root for a project dir so all worktrees of one repo share a project. */
+export function projectRoot(dir: string | null | undefined): string | null {
+	return dir ? repoRootFromWorktree(dir) : null;
+}
 
 /** Newest captured first; falls back to updatedAt for legacy items. */
 export const byCreatedDesc = (a: BacklogItem, b: BacklogItem) =>
@@ -20,14 +26,15 @@ export function partitionIdeas(items: BacklogItem[]): { active: BacklogItem[]; f
 
 export type IdeasFilter = "all" | "current" | "project";
 
-/** Items visible under `filter`; "current" keeps only `currentProject` items. */
+/** Items visible under `filter`; "current" keeps items of the current project's repo (any worktree). */
 export function filterIdeas(
 	items: BacklogItem[],
 	filter: IdeasFilter,
 	currentProject: string | null,
 ): BacklogItem[] {
 	if (filter !== "current") return items;
-	return currentProject === null ? [] : items.filter((i) => i.projectDir === currentProject);
+	const root = projectRoot(currentProject);
+	return root === null ? [] : items.filter((i) => projectRoot(i.projectDir) === root);
 }
 
 export interface IdeaGroup {
@@ -39,23 +46,25 @@ export interface IdeaGroup {
 }
 
 /**
- * Group items by projectDir, each group newest-created first. Current project
- * first, then other projects by their newest item, global (null) last.
+ * Group items by repo root (worktrees merged), each group newest-created first.
+ * Current project first, then other projects by their newest item, global (null) last.
  */
 export function groupIdeasByProject(items: BacklogItem[], currentProject: string | null): IdeaGroup[] {
+	const current = projectRoot(currentProject);
 	const groups = new Map<string | null, BacklogItem[]>();
 	for (const it of [...items].sort(byCreatedDesc)) {
-		const list = groups.get(it.projectDir);
+		const key = projectRoot(it.projectDir);
+		const list = groups.get(key);
 		if (list) list.push(it);
-		else groups.set(it.projectDir, [it]);
+		else groups.set(key, [it]);
 	}
-	const rank = (p: string | null) => (p === null ? 2 : p === currentProject ? 0 : 1);
+	const rank = (p: string | null) => (p === null ? 2 : p === current ? 0 : 1);
 	// Map keeps insertion order = order of each group's newest item.
 	return [...groups.entries()]
 		.map(([project, list]) => ({
 			project,
 			label: project === null ? "未关联项目" : (project.split("/").filter(Boolean).pop() ?? project),
-			isCurrent: project !== null && project === currentProject,
+			isCurrent: project !== null && project === current,
 			items: list,
 		}))
 		.sort((a, b) => rank(a.project) - rank(b.project));

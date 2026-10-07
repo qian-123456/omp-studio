@@ -44,6 +44,7 @@ import {
 	ideaImages,
 	linkedSessionStatus,
 	partitionIdeas,
+	projectRoot,
 } from "./ideasLogic";
 
 const KIND_META: Record<BacklogKind, { label: string; icon: typeof Lightbulb; cls: string }> = {
@@ -89,7 +90,7 @@ export function IdeasCapsule() {
 
 	// Reopen the dropdown after a reload if an unsaved edit was in progress.
 	const [open, setOpen] = useState(() => useBacklog.getState().editBuffer !== null);
-	const [dispatching, setDispatching] = useState<BacklogItem | null>(null);
+	const [dispatching, setDispatching] = useState<BacklogItem[] | null>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 
 	useEffect(() => {
@@ -131,16 +132,16 @@ export function IdeasCapsule() {
 					items={items}
 					currentProject={currentProject}
 					onClose={() => setOpen(false)}
-					onDispatch={(item) => {
+					onDispatch={(batch) => {
 						setOpen(false);
-						setDispatching(item);
+						setDispatching(batch);
 					}}
 				/>
 			</FloatingLayer>
 
 			{dispatching && (
 				<DispatchDialog
-					item={dispatching}
+					items={dispatching}
 					currentProject={currentProject}
 					onClose={() => setDispatching(null)}
 				/>
@@ -158,7 +159,7 @@ function IdeasPanel({
 	items: BacklogItem[];
 	currentProject: string | null;
 	onClose: () => void;
-	onDispatch: (item: BacklogItem) => void;
+	onDispatch: (items: BacklogItem[]) => void;
 }) {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const selectSession = useUi((s) => s.selectSession);
@@ -169,6 +170,13 @@ function IdeasPanel({
 	const { text, kind, images } = draft;
 
 	const [filter, setFilter] = useState<IdeasFilter>("all");
+	const [statusFilter, setStatusFilter] = useState<"all" | "active" | "finished">("all");
+	const [selected, setSelected] = useState<string[]>([]);
+	// Only still-undispatched items can be batch dispatched; stale ids drop out after reloads.
+	const selectedItems = useMemo(
+		() => items.filter((i) => i.status === "inbox" && selected.includes(i.id)),
+		[items, selected],
+	);
 	// "current" without a current project degrades to "all".
 	const view: IdeasFilter = filter === "current" && !currentProject ? "all" : filter;
 	const { active, finished } = useMemo(() => partitionIdeas(items), [items]);
@@ -258,8 +266,9 @@ function IdeasPanel({
 			composer.setDraft(selectedSessionId, appendToDraft(existing, itemContent));
 			composer.focusComposer(selectedSessionId);
 			await backlogUpdate(item.id, { status: "dispatched", targetSessionId: selectedSessionId });
+			setSelected((s) => s.filter((id) => id !== item.id));
 			await useBacklog.getState().load();
-			onClose();
+			toast.success("已填入当前对话框");
 		} catch (err) {
 			toast.error(`操作失败: ${errMsg(err)}`);
 		}
@@ -284,10 +293,22 @@ function IdeasPanel({
 	const renderItem = (item: BacklogItem, index: number) => {
 		const meta = KIND_META[item.kind];
 		const linked = item.targetSessionId ? sessions[item.targetSessionId] : undefined;
-		const otherProject = view !== "project" && item.projectDir && item.projectDir !== currentProject;
+		const otherProject =
+			view !== "project" && item.projectDir && projectRoot(item.projectDir) !== projectRoot(currentProject);
 		return (
 			<div key={item.id} className="rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] p-2">
 				<div className="flex items-start gap-2">
+					{item.status === "inbox" && (
+						<input
+							type="checkbox"
+							className="mt-0.5"
+							title="选择以批量派发"
+							checked={selected.includes(item.id)}
+							onChange={(e) =>
+								setSelected((s) => (e.target.checked ? [...s, item.id] : s.filter((id) => id !== item.id)))
+							}
+						/>
+					)}
 					{item.status === "dispatched" && (
 						<input
 							type="checkbox"
@@ -313,7 +334,7 @@ function IdeasPanel({
 							)}
 							{otherProject && (
 								<span className="truncate text-[10px] text-[var(--text-dim)]" title={item.projectDir ?? ""}>
-									{item.projectDir?.split("/").pop()}
+									{projectRoot(item.projectDir)?.split("/").pop()}
 								</span>
 							)}
 							<span className="ml-auto">{renderAdded(item)}</span>
@@ -355,7 +376,7 @@ function IdeasPanel({
 							</button>
 							<button
 								type="button"
-								onClick={() => onDispatch(item)}
+								onClick={() => onDispatch([item])}
 								className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-sky-300 hover:bg-sky-500/10"
 							>
 								<Send className="h-3 w-3" />
@@ -463,39 +484,92 @@ function IdeasPanel({
 				))}
 			</div>
 
+			<div className="flex items-center gap-1">
+				{(
+					[
+						{ id: "all", label: "全部" },
+						{ id: "active", label: `待办 (${visibleActive.length})` },
+						{ id: "finished", label: `已完成 (${visibleFinished.length})` },
+					] as const
+				).map((t) => (
+					<button
+						key={t.id}
+						type="button"
+						onClick={() => setStatusFilter(t.id)}
+						className={`rounded-md px-2 py-0.5 ${
+							statusFilter === t.id
+								? "bg-[var(--bg-hover)] font-medium text-[var(--text)]"
+								: "text-[var(--text-dim)] hover:text-[var(--text)]"
+						}`}
+					>
+						{t.label}
+					</button>
+				))}
+				{selectedItems.length > 0 && (
+					<div className="ml-auto flex items-center gap-1">
+						<button
+							type="button"
+							onClick={() => setSelected([])}
+							className="rounded px-1.5 py-0.5 text-[var(--text-dim)] hover:text-[var(--text)]"
+						>
+							清除
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								onDispatch(selectedItems);
+								setSelected([]);
+							}}
+							className="inline-flex items-center gap-1 rounded bg-sky-600 px-2 py-0.5 font-medium text-white hover:bg-sky-500"
+						>
+							<Send className="h-3 w-3" />
+							批量派发 ({selectedItems.length})
+						</button>
+					</div>
+				)}
+			</div>
+
 			<div className="max-h-[60vh] space-y-1.5 overflow-y-auto">
-				{visibleActive.length === 0 && (
+				{statusFilter !== "finished" && visibleActive.length === 0 && (
 					<div className="rounded-lg border border-dashed border-[var(--border-divider)] p-4 text-center text-[var(--text-dim)]">
 						{view === "current" ? "当前项目还没有想法" : "还没有想法，在上面随手记一条吧"}
 					</div>
 				)}
-				{groups
-					? groups.map((g) => (
-							<div key={g.project ?? "__global"} className="space-y-1.5">
-								<div
-									className="flex items-center gap-1.5 pt-1 text-[10px] font-semibold text-[var(--text-dim)]"
-									title={g.project ?? ""}
-								>
-									<span className="truncate">{g.label}</span>
-									{g.isCurrent && <span className="rounded bg-sky-500/15 px-1 text-sky-300">当前</span>}
-									<span>({g.items.length})</span>
+				{statusFilter !== "finished" &&
+					(groups
+						? groups.map((g) => (
+								<div key={g.project ?? "__global"} className="space-y-1.5">
+									<div
+										className="flex items-center gap-1.5 pt-1 text-[10px] font-semibold text-[var(--text-dim)]"
+										title={g.project ?? ""}
+									>
+										<span className="truncate">{g.label}</span>
+										{g.isCurrent && <span className="rounded bg-sky-500/15 px-1 text-sky-300">当前</span>}
+										<span>({g.items.length})</span>
+									</div>
+									{g.items.map(renderItem)}
 								</div>
-								{g.items.map(renderItem)}
-							</div>
-						))
-					: visibleActive.map(renderItem)}
+							))
+						: visibleActive.map(renderItem))}
 
-				{visibleFinished.length > 0 && (
+				{statusFilter === "finished" && visibleFinished.length === 0 && (
+					<div className="rounded-lg border border-dashed border-[var(--border-divider)] p-4 text-center text-[var(--text-dim)]">
+						还没有已完成的事项
+					</div>
+				)}
+				{statusFilter !== "active" && visibleFinished.length > 0 && (
 					<div className="pt-1">
-						<button
-							type="button"
-							onClick={() => setShowFinished(!showFinished)}
-							className="inline-flex items-center gap-1 text-[var(--text-dim)] hover:text-[var(--text)]"
-						>
-							{showFinished ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-							已完成 ({visibleFinished.length})
-						</button>
-						{showFinished &&
+						{statusFilter === "all" && (
+							<button
+								type="button"
+								onClick={() => setShowFinished(!showFinished)}
+								className="inline-flex items-center gap-1 text-[var(--text-dim)] hover:text-[var(--text)]"
+							>
+								{showFinished ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+								已完成 ({visibleFinished.length})
+							</button>
+						)}
+						{(showFinished || statusFilter === "finished") &&
 							visibleFinished.map((item, index) => (
 								<div key={item.id} className="mt-1 rounded px-1 py-1 opacity-70">
 									<div className="flex items-center gap-2">
@@ -526,11 +600,11 @@ function IdeasPanel({
 }
 
 function DispatchDialog({
-	item,
+	items,
 	currentProject,
 	onClose,
 }: {
-	item: BacklogItem;
+	items: BacklogItem[];
 	currentProject: string | null;
 	onClose: () => void;
 }) {
@@ -538,11 +612,11 @@ function DispatchDialog({
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const selectSession = useUi((s) => s.selectSession);
 	const sessionList = Object.values(sessions).filter((s) => !s.archived);
+	const activeId = selectedSessionId && sessions[selectedSessionId] ? selectedSessionId : null;
+	const item = items[0];
 
-	const [target, setTarget] = useState<"existing" | "new">(sessionList.length > 0 ? "existing" : "new");
-	const [existingId, setExistingId] = useState(
-		selectedSessionId && sessions[selectedSessionId] ? selectedSessionId : (sessionList[0]?.id ?? ""),
-	);
+	const [target, setTarget] = useState<"existing" | "new">(activeId || sessionList.length > 0 ? "existing" : "new");
+	const [existingId, setExistingId] = useState(activeId ?? sessionList[0]?.id ?? "");
 	const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
 	const [workspacePath, setWorkspacePath] = useState(item.projectDir ?? currentProject ?? "");
 	const [model, setModel] = useState("");
@@ -562,7 +636,11 @@ function DispatchDialog({
 		setBusy(true);
 		setError(null);
 		try {
-			const prompt = await backlogBuildPrompt(item.id);
+			const prompts = await Promise.all(items.map((it) => backlogBuildPrompt(it.id)));
+			const prompt =
+				prompts.length === 1
+					? prompts[0]
+					: `请依次处理以下 ${prompts.length} 项任务：\n\n${prompts.map((p, i) => `## 任务 ${i + 1}\n${p}`).join("\n\n")}`;
 			let targetId = existingId;
 			if (target === "new") {
 				const info = await rpcStart({ cwd: workspacePath || ".", model: model.trim() || undefined });
@@ -571,7 +649,7 @@ function DispatchDialog({
 				throw new Error("请选择目标会话");
 			}
 			await dispatchPrompt(targetId, prompt);
-			await backlogUpdate(item.id, { status: "dispatched", targetSessionId: targetId });
+			for (const it of items) await backlogUpdate(it.id, { status: "dispatched", targetSessionId: targetId });
 			await useBacklog.getState().load();
 			toast.success("已派发给 Agent");
 			onClose();
@@ -619,7 +697,20 @@ function DispatchDialog({
 					</button>
 				</div>
 				<div className="rounded-lg bg-[var(--bg)] p-3 text-[var(--text-dim)]">
-					<span className="font-medium text-[var(--text)]">任务内容:</span> {item.text}
+					<span className="font-medium text-[var(--text)]">
+						{items.length > 1 ? `任务内容（${items.length} 项）:` : "任务内容:"}
+					</span>{" "}
+					{items.length > 1 ? (
+						<ul className="mt-1 list-disc space-y-0.5 pl-4">
+							{items.map((it) => (
+								<li key={it.id} className="break-words">
+									{it.text}
+								</li>
+							))}
+						</ul>
+					) : (
+						item.text
+					)}
 				</div>
 				<div className="grid grid-cols-2 gap-2">
 					<button type="button" onClick={() => setTarget("existing")} className={tabCls(target === "existing")}>
@@ -635,7 +726,7 @@ function DispatchDialog({
 						<NativeSelect value={existingId} onChange={(e) => setExistingId(e.target.value)} className="w-full">
 							{sessionList.map((s) => (
 								<option key={s.id} value={s.id}>
-									{s.title || s.id}
+									{`${s.label ? `[${s.label}] ` : ""}${s.title || s.lastAssistant?.slice(0, 40) || `会话 ${s.id.slice(0, 8)}`}`}
 								</option>
 							))}
 						</NativeSelect>

@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	dockBadgeEnabled: true,
 	sessionTurnAutoRefresh: true,
 	turnCheckpoints: null,
+	queueAutoSend: null,
 };
 
 export interface SettingsState {

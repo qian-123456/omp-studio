@@ -7,6 +7,7 @@ import {
 	Bot,
 	Check,
 	Copy,
+	ExternalLink,
 	FileText,
 	FolderOpen,
 	Globe,
@@ -279,16 +280,14 @@ export function ToolCard(props: Parameters<typeof ToolCardBody>[0]) {
 	const qa = props.name === "ask" ? askResultSummary(props.details) : null;
 	if (!qa) return <ToolCardBody {...props} />;
 	return (
-		<div className="my-1 flex flex-col gap-0.5 text-[12px]">
+		<div className="my-px flex flex-col">
 			{qa.map((p, i) => (
-				<div key={`${i}:${p.question}`} className="flex min-w-0 items-baseline gap-1.5">
-					<MessageCircleQuestion size={12} className="shrink-0 self-center text-[var(--text-40)]" />
-					<span className="min-w-0 truncate text-[var(--text-60)]">{p.question}</span>
-					<span className="shrink-0 text-[var(--text-40)]">→</span>
-					<span className="min-w-0 truncate text-[var(--text)]">
-						{p.answer || "（未回答）"}
-					</span>
-				</div>
+				<ActivityHeader
+					key={`${i}:${p.question}`}
+					icon={MessageCircleQuestion}
+					label="已询问"
+					object={`${p.question} → ${p.answer || "（未回答）"}`}
+				/>
 			))}
 		</div>
 	);
@@ -317,7 +316,9 @@ function ToolCardBody({
 	startedAt?: number;
 	endedAt?: number;
 }) {
-	const [open, setOpen] = useState(status === "error" || expanded === true);
+	// Codex keeps every tool row collapsed to one line; failures show via the
+	// header's error tone, not by dumping the body open mid-run.
+	const [open, setOpen] = useState(expanded === true);
 	const openDoc = useUi((s) => s.openDoc);
 
 	useEffect(() => {
@@ -325,12 +326,6 @@ function ToolCardBody({
 			setOpen(expanded);
 		}
 	}, [expanded]);
-
-	useEffect(() => {
-		if (status === "error") {
-			setOpen(true);
-		}
-	}, [status]);
 
 	const det = asObj(details);
 	const diff = typeof det.diff === "string" ? det.diff : null;
@@ -393,7 +388,7 @@ function ToolCardBody({
 					)}
 
 					{!command && file && (
-						<div className="flex items-center justify-between gap-2 rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-1">
+						<div className="group/copy flex items-center justify-between gap-2 rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-1">
 							<span
 								className="truncate font-mono text-[11px] text-[var(--text-60)]"
 								title={file}
@@ -413,14 +408,19 @@ function ToolCardBody({
 										toast.error(`打开文件失败: ${errMsg(e)}`);
 									}
 								}}
-								className="shrink-0 rounded px-1 py-0.5 text-[10px] text-[var(--text-30)] transition-colors hover:text-[var(--text)]"
+								className="flex shrink-0 items-center rounded px-1 py-0.5 text-[var(--text-30)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/copy:opacity-100"
 								title={
 									file.endsWith(".md")
 										? "在工作台打开文档"
 										: "在系统程序中打开"
 								}
+								aria-label={
+									file.endsWith(".md")
+										? "在工作台打开文档"
+										: "在系统程序中打开"
+								}
 							>
-								{file.endsWith(".md") ? "打开文档" : "打开文件"}
+								<ExternalLink size={11} />
 							</button>
 						</div>
 					)}

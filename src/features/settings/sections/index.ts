@@ -6,14 +6,15 @@ import type { ComponentType } from "react";
 import { AdvancedSection } from "./AdvancedSection";
 import { AgentsMdSection } from "./AgentsMdSection";
 import { AppearanceSection } from "./AppearanceSection";
+import { ContextWindowSection } from "./ContextWindowSection";
 import { GeneralSection } from "./GeneralSection";
 import { InboxSection } from "./InboxSection";
 import { McpSettingsSection } from "./McpSettingsSection";
 import { MobileSettingsSection } from "./MobileSettingsSection";
-import { ModelContextSection } from "./ModelContextSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { PluginsSettingsSection } from "./PluginsSettingsSection";
 import { ProvidersSection } from "./ProvidersSection";
+import { QuotaDashboardCard } from "./QuotaDashboardCard";
 import { RolesSection } from "./RolesSection";
 import { SessionsSection } from "./SessionsSection";
 
@@ -21,8 +22,9 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	general: GeneralSection,
 	appearance: AppearanceSection,
 	notifications: NotificationsSection,
+	"context-window": ContextWindowSection,
+	quota: QuotaDashboardCard,
 	providers: ProvidersSection,
-	"model-context": ModelContextSection,
 	"omp-roles": RolesSection,
 	sessions: SessionsSection,
 	inbox: InboxSection,

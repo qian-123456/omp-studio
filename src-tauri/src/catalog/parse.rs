@@ -304,9 +304,9 @@ pub fn read_first_user(path: &Path) -> Option<String> {
             continue;
         }
         let raw = content_text(msg.get("content"));
-        let clean = strip_system_reminders(&raw);
+        let clean = strip_image_markers(strip_system_reminders(&raw));
         if !clean.is_empty() {
-            return Some(snippet(clean, 40));
+            return Some(snippet(&clean, 40));
         }
     }
     None
@@ -820,6 +820,41 @@ mod tests {
         );
         std::fs::write(&path, body).unwrap();
         assert_eq!(read_first_user(&path).as_deref(), Some("actual prompt"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn first_user_strips_image_markers_and_skips_marker_only() {
+        let dir = std::env::temp_dir().join(format!("ompws-fu-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let with_text = dir.join("a.jsonl");
+        std::fs::write(
+            &with_text,
+            r#"{"type":"message","id":"m1","timestamp":"T1","message":{"role":"user","content":[{"type":"text","text":"[Image #1, 640x235: /tmp/a.png] 看看这个"}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(read_first_user(&with_text).as_deref(), Some("看看这个"));
+
+        let markers_then_text = dir.join("b.jsonl");
+        let body = concat!(
+            r#"{"type":"message","id":"m1","timestamp":"T1","message":{"role":"user","content":[{"type":"text","text":"[Image #1, 640x235: /tmp/a.png]"}]}}"#,
+            "\n",
+            r#"{"type":"message","id":"m2","timestamp":"T2","message":{"role":"user","content":[{"type":"text","text":"next prompt"}]}}"#,
+            "\n",
+        );
+        std::fs::write(&markers_then_text, body).unwrap();
+        assert_eq!(
+            read_first_user(&markers_then_text).as_deref(),
+            Some("next prompt")
+        );
+
+        let only_markers = dir.join("c.jsonl");
+        std::fs::write(
+            &only_markers,
+            r#"{"type":"message","id":"m1","timestamp":"T1","message":{"role":"user","content":[{"type":"text","text":"[Image #1, 640x235: /tmp/a.png]"}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(read_first_user(&only_markers), None);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
