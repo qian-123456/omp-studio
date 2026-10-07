@@ -779,10 +779,10 @@ body {
 	user-select: none;
 }
 
-/* Selection uses unmistakable high-contrast accent with pure white text. */
+/* Selection: refined translucent sapphire highlight with natural text contrast */
 ::selection {
-	background: color-mix(in srgb, var(--accent) 70%, #2563eb);
-	color: #ffffff !important;
+	background: rgba(56, 189, 248, 0.32);
+	color: inherit;
 }
 
 /* Global accessible focus ring for keyboard navigation, excluding text inputs. */
