@@ -445,7 +445,7 @@ export function BranchAssetSection({
 										: "border-neutral-800/70 bg-neutral-900/40 hover:border-neutral-700/80 hover:bg-neutral-900/70",
 								)}
 							>
-								{/* Line 1: Name + Badges */}
+								{/* Line 1: Branch Name has top priority, taking full width */}
 								<div className="flex items-center justify-between gap-1.5 min-w-0">
 									<div className="flex items-center gap-1.5 min-w-0 flex-1">
 										<GitBranch
@@ -462,14 +462,14 @@ export function BranchAssetSection({
 										<span
 											title={branch.name}
 											className={clsx(
-												"truncate font-mono text-xs font-medium",
-												isRunning ? "text-emerald-300 font-semibold" : "text-neutral-200",
+												"truncate font-mono text-xs font-semibold min-w-0 flex-1",
+												isRunning ? "text-emerald-300" : "text-neutral-100",
 											)}
 										>
 											{branch.displayName}
 										</span>
 
-										{/* Badges */}
+										{/* Primary Running badge */}
 										{isRunning && (
 											<button
 												type="button"
@@ -484,61 +484,10 @@ export function BranchAssetSection({
 												<span>🌿 运行中</span>
 											</button>
 										)}
-
-										{!branch.isRemote && (
-											<>
-												{branch.ahead > 0 && (
-													<span
-														title={`本地领先云端 ${branch.ahead} 个提交`}
-														className="shrink-0 rounded bg-amber-500/20 border border-amber-500/40 px-1 py-0.2 text-[9px] font-medium text-amber-300"
-													>
-														↑{branch.ahead} 待推送
-													</span>
-												)}
-												{branch.behind > 0 && (
-													<span
-														title={`云端领先本地 ${branch.behind} 个提交`}
-														className="shrink-0 rounded bg-purple-500/20 border border-purple-500/40 px-1 py-0.2 text-[9px] font-medium text-purple-300"
-													>
-														↓{branch.behind} 待拉取
-													</span>
-												)}
-												{branch.upstream && branch.ahead === 0 && branch.behind === 0 && (
-													<span
-														title="本地与云端已完全同步"
-														className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 py-0.2 text-[9px] text-neutral-400"
-													>
-														已同步
-													</span>
-												)}
-												{!branch.upstream && (
-													<span
-														title="该分支仅存在于本地，尚未发布到 GitHub"
-														className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 py-0.2 text-[9px] text-neutral-400"
-													>
-														仅本地
-													</span>
-												)}
-												{branch.isMerged && (
-													<span
-														title="该分支已完全合并入 main"
-														className="shrink-0 rounded bg-neutral-800/80 px-1 py-0.2 text-[9px] text-neutral-500"
-													>
-														已合并
-													</span>
-												)}
-											</>
-										)}
-
-										{branch.isRemote && (
-											<span className="shrink-0 rounded bg-sky-500/10 border border-sky-500/30 px-1 py-0.2 text-[9px] text-sky-300">
-												云端
-											</span>
-										)}
 									</div>
 
 									{/* Action buttons on the right */}
-									<div className="flex items-center gap-1 shrink-0">
+									<div className="flex items-center gap-1 shrink-0 ml-1">
 										{isBusy ? (
 											<Loader2 size={12} className="animate-spin text-neutral-400" />
 										) : !branch.isRemote ? (
@@ -647,24 +596,76 @@ export function BranchAssetSection({
 									</div>
 								</div>
 
-								{/* Line 2: Relative time + Commit subject */}
-								{(branch.lastCommitTime || branch.lastCommitMessage) && (
-									<div className="mt-1 flex items-center gap-1.5 text-[10px] text-neutral-500 truncate">
-										{branch.lastCommitTime && (
-											<span className="shrink-0 text-neutral-400">
-												{formatRelativeTime(branch.lastCommitTime)}
-											</span>
-										)}
-										{branch.lastCommitTime && branch.lastCommitMessage && (
-											<span>·</span>
-										)}
-										{branch.lastCommitMessage && (
-											<span className="truncate text-neutral-400" title={branch.lastCommitMessage}>
-												{branch.lastCommitMessage}
-											</span>
-										)}
-									</div>
-								)}
+								{/* Line 2: Secondary Status Badges + Commit Relative Time + Commit Message */}
+								<div className="mt-1 flex items-center gap-1.5 text-[10px] text-neutral-400 min-w-0 overflow-hidden">
+									{!branch.isRemote && (
+										<div className="flex items-center gap-1 shrink-0">
+											{branch.ahead > 0 && (
+												<span
+													title={`本地领先云端 ${branch.ahead} 个提交`}
+													className="shrink-0 rounded bg-amber-500/20 border border-amber-500/40 px-1 text-[9px] font-medium text-amber-300"
+												>
+													↑{branch.ahead} 待推送
+												</span>
+											)}
+											{branch.behind > 0 && (
+												<span
+													title={`云端领先本地 ${branch.behind} 个提交`}
+													className="shrink-0 rounded bg-purple-500/20 border border-purple-500/40 px-1 text-[9px] font-medium text-purple-300"
+												>
+													↓{branch.behind} 待拉取
+												</span>
+											)}
+											{branch.upstream && branch.ahead === 0 && branch.behind === 0 && (
+												<span
+													title="本地与云端已完全同步"
+													className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 text-[9px] text-neutral-400"
+												>
+													已同步
+												</span>
+											)}
+											{!branch.upstream && (
+												<span
+													title="该分支仅存在于本地，尚未发布到 GitHub"
+													className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 text-[9px] text-neutral-400"
+												>
+													仅本地
+												</span>
+											)}
+											{branch.isMerged && (
+												<span
+													title="该分支已完全合并入 main"
+													className="shrink-0 rounded bg-neutral-800/80 px-1 text-[9px] text-neutral-500"
+												>
+													已合并
+												</span>
+											)}
+										</div>
+									)}
+
+									{branch.isRemote && (
+										<span className="shrink-0 rounded bg-sky-500/10 border border-sky-500/30 px-1 text-[9px] text-sky-300">
+											云端
+										</span>
+									)}
+
+									{branch.lastCommitTime && (
+										<span className="shrink-0 text-neutral-400">
+											{formatRelativeTime(branch.lastCommitTime)}
+										</span>
+									)}
+									{branch.lastCommitTime && branch.lastCommitMessage && (
+										<span className="shrink-0 text-neutral-600">·</span>
+									)}
+									{branch.lastCommitMessage && (
+										<span
+											className="truncate text-neutral-400 flex-1 min-w-0"
+											title={branch.lastCommitMessage}
+										>
+											{branch.lastCommitMessage}
+										</span>
+									)}
+								</div>
 							</div>
 						);
 					})

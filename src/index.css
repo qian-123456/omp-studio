@@ -779,10 +779,10 @@ body {
 	user-select: none;
 }
 
-/* Selection uses the theme accent. */
+/* Selection uses unmistakable high-contrast accent with pure white text. */
 ::selection {
-	background: color-mix(in srgb, var(--accent) 30%, transparent);
-	color: var(--text);
+	background: color-mix(in srgb, var(--accent) 70%, #2563eb);
+	color: #ffffff !important;
 }
 
 /* Global accessible focus ring for keyboard navigation, excluding text inputs. */
