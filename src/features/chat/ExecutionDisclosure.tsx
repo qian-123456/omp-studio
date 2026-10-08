@@ -230,11 +230,13 @@ export function TurnSteps({
 	steps,
 	forceExpanded,
 	toolResultsByCallId,
+	highlightedStepId,
 }: {
 	sessionId: string;
 	steps: StepShape[];
 	forceExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
+	highlightedStepId?: string | null;
 }) {
 	const thinkingDurations = useLive(
 		(s) => s.sessions[sessionId]?.thinkingDurations,
@@ -256,8 +258,23 @@ export function TurnSteps({
 		const res = step.result ?? toolResultsByCallId?.get(call.id);
 		const live = liveTools?.[call.id];
 		const status = statusFor(step);
+		const isStepHighlighted = Boolean(
+			highlightedStepId &&
+				(step.id === highlightedStepId ||
+					call.id === highlightedStepId ||
+					res?.toolCallId === highlightedStepId),
+		);
 		return (
-			<div key={step.id} id={`msg-${step.id}`}>
+			<div
+				key={step.id}
+				id={`msg-${step.id}`}
+				data-tool-id={call.id}
+				className={clsx(
+					"transition-all duration-300",
+					isStepHighlighted &&
+						"rounded-lg ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg)] shadow-md",
+				)}
+			>
 				{isTaskTool(call.name) ? (
 					<TaskToolBlock
 						sessionId={sessionId}
@@ -376,15 +393,16 @@ export function ExecutionDisclosure({
 	isStreaming,
 	forceExpanded,
 	toolResultsByCallId,
+	highlightedStepId,
 }: {
 	sessionId: string;
 	steps: StepShape[];
 	durationMs?: number;
-	/** Epoch ms the turn started; drives the live ticker while streaming. */
 	startedAt?: number;
 	isStreaming?: boolean;
 	forceExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
+	highlightedStepId?: string | null;
 }) {
 	const { open: expanded, toggle } = useDisclosure(forceExpanded);
 	const elapsed = useElapsedMs(startedAt, Boolean(isStreaming));
@@ -435,6 +453,7 @@ export function ExecutionDisclosure({
 						steps={steps}
 						forceExpanded={forceExpanded}
 						toolResultsByCallId={toolResultsByCallId}
+						highlightedStepId={highlightedStepId}
 					/>
 				</div>
 			)}

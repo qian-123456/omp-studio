@@ -71,7 +71,7 @@ export function AppearanceSection() {
 					fieldId="theme"
 					stacked
 					label="配色主题"
-					description="「跟随系统」会在 macOS 切换深浅色时自动换主题；也可以固定某一套深色或浅色主题"
+					description="支持深色、浅色、跟随系统，或使用图片背景与自选强调色"
 					control={<ThemePicker />}
 				/>
 			</SettingsCard>

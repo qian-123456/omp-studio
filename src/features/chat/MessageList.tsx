@@ -420,6 +420,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	turnCheckpoint,
 	canUndo,
 	onTurnsChange,
+	highlightedId,
 }: {
 	sessionId: string;
 	block: TurnBlock;
@@ -431,6 +432,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	turnCheckpoint?: TurnCheckpoint;
 	canUndo?: boolean;
 	onTurnsChange?: () => void;
+	highlightedId?: string | null;
 }) {
 	const streamingThisTurn = useLive(
 		(s) => isLatestTurn === true && s.sessions[sessionId]?.streaming === true,
@@ -443,6 +445,15 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		if (!block.answerItem?.text) return "";
 		return stripImageMarkers(block.answerItem.text);
 	}, [block.answerItem?.text]);
+	const hasHighlightedStep = useMemo(() => {
+		if (!highlightedId || block.intermediateSteps.length === 0) return false;
+		return block.intermediateSteps.some(
+			(s) =>
+				s.id === highlightedId ||
+				(s.kind === "tool" &&
+					(s.call.id === highlightedId || s.result?.toolCallId === highlightedId)),
+		);
+	}, [highlightedId, block.intermediateSteps]);
 
 	return (
 		<div className="flex flex-col py-1">
@@ -457,11 +468,11 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					durationMs={block.durationMs}
 					isStreaming={streamingThisTurn && !block.answerItem}
 					startedAt={turnStartedAt}
-					forceExpanded={toolsExpanded}
+					forceExpanded={toolsExpanded || hasHighlightedStep}
 					toolResultsByCallId={toolResultsByCallId}
+					highlightedStepId={hasHighlightedStep ? highlightedId : null}
 				/>
 			)}
-
 			{/* Assistant answer — plain prose on the thread column */}
 			{block.answerItem && (
 				block.answerItem.stopReason === "aborted" ? (
@@ -910,11 +921,22 @@ export function MessageList({
 				behavior: "smooth",
 			});
 			setHighlightedId(targetId);
+			const scrollTimer = setTimeout(() => {
+				const el =
+					document.getElementById(`msg-${targetId}`) ||
+					document.querySelector(`[data-tool-id="${targetId}"]`);
+				if (el) {
+					el.scrollIntoView({ behavior: "smooth", block: "center" });
+				}
+			}, 120);
 			const timer = setTimeout(() => {
 				setHighlightedId(null);
-			}, 2500);
+			}, 3000);
 			useLive.getState().clearScrollRequest(sessionId);
-			return () => clearTimeout(timer);
+			return () => {
+				clearTimeout(scrollTimer);
+				clearTimeout(timer);
+			};
 		}
 	}, [scrollRequest, blocks, virtualizer, sessionId]);
 
@@ -1094,6 +1116,7 @@ export function MessageList({
 												turnCheckpoint={cp}
 												canUndo={cp !== undefined && cp === undoable}
 												onTurnsChange={onTurnsChange}
+												highlightedId={highlightedId}
 											/>
 										) : (
 											<ProtocolRow item={block.item} />

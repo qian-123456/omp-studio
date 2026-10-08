@@ -3,8 +3,8 @@
  * global default model, approval mode, UI/shortcut, AGENTS.md entry.
  */
 import { AlertTriangle, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
-import { ModelSelect, type ModelExtraOption } from "../../../components/ModelSelect";
+import { useEffect } from "react";
+import { ModelSelect } from "../../../components/ModelSelect";
 import { Segmented } from "../../../components/Segmented";
 import { ompConfigSet } from "../../../lib/ipc";
 import { toModelKey } from "../../../lib/models";
@@ -13,9 +13,8 @@ import { asRecord, roleValue, splitRoleValue, withRoleAssignment } from "../mode
 import { useOmpConfigStore } from "../ompConfigStore";
 import { useSettingsNav } from "../settingsNav";
 import { DEFAULT_SETTINGS } from "../store";
-import { useAppSettings, useModelCatalog } from "../useAppSettings";
+import { useAppSettings, useCatalogModels } from "../useAppSettings";
 import {
-	CommitInput,
 	MODEL_PICKER_BUTTON_CLASS,
 	SETTINGS_BUTTON_CLASS,
 	SectionHeader,
@@ -25,10 +24,6 @@ import {
 	useSaveStatus,
 } from "../ui";
 import { ShortcutRecorder } from "./ShortcutRecorder";
-
-const MODEL_EXTRAS: ModelExtraOption[] = [
-	{ value: "__custom", label: "手动输入模型…", hint: "自定义" },
-];
 
 type ApprovalMode = "always-ask" | "write" | "yolo";
 
@@ -40,12 +35,11 @@ const APPROVAL_OPTIONS: { value: ApprovalMode; label: string; desc: string }[] =
 
 export function GeneralSection() {
 	const { settings, save } = useAppSettings();
-	const { models, catalogKeys } = useModelCatalog();
+	const { models, catalogKeys } = useCatalogModels();
 	const { navigate } = useSettingsNav();
 	const approvalSave = useSaveStatus();
 	const modelSave = useSaveStatus();
 	const shortcutSave = useSaveStatus();
-	const [customOpen, setCustomOpen] = useState(false);
 
 	const ompEntries = useOmpConfigStore((s) => s.entries);
 	const loadOmp = useOmpConfigStore((s) => s.load);
@@ -58,18 +52,12 @@ export function GeneralSection() {
 	const currentRoles = asRecord(ompEntries.find((e) => e.key === "modelRoles")?.value);
 	const defaultRole = roleValue(currentRoles, "default");
 
-	const { selector: defaultSelector, thinkingSuffix: defaultThinking } = defaultRole
-		? splitRoleValue(defaultRole)
-		: { selector: "", thinkingSuffix: null };
+	const defaultSelector = defaultRole ? splitRoleValue(defaultRole).selector : "";
 	const matchedModel = models.find((m) => toModelKey(m.provider, m.id) === defaultSelector);
+	// ModelSelect appends " · <level>" itself when currentValue carries a suffix.
 	const modelLabel = defaultRole
-		? (matchedModel?.name
-				? (defaultThinking ? `${matchedModel.name} (${defaultThinking})` : matchedModel.name)
-				: defaultRole)
+		? (matchedModel?.name ?? defaultRole)
 		: "OMP 内置默认";
-
-	const showCustom =
-		customOpen || (Boolean(defaultRole) && !catalogKeys.has(defaultSelector ?? ""));
 
 	const approval = (settings?.defaultApprovalMode ?? "write") as ApprovalMode;
 	const currentApprovalOption = APPROVAL_OPTIONS.find((o) => o.value === approval) ?? APPROVAL_OPTIONS[1];
@@ -93,14 +81,15 @@ export function GeneralSection() {
 							label={modelLabel}
 							buttonClass={MODEL_PICKER_BUTTON_CLASS}
 							models={models}
-							currentValue={catalogKeys.has(defaultSelector ?? "") ? (defaultSelector ?? "") : ""}
-							extras={MODEL_EXTRAS}
-							onSelect={(v) => {
-								if (v === "__custom") {
-									setCustomOpen(true);
+							currentValue={catalogKeys.has(defaultSelector ?? "") ? (defaultRole ?? "") : ""}
+							thinking
+							allowCustom
+							onSelect={(raw) => {
+								const v = raw.trim();
+								if (!v || v.startsWith("-")) {
+									toast.error("模型名不能以 '-' 开头");
 									return;
 								}
-								setCustomOpen(false);
 								void modelSave.run(async () => {
 									const nextRoles = withRoleAssignment(currentRoles, "default", v);
 									await ompConfigSet("modelRoles", JSON.stringify(nextRoles));
@@ -113,28 +102,7 @@ export function GeneralSection() {
 							}}
 						/>
 					}
-				>
-					{showCustom && (
-						<CommitInput
-							mono
-							aria-label="手动输入全局默认模型"
-							placeholder="例如 google-antigravity/gemini-3.8-flash:high"
-							value={defaultRole ?? ""}
-							validate={(v) => (v.startsWith("-") ? "模型名不能以 '-' 开头" : null)}
-							onCommit={async (v) => {
-								const val = v.trim() || null;
-								const nextRoles = withRoleAssignment(currentRoles, "default", val);
-								await ompConfigSet("modelRoles", JSON.stringify(nextRoles));
-								await loadOmp(true);
-								if (settings?.newSessionModel) {
-									await save({ newSessionModel: null });
-								}
-								setCustomOpen(false);
-								toast.success("已更新全局主力模型");
-							}}
-						/>
-					)}
-				</SettingRow>
+				/>
 
 				<SettingRow
 					fieldId="defaultApprovalMode"

@@ -60,7 +60,7 @@ export function WorktreeHoverCard({
 			onDismiss={onClose}
 			onMouseEnter={onMouseEnterCard}
 			onMouseLeave={onMouseLeaveCard}
-			className="w-[300px] p-3 text-xs text-neutral-200 select-none space-y-2.5"
+			className="w-[350px] max-w-[calc(100vw-32px)] p-3 text-xs text-neutral-200 select-none space-y-2.5 shadow-2xl"
 		>
 			{/* Top Header: Target Name & Tag */}
 			<div className="space-y-1">
@@ -89,18 +89,21 @@ export function WorktreeHoverCard({
 
 			{/* PATH / DIRECTORY Section */}
 			{targetPath && (
-				<div className="space-y-0.5 text-[11px] text-neutral-400 pt-1.5 border-t border-neutral-800/80">
-					<div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-						LOCAL DIRECTORY
+				<div className="space-y-1 text-[11px] text-neutral-400 pt-1.5 border-t border-[var(--border-divider)]">
+					<div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+						<span>LOCAL DIRECTORY</span>
 					</div>
-					<div className="font-mono truncate text-[11px] text-neutral-300" title={targetPath}>
+					<div
+						className="font-mono text-[11px] text-neutral-200 break-all select-text leading-relaxed rounded bg-black/10 dark:bg-black/25 px-2 py-1 border border-[var(--border-divider)]"
+						title={targetPath}
+					>
 						{shortPath(targetPath, home)}
 					</div>
 				</div>
 			)}
 
 			{/* STATS Section: Sessions & Head Commit / Status */}
-			<div className="pt-1.5 border-t border-neutral-800/60 flex items-center justify-between text-[11px] text-neutral-400">
+			<div className="pt-1.5 border-t border-[var(--border-divider)] flex items-center justify-between text-[11px] text-neutral-400">
 				<div className="flex items-center gap-1">
 					<Layers size={11} className="text-indigo-400" />
 					<span>

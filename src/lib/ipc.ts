@@ -128,6 +128,9 @@ export const sessionShare = (sessionId: string) =>
 /** One-shot throwaway question to the supervisor model (scratchpad, no session). */
 export const quickAsk = (prompt: string, model?: string) =>
 	invoke<string>("quick_ask", { prompt, model });
+/** AI doctor diagnosis on a distilled session skeleton prompt; null model → settings.doctorModel. */
+export const heatmapDiagnose = (prompt: string, model: string | null) =>
+	invoke<string>("heatmap_diagnose", { prompt, model });
 
 // ---- B — rpc ----
 
@@ -616,3 +619,8 @@ export const pluginSetEnabled = (
 
 /** Resolve the configured omp binary, probe `omp --version`, and report agent-dir paths. */
 export const ompInfo = () => invoke<import("./contracts").OmpInfo>("omp_info");
+/** Run `omp update --check` (30s timeout) and parse current/latest versions. */
+export const ompUpdateCheck = () =>
+	invoke<import("./contracts").OmpUpdateStatus>("omp_update_check");
+/** Run `omp update` (300s timeout) and re-probe `omp --version`. */
+export const ompUpdateRun = () => invoke<import("./contracts").OmpUpdateResult>("omp_update_run");

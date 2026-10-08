@@ -106,9 +106,9 @@ export function FileTreeNode({
 				aria-selected={isSelected}
 				onClick={handleClick}
 				onContextMenu={handleContextMenu}
-				style={{ paddingLeft: `${depth * 12 + 6}px` }}
+				style={{ paddingLeft: `${depth * 10 + 4}px` }}
 				className={clsx(
-					"group flex h-[22px] cursor-pointer items-center gap-1.5 pr-1.5 text-xs transition-all select-none mx-0.5 rounded active:scale-[0.98]",
+					"group flex h-5 cursor-pointer items-center gap-1 pr-1 text-xs transition-all select-none mx-0.5 rounded active:scale-[0.98]",
 					isSelected
 						? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
 						: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
@@ -116,13 +116,13 @@ export function FileTreeNode({
 				title={entry.path}
 			>
 				{/* Chevron / Spacer */}
-				<div className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+				<div className="flex h-3 w-3 shrink-0 items-center justify-center">
 					{entry.isDir ? (
 						isLoading ? (
-							<Loader2 size={11} className="animate-spin text-neutral-500" />
+							<Loader2 size={10} className="animate-spin text-neutral-500" />
 						) : (
 							<ChevronRight
-								size={11}
+								size={10}
 								className={clsx(
 									"text-neutral-500 transition-transform duration-150 group-hover:text-neutral-300",
 									isExpanded && "rotate-90 text-neutral-300",
@@ -130,7 +130,7 @@ export function FileTreeNode({
 							/>
 						)
 					) : (
-						<span className="w-3.5" />
+						<span className="w-3" />
 					)}
 				</div>
 
@@ -140,12 +140,12 @@ export function FileTreeNode({
 						name={entry.name}
 						isDir={entry.isDir}
 						isOpen={isExpanded}
-						size={13}
+						size={12}
 					/>
 				</div>
 
 				{/* Label */}
-				<span className="truncate flex-1 font-mono text-[11px] leading-none">
+				<span className="truncate flex-1 font-mono text-[10.5px] leading-tight">
 					{entry.name}
 				</span>
 
@@ -156,7 +156,7 @@ export function FileTreeNode({
 						e.stopPropagation();
 						handleContextMenu(e);
 					}}
-					className="opacity-0 group-hover:opacity-100 flex h-4 w-4 shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-opacity"
+					className="opacity-0 group-hover:opacity-100 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-opacity"
 					title="更多选项"
 				>
 					<MoreHorizontal size={11} />
@@ -169,12 +169,12 @@ export function FileTreeNode({
 					{/* Vertical guide line for this subtree */}
 					<div
 						className="pointer-events-none absolute bottom-0.5 top-0.5 border-l border-white/[0.08]"
-						style={{ left: `${depth * 12 + 13}px` }}
+						style={{ left: `${depth * 10 + 10}px` }}
 					/>
 					{children.length === 0 && !isLoading ? (
 						<div
-							style={{ paddingLeft: `${(depth + 1) * 12 + 20}px` }}
-							className="py-0.5 text-[10.5px] text-neutral-500 italic select-none"
+							style={{ paddingLeft: `${(depth + 1) * 10 + 16}px` }}
+							className="py-0.5 text-[10px] text-neutral-500 italic select-none"
 						>
 							空目录
 						</div>

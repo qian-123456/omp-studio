@@ -720,6 +720,34 @@ pub struct Settings {
     /// Git delivery mode for main branch: "pr" (default, opens GitHub PR) or "direct" (merges locally and pushes to main).
     #[serde(default = "default_git_delivery_mode")]
     pub git_delivery_mode: String,
+    /// AI doctor (heatmap diagnosis) model; default "smol"; empty falls back to supervisor_model.
+    #[serde(default = "default_doctor_model")]
+    pub doctor_model: String,
+    /// "manual" (default) | "idle" | "scheduled".
+    #[serde(default = "default_doctor_auto_mode")]
+    pub doctor_auto_mode: String,
+    /// Idle minutes before auto diagnosis (idle mode); default 30.
+    #[serde(default = "default_doctor_idle_minutes")]
+    pub doctor_idle_minutes: u32,
+    /// "HH:MM" daily diagnosis time (scheduled mode); default "23:00".
+    #[serde(default = "default_doctor_schedule_time")]
+    pub doctor_schedule_time: String,
+}
+
+fn default_doctor_model() -> String {
+    "smol".to_string()
+}
+
+fn default_doctor_auto_mode() -> String {
+    "manual".to_string()
+}
+
+fn default_doctor_idle_minutes() -> u32 {
+    30
+}
+
+fn default_doctor_schedule_time() -> String {
+    "23:00".to_string()
 }
 
 fn default_git_delivery_mode() -> String {
@@ -762,6 +790,10 @@ impl Default for Settings {
             queue_auto_send: None,
             inbox_window_hours: default_inbox_window_hours(),
             git_delivery_mode: default_git_delivery_mode(),
+            doctor_model: default_doctor_model(),
+            doctor_auto_mode: default_doctor_auto_mode(),
+            doctor_idle_minutes: default_doctor_idle_minutes(),
+            doctor_schedule_time: default_doctor_schedule_time(),
         }
     }
 }

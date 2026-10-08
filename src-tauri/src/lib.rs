@@ -151,6 +151,7 @@ pub fn run() {
             catalog::commands::session_export_html,
             catalog::commands::session_share,
             catalog::commands::quick_ask,
+            catalog::commands::heatmap_diagnose,
             // B — rpc
             rpc::commands::rpc_start,
             rpc::commands::rpc_ensure_live,
@@ -224,6 +225,8 @@ pub fn run() {
             settings::omp_project_config_read,
             settings::omp_project_config_write,
             settings::omp_info,
+            settings::omp_update_check,
+            settings::omp_update_run,
             // providers (API provider manager + encrypted vault)
             providers::commands::provider_list,
             providers::commands::provider_save,

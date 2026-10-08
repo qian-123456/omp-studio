@@ -517,6 +517,14 @@ export interface Settings {
 	queueAutoSend: boolean | null;
 	/** Git delivery mode: "pr" (default, opens GitHub PR) or "direct" (merges locally and pushes to main). */
 	gitDeliveryMode?: "pr" | "direct" | string;
+	/** AI doctor (heatmap diagnosis) model; default "smol"; empty falls back to supervisorModel. */
+	doctorModel: string;
+	/** Auto diagnosis mode; default "manual" (never spends tokens without user action). */
+	doctorAutoMode: "manual" | "idle" | "scheduled";
+	/** Idle minutes before auto diagnosis in "idle" mode; default 30. */
+	doctorIdleMinutes: number;
+	/** "HH:MM" daily time for "scheduled" mode; default "23:00". */
+	doctorScheduleTime: string;
 }
 
 /** One `omp config list --json` entry. */
@@ -559,6 +567,8 @@ export interface Model {
 	provider: string;
 	id: string;
 	name: string;
+	/** Thinking levels this model supports (omp `thinking` array); empty when unsupported. */
+	thinking?: string[];
 	/** Context window in tokens from `omp models --json`; null when unknown. */
 	contextWindow?: number | null;
 }
@@ -1003,4 +1013,21 @@ export interface OmpInfo {
 	/** `<agentDir>/config.yml` */
 	configPath: string;
 	configExists: boolean;
+}
+
+/** Return value of `omp_update_check`: parsed `omp update --check`. */
+export interface OmpUpdateStatus {
+	current: string | null;
+	latest: string | null;
+	updateAvailable: boolean;
+	/** ANSI-stripped command output. */
+	output: string;
+}
+
+/** Return value of `omp_update_run`. */
+export interface OmpUpdateResult {
+	success: boolean;
+	output: string;
+	/** First line of `omp --version` after the update. */
+	versionAfter: string | null;
 }

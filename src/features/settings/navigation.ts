@@ -7,6 +7,7 @@ import {
 	Gauge,
 	Globe,
 	Hammer,
+	Info,
 	KeyRound,
 	Library,
 	ListTree,
@@ -20,6 +21,7 @@ import {
 	Sliders,
 	Smartphone,
 	Sparkles,
+	Stethoscope,
 	Users,
 	Wrench,
 	type LucideIcon,
@@ -67,6 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
 			{ id: "general", label: "通用", icon: Sliders },
 			{ id: "appearance", label: "外观", icon: Palette },
 			{ id: "notifications", label: "通知", icon: Bell },
+			{ id: "about", label: "关于与更新", icon: Info },
 		],
 	},
 	{
@@ -86,6 +89,7 @@ export const NAV_GROUPS: NavGroup[] = [
 		items: [
 			{ id: "sessions", label: "会话", icon: Bot },
 			{ id: "inbox", label: "收件箱", icon: Sparkles },
+			{ id: "doctor", label: "AI 会诊", icon: Stethoscope },
 			{ id: "omp-context", label: "记忆与对话", icon: Library },
 			{ id: "agents-md", label: "规则文件 AGENTS.md", icon: FileText },
 			{ id: "omp-tools", label: "工具与审批", icon: Hammer },
@@ -159,6 +163,9 @@ export function sectionSearchTerms(id: string, ompEntries: OmpConfigEntry[]): st
 	}
 	if (id === "providers") {
 		return ["API", "密钥", "key", "provider", "anthropic", "openai", "凭证", "oauth", "keychain", "供应商"];
+	}
+	if (id === "about") {
+		return ["关于", "版本", "更新", "升级", "version", "update", "upgrade", "about", "omp update", "检查更新"];
 	}
 	return registryKeywordsForSection(id);
 }

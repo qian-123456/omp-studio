@@ -12,10 +12,12 @@ import { QuickCapture } from "./features/backlog/QuickCapture";
 import { SessionView } from "./features/chat/SessionView";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
 import { StartPage } from "./features/home/StartPage";
+import { useDoctorAutoScheduler } from "./features/heatmap/doctorStore";
 import { startTodos } from "./features/todos/store";
 
 import { terminalSetCurrentSession } from "./lib/ipc";
 import { useSessions } from "./stores/sessions";
+import { useOmpUpdate } from "./stores/ompUpdate";
 import { type CenterView, useUi } from "./stores/ui";
 import { Toaster } from "./components/Toaster";
 import { BottomBar } from "./components/BottomBar";
@@ -136,6 +138,7 @@ export default function App() {
 	const lastSessionId = useUi((s) => s.lastSessionId);
 	const returnToSession = useUi((s) => s.returnToSession);
 	const selectSession = useUi((s) => s.selectSession);
+	useDoctorAutoScheduler();
 
 	// Track the underlying view so when settings overlay opens, the center view stays mounted
 	const lastNonSettingsCenterView = useRef<CenterView>("home");
@@ -292,9 +295,10 @@ export default function App() {
 		returnToSession,
 	]);
 
-	// Initialize todos subscription
+	// Initialize todos subscription; load versions and auto-check omp updates (≤ once per 6h)
 	useEffect(() => {
 		startTodos();
+		void useOmpUpdate.getState().checkOnStartup();
 	}, []);
 
 
@@ -325,9 +329,20 @@ export default function App() {
 	}, [hasLoaded]);
 
 	return (
-		<div className="flex h-screen flex-col overflow-hidden bg-neutral-950 text-neutral-200">
+		<div id="app-shell" className="relative flex h-screen flex-col overflow-hidden bg-neutral-950 text-neutral-200">
+			<div
+				id="app-wallpaper-background"
+				aria-hidden
+				className="pointer-events-none fixed inset-0 z-0 bg-cover bg-center transition-all duration-300"
+				style={{ backgroundImage: "var(--app-wallpaper-url)" }}
+			/>
+			<div
+				id="app-wallpaper-veil"
+				aria-hidden
+				className="pointer-events-none fixed inset-0 z-0 transition-all duration-300"
+			/>
 			{/* Body row: [left column][center column][right aside]; right aside spans full window height */}
-			<div className="relative flex min-h-0 flex-1">
+			<div className="relative z-10 flex min-h-0 flex-1">
 				{/* Invisible drag overlay prevents text selection and event loss across iframes/terminals */}
 				{isDragging && (
 					<div className="fixed inset-0 z-50 cursor-col-resize select-none" />

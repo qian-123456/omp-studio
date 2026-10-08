@@ -21,16 +21,16 @@ import { FloatingLayer } from "../../components/FloatingLayer";
 import { createSession, sendFirstPrompt } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing, useHomeDir } from "../../lib/hooks";
-import { appPaths, deleteSession, listModels, rpcListLive } from "../../lib/ipc";
-import { type ModelOption, parseModels, toModelKey } from "../../lib/models";
+import { appPaths, deleteSession, rpcListLive } from "../../lib/ipc";
+import { type ModelOption, toModelKey } from "../../lib/models";
 import { basename, shortPath } from "../../lib/paths";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { useSettings } from "../settings/store";
 
 const CUSTOM = "__custom";
-const CUSTOM_MODEL = "__custom_model";
 const isMac =
 	typeof navigator !== "undefined" &&
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
@@ -61,51 +61,20 @@ export function StartPage() {
 	const wsButtonRef = useRef<HTMLButtonElement>(null);
 	const home = useHomeDir();
 
-	const [availableModels, setAvailableModels] = useState<ModelOption[]>(() => {
-		try {
-			const cached = localStorage.getItem("ompws:cached-models");
-			if (cached) {
-				const parsed = JSON.parse(cached);
-				if (Array.isArray(parsed)) return parsed;
-			}
-		} catch {
-			/* ignore */
-		}
-		return [];
-	});
+	const availableModels = useModelOptions() ?? [];
 	const [modelSel, setModelSel] = useState("");
-	const [customModel, setCustomModel] = useState("");
 
 	useEffect(() => {
 		appPaths()
 			.then((p) => setGlobalDir(p.globalDir))
 			.catch(() => {});
-		listModels()
-			.then((models) => {
-				if (Array.isArray(models) && models.length > 0) {
-					const parsed = parseModels(models);
-					if (parsed.length > 0) {
-						setAvailableModels(parsed);
-						try {
-							localStorage.setItem(
-								"ompws:cached-models",
-								JSON.stringify(parsed),
-							);
-						} catch {
-							/* ignore */
-						}
-						return;
-					}
+		void useModelCatalog
+			.getState()
+			.refresh()
+			.then(() => {
+				if ((useModelCatalog.getState().models?.length ?? 0) === 0) {
+					toast.error("获取可用模型失败");
 				}
-				setAvailableModels((prev) => {
-					if (prev.length === 0) {
-						toast.error("获取可用模型失败: 返回列表为空");
-					}
-					return prev;
-				});
-			})
-			.catch((err) => {
-				toast.error(`获取可用模型失败: ${errMsg(err)}`);
 			});
 	}, []);
 
@@ -156,9 +125,6 @@ export function StartPage() {
 		setWsOpen(false);
 	};
 
-	const effectiveModel =
-		modelSel === CUSTOM_MODEL ? customModel.trim() : modelSel;
-
 	const submit = async (override?: string) => {
 		const targetPrompt = (override ?? prompt).trim();
 		if (!cwd || !targetPrompt || busy) return;
@@ -167,7 +133,7 @@ export function StartPage() {
 		try {
 			const { sessionId, stub } = await createSession({
 				cwd,
-				model: effectiveModel || defaultModel || null,
+				model: modelSel || defaultModel || null,
 				approvalMode: null,
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
 				prompt: targetPrompt,
@@ -359,9 +325,7 @@ export function StartPage() {
 							align="start"
 							widthClass="w-[min(360px,calc(100vw-40px))]"
 							label={
-								modelSel === CUSTOM_MODEL
-									? (customModel.trim() || "自定义…")
-									: modelSel
+								modelSel
 										? (availableModels.find(
 												(m: ModelOption) =>
 													toModelKey(m.provider, m.id) === modelSel,
@@ -373,25 +337,11 @@ export function StartPage() {
 							currentValue={modelSel}
 							extras={[
 								{ value: "", label: "默认（跟随全局设置）" },
-								{
-									value: CUSTOM_MODEL,
-									label: "自定义模型…",
-									hint: "手动输入模型标识",
-								},
 							]}
-							onSelect={(v: string) => setModelSel(v)}
+							allowCustom
+							onSelect={(v: string) => setModelSel(v.trim())}
 						/>
 					</div>
-
-					{modelSel === CUSTOM_MODEL && (
-						<input
-							type="text"
-							value={customModel}
-							onChange={(e) => setCustomModel(e.target.value)}
-							placeholder="provider/model-id"
-							className="w-32 shrink-0 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1 font-mono text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50"
-						/>
-					)}
 
 					{/* Send / Action Button */}
 					<button

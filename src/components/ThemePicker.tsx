@@ -5,22 +5,26 @@
  * system. Shared by the top-bar popover (compact) and the appearance
  * settings section (full size).
  */
-import { Moon, Sun, Monitor } from "lucide-react";
+import { Image as ImageIcon, Monitor, Moon, Sun } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import {
 	THEMES,
 	setSystemDarkTheme,
 	setSystemLightTheme,
 	setTheme,
+	setWallpaper,
 	themeById,
 	useSystemDarkTheme,
 	useSystemLightTheme,
 	useThemeChoice,
+	useWallpaperState,
 	type ThemeChoice,
 	type ThemeDef,
 } from "../lib/theme";
+import { PRESET_WALLPAPERS } from "../lib/wallpaperPalette";
+import { WallpaperPicker } from "./WallpaperPicker";
 
-type ModeTab = "dark" | "light" | "system";
+type ModeTab = "dark" | "light" | "system" | "wallpaper";
 
 function ThemeCard({
 	theme,
@@ -80,14 +84,16 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 	const choice = useThemeChoice();
 	const sysDark = useSystemDarkTheme();
 	const sysLight = useSystemLightTheme();
+	const wallpaper = useWallpaperState();
 	const [tab, setTab] = useState<ModeTab>(() =>
-		choice === "system"
-			? "system"
-			: themeById(choice)?.dark
-				? "dark"
-				: "light",
+		wallpaper.enabled
+			? "wallpaper"
+			: choice === "system"
+				? "system"
+				: themeById(choice)?.dark
+					? "dark"
+					: "light",
 	);
-
 	const cols = compact ? "grid-cols-3" : "grid-cols-3 sm:grid-cols-4";
 	const card = (
 		t: ThemeDef,
@@ -112,7 +118,25 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 		<button
 			type="button"
 			onClick={() => {
-				if (id === "system") setTheme("system");
+				if (id === "wallpaper") {
+					if (!wallpaper.enabled) {
+						const fallback = PRESET_WALLPAPERS[0];
+						setWallpaper({
+							enabled: true,
+							id: wallpaper.id !== "none" ? wallpaper.id : fallback.id,
+							url: wallpaper.url || fallback.imageUrl,
+							accentColor: wallpaper.accentColor || fallback.palette.soft,
+							variant: wallpaper.variant || "soft",
+						});
+					}
+				} else {
+					if (wallpaper.enabled) {
+						setWallpaper({ enabled: false });
+					}
+					if (id === "system") {
+						setTheme("system");
+					}
+				}
 				setTab(id);
 			}}
 			aria-pressed={tab === id}
@@ -136,11 +160,11 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 	return (
 		<div>
 			<div className="flex rounded-lg hairline bg-[var(--well-bg)] p-0.5">
-				{tabBtn("dark", <Moon size={13} />, "深色", chosen?.dark === true)}
-				{tabBtn("light", <Sun size={13} />, "浅色", chosen != null && !chosen.dark)}
-				{tabBtn("system", <Monitor size={13} />, "跟随系统", choice === "system")}
+				{tabBtn("dark", <Moon size={13} />, "深色", !wallpaper.enabled && chosen?.dark === true)}
+				{tabBtn("light", <Sun size={13} />, "浅色", !wallpaper.enabled && chosen != null && !chosen.dark)}
+				{tabBtn("system", <Monitor size={13} />, "跟随系统", !wallpaper.enabled && choice === "system")}
+				{tabBtn("wallpaper", <ImageIcon size={13} />, "背景主题", wallpaper.enabled)}
 			</div>
-
 			{tab === "dark" && (
 				<div className={`mt-2 grid gap-2 ${cols}`}>
 					{THEMES.filter((t) => t.dark).map((t) =>
@@ -180,6 +204,11 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 					<p className="px-0.5 text-[11px] text-neutral-500">
 						按系统明暗在以上两套主题间自动切换；黄点表示当前正在使用
 					</p>
+				</div>
+			)}
+			{tab === "wallpaper" && (
+				<div className="mt-3">
+					<WallpaperPicker />
 				</div>
 			)}
 		</div>

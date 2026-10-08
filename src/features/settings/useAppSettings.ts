@@ -3,12 +3,12 @@
  * catalog for ModelSelect pickers, and the project scope cwd. Section files
  * use these instead of receiving props from SettingsPage.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import type { Model, Settings } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
-import { listModels } from "../../lib/ipc";
 import { toModelKey } from "../../lib/models";
 import { toast } from "../../lib/toast";
+import { useModelCatalog } from "../../stores/modelCatalog";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useSettings } from "./store";
@@ -49,34 +49,13 @@ export function useAppSettings(): {
 	return { settings, save: saveAppSettings };
 }
 
-let modelCache: Model[] | null = null;
-let modelLoad: Promise<Model[]> | null = null;
+const NO_MODELS: Model[] = [];
 
-/** Concurrent mounts share one in-flight request; each new mount refreshes. */
-function loadModels(): Promise<Model[]> {
-	modelLoad ??= listModels()
-		.then((list) => {
-			if (Array.isArray(list)) modelCache = list;
-			return modelCache ?? [];
-		})
-		.catch(() => modelCache ?? [])
-		.finally(() => {
-			modelLoad = null;
-		});
-	return modelLoad;
-}
-
-/** Model catalog (`omp --list-models`) shared across sections; last result seeds new mounts. */
-export function useModelCatalog(): { models: Model[]; catalogKeys: Set<string> } {
-	const [models, setModels] = useState<Model[]>(modelCache ?? []);
+/** Shared model catalog for settings sections; each mount refreshes it. */
+export function useCatalogModels(): { models: Model[]; catalogKeys: Set<string> } {
+	const models = useModelCatalog((s) => s.models) ?? NO_MODELS;
 	useEffect(() => {
-		let alive = true;
-		void loadModels().then((list) => {
-			if (alive) setModels(list);
-		});
-		return () => {
-			alive = false;
-		};
+		void useModelCatalog.getState().refresh();
 	}, []);
 	const catalogKeys = useMemo(
 		() => new Set(models.map((m) => toModelKey(m.provider, m.id))),

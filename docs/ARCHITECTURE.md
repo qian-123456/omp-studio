@@ -262,6 +262,10 @@ pub struct Settings {
   pub inbox_window_hours: u32,       // default 24; 1..=720; non-awaiting sessions idle longer than this leave the inbox + badge
   // … (later fields: see contracts.rs)
   pub turn_checkpoints: Option<bool>, // default None = never asked; Some(true) loads the checkpoints extension (§8.1)
+  pub doctor_model: String,          // default "smol"; AI 会诊 model; empty → supervisor_model
+  pub doctor_auto_mode: String,      // "manual" | "idle" | "scheduled"; default "manual" (no tokens spent without user action)
+  pub doctor_idle_minutes: u32,      // default 30; 1..=10080; used in "idle" mode
+  pub doctor_schedule_time: String,  // "HH:MM"; default "23:00"; used in "scheduled" mode
 }
 
 // Schedules (定时任务)
@@ -426,6 +430,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `session_export_html(session_id) -> String` — runs `omp --export <file>`, returns the produced HTML path
 - `session_share(session_id) -> String` — runs `omp share <file>` (same as `/share`: E2E-encrypted snapshot uploaded to the configured share store), returns the share link
 - `quick_ask(prompt: String) -> String` — one-shot `omp -p --no-tools --no-session` (supervisor/smol model)
+- `heatmap_diagnose(prompt: String, model: Option<String>) -> String` — AI 会诊: one-shot `omp -p` (120s) on the distilled session skeleton prompt (never raw transcripts); model = `model` → `doctor_model` → `supervisor_model` → "smol"; returns raw model text (frontend parses JSON); never writes files
 
 
 **B — rpc:**
@@ -510,6 +515,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `omp_project_config_read(cwd) -> OmpProjectConfigFile { path, exists, content }` — reads fixed `<cwd>/.omp/config.yml` (cwd must be an existing absolute dir); missing file → `exists: false, content: ""`
 - `omp_project_config_write(cwd, content)` — atomic (temp+rename) write of fixed `<cwd>/.omp/config.yml`, creating `.omp/`; a symlinked config is written through to its target (link preserved)
 - `omp_info() -> OmpInfo { found, resolvedPath, version, agentDir, configPath, configExists }` — resolves `settings.ompBinary` on the augmented PATH, runs `omp --version` (first line; null on failure), reports the omp agent dir (honors `PI_CODING_AGENT_DIR` / profile env) and `<agentDir>/config.yml`; used by Settings ▸ 通用 「OMP 环境」
+- `omp_update_check() -> OmpUpdateStatus { current, latest, updateAvailable, output }` — runs `omp update --check` (30s timeout, neutral cwd, augmented PATH, ANSI stripped); parses `Current version:` / `New version available:` / `Already up to date`; non-zero exit → Err with output (GitHub rate-limit hint appended when applicable); used by Settings ▸ 关于与更新 and the BottomBar omp chip
+- `omp_update_run() -> OmpUpdateResult { success, output, versionAfter }` — runs `omp update` (300s timeout), then re-probes `omp --version`; frontend then refreshes omp info, update status and the model catalog
 
 ## 8. Status extension file format
 
@@ -604,7 +611,7 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/todos/TodoPanel` | right tab `todos` |
 | `features/explorer/FileExplorer` | right tab `explorer` |
 | `features/mobile/MobilePanel` | inside SettingsPage (under `mobile` section) |
-| `features/git/NewSessionDialog` | global modal (`ui.openModal("new-session", {workspaceId?, cwd?})`) |
+| `features/git/NewSessionDialog` | global modal (`ui.openModal("new-session", {workspaceId?, cwd?, branch?, useWorktree?})`) |
 | `features/sessions/ResumeMissingCwdDialog` | global modal (`ui.openModal("resume-missing-cwd", {sessionId, cwd, repoRoot, worktreeName?})`, driven by `lib/ensureLive.ts`) |
 
 Sidebar navigation (Codex-style vertical nav list at the top of the left sidebar):
@@ -829,6 +836,11 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `NewSessionDialog`: pick workspace/cwd (default from props; global workspace allowed), model (optional), approval mode, "在独立 worktree 中运行"
   checkbox + name (default slug) → `git_create_worktree` then `rpc_start({cwd: worktree.path, ...})`, optional first prompt → send `prompt`
   via `rpc_send`, then select the session. Warn "同仓库已有 N 个会话在跑，建议开 worktree" when applicable.
+  With `{cwd, useWorktree: true, branch?}` it is the compact 「新建工作树会话」 form instead: read-only repo line, then either
+  base branch + branch prefix + worktree dir name (new `prefix+name` branch), or — when `branch` is passed — only the worktree
+  dir name, checking out that existing branch → `git_create_worktree` + `rpc_start` (Settings default model), then select the
+  session and focus its composer. Opening a session in an *existing* worktree skips the dialog
+  (`startSessionInWorktree(cwd)` in `features/sessions/newSession.ts`).
 
 ### D — Inbox (smart todos + backlog), supervisor, summaries, diagnose, notifications, settings (backend + frontend)
 - System detection (when `settings.system_detection`): subscribe to bus. Create/refresh todos with `dedupe_key`:

@@ -13,6 +13,7 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
 import { useSidebarStore } from "./sidebarStore";
+import { useSettings } from "../settings/store";
 
 let creationInFlight = false;
 
@@ -100,6 +101,35 @@ export async function startSessionAt(
 	} finally {
 		creationInFlight = false;
 		useSidebarStore.getState().setCreatingKey(null);
+	}
+}
+
+/**
+ * Opens a session directly in an existing worktree checkout `cwd` (git panel
+ * "+" buttons). Reuses an empty draft there; the model follows the Settings
+ * default; the workspace is resolved from `cwd` by `createSession`.
+ */
+export async function startSessionInWorktree(cwd: string): Promise<void> {
+	if (creationInFlight) return;
+	creationInFlight = true;
+	try {
+		const draft = findEmptyDraft(cwd);
+		if (draft) {
+			useUi.getState().selectSession(draft.id);
+			useComposer.getState().focusComposer(draft.id);
+			return;
+		}
+		const { sessionId, stub } = await createSession({
+			cwd,
+			model: useSettings.getState().settings?.newSessionModel || null,
+		});
+		useSessions.getState().upsert([stub]);
+		useUi.getState().selectSession(sessionId);
+		useComposer.getState().focusComposer(sessionId);
+	} catch (err) {
+		toast.error(`创建会话失败: ${errMsg(err)}`);
+	} finally {
+		creationInFlight = false;
 	}
 }
 

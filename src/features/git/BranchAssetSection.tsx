@@ -445,8 +445,8 @@ export function BranchAssetSection({
 										: "border-neutral-800/70 bg-neutral-900/40 hover:border-neutral-700/80 hover:bg-neutral-900/70",
 								)}
 							>
-								{/* Line 1: Name + Badges */}
-								<div className="flex items-center justify-between gap-1.5 min-w-0">
+								{/* Line 1: Branch Name has top priority. Right side swaps from time to actions on hover. */}
+								<div className="flex items-center justify-between gap-2 min-w-0">
 									<div className="flex items-center gap-1.5 min-w-0 flex-1">
 										<GitBranch
 											size={13}
@@ -456,133 +456,149 @@ export function BranchAssetSection({
 													? "text-emerald-400"
 													: branch.isRemote
 														? "text-sky-400"
-														: "text-neutral-400",
+														: "text-neutral-500 group-hover:text-neutral-300",
 											)}
 										/>
 										<span
 											title={branch.name}
 											className={clsx(
-												"truncate font-mono text-xs font-medium",
-												isRunning ? "text-emerald-300 font-semibold" : "text-neutral-200",
+												"truncate font-mono text-xs font-semibold min-w-0 flex-1",
+												isRunning ? "text-emerald-300" : "text-neutral-200",
 											)}
 										>
 											{branch.displayName}
 										</span>
 
-										{/* Badges */}
+										{/* Subtle running dot when idle */}
 										{isRunning && (
-											<button
-												type="button"
-												onClick={() => {
-													if (branch.worktreePath) {
-														onSelectWorktree(branch.worktreePath);
-													}
-												}}
-												title="该分支已绑定工作树，点击跳转聚焦上方工作树卡片"
-												className="shrink-0 flex items-center gap-1 rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 text-[9px] font-semibold text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+											<span
+												title="该分支已绑定工作树运行中"
+												className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.6)]"
+											/>
+										)}
+
+										{/* Minimal Ahead/Behind counters */}
+										{!branch.isRemote && branch.ahead > 0 && (
+											<span
+												title={`领先云端 ${branch.ahead} 个提交`}
+												className="shrink-0 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] font-mono font-medium text-amber-300"
 											>
-												<span>🌿 运行中</span>
-											</button>
+												↑{branch.ahead}
+											</span>
 										)}
-
-										{!branch.isRemote && (
-											<>
-												{branch.ahead > 0 && (
-													<span
-														title={`本地领先云端 ${branch.ahead} 个提交`}
-														className="shrink-0 rounded bg-amber-500/20 border border-amber-500/40 px-1 py-0.2 text-[9px] font-medium text-amber-300"
-													>
-														↑{branch.ahead} 待推送
-													</span>
-												)}
-												{branch.behind > 0 && (
-													<span
-														title={`云端领先本地 ${branch.behind} 个提交`}
-														className="shrink-0 rounded bg-purple-500/20 border border-purple-500/40 px-1 py-0.2 text-[9px] font-medium text-purple-300"
-													>
-														↓{branch.behind} 待拉取
-													</span>
-												)}
-												{branch.upstream && branch.ahead === 0 && branch.behind === 0 && (
-													<span
-														title="本地与云端已完全同步"
-														className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 py-0.2 text-[9px] text-neutral-400"
-													>
-														已同步
-													</span>
-												)}
-												{!branch.upstream && (
-													<span
-														title="该分支仅存在于本地，尚未发布到 GitHub"
-														className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 py-0.2 text-[9px] text-neutral-400"
-													>
-														仅本地
-													</span>
-												)}
-												{branch.isMerged && (
-													<span
-														title="该分支已完全合并入 main"
-														className="shrink-0 rounded bg-neutral-800/80 px-1 py-0.2 text-[9px] text-neutral-500"
-													>
-														已合并
-													</span>
-												)}
-											</>
-										)}
-
-										{branch.isRemote && (
-											<span className="shrink-0 rounded bg-sky-500/10 border border-sky-500/30 px-1 py-0.2 text-[9px] text-sky-300">
-												云端
+										{!branch.isRemote && branch.behind > 0 && (
+											<span
+												title={`落后云端 ${branch.behind} 个提交`}
+												className="shrink-0 rounded bg-purple-500/15 px-1 py-0.2 text-[9px] font-mono font-medium text-purple-300"
+											>
+												↓{branch.behind}
 											</span>
 										)}
 									</div>
 
-									{/* Action buttons on the right */}
-									<div className="flex items-center gap-1 shrink-0">
-										{isBusy ? (
-											<Loader2 size={12} className="animate-spin text-neutral-400" />
-										) : !branch.isRemote ? (
-											<>
-												{/* Action: Push */}
+									{/* Right side: Default = Relative time; Hover = Action buttons */}
+									<div className="relative flex items-center shrink-0">
+										{/* Default (idle): relative time */}
+										<div className="group-hover:hidden flex items-center text-[10px] text-neutral-500">
+											{branch.lastCommitTime ? formatRelativeTime(branch.lastCommitTime) : ""}
+										</div>
+
+										{/* Hover only: action toolbar */}
+										<div className="hidden group-hover:flex items-center gap-1 animate-in fade-in duration-100">
+											{isRunning && (
 												<button
 													type="button"
-													onClick={() => void handlePushBranch(branch)}
-													title={
-														branch.upstream
-															? `推送到云端 ${branch.upstream}`
-															: `在 GitHub (origin) 上新建同名分支并推送代码`
-													}
-													className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-amber-300 transition-colors"
+													onClick={() => {
+														if (branch.worktreePath) {
+															onSelectWorktree(branch.worktreePath);
+														}
+													}}
+													title="跳转聚焦上方对应工作树卡片"
+													className="flex items-center gap-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 px-1.5 py-0.5 text-[9px] font-medium text-emerald-300 transition-colors"
 												>
-													<Upload size={12} />
+													<span>聚焦工作树</span>
 												</button>
+											)}
 
-												{/* Action: Deliver / PR */}
-												<button
-													type="button"
-													onClick={() => void handleDeliverToMain(branch)}
-													title={
-														deliveryMode === "direct"
-															? "直接合并入 main 并推送到云端"
-															: "推送到云端并在 GitHub 网页发起 Pull Request"
-													}
-													className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-indigo-300 transition-colors"
-												>
-													<GitPullRequest size={12} />
-												</button>
+											{isBusy ? (
+												<Loader2 size={12} className="animate-spin text-neutral-400" />
+											) : !branch.isRemote ? (
+												<>
+													{/* Action: Push */}
+													<button
+														type="button"
+														onClick={() => void handlePushBranch(branch)}
+														title={
+															branch.upstream
+																? `推送到云端 ${branch.upstream}`
+																: `在 GitHub (origin) 上新建同名分支并推送代码`
+														}
+														className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-amber-300 transition-colors"
+													>
+														<Upload size={11} />
+													</button>
 
-												{/* Action: Sync from main */}
-												<button
-													type="button"
-													onClick={() => void handleSyncFromMain(branch)}
-													title="从 main 吸收最新提交入此分支 (带冲突预检)"
-													className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-emerald-300 transition-colors"
-												>
-													<GitMerge size={12} />
-												</button>
+													{/* Action: Deliver / PR */}
+													<button
+														type="button"
+														onClick={() => void handleDeliverToMain(branch)}
+														title={
+															deliveryMode === "direct"
+																? "直接合并入 main 并推送到云端"
+																: "推送到云端并在 GitHub 网页发起 Pull Request"
+														}
+														className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-indigo-300 transition-colors"
+													>
+														<GitPullRequest size={11} />
+													</button>
 
-												{/* Action: Spawn worktree (if not already running) */}
-												{!isRunning && (
+													{/* Action: Sync from main */}
+													<button
+														type="button"
+														onClick={() => void handleSyncFromMain(branch)}
+														title="从 main 吸收最新提交入此分支 (带冲突预检)"
+														className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-emerald-300 transition-colors"
+													>
+														<GitMerge size={11} />
+													</button>
+
+													{/* Action: Spawn worktree (if not already running) */}
+													{!isRunning && (
+														<button
+															type="button"
+															onClick={() => {
+																openModal("new-session", {
+																	cwd: repo,
+																	branch: branch.name,
+																	useWorktree: true,
+																});
+															}}
+															title="在此分支创建独立并行工作树并开启会话"
+															className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
+														>
+															<Plus size={11} />
+														</button>
+													)}
+
+													{/* Action: Delete */}
+													<button
+														type="button"
+														disabled={isRunning}
+														onClick={() => void handleDeleteBranch(branch)}
+														title={isRunning ? "工作树使用中，无法删除" : "删除此本地分支"}
+														className={clsx(
+															"rounded p-1 transition-colors",
+															isRunning
+																? "text-neutral-700 cursor-not-allowed"
+																: "text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300",
+														)}
+													>
+														<Trash2 size={11} />
+													</button>
+												</>
+											) : (
+												<>
+													{/* Remote branch actions */}
 													<button
 														type="button"
 														onClick={() => {
@@ -592,79 +608,74 @@ export function BranchAssetSection({
 																useWorktree: true,
 															});
 														}}
-														title="在此分支创建独立并行工作树并开启会话"
-														className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
+														title="从该云端分支拉取并检出为独立工作树"
+														className="flex items-center gap-1 rounded bg-neutral-800 hover:bg-indigo-600 px-1.5 py-0.5 text-[10px] text-neutral-200 hover:text-white transition-colors"
 													>
-														<Plus size={12} />
+														<Plus size={10} />
+														<span>建工作树</span>
 													</button>
-												)}
 
-												{/* Action: Delete */}
-												<button
-													type="button"
-													disabled={isRunning}
-													onClick={() => void handleDeleteBranch(branch)}
-													title={isRunning ? "工作树使用中，无法删除" : "删除此本地分支"}
-													className={clsx(
-														"rounded p-1 transition-colors",
-														isRunning
-															? "text-neutral-600 cursor-not-allowed"
-															: "text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300",
-													)}
-												>
-													<Trash2 size={12} />
-												</button>
-											</>
-										) : (
-											<>
-												{/* Remote branch actions */}
-												<button
-													type="button"
-													onClick={() => {
-														openModal("new-session", {
-															cwd: repo,
-															branch: branch.name,
-															useWorktree: true,
-														});
-													}}
-													title="从该云端分支拉取并检出为独立工作树"
-													className="flex items-center gap-1 rounded bg-neutral-800 hover:bg-indigo-600 px-1.5 py-0.5 text-[10px] text-neutral-200 hover:text-white transition-colors"
-												>
-													<Plus size={10} />
-													<span>建工作树</span>
-												</button>
-
-												<button
-													type="button"
-													onClick={() => void handleDeleteBranch(branch)}
-													title="删除 GitHub 上的远端分支"
-													className="rounded p-1 text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors"
-												>
-													<Trash2 size={12} />
-												</button>
-											</>
-										)}
+													<button
+														type="button"
+														onClick={() => void handleDeleteBranch(branch)}
+														title="删除 GitHub 上的远端分支"
+														className="rounded p-1 text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors"
+													>
+														<Trash2 size={11} />
+													</button>
+												</>
+											)}
+										</div>
 									</div>
 								</div>
 
-								{/* Line 2: Relative time + Commit subject */}
-								{(branch.lastCommitTime || branch.lastCommitMessage) && (
-									<div className="mt-1 flex items-center gap-1.5 text-[10px] text-neutral-500 truncate">
-										{branch.lastCommitTime && (
-											<span className="shrink-0 text-neutral-400">
-												{formatRelativeTime(branch.lastCommitTime)}
-											</span>
-										)}
-										{branch.lastCommitTime && branch.lastCommitMessage && (
-											<span>·</span>
-										)}
-										{branch.lastCommitMessage && (
-											<span className="truncate text-neutral-400" title={branch.lastCommitMessage}>
-												{branch.lastCommitMessage}
-											</span>
-										)}
-									</div>
-								)}
+								{/* Line 2: Secondary Status Badges + Commit Message (badges reveal on hover or stay minimal) */}
+								<div className="mt-1 flex items-center gap-1.5 text-[10px] text-neutral-400 min-w-0 overflow-hidden">
+									{/* Status Badges only shown on hover to keep default view calm and clean */}
+									{!branch.isRemote && (
+										<div className="hidden group-hover:flex items-center gap-1 shrink-0 animate-in fade-in duration-100">
+											{!branch.upstream && (
+												<span
+													title="该分支仅存在于本地，尚未发布到 GitHub"
+													className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 text-[9px] text-neutral-400"
+												>
+													仅本地
+												</span>
+											)}
+											{branch.upstream && branch.ahead === 0 && branch.behind === 0 && (
+												<span
+													title="本地与云端已完全同步"
+													className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 text-[9px] text-neutral-400"
+												>
+													已同步
+												</span>
+											)}
+											{branch.isMerged && (
+												<span
+													title="该分支已完全合并入 main"
+													className="shrink-0 rounded bg-neutral-800/80 px-1 text-[9px] text-neutral-500"
+												>
+													已合并
+												</span>
+											)}
+										</div>
+									)}
+
+									{branch.isRemote && (
+										<span className="hidden group-hover:inline-block shrink-0 rounded bg-sky-500/10 border border-sky-500/30 px-1 text-[9px] text-sky-300">
+											云端
+										</span>
+									)}
+
+									{branch.lastCommitMessage && (
+										<span
+											className="truncate text-neutral-500 group-hover:text-neutral-400 flex-1 min-w-0 transition-colors"
+											title={branch.lastCommitMessage}
+										>
+											{branch.lastCommitMessage}
+										</span>
+									)}
+								</div>
 							</div>
 						);
 					})

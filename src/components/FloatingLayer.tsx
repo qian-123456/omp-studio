@@ -260,7 +260,7 @@ export function FloatingLayer({
 			{...rest}
 			data-layer={layer}
 			className={clsx(
-				"fixed overflow-y-auto rounded-xl border border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-apple-modal",
+				"fixed overflow-y-auto rounded-xl border border-[var(--border-divider)] vibrancy-popover shadow-apple-modal backdrop-blur-2xl",
 				className,
 			)}
 			style={{

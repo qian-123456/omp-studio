@@ -4,6 +4,8 @@ import {
 	Coins,
 	Gauge,
 	GitBranch,
+	Minus,
+	Plus,
 	RefreshCw,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +15,7 @@ import { SessionStatsPopover } from "../features/chat/SessionStatsPopover";
 import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
+import { ompVersionLabel, useOmpUpdate } from "../stores/ompUpdate";
 import { getAppMemoryUsage, servicesList, type ProcessMemoryInfo } from "../lib/ipc";
 import type { ServiceInfo } from "../lib/contracts";
 import { useZoom } from "../lib/zoom";
@@ -26,6 +29,11 @@ export function BottomBar() {
 	const setRightTab = useUi((s) => s.setRightTab);
 	const rightOpen = useUi((s) => s.rightOpen);
 	const setRightOpen = useUi((s) => s.setRightOpen);
+	const openSettings = useUi((s) => s.openSettings);
+	const ompInfo = useOmpUpdate((s) => s.info);
+	const ompStatus = useOmpUpdate((s) => s.status);
+	const ompVersion = ompVersionLabel(ompInfo, ompStatus);
+	const ompUpdateAvailable = ompStatus?.updateAvailable === true;
 
 	const activeSession = useSessions((s) =>
 		activeSessionId ? s.sessions[activeSessionId] : undefined,
@@ -36,7 +44,7 @@ export function BottomBar() {
 	const streaming = live?.streaming === true;
 
 	// Global keyboard shortcuts (Cmd/Ctrl +/-, Cmd/Ctrl 0) and stored zoom application
-	useZoom();
+	const { zoom, zoomIn, zoomOut, resetZoom, minZoom, maxZoom } = useZoom();
 
 	const handleToggleGit = () => {
 		if (rightTab === "git" && rightOpen) {
@@ -215,6 +223,54 @@ export function BottomBar() {
 					onClose={() => setPerfOpen(false)}
 					ignoreRefs={[perfBtnRef]}
 				/>
+				<span className="text-neutral-700">·</span>
+
+				{/* omp version chip — click opens 设置 ▸ 关于与更新 */}
+				{ompVersion && (
+					<>
+						<button
+							type="button"
+							onClick={() => openSettings("about")}
+							title={ompUpdateAvailable ? `omp 有新版本 ${ompStatus?.latest ?? ""}` : "omp 版本 — 点击查看关于与更新"}
+							className="relative flex items-center gap-1 rounded-[6px] px-1 py-0.5 transition-all hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97"
+						>
+							<span className="font-mono text-[10.5px]">omp {ompVersion}</span>
+							{ompUpdateAvailable && <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />}
+						</button>
+						<span className="text-neutral-700">·</span>
+					</>
+				)}
+
+				{/* Zoom controls: - 100% + */}
+				<div className="flex items-center gap-1 text-[11px]">
+					<button
+						type="button"
+						onClick={zoomOut}
+						disabled={zoom <= minZoom}
+						title="缩小界面 (-5%)"
+						className="rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 disabled:opacity-30 transition-colors"
+					>
+						<Minus size={11} />
+					</button>
+					<button
+						type="button"
+						onClick={resetZoom}
+						title="重置缩放为 100%"
+						className="font-mono text-[10.5px] hover:text-neutral-200 transition-colors"
+					>
+						{zoom}%
+					</button>
+					<button
+						type="button"
+						onClick={zoomIn}
+						disabled={zoom >= maxZoom}
+						title="放大界面 (+5%)"
+						className="rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 disabled:opacity-30 transition-colors"
+					>
+						<Plus size={11} />
+					</button>
+				</div>
+
 				<span className="text-neutral-700">·</span>
 
 				{/* Sync state */}

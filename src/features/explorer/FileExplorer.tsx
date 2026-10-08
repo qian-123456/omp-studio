@@ -349,19 +349,19 @@ export function FileExplorer() {
 											tabIndex={0}
 											onClick={() => handleOpenFile(full)}
 											className={clsx(
-												"flex h-[22px] items-center gap-1.5 rounded px-2 text-xs transition-all active:scale-[0.98] cursor-pointer",
+												"flex h-5 items-center gap-1.5 rounded px-2 text-xs transition-all active:scale-[0.98] cursor-pointer",
 												isSelected
 													? "bg-[#0A84FF]/15 text-[#0A84FF] font-medium"
 													: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100",
 											)}
 											title={full}
 										>
-											<FileIcon name={fileName} size={12} />
+											<FileIcon name={fileName} size={11} />
 											<div className="min-w-0 flex-1 flex items-baseline gap-1.5 overflow-hidden">
-												<span className="truncate font-mono text-[11px] leading-tight text-neutral-200">
+												<span className="truncate font-mono text-[10.5px] leading-tight text-neutral-200">
 													{fileName}
 												</span>
-												<span className="truncate font-mono text-[10px] text-neutral-500 leading-tight flex-1">
+												<span className="truncate font-mono text-[9.5px] text-neutral-500 leading-tight flex-1">
 													{rel}
 												</span>
 											</div>

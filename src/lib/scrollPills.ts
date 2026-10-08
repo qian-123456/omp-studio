@@ -162,6 +162,12 @@ function attachPillHandlers(entry: Entry): void {
 }
 
 function layout(el: HTMLElement, entry: Entry): void {
+	if (!el.isConnected) {
+		hide(entry);
+		entry.pill.remove();
+		entries.delete(el);
+		return;
+	}
 	const { scrollTop, scrollHeight, clientHeight } = el;
 	const { rect, trackH, pillH, maxScroll } = metrics(el);
 	if (scrollHeight <= clientHeight + 1 || rect.height <= 0) {
@@ -169,7 +175,7 @@ function layout(el: HTMLElement, entry: Entry): void {
 		return;
 	}
 	const maxTop = trackH - pillH;
-	const frac = scrollTop / maxScroll;
+	const frac = maxScroll > 0 ? scrollTop / maxScroll : 0;
 	const top = rect.top + Math.round(frac * maxTop);
 	const s = entry.pill.style;
 	s.top = `${top}px`;
@@ -177,7 +183,6 @@ function layout(el: HTMLElement, entry: Entry): void {
 	s.height = `${pillH}px`;
 	s.width = `${PILL_W}px`;
 }
-
 /** Scroll chaining (macOS rubber-banding) fires scroll on ancestor scrollers
  * too — the deepest scroller's pill always wins to avoid ping-pong flicker.
  * Returns false when `el` must not show because a visible descendant pill
@@ -210,6 +215,7 @@ function dedupeOverlap(keep: HTMLElement): boolean {
 }
 
 function show(el: HTMLElement): void {
+	if (!el.isConnected) return;
 	const entry = entryFor(el);
 	if (!dedupeOverlap(el)) return;
 	layout(el, entry);
@@ -220,7 +226,17 @@ function show(el: HTMLElement): void {
 	}
 	entry.idleTimer = window.setTimeout(() => {
 		entry.idleTimer = 0;
-		// Hovered or dragged pills stay up; leave/release re-arms the timer.
+		if (!entry.el.isConnected) {
+			prune();
+			return;
+		}
+		// Verify if the pointer is actually still hovering the pill
+		if (entry.hovered && !entry.drag) {
+			const isStillHovered = typeof entry.pill.matches === "function" && entry.pill.matches(":hover");
+			if (!isStillHovered) {
+				entry.hovered = false;
+			}
+		}
 		if (entry.hovered || entry.drag) return;
 		hide(entry);
 	}, IDLE_MS);
@@ -232,11 +248,12 @@ function hide(entry: Entry): void {
 		entry.idleTimer = 0;
 	}
 	entry.visible = false;
+	entry.hovered = false;
 	entry.pill.classList.remove(PILL_VISIBLE);
 }
 
-function prune(): void {
-	for (const [el, entry] of entries) {
+export function prune(): void {
+	for (const [el, entry] of Array.from(entries)) {
 		if (!el.isConnected || !isScrollable(el)) {
 			if (entry.drag) document.body.classList.remove(DRAG_BODY_CLASS);
 			hide(entry);
@@ -244,6 +261,16 @@ function prune(): void {
 			entries.delete(el);
 		}
 	}
+}
+
+/** Instantly hide and clean all overlay pills (e.g. on modal close or view switch). */
+export function hideAllScrollPills(): void {
+	for (const [, entry] of Array.from(entries)) {
+		if (!entry.drag) {
+			hide(entry);
+		}
+	}
+	prune();
 }
 
 export function startScrollPills(): () => void {
@@ -325,8 +352,21 @@ export function startScrollPills(): () => void {
 	window.addEventListener("pointerdown", onDown, { capture: true });
 	window.addEventListener("pointermove", onMove, { capture: true, passive: true });
 	window.addEventListener("resize", onResize, { passive: true });
-	const pruneTimer = window.setInterval(prune, 2000);
+	const pruneTimer = window.setInterval(prune, 1000);
 
+	// MutationObserver: instantly prune pills when modal/view DOM subtrees are removed
+	let moRaf = 0;
+	const observer = new MutationObserver(() => {
+		if (moRaf !== 0) return;
+		moRaf = window.requestAnimationFrame(() => {
+			moRaf = 0;
+			prune();
+		});
+	});
+	observer.observe(document.body, { childList: true, subtree: true });
+
+	const onBlur = () => hideAllScrollPills();
+	window.addEventListener("blur", onBlur);
 	return () => {
 		window.removeEventListener("scroll", onScroll, { capture: true });
 		window.removeEventListener("wheel", onWheel, { capture: true });
@@ -335,6 +375,9 @@ export function startScrollPills(): () => void {
 		document.body.classList.remove(DRAG_BODY_CLASS);
 		window.removeEventListener("resize", onResize);
 		window.clearInterval(pruneTimer);
+		observer.disconnect();
+		if (moRaf !== 0) window.cancelAnimationFrame(moRaf);
+		window.removeEventListener("blur", onBlur);
 		for (const [, entry] of entries) {
 			hide(entry);
 			entry.pill.remove();

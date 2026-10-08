@@ -9,6 +9,12 @@
  */
 
 import { useSyncExternalStore } from "react";
+import {
+	PRESET_WALLPAPERS,
+	type CustomWallpaperItem,
+	type WallpaperEffect,
+	type WallpaperState,
+} from "./wallpaperPalette";
 
 export interface ThemeDef {
 	id: string;
@@ -23,6 +29,27 @@ export type ThemeChoice = "system" | (typeof THEMES)[number]["id"];
 
 export type FontSize = "sm" | "md" | "lg" | "xl";
 export type UiScale = "compact" | "standard" | "comfortable" | "large";
+
+export type {
+	WallpaperVariant,
+	WallpaperEffect,
+	WallpaperAppearance,
+	WallpaperVeil,
+	WallpaperPalette,
+	PresetWallpaper,
+	WallpaperState,
+	CustomWallpaperItem,
+} from "./wallpaperPalette";
+
+export const DEFAULT_WALLPAPER_STATE: WallpaperState = {
+	enabled: false,
+	id: "none",
+	url: "",
+	effect: "clear",
+	accentColor: "",
+	variant: "soft",
+	brightness: 1.0,
+};
 
 export const THEMES: ThemeDef[] = [
 	{
@@ -229,6 +256,8 @@ const KEYS = {
 	uiScale: "ompws:ui-scale",
 	systemDark: "ompws:system-dark-theme",
 	systemLight: "ompws:system-light-theme",
+	wallpaperState: "ompws:wallpaper-state",
+	customWallpapers: "ompws:custom-wallpapers",
 } as const;
 
 const VALID_FONT_SIZES = new Set<string>(FONT_SIZES.map((f) => f.id));
@@ -293,15 +322,81 @@ export function getUiScale(): UiScale {
 	return uiScale;
 }
 
+let wallpaperState: WallpaperState = DEFAULT_WALLPAPER_STATE;
+let customWallpapers: CustomWallpaperItem[] = [];
+
+export function getWallpaperState(): WallpaperState {
+	return wallpaperState;
+}
+
+export function getCustomWallpapers(): CustomWallpaperItem[] {
+	return customWallpapers;
+}
+
+const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+function parseHex(hex: string): [number, number, number] | null {
+	if (!HEX_RE.test(hex)) return null;
+	let h = hex.slice(1);
+	if (h.length === 3) h = h.replace(/./g, (c) => c + c);
+	return [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+}
+
+/** Mix `hex` toward white (amount > 0) or black (amount < 0). */
+function shade(hex: string, amount: number): string {
+	const rgb = parseHex(hex);
+	if (!rgb) return hex;
+	const target = amount > 0 ? 255 : 0;
+	const t = Math.abs(amount);
+	return `#${rgb
+		.map((c) => Math.round(c + (target - c) * t).toString(16).padStart(2, "0"))
+		.join("")}`;
+}
+
+const ACCENT_VARS = ["--accent", "--accent-hover", "--accent-strong"] as const;
+
 function apply(): void {
 	if (typeof document === "undefined") return;
 	const id = resolvedThemeId();
 	const def = THEMES.find((t) => t.id === id) ?? THEMES[0];
 	const root = document.documentElement;
-	root.dataset.theme = def.id;
-	root.dataset.mode = def.dark ? "dark" : "light";
+	const ws = wallpaperState;
+	if (ws.enabled && ws.url) {
+		const matchedPreset = PRESET_WALLPAPERS.find((p) => p.id === ws.id);
+		const app = ws.appearance ?? matchedPreset?.appearance ?? "dark";
+		root.dataset.theme = "wallpaper";
+		root.dataset.mode = app;
+		root.classList.toggle("dark", app === "dark");
+		root.setAttribute("data-wallpaper", "true");
+		root.setAttribute("data-wallpaper-effect", ws.effect);
+		const veil = ws.veil ?? (app === "light" ? "white" : "none");
+		root.setAttribute("data-wallpaper-appearance", app);
+		root.setAttribute("data-wallpaper-veil", veil);
+		root.style.setProperty("--app-wallpaper-url", `url(${JSON.stringify(ws.url)})`);
+		root.style.setProperty("--app-wallpaper-brightness", String(ws.brightness ?? 1.0));
+	} else {
+		root.dataset.theme = def.id;
+		root.dataset.mode = def.dark ? "dark" : "light";
+		root.classList.toggle("dark", def.dark);
+		root.removeAttribute("data-wallpaper");
+		root.removeAttribute("data-wallpaper-effect");
+		root.removeAttribute("data-wallpaper-appearance");
+		root.removeAttribute("data-wallpaper-veil");
+		root.style.removeProperty("--app-wallpaper-url");
+		root.style.removeProperty("--app-wallpaper-brightness");
+	}
 	root.dataset.fontSize = fontSize;
 	root.dataset.uiScale = uiScale;
+
+	// Inline accent overrides the theme stylesheet; removing it restores theme accents.
+	if (ws.enabled && parseHex(ws.accentColor)) {
+		const isDark = (ws.appearance ?? "dark") === "dark";
+		root.style.setProperty("--accent", ws.accentColor);
+		root.style.setProperty("--accent-hover", shade(ws.accentColor, isDark ? 0.2 : -0.15));
+		root.style.setProperty("--accent-strong", shade(ws.accentColor, isDark ? -0.2 : 0.2));
+	} else {
+		for (const v of ACCENT_VARS) root.style.removeProperty(v);
+	}
 }
 
 const CHANGE_EVENT = "ompws:theme-change";
@@ -343,6 +438,7 @@ export function initTheme(): void {
 	if (storedFont && VALID_FONT_SIZES.has(storedFont)) fontSize = storedFont as FontSize;
 	const storedScale = readStorage(KEYS.uiScale);
 	if (storedScale && VALID_UI_SCALES.has(storedScale)) uiScale = storedScale as UiScale;
+	loadWallpaperStorage();
 
 	apply();
 
@@ -357,6 +453,68 @@ export function initTheme(): void {
 	} catch {
 		/* matchMedia unavailable */
 	}
+}
+
+function parseJson<T>(raw: string | null): T | null {
+	if (!raw) return null;
+	try {
+		return JSON.parse(raw) as T;
+	} catch {
+		return null;
+	}
+}
+
+function loadWallpaperStorage(): void {
+	const ws = parseJson<Partial<WallpaperState>>(readStorage(KEYS.wallpaperState));
+	if (ws && typeof ws === "object") {
+		const matchedPreset = PRESET_WALLPAPERS.find((p) => p.id === ws.id);
+		const rawEffect = ws.effect;
+		const effect: WallpaperEffect =
+			rawEffect === "soft" || rawEffect === "blur"
+				? rawEffect
+				: "clear";
+		const brightness = typeof ws.brightness === "number" ? ws.brightness : 1.0;
+		const veil = ws.veil === "white" || ws.veil === "black" || ws.veil === "none" ? ws.veil : undefined;
+		wallpaperState = {
+			...DEFAULT_WALLPAPER_STATE,
+			...ws,
+			url: matchedPreset ? matchedPreset.imageUrl : (ws.url ?? ""),
+			appearance: matchedPreset ? matchedPreset.appearance : (ws.appearance ?? "dark"),
+			effect,
+			brightness,
+			veil,
+		};
+	}
+	const list = parseJson<CustomWallpaperItem[]>(readStorage(KEYS.customWallpapers));
+	if (Array.isArray(list)) customWallpapers = list.filter((i) => i && typeof i.id === "string");
+}
+
+export function setWallpaper(partial: Partial<WallpaperState>): void {
+	const next = { ...wallpaperState, ...partial };
+	if (!next.appearance) {
+		const matchedPreset = PRESET_WALLPAPERS.find((p) => p.id === next.id);
+		next.appearance = matchedPreset?.appearance ?? "dark";
+	}
+	wallpaperState = next;
+	writeStorage(KEYS.wallpaperState, JSON.stringify(wallpaperState));
+	apply();
+	emitChange();
+}
+
+export function addCustomWallpaper(item: CustomWallpaperItem): void {
+	customWallpapers = [item, ...customWallpapers.filter((w) => w.id !== item.id)];
+	writeStorage(KEYS.customWallpapers, JSON.stringify(customWallpapers));
+	emitChange();
+}
+
+export function removeCustomWallpaper(id: string): void {
+	customWallpapers = customWallpapers.filter((w) => w.id !== id);
+	writeStorage(KEYS.customWallpapers, JSON.stringify(customWallpapers));
+	if (wallpaperState.id === id) {
+		setWallpaper({ ...DEFAULT_WALLPAPER_STATE });
+		return;
+	}
+	emitChange();
 }
 
 export function setTheme(choice: ThemeChoice): void {
@@ -428,4 +586,12 @@ export function useFontSize(): FontSize {
 
 export function useUiScale(): UiScale {
 	return useThemeSync(getUiScale);
+}
+
+export function useWallpaperState(): WallpaperState {
+	return useThemeSync(getWallpaperState);
+}
+
+export function useCustomWallpapers(): CustomWallpaperItem[] {
+	return useThemeSync(getCustomWallpapers);
 }

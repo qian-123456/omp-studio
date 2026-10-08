@@ -719,6 +719,64 @@ html[data-theme="everforest-light"] {
 	--status-warning: #dfa000;
 	--status-renamed: #35a77c;
 }
+/*
+ * Wallpaper theme: fully decoupled from dark/light presets.
+ * Semantic surfaces adapt into a frosted-glass token system.
+ */
+/*
+ * Wallpaper theme (Dark crystal appearance):
+ * Consistent deep-glass workspace with razor-sharp white typography across dark wallpapers.
+ */
+html[data-theme="wallpaper"],
+html[data-theme="wallpaper"][data-wallpaper-appearance="dark"] {
+	--bg: #14171a;
+	--bg-panel: rgba(20, 24, 30, 0.72);
+	--bg-hover: rgba(255, 255, 255, 0.08);
+	--bg-selected: color-mix(in srgb, var(--accent) 26%, rgba(255, 255, 255, 0.12));
+	--bg-active-fill: rgba(255, 255, 255, 0.1);
+	--well-bg: rgba(0, 0, 0, 0.32);
+	--border: rgba(255, 255, 255, 0.1);
+	--border-divider: rgba(255, 255, 255, 0.1);
+	--line: rgba(255, 255, 255, 0.1);
+	--text: #f3f4f6;
+	--text-muted: #9ca3af;
+	--text-dim: #6b7280;
+	--chrome-glass: rgba(18, 22, 28, 0.52);
+	--popover-glass: rgba(18, 22, 28, 0.95);
+	--status-error: #f43f5e;
+	--status-success: #10b981;
+	--status-warning: #f59e0b;
+	--status-renamed: #06b6d4;
+	--shadow-apple-card: 0 1px 3px 0 rgba(0, 0, 0, 0.28), 0 1px 2px -1px rgba(0, 0, 0, 0.28);
+	--shadow-apple-modal: 0 20px 50px -12px rgba(0, 0, 0, 0.65);
+}
+
+/*
+ * Wallpaper theme (Light ice-crystal appearance):
+ * Translucent ethereal white-frost glass with dark high-contrast slate typography.
+ */
+html[data-theme="wallpaper"][data-wallpaper-appearance="light"] {
+	--bg: #f8fafc;
+	--bg-panel: rgba(255, 255, 255, 0.72);
+	--bg-hover: rgba(0, 0, 0, 0.06);
+	--bg-selected: color-mix(in srgb, var(--accent) 20%, rgba(0, 0, 0, 0.06));
+	--bg-active-fill: rgba(0, 0, 0, 0.06);
+	--well-bg: rgba(255, 255, 255, 0.5);
+	--border: rgba(0, 0, 0, 0.09);
+	--border-divider: rgba(0, 0, 0, 0.08);
+	--line: rgba(0, 0, 0, 0.08);
+	--text: #0f172a;
+	--text-muted: #475569;
+	--text-dim: #64748b;
+	--chrome-glass: rgba(255, 255, 255, 0.68);
+	--popover-glass: rgba(255, 255, 255, 0.96);
+	--status-error: #e11d48;
+	--status-success: #059669;
+	--status-warning: #d97706;
+	--status-renamed: #0891b2;
+	--shadow-apple-card: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.08);
+	--shadow-apple-modal: 0 20px 50px -12px rgba(0, 0, 0, 0.18);
+}
 
 /*
  * Light-family theme overrides for Apple vibrancy, hairline, overlay & shadow tokens.
@@ -779,10 +837,13 @@ body {
 	user-select: none;
 }
 
-/* Selection uses the theme accent. */
-::selection {
-	background: color-mix(in srgb, var(--accent) 30%, transparent);
-	color: var(--text);
+/* Selection: refined translucent sapphire highlight with natural text contrast */
+::selection,
+code::selection,
+pre::selection {
+	background: rgba(56, 189, 248, 0.32) !important;
+	color: inherit !important;
+	text-shadow: none !important;
 }
 
 /* Global accessible focus ring for keyboard navigation, excluding text inputs. */
@@ -977,6 +1038,154 @@ html[data-ui-scale="large"] {
 		-webkit-backdrop-filter: none !important;
 	}
 	.vibrancy-popover {
+		background-color: var(--bg-panel) !important;
+		backdrop-filter: none !important;
+		-webkit-backdrop-filter: none !important;
+	}
+}
+
+/* Background wallpaper (theme.ts sets data-wallpaper / --app-wallpaper-url) */
+html[data-wallpaper="true"] {
+	--app-wallpaper-blur: 0px;
+}
+html[data-wallpaper="true"][data-wallpaper-effect="clear"] {
+	--app-wallpaper-blur: 0px;
+}
+html[data-wallpaper="true"][data-wallpaper-effect="soft"] {
+	--app-wallpaper-blur: 4px;
+}
+html[data-wallpaper="true"][data-wallpaper-effect="blur"] {
+	--app-wallpaper-blur: 14px;
+}
+#app-wallpaper-background {
+	display: none;
+	filter: blur(var(--app-wallpaper-blur, 0px)) brightness(var(--app-wallpaper-brightness, 1));
+	transition: filter 0.25s ease;
+}
+html[data-wallpaper="true"] #app-wallpaper-background {
+	display: block;
+}
+#app-wallpaper-veil {
+	display: none;
+	pointer-events: none;
+	transition: background-color 0.25s ease;
+}
+html[data-wallpaper="true"][data-wallpaper-veil="white"] #app-wallpaper-veil {
+	display: block;
+	background-color: rgba(255, 255, 255, 0.22);
+}
+html[data-wallpaper="true"][data-wallpaper-veil="black"] #app-wallpaper-veil {
+	display: block;
+	background-color: rgba(0, 0, 0, 0.25);
+}
+/*
+ * Codex Dream Skin Readability Layers:
+ * Continuous 16:9 wallpaper on the window; sidebar, main, header, composer act as coordinated readability layers.
+ */
+
+/* Header and topbar: completely transparent, letting wallpaper flow from the window top */
+html[data-wallpaper="true"] #app-shell header,
+html[data-wallpaper="true"] #app-shell [data-tauri-drag-region] {
+	background-color: transparent !important;
+}
+/* Sidebar: horizontal gradient readability mask */
+html[data-wallpaper="true"]:not([data-wallpaper-appearance="light"]) #app-shell .vibrancy-chrome {
+	background: linear-gradient(90deg, rgba(16, 18, 22, 0.68) 0%, rgba(16, 18, 22, 0.38) 100%) !important;
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+}
+html[data-wallpaper="true"][data-wallpaper-appearance="light"] #app-shell .vibrancy-chrome {
+	background: linear-gradient(90deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.45) 100%) !important;
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+	border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Prevent nested asides from double/triple stacking background opacity */
+html[data-wallpaper="true"] #app-shell .vibrancy-chrome aside,
+html[data-wallpaper="true"] #app-shell aside aside {
+	background-color: transparent !important;
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
+}
+
+/* Main center conversation area: completely transparent to display continuous wallpaper */
+html[data-wallpaper="true"] #app-shell main {
+	background-color: transparent !important;
+}
+
+
+/* Bottom status bar */
+html[data-wallpaper="true"] footer[data-app-bottombar] {
+	background-color: color-mix(in srgb, var(--bg-panel) 75%, transparent) !important;
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
+}
+
+/* Composer box: modern floating translucent capsule */
+html[data-wallpaper="true"]:not([data-wallpaper-appearance="light"]) #app-shell .rounded-\[22px\].bg-\[var\(--bg-panel\)\] {
+	background-color: rgba(20, 24, 30, 0.72) !important;
+	backdrop-filter: blur(24px) !important;
+	-webkit-backdrop-filter: blur(24px) !important;
+	box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.45);
+	border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+html[data-wallpaper="true"][data-wallpaper-appearance="light"] #app-shell .rounded-\[22px\].bg-\[var\(--bg-panel\)\] {
+	background-color: rgba(255, 255, 255, 0.8) !important;
+	backdrop-filter: blur(24px) !important;
+	-webkit-backdrop-filter: blur(24px) !important;
+	box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.8) !important;
+}
+
+/* User message bubble: harmonious frosted glass tint matching accent color */
+html[data-wallpaper="true"]:not([data-wallpaper-appearance="light"]) {
+	--chat-user-bg: color-mix(in srgb, var(--accent) 22%, rgba(255, 255, 255, 0.08));
+}
+html[data-wallpaper="true"]:not([data-wallpaper-appearance="light"]) .rounded-\[22px\].bg-\[var\(--chat-user-bg\)\] {
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid rgba(255, 255, 255, 0.14);
+}
+html[data-wallpaper="true"][data-wallpaper-appearance="light"] {
+	--chat-user-bg: color-mix(in srgb, var(--accent) 14%, rgba(255, 255, 255, 0.65));
+}
+html[data-wallpaper="true"][data-wallpaper-appearance="light"] .rounded-\[22px\].bg-\[var\(--chat-user-bg\)\] {
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid rgba(255, 255, 255, 0.8);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Right panel tabs & sticky footer */
+html[data-wallpaper="true"] .vibrancy-chrome [role="tablist"],
+html[data-wallpaper="true"] .vibrancy-chrome .sticky.bottom-0 {
+	background-color: color-mix(in srgb, var(--bg-panel) 75%, transparent) !important;
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
+}
+
+/* Dialogs & overlays adapt to frosted glass while wallpaper is active */
+html[data-wallpaper="true"]:not([data-wallpaper-appearance="light"]) [role="dialog"] {
+	background-color: rgba(20, 24, 30, 0.85) !important;
+	backdrop-filter: blur(30px) !important;
+	-webkit-backdrop-filter: blur(30px) !important;
+	border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+html[data-wallpaper="true"][data-wallpaper-appearance="light"] [role="dialog"] {
+	background-color: rgba(255, 255, 255, 0.88) !important;
+	backdrop-filter: blur(30px) !important;
+	-webkit-backdrop-filter: blur(30px) !important;
+	border: 1px solid rgba(255, 255, 255, 0.8) !important;
+	box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.15) !important;
+}
+html[data-wallpaper="true"] .fixed.inset-0.bg-\[var\(--overlay\)\] {
+	background-color: rgba(0, 0, 0, 0.3) !important;
+}
+@media (prefers-reduced-transparency: reduce) {
+	html[data-wallpaper="true"] .vibrancy-chrome,
+	html[data-wallpaper="true"] #app-shell main,
+	html[data-wallpaper="true"] #app-shell aside {
 		background-color: var(--bg-panel) !important;
 		backdrop-filter: none !important;
 		-webkit-backdrop-filter: none !important;

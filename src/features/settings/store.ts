@@ -35,6 +35,10 @@ export const DEFAULT_SETTINGS: Settings = {
 	turnCheckpoints: null,
 	queueAutoSend: null,
 	gitDeliveryMode: "pr",
+	doctorModel: "smol",
+	doctorAutoMode: "manual",
+	doctorIdleMinutes: 30,
+	doctorScheduleTime: "23:00",
 };
 
 export interface SettingsState {

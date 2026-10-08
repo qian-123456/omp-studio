@@ -20,18 +20,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionMeta } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
-import { acceptSession, createSideChat, getTranscript, listModels } from "../../lib/ipc";
-import { type ModelOption, parseModels, resolveCurrentModel, toModelKey } from "../../lib/models";
+import { acceptSession, createSideChat, getTranscript } from "../../lib/ipc";
+import { type ModelOption, resolveCurrentModel, toModelKey } from "../../lib/models";
 import { sessionDisplayName } from "../../lib/sessionName";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { SessionView } from "../chat/SessionView";
+import { startNewSessionFromContext } from "../sessions/newSession";
 import { compareSessionLabels } from "./labelSort";
 
 const MAX_DEPTH = 3;
+const NO_MODELS: ModelOption[] = [];
 function getThinkingLabel(level: string) {
 	switch (level) {
 		case "off":
@@ -62,7 +65,6 @@ interface ContextMenuState {
 export function SideChatPanel() {
 	const selectedId = useUi((s) => s.selectedSessionId);
 	const selectSession = useUi((s) => s.selectSession);
-	const openModal = useUi((s) => s.openModal);
 	const sessions = useSessions((s) => s.sessions);
 	const sideChatRequest = useComposer((s) => s.sideChatRequest);
 	const clearSideChatRequest = useComposer((s) => s.clearSideChatRequest);
@@ -73,7 +75,8 @@ export function SideChatPanel() {
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 	const [pendingSelection, setPendingSelection] = useState<string | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-	const [models, setModels] = useState<ModelOption[]>([]);
+	const catalog = useModelOptions();
+	const models = catalog ?? NO_MODELS;
 	// "" = inherit the parent session's model.
 	const [selectedModel, setSelectedModel] = useState("");
 	const [thinking, setThinking] = useState("auto");
@@ -84,15 +87,7 @@ export function SideChatPanel() {
 
 
 	useEffect(() => {
-		let cancelled = false;
-		listModels()
-			.then((listed) => {
-				if (!cancelled) setModels(parseModels(listed));
-			})
-			.catch(() => {});
-		return () => {
-			cancelled = true;
-		};
+		void useModelCatalog.getState().refresh();
 	}, []);
 	const selectedModelOption = models.find(
 		(m) => toModelKey(m.provider, m.id) === selectedModel,
@@ -437,7 +432,7 @@ export function SideChatPanel() {
 						</div>
 						<button
 							type="button"
-							onClick={() => openModal("newSession")}
+							onClick={() => void startNewSessionFromContext()}
 							className="mt-1 flex items-center gap-1.5 rounded-md bg-[var(--text)] px-3 py-1.5 text-[12px] font-medium text-[var(--bg-panel)] hover:opacity-90 transition-opacity"
 						>
 							<Plus size={13} />
@@ -515,7 +510,7 @@ export function SideChatPanel() {
 												className="w-[320px] rounded-xl border border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1 shadow-lg"
 											>
 												<ModelMenuContent
-													models={models}
+													models={catalog}
 													currentValue={selectedModel}
 													extras={[{ value: "", label: parentModel.label ? `继承主会话 (${parentModel.label})` : "继承主会话模型" }]}
 													onSelect={(key) => {

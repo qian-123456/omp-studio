@@ -3,12 +3,13 @@
  * (except `omp-roles`) are rendered by OmpConfigSection in SettingsPage.
  */
 import type { ComponentType } from "react";
+import { AboutSection } from "./AboutSection";
 import { AdvancedSection } from "./AdvancedSection";
 import { AgentsMdSection } from "./AgentsMdSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { ContextWindowSection } from "./ContextWindowSection";
 import { GeneralSection } from "./GeneralSection";
-import { InboxSection } from "./InboxSection";
+import { DoctorSection, InboxSection } from "./InboxSection";
 import { McpSettingsSection } from "./McpSettingsSection";
 import { MobileSettingsSection } from "./MobileSettingsSection";
 import { NotificationsSection } from "./NotificationsSection";
@@ -28,9 +29,11 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	"omp-roles": RolesSection,
 	sessions: SessionsSection,
 	inbox: InboxSection,
+	doctor: DoctorSection,
 	"agents-md": AgentsMdSection,
 	mobile: MobileSettingsSection,
 	mcp: McpSettingsSection,
 	plugins: PluginsSettingsSection,
 	advanced: AdvancedSection,
+	about: AboutSection,
 };

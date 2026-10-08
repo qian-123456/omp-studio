@@ -10,6 +10,7 @@ import clsx from "clsx";
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Pencil, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../../components/FloatingLayer";
+import { HoverScrollText } from "../../../components/HoverScrollText";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
 import { ompModelsContextWindowOverrides, ompModelsSetContextWindows } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
@@ -39,7 +40,7 @@ import { applyContextUpdates, matchKey, parseContextInput, ruleMatches } from ".
 import { ConfigRow } from "../OmpConfigSection";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { INPUT_CLASS, SETTINGS_BUTTON_CLASS, SectionHeader, SettingsCard } from "../ui";
-import { useModelCatalog } from "../useAppSettings";
+import { useCatalogModels } from "../useAppSettings";
 
 /** `to` is the value written (null deletes); `shown` is the window to display afterwards when it differs (catalog undo). */
 type Edit = { row: CwRow; to: number | null; shown?: number | null };
@@ -83,7 +84,7 @@ export function ContextWindowSection() {
 	const providers = useProviders((s) => s.providers);
 	const ompProviders = useProviders((s) => s.ompProviders);
 	const entries = useOmpConfigStore((s) => s.entries);
-	const { models: catalog } = useModelCatalog();
+	const { models: catalog } = useCatalogModels();
 
 	// Existing models.yml overrides: distinguishes catalog built-ins from overrides so undo can delete.
 	const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
@@ -397,7 +398,7 @@ export function ContextWindowSection() {
 			>
 				<div className="flex min-h-[320px]">
 					{/* Family rail */}
-					<div className="w-28 shrink-0 space-y-0.5 self-start p-2">
+					<div className="w-24 shrink-0 space-y-0.5 self-start p-2">
 						{(["all", ...FAMILIES] as const).map((f) => {
 							const count = f === "all" ? rows.length : (familyCounts.get(f) ?? 0);
 							return (
@@ -466,13 +467,13 @@ export function ContextWindowSection() {
 								<span className="min-w-0 flex-1" title="模型的原始 ID（供应商接口里的名字）">
 									模型 ID
 								</span>
-								<span className="w-32" title="提供该模型的供应商；「订阅」表示 OMP 托管的订阅模型">
+								<span className="w-28" title="提供该模型的供应商；「订阅」表示 OMP 托管的订阅模型">
 									供应商
 								</span>
 								<span className="w-24 text-right" title="窗口 = 模型一次能读入的最大长度（tokens）">
 									上下文窗口
 								</span>
-								<span className="w-28 text-right" title="触发点 = 对话达到多长时自动压缩">
+								<span className="w-24 text-right" title="触发点 = 对话达到多长时自动压缩">
 									压缩触发点
 								</span>
 							</div>
@@ -497,7 +498,7 @@ export function ContextWindowSection() {
 										/>
 										<button
 											type="button"
-											className="flex flex-1 items-center gap-1 text-left font-medium text-neutral-200"
+											className="flex min-w-0 flex-1 items-center gap-1 text-left font-medium text-neutral-200"
 											onClick={() =>
 												setCollapsed((prev) => {
 													const next = new Set(prev);
@@ -506,10 +507,10 @@ export function ContextWindowSection() {
 												})
 											}
 										>
-											{isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-											{s.name}
+											{isCollapsed ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
+											<HoverScrollText text={s.name} className="min-w-0 flex-1" title={s.name} />
 										</button>
-										<span className="text-neutral-500">{new Set(s.rows.map((r) => r.providerId)).size} 个供应商</span>
+										<span className="shrink-0 text-neutral-500">{new Set(s.rows.map((r) => r.providerId)).size} 个供应商</span>
 										{windows > 1 && <span className="text-amber-400">{windows} 种窗口⚠</span>}
 									</div>
 									{!isCollapsed &&
@@ -732,10 +733,8 @@ function ModelRowView({
 		>
 			<div className="flex items-center gap-2">
 				<input type="checkbox" aria-label={`选择 ${row.modelId}`} checked={checked} onChange={(e) => onCheck(e.target.checked)} />
-				<span className="min-w-0 flex-1 truncate font-mono text-neutral-200" title={row.modelId}>
-					{row.modelId}
-				</span>
-				<span className="flex w-32 min-w-0 items-center gap-1 text-neutral-500" title={row.providerName}>
+				<HoverScrollText text={row.modelId} className="min-w-0 flex-1" innerClassName="font-mono" title={row.modelId} />
+				<span className="flex w-28 min-w-0 items-center gap-1 text-neutral-500" title={row.providerName}>
 					<span className="min-w-0 truncate">{row.providerName}</span>
 					{row.kind === "catalog" && (
 						<span className="shrink-0 rounded-full bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] px-1.5 py-px text-[10px] leading-4 text-[var(--accent)]">
@@ -773,7 +772,7 @@ function ModelRowView({
 					)}
 				</span>
 				<span
-					className={clsx("w-28 text-right font-mono", trigger?.unreachable ? "text-rose-400" : "text-neutral-500")}
+					className={clsx("w-24 text-right font-mono", trigger?.unreachable ? "text-rose-400" : "text-neutral-500")}
 					title="压缩触发点"
 				>
 					{!compactionOn ? "压缩已关闭" : trigger == null ? "—" : trigger.unreachable ? "永远触发不到" : fmt(trigger.tokens)}

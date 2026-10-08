@@ -51,7 +51,7 @@ export function WorkspaceCard({
 					handleOpenInFinder(e);
 				}}
 				className={clsx(
-					"group flex h-[26px] items-center gap-1.5 rounded-lg hairline bg-[var(--bg-panel)] px-2 py-0.5 text-left shadow-apple-card transition-all",
+					"group flex h-6 items-center gap-1.5 rounded-lg hairline bg-[var(--bg-panel)] px-2 py-0.5 text-left shadow-apple-card transition-all",
 					workspaces.length > 1
 						? "cursor-pointer hover:bg-[var(--bg-hover)] active:scale-[0.98]"
 						: "cursor-default",
@@ -69,7 +69,7 @@ export function WorkspaceCard({
 
 				{/* Title and path */}
 				<div className="min-w-0 flex-1 flex items-baseline gap-1.5 overflow-hidden">
-					<span className="truncate text-xs font-medium text-neutral-200 shrink-0 max-w-[120px]">
+					<span className="truncate text-[11px] font-medium text-neutral-200 shrink-0 max-w-[120px]">
 						{name}
 					</span>
 					{workspaces.length > 1 && (
@@ -81,7 +81,7 @@ export function WorkspaceCard({
 							)}
 						/>
 					)}
-					<span className="truncate font-mono text-[10px] text-neutral-500 flex-1">
+					<span className="truncate font-mono text-[9.5px] text-neutral-500 flex-1">
 						{path || "选择或添加工作区目录"}
 					</span>
 				</div>

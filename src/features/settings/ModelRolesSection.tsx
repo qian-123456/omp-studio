@@ -26,12 +26,12 @@ import type { OmpConfigEntry } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
 import {
-	listModels,
 	ompConfigSet,
 	ompProjectConfigRead,
 	ompProjectConfigWrite,
 } from "../../lib/ipc";
-import { parseModels, toModelKey, type ModelOption } from "../../lib/models";
+import { toModelKey, type ModelOption } from "../../lib/models";
+import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { toast } from "../../lib/toast";
 import { ModelSelect } from "../../components/ModelSelect";
 import { NativeSelect } from "../../components/NativeSelect";
@@ -54,7 +54,7 @@ import {
 import { useSessions } from "../../stores/sessions";
 import { useOmpConfigStore } from "./ompConfigStore";
 
-const CUSTOM_VALUE = "__custom__";
+const NO_MODELS: ModelOption[] = [];
 
 function entryValue(entries: OmpConfigEntry[], key: string): unknown {
 	return entries.find((e) => e.key === key)?.value;
@@ -360,7 +360,6 @@ function RoleRow({
 	const [thinking, setThinking] = useState(
 		() => splitRoleValue(current ?? "").thinkingSuffix ?? "",
 	);
-	const [customDraft, setCustomDraft] = useState<string | null>(null);
 	const [chainOpen, setChainOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [savedTick, setSavedTick] = useState(false);
@@ -403,9 +402,8 @@ function RoleRow({
 	const pretty = (v: string | null) => modelDisplayName(v, models, catalogKeys);
 
 	// Trigger label: pretty name for catalog picks, raw selector otherwise.
-	const modelLabel = customDraft
-		? "自定义选择器…"
-		: current === null
+	const modelLabel =
+		current === null
 			? isProject
 				? `继承全局：${inherited === null ? "未设置" : pretty(inherited)}`
 				: "未设置（内置默认）"
@@ -415,17 +413,12 @@ function RoleRow({
 		: { value: "", label: "未设置（内置默认）", hint: "unset" };
 
 	const onPickModel = async (key: string) => {
-		if (key === CUSTOM_VALUE) {
-			setCustomDraft(current ?? "");
-			return;
-		}
-		setCustomDraft(null);
+		const raw = key.trim();
+		// Catalog picks get the row's thinking suffix; free-text selectors are stored verbatim.
 		const value =
-			key === ""
-				? ""
-				: kind === "chat"
-					? joinRoleValue(key, thinking || null)
-					: key;
+			kind === "chat" && catalogKeys.has(raw)
+				? joinRoleValue(raw, thinking || null)
+				: raw;
 		await commit(value);
 	};
 
@@ -433,12 +426,6 @@ function RoleRow({
 		setThinking(suffix);
 		if (!baseSelector || !catalogKeys.has(baseSelector)) return;
 		await commit(joinRoleValue(baseSelector, suffix || null));
-	};
-
-	const commitCustom = async () => {
-		const v = (customDraft ?? "").trim();
-		if (!(await commit(v))) return;
-		setCustomDraft(null);
 	};
 
 	const chain = useMemo(() => parseChain(chains[roleId]), [chains, roleId]);
@@ -486,10 +473,8 @@ function RoleRow({
 						buttonClass={`h-7 flex min-w-[140px] max-w-[240px] items-center justify-between rounded-lg hairline bg-[var(--well-bg)] px-2.5 text-left text-[11px] hover:bg-[var(--bg-hover)] active:scale-95 transition-all ${isProject && !overridden ? "italic text-neutral-500" : "text-neutral-200"} ${busy ? "pointer-events-none opacity-50" : ""}`}
 						models={models}
 						currentValue={catalogKeys.has(baseSelector) ? baseSelector : ""}
-						extras={[
-							unsetExtra,
-							{ value: CUSTOM_VALUE, label: "自定义选择器…", hint: "手动输入" },
-						]}
+						extras={[unsetExtra]}
+						allowCustom
 						onSelect={(v) => void onPickModel(v)}
 					/>
 					{kind === "chat" && !isCustomValue && (
@@ -540,48 +525,6 @@ function RoleRow({
 					)}
 				</div>
 			</div>
-
-			{customDraft !== null && (
-				<div className="mt-1.5 flex items-center gap-1.5 pl-1">
-					<input
-						type="text"
-						value={customDraft}
-						disabled={busy}
-						autoFocus
-						onChange={(e) => setCustomDraft(e.target.value)}
-						onKeyDown={(e) => {
-							if (isComposing(e)) return;
-							if (e.key === "Enter") {
-								e.preventDefault();
-								void commitCustom();
-							}
-							if (e.key === "Escape") {
-								setCustomDraft(null);
-							}
-						}}
-						spellCheck={false}
-						placeholder="provider/id[:level]、web/duckduckgo、@smol"
-						className="flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all"
-					/>
-					<button
-						type="button"
-						disabled={busy || !customDraft.trim()}
-						onClick={() => void commitCustom()}
-						className={SAVE_BTN}
-					>
-						保存
-					</button>
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => setCustomDraft(null)}
-						title="取消自定义输入"
-						className={ICON_BTN}
-					>
-						<Trash2 className="h-3 w-3" />
-					</button>
-				</div>
-			)}
 
 			{chainOpen && !isProject && (
 				<ChainPanel
@@ -805,7 +748,7 @@ export function ModelRolesSection({
 	const error = useOmpConfigStore((s) => s.error);
 	const load = useOmpConfigStore((s) => s.load);
 
-	const [models, setModels] = useState<ModelOption[]>([]);
+	const models = useModelOptions() ?? NO_MODELS;
 	const [storageBusy, setStorageBusy] = useState(false);
 	const [scopePick, setScopePick] = useState<Scope>("global");
 	const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
@@ -817,17 +760,7 @@ export function ModelRolesSection({
 	}, [load]);
 
 	useEffect(() => {
-		let cancelled = false;
-		listModels()
-			.then((ms) => {
-				if (!cancelled) setModels(parseModels(ms));
-			})
-			.catch(() => {
-				if (!cancelled) setModels([]);
-			});
-		return () => {
-			cancelled = true;
-		};
+		void useModelCatalog.getState().refresh();
 	}, []);
 
 	// Initialize active project path when switching to project scope or cwd changes

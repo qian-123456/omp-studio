@@ -11,8 +11,9 @@ import type {
 	ScheduleRunMode,
 } from "../../lib/contracts";
 import { useEscapeKey } from "../../lib/hooks";
-import { gitRepoRoot, listModels } from "../../lib/ipc";
-import { type ModelOption, parseModels, toModelKey } from "../../lib/models";
+import { gitRepoRoot } from "../../lib/ipc";
+import { toModelKey } from "../../lib/models";
+import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { useSessions } from "../../stores/sessions";
 
 interface Props {
@@ -56,22 +57,13 @@ export function ScheduleEditorModal({
 	// Model & approval
 	const [model, setModel] = useState<string | null>(null);
 	const [approvalMode, setApprovalMode] = useState<string>("write");
-	const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
+	const availableModels = useModelOptions();
 	const [saving, setSaving] = useState(false);
 
 	useEscapeKey(onClose);
 
-	// Load available models
 	useEffect(() => {
-		let active = true;
-		listModels()
-			.then((raw) => {
-				if (active) setAvailableModels(parseModels(raw));
-			})
-			.catch(() => {});
-		return () => {
-			active = false;
-		};
+		void useModelCatalog.getState().refresh();
 	}, []);
 
 	// Initialize form on open / schedule change
@@ -526,13 +518,14 @@ export function ScheduleEditorModal({
 							<ModelSelect
 								label={
 									model
-										? (availableModels.find(
+										? (availableModels?.find(
 												(m) => toModelKey(m.provider, m.id) === model,
 											)?.name ?? model)
 										: "默认模型"
 								}
 								models={availableModels}
 								currentValue={model ?? ""}
+								thinking
 								onSelect={(val) => setModel(val || null)}
 								extras={[{ value: "", label: "使用默认模型" }]}
 								buttonClass="w-full h-8 px-2.5 rounded-md bg-[var(--bg)] border border-[var(--border-divider)] text-neutral-200 text-left text-xs flex items-center justify-between"

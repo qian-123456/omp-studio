@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Settings as SettingsIcon, X } from "lucide-react";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
+import { hideAllScrollPills } from "../../lib/scrollPills";
 import { useUi } from "../../stores/ui";
 import { SettingsPage } from "./SettingsPage";
 
@@ -29,6 +30,7 @@ function SettingsOverlayInner() {
 			) ?? dialogRef.current;
 		target?.focus();
 		return () => {
+			hideAllScrollPills();
 			if (previous instanceof HTMLElement && previous.isConnected) {
 				previous.focus();
 			}

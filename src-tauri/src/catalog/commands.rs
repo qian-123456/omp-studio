@@ -639,6 +639,36 @@ pub async fn quick_ask(
     };
     crate::todos::omp::run_print(&state, &model, prompt, std::time::Duration::from_secs(60)).await
 }
+
+/// AI doctor diagnosis for the heatmap panel. `prompt` is built from the
+/// distilled session skeleton (never raw transcripts). Model: explicit `model`,
+/// else `doctor_model`, else `supervisor_model`, else "smol".
+#[tauri::command]
+pub async fn heatmap_diagnose(
+    state: tauri::State<'_, AppState>,
+    prompt: String,
+    model: Option<String>,
+) -> Result<String, String> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Err("诊断内容不能为空".to_string());
+    }
+    let model = {
+        let s = state.settings.read();
+        let picked = [
+            model.as_deref().unwrap_or(""),
+            s.doctor_model.as_str(),
+            s.supervisor_model.as_str(),
+        ]
+        .into_iter()
+        .map(str::trim)
+        .find(|m| !m.is_empty())
+        .unwrap_or("smol")
+        .to_string();
+        picked
+    };
+    crate::todos::omp::run_print(&state, &model, prompt, std::time::Duration::from_secs(120)).await
+}
 #[cfg(test)]
 mod tests {
     use super::*;

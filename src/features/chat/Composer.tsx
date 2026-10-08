@@ -14,7 +14,8 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listModels, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
+import { listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
+import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment } from "../../lib/contracts";
 import { AttachmentThumb } from "./ImageChips";
@@ -203,7 +204,10 @@ export function Composer({
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
 	const [editingAnnId, setEditingAnnId] = useState<string | null>(null);
 	const [editingComment, setEditingComment] = useState("");
-	const [models, setModels] = useState<ModelOption[] | null>(null);
+	const catalogModels = useModelOptions();
+	// rpc `get_available_models` fallback, used only while the catalog is empty.
+	const [rpcModels, setRpcModels] = useState<ModelOption[] | null>(null);
+	const models = catalogModels && catalogModels.length > 0 ? catalogModels : rpcModels;
 	const [modelOpen, setModelOpen] = useState(false);
 	const modelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -446,30 +450,19 @@ export function Composer({
 	}, [state.model, currentModelOption]);
 	const curThinkingObj = thinkingLabel(currentThinking);
 	const loadModels = async () => {
-		if (models !== null && models.length > 0) return;
-		// Prefer the CLI-backed listModels (`omp models --json`): same filtered,
-		// slim payload NewSessionDialog uses. get_available_models is only a
+		// Catalog (`omp models --json`) first; get_available_models is only a
 		// fallback — large catalogs exceed the rpc transport limit there.
-		try {
-			const listed = await listModels();
-			if (listed && listed.length > 0) {
-				setModels(parseModels(listed));
-				return;
-			}
-		} catch {
-			/* rpc fallback below */
-		}
-
+		await useModelCatalog.getState().refresh();
+		if ((useModelCatalog.getState().models?.length ?? 0) > 0) return;
 		try {
 			if (live?.alive) {
 				const resp = (await rpcSend(sessionId, {
 					type: "get_available_models",
 				})) as Record<string, unknown>;
-				const parsed = parseModels(resp.data ?? resp);
-				setModels(parsed);
+				setRpcModels(parseModels(resp.data ?? resp));
 			}
 		} catch {
-			setModels([]);
+			setRpcModels([]);
 		}
 	};
 

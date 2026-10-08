@@ -107,6 +107,34 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
         return Err("模型名称不能包含空字符 (NUL) 或换行符".to_string());
     }
 
+    if has_nul_or_newline(&settings.doctor_model) {
+        return Err("诊断模型名称不能包含空字符 (NUL) 或换行符".to_string());
+    }
+    if settings.doctor_model.trim().starts_with('-') {
+        return Err("诊断模型名称不能以 '-' 开头".to_string());
+    }
+    if !matches!(
+        settings.doctor_auto_mode.as_str(),
+        "manual" | "idle" | "scheduled"
+    ) {
+        return Err("自动会诊模式必须为 manual、idle 或 scheduled".to_string());
+    }
+    if !(1..=10080).contains(&settings.doctor_idle_minutes) {
+        return Err("会诊闲置分钟必须在 1–10080 之间".to_string());
+    }
+    let valid_hhmm = settings
+        .doctor_schedule_time
+        .split_once(':')
+        .is_some_and(|(h, m)| {
+            h.len() == 2
+                && m.len() == 2
+                && h.parse::<u8>().is_ok_and(|h| h < 24)
+                && m.parse::<u8>().is_ok_and(|m| m < 60)
+        });
+    if !valid_hhmm {
+        return Err("每日会诊时间需要 HH:MM 格式".to_string());
+    }
+
     // 5. Process arguments validation (tunnel_name)
     if let Some(name) = &settings.tunnel_name {
         if has_nul_or_newline(name) {
@@ -1241,4 +1269,171 @@ pub async fn omp_info(state: tauri::State<'_, AppState>) -> Result<OmpInfo, Stri
         config_exists: config.is_file(),
         config_path: config.to_string_lossy().to_string(),
     })
+}
+
+const OMP_UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+const OMP_UPDATE_RUN_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Return value of `omp_update_check`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpUpdateStatus {
+    pub current: Option<String>,
+    pub latest: Option<String>,
+    pub update_available: bool,
+    /// ANSI-stripped combined stdout+stderr.
+    pub output: String,
+}
+
+/// Return value of `omp_update_run`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpUpdateResult {
+    pub success: bool,
+    pub output: String,
+    /// First line of `omp --version` after the update.
+    pub version_after: Option<String>,
+}
+
+fn value_after<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
+    let idx = line.find(prefix)?;
+    let v = line[idx + prefix.len()..].trim();
+    let v = v.split_whitespace().next()?;
+    Some(v.trim_start_matches('v'))
+}
+
+/// Parses `omp update --check` output (already ANSI-stripped).
+fn parse_update_check(output: &str) -> OmpUpdateStatus {
+    let mut current = None;
+    let mut latest = None;
+    let mut up_to_date = false;
+    for line in output.lines() {
+        if let Some(v) = value_after(line, "Current version:") {
+            current = Some(v.to_string());
+        } else if let Some(v) = value_after(line, "New version available:") {
+            latest = Some(v.to_string());
+        } else if line.contains("Already up to date") {
+            up_to_date = true;
+        }
+    }
+    let update_available = latest.is_some() && latest != current;
+    if latest.is_none() && up_to_date {
+        latest = current.clone();
+    }
+    OmpUpdateStatus {
+        current,
+        latest,
+        update_available,
+        output: output.trim().to_string(),
+    }
+}
+
+/// Builds the error message for a failed omp update invocation.
+fn update_error(output: &str) -> String {
+    let trimmed = output.trim();
+    let lower = trimmed.to_lowercase();
+    let mut msg = if trimmed.is_empty() {
+        "omp update 执行失败".to_string()
+    } else {
+        trimmed.to_string()
+    };
+    if lower.contains("rate limit") {
+        msg.push_str("\n（GitHub API 速率限制，请稍后再试）");
+    }
+    msg
+}
+
+/// Runs omp with `args`; returns (exit success, ANSI-stripped stdout+stderr).
+async fn run_omp_capture(
+    state: &AppState,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<(bool, String), String> {
+    let (exe, path) = omp_exe(state);
+    let mut cmd = tokio::process::Command::new(&exe);
+    cmd.current_dir(neutral_cwd()?)
+        .args(args)
+        .env("PATH", &path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("无法启动 {}：{e}", exe.display()))?;
+    let out = tokio::time::timeout(timeout, child.wait_with_output())
+        .await
+        .map_err(|_| format!("omp {} 超时", args.join(" ")))?
+        .map_err(|e| format!("omp {} 失败：{e}", args.join(" ")))?;
+    let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let err = String::from_utf8_lossy(&out.stderr);
+    if !err.trim().is_empty() {
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&err);
+    }
+    Ok((out.status.success(), crate::git::tm::strip_ansi(&text)))
+}
+
+/// `omp_update_check` (§7): runs `omp update --check` and parses current/latest versions.
+#[tauri::command]
+pub async fn omp_update_check(
+    state: tauri::State<'_, AppState>,
+) -> Result<OmpUpdateStatus, String> {
+    let (ok, output) =
+        run_omp_capture(&state, &["update", "--check"], OMP_UPDATE_CHECK_TIMEOUT).await?;
+    if !ok {
+        return Err(update_error(&output));
+    }
+    Ok(parse_update_check(&output))
+}
+
+/// `omp_update_run` (§7): runs `omp update`, then re-probes `omp --version`.
+#[tauri::command]
+pub async fn omp_update_run(state: tauri::State<'_, AppState>) -> Result<OmpUpdateResult, String> {
+    let (success, output) = run_omp_capture(&state, &["update"], OMP_UPDATE_RUN_TIMEOUT).await?;
+    let version_after = match run_omp_capture(&state, &["--version"], OMP_CONFIG_TIMEOUT).await {
+        Ok((true, v)) => v
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .map(str::to_string),
+        _ => None,
+    };
+    Ok(OmpUpdateResult {
+        success,
+        output: if success {
+            output.trim().to_string()
+        } else {
+            update_error(&output)
+        },
+        version_after,
+    })
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+
+    #[test]
+    fn parse_up_to_date() {
+        let s = parse_update_check("Current version: 18.8.5\n✔ Already up to date\n");
+        assert_eq!(s.current.as_deref(), Some("18.8.5"));
+        assert_eq!(s.latest.as_deref(), Some("18.8.5"));
+        assert!(!s.update_available);
+    }
+
+    #[test]
+    fn parse_update_available() {
+        let s = parse_update_check("Current version: 18.8.5\nNew version available: 18.9.0\n");
+        assert_eq!(s.current.as_deref(), Some("18.8.5"));
+        assert_eq!(s.latest.as_deref(), Some("18.9.0"));
+        assert!(s.update_available);
+    }
+
+    #[test]
+    fn rate_limit_hint() {
+        assert!(update_error("API rate limit exceeded").contains("速率限制"));
+    }
 }

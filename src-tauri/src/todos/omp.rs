@@ -130,6 +130,41 @@ pub fn resolve_binary(bin: &str, path: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(bin))
 }
 
+/// omp role ids (mirrors `src/features/settings/modelRoles.ts`).
+const OMP_ROLES: &[&str] = &[
+    "default",
+    "smol",
+    "slow",
+    "vision",
+    "plan",
+    "commit",
+    "tiny",
+    "memory",
+    "task",
+    "advisor",
+    "image",
+    "web",
+    "speech",
+    "dictation",
+    "judge",
+];
+
+/// Turn a bare role name (`smol`, `smol:high`) into omp's role alias syntax
+/// (`@smol`, `@smol:high`). Bare names only resolve as roles in omp when
+/// configured; `@role` falls back to `default`. Other values are returned trimmed.
+pub fn normalize_model_selector(model: &str) -> String {
+    let m = model.trim();
+    if m.starts_with('@') || m.contains('/') {
+        return m.to_string();
+    }
+    let base = m.split_once(':').map_or(m, |(b, _)| b);
+    if OMP_ROLES.contains(&base) {
+        format!("@{m}")
+    } else {
+        m.to_string()
+    }
+}
+
 /// Run `omp -p --no-tools --no-session --model <model>` with `prompt` on stdin and
 /// return trimmed stdout.
 pub async fn run_print(
@@ -147,8 +182,9 @@ pub async fn run_print(
     if let Some(ext) = crate::providers::try_extension_path() {
         cmd.arg("-e").arg(ext);
     }
-    if !model.trim().is_empty() {
-        cmd.args(["--model", model.trim()]);
+    let model = normalize_model_selector(model);
+    if !model.is_empty() {
+        cmd.arg("--model").arg(&model);
     }
     cmd.current_dir(paths::supervisor_dir())
         .env("PATH", path)
@@ -193,6 +229,27 @@ pub async fn run_print(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_model_selector_cases() {
+        assert_eq!(normalize_model_selector("smol"), "@smol");
+        assert_eq!(normalize_model_selector("default"), "@default");
+        assert_eq!(normalize_model_selector("smol:high"), "@smol:high");
+        assert_eq!(normalize_model_selector("@smol"), "@smol");
+        assert_eq!(normalize_model_selector("@slow:low"), "@slow:low");
+        assert_eq!(
+            normalize_model_selector("anthropic/claude-sonnet-4"),
+            "anthropic/claude-sonnet-4"
+        );
+        assert_eq!(
+            normalize_model_selector("openai/gpt-5:high"),
+            "openai/gpt-5:high"
+        );
+        assert_eq!(normalize_model_selector("gpt-5"), "gpt-5");
+        assert_eq!(normalize_model_selector("smolx"), "smolx");
+        assert_eq!(normalize_model_selector("  smol  "), "@smol");
+        assert_eq!(normalize_model_selector("   "), "");
+    }
 
     #[test]
     fn path_contains_extra_dirs_once() {
