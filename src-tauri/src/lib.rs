@@ -151,6 +151,7 @@ pub fn run() {
             catalog::commands::session_export_html,
             catalog::commands::session_share,
             catalog::commands::quick_ask,
+            catalog::commands::heatmap_diagnose,
             // B — rpc
             rpc::commands::rpc_start,
             rpc::commands::rpc_ensure_live,

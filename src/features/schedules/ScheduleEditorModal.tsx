@@ -533,6 +533,7 @@ export function ScheduleEditorModal({
 								}
 								models={availableModels}
 								currentValue={model ?? ""}
+								thinking
 								onSelect={(val) => setModel(val || null)}
 								extras={[{ value: "", label: "使用默认模型" }]}
 								buttonClass="w-full h-8 px-2.5 rounded-md bg-[var(--bg)] border border-[var(--border-divider)] text-neutral-200 text-left text-xs flex items-center justify-between"

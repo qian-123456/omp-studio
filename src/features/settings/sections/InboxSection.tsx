@@ -1,6 +1,8 @@
 /** Settings ▸ 收件箱 (`inbox`): todo detection and the read-only supervisor. */
 import { useState } from "react";
 import { ModelSelect, type ModelExtraOption } from "../../../components/ModelSelect";
+import { parseSelection } from "../../../components/modelSelectLogic";
+import { Segmented } from "../../../components/Segmented";
 import { toModelKey } from "../../../lib/models";
 import { useAppSettings, useModelCatalog } from "../useAppSettings";
 import {
@@ -28,17 +30,19 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function InboxSection() {
 	const { settings, save } = useAppSettings();
-	const { models, catalogKeys } = useModelCatalog();
+	const { models, catalogKeys, loaded: catalogLoaded } = useModelCatalog();
 	const modelSave = useSaveStatus();
 	const [customOpen, setCustomOpen] = useState(false);
 
 	const current = settings?.supervisorModel ?? "";
 	const supervisorOn = settings?.supervisorEnabled ?? false;
-	const isRole = Object.prototype.hasOwnProperty.call(ROLE_LABELS, current);
+	const currentSelector = parseSelection(current).selector;
+	const isRole = Object.prototype.hasOwnProperty.call(ROLE_LABELS, currentSelector);
 	const modelLabel = isRole
-		? ROLE_LABELS[current]
-		: (models.find((m) => toModelKey(m.provider, m.id) === current)?.name ?? (current || "选择模型"));
-	const showCustom = customOpen || (current !== "" && !catalogKeys.has(current) && !isRole);
+		? ROLE_LABELS[currentSelector]
+		: (models.find((m) => toModelKey(m.provider, m.id) === currentSelector)?.name ?? (current || "选择模型"));
+	const showCustom =
+		customOpen || (Boolean(current) && catalogLoaded && !catalogKeys.has(currentSelector) && !isRole);
 
 	return (
 		<div className="space-y-6">
@@ -112,8 +116,9 @@ export function InboxSection() {
 								label={modelLabel}
 								buttonClass={MODEL_PICKER_BUTTON_CLASS}
 								models={models}
-								currentValue={catalogKeys.has(current) || isRole ? current : ""}
+								currentValue={catalogKeys.has(currentSelector) || isRole ? current : ""}
 								extras={SUPERVISOR_EXTRAS}
+								thinking
 								onSelect={(v) => {
 									if (v === "__custom") {
 										setCustomOpen(true);
@@ -157,6 +162,121 @@ export function InboxSection() {
 						}
 					/>
 				</div>
+			</SettingsCard>
+		</div>
+	);
+}
+
+/** Settings ▸ AI 会诊 (`doctor`): heatmap AI doctor model and auto mode. */
+export function DoctorSection() {
+	const { settings, save } = useAppSettings();
+	const { models, catalogKeys } = useModelCatalog();
+	const doctorSave = useSaveStatus();
+	const [doctorCustomOpen, setDoctorCustomOpen] = useState(false);
+	const doctorCurrent = settings?.doctorModel ?? "smol";
+	const doctorSelector = parseSelection(doctorCurrent).selector;
+	const doctorIsRole = Object.prototype.hasOwnProperty.call(ROLE_LABELS, doctorSelector);
+	const doctorLabel = doctorIsRole
+		? ROLE_LABELS[doctorSelector]
+		: (models.find((m) => toModelKey(m.provider, m.id) === doctorSelector)?.name ?? (doctorCurrent || "选择模型"));
+	const showDoctorCustom =
+		doctorCustomOpen || (doctorCurrent !== "" && !catalogKeys.has(doctorSelector) && !doctorIsRole);
+	const doctorMode = settings?.doctorAutoMode ?? "manual";
+	return (
+		<div className="space-y-6">
+			<SectionHeader title="AI 会诊" description="在 Token 用量面板里诊断会话：找出绕路、返工和上下文浪费，并给出可编辑的提示词草稿" />
+			<SettingsCard
+				title="AI 会诊"
+				footer="自动会诊（闲置后 / 每日定时）会消耗所选模型的 Token；默认手动按需，不点不花钱。会诊只给出诊断和提示词草稿，不会修改任何文件。"
+			>
+				<SettingRow
+					fieldId="doctorModel"
+					label="诊断模型"
+					description="Token 用量面板「AI会诊」使用的模型；建议选择速度快、价格低的模型"
+					status={doctorSave.status}
+					statusError={doctorSave.error}
+					control={
+						<ModelSelect
+							direction="down"
+							widthClass="w-[360px]"
+							label={doctorLabel}
+							buttonClass={MODEL_PICKER_BUTTON_CLASS}
+							models={models}
+							currentValue={catalogKeys.has(doctorSelector) || doctorIsRole ? doctorCurrent : ""}
+							extras={SUPERVISOR_EXTRAS}
+							thinking
+							onSelect={(v) => {
+								if (v === "__custom") {
+									setDoctorCustomOpen(true);
+									return;
+								}
+								setDoctorCustomOpen(false);
+								void doctorSave.run(() => save({ doctorModel: v }));
+							}}
+						/>
+					}
+				>
+					{showDoctorCustom && (
+						<CommitInput
+							aria-label="自定义诊断模型"
+							placeholder="输入模型标识，例如 smol 或 openai/gpt-4o-mini"
+							value={doctorCurrent}
+							validate={(v) => (v ? null : "诊断模型不能为空")}
+							onCommit={(v) => save({ doctorModel: v })}
+						/>
+					)}
+				</SettingRow>
+				<SettingRow
+					fieldId="doctorAutoMode"
+					label="自动会诊"
+					description="手动按需：只在你点击时诊断；闲置后：会话闲置一段时间后自动诊断；每日定时：每天固定时间诊断"
+					control={
+						<Segmented
+							value={doctorMode}
+							onChange={(v) => void save({ doctorAutoMode: v })}
+							options={[
+								{ value: "manual", label: "手动按需" },
+								{ value: "idle", label: "会话闲置后" },
+								{ value: "scheduled", label: "每日定时" },
+							]}
+						/>
+					}
+				/>
+				{doctorMode === "idle" && (
+					<SettingRow
+						fieldId="doctorIdleMinutes"
+						label="闲置时长（分钟）"
+						description="会话停止活动超过这么久后自动会诊一次"
+						control={
+							<Segmented
+								value={String(settings?.doctorIdleMinutes ?? 30)}
+								onChange={(v) => void save({ doctorIdleMinutes: Number(v) })}
+								options={[
+									{ value: "30", label: "30 分钟" },
+									{ value: "60", label: "60 分钟" },
+									{ value: "120", label: "120 分钟" },
+								]}
+							/>
+						}
+					/>
+				)}
+				{doctorMode === "scheduled" && (
+					<SettingRow
+						fieldId="doctorScheduleTime"
+						label="定时时间"
+						description="每天到这个时间自动会诊（24 小时制 HH:MM）"
+						control={
+							<CommitInput
+								className="w-24"
+								aria-label="每日会诊时间"
+								placeholder="23:00"
+								value={settings?.doctorScheduleTime ?? "23:00"}
+								validate={(v) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : "请输入 HH:MM，例如 23:00")}
+								onCommit={(v) => save({ doctorScheduleTime: v })}
+							/>
+						}
+					/>
+				)}
 			</SettingsCard>
 		</div>
 	);

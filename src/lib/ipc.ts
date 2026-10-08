@@ -128,6 +128,9 @@ export const sessionShare = (sessionId: string) =>
 /** One-shot throwaway question to the supervisor model (scratchpad, no session). */
 export const quickAsk = (prompt: string, model?: string) =>
 	invoke<string>("quick_ask", { prompt, model });
+/** AI doctor diagnosis on a distilled session skeleton prompt; null model → settings.doctorModel. */
+export const heatmapDiagnose = (prompt: string, model: string | null) =>
+	invoke<string>("heatmap_diagnose", { prompt, model });
 
 // ---- B — rpc ----
 

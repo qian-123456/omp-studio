@@ -283,3 +283,73 @@ export function formatRelativeTime(timestamp: number, now: number): string {
 	if (diffHour < 24) return `${diffHour} 小时前同步`;
 	return `${Math.floor(diffHour / 24)} 天前同步`;
 }
+
+export function formatCountdownCompact(ms: number): string {
+	if (ms <= 0) return "已到期";
+	const totalSec = Math.floor(ms / 1000);
+	const days = Math.floor(totalSec / 86400);
+	const hours = Math.floor((totalSec % 86400) / 3600);
+	const minutes = Math.floor((totalSec % 3600) / 60);
+	if (days >= 1) return `${days}d ${hours}h`;
+	if (hours >= 1) return `${hours}h ${minutes}m`;
+	if (minutes >= 1) return `${minutes}m`;
+	return `${totalSec}s`;
+}
+
+const WINDOW_KEY_ALIASES: Record<string, string> = {
+	daily: "1d",
+	day: "1d",
+	"24h": "1d",
+	weekly: "7d",
+	week: "7d",
+	"5hour": "5h",
+	"5-hour": "5h",
+};
+
+function normalizeWindowKey(key: string): string {
+	const k = key.trim().toLowerCase();
+	return WINDOW_KEY_ALIASES[k] ?? k;
+}
+
+export function findWindowResetsAt(limits: OmpUsageLimit[], windowKey: string): number | null {
+	const key = normalizeWindowKey(windowKey);
+	if (!key) return null;
+	const matches = (candidate: string | undefined): boolean => {
+		if (!candidate) return false;
+		const c = candidate.toLowerCase();
+		return c === key || normalizeWindowKey(c) === key || c.includes(key);
+	};
+	const limit = limits.find(
+		(l) => matches(l.scope?.windowId) || matches(l.window?.id) || matches(l.window?.label) || matches(l.id),
+	);
+	return limit?.window?.resetsAt ?? null;
+}
+
+export interface LimitStatus {
+	text: string;
+	badge: string;
+	isExhausted: boolean;
+	isWarning: boolean;
+	color: "rose" | "amber" | "neutral";
+}
+
+export function formatLimitStatus(usedPct: number, resetsAt: number | null, now: number): LimitStatus {
+	const remainingMs = resetsAt ? resetsAt - now : null;
+	const hasCountdown = remainingMs !== null && remainingMs > 0;
+	if (usedPct >= 100) {
+		return {
+			text: hasCountdown ? `100% 耗尽 · ${formatCountdownCompact(remainingMs)}后恢复` : "100% 耗尽 · 恢复中",
+			badge: "已耗尽",
+			isExhausted: true,
+			isWarning: false,
+			color: "rose",
+		};
+	}
+	const text = hasCountdown
+		? `${usedPct.toFixed(1)}% · ${formatCountdownCompact(remainingMs)}`
+		: `${usedPct.toFixed(1)}%`;
+	if (usedPct >= 80) {
+		return { text, badge: "高用量", isExhausted: false, isWarning: true, color: "amber" };
+	}
+	return { text, badge: "正常", isExhausted: false, isWarning: false, color: "neutral" };
+}

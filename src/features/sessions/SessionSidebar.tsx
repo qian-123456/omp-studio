@@ -819,7 +819,7 @@ export function SessionSidebar() {
 		e.stopPropagation();
 		e.preventDefault();
 		if (e.altKey) {
-			openModal("new-session", { workspaceId: ws.id, cwd: ws.path });
+			void startSessionInDir(ws, false);
 			return;
 		}
 		const anchorEl = e.currentTarget as HTMLElement;
@@ -2415,10 +2415,7 @@ export function SessionSidebar() {
 							onClick={() => {
 								const ws = wsMenu.ws;
 								setWsMenu(null);
-								openModal("new-session", {
-									workspaceId: ws.id,
-									cwd: ws.path,
-								});
+								void startSessionInDir(ws, false);
 							}}
 							className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
 						>

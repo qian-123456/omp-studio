@@ -37,6 +37,7 @@ import { useSettings } from "../../features/settings/store";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
 import { addTerminalTabWithCwd } from "../terminal/terminalTabs";
+import { startSessionInWorktree } from "../sessions/newSession";
 import { defaultSlug } from "./helpers";
 import { OrphanBadge, OrphanInlinePanel, useOrphans } from "./OrphanBadge";
 import { removeWorktreeFlow } from "./removeWorktree";
@@ -602,12 +603,7 @@ export function WorktreeSection({
 								<div className="flex items-center gap-1 text-neutral-400">
 									<button
 										type="button"
-										onClick={() => {
-											openModal("new-session", {
-												cwd: wt.path,
-												useWorktree: false,
-											});
-										}}
+										onClick={() => void startSessionInWorktree(wt.path)}
 										title="在此工作树新建会话"
 										className="rounded p-1 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
 									>

@@ -174,7 +174,8 @@ async fn classify_route(
     selection: &Option<String>,
     question: &str,
 ) -> Option<String> {
-    let model = state.settings.read().supervisor_model.clone();
+    let model =
+        crate::todos::omp::normalize_model_selector(&state.settings.read().supervisor_model);
     let binary = state.settings.read().omp_binary.clone();
     let mut vars: HashMap<&str, String> = HashMap::new();
     vars.insert("selection", selection.clone().unwrap_or_default());

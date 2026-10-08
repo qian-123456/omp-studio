@@ -84,10 +84,23 @@ pub fn open(
             c
         }
         None => {
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-            let mut c = CommandBuilder::new(shell);
-            c.arg("-l");
-            c
+            #[cfg(unix)]
+            {
+                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+                let mut c = CommandBuilder::new(shell);
+                c.arg("-l");
+                c
+            }
+            #[cfg(windows)]
+            {
+                let shell = std::env::var("COMSPEC").unwrap_or_else(|_| "powershell.exe".to_string());
+                CommandBuilder::new(shell)
+            }
+            #[cfg(not(any(unix, windows)))]
+            {
+                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+                CommandBuilder::new(shell)
+            }
         }
     };
     cmd.cwd(cwd);

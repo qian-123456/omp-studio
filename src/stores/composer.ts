@@ -48,6 +48,14 @@ export interface ComposerState {
 	drafts: Record<string, string>;
 	setDraft(sessionId: string, text: string): void;
 	clearDraft(sessionId: string): void;
+	/** Plan mode toggle per session. */
+	planModes: Record<string, boolean>;
+	setPlanMode: (sessionId: string, enabled: boolean) => void;
+	togglePlanMode: (sessionId: string) => void;
+	/** Side-chat input drafts keyed by parent sessionId. */
+	sideChatDrafts: Record<string, string>;
+	setSideChatDraft: (parentId: string, text: string) => void;
+	clearSideChatDraft: (parentId: string) => void;
 	/** Prompt history across inputs. */
 	history: string[];
 	pushHistory(entry: string): void;
@@ -92,6 +100,39 @@ function saveHistory(history: string[]): void {
 		);
 	} catch {
 		/* quota exceeded */
+	}
+}
+
+const STORAGE_KEY_DRAFTS = "omp_composer_drafts";
+const STORAGE_KEY_SIDECHAT_DRAFTS = "omp_sidechat_drafts";
+
+/** Load a string->string map; empty values are dropped. */
+function loadMap(key: string): Record<string, string> {
+	try {
+		if (typeof localStorage === "undefined") return {};
+		const raw = localStorage.getItem(key);
+		if (!raw) return {};
+		const parsed: unknown = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+			return {};
+		const out: Record<string, string> = {};
+		for (const [k, v] of Object.entries(parsed)) {
+			if (typeof v === "string" && v) out[k] = v;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+function saveMap(key: string, map: Record<string, string>): void {
+	try {
+		if (typeof localStorage === "undefined") return;
+		const compact: Record<string, string> = {};
+		for (const [k, v] of Object.entries(map)) if (v) compact[k] = v;
+		localStorage.setItem(key, JSON.stringify(compact));
+	} catch {
+		/* storage unavailable */
 	}
 }
 
@@ -168,15 +209,39 @@ export const useComposer = create<ComposerState>((set) => ({
 		set((s) => ({
 			images: { ...s.images, [sessionId]: [] },
 		})),
-	drafts: {},
+	drafts: loadMap(STORAGE_KEY_DRAFTS),
 	setDraft: (sessionId, text) =>
-		set((s) => ({
-			drafts: { ...s.drafts, [sessionId]: text },
-		})),
+		set((s) => {
+			const drafts = { ...s.drafts, [sessionId]: text };
+			saveMap(STORAGE_KEY_DRAFTS, drafts);
+			return { drafts };
+		}),
 	clearDraft: (sessionId) =>
+		set((s) => {
+			const drafts = { ...s.drafts, [sessionId]: "" };
+			saveMap(STORAGE_KEY_DRAFTS, drafts);
+			return { drafts };
+		}),
+	planModes: {},
+	setPlanMode: (sessionId, enabled) =>
+		set((s) => ({ planModes: { ...s.planModes, [sessionId]: enabled } })),
+	togglePlanMode: (sessionId) =>
 		set((s) => ({
-			drafts: { ...s.drafts, [sessionId]: "" },
+			planModes: { ...s.planModes, [sessionId]: !s.planModes[sessionId] },
 		})),
+	sideChatDrafts: loadMap(STORAGE_KEY_SIDECHAT_DRAFTS),
+	setSideChatDraft: (parentId, text) =>
+		set((s) => {
+			const sideChatDrafts = { ...s.sideChatDrafts, [parentId]: text };
+			saveMap(STORAGE_KEY_SIDECHAT_DRAFTS, sideChatDrafts);
+			return { sideChatDrafts };
+		}),
+	clearSideChatDraft: (parentId) =>
+		set((s) => {
+			const sideChatDrafts = { ...s.sideChatDrafts, [parentId]: "" };
+			saveMap(STORAGE_KEY_SIDECHAT_DRAFTS, sideChatDrafts);
+			return { sideChatDrafts };
+		}),
 	history: loadHistory(),
 	pushHistory: (entry) => {
 		const trimmed = entry.trim();

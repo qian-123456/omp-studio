@@ -10,6 +10,8 @@ import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
 import { Markdown } from "../chat/markdown";
 
+const QUICK_ASK_DRAFT_KEY = "omp_quick_ask_draft";
+
 /**
  * [D] Global quick-ask modal. Always mounted; opens via `ui.modal === "quick-ask"`,
  * the sidebar header button, or Cmd+Shift+K (registered in sidebarShortcuts).
@@ -19,7 +21,22 @@ export function QuickAskDialog() {
 	const closeModal = useUi((s) => s.closeModal);
 	const isVisible = modal?.name === "quick-ask";
 
-	const [question, setQuestion] = useState("");
+	const [question, setQuestionState] = useState(() => {
+		try {
+			return localStorage.getItem(QUICK_ASK_DRAFT_KEY) ?? "";
+		} catch {
+			return "";
+		}
+	});
+	const setQuestion = (val: string) => {
+		setQuestionState(val);
+		try {
+			if (val) localStorage.setItem(QUICK_ASK_DRAFT_KEY, val);
+			else localStorage.removeItem(QUICK_ASK_DRAFT_KEY);
+		} catch {
+			/* storage unavailable */
+		}
+	};
 	const [answer, setAnswer] = useState("");
 	const [asking, setAsking] = useState(false);
 	const [copied, setCopied] = useState(false);
@@ -43,6 +60,11 @@ export function QuickAskDialog() {
 	const handleAsk = async () => {
 		const q = question.trim();
 		if (!q || asking) return;
+		try {
+			localStorage.removeItem(QUICK_ASK_DRAFT_KEY);
+		} catch {
+			/* storage unavailable */
+		}
 		const seq = ++askSeq.current;
 		setAsking(true);
 		setError(null);

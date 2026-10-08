@@ -298,7 +298,8 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
         }
     });
     if let Some(model) = effective_model {
-        cmd.arg("--model").arg(model);
+        cmd.arg("--model")
+            .arg(crate::todos::omp::normalize_model_selector(model));
     }
     if let Some(file) = &opts.fork_file {
         cmd.arg("--fork").arg(file);

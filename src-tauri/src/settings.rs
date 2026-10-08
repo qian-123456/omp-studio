@@ -107,6 +107,34 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
         return Err("模型名称不能包含空字符 (NUL) 或换行符".to_string());
     }
 
+    if has_nul_or_newline(&settings.doctor_model) {
+        return Err("诊断模型名称不能包含空字符 (NUL) 或换行符".to_string());
+    }
+    if settings.doctor_model.trim().starts_with('-') {
+        return Err("诊断模型名称不能以 '-' 开头".to_string());
+    }
+    if !matches!(
+        settings.doctor_auto_mode.as_str(),
+        "manual" | "idle" | "scheduled"
+    ) {
+        return Err("自动会诊模式必须为 manual、idle 或 scheduled".to_string());
+    }
+    if !(1..=10080).contains(&settings.doctor_idle_minutes) {
+        return Err("会诊闲置分钟必须在 1–10080 之间".to_string());
+    }
+    let valid_hhmm = settings
+        .doctor_schedule_time
+        .split_once(':')
+        .is_some_and(|(h, m)| {
+            h.len() == 2
+                && m.len() == 2
+                && h.parse::<u8>().is_ok_and(|h| h < 24)
+                && m.parse::<u8>().is_ok_and(|m| m < 60)
+        });
+    if !valid_hhmm {
+        return Err("每日会诊时间需要 HH:MM 格式".to_string());
+    }
+
     // 5. Process arguments validation (tunnel_name)
     if let Some(name) = &settings.tunnel_name {
         if has_nul_or_newline(name) {

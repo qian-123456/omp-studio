@@ -570,6 +570,11 @@ function SessionRowComponent({
 						)}
 					/>
 				)}
+				{!isRenaming && !session.title?.trim() && (
+					<span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] leading-4 text-amber-400">
+						草稿
+					</span>
+				)}
 				{busy ? (
 					<Loader2
 						size={11}

@@ -9,6 +9,7 @@ import {
 	CornerDownRight,
 	Loader2,
 	Play,
+	Lightbulb,
 	Plus,
 	Square,
 	X,
@@ -149,6 +150,16 @@ import { buildSlashSections, flattenSections, type SlashMenuItem } from "./slash
 import { SlashMenu } from "./slash/SlashMenu";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
 import { requestTakeover } from "../sessions/sessionActions";
+import { ContextPillBar } from "./ContextPillBar";
+import { AddMenuPopover } from "./AddMenuPopover";
+import { runSessionBash } from "./sessionShell";
+
+/** Prepended to outgoing prompts while plan mode is on. */
+const PLAN_MODE_PREFIX =
+	"[规划模式] 请先分析需求并给出详细的分步实施计划，在我确认之前不要修改任何文件或执行有副作用的操作。\n\n";
+const GOAL_TEMPLATE = "[目标: 请输入本次任务目标]";
+const FINDER_SELECTION_SCRIPT =
+	`osascript -e 'tell application "Finder" to set sel to selection as alias list' -e 'set out to ""' -e 'repeat with f in sel' -e 'set out to out & POSIX path of f & linefeed' -e 'end repeat' -e 'return out'`;
 /** Tooltip descriptions for known thinking levels. The visible label is the
  * raw omp level name (low/high/xhigh/…), English, matching the omp TUI. */
 const THINKING_DESCS: Record<string, string> = {
@@ -339,42 +350,86 @@ export function Composer({
 		);
 	}, [sessionId, live?.alive, live?.commands?.length]);
 
-	// Plus button: attach file or insert @
+	const [addMenuOpen, setAddMenuOpen] = useState(false);
+	const addBtnRef = useRef<HTMLButtonElement>(null);
+	const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
+	const planMode = useComposer((s) => s.planModes[sessionId] === true);
+	const togglePlanMode = useComposer((s) => s.togglePlanMode);
+
+	/** Attach one filesystem path: images go to the gallery, text files are
+	 * inlined as doc references, folders/binaries as path-only references. */
+	const attachPath = async (filePath: string, isDir = false) => {
+		if (isDir) {
+			addAnnotation(sessionId, { source: "doc", file: filePath, text: `文件夹: ${filePath}` });
+			return;
+		}
+		if (IMAGE_EXT_RE.test(filePath)) {
+			try {
+				const res = await fetch(convertFileSrc(filePath));
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				await processImageFile(await res.blob());
+			} catch (imgErr) {
+				toast.error(`读取图片失败: ${errMsg(imgErr)}`);
+			}
+			return;
+		}
+		try {
+			const content = await readTextFile(filePath);
+			addAnnotation(sessionId, { source: "doc", file: filePath, text: content });
+		} catch {
+			addAnnotation(sessionId, { source: "doc", file: filePath, text: `文件: ${filePath}` });
+		}
+	};
+
+	// "Files and folders": native picker for files (multi-select).
 	const handleAddAttachment = async () => {
 		try {
 			const selected = await openDialog({
-				multiple: false,
+				multiple: true,
 				directory: false,
 				title: "选择附加文件",
 			});
 			if (!selected) return;
-			const filePath = typeof selected === "string" ? selected : selected[0];
-			if (!filePath) return;
-			if (IMAGE_EXT_RE.test(filePath)) {
-				try {
-					const res = await fetch(convertFileSrc(filePath));
-					if (!res.ok) throw new Error(`HTTP ${res.status}`);
-					const blob = await res.blob();
-					await processImageFile(blob);
-				} catch (imgErr) {
-					toast.error(`读取图片失败: ${errMsg(imgErr)}`);
-				}
-				return;
-			}
-			try {
-				const content = await readTextFile(filePath);
-				addAnnotation(sessionId, {
-					source: "doc",
-					file: filePath,
-					text: content,
-				});
-				toast.success("已添加文件引用");
-			} catch (readErr) {
-				toast.error(`读取文件失败: ${errMsg(readErr)}`);
-			}
+			const paths = typeof selected === "string" ? [selected] : selected;
+			for (const p of paths) await attachPath(p);
+			if (paths.length > 0) toast.success(`已添加 ${paths.length} 个文件引用`);
 		} catch (dialogErr) {
 			toast.error(`打开文件对话框失败: ${errMsg(dialogErr)}`);
 		}
+	};
+
+	// "Attach Finder": attach the frontmost Finder selection (macOS).
+	const handleAttachFinder = async () => {
+		try {
+			const out = await runSessionBash(sessionId, FINDER_SELECTION_SCRIPT);
+			const paths = out.split("\n").map((l) => l.trim()).filter(Boolean);
+			if (paths.length === 0) {
+				toast.info("Finder 中没有选中的项目");
+				return;
+			}
+			for (const p of paths) {
+				const isDir = p.endsWith("/");
+				await attachPath(isDir ? p.replace(/\/+$/, "") || p : p, isDir);
+			}
+			toast.success(`已附加 ${paths.length} 个 Finder 选中项`);
+		} catch (err) {
+			if (!isResumeCancelled(err)) toast.error(`读取 Finder 选中项失败: ${errMsg(err)}`);
+		}
+	};
+
+	const handleInsertGoal = () => {
+		const cur = useComposer.getState().drafts[sessionId] ?? "";
+		if (cur.includes(GOAL_TEMPLATE)) return;
+		const next = cur.trim() ? `${GOAL_TEMPLATE}\n${cur}` : GOAL_TEMPLATE;
+		setDraft(sessionId, next);
+		requestAnimationFrame(() => {
+			const ta = taRef.current;
+			if (!ta) return;
+			ta.focus();
+			// Select the placeholder text inside the brackets for quick overwrite.
+			const start = GOAL_TEMPLATE.indexOf(":") + 2;
+			ta.setSelectionRange(start, GOAL_TEMPLATE.length - 1);
+		});
 	};
 	useEffect(() => setMenuIndex(0), [atToken?.query]);
 
@@ -625,7 +680,8 @@ export function Composer({
 			height: img.height,
 		}));
 
-		const message = formatWithAnnotations(outgoingRaw, textAnnotations);
+		const formatted = formatWithAnnotations(outgoingRaw, textAnnotations);
+		const message = planMode ? `${PLAN_MODE_PREFIX}${formatted}` : formatted;
 		// Streaming + plain Enter: hold locally (ARCHITECTURE §11 B); the
 		// post-turn HeldQueueBar sends it with its image attachments.
 		if (streaming && !steer) {
@@ -1050,6 +1106,25 @@ export function Composer({
 						: "border-[var(--line,var(--border))]",
 				)}
 			>
+				<ContextPillBar
+					sessionId={sessionId}
+					workspaceOpen={workspacePickerOpen}
+					onWorkspaceOpenChange={setWorkspacePickerOpen}
+				/>
+				{planMode && (
+					<div className="flex items-center gap-1 px-3 pt-2">
+						<button
+							type="button"
+							onClick={() => togglePlanMode(sessionId)}
+							title="点击关闭规划模式"
+							className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600 hover:bg-amber-500/20"
+						>
+							<Lightbulb size={11} />
+							规划模式已启用
+							<X size={10} />
+						</button>
+					</div>
+				)}
 				{/* Annotation pills — clickable to edit the attached comment. */}
 				{textAnnotations.length > 0 && (
 					<div className="flex flex-wrap gap-1 px-3 pt-2.5">
@@ -1303,14 +1378,36 @@ export function Composer({
 				<div className="flex items-center justify-between gap-2 px-2.5 pb-2 text-[12px]">
 					<div className="flex items-center gap-0.5">
 						<button
+							ref={addBtnRef}
 							type="button"
-							onClick={() => void handleAddAttachment()}
-							aria-label="添加附件"
-							title="添加附件或引用文件 (@ 文件)"
-							className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
+							onClick={() => setAddMenuOpen((v) => !v)}
+							aria-label="添加"
+							title="添加文件、项目、目标或规划模式"
+							className={clsx(
+								"flex h-7 w-7 items-center justify-center rounded-md hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors",
+								addMenuOpen ? "bg-[var(--ghost-hover,var(--bg-hover))] text-[var(--text)]" : "text-[var(--text-60,var(--text-muted))]",
+							)}
 						>
 							<Plus size={15} />
 						</button>
+						{addMenuOpen && (
+							<AddMenuPopover
+								anchor={addBtnRef.current}
+								ignoreRef={addBtnRef}
+								planMode={planMode}
+								onClose={() => setAddMenuOpen(false)}
+								onAddFiles={() => void handleAddAttachment()}
+								onAttachFinder={() => void handleAttachFinder()}
+								onPickProject={() => setWorkspacePickerOpen(true)}
+								onGoal={handleInsertGoal}
+								onTogglePlan={() => togglePlanMode(sessionId)}
+							/>
+						)}
+						{planMode && (
+							<span title="规划模式已启用" className="flex h-7 items-center px-1 text-amber-500">
+								<Lightbulb size={13} />
+							</span>
+						)}
 
 						{/* Model picker */}
 						<div className="relative" ref={modelMenuRef}>

@@ -58,7 +58,14 @@ pub fn open_browser_url(url: &str) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("打开系统浏览器失败: {e}"))?;
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()
+            .map_err(|e| format!("打开系统浏览器失败: {e}"))?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         std::process::Command::new("xdg-open")
             .arg(url)

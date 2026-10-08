@@ -233,6 +233,20 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		description: "首页待办卡片默认展示历史已归档的条目",
 		keywords: ["completed", "已处理", "已归档", "已完成", "展开", "待办"],
 	},
+	{
+		id: "doctorModel",
+		sectionId: "doctor",
+		label: "诊断模型（AI 会诊）",
+		description: "Token 用量面板「AI会诊」调用 omp -p 时使用的模型",
+		keywords: ["doctor", "diagnose", "会诊", "诊断", "诊断模型", "token", "用量"],
+	},
+	{
+		id: "doctorAutoMode",
+		sectionId: "doctor",
+		label: "自动会诊",
+		description: "手动按需 / 会话闲置后 / 每日定时；自动模式会消耗所选模型的 Token",
+		keywords: ["doctor", "auto", "自动会诊", "闲置", "定时", "每日", "会诊"],
+	},
 
 	// 手机访问
 	{

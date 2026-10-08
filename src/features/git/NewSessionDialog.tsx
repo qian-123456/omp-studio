@@ -28,6 +28,7 @@ import {
 import { ModelSelect } from "../../components/ModelSelect";
 import { NativeSelect } from "../../components/NativeSelect";
 import { toast } from "../../lib/toast";
+import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
@@ -40,15 +41,24 @@ const isMac =
 	typeof navigator !== "undefined" &&
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
 
+const INPUT_CLASS =
+	"w-full rounded-lg hairline bg-[var(--bg)] px-2.5 py-1.5 text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50 transition-colors";
+
 /**
- * Always mounted; opened via `ui.openModal("new-session" | "newSession",
- * {workspaceId?, cwd?, branch?, useWorktree?})`. Workspace/cwd picker, model,
- * optional isolated worktree and first prompt.
+ * Always mounted; opened via `ui.openModal("new-session",
+ * {workspaceId?, cwd?, branch?, useWorktree?})`.
+ * - `useWorktree: true` → 「新建工作树会话」: fixed repo `cwd`, base branch
+ *   (prefilled from `branch`), branch prefix and worktree dir only.
+ * - otherwise → generic form: workspace/cwd picker, model, optional isolated
+ *   worktree and first prompt.
  * Approval mode is not a per-session choice here — it follows Settings.
  */
 export function NewSessionDialog() {
 	const modal = useUi((s) => s.modal);
-	if (modal?.name !== "new-session" && modal?.name !== "newSession") return null;
+	if (modal?.name !== "new-session") return null;
+	if (modal.props.useWorktree === true && typeof modal.props.cwd === "string") {
+		return <WorktreeSessionForm props={modal.props} />;
+	}
 	return <NewSessionForm props={modal.props} />;
 }
 
@@ -74,12 +84,6 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 	const propCwd = typeof props.cwd === "string" ? props.cwd : "";
 	const propWs = typeof props.workspaceId === "string" ? props.workspaceId : "";
-	// Opened for an existing idle branch (e.g. 「建工作树」 in the worktree
-	// graph): check that branch out in the new worktree instead of creating one.
-	const propBranch =
-		typeof props.branch === "string" && props.branch.trim()
-			? props.branch.trim()
-			: "";
 
 	const [wsSel, setWsSel] = useState(() => {
 		if (propWs && workspaces.some((w) => w.id === propWs)) return propWs;
@@ -293,7 +297,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 	// Never derive the name from the cwd path: that yields slugs like
 	// `users-<name>-documents-<repo>`. Timestamp fallback when nothing typed.
-	const slug = defaultSlug(wtName || propBranch || prompt);
+	const slug = defaultSlug(wtName || prompt);
 	const effectiveModel = modelSel === CUSTOM_MODEL ? customModel.trim() : modelSel;
 	const canSubmit =
 		!!cwd &&
@@ -327,10 +331,8 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 			let target = cwd;
 			if (useWorktree) {
 				const wt = await gitCreateWorktree(cwd, wtName.trim() || slug, {
-					// Idle-branch mode: check out that branch (it must already exist
-					// in this repo). Otherwise create `prefix + name` from `baseBranch`.
-					branch: propBranch || `${branchPrefix}${wtName.trim() || slug}`,
-					base: propBranch || !baseBranch ? undefined : baseBranch,
+					branch: `${branchPrefix}${wtName.trim() || slug}`,
+					base: baseBranch || undefined,
 				});
 				await useWorktrees.getState().refresh().catch(() => {});
 				target = wt.path;
@@ -381,8 +383,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 		}
 	};
 
-	const input =
-		"w-full rounded-lg hairline bg-[var(--bg)] px-2.5 py-1.5 text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50 transition-colors";
+	const input = INPUT_CLASS;
 
 	return (
 		<div
@@ -399,29 +400,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				aria-labelledby="new-session-dialog-title"
 				className="w-[500px] max-w-[calc(100vw-2rem)] max-h-[min(90vh,760px)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
 				onMouseDown={(e) => e.stopPropagation()}
-				onKeyDown={(e) => {
-					if (isComposing(e)) return;
-					if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-						e.preventDefault();
-						if (canSubmit) void submit();
-						return;
-					}
-					if (e.key === "Tab") {
-						const controls = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(
-							'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-						)).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
-						if (controls.length === 0) return;
-						const first = controls[0];
-						const last = controls[controls.length - 1];
-						if (e.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement as HTMLElement))) {
-							e.preventDefault();
-							last?.focus();
-						} else if (!e.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement as HTMLElement))) {
-							e.preventDefault();
-							first?.focus();
-						}
-					}
-				}}
+				onKeyDown={(e) => handleDialogKeyDown(e, canSubmit ? submit : null)}
 			>
 				<div className="mb-3 flex items-center shrink-0">
 					<span id="new-session-dialog-title" className="flex-1 text-[15px] font-semibold tracking-tight text-[var(--text)]">新会话</span>
@@ -576,78 +555,17 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					</div>
 				)}
 				{useWorktree && (
-					<div className="mb-2.5 rounded-xl hairline bg-[var(--bg)]/60 p-3 space-y-2.5">
-						{!propBranch && (
-							<div className="grid grid-cols-2 gap-2">
-								<div>
-									<label className="text-[10px] text-neutral-400 block mb-1">
-										从哪个分支分出
-									</label>
-									<NativeSelect
-										value={baseBranch}
-										onChange={(e) => setBaseBranch(e.target.value)}
-									>
-										{branches.length > 0 ? (
-											branches.map((b) => (
-												<option key={b} value={b}>
-													{b}
-												</option>
-											))
-										) : (
-											<option value="">当前所在版本</option>
-										)}
-									</NativeSelect>
-								</div>
-								<div>
-									<label className="text-[10px] text-neutral-400 block mb-1">
-										新分支名前缀
-									</label>
-									<input
-										type="text"
-										value={branchPrefix}
-										onChange={(e) => setBranchPrefix(e.target.value)}
-										placeholder="例如 omp/"
-										className={clsx(input, "font-mono")}
-									/>
-								</div>
-							</div>
-						)}
-
-						<div>
-							<label className="text-[10px] text-neutral-400 block mb-1">
-								工作树目录名
-							</label>
-							<input
-								value={wtName}
-								onChange={(e) => {
-									setWtName(e.target.value);
-								}}
-								placeholder={`文件夹名（默认 ${slug}）`}
-								className={clsx(input, "font-mono")}
-							/>
-						</div>
-
-						<div className="text-[11px] text-neutral-400">
-							{propBranch ? (
-								<>
-									将在新工作树里打开分支
-									<span className="font-mono text-[#70b1ff] ml-1">{propBranch}</span>
-								</>
-							) : (
-								<>
-									将创建新分支：
-									<span className="font-mono text-[#70b1ff] ml-1">
-										{branchPrefix}
-										{wtName.trim() || slug}
-									</span>
-									{baseBranch && (
-										<span className="text-neutral-500 ml-1">
-											（从 {baseBranch} 分出）
-										</span>
-									)}
-								</>
-							)}
-						</div>
+					<div className="mb-2.5 rounded-xl hairline bg-[var(--bg)]/60 p-3">
+						<WorktreeFields
+							branches={branches}
+							baseBranch={baseBranch}
+							setBaseBranch={setBaseBranch}
+							branchPrefix={branchPrefix}
+							setBranchPrefix={setBranchPrefix}
+							wtName={wtName}
+							setWtName={setWtName}
+							slug={slug}
+						/>
 					</div>
 				)}
 
@@ -688,6 +606,286 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 							className="press-scale rounded-lg bg-[#0A84FF] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 disabled:opacity-40 transition-colors"
 						>
 							{busy ? "创建中…" : "创建会话"}
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+/** Cmd/Ctrl+Enter submits; Tab cycles focus inside the dialog. */
+function handleDialogKeyDown(
+	e: React.KeyboardEvent<HTMLDivElement>,
+	submit: (() => Promise<void>) | null,
+) {
+	if (isComposing(e)) return;
+	if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+		e.preventDefault();
+		if (submit) void submit();
+		return;
+	}
+	if (e.key !== "Tab") return;
+	const controls = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(
+		'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+	)).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
+	if (controls.length === 0) return;
+	const first = controls[0];
+	const last = controls[controls.length - 1];
+	const active = document.activeElement as HTMLElement;
+	if (e.shiftKey && (active === first || !controls.includes(active))) {
+		e.preventDefault();
+		last?.focus();
+	} else if (!e.shiftKey && (active === last || !controls.includes(active))) {
+		e.preventDefault();
+		first?.focus();
+	}
+}
+
+function WorktreeFields({
+	branches,
+	baseBranch,
+	setBaseBranch,
+	branchPrefix,
+	setBranchPrefix,
+	wtName,
+	setWtName,
+	slug,
+	checkoutBranch,
+}: {
+	branches: string[];
+	baseBranch: string;
+	setBaseBranch: (v: string) => void;
+	branchPrefix: string;
+	setBranchPrefix: (v: string) => void;
+	wtName: string;
+	setWtName: (v: string) => void;
+	slug: string;
+	/** Existing branch to check out; hides base-branch and prefix inputs. */
+	checkoutBranch?: string;
+}) {
+	return (
+		<div className="space-y-2.5">
+			{!checkoutBranch && (
+			<div className="grid grid-cols-2 gap-2">
+				<div>
+					<label className="text-[10px] text-neutral-400 block mb-1">
+						从哪个分支分出
+					</label>
+					<NativeSelect
+						value={baseBranch}
+						onChange={(e) => setBaseBranch(e.target.value)}
+					>
+						{branches.length > 0 ? (
+							branches.map((b) => (
+								<option key={b} value={b}>
+									{b}
+								</option>
+							))
+						) : (
+							<option value="">当前所在版本</option>
+						)}
+					</NativeSelect>
+				</div>
+				<div>
+					<label className="text-[10px] text-neutral-400 block mb-1">
+						新分支名前缀
+					</label>
+					<input
+						type="text"
+						value={branchPrefix}
+						onChange={(e) => setBranchPrefix(e.target.value)}
+						placeholder="例如 omp/"
+						className={clsx(INPUT_CLASS, "font-mono")}
+					/>
+				</div>
+			</div>
+			)}
+
+			<div>
+				<label className="text-[10px] text-neutral-400 block mb-1">
+					工作树目录名
+				</label>
+				<input
+					value={wtName}
+					onChange={(e) => setWtName(e.target.value)}
+					placeholder={`文件夹名（默认 ${slug}）`}
+					className={clsx(INPUT_CLASS, "font-mono")}
+				/>
+			</div>
+
+			<div className="text-[11px] text-neutral-400">
+				{checkoutBranch ? (
+					<>
+						将检出已有分支：
+						<span className="font-mono text-[#70b1ff] ml-1">{checkoutBranch}</span>
+					</>
+				) : (
+					<>
+						将创建新分支：
+						<span className="font-mono text-[#70b1ff] ml-1">
+							{branchPrefix}
+							{wtName.trim() || slug}
+						</span>
+						{baseBranch && (
+							<span className="text-neutral-500 ml-1">（从 {baseBranch} 分出）</span>
+						)}
+					</>
+				)}
+			</div>
+		</div>
+	);
+}
+
+/**
+ * 「新建工作树会话」: creates `prefix + name` from the chosen base branch in a
+ * new worktree of the fixed repo `cwd`, opens a session there (model follows
+ * the Settings default) and focuses its composer.
+ */
+function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
+	const dialogRef = useRef<HTMLDivElement>(null);
+	const closeModal = useUi((s) => s.closeModal);
+	const defaultModel = useSettings((s) => s.settings?.newSessionModel);
+	const repo = props.cwd as string;
+	const propWs = typeof props.workspaceId === "string" ? props.workspaceId : null;
+	const propBranch =
+		typeof props.branch === "string" && props.branch.trim() ? props.branch.trim() : "";
+	const repoName = repo.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || repo;
+
+	const [branches, setBranches] = useState<string[]>([]);
+	const [baseBranch, setBaseBranch] = useState("");
+	const [branchPrefix, setBranchPrefix] = useState("omp/");
+	const [wtName, setWtName] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	useEscapeKey(closeModal);
+
+	useEffect(() => {
+		const previous = document.activeElement;
+		dialogRef.current?.querySelector<HTMLElement>("select, input")?.focus();
+		return () => {
+			if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+		};
+	}, []);
+
+	useEffect(() => {
+		if (propBranch) return; // existing-branch mode needs no base branch
+		let cancelled = false;
+		gitListBranches(repo)
+			.then((list) => {
+				if (cancelled || !Array.isArray(list)) return;
+				setBranches(list);
+				setBaseBranch((prev) => (prev && list.includes(prev) ? prev : (list[0] ?? "")));
+			})
+			.catch((err) => {
+				if (!cancelled) toast.error(`获取分支列表失败: ${errMsg(err)}`);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [repo, propBranch]);
+
+	// Never derive the name from the cwd path; timestamp fallback when empty.
+	const slug = useMemo(() => defaultSlug(wtName || propBranch), [wtName, propBranch]);
+	const canSubmit = !busy;
+
+	const submit = async () => {
+		if (busy) return;
+		setBusy(true);
+		setError(null);
+		try {
+			const name = wtName.trim() || slug;
+			const wt = await gitCreateWorktree(repo, name, {
+				// Existing-branch mode checks that branch out; otherwise create
+				// `prefix + name` from `baseBranch`.
+				branch: propBranch || `${branchPrefix}${name}`,
+				base: propBranch || !baseBranch ? undefined : baseBranch,
+			});
+			await useWorktrees.getState().refresh().catch(() => {});
+			const { sessionId, stub } = await createSession({
+				cwd: wt.path,
+				model: defaultModel || null,
+				workspaceId: propWs,
+			});
+			useSessions.getState().upsert([stub]);
+			useUi.getState().selectSession(sessionId);
+			closeModal();
+			useComposer.getState().focusComposer(sessionId);
+		} catch (e) {
+			setError(errMsg(e));
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<div
+			style={{ zIndex: Z_LAYER.modal }}
+			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
+			onMouseDown={(e) => {
+				if (e.target === e.currentTarget) closeModal();
+			}}
+		>
+			<div
+				ref={dialogRef}
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="new-session-dialog-title"
+				className="w-[500px] max-w-[calc(100vw-2rem)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
+				onMouseDown={(e) => e.stopPropagation()}
+				onKeyDown={(e) => handleDialogKeyDown(e, canSubmit ? submit : null)}
+			>
+				<div className="mb-3 flex items-center shrink-0">
+					<span id="new-session-dialog-title" className="flex-1 text-[15px] font-semibold tracking-tight text-[var(--text)]">新建工作树会话</span>
+					<button
+						type="button"
+						title="关闭 (Esc)"
+						aria-label="关闭对话框"
+						onClick={closeModal}
+						className="press-scale rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
+					>
+						<X size={15} />
+					</button>
+				</div>
+
+				<div className="mb-3 truncate text-[11px] text-neutral-400" title={repo}>
+					<span className="text-neutral-200">{repoName}</span>
+					<span className="mx-1">·</span>
+					<span className="font-mono">{repo}</span>
+				</div>
+
+				<WorktreeFields
+					branches={branches}
+					baseBranch={baseBranch}
+					setBaseBranch={setBaseBranch}
+					branchPrefix={branchPrefix}
+					setBranchPrefix={setBranchPrefix}
+					wtName={wtName}
+					setWtName={setWtName}
+					slug={slug}
+					checkoutBranch={propBranch}
+				/>
+
+				{error && <div className="mt-2 text-xs text-rose-400">{error}</div>}
+
+				<div className="flex items-center justify-between shrink-0 pt-3 border-t border-[var(--border-divider)] mt-3">
+					<span className="text-[11px] text-neutral-400">按 {isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速提交</span>
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={closeModal}
+							className="press-scale rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
+						>
+							取消
+						</button>
+						<button
+							type="button"
+							disabled={!canSubmit}
+							onClick={submit}
+							className="press-scale rounded-lg bg-[#0A84FF] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 disabled:opacity-40 transition-colors"
+						>
+							{busy ? "创建中…" : "创建"}
 						</button>
 					</div>
 				</div>

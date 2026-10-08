@@ -12,6 +12,7 @@ import { useExplorer } from "../../stores/explorer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { addTerminalTabWithCwd } from "../terminal/terminalTabs";
+import { startSessionInWorktree } from "../sessions/newSession";
 
 /** Idle (worktree-less) branches beyond this count collapse behind an expander row. */
 const IDLE_BRANCH_CAP = 15;
@@ -367,7 +368,7 @@ export function WorktreeGraph({
 													type="button"
 													onClick={() => {
 														dismissHover();
-														openModal("new-session", { cwd: wt.path });
+														void startSessionInWorktree(wt.path);
 													}}
 													title="在此工作树新建会话"
 													aria-label="在此工作树新建会话"
@@ -531,7 +532,7 @@ export function WorktreeGraph({
 												onClick={() => {
 													setSessionMenuWt(null);
 													setSessionMenuAnchor(null);
-													openModal("new-session", { cwd: wt.path });
+													void startSessionInWorktree(wt.path);
 												}}
 												className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[11px] text-indigo-400 hover:bg-[var(--bg-hover)] hover:text-indigo-300 transition-colors border-t border-[var(--border-divider)] pt-1.5"
 											>

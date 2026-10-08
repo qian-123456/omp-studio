@@ -11,7 +11,7 @@ import {
 	Send,
 	Sparkles,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { GitFileChange, GitSummary } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
@@ -46,6 +46,8 @@ interface ContextMenuState {
 	file: GitFileChange;
 }
 
+const COMMIT_DRAFT_KEY = "omp_git_commit_draft";
+
 /**
  * One-click save: commits every change. The message is AI-written by default;
  * a hand-written one is optional and tucked behind the pencil toggle.
@@ -61,8 +63,24 @@ function CommitComposer({
 	fileCount: number;
 	onCommitted: () => void;
 }) {
-	const [custom, setCustom] = useState(false);
-	const [message, setMessage] = useState("");
+	const [message, setMessage] = useState(() => {
+		try {
+			return localStorage.getItem(COMMIT_DRAFT_KEY) ?? "";
+		} catch {
+			return "";
+		}
+	});
+	// Persist the draft; a successful commit resets `message` which clears it.
+	useEffect(() => {
+		try {
+			if (message) localStorage.setItem(COMMIT_DRAFT_KEY, message);
+			else localStorage.removeItem(COMMIT_DRAFT_KEY);
+		} catch {
+			/* storage unavailable */
+		}
+	}, [message]);
+	// A restored hand-written draft re-opens the manual message editor.
+	const [custom, setCustom] = useState(() => message !== "");
 	const [phase, setPhase] = useState<"idle" | "naming" | "saving">("idle");
 	// An agent still editing this worktree would get saved mid-change.
 	const working = useSessions((s) =>

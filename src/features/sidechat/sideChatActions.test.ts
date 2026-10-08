@@ -142,4 +142,19 @@ describe("SideChat actions", () => {
 			itemId: "msg-2",
 		});
 	});
+
+	it("isolates sidechat drafts strictly by parent session id", () => {
+		const p1 = "parent-1";
+		const p2 = "parent-2";
+
+		useComposer.getState().setSideChatDraft(p1, "Draft question for parent 1");
+		useComposer.getState().setSideChatDraft(p2, "Draft question for parent 2");
+
+		expect(useComposer.getState().sideChatDrafts[p1]).toBe("Draft question for parent 1");
+		expect(useComposer.getState().sideChatDrafts[p2]).toBe("Draft question for parent 2");
+
+		useComposer.getState().clearSideChatDraft(p1);
+		expect(useComposer.getState().sideChatDrafts[p1]).toBe("");
+		expect(useComposer.getState().sideChatDrafts[p2]).toBe("Draft question for parent 2");
+	});
 });

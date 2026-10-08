@@ -12,6 +12,7 @@ import { QuickCapture } from "./features/backlog/QuickCapture";
 import { SessionView } from "./features/chat/SessionView";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
 import { StartPage } from "./features/home/StartPage";
+import { useDoctorAutoScheduler } from "./features/heatmap/doctorStore";
 import { startTodos } from "./features/todos/store";
 
 import { terminalSetCurrentSession } from "./lib/ipc";
@@ -136,6 +137,7 @@ export default function App() {
 	const lastSessionId = useUi((s) => s.lastSessionId);
 	const returnToSession = useUi((s) => s.returnToSession);
 	const selectSession = useUi((s) => s.selectSession);
+	useDoctorAutoScheduler();
 
 	// Track the underlying view so when settings overlay opens, the center view stays mounted
 	const lastNonSettingsCenterView = useRef<CenterView>("home");

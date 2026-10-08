@@ -52,11 +52,35 @@ export function useAppSettings(): {
 let modelCache: Model[] | null = null;
 let modelLoad: Promise<Model[]> | null = null;
 
+function getInitialModelCache(): Model[] {
+	if (modelCache && modelCache.length > 0) return modelCache;
+	try {
+		const raw = localStorage.getItem("ompws:cached-models");
+		if (raw) {
+			const parsed = JSON.parse(raw);
+			if (Array.isArray(parsed) && parsed.length > 0) {
+				modelCache = parsed;
+				return parsed;
+			}
+		}
+	} catch {
+		/* ignore */
+	}
+	return [];
+}
+
 /** Concurrent mounts share one in-flight request; each new mount refreshes. */
 function loadModels(): Promise<Model[]> {
 	modelLoad ??= listModels()
 		.then((list) => {
-			if (Array.isArray(list)) modelCache = list;
+			if (Array.isArray(list) && list.length > 0) {
+				modelCache = list;
+				try {
+					localStorage.setItem("ompws:cached-models", JSON.stringify(list));
+				} catch {
+					/* ignore */
+				}
+			}
 			return modelCache ?? [];
 		})
 		.catch(() => modelCache ?? [])
@@ -67,12 +91,24 @@ function loadModels(): Promise<Model[]> {
 }
 
 /** Model catalog (`omp --list-models`) shared across sections; last result seeds new mounts. */
-export function useModelCatalog(): { models: Model[]; catalogKeys: Set<string> } {
-	const [models, setModels] = useState<Model[]>(modelCache ?? []);
+export function useModelCatalog(): {
+	models: Model[];
+	catalogKeys: Set<string>;
+	loaded: boolean;
+	loading: boolean;
+} {
+	const [models, setModels] = useState<Model[]>(() => getInitialModelCache());
+	const [loaded, setLoaded] = useState<boolean>(() => Boolean(modelCache && modelCache.length > 0));
+	const [loading, setLoading] = useState<boolean>(() => !modelCache || modelCache.length === 0);
+
 	useEffect(() => {
 		let alive = true;
 		void loadModels().then((list) => {
-			if (alive) setModels(list);
+			if (alive) {
+				setModels(list);
+				setLoaded(true);
+				setLoading(false);
+			}
 		});
 		return () => {
 			alive = false;
@@ -82,7 +118,7 @@ export function useModelCatalog(): { models: Model[]; catalogKeys: Set<string> }
 		() => new Set(models.map((m) => toModelKey(m.provider, m.id))),
 		[models],
 	);
-	return { models, catalogKeys };
+	return { models, catalogKeys, loaded, loading };
 }
 
 /**
