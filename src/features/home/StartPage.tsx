@@ -31,6 +31,7 @@ import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { useSettings } from "../settings/store";
 
 const CUSTOM = "__custom";
+const START_PROMPT_KEY = "omp_start_page_prompt";
 const isMac =
 	typeof navigator !== "undefined" &&
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
@@ -50,7 +51,22 @@ export function StartPage() {
 	const setCenter = useUi((s) => s.setCenter);
 	const defaultModel = useSettings((s) => s.settings?.newSessionModel);
 
-	const [prompt, setPrompt] = useState("");
+	const [prompt, setPrompt] = useState(() => {
+		try {
+			return localStorage.getItem(START_PROMPT_KEY) ?? "";
+		} catch {
+			return "";
+		}
+	});
+	// Persist the draft; submit paths reset `prompt` to "" which clears it.
+	useEffect(() => {
+		try {
+			if (prompt) localStorage.setItem(START_PROMPT_KEY, prompt);
+			else localStorage.removeItem(START_PROMPT_KEY);
+		} catch {
+			/* storage unavailable */
+		}
+	}, [prompt]);
 	const [busy, setBusy] = useState(false);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 

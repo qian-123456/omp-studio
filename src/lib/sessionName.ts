@@ -14,7 +14,7 @@ export function sessionDisplayName(
 ): string {
 	const title = (session.title ?? "").trim();
 	const label = (session.label ?? "").trim();
-	if (!title) return "未命名会话";
+	if (!title) return "新建的草稿";
 
 	let rest = title;
 
@@ -52,5 +52,5 @@ export function sessionDisplayNameOr<
 >(session: T | null | undefined, fallback: string): string {
 	if (!session) return fallback;
 	const name = sessionDisplayName(session);
-	return name === "未命名会话" && !session.title ? fallback : name;
+	return name === "新建的草稿" && !session.title ? fallback : name;
 }

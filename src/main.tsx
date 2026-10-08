@@ -4,6 +4,7 @@ import App from "./App";
 import "./index.css";
 import { initTheme } from "./lib/theme";
 import { startScrollPills } from "./lib/scrollPills";
+import { installDraftAutoCleanup } from "./features/sessions/newSession";
 import { startSessionEvents, useSessions } from "./stores/sessions";
 
 // Apply the persisted theme before first paint so there is no palette flash.
@@ -13,6 +14,8 @@ initTheme();
 startSessionEvents()
 	.then(() => useSessions.getState().load())
 	.catch((err) => console.error("initial session load failed", err));
+// Prune completely empty drafts when selection moves away from them.
+installDraftAutoCleanup();
 // Native scrollbars are hidden in CSS (classic always-on lane is ugly);
 // these JS-drawn overlay pills replace them.
 startScrollPills();

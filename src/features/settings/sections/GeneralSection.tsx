@@ -3,12 +3,13 @@
  * global default model, approval mode, UI/shortcut, AGENTS.md entry.
  */
 import { AlertTriangle, ChevronRight } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ModelSelect } from "../../../components/ModelSelect";
 import { Segmented } from "../../../components/Segmented";
 import { ompConfigSet } from "../../../lib/ipc";
 import { toModelKey } from "../../../lib/models";
 import { toast } from "../../../lib/toast";
+import { formatShortModel } from "../../chat/turnGrouping";
 import { asRecord, roleValue, splitRoleValue, withRoleAssignment } from "../modelRoles";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { useSettingsNav } from "../settingsNav";
@@ -42,7 +43,17 @@ export function GeneralSection() {
 	const shortcutSave = useSaveStatus();
 
 	const ompEntries = useOmpConfigStore((s) => s.entries);
+	const ompLoaded = useOmpConfigStore((s) => s.loaded);
 	const loadOmp = useOmpConfigStore((s) => s.load);
+
+	// Cache last known default role in localStorage so frame 1 renders accurately
+	const [cachedRole, setCachedRole] = useState<string | null>(() => {
+		try {
+			return localStorage.getItem("ompws:cached-default-role");
+		} catch {
+			return null;
+		}
+	});
 
 	useEffect(() => {
 		void loadOmp();
@@ -50,14 +61,27 @@ export function GeneralSection() {
 
 	// ── Global default model (OMP modelRoles.default) ──
 	const currentRoles = asRecord(ompEntries.find((e) => e.key === "modelRoles")?.value);
-	const defaultRole = roleValue(currentRoles, "default");
+	const liveRole = roleValue(currentRoles, "default");
+	const defaultRole = (ompLoaded ? liveRole : (cachedRole ?? liveRole)) ?? null;
+
+	useEffect(() => {
+		if (ompLoaded && liveRole) {
+			try {
+				localStorage.setItem("ompws:cached-default-role", liveRole);
+				setCachedRole(liveRole);
+			} catch {
+				/* ignore */
+			}
+		}
+	}, [ompLoaded, liveRole]);
 
 	const defaultSelector = defaultRole ? splitRoleValue(defaultRole).selector : "";
 	const matchedModel = models.find((m) => toModelKey(m.provider, m.id) === defaultSelector);
+	const fallbackShortName = defaultSelector ? formatShortModel(defaultSelector) : "";
 	// ModelSelect appends " · <level>" itself when currentValue carries a suffix.
 	const modelLabel = defaultRole
-		? (matchedModel?.name ?? defaultRole)
-		: "OMP 内置默认";
+		? (matchedModel?.name ?? (fallbackShortName || defaultRole))
+		: (ompLoaded ? "OMP 内置默认" : "加载中…");
 
 	const approval = (settings?.defaultApprovalMode ?? "write") as ApprovalMode;
 	const currentApprovalOption = APPROVAL_OPTIONS.find((o) => o.value === approval) ?? APPROVAL_OPTIONS[1];

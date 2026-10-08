@@ -6,9 +6,10 @@
 import type { Workspace } from "../../lib/contracts";
 import { createSession, findEmptyDraft } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
-import { gitCreateWorktree, gitSummary } from "../../lib/ipc";
+import { deleteSession, gitCreateWorktree, gitSummary } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
+import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
@@ -62,6 +63,7 @@ export async function startSessionInDir(
 		});
 		useSessions.getState().upsert([stub]);
 		useUi.getState().selectSession(sessionId);
+		useComposer.getState().focusComposer(sessionId);
 	} catch (err) {
 		toast.error(`创建会话失败: ${errMsg(err)}`);
 	} finally {
@@ -96,6 +98,7 @@ export async function startSessionAt(
 		});
 		useSessions.getState().upsert([stub]);
 		useUi.getState().selectSession(sessionId);
+		useComposer.getState().focusComposer(sessionId);
 	} catch (err) {
 		toast.error(`创建会话失败: ${errMsg(err)}`);
 	} finally {
@@ -137,7 +140,8 @@ export async function startSessionInWorktree(cwd: string): Promise<void> {
  * Context-aware session creation decision used by header "+" and Cmd+N.
  * If in global mode -> starts directly in global workspace.
  * If active workspace exists or single project workspace -> starts in that workspace (or invokes menu callback if provided).
- * Otherwise opens the "new-session" modal.
+ * Otherwise falls back to the first project workspace, then the global one —
+ * never a modal: a draft is created/focused immediately.
  */
 export async function startNewSessionFromContext(
 	openPlusMenuForWs?: (ws: Workspace) => void,
@@ -180,5 +184,46 @@ export async function startNewSessionFromContext(
 		return;
 	}
 
-	useUi.getState().openModal("new-session");
+	const fallback = projectWorkspaces[0] ?? globalWs;
+	if (fallback) await startSessionInDir(fallback, false);
+}
+
+let draftCleanupInstalled = false;
+
+/**
+ * Codex-style draft auto-cleanup: when selection leaves a completely empty
+ * draft (unnamed, no transcript, no typed text or images), drop it from the
+ * store and delete it on the backend. Drafts with typed text or images
+ * survive as "新建的草稿". Idempotent; call at app start.
+ */
+export function installDraftAutoCleanup(): () => void {
+	if (draftCleanupInstalled) return () => {};
+	draftCleanupInstalled = true;
+	const unsub = useUi.subscribe((state, prev) => {
+		const id = prev.selectedSessionId;
+		if (!id || id === state.selectedSessionId) return;
+		const s = useSessions.getState().sessions[id];
+		if (!s || s.title?.trim() || s.label?.trim() || s.lastAssistant) return;
+		if (s.status !== "idle") return;
+		const live = useLive.getState().sessions[id];
+		if (
+			live &&
+			(live.items.length > 0 ||
+				live.pendingUserEchoes.length > 0 ||
+				live.streaming ||
+				live.streamingMessage !== null)
+		) {
+			return;
+		}
+		const composer = useComposer.getState();
+		const text = composer.drafts[id] ?? "";
+		const images = composer.images[id] ?? [];
+		if (text.trim() !== "" || images.length > 0) return;
+		useSessions.getState().remove([id]);
+		deleteSession(id).catch(() => {});
+	});
+	return () => {
+		unsub();
+		draftCleanupInstalled = false;
+	};
 }

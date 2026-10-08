@@ -54,9 +54,9 @@ describe("sessionDisplayName", () => {
 		).toBe("omp-workspace");
 	});
 
-	it("returns 未命名会话 for empty title", () => {
+	it("returns 新建的草稿 for empty title", () => {
 		expect(sessionDisplayName({ title: "", label: "#1" })).toBe(
-			"未命名会话",
+			"新建的草稿",
 		);
 	});
 });

@@ -51,7 +51,12 @@ fn set_mode(_path: &Path, _mode: u32) -> Result<(), String> {
     Ok(())
 }
 
-// ---- master key (native macOS Keychain API) ----
+// ---- master key (cross-platform protected keyfile + legacy macOS Keychain migration) ----
+
+/// Path to local protected master key: `~/.omp-workspace/env/.master.key`
+pub fn master_key_path() -> PathBuf {
+    env_dir().join(".master.key")
+}
 
 fn decode_hex_key(hex: &str) -> Option<[u8; 32]> {
     let hex = hex.trim();
@@ -63,6 +68,26 @@ fn decode_hex_key(hex: &str) -> Option<[u8; 32]> {
         *byte = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
     }
     Some(key)
+}
+
+fn keyfile_read() -> Result<Option<[u8; 32]>, String> {
+    let path = master_key_path();
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| format!("读取主密钥文件失败: {e}"))?;
+    decode_hex_key(&content)
+        .map(Some)
+        .ok_or_else(|| "主密钥文件格式无效".to_string())
+}
+
+fn keyfile_write(key: &[u8; 32]) -> Result<(), String> {
+    ensure_dir()?;
+    let path = master_key_path();
+    let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
+    std::fs::write(&path, hex.as_bytes()).map_err(|e| format!("写入主密钥文件失败: {e}"))?;
+    set_mode(&path, 0o600)?;
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -83,7 +108,7 @@ fn keychain_read() -> Result<Option<[u8; 32]>, String> {
 
 #[cfg(not(target_os = "macos"))]
 fn keychain_read() -> Result<Option<[u8; 32]>, String> {
-    Err(keychain_error())
+    Ok(None)
 }
 
 fn keychain_error() -> String {
@@ -112,35 +137,61 @@ fn keychain_create(key: &[u8; 32]) -> Result<(), String> {
 
 #[cfg(not(target_os = "macos"))]
 fn keychain_create(_key: &[u8; 32]) -> Result<(), String> {
-    Err(keychain_error())
+    Ok(())
 }
 
-/// Load the master key, creating a fresh random one in the Keychain on first
-/// use. A successful load is cached for the process lifetime.
+/// Load the master key, prioritizing the local protected keyfile (`~/.omp-workspace/env/.master.key`).
+/// On first use with an existing Keychain entry, automatically migrates to the keyfile.
+/// A successful load is cached for the process lifetime.
 pub fn master_key() -> Result<[u8; 32], String> {
     static KEY: OnceLock<[u8; 32]> = OnceLock::new();
     static INIT: Mutex<()> = Mutex::new(());
-    let _guard = INIT.lock().map_err(|_| keychain_error())?;
+    let _guard = INIT.lock().map_err(|_| "获取主密钥锁失败".to_string())?;
     if let Some(key) = KEY.get() {
         return Ok(*key);
     }
-    let key = match keychain_read()? {
-        Some(key) => key,
-        None => {
-            // First use (no vault content yet): create a fresh key. When the
-            // vault already holds ciphertext a new key would be useless, so
-            // surface the read error instead.
-            let has_content = std::fs::read(vault_path())
-                .map(|bytes| !bytes.is_empty())
-                .unwrap_or(false);
-            if has_content {
-                return Err(keychain_error());
+
+    // 1. Try reading the local protected keyfile (0600 permission, zero prompts, cross-platform)
+    if let Some(key) = keyfile_read()? {
+        let _ = KEY.set(key);
+        return Ok(key);
+    }
+
+    // 2. Fall back to reading from macOS Keychain and automatically migrate to keyfile
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(Some(key)) = keychain_read() {
+            if let Ok(()) = keyfile_write(&key) {
+                tracing::info!(
+                    "migrated vault master key from macOS Keychain to protected keyfile"
+                );
             }
-            let key = random_key()?;
-            keychain_create(&key)?;
-            key
+            let _ = KEY.set(key);
+            return Ok(key);
         }
-    };
+    }
+
+    // 3. Neither keyfile nor Keychain has a key:
+    let has_content = std::fs::read(vault_path())
+        .map(|bytes| !bytes.is_empty())
+        .unwrap_or(false);
+    if has_content {
+        return Err(
+            "密钥库已有密文但无法读取主密钥。请检查 ~/.omp-workspace/env/.master.key 权限。"
+                .to_string(),
+        );
+    }
+
+    // 4. Fresh vault: generate a fresh random key and write to protected keyfile
+    let key = random_key()?;
+    keyfile_write(&key)?;
+
+    #[cfg(target_os = "macos")]
+    {
+        // Best-effort secondary backup to Keychain, ignore any errors
+        let _ = keychain_create(&key);
+    }
+
     let _ = KEY.set(key);
     Ok(key)
 }
@@ -408,5 +459,13 @@ mod tests {
         assert!(decode_hex_key(&"ab".repeat(32)).is_some());
         assert!(decode_hex_key("abcd").is_none());
         assert!(decode_hex_key(&"zz".repeat(32)).is_none());
+    }
+
+    #[test]
+    fn master_key_hex_encoding_roundtrip() {
+        let key = test_key();
+        let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
+        let decoded = decode_hex_key(&hex).unwrap();
+        assert_eq!(decoded, key);
     }
 }

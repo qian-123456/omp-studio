@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { SectionHeader } from "../settings/ui";
 import { Switch } from "../settings/Switch";
 import {
 	Activity,
+	ChevronDown,
 	CircleCheck,
 	CircleX,
 	ClipboardCopy,
@@ -17,7 +18,9 @@ import {
 	Search,
 	SlidersHorizontal,
 	Trash2,
+	X,
 } from "lucide-react";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import type {
 	ModelEntry,
 	OmpImportResult,
@@ -64,7 +67,8 @@ export function ProviderPanel() {
 	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [expandedKey, setExpandedKey] = useState<string | null>(null);
-
+	const [importMenuOpen, setImportMenuOpen] = useState(false);
+	const importMenuBtnRef = useRef<HTMLButtonElement>(null);
 	useEffect(() => {
 		void load();
 	}, [load]);
@@ -163,75 +167,135 @@ export function ProviderPanel() {
 				<button
 					type="button"
 					onClick={() => openSettingsTarget("modelContext")}
-					className="flex w-full items-center gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-2 text-left text-xs text-neutral-300 hover:bg-[var(--bg-hover)]"
+					className="flex w-full items-center gap-2 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-3 py-2 text-left text-xs text-neutral-300 transition-colors hover:bg-[var(--bg-hover)]"
 				>
 					<SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
 					<span className="flex-1">按型号批量设置各模型的上下文窗口与自动压缩，到「上下文窗口」页。</span>
-					<span className="text-[var(--accent)]">前往 →</span>
+					<span className="text-[var(--accent)] font-medium">前往 →</span>
 				</button>
-				<div className="flex flex-wrap items-center justify-end gap-3">
-					<div className="flex shrink-0 flex-wrap items-center gap-2">
-						<div className="relative">
-							<Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-500" />
-							<input
-								type="text"
-								value={query}
-								onChange={(e) => setQuery(e.target.value)}
-								placeholder="筛选…"
-								aria-label="筛选供应商"
-								className="w-32 rounded-lg hairline bg-[var(--bg-active-fill)] py-1.5 pl-7 pr-2 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)]"
-							/>
-						</div>
-						{eligibleOmpIds.length > 0 && (
+				<div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-2 shadow-2xs">
+					<div className="relative flex-1 min-w-[200px] max-w-sm">
+						<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+						<input
+							type="text"
+							value={query}
+							onChange={(e) => setQuery(e.target.value)}
+							placeholder="搜索供应商名称、地址或模型…"
+							aria-label="筛选供应商"
+							className="w-full rounded-lg hairline bg-[var(--bg-panel)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+						/>
+						{query && (
 							<button
 								type="button"
-								onClick={() => void handleImportAll()}
-								disabled={importingOmp}
-								title="将全部 OMP 已配置供应商的密钥加密导入工作台密钥库"
-								aria-label="一键导入"
-								className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40"
+								onClick={() => setQuery("")}
+								aria-label="清除筛选"
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
 							>
-								{importingOmp ? (
-									<Loader2 className="h-3.5 w-3.5 animate-spin" />
-								) : (
-									<Download className="h-3.5 w-3.5" />
-								)}
-								<span>一键导入</span>
+								<X className="h-3 w-3" />
 							</button>
 						)}
+					</div>
+					<div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap justify-end">
 						<button
+							ref={importMenuBtnRef}
 							type="button"
-							onClick={() => void handleExport()}
-							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
-							title="导出明文 .env 文本，仅复制到剪贴板"
+							onClick={() => setImportMenuOpen((v) => !v)}
+							className="inline-flex items-center gap-1 rounded-lg hairline bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 						>
-							<ClipboardCopy className="h-3.5 w-3.5" />
-							<span>复制 .env</span>
+							<span>导入 / 导出</span>
+							<ChevronDown
+								className={`h-3 w-3 text-neutral-400 transition-transform ${
+									importMenuOpen ? "rotate-180" : ""
+								}`}
+							/>
 						</button>
-						<button
-							type="button"
-							onClick={() => setDialog({ mode: "import" })}
-							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
-						>
-							<FileInput className="h-3.5 w-3.5" />
-							<span>.env 导入</span>
-						</button>
+
+						{importMenuOpen && (
+							<FloatingLayer
+								anchor={importMenuBtnRef.current}
+								placement="bottom-end"
+								offset={4}
+								layer="popover"
+								onDismiss={() => setImportMenuOpen(false)}
+								ignoreRefs={[importMenuBtnRef]}
+								className="w-56 p-1 rounded-xl border border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-xl text-xs space-y-0.5"
+							>
+								{eligibleOmpIds.length > 0 && (
+									<button
+										type="button"
+										onClick={() => {
+											setImportMenuOpen(false);
+											void handleImportAll();
+										}}
+										disabled={importingOmp}
+										className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-neutral-200 hover:bg-[var(--bg-hover)] disabled:opacity-40"
+									>
+										{importingOmp ? (
+											<Loader2 className="h-3.5 w-3.5 animate-spin" />
+										) : (
+											<Download className="h-3.5 w-3.5 text-[var(--accent)]" />
+										)}
+										<div className="flex-1">
+											<div className="font-medium">一键导入 OMP 供应商</div>
+											<div className="text-[10px] text-neutral-400">
+												将已配置密钥加密导入工作台
+											</div>
+										</div>
+									</button>
+								)}
+								<button
+									type="button"
+									onClick={() => {
+										setImportMenuOpen(false);
+										setDialog({ mode: "import" });
+									}}
+									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-neutral-200 hover:bg-[var(--bg-hover)]"
+								>
+									<FileInput className="h-3.5 w-3.5 text-neutral-400" />
+									<div className="flex-1">
+										<div className="font-medium">从 .env 文件导入</div>
+										<div className="text-[10px] text-neutral-400">
+											批量解析环境变量并添加
+										</div>
+									</div>
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										setImportMenuOpen(false);
+										void handleExport();
+									}}
+									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-neutral-200 hover:bg-[var(--bg-hover)]"
+								>
+									<ClipboardCopy className="h-3.5 w-3.5 text-neutral-400" />
+									<div className="flex-1">
+										<div className="font-medium">复制 .env 文本</div>
+										<div className="text-[10px] text-neutral-400">
+											复制明文配置到剪贴板
+										</div>
+									</div>
+								</button>
+							</FloatingLayer>
+						)}
+
 						<button
 							type="button"
 							onClick={() => setOauthDialogOpen(true)}
-							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
+							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
 						>
-							<LogIn className="h-3.5 w-3.5" />
+							<LogIn className="h-3.5 w-3.5 text-neutral-400" />
 							<span>OAuth 登录</span>
 						</button>
+
 						<button
 							type="button"
 							onClick={() => setDialog({ mode: "add" })}
-							className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-sm"
+							className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-xs"
 						>
 							<Plus className="h-3.5 w-3.5" />
 							<span>添加供应商</span>
 						</button>
+
 						<button
 							type="button"
 							onClick={() => {

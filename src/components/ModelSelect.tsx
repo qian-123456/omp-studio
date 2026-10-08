@@ -18,7 +18,7 @@ import {
 } from "./modelSelectLogic";
 import { useModelSelectPrefs } from "./modelSelectPrefs";
 export interface ModelExtraOption {
-	/** Value reported via onSelect; e.g. "" or "__custom_model". */
+	/** Value reported via onSelect; e.g. "" for a default row. */
 	value: string;
 	label: string;
 	hint?: string;

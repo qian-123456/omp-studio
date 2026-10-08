@@ -15,7 +15,6 @@ import { MobileSettingsSection } from "./MobileSettingsSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { PluginsSettingsSection } from "./PluginsSettingsSection";
 import { ProvidersSection } from "./ProvidersSection";
-import { QuotaDashboardCard } from "./QuotaDashboardCard";
 import { RolesSection } from "./RolesSection";
 import { SessionsSection } from "./SessionsSection";
 
@@ -24,7 +23,7 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	appearance: AppearanceSection,
 	notifications: NotificationsSection,
 	"context-window": ContextWindowSection,
-	quota: QuotaDashboardCard,
+	quota: ProvidersSection,
 	providers: ProvidersSection,
 	"omp-roles": RolesSection,
 	sessions: SessionsSection,

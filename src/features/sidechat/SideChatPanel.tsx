@@ -69,7 +69,14 @@ export function SideChatPanel() {
 	const sideChatRequest = useComposer((s) => s.sideChatRequest);
 	const clearSideChatRequest = useComposer((s) => s.clearSideChatRequest);
 	const [childId, setChildId] = useState<string | null>(null);
-	const [question, setQuestion] = useState("");
+	const sideChatDrafts = useComposer((s) => s.sideChatDrafts);
+	const setSideChatDraft = useComposer((s) => s.setSideChatDraft);
+	const clearSideChatDraft = useComposer((s) => s.clearSideChatDraft);
+	// Draft is strictly scoped to the parent session; no cross-parent leaking.
+	const question = selectedId ? (sideChatDrafts[selectedId] ?? "") : "";
+	const setQuestion = (val: string) => {
+		if (selectedId) setSideChatDraft(selectedId, val);
+	};
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -136,7 +143,8 @@ export function SideChatPanel() {
 
 	const create = async () => {
 		const q = question.trim();
-		if (!q || !selectedId || busy) return;
+		const parentId = selectedId;
+		if (!q || !parentId || busy) return;
 		setBusy(true);
 		setError(null);
 		try {
@@ -147,12 +155,14 @@ export function SideChatPanel() {
 					: selectedModel
 				: null;
 			const info = await createSideChat(
-				selectedId,
+				parentId,
 				q,
 				pendingSelection ?? undefined,
 				modelArg ?? undefined,
 			);
-			setQuestion("");
+			clearSideChatDraft(parentId);
+			// Parent switched while creating: don't leak child/state into the new parent.
+			if (useUi.getState().selectedSessionId !== parentId) return;
 			setPendingSelection(null);
 			setChildId(info.sessionId);
 			if (textareaRef.current) {
