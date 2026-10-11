@@ -1027,6 +1027,11 @@ export function startLiveEvents(): void {
 						m.rpcSend(payload.sessionId, { type: "get_subagents" }),
 					)
 					.catch(() => {});
+				void ipcMod
+					.then((m) =>
+						m.rpcSend(payload.sessionId, { type: "get_state" }),
+					)
+					.catch(() => {});
 			}
 		}),
 	];

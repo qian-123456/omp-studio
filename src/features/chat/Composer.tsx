@@ -140,10 +140,10 @@ import { useHeldQueue } from "./heldQueue";
 import { abortTurn, sendPrompt, useAbortState } from "./send";
 import {
 	buildSetModelPayload,
-	extractThinkingLevels,
 	type ModelOption,
 	parseModels,
 	resolveCurrentModel,
+	resolveThinkingLevels,
 	toModelKey,
 } from "../../lib/models";
 import { ModelMenuContent } from "../../components/ModelSelect";
@@ -472,17 +472,15 @@ export function Composer({
 	useEffect(() => setMenuIndex(0), [slashToken?.query]);
 
 	const state = live?.state ?? {};
-	const currentThinking = (state.thinkingLevel as string | undefined) ?? "auto";
+	const stateThinkingLevel = typeof state.thinkingLevel === "string" ? state.thinkingLevel : undefined;
+	const currentThinking = stateThinkingLevel ?? "auto";
 
 	const current = useMemo(
 		() => resolveCurrentModel(state.model ?? sessionMeta?.model, models),
 		[state.model, sessionMeta?.model, models],
 	);
 
-	// Thinking levels: prefer the live model's own `thinking` block from
-	// get_state (always present for the running session); fall back to the
-	// models catalog entry (unreliable — get_available_models can exceed the
-	// rpc transport limit and models.db caches use the object shape).
+	// Live model metadata takes precedence; catalog capabilities are the fallback.
 	const currentModelOption = useMemo(
 		() =>
 			models?.find(
@@ -490,20 +488,28 @@ export function Composer({
 			) ?? models?.find((m) => m.id === current.id && m.provider === current.provider),
 		[models, current],
 	);
-	const thinkingLevels = useMemo(() => {
-		const stateThinking = extractThinkingLevels(
-			(state.model as Record<string, unknown> | undefined)?.thinking,
-		);
-		const supported =
-			stateThinking.length > 0
-				? stateThinking
-				: (currentModelOption?.thinking ?? []);
-		// omp TUI always offers "auto" (model default); "off" when reasoning exists.
-		const levels = ["auto", ...supported.filter((l) => l !== "auto")];
-		if (supported.length > 0 && !levels.includes("off")) levels.push("off");
-		return levels;
-	}, [state.model, currentModelOption]);
+	const thinkingLevels = useMemo(
+		() =>
+			resolveThinkingLevels(
+				(state.model as Record<string, unknown> | undefined)?.thinking,
+				currentModelOption?.thinking,
+				stateThinkingLevel,
+			),
+		[state.model, currentModelOption, stateThinkingLevel],
+	);
 	const curThinkingObj = thinkingLabel(currentThinking);
+
+	const selectThinkingLevel = async (level: string) => {
+		try {
+			if (!live?.alive) await ensureLive(sessionId);
+			await rpcSend(sessionId, { type: "set_thinking_level", level });
+			await rpcSend(sessionId, { type: "get_state" });
+			setThinkingOpen(false);
+		} catch (err) {
+			if (isResumeCancelled(err)) setThinkingOpen(false);
+			else toast.error(`切换思考等级失败: ${errMsg(err)}`);
+		}
+	};
 	const loadModels = async () => {
 		// Catalog (`omp models --json`) first; get_available_models is only a
 		// fallback — large catalogs exceed the rpc transport limit there.
@@ -1496,19 +1502,7 @@ export function Composer({
 													<button
 														key={level}
 														type="button"
-														onClick={async () => {
-															if (live?.alive) {
-																try {
-																	await rpcSend(sessionId, {
-																		type: "set_thinking_level",
-																		level,
-																	});
-																} catch (err) {
-																	toast.error(errMsg(err));
-																}
-															}
-															setThinkingOpen(false);
-														}}
+														onClick={() => void selectThinkingLevel(level)}
 														className={clsx(
 															"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
 															isSelected

@@ -41,6 +41,27 @@ export function extractThinkingLevels(thinking: unknown): string[] {
 	}
 	return [];
 }
+
+/** Resolve selectable thinking levels from live capabilities, then the model catalog.
+ * Keep the current RPC value visible even when it is absent from known capabilities. */
+export function resolveThinkingLevels(
+	liveThinking: unknown,
+	catalogLevels?: readonly string[] | null,
+	currentLevel?: string | null,
+): string[] {
+	const liveLevels = extractThinkingLevels(liveThinking);
+	const supported =
+		liveLevels.length > 0
+			? liveLevels
+			: (catalogLevels?.filter((level) => typeof level === "string") ?? []);
+	const current = currentLevel || undefined;
+	if (supported.length === 0) return current ? [current] : [];
+
+	const levels = ["auto", ...supported.filter((level) => level !== "auto")];
+	if (!levels.includes("off")) levels.push("off");
+	if (current && !levels.includes(current)) levels.push(current);
+	return levels;
+}
 export function parseModels(data: unknown): ModelOption[] {
 	if (!data) return [];
 	const d = data as Record<string, unknown>;
