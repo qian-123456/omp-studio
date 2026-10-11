@@ -5,10 +5,15 @@ import type { OmpInfo, OmpUpdateStatus } from "../lib/contracts";
 import { errMsg } from "../lib/dialogs";
 import { ompInfo, ompUpdateCheck, ompUpdateRun } from "../lib/ipc";
 import { toast } from "../lib/toast";
+import { useSettings } from "../features/settings/store";
 import { useModelCatalog } from "./modelCatalog";
+import { setExternalUpdateHandler, syncStaleness } from "./ompUpdateSessions";
+import { isCheckDue } from "./ompUpdateSchedule";
 
 const LAST_CHECK_KEY = "ompws:omp-update-last-check";
-const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const STALENESS_POLL_MS = 60 * 1000;
+const UPDATE_CHECK_TICK_MS = 60 * 1000;
+const DEFAULT_CHECK_INTERVAL_HOURS = 24;
 
 interface OmpUpdateState {
 	appVersion: string | null;
@@ -24,7 +29,7 @@ interface OmpUpdateState {
 	loadInfo: () => Promise<void>;
 	/** Manual check; toasts on failure when `silent` is false. */
 	check: (silent?: boolean) => Promise<void>;
-	/** App startup hook: loads versions and auto-checks at most once per 6h. */
+	/** App startup hook: loads versions and auto-checks when the configured interval has elapsed. */
 	checkOnStartup: () => Promise<void>;
 	runUpdate: () => Promise<void>;
 }
@@ -65,6 +70,9 @@ export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 		try {
 			const status = await ompUpdateCheck();
 			set({ status, lastOutput: status.output });
+			if (status.updateAvailable && useSettings.getState().settings?.ompAutoUpdate === true && !get().updating) {
+				void get().runUpdate();
+			}
 		} catch (e) {
 			const msg = errMsg(e);
 			set({ error: msg, lastOutput: msg });
@@ -79,9 +87,11 @@ export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 	checkOnStartup: async () => {
 		if (startupDone) return;
 		startupDone = true;
+		// Auto-update decision reads useSettings; make sure it is loaded first.
+		if (!useSettings.getState().settings) await useSettings.getState().load();
 		await get().loadInfo();
-		const last = storedLastCheck();
-		if (last === null || Date.now() - last >= AUTO_CHECK_INTERVAL_MS) await get().check(true);
+		const hours = useSettings.getState().settings?.ompCheckIntervalHours ?? DEFAULT_CHECK_INTERVAL_HOURS;
+		if (isCheckDue(storedLastCheck(), hours, Date.now())) await get().check(true);
 	},
 
 	runUpdate: async () => {
@@ -92,14 +102,15 @@ export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 			set({ lastOutput: res.output });
 			if (!res.success) {
 				set({ error: res.output });
-				toast.error("omp 更新失败，详见输出日志");
+				toast.error("omp 更新失败，可在「版本与更新」中查看详情");
 				return;
 			}
 			await get().loadInfo();
 			await get().check(true);
 			void useModelCatalog.getState().refresh();
 			const ver = ompVersionLabel(get().info, get().status) ?? res.versionAfter ?? "最新版本";
-			toast.success(`omp 已更新到 ${ver}；新会话生效，已运行的会话需重启`);
+			toast.success(`omp 已更新到 ${ver}，正在把已运行的会话切换到新版本`);
+			void syncStaleness({ selfUpdate: true, version: ver }).catch(() => {});
 		} catch (e) {
 			const msg = errMsg(e);
 			set({ error: msg, lastOutput: msg });
@@ -109,3 +120,42 @@ export const useOmpUpdate = create<OmpUpdateState>((set, get) => ({
 		}
 	},
 }));
+
+// omp replaced outside the app (e.g. `omp update` in a terminal): refresh versions, then let the switch proceed.
+setExternalUpdateHandler(async (staleCount) => {
+	const s = useOmpUpdate.getState();
+	if (s.updating) return null; // in-app update in flight; runUpdate syncs with selfUpdate.
+	await s.loadInfo();
+	await s.check(true);
+	void useModelCatalog.getState().refresh();
+	const st = useOmpUpdate.getState();
+	const ver = ompVersionLabel(st.info, st.status);
+	if (staleCount > 0) toast.info(`检测到 omp 已在外部更新到 ${ver ?? "新版本"}，正在把会话切换到新版本`);
+	return ver;
+});
+
+/**
+ * App-lifetime watcher: syncs omp session staleness now, on window focus and
+ * every minute, so sessions follow omp binary replacements. Returns a disposer.
+ */
+export function watchOmpStaleness(): () => void {
+	const sync = () => void syncStaleness().catch(() => {});
+	sync();
+	window.addEventListener("focus", sync);
+	const timer = setInterval(sync, STALENESS_POLL_MS);
+	return () => {
+		window.removeEventListener("focus", sync);
+		clearInterval(timer);
+	};
+}
+
+/** App-lifetime watcher: every minute, runs a silent check once the configured interval has elapsed. Returns a disposer. */
+export function watchOmpUpdateChecks(): () => void {
+	const timer = setInterval(() => {
+		const s = useOmpUpdate.getState();
+		if (s.checking) return;
+		const hours = useSettings.getState().settings?.ompCheckIntervalHours ?? DEFAULT_CHECK_INTERVAL_HOURS;
+		if (isCheckDue(s.lastCheckedAt, hours, Date.now())) void s.check(true);
+	}, UPDATE_CHECK_TICK_MS);
+	return () => clearInterval(timer);
+}

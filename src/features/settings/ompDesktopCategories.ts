@@ -62,9 +62,10 @@ const HIDDEN_PREFIXES: readonly string[] = [
 ];
 
 /**
- * Individual hidden keys. `modelRoles` and `retry.fallbackChains` are edited
- * by the dedicated model-roles UI (omp `/model` Roles view), not the flat
- * list; the rest are TUI-only settings with no desktop surface.
+ * Individual hidden keys. `modelRoles` and `task.agentModelOverrides` are edited
+ * by the 模型角色 page; `retry.fallbackChains`, `cycleOrder` and `modelRoleStorage`
+ * by the 回退链与切换 page. None of them appear in the flat list; the rest are
+ * TUI-only settings with no desktop surface.
  */
 const HIDDEN_KEYS: Record<string, true> = {
 	symbolPreset: true,
@@ -80,8 +81,9 @@ const HIDDEN_KEYS: Record<string, true> = {
 	readLineNumbers: true,
 	"read.toolResultPreview": true,
 	setupVersion: true,
-	// Edited by the dedicated Roles UI, not the flat config list.
+	// Edited by the dedicated role pages (模型角色 / 回退链与切换), not the flat config list.
 	modelRoles: true,
+	"task.agentModelOverrides": true,
 	"retry.fallbackChains": true,
 	modelRoleStorage: true,
 	cycleOrder: true,

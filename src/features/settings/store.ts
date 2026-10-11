@@ -26,19 +26,23 @@ export const DEFAULT_SETTINGS: Settings = {
 	quickCaptureShortcut: "CommandOrControl+Shift+I",
 	supervisorIntervalMinutes: 30,
 	inboxWindowHours: 24,
+	ompCheckIntervalHours: 24,
 	notifyQuietFrom: null,
 	notifyQuietTo: null,
 	newSessionModel: null,
 	homeShowCompletedTodos: false,
 	dockBadgeEnabled: true,
 	sessionTurnAutoRefresh: true,
+	sessionGroupByWorktree: true,
 	turnCheckpoints: null,
 	queueAutoSend: null,
+	ompAutoUpdate: null,
 	gitDeliveryMode: "pr",
 	doctorModel: "smol",
 	doctorAutoMode: "manual",
 	doctorIdleMinutes: 30,
 	doctorScheduleTime: "23:00",
+	privacyRevealDefault: null,
 };
 
 export interface SettingsState {

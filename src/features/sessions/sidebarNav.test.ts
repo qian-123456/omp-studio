@@ -96,8 +96,8 @@ describe("Sidebar Navigation & Filtering logic", () => {
 	it("includes empty worktree subgroups when worktrees are provided (C2)", () => {
 		const session = makeSession({ id: "s1", workspaceId: "proj1", cwd: "/repo/my-proj" });
 		const worktrees = [
-			{ path: "/repo/my-proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [] },
-			{ path: "/repo/my-proj/.worktrees/feat-x", branch: "feat-x", head: "bbb", dirty: 0, sessionIds: [] },
+			{ path: "/repo/my-proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
+			{ path: "/repo/my-proj/.worktrees/feat-x", branch: "feat-x", head: "bbb", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 		];
 		const grouped = groupSessions([session], [projWs], {
 			worktrees: { proj1: worktrees },

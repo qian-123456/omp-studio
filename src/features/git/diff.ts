@@ -69,6 +69,105 @@ export function parseUnifiedDiff(text: string): DiffLine[] {
 	return out;
 }
 
+export type DiffFileStatus = "added" | "deleted" | "renamed" | "modified";
+
+/** One file's slice `[start, end)` of the flat parsed diff lines. */
+export interface DiffFile {
+	/** New path (old path for deletions); `null` for a preamble without a file (e.g. commit header). */
+	path: string | null;
+	oldPath?: string;
+	status: DiffFileStatus;
+	binary: boolean;
+	adds: number;
+	dels: number;
+	start: number;
+	end: number;
+}
+
+/** File-header meta lines that the per-file header replaces. */
+const FILE_HEADER_RE =
+	/^(diff --git |index |--- |\+\+\+ |new file mode |deleted file mode |old mode |new mode |similarity index |dissimilarity index |rename from |rename to |copy from |copy to )/;
+
+/** Whether a meta line is file-header noise summarized by the per-file header. */
+export function isFileHeaderMeta(line: DiffLine): boolean {
+	return line.kind === "meta" && FILE_HEADER_RE.test(line.text);
+}
+
+/**
+ * Group parsed lines into per-file slices without reordering, so indices into `lines`
+ * stay valid for selection/annotation. Lines before the first `diff --git` form a
+ * preamble group (`path: null`) when any exist.
+ */
+export function groupDiffFiles(lines: DiffLine[]): DiffFile[] {
+	const files: DiffFile[] = [];
+	let cur: DiffFile | null = null;
+	// Inside a `diff --git` header (before its first hunk), `---`/`+++` belong to it.
+	let inGitHeader = false;
+	const open = (start: number): DiffFile => ({
+		path: null,
+		status: "modified",
+		binary: false,
+		adds: 0,
+		dels: 0,
+		start,
+		end: start,
+	});
+	for (let i = 0; i < lines.length; i++) {
+		const l = lines[i];
+		const gitStart = l.kind === "meta" && l.text.startsWith("diff --git ");
+		// Bare `---`/`+++` diffs without a `diff --git` line.
+		const bareStart =
+			!inGitHeader &&
+			l.kind === "meta" &&
+			l.text.startsWith("--- ") &&
+			lines[i + 1]?.text.startsWith("+++ ") === true;
+		if (l.kind === "hunk") inGitHeader = false;
+		if (gitStart || bareStart) {
+			if (cur && i > cur.start) {
+				cur.end = i;
+				files.push(cur);
+			}
+			cur = open(i);
+			inGitHeader = gitStart;
+			if (gitStart) {
+				const m = /^diff --git a\/(.+?) b\/(.+)$/.exec(l.text);
+				if (m) {
+					cur.path = m[2];
+					if (m[1] !== m[2]) cur.oldPath = m[1];
+				}
+			}
+		}
+		if (!cur) cur = open(i);
+		if (l.kind === "add") cur.adds++;
+		else if (l.kind === "del") cur.dels++;
+		else if (l.kind === "meta") {
+			const t = l.text;
+			if (t.startsWith("new file mode")) cur.status = "added";
+			else if (t.startsWith("deleted file mode")) cur.status = "deleted";
+			else if (t.startsWith("rename from ")) {
+				cur.status = "renamed";
+				cur.oldPath = t.slice(12);
+			} else if (t.startsWith("rename to ")) cur.path = t.slice(10);
+			else if (t.startsWith("Binary files ") || t === "GIT binary patch")
+				cur.binary = true;
+			else if (t.startsWith("+++ ")) {
+				const p = t.slice(4);
+				if (p === "/dev/null") cur.status = "deleted";
+				else cur.path = p.replace(/^b\//, "");
+			} else if (t.startsWith("--- ")) {
+				const p = t.slice(4);
+				if (p === "/dev/null") cur.status = "added";
+				else if (cur.path === null) cur.path = p.replace(/^a\//, "");
+			}
+		}
+	}
+	if (cur) {
+		cur.end = lines.length;
+		files.push(cur);
+	}
+	return files;
+}
+
 export interface SelectionAnnotation {
 	file?: string;
 	lines?: string;

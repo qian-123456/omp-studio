@@ -10,6 +10,7 @@ import type {
 	BacklogKind,
 	BacklogPatch,
 	BacklogRef,
+	BaseSyncResult,
 	BranchInfo,
 	DiscoveredModel,
 	DirEntry,
@@ -27,11 +28,17 @@ import type {
 	OauthLoginStatus,
 	OmpConfigListResult,
 	OmpProjectConfigFile,
+	ModelRoleSnapshot,
 	OmpProviderInfo,
 	OmpImportResult,
 	OmpUsageReportData,
 	PairingInfo,
 	PathCheck,
+	PrivacyMarkScope,
+	PrivacySnapshot,
+	SecretClassification,
+	SecretEntry,
+	SecretEntryPatch,
 	PendingUiRequest,
 	PluginCatalog,
 	ProcessMemoryInfo,
@@ -272,6 +279,19 @@ export const gitMergePreview = (
 export const gitMergeBranch = (repo: string, sourceBranch: string) =>
 	invoke<string>("git_merge_branch", { repo, sourceBranch });
 
+/** Patch of commits on HEAD since its merge-base with the local base branch. */
+export const gitDiffBase = (cwd: string) => invoke<string>("git_diff_base", { cwd });
+
+/** Rebase onto the base branch; conflicts abort and reject with `CONFLICT:\n<files>`. */
+export const gitRebaseOntoBase = (cwd: string) => invoke<string>("git_rebase_onto_base", { cwd });
+
+/** Reset tracked files to HEAD and remove untracked (non-ignored) files. */
+export const gitDiscardAll = (cwd: string) => invoke<void>("git_discard_all", { cwd });
+
+/** Merge base into the worktree's branch, then fast-forward the local base (local only). */
+export const gitSyncWithBase = (cwd: string) =>
+	invoke<BaseSyncResult>("git_sync_with_base", { cwd });
+
 export const gitGetPrUrl = (
 	repo: string,
 	sourceBranch: string,
@@ -412,9 +432,19 @@ export const ompConfigReset = (key: string) =>
 export const ompProjectConfigRead = (cwd: string) =>
 	invoke<OmpProjectConfigFile>("omp_project_config_read", { cwd });
 
-/** Atomically write `<cwd>/.omp/config.yml`, creating `.omp/` when missing. */
-export const ompProjectConfigWrite = (cwd: string, content: string) =>
-	invoke<void>("omp_project_config_write", { cwd, content });
+/** Model-role snapshot for `cwd`: global and project layers plus every discovered agent resolved. */
+export const ompModelRolesRead = (cwd: string | null, sessionModel: string | null) =>
+	invoke<ModelRoleSnapshot>("omp_model_roles_read", { cwd, sessionModel });
+
+/** Set (`value`) or delete (`null`) one `modelRoles` / `task.agentModelOverrides` entry in one scope. */
+export const ompModelRolesSet = (
+	cwd: string | null,
+	scope: "global" | "project",
+	table: "modelRoles" | "agentModelOverrides",
+	name: string,
+	value: string | null,
+	sessionModel: string | null,
+) => invoke<ModelRoleSnapshot>("omp_model_roles_set", { cwd, scope, table, name, value, sessionModel });
 
 // ---- providers ----
 
@@ -624,3 +654,23 @@ export const ompUpdateCheck = () =>
 	invoke<import("./contracts").OmpUpdateStatus>("omp_update_check");
 /** Run `omp update` (300s timeout) and re-probe `omp --version`. */
 export const ompUpdateRun = () => invoke<import("./contracts").OmpUpdateResult>("omp_update_run");
+/** Stat-only check: current omp binary fingerprint and live sessions spawned from an older one. */
+export const rpcOmpStaleness = () => invoke<import("./contracts").OmpStaleness>("rpc_omp_staleness");
+
+// --- [P] privacy placeholders ---
+export const privacyList = () => invoke<PrivacySnapshot>("privacy_list");
+export const privacyClassify = (sessionId: string | null, value: string) =>
+	invoke<SecretClassification>("privacy_classify", { sessionId, value });
+export const privacyMark = (
+	sessionId: string | null,
+	value: string,
+	label: string | null,
+	track: boolean,
+	scope: PrivacyMarkScope = "all",
+) => invoke<SecretEntry>("privacy_mark", { sessionId, value, label, track, scope });
+export const privacyUpdate = (id: string, patch: SecretEntryPatch) =>
+	invoke<SecretEntry>("privacy_update", { id, patch });
+export const privacyDelete = (id: string) =>
+	invoke<void>("privacy_delete", { id });
+export const privacySessionEntryIds = (sessionId: string) =>
+	invoke<string[]>("privacy_session_entry_ids", { sessionId });

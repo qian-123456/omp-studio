@@ -311,6 +311,16 @@ pub struct LiveSessionInfo {
     pub cwd: String,
 }
 
+/// `rpc_omp_staleness`: current omp binary identity vs live sessions' spawn identity.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpStaleness {
+    /// Canonical exe path + mtime + size of the binary a new spawn would exec; None if unresolvable.
+    pub fingerprint: Option<String>,
+    /// Live sessions spawned from a different binary identity.
+    pub stale_session_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartOpts {
@@ -499,6 +509,10 @@ pub struct WorktreeInfo {
     /// Number of uncommitted changes (0 = clean).
     pub dirty: u32,
     pub session_ids: Vec<String>,
+    /// Commits on HEAD not in the local base branch (main/master).
+    pub ahead: u32,
+    /// Commits in the local base branch not in HEAD.
+    pub behind: u32,
 }
 
 /// Detailed information about a local or remote Git branch.
@@ -531,6 +545,15 @@ pub struct BranchInfo {
     pub behind: u32,
     /// Whether this branch is merged into default base (main/master).
     pub is_merged: bool,
+}
+
+/// Result of `git_sync_with_base`: commits merged in from base, and commits
+/// the local base branch was fast-forwarded by.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaseSyncResult {
+    pub merged_from_base: u32,
+    pub fast_forwarded: u32,
 }
 
 /// Preview of a branch merge operation without touching the working tree.
@@ -705,6 +728,9 @@ pub struct Settings {
     pub dock_badge_enabled: bool,
     /// Default true: background refresh of session summaries.
     pub session_turn_auto_refresh: bool,
+    /// Default true: split sessions under a project by git worktree/branch.
+    #[serde(default = "default_true")]
+    pub session_group_by_worktree: bool,
     /// Turn checkpoints for app-launched sessions (spawn adds `-e` with the
     /// checkpoints extension). None = never asked; Some(false) = declined/off.
     #[serde(default)]
@@ -713,10 +739,17 @@ pub struct Settings {
     /// (None = never set → treated as enabled).
     #[serde(default)]
     pub queue_auto_send: Option<bool>,
+    /// Run `omp update` automatically when the startup check finds a new
+    /// version (None = never set → treated as off).
+    #[serde(default)]
+    pub omp_auto_update: Option<bool>,
     /// Inbox window in hours (default 24, valid 1..=720): non-blocking todos older
     /// than this are hidden from the inbox.
     #[serde(default = "default_inbox_window_hours")]
     pub inbox_window_hours: u32,
+    /// Hours between automatic omp update checks while the app runs (default 24, valid 1..=720).
+    #[serde(default = "default_omp_check_interval_hours")]
+    pub omp_check_interval_hours: u32,
     /// Git delivery mode for main branch: "pr" (default, opens GitHub PR) or "direct" (merges locally and pushes to main).
     #[serde(default = "default_git_delivery_mode")]
     pub git_delivery_mode: String,
@@ -732,6 +765,13 @@ pub struct Settings {
     /// "HH:MM" daily diagnosis time (scheduled mode); default "23:00".
     #[serde(default = "default_doctor_schedule_time")]
     pub doctor_schedule_time: String,
+    /// Show real values in privacy chips by default (None ⇒ true).
+    #[serde(default)]
+    pub privacy_reveal_default: Option<bool>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_doctor_model() -> String {
@@ -755,6 +795,10 @@ fn default_git_delivery_mode() -> String {
 }
 
 fn default_inbox_window_hours() -> u32 {
+    24
+}
+
+fn default_omp_check_interval_hours() -> u32 {
     24
 }
 
@@ -786,16 +830,99 @@ impl Default for Settings {
             home_show_completed_todos: false,
             dock_badge_enabled: true,
             session_turn_auto_refresh: true,
+            session_group_by_worktree: true,
             turn_checkpoints: None,
             queue_auto_send: None,
+            omp_auto_update: None,
             inbox_window_hours: default_inbox_window_hours(),
+            omp_check_interval_hours: default_omp_check_interval_hours(),
             git_delivery_mode: default_git_delivery_mode(),
             doctor_model: default_doctor_model(),
             doctor_auto_mode: default_doctor_auto_mode(),
             doctor_idle_minutes: default_doctor_idle_minutes(),
             doctor_schedule_time: default_doctor_schedule_time(),
+            privacy_reveal_default: None,
         }
     }
+}
+
+/// Privacy placeholder risk tier (§4 [P]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SecretRisk {
+    Safe,
+    Risky,
+}
+
+/// One marked secret value (§4 [P]).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretEntry {
+    pub id: String,
+    pub value: String,
+    pub label: Option<String>,
+    /// Current placeholder `⟦LABEL_xxxx⟧`.
+    pub placeholder: String,
+    /// Legacy placeholders kept restorable (rows from before placeholders became
+    /// immutable; no new rows are created).
+    pub aliases: Vec<String>,
+    pub risk: SecretRisk,
+    pub track: bool,
+    pub in_library: bool,
+    pub library_prompted: bool,
+    pub created_at: String,
+    /// Number of sessions this entry is linked to (delete/untrack confirmation).
+    pub session_count: u32,
+    /// Per-session "protect only from here" cutoffs (epoch ms). Backend-only:
+    /// feeds `secrets.json`, never serialized to the frontend.
+    #[serde(default, skip_serializing)]
+    pub cutoffs: std::collections::BTreeMap<String, i64>,
+}
+
+/// Which part of the session history a new mark protects (§7 `privacy_mark`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PrivacyMarkScope {
+    /// Only messages from now on; earlier history stays untouched.
+    Future,
+    /// The whole session history (default).
+    #[default]
+    All,
+}
+
+/// Partial update for `privacy_update`; `label: Some("")` clears the label.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretEntryPatch {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub track: Option<bool>,
+    #[serde(default)]
+    pub in_library: Option<bool>,
+    #[serde(default)]
+    pub library_prompted: Option<bool>,
+}
+
+/// Return value of `privacy_list`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivacySnapshot {
+    pub entries: Vec<SecretEntry>,
+    /// "ok" | "conflict" | "error" (OMP global secrets.yml write status).
+    pub native_status: String,
+    pub native_error: Option<String>,
+}
+
+/// Return value of `privacy_classify`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretClassification {
+    /// "safe" | "risky" | "reject".
+    pub level: String,
+    /// TOO_SHORT | INVALID_VALUE | SHORT | COMMON.
+    pub reason: Option<String>,
+    pub session_occurrences: u32,
 }
 
 /// Return value of `app_paths` (§7 LEAD).

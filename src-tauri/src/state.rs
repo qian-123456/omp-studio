@@ -41,6 +41,8 @@ pub enum AppEvent {
     TodosChanged,
     BacklogChanged,
     ServicesChanged,
+    /// Privacy entries mutated; frontend receives `privacy_changed` (no payload).
+    PrivacyChanged,
 }
 
 #[derive(Clone)]

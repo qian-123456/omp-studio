@@ -139,7 +139,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 							"px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors border",
 							isRunning
 								? "opacity-50 cursor-not-allowed bg-[var(--bg)] border-[var(--border-divider)] text-neutral-400"
-								: "bg-[var(--bg)] hover:bg-[var(--bg-hover)] border-[var(--border-divider)] text-neutral-200 hover:text-white",
+								: "bg-[var(--bg)] hover:bg-[var(--bg-hover)] border-[var(--border-divider)] text-neutral-200 hover:text-[var(--text)]",
 						)}
 						title="立即触发一次执行"
 					>

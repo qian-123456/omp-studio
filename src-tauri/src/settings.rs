@@ -646,40 +646,12 @@ fn project_config_read_blocking(cwd: &str) -> Result<OmpProjectConfigFile, Strin
     })
 }
 
-fn project_config_write_blocking(cwd: &str, content: &str) -> Result<(), String> {
-    let path = project_config_path(cwd)?;
-    let omp_dir = path.parent().ok_or("invalid path")?;
-    std::fs::create_dir_all(omp_dir).map_err(|e| format!("无法创建 .omp 目录：{e}"))?;
-    // Preserve a symlinked config: write through to the link target instead of
-    // replacing the link with a regular file (temp+rename would clobber it).
-    let target = match std::fs::symlink_metadata(&path) {
-        Ok(meta) if meta.file_type().is_symlink() => match std::fs::canonicalize(&path) {
-            Ok(resolved) => resolved,
-            Err(_) => {
-                let link =
-                    std::fs::read_link(&path).map_err(|e| format!("无法解析符号链接：{e}"))?;
-                omp_dir.join(link)
-            }
-        },
-        _ => path,
-    };
-    crate::services::files::write_text(&target, content)
-}
-
 /// `omp_project_config_read` (§7 D): reads `<cwd>/.omp/config.yml`; missing → `exists: false`.
 #[tauri::command]
 pub async fn omp_project_config_read(cwd: String) -> Result<OmpProjectConfigFile, String> {
     tokio::task::spawn_blocking(move || project_config_read_blocking(&cwd))
         .await
         .map_err(|e| format!("读取项目配置失败：{e}"))?
-}
-
-/// `omp_project_config_write` (§7 D): atomically writes `<cwd>/.omp/config.yml`, creating `.omp/`.
-#[tauri::command]
-pub async fn omp_project_config_write(cwd: String, content: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || project_config_write_blocking(&cwd, &content))
-        .await
-        .map_err(|e| format!("写入项目配置失败：{e}"))?
 }
 
 #[cfg(test)]
@@ -701,45 +673,6 @@ mod tests {
         assert!(!r.exists);
         assert!(r.content.is_empty());
         assert!(r.path.ends_with(".omp/config.yml"));
-    }
-
-    #[test]
-    fn test_project_config_write_roundtrip() {
-        let dir = project_test_dir("roundtrip");
-        let cwd = dir.to_str().unwrap();
-        let yaml = "# keep\nmodelRoles:\n  default: a/b\n";
-        project_config_write_blocking(cwd, yaml).unwrap();
-        assert!(dir.join(".omp").is_dir());
-        let r = project_config_read_blocking(cwd).unwrap();
-        assert!(r.exists);
-        assert_eq!(r.content, yaml);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_project_config_write_preserves_symlink() {
-        let dir = project_test_dir("symlink");
-        std::fs::create_dir_all(dir.join(".omp")).unwrap();
-        let real = dir.join("real.yml");
-        std::fs::write(&real, "old").unwrap();
-        let link = dir.join(".omp/config.yml");
-        std::os::unix::fs::symlink(&real, &link).unwrap();
-        project_config_write_blocking(dir.to_str().unwrap(), "new").unwrap();
-        assert!(std::fs::symlink_metadata(&link)
-            .unwrap()
-            .file_type()
-            .is_symlink());
-        assert_eq!(std::fs::read_to_string(&real).unwrap(), "new");
-    }
-
-    #[test]
-    fn test_project_config_write_rejects_bad_cwd() {
-        assert!(project_config_write_blocking("relative/dir", "x").is_err());
-        assert!(project_config_write_blocking("", "x").is_err());
-        assert!(
-            project_config_write_blocking("/tmp/ompws-test-d/definitely-missing-dir", "x").is_err()
-        );
-        assert!(!std::path::Path::new("/tmp/ompws-test-d/definitely-missing-dir").exists());
     }
 
     #[test]

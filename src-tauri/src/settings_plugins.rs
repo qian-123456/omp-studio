@@ -64,7 +64,7 @@ pub struct PluginCatalog {
 
 /// `~/.omp/plugins`, honoring `$XDG_DATA_HOME/omp/plugins` once created (same
 /// rule omp uses after `omp config init-xdg`).
-fn user_plugins_root() -> PathBuf {
+pub(crate) fn user_plugins_root() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         if !xdg.trim().is_empty() {
             let p = PathBuf::from(xdg).join("omp").join("plugins");
@@ -249,7 +249,7 @@ fn read_pkg_meta(dir: &Path) -> (Option<String>, Option<String>, bool) {
     )
 }
 
-fn scan_plugins(user_root: &Path, cwd: Option<&Path>) -> PluginCatalog {
+pub(crate) fn scan_plugins(user_root: &Path, cwd: Option<&Path>) -> PluginCatalog {
     let mut roots = Vec::new();
     let mut plugins: Vec<PluginItem> = Vec::new();
     // name seen at user level (project entries shadow, not duplicate)

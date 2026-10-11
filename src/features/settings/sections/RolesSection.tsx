@@ -1,19 +1,17 @@
-/** Settings ▸ 模型角色 (`omp-roles`): header around ModelRolesSection. */
-import { ModelRolesSection } from "../ModelRolesSection";
+/** Settings ▸ 模型角色 (`omp-roles`): header around the model-assignment panel. */
+import { AgentModelAssignmentsPanel } from "../AgentModelAssignmentsPanel";
 import { useSettingsNav } from "../settingsNav";
-import { useSettingsProjectCwd } from "../useAppSettings";
 import { SectionHeader } from "../ui";
 
 export function RolesSection() {
 	const { query } = useSettingsNav();
-	const cwd = useSettingsProjectCwd();
 	return (
 		<div className="space-y-6" data-field-id="modelRolesPanel">
 			<SectionHeader
-				title="模型角色与回退链"
-				description="为每类任务指定主力模型与回退顺序（对应 omp /model 的 Roles 视图），可全局设置或按项目覆盖"
+				title="模型角色"
+				description="展开一行即可配置，选定即自动保存；默认编辑全局，也可切到某个项目单独设置"
 			/>
-			<ModelRolesSection query={query} cwd={cwd} />
+			<AgentModelAssignmentsPanel query={query} />
 		</div>
 	);
 }

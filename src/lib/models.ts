@@ -129,7 +129,7 @@ export function resolveCurrentModel(
 				value: key,
 				provider,
 				id,
-				label: matched?.name ?? key,
+				label: matched?.id ?? key,
 			};
 		}
 		// id only (no slash)
@@ -141,7 +141,7 @@ export function resolveCurrentModel(
 				value: key,
 				provider: matched.provider,
 				id: matched.id,
-				label: matched.name,
+				label: matched.id,
 			};
 		}
 		return {
@@ -177,27 +177,21 @@ export function resolveCurrentModel(
 			provider = id.slice(0, slashIndex).trim();
 			const cleanId = id.slice(slashIndex + 1).trim();
 			const key = toModelKey(provider, cleanId);
-			const matched = availableModels?.find(
-				(m) => m.provider === provider && m.id === cleanId,
-			);
 			return {
 				value: key,
 				provider,
 				id: cleanId,
-				label: rawName || matched?.name || key,
+				label: cleanId || key,
 			};
 		}
 
 		if (provider && id) {
 			const key = toModelKey(provider, id);
-			const matched = availableModels?.find(
-				(m) => m.provider === provider && m.id === id,
-			);
 			return {
 				value: key,
 				provider,
 				id,
-				label: rawName || matched?.name || key,
+				label: id || key,
 			};
 		}
 

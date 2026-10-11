@@ -290,7 +290,7 @@ export function OrphanBadge({
 			aria-label={`${count} 个工作树闲置`}
 			title={`检测到 ${count} 个工作树闲置中（未关联任何会话），点击查看或清理`}
 			className={clsx(
-				"flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-all select-none",
+				"flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium transition-all select-none",
 				open
 					? "bg-amber-500/25 border border-amber-500/50 text-amber-300 shadow-sm"
 					: "bg-amber-500/10 border border-amber-500/25 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300",

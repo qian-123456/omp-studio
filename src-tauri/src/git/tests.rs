@@ -434,3 +434,133 @@ fn detailed_branch_listing_and_merge_preview() {
     assert!(!pr_info.is_github);
     std::fs::remove_dir_all(&repo).unwrap();
 }
+
+/// Main repo on `main` with `a.txt`, plus a linked worktree on `omp/<name>`.
+fn repo_with_worktree(tag: &str) -> (PathBuf, PathBuf) {
+    let repo = temp_repo(tag);
+    commit(&repo, "a.txt", "a\n", "init");
+    let wt = worktree::create(&repo, tag, None, None).unwrap();
+    (repo, PathBuf::from(wt.path))
+}
+
+fn head(dir: &Path) -> String {
+    git_ok(dir, &["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string()
+}
+
+#[test]
+fn sync_with_base_merges_and_fast_forwards_checked_out_base() {
+    let (repo, wt) = repo_with_worktree("sync");
+    commit(&repo, "b.txt", "b\n", "main work");
+    commit(&wt, "c.txt", "c\n", "wt work");
+
+    let listed = worktree::list(&repo, &[]).unwrap();
+    let info = listed.iter().find(|w| Path::new(&w.path) == wt).unwrap();
+    assert_eq!((info.ahead, info.behind), (1, 1));
+    let main_info = listed
+        .iter()
+        .find(|w| w.branch.as_deref() == Some("main"))
+        .unwrap();
+    assert_eq!((main_info.ahead, main_info.behind), (0, 0));
+
+    let diff = base_sync::diff_base(&wt).unwrap();
+    assert!(diff.contains("c.txt") && !diff.contains("b.txt"));
+
+    let res = base_sync::sync_with_base(&wt).unwrap();
+    assert_eq!(res.merged_from_base, 1);
+    // The wt commit plus the merge commit.
+    assert_eq!(res.fast_forwarded, 2);
+    assert_eq!(head(&repo), head(&wt));
+    assert!(repo.join("c.txt").exists() && wt.join("b.txt").exists());
+    let info = worktree::list(&repo, &[])
+        .unwrap()
+        .into_iter()
+        .find(|w| Path::new(&w.path) == wt)
+        .unwrap();
+    assert_eq!((info.ahead, info.behind), (0, 0));
+
+    // Base itself and dirty worktrees are refused.
+    assert!(base_sync::sync_with_base(&repo).is_err());
+    std::fs::write(wt.join("dirty.txt"), "x").unwrap();
+    assert!(base_sync::sync_with_base(&wt).is_err());
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
+fn sync_with_base_updates_ref_when_base_not_checked_out() {
+    let (repo, wt) = repo_with_worktree("syncref");
+    git_ok(&repo, &["checkout", "-q", "-b", "parking"]).unwrap();
+    commit(&wt, "c.txt", "c\n", "wt work");
+    let res = base_sync::sync_with_base(&wt).unwrap();
+    assert_eq!((res.merged_from_base, res.fast_forwarded), (0, 1));
+    let main = git_ok(&repo, &["rev-parse", "refs/heads/main"]).unwrap();
+    assert_eq!(main.trim(), head(&wt));
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+fn conflicting(tag: &str) -> (PathBuf, PathBuf) {
+    let (repo, wt) = repo_with_worktree(tag);
+    commit(&repo, "a.txt", "main\n", "main edit");
+    commit(&wt, "a.txt", "wt\n", "wt edit");
+    (repo, wt)
+}
+
+#[test]
+fn sync_with_base_conflict_aborts_merge() {
+    let (repo, wt) = conflicting("syncconf");
+    let before = head(&wt);
+    let err = base_sync::sync_with_base(&wt).unwrap_err();
+    assert!(err.starts_with("CONFLICT:"), "{err}");
+    assert!(err.lines().any(|l| l == "a.txt"), "{err}");
+    assert!(status::summary(&wt).files.is_empty());
+    assert!(git_ok(&wt, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_err());
+    assert_eq!(head(&wt), before);
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
+fn rebase_conflict_leaves_no_rebase_in_progress() {
+    let (repo, wt) = conflicting("rebconf");
+    let before = head(&wt);
+    let err = base_sync::rebase_onto_base(&wt).unwrap_err();
+    assert!(err.starts_with("CONFLICT:"), "{err}");
+    for dir in ["rebase-merge", "rebase-apply"] {
+        let p = git_ok(
+            &wt,
+            &["rev-parse", "--path-format=absolute", "--git-path", dir],
+        )
+        .unwrap();
+        assert!(!Path::new(p.trim()).exists(), "{dir} left behind");
+    }
+    assert_eq!(head(&wt), before);
+    assert!(status::summary(&wt).files.is_empty());
+    std::fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
+fn discard_all_keeps_ignored_files() {
+    let repo = temp_repo("discard");
+    commit(
+        &repo,
+        ".gitignore",
+        "ignored.txt\nnode_modules/\n",
+        "ignore",
+    );
+    commit(&repo, "a.txt", "a\n", "init");
+    std::fs::write(repo.join("a.txt"), "changed\n").unwrap();
+    std::fs::write(repo.join("new.txt"), "new\n").unwrap();
+    std::fs::create_dir_all(repo.join("sub")).unwrap();
+    std::fs::write(repo.join("sub/x.txt"), "x\n").unwrap();
+    std::fs::write(repo.join("ignored.txt"), "keep\n").unwrap();
+    std::fs::create_dir_all(repo.join("node_modules")).unwrap();
+    std::fs::write(repo.join("node_modules/m.js"), "m\n").unwrap();
+
+    base_sync::discard_all(&repo).unwrap();
+    assert_eq!(std::fs::read_to_string(repo.join("a.txt")).unwrap(), "a\n");
+    assert!(!repo.join("new.txt").exists() && !repo.join("sub").exists());
+    assert!(repo.join("ignored.txt").exists() && repo.join("node_modules/m.js").exists());
+    assert!(status::summary(&repo).files.is_empty());
+    std::fs::remove_dir_all(&repo).unwrap();
+}

@@ -4,19 +4,17 @@
  */
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ModelSelect } from "../../../components/ModelSelect";
 import { Segmented } from "../../../components/Segmented";
 import { ompConfigSet } from "../../../lib/ipc";
 import { toModelKey } from "../../../lib/models";
-import { toast } from "../../../lib/toast";
 import { formatShortModel } from "../../chat/turnGrouping";
-import { asRecord, roleValue, splitRoleValue, withRoleAssignment } from "../modelRoles";
+import { asRecord, roleValue, splitRoleValue } from "../modelRoles";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { useSettingsNav } from "../settingsNav";
+import { openSettingsTarget } from "../settingsTargets";
 import { DEFAULT_SETTINGS } from "../store";
 import { useAppSettings, useCatalogModels } from "../useAppSettings";
 import {
-	MODEL_PICKER_BUTTON_CLASS,
 	SETTINGS_BUTTON_CLASS,
 	SectionHeader,
 	SettingRow,
@@ -36,10 +34,9 @@ const APPROVAL_OPTIONS: { value: ApprovalMode; label: string; desc: string }[] =
 
 export function GeneralSection() {
 	const { settings, save } = useAppSettings();
-	const { models, catalogKeys } = useCatalogModels();
+	const { models } = useCatalogModels();
 	const { navigate } = useSettingsNav();
 	const approvalSave = useSaveStatus();
-	const modelSave = useSaveStatus();
 	const shortcutSave = useSaveStatus();
 
 	const ompEntries = useOmpConfigStore((s) => s.entries);
@@ -80,7 +77,7 @@ export function GeneralSection() {
 	const fallbackShortName = defaultSelector ? formatShortModel(defaultSelector) : "";
 	// ModelSelect appends " · <level>" itself when currentValue carries a suffix.
 	const modelLabel = defaultRole
-		? (matchedModel?.name ?? (fallbackShortName || defaultRole))
+		? (matchedModel?.id ?? (fallbackShortName || defaultRole))
 		: (ompLoaded ? "OMP 内置默认" : "加载中…");
 
 	const approval = (settings?.defaultApprovalMode ?? "write") as ApprovalMode;
@@ -94,37 +91,16 @@ export function GeneralSection() {
 				<SettingRow
 					fieldId="newSessionModel"
 					label="全局默认模型 (主力模型)"
-					description="新对话与常规问答默认使用的主力模型（对应 OMP 全局 default 角色）。"
-					status={modelSave.status}
-					statusError={modelSave.error}
+					description="新对话与常规问答默认使用的主力模型（对应 OMP 全局角色 default）。在「模型角色」中修改。"
 					control={
-						<ModelSelect
-							direction="down"
-							align="end"
-							widthClass="w-[380px]"
-							label={modelLabel}
-							buttonClass={MODEL_PICKER_BUTTON_CLASS}
-							models={models}
-							currentValue={catalogKeys.has(defaultSelector ?? "") ? (defaultRole ?? "") : ""}
-							thinking
-							allowCustom
-							onSelect={(raw) => {
-								const v = raw.trim();
-								if (!v || v.startsWith("-")) {
-									toast.error("模型名不能以 '-' 开头");
-									return;
-								}
-								void modelSave.run(async () => {
-									const nextRoles = withRoleAssignment(currentRoles, "default", v);
-									await ompConfigSet("modelRoles", JSON.stringify(nextRoles));
-									await loadOmp(true);
-									if (settings?.newSessionModel) {
-										await save({ newSessionModel: null });
-									}
-									toast.success("已更新全局主力模型");
-								});
-							}}
-						/>
+						<div className="flex min-w-0 items-center gap-2">
+							<span className="min-w-0 truncate text-xs text-neutral-300" title={defaultRole ?? undefined}>
+								{modelLabel}
+							</span>
+							<button type="button" onClick={() => openSettingsTarget("models")} className={SETTINGS_BUTTON_CLASS}>
+								在模型角色中修改
+							</button>
+						</div>
 					}
 				/>
 

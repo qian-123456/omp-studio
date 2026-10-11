@@ -35,7 +35,7 @@ pub fn open() -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
-fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if version < 1 {
         conn.execute_batch(SCHEMA_V1)?;
@@ -84,6 +84,30 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if version < 4 {
         conn.execute_batch("ALTER TABLE backlog ADD COLUMN project_dir TEXT;")?;
         conn.pragma_update(None, "user_version", 4)?;
+    }
+    // v5: privacy placeholders (secret entries, alias placeholders, session links).
+    if version < 5 {
+        conn.execute_batch(
+            "CREATE TABLE secret_entries(
+               id TEXT PRIMARY KEY,
+               value TEXT NOT NULL UNIQUE,
+               label TEXT,
+               placeholder TEXT NOT NULL UNIQUE,
+               risk TEXT NOT NULL,
+               track INTEGER NOT NULL DEFAULT 1,
+               in_library INTEGER NOT NULL DEFAULT 0,
+               library_prompted INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL
+             );
+             CREATE TABLE secret_aliases(placeholder TEXT PRIMARY KEY, entry_id TEXT NOT NULL);
+             CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY(session_id, entry_id));",
+        )?;
+        conn.pragma_update(None, "user_version", 5)?;
+    }
+    // v6: per-session "protect only from here" cutoff (epoch ms; NULL = whole history).
+    if version < 6 {
+        conn.execute_batch("ALTER TABLE session_secrets ADD COLUMN since_ms INTEGER;")?;
+        conn.pragma_update(None, "user_version", 6)?;
     }
     Ok(())
 }
@@ -158,7 +182,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 6);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -181,7 +205,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 4);
+        assert_eq!(v3, 6);
     }
 
     #[test]
@@ -191,7 +215,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 4);
+        assert_eq!(v, 6);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",

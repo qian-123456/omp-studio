@@ -53,6 +53,13 @@ export function SessionsSection() {
 					checked={settings?.sessionTurnAutoRefresh ?? true}
 					onChange={(v) => save({ sessionTurnAutoRefresh: v })}
 				/>
+				<ToggleRow
+					fieldId="sessionGroupByWorktree"
+					label="按工作树区分会话"
+					description="开启：项目下的会话按 Git 工作树 / 分支分组显示，并可在指定工作树新建会话。关闭：每个项目只显示一个平铺的会话列表，不再区分工作树。"
+					checked={settings?.sessionGroupByWorktree ?? true}
+					onChange={(v) => save({ sessionGroupByWorktree: v })}
+				/>
 			</SettingsCard>
 			<SettingsCard title="上下文压缩">
 				<SettingRow

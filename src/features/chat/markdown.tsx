@@ -14,6 +14,8 @@ import remarkGfm from "remark-gfm";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
+import { MarkdownSecretChip } from "../privacy/SecretChip";
+import { SECRET_CHIP_TAG, rehypeSecretChips } from "../privacy/render";
 
 function extractText(node: React.ReactNode): string {
 	if (typeof node === "string") return node;
@@ -181,7 +183,10 @@ function TableBlock({
 }
 
 const REMARK_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["remarkPlugins"]> = [remarkGfm];
-const REHYPE_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]> = [[rehypeHighlight, { detect: false }]];
+const REHYPE_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]> = [
+	[rehypeHighlight, { detect: false }],
+	rehypeSecretChips,
+];
 function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
 	if (typeof src !== "string" || !src) return null;
 	const resolved = /^(?:https?|data|asset):/i.test(src) ? src : convertFileSrc(src);
@@ -200,6 +205,7 @@ const MARKDOWN_COMPONENTS = {
 	a: MarkdownLink,
 	table: TableBlock,
 	img: MarkdownImage,
+	[SECRET_CHIP_TAG]: MarkdownSecretChip,
 };
 
 export const Markdown = React.memo(function Markdown({ text }: { text: string }) {

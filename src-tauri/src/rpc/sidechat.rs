@@ -99,6 +99,10 @@ pub async fn create(
                 parent_depth + 1,
             ],
         );
+        // The forked transcript carries the parent's placeholders.
+        if let Err(e) = crate::privacy::inherit_session(&db, parent_session_id, &info.session_id) {
+            tracing::warn!("privacy inherit_session: {e}");
+        }
     }
 
     rpc::send_prompt(state, &info.session_id, &first_prompt).await?;

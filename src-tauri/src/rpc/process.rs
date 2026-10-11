@@ -80,6 +80,10 @@ pub struct SessionHandle {
     pub streaming: AtomicBool,
     pub alive: AtomicBool,
     pub last_activity: parking_lot::Mutex<Instant>,
+    /// Identity of the omp binary exec'd at spawn (`omp_fingerprint`); None if unknown.
+    pub omp_fingerprint: Option<String>,
+    /// `privacy::native_hash()` at spawn (native secrets.yml snapshot the process loaded).
+    pub native_hash: String,
 }
 
 impl SessionHandle {
@@ -100,6 +104,8 @@ impl SessionHandle {
             streaming: AtomicBool::new(false),
             alive: AtomicBool::new(true),
             last_activity: parking_lot::Mutex::new(Instant::now()),
+            omp_fingerprint: None,
+            native_hash: String::new(),
         }
     }
 
@@ -115,6 +121,48 @@ impl SessionHandle {
     pub fn touch(&self) {
         *self.last_activity.lock() = Instant::now();
     }
+}
+
+/// Opaque identity of the file `bin` resolves to under `path` (the PATH given
+/// to the child): canonical path + mtime + size. Stat only; None if unresolvable.
+pub(crate) fn omp_fingerprint(bin: &str, path: &str) -> Option<String> {
+    let exe = crate::todos::omp::resolve_binary(bin, path);
+    let canonical = std::fs::canonicalize(&exe).ok()?;
+    let meta = std::fs::metadata(&canonical).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    Some(format!("{}|{mtime}|{}", canonical.display(), meta.len()))
+}
+
+/// Fingerprint of the omp binary a new session spawned now would exec.
+pub(crate) async fn current_omp_fingerprint(settings: &Settings) -> Option<String> {
+    let path = augmented_path().await;
+    omp_fingerprint(&settings.omp_binary, &path)
+}
+
+/// Sessions whose spawn fingerprint is known and differs from `current`.
+/// Unknown spawn fingerprints, or an unknown current one, are never stale.
+pub(crate) fn stale_session_ids<'a>(
+    current: Option<&str>,
+    sessions: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
+) -> Vec<String> {
+    let Some(current) = current else {
+        return Vec::new();
+    };
+    let mut ids: Vec<String> = sessions
+        .into_iter()
+        .filter(|(_, fp)| fp.is_some_and(|fp| fp != current))
+        .map(|(id, _)| id.to_string())
+        .collect();
+    ids.sort();
+    ids
 }
 
 /// Apply one inbound logical frame to handle state (no emission).
@@ -321,6 +369,11 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
             cmd.arg("-e").arg::<PathBuf>(ext);
         }
     }
+    // Privacy placeholders extension: always loaded for app sessions.
+    let ext = paths::privacy_extension_path();
+    if ext.exists() {
+        cmd.arg("-e").arg::<PathBuf>(ext);
+    }
     if let Some(ext) = crate::providers::try_extension_path() {
         cmd.arg("-e").arg(ext);
     }
@@ -390,8 +443,17 @@ pub async fn spawn_with_sink(
     let mut cmd = build_command(opts, settings)?;
     let path = augmented_path().await;
     cmd.env("PATH", &path);
+    // Same resolution std uses for the child (program looked up in the child's PATH).
+    let omp_fingerprint = omp_fingerprint(&settings.omp_binary, &path);
     // Inject configured API provider keys and routing metadata (best effort; never logged).
     for (key, value) in crate::providers::omp_spawn_env() {
+        cmd.env(key, value);
+    }
+    let mut native_hash = String::new();
+    for (key, value) in crate::privacy::spawn_env() {
+        if key == "OMPWS_PRIVACY_NATIVE_HASH" {
+            native_hash.clone_from(&value);
+        }
         cmd.env(key, value);
     }
 
@@ -433,6 +495,8 @@ pub async fn spawn_with_sink(
         streaming: AtomicBool::new(false),
         alive: AtomicBool::new(true),
         last_activity: parking_lot::Mutex::new(Instant::now()),
+        omp_fingerprint,
+        native_hash,
     });
 
     // stdin writer task: drains the channel, exits on shutdown/close.
@@ -654,6 +718,35 @@ pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stale_ids_compare_known_fingerprints_only() {
+        let sessions = [("a", Some("fp1")), ("b", Some("fp2")), ("c", None)];
+        assert_eq!(stale_session_ids(Some("fp1"), sessions), vec!["b"]);
+        assert_eq!(stale_session_ids(Some("fp2"), sessions), vec!["a"]);
+        assert!(stale_session_ids(None, sessions).is_empty());
+    }
+
+    #[test]
+    fn fingerprint_changes_when_binary_rewritten() {
+        let dir = std::env::temp_dir().join(format!("omp-fp-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("omp");
+        std::fs::write(&bin, b"v1").unwrap();
+        let path = dir.to_string_lossy().to_string();
+        let by_name = omp_fingerprint("omp", &path).unwrap();
+        let by_path = omp_fingerprint(bin.to_str().unwrap(), "").unwrap();
+        assert_eq!(by_name, by_path);
+        std::fs::write(&bin, b"version-2").unwrap();
+        let after = omp_fingerprint("omp", &path).unwrap();
+        assert_ne!(after, by_name);
+        assert_eq!(
+            stale_session_ids(Some(&after), [("s", Some(by_name.as_str()))]),
+            vec!["s"]
+        );
+        assert!(omp_fingerprint("omp-missing", &path).is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn test_handle() -> Arc<SessionHandle> {
         Arc::new(SessionHandle::for_test())

@@ -222,17 +222,40 @@ pub fn list(repo: &Path, sessions: &[(String, String)]) -> Result<Vec<WorktreeIn
         .iter()
         .map(|(id, cwd)| (id.as_str(), canon(Path::new(cwd))))
         .collect();
+    let base = super::history::local_base(repo);
     Ok(entries
         .into_iter()
         .zip(paths.iter())
-        .map(|(e, p)| WorktreeInfo {
-            dirty: if p.is_dir() { dirty_count(p) } else { 0 },
-            session_ids: sessions_for_canon(p, &paths, &canon_sessions),
-            path: p.to_string_lossy().into_owned(),
-            branch: e.branch,
-            head: e.head,
+        .map(|(e, p)| {
+            let (ahead, behind) = match base.as_deref() {
+                Some(b) if p.is_dir() && e.branch.as_deref() != Some(b) => ahead_behind(p, b),
+                _ => (0, 0),
+            };
+            WorktreeInfo {
+                dirty: if p.is_dir() { dirty_count(p) } else { 0 },
+                session_ids: sessions_for_canon(p, &paths, &canon_sessions),
+                path: p.to_string_lossy().into_owned(),
+                branch: e.branch,
+                head: e.head,
+                ahead,
+                behind,
+            }
         })
         .collect())
+}
+
+/// `(ahead, behind)` of HEAD in `dir` relative to `base`; failures → (0, 0).
+pub fn ahead_behind(dir: &Path, base: &str) -> (u32, u32) {
+    let range = format!("{base}...HEAD");
+    git_ok(dir, &["rev-list", "--left-right", "--count", &range])
+        .ok()
+        .and_then(|t| {
+            let mut it = t.split_whitespace().map(|n| n.parse::<u32>().ok());
+            let behind = it.next()??;
+            let ahead = it.next()??;
+            Some((ahead, behind))
+        })
+        .unwrap_or((0, 0))
 }
 
 /// Make sure `<common-dir>/info/exclude` ignores `.worktrees/`.

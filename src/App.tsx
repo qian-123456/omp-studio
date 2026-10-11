@@ -17,7 +17,7 @@ import { startTodos } from "./features/todos/store";
 
 import { terminalSetCurrentSession } from "./lib/ipc";
 import { useSessions } from "./stores/sessions";
-import { useOmpUpdate } from "./stores/ompUpdate";
+import { useOmpUpdate, watchOmpStaleness, watchOmpUpdateChecks } from "./stores/ompUpdate";
 import { type CenterView, useUi } from "./stores/ui";
 import { Toaster } from "./components/Toaster";
 import { BottomBar } from "./components/BottomBar";
@@ -295,10 +295,16 @@ export default function App() {
 		returnToSession,
 	]);
 
-	// Initialize todos subscription; load versions and auto-check omp updates (≤ once per 6h)
+	// Initialize todos subscription; load versions and auto-check omp updates at the configured interval
 	useEffect(() => {
 		startTodos();
 		void useOmpUpdate.getState().checkOnStartup();
+		const stopChecks = watchOmpUpdateChecks();
+		const stopStaleness = watchOmpStaleness();
+		return () => {
+			stopChecks();
+			stopStaleness();
+		};
 	}, []);
 
 

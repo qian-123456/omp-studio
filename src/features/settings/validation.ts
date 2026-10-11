@@ -51,6 +51,7 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		"homeShowCompletedTodos",
 		"dockBadgeEnabled",
 		"sessionTurnAutoRefresh",
+		"sessionGroupByWorktree",
 	];
 
 	for (const k of boolKeys) {
@@ -74,6 +75,23 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 			return { ok: false, error: "字段 queueAutoSend 必须为布尔值或 null" };
 		}
 		out.queueAutoSend = raw.queueAutoSend as boolean | null;
+	}
+
+	if ("privacyRevealDefault" in raw) {
+		if (
+			raw.privacyRevealDefault !== null &&
+			typeof raw.privacyRevealDefault !== "boolean"
+		) {
+			return { ok: false, error: "字段 privacyRevealDefault 必须为布尔值或 null" };
+		}
+		out.privacyRevealDefault = raw.privacyRevealDefault as boolean | null;
+	}
+
+	if ("ompAutoUpdate" in raw) {
+		if (raw.ompAutoUpdate !== null && typeof raw.ompAutoUpdate !== "boolean") {
+			return { ok: false, error: "字段 ompAutoUpdate 必须为布尔值或 null" };
+		}
+		out.ompAutoUpdate = raw.ompAutoUpdate as boolean | null;
 	}
 
 	if ("defaultApprovalMode" in raw) {
@@ -121,6 +139,14 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 			return { ok: false, error: "收件箱自动移出时间必须是 1 到 720 小时之间的整数" };
 		}
 		out.inboxWindowHours = val;
+	}
+
+	if ("ompCheckIntervalHours" in raw) {
+		const val = raw.ompCheckIntervalHours;
+		if (typeof val !== "number" || !Number.isInteger(val) || val < 1 || val > 720) {
+			return { ok: false, error: "omp 自动检查间隔必须是 1 到 720 小时之间的整数" };
+		}
+		out.ompCheckIntervalHours = val;
 	}
 
 	if ("idleSuspendMinutes" in raw) {

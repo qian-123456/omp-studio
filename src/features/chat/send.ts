@@ -3,11 +3,12 @@
 import { create } from "zustand";
 import { confirmDialog } from "../../lib/dialogs";
 import { ensureLive } from "../../lib/ensureLive";
-import { rpcSend, takeoverExternal } from "../../lib/ipc";
+import { privacyClassify, privacyMark, rpcSend, takeoverExternal } from "../../lib/ipc";
 import { useSessions } from "../../stores/sessions";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
-import type { ImageAttachment } from "../../lib/contracts";
+import type { ImageAttachment, PrivacyMarkScope, SecretEntry } from "../../lib/contracts";
+import { resolveLinkScope } from "./privacy/composerPrivacy";
 
 export interface AbortState {
 	aborting: Record<string, boolean>;
@@ -75,6 +76,33 @@ export async function sendPrompt(
 		command.streamingBehavior = opts?.steer ? "steer" : "followUp";
 	}
 	await rpcSend(sessionId, command);
+}
+
+/**
+ * [P] After a masked send, link library entries that were auto-replaced to
+ * the session (re-marking an existing value only links it). Best effort.
+ */
+export async function linkSentSecrets(
+	sessionId: string,
+	entries: SecretEntry[],
+	sessionEntryIds: ReadonlySet<string>,
+	scopes: Readonly<Record<string, PrivacyMarkScope>> = {},
+): Promise<void> {
+	const missing = entries.filter((e) => !sessionEntryIds.has(e.id));
+	await Promise.all(
+		missing.map(async (e) => {
+			try {
+				// A value already in the transcript was sent upstream: protect only later content.
+				const remembered = scopes[e.id];
+				const occurrences = remembered
+					? 0
+					: (await privacyClassify(sessionId, e.value)).sessionOccurrences;
+				await privacyMark(sessionId, e.value, null, e.track, resolveLinkScope(remembered, occurrences));
+			} catch (err) {
+				console.warn("[privacy] link entry failed", err);
+			}
+		}),
+	);
 }
 
 /** Abort the running turn with stopping transition state. */

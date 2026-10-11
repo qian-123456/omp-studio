@@ -3,7 +3,7 @@
 use serde_json::Value;
 
 use crate::contracts::{
-    LiveSessionInfo, PendingUiRequest, StartOpts, SubagentSummary, SubagentTranscript,
+    LiveSessionInfo, OmpStaleness, PendingUiRequest, StartOpts, SubagentSummary, SubagentTranscript,
 };
 use crate::state::{AppEvent, AppState};
 
@@ -35,7 +35,12 @@ pub async fn rpc_send(
     if !command.is_object() {
         return Err("command must be a JSON object".into());
     }
-    let handle = crate::rpc::get_handle(&session_id).ok_or("session is not live")?;
+    // A fresh prompt on an idle session first picks up a changed native secrets snapshot.
+    let handle = if command.get("type").and_then(Value::as_str) == Some("prompt") {
+        crate::rpc::refresh_privacy(&state, &session_id).await?
+    } else {
+        crate::rpc::get_handle(&session_id).ok_or("session is not live")?
+    };
     let is_prompt = matches!(
         command.get("type").and_then(Value::as_str),
         Some("prompt" | "steer" | "follow_up" | "abort_and_prompt")
@@ -92,6 +97,27 @@ pub async fn rpc_list_live(
         .filter(|h| h.alive.load(std::sync::atomic::Ordering::SeqCst))
         .map(|h| h.info())
         .collect())
+}
+
+/// Stat-only check: which live sessions run an omp binary that has since been
+/// replaced (e.g. `omp update` in a terminal) and need `rpc_restart`.
+#[tauri::command]
+pub async fn rpc_omp_staleness(state: tauri::State<'_, AppState>) -> Result<OmpStaleness, String> {
+    let settings = state.settings.read().clone();
+    let fingerprint = super::process::current_omp_fingerprint(&settings).await;
+    let stale_session_ids = {
+        let reg = crate::rpc::registry().read();
+        super::process::stale_session_ids(
+            fingerprint.as_deref(),
+            reg.iter()
+                .filter(|(_, h)| h.alive.load(std::sync::atomic::Ordering::SeqCst))
+                .map(|(id, h)| (id.as_str(), h.omp_fingerprint.as_deref())),
+        )
+    };
+    Ok(OmpStaleness {
+        fingerprint,
+        stale_session_ids,
+    })
 }
 
 #[tauri::command]

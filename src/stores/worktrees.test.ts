@@ -39,7 +39,7 @@ describe("WorkspaceRefreshRunner (C13)", () => {
 
 		// Resolve Call 1 -> triggers trailing fetch
 		const list1: WorktreeInfo[] = [
-			{ path: "/path-1", branch: "b1", head: "h1", dirty: 0, sessionIds: [] },
+			{ path: "/path-1", branch: "b1", head: "h1", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 		];
 		gate1.resolve(list1);
 
@@ -48,7 +48,7 @@ describe("WorkspaceRefreshRunner (C13)", () => {
 
 		// Resolve Call 2
 		const list2: WorktreeInfo[] = [
-			{ path: "/path-2", branch: "b2", head: "h2", dirty: 0, sessionIds: [] },
+			{ path: "/path-2", branch: "b2", head: "h2", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 		];
 		gate2.resolve(list2);
 

@@ -274,7 +274,7 @@ export function ScheduleEditorModal({
 							<button
 								type="button"
 								onClick={handleBrowseCwd}
-								className="h-8 px-3 rounded-md bg-[var(--bg-hover)] border border-[var(--border-divider)] text-neutral-300 hover:text-white flex items-center gap-1.5 text-xs transition-colors shrink-0"
+								className="h-8 px-3 rounded-md bg-[var(--bg-hover)] border border-[var(--border-divider)] text-neutral-300 hover:text-[var(--text)] flex items-center gap-1.5 text-xs transition-colors shrink-0"
 							>
 								<FolderOpen size={13} />
 								<span>浏览…</span>
@@ -520,7 +520,7 @@ export function ScheduleEditorModal({
 									model
 										? (availableModels?.find(
 												(m) => toModelKey(m.provider, m.id) === model,
-											)?.name ?? model)
+											)?.id ?? model)
 										: "默认模型"
 								}
 								models={availableModels}
@@ -560,7 +560,7 @@ export function ScheduleEditorModal({
 						<button
 							type="button"
 							onClick={onClose}
-							className="px-3.5 py-1.5 rounded-md bg-[var(--bg-hover)] text-neutral-300 hover:text-white text-xs transition-colors"
+							className="px-3.5 py-1.5 rounded-md bg-[var(--bg-hover)] text-neutral-300 hover:text-[var(--text)] text-xs transition-colors"
 						>
 							取消
 						</button>

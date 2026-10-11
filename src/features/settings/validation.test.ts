@@ -42,6 +42,21 @@ describe("validateSettingsShape", () => {
 		expect(validateSettingsShape({ idleSuspendMinutes: -1 }).ok).toBe(false);
 	});
 
+	it("validates ompCheckIntervalHours boundaries", () => {
+		for (const v of [1, 720, 24]) {
+			expect(validateSettingsShape({ ompCheckIntervalHours: v })).toEqual({
+				ok: true,
+				value: { ompCheckIntervalHours: v },
+			});
+		}
+		for (const v of [0, 721, 1.5, "24", null]) {
+			expect(validateSettingsShape({ ompCheckIntervalHours: v })).toEqual({
+				ok: false,
+				error: "omp 自动检查间隔必须是 1 到 720 小时之间的整数",
+			});
+		}
+	});
+
 	it("rejects flag injections and control characters in strings", () => {
 		expect(validateSettingsShape({ newSessionModel: "-flag" }).ok).toBe(false);
 		expect(validateSettingsShape({ tunnelName: "--injection" }).ok).toBe(false);

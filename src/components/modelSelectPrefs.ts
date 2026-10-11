@@ -1,6 +1,6 @@
 /** Persisted picker prefs shared by every ModelSelect: recent models + dismissed role guides. */
 import { create } from "zustand";
-import { pushRecent } from "./modelSelectLogic";
+import { pushRecent, removeRecent } from "./modelSelectLogic";
 
 const RECENT_KEY = "omp-workspace.recentModels";
 const DISMISSED_KEY = "omp-workspace.dismissedRoleGuides";
@@ -26,6 +26,7 @@ interface ModelSelectPrefs {
 	recent: string[];
 	dismissedGuides: string[];
 	recordRecent(key: string): void;
+	removeRecent(key: string): void;
 	dismissGuide(role: string): void;
 }
 
@@ -34,6 +35,11 @@ export const useModelSelectPrefs = create<ModelSelectPrefs>((set, get) => ({
 	dismissedGuides: readList(DISMISSED_KEY),
 	recordRecent: (key) => {
 		const recent = pushRecent(get().recent, key);
+		writeList(RECENT_KEY, recent);
+		set({ recent });
+	},
+	removeRecent: (key) => {
+		const recent = removeRecent(get().recent, key);
 		writeList(RECENT_KEY, recent);
 		set({ recent });
 	},

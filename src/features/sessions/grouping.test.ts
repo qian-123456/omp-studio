@@ -333,10 +333,10 @@ describe("worktree list grouping", () => {
 		sort: 1,
 	};
 	const worktrees = [
-		{ path: "/repo/my-proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [] },
-		{ path: "/repo/my-proj/.worktrees/feat-a", branch: "feat-a", head: "bbb", dirty: 0, sessionIds: [] },
-		{ path: "/repo/my-proj/.worktrees/feat-b", branch: "feat-b", head: "ccc", dirty: 0, sessionIds: [] },
-		{ path: "/repo/my-proj/.worktrees/x", branch: null, head: "ddd", dirty: 0, sessionIds: [] },
+		{ path: "/repo/my-proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
+		{ path: "/repo/my-proj/.worktrees/feat-a", branch: "feat-a", head: "bbb", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
+		{ path: "/repo/my-proj/.worktrees/feat-b", branch: "feat-b", head: "ccc", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
+		{ path: "/repo/my-proj/.worktrees/x", branch: null, head: "ddd", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 	];
 
 	it("yields a subgroup per live worktree, main first, empties included", () => {
@@ -424,6 +424,47 @@ describe("worktree list grouping", () => {
 		const wg = result.workspaceGroups[0];
 		expect(wg.subgroups.map((g) => g.label)).toEqual(["main"]);
 		expect(wg.hasMultipleSubgroups).toBe(false);
+	});
+});
+
+describe("groupByWorktree option", () => {
+	const ws: Workspace = { id: "proj1", name: "My Project", path: "/repo/my-proj", kind: "project", sort: 1 };
+	const wts = [
+		{ path: "/repo/my-proj", branch: "main", head: "a", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
+		{ path: "/repo/my-proj/.worktrees/feat-a", branch: "feat-a", head: "b", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
+	];
+	const sessions = [
+		makeSession({ id: "m", workspaceId: "proj1", cwd: "/repo/my-proj" }),
+		makeSession({ id: "a", workspaceId: "proj1", cwd: "/repo/my-proj/.worktrees/feat-a" }),
+		makeSession({ id: "dead", workspaceId: "proj1", cwd: "/repo/my-proj/.worktrees/gone", git: null }),
+	];
+
+	it("false: one flat main subgroup, no deleted subgroups", () => {
+		const res = groupSessions(sessions, [ws], { worktrees: { proj1: wts }, groupByWorktree: false });
+		const wg = res.workspaceGroups[0];
+		expect(wg.subgroups).toHaveLength(1);
+		expect(wg.subgroups[0].kind).toBe("default");
+		expect(wg.subgroups[0].isMain).toBe(true);
+		expect(wg.subgroups[0].sessions.map((s) => s.id).sort()).toEqual(["a", "dead", "m"]);
+		expect(wg.hasMultipleSubgroups).toBe(false);
+		expect(wg.deletedSubgroups).toHaveLength(0);
+		expect(wg.totalCount).toBe(3);
+	});
+
+	it("false: deleted-worktree unassigned sessions join the normal list", () => {
+		const dead = makeSession({ id: "d", workspaceId: null, cwd: "/repo/.cache/wt-dead", git: null });
+		const res = groupSessions([dead], [ws], { groupByWorktree: false });
+		expect(res.deletedSessions).toHaveLength(0);
+		expect(res.unassigned.map((s) => s.id)).toEqual(["d"]);
+		expect(res.totalVisible).toBe(1);
+	});
+
+	it("default and true keep worktree grouping", () => {
+		const a = groupSessions(sessions, [ws], { worktrees: { proj1: wts } });
+		const b = groupSessions(sessions, [ws], { worktrees: { proj1: wts }, groupByWorktree: true });
+		expect(a).toEqual(b);
+		expect(a.workspaceGroups[0].subgroups.map((g) => g.label)).toEqual(["main", "feat-a"]);
+		expect(a.workspaceGroups[0].deletedSubgroups).toHaveLength(1);
 	});
 });
 
@@ -606,8 +647,8 @@ describe("canonical path containment & sessionIds attachment (G8)", () => {
 	it("attaches session to worktree when cwd has /tmp vs /private/tmp", () => {
 		const ws: Workspace = { id: "proj1", name: "P1", path: "/tmp/proj", kind: "project", sort: 0 };
 		const worktrees = [
-			{ path: "/private/tmp/proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [] },
-			{ path: "/private/tmp/proj/.worktrees/feat", branch: "feat", head: "bbb", dirty: 0, sessionIds: [] },
+			{ path: "/private/tmp/proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
+			{ path: "/private/tmp/proj/.worktrees/feat", branch: "feat", head: "bbb", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 		];
 
 		const s1 = makeSession({ id: "s1", workspaceId: "proj1", cwd: "/tmp/proj" });
@@ -625,8 +666,8 @@ describe("canonical path containment & sessionIds attachment (G8)", () => {
 	it("attaches session directly via WorktreeInfo.sessionIds first", () => {
 		const ws: Workspace = { id: "proj1", name: "P1", path: "/proj", kind: "project", sort: 0 };
 		const worktrees = [
-			{ path: "/proj", branch: "main", head: "aaa", dirty: 0, sessionIds: ["s_in_custom"] },
-			{ path: "/proj/.worktrees/custom", branch: "custom", head: "bbb", dirty: 0, sessionIds: ["s_in_custom"] },
+			{ path: "/proj", branch: "main", head: "aaa", dirty: 0, sessionIds: ["s_in_custom"], ahead: 0, behind: 0 },
+			{ path: "/proj/.worktrees/custom", branch: "custom", head: "bbb", dirty: 0, sessionIds: ["s_in_custom"], ahead: 0, behind: 0 },
 		];
 
 		const sCustom = makeSession({ id: "s_in_custom", workspaceId: "proj1", cwd: "/weird/non-nested/path" });
@@ -642,7 +683,7 @@ describe("stale-badge deleted inference (G9)", () => {
 	it("treats cwd in wt-dir as deleted when missing from non-empty live worktree list", () => {
 		const ws: Workspace = { id: "proj1", name: "P1", path: "/repo", kind: "project", sort: 0 };
 		const worktrees = [
-			{ path: "/repo", branch: "main", head: "aaa", dirty: 0, sessionIds: [] },
+			{ path: "/repo", branch: "main", head: "aaa", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 		];
 
 		// Session has stale git badge pointing to wt-removed which no longer exists in live worktrees

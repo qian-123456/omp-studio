@@ -8,12 +8,14 @@ import { AdvancedSection } from "./AdvancedSection";
 import { AgentsMdSection } from "./AgentsMdSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { ContextWindowSection } from "./ContextWindowSection";
+import { FallbackSection } from "./FallbackSection";
 import { GeneralSection } from "./GeneralSection";
 import { DoctorSection, InboxSection } from "./InboxSection";
 import { McpSettingsSection } from "./McpSettingsSection";
 import { MobileSettingsSection } from "./MobileSettingsSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { PluginsSettingsSection } from "./PluginsSettingsSection";
+import { PrivacySection } from "./PrivacySection";
 import { ProvidersSection } from "./ProvidersSection";
 import { RolesSection } from "./RolesSection";
 import { SessionsSection } from "./SessionsSection";
@@ -26,6 +28,7 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	quota: ProvidersSection,
 	providers: ProvidersSection,
 	"omp-roles": RolesSection,
+	"model-fallback": FallbackSection,
 	sessions: SessionsSection,
 	inbox: InboxSection,
 	doctor: DoctorSection,
@@ -33,6 +36,7 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	mobile: MobileSettingsSection,
 	mcp: McpSettingsSection,
 	plugins: PluginsSettingsSection,
+	privacy: PrivacySection,
 	advanced: AdvancedSection,
 	about: AboutSection,
 };

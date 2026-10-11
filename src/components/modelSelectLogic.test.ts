@@ -6,6 +6,7 @@ import {
 	isRecordableModelKey,
 	parseSelection,
 	pushRecent,
+	removeRecent,
 	resolveRole,
 	roleIdOf,
 } from "./modelSelectLogic";
@@ -72,5 +73,10 @@ describe("recent models", () => {
 		expect(isRecordableModelKey("__custom")).toBe(false);
 		expect(isRecordableModelKey("")).toBe(false);
 		expect(isRecordableModelKey("a/")).toBe(false);
+	});
+	it("removes target model key cleanly", () => {
+		const list = ["a/1", "a/2", "a/3"];
+		expect(removeRecent(list, "a/2")).toEqual(["a/1", "a/3"]);
+		expect(removeRecent(list, "not-in-list")).toEqual(["a/1", "a/2", "a/3"]);
 	});
 });

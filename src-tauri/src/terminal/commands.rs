@@ -185,6 +185,11 @@ pub async fn term_open_session(
                 "-e".to_string(),
                 ext.to_string_lossy().to_string(),
             ];
+            let privacy_ext = crate::paths::privacy_extension_path();
+            if privacy_ext.exists() {
+                argv.push("-e".to_string());
+                argv.push(privacy_ext.to_string_lossy().to_string());
+            }
             if let Some(provider_ext) = crate::providers::try_extension_path() {
                 argv.push("-e".to_string());
                 argv.push(provider_ext.to_string_lossy().to_string());
@@ -192,8 +197,11 @@ pub async fn term_open_session(
             argv
         }
     };
-    let extra_env: Vec<(String, String)> =
+    let mut extra_env: Vec<(String, String)> =
         crate::providers::terminal_extra_env().into_iter().collect();
+    if is_omp {
+        extra_env.extend(crate::privacy::spawn_env());
+    }
     let cwd = if std::path::Path::new(&meta.cwd).is_dir() {
         meta.cwd.clone()
     } else {

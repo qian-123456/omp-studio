@@ -370,7 +370,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 							) : (
 								<span
 									onDoubleClick={startEditTitle}
-									className="min-w-0 max-w-[200px] md:max-w-[320px] lg:max-w-[450px] cursor-pointer select-none truncate text-[13px] font-semibold tracking-[-0.015em] text-neutral-100 underline-offset-4 hover:text-white hover:underline decoration-neutral-600 transition-colors"
+									className="min-w-0 max-w-[200px] md:max-w-[320px] lg:max-w-[450px] cursor-pointer select-none truncate text-[13px] font-semibold tracking-[-0.015em] text-neutral-100 underline-offset-4 hover:text-[var(--text)] hover:underline decoration-neutral-600 transition-colors"
 									title={`双击重命名会话\n${sessionDisplayName(activeSession)}${activeSession.cwd ? `\n路径: ${activeSession.cwd}` : ""}`}
 								>
 									{sessionDisplayName(activeSession)}
@@ -462,7 +462,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 									<button
 										type="button"
 										onClick={handleShareLink}
-										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<Link2 size={13} />
 										<span>创建分享链接</span>
@@ -470,7 +470,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 									<button
 										type="button"
 										onClick={handleCopyMarkdown}
-										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<Copy size={13} />
 										<span>复制为 Markdown</span>
@@ -478,7 +478,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 									<button
 										type="button"
 										onClick={handleExportHtml}
-										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<FileDown size={13} />
 										<span>导出为 HTML</span>
@@ -486,7 +486,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 									<button
 										type="button"
 										onClick={handleMobilePair}
-										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<QrCode size={13} />
 										<span>手机扫码查看</span>

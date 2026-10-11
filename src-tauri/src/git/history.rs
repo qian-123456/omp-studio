@@ -55,23 +55,42 @@ pub fn log(dir: &Path, limit: u32) -> Vec<GitCommit> {
     .unwrap_or_default()
 }
 
+/// The raw base ref: `origin/HEAD`'s target, else local `main`/`master`.
+fn base_ref(dir: &Path) -> Option<String> {
+    let short = |full: &str| full.trim_start_matches("refs/remotes/").to_string();
+    git_ok(dir, &["symbolic-ref", "-q", "refs/remotes/origin/HEAD"])
+        .ok()
+        .map(|t| short(t.trim()))
+        .or_else(|| local_main(dir))
+}
+
+fn local_branch_exists(dir: &Path, name: &str) -> bool {
+    let full = format!("refs/heads/{name}");
+    git_ok(dir, &["rev-parse", "--verify", "-q", &full])
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn local_main(dir: &Path) -> Option<String> {
+    ["main", "master"]
+        .into_iter()
+        .find(|b| local_branch_exists(dir, b))
+        .map(str::to_string)
+}
+
+/// Local base branch name (the local counterpart of the history base, else
+/// local `main`/`master`). Unlike `fork_base`, returned even when HEAD is it.
+pub fn local_base(dir: &Path) -> Option<String> {
+    base_ref(dir)
+        .map(|b| b.trim_start_matches("origin/").to_string())
+        .filter(|b| local_branch_exists(dir, b))
+        .or_else(|| local_main(dir))
+}
+
 /// The branch a worktree's history forks from: `origin/HEAD`'s target, else
 /// local `main`/`master`. None when HEAD itself is the base branch.
 pub fn fork_base(dir: &Path) -> Option<String> {
-    let short = |full: &str| full.trim_start_matches("refs/remotes/").to_string();
-    let base = git_ok(dir, &["symbolic-ref", "-q", "refs/remotes/origin/HEAD"])
-        .ok()
-        .map(|t| short(t.trim()))
-        .or_else(|| {
-            ["main", "master"]
-                .into_iter()
-                .find(|b| {
-                    git_ok(dir, &["rev-parse", "--verify", "-q", b])
-                        .map(|s| !s.trim().is_empty())
-                        .unwrap_or(false)
-                })
-                .map(str::to_string)
-        })?;
+    let base = base_ref(dir)?;
     // Don't fork a worktree against itself (the base's own worktree view).
     // Detached HEAD keeps the base — it can still have a fork point.
     let head_branch = git_ok(dir, &["symbolic-ref", "-q", "--short", "HEAD"])
@@ -100,7 +119,7 @@ pub fn history(dir: &Path, limit: u32) -> GitHistory {
     }
 }
 
-fn cap(mut s: String) -> String {
+pub(super) fn cap(mut s: String) -> String {
     if s.len() > MAX_DIFF_BYTES {
         let mut end = MAX_DIFF_BYTES;
         while !s.is_char_boundary(end) {

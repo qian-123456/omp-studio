@@ -32,6 +32,7 @@ import { useLive, type LiveTool, type UserEcho } from "../../stores/live";
 import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
 import { openContextWindowForModel } from "../settings/settingsTargets";
+import { PrivacyText } from "../privacy/SecretChip";
 import { AnswerFooter } from "./AnswerFooter";
 import { AttachmentThumb } from "./ImageChips";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
@@ -111,7 +112,7 @@ function renderUserTextWithChips(
 	let last = 0;
 	for (const m of cleaned.matchAll(USER_MARKER_RE)) {
 		const at = m.index ?? 0;
-		if (at > last) parts.push(cleaned.slice(last, at));
+		if (at > last) parts.push(<PrivacyText key={`t-${last}`} text={cleaned.slice(last, at)} />);
 		const num = Number.parseInt(m[1] ?? m[2] ?? "1", 10) || 1;
 		const palette = getImageTokenPalette(num);
 		parts.push(
@@ -133,7 +134,7 @@ function renderUserTextWithChips(
 		);
 		last = at + m[0].length;
 	}
-	if (last < cleaned.length) parts.push(cleaned.slice(last));
+	if (last < cleaned.length) parts.push(<PrivacyText key={`t-${last}`} text={cleaned.slice(last)} />);
 	return parts;
 }
 

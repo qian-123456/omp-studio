@@ -6,9 +6,10 @@
 import { useEffect, useMemo } from "react";
 import type { Model, Settings } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
-import { toModelKey } from "../../lib/models";
+import { resolveCurrentModel, toModelKey } from "../../lib/models";
 import { toast } from "../../lib/toast";
-import { useModelCatalog } from "../../stores/modelCatalog";
+import { useLive } from "../../stores/live";
+import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useSettings } from "./store";
@@ -65,10 +66,33 @@ export function useCatalogModels(): { models: Model[]; catalogKeys: Set<string> 
 }
 
 /**
- * Project scope for project-level config (mcp.json, plugins, model roles):
- * the selected (or last viewed) session's cwd — same rule as SkillsPage.
+ * Session whose cwd and model scope the settings pages: the selected session,
+ * else the last viewed one. null when nothing has been selected yet.
+ */
+export function useSettingsScopeSessionId(): string | null {
+	return useUi((s) => s.selectedSessionId ?? s.lastSessionId);
+}
+
+/**
+ * Project scope for project-level config (mcp.json, plugins, model roles): the
+ * scope session's cwd — same rule as SkillsPage.
  */
 export function useSettingsProjectCwd(): string | null {
-	const scopeSessionId = useUi((s) => s.selectedSessionId ?? s.lastSessionId);
+	const scopeSessionId = useSettingsScopeSessionId();
 	return useSessions((s) => (scopeSessionId ? (s.sessions[scopeSessionId]?.cwd ?? null) : null));
+}
+
+/**
+ * Model selector ("provider/id") of the scope session: the live get_state model
+ * first, then the session meta. null when no session is in scope or it has none.
+ */
+export function useSettingsSessionModel(): string | null {
+	const scopeSessionId = useSettingsScopeSessionId();
+	const liveModel = useLive((s) => (scopeSessionId ? s.sessions[scopeSessionId]?.state?.model : undefined));
+	const metaModel = useSessions((s) => (scopeSessionId ? s.sessions[scopeSessionId]?.model : undefined));
+	const models = useModelOptions();
+	return useMemo(() => {
+		if (!scopeSessionId) return null;
+		return resolveCurrentModel(liveModel ?? metaModel ?? null, models).value || null;
+	}, [scopeSessionId, liveModel, metaModel, models]);
 }

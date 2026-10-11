@@ -15,8 +15,10 @@ import {
 	Puzzle,
 	Ruler,
 	RefreshCw,
+	Route,
 	Server,
 	Settings2,
+	Shield,
 	Sliders,
 	Smartphone,
 	Sparkles,
@@ -68,6 +70,7 @@ export const NAV_GROUPS: NavGroup[] = [
 			{ id: "general", label: "通用", icon: Sliders },
 			{ id: "appearance", label: "外观", icon: Palette },
 			{ id: "notifications", label: "通知", icon: Bell },
+			{ id: "privacy", label: "隐私库", icon: Shield },
 			{ id: "about", label: "版本与更新", icon: Info },
 		],
 	},
@@ -77,6 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
 			{ id: "providers", label: "模型与供应商", icon: KeyRound },
 			{ id: "context-window", label: "上下文窗口", icon: Ruler },
 			{ id: "omp-roles", label: "模型角色", icon: Users },
+			{ id: "model-fallback", label: "回退链与切换", icon: Route },
 			{ id: "omp-model", label: "模型与目录", icon: ListTree },
 			{ id: "omp-thinking", label: "思考与采样", icon: Brain },
 			{ id: "omp-retry", label: "重试与回退", icon: RefreshCw },
@@ -132,9 +136,31 @@ export function sectionSearchTerms(id: string, ompEntries: OmpConfigEntry[]): st
 			...BUILTIN_ROLES.flatMap((r) => [r.id, r.zhLabel, r.description]),
 			...cust,
 			"modelroles",
-			"fallback",
-			"回退",
 			"角色",
+			"代理",
+			"子代理",
+			"agent",
+			"task",
+			"点名",
+			"agentModelOverrides",
+		];
+	}
+	if (id === "model-fallback") {
+		const cust = customRoles(asRecord(ompEntries.find((e) => e.key === "modelRoles")?.value));
+		return [
+			...BUILTIN_ROLES.flatMap((r) => [r.id, r.zhLabel]),
+			...cust,
+			"fallback",
+			"fallbackChains",
+			"回退",
+			"回退链",
+			"retry.fallbackChains",
+			"cycleOrder",
+			"切换顺序",
+			"modelRoleStorage",
+			"保存位置",
+			"/model",
+			...registryKeywordsForSection(id),
 		];
 	}
 	const cat = ompCategoryOf(id);
@@ -163,7 +189,10 @@ export function sectionSearchTerms(id: string, ompEntries: OmpConfigEntry[]): st
 		];
 	}
 	if (id === "about") {
-		return ["关于", "版本", "更新", "升级", "version", "update", "upgrade", "about", "omp update", "检查更新"];
+		return ["关于", "版本", "更新", "升级", "自动更新", "会话切换", "旧版本", "立即切换", "重新检查", "version", "update", "upgrade", "auto update", "about", "omp update", "检查更新", "检查间隔", "check interval"];
+	}
+	if (id === "privacy") {
+		return ["隐私", "隐私库", "privacy", "secret", "占位符", "placeholder", "密码", "脱敏", "默认显示真实值"];
 	}
 	return registryKeywordsForSection(id);
 }

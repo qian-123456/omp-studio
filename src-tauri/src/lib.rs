@@ -9,6 +9,7 @@ mod git;
 mod mobile;
 mod notify;
 mod paths;
+mod privacy;
 mod prompts;
 mod providers;
 mod rpc;
@@ -16,6 +17,7 @@ mod schedules;
 mod services;
 mod settings;
 mod settings_mcp;
+mod settings_model_roles;
 mod settings_plugins;
 mod skills;
 mod state;
@@ -112,6 +114,8 @@ pub fn run() {
             let settings = db::load_settings(&conn);
             let state = AppState::new(app.handle().clone(), conn, settings);
             app.manage(state.clone());
+            // Rewrite privacy files from the DB before any OMP process spawns.
+            privacy::init(&state);
 
             // Register event consumers before catalog and process producers start.
             providers::init();
@@ -161,6 +165,7 @@ pub fn run() {
             rpc::commands::rpc_stop,
             rpc::commands::rpc_restart,
             rpc::commands::rpc_list_live,
+            rpc::commands::rpc_omp_staleness,
             rpc::commands::takeover_external,
             rpc::commands::create_side_chat,
             rpc::commands::subagent_list,
@@ -183,6 +188,10 @@ pub fn run() {
             git::commands::git_sync_branch,
             git::commands::git_merge_preview,
             git::commands::git_merge_branch,
+            git::commands::git_diff_base,
+            git::commands::git_rebase_onto_base,
+            git::commands::git_discard_all,
+            git::commands::git_sync_with_base,
             git::commands::git_get_pr_url,
             git::commands::git_commit_suggest,
             git::commands::git_commit,
@@ -223,7 +232,8 @@ pub fn run() {
             settings::omp_config_set,
             settings::omp_config_reset,
             settings::omp_project_config_read,
-            settings::omp_project_config_write,
+            settings_model_roles::omp_model_roles_read,
+            settings_model_roles::omp_model_roles_set,
             settings::omp_info,
             settings::omp_update_check,
             settings::omp_update_run,
@@ -283,6 +293,13 @@ pub fn run() {
             settings_mcp::mcp_server_set_enabled,
             settings_plugins::plugins_list,
             settings_plugins::plugin_set_enabled,
+            // P — privacy placeholders
+            privacy::commands::privacy_list,
+            privacy::commands::privacy_classify,
+            privacy::commands::privacy_mark,
+            privacy::commands::privacy_update,
+            privacy::commands::privacy_delete,
+            privacy::commands::privacy_session_entry_ids,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

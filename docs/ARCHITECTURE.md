@@ -50,10 +50,13 @@ src-tauri/src/
   skills/           skills & extensions catalog, frontmatter parse, reader (§11 G)     [F]
   settings_mcp.rs   OMP-managed mcp.json files: list/upsert/remove/enable servers (masked secrets, atomic writes) [D]
   settings_plugins.rs  OMP plugin roots + lockfiles: list/enable plugins                  [D]
+  settings_model_roles.rs  agent discovery, model precedence, narrow lossless YAML role edits [D]
+  privacy/          privacy placeholders: store, classify, file writers, commands       [P]
 src-tauri/mobile/index.html   mobile web app (single file, vanilla JS)                 [E]
 src-tauri/prompts/*.md + src/prompts.rs  prompt templates + render() ({{var}}, {{#if var}}..{{/if}}) [LEAD]
 extension/omp-workspace-status.ts   OMP status-report extension (§8)                   [E]
 extension/omp-workspace-checkpoints.ts + autocommit-rule.md  turn checkpoints extension (§8.1) [C]
+extension/omp-workspace-privacy.ts  privacy placeholder restore/mask extension         [P]
 
 src/
   main.tsx, App.tsx          shell, three-pane layout, top bar                          [LEAD]
@@ -95,6 +98,8 @@ src/
     ui.tsx                   SectionHeader, SettingsCard, SettingRow, ToggleRow, CommitInput, useSaveStatus/SaveIndicator
     useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
     settingsNav.ts           SettingsNavContext / useSettingsNav (search query + navigate)
+    AgentModelAssignmentsPanel.tsx  `omp-roles`: discovered agents, effective-model reasons, global/project roles, collapsed named overrides
+    FallbackChainsSection.tsx  `model-fallback`: preserved fallback-chain and role-cycle settings; no modelRoles writes
   features/mobile/           pairing / tunnel panel (inside settings or its own modal)  [E]
   features/terminal/         right-panel command terminal & agent terminal center view  [E]
 ```
@@ -119,6 +124,9 @@ Rules for parallel work:
 | `~/.omp-workspace/extension/omp-workspace-status.ts` | extension installed at startup from `include_str!` |
 | `~/.omp-workspace/extension/omp-workspace-checkpoints.ts` | turn checkpoints extension (§8.1), installed at startup; loaded only when `settings.turn_checkpoints == Some(true)` |
 | `~/.omp-workspace/supervisor-sessions/` | `--session-dir` for supervisor / summarizer runs |
+| `~/.omp-workspace/privacy/secrets.json` | privacy entries (placeholders+aliases, value, track, wholeWord, optional `cutoffs`) + `nativeHash` (from entries without cutoffs); read live by the privacy extension (0600, dir 0700, atomic) |
+| `~/.omp-workspace/privacy/omp-overlay.yml` | `secrets.enabled: true`, passed via `PI_CONFIG_FILES` when ≥1 natively tracked (tracked, cutoff-free) entry |
+| `~/.omp/agent/secrets.yml` | managed block (`# >>> omp-workspace privacy …` markers) of tracked entries WITHOUT any session cutoff for OMP's native secrets layer; user bytes preserved; not created while there are no such entries; non-sequence file ⇒ not written, status `conflict` (§8.2 fail-closed) |
 | `<repo>/.worktrees/<name>` | session worktrees (branch `omp/<name>`) and time-machine worktrees (`tm-<shortsha>`, detached) |
 
 `paths.rs` exposes `data_dir()`, `db_path()`, `global_dir()`, `status_dir()`, `extension_path()`,
@@ -198,6 +206,7 @@ pub struct TranscriptItem {
 pub struct TranscriptPage { pub session_id: String, pub items: Vec<TranscriptItem>, pub next_offset: u64 /* byte offset for incremental reads */, pub reset: bool }
 
 pub struct LiveSessionInfo { pub session_id: String, pub session_file: String, pub pid: u32, pub cwd: String }
+pub struct OmpStaleness { pub fingerprint: Option<String>, pub stale_session_ids: Vec<String> } // rpc_omp_staleness; fingerprint = canonical exe path + mtime + size
 pub struct StartOpts {
   pub cwd: String,
   pub resume_file: Option<String>,     // --resume <path>
@@ -229,7 +238,9 @@ pub struct GitFileChange { pub path: String, pub status: String /* M A D R ?? */
 pub struct GitSummary { pub is_repo: bool, pub branch: Option<String>, pub files: Vec<GitFileChange>, pub has_uncommitted: bool }
 pub struct GitCommit { pub sha: String, pub short: String, pub subject: String, pub author: String, pub ts: String }
 pub struct GitHistory { pub commits: Vec<GitCommit>, pub fork_point: Option<String> /* merge-base of HEAD with `base` */, pub base: Option<String> /* e.g. "main" */ }
-pub struct WorktreeInfo { pub path: String, pub branch: Option<String>, pub head: String, pub dirty: u32 /* uncommitted change count */, pub session_ids: Vec<String> }
+pub struct WorktreeInfo { pub path: String, pub branch: Option<String>, pub head: String, pub dirty: u32 /* uncommitted change count */, pub session_ids: Vec<String>,
+  pub ahead: u32, pub behind: u32 /* vs local base main/master via `base...HEAD`; 0 for the base checkout or when no base */ }
+pub struct BaseSyncResult { pub merged_from_base: u32, pub fast_forwarded: u32 }
 pub struct TurnFile { pub path: String, pub status: String /* A M D */ }
 pub struct TurnCheckpoint { pub turn_id: String, pub session_id: String, pub user_item_id: Option<String>, pub prompt: String,
   pub before: String, pub after: String, pub head_before: Option<String>, pub head_after: Option<String>,
@@ -260,6 +271,7 @@ pub struct Settings {
   pub tunnel_name: Option<String>, pub tunnel_hostname: Option<String>,
   pub quick_capture_shortcut: String, // default "CommandOrControl+Shift+I"
   pub inbox_window_hours: u32,       // default 24; 1..=720; non-awaiting sessions idle longer than this leave the inbox + badge
+  pub omp_check_interval_hours: u32, // default 24; 1..=720; hours between automatic omp update checks while the app runs
   // … (later fields: see contracts.rs)
   pub turn_checkpoints: Option<bool>, // default None = never asked; Some(true) loads the checkpoints extension (§8.1)
   pub doctor_model: String,          // default "smol"; AI 会诊 model; empty → supervisor_model
@@ -328,6 +340,11 @@ pub struct Model { pub provider: String, pub id: String, pub name: String, pub t
 pub struct ModelContextWindowEdit { pub provider_id: String, pub model_id: String, pub context_window: Option<u64> }
 // MCP / plugin settings types (McpConfigSnapshot, McpServerItem, McpFileInfo, McpKv, PluginCatalog, PluginItem,
 // PluginRootInfo) live in settings_mcp.rs / settings_plugins.rs, mirrored in lib/contracts.ts.
+// Privacy (P): SecretRisk = safe|risky; PrivacyMarkScope = future|all (serde lowercase, default all); SecretEntry { id, value, label: Option<String>, placeholder, aliases: Vec<String> (legacy),
+// risk, track, in_library, library_prompted, created_at, session_count: u32, cutoffs: BTreeMap<String,i64> (backend-only, not serialized to the frontend) }; SecretEntryPatch { label? (Some("") clears), track?, in_library?,
+// library_prompted? }; PrivacySnapshot { entries, native_status: "ok"|"conflict"|"error", native_error };
+// SecretClassification { level: safe|risky|reject, reason: TOO_SHORT|INVALID_VALUE|SHORT|COMMON, session_occurrences }.
+// Settings.privacy_reveal_default: Option<bool> (None ⇒ show real values).
 ```
 
 ## 5. AppState and events
@@ -349,7 +366,7 @@ pub enum AppEvent {
   SessionAccepted { session_id: String },
   SessionStatusChanged { session_id: String, old: SessionStatus, new: SessionStatus },
   SessionsChanged { ids: Vec<String> },
-  TodosChanged, BacklogChanged, ServicesChanged,
+  TodosChanged, BacklogChanged, ServicesChanged, PrivacyChanged,
 }
 ```
 `AppState` is managed by Tauri (`app.manage(state)`), cloneable (`Arc` inside). Background tasks
@@ -371,8 +388,9 @@ Frontend events (`app.emit`), names are exact:
 | `tm:log` | `{ runId, line }` | C |
 | `quick-capture` | `null` (global shortcut fired) | D |
 | `schedules:changed` | `null` | E (schedules runner/scheduler/commands) |
+| `privacy_changed` | `null` | P (after every privacy mutation) |
 
-## 6. SQLite schema (`db.rs`, migrations v1 → v2 → v3)
+## 6. SQLite schema (`db.rs`, migrations v1 → … → v6)
 
 ```sql
 CREATE TABLE workspaces(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
@@ -407,8 +425,15 @@ CREATE TABLE schedule_runs(
   FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
 );
 CREATE INDEX idx_schedule_runs_schedule_id ON schedule_runs(schedule_id, started_at DESC);
+-- v5: privacy placeholders
+CREATE TABLE secret_entries(id TEXT PRIMARY KEY, value TEXT NOT NULL UNIQUE, label TEXT, placeholder TEXT NOT NULL UNIQUE,
+  risk TEXT NOT NULL /* safe|risky */, track INTEGER NOT NULL DEFAULT 1, in_library INTEGER NOT NULL DEFAULT 0,
+  library_prompted INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+CREATE TABLE secret_aliases(placeholder TEXT PRIMARY KEY, entry_id TEXT NOT NULL);
+CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, since_ms INTEGER, PRIMARY KEY(session_id, entry_id));
+-- since_ms (v6): epoch-ms cutoff for "protect only future content"; NULL = whole history. Set once when the link is created.
 ```
-Use a `user_version` pragma for migrations. `db.rs` also provides `load_settings`/`save_settings`.
+Use a `user_version` pragma for migrations (current: v6). `db.rs` also provides `load_settings`/`save_settings`.
 
 ## 7. Tauri commands (exact names; all `async`, return `Result<T, String>`)
 
@@ -443,6 +468,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `rpc_restart(session_id) -> LiveSessionInfo` — stop + `--resume` (the `/fresh` equivalent; resets provider/stream state, keeps history)
 
 - `rpc_list_live() -> Vec<LiveSessionInfo>`
+- `rpc_omp_staleness() -> OmpStaleness` — stat-only (never runs omp): `fingerprint` identifies the binary a new spawn would exec (settings `omp_binary` resolved against the spawn PATH, canonicalized, + mtime + size; None if unresolvable); `stale_session_ids` = live sessions whose spawn-time fingerprint (stored on `SessionHandle`) differs. Unknown spawn fingerprint or None current → not stale. Detects `omp update` run outside the app; fix with `rpc_restart`.
 - `subagent_list(parent_file: String) -> Vec<SubagentSummary>` — scans the parent session's subagent dir; status inferred
   (output file → completed; fresh lock/jsonl ≤5 min → running; last stopReason error/aborted → failed/aborted)
 - `subagent_transcript(parent_file: String, agent_id: String, from_byte: Option<u64>) -> SubagentTranscript` — `parent_file`
@@ -456,6 +482,12 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
   `.worktrees/<slug>` directory; `branch` (default `omp/<slug>`) is checked out when it exists, else created from `base`
   (default: current HEAD), `git_list_worktrees(repo) -> Vec<WorktreeInfo>`, `git_remove_worktree(repo, path, delete_branch: bool, force: bool)`
 - `git_scan_orphans() -> Vec<WorktreeInfo>` — `.worktrees/*` in registered workspaces with no session whose cwd is inside
+- Local base-branch ops (base = local `main`, else `master`, same resolver as `git_log`; never touch remotes):
+  `git_diff_base(cwd) -> String` (committed patch `base...HEAD`), `git_rebase_onto_base(cwd) -> String`,
+  `git_sync_with_base(cwd) -> BaseSyncResult` (merge base into the branch, then fast-forward local base — ff-only merge in the
+  worktree that has base checked out, else `update-ref`). Rebase/sync refuse dirty, detached, or base-itself worktrees; on
+  conflict they `--abort` and reject with `CONFLICT:\n<path>\n…`. `git_discard_all(cwd)` — `reset --hard HEAD` + `clean -fd`
+  (ignored files survive)
 - `git_reset_to(repo, sha, mode: "soft"|"hard")`
 - `git_commit_suggest(cwd) -> String` — one-shot English Conventional Commit message from everything a commit would record
   (`git add -A` into a throwaway index, so new-file content is included and the real index is untouched; ≤8k chars; recent
@@ -513,10 +545,16 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `plugins_list(cwd: Option<String>) -> PluginCatalog`, `plugin_set_enabled(cwd, name, enabled: bool)` — writes `plugins.<name>.enabled` in the scope lockfile
 - `omp_config_list() -> OmpConfigListResult`, `omp_config_set(key, value)`, `omp_config_reset(key)` — shell out to `omp config` in a neutral empty cwd (`$TMPDIR/ompws-omp-config-cwd`, no `.omp/`) so they reflect global settings only
 - `omp_project_config_read(cwd) -> OmpProjectConfigFile { path, exists, content }` — reads fixed `<cwd>/.omp/config.yml` (cwd must be an existing absolute dir); missing file → `exists: false, content: ""`
-- `omp_project_config_write(cwd, content)` — atomic (temp+rename) write of fixed `<cwd>/.omp/config.yml`, creating `.omp/`; a symlinked config is written through to its target (link preserved)
+- `omp_model_roles_read(cwd: Option<String>, session_model: Option<String>) -> ModelRoleSnapshot` — returns only `modelRoles` and `task.agentModelOverrides` per config layer plus discovered agent assignments; never returns configuration source text or other keys.
+  Discovery may additionally project extension paths (`extensions`), provider enablement (`enabledProviders` / `disabledProviders`), and Claude `enabledPlugins` booleans solely to locate enabled plugin agents (user-approved read-only metadata). These values never enter the IPC snapshot and are never edited by this feature; no credential fields or raw config text are returned or logged.
+- `omp_model_roles_set(cwd: Option<String>, scope: "global" | "project", table: "modelRoles" | "agentModelOverrides", name: String, value: Option<String>, session_model: Option<String>) -> ModelRoleSnapshot` — single-entry lossless YAML edit; `None` removes the entry (project removal restores inheritance). Preserves unrelated bytes, comments, order, permissions and symlinks; rejects unsafe structures without writing.
+- `ModelRoleLayer = { path, exists, modelRoles: Record<string,string>, agentModelOverrides: Record<string,string> }`; `ModelRoleSnapshot = { global: ModelRoleLayer, project: ModelRoleLayer | null, agents: AgentModelAssignment[] }`.
+- `AgentModelAssignment = { name, source: "builtin" | "user" | "project", declaredModel: string | null, effectiveModel: string | null, effectiveSource: "override" | "global" | "project" | "agent" | "session" | "unresolved", reason: string }`. Named global overrides win even over project settings; otherwise agent declaration → `modelRoles.task` → current session model. Roles merge per key (project > global), aliases resolve recursively, and missing/cyclic aliases are explicitly unresolved. Builtin scout/sonic declare `@smol`.
 - `omp_info() -> OmpInfo { found, resolvedPath, version, agentDir, configPath, configExists }` — resolves `settings.ompBinary` on the augmented PATH, runs `omp --version` (first line; null on failure), reports the omp agent dir (honors `PI_CODING_AGENT_DIR` / profile env) and `<agentDir>/config.yml`; used by Settings ▸ 通用 「OMP 环境」
 - `omp_update_check() -> OmpUpdateStatus { current, latest, updateAvailable, output }` — runs `omp update --check` (30s timeout, neutral cwd, augmented PATH, ANSI stripped); parses `Current version:` / `New version available:` / `Already up to date`; non-zero exit → Err with output (GitHub rate-limit hint appended when applicable); used by Settings ▸ 版本与更新 and the BottomBar omp chip
-- `omp_update_run() -> OmpUpdateResult { success, output, versionAfter }` — runs `omp update` (300s timeout), then re-probes `omp --version`; frontend then refreshes omp info, update status and the model catalog
+- `omp_update_run() -> OmpUpdateResult { success, output, versionAfter }` — runs `omp update` (300s timeout), then re-probes `omp --version`; frontend then refreshes omp info, update status and the model catalog, and `stores/ompUpdateSessions.beginSwitch` moves sessions live at that moment to the new binary via `rpc_restart` (idle ones immediately, busy ones as soon as they go idle; one aggregate toast). `settings.ompAutoUpdate` (null = off) runs the update automatically when a check finds a new version. Settings ▸ 版本与更新 「立即重启所有会话」 force-restarts every live session.
+  Check timing (`stores/ompUpdate.ts`): the startup check runs only when `settings.ompCheckIntervalHours` (default 24) has elapsed since the last completed check, and a periodic check (`watchOmpUpdateChecks`, 60 s tick) applies the same interval while the app is open. The last completed check time is persisted in localStorage key `ompws:omp-update-last-check`; failed checks count as checks. Auto-install behaviour is unchanged.
+- Privacy (`privacy/commands.rs`, [P]): `privacy_list() -> PrivacySnapshot`, `privacy_classify(session_id: Option<String>, value) -> SecretClassification` (sessionOccurrences = whole-word hits in the session jsonl strings; > 0 means the value was already sent upstream), `privacy_mark(session_id: Option<String>, value, label: Option<String>, track, scope: Option<PrivacyMarkScope> = all) -> SecretEntry` (re-marking an existing value links the session and returns it; `scope` `future` records `since_ms` = now(ms) on a NEW link only — an existing link always wins, `all` never clears a cutoff; the label is replaced by a new non-empty label but the placeholder never changes; reject levels error with `TOO_SHORT`/`INVALID_VALUE`/`LABEL_CONTAINS_VALUE`), `privacy_update(id, patch: SecretEntryPatch) -> SecretEntry` (label change only edits the display label, placeholder is immutable), `privacy_delete(id)`, `privacy_session_entry_ids(session_id) -> Vec<String>`. `SecretEntry.sessionCount` = number of linked sessions (UI confirms delete/untrack when > 0: later requests of those sessions lose protection and their request prefix changes). Every mutation rewrites the §3 privacy files and emits `privacy_changed`.
 
 ## 8. Status extension file format
 
@@ -543,6 +581,33 @@ work tree and in subagent sessions; never throws; git via argv with timeouts.
 - `before_agent_start`: once per session inject `extension/autocommit-rule.md` (custom_message `omp-workspace.autocommit-rule`,
   hidden); after an app undo (`refs/omp/undone/<sid>/<turnId>`), inject an undo notice once and record `omp-workspace.turn-undo-notified`.
 - Frontend jumps go through `stores/turnNav.ts` (`showCommit(cwd, sha)` chat → Git 版本历史, `showTurn(sessionId, userItemId)` → chat `msg-<id>`).
+
+### 8.2 Privacy placeholder extension
+
+`extension/omp-workspace-privacy.ts`, installed at startup to `~/.omp-workspace/extension/` and ALWAYS passed via `-e` to app RPC spawns
+and the OMP terminal. Mapping file: `$OMPWS_PRIVACY_FILE` (set by `privacy::spawn_env()`, honors `OMPWS_DATA_DIR`), fallback
+`~/.omp-workspace/privacy/secrets.json`; re-read on mtime change; missing/invalid ⇒ no-op.
+- `tool_call`: restore every placeholder (current + aliases) in the tool input to the real value. OMP persists the rewritten call,
+  so real values live in the local transcript.
+- `context`: before every normal provider request, replace values of `track` entries with their current placeholder (whole-word for
+  risky). This also covers persisted tool calls/outputs and raw values sent unmarked (e.g. from mobile).
+- LLM compaction summaries bypass extension hooks; OMP's native secrets layer covers them (managed `secrets.yml` block in `replace`
+  mode + overlay `secrets.enabled`), which OMP reads only at process start. `session_before_compact` therefore cancels compaction when
+  `secrets.json.nativeHash != $OMPWS_PRIVACY_NATIVE_HASH`; `rpc::refresh_privacy` restarts an idle session whose spawn hash is stale
+  before writing a `prompt` frame.
+- Fail closed: if the native block could not be written (`conflict`, `error`, or an isolated `OMPWS_DATA_DIR` instance, which never
+  touches the global file), `secrets.json.nativeHash` is `unprotected:<hash>` so compaction stays cancelled.
+- Cutoffs (future-only marks): an entry may carry `cutoffs: { [sessionId]: epochMs }` in `secrets.json` (omitted when empty). In that
+  session, messages older than the cutoff are never rewritten (their bytes keep matching the already-sent, cached prefix; a value
+  already sent cannot be un-sent); messages at/after the cutoff are masked as usual. A message with a missing/unparseable
+  timestamp is masked (leaking is worse than a cache miss). Sessions without a cutoff for an entry mask it fully.
+- The native `secrets.yml` layer is global and cannot honor per-session cutoffs, so entries with a cutoff in ANY session are excluded
+  from the managed block and from `nativeHash`/the overlay's tracked count. Compaction summaries bypass extension hooks, so the
+  extension cancels compaction (`session_before_compact` → `{cancel:true}`) in EVERY session while any tracked entry has a cutoff in any
+  session (the entry is missing from the global native block, so other sessions lose native coverage too), in addition to the
+  stale/unprotected hash guard. Tradeoff: no session auto-compacts until the cutoff entry is deleted (re-marking with `all` never clears a cutoff).
+- Placeholders are immutable once generated: editing a label changes only `SecretEntry.label`; no alias is created (existing `secret_aliases`
+  rows stay readable and are still restored by `tool_call`).
 
 ## 9. Cross-module Rust API (stubbed at scaffold; signatures frozen)
 
@@ -578,6 +643,13 @@ pub fn schedules::init(state: AppState);    // start background scheduler & star
 // todos (D helpers)
 pub fn todos::detect::reconcile_db(conn: &rusqlite::Connection, sessions: &[SessionMeta], live_pending: &[(String, Vec<PendingUiRequest>)], all_services: Vec<ServiceInfo>) -> bool; // resolves zombie & orphaned todos
 pub fn todos::detect::resolve_status_leaving(conn: &rusqlite::Connection, sid: &str, new: SessionStatus) -> bool;
+// settings plugin discovery (D helpers; shared within the settings module)
+pub(crate) fn settings_plugins::user_plugins_root() -> PathBuf;
+pub(crate) fn settings_plugins::scan_plugins(user_root: &Path, cwd: Option<&Path>) -> PluginCatalog; // synchronous metadata discovery; no nested async runtime
+// privacy (P)
+pub fn privacy::spawn_env() -> Vec<(String, String)>; // OMPWS_PRIVACY_NATIVE_HASH=<hash>, OMPWS_PRIVACY_FILE=<secrets.json>; + PI_CONFIG_FILES=<overlay> (':'-appended) when ≥1 natively tracked (tracked, cutoff-free) entry
+pub fn privacy::native_hash() -> String;             // in-memory, updated on every file sync
+pub fn privacy::inherit_session(db: &rusqlite::Connection, parent_session_id: &str, child_session_id: &str) -> Result<(), String>; // copy session_secrets links incl. since_ms cutoffs (absolute timestamps; existing child links win); re-syncs secrets.json when the child has a cutoff
 ```
 (`catalog::set_pending` is internal to A; listed only so nobody else writes `pending_kind`.)
 
@@ -711,6 +783,9 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   `archiveSessions` (busy/awaiting → confirm) + `undoArchive` merge within 8 s; `requestArchive`/`requestDelete`/
   `requestAssign`/`requestRename`/`requestRowMenu` in `sessionActions.ts`; dialogs portaled in `SessionDialogs.tsx`.
   Mark-seen is centralized in the sessions store: selecting any session marks it seen.
+  Setting `sessionGroupByWorktree` (default true; Settings → 会话): when false, each workspace yields one flat
+  `default`/`isMain` subgroup (`GroupingOptions.groupByWorktree: false`) — no worktree/branch headers, no
+  已清理的工作树 folder, no 「在独立工作树创建」 entry; the "+" button starts a session in the project dir directly.
   Selecting a row → `ui.selectSession(id)`; `SessionSidebar` reveals the selected row on selection change
   (expands group + scrolls into view).
 
@@ -819,8 +894,12 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   `node_modules` missing (`pnpm install --frozen-lockfile` etc.) before running; stream output via `tm:log`; detect URL `http://localhost:\d+`
   from output. `tm_stop` kills the process group and optionally removes the worktree. `git_reset_to` soft/hard (frontend double-confirm on hard,
   warn on uncommitted changes).
-- `GitPanel` (selected session's repo): worktree map on top — every worktree with its uncommitted-change count, sessions, 清理; idle
-  branches with 建工作树. Clicking a worktree focuses it; below, a 提交改动 | 版本历史 tab pane shows that worktree: 提交改动 =
+- `GitPanel` (selected session's repo): the first successful worktree load opens 分支 when exactly one worktree exists,
+  otherwise 工作树. Manual mode selection survives refreshes; explicit commit/worktree navigation opens 工作树.
+  The branch page keeps its controls visible and lets its list scroll through the full remaining panel height.
+  Worktree rows separate branch identity from metadata and session controls; a single-worktree list stays compact,
+  while multiple worktrees keep the adjustable list/detail split. Clicking a worktree focuses it; below,
+  a 提交改动 | 版本历史 tab pane shows that worktree: 提交改动 =
   one-click 存档 (AI-written message by default; hand-written message behind a pencil toggle; warns while a session in the
   worktree is `working`) + files with +/- (click → diff modal, or `DocView` for md); 版本历史 = commit timeline grouped by day (time
   gutter + rail); an expanded commit offers 看看 (diff) / 试试 (▶ run this version: live log + URL + 停止/丢弃) / 回到 (keep later
@@ -885,7 +964,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `TodoPanel` (right tab): same queue filtered to the selected session.
 - `SettingsPage`: navigation organized into 5 top-level groups:
   - 常规: `general` (通用), `appearance` (外观), `notifications` (通知)
-  - 模型: `providers` (API 供应商), `omp-roles` (模型角色), `omp-model` (模型与目录), `omp-thinking` (思考与采样), `omp-retry` (重试与回退)
+  - 模型: `providers` (API 供应商), `omp-roles` (模型角色: effective agents, global/project roles, named overrides), `model-fallback` (回退链与切换), `omp-model` (模型与目录), `omp-thinking` (思考与采样), `omp-retry` (重试与回退)
   - Agent: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `omp-context` (记忆与对话; context-window keys live on 模型 ▸ `context-window` 上下文窗口), `agents-md` (规则文件 AGENTS.md), `omp-tools` (工具与审批), `omp-tasks` (任务与子代理)
   - 连接: `mobile` (手机访问; renders `MobilePanel`), `omp-providers` (网络与扩展), `mcp` (MCP 服务器), `plugins` (插件)
   - 高级: `advanced` (高级), `omp-advanced` (其他 OMP 配置)

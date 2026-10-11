@@ -127,6 +127,11 @@ export function pushRecent(list: readonly string[], key: string, cap = RECENT_MO
 	return [key, ...list.filter((k) => k !== key)].slice(0, cap);
 }
 
+/** Remove `key` from the recent list. */
+export function removeRecent(list: readonly string[], key: string): string[] {
+	return list.filter((k) => k !== key);
+}
+
 /** Real catalog-style model key ("provider/id"); excludes roles, placeholders, empty. */
 export function isRecordableModelKey(key: string): boolean {
 	const k = key.trim();

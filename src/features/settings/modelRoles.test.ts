@@ -1,16 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-	applyProjectRole,
-	parseProjectRoles,
 	BUILTIN_ROLES,
 	customRoles,
-	joinRoleValue,
 	parseChain,
 	roleValue,
 	serializeChain,
 	splitRoleValue,
 	withChain,
-	withRoleAssignment,
 } from "./modelRoles";
 
 describe("BUILTIN_ROLES", () => {
@@ -95,26 +91,6 @@ describe("splitRoleValue", () => {
 	});
 });
 
-describe("joinRoleValue", () => {
-	it("round-trips with splitRoleValue", () => {
-		for (const v of [
-			"anthropic/claude-opus-4-5:high",
-			"openai/gpt-4.1-mini",
-			"web/duckduckgo",
-			"devin/swe-2:auto",
-		]) {
-			const { selector, thinkingSuffix } = splitRoleValue(v);
-			expect(joinRoleValue(selector, thinkingSuffix)).toBe(v);
-		}
-	});
-
-	it("omits null/empty suffixes and drops invalid levels", () => {
-		expect(joinRoleValue("openai/x", null)).toBe("openai/x");
-		expect(joinRoleValue("openai/x", "")).toBe("openai/x");
-		expect(joinRoleValue("openai/x", "ultra")).toBe("openai/x");
-	});
-});
-
 describe("customRoles", () => {
 	it("returns role ids not in the builtin catalog", () => {
 		expect(
@@ -140,22 +116,6 @@ describe("roleValue", () => {
 		expect(roleValue({}, "smol")).toBeNull();
 		expect(roleValue({ smol: 42 }, "smol")).toBeNull();
 		expect(roleValue({ smol: "  " }, "smol")).toBeNull();
-	});
-});
-
-describe("withRoleAssignment", () => {
-	it("assigns a selector without mutating the input", () => {
-		const roles = { default: "openai/a" };
-		const next = withRoleAssignment(roles, "smol", "openai/b");
-		expect(next).toEqual({ default: "openai/a", smol: "openai/b" });
-		expect(roles).toEqual({ default: "openai/a" });
-	});
-
-	it("removes the role when selector is null", () => {
-		const roles = { default: "openai/a", smol: "openai/b" };
-		expect(withRoleAssignment(roles, "smol", null)).toEqual({
-			default: "openai/a",
-		});
 	});
 });
 
@@ -221,43 +181,5 @@ describe("withChain", () => {
 		});
 		expect(withChain(chains, "web", null)).toEqual({ tiny: [] });
 		expect(chains).toEqual({ web: ["web/exa"], tiny: [] });
-	});
-});
-
-describe("project modelRoles YAML", () => {
-	const src = `# project config\ntheme: dark # keep\nmodelRoles:\n  # main model\n  default: anthropic/a\n  task: openai/b\n`;
-
-	it("parses roles and preserves comments when setting", () => {
-		expect(parseProjectRoles(src)).toEqual({
-			ok: true,
-			roles: { default: "anthropic/a", task: "openai/b" },
-		});
-		const out = applyProjectRole(src, "smol", "x/y:high");
-		expect(out).toContain("# project config");
-		expect(out).toContain("theme: dark # keep");
-		expect(out).toContain("# main model");
-		expect(parseProjectRoles(out)).toEqual({
-			ok: true,
-			roles: { default: "anthropic/a", task: "openai/b", smol: "x/y:high" },
-		});
-	});
-
-	it("removing the last role drops modelRoles", () => {
-		let out = applyProjectRole(src, "default", null);
-		out = applyProjectRole(out, "task", null);
-		expect(out).not.toContain("modelRoles");
-		expect(out).toContain("theme: dark");
-	});
-
-	it("creates modelRoles from an empty file", () => {
-		const out = applyProjectRole("", "default", "a/b");
-		expect(parseProjectRoles(out)).toEqual({ ok: true, roles: { default: "a/b" } });
-	});
-
-	it("rejects invalid YAML and non-mapping top level", () => {
-		expect(parseProjectRoles("a: [1,\n").ok).toBe(false);
-		expect(parseProjectRoles("- a\n- b\n").ok).toBe(false);
-		expect(() => applyProjectRole("a: [1,\n", "default", "x")).toThrow();
-		expect(() => applyProjectRole("- a\n", "default", "x")).toThrow();
 	});
 });

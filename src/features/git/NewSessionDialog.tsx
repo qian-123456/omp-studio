@@ -430,7 +430,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 							modelSel
 									? (availableModels.find(
 											(m) => toModelKey(m.provider, m.id) === modelSel,
-										)?.name ?? modelSel)
+										)?.id ?? modelSel)
 									: (defaultModel || "默认（跟随设置）")
 						}
 						buttonClass={`${input} flex items-center justify-between text-left`}

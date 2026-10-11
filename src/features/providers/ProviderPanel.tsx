@@ -653,7 +653,7 @@ function UnifiedProviderRow({
 								disabled={test?.state === "testing"}
 								title="测试连接"
 								aria-label={`测试 ${workbench.name} 连接`}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 disabled:opacity-40"
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
 							>
 								{test?.state === "testing" ? (
 									<Loader2 size={12} className="animate-spin" />
@@ -824,7 +824,7 @@ function UnifiedProviderRow({
 								disabled={test?.state === "testing"}
 								title="测试连接"
 								aria-label={`测试 ${workbench.name} 连接`}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 disabled:opacity-40"
+								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
 							>
 								{test?.state === "testing" ? (
 									<Loader2 size={12} className="animate-spin" />
@@ -1005,7 +1005,7 @@ function UnifiedProviderRow({
 												disabled={modelTest?.state === "testing"}
 												title={`测试模型 ${id}`}
 												aria-label={`测试模型 ${id}`}
-												className="inline-flex shrink-0 items-center gap-1 rounded bg-[var(--well-bg)] px-2 py-0.5 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-white active:scale-95 disabled:opacity-40"
+												className="inline-flex shrink-0 items-center gap-1 rounded bg-[var(--well-bg)] px-2 py-0.5 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
 											>
 												{modelTest?.state === "testing" ? (
 													<Loader2 size={11} className="animate-spin" />

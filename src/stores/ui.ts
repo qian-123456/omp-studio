@@ -30,6 +30,9 @@ const STORAGE_KEYS = {
 	lastSession: "ompws:last-session",
 	rightTab: "ompws:right-tab",
 	rightTabs: "ompws:right-tabs",
+	gitListHeight: "ompws:git-list-height",
+	diffViewMode: "ompws:diff-view-mode",
+	diffWrap: "ompws:diff-wrap",
 };
 
 const RIGHT_TABS: readonly RightTab[] = [
@@ -112,6 +115,11 @@ function readString(key: string): string | null {
 	}
 }
 
+function readDiffViewMode(): "unified" | "split" | null {
+	const v = readString(STORAGE_KEYS.diffViewMode);
+	return v === "unified" || v === "split" ? v : null;
+}
+
 export interface UiState {
 	centerView: CenterView;
 	previousCenterView: CenterView | null;
@@ -125,6 +133,12 @@ export interface UiState {
 	openRightTabs: RightTab[];
 	rightOpen: boolean;
 	rightWidth: number;
+	/** Height (px) of the Git panel's worktree list above the detail-pane divider. */
+	gitListHeight: number;
+	/** Diff viewer layout chosen by the user; `null` = pick by dialog width. */
+	diffViewMode: "unified" | "split" | null;
+	/** Soft-wrap long lines in the diff viewer. */
+	diffWrap: boolean;
 	sidebarOpen: boolean;
 	sidebarWidth: number;
 	sessionViewMode: Record<string, "chat" | "terminal">;
@@ -150,6 +164,9 @@ export interface UiState {
 	toggleRight(): void;
 	setRightOpen(open: boolean): void;
 	setRightWidth(w: number): void;
+	setGitListHeight(h: number): void;
+	setDiffViewMode(m: "unified" | "split"): void;
+	setDiffWrap(wrap: boolean): void;
 	toggleSidebar(): void;
 	setSidebarOpen(open: boolean): void;
 	setSidebarWidth(w: number): void;
@@ -171,6 +188,9 @@ export const useUi = create<UiState>((set) => ({
 	openRightTabs: initialRightTabs.open,
 	rightOpen: readBool(STORAGE_KEYS.rightOpen, true),
 	rightWidth: readNumber(STORAGE_KEYS.rightWidth, 360, 260, 720),
+	gitListHeight: readNumber(STORAGE_KEYS.gitListHeight, 220, 80, 2000),
+	diffViewMode: readDiffViewMode(),
+	diffWrap: readBool(STORAGE_KEYS.diffWrap, false),
 	sidebarOpen: readBool(STORAGE_KEYS.sidebarOpen, true),
 	sidebarWidth: readNumber(STORAGE_KEYS.sidebarWidth, 280, 180, 600),
 	sessionViewMode: {},
@@ -271,6 +291,19 @@ export const useUi = create<UiState>((set) => ({
 		const clamped = Math.min(720, Math.max(260, w));
 		writeStorage(STORAGE_KEYS.rightWidth, clamped);
 		set({ rightWidth: clamped });
+	},
+	setGitListHeight: (h) => {
+		const clamped = Math.min(2000, Math.max(80, Math.round(h)));
+		writeStorage(STORAGE_KEYS.gitListHeight, clamped);
+		set({ gitListHeight: clamped });
+	},
+	setDiffViewMode: (m) => {
+		writeStorage(STORAGE_KEYS.diffViewMode, m);
+		set({ diffViewMode: m });
+	},
+	setDiffWrap: (wrap) => {
+		writeStorage(STORAGE_KEYS.diffWrap, wrap);
+		set({ diffWrap: wrap });
 	},
 	toggleSidebar: () =>
 		set((s) => {

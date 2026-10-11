@@ -69,6 +69,7 @@ describe("isDesktopRelevant", () => {
 		expect(isDesktopRelevant("error.notify")).toBe(false);
 		expect(isDesktopRelevant("cycleOrder")).toBe(false);
 		expect(isDesktopRelevant("modelRoleStorage")).toBe(false);
+		expect(isDesktopRelevant("task.agentModelOverrides")).toBe(false);
 	});
 
 	it("rejects keys owned by the context-window page", () => {
@@ -85,6 +86,13 @@ describe("isDesktopRelevant", () => {
 		// `read.` is a tools prefix but `readLineNumbers` is a hidden bare key.
 		expect(isDesktopRelevant("read.defaultLimit")).toBe(true);
 		expect(isDesktopRelevant("temperature")).toBe(true);
+	});
+});
+
+describe("groupByDesktopCategory", () => {
+	it("drops task.agentModelOverrides from the task list and keeps the other task keys", () => {
+		const groups = groupByDesktopCategory([entry("task.agentModelOverrides"), entry("task.maxRecursionDepth")]);
+		expect(groups.flatMap((g) => g.entries.map((e) => e.key))).toEqual(["task.maxRecursionDepth"]);
 	});
 });
 

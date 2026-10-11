@@ -6,6 +6,7 @@ pub mod commands;
 mod frame;
 #[cfg(test)]
 mod live_test;
+mod privacy_ext;
 mod process;
 mod sidechat;
 mod subagents;
@@ -52,6 +53,7 @@ pub fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
 /// Idle-suspend loop (§11 B): every 60 s suspend live sessions that are not
 /// streaming, have no pending UI, and were inactive for `idle_suspend_minutes`.
 pub fn init(state: AppState) {
+    privacy_ext::install();
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
@@ -258,8 +260,7 @@ pub async fn ensure_live(
 /// ensure_live + prompt (followUp when streaming).
 pub async fn send_prompt(state: &AppState, session_id: &str, text: &str) -> Result<(), String> {
     let info = ensure_live(state, session_id, None).await?;
-    let handle = get_handle(&info.session_id)
-        .ok_or_else(|| "session not live after ensure_live".to_string())?;
+    let handle = refresh_privacy(state, &info.session_id).await?;
     let streaming = handle.streaming.load(std::sync::atomic::Ordering::SeqCst);
     let command = if streaming {
         json!({"type": "prompt", "message": text, "streamingBehavior": "followUp"})
@@ -271,6 +272,27 @@ pub async fn send_prompt(state: &AppState, session_id: &str, text: &str) -> Resu
         session_id: info.session_id,
     });
     Ok(())
+}
+
+/// Live handle for a prompt write. When the native secrets snapshot changed since
+/// spawn and no turn is in flight, restarts the process (resume same file) first so
+/// compaction summaries stay masked; while streaming the extension guard cancels compaction.
+pub async fn refresh_privacy(
+    state: &AppState,
+    session_id: &str,
+) -> Result<Arc<SessionHandle>, String> {
+    let handle = get_handle(session_id).ok_or("session is not live")?;
+    let streaming = handle.streaming.load(std::sync::atomic::Ordering::SeqCst);
+    if !privacy_ext::needs_restart(
+        &handle.native_hash,
+        &crate::privacy::native_hash(),
+        streaming,
+    ) {
+        return Ok(handle);
+    }
+    drop(handle);
+    let info = restart(state, session_id).await?;
+    get_handle(&info.session_id).ok_or_else(|| "session not live after restart".to_string())
 }
 
 /// Write an `extension_ui_response`, emit `UiResponded`.

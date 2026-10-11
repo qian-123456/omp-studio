@@ -23,13 +23,18 @@ const POLL_MS = 10_000;
 const LOG_PAGE = 50;
 
 type PaneTab = "changes" | "history";
+type RepoMode = "worktrees" | "branches";
+
+/** Minimum heights (px) of the split's top list and bottom detail pane. */
+const MIN_LIST_H = 80;
+const MIN_DETAIL_H = 140;
 
 /** [C] Right tab: worktree map on top; the selected worktree's changes/history below. */
 export function GitPanel() {
 	const sid = useUi((s) => s.selectedSessionId);
 	const session = useSessions((s) => (sid ? s.sessions[sid] : undefined));
 	return (
-		<div className="flex min-h-full flex-col">
+		<div className="flex h-full min-h-0 flex-col">
 			{session?.cwd ? (
 				<RepoView key={session.cwd} cwd={session.cwd} tick={session.file} />
 			) : (
@@ -121,6 +126,11 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	/** Explicitly selected worktree; null follows the session's own worktree. */
 	const [focus, setFocus] = useState<string | null>(null);
 	const [tab, setTab] = useState<PaneTab>("changes");
+	/** null until the first successful worktree load picks a default; a manual pick is kept
+	 * for this RepoView's lifetime (remounted per cwd, so repo switches start fresh). */
+	const [mode, setMode] = useState<RepoMode | null>(null);
+	const listHeight = useUi((s) => s.gitListHeight);
+	const splitRef = useRef<HTMLDivElement>(null);
 	/** Bumped to make the focus pane reload (manual refresh, session activity). */
 	const [paneNonce, setPaneNonce] = useState(0);
 	const [diff, setDiff] = useState<DiffReq | null>(null);
@@ -173,12 +183,15 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 				setError(null);
 				if (root == null) return;
 				const [wts, tms] = await Promise.all([
-					gitListWorktrees(cwd).catch(() => [] as WorktreeInfo[]),
+					gitListWorktrees(cwd).catch(() => null),
 					tmList().catch(() => [] as TmRun[]),
 				]);
 				if (seq !== reqSeq.current) return;
-				setWorktrees(wts);
+				setWorktrees(wts ?? []);
 				setRuns(tms);
+				// Adaptive default, applied once: a lone checkout has nothing to map, so start on
+				// branches; multiple worktrees start on the map. Failed lists fall back to worktrees.
+				setMode((m) => m ?? (wts?.length === 1 ? "branches" : "worktrees"));
 			} catch (e) {
 				// Background polls fail quietly; visible loads surface the error.
 				if (spinner && seq === reqSeq.current) setError(errMsg(e));
@@ -224,6 +237,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 		if (worktrees.length === 0) return;
 		handledReveal.current = revealCommit.nonce;
 		useUi.getState().setRightTab("git");
+		setMode("worktrees");
 		setFocus(
 			revealCommit.cwd === top
 				? null
@@ -234,10 +248,37 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 		setTab("history");
 	}, [revealCommit, worktrees, top]);
 
+	const selectWorktree = (path: string) => setFocus(path === top ? null : path);
+
+	/** Divider drag: live update via setState, persist once on release (same as dock widths). */
+	const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+		const box = splitRef.current?.getBoundingClientRect();
+		if (!box) return;
+		e.preventDefault();
+		const target = e.currentTarget;
+		target.setPointerCapture(e.pointerId);
+		const clamp = (y: number) =>
+			Math.max(MIN_LIST_H, Math.min(box.height - MIN_DETAIL_H, y - box.top));
+		let last = listHeight;
+		const onMove = (ev: PointerEvent) => {
+			last = clamp(ev.clientY);
+			useUi.setState({ gitListHeight: Math.round(last) });
+		};
+		const onUp = () => {
+			target.removeEventListener("pointermove", onMove);
+			target.removeEventListener("pointerup", onUp);
+			target.removeEventListener("pointercancel", onUp);
+			useUi.getState().setGitListHeight(last);
+		};
+		target.addEventListener("pointermove", onMove);
+		target.addEventListener("pointerup", onUp);
+		target.addEventListener("pointercancel", onUp);
+	};
+
 	return (
-		<div className="flex min-h-full flex-col">
-			{/* Compact repo header: repo name + path + refresh */}
-			<div className="flex items-center justify-between border-b border-neutral-800/80 bg-neutral-900/40 px-3 py-1.5 text-xs">
+		<div className="flex h-full min-h-0 flex-col">
+			{/* Compact repo header: repo name + view switch + refresh (path lives in the hover card) */}
+			<div className="flex shrink-0 items-center justify-between gap-1.5 border-b border-neutral-800/80 bg-neutral-900/40 px-3 py-1.5 text-xs">
 				<div
 					onMouseEnter={handleTopMouseEnter}
 					onMouseLeave={handleTopMouseLeave}
@@ -249,11 +290,18 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 						title=""
 						className="font-semibold text-neutral-200 text-xs truncate max-w-[140px]"
 					/>
-					<span className="text-[10px] text-neutral-500 truncate">
-						· {short(mainRoot ?? cwd)}
-					</span>
 				</div>
-				<div className="flex items-center gap-1 shrink-0 ml-1.5">
+				<div className="flex items-center gap-1 shrink-0">
+					{isRepo && mode && (
+						<Segmented
+							value={mode}
+							onChange={setMode}
+							options={[
+								{ value: "worktrees", label: "工作树" },
+								{ value: "branches", label: "分支" },
+							]}
+						/>
+					)}
 					<button
 						type="button"
 						title="刷新 (⌘R)"
@@ -267,7 +315,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 			</div>
 
 			{error && (
-				<div className="m-3 flex items-center justify-between rounded border border-rose-800/60 bg-rose-950/40 p-2 text-xs text-rose-300">
+				<div className="m-3 flex shrink-0 items-center justify-between rounded border border-rose-800/60 bg-rose-950/40 p-2 text-xs text-rose-300">
 					<span className="min-w-0 flex-1 truncate">{error}</span>
 					<button
 						type="button"
@@ -279,86 +327,128 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 				</div>
 			)}
 
-			{isRepo === null && !error && <div className="p-3 text-xs text-neutral-500">加载中…</div>}
+			{(isRepo === null || (isRepo && mode === null)) && !error && (
+				<div className="p-3 text-xs text-neutral-500">加载中…</div>
+			)}
 			{isRepo === false && (
 				<div className="p-3 text-xs text-neutral-500">{short(cwd)} 不是 git 仓库</div>
 			)}
 
-			{isRepo && (
-				<div className="flex-1 space-y-2.5 p-2.5">
-					<WorktreeSection
-						repo={mainRoot ?? cwd}
-						worktrees={worktrees}
-						current={top}
-						selected={selected}
-						selectedExplicit={focus !== null}
-						onSelect={(path) => setFocus(path === top ? null : path)}
-						onChanged={() => void load(false)}
-					/>
-
+			{isRepo && mode === "branches" && (
+				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 					<BranchAssetSection
 						repo={mainRoot ?? cwd}
 						currentWorktreePath={selected}
-						onSelectWorktree={(path) => setFocus(path === top ? null : path)}
+						onSelectWorktree={(path) => {
+							selectWorktree(path);
+							setMode("worktrees");
+						}}
 						onWorktreeChanged={() => void load(false)}
 					/>
-					<section className="rounded-lg border border-neutral-800 bg-neutral-900/50">
-						{selected !== top && selectedName && (
-							<div className="flex items-center gap-1.5 border-b border-neutral-800 bg-indigo-500/5 px-3 py-1.5 text-[11px] text-indigo-200">
-								<span className="min-w-0 flex-1 truncate" title={`正在查看: ${selectedName}`}>
-									正在查看 <span className="font-mono">{selectedName}</span>
-								</span>
-								<button
-									type="button"
-									onClick={() => setFocus(null)}
-									className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
-								>
-									<Undo2 size={11} />
-									回到当前
-								</button>
-							</div>
-						)}
-						{/* First-use turn-checkpoints consent, top of the selected worktree pane. */}
-						<CheckpointsCard />
-						<FocusPane
-							key={selected}
-							path={selected}
-							tab={tab}
-							nonce={paneNonce}
-							onFileCount={setFileCount}
-							runs={repoRuns}
-							onRunsChange={(next) =>
-								setRuns([...runs.filter((r) => !repoRuns.includes(r)), ...next])
-							}
-							onRepoChanged={() => void load(false)}
-							onDiff={setDiff}
-						/>
-					</section>
 				</div>
 			)}
 
-			{isRepo && (
-				<div
-					role="tablist"
-					className="sticky bottom-0 z-10 flex items-center gap-1 border-t border-neutral-800 bg-neutral-900 px-2 py-1.5"
-				>
-					{(["changes", "history"] as const).map((t) => (
-						<button
-							key={t}
-							type="button"
-							role="tab"
-							aria-selected={tab === t}
-							onClick={() => setTab(t)}
-							className={clsx(
-								"flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
-								tab === t
-									? "bg-neutral-800 font-medium text-neutral-100"
-									: "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
+			{isRepo && mode === "worktrees" && (
+				<div ref={splitRef} className="flex min-h-0 flex-1 flex-col">
+					<div
+						className={clsx("overflow-auto p-2.5", worktrees.length > 1 && "shrink-0")}
+						style={
+							worktrees.length > 1
+								? {
+										height: listHeight,
+										minHeight: MIN_LIST_H,
+										maxHeight: `calc(100% - ${MIN_DETAIL_H}px)`,
+									}
+								: { flexShrink: 0, maxHeight: `calc(100% - ${MIN_DETAIL_H}px)` }
+						}
+					>
+						<WorktreeSection
+							repo={mainRoot ?? cwd}
+							worktrees={worktrees}
+							current={top}
+							selected={selected}
+							selectedExplicit={focus !== null}
+							onSelect={selectWorktree}
+							onChanged={() => void load(false)}
+							onOpenPane={(path, t) => {
+								selectWorktree(path);
+								setTab(t);
+							}}
+							onDiff={setDiff}
+						/>
+					</div>
+
+					{worktrees.length > 1 && (
+						// biome-ignore lint/a11y/useSemanticElements: draggable splitter, not a static rule
+						<div
+							role="separator"
+							aria-orientation="horizontal"
+							aria-label="拖动调整高度"
+							tabIndex={-1}
+							onPointerDown={startDrag}
+							className="group relative h-1.5 shrink-0 cursor-row-resize touch-none border-y border-neutral-800 bg-neutral-900 hover:bg-indigo-500/30"
+						/>
+					)}
+					{worktrees.length <= 1 && <div className="h-px shrink-0 bg-neutral-800" />}
+
+					<div className="flex min-h-0 flex-1 flex-col">
+						{/* Detail pane header: which worktree, back-to-current, tab switch, diff */}
+						<div className="flex shrink-0 items-center gap-1.5 border-b border-neutral-800 bg-neutral-900/40 px-2 py-1 text-xs">
+							<span
+								className="min-w-0 flex-1 truncate font-mono text-[11px] text-neutral-200"
+								title={selectedName ?? selected}
+							>
+								{selectedName ?? basename(selected)}
+							</span>
+							{selected !== top && (
+								<button
+									type="button"
+									title="回到当前"
+									aria-label="回到当前"
+									onClick={() => setFocus(null)}
+									className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+								>
+									<Undo2 size={12} />
+								</button>
 							)}
-						>
-							{t === "changes" ? `提交改动 (${fileCount})` : "版本历史"}
-						</button>
-					))}
+							<Segmented
+								value={tab}
+								onChange={setTab}
+								options={[
+									{ value: "changes", label: `改动 ${fileCount}` },
+									{ value: "history", label: "历史" },
+								]}
+							/>
+							{tab === "changes" && fileCount > 0 && (
+								<button
+									type="button"
+									onClick={() =>
+										setDiff({ title: "全部未提交的改动", load: () => gitDiff(selected) })
+									}
+									className="shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+								>
+									全部 diff
+								</button>
+							)}
+						</div>
+						<div className="min-h-0 flex-1 overflow-auto">
+							{/* First-use turn-checkpoints consent, top of the selected worktree pane. */}
+							<CheckpointsCard />
+							<FocusPane
+								key={selected}
+								path={selected}
+								tab={tab}
+								nonce={paneNonce}
+								onFileCount={setFileCount}
+								runs={repoRuns}
+								onRunsChange={(next) =>
+									setRuns([...runs.filter((r) => !repoRuns.includes(r)), ...next])
+								}
+								onRepoChanged={() => void load(false)}
+								onDiff={setDiff}
+							/>
+						</div>
+					</div>
 				</div>
 			)}
 
@@ -371,6 +461,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 				anchorRect={topAnchorRect}
 				open={topHoverOpen && topAnchorRect !== null}
 				isCurrent={true}
+				worktreeCount={isRepo ? worktrees.length : undefined}
 			/>
 		</div>
 	);
@@ -460,24 +551,6 @@ function FocusPane({
 
 	return (
 		<div>
-			<div className="flex items-center gap-1 px-2 pt-2">
-				<span className="text-xs font-medium text-neutral-300">
-					{tab === "changes" ? "提交改动" : "版本历史"}
-				</span>
-				<span className="flex-1" />
-				{tab === "changes" && fileCount > 0 && (
-					<button
-						type="button"
-						onClick={() =>
-							onDiff({ title: "全部未提交的改动", load: () => gitDiff(path) })
-						}
-						className="rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
-					>
-						全部 diff
-					</button>
-				)}
-			</div>
-
 			<div role="tabpanel" className="px-2 pb-2">
 				{error && <div className="px-1 pt-2 text-[11px] text-rose-400">{error}</div>}
 				{!summary && !error && <div className="px-1 py-2 text-xs text-neutral-500">加载中…</div>}
@@ -517,6 +590,39 @@ function FocusPane({
 						/>
 					))}
 			</div>
+		</div>
+	);
+}
+
+/** Compact two-way segmented control used by the repo and detail headers. */
+function Segmented<T extends string>({
+	value,
+	onChange,
+	options,
+}: {
+	value: T;
+	onChange: (v: T) => void;
+	options: { value: T; label: string }[];
+}) {
+	return (
+		<div role="tablist" className="flex shrink-0 rounded-md bg-neutral-800/60 p-0.5">
+			{options.map((o) => (
+				<button
+					key={o.value}
+					type="button"
+					role="tab"
+					aria-selected={value === o.value}
+					onClick={() => onChange(o.value)}
+					className={clsx(
+						"whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors",
+						value === o.value
+							? "bg-neutral-700 font-medium text-neutral-100"
+							: "text-neutral-400 hover:text-neutral-200",
+					)}
+				>
+					{o.label}
+				</button>
+			))}
 		</div>
 	);
 }

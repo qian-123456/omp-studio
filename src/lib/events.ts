@@ -70,6 +70,9 @@ export const onTodosChanged = (
 export const onBacklogChanged = (cb: () => void): Promise<UnlistenFn> =>
 	listen<null>("backlog:changed", () => cb());
 
+export const onPrivacyChanged = (cb: () => void): Promise<UnlistenFn> =>
+	listen<null>("privacy_changed", () => cb());
+
 export const onServicesChanged = (
 	cb: (services: ServiceInfo[]) => void,
 ): Promise<UnlistenFn> =>

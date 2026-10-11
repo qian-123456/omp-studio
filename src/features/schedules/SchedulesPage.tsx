@@ -188,7 +188,7 @@ export function SchedulesPage() {
 										className="p-3.5 rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] hover:bg-[var(--bg-hover)] hover:border-neutral-500 text-left transition-all group flex items-center justify-between gap-4"
 									>
 										<div className="space-y-1 min-w-0">
-											<div className="text-xs font-medium text-neutral-200 group-hover:text-white">
+											<div className="text-xs font-medium text-neutral-200 group-hover:text-[var(--text)]">
 												{tmpl.title}
 											</div>
 											<div className="text-[11px] text-neutral-400 line-clamp-1">

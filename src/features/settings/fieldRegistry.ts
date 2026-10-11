@@ -176,6 +176,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["refresh", "summary", "摘要", "标题", "自动刷新", "总结"],
 	},
 	{
+		id: "sessionGroupByWorktree",
+		sectionId: "sessions",
+		label: "按工作树区分会话",
+		description: "开启：会话按 Git 工作树 / 分支分组；关闭：每个项目一个平铺列表",
+		keywords: ["worktree", "branch", "group", "工作树", "分支", "分组", "平铺", "项目", "会话"],
+	},
+	{
 		id: "turnCheckpoints",
 		sectionId: "sessions",
 		label: "对话检查点",
@@ -225,6 +232,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		label: "自动移出时间（小时）",
 		description: "非审批/提问的事项超过这么久没有新动态就从收件箱移出",
 		keywords: ["window", "expire", "过期", "移出", "小时", "收件箱"],
+	},
+	{
+		id: "ompCheckIntervalHours",
+		sectionId: "about",
+		label: "自动检查间隔",
+		description: "应用运行期间，每隔这么久检查一次 omp 新版本",
+		keywords: ["check interval", "检查间隔", "自动检查", "小时", "omp", "更新"],
 	},
 	{
 		id: "homeShowCompletedTodos",
@@ -305,9 +319,16 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "modelRolesPanel",
 		sectionId: "omp-roles",
-		label: "模型角色与回退链",
-		description: "为每类任务指定主力模型与回退顺序，可按项目覆盖",
-		keywords: ["model", "role", "角色", "模型", "回退", "fallback", "default", "task", "项目", "project", "全局"],
+		label: "模型角色",
+		description: "为各角色与子代理指定实际使用的模型，可全局设置或按项目覆盖",
+		keywords: ["model", "role", "角色", "模型", "主力模型", "default", "task", "agent", "子代理", "代理", "点名", "override", "项目", "project", "全局"],
+	},
+	{
+		id: "fallbackChainsPanel",
+		sectionId: "model-fallback",
+		label: "回退链与切换顺序",
+		description: "角色失败后依次尝试的备选模型，以及会话内切换顺序与终端 /model 的保存位置",
+		keywords: ["fallback", "回退", "回退链", "chain", "切换顺序", "cycleOrder", "保存位置", "modelRoleStorage", "/model"],
 	},
 	{
 		id: "mcpServerList",

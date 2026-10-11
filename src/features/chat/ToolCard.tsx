@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
+import { PrivacyText } from "../privacy/SecretChip";
 import { askResultSummary } from "./ask/askDriver";
 import { ActivityHeader } from "./ActivityHeader";
 import { DiffView } from "./DiffView";
@@ -231,7 +232,7 @@ function QuietMonoBlock({
 			{header !== undefined && (
 				<div className="flex items-center justify-between gap-2 border-b border-[var(--line)] px-2.5 py-1">
 					<span className="truncate font-mono text-[11px] text-[var(--text-40)]">
-						{header}
+						<PrivacyText text={header} matchValues />
 					</span>
 					<CopyGhostButton text={copyValue ?? body} label={copyLabel} />
 				</div>
@@ -243,7 +244,7 @@ function QuietMonoBlock({
 					</div>
 				)}
 				<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all px-2.5 py-1.5 font-mono text-[11px] leading-5 text-[var(--text-60)]">
-					{body}
+					<PrivacyText text={body} matchValues />
 				</pre>
 			</div>
 		</div>

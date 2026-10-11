@@ -1183,7 +1183,7 @@ export function SkillsPage() {
 											setSort(o.value);
 											setSortOpen(false);
 										}}
-										className="flex w-full items-center justify-between gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+										className="flex w-full items-center justify-between gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 									>
 										<span>{o.label}</span>
 										{sort === o.value && (

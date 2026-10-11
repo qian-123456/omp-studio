@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { describeSelection, describeSelectionSegments, parseUnifiedDiff } from "./diff";
+import {
+	describeSelection,
+	describeSelectionSegments,
+	groupDiffFiles,
+	isFileHeaderMeta,
+	parseUnifiedDiff,
+} from "./diff";
 
 const DIFF = `diff --git a/a.ts b/a.ts
 index 111..222 100644
@@ -109,5 +115,54 @@ describe("describeSelection", () => {
 		expect(segs.length).toBeGreaterThanOrEqual(2);
 		expect(segs[0].file).toBe("a.ts");
 		expect(segs[segs.length - 1].file).toBe("b.md");
+	});
+});
+
+describe("groupDiffFiles", () => {
+	it("splits per file with counts, status and original index ranges", () => {
+		const lines = parseUnifiedDiff(DIFF);
+		const files = groupDiffFiles(lines);
+		expect(files.map((f) => [f.path, f.status, f.adds, f.dels])).toEqual([
+			["a.ts", "modified", 2, 1],
+			["b.md", "added", 2, 0],
+		]);
+		expect(files[0].start).toBe(0);
+		expect(files[0].end).toBe(files[1].start);
+		expect(files[1].end).toBe(lines.length);
+		expect(lines[files[1].start].text).toBe("diff --git a/b.md b/b.md");
+	});
+
+	it("keeps a commit preamble and detects renames, deletions, binaries", () => {
+		const text = `commit abc
+Author: x
+
+    msg
+diff --git a/old.ts b/new.ts
+similarity index 90%
+rename from old.ts
+rename to new.ts
+diff --git a/gone.png b/gone.png
+deleted file mode 100644
+Binary files a/gone.png and /dev/null differ
+`;
+		const lines = parseUnifiedDiff(text);
+		const files = groupDiffFiles(lines);
+		expect(files.map((f) => [f.path, f.status, f.binary])).toEqual([
+			[null, "modified", false],
+			["new.ts", "renamed", false],
+			["gone.png", "deleted", true],
+		]);
+		expect(files[1].oldPath).toBe("old.ts");
+		expect(isFileHeaderMeta(lines[files[1].start])).toBe(true);
+		expect(
+			lines.filter((l) => l.text.startsWith("Binary")).some(isFileHeaderMeta),
+		).toBe(false);
+	});
+
+	it("groups a bare ---/+++ diff without diff --git", () => {
+		const files = groupDiffFiles(
+			parseUnifiedDiff("--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n"),
+		);
+		expect(files.map((f) => [f.path, f.adds, f.dels])).toEqual([["x", 1, 1]]);
 	});
 });

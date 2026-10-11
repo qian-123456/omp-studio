@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Brain, Check, ChevronDown, ChevronRight, CornerDownLeft, Loader2, Search, X } from "lucide-react";
+import { Brain, Check, ChevronDown, ChevronRight, CornerDownLeft, Loader2, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { asRecord } from "../features/settings/modelRoles";
 import { useOmpConfigStore } from "../features/settings/ompConfigStore";
@@ -42,23 +42,31 @@ interface MenuProps {
 	 * "自定义模型…" footer rows.
 	 */
 	allowCustom?: boolean;
+	/** Explicit role map for the current scope; bypasses the global omp config store. */
+	roles?: Record<string, unknown>;
+	/** Close after any model or thinking pick and never hold a local (optimistic) selection. */
+	closeOnSelect?: boolean;
 }
 
 const EMPTY_ENTRIES: never[] = [];
 
-/** omp `modelRoles`, loaded on demand when the picker offers role rows. */
-function useOmpModelRoles(enabled: boolean): { roles: Record<string, unknown>; loaded: boolean } {
-	const entries = useOmpConfigStore((s) => (enabled ? s.entries : EMPTY_ENTRIES));
+/** omp `modelRoles`: explicit `override` wins, else loaded on demand from the global store. */
+function useOmpModelRoles(
+	enabled: boolean,
+	override?: Record<string, unknown>,
+): { roles: Record<string, unknown>; loaded: boolean } {
+	const useStore = enabled && !override;
+	const entries = useOmpConfigStore((s) => (useStore ? s.entries : EMPTY_ENTRIES));
 	const loaded = useOmpConfigStore((s) => s.loaded);
 	const load = useOmpConfigStore((s) => s.load);
 	useEffect(() => {
-		if (enabled) void load();
-	}, [enabled, load]);
+		if (useStore) void load();
+	}, [useStore, load]);
 	const roles = useMemo(
-		() => asRecord(entries.find((e) => e.key === "modelRoles")?.value),
-		[entries],
+		() => override ?? asRecord(entries.find((e) => e.key === "modelRoles")?.value),
+		[override, entries],
 	);
-	return { roles, loaded: enabled && loaded };
+	return { roles, loaded: override ? enabled : useStore && loaded };
 }
 
 function findCatalogModel(models: ModelOption[] | null, key: string): ModelOption | null {
@@ -84,16 +92,23 @@ export function ModelMenuContent({
 	caption,
 	thinking = false,
 	allowCustom = false,
+	roles: rolesOverride,
+	closeOnSelect = false,
 }: MenuProps) {
 	const [q, setQ] = useState("");
+	const [confirmRemoveKey, setConfirmRemoveKey] = useState<string | null>(null);
+	const [localSelection, setLocalSelection] = useState<string | null>(null);
 	const hasRoleExtras = Boolean(extras?.some((x) => roleIdOf(x.value)));
-	const current = parseSelection(currentValue);
+	const effectiveValue = localSelection ?? currentValue;
+	const current = parseSelection(effectiveValue);
 	const selectedKey = current.selector;
 	const { roles, loaded: rolesLoaded } = useOmpModelRoles(
 		hasRoleExtras || (thinking && roleIdOf(selectedKey) !== null),
+		rolesOverride,
 	);
 	const recent = useModelSelectPrefs((s) => s.recent);
 	const recordRecent = useModelSelectPrefs((s) => s.recordRecent);
+	const removeRecent = useModelSelectPrefs((s) => s.removeRecent);
 	const dismissedGuides = useModelSelectPrefs((s) => s.dismissedGuides);
 	const dismissGuide = useModelSelectPrefs((s) => s.dismissGuide);
 	const refreshing = useModelCatalog((s) => s.loading);
@@ -114,7 +129,15 @@ export function ModelMenuContent({
 
 	const pickModel = (key: string) => {
 		if (isRecordableModelKey(key)) recordRecent(key);
-		onSelect(key);
+		if (!closeOnSelect) setLocalSelection(key);
+		const targetModel = findCatalogModel(models, key);
+		const supportsThinking =
+			!closeOnSelect && thinking && targetModel && (targetModel.thinking?.length ?? 0) > 0;
+		if (supportsThinking) {
+			onSelect(key, { keepOpen: true });
+		} else {
+			onSelect(key);
+		}
 	};
 	const listRef = useRef<HTMLDivElement>(null);
 
@@ -182,10 +205,7 @@ export function ModelMenuContent({
 				className={clsx(ROW_CLASS, isSelected ? ROW_SELECTED : ROW_IDLE)}
 			>
 				<div className="min-w-0 pr-2">
-					<div className="truncate font-medium">{m.name}</div>
-					{m.name !== m.id && (
-						<div className="truncate text-[10px] text-neutral-500">{m.id}</div>
-					)}
+					<div className="truncate font-medium">{m.id}</div>
 					{showProvider && (
 						<div className="truncate text-[10px] text-neutral-500">
 							{m.provider}
@@ -194,6 +214,82 @@ export function ModelMenuContent({
 				</div>
 				{isSelected && <Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />}
 			</button>
+		);
+	};
+
+	const renderRecentModelRow = (m: ModelOption) => {
+		const key = toModelKey(m.provider, m.id);
+		const isSelected = selectedKey === key;
+		const isConfirming = confirmRemoveKey === key;
+
+		if (isConfirming) {
+			return (
+				<div
+					key={"recent:" + key}
+					className="flex w-full items-center justify-between gap-1.5 px-2.5 py-1 text-xs rounded-[8px] bg-red-500/10 border border-red-500/25 my-0.5"
+				>
+					<span className="min-w-0 truncate text-[11px] font-medium text-red-400">
+						确认移出最近记录？
+					</span>
+					<div className="flex shrink-0 items-center gap-1">
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								removeRecent(key);
+								setConfirmRemoveKey(null);
+							}}
+							className="rounded px-2 py-0.5 text-[10px] font-medium bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors cursor-pointer"
+						>
+							确认
+						</button>
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								setConfirmRemoveKey(null);
+							}}
+							className="rounded px-2 py-0.5 text-[10px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors cursor-pointer"
+						>
+							取消
+						</button>
+					</div>
+				</div>
+			);
+		}
+
+		return (
+			<div
+				key={"recent:" + key}
+				className={clsx(
+					"group relative flex w-full items-center justify-between px-2.5 py-1 text-left text-xs transition-colors rounded-[8px]",
+					isSelected ? ROW_SELECTED : ROW_IDLE,
+				)}
+			>
+				<button
+					type="button"
+					onClick={() => pickModel(key)}
+					className="flex min-w-0 flex-1 items-center justify-between text-left cursor-pointer"
+				>
+					<div className="min-w-0 pr-2">
+						<div className="truncate font-medium">{m.id}</div>
+						<div className="truncate text-[10px] text-neutral-500">{m.provider}</div>
+					</div>
+					{isSelected && <Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />}
+				</button>
+				<button
+					type="button"
+					title="移出最近记录"
+					aria-label="移出最近记录"
+					onClick={(e) => {
+						e.stopPropagation();
+						setConfirmRemoveKey(key);
+					}}
+					className="ml-1 shrink-0 rounded p-1 text-neutral-500 opacity-0 group-hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-red-400 transition-all cursor-pointer"
+				>
+					<Trash2 size={12} />
+				</button>
+			</div>
 		);
 	};
 
@@ -237,12 +333,12 @@ export function ModelMenuContent({
 			{!searching && recentModels.length > 0 && (
 				<div className="shrink-0 border-b border-[var(--border-divider)] pb-1">
 					<div className="px-2.5 pb-0.5 pt-1 text-[10px] font-medium text-neutral-500">最近使用</div>
-					{recentModels.map((m) => renderModelRow(m, true, "recent:"))}
+					{recentModels.map((m) => renderRecentModelRow(m))}
 				</div>
 			)}
 
 			{searching ? (
-				<div ref={listRef} className="max-h-56 min-h-0 shrink overflow-y-auto py-0.5">
+				<div ref={listRef} className="max-h-56 min-h-28 shrink overflow-y-auto py-0.5">
 					{searchHits.length === 0 && !showCustomRow ? (
 						<div className="px-3 py-2 text-center text-xs text-neutral-500">
 							无匹配模型
@@ -265,7 +361,7 @@ export function ModelMenuContent({
 					)}
 				</div>
 			) : (
-				<div className="flex max-h-56 min-h-0 shrink">
+				<div className="flex max-h-56 min-h-28 shrink">
 					{/* Provider column */}
 					<div className="w-36 shrink-0 overflow-y-auto border-r border-[var(--border-divider)] py-0.5">
 						{providers.map(([provider, list]) => {
@@ -305,7 +401,7 @@ export function ModelMenuContent({
 			)}
 
 			{extras && extras.length > 0 && (
-				<div className="mt-1 shrink-0 border-t border-[var(--border-divider)] pt-1">
+				<div className="mt-1 max-h-40 min-h-12 shrink overflow-y-auto border-t border-[var(--border-divider)] pt-1">
 					{extras.map((x) => {
 						const roleId = roleIdOf(x.value);
 						const isSelected = selectedKey === x.value;
@@ -364,7 +460,11 @@ export function ModelMenuContent({
 					models={models}
 					roles={roles}
 					rolesLoaded={rolesLoaded}
-					onPick={(level) => onSelect(composeSelection(selectedKey, level), { keepOpen: true })}
+					onPick={(level) => {
+						const next = composeSelection(selectedKey, level);
+						if (!closeOnSelect) setLocalSelection(next);
+						onSelect(next);
+					}}
 				/>
 			)}
 		</div>
@@ -449,6 +549,8 @@ interface SelectProps extends MenuProps {
 	/** Horizontal alignment relative to trigger button; defaults to "end" to keep right-aligned dropdowns inside dialogs. */
 	align?: "start" | "end";
 	widthClass?: string;
+	/** Real disabled trigger; also closes an open menu. */
+	disabled?: boolean;
 }
 
 /** Trigger button + two-pane grouped popover menu. */
@@ -459,6 +561,7 @@ export function ModelSelect({
 	direction = "down",
 	align = "end",
 	widthClass = "w-[380px]",
+	disabled = false,
 	...menu
 }: SelectProps) {
 	const [open, setOpen] = useState(false);
@@ -468,7 +571,7 @@ export function ModelSelect({
 	const currentRole = menu.extras?.some((x) => x.value === current.selector)
 		? roleIdOf(current.selector)
 		: null;
-	const { roles, loaded } = useOmpModelRoles(currentRole !== null);
+	const { roles, loaded } = useOmpModelRoles(currentRole !== null, menu.roles);
 	let displayLabel = label;
 	if (currentRole && loaded) {
 		displayLabel = `${RESOLVABLE_ROLES[currentRole]} → ${describeResolution(
@@ -478,16 +581,23 @@ export function ModelSelect({
 	} else if (currentRole && current.level) {
 		displayLabel = `${RESOLVABLE_ROLES[currentRole]} · ${current.level}`;
 	} else if (current.level) {
-		const name = findCatalogModel(menu.models, current.selector)?.name ?? current.selector;
+		const name = findCatalogModel(menu.models, current.selector)?.id ?? current.selector;
 		displayLabel = `${name} · ${current.level}`;
 	}
+	const isOpen = open && !disabled;
+	useEffect(() => {
+		if (disabled) setOpen(false);
+	}, [disabled]);
 
 	return (
 		<div className="relative">
 			<button
 				ref={buttonRef}
 				type="button"
-				onClick={() => setOpen((v) => !v)}
+				disabled={disabled}
+				onClick={() => {
+					if (!disabled) setOpen((v) => !v);
+				}}
 				title={displayLabel || "选择模型"}
 				className={buttonClass}
 			>
@@ -495,7 +605,7 @@ export function ModelSelect({
 				<span className="truncate">{displayLabel}</span>
 			</button>
 			<FloatingLayer
-				anchor={open ? buttonRef.current : null}
+				anchor={isOpen ? buttonRef.current : null}
 				placement={placement}
 				offset={4}
 				layer="popover"
@@ -512,6 +622,7 @@ export function ModelSelect({
 				<ModelMenuContent
 					{...menu}
 					onSelect={(v, opts) => {
+						if (disabled) return;
 						menu.onSelect(v, opts);
 						if (opts?.keepOpen) return;
 						setOpen(false);

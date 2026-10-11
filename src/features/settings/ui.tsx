@@ -331,7 +331,7 @@ export function CommitInput({
 
 	return (
 		<div className={clsx("flex flex-col gap-1", className)}>
-			<div className="flex items-center gap-2">
+			<div className="relative flex">
 				<input
 					type={type}
 					min={min}
@@ -359,16 +359,27 @@ export function CommitInput({
 					}}
 					className={clsx(
 						INPUT_CLASS,
-						"min-w-0 flex-1",
+						"w-full",
 						(mono || type === "number") && "font-mono tabular-nums",
+						type === "number" && "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
 						invalid && "ring-1 ring-rose-500/60",
 					)}
 				/>
-				<SaveIndicator status={save.status} error={save.error} />
+				{/* Save feedback sits under the field, so it never resizes the input or pushes the unit label. */}
+				<div className="pointer-events-none absolute right-0 top-full mt-0.5 leading-none">
+					<SaveIndicator status={invalid ? "idle" : save.status} error={save.error} />
+				</div>
 			</div>
 			{invalid && <div className="text-[11px] text-rose-400">{invalid}</div>}
 		</div>
 	);
+}
+
+/** Clamp an hours field to [1, 720]; garbage falls back to the 24h default. */
+export function normalizeHours(raw: string): string {
+	const n = parseInt(raw, 10);
+	if (!Number.isFinite(n)) return "24";
+	return String(Math.min(720, Math.max(1, n)));
 }
 
 /** Secondary action button used in settings rows. */

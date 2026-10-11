@@ -1,6 +1,7 @@
 //! [C] Git status/log/diff/worktrees/time machine.
 //! Cross-module API per docs/ARCHITECTURE.md §9.
 
+pub mod base_sync;
 pub mod checkpoints_ext;
 pub mod cmd;
 pub mod commands;

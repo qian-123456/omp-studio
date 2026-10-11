@@ -137,7 +137,12 @@ import { formatWithAnnotations, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useHeldQueue } from "./heldQueue";
-import { abortTurn, sendPrompt, useAbortState } from "./send";
+import { abortTurn, linkSentSecrets, sendPrompt, useAbortState } from "./send";
+import { usePrivacy } from "../../stores/privacy";
+import { ComposerSecretOverlay } from "./privacy/ComposerSecretOverlay";
+import { LibraryPromptCard } from "./privacy/LibraryPromptCard";
+import { libraryPromptCandidates, maskText, replacedEntries } from "./privacy/composerPrivacy";
+import { useComposerPrivacy } from "./privacy/useComposerPrivacy";
 import {
 	buildSetModelPayload,
 	type ModelOption,
@@ -240,6 +245,15 @@ export function Composer({
 	const setDraft = useComposer((s) => s.setDraft);
 	const clearDraft = useComposer((s) => s.clearDraft);
 	const setText = (nextText: string) => setDraft(sessionId, nextText);
+	const privacy = useComposerPrivacy(sessionId, text);
+	const privacyEntries = usePrivacy((s) => s.entries);
+	const libraryCandidates = useMemo(
+		() => libraryPromptCandidates(privacyEntries, privacy.sessionEntryIds),
+		[privacyEntries, privacy.sessionEntryIds],
+	);
+	// Library prompt appears only after a send from this composer.
+	const [libraryPromptArmed, setLibraryPromptArmed] = useState(false);
+	const [taFocused, setTaFocused] = useState(false);
 
 	const history = useComposer((s) => s.history);
 	const pushHistory = useComposer((s) => s.pushHistory);
@@ -613,6 +627,19 @@ export function Composer({
 		const raw = text;
 		if (!raw.trim() || busy) return;
 		const trimmedRaw = raw.trim();
+		// Privacy: replace marked / auto / accepted ranges with placeholders.
+		// The draft and local history keep the real text; everything sent is masked.
+		const maskedRaw = maskText(raw, privacy.highlights);
+		const trimmedMasked = maskedRaw.trim();
+		const sentSecrets = replacedEntries(privacy.highlights);
+		const sessionEntryIds = privacy.sessionEntryIds;
+		const markScopes = privacy.draft.scopes;
+		const finishPrivacySend = () => {
+			privacy.reset();
+			if (sentSecrets.length === 0) return;
+			setLibraryPromptArmed(true);
+			void linkSentSecrets(sessionId, sentSecrets, sessionEntryIds, markScopes);
+		};
 		setArgHintLine(null);
 		if (trimmedRaw.startsWith("/")) {
 			// Registry command (/fork, /status, …) — run natively or forward.
@@ -620,15 +647,16 @@ export function Composer({
 			try {
 				const outcome = await runSlashInput(
 					sessionId,
-					trimmedRaw,
+					trimmedMasked,
 					makeSlashDeps(),
 				);
 				if (outcome === "keep") return;
 				if (outcome === null) {
 					// Unknown `/x`: send to omp so its own builtins still run.
 					pushHistory(trimmedRaw);
-					await sendSlashPrompt(sessionId, trimmedRaw);
+					await sendSlashPrompt(sessionId, trimmedMasked);
 				}
+				finishPrivacySend();
 				clearDraft(sessionId);
 				clearAnnotations(sessionId);
 				clearImages(sessionId);
@@ -642,7 +670,7 @@ export function Composer({
 		}
 		const currentSessionImages = useComposer.getState().images[sessionId] ?? [];
 		// Convert `🖼️ #N` to standard OMP token `[Image #N: path]`
-		let outgoingRaw = raw.replace(/🖼️\s*#(\d+)/gu, (_match, numStr) => {
+		let outgoingRaw = maskedRaw.replace(/🖼️\s*#(\d+)/gu, (_match, numStr) => {
 			const n = parseInt(numStr, 10);
 			const img = currentSessionImages[n - 1];
 			if (img?.path) {
@@ -686,6 +714,7 @@ export function Composer({
 		if (streaming && !steer) {
 			pushHeld(sessionId, message, imageAttachments);
 			pushHistory(raw.trim());
+			finishPrivacySend();
 			clearDraft(sessionId);
 			clearAnnotations(sessionId);
 			clearImages(sessionId);
@@ -695,6 +724,7 @@ export function Composer({
 		try {
 			await sendPrompt(sessionId, message, { steer, images: imageAttachments });
 			pushHistory(raw.trim());
+			finishPrivacySend();
 			clearDraft(sessionId);
 			clearAnnotations(sessionId);
 			clearImages(sessionId);
@@ -1096,6 +1126,11 @@ export function Composer({
 
 	return (
 		<div className="shrink-0 px-3 pb-3 pt-1">
+			{libraryPromptArmed &&
+				libraryCandidates.length > 0 &&
+				!(taFocused && text.trim().length > 0) && (
+					<LibraryPromptCard entries={libraryCandidates} />
+				)}
 			<div
 				ref={composerCardRef}
 				className={clsx(
@@ -1250,6 +1285,12 @@ export function Composer({
 				)}
 				{/* Textarea container with mirrored syntax-highlighting backdrop */}
 				<div className="relative w-full">
+					<ComposerSecretOverlay
+						sessionId={sessionId}
+						text={text}
+						taRef={taRef}
+						privacy={privacy}
+					/>
 					{hasImageTokens && (
 						<div
 							ref={backdropRef}
@@ -1349,6 +1390,8 @@ export function Composer({
 						onDragLeave={onDragLeave}
 						onDrop={(e) => void onDrop(e)}
 						onPaste={(e) => void onPaste(e)}
+						onFocus={() => setTaFocused(true)}
+						onBlur={() => setTaFocused(false)}
 						rows={1}
 						placeholder={
 							streaming
@@ -1360,7 +1403,7 @@ export function Composer({
 							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]",
 							hasImageTokens
 								? "relative z-10 text-transparent caret-[var(--text)] selection:bg-sky-500/30 selection:text-transparent"
-								: "text-[var(--text)]",
+								: "relative text-[var(--text)]",
 						)}
 					/>
 				</div>

@@ -62,6 +62,7 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
+import { useSettings } from "../settings/store";
 import { WorktreeHoverCard } from "../git/WorktreeHoverCard";
 import { useInboxBadge } from "../inbox/useInboxBadge";
 import { ArchiveUndoBar } from "./ArchiveUndoBar";
@@ -426,6 +427,7 @@ export function SessionSidebar() {
 
 	// Compute grouped sessions with optional frozen order (C2: pass worktrees)
 	const sessionsList = useMemo(() => Object.values(sessions), [sessions]);
+	const groupByWorktree = useSettings((s) => s.settings?.sessionGroupByWorktree ?? true);
 	const grouped = useMemo(() => {
 		const res = groupSessions(sessionsList, workspaces, {
 			searchQuery,
@@ -433,10 +435,11 @@ export function SessionSidebar() {
 			activeWorkspaceId,
 			frozenOrder,
 			worktrees,
+			groupByWorktree,
 		});
 		lastGroupedRef.current = res;
 		return res;
-	}, [sessionsList, workspaces, searchQuery, showArchived, activeWorkspaceId, frozenOrder, worktrees]);
+	}, [sessionsList, workspaces, searchQuery, showArchived, activeWorkspaceId, frozenOrder, worktrees, groupByWorktree]);
 
 	// Filter workspace groups visible in "all" mode
 	const visibleWorkspaceGroups = useMemo(() => {
@@ -818,7 +821,7 @@ export function SessionSidebar() {
 	const handlePlusClick = (ws: Workspace, e: React.MouseEvent) => {
 		e.stopPropagation();
 		e.preventDefault();
-		if (e.altKey) {
+		if (e.altKey || !groupByWorktree) {
 			void startSessionInDir(ws, false);
 			return;
 		}
@@ -2359,7 +2362,7 @@ export function SessionSidebar() {
 							在当前目录创建
 						</button>
 
-						{plusMenu.ws.kind !== "global" && (() => {
+						{plusMenu.ws.kind !== "global" && groupByWorktree && (() => {
 							const liveWts =
 								useWorktrees.getState().byWorkspace[plusMenu.ws.id] ?? [];
 							const hasGitWorktrees = liveWts.length > 0;

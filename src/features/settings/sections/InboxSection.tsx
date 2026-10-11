@@ -11,6 +11,7 @@ import {
 	SettingRow,
 	SettingsCard,
 	ToggleRow,
+	normalizeHours,
 	useSaveStatus,
 } from "../ui";
 
@@ -37,7 +38,7 @@ export function InboxSection() {
 	const isRole = Object.prototype.hasOwnProperty.call(ROLE_LABELS, currentSelector);
 	const modelLabel = isRole
 		? ROLE_LABELS[currentSelector]
-		: (models.find((m) => toModelKey(m.provider, m.id) === currentSelector)?.name ?? (current || "选择模型"));
+		: (models.find((m) => toModelKey(m.provider, m.id) === currentSelector)?.id ?? (current || "选择模型"));
 
 	return (
 		<div className="space-y-6">
@@ -71,7 +72,7 @@ export function InboxSection() {
 								className="w-24"
 								aria-label="收件箱自动移出时间（小时）"
 								value={String(settings?.inboxWindowHours ?? 24)}
-								normalize={normalizeWindowHours}
+								normalize={normalizeHours}
 								onCommit={(v) => save({ inboxWindowHours: Number(v) })}
 							/>
 							<span className="text-xs text-neutral-500">小时</span>
@@ -159,7 +160,7 @@ export function DoctorSection() {
 	const doctorIsRole = Object.prototype.hasOwnProperty.call(ROLE_LABELS, doctorSelector);
 	const doctorLabel = doctorIsRole
 		? ROLE_LABELS[doctorSelector]
-		: (models.find((m) => toModelKey(m.provider, m.id) === doctorSelector)?.name ?? (doctorCurrent || "选择模型"));
+		: (models.find((m) => toModelKey(m.provider, m.id) === doctorSelector)?.id ?? (doctorCurrent || "选择模型"));
 	const doctorMode = settings?.doctorAutoMode ?? "manual";
 	return (
 		<div className="space-y-6">
@@ -253,11 +254,4 @@ function normalizeInterval(raw: string): string {
 	const n = parseInt(raw, 10);
 	if (!Number.isFinite(n) || n <= 0) return "0";
 	return String(Math.min(10080, Math.max(5, n)));
-}
-
-/** Clamp to [1, 720]; garbage falls back to the 24h default. */
-function normalizeWindowHours(raw: string): string {
-	const n = parseInt(raw, 10);
-	if (!Number.isFinite(n)) return "24";
-	return String(Math.min(720, Math.max(1, n)));
 }

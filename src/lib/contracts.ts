@@ -342,6 +342,10 @@ export interface WorktreeInfo {
 	/** Number of uncommitted changes (0 = clean). */
 	dirty: number;
 	sessionIds: string[];
+	/** Commits on HEAD not in the local base branch (main/master). */
+	ahead: number;
+	/** Commits in the local base branch not in HEAD. */
+	behind: number;
 }
 
 export interface BranchInfo {
@@ -358,6 +362,11 @@ export interface BranchInfo {
 	ahead: number;
 	behind: number;
 	isMerged: boolean;
+}
+
+export interface BaseSyncResult {
+	mergedFromBase: number;
+	fastForwarded: number;
 }
 
 export interface MergePreview {
@@ -500,6 +509,8 @@ export interface Settings {
 	supervisorIntervalMinutes: number;
 	/** Hours before non-blocking inbox todos auto-hide (1..=720). */
 	inboxWindowHours: number;
+	/** Hours between automatic omp update checks while the app runs (1..=720). */
+	ompCheckIntervalHours: number;
 	/** "HH:MM" quiet-hours window; null or half-open pair = off. */
 	notifyQuietFrom: string | null;
 	notifyQuietTo: string | null;
@@ -508,6 +519,8 @@ export interface Settings {
 	homeShowCompletedTodos: boolean;
 	dockBadgeEnabled: boolean;
 	sessionTurnAutoRefresh: boolean;
+	/** Default true: split sessions under a project by git worktree/branch; false = one flat list per project. */
+	sessionGroupByWorktree: boolean;
 	/**
 	 * Turn checkpoints for app-launched sessions (loads the checkpoints extension
 	 * via `-e`). null = never asked (Git panel shows the consent card).
@@ -515,6 +528,8 @@ export interface Settings {
 	turnCheckpoints: boolean | null;
 	/** Auto-send queued mid-stream messages when the turn ends (null = enabled). */
 	queueAutoSend: boolean | null;
+	/** Auto-run `omp update` when the startup check finds a new version (null = off). */
+	ompAutoUpdate: boolean | null;
 	/** Git delivery mode: "pr" (default, opens GitHub PR) or "direct" (merges locally and pushes to main). */
 	gitDeliveryMode?: "pr" | "direct" | string;
 	/** AI doctor (heatmap diagnosis) model; default "smol"; empty falls back to supervisorModel. */
@@ -525,6 +540,60 @@ export interface Settings {
 	doctorIdleMinutes: number;
 	/** "HH:MM" daily time for "scheduled" mode; default "23:00". */
 	doctorScheduleTime: string;
+	/** Show real values in privacy chips by default (null ⇒ true). */
+	privacyRevealDefault: boolean | null;
+}
+
+/** Privacy placeholder risk tier (§4 [P]). */
+export type SecretRisk = "safe" | "risky";
+
+/** One marked secret value (§4 [P]). */
+export interface SecretEntry {
+	id: string;
+	value: string;
+	label: string | null;
+	/** Current placeholder `⟦LABEL_xxxx⟧`. */
+	placeholder: string;
+	/** Legacy placeholders kept restorable (no new ones are created; placeholders are immutable). */
+	aliases: string[];
+	risk: SecretRisk;
+	track: boolean;
+	inLibrary: boolean;
+	libraryPrompted: boolean;
+	createdAt: string;
+	/** Number of sessions this entry is linked to (for delete/untrack confirmation). */
+	sessionCount: number;
+}
+
+/** Which part of the session history a new mark protects (§7 `privacy_mark`). */
+export type PrivacyMarkScope = "future" | "all";
+
+/** `privacy_update` patch; `label: ""` clears the label. */
+export interface SecretEntryPatch {
+	label?: string;
+	track?: boolean;
+	inLibrary?: boolean;
+	libraryPrompted?: boolean;
+}
+
+export type PrivacyNativeStatus = "ok" | "conflict" | "error";
+
+export interface PrivacySnapshot {
+	entries: SecretEntry[];
+	nativeStatus: PrivacyNativeStatus;
+	nativeError: string | null;
+}
+
+export type SecretClassificationReason =
+	| "TOO_SHORT"
+	| "INVALID_VALUE"
+	| "SHORT"
+	| "COMMON";
+
+export interface SecretClassification {
+	level: "safe" | "risky" | "reject";
+	reason: SecretClassificationReason | null;
+	sessionOccurrences: number;
 }
 
 /** One `omp config list --json` entry. */
@@ -555,6 +624,35 @@ export interface OmpProjectConfigFile {
 	/** false when the file does not exist yet (content is then ""). */
 	exists: boolean;
 	content: string;
+}
+
+/** One scope's allowed config keys: `modelRoles` and `task.agentModelOverrides`, nothing else. */
+export interface ModelRoleLayer {
+	path: string;
+	exists: boolean;
+	modelRoles: Record<string, string>;
+	agentModelOverrides: Record<string, string>;
+}
+
+/** Layer that supplied an agent's effective model. */
+export type AgentEffectiveSource = "override" | "global" | "project" | "agent" | "session" | "unresolved";
+
+/** Where an agent definition was discovered. */
+export type AgentDefinitionSource = "builtin" | "user" | "project";
+
+export interface AgentModelAssignment {
+	name: string;
+	source: AgentDefinitionSource;
+	declaredModel: string | null;
+	effectiveModel: string | null;
+	effectiveSource: AgentEffectiveSource;
+	reason: string;
+}
+
+export interface ModelRoleSnapshot {
+	global: ModelRoleLayer;
+	project: ModelRoleLayer | null;
+	agents: AgentModelAssignment[];
 }
 
 /** Return value of `app_paths`. */
@@ -1022,6 +1120,14 @@ export interface OmpUpdateStatus {
 	updateAvailable: boolean;
 	/** ANSI-stripped command output. */
 	output: string;
+}
+
+/** Return value of `rpc_omp_staleness`: which live sessions run an outdated omp binary. */
+export interface OmpStaleness {
+	/** Opaque identity (path + mtime + size) of the omp binary new spawns would use; null if unresolvable. */
+	fingerprint: string | null;
+	/** Live sessions whose spawn-time fingerprint differs from `fingerprint`. */
+	staleSessionIds: string[];
 }
 
 /** Return value of `omp_update_run`. */

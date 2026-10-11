@@ -1,80 +1,15 @@
 /**
- * [D] Pure helpers for the desktop "model roles & fallback chains" editor —
- * the equivalent of omp TUI `/model` → Roles.
+ * [D] Pure helpers for the desktop role settings: the built-in role catalogue,
+ * role value parsing (`provider/id[:level]`, `@role` aliases), custom role keys
+ * and the `retry.fallbackChains` record helpers.
  *
- * Backing settings (see omp settings.md §Models):
- *   - `modelRoles.<role>`           primary selector per role ("provider/id[:level]", "@role" alias)
- *   - `retry.fallbackChains.<role>` ordered fallback selectors per role
- *   - `modelRoleStorage`            where `omp config set` writes role assignments (global|project)
- *   - `cycleOrder`                  chat roles cycled by the model switcher
+ * Primary role assignments (`modelRoles`) and agent overrides are written only by
+ * the backend (`omp_model_roles_set`, a format-preserving YAML edit); no frontend
+ * code rewrites the `modelRoles` record any more.
  *
- * NOTE: `omp config set` only accepts top-level schema paths — `modelRoles` and
- * `retry.fallbackChains` are record-typed keys, so a single role is updated by
- * rewriting the whole record via `withRoleAssignment` / `withChain` and
- * `JSON.stringify`. There is no `omp config set modelRoles.<role>`.
+ * `omp config set` accepts top-level keys only, so `retry.fallbackChains` is
+ * rewritten as a whole record via `withChain` and `JSON.stringify`.
  */
-
-import { isMap, parseDocument, type Document } from "yaml";
-
-export type ProjectRolesParse =
-	| { ok: true; roles: Record<string, unknown> }
-	| { ok: false; error: string };
-
-/** Parse a project `.omp/config.yml` and validate the top level is a mapping. */
-function parseProjectDoc(
-	content: string,
-): { ok: true; doc: Document } | { ok: false; error: string } {
-	const doc = parseDocument(content);
-	if (doc.errors.length > 0) {
-		return { ok: false, error: `YAML 解析失败：${doc.errors[0].message}` };
-	}
-	if (doc.contents !== null && !isMap(doc.contents)) {
-		return { ok: false, error: "配置文件顶层必须是键值映射（mapping）" };
-	}
-	const roles = doc.get("modelRoles");
-	if (roles !== undefined && roles !== null && !isMap(roles)) {
-		return { ok: false, error: "modelRoles 必须是键值映射（mapping）" };
-	}
-	return { ok: true, doc };
-}
-
-/** Extract `modelRoles` from project config YAML content ({} when absent). */
-export function parseProjectRoles(content: string): ProjectRolesParse {
-	const r = parseProjectDoc(content);
-	if (!r.ok) return r;
-	return { ok: true, roles: asRecord(r.doc.toJS()?.modelRoles) };
-}
-
-/**
- * Set (`value` string) or delete (`null`) `modelRoles.<role>` in project YAML
- * content, preserving comments and other keys. Drops `modelRoles` when it
- * becomes empty. Throws a Chinese message on invalid content.
- */
-export function applyProjectRole(
-	content: string,
-	role: string,
-	value: string | null,
-): string {
-	const r = parseProjectDoc(content);
-	if (!r.ok) throw new Error(r.error);
-	const { doc } = r;
-	if (value === null) {
-		doc.deleteIn(["modelRoles", role]);
-		const roles = doc.get("modelRoles");
-		if (roles === null || (isMap(roles) && roles.items.length === 0)) {
-			doc.delete("modelRoles");
-		}
-	} else {
-		if (doc.contents === null) doc.contents = doc.createNode({});
-		if (doc.get("modelRoles") === null) doc.delete("modelRoles");
-		doc.setIn(["modelRoles", role], value);
-	}
-	if (doc.contents === null || (isMap(doc.contents) && doc.contents.items.length === 0)) {
-		// Keep comments-only files intact; otherwise produce an empty file.
-		return doc.commentBefore || doc.comment ? doc.toString() : "";
-	}
-	return doc.toString();
-}
 
 export interface BuiltinRole {
 	id: string;
@@ -82,7 +17,7 @@ export interface BuiltinRole {
 	zhLabel: string;
 	/** One-line Chinese description (from omp settings.md §Models). */
 	description: string;
-	/** chat = conversation roles (accept `:level` suffixes); modelKind = service runners. */
+	/** chat = conversation roles; modelKind = service runners. Neither kind restricts the `:level` syntax of a role value. */
 	kind: "chat" | "modelKind";
 }
 
@@ -148,7 +83,7 @@ export const BUILTIN_ROLES: BuiltinRole[] = [
 		description: "每轮结束后审查会话并可注入建议的第二模型（需 advisor.enabled）",
 		kind: "chat",
 	},
-	// ---- model-kind roles (no chat thinking suffix) ----
+	// ---- model-kind roles (service runners) ----
 	{
 		id: "image",
 		zhLabel: "图像生成",
@@ -185,7 +120,7 @@ const BUILTIN_ROLE_IDS: Record<string, true> = Object.fromEntries(
 	BUILTIN_ROLES.map((r) => [r.id, true]),
 );
 
-/** Thinking levels a chat-role selector may carry, e.g. "anthropic/x:high". */
+/** Thinking levels recognized as a trailing `:level` when a value is split, e.g. "anthropic/x:high". */
 export const THINKING_SUFFIXES = [
 	"minimal",
 	"low",
@@ -229,15 +164,6 @@ export function splitRoleValue(v: string): SplitRoleValue {
 	return { selector: trimmed, thinkingSuffix: null };
 }
 
-/** Rebuild a role value from selector + suffix; empty suffix yields the bare selector. */
-export function joinRoleValue(selector: string, thinkingSuffix?: string | null): string {
-	const sel = selector.trim();
-	const suffix = thinkingSuffix?.trim();
-	if (!sel) return "";
-	if (suffix && THINKING_SUFFIX_LOOKUP[suffix]) return `${sel}:${suffix}`;
-	return sel;
-}
-
 /** Role ids present in `modelRoles` that are not built-in — custom roles. */
 export function customRoles(modelRoles: Record<string, unknown>): string[] {
 	return Object.keys(modelRoles)
@@ -252,25 +178,6 @@ export function roleValue(
 ): string | null {
 	const v = modelRoles[role];
 	return typeof v === "string" && v.trim() ? v.trim() : null;
-}
-
-/**
- * Return a copy of the `modelRoles` record with `role` assigned to
- * `selector` — or removed when `selector` is null (omp has no per-key delete;
- * record entries are removed by rewriting the record without them).
- */
-export function withRoleAssignment(
-	modelRoles: Record<string, unknown>,
-	role: string,
-	selector: string | null,
-): Record<string, unknown> {
-	const next = { ...modelRoles };
-	if (selector === null) {
-		delete next[role];
-	} else {
-		next[role] = selector;
-	}
-	return next;
 }
 
 export type ChainState = "unset" | "empty" | "list";

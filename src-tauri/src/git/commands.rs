@@ -6,10 +6,10 @@ use std::time::Duration;
 
 use tauri::Emitter;
 
-use super::{badge, checkpoints_ext, history, repo_root, status, tm, turns, worktree};
+use super::{badge, base_sync, checkpoints_ext, history, repo_root, status, tm, turns, worktree};
 use crate::contracts::{
-    BranchInfo, GitBadge, GitHistory, GitSummary, MergePreview, PrUrlInfo, TmRun, TurnCheckpoint,
-    TurnUndoResult, WorktreeInfo,
+    BaseSyncResult, BranchInfo, GitBadge, GitHistory, GitSummary, MergePreview, PrUrlInfo, TmRun,
+    TurnCheckpoint, TurnUndoResult, WorktreeInfo,
 };
 use crate::state::AppState;
 
@@ -565,6 +565,38 @@ pub async fn git_merge_branch(
     source_branch: String,
 ) -> Result<String, String> {
     blocking(move || super::cmd::git_ok(&PathBuf::from(repo), &["merge", &source_branch])).await
+}
+
+#[tauri::command]
+pub async fn git_diff_base(
+    _state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<String, String> {
+    blocking(move || base_sync::diff_base(&PathBuf::from(cwd))).await
+}
+
+#[tauri::command]
+pub async fn git_rebase_onto_base(
+    _state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<String, String> {
+    blocking(move || base_sync::rebase_onto_base(&PathBuf::from(cwd))).await
+}
+
+#[tauri::command]
+pub async fn git_discard_all(
+    _state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<(), String> {
+    blocking(move || base_sync::discard_all(&PathBuf::from(cwd))).await
+}
+
+#[tauri::command]
+pub async fn git_sync_with_base(
+    _state: tauri::State<'_, AppState>,
+    cwd: String,
+) -> Result<BaseSyncResult, String> {
+    blocking(move || base_sync::sync_with_base(&PathBuf::from(cwd))).await
 }
 
 pub fn get_pr_url(

@@ -345,7 +345,7 @@ export function StartPage() {
 										? (availableModels.find(
 												(m: ModelOption) =>
 													toModelKey(m.provider, m.id) === modelSel,
-											)?.name ?? modelSel)
+											)?.id ?? modelSel)
 										: (defaultModel || "默认模型")
 							}
 							buttonClass="flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"

@@ -72,6 +72,12 @@ export interface GroupingOptions {
 	 */
 	frozenOrder?: ReadonlyMap<string, number>;
 	workspaces?: Workspace[];
+	/**
+	 * Default true. When false, every workspace collapses to ONE flat
+	 * `default`/`isMain` subgroup (no worktree/branch split, no deleted-worktree
+	 * folder) and deleted-worktree unassigned sessions join the normal list.
+	 */
+	groupByWorktree?: boolean;
 }
 
 /** Label for the collapsed unassigned bucket (PLAN.md §66 未归档桶). */
@@ -560,8 +566,9 @@ export function groupSessions(
 
 	// Split unassigned: sessions on deleted worktrees go to a dedicated dimmed
 	// bucket instead of vanishing (or polluting the live list).
+	const groupByWorktree = options.groupByWorktree ?? true;
 	const isDeletedWt = (s: SessionMeta) =>
-		!s.git?.worktree && !s.git?.branch && inferWorktreeName(s.cwd) !== null;
+		groupByWorktree && !s.git?.worktree && !s.git?.branch && inferWorktreeName(s.cwd) !== null;
 	const unassignedLive = unassignedSessions.filter((s) => !s.pinned && !isDeletedWt(s));
 	const unassignedDeleted = unassignedSessions.filter((s) => !s.pinned && isDeletedWt(s));
 
@@ -633,12 +640,37 @@ export function groupSessions(
 		return { live, deleted };
 	};
 
+	const buildSubgroups = (
+		items: SessionMeta[],
+		wts: WorktreeInfo[] | undefined,
+		ws: Workspace,
+	): { live: BranchSubgroup[]; deleted: BranchSubgroup[] } => {
+		if (!groupByWorktree) {
+			if (items.length === 0) return { live: [], deleted: [] };
+			return {
+				live: [
+					{
+						key: "default",
+						kind: "default",
+						label: "其他",
+						deleted: false,
+						isMain: true,
+						createCwd: ws.path,
+						sessions: [...items].sort(compare),
+						totalCount: items.length,
+					},
+				],
+				deleted: [],
+			};
+		}
+		return splitSubgroups(createSubgroups(items, wts, compare).subgroups);
+	};
+
 	const workspaceGroups: WorkspaceGroup[] = projectWorkspaces.map((ws) => {
 		const allWsSessions = sessionMap.get(ws.id) ?? [];
 		const pinnedCount = allWsSessions.filter((s) => s.pinned).length;
 		const items = allWsSessions.filter((s) => !s.pinned);
-		const { subgroups } = createSubgroups(items, options.worktrees?.[ws.id], compare);
-		const { live, deleted } = splitSubgroups(subgroups);
+		const { live, deleted } = buildSubgroups(items, options.worktrees?.[ws.id], ws);
 		return {
 			workspace: ws,
 			isGlobal: false,
@@ -654,8 +686,7 @@ export function groupSessions(
 		? (() => {
 				const pinnedCount = globalSessions.filter((s) => s.pinned).length;
 				const items = globalSessions.filter((s) => !s.pinned);
-				const { subgroups } = createSubgroups(items, undefined, compare);
-				const { live, deleted } = splitSubgroups(subgroups);
+				const { live, deleted } = buildSubgroups(items, undefined, globalWs);
 				return {
 					workspace: globalWs,
 					isGlobal: true,
