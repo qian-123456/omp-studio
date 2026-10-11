@@ -70,3 +70,19 @@ describe("computePosition edge cases", () => {
 		expect(pos.left).toBe(850 - offset - size.width);
 	});
 });
+
+describe("computePosition centered surfaces", () => {
+	it("centers small content inside the usable viewport", () => {
+		const vp = { top: 8, bottom: 700, left: 8, right: 1000 };
+		const pos = computePosition(makeRect(0, 0, 0, 0), { width: 400, height: 300 }, "center", 0, vp);
+		expect(pos).toEqual({ left: 304, top: 204, maxHeight: 692, placement: "center" });
+	});
+
+	it("limits tall content to the viewport and keeps it fully visible", () => {
+		const vp = { top: 8, bottom: 700, left: 8, right: 1000 };
+		const pos = computePosition(makeRect(0, 0, 0, 0), { width: 460, height: 900 }, "center", 0, vp);
+		expect(pos.maxHeight).toBe(692);
+		expect(pos.top).toBe(vp.top);
+		expect(pos.top + pos.maxHeight).toBe(vp.bottom);
+	});
+});

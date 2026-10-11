@@ -36,7 +36,8 @@ export type Placement =
 	| "top-start"
 	| "top-end"
 	| "right-start"
-	| "left-start";
+	| "left-start"
+	| "center";
 
 /** A DOM element, a measured rect, or a pointer position (context menus). */
 export type Anchor = Element | DOMRect | { x: number; y: number };
@@ -83,13 +84,24 @@ export function computePosition(
 	offset: number,
 	vp: { top: number; bottom: number; left: number; right: number },
 ): FloatingPosition {
-	let p = placement;
+	if (placement === "center") {
+		const width = vp.right - vp.left;
+		const height = Math.max(0, vp.bottom - vp.top);
+		const maxHeight = height;
+		const maxWidth = Math.max(0, width);
+		return {
+			left: vp.left + (maxWidth - Math.min(size.width, maxWidth)) / 2,
+			top: vp.top + (height - Math.min(size.height, maxHeight)) / 2,
+			maxHeight,
+			placement,
+		};
+	}
+	let p: Placement = placement;
 	const [side, align] = p.split("-") as ["top" | "bottom" | "left" | "right", "start" | "end"];
 	const roomBelow = vp.bottom - (a.bottom + offset);
 	const roomAbove = a.top - offset - vp.top;
 	const roomRight = vp.right - (a.right + offset);
 	const roomLeft = a.left - offset - vp.left;
-
 	let left: number;
 	let top: number;
 	let maxHeight: number;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BacklogItem, BacklogStatus } from "../../lib/contracts";
+import type { BacklogItem, BacklogStatus, SessionMeta } from "../../lib/contracts";
 import {
 	appendToDraft,
 	filterIdeas,
@@ -7,7 +7,57 @@ import {
 	groupIdeasByProject,
 	ideaImages,
 	partitionIdeas,
+	sessionOptionLabel,
 } from "./ideasLogic";
+
+const sessionMeta = (overrides: Partial<SessionMeta> = {}): SessionMeta => ({
+	id: "12345678-90ab-cdef",
+	tool: "omp",
+	file: "/tmp/session.jsonl",
+	cwd: "/tmp",
+	title: "",
+	label: "",
+	createdAt: "2026-01-01T00:00:00Z",
+	updatedAt: "2026-01-01T00:00:00Z",
+	parentId: null,
+	forkDepth: 0,
+	status: "idle",
+	unread: false,
+	pending: null,
+	live: false,
+	externalPid: null,
+	pinned: false,
+	archived: false,
+	workspaceId: null,
+	repoRoot: null,
+	git: null,
+	result: null,
+	lastAssistant: null,
+	model: null,
+	attention: null,
+	...overrides,
+});
+
+describe("sessionOptionLabel", () => {
+	it("uses a meaningful session title", () => {
+		expect(sessionOptionLabel(sessionMeta({ title: "修复登录流程" }))).toBe("修复登录流程");
+	});
+
+	it("prefers the last assistant snippet over a generic title and caps long snippets", () => {
+		const snippet = "Implemented login validation, error handling, regression tests, and compatibility checks for edge cases";
+		expect(sessionOptionLabel(sessionMeta({ title: "会话 12345678", lastAssistant: snippet }))).toBe(`${snippet.slice(0, 39)}…`);
+	});
+
+	it("falls back to a short ID when the title is the raw ID", () => {
+		expect(sessionOptionLabel(sessionMeta({ title: "12345678-90ab-cdef" }))).toBe("会话 12345678");
+	});
+
+	it("keeps a useful session label prefix", () => {
+		expect(sessionOptionLabel(sessionMeta({ label: "#115.2", title: "修复登录流程" }))).toBe(
+			"[#115.2] 修复登录流程",
+		);
+	});
+});
 
 const item = (
 	id: string,

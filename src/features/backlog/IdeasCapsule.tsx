@@ -16,7 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { NativeSelect } from "../../components/NativeSelect";
-import type { BacklogItem, BacklogKind, BacklogRef, BacklogStatus, Workspace } from "../../lib/contracts";
+import type { BacklogItem, BacklogKind, BacklogRef, BacklogStatus } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import {
 	backlogAdd,
@@ -45,6 +45,7 @@ import {
 	linkedSessionStatus,
 	partitionIdeas,
 	projectRoot,
+	sessionOptionLabel,
 } from "./ideasLogic";
 
 const KIND_META: Record<BacklogKind, { label: string; icon: typeof Lightbulb; cls: string }> = {
@@ -608,66 +609,48 @@ function DispatchDialog({
 	currentProject: string | null;
 	onClose: () => void;
 }) {
-	const sessions = useSessions((s) => s.sessions);
-	const selectedSessionId = useUi((s) => s.selectedSessionId);
-	const selectSession = useUi((s) => s.selectSession);
-	const sessionList = Object.values(sessions).filter((s) => !s.archived);
-	const activeId = selectedSessionId && sessions[selectedSessionId] ? selectedSessionId : null;
-	const item = items[0];
-
+	const sessions = useSessions((state) => state.sessions);
+	const selectedSessionId = useUi((state) => state.selectedSessionId);
+	const selectSession = useUi((state) => state.selectSession);
+	const sessionList = Object.values(sessions).filter((session) => !session.archived);
+	const activeId = selectedSessionId && sessionList.some((session) => session.id === selectedSessionId) ? selectedSessionId : null;
 	const [target, setTarget] = useState<"existing" | "new">(activeId || sessionList.length > 0 ? "existing" : "new");
 	const [existingId, setExistingId] = useState(activeId ?? sessionList[0]?.id ?? "");
-	const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-	const [workspacePath, setWorkspacePath] = useState(item.projectDir ?? currentProject ?? "");
-	const [model, setModel] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-
-	useEffect(() => {
-		void listWorkspaces()
-			.then((ws) => {
-				setWorkspaces(ws);
-				setWorkspacePath((p) => p || ws[0]?.path || "");
-			})
-			.catch(() => {});
-	}, []);
 
 	const run = async () => {
 		setBusy(true);
 		setError(null);
 		try {
-			const prompts = await Promise.all(items.map((it) => backlogBuildPrompt(it.id)));
+			const prompts = await Promise.all(items.map((item) => backlogBuildPrompt(item.id)));
 			const prompt =
 				prompts.length === 1
 					? prompts[0]
-					: `请依次处理以下 ${prompts.length} 项任务：\n\n${prompts.map((p, i) => `## 任务 ${i + 1}\n${p}`).join("\n\n")}`;
+					: `请依次处理以下 ${prompts.length} 项任务：\n\n${prompts.map((value, index) => `## 任务 ${index + 1}\n${value}`).join("\n\n")}`;
 			let targetId = existingId;
 			if (target === "new") {
-				const info = await rpcStart({ cwd: workspacePath || ".", model: model.trim() || undefined });
+				const cwd = items[0]?.projectDir ?? currentProject ?? (await listWorkspaces()).find((workspace) => workspace.kind === "global")?.path;
+				if (!cwd) throw new Error("找不到可用于新会话的工作区");
+				const info = await rpcStart({ cwd });
 				targetId = info.sessionId;
 			} else if (!targetId) {
 				throw new Error("请选择目标会话");
 			}
 			await dispatchPrompt(targetId, prompt);
-			for (const it of items) await backlogUpdate(it.id, { status: "dispatched", targetSessionId: targetId });
+			for (const item of items) await backlogUpdate(item.id, { status: "dispatched", targetSessionId: targetId });
 			await useBacklog.getState().load();
 			toast.success("已派发给 Agent");
 			onClose();
 			selectSession(targetId);
 		} catch (err) {
-			const msg = errMsg(err);
-			setError(msg);
-			toast.error(`派发失败: ${msg}`);
+			const message = errMsg(err);
+			setError(message);
+			toast.error(`派发失败: ${message}`);
 		} finally {
 			setBusy(false);
 		}
 	};
-
-	// Workspace list may not contain the item's project dir; keep it selectable.
-	const workspaceOptions =
-		workspacePath && !workspaces.some((w) => w.path === workspacePath)
-			? [{ path: workspacePath, name: workspacePath.split("/").pop() ?? workspacePath }, ...workspaces]
-			: workspaces;
 
 	const tabCls = (on: boolean) =>
 		`rounded-lg border p-2.5 text-center font-medium ${
@@ -679,12 +662,12 @@ function DispatchDialog({
 	return (
 		<FloatingLayer
 			anchor={{ x: window.innerWidth / 2, y: window.innerHeight / 2 }}
-			placement="bottom-start"
+			placement="center"
 			layer="modal"
 			onDismiss={() => {
 				if (!busy) onClose();
 			}}
-			className="w-[460px] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 p-5 shadow-apple-modal"
+			className="max-h-[calc(100vh-1rem)] w-[460px] max-w-[calc(100vw-1rem)] p-5 shadow-apple-modal"
 		>
 			<div className="space-y-4 text-xs">
 				<div className="flex items-center justify-between border-b border-[var(--border-divider)] pb-2.5">
@@ -696,24 +679,8 @@ function DispatchDialog({
 						<X className="h-4 w-4" />
 					</button>
 				</div>
-				<div className="rounded-lg bg-[var(--bg)] p-3 text-[var(--text-dim)]">
-					<span className="font-medium text-[var(--text)]">
-						{items.length > 1 ? `任务内容（${items.length} 项）:` : "任务内容:"}
-					</span>{" "}
-					{items.length > 1 ? (
-						<ul className="mt-1 list-disc space-y-0.5 pl-4">
-							{items.map((it) => (
-								<li key={it.id} className="break-words">
-									{it.text}
-								</li>
-							))}
-						</ul>
-					) : (
-						item.text
-					)}
-				</div>
 				<div className="grid grid-cols-2 gap-2">
-					<button type="button" onClick={() => setTarget("existing")} className={tabCls(target === "existing")}>
+					<button type="button" disabled={!sessionList.length} onClick={() => setTarget("existing")} className={`${tabCls(target === "existing")} disabled:opacity-40`}>
 						现有会话
 					</button>
 					<button type="button" onClick={() => setTarget("new")} className={tabCls(target === "new")}>
@@ -723,35 +690,21 @@ function DispatchDialog({
 				{target === "existing" ? (
 					<div className="space-y-1.5">
 						<label className="text-[var(--text-dim)]">选择会话</label>
-						<NativeSelect value={existingId} onChange={(e) => setExistingId(e.target.value)} className="w-full">
-							{sessionList.map((s) => (
-								<option key={s.id} value={s.id}>
-									{`${s.label ? `[${s.label}] ` : ""}${s.title || s.lastAssistant?.slice(0, 40) || `会话 ${s.id.slice(0, 8)}`}`}
+						<NativeSelect value={existingId} onChange={(event) => setExistingId(event.target.value)} className="w-full">
+							{sessionList.map((session) => (
+								<option key={session.id} value={session.id}>
+									{sessionOptionLabel(session)}
 								</option>
 							))}
 						</NativeSelect>
 					</div>
 				) : (
-					<div className="space-y-3">
-						<div className="space-y-1.5">
-							<label className="text-[var(--text-dim)]">工作区目录</label>
-							<NativeSelect value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} className="w-full">
-								{workspaceOptions.map((w) => (
-									<option key={w.path} value={w.path}>
-										{w.name} ({w.path})
-									</option>
-								))}
-							</NativeSelect>
-						</div>
-						<div className="space-y-1.5">
-							<label className="text-[var(--text-dim)]">指定模型 (可选)</label>
-							<input
-								value={model}
-								onChange={(e) => setModel(e.target.value)}
-								placeholder="留空使用默认模型"
-								className="w-full rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] px-3 py-1.5 text-[var(--text)] focus:border-sky-500 focus:outline-none"
-							/>
-						</div>
+					<div className="text-[var(--text-dim)]">
+						{items[0]?.projectDir ?? currentProject ? (
+							<>将在 {((items[0]?.projectDir ?? currentProject) as string).split("/").pop()} 中开启新会话</>
+						) : (
+							"将在全局工作区中开启新会话"
+						)}
 					</div>
 				)}
 				{error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 text-rose-300">{error}</div>}
@@ -759,12 +712,7 @@ function DispatchDialog({
 					<button type="button" disabled={busy} onClick={onClose} className="rounded-lg px-3 py-1.5 text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
 						取消
 					</button>
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => void run()}
-						className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
-					>
+					<button type="button" disabled={busy || (target === "existing" && !existingId)} onClick={() => void run()} className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 font-semibold text-white hover:bg-sky-500 disabled:opacity-50">
 						{busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
 						确认派发
 					</button>

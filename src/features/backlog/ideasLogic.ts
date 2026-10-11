@@ -108,6 +108,28 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
 	external: "外部",
 };
 
+const SESSION_OPTION_SNIPPET_LENGTH = 40;
+
+/** Concise label for a session option, preferring recent context over generated titles. */
+export function sessionOptionLabel(meta: SessionMeta): string {
+	const title = meta.title.trim();
+	const genericPrefix = /^会话\s+(.+)$/.exec(title)?.[1];
+	const isGenericTitle = title === meta.id || (genericPrefix !== undefined && meta.id.startsWith(genericPrefix));
+	const snippet = meta.lastAssistant?.trim().replace(/\s+/g, " ");
+	let displayTitle: string;
+
+	if (isGenericTitle && snippet) {
+		displayTitle = snippet.length > SESSION_OPTION_SNIPPET_LENGTH
+			? `${snippet.slice(0, SESSION_OPTION_SNIPPET_LENGTH - 1).trimEnd()}…`
+			: snippet;
+	} else {
+		displayTitle = title && title !== meta.id ? title : `会话 ${meta.id.slice(0, 8)}`;
+	}
+
+	const label = meta.label.trim();
+	return `${label ? `[${label}] ` : ""}${displayTitle}`;
+}
+
 /** Live status text for a dispatched item's linked session. */
 export function linkedSessionStatus(meta: SessionMeta | undefined): string {
 	if (!meta) return "会话不存在";
