@@ -225,13 +225,13 @@ export function BottomBar() {
 				/>
 				<span className="text-neutral-700">·</span>
 
-				{/* omp version chip — click opens 设置 ▸ 关于与更新 */}
+				{/* omp version chip — click opens 设置 ▸ 版本与更新 */}
 				{ompVersion && (
 					<>
 						<button
 							type="button"
 							onClick={() => openSettings("about")}
-							title={ompUpdateAvailable ? `omp 有新版本 ${ompStatus?.latest ?? ""}` : "omp 版本 — 点击查看关于与更新"}
+						title={ompUpdateAvailable ? `omp 有新版本 ${ompStatus?.latest ?? ""}` : "omp 版本 — 点击查看版本与更新"}
 							className="relative flex items-center gap-1 rounded-[6px] px-1 py-0.5 transition-all hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97"
 						>
 							<span className="font-mono text-[10.5px]">omp {ompVersion}</span>

@@ -1,4 +1,4 @@
-/** Settings ▸ 关于与更新 (`about`): app version, omp version and `omp update`. */
+/** Settings ▸ 版本与更新 (`about`): app version, omp version and `omp update`. */
 import { ArrowUpCircle, CheckCircle2, ChevronDown, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../../../lib/dialogs";
@@ -45,7 +45,7 @@ export function AboutSection() {
 
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="关于与更新" description="查看本产品与 omp 的版本，检查并安装 omp 更新。" />
+			<SectionHeader title="版本与更新" description="查看本产品与 omp 的版本，检查并安装 omp 更新。" />
 
 			<SettingsCard title="版本">
 				<SettingRow

@@ -68,7 +68,7 @@ export const NAV_GROUPS: NavGroup[] = [
 			{ id: "general", label: "通用", icon: Sliders },
 			{ id: "appearance", label: "外观", icon: Palette },
 			{ id: "notifications", label: "通知", icon: Bell },
-			{ id: "about", label: "关于与更新", icon: Info },
+			{ id: "about", label: "版本与更新", icon: Info },
 		],
 	},
 	{

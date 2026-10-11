@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token 用量面板 - 交互原型 (Bento & Distribution 终极版)</title>
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --z-drawer: 40; --z-modal: 50; --z-popover: 60; --z-menu: 65; --z-hovercard: 70; --z-toast: 100;
+        }
+        html[data-theme="dark"] {
+            --bg: #161618; --bg-panel: #1C1C1E; --bg-hover: #2C2C2E; --bg-selected: #3A3A3C;
+            --bg-active-fill: rgba(255, 255, 255, 0.10);
+            --border: rgba(255, 255, 255, 0.08); --border-divider: rgba(255, 255, 255, 0.07);
+            --text: #F5F5F7; --text-muted: rgba(235, 235, 245, 0.60); --text-dim: rgba(235, 235, 245, 0.35);
+            --text-quaternary: rgba(235, 235, 245, 0.18);
+            --accent: #0A84FF; --accent-strong: #5E5CE6; --accent-hover: #409CFF;
+            --status-error: #FF453A; --status-success: #30D158; --status-warning: #FF9F0A; --status-renamed: #64D2FF;
+            --hairline: rgba(255, 255, 255, 0.08); --hairline-strong: rgba(255, 255, 255, 0.14);
+            --well-bg: rgba(0, 0, 0, 0.35);
+            --shadow-apple-modal: 0 0 0 0.5px var(--hairline-strong), 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.25);
+        }
+        html[data-theme="sakura"] {
+            --bg: #fdf4f6; --bg-panel: #f9eaee; --bg-hover: #f3e0e6; --bg-selected: #ecd2da;
+            --border: #eed5dd; --text: #472b36; --text-muted: #86606f; --text-dim: #b08b98;
+            --accent: #d6336c; --accent-strong: #b02559; --accent-hover: #e77ba1;
+            --status-error: #c23545; --status-success: #2e9e63; --status-warning: #ad6b0a; --status-renamed: #3a6fd8;
+            --hairline: rgba(70, 40, 55, 0.15); --hairline-strong: rgba(70, 40, 55, 0.25);
+            --well-bg: rgba(255, 255, 255, 0.5);
+        }
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .hairline { box-shadow: inset 0 0 0 0.5px var(--hairline); }
+        .hairline-t { box-shadow: inset 0 0.5px 0 0 var(--hairline); }
+        .hairline-b { box-shadow: inset 0 -0.5px 0 0 var(--hairline); }
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+
+        .segmented-container { display: inline-flex; align-items: center; gap: 2px; border-radius: 8px; background-color: var(--well-bg); padding: 2px; box-shadow: inset 0 0 0 0.5px var(--hairline); }
+        .segmented-btn { border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 500; color: var(--text-muted); transition: all 0.2s; white-space: nowrap; }
+        .segmented-btn:hover:not(.active) { color: var(--text); }
+        .segmented-btn.active { background-color: var(--bg-active-fill); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+
+        /* Distribution category colors */
+        .color-tools { background-color: #f59e0b; } /* 琥珀黄 */
+        .color-skills { background-color: #8b5cf6; } /* 紫罗兰 */
+        .color-system { background-color: #3b82f6; } /* 科技蓝 */
+        .color-mcp { background-color: #10b981; } /* 翡翠绿 */
+        .color-prose { background-color: #64748b; } /* 石板灰 */
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden text-[13px]">
+
+    <!-- 模拟 App 中间会话区 -->
+    <div class="flex-1 flex flex-col min-w-0 bg-[var(--bg)] relative">
+        <div class="p-6 space-y-4 opacity-40 select-none">
+            <div class="text-sm font-medium">模拟中栏会话流（点击右侧任何 Tool / Skill 钻取项，平滑定位联动）：</div>
+            
+            <div id="chat-msg-skill-aoci" class="p-3 rounded border border-[var(--border)] transition-all duration-500">
+                <div class="flex items-center justify-between text-[11px] text-[var(--text-dim)] mb-1">
+                    <span>第 1 轮 · Skill 注入</span>
+                    <span class="font-mono text-purple-400">skill://aoci-code (9.2k tok)</span>
+                </div>
+                <div class="font-mono text-xs text-[var(--text-muted)] bg-[var(--bg-panel)] p-2 rounded">
+                    read skill://aoci-code/SKILL.md (仓库认知规约注入)
+                </div>
+            </div>
+
+            <div id="chat-msg-skill-ego" class="p-3 rounded border border-[var(--border)] transition-all duration-500">
+                <div class="flex items-center justify-between text-[11px] text-[var(--text-dim)] mb-1">
+                    <span>第 3 轮 · Skill 重复注入警告 ⚠️</span>
+                    <span class="font-mono text-[var(--status-warning)]">skill://ego-browser (重复 2 次 · 空耗 12.8k tok)</span>
+                </div>
+                <div class="font-mono text-xs text-[var(--text-muted)] bg-[var(--bg-panel)] p-2 rounded">
+                    read skill://ego-browser/SKILL.md (第 3 轮与第 5 轮重复读取同一份无修改的规范文档)
+                </div>
+            </div>
+
+            <div id="chat-msg-mcp-sqlite" class="p-3 rounded border border-[var(--border)] transition-all duration-500">
+                <div class="flex items-center justify-between text-[11px] text-[var(--text-dim)] mb-1">
+                    <span>第 2 轮 · MCP 工具调用</span>
+                    <span class="font-mono text-emerald-400">mcp::sqlite::query (6.4k tok)</span>
+                </div>
+                <div class="font-mono text-xs text-[var(--text-muted)] bg-[var(--bg-panel)] p-2 rounded">
+                    mcp::sqlite: SELECT * FROM sessions WHERE ... (返回 42 条数据行)
+                </div>
+            </div>
+
+            <div id="chat-msg-tool-cargo" class="p-3 rounded border border-[var(--border)] transition-all duration-500">
+                <div class="flex items-center justify-between text-[11px] text-[var(--text-dim)] mb-1">
+                    <span>第 4 轮 · 原生工具调用：bash</span>
+                    <span class="font-mono text-[var(--status-warning)]">14.2k tokens ⚠️</span>
+                </div>
+                <div class="font-mono text-xs text-[var(--text-muted)] bg-[var(--bg-panel)] p-2 rounded">$ cargo test --workspace (450行测试输出)</div>
+            </div>
+        </div>
+
+        <div id="toast" class="absolute bottom-5 left-1/2 -translate-x-1/2 bg-[var(--bg-panel)] border border-[var(--hairline-strong)] shadow-apple-modal px-4 py-2 rounded-lg text-xs opacity-0 transition-opacity duration-300 pointer-events-none z-50">
+            提示
+        </div>
+    </div>
+
+    <!-- 右侧边栏 (Token 用量面板：全新非线性 Bento + 智能光谱结构) -->
+    <div class="w-[350px] shrink-0 flex flex-col border-l border-[var(--border)] bg-[var(--bg-panel)] relative">
+        <!-- 头部导航 -->
+        <div class="p-3 flex items-center justify-between hairline-b sticky top-0 bg-[var(--bg-panel)] z-10">
+            <div class="flex items-center gap-2 font-medium">
+                <span class="text-[var(--accent)]">🪙</span> Token 用量
+            </div>
+            <button onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'sakura' : 'dark'" class="text-[10px] px-2 py-1 rounded border border-[var(--border)] hover:bg-[var(--bg-hover)] transition-colors">
+                切换主题 (Sakura/Dark)
+            </button>
+        </div>
+
+        <!-- 顶部主 Segmented Tab -->
+        <div class="p-2.5 pb-2 hairline-b">
+            <div class="segmented-container w-full justify-between">
+                <button id="tab-session" class="segmented-btn active flex-1" onclick="switchMainTab('session')">本对话</button>
+                <button id="tab-global" class="segmented-btn flex-1" onclick="switchMainTab('global')">全局用量</button>
+            </div>
+        </div>
+
+        <!-- 面板可滚动内容区 -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-3" id="panel-content"></div>
+    </div>
+
+    <script>
+        const contentEl = document.getElementById('panel-content');
+        const toastEl = document.getElementById('toast');
+
+        function showToast(msg) {
+            toastEl.textContent = msg;
+            toastEl.style.opacity = '1';
+            setTimeout(() => toastEl.style.opacity = '0', 2200);
+        }
+
+        function highlightChat(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.borderColor = 'var(--accent)';
+            el.style.backgroundColor = 'var(--bg-selected)';
+            el.style.transform = 'scale(1.01)';
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => {
+                el.style.borderColor = 'var(--border)';
+                el.style.backgroundColor = 'transparent';
+                el.style.transform = 'none';
+            }, 2000);
+        }
+
+        let currentMainTab = 'session';
+        let currentTarget = 'main'; // 'main' | 'subagent-1' | 'subagent-2'
+        let currentCategory = 'skills'; // 'tools' | 'skills' | 'system' | 'mcp' | 'prose'
+
+        function switchMainTab(tab) {
+            currentMainTab = tab;
+            document.getElementById('tab-session').className = `segmented-btn flex-1 ${tab === 'session' ? 'active' : ''}`;
+            document.getElementById('tab-global').className = `segmented-btn flex-1 ${tab === 'global' ? 'active' : ''}`;
+            if (tab === 'session') renderSessionView();
+            else renderGlobalView();
+        }
+
+        function switchTarget(target) {
+            currentTarget = target;
+            renderSessionView();
+        }
+
+        function switchCategory(cat) {
+            currentCategory = cat;
+            renderSessionView();
+        }
+
+        // 数据模型：主对话与 Subagents 各自的消耗 Distribution
+        const targetData = {
+            'main': {
+                name: '主对话 (Main)',
+                role: '主导协调与决策',
+                tokens: '77.9k',
+                model: 'claude-3.7-sonnet',
+                context: '42.4k / 200k (21%)',
+                contextPct: 21,
+                distribution: [
+                    { key: 'tools', label: 'Tool Calls', color: 'color-tools', hex: '#f59e0b', tokens: '31.2k', pct: 40 },
+                    { key: 'skills', label: 'Skills 注入', color: 'color-skills', hex: '#8b5cf6', tokens: '22.0k', pct: 28, hasWaste: true, wasteCount: 1 },
+                    { key: 'system', label: 'System Prompt', color: 'color-system', hex: '#3b82f6', tokens: '14.1k', pct: 18 },
+                    { key: 'mcp', label: 'MCP 服务', color: 'color-mcp', hex: '#10b981', tokens: '6.4k', pct: 8 },
+                    { key: 'prose', label: '思考与回复', color: 'color-prose', hex: '#64748b', tokens: '4.2k', pct: 6 }
+                ],
+                drilldown: {
+                    'skills': [
+                        { name: 'skill://ego-browser', tokens: '12.8k', calls: 2, status: 'waste', note: '⚠️ 重复注入 2 次！前后内容未变，空耗 ~6.4k tok', targetId: 'chat-msg-skill-ego' },
+                        { name: 'skill://aoci-code', tokens: '9.2k', calls: 1, status: 'ok', note: '正常载入仓库认知索引', targetId: 'chat-msg-skill-aoci' },
+                    ],
+                    'tools': [
+                        { name: 'bash: cargo test', tokens: '14.2k', calls: 1, status: 'warn', note: '⚠️ 450 行大输出，建议压缩', targetId: 'chat-msg-tool-cargo' },
+                        { name: 'read: SessionSidebar.tsx', tokens: '8.4k', calls: 1, status: 'ok', note: '全量读取 380 行代码', targetId: 'chat-msg-skill-aoci' },
+                        { name: 'edit: SessionSidebar.tsx', tokens: '4.8k', calls: 3, status: 'ok', note: '精确 Hashline 代码修改', targetId: 'chat-msg-skill-aoci' },
+                        { name: 'bash: git diff', tokens: '3.8k', calls: 2, status: 'ok', note: '轻量状态检查', targetId: 'chat-msg-skill-aoci' },
+                    ],
+                    'mcp': [
+                        { name: 'mcp::sqlite::query', tokens: '6.4k', calls: 2, status: 'ok', note: '查询数据库会话记录', targetId: 'chat-msg-mcp-sqlite' },
+                    ],
+                    'system': [
+                        { name: 'AGENTS.md + Universal Rules', tokens: '9.8k', calls: 1, status: 'ok', note: '用户级与项目通用规则注入' },
+                        { name: 'Runtime Harness Contract', tokens: '4.3k', calls: 1, status: 'ok', note: 'OMP 运行时代币契约' },
+                    ],
+                    'prose': [
+                        { name: 'AI Thinking (CoT 思考链)', tokens: '3.1k', calls: 5, status: 'ok', note: '模型内部推理分析过程' },
+                        { name: 'Assistant 输出文本', tokens: '1.1k', calls: 5, status: 'ok', note: '最终回复给用户的交互文本' }
+                    ]
+                }
+            },
+            'subagent-1': {
+                name: 'scout (子代理)',
+                role: '只读代码库调研与模式搜索',
+                tokens: '28.4k',
+                model: 'claude-3.7-sonnet',
+                context: '18.2k / 200k (9%)',
+                contextPct: 9,
+                distribution: [
+                    { key: 'tools', label: 'Tool Calls', color: 'color-tools', hex: '#f59e0b', tokens: '19.8k', pct: 70 },
+                    { key: 'system', label: 'System Prompt', color: 'color-system', hex: '#3b82f6', tokens: '4.2k', pct: 15 },
+                    { key: 'skills', label: 'Skills 注入', color: 'color-skills', hex: '#8b5cf6', tokens: '2.8k', pct: 10 },
+                    { key: 'prose', label: '思考与回复', color: 'color-prose', hex: '#64748b', tokens: '1.6k', pct: 5 }
+                ],
+                drilldown: {
+                    'tools': [
+                        { name: 'grep: "token usage" (3次)', tokens: '11.4k', calls: 3, status: 'ok', note: '代码库全局搜索模式' },
+                        { name: 'read: src/contracts.rs', tokens: '8.4k', calls: 1, status: 'ok', note: '阅读核心契约文件' }
+                    ],
+                    'skills': [
+                        { name: 'skill://solution-scout', tokens: '2.8k', calls: 1, status: 'ok', note: '只读调研工作规约' }
+                    ],
+                    'system': [
+                        { name: 'Subagent Minimal Base Prompt', tokens: '4.2k', calls: 1, status: 'ok', note: '派发专用隔离系统提示词' }
+                    ],
+                    'mcp': [],
+                    'prose': [
+                        { name: 'Thinking & Findings Output', tokens: '1.6k', calls: 2, status: 'ok', note: '回传给主会话的最终结论摘要' }
+                    ]
+                }
+            },
+            'subagent-2': {
+                name: 'tester (子代理)',
+                role: '运行单元测试并回验',
+                tokens: '18.2k',
+                model: 'smol (轻量模型)',
+                context: '12.1k / 32k (38%)',
+                contextPct: 38,
+                distribution: [
+                    { key: 'tools', label: 'Tool Calls', color: 'color-tools', hex: '#f59e0b', tokens: '13.6k', pct: 75 },
+                    { key: 'system', label: 'System Prompt', color: 'color-system', hex: '#3b82f6', tokens: '3.4k', pct: 19 },
+                    { key: 'prose', label: '思考与回复', color: 'color-prose', hex: '#64748b', tokens: '1.2k', pct: 6 }
+                ],
+                drilldown: {
+                    'tools': [
+                        { name: 'bash: pnpm vitest run', tokens: '9.2k', calls: 1, status: 'ok', note: '执行前端测试套件' },
+                        { name: 'bash: cargo test', tokens: '4.4k', calls: 1, status: 'ok', note: '执行 Rust 后端单元测试' }
+                    ],
+                    'system': [
+                        { name: 'Tester Verification Rule', tokens: '3.4k', calls: 1, status: 'ok', note: '自动化测试执行专职引导' }
+                    ],
+                    'skills': [],
+                    'mcp': [],
+                    'prose': [
+                        { name: 'Test Results Markdown', tokens: '1.2k', calls: 1, status: 'ok', note: '测试结果汇总与错误堆栈提炼' }
+                    ]
+                }
+            }
+        };
+
+        function renderSessionView() {
+            const data = targetData[currentTarget] || targetData['main'];
+            const activeList = (data.drilldown && data.drilldown[currentCategory]) || [];
+
+            contentEl.innerHTML = `
+                <!-- 1. 非线性设计：Agent 选择胶囊条 (主对话 vs 各 Subagent 平等切换) -->
+                <div>
+                    <div class="flex items-center justify-between text-[11px] mb-1.5 px-0.5">
+                        <span class="text-[var(--text-dim)]">选择检查对象</span>
+                        <span class="text-[10px] text-[var(--status-success)] font-mono">🛡️ 隔离省流 ~45k</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
+                        <button onclick="switchTarget('main')"
+                                class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] transition-all whitespace-nowrap ${currentTarget === 'main' ? 'border-[var(--accent)] bg-[var(--bg-selected)] font-medium text-[var(--text)] shadow-sm' : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}">
+                            <span>👑 主对话</span>
+                            <span class="font-mono text-[10px] opacity-75">77.9k</span>
+                        </button>
+                        <button onclick="switchTarget('subagent-1')"
+                                class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] transition-all whitespace-nowrap ${currentTarget === 'subagent-1' ? 'border-purple-400 bg-[var(--bg-selected)] font-medium text-[var(--text)] shadow-sm' : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}">
+                            <span class="px-1 py-0.2 rounded bg-purple-500/20 text-purple-400 font-mono text-[10px]">scout</span>
+                            <span>调研</span>
+                            <span class="font-mono text-[10px] opacity-75">28.4k</span>
+                        </button>
+                        <button onclick="switchTarget('subagent-2')"
+                                class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] transition-all whitespace-nowrap ${currentTarget === 'subagent-2' ? 'border-purple-400 bg-[var(--bg-selected)] font-medium text-[var(--text)] shadow-sm' : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'}">
+                            <span class="px-1 py-0.2 rounded bg-purple-500/20 text-purple-400 font-mono text-[10px]">tester</span>
+                            <span>测试</span>
+                            <span class="font-mono text-[10px] opacity-75">18.2k</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Bento 概览卡片：上下文水位 + 当前 Agent 核心数据 -->
+                <div class="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center gap-1.5">
+                            <span class="font-medium text-[var(--text)] text-[12px]">${data.name}</span>
+                            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--text-dim)]">${data.model}</span>
+                        </div>
+                        <span class="font-mono text-[11px] text-[var(--text)]">${data.tokens}</span>
+                    </div>
+
+                    <div class="flex items-center justify-between text-[10.5px] text-[var(--text-dim)] mb-1">
+                        <span>当前上下文水位</span>
+                        <span class="font-mono">${data.context}</span>
+                    </div>
+                    <div class="h-1.5 w-full bg-[var(--bg-hover)] rounded-full overflow-hidden mb-1.5">
+                        <div class="h-full bg-[var(--status-success)] rounded-full" style="width: ${data.contextPct}%"></div>
+                    </div>
+                    <div class="text-[10.5px] text-[var(--text-muted)]">${data.role}</div>
+                </div>
+
+                <!-- 3. 【核心创新】macOS 风格多色光谱条 (Distribution Spectrum Bar) -->
+                <div class="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-medium text-[11.5px] text-[var(--text-muted)]">Token 消耗分布 (Distribution)</span>
+                        <span class="text-[10px] text-[var(--text-dim)]">点击下方类别钻取</span>
+                    </div>
+
+                    <!-- 多色光谱进度条 (类似 macOS 存储空间条) -->
+                    <div class="h-2.5 w-full rounded-full overflow-hidden flex bg-[var(--bg-hover)] mb-3">
+                        ${data.distribution.map(d => `
+                            <div class="h-full ${d.color} transition-all cursor-pointer hover:opacity-80"
+                                 style="width: ${d.pct}%"
+                                 title="${d.label}: ${d.tokens} (${d.pct}%)"
+                                 onclick="switchCategory('${d.key}')"></div>
+                        `).join('')}
+                    </div>
+
+                    <!-- 交互式类别点击切换 Pills (替代冗长列表) -->
+                    <div class="grid grid-cols-2 gap-1.5">
+                        ${data.distribution.map(d => `
+                            <button onclick="switchCategory('${d.key}')"
+                                    class="flex items-center justify-between p-1.5 px-2 rounded-lg border text-left transition-all ${currentCategory === d.key ? 'border-[var(--accent)] bg-[var(--bg-selected)] shadow-sm' : 'border-[var(--border)] bg-[var(--bg-panel)]/50 hover:bg-[var(--bg-hover)]'}">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="h-2 w-2 rounded-full ${d.color} shrink-0"></span>
+                                    <span class="text-[11px] truncate ${currentCategory === d.key ? 'font-medium text-[var(--text)]' : 'text-[var(--text-muted)]'}">${d.label}</span>
+                                    ${d.hasWaste ? '<span class="text-[9.5px] text-[var(--status-warning)] font-medium">⚠️</span>' : ''}
+                                </div>
+                                <span class="font-mono text-[10.5px] text-[var(--text-dim)] shrink-0">${d.tokens}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- 4. 【深潜钻取 (Drill-down)】当前选中类别的细节排查 -->
+                <div class="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3">
+                    <div class="flex items-center justify-between mb-2 pb-1.5 hairline-b">
+                        <div class="flex items-center gap-1.5 font-medium text-[11.5px] text-[var(--text)]">
+                            <span>🔍 钻取明细：${getCategoryLabel(currentCategory)}</span>
+                        </div>
+                        <span class="text-[10px] text-[var(--text-dim)]">共 ${activeList.length} 项</span>
+                    </div>
+
+                    ${activeList.length === 0 ? `
+                        <div class="py-4 text-center text-xs text-[var(--text-dim)]">此 Agent 未调用该类资源</div>
+                    ` : `
+                        <div class="space-y-2">
+                            ${activeList.map(item => `
+                                <div class="group rounded-lg border p-2 text-left transition-all cursor-pointer ${item.status === 'waste' ? 'border-[var(--status-warning)]/40 bg-[var(--status-warning)]/5 hover:border-[var(--status-warning)]' : (item.status === 'warn' ? 'border-[var(--status-warning)]/30 bg-[var(--status-warning)]/5 hover:border-[var(--status-warning)]' : 'border-[var(--border)] bg-[var(--bg-panel)]/40 hover:border-[var(--accent)] hover:bg-[var(--bg-hover)]')}"
+                                     onclick="${item.targetId ? `highlightChat('${item.targetId}')` : `showToast('查看详情')`}">
+                                    <div class="flex items-start justify-between gap-1 mb-0.5">
+                                        <div class="font-mono text-[11px] font-medium text-[var(--text)] truncate">
+                                            ${item.name}
+                                        </div>
+                                        <div class="font-mono text-[11px] ${item.status === 'waste' ? 'text-[var(--status-warning)] font-medium' : 'text-[var(--text-muted)]'} shrink-0">
+                                            ${item.tokens}
+                                        </div>
+                                    </div>
+                                    <div class="text-[10.5px] ${item.status === 'waste' ? 'text-[var(--status-warning)]' : 'text-[var(--text-muted)]'} mb-1">
+                                        ${item.note}
+                                    </div>
+                                    <div class="flex items-center justify-between text-[10px] text-[var(--text-dim)]">
+                                        <span>调用 ${item.calls || 1} 次</span>
+                                        ${item.targetId ? `
+                                            <button onclick="event.stopPropagation(); highlightChat('${item.targetId}')" class="px-1.5 py-0.5 rounded bg-[var(--bg-hover)] hover:bg-[var(--bg-selected)] text-[var(--text)] transition-colors">定位到会话</button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function getCategoryLabel(key) {
+            switch(key) {
+                case 'tools': return 'Tool Calls (工具输出)';
+                case 'skills': return 'Skills 注入 (规约与插件)';
+                case 'system': return 'System Prompt (系统设定)';
+                case 'mcp': return 'MCP 服务调用';
+                case 'prose': return '思考与交互文本';
+                default: return key;
+            }
+        }
+
+        function renderGlobalView() {
+            const sessions = [
+                { id: 's1', title: '重构 Sidebar 树形组件', tokens: '124.5k', cost: '$0.45', time: '10分钟', subagents: 2, health: 'warn', warnText: '含 14.2k 失控工具输出', t: 124500, w: 1 },
+                { id: 's2', title: '实现 Token 用量面板原型', tokens: '86.2k', cost: '$0.31', time: '2小时', subagents: 1, health: 'ok', warnText: '', t: 86200, w: 0 },
+                { id: 's3', title: '修复 Tauri 编译错误', tokens: '42.1k', cost: '$0.15', time: '昨天', subagents: 0, health: 'error', warnText: '连续报错 3 次空耗', t: 42100, w: 2 },
+                { id: 's4', title: '调研竞品 Token 优化方案', tokens: '12.4k', cost: '$0.04', time: '3天前', subagents: 0, health: 'ok', warnText: '', t: 12400, w: 0 },
+            ];
+
+            contentEl.innerHTML = `
+                <div class="mb-3 grid grid-cols-3 gap-2 text-[11px]">
+                    <div class="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-2 text-center">
+                        <div class="text-[var(--text-dim)] mb-0.5">会话总数</div>
+                        <div class="font-mono text-[var(--text)] text-[13px] font-medium">14</div>
+                    </div>
+                    <div class="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-2 text-center">
+                        <div class="text-[var(--text-dim)] mb-0.5">总消耗</div>
+                        <div class="font-mono text-[var(--text)] text-[13px] font-medium">1.2M</div>
+                    </div>
+                    <div class="rounded-xl border border-[var(--status-success)] bg-[var(--bg)] p-2 text-center">
+                        <div class="text-[var(--status-success)] mb-0.5">总成本</div>
+                        <div class="font-mono text-[var(--status-success)] text-[13px] font-medium">$4.52</div>
+                    </div>
+                </div>
+
+                <div class="text-[11px] font-medium text-[var(--text-muted)] mb-1.5">OMP 会话消耗明细 (点击切入诊断)</div>
+                <div class="space-y-1.5">
+                    ${sessions.map(s => `
+                        <div class="group rounded-xl border border-[var(--border)] bg-[var(--bg)] p-2.5 cursor-pointer hover:border-[var(--accent)] hover:bg-[var(--bg-hover)] transition-all"
+                             onclick="showToast('已选中会话 #${s.id} 并切回 [本对话] 视图')">
+                            <div class="flex items-center justify-between mb-1">
+                                <div class="font-medium text-[var(--text)] truncate pr-2 text-[11.5px]">${s.title}</div>
+                                <div class="text-[10px] text-[var(--text-dim)] shrink-0 font-mono">${s.time}</div>
+                            </div>
+                            <div class="flex items-center justify-between text-[10px]">
+                                <div class="flex items-center gap-2 font-mono text-[var(--text-muted)]">
+                                    <span>${s.tokens}</span>
+                                    <span class="text-[var(--text-dim)]">·</span>
+                                    <span>${s.cost}</span>
+                                    ${s.subagents > 0 ? `<span class="px-1 py-0.2 rounded bg-purple-500/20 text-purple-400 text-[9.5px]">${s.subagents} Subagents</span>` : ''}
+                                </div>
+                                <div>
+                                    ${s.health === 'ok' ? '<span class="text-[var(--status-success)]">● 正常</span>' : ''}
+                                    ${s.health === 'warn' ? '<span class="text-[var(--status-warning)] font-medium" title="'+s.warnText+'">⚠️ '+s.warnText+'</span>' : ''}
+                                    ${s.health === 'error' ? '<span class="text-[var(--status-error)] font-medium" title="'+s.warnText+'">🔴 '+s.warnText+'</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        renderSessionView();
+    </script>
+</body>
+</html>

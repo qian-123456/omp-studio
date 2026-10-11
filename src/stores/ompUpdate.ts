@@ -1,4 +1,4 @@
-/** omp version / `omp update` state shared by Settings ▸ 关于与更新 and the BottomBar chip. */
+/** omp version / `omp update` state shared by Settings ▸ 版本与更新 and the BottomBar chip. */
 import { getVersion } from "@tauri-apps/api/app";
 import { create } from "zustand";
 import type { OmpInfo, OmpUpdateStatus } from "../lib/contracts";
