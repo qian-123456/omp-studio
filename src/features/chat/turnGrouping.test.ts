@@ -5,6 +5,7 @@ import {
 	activityGroupSummary,
 	formatDurationChinese,
 	formatDurationCompact,
+	formatMessageTimestamp,
 	formatShortModel,
 	groupActivityUnits,
 	groupTurnBlocks,
@@ -38,6 +39,15 @@ describe("turnGrouping", () => {
 		expect(formatDurationChinese(83_000)).toBe("1 分 23 秒");
 		expect(formatDurationChinese(3600_000)).toBe("1 小时");
 		expect(formatDurationChinese(7500_000)).toBe("2 小时 5 分");
+	});
+
+	it("formats message times and hides absent or invalid timestamps", () => {
+		const timestamp = new Date(2026, 9, 1, 9, 8).toISOString();
+		expect(formatMessageTimestamp(timestamp)).toBe("09:08");
+		expect(formatMessageTimestamp(new Date(timestamp).getTime())).toBe("09:08");
+		expect(formatMessageTimestamp(null)).toBe("");
+		expect(formatMessageTimestamp(undefined)).toBe("");
+		expect(formatMessageTimestamp("invalid timestamp")).toBe("");
 	});
 
 	it("formats short model names cleanly", () => {

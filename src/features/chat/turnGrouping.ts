@@ -65,6 +65,15 @@ export interface ProtocolBlock {
 }
 
 export type DisplayBlock = TurnBlock | ProtocolBlock;
+/** Format a chat message time; absent or invalid timestamps stay hidden. */
+export function formatMessageTimestamp(timestamp?: string | number | null): string {
+	if (timestamp == null || timestamp === "") return "";
+	const date = new Date(timestamp);
+	if (Number.isNaN(date.getTime())) return "";
+	const hours = String(date.getHours()).padStart(2, "0");
+	const minutes = String(date.getMinutes()).padStart(2, "0");
+	return `${hours}:${minutes}`;
+}
 
 /**
  * Format milliseconds into Chinese duration string:

@@ -54,6 +54,7 @@ import { abortTurn, sendPrompt } from "./send";
 import { CommandOutputList } from "./slash/CommandOutputList";
 import {
 	formatDurationCompact,
+	formatMessageTimestamp,
 	groupTurnBlocks,
 	noticeLabel,
 	noticeSummary,
@@ -153,6 +154,7 @@ const UserRow = React.memo(function UserRow({
 	item: TranscriptItem;
 }) {
 	const rawText = item.text ?? "";
+	const messageTime = formatMessageTimestamp(item.ts);
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
 	const [expanded, setExpanded] = useState(false);
 	const [collapsible, setCollapsible] = useState(false);
@@ -294,6 +296,9 @@ const UserRow = React.memo(function UserRow({
 					)}
 				</div>
 			) : null}
+			{messageTime && (
+				<span className="px-1 tabular-nums text-[var(--text-30)]">{messageTime}</span>
+			)}
 			<div
 				className={clsx(
 					"flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
@@ -445,6 +450,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		if (!block.answerItem?.text) return "";
 		return stripImageMarkers(block.answerItem.text);
 	}, [block.answerItem?.text]);
+	const answerTime = formatMessageTimestamp(block.answerItem?.ts);
 	const hasHighlightedStep = useMemo(() => {
 		if (!highlightedId || block.intermediateSteps.length === 0) return false;
 		return block.intermediateSteps.some(
@@ -481,6 +487,11 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text-30)]"
 					>
 						已停止{block.durationMs ? ` · ${formatDurationCompact(block.durationMs)}` : ""}
+						{answerTime && (
+							<span className="ml-2 tabular-nums text-[11px] text-[var(--text-30)]" title="回复时间">
+								{answerTime}
+							</span>
+						)}
 					</div>
 				) : (
 				<div
@@ -501,6 +512,11 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 							/>
 						)}
 
+					{answerTime && (
+						<span className="mt-1 tabular-nums text-[11px] text-[var(--text-30)]" title="回复时间">
+							{answerTime}
+						</span>
+					)}
 					{/* Hover-only ghost footer */}
 					<AnswerFooter
 						sessionId={sessionId}
@@ -509,9 +525,6 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						turnCheckpoint={turnCheckpoint}
 						canUndo={canUndo}
 						onDoneUndo={onTurnsChange}
-						completionTime={block.answerItem.ts ?? block.userItem?.ts}
-						durationMs={block.durationMs}
-						model={block.answerItem.model ?? block.userItem?.model}
 						answerText={answerText}
 						isLatestTurn={isLatestTurn}
 					/>
