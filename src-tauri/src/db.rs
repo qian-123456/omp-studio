@@ -109,6 +109,69 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch("ALTER TABLE session_secrets ADD COLUMN since_ms INTEGER;")?;
         conn.pragma_update(None, "user_version", 6)?;
     }
+    // v7: schedules can stop repeating at an absolute instant (`Schedule.endAt`).
+    if version < 7 {
+        conn.execute_batch("ALTER TABLE schedules ADD COLUMN end_at TEXT;")?;
+        conn.pragma_update(None, "user_version", 7)?;
+    }
+    // v8: schedules gain an inbox policy (`notify`) and session-reuse flag
+    // (`new_chat_each_run`); pre-existing rows keep the "every run notifies +
+    // fresh session" behavior.
+    if version < 8 {
+        conn.execute_batch(
+            "ALTER TABLE schedules ADD COLUMN notify TEXT NOT NULL DEFAULT 'all';
+             ALTER TABLE schedules ADD COLUMN new_chat_each_run INTEGER NOT NULL DEFAULT 1;",
+        )?;
+        conn.pragma_update(None, "user_version", 8)?;
+    }
+    // v9: schedules gain a run cap (`max_runs`, NULL = unlimited) and a counter
+    // of runs started so far (`runs_done`); `max_runs` is ignored for `once`.
+    if version < 9 {
+        conn.execute_batch(
+            "ALTER TABLE schedules ADD COLUMN max_runs INTEGER;
+             ALTER TABLE schedules ADD COLUMN runs_done INTEGER NOT NULL DEFAULT 0;",
+        )?;
+        conn.pragma_update(None, "user_version", 9)?;
+    }
+    // v10: spaces (modes). A session/workspace belongs to exactly one mode;
+    // pre-existing rows are 'code'. `session_meta.group_id` files a global-
+    // workspace session under a `session_groups` entry of the same mode.
+    // `workspaces` is rebuilt so uniqueness is (path, mode) — the same disk
+    // directory may be a project in several modes.
+    if version < 10 {
+        conn.execute_batch(
+            "CREATE TABLE workspaces_new(
+               id TEXT PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL,
+               kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0,
+               mode TEXT NOT NULL DEFAULT 'code', created_at TEXT NOT NULL,
+               UNIQUE(path, mode));
+             INSERT INTO workspaces_new(id, path, name, kind, sort, mode, created_at)
+               SELECT id, path, name, kind, sort, 'code', created_at FROM workspaces;
+             DROP TABLE workspaces;
+             ALTER TABLE workspaces_new RENAME TO workspaces;
+             ALTER TABLE session_meta ADD COLUMN mode TEXT NOT NULL DEFAULT 'code';
+             ALTER TABLE session_meta ADD COLUMN group_id TEXT;
+             CREATE TABLE session_groups(
+               id TEXT PRIMARY KEY, mode TEXT NOT NULL, name TEXT NOT NULL,
+               sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);",
+        )?;
+        conn.pragma_update(None, "user_version", 10)?;
+    }
+    // v11: 通用对话 (`chat`) becomes a standalone space. The single global
+    // workspace (`global`) belongs to it; the per-mode globals introduced in v10
+    // (`global:<mode>`) are dropped (their dirs stay on disk) and every session
+    // group moves to `chat`. Grouped sessions are global-workspace sessions, so
+    // they become `chat` too; every other global-dir session is derived as
+    // `chat` at scan time (cwd under the global dir).
+    if version < 11 {
+        conn.execute_batch(
+            "UPDATE workspaces SET mode = 'chat' WHERE id = 'global';
+             DELETE FROM workspaces WHERE kind = 'global' AND id <> 'global';
+             UPDATE session_groups SET mode = 'chat';
+             UPDATE session_meta SET mode = 'chat' WHERE group_id IS NOT NULL;",
+        )?;
+        conn.pragma_update(None, "user_version", 11)?;
+    }
     Ok(())
 }
 
@@ -151,14 +214,20 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), Strin
     Ok(())
 }
 
-/// Ensure the 🌐 Global workspace row exists (§3, §A).
+/// Ensure the single global (通用对话) workspace row and its cwd dir exist
+/// (§3, §A): id `global`, `~/.omp-workspace/global`, owned by the `chat` space.
 pub fn ensure_global_workspace(conn: &Connection) -> rusqlite::Result<()> {
-    let path = paths::global_dir().to_string_lossy().to_string();
+    let dir = crate::paths::global_dir();
+    let _ = std::fs::create_dir_all(&dir);
     conn.execute(
-        "INSERT INTO workspaces(id, path, name, kind, sort, created_at)
-		 VALUES('global', ?1, '🌐 全局', 'global', -1, ?2)
-		 ON CONFLICT(path) DO NOTHING",
-        rusqlite::params![path, chrono::Utc::now().to_rfc3339()],
+        "INSERT INTO workspaces(id, path, name, kind, sort, mode, created_at)
+		 VALUES(?1, ?2, '🌐 全局', 'global', -1, 'chat', ?3)
+		 ON CONFLICT DO NOTHING",
+        rusqlite::params![
+            crate::contracts::GLOBAL_WORKSPACE_ID,
+            dir.to_string_lossy(),
+            chrono::Utc::now().to_rfc3339()
+        ],
     )?;
     Ok(())
 }
@@ -182,7 +251,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 11);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -205,7 +274,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 6);
+        assert_eq!(v3, 11);
     }
 
     #[test]
@@ -215,7 +284,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 6);
+        assert_eq!(v, 11);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -232,5 +301,350 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert!(cols.iter().any(|c| c == "project_dir"));
+    }
+
+    /// migrate() adds `schedules.end_at` (v7).
+    #[test]
+    fn migrate_v7_adds_schedules_end_at() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 11);
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(schedules)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(cols.iter().any(|c| c == "end_at"));
+    }
+
+    /// migrate() adds `schedules.notify`/`new_chat_each_run` (v8) and
+    /// pre-existing rows keep the legacy defaults ('all', 1).
+    #[test]
+    fn migrate_v8_schedule_defaults() {
+        // Simulate a v7 database with one existing schedule.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schedules(
+               id TEXT PRIMARY KEY,
+               name TEXT NOT NULL,
+               prompt TEXT NOT NULL,
+               cwd TEXT NOT NULL,
+               run_mode TEXT NOT NULL DEFAULT 'local',
+               cadence TEXT NOT NULL,
+               model TEXT,
+               thinking TEXT,
+               approval_mode TEXT,
+               enabled INTEGER NOT NULL DEFAULT 1,
+               next_run_at TEXT,
+               last_run_at TEXT,
+               created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL
+             );
+             CREATE TABLE schedule_runs(
+               id TEXT PRIMARY KEY,
+               schedule_id TEXT NOT NULL,
+               session_id TEXT,
+               status TEXT NOT NULL,
+               started_at TEXT NOT NULL,
+               finished_at TEXT,
+               summary TEXT,
+               FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+             );
+             ALTER TABLE backlog ADD COLUMN project_dir TEXT;
+             CREATE TABLE secret_entries(
+               id TEXT PRIMARY KEY,
+               value TEXT NOT NULL UNIQUE,
+               label TEXT,
+               placeholder TEXT NOT NULL UNIQUE,
+               risk TEXT NOT NULL,
+               track INTEGER NOT NULL DEFAULT 1,
+               in_library INTEGER NOT NULL DEFAULT 0,
+               library_prompted INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL
+             );
+             CREATE TABLE secret_aliases(placeholder TEXT PRIMARY KEY, entry_id TEXT NOT NULL);
+             CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY(session_id, entry_id));
+             ALTER TABLE session_secrets ADD COLUMN since_ms INTEGER;
+             ALTER TABLE schedules ADD COLUMN end_at TEXT;",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 7).unwrap();
+        conn.execute(
+            "INSERT INTO schedules(id, name, prompt, cwd, cadence, created_at, updated_at)
+             VALUES('s1', 'n', 'p', '/tmp', '{}', 't', 't')",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 11);
+        // Pre-existing row inherits the documented defaults.
+        let (notify, new_chat): (String, i64) = conn
+            .query_row(
+                "SELECT notify, new_chat_each_run FROM schedules WHERE id = 's1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(notify, "all");
+        assert_eq!(new_chat, 1);
+        // Inserts that omit the new columns get the same defaults.
+        conn.execute(
+            "INSERT INTO schedules(id, name, prompt, cwd, cadence, created_at, updated_at)
+             VALUES('s2', 'n', 'p', '/tmp', '{}', 't', 't')",
+            [],
+        )
+        .unwrap();
+        let (notify2, new_chat2): (String, i64) = conn
+            .query_row(
+                "SELECT notify, new_chat_each_run FROM schedules WHERE id = 's2'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(notify2, "all");
+        assert_eq!(new_chat2, 1);
+    }
+
+    /// migrate() adds `schedules.max_runs`/`runs_done` (v9): pre-existing rows
+    /// get NULL / 0 and inserts that omit them inherit the same defaults.
+    #[test]
+    fn migrate_v9_schedule_run_cap() {
+        // Simulate a v8 database with one existing schedule.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schedules(
+               id TEXT PRIMARY KEY,
+               name TEXT NOT NULL,
+               prompt TEXT NOT NULL,
+               cwd TEXT NOT NULL,
+               run_mode TEXT NOT NULL DEFAULT 'local',
+               cadence TEXT NOT NULL,
+               model TEXT,
+               thinking TEXT,
+               approval_mode TEXT,
+               enabled INTEGER NOT NULL DEFAULT 1,
+               next_run_at TEXT,
+               last_run_at TEXT,
+               created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL
+             );
+             CREATE TABLE schedule_runs(
+               id TEXT PRIMARY KEY,
+               schedule_id TEXT NOT NULL,
+               session_id TEXT,
+               status TEXT NOT NULL,
+               started_at TEXT NOT NULL,
+               finished_at TEXT,
+               summary TEXT,
+               FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+             );
+             ALTER TABLE backlog ADD COLUMN project_dir TEXT;
+             CREATE TABLE secret_entries(
+               id TEXT PRIMARY KEY,
+               value TEXT NOT NULL UNIQUE,
+               label TEXT,
+               placeholder TEXT NOT NULL UNIQUE,
+               risk TEXT NOT NULL,
+               track INTEGER NOT NULL DEFAULT 1,
+               in_library INTEGER NOT NULL DEFAULT 0,
+               library_prompted INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL
+             );
+             CREATE TABLE secret_aliases(placeholder TEXT PRIMARY KEY, entry_id TEXT NOT NULL);
+             CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY(session_id, entry_id));
+             ALTER TABLE session_secrets ADD COLUMN since_ms INTEGER;
+             ALTER TABLE schedules ADD COLUMN end_at TEXT;
+             ALTER TABLE schedules ADD COLUMN notify TEXT NOT NULL DEFAULT 'all';
+             ALTER TABLE schedules ADD COLUMN new_chat_each_run INTEGER NOT NULL DEFAULT 1;",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 8).unwrap();
+        conn.execute(
+            "INSERT INTO schedules(id, name, prompt, cwd, cadence, created_at, updated_at)
+             VALUES('s1', 'n', 'p', '/tmp', '{}', 't', 't')",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 11);
+        // Pre-existing row: NULL cap, zero runs.
+        let (max_runs, runs_done): (Option<i64>, i64) = conn
+            .query_row(
+                "SELECT max_runs, runs_done FROM schedules WHERE id = 's1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(max_runs, None);
+        assert_eq!(runs_done, 0);
+        // Inserts that omit the new columns get the same defaults.
+        conn.execute(
+            "INSERT INTO schedules(id, name, prompt, cwd, cadence, created_at, updated_at)
+             VALUES('s2', 'n', 'p', '/tmp', '{}', 't', 't')",
+            [],
+        )
+        .unwrap();
+        let (max_runs2, runs_done2): (Option<i64>, i64) = conn
+            .query_row(
+                "SELECT max_runs, runs_done FROM schedules WHERE id = 's2'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(max_runs2, None);
+        assert_eq!(runs_done2, 0);
+    }
+
+    /// migrate() v10: existing workspaces/session_meta default to mode='code',
+    /// workspaces uniqueness moves from `path` to `(path, mode)` so the same
+    /// directory can be a project in several spaces, `session_meta.group_id`
+    /// is added, and `session_groups` is created.
+    #[test]
+    fn migrate_v10_spaces() {
+        // Simulate a v9 database with existing rows.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE session_meta ADD COLUMN cwd_override TEXT;
+             ALTER TABLE backlog ADD COLUMN project_dir TEXT;",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 9).unwrap();
+        conn.execute(
+            "INSERT INTO workspaces(id, path, name, kind, sort, created_at)
+             VALUES('w1', '/repo', 'repo', 'project', 0, 't')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO session_meta(session_id, file_path) VALUES('s1', '/f')",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 11);
+        // Pre-existing rows default to code.
+        let mode: String = conn
+            .query_row(
+                "SELECT mode FROM session_meta WHERE session_id='s1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(mode, "code");
+        let wmode: String = conn
+            .query_row("SELECT mode FROM workspaces WHERE id='w1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(wmode, "code");
+        let group_id: Option<String> = conn
+            .query_row(
+                "SELECT group_id FROM session_meta WHERE session_id='s1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(group_id, None);
+        // The same path is allowed once per mode, not twice in one mode.
+        conn.execute(
+            "INSERT INTO workspaces(id, path, name, kind, sort, mode, created_at)
+             VALUES('w2', '/repo', 'repo2', 'project', 1, 'work', 't')",
+            [],
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "INSERT INTO workspaces(id, path, name, kind, sort, mode, created_at)
+                 VALUES('w3', '/repo', 'repo3', 'project', 2, 'code', 't')",
+                [],
+            )
+            .is_err());
+        // session_groups exists.
+        conn.execute(
+            "INSERT INTO session_groups(id, mode, name, sort, created_at)
+             VALUES('g1', 'work', '清理', 1, 't')",
+            [],
+        )
+        .unwrap();
+    }
+
+    /// v11 moves the global workspace and every session group into `chat`,
+    /// drops per-mode global rows, and keeps projects untouched.
+    #[test]
+    fn migrate_v11_chat_space() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.pragma_update(None, "user_version", 10).unwrap();
+        for (id, path, kind, mode) in [
+            ("global", "/d/global", "global", "code"),
+            ("global:work", "/d/spaces/work/global", "global", "work"),
+            ("w1", "/repo", "project", "code"),
+        ] {
+            conn.execute(
+                "INSERT INTO workspaces(id, path, name, kind, sort, mode, created_at)
+                 VALUES(?1, ?2, 'n', ?3, 0, ?4, 't')",
+                rusqlite::params![id, path, kind, mode],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO session_groups(id, mode, name, sort, created_at)
+             VALUES('g1', 'work', '清理', 1, 't')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO session_meta(session_id, file_path, mode, group_id)
+             VALUES('s1', '/f', 'work', 'g1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO session_meta(session_id, file_path, mode) VALUES('s2', '/f2', 'code')",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        let one = |sql: &str| -> String { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(one("SELECT mode FROM workspaces WHERE id='global'"), "chat");
+        assert_eq!(one("SELECT mode FROM workspaces WHERE id='w1'"), "code");
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workspaces WHERE id='global:work'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+        assert_eq!(one("SELECT mode FROM session_groups WHERE id='g1'"), "chat");
+        assert_eq!(
+            one("SELECT mode FROM session_meta WHERE session_id='s1'"),
+            "chat"
+        );
+        assert_eq!(
+            one("SELECT mode FROM session_meta WHERE session_id='s2'"),
+            "code"
+        );
     }
 }

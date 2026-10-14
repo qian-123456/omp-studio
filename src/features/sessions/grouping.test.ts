@@ -38,6 +38,8 @@ function makeSession(partial: Partial<SessionMeta>): SessionMeta {
 		lastAssistant: partial.lastAssistant ?? null,
 		model: partial.model ?? null,
 		attention: null,
+		mode: partial.mode ?? "code",
+		groupId: partial.groupId ?? null,
 	};
 }
 
@@ -76,6 +78,62 @@ describe("matchesSearch & filterSessions", () => {
 		const filtered = filterSessions([s1, s2], { searchQuery: "auth" });
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].id).toBe("s2");
+	});
+});
+
+describe("side-chat visibility (first user message)", () => {
+	const parent = () => makeSession({ id: "p1", updatedAt: "2026-09-24T10:00:00Z" });
+
+	it("lists a fork once it carries content: flat row sorted by updatedAt", () => {
+		const sent = makeSession({
+			id: "f1",
+			parentId: "p1",
+			title: "什么是闭包",
+			label: "#1.1",
+			forkDepth: 1,
+			updatedAt: "2026-09-24T12:00:00Z",
+		});
+		expect(filterSessions([parent(), sent]).map((s) => s.id)).toEqual(["p1", "f1"]);
+		const res = groupSessions([parent(), sent], []);
+		expect(res.unassigned.map((s) => s.id)).toEqual(["f1", "p1"]);
+	});
+
+	it("keeps an unsent fork stub (no title/label/activity) out of every list", () => {
+		// makeSession coalesces "" to defaults; blank fields need a spread override.
+		const stub = {
+			...makeSession({ id: "f-empty", parentId: "p1", forkDepth: 1, live: true }),
+			title: "",
+			label: "",
+		};
+		expect(filterSessions([parent(), stub]).map((s) => s.id)).toEqual(["p1"]);
+		const res = groupSessions([parent(), stub], []);
+		expect(res.unassigned.map((s) => s.id)).toEqual(["p1"]);
+		expect(res.totalVisible).toBe(1);
+	});
+
+	it("keeps a fork the moment a turn is in flight even before titles resolve", () => {
+		const working = {
+			...makeSession({
+				id: "f-working",
+				parentId: "p1",
+				status: "working",
+				live: true,
+			}),
+			title: "",
+			label: "",
+		};
+		expect(filterSessions([parent(), working]).map((s) => s.id)).toEqual([
+			"p1",
+			"f-working",
+		]);
+	});
+
+	it("does not hide blank non-fork drafts (main composer governs those)", () => {
+		const draft = { ...makeSession({ id: "draft" }), title: "", label: "" };
+		expect(filterSessions([parent(), draft]).map((s) => s.id)).toEqual([
+			"p1",
+			"draft",
+		]);
 	});
 });
 
@@ -143,6 +201,7 @@ describe("createSubgroups", () => {
 			"f-old", // fork older than an unrelated session lands after it
 		]);
 	});
+
 });
 
 
@@ -153,6 +212,7 @@ describe("groupSessions", () => {
 		path: "/home/.omp/global",
 		kind: "global",
 		sort: 0,
+		mode: "code",
 	};
 	const projectWs: Workspace = {
 		id: "proj1",
@@ -160,6 +220,7 @@ describe("groupSessions", () => {
 		path: "/repo/my-proj",
 		kind: "project",
 		sort: 1,
+		mode: "code",
 	};
 
 	it("pins the global workspace group on top and splits unassigned sessions", () => {
@@ -250,7 +311,7 @@ describe("groupSessions", () => {
 		expect(result.globalGroup?.totalCount).toBe(0);
 	});
 
-	it("filters by activeWorkspaceId to isolate a single project", () => {
+	it("groups only the active mode's sessions and workspaces", () => {
 		const p1 = makeSession({ id: "p1", workspaceId: "proj1", pinned: true });
 		const s1 = makeSession({ id: "s1", workspaceId: "proj1" });
 		const p2 = makeSession({ id: "p2", workspaceId: "global", pinned: true });
@@ -258,41 +319,81 @@ describe("groupSessions", () => {
 		const s3 = makeSession({ id: "s3", workspaceId: null });
 
 		const result = groupSessions([p1, s1, p2, s2, s3], [projectWs, globalWs], {
-			activeWorkspaceId: "proj1",
+			mode: "code",
 		});
 		expect(result.workspaceGroups).toHaveLength(1);
 		expect(result.workspaceGroups[0].workspace.id).toBe("proj1");
 		expect(result.workspaceGroups[0].totalCount).toBe(1);
-		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["p1"]);
-		expect(result.globalGroup).toBeNull();
-		expect(result.unassigned).toHaveLength(0);
-		expect(result.totalVisible).toBe(2); // p1 + s1
+		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["p1", "p2"]);
+		expect(result.globalGroup?.totalCount).toBe(1);
+		expect(result.unassigned).toHaveLength(1);
+		expect(result.totalVisible).toBe(5);
 	});
 
-	it("filters by activeWorkspaceId '__global' to isolate global sessions", () => {
-		const p1 = makeSession({ id: "p1", workspaceId: "proj1", pinned: true });
-		const s1 = makeSession({ id: "s1", workspaceId: "proj1" });
-		const s2 = makeSession({ id: "s2", workspaceId: "global" });
-
-		const result = groupSessions([p1, s1, s2], [projectWs, globalWs], {
-			activeWorkspaceId: "__global",
+	it("hides other modes' sessions and workspaces entirely", () => {
+		const workGlobal: Workspace = {
+			id: "global:work",
+			name: "全局",
+			path: "/spaces/work/global",
+			kind: "global",
+			sort: 0,
+			mode: "work",
+		};
+		const workProj: Workspace = {
+			id: "wproj",
+			name: "Work Proj",
+			path: "/work/proj",
+			kind: "project",
+			sort: 1,
+			mode: "work",
+		};
+		const codeSession = makeSession({ id: "c1", workspaceId: "proj1" });
+		const workSession = makeSession({
+			id: "w1",
+			workspaceId: "wproj",
+			mode: "work",
 		});
-		expect(result.workspaceGroups).toHaveLength(0);
-		expect(result.globalGroup?.totalCount).toBe(1);
-		expect(result.pinnedSessions).toHaveLength(0);
-		expect(result.totalVisible).toBe(1);
+		const workGlobalSession = makeSession({
+			id: "wg1",
+			workspaceId: "global:work",
+			mode: "work",
+		});
+
+		// The work space sees only its own sessions; the code project never claims them.
+		const workView = groupSessions(
+			[codeSession, workSession, workGlobalSession],
+			[projectWs, globalWs, workProj, workGlobal],
+			{ mode: "work" },
+		);
+		expect(workView.workspaceGroups.map((g) => g.workspace.id)).toEqual(["wproj"]);
+		expect(workView.globalGroup?.workspace.id).toBe("global:work");
+		expect(workView.globalGroup?.totalCount).toBe(1);
+		expect(workView.unassigned).toHaveLength(0);
+		expect(workView.totalVisible).toBe(2);
+
+		// The code space sees only its own session; the work project never claims it.
+		const codeView = groupSessions(
+			[codeSession, workSession, workGlobalSession],
+			[projectWs, globalWs, workProj, workGlobal],
+			{ mode: "code" },
+		);
+		expect(codeView.workspaceGroups.map((g) => g.workspace.id)).toEqual(["proj1"]);
+		expect(codeView.globalGroup?.totalCount).toBe(0);
+		expect(codeView.totalVisible).toBe(1);
 	});
 
-	it("keeps all workspaces when activeWorkspaceId is 'all'", () => {
-		const s1 = makeSession({ id: "s1", workspaceId: "proj1" });
-		const s2 = makeSession({ id: "s2", workspaceId: "global" });
-
-		const result = groupSessions([s1, s2], [projectWs, globalWs], {
-			activeWorkspaceId: "all",
+	it("defaults to the code space when no mode is given", () => {
+		const codeSession = makeSession({ id: "c1", workspaceId: "proj1" });
+		const workSession = makeSession({
+			id: "w1",
+			workspaceId: "proj1",
+			mode: "work",
 		});
-		expect(result.workspaceGroups).toHaveLength(1);
-		expect(result.globalGroup?.totalCount).toBe(1);
-		expect(result.totalVisible).toBe(2);
+		const result = groupSessions([codeSession, workSession], [projectWs, globalWs]);
+		expect(result.workspaceGroups[0].totalCount).toBe(1);
+		expect(result.workspaceGroups[0].subgroups[0].sessions.map((s) => s.id)).toEqual([
+			"c1",
+		]);
 	});
 });
 
@@ -331,6 +432,7 @@ describe("worktree list grouping", () => {
 		path: "/repo/my-proj",
 		kind: "project",
 		sort: 1,
+		mode: "code",
 	};
 	const worktrees = [
 		{ path: "/repo/my-proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
@@ -428,7 +530,7 @@ describe("worktree list grouping", () => {
 });
 
 describe("groupByWorktree option", () => {
-	const ws: Workspace = { id: "proj1", name: "My Project", path: "/repo/my-proj", kind: "project", sort: 1 };
+	const ws: Workspace = { id: "proj1", name: "My Project", path: "/repo/my-proj", kind: "project", sort: 1, mode: "code" };
 	const wts = [
 		{ path: "/repo/my-proj", branch: "main", head: "a", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 		{ path: "/repo/my-proj/.worktrees/feat-a", branch: "feat-a", head: "b", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
@@ -512,7 +614,7 @@ describe("archive cascading & pinning", () => {
 			updatedAt: "2026-09-24T10:00:00Z",
 		});
 
-		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0, mode: "code" };
 		const result = groupSessions([parent, child, normal], [ws]);
 
 		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["p1"]);
@@ -536,7 +638,7 @@ describe("archive cascading & pinning", () => {
 			updatedAt: "2026-09-24T10:00:00Z",
 		});
 
-		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0, mode: "code" };
 		const result = groupSessions([parent, child, normal], [ws]);
 
 		expect(result.pinnedSessions.map((s) => s.id)).toEqual(["c1"]);
@@ -569,8 +671,8 @@ describe("snapshotOrder & frozenOrder", () => {
 		const u1 = makeSession({ id: "u1", workspaceId: null, updatedAt: "2026-09-25T09:00:00Z" });
 		const d1 = makeSession({ id: "d1", workspaceId: null, cwd: "/repo/.cache/wt-dead", git: null });
 
-		const wsG: Workspace = { id: "global", name: "Global", path: "/global", kind: "global", sort: 0 };
-		const wsP: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 1 };
+		const wsG: Workspace = { id: "global", name: "Global", path: "/global", kind: "global", sort: 0, mode: "code" };
+		const wsP: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 1, mode: "code" };
 
 		const res = groupSessions([p1, g1, s1, u1, d1], [wsG, wsP]);
 		const order = snapshotOrder(res);
@@ -598,7 +700,7 @@ describe("snapshotOrder & frozenOrder", () => {
 		const s3 = makeSession({ id: "s3", workspaceId: "proj1", updatedAt: "2026-09-25T08:00:00Z" });
 		const pNew = makeSession({ id: "p_new", pinned: true, workspaceId: "proj1", updatedAt: "2026-09-25T16:00:00Z" });
 
-		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0, mode: "code" };
 		const res = groupSessions([s1, s2Updated, s3, sNew, pNew], [ws], { frozenOrder });
 
 		expect(res.pinnedSessions.map((s) => s.id)).toEqual(["p_new"]);
@@ -609,28 +711,25 @@ describe("snapshotOrder & frozenOrder", () => {
 });
 
 describe("global-id filter mode (G1 backstop)", () => {
-	it("treats activeWorkspaceId === globalWs.id identically to '__global'", () => {
-		const wsG: Workspace = { id: "global", name: "Global", path: "/global", kind: "global", sort: 0 };
-		const wsP: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 1 };
+	it("keeps per-mode global rows separate by id and mode", () => {
+		const wsG: Workspace = { id: "global", name: "Global", path: "/global", kind: "global", sort: 0, mode: "code" };
+		const wsP: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 1, mode: "code" };
 
 		const g1 = makeSession({ id: "g1", workspaceId: "global" });
 		const p1 = makeSession({ id: "p1", workspaceId: "proj1" });
 
-		const resRawId = groupSessions([g1, p1], [wsG, wsP], { activeWorkspaceId: "global" });
-		const resSentinel = groupSessions([g1, p1], [wsG, wsP], { activeWorkspaceId: "__global" });
+		const res = groupSessions([g1, p1], [wsG, wsP], { mode: "code" });
 
-		expect(resRawId.globalGroup?.workspace.id).toBe("global");
-		expect(resRawId.workspaceGroups).toHaveLength(0);
-		expect(resRawId.totalVisible).toBe(1);
-		expect(resRawId.globalGroup?.subgroups[0]?.sessions.map((s) => s.id)).toEqual(["g1"]);
-
-		expect(resRawId).toEqual(resSentinel);
+		expect(res.globalGroup?.workspace.id).toBe("global");
+		expect(res.globalGroup?.subgroups[0]?.sessions.map((s) => s.id)).toEqual(["g1"]);
+		expect(res.workspaceGroups.map((w) => w.workspace.id)).toEqual(["proj1"]);
+		expect(res.totalVisible).toBe(2);
 	});
 });
 
 describe("pinnedCount under filters", () => {
 	it("counts pinned sessions belonging to the workspace after filters", () => {
-		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0 };
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0, mode: "code" };
 		const p1 = makeSession({ id: "p1", pinned: true, workspaceId: "proj1", title: "match needle" });
 		const p2 = makeSession({ id: "p2", pinned: true, workspaceId: "proj1", title: "other" });
 		const s1 = makeSession({ id: "s1", pinned: false, workspaceId: "proj1", title: "match needle" });
@@ -645,7 +744,7 @@ describe("pinnedCount under filters", () => {
 
 describe("canonical path containment & sessionIds attachment (G8)", () => {
 	it("attaches session to worktree when cwd has /tmp vs /private/tmp", () => {
-		const ws: Workspace = { id: "proj1", name: "P1", path: "/tmp/proj", kind: "project", sort: 0 };
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/tmp/proj", kind: "project", sort: 0, mode: "code" };
 		const worktrees = [
 			{ path: "/private/tmp/proj", branch: "main", head: "aaa", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 			{ path: "/private/tmp/proj/.worktrees/feat", branch: "feat", head: "bbb", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
@@ -664,7 +763,7 @@ describe("canonical path containment & sessionIds attachment (G8)", () => {
 	});
 
 	it("attaches session directly via WorktreeInfo.sessionIds first", () => {
-		const ws: Workspace = { id: "proj1", name: "P1", path: "/proj", kind: "project", sort: 0 };
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/proj", kind: "project", sort: 0, mode: "code" };
 		const worktrees = [
 			{ path: "/proj", branch: "main", head: "aaa", dirty: 0, sessionIds: ["s_in_custom"], ahead: 0, behind: 0 },
 			{ path: "/proj/.worktrees/custom", branch: "custom", head: "bbb", dirty: 0, sessionIds: ["s_in_custom"], ahead: 0, behind: 0 },
@@ -681,7 +780,7 @@ describe("canonical path containment & sessionIds attachment (G8)", () => {
 
 describe("stale-badge deleted inference (G9)", () => {
 	it("treats cwd in wt-dir as deleted when missing from non-empty live worktree list", () => {
-		const ws: Workspace = { id: "proj1", name: "P1", path: "/repo", kind: "project", sort: 0 };
+		const ws: Workspace = { id: "proj1", name: "P1", path: "/repo", kind: "project", sort: 0, mode: "code" };
 		const worktrees = [
 			{ path: "/repo", branch: "main", head: "aaa", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 		];
@@ -716,6 +815,7 @@ describe("multi-token search without absolute prefix (G10)", () => {
 			path: "/Users/qianhairui/Documents/omp-workspace",
 			kind: "project",
 			sort: 0,
+			mode: "code",
 		};
 
 		// "sidebar fix" matches both tokens in title

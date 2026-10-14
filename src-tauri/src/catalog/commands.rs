@@ -2,9 +2,11 @@
 
 use super::{store, transcript, usage};
 use crate::contracts::{
-    Model, SessionMeta, SessionMetaPatch, SessionStatus, TranscriptPage, UsageSummary, Workspace,
+    Model, SessionGroup, SessionMeta, SessionMetaPatch, SessionSnapshot, SessionStatus, SpaceMode,
+    TranscriptPage, UsageSummary, Workspace,
 };
 use crate::state::AppState;
+use tauri::Emitter as _;
 
 #[tauri::command]
 pub async fn list_sessions(state: tauri::State<'_, AppState>) -> Result<Vec<SessionMeta>, String> {
@@ -183,19 +185,6 @@ pub async fn list_workspaces(state: tauri::State<'_, AppState>) -> Result<Vec<Wo
 }
 
 #[tauri::command]
-pub async fn add_workspace(
-    state: tauri::State<'_, AppState>,
-    path: String,
-) -> Result<Workspace, String> {
-    let ws = {
-        let db = state.db.lock();
-        store::add_workspace(&db, &path).map_err(|e| format!("add_workspace: {e}"))?
-    };
-    crate::catalog::recompute_async(&state, None).await;
-    Ok(ws)
-}
-
-#[tauri::command]
 pub async fn remove_workspace(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
     {
         let db = state.db.lock();
@@ -213,6 +202,152 @@ pub async fn reorder_workspaces(
     let db = state.db.lock();
     store::reorder_workspaces(&db, &ids).map_err(|e| format!("reorder_workspaces: {e}"))
 }
+/// Add `path` as a project workspace of `mode` (default code). The 通用对话
+/// (`chat`) space has no project directories.
+#[tauri::command]
+pub async fn add_workspace(
+    state: tauri::State<'_, AppState>,
+    path: String,
+    mode: Option<SpaceMode>,
+) -> Result<Workspace, String> {
+    let mode = mode.unwrap_or_default();
+    if mode == SpaceMode::Chat {
+        return Err("通用对话不能添加项目目录".to_string());
+    }
+    let ws = {
+        let db = state.db.lock();
+        store::add_workspace(&db, &path, mode).map_err(|e| format!("add_workspace: {e}"))?
+    };
+    crate::catalog::recompute_async(&state, None).await;
+    Ok(ws)
+}
+
+#[tauri::command]
+pub async fn list_session_groups(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<SessionGroup>, String> {
+    let db = state.db.lock();
+    store::list_session_groups(&db).map_err(|e| format!("list_session_groups: {e}"))
+}
+
+#[tauri::command]
+pub async fn create_session_group(
+    state: tauri::State<'_, AppState>,
+    mode: SpaceMode,
+    name: String,
+) -> Result<SessionGroup, String> {
+    if mode != SpaceMode::Chat {
+        return Err("分组只能创建在通用对话中".to_string());
+    }
+    let group = {
+        let db = state.db.lock();
+        store::create_session_group(&db, mode, &name)?
+    };
+    emit_groups_changed(&state);
+    Ok(group)
+}
+
+#[tauri::command]
+pub async fn rename_session_group(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<SessionGroup, String> {
+    let group = {
+        let db = state.db.lock();
+        store::rename_session_group(&db, &id, &name)?
+    };
+    emit_groups_changed(&state);
+    Ok(group)
+}
+
+/// Delete a group; its sessions become ungrouped (never deleted).
+#[tauri::command]
+pub async fn delete_session_group(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    {
+        let db = state.db.lock();
+        store::delete_session_group(&db, &id)?;
+    }
+    emit_groups_changed(&state);
+    crate::catalog::recompute_async(&state, None).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reorder_session_groups(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    {
+        let db = state.db.lock();
+        store::reorder_session_groups(&db, &ids)
+            .map_err(|e| format!("reorder_session_groups: {e}"))?;
+    }
+    emit_groups_changed(&state);
+    Ok(())
+}
+
+/// File a 无项目 session under a group (`group_id`) or ungroup it (null).
+/// Validates: group exists, group.mode == session mode, and the session's
+/// resolved workspace is that mode's global workspace.
+#[tauri::command]
+pub async fn set_session_group(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    group_id: Option<String>,
+) -> Result<(), String> {
+    if let Some(gid) = group_id.as_deref() {
+        let group = {
+            let db = state.db.lock();
+            store::get_session_group(&db, gid)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "分组不存在".to_string())?
+        };
+        // Session mode: the stored row wins (set at creation); sessions with
+        // no row are code. A session missing from the catalog (file not yet
+        // written) has no resolved workspace and cannot be grouped.
+        let (session_mode, workspace_id) = match crate::catalog::get(&state, &session_id).await {
+            Some(m) => (m.mode, m.workspace_id),
+            None => {
+                let db = state.db.lock();
+                (store::load_meta_row(&db, &session_id).mode, None)
+            }
+        };
+        validate_group_assignment(&group, session_mode, workspace_id.as_deref())?;
+    }
+    {
+        let db = state.db.lock();
+        store::set_session_group(&db, &session_id, group_id.as_deref())
+            .map_err(|e| format!("set_session_group: {e}"))?;
+    }
+    emit_groups_changed(&state);
+    crate::catalog::recompute_async(&state, Some(vec![session_id])).await;
+    Ok(())
+}
+
+/// Group-assignment rules (§6): the session must be in the 通用对话 space,
+/// the group must belong to it, and the session must be a global-workspace
+/// (project-less) session.
+fn validate_group_assignment(
+    group: &SessionGroup,
+    session_mode: SpaceMode,
+    resolved_workspace_id: Option<&str>,
+) -> Result<(), String> {
+    if session_mode != group.mode || group.mode != SpaceMode::Chat {
+        return Err("会话与分组不属于同一空间".to_string());
+    }
+    if resolved_workspace_id != Some(crate::contracts::GLOBAL_WORKSPACE_ID) {
+        return Err("仅通用对话会话可以加入分组".to_string());
+    }
+    Ok(())
+}
+
+fn emit_groups_changed(state: &AppState) {
+    let _ = state.app.emit("session_groups:changed", ());
+}
 
 #[tauri::command]
 pub async fn session_usage(
@@ -221,6 +356,22 @@ pub async fn session_usage(
 ) -> Result<UsageSummary, String> {
     let file = crate::catalog::file_of(&session_id);
     Ok(usage::summary(&session_id, file.as_deref()).await)
+}
+
+/// Transcript-derived thinking level / context size for a session with no live
+/// process. Missing file (nothing flushed yet) yields an empty snapshot.
+#[tauri::command]
+pub async fn session_snapshot(
+    _state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<SessionSnapshot, String> {
+    let Some(file) = crate::catalog::file_of(&session_id).filter(|f| f.exists()) else {
+        return Ok(SessionSnapshot::default());
+    };
+    tokio::task::spawn_blocking(move || transcript::session_snapshot(&file))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("read snapshot {session_id}: {e}"))
 }
 
 #[tauri::command]
@@ -672,6 +823,39 @@ pub async fn heatmap_diagnose(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Group-assignment validation: chat space + global-workspace sessions only.
+    #[test]
+    fn group_assignment_rejects_mode_mismatch_and_non_global() {
+        let group = SessionGroup {
+            id: "g1".into(),
+            mode: SpaceMode::Chat,
+            name: "清理".into(),
+            sort: 1,
+        };
+        validate_group_assignment(&group, SpaceMode::Chat, Some("global")).unwrap();
+        // Session from another space is rejected.
+        assert_eq!(
+            validate_group_assignment(&group, SpaceMode::Code, Some("global")).unwrap_err(),
+            "会话与分组不属于同一空间"
+        );
+        // A project session (or 未归档) is rejected.
+        for ws in [Some("repo-w"), None] {
+            assert_eq!(
+                validate_group_assignment(&group, SpaceMode::Chat, ws).unwrap_err(),
+                "仅通用对话会话可以加入分组"
+            );
+        }
+        // Legacy groups that still carry a project mode are never assignable.
+        let legacy = SessionGroup {
+            mode: SpaceMode::Work,
+            ..group.clone()
+        };
+        assert_eq!(
+            validate_group_assignment(&legacy, SpaceMode::Work, Some("global")).unwrap_err(),
+            "会话与分组不属于同一空间"
+        );
+    }
 
     #[test]
     fn parse_share_url_keeps_key_fragment_and_skips_prose() {

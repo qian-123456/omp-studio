@@ -4,8 +4,8 @@ use base64::Engine as _;
 use tauri::Manager as _;
 
 use super::files;
-pub use crate::contracts::ProcessMemoryInfo;
 use crate::contracts::{DirEntry, PathCheck, ServiceInfo};
+pub use crate::contracts::{PerfBreakdown, ProcessMemoryInfo};
 use crate::state::AppState;
 #[tauri::command]
 pub async fn services_list(
@@ -139,6 +139,34 @@ pub fn save_clipboard_image_internal(
     Ok(file_path.to_string_lossy().into_owned())
 }
 
+/// Decode a base64 (optionally `data:`-prefixed) PNG and write it to a
+/// caller-chosen absolute `.png` path. Parent dirs are never created.
+pub fn save_share_image_internal(base64_png: &str, path: &str) -> Result<(), String> {
+    let file_path = std::path::Path::new(path);
+    if !file_path.is_absolute() {
+        return Err(format!("需要绝对路径：{path}"));
+    }
+    let is_png = file_path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("png"));
+    if !is_png {
+        return Err(format!("仅支持 .png 文件：{path}"));
+    }
+
+    let clean_b64 = if let Some(idx) = base64_png.find(',') {
+        &base64_png[idx + 1..]
+    } else {
+        base64_png
+    };
+    let clean_b64: String = clean_b64.chars().filter(|c| !c.is_whitespace()).collect();
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&clean_b64)
+        .map_err(|e| format!("Base64 解码失败：{e}"))?;
+    std::fs::write(file_path, bytes).map_err(|e| format!("保存图片失败：{e}"))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn validate_path(path: String) -> Result<PathCheck, String> {
     Ok(validate_path_internal(&path))
@@ -156,8 +184,18 @@ pub async fn save_clipboard_image(
     });
     save_clipboard_image_internal(&cache_dir, &base64_png)
 }
+
+/// Chat share-as-image export: write the rendered PNG to the path the user
+/// picked via the save dialog (which must already be absolute + `.png`).
+#[tauri::command]
+pub async fn save_share_image(base64_png: String, path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_share_image_internal(&base64_png, &path))
+        .await
+        .map_err(|e| e.to_string())?
+}
 #[cfg(target_os = "macos")]
 mod macos_mem {
+    use super::{MemSnapshot, PerfMember};
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
@@ -219,29 +257,41 @@ mod macos_mem {
         fn responsibility_get_pid_responsible_for_pid(pid: libc::c_int) -> libc::c_int;
     }
 
-    static CACHE: Mutex<Option<(Instant, (u64, u32))>> = Mutex::new(None);
+    /// Cached snapshot: attributed footprint + per-pid footprints of the
+    /// processes macOS attributes to this app (self + responsible children).
+    static CACHE: Mutex<Option<(Instant, MemSnapshot)>> = Mutex::new(None);
     const CACHE_TTL: Duration = Duration::from_millis(2500);
 
-    pub fn get_attributed_memory_bytes() -> (u64, u32) {
+    pub fn get_attributed_snapshot() -> MemSnapshot {
         if let Ok(guard) = CACHE.lock() {
-            if let Some((cached_at, res)) = *guard {
+            if let Some((cached_at, snap)) = &*guard {
                 if cached_at.elapsed() < CACHE_TTL {
-                    return res;
+                    return snap.clone();
                 }
             }
         }
 
-        let res = compute_attributed_memory_bytes();
+        let snap = compute_snapshot();
 
         if let Ok(mut guard) = CACHE.lock() {
-            *guard = Some((Instant::now(), res));
+            *guard = Some((Instant::now(), snap.clone()));
         }
 
-        res
+        snap
     }
 
-    fn compute_attributed_memory_bytes() -> (u64, u32) {
-        let self_pid = std::process::id() as libc::c_int;
+    /// Pids whose memory is attributed to this app (responsibility + self).
+    /// Shared with `perf` so classification uses the same tree.
+    pub fn app_responsible_pids() -> Vec<u32> {
+        get_attributed_snapshot()
+            .members
+            .iter()
+            .map(|m| m.pid)
+            .collect()
+    }
+
+    fn compute_snapshot() -> MemSnapshot {
+        let self_pid = std::process::id();
 
         // Query total running PIDs
         let needed = unsafe { proc_listallpids(std::ptr::null_mut(), 0) };
@@ -259,8 +309,7 @@ mod macos_mem {
             )
         };
 
-        let mut total_footprint = 0u64;
-        let mut proc_count = 0u32;
+        let mut members: Vec<PerfMember> = Vec::new();
 
         if num_pids > 0 {
             let count = (num_pids as usize).min(pids.len());
@@ -268,10 +317,10 @@ mod macos_mem {
                 if pid <= 0 {
                     continue;
                 }
-                let is_self = pid == self_pid;
+                let is_self = pid == self_pid as libc::c_int;
                 let is_responsible = if !is_self {
                     let resp = unsafe { responsibility_get_pid_responsible_for_pid(pid) };
-                    resp == self_pid
+                    resp == self_pid as libc::c_int
                 } else {
                     true
                 };
@@ -282,32 +331,95 @@ mod macos_mem {
                         proc_pid_rusage(pid, RUSAGE_INFO_V5, &mut ri as *mut _ as *mut libc::c_void)
                     };
                     if ret == 0 {
-                        total_footprint += ri.ri_phys_footprint;
-                        proc_count += 1;
+                        members.push(PerfMember {
+                            pid: pid as u32,
+                            footprint_bytes: ri.ri_phys_footprint,
+                        });
                     }
                 }
             }
         }
 
         // Fallback: if process enumeration didn't find even self, query self directly
-        if proc_count == 0 {
+        if members.is_empty() {
             let mut ri = rusage_info_v5::default();
             let ret = unsafe {
                 proc_pid_rusage(
-                    self_pid,
+                    self_pid as libc::c_int,
                     RUSAGE_INFO_V5,
                     &mut ri as *mut _ as *mut libc::c_void,
                 )
             };
             if ret == 0 {
-                return (ri.ri_phys_footprint, 1);
+                members.push(PerfMember {
+                    pid: self_pid,
+                    footprint_bytes: ri.ri_phys_footprint,
+                });
+            } else {
+                // Ultimate fallback to mach_task_basic_info
+                let resident = get_mach_resident_size();
+                if resident > 0 {
+                    members.push(PerfMember {
+                        pid: self_pid,
+                        footprint_bytes: resident,
+                    });
+                }
             }
-
-            // Ultimate fallback to mach_task_basic_info
-            return (get_mach_resident_size(), 1);
         }
 
-        (total_footprint, proc_count)
+        MemSnapshot::from_members(members)
+    }
+
+    /// Physical RAM (total, used) via `sysctl hw.memsize` + `host_statistics64`.
+    /// `used` approximates Activity Monitor's used memory:
+    /// (internal - purgeable + wired + compressor) pages.
+    #[allow(deprecated)]
+    pub fn system_memory() -> (Option<u64>, Option<u64>) {
+        let total = {
+            let mut size: u64 = 0;
+            let mut len = std::mem::size_of::<u64>();
+            let ok = unsafe {
+                libc::sysctlbyname(
+                    c"hw.memsize".as_ptr(),
+                    &mut size as *mut u64 as *mut libc::c_void,
+                    &mut len,
+                    std::ptr::null_mut(),
+                    0,
+                )
+            };
+            (ok == 0 && size > 0).then_some(size)
+        };
+
+        let used = {
+            let mut info = std::mem::MaybeUninit::<libc::vm_statistics64>::zeroed();
+            let mut count = libc::HOST_VM_INFO64_COUNT;
+            let host = unsafe { libc::mach_host_self() };
+            let kr = unsafe {
+                libc::host_statistics64(
+                    host,
+                    libc::HOST_VM_INFO64,
+                    info.as_mut_ptr() as libc::host_info64_t,
+                    &mut count,
+                )
+            };
+            if kr == libc::KERN_SUCCESS {
+                let info = unsafe { info.assume_init() };
+                let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
+                if page_size == 0 {
+                    None
+                } else {
+                    let used_pages = (info.internal_page_count as u64)
+                        .saturating_sub(info.purgeable_count as u64)
+                        .saturating_add(info.wire_count as u64)
+                        .saturating_add(info.compressor_page_count as u64);
+                    Some(used_pages.saturating_mul(page_size))
+                }
+            } else {
+                None
+            }
+        };
+
+        (total, used)
     }
 
     #[allow(deprecated)]
@@ -334,13 +446,44 @@ mod macos_mem {
     }
 }
 
+/// Shared snapshot of this app's memory: total bytes attributed to the
+/// process tree plus the member pids (used by `perf` for bucket overlap).
+#[derive(Clone, Default)]
+pub(crate) struct MemSnapshot {
+    pub bytes: u64,
+    pub processes: u32,
+    /// Per-pid footprint in bytes; empty on non-macOS platforms.
+    pub members: Vec<PerfMember>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PerfMember {
+    pub pid: u32,
+    pub footprint_bytes: u64,
+}
+
+impl MemSnapshot {
+    fn from_members(members: Vec<PerfMember>) -> Self {
+        Self {
+            bytes: members.iter().map(|m| m.footprint_bytes).sum(),
+            processes: members.len() as u32,
+            members,
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
-fn get_resident_memory_bytes() -> (u64, u32) {
-    macos_mem::get_attributed_memory_bytes()
+pub(crate) fn app_memory_snapshot() -> MemSnapshot {
+    macos_mem::get_attributed_snapshot()
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn system_memory() -> (Option<u64>, Option<u64>) {
+    macos_mem::system_memory()
 }
 
 #[cfg(target_os = "linux")]
-fn get_resident_memory_bytes() -> (u64, u32) {
+pub(crate) fn app_memory_snapshot() -> MemSnapshot {
     if let Ok(status) = std::fs::read_to_string("/proc/self/statm") {
         if let Some(pages) = status
             .split_whitespace()
@@ -349,22 +492,65 @@ fn get_resident_memory_bytes() -> (u64, u32) {
         {
             let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
             if page_size > 0 {
-                return (pages * page_size as u64, 1);
+                return MemSnapshot::from_members(vec![PerfMember {
+                    pid: std::process::id(),
+                    footprint_bytes: pages * page_size as u64,
+                }]);
             }
         }
     }
-    (0, 1)
+    MemSnapshot::default()
+}
+
+/// `/proc/meminfo` MemTotal / (MemTotal - MemAvailable).
+#[cfg(target_os = "linux")]
+pub(crate) fn system_memory() -> (Option<u64>, Option<u64>) {
+    let Ok(text) = std::fs::read_to_string("/proc/meminfo") else {
+        return (None, None);
+    };
+    let mut total_kb = None;
+    let mut avail_kb = None;
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            total_kb = rest.split_whitespace().next().and_then(|s| s.parse().ok());
+        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
+            avail_kb = rest.split_whitespace().next().and_then(|s| s.parse().ok());
+        }
+    }
+    let total = total_kb.map(|kb| kb * 1024);
+    let used = match (total_kb, avail_kb) {
+        (Some(t), Some(a)) => Some(t.saturating_sub(a) * 1024),
+        _ => None,
+    };
+    (total, used)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn get_resident_memory_bytes() -> (u64, u32) {
-    (0, 1)
+pub(crate) fn app_memory_snapshot() -> MemSnapshot {
+    MemSnapshot::default()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub(crate) fn system_memory() -> (Option<u64>, Option<u64>) {
+    (None, None)
+}
+
+/// Pids counted inside `app_memory_usage`'s total (macOS responsibility set;
+/// just self elsewhere). Used by `perf` to seed the app process tree.
+#[cfg(target_os = "macos")]
+pub(crate) fn app_tree_pids() -> Vec<u32> {
+    macos_mem::app_responsible_pids()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn app_tree_pids() -> Vec<u32> {
+    vec![std::process::id()]
 }
 
 #[tauri::command]
 pub async fn app_memory_usage() -> Result<ProcessMemoryInfo, String> {
-    let (bytes, processes) = get_resident_memory_bytes();
-    let mb = (bytes as f64) / (1024.0 * 1024.0);
+    let snap = app_memory_snapshot();
+    let mb = (snap.bytes as f64) / (1024.0 * 1024.0);
     let formatted = if mb >= 1024.0 {
         format!("{:.1} GB", mb / 1024.0)
     } else {
@@ -373,8 +559,16 @@ pub async fn app_memory_usage() -> Result<ProcessMemoryInfo, String> {
     Ok(ProcessMemoryInfo {
         resident_mb: mb,
         formatted,
-        processes,
+        processes: snap.processes,
     })
+}
+
+/// `perf_breakdown` — system memory split (this app tree / omp spawned by app /
+/// external omp / other / free) + running omp-workspace instances. Shells out
+/// to `ps`/`lsof`/`git`; runs off the async runtime and is cached ~3 s.
+#[tauri::command]
+pub async fn perf_breakdown() -> Result<PerfBreakdown, String> {
+    Ok(super::perf::breakdown().await)
 }
 
 #[cfg(test)]
@@ -410,6 +604,39 @@ mod tests {
         assert!(path.exists());
         assert!(path.is_file());
         assert!(path_str.ends_with(".png"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_save_share_image() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("ompws-test-share-{}", std::process::id()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Minimal base64 data URL
+        let raw_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        let data_url = format!("data:image/png;base64,{raw_b64}");
+
+        // Valid write into an existing dir; uppercase extension counts as .png.
+        let target = temp_dir.join("share.PNG");
+        save_share_image_internal(&data_url, target.to_str().unwrap()).unwrap();
+        assert!(target.is_file());
+
+        // Rejects a relative path.
+        assert!(save_share_image_internal(&data_url, "share.png").is_err());
+
+        // Rejects a non-png extension.
+        let jpg = temp_dir.join("share.jpg");
+        assert!(save_share_image_internal(&data_url, jpg.to_str().unwrap()).is_err());
+
+        // Rejects bad base64.
+        let bad = temp_dir.join("bad.png");
+        assert!(save_share_image_internal("!!!", bad.to_str().unwrap()).is_err());
+
+        // Does not create missing parent dirs.
+        let nested = temp_dir.join("missing/share.png");
+        assert!(save_share_image_internal(&data_url, nested.to_str().unwrap()).is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

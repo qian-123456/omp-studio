@@ -9,6 +9,7 @@ import {
 	PanelRightOpen,
 	Link2,
 	QrCode,
+	Image as ImageIcon,
 	Share2,
 	Terminal,
 	X,
@@ -24,6 +25,7 @@ import { FloatingLayer } from "./FloatingLayer";
 import { TopCapsule } from "../features/todos/TopCapsule";
 import { IdeasCapsule } from "../features/backlog/IdeasCapsule";
 import { formatSessionMarkdown } from "../features/chat/exportMarkdown";
+import { useShareSelection } from "../features/chat/share/shareStore";
 import { sessionDisplayName } from "../lib/sessionName";
 import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
@@ -301,21 +303,16 @@ export const CenterHeader = React.memo(function CenterHeader({
 				data-tauri-drag-region
 				className="relative z-30 flex h-10 shrink-0 items-center border-b border-[var(--border-divider)] vibrancy-chrome select-none"
 			>
-				{/* Expand sidebar cell — only rendered when the sidebar is closed */}
+				{/* Expand sidebar button — only rendered when the sidebar is closed */}
 				{!sidebarOpen && (
-					<div
-						className={clsx(
-							"flex h-full shrink-0 items-center border-r border-[var(--border-divider)] px-2",
-							isMac ? "pl-[78px]" : "pl-2",
-						)}
-					>
+					<div className="flex shrink-0 items-center pl-2.5 pr-1">
 						<button
 							type="button"
 							onClick={toggleSidebar}
-							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
+							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 							title="展开左侧栏 (⌘B)"
 						>
-							<PanelLeftOpen size={15} />
+							<PanelLeftOpen size={16} strokeWidth={1.5} />
 						</button>
 					</div>
 				)}
@@ -457,8 +454,19 @@ export const CenterHeader = React.memo(function CenterHeader({
 									offset={6}
 									onDismiss={() => setShareOpen(false)}
 									ignoreRefs={[shareBtnRef]}
-									className="w-44 rounded-lg border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-xl"
+									className="w-52 rounded-lg border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-xl"
 								>
+									<button
+										type="button"
+										onClick={() => {
+											if (activeSession) useShareSelection.getState().begin(activeSession.id);
+											setShareOpen(false);
+										}}
+										className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
+									>
+										<ImageIcon size={13} />
+										<span>选择消息分享为图片</span>
+									</button>
 									<button
 										type="button"
 										onClick={handleShareLink}

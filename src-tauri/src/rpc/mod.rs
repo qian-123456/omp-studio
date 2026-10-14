@@ -22,7 +22,7 @@ use crate::contracts::{LiveSessionInfo, PendingUiRequest, SessionMeta, StartOpts
 use crate::state::{AppEvent, AppState};
 use crate::{catalog, paths};
 
-pub use process::SessionHandle;
+pub use process::{send_command, SessionHandle};
 
 type ResumeLocks = parking_lot::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
 static REGISTRY: OnceLock<parking_lot::RwLock<HashMap<String, Arc<SessionHandle>>>> =
@@ -54,6 +54,7 @@ pub fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
 /// streaming, have no pending UI, and were inactive for `idle_suspend_minutes`.
 pub fn init(state: AppState) {
     privacy_ext::install();
+    crate::visualize::install();
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
@@ -99,15 +100,42 @@ pub async fn shutdown() {
 
 /// Spawn + handshake + register. Emits `rpc:process` running=true.
 /// With `resume_file`, fails with `SESSION_HELD:<pid>` when another process holds it.
+/// `opts.mode`/`opts.group_id` (new sessions) are persisted to `session_meta`
+/// after the child reports its sessionId; a group requires the 通用对话 (`chat`) mode.
 pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo, String> {
     if let Some(file) = &opts.resume_file {
         ensure_not_held(file).await?;
+    }
+    let mode = opts.mode.unwrap_or_default();
+    if let Some(gid) = opts.group_id.as_deref() {
+        let ok = {
+            let db = state.db.lock();
+            catalog::store::get_session_group(&db, gid)
+                .ok()
+                .flatten()
+                .is_some_and(|g| g.mode == mode && mode == crate::contracts::SpaceMode::Chat)
+        };
+        if !ok {
+            return Err("会话分组不存在，或仅通用对话可使用分组".to_string());
+        }
+    }
+    {
+        let db = state.db.lock();
+        let _ = crate::db::ensure_global_workspace(&db);
     }
     let handle = process::spawn(state, opts).await?;
     let session_id = handle.session_id.read().clone();
     if session_id.is_empty() {
         let _ = process::stop_handle(&handle).await;
         return Err("omp did not report a sessionId".into());
+    }
+    {
+        let db = state.db.lock();
+        if let Err(e) =
+            catalog::store::set_mode_group(&db, &session_id, opts.mode, opts.group_id.as_deref())
+        {
+            tracing::warn!("persist session mode/group {session_id}: {e}");
+        }
     }
     let old_handle = registry().read().get(&session_id).cloned();
     if let Some(old) = old_handle {

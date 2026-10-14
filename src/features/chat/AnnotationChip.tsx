@@ -1,0 +1,277 @@
+/** [B] Composer annotation chip: one compact "N 条批注" pill. Hover or keyboard
+ * focus opens a popover above it listing every quote, with inline comment edit,
+ * delete and (for message quotes) locate-in-transcript actions. */
+
+import { ArrowLeftRight, LocateFixed, MessageSquareQuote, Pencil, Trash2, X } from "lucide-react";
+import { type FocusEvent, useEffect, useRef, useState } from "react";
+import { FloatingLayer } from "../../components/FloatingLayer";
+import { isComposing } from "../../lib/hooks";
+import { type Annotation, useComposer } from "../../stores/composer";
+import { useLive } from "../../stores/live";
+
+/** Grace period so the pointer can cross the (zero-gap) seam between chip and popover. */
+const HOVER_CLOSE_DELAY_MS = 120;
+
+const SOURCE_LABEL: Record<Annotation["source"], string> = {
+	message: "选中文本:",
+	diff: "差异",
+	doc: "文档",
+	terminal: "终端",
+};
+
+/** Entry header: quotes from messages are labelled as such; others show their location. */
+function entryLabel(a: Annotation): string {
+	if (a.source === "message") return SOURCE_LABEL.message;
+	const where = [a.file, a.lines].filter(Boolean).join(" ");
+	return where || SOURCE_LABEL[a.source];
+}
+
+const iconBtn =
+	"shrink-0 rounded p-1 text-[var(--text-30,var(--text-dim))] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors";
+
+function AnnotationEntry({
+	sessionId,
+	index,
+	annotation: a,
+	editing,
+	anchorSessionId,
+	onEdit,
+	onRemove,
+	onMove,
+	moveLabel,
+}: {
+	sessionId: string;
+	/** 1-based position in the passed list (the number used by `[n]` blocks). */
+	index: number;
+	annotation: Annotation;
+	editing: boolean;
+	/** Session whose stream "locate" scrolls (differs from sessionId for side-chat annotations). */
+	anchorSessionId: string;
+	onEdit: (id: string | null) => void;
+	onRemove: () => void;
+	/** Moves this annotation to the other annotation list (main ↔ side chat). */
+	onMove?: (id: string) => void;
+	/** Tooltip/aria for the move button, e.g. "移动到辅助对话". */
+	moveLabel?: string;
+}) {
+	const updateAnnotation = useComposer((s) => s.updateAnnotation);
+	const removeAnnotation = useComposer((s) => s.removeAnnotation);
+	const scrollToItem = useLive((s) => s.scrollToItem);
+	const [draft, setDraft] = useState("");
+	// Enter/Esc unmount the input, which can also fire blur; only the first commit counts.
+	const settledRef = useRef(true);
+
+	const startEdit = () => {
+		setDraft(a.comment ?? "");
+		settledRef.current = false;
+		onEdit(a.id);
+	};
+
+	const finish = (save: boolean) => {
+		if (settledRef.current) return;
+		settledRef.current = true;
+		if (save) updateAnnotation(sessionId, a.id, { comment: draft.trim() || undefined });
+		onEdit(null);
+	};
+
+	return (
+		<li className="flex gap-2 px-3 py-2">
+			<div className="min-w-0 flex-1 text-[12px]">
+				<div className="text-[11px] text-[var(--text-40,var(--text-dim))]">
+					<span className="tabular-nums">{index}.</span> {entryLabel(a)}
+				</div>
+				<div className="mt-0.5 line-clamp-4 whitespace-pre-wrap break-words leading-relaxed text-[var(--text-60,var(--text-muted))]">
+					{a.text}
+				</div>
+				{editing ? (
+					<textarea
+						autoFocus
+						rows={2}
+						value={draft}
+						placeholder="输入批注 (Enter保存, Shift+Enter换行, Esc取消)…"
+						onChange={(e) => setDraft(e.target.value)}
+						onKeyDown={(e) => {
+							if (isComposing(e)) return;
+							if (e.key === "Enter" && !e.shiftKey) {
+								e.preventDefault();
+								e.stopPropagation();
+								finish(true);
+							} else if (e.key === "Escape") {
+								e.preventDefault();
+								e.stopPropagation();
+								finish(false);
+							}
+						}}
+						onBlur={() => finish(true)}
+						className="mt-1 w-full resize-none rounded-md border border-[var(--line,var(--border))] bg-[var(--bg)] px-2 py-1 text-[12px] leading-relaxed text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))] focus:border-[var(--text-30,var(--border))]"
+					/>
+				) : (
+					a.comment && (
+						<div className="mt-1 whitespace-pre-wrap break-words text-[11px] text-[var(--text-40,var(--text-dim))]">
+							批注：{a.comment}
+						</div>
+					)
+				)}
+			</div>
+			<div className="flex shrink-0 items-start gap-0.5 pt-px">
+				{a.itemId && (
+					<button
+						type="button"
+						aria-label="定位到原消息"
+						title="定位到原消息"
+						onClick={() => scrollToItem(anchorSessionId, a.itemId!)}
+						className={iconBtn}
+					>
+						<LocateFixed size={12} />
+					</button>
+				)}
+				<button type="button" aria-label="编辑批注" title="编辑批注" onClick={startEdit} className={iconBtn}>
+					<Pencil size={12} />
+				</button>
+				{onMove && moveLabel && (
+					<button
+						type="button"
+						aria-label={moveLabel}
+						title={moveLabel}
+						onClick={() => {
+							onMove(a.id);
+							// Moving deletes the entry from this list; reset state like onRemove.
+							onRemove();
+						}}
+						className={iconBtn}
+					>
+						<ArrowLeftRight size={12} />
+					</button>
+				)}
+				<button
+					type="button"
+					aria-label="删除批注"
+					title="删除批注"
+					onClick={() => {
+						removeAnnotation(sessionId, a.id);
+						onRemove();
+					}}
+					className={iconBtn}
+				>
+					<Trash2 size={12} />
+				</button>
+			</div>
+		</li>
+	);
+}
+
+export function AnnotationChip({
+	sessionId,
+	annotations,
+	anchorSessionId,
+	onMove,
+	moveLabel,
+}: {
+	/** Composer-store key for this annotation list (a session id, or `sidechat:<id>`). */
+	sessionId: string;
+	/** Text annotations only (see `textAnnotationsOf`); index + 1 is the quote number. */
+	annotations: Annotation[];
+	/** Session whose message stream the "locate" action scrolls; defaults to `sessionId`. */
+	anchorSessionId?: string;
+	/** Moves an annotation to the other list (main ↔ side chat); hides the button when absent. */
+	onMove?: (id: string) => void;
+	/** Tooltip/aria for the move button, e.g. "移动到辅助对话". */
+	moveLabel?: string;
+}) {
+	const removeAnnotation = useComposer((s) => s.removeAnnotation);
+	const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+	const popRef = useRef<HTMLOListElement>(null);
+	const [hovered, setHovered] = useState(false);
+	const [focused, setFocused] = useState(false);
+	const [editingId, setEditingId] = useState<string | null>(null);
+	const hoverTimer = useRef<number | undefined>(undefined);
+
+	useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
+
+	const enterHover = () => {
+		window.clearTimeout(hoverTimer.current);
+		setHovered(true);
+	};
+	const leaveHover = () => {
+		window.clearTimeout(hoverTimer.current);
+		hoverTimer.current = window.setTimeout(() => setHovered(false), HOVER_CLOSE_DELAY_MS);
+	};
+
+	// Focus stays "in" while focus moves between chip and popover; leaving both closes it.
+	const onFocusOut = (e: FocusEvent<HTMLElement>) => {
+		const next = e.relatedTarget as Node | null;
+		if (next && (anchor?.contains(next) || popRef.current?.contains(next))) return;
+		setFocused(false);
+	};
+
+	// An input inside the popover keeps it open even when the pointer leaves.
+	const open = hovered || focused || editingId !== null;
+
+	return (
+		<>
+			<div
+				ref={setAnchor}
+				onMouseEnter={enterHover}
+				onMouseLeave={leaveHover}
+				onFocus={() => setFocused(true)}
+				onBlur={onFocusOut}
+				className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-[var(--line,var(--border))] bg-[var(--bg)] py-0.5 pl-2 pr-1 text-[11px] text-[var(--text-60,var(--text-muted))] transition-colors hover:border-[var(--text-30,var(--border))] hover:text-[var(--text)]"
+			>
+				<button
+					type="button"
+					aria-expanded={open}
+					aria-label={`${annotations.length} 条批注`}
+					className="flex min-w-0 items-center gap-1 outline-none"
+				>
+					<MessageSquareQuote size={12} className="shrink-0" />
+					<span className="truncate">{annotations.length} 条批注</span>
+				</button>
+				<button
+					type="button"
+					aria-label="清空批注"
+					title="清空批注"
+					onClick={() => {
+						for (const a of annotations) removeAnnotation(sessionId, a.id);
+						setEditingId(null);
+						setFocused(false);
+					}}
+					className="shrink-0 rounded-full p-0.5 text-[var(--text-30,var(--text-dim))] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+				>
+					<X size={10} />
+				</button>
+			</div>
+			<FloatingLayer
+				anchor={open ? anchor : null}
+				placement="top-start"
+				offset={0}
+				onMouseEnter={enterHover}
+				onMouseLeave={leaveHover}
+				className="w-[min(420px,calc(100vw-2rem))] !bg-[var(--bg-panel)] text-[12px]"
+			>
+				<ol ref={popRef} onFocus={() => setFocused(true)} onBlur={onFocusOut} className="divide-y divide-[var(--line,var(--border))]">
+					{annotations.map((a, i) => (
+						<AnnotationEntry
+							key={a.id}
+							sessionId={sessionId}
+							index={i + 1}
+							annotation={a}
+							editing={editingId === a.id}
+							anchorSessionId={anchorSessionId ?? sessionId}
+							onMove={onMove}
+							moveLabel={moveLabel}
+							onEdit={(id) => {
+								setEditingId(id);
+								// Enter/Esc unmount the focused input; without this the popover could stay pinned open.
+								if (id === null) setFocused(false);
+							}}
+							onRemove={() => {
+								setEditingId(null);
+								setFocused(false);
+							}}
+						/>
+					))}
+				</ol>
+			</FloatingLayer>
+		</>
+	);
+}

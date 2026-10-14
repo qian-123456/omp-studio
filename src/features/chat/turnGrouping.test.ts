@@ -43,11 +43,19 @@ describe("turnGrouping", () => {
 
 	it("formats message times and hides absent or invalid timestamps", () => {
 		const timestamp = new Date(2026, 9, 1, 9, 8).toISOString();
-		expect(formatMessageTimestamp(timestamp)).toBe("09:08");
-		expect(formatMessageTimestamp(new Date(timestamp).getTime())).toBe("09:08");
+		const sameDay = new Date(2026, 9, 1, 20, 0);
+		expect(formatMessageTimestamp(timestamp, sameDay)).toBe("09:08");
+		expect(formatMessageTimestamp(new Date(timestamp).getTime(), sameDay)).toBe("09:08");
 		expect(formatMessageTimestamp(null)).toBe("");
 		expect(formatMessageTimestamp(undefined)).toBe("");
 		expect(formatMessageTimestamp("invalid timestamp")).toBe("");
+	});
+
+	it("adds month/day for other days and the year for other years", () => {
+		const timestamp = new Date(2026, 9, 1, 9, 8).toISOString();
+		expect(formatMessageTimestamp(timestamp, new Date(2026, 9, 2, 0, 5))).toBe("10月1日 09:08");
+		expect(formatMessageTimestamp(timestamp, new Date(2026, 10, 1, 9, 8))).toBe("10月1日 09:08");
+		expect(formatMessageTimestamp(timestamp, new Date(2027, 9, 1, 9, 8))).toBe("2026年10月1日 09:08");
 	});
 
 	it("formats short model names cleanly", () => {
@@ -412,6 +420,33 @@ describe("turnGrouping", () => {
 				}),
 			),
 		).toBe("");
+	});
+
+	it("does not count idle time between a finished reply and a later wake-up as work", () => {
+		const call: ToolCall = { id: "c1", name: "bash", args: {}, intent: null };
+		const result = (id: string, ts: string) =>
+			makeItem({
+				id,
+				kind: "tool_result",
+				toolResult: { toolCallId: "c1", toolName: "bash", text: "ok", isError: false, details: null },
+				ts,
+			});
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u", kind: "user", text: "go", ts: "2026-10-07T12:00:00Z" }),
+			makeItem({ id: "a1", kind: "assistant", toolCalls: [call], ts: "2026-10-07T12:00:10Z" }),
+			result("r1", "2026-10-07T12:00:20Z"),
+			// Agent finishes; a background-job notice wakes it 24h later.
+			makeItem({ id: "a2", kind: "assistant", text: "started", ts: "2026-10-07T12:00:30Z" }),
+			makeItem({ id: "n", kind: "system", text: "<system-notice>job done</system-notice>", ts: "2026-10-08T12:00:30Z" }),
+			makeItem({ id: "a3", kind: "assistant", toolCalls: [call], ts: "2026-10-08T12:00:40Z" }),
+			result("r2", "2026-10-08T12:00:50Z"),
+			makeItem({ id: "a4", kind: "assistant", text: "done", ts: "2026-10-08T12:01:00Z" }),
+		]);
+		expect(blocks).toHaveLength(1);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		// 30s before the idle gap + 30s after it.
+		expect(turn.durationMs).toBe(60_000);
 	});
 });
 

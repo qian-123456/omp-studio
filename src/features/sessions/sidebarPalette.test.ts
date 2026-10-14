@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { getWorkspacePalette, WORKSPACE_PALETTES } from "./SessionSidebar";
 
 describe("getWorkspacePalette", () => {
-	it("returns dedicated indigo palette for __global workspace", () => {
-		const palette = getWorkspacePalette("__global");
-		expect(palette.folderColor).toBe("text-indigo-600 dark:text-indigo-400");
+	it("returns dedicated indigo palette for the global workspace", () => {
+		expect(getWorkspacePalette("global").folderColor).toBe(
+			"text-indigo-600 dark:text-indigo-400",
+		);
 	});
 
 	it("returns deterministic palette for any workspace id or name", () => {

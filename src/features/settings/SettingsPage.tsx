@@ -29,6 +29,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 	const closeSettings = useUi((s) => s.closeSettings);
 	const pendingSection = useUi((s) => s.settingsSection);
 	const pendingFocus = useUi((s) => s.settingsFocus);
+	const pendingRequest = useUi((s) => s.settingsRequest);
 	const loadOmpConfig = useOmpConfigStore((s) => s.load);
 	const ompEntries = useOmpConfigStore((s) => s.entries);
 
@@ -80,9 +81,14 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 		return () => window.removeEventListener("keydown", onKey, true);
 	}, []);
 
-	// Jump to the section requested via openSettings(section, {focusKey}).
-	useEffect(() => {
-		if (!pendingSection && !pendingFocus) return;
+	// Apply a pending deep-link request exactly once, during render. The old
+	// version consumed it in a passive effect that also cleared the store —
+	// any intervening store write (a second openSettings, a close, or a
+	// remount after the Suspense reveal) could drop the target and land on
+	// "general". Applying during render leaves no such window.
+	const [appliedRequest, setAppliedRequest] = useState(-1);
+	if (pendingRequest !== appliedRequest) {
+		setAppliedRequest(pendingRequest);
 		let target = pendingSection;
 		const isOmpKey =
 			pendingFocus && target?.startsWith("omp-") && !FIELD_REGISTRY.some((f) => f.id === pendingFocus);
@@ -95,9 +101,18 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 			setOmpGroupName(null);
 		}
 		if (target) setActiveSection(target);
-		if (pendingFocus) setFocusFlash((f) => ({ key: pendingFocus, n: (f?.n ?? 0) + 1 }));
-		useUi.setState({ settingsSection: null, settingsFocus: null });
-	}, [pendingSection, pendingFocus]);
+		if (pendingFocus) setFocusFlash({ key: pendingFocus, n: pendingRequest });
+	}
+
+	// Mark the request consumed without clearing its target, so a remount
+	// (Suspense re-reveal, HMR) re-applies the same section instead of
+	// falling back to "general". The next openSettings/closeSettings
+	// overwrites it.
+	useEffect(() => {
+		if (useUi.getState().settingsPending) {
+			useUi.setState({ settingsPending: false });
+		}
+	}, [pendingRequest]);
 
 	// Scroll the focused row into view and briefly highlight it. Retries for
 	// ~3s because OmpConfigSection rows render after `omp config list` returns.

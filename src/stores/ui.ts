@@ -21,6 +21,10 @@ export type RightTab =
 	| "services"
 	| "terminal";
 
+export const MIN_SIDEBAR_WIDTH = 260;
+export const MAX_SIDEBAR_WIDTH = 600;
+export const SIDEBAR_COLLAPSE_THRESHOLD = 200;
+
 
 const STORAGE_KEYS = {
 	sidebarWidth: "ompws:sidebar-width",
@@ -45,10 +49,8 @@ const RIGHT_TABS: readonly RightTab[] = [
 	"terminal",
 ];
 
-/** Restore open panel tabs + active tab; the active tab is always among the open ones. */
+/** Restore open panel tabs. No tab is active at launch: the panel opens on the tab picker. */
 function readRightTabs(): { open: RightTab[]; active: RightTab | null } {
-	const stored = readString(STORAGE_KEYS.rightTab);
-	const active = stored === null ? "explorer" : RIGHT_TABS.find((t) => t === stored) ?? null;
 	let open: RightTab[] = [];
 	try {
 		const raw: unknown = JSON.parse(readString(STORAGE_KEYS.rightTabs) ?? "null");
@@ -56,10 +58,9 @@ function readRightTabs(): { open: RightTab[]; active: RightTab | null } {
 			open = RIGHT_TABS.filter((t) => raw.includes(t)).sort((a, b) => raw.indexOf(a) - raw.indexOf(b));
 		}
 	} catch {
-		/* corrupt value: fall back to the active tab only */
+		/* corrupt value: start with no open tabs */
 	}
-	if (active && !open.includes(active)) open.push(active);
-	return { open, active };
+	return { open, active: null };
 }
 
 function persistRightTabs(open: RightTab[], active: RightTab | null): void {
@@ -147,8 +148,14 @@ export interface UiState {
 	settingsSection: string | null;
 	/** Field/omp-config key to scroll to and highlight inside the settings view. */
 	settingsFocus: string | null;
+	/** Monotonic id bumped by every openSettings call so SettingsPage can apply each request once. */
+	settingsRequest: number;
+	/** True while the latest settings request is unconsumed by SettingsPage. */
+	settingsPending: boolean;
 	modal: { name: string; props: Record<string, unknown> } | null;
 	selectSession(id: string | null): void;
+	/** Drop the current session and its "last session" fallback; shows the blank home view. */
+	leaveSession(): void;
 	setSelectedIds(ids: Set<string> | string[]): void;
 	toggleSelectId(id: string): void;
 	setHighlightId(id: string | null): void;
@@ -192,10 +199,12 @@ export const useUi = create<UiState>((set) => ({
 	diffViewMode: readDiffViewMode(),
 	diffWrap: readBool(STORAGE_KEYS.diffWrap, false),
 	sidebarOpen: readBool(STORAGE_KEYS.sidebarOpen, true),
-	sidebarWidth: readNumber(STORAGE_KEYS.sidebarWidth, 280, 180, 600),
+	sidebarWidth: readNumber(STORAGE_KEYS.sidebarWidth, 280, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH),
 	sessionViewMode: {},
 	settingsSection: null,
 	settingsFocus: null,
+	settingsRequest: 0,
+	settingsPending: false,
 	modal: null,
 	selectSession: (id) => {
 		if (id) writeStorage(STORAGE_KEYS.lastSession, id);
@@ -205,6 +214,20 @@ export const useUi = create<UiState>((set) => ({
 			highlightId: id,
 			lastSessionId: id ?? s.lastSessionId,
 			centerView: id ? "session" : s.centerView === "session" ? "home" : s.centerView,
+		}));
+	},
+	leaveSession: () => {
+		try {
+			if (typeof localStorage !== "undefined") localStorage.removeItem(STORAGE_KEYS.lastSession);
+		} catch {
+			/* storage unavailable */
+		}
+		set((s) => ({
+			selectedSessionId: null,
+			selectedIds: new Set<string>(),
+			highlightId: null,
+			lastSessionId: null,
+			centerView: s.centerView === "settings" ? s.centerView : "home",
 		}));
 	},
 	setSelectedIds: (ids) =>
@@ -249,12 +272,19 @@ export const useUi = create<UiState>((set) => ({
 			centerView: "settings",
 			settingsSection: section ?? null,
 			settingsFocus: opts?.focusKey ?? null,
+			settingsRequest: s.settingsRequest + 1,
+			settingsPending: true,
 		})),
 	closeSettings: () =>
 		set((s) => {
 			const prev =
 				s.previousCenterView ?? (s.selectedSessionId ? "session" : "home");
-			return { centerView: prev, settingsSection: null, settingsFocus: null };
+			return {
+				centerView: prev,
+				settingsSection: null,
+				settingsFocus: null,
+				settingsPending: false,
+			};
 		}),
 	setRightTab: (t) =>
 		set((s) => {
@@ -281,6 +311,8 @@ export const useUi = create<UiState>((set) => ({
 		set((s) => {
 			const next = !s.rightOpen;
 			writeStorage(STORAGE_KEYS.rightOpen, next);
+			// Re-opening restores the last active tab; the "打开标签页" picker
+			// only shows when there is no active tab.
 			return { rightOpen: next };
 		}),
 	setRightOpen: (open) => {
@@ -309,14 +341,24 @@ export const useUi = create<UiState>((set) => ({
 		set((s) => {
 			const next = !s.sidebarOpen;
 			writeStorage(STORAGE_KEYS.sidebarOpen, next);
-			return { sidebarOpen: next };
+			const w = s.sidebarWidth < MIN_SIDEBAR_WIDTH ? 280 : s.sidebarWidth;
+			if (w !== s.sidebarWidth) {
+				writeStorage(STORAGE_KEYS.sidebarWidth, w);
+			}
+			return { sidebarOpen: next, sidebarWidth: w };
 		}),
 	setSidebarOpen: (open) => {
 		writeStorage(STORAGE_KEYS.sidebarOpen, open);
-		set({ sidebarOpen: open });
+		set((s) => {
+			const w = s.sidebarWidth < MIN_SIDEBAR_WIDTH ? 280 : s.sidebarWidth;
+			if (w !== s.sidebarWidth) {
+				writeStorage(STORAGE_KEYS.sidebarWidth, w);
+			}
+			return { sidebarOpen: open, sidebarWidth: w };
+		});
 	},
 	setSidebarWidth: (w) => {
-		const clamped = Math.min(600, Math.max(180, w));
+		const clamped = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, w));
 		writeStorage(STORAGE_KEYS.sidebarWidth, clamped);
 		set({ sidebarWidth: clamped });
 	},

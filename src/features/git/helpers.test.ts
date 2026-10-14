@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { SessionMeta } from "../../lib/contracts";
 import { basename, isInside, isMarkdown, joinPath, shortPath } from "../../lib/paths";
-import { appendLog, defaultSlug, repoRootFromWorktree, runningInRepo, stripAnsi, toplevelFor } from "./helpers";
+import {
+	appendLog,
+	countCrossedEmpty,
+	defaultSlug,
+	paneTab,
+	repoRootFromWorktree,
+	runningInRepo,
+	stripAnsi,
+	toplevelFor,
+} from "./helpers";
 
 describe("isInside", () => {
 	it("matches the dir itself and descendants only", () => {
@@ -111,5 +120,32 @@ describe("repoRootFromWorktree", () => {
 		expect(repoRootFromWorktree("/Users/dev/repo/.worktrees/feature-1")).toBe("/Users/dev/repo");
 		expect(repoRootFromWorktree("C:\\dev\\repo\\.worktrees\\feature-1")).toBe("C:\\dev\\repo");
 		expect(repoRootFromWorktree("/Users/dev/repo")).toBe("/Users/dev/repo");
+	});
+});
+
+describe("paneTab", () => {
+	it("keeps the fallback tab while the count is not loaded", () => {
+		expect(paneTab(null, null, "changes")).toBe("changes");
+		expect(paneTab(null, null, "history")).toBe("history");
+	});
+	it("auto-shows history for a clean worktree and changes for a dirty one", () => {
+		expect(paneTab(0, null, "changes")).toBe("history");
+		expect(paneTab(3, null, "history")).toBe("changes");
+	});
+	it("a manual pick overrides the auto choice until cleared", () => {
+		expect(paneTab(0, "changes", "changes")).toBe("changes");
+		expect(paneTab(5, "history", "changes")).toBe("history");
+		expect(paneTab(null, "history", "changes")).toBe("history");
+	});
+});
+
+describe("countCrossedEmpty", () => {
+	it("fires only when a loaded count crosses the empty/non-empty boundary", () => {
+		expect(countCrossedEmpty(3, 0)).toBe(true);
+		expect(countCrossedEmpty(0, 2)).toBe(true);
+		expect(countCrossedEmpty(1, 2)).toBe(false);
+		expect(countCrossedEmpty(0, 0)).toBe(false);
+		expect(countCrossedEmpty(null, 0)).toBe(false);
+		expect(countCrossedEmpty(2, null)).toBe(false);
 	});
 });

@@ -352,6 +352,27 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     if let Some(file) = &opts.fork_file {
         cmd.arg("--fork").arg(file);
     }
+    // Visualize skill plugin: loaded for app sessions unless the user opted
+    // out (§settings.visualize_enabled). Registers the `visualize` skill +
+    // `/skill:visualize` command in omp. A short standing hint tells the model
+    // to use it proactively; the skill alone is only used when asked.
+    let viz_dir = crate::visualize::spawn_plugin_dir(settings.visualize_enabled);
+    let mut append_prompt = opts
+        .append_system_prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or_default()
+        .to_string();
+    if viz_dir.is_some() {
+        if !append_prompt.is_empty() {
+            append_prompt.push_str("\n\n");
+        }
+        append_prompt.push_str(crate::prompts::VISUALIZE_HINT.trim());
+    }
+    if !append_prompt.is_empty() {
+        cmd.arg("--append-system-prompt").arg(append_prompt);
+    }
     if let Some(file) = &opts.resume_file {
         cmd.arg("--resume").arg(file);
     } else if opts.plan_yolo == Some(true) {
@@ -376,6 +397,10 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     }
     if let Some(ext) = crate::providers::try_extension_path() {
         cmd.arg("-e").arg(ext);
+    }
+    // (plugin dir is added here; its system-prompt hint is merged above.)
+    if let Some(dir) = viz_dir {
+        cmd.arg("--plugin-dir").arg(dir);
     }
     Ok(cmd)
 }
@@ -994,5 +1019,46 @@ mod tests {
             .map(|a| a.to_string_lossy().to_string())
             .collect();
         assert!(!args_none.contains(&"--plan-yolo".to_string()));
+    }
+    #[test]
+    fn build_command_plugin_dir_gated_by_visualize_enabled() {
+        // Install the bundled plugin under an isolated data dir so the
+        // `--plugin-dir` arg has a real manifest to point at.
+        let dir = std::env::temp_dir().join(format!("ompws-viz-spawn-{}", uuid::Uuid::new_v4()));
+        std::env::set_var("OMPWS_DATA_DIR", &dir);
+        crate::visualize::install();
+
+        let opts = StartOpts {
+            cwd: "/tmp".into(),
+            ..Default::default()
+        };
+        let args_of = |s: &Settings| {
+            build_command(&opts, s)
+                .unwrap()
+                .as_std()
+                .get_args()
+                .map(|a| a.to_string_lossy().to_string())
+                .collect::<Vec<String>>()
+        };
+
+        let on = args_of(&Settings::default());
+        let pos = on.iter().position(|a| a == "--plugin-dir");
+        assert!(pos.is_some(), "expected --plugin-dir in {on:?}");
+        assert_eq!(
+            on[pos.unwrap() + 1],
+            crate::visualize::plugin_dir().to_string_lossy()
+        );
+        let hint_pos = on.iter().position(|a| a == "--append-system-prompt");
+        assert!(hint_pos.is_some_and(|p| on[p + 1].contains("skill://visualize")));
+
+        let off = args_of(&Settings {
+            visualize_enabled: false,
+            ..Settings::default()
+        });
+        assert!(!off.iter().any(|a| a == "--plugin-dir"));
+        assert!(!off.iter().any(|a| a == "--append-system-prompt"));
+
+        std::env::remove_var("OMPWS_DATA_DIR");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

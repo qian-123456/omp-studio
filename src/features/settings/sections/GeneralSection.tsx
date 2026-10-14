@@ -38,7 +38,6 @@ export function GeneralSection() {
 	const { navigate } = useSettingsNav();
 	const approvalSave = useSaveStatus();
 	const shortcutSave = useSaveStatus();
-
 	const ompEntries = useOmpConfigStore((s) => s.entries);
 	const ompLoaded = useOmpConfigStore((s) => s.loaded);
 	const loadOmp = useOmpConfigStore((s) => s.load);
@@ -149,6 +148,13 @@ export function GeneralSection() {
 					description="当前会话派生并发子任务（Subagent）时，在窗口顶部栏显示胶囊指示器，点击可查看各子任务进度与详情。"
 					checked={settings?.capsuleVisible ?? true}
 					onChange={(v) => save({ capsuleVisible: v })}
+				/>
+				<ToggleRow
+					fieldId="windowWorktreeTitle"
+					label="窗口标题显示分支名"
+					description="在系统窗口标题中附加当前工作树的 Git 分支（omp-workspace · 分支名），同时打开多个实例时便于区分；修改立即生效。"
+					checked={settings?.windowWorktreeTitle ?? true}
+					onChange={(v) => save({ windowWorktreeTitle: v })}
 				/>
 				<ToggleRow
 					fieldId="smartContextRouting"

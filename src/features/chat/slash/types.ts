@@ -69,5 +69,8 @@ export interface SlashCommandDef {
 	requiresEmptyComposer?: boolean;
 	/** When set, the menu shows a 去设置 gear that deep-links into Settings. */
 	settingsTarget?: SettingsTarget;
+	/** App feature flag gating this entry (currently only "visualize"); when
+	 * that feature is off the item is hidden from the menu. */
+	feature?: "visualize";
 	run(ctx: SlashContext): void | Promise<void>;
 }

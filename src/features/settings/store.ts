@@ -43,6 +43,11 @@ export const DEFAULT_SETTINGS: Settings = {
 	doctorIdleMinutes: 30,
 	doctorScheduleTime: "23:00",
 	privacyRevealDefault: null,
+	windowWorktreeTitle: true,
+	sideChatModel: null,
+	visualizeEnabled: true,
+	sendShortcut: "enter",
+	followUpBehavior: "steer",
 };
 
 export interface SettingsState {

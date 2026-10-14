@@ -1,31 +1,40 @@
 /**
- * Unified session creation helpers for the sidebar, header "+", and Cmd+N shortcut.
+ * Session creation helpers for the sidebar's per-workspace/per-worktree "+" buttons,
+ * plus resolveNewSessionTargetWorkspace used by "新建会话" (Cmd+N).
  * Reads stores via getState() to remain operable when the sidebar is unmounted.
  */
 
 import type { Workspace } from "../../lib/contracts";
 import { createSession, findEmptyDraft } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
-import { deleteSession, gitCreateWorktree, gitSummary } from "../../lib/ipc";
+import {
+	deleteSession,
+	gitCreateWorktree,
+	gitSummary,
+	setSessionGroup,
+} from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
-import { useLive } from "../../stores/live";
+import { hasLiveUserActivity, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
 import { useSidebarStore } from "./sidebarStore";
 import { useSettings } from "../settings/store";
+import { resolveNewSessionTargetWorkspace } from "./modes";
 
 let creationInFlight = false;
 
 /**
  * Creates a session under `ws`, either in its main path or in an isolated git worktree.
+ * `groupId` files a 无项目 session under a SessionGroup (global workspace only).
  * S16: sets creatingKey to `${ws.id}|${ws.path}` so only the relevant spinner runs.
  * S17: rejects isolated worktrees on non-git workspaces with an informative toast.
  */
 export async function startSessionInDir(
 	ws: Workspace,
 	isolatedWorktree: boolean,
+	groupId?: string | null,
 ): Promise<void> {
 	if (creationInFlight) return;
 	creationInFlight = true;
@@ -49,8 +58,21 @@ export async function startSessionInDir(
 			// immediately instead of flashing it as orphaned / bouncing to idle.
 			await useWorktrees.getState().refresh().catch(() => {});
 		} else {
-			const draft = findEmptyDraft(cwd);
+			const draft = findEmptyDraft(cwd, ws.mode);
 			if (draft) {
+				if (groupId !== undefined && draft.groupId !== groupId) {
+					// Reuse the draft but file it where the user asked.
+					void setSessionGroup(draft.id, groupId ?? null)
+						.then(() => {
+							const cur = useSessions.getState().sessions[draft.id];
+							if (cur) {
+								useSessions
+									.getState()
+									.upsert([{ ...cur, groupId: groupId ?? null }]);
+							}
+						})
+						.catch(() => {});
+				}
 				useUi.getState().selectSession(draft.id);
 				useComposer.getState().focusComposer(draft.id);
 				return;
@@ -60,6 +82,8 @@ export async function startSessionInDir(
 		const { sessionId, stub } = await createSession({
 			cwd,
 			workspaceId: ws.id,
+			mode: ws.mode,
+			groupId: ws.kind === "global" ? (groupId ?? null) : null,
 		});
 		useSessions.getState().upsert([stub]);
 		useUi.getState().selectSession(sessionId);
@@ -85,7 +109,7 @@ export async function startSessionAt(
 	useSidebarStore.getState().setCreatingKey(`${ws.id}|${cwd}`);
 
 	try {
-		const draft = findEmptyDraft(cwd);
+		const draft = findEmptyDraft(cwd, ws.mode);
 		if (draft) {
 			useUi.getState().selectSession(draft.id);
 			useComposer.getState().focusComposer(draft.id);
@@ -95,6 +119,7 @@ export async function startSessionAt(
 		const { sessionId, stub } = await createSession({
 			cwd,
 			workspaceId: ws.id,
+			mode: ws.mode,
 		});
 		useSessions.getState().upsert([stub]);
 		useUi.getState().selectSession(sessionId);
@@ -110,13 +135,15 @@ export async function startSessionAt(
 /**
  * Opens a session directly in an existing worktree checkout `cwd` (git panel
  * "+" buttons). Reuses an empty draft there; the model follows the Settings
- * default; the workspace is resolved from `cwd` by `createSession`.
+ * default; the workspace is resolved from `cwd` within the current space by
+ * `createSession`.
  */
 export async function startSessionInWorktree(cwd: string): Promise<void> {
 	if (creationInFlight) return;
 	creationInFlight = true;
+	const mode = useSidebarStore.getState().activeMode;
 	try {
-		const draft = findEmptyDraft(cwd);
+		const draft = findEmptyDraft(cwd, mode);
 		if (draft) {
 			useUi.getState().selectSession(draft.id);
 			useComposer.getState().focusComposer(draft.id);
@@ -125,6 +152,7 @@ export async function startSessionInWorktree(cwd: string): Promise<void> {
 		const { sessionId, stub } = await createSession({
 			cwd,
 			model: useSettings.getState().settings?.newSessionModel || null,
+			mode,
 		});
 		useSessions.getState().upsert([stub]);
 		useUi.getState().selectSession(sessionId);
@@ -137,55 +165,25 @@ export async function startSessionInWorktree(cwd: string): Promise<void> {
 }
 
 /**
- * Context-aware session creation decision used by header "+" and Cmd+N.
- * If in global mode -> starts directly in global workspace.
- * If active workspace exists or single project workspace -> starts in that workspace (or invokes menu callback if provided).
- * Otherwise falls back to the first project workspace, then the global one —
- * never a modal: a draft is created/focused immediately.
+ * "新建会话" / ⌘N: open (or reuse) an empty draft in the active space —
+ * 通用对话 → the global workspace; project modes → the project of the
+ * selected session, else the space's most recently used project. With no
+ * project it just clears the selection and the launcher view asks for a
+ * project directory.
  */
-export async function startNewSessionFromContext(
-	openPlusMenuForWs?: (ws: Workspace) => void,
-): Promise<void> {
-	const activeWorkspaceId = useSidebarStore.getState().activeWorkspaceId;
-	const workspaces = useSessions.getState().workspaces;
-	const globalWs = workspaces.find((w) => w.kind === "global") ?? null;
-	const projectWorkspaces = workspaces
-		.filter((w) => w.kind !== "global")
-		.sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
-
-	if (activeWorkspaceId === "__global") {
-		if (globalWs) {
-			await startSessionInDir(globalWs, false);
-		}
+export async function startNewSession(): Promise<void> {
+	const { workspaces, sessions } = useSessions.getState();
+	const ws = resolveNewSessionTargetWorkspace(
+		useSidebarStore.getState().activeMode,
+		useUi.getState().selectedSessionId,
+		sessions,
+		workspaces,
+	);
+	if (!ws) {
+		useUi.getState().selectSession(null);
 		return;
 	}
-
-	const activeWs =
-		activeWorkspaceId === "all"
-			? null
-			: workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
-
-	if (activeWs) {
-		if (openPlusMenuForWs) {
-			openPlusMenuForWs(activeWs);
-		} else {
-			await startSessionInDir(activeWs, false);
-		}
-		return;
-	}
-
-	if (projectWorkspaces.length === 1 && projectWorkspaces[0]) {
-		const targetWs = projectWorkspaces[0];
-		if (openPlusMenuForWs) {
-			openPlusMenuForWs(targetWs);
-		} else {
-			await startSessionInDir(targetWs, false);
-		}
-		return;
-	}
-
-	const fallback = projectWorkspaces[0] ?? globalWs;
-	if (fallback) await startSessionInDir(fallback, false);
+	await startSessionInDir(ws, false);
 }
 
 let draftCleanupInstalled = false;
@@ -193,8 +191,9 @@ let draftCleanupInstalled = false;
 /**
  * Codex-style draft auto-cleanup: when selection leaves a completely empty
  * draft (unnamed, no transcript, no typed text or images), drop it from the
- * store and delete it on the backend. Drafts with typed text or images
- * survive as "新建的草稿". Idempotent; call at app start.
+ * store and delete it on the backend — whichever mode the draft lives in.
+ * Drafts with typed text or images survive as "新建的草稿". Idempotent; call
+ * at app start.
  */
 export function installDraftAutoCleanup(): () => void {
 	if (draftCleanupInstalled) return () => {};
@@ -206,15 +205,7 @@ export function installDraftAutoCleanup(): () => void {
 		if (!s || s.title?.trim() || s.label?.trim() || s.lastAssistant) return;
 		if (s.status !== "idle") return;
 		const live = useLive.getState().sessions[id];
-		if (
-			live &&
-			(live.items.length > 0 ||
-				live.pendingUserEchoes.length > 0 ||
-				live.streaming ||
-				live.streamingMessage !== null)
-		) {
-			return;
-		}
+		if (hasLiveUserActivity(live)) return;
 		const composer = useComposer.getState();
 		const text = composer.drafts[id] ?? "";
 		const images = composer.images[id] ?? [];

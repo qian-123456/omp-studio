@@ -10,7 +10,7 @@ use regex::Regex;
 
 use super::parse::{self, HeadInfo, LastRole, TailInfo};
 use super::store::MetaRow;
-use crate::contracts::{GitBadge, SessionMeta, Workspace, WorkspaceKind};
+use crate::contracts::{GitBadge, SessionMeta, SpaceMode, Workspace, WorkspaceKind};
 
 /// Cached parse result for one session file, keyed by (path, size, mtime).
 #[derive(Debug, Clone)]
@@ -193,17 +193,21 @@ fn path_within(path: &str, root: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('/'))
 }
 
-/// Membership: explicit override > registered project workspace containing
-/// `repo_root ?? cwd` (longest path wins) > Global if cwd under `global_dir` > None.
+/// Membership within the session's mode: explicit override > registered
+/// project workspace containing `repo_root ?? cwd` (longest path wins) >
+/// the global workspace (chat space only) if cwd under `global_dir` > None.
+/// Workspaces of other modes are never considered — spaces share nothing.
+/// `global_dir` is `paths::global_dir()`.
 pub fn resolve_workspace(
     explicit: Option<&str>,
+    mode: SpaceMode,
     workspaces: &[Workspace],
     repo_root: Option<&str>,
     cwd: &str,
     global_dir: &str,
 ) -> Option<String> {
     if let Some(id) = explicit {
-        if workspaces.iter().any(|w| w.id == id) {
+        if workspaces.iter().any(|w| w.id == id && w.mode == mode) {
             return Some(id.to_string());
         }
     }
@@ -217,7 +221,7 @@ pub fn resolve_workspace(
             .unwrap_or_else(|| target.to_string());
         let best = workspaces
             .iter()
-            .filter(|w| w.kind == WorkspaceKind::Project)
+            .filter(|w| w.kind == WorkspaceKind::Project && w.mode == mode)
             .filter(|w| {
                 let wcanon = std::fs::canonicalize(&w.path)
                     .ok()
@@ -233,10 +237,80 @@ pub fn resolve_workspace(
     if path_within(cwd, global_dir) {
         return workspaces
             .iter()
-            .find(|w| w.kind == WorkspaceKind::Global)
+            .find(|w| w.kind == WorkspaceKind::Global && w.mode == mode)
             .map(|w| w.id.clone());
     }
     None
+}
+
+/// Build the static part of a SessionMeta (status fields are filled by the caller).
+/// The session's space is derived: a cwd under the global dir is always
+/// `chat` (covers legacy rows and sessions without a row); otherwise the
+/// stored `row.mode` applies, except a stale `chat` row outside the global
+/// dir, which falls back to `code`.
+pub fn build_meta(
+    s: &Scanned,
+    row: &MetaRow,
+    git: &GitInfo,
+    workspaces: &[Workspace],
+    parent_id: Option<String>,
+) -> SessionMeta {
+    // Recency = last real conversation message, not file mtime: a terminal
+    // `/exit` (or any housekeeping append) touches the file without activity.
+    let updated_at = s
+        .tail
+        .last_msg
+        .as_ref()
+        .and_then(|m| chrono::DateTime::parse_from_rfc3339(&m.ts).ok())
+        .map(|t| t.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::from(s.mtime))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let cwd = effective_cwd(&s.head, row);
+    let global_dir = crate::paths::global_dir().to_string_lossy().to_string();
+    let mode = if path_within(cwd, &global_dir) {
+        SpaceMode::Chat
+    } else if row.mode == SpaceMode::Chat {
+        SpaceMode::Code
+    } else {
+        row.mode
+    };
+    let workspace_id = resolve_workspace(
+        row.workspace_id.as_deref(),
+        mode,
+        workspaces,
+        git.repo_root.as_deref(),
+        cwd,
+        &global_dir,
+    );
+    // Groups only apply to global-workspace (通用对话) sessions.
+    let group_id = row
+        .group_id
+        .clone()
+        .filter(|_| workspace_id.as_deref() == Some(crate::contracts::GLOBAL_WORKSPACE_ID));
+    SessionMeta {
+        id: s.head.id.clone(),
+        tool: "omp".to_string(),
+        file: s.path.to_string_lossy().to_string(),
+        cwd: cwd.to_string(),
+        title: resolve_title(s, row),
+        label: resolve_label(s, row),
+        created_at: s.head.created_at.clone(),
+        updated_at,
+        fork_depth: row.fork_depth,
+        parent_id,
+        pinned: row.pinned,
+        archived: row.archived,
+        unread: row.unread,
+        workspace_id,
+        repo_root: git.repo_root.clone(),
+        git: git.badge.clone(),
+        result: s.tail.result.clone(),
+        last_assistant: s.tail.last_assistant.clone(),
+        model: s.tail.model.clone(),
+        mode,
+        group_id,
+        ..Default::default()
+    }
 }
 
 /// Git facts per cwd (from `git::badge` / `git::repo_root`; may be None while stubbed).
@@ -254,48 +328,6 @@ pub fn effective_cwd<'a>(head: &'a HeadInfo, row: &'a MetaRow) -> &'a str {
         .as_deref()
         .filter(|c| !c.trim().is_empty())
         .unwrap_or(&head.cwd)
-}
-
-/// Build the static part of a SessionMeta (status fields are filled by the caller).
-pub fn build_meta(
-    s: &Scanned,
-    row: &MetaRow,
-    git: &GitInfo,
-    workspaces: &[Workspace],
-    global_dir: &str,
-    parent_id: Option<String>,
-) -> SessionMeta {
-    let updated_at = chrono::DateTime::<chrono::Utc>::from(s.mtime)
-        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let cwd = effective_cwd(&s.head, row);
-    SessionMeta {
-        id: s.head.id.clone(),
-        tool: "omp".to_string(),
-        file: s.path.to_string_lossy().to_string(),
-        cwd: cwd.to_string(),
-        title: resolve_title(s, row),
-        label: resolve_label(s, row),
-        created_at: s.head.created_at.clone(),
-        updated_at,
-        fork_depth: row.fork_depth,
-        parent_id,
-        pinned: row.pinned,
-        archived: row.archived,
-        unread: row.unread,
-        workspace_id: resolve_workspace(
-            row.workspace_id.as_deref(),
-            workspaces,
-            git.repo_root.as_deref(),
-            cwd,
-            global_dir,
-        ),
-        repo_root: git.repo_root.clone(),
-        git: git.badge.clone(),
-        result: s.tail.result.clone(),
-        last_assistant: s.tail.last_assistant.clone(),
-        model: s.tail.model.clone(),
-        ..Default::default()
-    }
 }
 
 #[cfg(test)]
@@ -325,6 +357,196 @@ mod tests {
             },
             first_user: first.map(Into::into),
         }
+    }
+
+    #[test]
+    fn updated_at_follows_last_message_not_mtime() {
+        let mut s = scanned(None, None, None, None);
+        // File touched long after the last conversation message (terminal /exit).
+        s.mtime = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2_000_000_000);
+        let row = MetaRow::default();
+        let meta = build_meta(&s, &row, &GitInfo::default(), &[], None);
+        assert_eq!(meta.updated_at, "2033-05-18T03:33:20.000Z");
+
+        s.tail.last_msg = Some(parse::LastMsg {
+            role: LastRole::Assistant,
+            stop_reason: Some("stop".into()),
+            has_tool_calls: false,
+            ts: "2026-10-07T12:49:54.926Z".into(),
+        });
+        let meta = build_meta(&s, &row, &GitInfo::default(), &[], None);
+        assert_eq!(meta.updated_at, "2026-10-07T12:49:54.926Z");
+    }
+
+    #[test]
+    fn workspace_membership() {
+        let ws = |id: &str, path: &str, kind| Workspace {
+            id: id.into(),
+            path: path.into(),
+            name: id.into(),
+            kind,
+            sort: 0,
+            mode: if kind == WorkspaceKind::Global {
+                SpaceMode::Chat
+            } else {
+                SpaceMode::Code
+            },
+        };
+        let list = vec![
+            ws(
+                "global",
+                "/home/.omp-workspace/global",
+                WorkspaceKind::Global,
+            ),
+            ws("repo", "/repo", WorkspaceKind::Project),
+            ws("sub", "/repo/pkg", WorkspaceKind::Project),
+        ];
+        let g = "/home/.omp-workspace/global";
+        let r =
+            |explicit, root, cwd| resolve_workspace(explicit, SpaceMode::Code, &list, root, cwd, g);
+        assert_eq!(r(None, None, "/repo/pkg/src"), Some("sub".into()));
+        assert_eq!(r(None, None, "/repo/other"), Some("repo".into()));
+        assert_eq!(r(None, None, "/repository"), None);
+        // Worktree cwd resolves through repo_root.
+        assert_eq!(
+            r(None, Some("/repo"), "/repo/.worktrees/x"),
+            Some("repo".into())
+        );
+        assert_eq!(r(Some("sub"), None, "/elsewhere"), Some("sub".into()));
+        assert_eq!(r(Some("gone"), None, "/elsewhere"), None);
+        // The global workspace belongs to chat only.
+        assert_eq!(
+            resolve_workspace(None, SpaceMode::Chat, &list, None, g, g),
+            Some("global".into())
+        );
+        assert_eq!(r(None, None, g), None);
+    }
+
+    /// The same cwd can be a project workspace in two modes; each session
+    /// resolves only inside its own space (spaces share nothing).
+    #[test]
+    fn workspace_resolution_is_per_mode() {
+        let ws = |id: &str, path: &str, kind, mode: SpaceMode| Workspace {
+            id: id.into(),
+            path: path.into(),
+            name: id.into(),
+            kind,
+            sort: 0,
+            mode,
+        };
+        let g = "/home/.omp-workspace/global";
+        let list = vec![
+            ws("global", g, WorkspaceKind::Global, SpaceMode::Chat),
+            ws("repo-c", "/repo", WorkspaceKind::Project, SpaceMode::Code),
+            ws("repo-w", "/repo", WorkspaceKind::Project, SpaceMode::Work),
+        ];
+        // Same cwd, different session modes → that mode's project row.
+        assert_eq!(
+            resolve_workspace(None, SpaceMode::Code, &list, None, "/repo/x", g),
+            Some("repo-c".into())
+        );
+        assert_eq!(
+            resolve_workspace(None, SpaceMode::Work, &list, None, "/repo/x", g),
+            Some("repo-w".into())
+        );
+        // An explicit override from the wrong mode is ignored.
+        assert_eq!(
+            resolve_workspace(
+                Some("repo-c"),
+                SpaceMode::Work,
+                &list,
+                None,
+                "/elsewhere",
+                g
+            ),
+            None
+        );
+        // Chat never resolves into a project.
+        assert_eq!(
+            resolve_workspace(None, SpaceMode::Chat, &list, None, "/repo/x", g),
+            None
+        );
+    }
+
+    /// Sessions whose session_meta row has mode='work' resolve inside the
+    /// work space; rows without a mode (pre-migration, external) are code.
+    #[test]
+    fn build_meta_uses_row_mode() {
+        let s = scanned(None, None, None, None);
+        let list = vec![
+            Workspace {
+                id: "global".into(),
+                path: "/home/.omp-workspace/global".into(),
+                name: "g".into(),
+                kind: WorkspaceKind::Global,
+                sort: 0,
+                mode: SpaceMode::Chat,
+            },
+            Workspace {
+                id: "repo".into(),
+                path: "/repo".into(),
+                name: "r".into(),
+                kind: WorkspaceKind::Project,
+                sort: 0,
+                mode: SpaceMode::Code,
+            },
+        ];
+        // Code-mode row: /repo/app cwd joins the code project.
+        let meta = build_meta(&s, &MetaRow::default(), &GitInfo::default(), &list, None);
+        assert_eq!(meta.workspace_id.as_deref(), Some("repo"));
+        assert_eq!(meta.mode, SpaceMode::Code);
+        // Work-mode row: same cwd finds no work workspace → 未归档.
+        let row = MetaRow {
+            mode: SpaceMode::Work,
+            ..Default::default()
+        };
+        let meta = build_meta(&s, &row, &GitInfo::default(), &list, None);
+        assert_eq!(meta.workspace_id, None);
+        assert_eq!(meta.mode, SpaceMode::Work);
+    }
+
+    /// build_meta drops group_id once the session no longer resolves to its
+    /// mode's global workspace (moved into a project / mode mismatch).
+    #[test]
+    fn build_meta_group_requires_global_membership() {
+        let gdir = crate::paths::global_dir();
+        let s = {
+            let mut s = scanned(None, None, None, None);
+            s.head.cwd = gdir.join("x").to_string_lossy().to_string();
+            s
+        };
+        let list = vec![Workspace {
+            id: "global".into(),
+            path: gdir.to_string_lossy().to_string(),
+            name: "g".into(),
+            kind: WorkspaceKind::Global,
+            sort: 0,
+            mode: SpaceMode::Chat,
+        }];
+        let row = MetaRow {
+            group_id: Some("g1".into()),
+            ..Default::default()
+        };
+        let meta = build_meta(&s, &row, &GitInfo::default(), &list, None);
+        assert_eq!(meta.group_id.as_deref(), Some("g1"));
+        // A default (code) row under the global dir is derived as chat.
+        assert_eq!(meta.mode, SpaceMode::Chat);
+        assert_eq!(meta.workspace_id.as_deref(), Some("global"));
+        // cwd in a real project: grouped flag suppressed.
+        let proj = Workspace {
+            id: "repo".into(),
+            path: "/repo".into(),
+            name: "r".into(),
+            kind: WorkspaceKind::Project,
+            sort: 0,
+            mode: SpaceMode::Code,
+        };
+        let mut list2 = list.clone();
+        list2.push(proj);
+        let s2 = scanned(None, None, None, None); // cwd /repo/app
+        let meta = build_meta(&s2, &row, &GitInfo::default(), &list2, None);
+        assert_eq!(meta.workspace_id.as_deref(), Some("repo"));
+        assert_eq!(meta.group_id, None);
     }
 
     #[test]
@@ -385,42 +607,6 @@ mod tests {
     }
 
     #[test]
-    fn workspace_membership() {
-        let ws = |id: &str, path: &str, kind| Workspace {
-            id: id.into(),
-            path: path.into(),
-            name: id.into(),
-            kind,
-            sort: 0,
-        };
-        let list = vec![
-            ws(
-                "global",
-                "/home/.omp-workspace/global",
-                WorkspaceKind::Global,
-            ),
-            ws("repo", "/repo", WorkspaceKind::Project),
-            ws("sub", "/repo/pkg", WorkspaceKind::Project),
-        ];
-        let g = "/home/.omp-workspace/global";
-        let r = |explicit, root, cwd| resolve_workspace(explicit, &list, root, cwd, g);
-        assert_eq!(r(None, None, "/repo/pkg/src"), Some("sub".into()));
-        assert_eq!(r(None, None, "/repo/other"), Some("repo".into()));
-        assert_eq!(r(None, None, "/repository"), None);
-        // Worktree cwd resolves through repo_root.
-        assert_eq!(
-            r(None, Some("/repo"), "/repo/.worktrees/x"),
-            Some("repo".into())
-        );
-        assert_eq!(r(Some("sub"), None, "/elsewhere"), Some("sub".into()));
-        assert_eq!(r(Some("gone"), None, "/elsewhere"), None);
-        assert_eq!(
-            r(None, None, "/home/.omp-workspace/global"),
-            Some("global".into())
-        );
-    }
-
-    #[test]
     fn session_file_filter() {
         let dir = Path::new("/s");
         assert!(is_session_file(dir, Path::new("/s/b/x.jsonl")));
@@ -469,16 +655,9 @@ mod tests {
         };
         assert_eq!(effective_cwd(&s.head, &blank), "/repo/app");
         // build_meta puts the override into meta.cwd.
-        let meta = build_meta(&s, &row, &GitInfo::default(), &[], "/g", None);
+        let meta = build_meta(&s, &row, &GitInfo::default(), &[], None);
         assert_eq!(meta.cwd, "/repo");
-        let meta = build_meta(
-            &s,
-            &MetaRow::default(),
-            &GitInfo::default(),
-            &[],
-            "/g",
-            None,
-        );
+        let meta = build_meta(&s, &MetaRow::default(), &GitInfo::default(), &[], None);
         assert_eq!(meta.cwd, "/repo/app");
     }
     /// Timing check against the real session store (skipped when absent).

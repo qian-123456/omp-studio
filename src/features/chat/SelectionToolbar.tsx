@@ -1,21 +1,57 @@
-/** [B] Floating toolbar on text selection inside the message stream:
- * 引用 (annotation) / 在侧聊中提问 (side chat) / 记到收集箱 (quick capture). */
+/** [B] Floating bubble on text selection inside the message stream:
+ * 批注 (quote annotation: a multi-line comment box whose segmented control
+ * targets the main composer or the side-chat composer; dismissing it with a
+ * non-empty comment silently stages that comment as an annotation — Esc is
+ * the only explicit discard) / 记到收集箱 (quick capture). */
 
-import { BookmarkPlus, Copy, MessageSquareQuote, MessagesSquare } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { copyText } from "../../lib/dialogs";
+import { ArrowUp, BookmarkPlus, MessageSquareQuote } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { SelectionBubble } from "../../components/SelectionBubble";
+import { Segmented } from "../../components/Segmented";
 import { isComposing } from "../../lib/hooks";
-import { toast } from "../../lib/toast";
-import { useComposer } from "../../stores/composer";
+import { type AnnotationTarget, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { MAX_SIDE_CHAT_DEPTH } from "../sidechat/depth";
+import { decideEnterKey } from "./sendKeys";
+
+/** Custom Highlight API name painting the quoted text while its comment is typed. */
+const PENDING_HIGHLIGHT = "annotation-pending";
+
+/** Tallest the comment box grows before it scrolls instead of expanding. */
+const COMMENT_MAX_HEIGHT = 160;
+
 interface Sel {
 	text: string;
 	itemId?: string;
-	x: number;
-	y: number;
+	/** Viewport-space bounding rect of the selection; re-measured on scroll while commenting. */
+	rect: DOMRect;
+	/** Detached copy of the selected range: the browser selection moves into the comment input. */
+	range: Range;
 }
 
-/** Wraps the message stream; renders the floating toolbar when text is selected. */
+function BubbleAction({
+	icon,
+	label,
+	onClick,
+}: {
+	icon: ReactNode;
+	label: string;
+	onClick: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className="flex h-7 items-center gap-1 whitespace-nowrap rounded px-2 text-[12px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+		>
+			<span className="shrink-0 opacity-70">{icon}</span>
+			{label}
+		</button>
+	);
+}
+
+/** Wraps the message stream; renders the floating bubble when text is selected. */
 export function SelectionToolbar({
 	sessionId,
 	containerRef,
@@ -24,29 +60,104 @@ export function SelectionToolbar({
 	containerRef: React.RefObject<HTMLElement | null>;
 }) {
 	const [sel, setSel] = useState<Sel | null>(null);
-	const [isAnnotating, setIsAnnotating] = useState(false);
-	const [comment, setComment] = useState("");
+	const [commenting, setCommenting] = useState(false);
+	const [draft, setDraft] = useState("");
 	const addAnnotation = useComposer((s) => s.addAnnotation);
 	const focusComposer = useComposer((s) => s.focusComposer);
-	const requestSideChat = useComposer((s) => s.requestSideChat);
+	const annotationTarget = useComposer((s) => s.annotationTarget);
+	const setAnnotationTarget = useComposer((s) => s.setAnnotationTarget);
+	const tooDeep = useSessions(
+		(s) => (s.sessions[sessionId]?.forkDepth ?? 0) >= MAX_SIDE_CHAT_DEPTH,
+	);
 	const setRightTab = useUi((s) => s.setRightTab);
 	const openModal = useUi((s) => s.openModal);
 	const boxRef = useRef<HTMLDivElement>(null);
+	const inputRef = useRef<HTMLTextAreaElement>(null);
+	const selRef = useRef<Sel | null>(null);
+	selRef.current = sel;
+	// Dismissal runs from native listeners; refs give it the latest snapshot
+	// even when it fires inside the same event that just updated the draft.
+	const draftRef = useRef(draft);
+	draftRef.current = draft;
+	const commentingRef = useRef(commenting);
+	commentingRef.current = commenting;
 
-	const commitAnnotation = () => {
-		if (!sel) return;
-		addAnnotation(sessionId, {
-			source: "message",
+	const clearSel = useCallback(() => {
+		// Snapshot-clear synchronously: a second dismiss in the same event (e.g.
+		// send's click followed by mouseup) must see "nothing open" and no-op.
+		selRef.current = null;
+		draftRef.current = "";
+		commentingRef.current = false;
+		setSel(null);
+		setCommenting(false);
+		setDraft("");
+	}, []);
+
+	// A depth-capped parent cannot fork another side chat: fall back to main.
+	const target: AnnotationTarget = tooDeep ? "main" : annotationTarget;
+	const targetRef = useRef(target);
+	targetRef.current = target;
+
+	/** Quote + typed comment staged into the chosen annotation list (no focus side-effects). */
+	const stageDraft = useCallback(() => {
+		const sel = selRef.current;
+		const comment = draftRef.current.trim();
+		if (!sel || !commentingRef.current || !comment) return;
+		const body = {
+			source: "message" as const,
 			text: sel.text,
 			itemId: sel.itemId,
-			comment: comment.trim() || undefined,
-		});
+			comment,
+		};
+		const dest = targetRef.current === "sidechat" ? sideChatAnnKey(sessionId) : sessionId;
+		useComposer.getState().addAnnotation(dest, body);
+	}, [sessionId]);
+
+	/**
+	 * Close the bubble. `mode` = "discard" never stages (Esc, send, capture);
+	 * "stage" (any other dismissal while a non-empty comment box was open)
+	 * silently keeps the typed comment as an annotation.
+	 */
+	const dismiss = useCallback(
+		(mode: "stage" | "discard" = "stage") => {
+			if (mode === "stage") stageDraft();
+			clearSel();
+			const cur = window.getSelection();
+			if (cur && !cur.isCollapsed && containerRef.current?.contains(cur.anchorNode)) {
+				cur.removeAllRanges();
+			}
+		},
+		[clearSel, stageDraft, containerRef],
+	);
+
+	const startComment = () => {
+		setDraft("");
+		setCommenting(true);
+	};
+
+	const submitQuote = () => {
+		if (!sel) return;
+		const comment = draft.trim();
+		const body = {
+			source: "message" as const,
+			text: sel.text,
+			itemId: sel.itemId,
+			comment: comment || undefined,
+		};
+		// Quote + typed comment stay staged above the composer; the user sends from there.
+		if (target === "sidechat") {
+			// Stage into the side-chat composer of this parent session; the panel
+			// chip shows it and send creates/appends to a side-chat thread.
+			const key = sideChatAnnKey(sessionId);
+			addAnnotation(key, body);
+			setRightTab("sidechat");
+			focusComposer(key);
+			dismiss("discard");
+			return;
+		}
+		addAnnotation(sessionId, body);
 		focusComposer(sessionId);
-		setSel(null);
-		setIsAnnotating(false);
-		setComment("");
-		window.getSelection()?.removeAllRanges();
-		toast.success("已添加引用");
+		dismiss("discard");
 		setTimeout(() => {
 			const ta =
 				document.querySelector<HTMLTextAreaElement>(
@@ -55,185 +166,218 @@ export function SelectionToolbar({
 			ta?.focus();
 		}, 0);
 	};
+	// Move focus into the comment input once it is shown (the bubble is already
+	// positioned at this point, so the input is focusable).
+	useEffect(() => {
+		if (commenting) inputRef.current?.focus();
+	}, [commenting]);
+
+	// Auto-growing comment box: one line tall at first, expands with the text
+	// up to COMMENT_MAX_HEIGHT, then scrolls (mirrors the main Composer).
+	useEffect(() => {
+		const ta = inputRef.current;
+		if (!commenting || !ta) return;
+		ta.style.height = "auto";
+		ta.style.height = `${Math.min(ta.scrollHeight, COMMENT_MAX_HEIGHT)}px`;
+		ta.style.overflowY = ta.scrollHeight > COMMENT_MAX_HEIGHT ? "auto" : "hidden";
+	}, [commenting, draft]);
+
+	// Paint the quoted text while the comment is typed; the Highlight is
+	// removed on dismiss/unmount via the effect cleanup.
+	const pendingRange = commenting ? sel?.range : undefined;
+	useEffect(() => {
+		if (!pendingRange || typeof CSS === "undefined" || !("highlights" in CSS)) return;
+		CSS.highlights.set(PENDING_HIGHLIGHT, new Highlight(pendingRange));
+		return () => {
+			CSS.highlights.delete(PENDING_HIGHLIGHT);
+		};
+	}, [pendingRange]);
+
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
-		const onUp = () => {
+		let pressStartedOutside = false;
+		const isInteractiveInput = (node: EventTarget | null) => {
+			if (!(node instanceof Element)) return false;
+			return (
+				node instanceof HTMLInputElement ||
+				node instanceof HTMLTextAreaElement ||
+				(node instanceof HTMLElement && node.isContentEditable) ||
+				Boolean(node.closest("input, textarea, [data-composer]"))
+			);
+		};
+		const onUp = (e: MouseEvent) => {
+			if (isInteractiveInput(e.target)) return;
+			// Focusing the comment input moves the browser selection into it; that
+			// must not re-derive (or clear) the captured selection.
+			if (boxRef.current?.contains(e.target as Node)) return;
+			if (boxRef.current?.contains(document.activeElement)) return;
+			// A press that began outside the stream is never a new stream selection.
+			// If the browser kept the old selection anyway, drop it now.
+			if (pressStartedOutside) {
+				pressStartedOutside = false;
+				const cur = window.getSelection();
+				if (cur && !cur.isCollapsed && cur.anchorNode && container.contains(cur.anchorNode)) {
+					cur.removeAllRanges();
+				}
+				dismiss("stage");
+				return;
+			}
 			const s = window.getSelection();
 			const text = s?.toString().trim() ?? "";
 			if (!text || !s || s.rangeCount === 0) {
-				setSel(null);
+				dismiss("stage");
 				return;
 			}
 			const range = s.getRangeAt(0);
 			if (!container.contains(range.commonAncestorContainer)) {
-				setSel(null);
+				dismiss("stage");
 				return;
 			}
 			const rect = range.getBoundingClientRect();
-			const crect = container.getBoundingClientRect();
 			const node = range.commonAncestorContainer;
 			const msgEl = (node instanceof Element ? node : node.parentElement)?.closest(
 				'[id^="msg-"]',
 			);
 			const rawItemId = msgEl?.id.startsWith("msg-") ? msgEl.id.slice(4) : undefined;
 			const itemId = rawItemId && rawItemId !== "live" ? rawItemId : undefined;
-			setSel({
-				text,
-				itemId,
-				x: rect.left - crect.left + rect.width / 2,
-				y: rect.top - crect.top + container.scrollTop,
-			});
+			setSel({ text, itemId, rect, range: range.cloneRange() });
 		};
-		const onDown = (e: MouseEvent) => {
-			if (!boxRef.current?.contains(e.target as Node)) {
-				setSel(null);
-				setIsAnnotating(false);
-				setComment("");
+		const onDown = (e: Event) => {
+			if (isInteractiveInput(e.target)) return;
+			const inBox = boxRef.current?.contains(e.target as Node) ?? false;
+			pressStartedOutside = !inBox && !container.contains(e.target as Node);
+			if (inBox) return;
+			// A click on non-selectable blank space leaves the old selection in
+			// place (and the following mouseup would re-show the bubble for it).
+			// The bubble may already be gone (e.g. closed by scrolling) while the
+			// browser selection lingers, so key off the selection itself.
+			const s = window.getSelection();
+			if (
+				s &&
+				!s.isCollapsed &&
+				((s.anchorNode && container.contains(s.anchorNode)) ||
+					(s.focusNode && container.contains(s.focusNode)))
+			) {
+				s.removeAllRanges();
 			}
+			dismiss("stage");
 		};
 		const onScroll = () => {
-			setSel(null);
-			setIsAnnotating(false);
-			setComment("");
+			const cur = selRef.current;
+			if (!cur) return;
+			// Never close while the comment is being typed: re-anchor to the moved text.
+			if (boxRef.current?.contains(document.activeElement)) {
+				setSel({ ...cur, rect: cur.range.getBoundingClientRect() });
+				return;
+			}
+			dismiss("stage");
 		};
+		// Capture on window: runs before any element (or React handler) can stop
+		// propagation, so no kind of blank area can swallow the dismissal.
 		document.addEventListener("mouseup", onUp);
-		document.addEventListener("mousedown", onDown);
+		window.addEventListener("mousedown", onDown, true);
+		window.addEventListener("pointerdown", onDown, true);
 		container.addEventListener("scroll", onScroll, { passive: true });
 		return () => {
 			document.removeEventListener("mouseup", onUp);
-			document.removeEventListener("mousedown", onDown);
+			window.removeEventListener("mousedown", onDown, true);
+			window.removeEventListener("pointerdown", onDown, true);
 			container.removeEventListener("scroll", onScroll);
 		};
-	}, [containerRef]);
+	}, [containerRef, dismiss]);
 
 	useEffect(() => {
 		if (!sel) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				if (isComposing({ nativeEvent: e, key: e.key })) return;
-				if (isAnnotating) {
-					setIsAnnotating(false);
-				} else {
-					setSel(null);
-					window.getSelection()?.removeAllRanges();
-				}
-			}
+		const onKey = (e: globalThis.KeyboardEvent) => {
+			if (e.key !== "Escape" || isComposing({ nativeEvent: e, key: e.key })) return;
+			// Claim the key so it does not also abort a running turn.
+			e.preventDefault();
+			// Esc is an explicit discard: a typed comment is dropped, not staged.
+			dismiss("discard");
 		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [sel, isAnnotating]);
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
+	}, [sel, dismiss]);
 
 	if (!sel) return null;
-	const itemCls =
-		"flex h-7 w-7 items-center justify-center rounded text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
 
 	return (
-		<div
-			ref={boxRef}
-			style={{ left: sel.x, top: sel.y }}
-			className="absolute z-20 flex -translate-x-1/2 -translate-y-full gap-0.5 rounded-md border border-[var(--line)] bg-[var(--bg-panel)] p-0.5 shadow-apple-card"
-		>
-			{isAnnotating ? (
-				<form
-					onSubmit={(e) => {
-						e.preventDefault();
-						commitAnnotation();
-					}}
-					className="flex items-center gap-1.5 p-1"
-				>
-					<input
-						autoFocus
-						type="text"
-						value={comment}
-						onChange={(e) => setComment(e.target.value)}
+		<SelectionBubble anchor={sel.rect} ref={boxRef}>
+			{commenting ? (
+				<div className="flex flex-col gap-1.5 px-1.5 py-1">
+					<textarea
+						ref={inputRef}
+						rows={1}
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
 						onKeyDown={(e) => {
-							if (isComposing(e)) return;
-							if (e.key === "Escape") {
+							if (e.key !== "Enter") return;
+							// Same keys as the main Composer's "enter" mode: Enter sends,
+							// Shift+Enter (and IME composition) stay a newline.
+							const decision = decideEnterKey(
+								{
+									key: e.key,
+									shiftKey: e.shiftKey,
+									metaKey: e.metaKey,
+									ctrlKey: e.ctrlKey,
+									altKey: e.altKey,
+									isComposing: isComposing(e),
+								},
+								"enter",
+							);
+							if (decision === "send" || decision === "send-alternate") {
 								e.preventDefault();
-								setIsAnnotating(false);
-							} else if (e.key === "Enter" && !e.shiftKey) {
-								e.preventDefault();
-								commitAnnotation();
+								submitQuote();
 							}
 						}}
-						placeholder="添加批注（可选，Enter 确认）…"
-						className="w-48 rounded border border-[var(--line)] bg-[var(--bg)] px-2 py-0.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--text-30)]"
+						placeholder="添加批注（Enter 发送，Shift+Enter 换行）…"
+						aria-label="添加批注"
+						className="w-72 min-w-0 resize-none rounded-xl bg-transparent px-2.5 py-1.5 text-[12px] leading-[1.4] text-[var(--text)] outline-none placeholder:text-[var(--text-30)]"
 					/>
-					<button
-						type="button"
-						onClick={commitAnnotation}
-						className="rounded bg-[var(--text)] px-2 py-0.5 text-[11px] font-medium text-[var(--bg)] hover:opacity-90 transition-colors"
-					>
-						引用
-					</button>
-					<button
-						type="button"
-						onClick={() => setIsAnnotating(false)}
-						className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
-					>
-						取消
-					</button>
-				</form>
+					<div className="flex items-center justify-between gap-3 px-1 pb-0.5">
+						<Segmented<AnnotationTarget>
+							size="sm"
+							pill
+							aria-label="批注目标"
+							value={target}
+							onChange={setAnnotationTarget}
+							options={[
+								{ value: "main", label: "主对话", title: "批注进入主会话输入框" },
+								{
+									value: "sidechat",
+									label: "辅助对话",
+									title: tooDeep
+										? `已达侧聊嵌套上限（${MAX_SIDE_CHAT_DEPTH} 层）`
+										: "批注暂存到右侧辅助对话输入框",
+									disabled: tooDeep,
+								},
+							]}
+						/>
+						<button
+							type="button"
+							aria-label="确认批注"
+							title="确认批注 (Enter)"
+							onClick={submitQuote}
+							className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg-panel)] transition-opacity hover:opacity-80"
+						>
+							<ArrowUp size={13} strokeWidth={2.5} />
+						</button>
+					</div>
+				</div>
 			) : (
 				<>
-					<button
-						type="button"
-						className={itemCls}
-						onClick={async () => {
-							await copyText(sel.text);
-							toast.success("已复制到剪贴板");
-							setSel(null);
-							window.getSelection()?.removeAllRanges();
-						}}
-						title="复制"
-						aria-label="复制"
-					>
-						<Copy size={14} />
-					</button>
-					<button
-						type="button"
-						className={itemCls}
+					<BubbleAction icon={<MessageSquareQuote size={12} />} label="批注" onClick={startComment} />
+					<BubbleAction
+						icon={<BookmarkPlus size={12} />}
+						label="记到收集箱"
 						onClick={() => {
-							setIsAnnotating(true);
+							openModal("quick-capture", { text: sel.text, sessionId });
+							dismiss("discard");
 						}}
-						title="引用"
-						aria-label="引用"
-					>
-						<MessageSquareQuote size={14} />
-					</button>
-					<button
-						type="button"
-						className={itemCls}
-						onClick={() => {
-							requestSideChat(sessionId, sel.text);
-							setRightTab("sidechat");
-							setSel(null);
-							window.getSelection()?.removeAllRanges();
-						}}
-						title="在侧聊中提问"
-						aria-label="在侧聊中提问"
-					>
-						<MessagesSquare size={14} />
-					</button>
-					<button
-						type="button"
-						className={itemCls}
-						onClick={() => {
-							openModal("quick-capture", {
-								text: sel.text,
-								sessionId,
-							});
-							setSel(null);
-							window.getSelection()?.removeAllRanges();
-						}}
-						title="记到收集箱"
-						aria-label="记到收集箱"
-					>
-						<BookmarkPlus size={14} />
-					</button>
+					/>
 				</>
 			)}
-		</div>
+		</SelectionBubble>
 	);
 }

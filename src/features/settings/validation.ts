@@ -52,6 +52,7 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		"dockBadgeEnabled",
 		"sessionTurnAutoRefresh",
 		"sessionGroupByWorktree",
+		"visualizeEnabled",
 	];
 
 	for (const k of boolKeys) {
@@ -233,6 +234,22 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		out.newSessionModel = val;
 	}
 
+	if ("sideChatModel" in raw) {
+		const val = raw.sideChatModel;
+		if (val !== null && typeof val !== "string") {
+			return { ok: false, error: "侧聊专属模型必须是字符串或 null" };
+		}
+		if (typeof val === "string") {
+			if (/[\0\r\n]/.test(val)) {
+				return { ok: false, error: "侧聊专属模型不能包含空字符或换行符" };
+			}
+			if (val.trim().startsWith("-")) {
+				return { ok: false, error: "侧聊专属模型不能以 '-' 开头" };
+			}
+		}
+		out.sideChatModel = val;
+	}
+
 	const hasFrom = "notifyQuietFrom" in raw;
 	const hasTo = "notifyQuietTo" in raw;
 	if (hasFrom || hasTo) {
@@ -297,6 +314,22 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 			return { ok: false, error: "每日会诊时间需要 HH:MM 格式" };
 		}
 		out.doctorScheduleTime = val;
+	}
+
+	if ("sendShortcut" in raw) {
+		const val = raw.sendShortcut;
+		if (val !== "enter" && val !== "mod-enter") {
+			return { ok: false, error: "发送快捷键必须为 enter 或 mod-enter" };
+		}
+		out.sendShortcut = val;
+	}
+
+	if ("followUpBehavior" in raw) {
+		const val = raw.followUpBehavior;
+		if (val !== "steer" && val !== "queue" && val !== "interrupt") {
+			return { ok: false, error: "任务进行中发送方式必须为 steer、queue 或 interrupt" };
+		}
+		out.followUpBehavior = val;
 	}
 
 	return { ok: true, value: out };

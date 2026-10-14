@@ -15,14 +15,14 @@ import { useTurnNav } from "../../stores/turnNav";
 import { ChangesSection } from "./ChangesSection";
 import { CheckpointsCard } from "./CheckpointsCard";
 import { DiffModal } from "./DiffModal";
-import { toplevelFor } from "./helpers";
+import { countCrossedEmpty, type GitPaneTab, paneTab, toplevelFor } from "./helpers";
 import { TimelineSection } from "./TimelineSection";
 import { BranchAssetSection } from "./BranchAssetSection";
 import { WorktreeSection } from "./WorktreeSection";
 const POLL_MS = 10_000;
 const LOG_PAGE = 50;
 
-type PaneTab = "changes" | "history";
+type PaneTab = GitPaneTab;
 type RepoMode = "worktrees" | "branches";
 
 /** Minimum heights (px) of the split's top list and bottom detail pane. */
@@ -125,7 +125,9 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	const [loading, setLoading] = useState(false);
 	/** Explicitly selected worktree; null follows the session's own worktree. */
 	const [focus, setFocus] = useState<string | null>(null);
-	const [tab, setTab] = useState<PaneTab>("changes");
+	/** Manual segmented pick, keyed to the worktree it was made on; cleared when the
+	 * selection changes or the change count crosses the empty/non-empty boundary. */
+	const [manualTab, setManualTab] = useState<{ path: string; tab: PaneTab } | null>(null);
 	/** null until the first successful worktree load picks a default; a manual pick is kept
 	 * for this RepoView's lifetime (remounted per cwd, so repo switches start fresh). */
 	const [mode, setMode] = useState<RepoMode | null>(null);
@@ -134,7 +136,8 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	/** Bumped to make the focus pane reload (manual refresh, session activity). */
 	const [paneNonce, setPaneNonce] = useState(0);
 	const [diff, setDiff] = useState<DiffReq | null>(null);
-	const [fileCount, setFileCount] = useState(0);
+	/** Loaded change count for `selected`; `n` is null until FocusPane reports one. */
+	const [fileCount, setFileCount] = useState<{ path: string; n: number | null } | null>(null);
 
 	// Top bar HoverCard state
 	const [topHoverOpen, setTopHoverOpen] = useState(false);
@@ -229,6 +232,22 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 		? (selectedWt.branch ?? `历史版本 ${selectedWt.head.slice(0, 7)}`)
 		: null;
 
+	// Effective tab: manual pick wins; while the count is still loading keep the
+	// last shown tab (no flash); once loaded, empty → history, dirty → changes.
+	const count = fileCount?.path === selected ? fileCount.n : null;
+	const lastTab = useRef<PaneTab>("changes");
+	const prevCount = useRef<number | null>(null);
+	const tab = paneTab(count, manualTab?.path === selected ? manualTab.tab : null, lastTab.current);
+	useEffect(() => {
+		lastTab.current = tab;
+		// A stale keyed pick (leftover when returning to a worktree) expires here; a
+		// same-batch pick already targets the new path so the guard keeps it alive.
+		if (manualTab && manualTab.path !== selected) setManualTab(null);
+		// Manual picks are also forgotten when the count crosses empty/non-empty.
+		if (countCrossedEmpty(prevCount.current, count)) setManualTab(null);
+		prevCount.current = count;
+	}, [selected, count, tab, manualTab]);
+
 	// Chat → git jump: select the target worktree and open 版本历史. The
 	// timeline flashes the row and clears the request; every revealCommit (not
 	// just the newest) is handled once its worktree list is known.
@@ -238,14 +257,14 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 		handledReveal.current = revealCommit.nonce;
 		useUi.getState().setRightTab("git");
 		setMode("worktrees");
-		setFocus(
+		const nextFocus =
 			revealCommit.cwd === top
 				? null
 				: worktrees.some((w) => w.path === revealCommit.cwd)
 					? revealCommit.cwd
-					: null,
-		);
-		setTab("history");
+					: null;
+		setFocus(nextFocus);
+		setManualTab({ path: nextFocus ?? top, tab: "history" });
 	}, [revealCommit, worktrees, top]);
 
 	const selectWorktree = (path: string) => setFocus(path === top ? null : path);
@@ -372,7 +391,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 							onChanged={() => void load(false)}
 							onOpenPane={(path, t) => {
 								selectWorktree(path);
-								setTab(t);
+								setManualTab({ path, tab: t });
 							}}
 							onDiff={setDiff}
 						/>
@@ -413,13 +432,13 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 							)}
 							<Segmented
 								value={tab}
-								onChange={setTab}
+								onChange={(t) => setManualTab({ path: selected, tab: t })}
 								options={[
-									{ value: "changes", label: `改动 ${fileCount}` },
+									{ value: "changes", label: `改动 ${count ?? 0}` },
 									{ value: "history", label: "历史" },
 								]}
 							/>
-							{tab === "changes" && fileCount > 0 && (
+							{tab === "changes" && (count ?? 0) > 0 && (
 								<button
 									type="button"
 									onClick={() =>
@@ -481,7 +500,7 @@ function FocusPane({
 	path: string;
 	tab: PaneTab;
 	nonce: number;
-	onFileCount: (count: number) => void;
+	onFileCount: (count: { path: string; n: number | null }) => void;
 	runs: TmRun[];
 	onRunsChange: (runs: TmRun[]) => void;
 	onRepoChanged: () => void;
@@ -544,10 +563,12 @@ function FocusPane({
 		onRepoChanged();
 	};
 
-	const fileCount = summary?.files.length ?? 0;
+	// null while the summary has not loaded yet, so the pane never auto-switches
+	// to history before the real count is known.
+	const fileCount = summary?.files.length ?? null;
 	useEffect(() => {
-		onFileCount(fileCount);
-	}, [fileCount, onFileCount]);
+		onFileCount({ path, n: fileCount });
+	}, [path, fileCount, onFileCount]);
 
 	return (
 		<div>

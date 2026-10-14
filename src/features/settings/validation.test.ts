@@ -59,6 +59,11 @@ describe("validateSettingsShape", () => {
 
 	it("rejects flag injections and control characters in strings", () => {
 		expect(validateSettingsShape({ newSessionModel: "-flag" }).ok).toBe(false);
+		expect(validateSettingsShape({ sideChatModel: "-flag" }).ok).toBe(false);
+		expect(validateSettingsShape({ sideChatModel: "m\0x" }).ok).toBe(false);
+		expect(validateSettingsShape({ sideChatModel: 42 }).ok).toBe(false);
+		expect(validateSettingsShape({ sideChatModel: null }).ok).toBe(true);
+		expect(validateSettingsShape({ sideChatModel: "anthropic/x:high" }).ok).toBe(true);
 		expect(validateSettingsShape({ tunnelName: "--injection" }).ok).toBe(false);
 		expect(validateSettingsShape({ ompBinary: "omp\0bad" }).ok).toBe(false);
 		expect(validateSettingsShape({ ompBinary: "" }).ok).toBe(false);
@@ -74,5 +79,26 @@ describe("validateSettingsShape", () => {
 		expect(
 			validateSettingsShape({ notifyQuietFrom: "8:00", notifyQuietTo: "08:00" }).ok,
 		).toBe(false);
+	});
+
+	it("validates sendShortcut and followUpBehavior enums", () => {
+		expect(validateSettingsShape({ sendShortcut: "enter" })).toEqual({
+			ok: true,
+			value: { sendShortcut: "enter" },
+		});
+		expect(validateSettingsShape({ sendShortcut: "mod-enter" })).toEqual({
+			ok: true,
+			value: { sendShortcut: "mod-enter" },
+		});
+		expect(validateSettingsShape({ sendShortcut: "ctrl-enter" }).ok).toBe(false);
+		expect(validateSettingsShape({ sendShortcut: null }).ok).toBe(false);
+		for (const v of ["steer", "queue", "interrupt"]) {
+			expect(validateSettingsShape({ followUpBehavior: v })).toEqual({
+				ok: true,
+				value: { followUpBehavior: v },
+			});
+		}
+		expect(validateSettingsShape({ followUpBehavior: "append" }).ok).toBe(false);
+		expect(validateSettingsShape({ followUpBehavior: 1 }).ok).toBe(false);
 	});
 });

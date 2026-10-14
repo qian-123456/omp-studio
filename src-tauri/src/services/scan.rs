@@ -18,7 +18,7 @@ pub struct Listener {
     pub ports: Vec<u16>,
 }
 
-fn lsof_bin() -> &'static str {
+pub(crate) fn lsof_bin() -> &'static str {
     if Path::new("/usr/sbin/lsof").exists() {
         "/usr/sbin/lsof"
     } else {
@@ -88,9 +88,19 @@ pub fn parse_ps(text: &str) -> HashMap<u32, (i32, Option<u64>, String)> {
             let mut it = line.split_whitespace();
             let pid = it.next()?.parse().ok()?;
             let pgid = it.next()?.parse().ok()?;
-            let rss_kb = it.next().and_then(|s| s.parse().ok());
-            let rest: Vec<&str> = it.collect();
-            Some((pid, (pgid, rss_kb, rest.join(" "))))
+            let third = it.next()?;
+            // comm may contain spaces; an empty/non-numeric rss folds into it.
+            let (rss_kb, command) = match third.parse::<u64>() {
+                Ok(kb) => (Some(kb), it.collect::<Vec<_>>().join(" ")),
+                Err(_) => (
+                    None,
+                    std::iter::once(third)
+                        .chain(it)
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
+            };
+            Some((pid, (pgid, rss_kb, command)))
         })
         .collect()
 }

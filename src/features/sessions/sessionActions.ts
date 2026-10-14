@@ -30,6 +30,9 @@ interface SessionActionsState {
 	/** Dialog: assign 1..N sessions to a workspace */
 	assignSessionIds: string[] | null;
 
+	/** Dialog: move 1..N 无项目 sessions into a SessionGroup */
+	moveToGroupSessionIds: string[] | null;
+
 	/** Dialog: takeover external session */
 	takeoverSessionId: string | null;
 
@@ -37,6 +40,7 @@ interface SessionActionsState {
 	setMenuSessionId(id: string | null): void;
 	setArchiveWorktreeTarget(target: ArchiveWorktreeTarget | null): void;
 	setAssignSessionIds(ids: string[] | null): void;
+	setMoveToGroupSessionIds(ids: string[] | null): void;
 	setTakeoverSessionId(id: string | null): void;
 }
 
@@ -45,12 +49,14 @@ export const useSessionActions = create<SessionActionsState>((set) => ({
 	menuSessionId: null,
 	archiveWorktreeTarget: null,
 	assignSessionIds: null,
+	moveToGroupSessionIds: null,
 	takeoverSessionId: null,
 
 	setRenameSessionId: (id) => set({ renameSessionId: id }),
 	setMenuSessionId: (id) => set({ menuSessionId: id }),
 	setArchiveWorktreeTarget: (target) => set({ archiveWorktreeTarget: target }),
 	setAssignSessionIds: (ids) => set({ assignSessionIds: ids }),
+	setMoveToGroupSessionIds: (ids) => set({ moveToGroupSessionIds: ids }),
 	setTakeoverSessionId: (id) => set({ takeoverSessionId: id }),
 }));
 
@@ -208,6 +214,12 @@ export async function requestDelete(sessionIds: string[]): Promise<void> {
 export function requestAssign(sessionIds: string[]): void {
 	if (sessionIds.length === 0) return;
 	useSessionActions.getState().setAssignSessionIds(sessionIds);
+}
+
+/** Opens the 移到分组 dialog for 1..N 无项目 sessions. */
+export function requestMoveToGroup(sessionIds: string[]): void {
+	if (sessionIds.length === 0) return;
+	useSessionActions.getState().setMoveToGroupSessionIds(sessionIds);
 }
 
 /** Requests row to enter inline rename. */

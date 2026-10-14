@@ -37,15 +37,9 @@ pub fn start(state: AppState) {
                 missed_schedules.len()
             );
             for s in missed_schedules {
-                let next = store::next_run(&s.cadence, now);
                 {
                     let db = state.db.lock();
-                    let _ = store::update_last_and_next(
-                        &db,
-                        &s.id,
-                        &now.to_rfc3339(),
-                        Some(&next.to_rfc3339()),
-                    );
+                    let _ = store::advance_after_run(&db, &s, now);
                 }
                 runner::spawn_run(state.clone(), s);
             }
@@ -69,15 +63,9 @@ pub fn start(state: AppState) {
                         };
 
                         for s in due_schedules {
-                            let next = store::next_run(&s.cadence, now);
                             {
                                 let db = state.db.lock();
-                                let _ = store::update_last_and_next(
-                                    &db,
-                                    &s.id,
-                                    &now.to_rfc3339(),
-                                    Some(&next.to_rfc3339()),
-                                );
+                                let _ = store::advance_after_run(&db, &s, now);
                             }
                             runner::spawn_run(state.clone(), s);
                         }

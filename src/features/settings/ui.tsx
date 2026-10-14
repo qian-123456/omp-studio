@@ -388,4 +388,4 @@ export const SETTINGS_BUTTON_CLASS =
 
 /** Trigger button for ModelSelect pickers in settings rows. */
 export const MODEL_PICKER_BUTTON_CLASS =
-	"h-7 flex min-w-[140px] max-w-[240px] items-center justify-between rounded-lg hairline bg-[var(--well-bg)] px-2.5 text-left text-[11px] text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all";
+	"flex h-8 min-w-[160px] max-w-[260px] items-center justify-between gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 text-left text-xs text-[var(--text)] transition-all hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] active:scale-[0.98] disabled:opacity-50";

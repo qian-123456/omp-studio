@@ -59,7 +59,7 @@ export function usableViewport(): { top: number; bottom: number; left: number; r
 	};
 }
 
-function anchorRect(anchor: Anchor): DOMRect {
+export function anchorRect(anchor: Anchor): DOMRect {
 	if (anchor instanceof Element) return anchor.getBoundingClientRect();
 	if ("x" in anchor && !("width" in anchor)) return new DOMRect(anchor.x, anchor.y, 0, 0);
 	return anchor as DOMRect;
@@ -207,7 +207,7 @@ export interface FloatingLayerProps {
 }
 
 /** Modal surfaces: FloatingLayer modal tier plus any ARIA modal dialog. */
-const MODAL_SELECTOR = '[data-layer="modal"], [aria-modal="true"]';
+export const MODAL_SELECTOR = '[data-layer="modal"], [aria-modal="true"]';
 
 /**
  * The single floating primitive: portal + fixed positioning + viewport

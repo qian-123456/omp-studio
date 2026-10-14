@@ -196,6 +196,8 @@ export function DocView({ path }: { path: string }) {
 	};
 
 	const handleCmUpdate = (viewUpdate: ViewUpdate) => {
+		// IME composition marks the composing text as a selection; it is not a user selection.
+		if (viewUpdate.view.composing || viewUpdate.view.compositionStarted) return;
 		if (viewUpdate.selectionSet) {
 			const mainSel = viewUpdate.state.selection.main;
 			if (!mainSel.empty) {
@@ -234,76 +236,87 @@ export function DocView({ path }: { path: string }) {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-divider)] px-3 py-1.5">
-				<FileText size={14} className="shrink-0 text-neutral-400" />
-				<span className="truncate text-xs text-[var(--text)]" title={path}>
-					{basename(path)}
-					<span className="ml-1.5 text-[10px] text-neutral-500">{short(path)}</span>
-				</span>
-				{dirty && <span className="shrink-0 text-[10px] text-amber-400 font-medium">● 未保存</span>}
-				{note && (
-					<div className="flex shrink-0 items-center gap-1.5 text-[10px] text-emerald-400">
-						<span>{note}</span>
-						{lastAnnotatedSessionId && (
-							<button
-								type="button"
-								onClick={() => selectSession(lastAnnotatedSessionId)}
-								className="font-medium text-amber-400 hover:underline"
-							>
-								前往会话查看 →
-							</button>
-						)}
-					</div>
-				)}
-				<span className="flex-1" />
-				<div className="flex rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-0.5 text-[11px]">
-					{(
-						[
-							{ id: "preview", label: "预览" },
-							{ id: "split", label: "分栏" },
-							{ id: "edit", label: "编辑" },
-						] as const
-					).map((t) => (
-						<button
-							key={t.id}
-							type="button"
-							onClick={() => setTab(t.id)}
-							className={clsx(
-								"px-2.5 py-0.5 rounded-md transition-colors",
-								tab === t.id
-									? "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium shadow-xs"
-									: "text-neutral-400 hover:text-[var(--text)]",
+			<div className="shrink-0 border-b border-[var(--border-divider)]">
+				<div className="flex items-center gap-2 px-3 pt-2 pb-1">
+					<FileText size={14} className="shrink-0 text-neutral-400" />
+					<span className="min-w-0 flex-1 truncate text-xs text-[var(--text)]" title={path}>
+						<span className="font-medium">{basename(path)}</span>
+						<span className="ml-1.5 text-[10px] text-neutral-500">{short(path)}</span>
+					</span>
+					{dirty && (
+						<span className="shrink-0 whitespace-nowrap rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+							未保存
+						</span>
+					)}
+					{note && (
+						<div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[10px] text-emerald-400">
+							<span>{note}</span>
+							{lastAnnotatedSessionId && (
+								<button
+									type="button"
+									onClick={() => selectSession(lastAnnotatedSessionId)}
+									className="font-medium text-amber-400 hover:underline"
+								>
+									前往会话查看 →
+								</button>
 							)}
-						>
-							{t.label}
-						</button>
-					))}
+						</div>
+					)}
 				</div>
-				<button
-					type="button"
-					title="保存 (⌘S)"
-					disabled={!dirty || saving}
-					onClick={save}
-					className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-colors"
-				>
-					<Save size={14} />
-				</button>
-				<button
-					type="button"
-					title="重新加载"
-					onClick={reload}
-					className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
-				>
-					<RefreshCw size={14} />
-				</button>
-				<button
-					type="button"
-					title="关闭 (Esc)"
-					onClick={handleClose}
-					className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
-				>
-					<X size={14} />
-				</button>
+				<div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2 text-[11px] [&_button]:whitespace-nowrap">
+					<div className="flex shrink-0 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] p-0.5">
+						{(
+							[
+								{ id: "preview", label: "预览" },
+								{ id: "split", label: "分栏" },
+								{ id: "edit", label: "编辑" },
+							] as const
+						).map((t) => (
+							<button
+								key={t.id}
+								type="button"
+								onClick={() => setTab(t.id)}
+								className={clsx(
+									"px-2.5 py-0.5 rounded-md transition-colors",
+									tab === t.id
+										? "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium shadow-xs"
+										: "text-neutral-400 hover:text-[var(--text)]",
+								)}
+							>
+								{t.label}
+							</button>
+						))}
+					</div>
+					<span className="flex-1" />
+					<button
+						type="button"
+						title="保存 (⌘S)"
+						disabled={!dirty || saving}
+						onClick={save}
+						className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-colors"
+					>
+						<Save size={13} />
+						保存
+					</button>
+					<button
+						type="button"
+						title="从磁盘重新加载"
+						onClick={reload}
+						className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
+					>
+						<RefreshCw size={13} />
+						重新加载
+					</button>
+					<button
+						type="button"
+						title="关闭 (Esc)"
+						onClick={handleClose}
+						className="flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
+					>
+						<X size={13} />
+						关闭
+					</button>
+				</div>
 			</div>
 
 			{error && <div className="shrink-0 border-b border-[var(--border-divider)] px-3 py-1.5 text-xs text-rose-400">{error}</div>}

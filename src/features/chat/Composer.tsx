@@ -1,10 +1,9 @@
-/** [B] Composer: annotation pills, slash menu, held queue,
+/** [B] Composer: annotation chip, slash menu, held queue,
  * steer/stop, model + thinking pickers, /fork interception. */
 
 import clsx from "clsx";
 import {
 	ArrowUp,
-	Check,
 	ChevronDown,
 	CornerDownRight,
 	Loader2,
@@ -15,10 +14,10 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionUsage } from "../../lib/ipc";
+import { listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionSnapshot, sessionUsage } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { ImageAttachment } from "../../lib/contracts";
+import type { ImageAttachment, SessionSnapshot } from "../../lib/contracts";
 import { AttachmentThumb } from "./ImageChips";
 export interface InlineImageToken {
 	match: string;
@@ -123,21 +122,30 @@ export function parseInlineImages(
 }
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
-const isImageAnnotation = (a: { file?: string; text?: string }) =>
-	(!!a.file && IMAGE_EXT_RE.test(a.file)) || !!a.text?.includes("[图片:");
+
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ContextRing } from "./ContextRing";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
-import { formatWithAnnotations, useComposer } from "../../stores/composer";
-import { useLive } from "../../stores/live";
+import { formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { hasLiveUserActivity, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useHeldQueue } from "./heldQueue";
-import { abortTurn, linkSentSecrets, sendPrompt, useAbortState } from "./send";
+import { abortTurn, interruptAndWait, linkSentSecrets, sendPrompt, useAbortState } from "./send";
+import {
+	type FollowUpAction,
+	FOLLOW_UP_LABEL,
+	alternateShortcutHint,
+	decideEnterKey,
+	normalizeFollowUpBehavior,
+	normalizeSendShortcut,
+	resolveFollowUpAction,
+} from "./sendKeys";
 import { usePrivacy } from "../../stores/privacy";
 import { ComposerSecretOverlay } from "./privacy/ComposerSecretOverlay";
 import { LibraryPromptCard } from "./privacy/LibraryPromptCard";
@@ -156,9 +164,16 @@ import { buildSlashSections, flattenSections, type SlashMenuItem } from "./slash
 import { SlashMenu } from "./slash/SlashMenu";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
 import { requestTakeover } from "../sessions/sessionActions";
-import { ContextPillBar } from "./ContextPillBar";
+import { ContextPillBar, WorkspacePickerPopover } from "./ContextPillBar";
 import { AddMenuPopover } from "./AddMenuPopover";
+import { SketchPad } from "./sketch/SketchPad";
+import { ensureSettings, useSettings } from "../settings/store";
 import { runSessionBash } from "./sessionShell";
+import { textAnnotationsOf } from "./annotations";
+import { AnnotationChip } from "./AnnotationChip";
+
+/** How long an interrupt waits for the aborted turn to stop before holding the message. */
+const INTERRUPT_WAIT_MS = 15_000;
 
 /** Prepended to outgoing prompts while plan mode is on. */
 const PLAN_MODE_PREFIX =
@@ -166,22 +181,7 @@ const PLAN_MODE_PREFIX =
 const GOAL_TEMPLATE = "[目标: 请输入本次任务目标]";
 const FINDER_SELECTION_SCRIPT =
 	`osascript -e 'tell application "Finder" to set sel to selection as alias list' -e 'set out to ""' -e 'repeat with f in sel' -e 'set out to out & POSIX path of f & linefeed' -e 'end repeat' -e 'return out'`;
-/** Tooltip descriptions for known thinking levels. The visible label is the
- * raw omp level name (low/high/xhigh/…), English, matching the omp TUI. */
-const THINKING_DESCS: Record<string, string> = {
-	auto: "跟随模型的默认力度",
-	off: "不启用深度推理思考",
-	minimal: "轻度推理，适合简单问答",
-	low: "较少推理步骤，响应较快",
-	medium: "均衡推理与响应速度",
-	high: "完整多步推理，适合复杂分析",
-	xhigh: "高强度推理，适合复杂推演",
-	max: "无限制深度推理，耗费最多预算",
-};
 
-function thinkingLabel(level: string): { label: string; desc: string } {
-	return { label: level, desc: THINKING_DESCS[level] ?? "" };
-}
 
 const EMPTY_LIST: string[] = [];
 
@@ -218,8 +218,6 @@ export function Composer({
 	const [historyIdx, setHistoryIdx] = useState(-1);
 	const draftBeforeHistory = useRef("");
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
-	const [editingAnnId, setEditingAnnId] = useState<string | null>(null);
-	const [editingComment, setEditingComment] = useState("");
 	const catalogModels = useModelOptions();
 	// rpc `get_available_models` fallback, used only while the catalog is empty.
 	const [rpcModels, setRpcModels] = useState<ModelOption[] | null>(null);
@@ -228,7 +226,7 @@ export function Composer({
 	const modelMenuRef = useRef<HTMLDivElement>(null);
 
 	const [thinkingOpen, setThinkingOpen] = useState(false);
-	const thinkingMenuRef = useRef<HTMLDivElement>(null);
+
 
 	/** Hint line shown after picking an arg-taking command (`/name <arg>`). */
 	const [argHintLine, setArgHintLine] = useState<string | null>(null);
@@ -278,20 +276,27 @@ export function Composer({
 		(s) => s.annotations[sessionId] ?? EMPTY_LIST,
 	);
 	const addAnnotation = useComposer((s) => s.addAnnotation);
-	const updateAnnotation = useComposer((s) => s.updateAnnotation);
-	const removeAnnotation = useComposer((s) => s.removeAnnotation);
 	const clearAnnotations = useComposer((s) => s.clearAnnotations);
 	const composerImages = useComposer(
 		(s) => s.images[sessionId] ?? EMPTY_LIST,
 	);
 	const addImage = useComposer((s) => s.addImage);
 	const clearImages = useComposer((s) => s.clearImages);
-	const textAnnotations = useMemo(
-		() => annotations.filter((a) => !isImageAnnotation(a)),
-		[annotations],
+	const moveAnnotation = useComposer((s) => s.moveAnnotation);
+	const textAnnotations = useMemo(() => textAnnotationsOf(annotations), [annotations]);
+	// Quote annotations alone are a sendable message (formatWithAnnotations
+	// handles empty text); only a fully empty composer turns ▶ into resume.
+	const hasPayload = text.trim().length > 0 || textAnnotations.length > 0;
+	const resumeMode = canResume && !hasPayload;
+	// Send shortcut + follow-up behavior (Settings ▸ General); defaults until settings load.
+	const sendShortcut = normalizeSendShortcut(useSettings((s) => s.settings?.sendShortcut));
+	const followUpBehavior = normalizeFollowUpBehavior(
+		useSettings((s) => s.settings?.followUpBehavior),
 	);
+	// What a plain send does while a turn runs (streaming round button).
+	const streamingSendAction = resolveFollowUpAction(followUpBehavior, false, true);
+	const streamingAltAction = resolveFollowUpAction(followUpBehavior, true, true);
 	const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
-	const scrollToItem = useLive((s) => s.scrollToItem);
 
 	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
 	const setDismissed = useHeldQueue((s) => s.setDismissed);
@@ -326,16 +331,24 @@ export function Composer({
 	const isAborting = useAbortState((s) => s.aborting[sessionId] === true);
 
 
-	// Context usage calculations for ContextRing
-	const contextRaw = live?.state?.contextUsage;
-	const contextUsageObj =
-		typeof contextRaw === "object" && contextRaw !== null
-			? (contextRaw as Record<string, unknown>)
-			: null;
-	const contextPct =
-		typeof contextUsageObj?.percent === "number"
-			? contextUsageObj.percent
-			: undefined;
+	// With no live get_state (app restarted or the process was idle-suspended)
+	// the thinking level / context size come from the transcript instead of
+	// falling back to "auto" / 0%.
+	const hasLiveState = live?.state != null;
+	const [snapshotRec, setSnapshotRec] = useState<{ id: string; snap: SessionSnapshot } | null>(null);
+	useEffect(() => {
+		if (hasLiveState) return;
+		let cancelled = false;
+		sessionSnapshot(sessionId)
+			.then((snap) => {
+				if (!cancelled) setSnapshotRec({ id: sessionId, snap });
+			})
+			.catch((err) => console.warn("[composer] session snapshot fetch failed", err));
+		return () => {
+			cancelled = true;
+		};
+	}, [sessionId, hasLiveState]);
+	const snapshot = snapshotRec?.id === sessionId ? snapshotRec.snap : null;
 
 	// Total tokens summary
 	const [totalTokensStr, setTotalTokensStr] = useState<string | null>(null);
@@ -369,8 +382,20 @@ export function Composer({
 	}, [sessionId, live?.alive, live?.commands?.length]);
 
 	const [addMenuOpen, setAddMenuOpen] = useState(false);
+	const [sketchOpen, setSketchOpen] = useState(false);
 	const addBtnRef = useRef<HTMLButtonElement>(null);
+	const wsPillBtnRef = useRef<HTMLButtonElement>(null);
 	const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
+	// Context pill bar exists only on a blank draft: the session has seen no
+	// user/assistant activity (transcript items, pending echoes, in-flight
+	// turn) and the backend reports no last-assistant snippet yet.
+	const sessionHasMessages = useLive((s) =>
+		hasLiveUserActivity(s.sessions[sessionId]),
+	) || Boolean(sessionMeta?.lastAssistant);
+	const workspacePickerIgnoreRefs = useMemo(
+		() => [wsPillBtnRef, addBtnRef],
+		[],
+	);
 	const planMode = useComposer((s) => s.planModes[sessionId] === true);
 	const togglePlanMode = useComposer((s) => s.togglePlanMode);
 
@@ -474,10 +499,14 @@ export function Composer({
 		);
 	}, [text, slashToken]);
 
+	const visualizeEnabled = useSettings((s) => s.settings?.visualizeEnabled !== false);
+	useEffect(ensureSettings, []);
 	const slashSections = useMemo(() => {
 		if (!slashToken) return [];
-		return buildSlashSections(slashToken.query, commands, composerHasOtherText);
-	}, [slashToken, commands, composerHasOtherText]);
+		return buildSlashSections(slashToken.query, commands, composerHasOtherText, {
+			visualizeEnabled,
+		});
+	}, [slashToken, commands, composerHasOtherText, visualizeEnabled]);
 	const slashItems = useMemo(
 		() => flattenSections(slashSections),
 		[slashSections],
@@ -486,7 +515,8 @@ export function Composer({
 	useEffect(() => setMenuIndex(0), [slashToken?.query]);
 
 	const state = live?.state ?? {};
-	const stateThinkingLevel = typeof state.thinkingLevel === "string" ? state.thinkingLevel : undefined;
+	const stateThinkingLevel =
+		typeof state.thinkingLevel === "string" ? state.thinkingLevel : (snapshot?.thinkingLevel ?? undefined);
 	const currentThinking = stateThinkingLevel ?? "auto";
 
 	const current = useMemo(
@@ -502,6 +532,24 @@ export function Composer({
 			) ?? models?.find((m) => m.id === current.id && m.provider === current.provider),
 		[models, current],
 	);
+
+	// Context usage calculations for ContextRing
+	const contextRaw = live?.state?.contextUsage;
+	const contextWindow = currentModelOption?.contextWindow;
+	const contextUsageObj: Record<string, unknown> | null =
+		typeof contextRaw === "object" && contextRaw !== null
+			? (contextRaw as Record<string, unknown>)
+			: snapshot?.contextTokens != null && contextWindow
+				? {
+						tokens: snapshot.contextTokens,
+						contextWindow,
+						percent: (snapshot.contextTokens / contextWindow) * 100,
+					}
+				: null;
+	const contextPct =
+		typeof contextUsageObj?.percent === "number"
+			? contextUsageObj.percent
+			: undefined;
 	const thinkingLevels = useMemo(
 		() =>
 			resolveThinkingLevels(
@@ -511,7 +559,7 @@ export function Composer({
 			),
 		[state.model, currentModelOption, stateThinkingLevel],
 	);
-	const curThinkingObj = thinkingLabel(currentThinking);
+
 
 	const selectThinkingLevel = async (level: string) => {
 		try {
@@ -522,6 +570,17 @@ export function Composer({
 		} catch (err) {
 			if (isResumeCancelled(err)) setThinkingOpen(false);
 			else toast.error(`切换思考等级失败: ${errMsg(err)}`);
+		}
+	};
+	const compactContext = async () => {
+		toast.info("正在压缩上下文…");
+		try {
+			if (!live?.alive) await ensureLive(sessionId);
+			await rpcSend(sessionId, { type: "compact" });
+			await rpcSend(sessionId, { type: "get_state" });
+			toast.success("上下文压缩完成");
+		} catch (err) {
+			if (!isResumeCancelled(err)) toast.error(`压缩失败: ${errMsg(err)}`);
 		}
 	};
 	const loadModels = async () => {
@@ -623,9 +682,9 @@ export function Composer({
 			setTimeout(() => taRef.current?.focus(), 0);
 		})();
 	};
-	const submit = async (steer: boolean) => {
+	const submit = async (action: FollowUpAction) => {
 		const raw = text;
-		if (!raw.trim() || busy) return;
+		if (!hasPayload || busy) return;
 		const trimmedRaw = raw.trim();
 		// Privacy: replace marked / auto / accepted ranges with placeholders.
 		// The draft and local history keep the real text; everything sent is masked.
@@ -709,9 +768,9 @@ export function Composer({
 
 		const formatted = formatWithAnnotations(outgoingRaw, textAnnotations);
 		const message = planMode ? `${PLAN_MODE_PREFIX}${formatted}` : formatted;
-		// Streaming + plain Enter: hold locally (ARCHITECTURE §11 B); the
-		// post-turn HeldQueueBar sends it with its image attachments.
-		if (streaming && !steer) {
+		// Queue (and a plain send that raced turn-end while streaming): hold locally
+		// (ARCHITECTURE §11 B); the post-turn HeldQueueBar sends it with its image attachments.
+		if (action === "queue" || (action === "send" && streaming)) {
 			pushHeld(sessionId, message, imageAttachments);
 			pushHistory(raw.trim());
 			finishPrivacySend();
@@ -722,7 +781,21 @@ export function Composer({
 		}
 		setBusy(true);
 		try {
-			await sendPrompt(sessionId, message, { steer, images: imageAttachments });
+			// Interrupt: abort and wait for the turn to stop. If it keeps running,
+			// hold the message rather than dropping it.
+			const idle =
+				action === "interrupt" && streaming
+					? await interruptAndWait(sessionId, INTERRUPT_WAIT_MS)
+					: true;
+			if (idle) {
+				await sendPrompt(sessionId, message, {
+					steer: action === "steer",
+					images: imageAttachments,
+				});
+			} else {
+				pushHeld(sessionId, message, imageAttachments);
+				toast.error("打断超时，回合仍在运行：消息已暂存，回合结束后自动发送");
+			}
 			pushHistory(raw.trim());
 			finishPrivacySend();
 			clearDraft(sessionId);
@@ -847,6 +920,16 @@ export function Composer({
 			toast.success(`已插入图片 #${nextNum}`);
 		} catch (err) {
 			toast.error(`处理图片失败: ${errMsg(err)}`);
+		}
+	};
+
+	const handleInsertSketch = async (dataUrl: string) => {
+		setSketchOpen(false);
+		try {
+			const blob = await (await fetch(dataUrl)).blob();
+			await processImageFile(new File([blob], `sketch-${Date.now()}.png`, { type: "image/png" }));
+		} catch (err) {
+			toast.error(`插入草图失败: ${errMsg(err)}`);
 		}
 	};
 
@@ -1084,14 +1167,23 @@ export function Composer({
 			}
 		}
 
-		if (e.key === "Enter") {
-			if (e.metaKey || e.ctrlKey) {
-				e.preventDefault();
-				void submit(true);
-			} else if (!e.shiftKey) {
-				e.preventDefault();
-				void submit(false);
-			}
+		// Enter / ⌘Enter / ⌥Enter per the send-shortcut setting; everything else stays native (newline).
+		const decision = decideEnterKey(
+			{
+				key: e.key,
+				shiftKey: e.shiftKey,
+				metaKey: e.metaKey,
+				ctrlKey: e.ctrlKey,
+				altKey: e.altKey,
+				isComposing: isComposing(e),
+			},
+			sendShortcut,
+		);
+		if (decision === "send" || decision === "send-alternate") {
+			e.preventDefault();
+			void submit(
+				resolveFollowUpAction(followUpBehavior, decision === "send-alternate", streaming),
+			);
 		}
 	};
 
@@ -1140,11 +1232,21 @@ export function Composer({
 						: "border-[var(--line,var(--border))]",
 				)}
 			>
-				<ContextPillBar
-					sessionId={sessionId}
-					workspaceOpen={workspacePickerOpen}
-					onWorkspaceOpenChange={setWorkspacePickerOpen}
-				/>
+				{!sessionHasMessages && (
+					<ContextPillBar
+						sessionId={sessionId}
+						onWorkspaceClick={() => setWorkspacePickerOpen((v) => !v)}
+						workspaceBtnRef={wsPillBtnRef}
+					/>
+				)}
+				{workspacePickerOpen && (
+					<WorkspacePickerPopover
+						anchor={sessionHasMessages ? addBtnRef.current : (wsPillBtnRef.current ?? addBtnRef.current)}
+						ignoreRefs={workspacePickerIgnoreRefs}
+						activeWorkspaceId={sessionMeta?.workspaceId ?? null}
+						onClose={() => setWorkspacePickerOpen(false)}
+					/>
+				)}
 				{planMode && (
 					<div className="flex items-center gap-1 px-3 pt-2">
 						<button
@@ -1159,100 +1261,16 @@ export function Composer({
 						</button>
 					</div>
 				)}
-				{/* Annotation pills — clickable to edit the attached comment. */}
+				{/* Annotation chip: one compact count pill; hover/focus lists the quotes. */}
 				{textAnnotations.length > 0 && (
-					<div className="flex flex-wrap gap-1 px-3 pt-2.5">
-						{textAnnotations.map((a, i) => {
-							const isEditing = editingAnnId === a.id;
-							if (isEditing) {
-								return (
-									<div
-										key={a.id}
-										className="flex items-center gap-1 rounded-full border border-[var(--text-30,var(--border))] bg-[var(--bg)] px-2 py-0.5 text-[11px]"
-									>
-										<span className="shrink-0 text-[var(--text-40,var(--text-dim))]">
-											[{i + 1}] {a.file ?? a.source}
-											{a.lines ? ` ${a.lines}` : ""}:
-										</span>
-										<input
-											type="text"
-											autoFocus
-											value={editingComment}
-											placeholder="输入批注 (Enter保存, Esc取消)..."
-											onChange={(e) => setEditingComment(e.target.value)}
-											onKeyDown={(e) => {
-												if (e.key === "Enter") {
-													if (isComposing(e)) return;
-													e.preventDefault();
-													e.stopPropagation();
-													updateAnnotation(sessionId, a.id, {
-														comment: editingComment.trim() || undefined,
-													});
-													setEditingAnnId(null);
-												} else if (e.key === "Escape") {
-													e.preventDefault();
-													e.stopPropagation();
-													setEditingAnnId(null);
-												}
-											}}
-											onBlur={() => {
-												updateAnnotation(sessionId, a.id, {
-													comment: editingComment.trim() || undefined,
-												});
-												setEditingAnnId(null);
-											}}
-											className="w-32 bg-transparent text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))] focus:w-48 transition-all"
-										/>
-									</div>
-								);
-							}
-							return (
-								<span
-									key={a.id}
-									onClick={() => {
-										setEditingAnnId(a.id);
-										setEditingComment(a.comment ?? "");
-									}}
-									title={`点击修改批注${a.comment ? `\n批注: ${a.comment}` : ""}${a.text ? `\n原内容: ${a.text}` : ""}`}
-									className="group flex max-w-72 cursor-pointer items-center gap-1 rounded-full border border-[var(--line,var(--border))] bg-[var(--bg)] px-2 py-0.5 text-[11px] text-[var(--text-60,var(--text-muted))] hover:border-[var(--text-30,var(--border))] hover:text-[var(--text)]"
-								>
-									<span className="flex min-w-0 items-center gap-1 truncate">
-										{isImageAnnotation(a) && a.file && (
-											<AttachmentThumb path={a.file} index={i + 1} variant="inline" />
-										)}
-										<span className="truncate">
-										[{i + 1}] {a.file ?? a.source}
-										{a.lines ? ` ${a.lines}` : ""}
-										{a.comment ? `：${a.comment}` : ""}
-										</span>
-									</span>
-									{a.itemId && (
-										<button
-											type="button"
-											onClick={(e) => {
-												e.stopPropagation();
-												scrollToItem(sessionId, a.itemId!);
-											}}
-											title="定位到原消息"
-											className="text-[var(--text-30,var(--text-dim))] hover:text-[var(--text)]"
-										>
-											<CornerDownRight size={10} />
-										</button>
-									)}
-									<button
-										type="button"
-										onClick={(e) => {
-											e.stopPropagation();
-											removeAnnotation(sessionId, a.id);
-										}}
-										title="删除引用"
-										className="text-[var(--text-30,var(--text-dim))] hover:text-[var(--text)]"
-									>
-										<X size={10} />
-									</button>
-								</span>
-							);
-						})}
+					<div className="px-3 pt-2.5">
+						<AnnotationChip
+							key={sessionId}
+							sessionId={sessionId}
+							annotations={textAnnotations}
+							onMove={(id) => moveAnnotation(sessionId, sideChatAnnKey(sessionId), id)}
+							moveLabel="移动到辅助对话"
+						/>
 					</div>
 				)}
 
@@ -1281,6 +1299,13 @@ export function Composer({
 						}))}
 						initialIndex={previewImageIndex}
 						onClose={() => setPreviewImageIndex(null)}
+					/>
+				)}
+				{sketchOpen && (
+					<SketchPad
+						anchor={composerCardRef}
+						onCancel={() => setSketchOpen(false)}
+						onInsert={(d) => void handleInsertSketch(d)}
 					/>
 				)}
 				{/* Textarea container with mirrored syntax-highlighting backdrop */}
@@ -1443,6 +1468,7 @@ export function Composer({
 								onPickProject={() => setWorkspacePickerOpen(true)}
 								onGoal={handleInsertGoal}
 								onTogglePlan={() => togglePlanMode(sessionId)}
+								onSketch={() => setSketchOpen(true)}
 							/>
 						)}
 						{planMode && (
@@ -1507,73 +1533,13 @@ export function Composer({
 
 						{/* Thinking-level picker (per-model levels) */}
 						{thinkingLevels.length > 0 && (
-							<div className="relative" ref={thinkingMenuRef}>
-								<button
-									type="button"
-									onClick={() => setThinkingOpen((v) => !v)}
-									title={
-										curThinkingObj
-											? `思考等级: ${curThinkingObj.label}${curThinkingObj.desc ? ` (${curThinkingObj.desc})` : ""}`
-											: "配置思考等级"
-									}
-									className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
-								>
-									<span className="truncate">
-										{curThinkingObj?.label ?? "思考等级"}
-									</span>
-									<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
-								</button>
-
-								{thinkingOpen && (
-									<FloatingLayer
-										anchor={thinkingMenuRef.current}
-										placement="top-start"
-										offset={6}
-										layer="popover"
-										ignoreRefs={[thinkingMenuRef]}
-										onDismiss={() => setThinkingOpen(false)}
-										className="w-[260px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1"
-									>
-										<div className="border-b border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
-											思考等级
-										</div>
-										<div className="py-0.5">
-											{thinkingLevels.map((level) => {
-												const opt = thinkingLabel(level);
-												const isSelected = currentThinking === level;
-												return (
-													<button
-														key={level}
-														type="button"
-														onClick={() => void selectThinkingLevel(level)}
-														className={clsx(
-															"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
-															isSelected
-																? "bg-[var(--bg-active-fill)] text-[var(--text)]"
-																: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
-														)}
-													>
-														<div className="min-w-0 pr-2">
-															<div className="font-medium">{opt.label}</div>
-															{opt.desc && (
-																<div className="text-[10px] text-[var(--text-40,var(--text-dim))]">
-																	{opt.desc}
-																</div>
-															)}
-														</div>
-														{isSelected && (
-															<Check
-																size={13}
-																className="shrink-0 text-[var(--text-60,var(--text-muted))]"
-															/>
-														)}
-													</button>
-												);
-											})}
-										</div>
-									</FloatingLayer>
-								)}
-							</div>
+							<ThinkingLevelPicker
+								levels={thinkingLevels}
+								value={currentThinking}
+								open={thinkingOpen}
+								onOpenChange={setThinkingOpen}
+								onSelect={(level) => void selectThinkingLevel(level)}
+							/>
 						)}
 					</div>
 
@@ -1599,6 +1565,8 @@ export function Composer({
 							percent={contextPct}
 							usageObj={contextUsageObj}
 							totalTokensStr={totalTokensStr}
+							onCompact={compactContext}
+							compactDisabled={streaming}
 							className="shrink-0"
 						/>
 
@@ -1606,6 +1574,24 @@ export function Composer({
 						<div className="flex items-center gap-1.5">
 							{streaming ? (
 								<>
+									{hasPayload && (
+										<button
+											type="button"
+											onClick={() => void submit(streamingSendAction)}
+											disabled={busy}
+											aria-label={FOLLOW_UP_LABEL[streamingSendAction]}
+											title={`${FOLLOW_UP_LABEL[streamingSendAction]}（${alternateShortcutHint(sendShortcut)} 改为${FOLLOW_UP_LABEL[streamingAltAction]}）`}
+											className={clsx(
+												"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150",
+												busy
+													? "bg-[var(--bg-active-fill)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed"
+													: "bg-[var(--text)] text-[var(--bg)] hover:opacity-85 active:scale-95",
+											)}
+										>
+											<ArrowUp size={14} />
+										</button>
+									)}
+									{!hasPayload && (
 									<button
 										type="button"
 										onClick={() => void handleAbort()}
@@ -1620,32 +1606,33 @@ export function Composer({
 											<Square size={11} />
 										)}
 									</button>
+									)}
 								</>
 							) : (
 								<button
 									type="button"
 									onClick={() => {
-										if (canResume && !text.trim()) {
+										if (resumeMode) {
 											void sendPrompt(sessionId, "Continue");
 										} else {
-											void submit(false);
+											void submit("send");
 										}
 									}}
-									disabled={busy || (!text.trim() && !canResume)}
-									aria-label={canResume && !text.trim() ? "恢复中断的回合" : "发送消息"}
+									disabled={busy || (!hasPayload && !canResume)}
+									aria-label={resumeMode ? "恢复中断的回合" : "发送消息"}
 									title={
-										canResume && !text.trim()
+										resumeMode
 											? "恢复中断的回合（发送 Continue）"
-											: "发送消息 (Enter)"
+											: `发送消息 (${sendShortcut === "mod-enter" ? "⌘/Ctrl+Enter" : "Enter"})`
 									}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150",
-										(text.trim() || canResume) && !busy
+										(hasPayload || canResume) && !busy
 											? "bg-[var(--text)] text-[var(--bg)] hover:opacity-85 active:scale-95"
 											: "bg-[var(--bg-active-fill)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed",
 									)}
 								>
-									{canResume && !text.trim() ? (
+									{resumeMode ? (
 										<Play size={11} className="fill-current" />
 									) : (
 										<ArrowUp size={14} />

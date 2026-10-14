@@ -40,7 +40,7 @@ src-tauri/src/
   catalog/          session scan/parse/watch/status/workspaces/usage                   [A]
   rpc/              omp --mode rpc process manager, idle suspend, takeover; subagents.rs reads subagent transcripts [B]
   git/              git status/log/diff/worktrees/time machine                         [C]
-  services/         local port/process listing, stop, reminders                        [C]
+  services/         local port/process listing, stop, reminders, memory breakdown (perf.rs)      [C]
   todos/            smart todo queue, system detection, supervisor, summaries, diagnose [D]
   backlog/          backlog store + prompt assembly                                    [D]
   notify/           native notifications, dock badge, sound                            [D]
@@ -52,12 +52,13 @@ src-tauri/src/
   settings_plugins.rs  OMP plugin roots + lockfiles: list/enable plugins                  [D]
   settings_model_roles.rs  agent discovery, model precedence, narrow lossless YAML role edits [D]
   privacy/          privacy placeholders: store, classify, file writers, commands       [P]
+  visualize.rs      bundled visualize plugin install + spawn `--plugin-dir` wiring      [B]
 src-tauri/mobile/index.html   mobile web app (single file, vanilla JS)                 [E]
 src-tauri/prompts/*.md + src/prompts.rs  prompt templates + render() ({{var}}, {{#if var}}..{{/if}}) [LEAD]
 extension/omp-workspace-status.ts   OMP status-report extension (§8)                   [E]
 extension/omp-workspace-checkpoints.ts + autocommit-rule.md  turn checkpoints extension (§8.1) [C]
 extension/omp-workspace-privacy.ts  privacy placeholder restore/mask extension         [P]
-
+src-tauri/resources/plugins/omp-workspace-visualize/  bundled omp plugin (visualize skill) [B]
 src/
   main.tsx, App.tsx          shell, three-pane layout, top bar                          [LEAD]
   components/FloatingLayer.tsx  stacking portal, usableViewport clamp, Z_LAYER tiers (§12) [LEAD]
@@ -119,17 +120,19 @@ Rules for parallel work:
 |---|---|
 | `~/.omp/agent/sessions/<bucket>/<ts>_<id>.jsonl` | OMP session files (read-only for us, except via omp itself) |
 | `~/.omp-workspace/app.db` | SQLite (§6) |
-| `~/.omp-workspace/global/` | cwd for the 🌐 global workspace |
+| `~/.omp-workspace/global/` | cwd for the 🌐 global workspace (Code space) |
+| (removed in v11) `~/.omp-workspace/spaces/<mode>/global/` | per-mode globals existed briefly in v10; dirs are left on disk, rows dropped |
 | `~/.omp-workspace/status/<sessionId>.json` | status files written by the extension (§8) |
 | `~/.omp-workspace/extension/omp-workspace-status.ts` | extension installed at startup from `include_str!` |
 | `~/.omp-workspace/extension/omp-workspace-checkpoints.ts` | turn checkpoints extension (§8.1), installed at startup; loaded only when `settings.turn_checkpoints == Some(true)` |
+| `~/.omp-workspace/plugins/omp-workspace-visualize/` | bundled omp plugin (`plugin.json` + `skills/visualize/SKILL.md`) embedded via `include_str!` from `src-tauri/resources/plugins/`; installed at startup, spawned via `--plugin-dir` when `settings.visualize_enabled` (default true) |
 | `~/.omp-workspace/supervisor-sessions/` | `--session-dir` for supervisor / summarizer runs |
 | `~/.omp-workspace/privacy/secrets.json` | privacy entries (placeholders+aliases, value, track, wholeWord, optional `cutoffs`) + `nativeHash` (from entries without cutoffs); read live by the privacy extension (0600, dir 0700, atomic) |
 | `~/.omp-workspace/privacy/omp-overlay.yml` | `secrets.enabled: true`, passed via `PI_CONFIG_FILES` when ≥1 natively tracked (tracked, cutoff-free) entry |
 | `~/.omp/agent/secrets.yml` | managed block (`# >>> omp-workspace privacy …` markers) of tracked entries WITHOUT any session cutoff for OMP's native secrets layer; user bytes preserved; not created while there are no such entries; non-sequence file ⇒ not written, status `conflict` (§8.2 fail-closed) |
 | `<repo>/.worktrees/<name>` | session worktrees (branch `omp/<name>`) and time-machine worktrees (`tm-<shortsha>`, detached) |
 
-`paths.rs` exposes `data_dir()`, `db_path()`, `global_dir()`, `status_dir()`, `extension_path()`,
+`paths.rs` exposes `data_dir()`, `db_path()`, `global_dir()`, `spaces_dir()`, `global_dir_for(mode)`, `status_dir()`, `extension_path()`,
 `supervisor_dir()`, `omp_sessions_dir()`; `ensure_dirs()` is called at startup.
 
 ## 4. Shared types (`contracts.rs` ⇄ `lib/contracts.ts`)
@@ -151,6 +154,15 @@ pub enum SessionStatus {
 }
 
 pub enum PendingKind { Approval, Question, Review, Error, Interrupted }
+
+/// Sidebar space ("mode"): visually independent spaces — each has its own
+/// sessions and (project modes) workspaces; `chat` (通用对话) is the project-less
+/// space owning the global workspace and the session groups. Nothing is shared
+/// across modes (same tables/code paths, `mode` is only a discriminator).
+/// Code is the default; pre-existing rows and external sessions with no
+/// `session_meta` row are Code (except global-dir sessions → chat).
+pub enum SpaceMode { Code, Work, Study, Research, Chat } // lowercase serde; unknown/blank strings degrade to Code
+pub const GLOBAL_WORKSPACE_ID: &str = "global";  // the single global workspace row; belongs to Chat
 
 pub struct GitBadge { pub branch: Option<String>, pub dirty: u32, pub worktree: Option<String> }
 pub struct ResultBadge { pub kind: String /* "test" | "build" */, pub ok: bool, pub at: String, pub summary: String }
@@ -179,12 +191,18 @@ pub struct SessionMeta {                // #[derive(Debug, Clone, Default, Parti
   pub result: Option<ResultBadge>,
   pub last_assistant: Option<String>, // ≤200 chars snippet
   pub model: Option<String>,
-  pub attention: Option<Attention>, // derived by A; see "Inbox (status hub)" in §11 D
+  pub mode: SpaceMode,            // space: derived (cwd under the global dir = chat) else session_meta.mode recorded at creation; no meta row = Code
+  pub group_id: Option<String>,   // SessionGroup (chat space); only global-workspace sessions
 }
 pub enum Attention { Awaiting, Error, Unread, Running } // snake_case; precedence awaiting > error > unread > running
 
 pub enum WorkspaceKind { Project, Global }
-pub struct Workspace { pub id: String, pub path: String, pub name: String, pub kind: WorkspaceKind, pub sort: i64 }
+pub struct Workspace { pub id: String, pub path: String, pub name: String, pub kind: WorkspaceKind, pub sort: i64, pub mode: SpaceMode }
+// workspaces are unique on (path, mode): the same disk directory may be a project in several spaces.
+
+/// User-created named category inside the 通用对话 (`chat`) space — a grouping only,
+/// never a directory. Only global-workspace sessions can be grouped.
+pub struct SessionGroup { pub id: String, pub mode: SpaceMode, pub name: String, pub sort: i64 }
 
 // Unified observation layer: normalized transcript entries
 pub enum TranscriptKind { User, Assistant, ToolResult, Bash, Custom, Compaction, BranchSummary, ModelChange, System, Unknown }
@@ -214,6 +232,8 @@ pub struct StartOpts {
   pub approval_mode: Option<String>,   // --approval-mode; default from settings
   pub parent_session_id: Option<String>, // for side chats: send `new_session {parentSession}` after ready
   pub label: Option<String>,           // pre-assigned label (side chats)
+  pub mode: Option<SpaceMode>,         // space the new session belongs to; persisted to session_meta.mode (None leaves the row untouched → Code on insert)
+  pub group_id: Option<String>,        // SessionGroup (chat space only); Some(id) is validated (group exists and mode == chat), None leaves the row untouched
 }
 pub struct PendingUiRequest { pub session_id: String, pub request: serde_json::Value /* raw extension_ui_request */, pub received_at: String }
 
@@ -245,11 +265,16 @@ pub struct TurnFile { pub path: String, pub status: String /* A M D */ }
 pub struct TurnCheckpoint { pub turn_id: String, pub session_id: String, pub user_item_id: Option<String>, pub prompt: String,
   pub before: String, pub after: String, pub head_before: Option<String>, pub head_after: Option<String>,
   pub commits: Vec<String> /* newest first */, pub files: Vec<TurnFile>, pub ended_at: String, pub restorable: bool, pub undone: bool }
-pub struct TurnUndoResult { pub restored: Vec<String>, pub deleted: Vec<String>, pub conflicts: Vec<String>, pub head_reset: bool, pub warning: Option<String> }
+pub struct TurnUndoResult { pub restored: Vec<String>, pub deleted: Vec<String>, pub conflicts: Vec<String>, pub head_reset: bool, pub warning: Option<String>, pub turns_undone: usize }
 pub struct TmRun { pub id: String, pub repo: String, pub sha: String, pub worktree: String, pub command: String, pub pid: Option<u32>, pub url: Option<String>, pub log_tail: String }
 
-pub struct ServiceInfo { pub pid: u32, pub name: String, pub port: u16, pub cwd: Option<String>, pub command: String, pub url: String, pub session_id: Option<String>, pub started_by_app: bool }
-
+pub struct ServiceInfo { pub pid: u32, pub name: String, pub port: u16, pub cwd: Option<String>, pub command: String, pub url: String, pub session_id: Option<String>, pub started_by_app: bool, pub memory_kb: Option<u64> }
+pub struct ProcessMemoryInfo { pub resident_mb: f64, pub formatted: String, pub processes: u32 }
+pub struct PerfBucket { pub bytes: Option<u64>, pub processes: u32 }        // bytes None = unknown
+pub struct AppInstance { pub pid: u32, pub label: String /* branch|worktree|pid N; never argv */, pub cwd: Option<String>, pub is_this: bool }
+pub struct PerfBreakdown { pub app: PerfBucket /* same footprint semantics as app_memory_usage */, pub omp_spawned: PerfBucket, pub omp_external: PerfBucket,
+  pub bar_omp_bytes: Option<u64> /* spawned+external minus macOS responsibility overlap; disjoint bar segment */, pub other_bytes: Option<u64> /* used - app - bar_omp, ≥0 */,
+  pub total_bytes: Option<u64>, pub used_bytes: Option<u64>, pub free_bytes: Option<u64>, pub instances: Vec<AppInstance>, pub generated_at: u64 }
 pub struct PairingInfo { pub url: String, pub qr_svg: String, pub expires_at: String }
 pub struct MobileStatus { pub running: bool, pub port: u16, pub lan_url: Option<String>, pub tunnel_url: Option<String>, pub cloudflared_installed: bool }
 
@@ -278,15 +303,28 @@ pub struct Settings {
   pub doctor_auto_mode: String,      // "manual" | "idle" | "scheduled"; default "manual" (no tokens spent without user action)
   pub doctor_idle_minutes: u32,      // default 30; 1..=10080; used in "idle" mode
   pub doctor_schedule_time: String,  // "HH:MM"; default "23:00"; used in "scheduled" mode
+  pub window_worktree_title: bool,   // default true; OS window title = "omp-workspace · <app worktree branch>" (worktree dir name when HEAD detached; plain title when lookup fails/off)
+  pub side_chat_model: Option<String>, // default None; dedicated model for new side chats ("<selector>" or "<selector>:<level>"), None/unavailable → inherit parent model
+  pub visualize_enabled: bool,        // default true; spawn adds `--plugin-dir ~/.omp-workspace/plugins/omp-workspace-visualize` (bundled `visualize` skill) and the chat renders ```` ```visualize ```` fragments in a sandboxed viewer; false = no skill + plain code block
 }
 
 // Schedules (定时任务)
 pub enum ScheduleRunMode { Local, Worktree }
-pub enum ScheduleCadence {
-  Interval { minutes: u32 },
-  Daily { time: String, weekdays: Vec<u32> },
+pub enum ScheduleCadence {                    // #[serde(tag="kind")]
+  Interval { minutes: u32 },                  // ≥5
+  Daily { time: String, weekdays: Vec<u32>,   // HH:MM local; empty weekdays = every `every` days;
+          every: u32, anchor: Option<String> },// weekday subset = every `every` weeks on those days;
+                                              // `every` serde-default 1 (omitted in JSON when 1);
+                                              // `anchor` local date YYYY-MM-DD fixes the phase when every>1
+  Once { at: String },                        // RFC3339 absolute instant, one-shot
+  Monthly { day: u32, time: String,           // day 1-31 clamped to month length; HH:MM local;
+            every: u32, anchor: Option<String> }, // every `every` months counted from anchor's month
 }
+pub enum ScheduleLifecycle { Active, Paused, Completed } // derived, not stored
 pub enum ScheduleRunStatus { Running, Ok, Error, Skipped }
+pub enum ScheduleNotify { All, Important, None }        // lowercase; inbox policy per run:
+                                                      //   all = every finished run; important = failed runs +
+                                                      //   runs that hit AwaitingApproval/AwaitingAnswer; none = never
 pub struct Schedule {
   pub id: String, pub name: String, pub prompt: String, pub cwd: String,
   pub run_mode: ScheduleRunMode, pub cadence: ScheduleCadence,
@@ -294,12 +332,23 @@ pub struct Schedule {
   pub enabled: bool, pub next_run_at: Option<String>, pub last_run_at: Option<String>,
   pub last_run_status: Option<ScheduleRunStatus>, // derived via subquery in store SCHEDULE_COLS
   pub created_at: String, pub updated_at: String,
+  pub end_at: Option<String>,           // recurring-only stop instant (RFC3339); NULL = never
+  pub lifecycle: ScheduleLifecycle,     // derived: completed = once already ran | recurring past end_at |
+                                        //           at max_runs cap; paused = !enabled & !completed; else active
+  pub notify: ScheduleNotify,           // stored, default All; which finished runs create an inbox todo
+  pub new_chat_each_run: bool,          // stored, default true; false = resume previous run's session (local mode only)
+  pub max_runs: Option<u32>,          // recurring-only run cap; NULL = unlimited; `once` ignores it
+  pub runs_done: u32,                 // runs started so far (counts toward `max_runs`)
 }
 pub struct ScheduleDraft {
   pub id: Option<String>, pub name: String, pub prompt: String, pub cwd: String,
   pub run_mode: ScheduleRunMode, pub cadence: ScheduleCadence,
   pub model: Option<String>, pub thinking: Option<String>, pub approval_mode: Option<String>,
+  pub end_at: Option<String>,           // ignored for Once
+  pub max_runs: Option<u32>,          // ignored for Once; absent = unlimited; serde default None
   pub enabled: bool,
+  pub notify: ScheduleNotify,           // serde default All when absent
+  pub new_chat_each_run: bool,          // serde default true when absent
 }
 pub struct ScheduleRun {
   pub id: String, pub schedule_id: String, pub session_id: Option<String>,
@@ -388,12 +437,13 @@ Frontend events (`app.emit`), names are exact:
 | `tm:log` | `{ runId, line }` | C |
 | `quick-capture` | `null` (global shortcut fired) | D |
 | `schedules:changed` | `null` | E (schedules runner/scheduler/commands) |
+| `session_groups:changed` | `null` | A (after any session-group create/rename/delete/reorder/assign) |
 | `privacy_changed` | `null` | P (after every privacy mutation) |
 
-## 6. SQLite schema (`db.rs`, migrations v1 → … → v6)
+## 6. SQLite schema (`db.rs`, migrations v1 → … → v11)
 
 ```sql
-CREATE TABLE workspaces(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+CREATE TABLE workspaces(id TEXT PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, mode TEXT NOT NULL DEFAULT 'code', created_at TEXT NOT NULL, UNIQUE(path, mode));  -- v10 rebuilt: uniqueness moved from path to (path, mode); pre-v10 rows keep mode='code'
 CREATE TABLE session_meta(
   session_id TEXT PRIMARY KEY, file_path TEXT, custom_name TEXT, label TEXT,
   pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
@@ -402,6 +452,11 @@ CREATE TABLE session_meta(
   accepted_at TEXT, last_seen_at TEXT, suspended INTEGER NOT NULL DEFAULT 0, created_by_app INTEGER NOT NULL DEFAULT 0,
   seq INTEGER);                                  -- local number when title has no "#<n>"
   -- v2 adds: session_meta.cwd_override TEXT    -- resume dir override picked after the original worktree dir was deleted
+  -- v10 adds: session_meta.mode TEXT NOT NULL DEFAULT 'code'   -- space recorded at creation; pre-existing rows are 'code'
+  -- v10 adds: session_meta.group_id TEXT      -- SessionGroup id inside the mode's 无项目 area (global-workspace sessions only)
+CREATE TABLE session_groups(                    -- v10: per-mode 无项目 categories (grouping only, never directories)
+  id TEXT PRIMARY KEY, mode TEXT NOT NULL, name TEXT NOT NULL,
+  sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
 CREATE TABLE todos(id TEXT PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL, session_id TEXT,
   title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL DEFAULT '{}', priority INTEGER NOT NULL DEFAULT 0,
   dedupe_key TEXT UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -417,7 +472,11 @@ CREATE TABLE schedules(
   run_mode TEXT NOT NULL DEFAULT 'local', cadence TEXT NOT NULL,
   model TEXT, thinking TEXT, approval_mode TEXT,
   enabled INTEGER NOT NULL DEFAULT 1, next_run_at TEXT, last_run_at TEXT,
-  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  end_at TEXT,                              -- v7: recurring stop instant (RFC3339); NULL = never
+  notify TEXT NOT NULL DEFAULT 'all',       -- v8: 'all' | 'important' | 'none'
+  new_chat_each_run INTEGER NOT NULL DEFAULT 1, -- v8: 0 = resume previous run's session (local mode)
+  max_runs INTEGER,                           -- v9: recurring-only run cap; NULL = unlimited
+  runs_done INTEGER NOT NULL DEFAULT 0,       -- v9: runs started so far
 );
 CREATE TABLE schedule_runs(
   id TEXT PRIMARY KEY, schedule_id TEXT NOT NULL, session_id TEXT,
@@ -433,13 +492,16 @@ CREATE TABLE secret_aliases(placeholder TEXT PRIMARY KEY, entry_id TEXT NOT NULL
 CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, since_ms INTEGER, PRIMARY KEY(session_id, entry_id));
 -- since_ms (v6): epoch-ms cutoff for "protect only future content"; NULL = whole history. Set once when the link is created.
 ```
-Use a `user_version` pragma for migrations (current: v6). `db.rs` also provides `load_settings`/`save_settings`.
+Use a `user_version` pragma for migrations (current: v11). `db.rs` also provides `load_settings`/`save_settings` and
+`ensure_global_workspace(conn)` (creates the single global workspace row `global`/`~/.omp-workspace/global`, owned by
+the `chat` space). v11 moves the global row and every session group (and grouped sessions) to `chat` and drops the
+v10 per-mode `global:<mode>` rows (their dirs stay on disk).
 
 ## 7. Tauri commands (exact names; all `async`, return `Result<T, String>`)
 
 JS calls use camelCase argument keys (Tauri maps to snake_case).
 
-**LEAD (lib.rs / state):** `get_settings() -> Settings`, `save_settings(settings: Settings) -> Settings`, `app_paths() -> {dataDir, globalDir}`
+**LEAD (lib.rs / state):** `get_settings() -> Settings`, `save_settings(settings: Settings) -> Settings` (also re-applies the OS window title via `settings::apply_window_title`), `app_paths() -> {dataDir, globalDir}`
 
 **A — catalog:**
 - `list_sessions() -> Vec<SessionMeta>`
@@ -447,8 +509,11 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `update_session_meta(session_id, patch: {customName?, pinned?, archived?, workspaceId?})  -> SessionMeta`
 - `mark_seen(session_id)` — clears `unread`, stamps `session_meta.last_seen_at`; if pending is Review, also runs the `accept_session(id, false)` logic (view = accept; emits `SessionAccepted`). The frontend calls it after every 2 s dwell on a session
 - `accept_session(session_id, archive: bool)` — clears `pending=Review`, sets Idle, emits `SessionAccepted`
-- `list_workspaces() -> Vec<Workspace>`, `add_workspace(path) -> Workspace`, `remove_workspace(id)`, `reorder_workspaces(ids: Vec<String>)`
+- `list_workspaces() -> Vec<Workspace>` (all modes), `add_workspace(path, mode: Option<SpaceMode>) -> Workspace` (default code; `chat` rejected — it has no project directories), `remove_workspace(id)` (global rows refuse; clears `session_meta.workspace_id` overrides pointing at it), `reorder_workspaces(ids: Vec<String>)`
+- `list_session_groups() -> Vec<SessionGroup>` (all modes), `create_session_group(mode, name) -> SessionGroup`, `rename_session_group(id, name) -> SessionGroup`, `delete_session_group(id)` (its sessions become ungrouped, never deleted), `reorder_session_groups(ids: Vec<String>)` — every mutation emits `session_groups:changed`
+- `set_session_group(session_id, group_id: Option<String>)` — file a 通用对话 session under a group or ungroup it (null). Validates: group exists, group and session are `chat`, and the session resolves to the global workspace (else `仅通用对话会话可以加入分组` / `会话与分组不属于同一空间`)
 - `session_usage(session_id) -> UsageSummary`
+- `session_snapshot(session_id) -> SessionSnapshot` — `{thinkingLevel, contextTokens}` recovered from the transcript (last `thinking_level_change`, last assistant prompt tokens unless a compaction follows); the composer shows it while no live `get_state` exists
 - `rescan_sessions()`
 
 **A — catalog (added):**
@@ -459,7 +524,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 
 **B — rpc:**
-- `rpc_start(opts: StartOpts) -> LiveSessionInfo`
+- `rpc_start(opts: StartOpts) -> LiveSessionInfo` — `opts.mode`/`opts.group_id` (new sessions) are persisted to `session_meta` after the child reports its sessionId; the group must exist in the same mode (else `会话分组不存在或与空间不匹配`), and the mode's global workspace row/dir is created lazily before spawn
 - `rpc_ensure_live(session_id, cwd: Option<String>) -> LiveSessionInfo` — start with `--resume <file>` if not live (used for suspended/interrupted/idle sessions). `cwd` overrides the transcript dir: it must exist, is persisted as `session_meta.cwd_override`, and the catalog meta is recomputed. When `cwd` is None and the located dir no longer exists, returns `Err("CWD_MISSING:<dir>")` so the frontend can offer 主目录 / 重建工作树 (`resume-missing-cwd` modal, `src/lib/ensureLive.ts`). Any `--resume` spawn (`rpc_start` with `resumeFile`, `rpc_ensure_live`, restart) first checks lsof holders + status files (§8, excluding this app's children) and returns `Err("SESSION_HELD:<pid>")` without spawning when another process holds the file (two writers corrupt the JSONL); `errMsg` (`src/lib/dialogs.ts`) renders it in Chinese. ensure_live/restart also refuse while this session's `omp` terminal (`term_open_session`) is open.
 - `rpc_send(session_id, command: Value) -> Value` — writes the command with a generated `id`, awaits the matching `response`, returns it (`success:false` → Err(error))
 - `rpc_ui_respond(session_id, response: Value)` — writes an `extension_ui_response`, emits `UiResponded`
@@ -474,7 +539,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `subagent_transcript(parent_file: String, agent_id: String, from_byte: Option<u64>) -> SubagentTranscript` — `parent_file`
   must be an existing `.jsonl` under `~/.omp/agent/sessions`; `agent_id` rejects separators/leading dot
 - `takeover_external(session_id) -> LiveSessionInfo` — SIGTERM external pid, wait ≤5s (SIGKILL after), then `rpc_start` with resume
-- `create_side_chat(parent_session_id, selection: Option<String>, question: String) -> LiveSessionInfo` — §B spec
+- `create_side_chat(parent_session_id, selection: Option<String>, question: String, model: Option<String>) -> LiveSessionInfo` — §B spec;
+  `model` is an omp `--model` value (`<selector>` or `<selector>:<level>`), None = inherit the parent session's model; the fork records the parent's space (`session_meta.mode`)
 
 **C — git / services:**
 - `git_summary(cwd) -> GitSummary`, `git_log(cwd, limit: u32) -> GitHistory` (commits + `fork_point`/`base` for the timeline's "inherited from base" divider), `git_diff(cwd, path: Option<String>, sha: Option<String>) -> String`
@@ -495,13 +561,19 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `git_commit(cwd, message) -> String` — `git add -A` + `git commit` (argv, no shell); always saves every change
 - `git_session_turns(session_file) -> Vec<TurnCheckpoint>` (oldest first), `git_worktree_turns(cwd) -> Vec<TurnCheckpoint>` (every
   session whose cwd is this worktree) — read `omp-workspace.turn-checkpoint` entries (§8.1); `restorable`/`undone` from hidden refs
-- `git_undo_turn(cwd, session_file, turn_id, force: bool) -> TurnUndoResult` — newest non-undone turn only; restores just that turn's
-  files from its `before` snapshot (created files deleted); files changed since the turn → `conflicts` and nothing touched unless `force`;
-  rolls HEAD back to `head_before` only while HEAD is still `head_after`; writes `refs/omp/undone/<sid>/<turnId>`
+- `git_undo_turn(cwd, session_file, turn_id, force: bool) -> TurnUndoResult` — any turn may be undone: the target AND every
+  later non-undone turn cascade newest→oldest (workspace returns to its state before the target started). Pre-flight before any
+  write: every cascaded turn must be `restorable` (else refuse — a missing snapshot cannot be crossed), and each touched file's
+  worktree blob must match the `after` snapshot of the newest cascaded turn that touched it, else `conflicts` and nothing touched
+  unless `force`. Per turn: HEAD resets to `head_before` only while HEAD is still `head_after`, files restore from `before`
+  (created files deleted), `refs/omp/undone/<sid>/<turnId>` written last; `turns_undone` counts how many were marked
 - `checkpoints_rule() -> String` — auto-commit rule text the checkpoints extension injects (consent card / settings)
 - `tm_run(repo, sha, command: Option<String>) -> TmRun`, `tm_list() -> Vec<TmRun>`, `tm_stop(run_id, remove_worktree: bool)`
 - `services_list(all: bool) -> Vec<ServiceInfo>`, `services_stop(pid)`
 - `read_text_file(path) -> String`, `write_text_file(path, content)` (for the md editor; reject paths > 5 MB)
+- `save_share_image(base64_png, path)` — chat share-as-image export: decodes a (optionally `data:`-prefixed) PNG and writes it to the absolute `.png` path chosen in the save dialog; never creates parent dirs. Clipboard copy of the image goes through `plugin-clipboard-manager` `writeImage` (needs the tauri `image-png` feature)
+- `app_memory_usage() -> ProcessMemoryInfo` — footprint attributed to this app (macOS responsibility API / Linux self RSS); ~2.5 s cache, powers the bottom-bar 性能 indicator
+- `perf_breakdown() -> PerfBreakdown` — system memory split for the perf popover: app tree / omp spawned-by-us vs external (ppid ancestry + responsibility set over `ps pid,ppid,rss,comm` rows — no argv) / other / free, plus omp-workspace instances labelled by worktree branch (lsof cwd + git rev-parse); `spawn_blocking`, ~3 s cache, fields `None` when a probe fails
 
 **D — todos / backlog / notify:**
 - `todos_list(include_closed: bool) -> Vec<Todo>`, `todos_act(id, action: "done"|"ignore"|"reopen")`, `todos_counts() -> TodoCounts`
@@ -579,7 +651,8 @@ work tree and in subagent sessions; never throws; git via argv with timeouts.
   `{ v:1, turnId, sessionId, userItemId, prompt, before, after, headBefore, headAfter, commits, files:[{path,status}], endedAt }`;
   otherwise delete its refs. Keep the newest 50 turns per session.
 - `before_agent_start`: once per session inject `extension/autocommit-rule.md` (custom_message `omp-workspace.autocommit-rule`,
-  hidden); after an app undo (`refs/omp/undone/<sid>/<turnId>`), inject an undo notice once and record `omp-workspace.turn-undo-notified`.
+  hidden); after an app undo (`refs/omp/undone/<sid>/<turnId>`), inject one undo notice per pending undone turn (a cascade undo
+  produces one notice each), once, and record `omp-workspace.turn-undo-notified` per turn.
 - Frontend jumps go through `stores/turnNav.ts` (`showCommit(cwd, sha)` chat → Git 版本历史, `showTurn(sessionId, userItemId)` → chat `msg-<id>`).
 
 ### 8.2 Privacy placeholder extension
@@ -646,12 +719,28 @@ pub fn todos::detect::resolve_status_leaving(conn: &rusqlite::Connection, sid: &
 // settings plugin discovery (D helpers; shared within the settings module)
 pub(crate) fn settings_plugins::user_plugins_root() -> PathBuf;
 pub(crate) fn settings_plugins::scan_plugins(user_root: &Path, cwd: Option<&Path>) -> PluginCatalog; // synchronous metadata discovery; no nested async runtime
+// settings window identity (D helper; called from lib.rs setup + save_settings)
+pub fn settings::apply_window_title(state: &AppState); // sets/restores main window title per `window_worktree_title` (never errors)
 // privacy (P)
 pub fn privacy::spawn_env() -> Vec<(String, String)>; // OMPWS_PRIVACY_NATIVE_HASH=<hash>, OMPWS_PRIVACY_FILE=<secrets.json>; + PI_CONFIG_FILES=<overlay> (':'-appended) when ≥1 natively tracked (tracked, cutoff-free) entry
 pub fn privacy::native_hash() -> String;             // in-memory, updated on every file sync
 pub fn privacy::inherit_session(db: &rusqlite::Connection, parent_session_id: &str, child_session_id: &str) -> Result<(), String>; // copy session_secrets links incl. since_ms cutoffs (absolute timestamps; existing child links win); re-syncs secrets.json when the child has a cutoff
 ```
 (`catalog::set_pending` is internal to A; listed only so nobody else writes `pending_kind`.)
+
+Spaces (modes) notes (§3, §4, §6 v10/v11):
+- `SpaceMode` is only a discriminator on existing tables/code paths: `workspaces.mode`, `session_meta.mode`,
+  `session_groups.mode`. Nothing else is shared across modes — a session's workspace resolution only considers
+  workspaces of its own mode (`scan::resolve_workspace` takes the mode + `paths::global_dir()`).
+- `chat` (通用对话) is a standalone space: it owns the single global workspace (`global`, `~/.omp-workspace/global`,
+  created by `db::ensure_global_workspace(conn)` at startup/rebuild/`rpc::start`) and all session groups. Code/Work/
+  Study/Research hold only project workspaces; `add_workspace(mode=chat)` is rejected.
+- `build_meta` derives the mode: a cwd under the global dir is always `chat` (legacy rows, rows without a meta row);
+  a stale `chat` row outside the global dir falls back to `code`; otherwise `session_meta.mode`.
+- Groups live only in the app DB (`session_groups` + `session_meta.group_id`), only in `chat`; `build_meta` keeps
+  `group_id` only while the session resolves to the global workspace, and deleting a group ungroups its sessions.
+- Mode/group are persisted at creation via `catalog::store::set_mode_group` (`None` leaves a column untouched, so
+  resume/restart spawns never clobber the stored values); side chats inherit the parent's mode.
 
 Status/pending ownership: **A** derives `SessionStatus` + `pending` from `AppEvent::RpcFrame/RpcProcess/UiResponded/PromptSent/SessionAccepted`,
 status files, lsof and transcript heuristics, persists to `session_meta`, emits `SessionStatusChanged`
@@ -687,7 +776,7 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/sessions/ResumeMissingCwdDialog` | global modal (`ui.openModal("resume-missing-cwd", {sessionId, cwd, repoRoot, worktreeName?})`, driven by `lib/ensureLive.ts`) |
 
 Sidebar navigation (Codex-style vertical nav list at the top of the left sidebar):
-1. **新建会话** (`⌘N`): opens new session flow; right-side button **快速提问** (`⌘⇧K`) opens `QuickAskDialog`.
+1. **新建会话** (`⌘N`): `startNewSession()` (`features/sessions/newSession.ts`) resolves the sidebar's active workspace via `resolveStartPageWorkspaceId` ("all"/stale → first project workspace, "__global" → global workspace) and calls `startSessionInDir`, which opens or reuses an empty draft there — the real Composer is the only place a task is started. With no workspace it clears the selection and `StartPage` (the launcher shown while no session is selected) asks for a project directory. Right-side button **快速提问** (`⌘⇧K`) opens `QuickAskDialog`. Per-workspace/worktree "+" controls still create drafts directly (`startSessionInDir`/`startSessionAt`/`startSessionInWorktree`).
 2. **收件箱**: `setCenter("inbox")`; badge via `useInboxBadge()` (awaiting + error + unread sessions within the window).
 3. **定时任务**: `setCenter("schedules")`; management for automated schedule runs.
 4. **技能与扩展**: `setCenter("skills")`; browser for available skills and extension plugins.
@@ -718,12 +807,14 @@ interface UiState {
 ```ts
 interface Annotation { id: string; source: "message" | "diff" | "doc" | "terminal"; text: string; file?: string; lines?: string; comment?: string; }
 interface ComposerState {
-  annotations: Record<string, Annotation[]>;           // by sessionId
+  annotations: Record<string, Annotation[]>;           // by sessionId; side-chat staged quotes use sideChatAnnKey(parentId) = "sidechat:<parentId>"
   addAnnotation(sessionId: string, a: Omit<Annotation, "id">): void;
   removeAnnotation(sessionId: string, id: string): void; clearAnnotations(sessionId: string): void;
-  sideChatRequest: { parentSessionId: string; selection?: string } | null;  // set by any feature, consumed by SideChatPanel
-  requestSideChat(parentSessionId: string, selection?: string): void; clearSideChatRequest(): void;
+  moveAnnotation(fromKey: string, toKey: string, id: string): void;  // main ⇄ side-chat, preserves fields, fresh id
+  annotationTarget: "main" | "sidechat";               // selection comment-box destination (persisted, default "main")
+  setAnnotationTarget(target): void;
 }
+export const sideChatAnnKey: (parentId: string) => string;
 export function formatWithAnnotations(text: string, anns: Annotation[]): string; // markdown quote blocks, numbered [1]..[n], diff comments as "文件 path 第 lines 行：comment"
 ```
 `stores/sessions.ts`: `{ sessions: Record<string, SessionMeta>; workspaces: Workspace[]; load(): Promise<void>; upsert(list); remove(ids) }`, wired to `sessions:updated/removed` at app start.
@@ -748,8 +839,9 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   Must handle 35+ buckets and multi-MB files fast (<1s cold on this machine).
 - Title: `session_meta.custom_name` > title slot > latest `title_change` > first user text (≤40 chars) > "未命名".
 - Label: `#<n>` from title regex `^#(\d+)`; else `#L<seq>` from `session_meta.seq`. Side chats keep the stored label.
-- Workspace membership: explicit `session_meta.workspace_id` > registered workspace whose path equals/contains `repo_root ?? cwd` >
-  Global if cwd under `global_dir()` > None (未归入工作区). Global workspace row is created at startup (`kind=global`).
+- Workspace membership (per space): explicit `session_meta.workspace_id` (ignored when it belongs to another mode) > registered
+  workspace of the session's mode whose path equals/contains `repo_root ?? cwd` > that mode's Global if cwd under
+  `paths::global_dir_for(mode)` > None (未归入工作区). Each mode's global workspace row is created lazily (§6, §9).
 - External detection: every 5 s run `lsof -c omp -F pn` (names ending `.jsonl` under sessions dir) → pid per file.
   Files held by an app-owned pid are not External.
 - Status derivation (live sessions, from bus): `agent_start`→Working; dialog `extension_ui_request` (`select|confirm|input|editor`)
@@ -772,7 +864,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   registered workspaces, then 未归入工作区 (per-cwd subgroups via `unassignedGroups`); inside each workspace,
   sub-groups by live worktree (`GroupingOptions.worktrees`, `WorktreeInfo.sessionIds` first then cwd containment);
   sessions in deleted worktree dirs fold into a default-collapsed 已清理的工作树 subgroup. Forks (`parentId`) are
-  flat rows with a fork icon + tooltip. Rows: fork icon → title (marquee) → status mark next to title
+  flat rows with a fork icon + tooltip; a fork only appears once it has real content — a blank unsent stub
+  (`isEmptySideChat` in `grouping.ts`, enforced inside `filterSessions`) never lists. Rows: fork icon → title (marquee) → status mark next to title
   (RFC palette: sky 待回复 capsule, emerald 待验收 dot, red 异常/已中断 dot, grey spinner 运行中, blue unread dot
   only on unmarked rows) → timestamp with hover time-swap `…` menu; second line only inside `SessionHoverCard`.
   Paging: `needsAttention` (working/awaiting/review/error/interrupted/unread) and the selected row stay rendered
@@ -783,7 +876,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   `archiveSessions` (busy/awaiting → confirm) + `undoArchive` merge within 8 s; `requestArchive`/`requestDelete`/
   `requestAssign`/`requestRename`/`requestRowMenu` in `sessionActions.ts`; dialogs portaled in `SessionDialogs.tsx`.
   Mark-seen is centralized in the sessions store: selecting any session marks it seen.
-  Setting `sessionGroupByWorktree` (default true; Settings → 会话): when false, each workspace yields one flat
+  Setting `sessionGroupByWorktree` (default true; Settings → 会话; applies to the `code` mode only — work/study/research/chat always use the flat layout): when false, each workspace yields one flat
   `default`/`isMain` subgroup (`GroupingOptions.groupByWorktree: false`) — no worktree/branch headers, no
   已清理的工作树 folder, no 「在独立工作树创建」 entry; the "+" button starts a session in the project dir directly.
   Selecting a row → `ui.selectSession(id)`; `SessionSidebar` reveals the selected row on selection change
@@ -818,6 +911,9 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   parent summary (`todos::summary(state, parent, true)`, fallback: project path + `git status --short` output) + selection (if any) + question.
   When `settings.smart_context_routing` is on, classify the question with a quick `omp -p --no-session --no-tools --model smol` call using
   `prompts/context_route.md` into `selection_only | fork_continue | global` and pick context accordingly (low confidence → default).
+  `settings.side_chat_model` (侧聊专属模型, Settings ▸ 通用; `"<selector>"` or `"<selector>:<level>"`) supplies the fork's `--model` when
+  the side-chat composer picker is left at its default; a per-panel picker choice still wins, and a selector unavailable in the
+  catalog falls back to inheriting the parent model.
 - `SessionView`: header (label, title, status, model, context usage from `get_state.contextUsage`, usage chip from `session_usage`,
   ✅ 验收 / ✅ 验收并归档 when pending Review, 恢复 for interrupted/suspended, 接管 for external, 聊天/终端 toggle). Message stream from
   `get_transcript` + live frames (use `message_update.message` snapshots for the in-flight assistant message; on terminal `agent_end` re-fetch
@@ -843,15 +939,15 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   omp-TUI-style tree (├─/└─, status icon, id, agent badge, current tool, model·thinking·tools·tokens·duration·cost).
   Clicking a row opens `SubagentSheet` (right slide-over, `Z_LAYER.modal`): 概览 / 提示词 / 过程 / 输出, tailing
   `subagent_transcript` every 1.5 s while running.
-- Answer footer (`AnswerFooter.tsx`): hover-only (always visible on the latest turn); duration, model, Git checkpoint status
-  (`TurnCheckpoint`: saved commit jumping to git timeline via `useTurnNav.showCommit`, modified files toggle, single-click "撤回这一轮"
-  undo with conflict detection), copy button, and side-chat fork button.
+- Answer footer (`AnswerFooter.tsx`): one quiet row — ghost icon buttons left (changed-files list toggle, saved commit jumping to
+  git timeline via `useTurnNav.showCommit`, "撤回这一轮" rollback with cascade conflict detection, copy, side-chat fork) and the
+  answer time on hover at the right end (opacity-reserved, never shifts); hover-only on older turns, always visible on the latest.
 - Image attachments: `ImageAttachment` (blob refs, clip files, mimeType, width, height) rendered via `ImageChips.tsx` with Tauri asset
   protocol (`protocol-asset` feature, scope `$HOME/.omp/agent/blobs/**`, `$APPCACHE/ompws-clip/**`) and full preview portaled at `Z_LAYER.modal`.
   User bubbles; assistant markdown; hidden items not shown (toggle).
 - Diff view component: line numbers, +/- colors; select lines → "批注" → comment textarea → adds Annotation `{source:"diff", file, lines, comment, text}`.
-- Text selection anywhere in the stream → floating toolbar "引用" (addAnnotation) / "在侧聊中提问" (`requestSideChat`) / "记到收集箱" (open
-  QuickCapture via `ui.openModal("quick-capture", {text, sessionId})`).
+- Text selection anywhere in the stream → floating toolbar "批注" (inline optional-comment input + destination segmented control 主对话|辅助对话 + ✓; Enter/✓ → addAnnotation under the session id or `sidechat:<parentId>`; numbered markers (`AnnotationMarkers`, distinct colour for side-chat) sit in the stream margin next to the quoted text) / "记到收集箱" (open
+  QuickCapture via `ui.openModal("quick-capture", {text, sessionId})`). "辅助对话" is disabled once the parent reaches the 3-level fork cap.
 - Slash commands (`features/chat/slash/`): `registry.ts` defines app commands (会话 /new /fork /rename /compact /handoff /export /copy
   /retry; 模型 /model /thinking /fast /advisor; 状态 /status /context /usage /tools /jobs /todo /stats; 集成 /mcp /plugins /memory
   /browser /computer /extended-context; 设置 /agents /approvals /login /settings), each with optional `settingsTarget`. `menu.ts`
@@ -859,10 +955,16 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   skill → 技能, custom/file → 自定义命令, extension/mcp_prompt → 扩展, other builtins → 更多 OMP 命令). `SlashMenu` is the Codex-style
   popup (gear "去设置" → `openSettingsTarget`). Unknown `/x` is sent to omp as a prompt; `command_output` frames render in
   `CommandOutputList` at the end of the thread.
-- Composer: Codex-style single container; annotation pills above input (remove ×), textarea (Enter send, Shift+Enter newline), bottom
+- Composer: Codex-style single container; one "N 条批注" chip above the input (hover/focus opens a popover listing every quote with its comment, edit ✎ / delete 🗑 / locate), textarea, bottom
   toolbar (attach, model picker, thinking level, held pill, context ring, round send/stop). Model picker (`get_available_models`/`set_model`), thinking
-  level (`set_thinking_level`). If session not live → `rpc_ensure_live` first. While streaming: Enter puts the message in the **held queue**
-  (zustand, persisted to localStorage per session), Cmd+Enter = steer now, Stop button = `abort`. While streaming, queued items show as a
+  level (`set_thinking_level`). If session not live → `rpc_ensure_live` first. Two settings (`sendShortcut`, `followUpBehavior`; in the settings JSON, defaults
+  `enter` / `steer`) drive the keys. `sendShortcut = enter`: Enter sends, Shift+Enter newline, ⌘/Ctrl+Enter sends. `mod-enter`: ⌘/Ctrl+Enter sends, Enter
+  and Shift+Enter newline. ⌥ (Alt) + send = the alternate follow-up. `features/chat/sendKeys.ts` (pure, vitest) maps the keydown to send/alternate/newline and
+  maps (`followUpBehavior`, alternate, streaming) to `send | steer | queue | interrupt`; IME composition never sends. Not streaming: every send is a plain
+  `sendPrompt`. While streaming: `steer` = `sendPrompt(..., {steer: true})` (`streamingBehavior: steer`); `queue` = **held queue** (zustand, persisted to
+  localStorage per session); `interrupt` = `abortTurn`, then wait until `live.streaming` is false (≤15 s, `interruptAndWait` in `send.ts`), then send normally;
+  on timeout the message goes to the held queue with an error toast. Alternate: steer↔queue, interrupt→queue. The round button shows Stop (`abort`) while
+  streaming; when the composer has text or quotes, a send button sits beside it performing the default follow-up (引导当前回合 / 本回合结束后发送 / 打断并发送; its title names the ⌥ chord).
   Codex-style popover list above the composer (text + image count, × remove; no reorder). When the turn ends and `settings.queueAutoSend`
   is on (default; `undefined` = on) items auto-send one at a time (each send restarts streaming; next turn-end sends the next). With it off,
   show the manual bar "有 N 条暂存" with 立即发送(合并为一条)/继续暂存/逐条确认; items editable, deletable, reorderable (↑↓).
@@ -875,8 +977,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   (kept after completion; seeded via `get_subagents` on attach). `tool_execution_update` keeps `partialResult.details`.
   `command_output` → `commandOutputs` (tagged with `pendingCommand`), `config_update` → model/thinking, `session_info_update` → title,
   `prompt_result` errors → output entry.
-- `SideChatPanel`: lists children of the selected session (label, title, status); "新建侧聊" input; consumes `composer.sideChatRequest`;
-  shows the selected child as a compact embedded `SessionView` (prop `compact`). Depth > 3 → "请开新主会话".
+- `SideChatPanel`: lists children of the selected session (label, title, status); "新建侧聊" composer; staged annotations (`sidechat:<parentId>`) show as an "N 条批注" chip (move-to-main via `moveAnnotation`); send formats them via `formatWithAnnotations` and appends to the open thread (`sendPrompt`) or creates a new side chat (`createSideChat`, quote blocks passed as `selection`); a slim staged bar under the open thread's header accepts the same send; the selected child shows as a compact embedded `SessionView` (prop `compact`). Depth > 3 → "请开新主会话".
 - `HeatmapPanel`: one cell per transcript message (grid, ~10px squares), user=blue, assistant brightness ∝ log(total tokens),
   toolResult grey, error red; tooltip with tokens/time; click scrolls the stream to that message (expose `scrollToItem(id)` via a small
   event in `stores/live.ts` or a DOM id `msg-<id>`).
@@ -899,7 +1000,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   The branch page keeps its controls visible and lets its list scroll through the full remaining panel height.
   Worktree rows separate branch identity from metadata and session controls; a single-worktree list stays compact,
   while multiple worktrees keep the adjustable list/detail split. Clicking a worktree focuses it; below,
-  a 提交改动 | 版本历史 tab pane shows that worktree: 提交改动 =
+  a 提交改动 | 版本历史 tab pane shows that worktree (auto-picks 版本历史 when the loaded change count is 0,
+  提交改动 when dirty; a manual pick wins until the selection changes or the count crosses empty/non-empty): 提交改动 =
   one-click 存档 (AI-written message by default; hand-written message behind a pencil toggle; warns while a session in the
   worktree is `working`) + files with +/- (click → diff modal, or `DocView` for md); 版本历史 = commit timeline grouped by day (time
   gutter + rail); an expanded commit offers 看看 (diff) / 试试 (▶ run this version: live log + URL + 停止/丢弃) / 回到 (keep later
@@ -993,14 +1095,26 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Extension (§8) + install at startup to `extension_path()` (overwrite when content differs) + `install_status_extension_globally`.
 
 ### F — Scheduled tasks (backend + frontend)
-- Cadence semantics: `ScheduleCadence::Interval { minutes }` (pure interval math) and `Daily { time: "HH:MM", weekdays: Vec<u32> }` (local-time, DST-safe search over next 14 days; empty weekdays = run every day).
+- Cadence semantics: `ScheduleCadence::Interval { minutes }` (pure interval math), `Daily { time, weekdays, every, anchor }` (local-time, DST-safe; empty weekdays = every `every` days counted from `anchor`, weekday subset = every `every` weeks — Monday-start weeks — counted from the anchor's week, on the listed days; `every`=1/absent ignores `anchor` = legacy daily/weekly), `Once { at: RFC3339 }` (absolute one-shot instant), `Monthly { day, time, every, anchor }` (every `every` months counted from the anchor's month; `day` clamps to the month's length — day 31 in Feb runs on the 28th/29th). On save (`upsert`), a missing `anchor` is filled with today's local date when `every`>1, and any `anchor` is dropped when `every`<=1.
+- Validation (`schedules_save`): `once.at` must be a future RFC3339 instant on create/new-time ("请选择未来的时间"; an unchanged past instant stays valid); `endAt` must be in the future ("结束时间需晚于现在"); monthly `day` 1-31; `time` HH:MM; interval ≥ 5 min; `every` 1-999 ("重复间隔需在 1-999 之间"); `anchor` parses as YYYY-MM-DD when present ("重复起始日期格式需为 YYYY-MM-DD"); `maxRuns` ≥ 1 when present ("运行次数需至少为 1").
+- Lifecycle (derived in `row_to_schedule`, never stored): `completed` = a `once` that already ran (a run row exists or `last_run_at` set) or a recurring schedule past `end_at` or at its `max_runs` cap (`runs_done >= max_runs`); `paused` = `!enabled` and not completed; else `active`. When a `once` fires or an `end_at`/cap is passed, `advance_after_run`/`record_run_start` sets `enabled=0, next_run_at=NULL` so the scheduler stops considering it.
+- Run counting (DB v9): `record_run_start` (renamed `stamp_last_run`) stamps `last_run_at` and increments `runs_done` where a run actually starts — scheduled dispatches and manual "run now" alike; `skipped` runs don't count. Reaching `max_runs` completes the schedule; editing `maxRuns`/`cadence` keeps `runs_done` (raising/clearing the cap re-activates, lowering to ≤ `runs_done` completes again); `schedules_set_enabled` refuses while capped ("已达到运行次数上限，请先编辑任务").
 - Background scheduler (`schedules::scheduler`): calculates earliest `next_run_at` across enabled schedules; sleeps via `tokio::select!` with `tokio::sync::Notify` wakeups on mutations (`schedules_save`, `schedules_delete`, `schedules_set_enabled`).
-- Catch-up: on startup and sleep-wake loop, checks all enabled schedules where `next_run_at <= now`; executes them immediately and advances `next_run_at` to prevent missed runs.
+- Catch-up: on startup and sleep-wake loop, checks all enabled schedules where `next_run_at <= now`; executes them immediately and advances `next_run_at` to prevent missed runs (a missed `once` runs once, then completes).
 - Skip-if-running: if a schedule's previous run is still `Running`, automated triggers mark the run `Skipped` ("上一次运行仍在进行中，已跳过") and advance `next_run_at` without duplicate executions; manual `schedules_run_now` returns an explicit error.
+- Re-enable guards (`schedules_set_enabled` / re-enable via save): `once` that already ran → Err "一次性任务已执行，请复制或重新创建"; recurring past `end_at` → Err "结束时间已过，请先修改结束时间".
+- Execution options: spawned RPC session gets `--model`/`--approval-mode`/`label` from the schedule and applies the stored `thinking` level via the `set_thinking_level` RPC (same command as the interactive composer) before the prompt is sent.
 - Isolated execution: supports `local` cwd or `worktree` mode (creates isolated worktree `.worktrees/sched-<slug>-<id8>` via git).
 - Completion detection: spawns RPC session with label `⏰ <name>`, subscribes to bus; turn completion detected by transition to `SessionStatus::Review` or `Idle` (after work started) → `Ok`; `Error` / `Interrupted` / non-zero process exit → `Error`. Timeout cap 1 hour.
 - Todo write: writes `ScheduleRun` record with status and last assistant text summary, updates schedule's `last_run_at` (and derives `last_run_status` via `SCHEDULE_COLS` subquery), and writes a `Todo` with kind `schedule_run`, source `schedule` (always visible, not gated by system/supervisor switches), dedupe key `sched:<run_id>`, payload `{"scheduleId","runId","ok":bool}`. Emits `schedules:changed`.
-- Frontend `SchedulesPage` (`centerView === "schedules"`): lists scheduled tasks with toggle switches, human-readable cadence descriptions (`humanCadence.ts`), last run status badges (运行中/成功/失败/跳过), expandable run histories with log snippets, manual "立即运行" trigger, and `ScheduleEditorModal` for creating/editing drafts.
+- Notify policy (`Schedule.notify`, DB v8): the `sched:<run_id>` todo is gated by `should_create_inbox_todo` —
+  `all` = always (legacy behavior), `important` = only failed runs (`!ok`, incl. `finish_with_error` early exits)
+  or runs observed in `AwaitingApproval`/`AwaitingAnswer`, `none` = never (the `schedule_runs` row is still written).
+- Session reuse (`Schedule.new_chat_each_run == false`, local mode only): the runner looks up the newest
+  `schedule_runs` row with a `session_id`, resolves its `session_meta.file_path` and starts the RPC session with
+  `StartOpts.resume_file`; a missing file or failed resume (incl. `SESSION_HELD:`) logs a warning and falls back
+  to a fresh session. The run row records the session id actually used. Worktree mode always starts fresh.
+- Frontend `SchedulesPage` (`centerView === "schedules"`): lists scheduled tasks with toggle switches, human-readable cadence descriptions (`humanCadence.ts`), last run status badges (运行中/成功/失败/跳过), expandable run histories with log snippets, manual "立即运行" trigger, inline rename (row pencil / 更多 ▸ 重命名; saves the full draft with only `name` changed, so `next_run_at` is kept), and `ScheduleEditorPage` (full-page editor replacing the list) for creating/editing drafts. The editor's composer toolbar has a Worktree chip (git repos only): pick an existing worktree of the repo as `cwd` (`runMode: "local"`) or "每次新建独立 Worktree" (`runMode: "worktree"`); the workspace chip resolves a linked-worktree `cwd` to its project via `gitRepoRoot`. The model chip shows the model only; the thinking level lives in the separate thinking picker.
 
 ### G — Skills & extensions catalog (backend + frontend)
 - Discovery roots:
@@ -1022,7 +1136,7 @@ All floating and layered surfaces throughout the desktop app MUST adhere to the 
 - **Viewport containment**: `FloatingLayer` automatically computes placement, flips to the opposite side when the preferred side lacks space, and clamps within `usableViewport()`. The usable viewport explicitly excludes the app bottom status bar (`[data-app-bottombar]`), ensuring floating surfaces never slide underneath it.
 - **Stacking tiers (`Z_LAYER`)**: Stacking order is strictly governed by `Z_LAYER` (mirrored as `--z-*` CSS variables in `index.css`), never ad-hoc integers:
   - `drawer`: 40 (`--z-drawer: 40`) — e.g. `SkillsPage` detail drawer
-  - `modal`: 50 (`--z-modal: 50`) — e.g. `NewSessionDialog`, `QuickAskDialog`, `DiagnoseDialog`, `ResumeMissingCwdDialog`, `ScheduleEditorModal`, `ImageChip` full preview
+  - `modal`: 50 (`--z-modal: 50`) — e.g. `NewSessionDialog`, `QuickAskDialog`, `DiagnoseDialog`, `ResumeMissingCwdDialog`, `ImageChip` full preview
   - `popover`: 60 (`--z-popover: 60`) — e.g. `PerfPopover`, `SessionStatsPopover`, filter popovers
   - `menu`: 65 (`--z-menu: 65`) — e.g. context menus, dropdown action menus (`plusMenu`, `wsMenu`, `ModelSelect`, `ThemeMenu`)
   - `hovercard`: 70 (`--z-hovercard: 70`) — e.g. `SessionHoverCard`, `WorktreeHoverCard`, heatmap tooltips

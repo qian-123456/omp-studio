@@ -1,6 +1,6 @@
 /** Codex-style "+" Add menu in the Composer bottom toolbar. */
 import clsx from "clsx";
-import { Check, FolderOpen, Lightbulb, Monitor, Paperclip, Target } from "lucide-react";
+import { Check, FolderOpen, Lightbulb, Monitor, Paperclip, Signature, Target } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 
@@ -50,6 +50,7 @@ export function AddMenuPopover({
 	onPickProject,
 	onGoal,
 	onTogglePlan,
+	onSketch,
 }: {
 	anchor: HTMLElement | null;
 	ignoreRef: RefObject<HTMLElement | null>;
@@ -60,6 +61,7 @@ export function AddMenuPopover({
 	onPickProject: () => void;
 	onGoal: () => void;
 	onTogglePlan: () => void;
+	onSketch: () => void;
 }) {
 	const run = (fn: () => void) => () => {
 		onClose();
@@ -88,6 +90,7 @@ export function AddMenuPopover({
 				active={planMode}
 				onClick={run(onTogglePlan)}
 			/>
+			<Item icon={<Signature size={14} className="text-emerald-500" />} title="Sketch" desc="Draw a sketch" onClick={run(onSketch)} />
 		</FloatingLayer>
 	);
 }

@@ -34,6 +34,7 @@ import type {
 	OmpUsageReportData,
 	PairingInfo,
 	PathCheck,
+	PerfBreakdown,
 	PrivacyMarkScope,
 	PrivacySnapshot,
 	SecretClassification,
@@ -49,6 +50,7 @@ import type {
 	ServiceInfo,
 	SessionMeta,
 	SessionMetaPatch,
+	SessionGroup,
 	Settings,
 	Schedule,
 	ScheduleDraft,
@@ -56,6 +58,7 @@ import type {
 	SkillsCatalog,
 	SkillUsageReport,
 	StartOpts,
+	SpaceMode,
 	SubagentSummary,
 	SubagentTranscript,
 	TmRun,
@@ -64,6 +67,7 @@ import type {
 	TranscriptPage,
 	TurnCheckpoint,
 	TurnUndoResult,
+	SessionSnapshot,
 	UsageSummary,
 	WorktreeInfo,
 	Workspace,
@@ -104,8 +108,8 @@ export const acceptSession = (sessionId: string, archive: boolean) =>
 
 export const listWorkspaces = () => invoke<Workspace[]>("list_workspaces");
 
-export const addWorkspace = (path: string) =>
-	invoke<Workspace>("add_workspace", { path });
+export const addWorkspace = (path: string, mode?: SpaceMode) =>
+	invoke<Workspace>("add_workspace", { path, mode: mode ?? null });
 
 export const removeWorkspace = (id: string) =>
 	invoke<void>("remove_workspace", { id });
@@ -113,8 +117,29 @@ export const removeWorkspace = (id: string) =>
 export const reorderWorkspaces = (ids: string[]) =>
 	invoke<void>("reorder_workspaces", { ids });
 
+export const listSessionGroups = () =>
+	invoke<SessionGroup[]>("list_session_groups");
+
+export const createSessionGroup = (mode: SpaceMode, name: string) =>
+	invoke<SessionGroup>("create_session_group", { mode, name });
+
+export const renameSessionGroup = (id: string, name: string) =>
+	invoke<SessionGroup>("rename_session_group", { id, name });
+
+export const deleteSessionGroup = (id: string) =>
+	invoke<void>("delete_session_group", { id });
+
+export const reorderSessionGroups = (ids: string[]) =>
+	invoke<void>("reorder_session_groups", { ids });
+
+/** Assign a global-workspace session to a group (null ungroups). */
+export const setSessionGroup = (sessionId: string, groupId: string | null) =>
+	invoke<void>("set_session_group", { sessionId, groupId });
+
 export const sessionUsage = (sessionId: string) =>
 	invoke<UsageSummary>("session_usage", { sessionId });
+export const sessionSnapshot = (sessionId: string) =>
+	invoke<SessionSnapshot>("session_snapshot", { sessionId });
 
 export const listModels = () => invoke<Model[]>("list_models");
 export const listWorkspaceFiles = (cwd: string) =>
@@ -313,7 +338,8 @@ export const gitSessionTurns = (sessionFile: string) =>
 export const gitWorktreeTurns = (cwd: string) =>
 	invoke<TurnCheckpoint[]>("git_worktree_turns", { cwd });
 
-/** Undo the latest turn of a session. force=false refuses when files changed since. */
+/** Undo a turn of a session: also rolls back every later non-undone turn
+ * (cascade). force=false refuses when files changed since those turns. */
 export const gitUndoTurn = (
 	cwd: string,
 	sessionFile: string,
@@ -356,10 +382,17 @@ export const validatePath = (path: string) =>
 export const saveClipboardImage = (base64Png: string) =>
 	invoke<string>("save_clipboard_image", { base64Png });
 
-export type { ProcessMemoryInfo } from "./contracts";
+export const saveShareImage = (base64Png: string, path: string) =>
+	invoke<void>("save_share_image", { base64Png, path });
+
+export type { PerfBreakdown, ProcessMemoryInfo } from "./contracts";
 
 export const getAppMemoryUsage = () =>
 	invoke<ProcessMemoryInfo>("app_memory_usage");
+
+/** System memory split (app / omp spawned / external / other / free) + instances. */
+export const perfBreakdown = () =>
+	invoke<PerfBreakdown>("perf_breakdown");
 
 // ---- D — todos / supervisor / summaries / diagnose ----
 

@@ -91,11 +91,13 @@ function elapsedLabel(ms: number): string {
 	return `${Math.max(1, Math.round(ms / 1000))}秒`;
 }
 
-/** Local open state unless the "expand all" toggle forces it. */
+/** Local open state; an "expand/collapse all" value seeds it until toggled. */
 function useDisclosure(forceExpanded?: boolean | null) {
-	const [isOpen, setIsOpen] = useState(false);
-	const open = forceExpanded ?? isOpen;
-	return { open, toggle: () => setIsOpen((v) => !v) };
+	const [isOpen, setIsOpen] = useState(Boolean(forceExpanded));
+	useEffect(() => {
+		if (forceExpanded != null) setIsOpen(forceExpanded);
+	}, [forceExpanded]);
+	return { open: isOpen, toggle: () => setIsOpen((v) => !v) };
 }
 
 /** Reasoning row: "正在思考" shimmer while running, "思考了 N 秒" once done. */
@@ -350,7 +352,7 @@ export function TurnSteps({
 								id={`msg-${step.id}`}
 								className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
 							>
-								<Markdown text={step.text} />
+								<Markdown text={step.text} sessionId={sessionId} />
 							</div>
 						);
 					case "notice":

@@ -72,6 +72,11 @@ pub fn ensure_dirs() -> io::Result<()> {
     if let Some(parent) = extension_path().parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // Seed the global workspace guide once; never overwrite user edits.
+    let guide = global_dir().join("AGENTS.md");
+    if !guide.exists() {
+        std::fs::write(&guide, include_str!("../prompts/global-agents.md"))?;
+    }
     Ok(())
 }
 

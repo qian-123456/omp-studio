@@ -5,12 +5,28 @@ use std::time::Duration;
 use tauri::Emitter;
 
 use crate::contracts::{
-    Schedule, ScheduleRun, ScheduleRunMode, ScheduleRunStatus, SessionStatus, StartOpts, TodoKind,
-    TodoSource,
+    Schedule, ScheduleNotify, ScheduleRun, ScheduleRunMode, ScheduleRunStatus, SessionStatus,
+    StartOpts, TodoKind, TodoSource,
 };
 use crate::schedules::store;
 use crate::state::{AppEvent, AppState};
 use crate::todos::store::NewTodo;
+
+/// Whether a finished run should produce an inbox todo under the schedule's
+/// notify policy. `needed_attention` = the run entered AwaitingApproval or
+/// AwaitingAnswer at any point (callers pass `false` when the run never
+/// reached a session); a failed run always counts as important.
+pub(crate) fn should_create_inbox_todo(
+    notify: ScheduleNotify,
+    ok: bool,
+    needed_attention: bool,
+) -> bool {
+    match notify {
+        ScheduleNotify::All => true,
+        ScheduleNotify::Important => !ok || needed_attention,
+        ScheduleNotify::None => false,
+    }
+}
 
 /// Execute a schedule run asynchronously in the background.
 pub fn spawn_run(state: AppState, schedule: Schedule) {
@@ -52,6 +68,19 @@ pub async fn run_now(state: AppState, id: String) -> Result<ScheduleRun, String>
         .map_err(|e| e.to_string())?
     };
 
+    // A manual run counts toward `max_runs` like any started run (chosen
+    // semantics; skipped runs do not count). A manual run of a one-shot
+    // completes the schedule (enabled=0, next_run_at=NULL).
+    {
+        let db = state.db.lock();
+        let _ = store::record_run_start(&db, &schedule.id, &store::now_rfc3339());
+        if matches!(
+            schedule.cadence,
+            crate::contracts::ScheduleCadence::Once { .. }
+        ) {
+            let _ = store::advance_after_run(&db, &schedule, chrono::Local::now());
+        }
+    }
     let _ = state.app.emit("schedules:changed", ());
 
     let run_clone = run.clone();
@@ -69,7 +98,6 @@ async fn execute_run(state: AppState, schedule: Schedule, run_id: String) {
     };
 
     if is_running {
-        let now = store::now_rfc3339();
         {
             let db = state.db.lock();
             let _ = store::create_run(
@@ -80,12 +108,7 @@ async fn execute_run(state: AppState, schedule: Schedule, run_id: String) {
                 ScheduleRunStatus::Skipped,
                 Some("上一次运行仍在进行中，已跳过"),
             );
-            let _ = store::update_last_and_next(
-                &db,
-                &schedule.id,
-                &now,
-                schedule.next_run_at.as_deref(),
-            );
+            let _ = store::advance_after_run(&db, &schedule, chrono::Local::now());
         }
         let _ = state.app.emit("schedules:changed", ());
         return;
@@ -101,9 +124,7 @@ async fn execute_run(state: AppState, schedule: Schedule, run_id: String) {
             ScheduleRunStatus::Running,
             None,
         );
-        let now = store::now_rfc3339();
-        let _ =
-            store::update_last_and_next(&db, &schedule.id, &now, schedule.next_run_at.as_deref());
+        let _ = store::record_run_start(&db, &schedule.id, &store::now_rfc3339());
     }
     let _ = state.app.emit("schedules:changed", ());
 
@@ -151,11 +172,33 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
     };
 
     let label = format!("⏰ {}", schedule.name);
-    let opts = StartOpts {
+
+    // `new_chat_each_run == false` continues the previous run's session —
+    // local mode only; worktree runs always start fresh.
+    let resume_file =
+        if !schedule.new_chat_each_run && matches!(schedule.run_mode, ScheduleRunMode::Local) {
+            let db = state.db.lock();
+            store::last_run_session_file(&db, &schedule.id).unwrap_or(None)
+        } else {
+            None
+        };
+    let resume_file = resume_file.filter(|f| {
+        let exists = Path::new(f).is_file();
+        if !exists {
+            tracing::warn!(
+                "schedule {}: resume file {f} missing; starting a fresh session",
+                schedule.id
+            );
+        }
+        exists
+    });
+
+    let mut opts = StartOpts {
         cwd: effective_cwd,
         model: schedule.model.clone(),
         approval_mode: schedule.approval_mode.clone(),
         label: Some(label),
+        resume_file,
         ..Default::default()
     };
 
@@ -163,6 +206,28 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
 
     let info = match crate::rpc::start(&state, &opts).await {
         Ok(info) => info,
+        Err(e) if opts.resume_file.is_some() => {
+            // Resume refused (e.g. SESSION_HELD: another process owns the file)
+            // or the file is unreadable — fall back to a fresh session.
+            tracing::warn!(
+                "schedule {}: resume failed ({e}); starting a fresh session",
+                schedule.id
+            );
+            opts.resume_file = None;
+            match crate::rpc::start(&state, &opts).await {
+                Ok(info) => info,
+                Err(e) => {
+                    finish_with_error(
+                        &state,
+                        &schedule,
+                        &run_id,
+                        None,
+                        &format!("启动会话失败：{e}"),
+                    );
+                    return;
+                }
+            }
+        }
         Err(e) => {
             finish_with_error(
                 &state,
@@ -187,6 +252,20 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
             None,
         );
     }
+    // Apply the schedule's thinking level (same RPC the interactive composer sends).
+    if let Some(level) = schedule
+        .thinking
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        if let Some(handle) = crate::rpc::get_handle(&session_id) {
+            let cmd = serde_json::json!({ "type": "set_thinking_level", "level": level });
+            if let Err(e) = crate::rpc::send_command(&handle, cmd).await {
+                tracing::warn!("schedule run {run_id}: set_thinking_level failed: {e}");
+            }
+        }
+    }
     let _ = state.app.emit("schedules:changed", ());
 
     if let Err(e) = crate::rpc::send_prompt(&state, &session_id, &schedule.prompt).await {
@@ -205,6 +284,9 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
     // already queued on `bus_rx`; only Idle/Review observed after the turn
     // actually started working count as completion.
     let mut started = false;
+    // Tracks whether the run ever stopped for approval/an answer — makes a
+    // finished run "important" under `ScheduleNotify::Important`.
+    let mut needed_attention = false;
     let target_sid = session_id.clone();
     loop {
         tokio::select! {
@@ -224,9 +306,11 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
                                 ok = false;
                                 break;
                             }
-                            SessionStatus::Working
-                            | SessionStatus::AwaitingApproval
-                            | SessionStatus::AwaitingAnswer => started = true,
+                            SessionStatus::AwaitingApproval | SessionStatus::AwaitingAnswer => {
+                                needed_attention = true;
+                                started = true;
+                            }
+                            SessionStatus::Working => started = true,
                             _ => {}
                         }
                     }
@@ -295,29 +379,34 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
             Some(&detail),
         );
 
-        let title = if ok {
-            format!("定时任务「{}」已完成", schedule.name)
-        } else {
-            format!("定时任务「{}」运行失败", schedule.name)
-        };
+        let create_todo = should_create_inbox_todo(schedule.notify, ok, needed_attention);
+        if create_todo {
+            let title = if ok {
+                format!("定时任务「{}」已完成", schedule.name)
+            } else {
+                format!("定时任务「{}」运行失败", schedule.name)
+            };
 
-        let new_todo = NewTodo {
-            kind: TodoKind::ScheduleRun,
-            source: TodoSource::Schedule,
-            session_id: Some(session_id),
-            title,
-            detail,
-            payload: serde_json::json!({
-                "scheduleId": schedule.id,
-                "runId": run_id,
-                "ok": ok,
-            }),
-        };
+            let new_todo = NewTodo {
+                kind: TodoKind::ScheduleRun,
+                source: TodoSource::Schedule,
+                session_id: Some(session_id),
+                title,
+                detail,
+                payload: serde_json::json!({
+                    "scheduleId": schedule.id,
+                    "runId": run_id,
+                    "ok": ok,
+                }),
+            };
 
-        let _ = crate::todos::store::upsert(&db, &format!("sched:{run_id}"), &new_todo, true);
+            let _ = crate::todos::store::upsert(&db, &format!("sched:{run_id}"), &new_todo, true);
+        }
     }
 
-    crate::todos::notify_changed(&state);
+    if should_create_inbox_todo(schedule.notify, ok, needed_attention) {
+        crate::todos::notify_changed(&state);
+    }
     let _ = state.app.emit("schedules:changed", ());
 }
 
@@ -340,22 +429,27 @@ fn finish_with_error(
             Some(err_msg),
         );
 
-        let new_todo = NewTodo {
-            kind: TodoKind::ScheduleRun,
-            source: TodoSource::Schedule,
-            session_id: session_id.map(str::to_string),
-            title: format!("定时任务「{}」运行失败", schedule.name),
-            detail: err_msg.to_string(),
-            payload: serde_json::json!({
-                "scheduleId": schedule.id,
-                "runId": run_id,
-                "ok": false,
-            }),
-        };
+        // Errors count as important under every policy except `none`.
+        if should_create_inbox_todo(schedule.notify, false, false) {
+            let new_todo = NewTodo {
+                kind: TodoKind::ScheduleRun,
+                source: TodoSource::Schedule,
+                session_id: session_id.map(str::to_string),
+                title: format!("定时任务「{}」运行失败", schedule.name),
+                detail: err_msg.to_string(),
+                payload: serde_json::json!({
+                    "scheduleId": schedule.id,
+                    "runId": run_id,
+                    "ok": false,
+                }),
+            };
 
-        let _ = crate::todos::store::upsert(&db, &format!("sched:{run_id}"), &new_todo, true);
+            let _ = crate::todos::store::upsert(&db, &format!("sched:{run_id}"), &new_todo, true);
+        }
     }
 
-    crate::todos::notify_changed(state);
+    if should_create_inbox_todo(schedule.notify, false, false) {
+        crate::todos::notify_changed(state);
+    }
     let _ = state.app.emit("schedules:changed", ());
 }

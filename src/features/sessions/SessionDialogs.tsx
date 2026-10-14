@@ -1,11 +1,11 @@
-import { AlertTriangle, Check, ExternalLink, FolderInput, Loader2, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, FolderInput, Loader2, Tag, Trash2, X } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Z_LAYER } from "../../components/FloatingLayer";
 import type { SessionMeta } from "../../lib/contracts";
 import { isSessionBusy } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
-import { takeoverExternal, updateSessionMeta } from "../../lib/ipc";
+import { setSessionGroup, takeoverExternal, updateSessionMeta } from "../../lib/ipc";
 import { isInside } from "../../lib/paths";
 import { sessionDisplayName } from "../../lib/sessionName";
 import { toast } from "../../lib/toast";
@@ -14,6 +14,8 @@ import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
 import { removeWorktreeFlow } from "../git/removeWorktree";
 import { archiveSessions } from "./archiveUndo";
+import { groupsForMode, useSessionGroups } from "./sessionGroups";
+import { useSidebarStore } from "./sidebarStore";
 import {
 	type ArchiveWorktreeTarget,
 	useSessionActions,
@@ -310,6 +312,12 @@ function AssignWorkspaceModal({
 }) {
 	const workspaces = useSessions((s) => s.workspaces);
 	const sessions = useSessions((s) => s.sessions);
+	const activeMode = useSidebarStore((s) => s.activeMode);
+	// Workspaces are per space: only the active mode's rows are assignable.
+	const modeWorkspaces = useMemo(
+		() => workspaces.filter((w) => w.mode === activeMode),
+		[workspaces, activeMode],
+	);
 	const [busy, setBusy] = useState(false);
 	useDialogFocusRestore();
 	const initialBtnRef = useRef<HTMLButtonElement>(null);
@@ -419,7 +427,7 @@ function AssignWorkspaceModal({
 				</div>
 
 				<div className="max-h-64 overflow-y-auto space-y-1 pr-1">
-					{workspaces.map((ws, idx) => {
+					{modeWorkspaces.map((ws, idx) => {
 						const isCurrent = commonWorkspaceId === ws.id;
 						return (
 							<button
@@ -459,6 +467,172 @@ function AssignWorkspaceModal({
 						{(commonWorkspaceId === "" || commonWorkspaceId === null) && (
 							<Check size={14} className="shrink-0" />
 						)}
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+/**
+ * Modal 2b: Move Session(s) into a SessionGroup (无项目 area only).
+ * Portaled to body at Z_LAYER.modal. groupId null = 移回无分组.
+ */
+function MoveToGroupModal({
+	sessionIds,
+	onClose,
+}: {
+	sessionIds: string[];
+	onClose: () => void;
+}) {
+	const groups = useSessionGroups((s) => s.groups);
+	const loadGroups = useSessionGroups((s) => s.load);
+	const activeMode = useSidebarStore((s) => s.activeMode);
+	const sessions = useSessions((s) => s.sessions);
+	const [busy, setBusy] = useState(false);
+	useDialogFocusRestore();
+	const initialBtnRef = useRef<HTMLButtonElement>(null);
+
+	useEffect(() => {
+		initialBtnRef.current?.focus();
+		void loadGroups();
+	}, [loadGroups]);
+
+	const modeGroups = useMemo(
+		() => groupsForMode(groups, activeMode),
+		[groups, activeMode],
+	);
+
+	// Current common groupId across the selection (null when mixed).
+	const commonGroupId = (() => {
+		if (sessionIds.length === 0) return null;
+		const first = sessions[sessionIds[0]]?.groupId ?? null;
+		return sessionIds.every((id) => (sessions[id]?.groupId ?? null) === first)
+			? first
+			: null;
+	})();
+
+	const handleMove = async (groupId: string | null) => {
+		if (busy) return;
+		setBusy(true);
+		try {
+			const results = await Promise.allSettled(
+				sessionIds.map((id) => setSessionGroup(id, groupId)),
+			);
+			const successes: SessionMeta[] = [];
+			let failedCount = 0;
+			for (let i = 0; i < results.length; i++) {
+				const r = results[i];
+				if (r.status === "fulfilled") {
+					const cur = useSessions.getState().sessions[sessionIds[i]];
+					if (cur) successes.push({ ...cur, groupId });
+				} else {
+					failedCount++;
+				}
+			}
+			if (successes.length > 0) useSessions.getState().upsert(successes);
+
+			if (failedCount === sessionIds.length) {
+				toast.error("移动分组失败");
+				return;
+			}
+			if (failedCount > 0) {
+				toast.info(`已移动 ${successes.length} 个会话，${failedCount} 个失败`);
+			} else {
+				toast.success(groupId ? "已移到分组" : "已移回无分组");
+			}
+			onClose();
+		} catch (err) {
+			toast.error(`移动分组失败: ${errMsg(err)}`);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<div
+			style={{ zIndex: Z_LAYER.modal }}
+			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
+			onMouseDown={(e) => {
+				if (e.target === e.currentTarget && !busy) onClose();
+			}}
+		>
+			<div
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="move-to-group-title"
+				onKeyDown={(e) => {
+					e.stopPropagation();
+					if (e.key === "Escape" && !busy) {
+						e.preventDefault();
+						onClose();
+					}
+					handleTabTrap(e);
+				}}
+				className="w-full max-w-sm rounded-2xl bg-[var(--bg-panel)] p-5 text-[var(--text)] shadow-apple-modal hairline flex flex-col gap-3"
+			>
+				<div className="flex items-center justify-between pb-1 border-b border-[var(--border-divider)]">
+					<div className="flex items-center gap-2 font-semibold text-sm">
+						<Tag size={16} />
+						<span id="move-to-group-title">
+							{sessionIds.length > 1
+								? `移到分组（已选 ${sessionIds.length} 个会话）`
+								: "移到分组"}
+						</span>
+					</div>
+					<button
+						type="button"
+						onClick={onClose}
+						className="press-scale text-[var(--text-muted)] hover:text-[var(--text)] p-1 rounded-md"
+						title="关闭"
+					>
+						<X size={15} />
+					</button>
+				</div>
+
+				<div className="max-h-64 overflow-y-auto space-y-1 pr-1">
+					{modeGroups.map((g, idx) => {
+						const isCurrent = commonGroupId === g.id;
+						return (
+							<button
+								key={g.id}
+								ref={idx === 0 ? initialBtnRef : undefined}
+								type="button"
+								disabled={busy}
+								onClick={() => handleMove(g.id)}
+								className={`press-scale flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition-colors ${
+									isCurrent
+										? "bg-[var(--primary)]/15 text-[var(--primary)] font-medium"
+										: "text-[var(--text)] hover:bg-[var(--bg-hover)]"
+								}`}
+							>
+								<span className="truncate">{g.name}</span>
+								{isCurrent && <Check size={14} className="shrink-0" />}
+							</button>
+						);
+					})}
+
+					{modeGroups.length === 0 && (
+						<div className="px-3 py-2 text-[11px] text-[var(--text-dim)]">
+							还没有分组，可在「Universal」侧栏中新建
+						</div>
+					)}
+
+					<div className="my-1 border-t border-[var(--border-divider)]" />
+
+					<button
+						type="button"
+						ref={modeGroups.length === 0 ? initialBtnRef : undefined}
+						disabled={busy}
+						onClick={() => handleMove(null)}
+						className={`press-scale flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition-colors ${
+							commonGroupId === null
+								? "bg-[var(--primary)]/15 text-[var(--primary)] font-medium"
+								: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
+						}`}
+					>
+						<span>无分组（移回 Universal 列表）</span>
+						{commonGroupId === null && <Check size={14} className="shrink-0" />}
 					</button>
 				</div>
 			</div>
@@ -566,6 +740,7 @@ function TakeoverModal({
 export function SessionDialogs() {
 	const archiveTarget = useSessionActions((s) => s.archiveWorktreeTarget);
 	const assignSessionIds = useSessionActions((s) => s.assignSessionIds);
+	const moveToGroupSessionIds = useSessionActions((s) => s.moveToGroupSessionIds);
 	const takeoverSessionId = useSessionActions((s) => s.takeoverSessionId);
 
 	const setArchiveTarget = useSessionActions(
@@ -574,13 +749,19 @@ export function SessionDialogs() {
 	const setAssignSessionIds = useSessionActions(
 		(s) => s.setAssignSessionIds,
 	);
+	const setMoveToGroupSessionIds = useSessionActions(
+		(s) => s.setMoveToGroupSessionIds,
+	);
 	const setTakeoverSessionId = useSessionActions(
 		(s) => s.setTakeoverSessionId,
 	);
 
 	if (
 		typeof document === "undefined" ||
-		(!archiveTarget && !assignSessionIds && !takeoverSessionId)
+		(!archiveTarget &&
+			!assignSessionIds &&
+			!moveToGroupSessionIds &&
+			!takeoverSessionId)
 	) {
 		return null;
 	}
@@ -597,6 +778,12 @@ export function SessionDialogs() {
 				<AssignWorkspaceModal
 					sessionIds={assignSessionIds}
 					onClose={() => setAssignSessionIds(null)}
+				/>
+			)}
+			{moveToGroupSessionIds && (
+				<MoveToGroupModal
+					sessionIds={moveToGroupSessionIds}
+					onClose={() => setMoveToGroupSessionIds(null)}
 				/>
 			)}
 			{takeoverSessionId && (

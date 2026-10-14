@@ -137,6 +137,16 @@ export const emptySessionLive = (): SessionLive => ({
 	thinkingDurations: {},
 });
 
+/** True once the session has seen any user/assistant activity: a transcript
+ * item, an unconfirmed optimistic echo, a turn in flight, or a streaming
+ * assistant snapshot. Used to tell a blank draft from a live session. */
+export const hasLiveUserActivity = (live: SessionLive | undefined | null): boolean =>
+	live != null &&
+	(live.items.length > 0 ||
+		live.pendingUserEchoes.length > 0 ||
+		live.streaming ||
+		live.streamingMessage !== null);
+
 type Frame = Record<string, unknown>;
 
 const asFrame = (v: unknown): Frame =>

@@ -108,21 +108,29 @@ function toDynamicItem(c: SlashCommand): SlashMenuItem {
 	};
 }
 
+/** App-feature toggles that hide menu items (omitted = feature on). */
+export interface SlashMenuOpts {
+	visualizeEnabled?: boolean;
+}
+
 /**
  * Build grouped menu sections for a `/` query.
  * Registry commands win over dynamic omp commands of the same name/alias.
- * `composerHasOtherText` hides `requiresEmptyComposer` commands.
+ * `composerHasOtherText` hides `requiresEmptyComposer` commands;
+ * `opts.visualizeEnabled === false` hides the Visualize entry.
  */
 export function buildSlashSections(
 	query: string,
 	commands: SlashCommand[],
 	composerHasOtherText: boolean,
+	opts?: SlashMenuOpts,
 ): SlashMenuSection[] {
 	const q = query.toLowerCase();
 	const scored: ScoredItem[] = [];
 
 	for (const def of SLASH_COMMANDS) {
 		if (composerHasOtherText && def.requiresEmptyComposer) continue;
+		if (def.feature === "visualize" && opts?.visualizeEnabled === false) continue;
 		const score = matchScore(q, def);
 		if (score >= 0) scored.push({ item: toItem(def), score });
 	}

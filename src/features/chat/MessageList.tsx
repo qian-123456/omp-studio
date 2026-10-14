@@ -1,3 +1,4 @@
+import { trimSideChatItems } from "./sideChatView";
 /** [B] Virtualized message stream: turns + in-flight assistant
  * message + live tool cards. Every turn and step carries `id="msg-<itemId>"` so the
  * heatmap and jump navigators can scroll to it. */
@@ -5,6 +6,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
+	Check,
 	ChevronsDownUp,
 	ChevronsUpDown,
 	Copy,
@@ -16,6 +18,7 @@ import {
 import React, {
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -29,11 +32,15 @@ import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useLive, type LiveTool, type UserEcho } from "../../stores/live";
+import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
+import { StartHero } from "../../components/StartHero";
 import { openContextWindowForModel } from "../settings/settingsTargets";
 import { PrivacyText } from "../privacy/SecretChip";
 import { AnswerFooter } from "./AnswerFooter";
+import { isShareableAnswer, isShareableUser } from "./share/shareEntries";
+import { useShareSelection } from "./share/shareStore";
 import { AttachmentThumb } from "./ImageChips";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
@@ -61,6 +68,18 @@ import {
 	noticeSummary,
 	type TurnBlock,
 } from "./turnGrouping";
+import {
+	detach,
+	initialFollowScroll,
+	onScrollPosition,
+	USER_INPUT_WINDOW_MS,
+	onWroteBottom,
+	shouldFollow,
+	shouldCompensateResize,
+	type FollowScrollState,
+} from "./followScroll";
+import { estimateBlockHeight } from "./blockEstimate";
+
 const EMPTY_ITEMS: TranscriptItem[] = [];
 const EMPTY_ECHOES: UserEcho[] = [];
 
@@ -136,18 +155,17 @@ function renderUserTextWithChips(
 	return parts;
 }
 
+/**
+ * Row padding that reserves the ChatTrace gutter. The dash strip lives at the
+ * pane's left edge, so the 3rem reserve is only needed when the message column
+ * spans the full pane (narrow); once it is centered with side margins the
+ * padding is symmetric.
+ */
+const TRACE_GUTTER_PAD = "pl-14 pr-3 @min-[864px]:px-3";
+
 /** 20px-square ghost icon button, matching the AnswerFooter actions. */
 const USER_ACTION_BTN =
 	"flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
-
-/**
- * Row padding next to the ChatTrace rail. Symmetric at every width: when the
- * column is centered the rail sits in the side margin, and when the column
- * spans the pane the rail collapses into the left padding and only peeks
- * open (as an overlay) on hover.
- */
-const TRACE_GUTTER_PAD = "px-3";
-
 
 /**
  * User message: right-aligned Codex bubble (70% max width, 22px radius,
@@ -304,66 +322,68 @@ const UserRow = React.memo(function UserRow({
 					)}
 				</div>
 			) : null}
-			{messageTime && (
-				<span className="px-1 tabular-nums text-[var(--text-30)]">{messageTime}</span>
-			)}
-			<div
-				className={clsx(
-					"flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
-					editing && "hidden",
+			<div className="flex items-center justify-end gap-1">
+				<div
+					className={clsx(
+						"flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
+						editing && "hidden",
+					)}
+				>
+					<button
+						type="button"
+						onClick={() => {
+							setDraft(userText);
+							setEditing(true);
+						}}
+						className={USER_ACTION_BTN}
+						title="编辑并重新发送"
+						aria-label="编辑并重新发送"
+					>
+						<Pencil size={12} />
+					</button>
+					<button
+						type="button"
+						onClick={async () => {
+							if (!userText.trim()) return;
+							const ok = await confirmDialog(
+								`确认重新发送该消息？\n\n"${userText.slice(0, 100)}${userText.length > 100 ? "…" : ""}"`,
+								{ okLabel: "重新发送" },
+							);
+							if (!ok) return;
+							try {
+								await sendPrompt(sessionId, userText);
+								toast.success("正在重新发送…");
+							} catch (e) {
+								if (!isResumeCancelled(e))
+									toast.error(`重新发送失败: ${errMsg(e)}`);
+							}
+						}}
+						className={USER_ACTION_BTN}
+						title="重新发送此消息"
+						aria-label="重新发送此消息"
+					>
+						<RotateCcw size={12} />
+					</button>
+					<button
+						type="button"
+						onClick={async () => {
+							try {
+								await copyText(userText);
+								toast.success("已复制用户消息");
+							} catch (e) {
+								toast.error(`复制失败: ${errMsg(e)}`);
+							}
+						}}
+						className={USER_ACTION_BTN}
+						title="复制消息"
+						aria-label="复制消息"
+					>
+						<Copy size={12} />
+					</button>
+				</div>
+				{messageTime && (
+					<span className="px-1 text-[11px] leading-5 tabular-nums text-[var(--text-30)]">{messageTime}</span>
 				)}
-			>
-				<button
-					type="button"
-					onClick={() => {
-						setDraft(userText);
-						setEditing(true);
-					}}
-					className={USER_ACTION_BTN}
-					title="编辑并重新发送"
-					aria-label="编辑并重新发送"
-				>
-					<Pencil size={12} />
-				</button>
-				<button
-					type="button"
-					onClick={async () => {
-						if (!userText.trim()) return;
-						const ok = await confirmDialog(
-							`确认重新发送该消息？\n\n"${userText.slice(0, 100)}${userText.length > 100 ? "…" : ""}"`,
-							{ okLabel: "重新发送" },
-						);
-						if (!ok) return;
-						try {
-							await sendPrompt(sessionId, userText);
-							toast.success("正在重新发送…");
-						} catch (e) {
-							if (!isResumeCancelled(e))
-								toast.error(`重新发送失败: ${errMsg(e)}`);
-						}
-					}}
-					className={USER_ACTION_BTN}
-					title="重新发送此消息"
-					aria-label="重新发送此消息"
-				>
-					<RotateCcw size={12} />
-				</button>
-				<button
-					type="button"
-					onClick={async () => {
-						try {
-							await copyText(userText);
-							toast.success("已复制用户消息");
-						} catch (e) {
-							toast.error(`复制失败: ${errMsg(e)}`);
-						}
-					}}
-					className={USER_ACTION_BTN}
-					title="复制消息"
-					aria-label="复制消息"
-				>
-					<Copy size={12} />
-				</button>
 			</div>
 		</div>
 	);
@@ -416,6 +436,56 @@ const ProtocolRow = React.memo(function ProtocolRow({
 });
 
 /**
+ * Share-selection wrapper: while selection mode is active it adds a left
+ * checkbox gutter, makes the whole message a single click target and mutes the
+ * message's own interactive content.
+ */
+function ShareSelectable({
+	active,
+	selected,
+	onToggle,
+	children,
+}: {
+	active: boolean;
+	selected: boolean;
+	onToggle: () => void;
+	children: React.ReactNode;
+}) {
+	if (!active) return <>{children}</>;
+	return (
+		<div
+			role="checkbox"
+			aria-checked={selected}
+			tabIndex={0}
+			onClick={onToggle}
+			onKeyDown={(e) => {
+				if (e.key === " " || e.key === "Enter") {
+					e.preventDefault();
+					onToggle();
+				}
+			}}
+			className={clsx(
+				"relative -mx-2 cursor-pointer select-none rounded-xl py-0.5 pl-9 pr-2 transition-colors focus-visible:outline-none",
+				selected ? "bg-[var(--bg-active-fill)]" : "hover:bg-[var(--ghost-hover)]",
+			)}
+		>
+			<span
+				aria-hidden
+				className={clsx(
+					"absolute left-2.5 top-3 flex h-4 w-4 items-center justify-center rounded-full border transition-colors",
+					selected
+						? "border-[var(--text)] bg-[var(--text)] text-[var(--bg-panel)]"
+						: "border-[var(--text-30)] text-transparent",
+				)}
+			>
+				<Check size={11} strokeWidth={3} />
+			</span>
+			<div className="pointer-events-none">{children}</div>
+		</div>
+	);
+}
+
+/**
  * A full turn in Codex style:
  * 1. Right-aligned user bubble
  * 2. Collapsed "已处理 …" divider over intermediate activity rows
@@ -432,7 +502,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionFile,
 	turnCheckpoint,
 	turns,
-	sessionWorking = false,
+	sessionWorking,
 	onTurnsChange,
 	highlightedId,
 }: {
@@ -452,6 +522,14 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	const streamingThisTurn = useLive(
 		(s) => isLatestTurn === true && s.sessions[sessionId]?.streaming === true,
 	);
+	const selecting = useShareSelection((s) => s.sessionId === sessionId);
+	const userSelected = useShareSelection(
+		(s) => !!block.userItem && s.selectedIds.includes(block.userItem.id),
+	);
+	const answerSelected = useShareSelection(
+		(s) => !!block.answerItem && s.selectedIds.includes(block.answerItem.id),
+	);
+	const toggleShare = useShareSelection((s) => s.toggle);
 	const turnStartedAt = useMemo(() => {
 		const ts = block.userItem?.ts ? Date.parse(block.userItem.ts) : Number.NaN;
 		return Number.isNaN(ts) ? undefined : ts;
@@ -474,7 +552,15 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	return (
 		<div className="flex flex-col py-1">
 			{/* User query bubble (absent when the turn has no visible user message) */}
-			{block.userItem && <UserRow sessionId={sessionId} item={block.userItem} />}
+			{block.userItem && (
+				<ShareSelectable
+					active={selecting && isShareableUser(block.userItem)}
+					selected={userSelected}
+					onToggle={() => block.userItem && toggleShare(block.userItem.id)}
+				>
+					<UserRow sessionId={sessionId} item={block.userItem} />
+				</ShareSelectable>
+			)}
 
 			{/* Collapsed intermediate steps under the worked-for divider */}
 			{block.intermediateSteps.length > 0 && (
@@ -484,7 +570,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					durationMs={block.durationMs}
 					isStreaming={streamingThisTurn && !block.answerItem}
 					startedAt={turnStartedAt}
-					forceExpanded={toolsExpanded || hasHighlightedStep}
+					forceExpanded={hasHighlightedStep || toolsExpanded}
 					toolResultsByCallId={toolResultsByCallId}
 					highlightedStepId={hasHighlightedStep ? highlightedId : null}
 				/>
@@ -504,13 +590,18 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						)}
 					</div>
 				) : (
+				<ShareSelectable
+					active={selecting && isShareableAnswer(block.answerItem)}
+					selected={answerSelected}
+					onToggle={() => block.answerItem && toggleShare(block.answerItem.id)}
+				>
 				<div
 					id={`msg-${block.answerItem.id}`}
 					className="group/answer relative flex flex-col items-start py-1"
 				>
 					<div className="max-w-full text-[length:var(--chat-font-size)] text-[var(--text)]">
 						{answerText ? (
-							<Markdown text={answerText} />
+							<Markdown text={answerText} sessionId={sessionId} />
 						) : (
 							<span className="italic text-[var(--text-40)]">空回复</span>
 						)}
@@ -522,25 +613,23 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 							/>
 						)}
 
-					{answerTime && (
-						<span className="mt-1 tabular-nums text-[11px] text-[var(--text-30)]" title="回复时间">
-							{answerTime}
-						</span>
-					)}
 					{/* Hover-only ghost footer */}
-					<AnswerFooter
-						sessionId={sessionId}
-						cwd={sessionCwd}
-						sessionFile={sessionFile}
-						turnCheckpoint={turnCheckpoint}
-						turns={turns}
-						sessionWorking={sessionWorking}
-						onDoneUndo={onTurnsChange}
-						answerText={answerText}
-						answerTime={answerTime}
-						answerItemId={block.answerItem?.id}
-					/>
+					{!selecting && (
+						<AnswerFooter
+							sessionId={sessionId}
+							cwd={sessionCwd}
+							sessionFile={sessionFile}
+							turnCheckpoint={turnCheckpoint}
+							turns={turns}
+							sessionWorking={sessionWorking}
+							answerTime={answerTime}
+							onDoneUndo={onTurnsChange}
+							answerText={answerText}
+							answerItemId={block.answerItem.id}
+						/>
+					)}
 				</div>
+				</ShareSelectable>
 				)
 			)}
 		</div>
@@ -580,11 +669,14 @@ const StreamingRow = React.memo(function StreamingRow({
 	toolsExpanded,
 	toolResultsByCallId,
 	onScrollRequest,
+	showTimer,
 }: {
 	sessionId: string;
 	toolsExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 	onScrollRequest?: () => void;
+	/** False when the latest turn's disclosure already shows the live timer. */
+	showTimer: boolean;
 }) {
 	const streamingMessage = useLive(
 		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
@@ -712,7 +804,7 @@ const StreamingRow = React.memo(function StreamingRow({
 
 	return (
 		<div className="flex flex-col py-1">
-			<ProcessingTimer startedAt={streamStartedAt} />
+			{showTimer && <ProcessingTimer startedAt={streamStartedAt} />}
 			<TurnSteps
 				sessionId={sessionId}
 				steps={steps}
@@ -742,6 +834,7 @@ export function MessageList({
 	sessionFile = "",
 	sessionWorking = false,
 	onTurnsChange,
+	onEmptyChange,
 }: {
 	sessionId: string;
 	scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -756,9 +849,15 @@ export function MessageList({
 	sessionFile?: string;
 	sessionWorking?: boolean;
 	onTurnsChange?: () => void;
+	/** Fires when the "nothing to show yet" state toggles, so the parent can
+	 * center the composer under the empty-state hero. */
+	onEmptyChange?: (empty: boolean) => void;
 }) {
 	// Narrow subscriptions — NOT subscribing to whole session object!
-	const items = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY_ITEMS);
+	const rawItems = useLive((s) => s.sessions[sessionId]?.items ?? EMPTY_ITEMS);
+	// Side chats inherit the parent's history; show only their own turns.
+	const isSideChat = useSessions((s) => (s.sessions[sessionId]?.forkDepth ?? 0) > 0);
+	const items = useMemo(() => trimSideChatItems(rawItems, isSideChat), [rawItems, isSideChat]);
 	const pendingEchoes = useLive(
 		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
 	);
@@ -783,22 +882,37 @@ export function MessageList({
 	const [showHidden, setShowHidden] = useState(false);
 	const [toolsExpanded, setToolsExpanded] = useState<boolean | null>(null);
 	const [highlightedId, setHighlightedId] = useState<string | null>(null);
+	// The clear timer must outlive effect re-runs: the jump effects consume their
+	// own request (re-triggering themselves), and a cleanup-bound timer would be
+	// cancelled before it fires, leaving the row highlighted forever.
+	const highlightTimerRef = useRef(0);
+	const flashHighlight = useCallback((id: string, ms: number) => {
+		window.clearTimeout(highlightTimerRef.current);
+		setHighlightedId(id);
+		highlightTimerRef.current = window.setTimeout(() => setHighlightedId(null), ms);
+	}, []);
+	useEffect(() => () => window.clearTimeout(highlightTimerRef.current), []);
 
-	const isPinnedRef = useRef(true);
-	const scrollRafRef = useRef(0);
+	const followRef = useRef<FollowScrollState>(initialFollowScroll(Date.now()));
+	const scrollTimerRef = useRef(0);
 	const lastHandledScrollReq = useRef<number>(0);
 	const containerRef = useRef<HTMLDivElement>(null);
 
-	// Throttled scroll to bottom using requestAnimationFrame
+	// Throttled scroll to bottom. Deliberately NOT requestAnimationFrame: an
+	// off-screen/occluded WKWebView suspends rAF indefinitely, and a single
+	// wedged callback used to leave scrollTimerRef non-zero forever — every
+	// later bottom write silently dropped, so reopened sessions stayed at the
+	// top. setTimeout(0) is never suspended and still coalesces bursts.
 	const scrollToBottomThrottled = useCallback(() => {
-		if (scrollRafRef.current) return;
-		scrollRafRef.current = requestAnimationFrame(() => {
-			scrollRafRef.current = 0;
+		if (scrollTimerRef.current) return;
+		scrollTimerRef.current = window.setTimeout(() => {
+			scrollTimerRef.current = 0;
 			const el = scrollRef.current;
-			if (el && isPinnedRef.current) {
+			if (el && shouldFollow(followRef.current)) {
 				el.scrollTop = el.scrollHeight;
+				followRef.current = onWroteBottom(followRef.current, Date.now());
 			}
-		});
+		}, 0);
 	}, [scrollRef]);
 
 	// Viewport pin state, mirrored to the host for the scroll-to-bottom pill.
@@ -823,6 +937,9 @@ export function MessageList({
 		scrollStateRef.current = next;
 		onScrollStateRef.current?.({ ...next });
 	};
+
+	// Viewport pin state is emitted from the scroll handler; the reopen
+	// re-arm lives in a layout effect below (must run before paint).
 
 	// Map of tool results by toolCallId
 	const toolResultsByCallId = useMemo(
@@ -852,14 +969,32 @@ export function MessageList({
 	const hiddenCount = items.length - visible.length;
 	const hasContent =
 		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive;
+	const isEmptyState = !isLoadingTranscript && !transcriptError && !hasContent;
+	useEffect(() => {
+		onEmptyChange?.(isEmptyState);
+	}, [isEmptyState, onEmptyChange]);
 
 	const virtualizer = useVirtualizer({
 		count: blocks.length,
 		getScrollElement: () => scrollRef.current,
-		estimateSize: () => 100,
+		estimateSize: (index) => estimateBlockHeight(blocks[index]),
 		overscan: 4,
 		getItemKey: (index) => blocks[index]?.id ?? index,
 	});
+	// Above-fold size changes must be compensated in every scroll direction.
+	// TanStack's default skips re-measurements during backward scroll, so a
+	// row above the viewport that grows after mount (visualize iframe 240px →
+	// real height) shifts the visible content. See shouldCompensateResize.
+	virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (
+		item,
+		_delta,
+		instance,
+	) =>
+		shouldCompensateResize(
+			item,
+			(instance.scrollOffset ?? 0) + instance.scrollAdjustments,
+			!instance.itemSizeCache.has(item.key),
+		);
 
 	// Last turn block — its footer stays visible even without hover.
 	const lastTurnId = useMemo(() => {
@@ -869,21 +1004,105 @@ export function MessageList({
 		return null;
 	}, [blocks]);
 
-	// Listen to user scroll in container to maintain pin-to-bottom state
+	// The latest turn already shows a live "正在处理" disclosure (persisted
+	// steps, no answer yet); StreamingRow must not add a second timer under it.
+	const latestDisclosureLive = useLive((s) => {
+		if (s.sessions[sessionId]?.streaming !== true) return false;
+		for (let i = blocks.length - 1; i >= 0; i--) {
+			const b = blocks[i];
+			if (b.type === "turn") return b.intermediateSteps.length > 0 && !b.answerItem;
+		}
+		return false;
+	});
+
+	// Listen to scroll/gesture activity to maintain the follow-bottom state
+	// machine. `scroll` events are only trusted outside the opening/settle
+	// windows — clamp events from collapsing content and the virtualizer's
+	// scrollTop adjustments are involuntary and must never detach. Upward
+	// wheel/key/touch gestures detach immediately so a user can interrupt the
+	// initial stick or live following at any time.
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (!el) return;
+		let prevTop = el.scrollTop;
+		// A scroll event with no user input behind it (virtualizer measurement
+		// adjustments, clamps, late content growth) must never detach following:
+		// at dispatch time the grown content makes it read as "far from bottom".
+		let lastInputAt = 0;
+		let pointerDown = false;
+		const markInput = () => {
+			lastInputAt = Date.now();
+		};
 		const handleScroll = () => {
 			const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-			const pinned = dist < 120;
-			isPinnedRef.current = pinned;
-			emitScrollState({
-				nearBottom: pinned,
-				hasNewMessages: pinned ? false : undefined,
-			});
+			const movedUp = el.scrollTop < prevTop;
+			prevTop = el.scrollTop;
+			const now = Date.now();
+			const userActive = pointerDown || now - lastInputAt < USER_INPUT_WINDOW_MS;
+			const r = onScrollPosition(followRef.current, dist, now, movedUp, userActive);
+			followRef.current = r.state;
+			if (r.trusted) {
+				emitScrollState({
+					nearBottom: r.state.phase === "following",
+					hasNewMessages: r.state.phase === "following" ? false : undefined,
+				});
+			}
+		};
+		const gestureDetach = () => {
+			followRef.current = detach(followRef.current);
+		};
+		const onWheel = (e: WheelEvent) => {
+			markInput();
+			if (e.deltaY < 0) gestureDetach();
+		};
+		const onKeyDown = (e: KeyboardEvent) => {
+			markInput();
+			if (
+				e.key === "ArrowUp" ||
+				e.key === "PageUp" ||
+				e.key === "Home"
+			) {
+				gestureDetach();
+			}
+		};
+		let touchY = 0;
+		const onTouchStart = (e: TouchEvent) => {
+			markInput();
+			touchY = e.touches[0]?.clientY ?? 0;
+		};
+		const onTouchMove = (e: TouchEvent) => {
+			markInput();
+			const y = e.touches[0]?.clientY ?? touchY;
+			if (y - touchY > 2) gestureDetach(); // finger up = scroll toward top
+			touchY = y;
+		};
+		// Scrollbar-pill drags and text-selection autoscroll hold a pointer down.
+		const onPointerDown = () => {
+			pointerDown = true;
+			markInput();
+		};
+		const onPointerUp = () => {
+			pointerDown = false;
+			markInput();
 		};
 		el.addEventListener("scroll", handleScroll, { passive: true });
-		return () => el.removeEventListener("scroll", handleScroll);
+		el.addEventListener("wheel", onWheel, { passive: true });
+		el.addEventListener("keydown", onKeyDown);
+		el.addEventListener("touchstart", onTouchStart, { passive: true });
+		el.addEventListener("touchmove", onTouchMove, { passive: true });
+		window.addEventListener("pointerdown", onPointerDown, true);
+		window.addEventListener("pointerup", onPointerUp, true);
+		window.addEventListener("pointercancel", onPointerUp, true);
+		return () => {
+			el.removeEventListener("scroll", handleScroll);
+			el.removeEventListener("wheel", onWheel);
+			el.removeEventListener("keydown", onKeyDown);
+			el.removeEventListener("touchstart", onTouchStart);
+			el.removeEventListener("touchmove", onTouchMove);
+			window.removeEventListener("pointerdown", onPointerDown, true);
+			window.removeEventListener("pointerup", onPointerUp, true);
+			window.removeEventListener("pointercancel", onPointerUp, true);
+		};
 	}, [scrollRef]);
 
 	// ResizeObserver for dynamic content expansion during streaming
@@ -897,15 +1116,42 @@ export function MessageList({
 		ro.observe(target);
 		return () => {
 			ro.disconnect();
-			if (scrollRafRef.current) {
-				cancelAnimationFrame(scrollRafRef.current);
+			if (scrollTimerRef.current) {
+				clearTimeout(scrollTimerRef.current);
+				scrollTimerRef.current = 0;
 			}
 		};
 	}, [scrollRef, scrollToBottomThrottled]);
 
-	// Auto-scroll when new blocks arrive
+	// Reopen = follow-bottom, no matter how the previous session was left:
+	// switching sessions reuses this component (and the scroll element), so
+	// the machine must be re-armed before the stale clamp `scroll` event —
+	// queued when the previous transcript collapses — can be processed.
+	// This is a LAYOUT effect: it pins pre-paint (no flash of the top) and
+	// cannot be wedged the way a requestAnimationFrame or timer callback can.
+	// Declared after useVirtualizer so it runs after its layout effects.
+	useLayoutEffect(() => {
+		followRef.current = initialFollowScroll(Date.now());
+		emitScrollState({ nearBottom: true, hasNewMessages: false });
+	}, [sessionId]);
+
+	// Pin to the bottom whenever content appears or grows while following.
+	// Runs synchronously post-commit (before paint), covering first mount,
+	// the sessionId switch commit, the clear→load commits, pending echoes,
+	// and the streaming row mounting/unmounting — without timers.
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (el && shouldFollow(followRef.current)) {
+			el.scrollTop = el.scrollHeight;
+			followRef.current = onWroteBottom(followRef.current, Date.now());
+		}
+	}, [sessionId, blocks.length, pendingEchoes.length, isStreamingActive, showHidden, scrollRef]);
+
+	// Auto-scroll when new blocks arrive: the pin already ran pre-paint; this
+	// passive pass coalesces the trailing write (handles heights that settle
+	// after commit) and flags "new messages" while detached.
 	useEffect(() => {
-		if (isPinnedRef.current) {
+		if (shouldFollow(followRef.current)) {
 			scrollToBottomThrottled();
 		} else if (blocks.length > 0 || pendingEchoes.length > 0) {
 			emitScrollState({ hasNewMessages: true });
@@ -936,11 +1182,13 @@ export function MessageList({
 		});
 
 		if (targetIndex >= 0) {
+			// Jump wins over follow-bottom for the duration of the smooth scroll.
+			followRef.current = detach(followRef.current);
 			virtualizer.scrollToIndex(targetIndex, {
 				align: "center",
 				behavior: "smooth",
 			});
-			setHighlightedId(targetId);
+			flashHighlight(targetId, 3000);
 			const scrollTimer = setTimeout(() => {
 				const el =
 					document.getElementById(`msg-${targetId}`) ||
@@ -949,16 +1197,10 @@ export function MessageList({
 					el.scrollIntoView({ behavior: "smooth", block: "center" });
 				}
 			}, 120);
-			const timer = setTimeout(() => {
-				setHighlightedId(null);
-			}, 3000);
 			useLive.getState().clearScrollRequest(sessionId);
-			return () => {
-				clearTimeout(scrollTimer);
-				clearTimeout(timer);
-			};
+			return () => clearTimeout(scrollTimer);
 		}
-	}, [scrollRequest, blocks, virtualizer, sessionId]);
+	}, [scrollRequest, blocks, virtualizer, sessionId, flashHighlight]);
 
 	// Consume cross-feature "jump to chat turn" requests (git timeline → chat)
 	const revealTurn = useTurnNav((s) => s.revealTurn);
@@ -974,14 +1216,11 @@ export function MessageList({
 		lastHandledReveal.current = revealTurn.nonce;
 		useTurnNav.getState().clearTurn();
 		if (idx < 0) return;
-
+		// Jump wins over follow-bottom for the duration of the smooth scroll.
+		followRef.current = detach(followRef.current);
 		virtualizer.scrollToIndex(idx, { align: "center", behavior: "smooth" });
-		setHighlightedId(revealTurn.userItemId);
-		const timer = setTimeout(() => {
-			setHighlightedId(null);
-		}, 2500);
-		return () => clearTimeout(timer);
-	}, [revealTurn, blocks, virtualizer, sessionId, isLoadingTranscript]);
+		flashHighlight(revealTurn.userItemId, 2500);
+	}, [revealTurn, blocks, virtualizer, sessionId, isLoadingTranscript, flashHighlight]);
 
 	return (
 		<div className="relative flex h-full flex-col">
@@ -1050,48 +1289,14 @@ export function MessageList({
 				</div>
 			)}
 
-			{/* Empty state guidance — plain centered tertiary text, no icon tile */}
-			{!isLoadingTranscript && !transcriptError && !hasContent && (
-				<div className="flex h-full flex-col items-center justify-center p-6 text-center">
-					<p className="text-[14px] font-medium text-[var(--text-60)]">
-						准备就绪，随时提问
-					</p>
-					<p className="mt-1 mb-5 max-w-sm text-[12px] leading-normal text-[var(--text-30)]">
-						在下方输入框描述你的任务，或者点击以下快捷指令开始
-					</p>
-					<div className="grid w-full max-w-md grid-cols-2 gap-2 text-left">
-						{[
-							"分析当前工作区代码结构与架构",
-							"检查 git 改动并总结变更点",
-							"审查最近提交并排查潜在 Bug",
-							"为当前项目运行测试并报告问题",
-						].map((prompt) => (
-							<button
-								key={prompt}
-								type="button"
-								onClick={async () => {
-									try {
-										await sendPrompt(sessionId, prompt);
-										toast.info("已发送指令");
-									} catch (e) {
-										if (!isResumeCancelled(e))
-											toast.error(`发送失败: ${errMsg(e)}`);
-									}
-								}}
-								className="cursor-pointer rounded-[10px] border border-[var(--line)] bg-transparent p-3 text-[11px] leading-5 text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-							>
-								{prompt}
-							</button>
-						))}
-					</div>
-				</div>
-			)}
+			{/* Empty state hero — the parent centers the composer right under it. */}
+			{isEmptyState && <StartHero />}
 
 			{/* Stream list */}
 			<div className="relative min-h-0 flex-1">
 				<div
 					ref={containerRef}
-					className="relative mx-auto w-[calc(100%-4rem)] pb-8 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
+					className="relative mx-auto w-full pb-8 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
 				>
 					{/* Virtualized committed transcript */}
 					{blocks.length > 0 && (
@@ -1180,6 +1385,7 @@ export function MessageList({
 								toolsExpanded={toolsExpanded}
 								toolResultsByCallId={toolResultsByCallId}
 								onScrollRequest={scrollToBottomThrottled}
+								showTimer={!latestDisclosureLive}
 							/>
 						</div>
 					)}

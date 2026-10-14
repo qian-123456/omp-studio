@@ -1,5 +1,6 @@
 /**
- * Composer state: annotations (pills) per session + side-chat requests (§10). [LEAD]
+ * Composer state: annotations (pills) per session and per side-chat target
+ * (`sidechat:<parentId>` key), drafts, focus and prompt history (§10). [LEAD]
  */
 
 import { create } from "zustand";
@@ -33,6 +34,14 @@ export interface ComposerState {
 	): void;
 	removeAnnotation(sessionId: string, id: string): void;
 	clearAnnotations(sessionId: string): void;
+	/**
+	 * Move one annotation between lists (e.g. main composer ⇄ side-chat
+	 * composer via `sideChatAnnKey`); preserves fields, assigns a fresh id.
+	 */
+	moveAnnotation(fromKey: string, toKey: string, id: string): void;
+	/** Last-picked destination for new stream annotations (persisted). */
+	annotationTarget: AnnotationTarget;
+	setAnnotationTarget(target: AnnotationTarget): void;
 	/** Image attachments per session with ordered index (1, 2, 3...). */
 	images: Record<string, ComposerImage[]>;
 	addImage(
@@ -63,13 +72,6 @@ export interface ComposerState {
 	/** Nonce to trigger composer textarea auto-focus by sessionId. */
 	focusNonce: Record<string, number>;
 	focusComposer(sessionId: string): void;
-	/** Set by any feature, consumed by SideChatPanel. */
-	sideChatRequest: {
-		parentSessionId: string;
-		selection?: string;
-	} | null;
-	requestSideChat(parentSessionId: string, selection?: string): void;
-	clearSideChatRequest(): void;
 }
 const STORAGE_KEY_HISTORY = "ompws:composer-history";
 const MAX_HISTORY = 20;
@@ -105,6 +107,25 @@ function saveHistory(history: string[]): void {
 
 const STORAGE_KEY_DRAFTS = "omp_composer_drafts";
 const STORAGE_KEY_SIDECHAT_DRAFTS = "omp_sidechat_drafts";
+const STORAGE_KEY_ANNOTATION_TARGET = "ompws:annotation-target";
+
+/** Destination segmented control in the selection comment box. */
+export type AnnotationTarget = "main" | "sidechat";
+
+function loadAnnotationTarget(): AnnotationTarget {
+	try {
+		if (typeof localStorage === "undefined") return "main";
+		return localStorage.getItem(STORAGE_KEY_ANNOTATION_TARGET) === "sidechat"
+			? "sidechat"
+			: "main";
+	} catch {
+		return "main";
+	}
+}
+
+/** Store key holding staged side-chat annotations of a parent session. */
+export const sideChatAnnKey = (parentId: string): string =>
+	`sidechat:${parentId}`;
 
 /** Load a string->string map; empty values are dropped. */
 function loadMap(key: string): Record<string, string> {
@@ -175,6 +196,33 @@ export const useComposer = create<ComposerState>((set) => ({
 		set((s) => ({
 			annotations: { ...s.annotations, [sessionId]: [] },
 		})),
+	moveAnnotation: (fromKey, toKey, id) =>
+		set((s) => {
+			if (fromKey === toKey) return s;
+			const from = s.annotations[fromKey] ?? [];
+			const moved = from.find((a) => a.id === id);
+			if (!moved) return s;
+			return {
+				annotations: {
+					...s.annotations,
+					[fromKey]: from.filter((a) => a.id !== id),
+					[toKey]: [
+						...(s.annotations[toKey] ?? []),
+						{ ...moved, id: `ann-${nextId++}` },
+					],
+				},
+			};
+		}),
+	annotationTarget: loadAnnotationTarget(),
+	setAnnotationTarget: (target) =>
+		set(() => {
+			try {
+				localStorage.setItem(STORAGE_KEY_ANNOTATION_TARGET, target);
+			} catch {
+				/* storage unavailable */
+			}
+			return { annotationTarget: target };
+		}),
 	images: {},
 	addImage: (sessionId, path, name, dimensions) => {
 		const img: ComposerImage = {
@@ -265,10 +313,6 @@ export const useComposer = create<ComposerState>((set) => ({
 				[sessionId]: (s.focusNonce[sessionId] ?? 0) + 1,
 			},
 		})),
-	sideChatRequest: null,
-	requestSideChat: (parentSessionId, selection) =>
-		set({ sideChatRequest: { parentSessionId, selection } }),
-	clearSideChatRequest: () => set({ sideChatRequest: null }),
 }));
 
 /**

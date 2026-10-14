@@ -32,6 +32,7 @@ import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
+import { useSidebarStore } from "../sessions/sidebarStore";
 import { useSettings } from "../settings/store";
 import { defaultSlug, runningInRepo } from "./helpers";
 
@@ -69,6 +70,12 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	const closeModal = useUi((s) => s.closeModal);
 	const selectSession = useUi((s) => s.selectSession);
 	const defaultModel = useSettings((s) => s.settings?.newSessionModel);
+	// Spaces are isolated: the dialog only offers the active mode's workspaces.
+	const activeMode = useSidebarStore((s) => s.activeMode);
+	const modeWorkspaces = useMemo(
+		() => workspaces.filter((w) => w.mode === activeMode),
+		[workspaces, activeMode],
+	);
 
 	useEscapeKey(closeModal);
 
@@ -86,10 +93,10 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 	const [wsSel, setWsSel] = useState(() => {
 		if (propWs && workspaces.some((w) => w.id === propWs)) return propWs;
-		const match = workspaces.find((w) => w.path === propCwd);
+		const match = modeWorkspaces.find((w) => w.path === propCwd);
 		if (match) return match.id;
 		if (propCwd) return CUSTOM;
-		return workspaces[0]?.id ?? CUSTOM;
+		return modeWorkspaces[0]?.id ?? CUSTOM;
 	});
 	const [customCwd, setCustomCwd] = useState(propCwd);
 	const [globalDir, setGlobalDir] = useState("");
@@ -179,10 +186,10 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 	const cwd = useMemo(() => {
 		if (wsSel === CUSTOM) return customCwd.trim();
-		const w = workspaces.find((x) => x.id === wsSel);
+		const w = modeWorkspaces.find((x) => x.id === wsSel);
 		if (!w) return customCwd.trim();
 		return w.kind === "global" ? globalDir : w.path;
-	}, [wsSel, workspaces, customCwd, globalDir]);
+	}, [wsSel, modeWorkspaces, customCwd, globalDir]);
 
 	// Detect whether the chosen cwd is inside a git repo (gates the worktree option).
 	useEffect(() => {
@@ -282,6 +289,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				model: modelSel || defaultModel || null,
 				approvalMode: null, // per-session approval removed — Settings owns it
 				workspaceId: wsSel === CUSTOM ? null : wsSel,
+				mode: activeMode,
 				planYolo: planYolo || null,
 				prompt,
 			});
@@ -373,10 +381,10 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					onChange={(e) => setWsSel(e.target.value)}
 					containerClassName="mb-2"
 				>
-					{propCwd && !workspaces.some((w) => w.path === propCwd) && (
+					{propCwd && !modeWorkspaces.some((w) => w.path === propCwd) && (
 						<option value={CUSTOM}>传入目录：{propCwd}</option>
 					)}
-					{workspaces.map((w) => (
+					{modeWorkspaces.map((w) => (
 						<option key={w.id} value={w.id}>
 							{w.kind === "global" ? "🌐 " : ""}
 							{w.name}（{w.path}）

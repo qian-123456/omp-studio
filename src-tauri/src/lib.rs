@@ -23,6 +23,7 @@ mod skills;
 mod state;
 mod terminal;
 mod todos;
+mod visualize;
 
 use contracts::{AppPaths, Settings};
 use state::AppState;
@@ -42,6 +43,7 @@ async fn save_settings(
 ) -> Result<Settings, String> {
     let saved = settings::save(&state, settings).await?;
     notify::refresh_badge(&state).await;
+    settings::apply_window_title(&state);
     Ok(saved)
 }
 
@@ -126,6 +128,7 @@ pub fn run() {
             rpc::init(state.clone());
             git::init(state.clone());
             services::init(state.clone());
+            settings::apply_window_title(&state);
             mobile::init(state.clone());
             terminal::init(state.clone());
             schedules::init(state.clone());
@@ -147,7 +150,14 @@ pub fn run() {
             catalog::commands::add_workspace,
             catalog::commands::remove_workspace,
             catalog::commands::reorder_workspaces,
+            catalog::commands::list_session_groups,
+            catalog::commands::create_session_group,
+            catalog::commands::rename_session_group,
+            catalog::commands::delete_session_group,
+            catalog::commands::reorder_session_groups,
+            catalog::commands::set_session_group,
             catalog::commands::session_usage,
+            catalog::commands::session_snapshot,
             catalog::commands::rescan_sessions,
             catalog::commands::delete_session,
             catalog::commands::list_models,
@@ -210,7 +220,9 @@ pub fn run() {
             services::commands::fs_read_dir,
             services::commands::validate_path,
             services::commands::save_clipboard_image,
+            services::commands::save_share_image,
             services::commands::app_memory_usage,
+            services::commands::perf_breakdown,
             // D — todos / supervisor / summaries / diagnose
             todos::commands::todos_list,
             todos::commands::todos_act,

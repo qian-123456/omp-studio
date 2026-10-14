@@ -20,6 +20,11 @@ export function shortPath(path: string, home?: string | null): string {
 	return path;
 }
 
+/** Path without trailing slashes, for equality checks between path strings. */
+export function trimTrailingSlash(path: string): string {
+	return path.replace(/\/+$/, "");
+}
+
 export function basename(path: string): string {
 	const parts = path.replace(/\/+$/, "").split("/");
 	return parts[parts.length - 1] || path;

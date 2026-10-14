@@ -8,7 +8,8 @@ use serde_json::Value;
 
 use super::parse::content_text;
 use crate::contracts::{
-    ToolCall, ToolResultInfo, TranscriptItem, TranscriptKind, TranscriptPage, Usage,
+    SessionSnapshot, ToolCall, ToolResultInfo, TranscriptItem, TranscriptKind, TranscriptPage,
+    Usage,
 };
 
 /// Read complete lines from `from_offset` and normalize them.
@@ -62,9 +63,22 @@ pub fn normalize_entry(v: &Value) -> Option<TranscriptItem> {
     match v.get("type").and_then(Value::as_str)? {
         "message" => normalize_message(v.get("message")?, &mut item),
         "custom_message" => {
-            item.kind = TranscriptKind::Custom;
-            item.text = opt(content_text(v.get("content")));
-            item.hidden = v.get("display").and_then(Value::as_bool) != Some(true);
+            // A user-invoked skill (`/skill:x args`) starts its own turn. Kept as
+            // a generic custom item it would be folded into the previous turn as
+            // a notice, hiding that turn's real answer behind the skill's reply.
+            let skill_prompt = (v.get("customType").and_then(Value::as_str)
+                == Some("skill-prompt")
+                && v.get("display").and_then(Value::as_bool) == Some(true))
+            .then(|| v.pointer("/details/prompt").and_then(Value::as_str))
+            .flatten();
+            if let Some(prompt) = skill_prompt {
+                item.kind = TranscriptKind::User;
+                item.text = Some(prompt.to_string());
+            } else {
+                item.kind = TranscriptKind::Custom;
+                item.text = opt(content_text(v.get("content")));
+                item.hidden = v.get("display").and_then(Value::as_bool) != Some(true);
+            }
         }
         "compaction" => {
             item.kind = TranscriptKind::Compaction;
@@ -246,6 +260,53 @@ pub fn sum_usage(path: &Path) -> std::io::Result<(u64, f64)> {
     Ok((tokens, cost))
 }
 
+/// Last thinking level and context size recorded in the transcript. File order
+/// is treated as chronological; side branches are not distinguished.
+pub fn session_snapshot(path: &Path) -> std::io::Result<SessionSnapshot> {
+    let reader = BufReader::with_capacity(256 * 1024, File::open(path)?);
+    let mut snap = SessionSnapshot::default();
+    for line in reader.split(b'\n') {
+        let line = line?;
+        // Cheap prefilter before JSON parsing.
+        let level = contains(&line, b"\"thinking_level_change\"");
+        let compaction = contains(&line, b"\"compaction\"");
+        let usage = contains(&line, b"\"usage\"") && contains(&line, b"\"assistant\"");
+        if !(level || compaction || usage) {
+            continue;
+        }
+        let Ok(v) = serde_json::from_slice::<Value>(&line) else {
+            continue;
+        };
+        match v.get("type").and_then(Value::as_str) {
+            Some("thinking_level_change") => {
+                let l = v
+                    .get("configured")
+                    .and_then(Value::as_str)
+                    .or_else(|| v.get("thinkingLevel").and_then(Value::as_str));
+                if let Some(l) = l.filter(|l| !l.is_empty()) {
+                    snap.thinking_level = Some(l.to_string());
+                }
+            }
+            // The pre-compaction request size no longer describes the context.
+            Some("compaction") => snap.context_tokens = None,
+            Some("message") => {
+                if v.pointer("/message/role").and_then(Value::as_str) != Some("assistant") {
+                    continue;
+                }
+                if let Some(u) = v.pointer("/message/usage") {
+                    let u = parse_usage(u);
+                    let prompt = u.input + u.cache_read + u.cache_write;
+                    if prompt > 0 {
+                        snap.context_tokens = Some(prompt);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(snap)
+}
+
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
@@ -302,6 +363,7 @@ mod tests {
                 K::Compaction
             ]
         );
+
         assert!(items[1].hidden);
         assert_eq!(items[2].text.as_deref(), Some("do it"));
         assert_eq!(items[2].images.len(), 1);
@@ -313,6 +375,20 @@ mod tests {
         let r = items[4].tool_result.as_ref().unwrap();
         assert_eq!((r.tool_call_id.as_str(), r.text.as_str()), ("c1", "a.txt"));
         assert_eq!(items[5].text.as_deref(), Some("sum"));
+    }
+
+    #[test]
+    fn skill_prompt_starts_a_user_turn() {
+        let line = r#"{"type":"custom_message","id":"sp","parentId":"x","timestamp":"T","customType":"skill-prompt","content":"[IMPORTANT: ...] # Visualize ...","display":true,"details":{"name":"visualize","prompt":"/skill:visualize chart this"}}"#;
+        let item = normalize_entry(&serde_json::from_str(line).unwrap()).unwrap();
+        assert_eq!(item.kind, TranscriptKind::User);
+        assert_eq!(item.text.as_deref(), Some("/skill:visualize chart this"));
+        assert!(!item.hidden);
+
+        // Hidden skill prompts keep the generic custom mapping.
+        let hidden = line.replace("\"display\":true", "\"display\":false");
+        let item = normalize_entry(&serde_json::from_str(&hidden).unwrap()).unwrap();
+        assert_eq!(item.kind, TranscriptKind::Custom);
     }
 
     #[test]
@@ -341,6 +417,36 @@ mod tests {
         assert!(page3.reset);
         assert_eq!(page3.items.len(), 7);
         assert_eq!(sum_usage(&path).unwrap(), (115, 0.5));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn snapshot_tracks_last_level_and_context() {
+        let dir = std::env::temp_dir().join(format!("ompws-snap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s.jsonl");
+        let asst = |input: u64, cache: u64| {
+            format!(
+                r#"{{"type":"message","id":"a","message":{{"role":"assistant","content":[],"usage":{{"input":{input},"output":9,"cacheRead":{cache},"cacheWrite":0,"totalTokens":{}}}}}}}"#,
+                input + cache + 9
+            )
+        };
+        let body = [
+            r#"{"type":"thinking_level_change","thinkingLevel":"low","configured":"auto"}"#
+                .to_string(),
+            asst(10, 100),
+            r#"{"type":"thinking_level_change","thinkingLevel":"high"}"#.to_string(),
+            asst(20, 200),
+        ]
+        .join("\n");
+        std::fs::write(&path, &body).unwrap();
+        let snap = session_snapshot(&path).unwrap();
+        assert_eq!(snap.thinking_level.as_deref(), Some("high"));
+        assert_eq!(snap.context_tokens, Some(220));
+
+        let compaction = r#"{"type":"compaction","summary":"s"}"#;
+        std::fs::write(&path, format!("{body}\n{compaction}")).unwrap();
+        assert_eq!(session_snapshot(&path).unwrap().context_tokens, None);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

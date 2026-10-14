@@ -56,18 +56,40 @@ pub async fn create(
     vars.insert("question", question.clone());
     let first_prompt = prompts::render(prompts::SIDE_CHAT, &vars);
 
-    let info = rpc::start(
+    // A running parent has unfinished work in its transcript; a side chat must
+    // not inherit it, so fork from a copy cut at the in-flight turn's prompt.
+    let parent_running = parent
+        .as_ref()
+        .is_some_and(|m| m.status == crate::contracts::SessionStatus::Working);
+    let trimmed_fork = if parent_running {
+        truncate_in_flight_turn(&parent_file)
+    } else {
+        None
+    };
+    let fork_file = trimmed_fork
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or(parent_file.clone());
+
+    let started = rpc::start(
         state,
         &StartOpts {
             cwd: cwd.clone(),
             parent_session_id: Some(parent_session_id.to_string()),
             label: Some(label.clone()),
             model: model.filter(|m| !m.trim().is_empty()),
-            fork_file: Some(parent_file).filter(|f| !f.is_empty()),
+            fork_file: Some(fork_file).filter(|f| !f.is_empty()),
+            append_system_prompt: Some(prompts::SIDE_CHAT_BOUNDARY.to_string()),
+            // Side chats live in the parent's space.
+            mode: Some(parent.as_ref().map(|m| m.mode).unwrap_or_default()),
             ..Default::default()
         },
     )
-    .await?;
+    .await;
+    if let Some(p) = &trimmed_fork {
+        let _ = std::fs::remove_file(p);
+    }
+    let info = started?;
 
     let q = question.trim();
     let custom_name = if !q.is_empty() {
@@ -147,9 +169,11 @@ async fn build_context(
 		Some("selection_only") => {
 			"(The user's question targets only the selected text below; minimal main-session context.)".to_string()
 		}
-		// "fork_continue" | "global" | default → summary + fallback.
+		// "fork_continue" | "global" | default → cached summary + fallback.
+		// Never generate here: that is a blocking LLM call (up to 180s) and the
+		// child already forks the full parent transcript.
 		_ => {
-			if let Some(summary) = todos::summary(state, parent_session_id, true).await {
+			if let Some(summary) = todos::summary(state, parent_session_id, false).await {
 				return summary;
 			}
 			fallback_context(cwd)
@@ -230,6 +254,29 @@ fn parse_route(text: &str) -> Option<String> {
     (confidence >= ROUTE_MIN_CONFIDENCE).then(|| route.to_string())
 }
 
+/// Copy `file` to a temp path keeping everything up to and including the last
+/// user message (the in-flight turn's prompt); later assistant/tool entries
+/// belong to unfinished work and are dropped. None when the file cannot be read
+/// or has no user message (the caller then forks the whole file).
+fn truncate_in_flight_turn(file: &str) -> Option<std::path::PathBuf> {
+    let text = std::fs::read_to_string(file).ok()?;
+    let lines: Vec<&str> = text.lines().collect();
+    let last_user = lines.iter().rposition(|l| is_user_message_line(l))?;
+    let out =
+        std::env::temp_dir().join(format!("omp-sidechat-fork-{}.jsonl", uuid::Uuid::new_v4()));
+    let mut body = lines[..=last_user].join("\n");
+    body.push('\n');
+    std::fs::write(&out, body).ok()?;
+    Some(out)
+}
+
+fn is_user_message_line(line: &str) -> bool {
+    serde_json::from_str::<Value>(line).ok().is_some_and(|v| {
+        v.get("type").and_then(Value::as_str) == Some("message")
+            && v.pointer("/message/role").and_then(Value::as_str) == Some("user")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,5 +301,37 @@ mod tests {
         );
         assert_eq!(parse_route(r#"{"route":"bogus","confidence":1.0}"#), None);
         assert_eq!(parse_route("no json here"), None);
+    }
+
+    #[test]
+    fn truncate_in_flight_turn_cuts_after_last_user_message() {
+        let dir = std::env::temp_dir().join(format!("omp-sc-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("parent.jsonl");
+        std::fs::write(
+            &src,
+            concat!(
+                r#"{"type":"session","id":"p"}"#,
+                "\n",
+                r#"{"type":"message","message":{"role":"user","content":"first"}}"#,
+                "\n",
+                r#"{"type":"message","message":{"role":"assistant","content":"done"}}"#,
+                "\n",
+                r#"{"type":"message","message":{"role":"user","content":"second"}}"#,
+                "\n",
+                r#"{"type":"message","message":{"role":"assistant","content":"mid-turn"}}"#,
+                "\n",
+                r#"{"type":"message","message":{"role":"toolResult","content":"x"}}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+        let out = truncate_in_flight_turn(src.to_str().unwrap()).unwrap();
+        let kept = std::fs::read_to_string(&out).unwrap();
+        assert_eq!(kept.lines().count(), 4);
+        assert!(kept.contains("second") && !kept.contains("mid-turn"));
+        assert!(truncate_in_flight_turn(dir.join("missing.jsonl").to_str().unwrap()).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(out);
     }
 }

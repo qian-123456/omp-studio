@@ -3,6 +3,49 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Id of the single global (通用对话) workspace row; it belongs to `SpaceMode::Chat`.
+pub const GLOBAL_WORKSPACE_ID: &str = "global";
+
+/// Sidebar space ("mode"): visually independent spaces; nothing is shared
+/// across modes (§4). Sessions record their mode at creation. `Chat` (通用对话)
+/// is the project-less space: it owns the single global workspace and all
+/// session groups; the other modes hold only project workspaces.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SpaceMode {
+    #[default]
+    Code,
+    Work,
+    Study,
+    Research,
+    Chat,
+}
+
+impl SpaceMode {
+    /// DB/serde representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Code => "code",
+            Self::Work => "work",
+            Self::Study => "study",
+            Self::Research => "research",
+            Self::Chat => "chat",
+        }
+    }
+
+    /// Unknown/blank strings degrade to Code (pre-migration rows, external
+    /// sessions without a session_meta row).
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s {
+            "work" => Self::Work,
+            "study" => Self::Study,
+            "research" => Self::Research,
+            "chat" => Self::Chat,
+            _ => Self::Code,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
@@ -70,7 +113,7 @@ pub struct SessionMeta {
     /// "#115" or fork label "#115.2.1".
     pub label: String,
     pub created_at: String,
-    /// File mtime.
+    /// Last conversation message time (falls back to file mtime when the transcript has none).
     pub updated_at: String,
     /// Fork parent session id (side chats).
     pub parent_id: Option<String>,
@@ -97,6 +140,12 @@ pub struct SessionMeta {
     pub model: Option<String>,
     /// Inbox attention kind (derived; time window applied by consumers via `updated_at`).
     pub attention: Option<Attention>,
+    /// Space recorded at session creation (`StartOpts.mode`); rows predating
+    /// spaces and external sessions with no meta row are Code.
+    pub mode: SpaceMode,
+    /// SessionGroup inside this mode's 无项目 area; only sessions whose
+    /// resolved workspace is the mode's global workspace can be grouped.
+    pub group_id: Option<String>,
 }
 
 /// Per-session inbox attention kind (sidebar status marker hub).
@@ -138,6 +187,20 @@ pub struct Workspace {
     pub path: String,
     pub name: String,
     pub kind: WorkspaceKind,
+    pub sort: i64,
+    /// Space this workspace belongs to; the same disk directory may be a
+    /// project in several modes (workspaces unique on (path, mode)).
+    pub mode: SpaceMode,
+}
+
+/// User-created named category inside a mode's 无项目 area — a grouping only,
+/// not a directory (`session_groups` table; §6 v10).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionGroup {
+    pub id: String,
+    pub mode: SpaceMode,
+    pub name: String,
     pub sort: i64,
 }
 
@@ -339,6 +402,15 @@ pub struct StartOpts {
     pub plan_yolo: Option<bool>,
     /// --fork <path>: native fork of the parent session file (keeps prefix cache).
     pub fork_file: Option<String>,
+    /// --append-system-prompt: hidden instructions kept out of the visible
+    /// transcript (side chats use it for the reference-only boundary).
+    pub append_system_prompt: Option<String>,
+    /// Space the new session belongs to; persisted to `session_meta.mode`
+    /// (None leaves the row untouched → defaults to Code on insert).
+    pub mode: Option<SpaceMode>,
+    /// SessionGroup in the mode's 无项目 area; `Some(id)` assigns it (validated:
+    /// group must exist in the same mode), `None` leaves the row untouched.
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -615,6 +687,9 @@ pub struct TurnUndoResult {
     pub conflicts: Vec<String>,
     pub head_reset: bool,
     pub warning: Option<String>,
+    /// How many turns the cascade actually marked undone (older turns roll
+    /// back every later non-undone turn too).
+    pub turns_undone: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -653,6 +728,57 @@ pub struct ProcessMemoryInfo {
     pub processes: u32,
 }
 
+/// One memory bucket in `perf_breakdown`: byte total + process count.
+/// `bytes` is None when the value is unknown (e.g. `ps` scan failed).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerfBucket {
+    pub bytes: Option<u64>,
+    pub processes: u32,
+}
+
+/// One running omp-workspace app instance (one window per git worktree).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInstance {
+    pub pid: u32,
+    /// Short safe label: git branch of its cwd, else cwd basename, else "pid N".
+    /// Never contains process arguments.
+    pub label: String,
+    pub cwd: Option<String>,
+    /// True for the process serving this window.
+    pub is_this: bool,
+}
+
+/// Result of `perf_breakdown`: where physical memory goes + active windows.
+/// `app` shares `app_memory_usage`'s footprint semantics (so the popover matches
+/// the bottom bar); `omp_spawned`/`omp_external` split `omp` agent processes by
+/// whether this instance spawned them. Bar segments are `bar_app_bytes`,
+/// `bar_omp_bytes`, `other.bytes`, `free_bytes` and are disjoint (spawned omp
+/// already attributed to the app on macOS is counted only inside `app`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerfBreakdown {
+    pub app: PerfBucket,
+    pub omp_spawned: PerfBucket,
+    pub omp_external: PerfBucket,
+    /// OMP legend segment: spawned + external, minus any spawned footprint
+    /// already included in `app` on macOS.
+    pub bar_omp_bytes: Option<u64>,
+    /// Other processes/system: used - app - bar_omp (floored at 0).
+    pub other_bytes: Option<u64>,
+    /// Total physical RAM; None when the OS probe failed.
+    pub total_bytes: Option<u64>,
+    /// Physical RAM used; None when the OS probe failed.
+    pub used_bytes: Option<u64>,
+    /// `total - used`; shown as 空闲.
+    pub free_bytes: Option<u64>,
+    /// Running omp-workspace instances including this window.
+    pub instances: Vec<AppInstance>,
+    /// Milliseconds since Unix epoch at collection time.
+    pub generated_at: u64,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PairingInfo {
@@ -679,6 +805,18 @@ pub struct UsageSummary {
     pub cost: f64,
     /// "token-tracker" | "transcript"
     pub source: String,
+}
+
+/// Last-known config of a session recovered from its transcript, for the
+/// composer while no RPC process is alive (a live `get_state` supersedes it).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSnapshot {
+    /// Last `thinking_level_change` (`configured` when present).
+    pub thinking_level: Option<String>,
+    /// Prompt tokens of the last assistant request; None when unknown
+    /// (no assistant usage yet, or a compaction happened after it).
+    pub context_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -768,6 +906,29 @@ pub struct Settings {
     /// Show real values in privacy chips by default (None ⇒ true).
     #[serde(default)]
     pub privacy_reveal_default: Option<bool>,
+    /// Default true: append the app worktree's git branch to the OS window title
+    /// ("omp-workspace · <branch>") so parallel instances are distinguishable.
+    /// serde default covers stored settings predating this key.
+    #[serde(default = "default_true")]
+    pub window_worktree_title: bool,
+    /// Dedicated default model for new side-chat forks (`<selector>` or
+    /// `<selector>:<thinking-level>`). None = inherit the parent session's model.
+    #[serde(default)]
+    pub side_chat_model: Option<String>,
+    /// Default true: bundle the visualize skill into app sessions
+    /// (`--plugin-dir ~/.omp-workspace/plugins/omp-workspace-visualize`) so the
+    /// model can emit ```` ```visualize ```` fragments the chat renders inline.
+    /// serde default covers stored settings predating this key.
+    #[serde(default = "default_true")]
+    pub visualize_enabled: bool,
+    /// Composer send shortcut: "enter" (default; Enter sends, Shift+Enter newline) or
+    /// "mod-enter" (⌘/Ctrl+Enter sends, Enter newline). serde default covers older stored settings.
+    #[serde(default = "default_send_shortcut")]
+    pub send_shortcut: String,
+    /// Follow-up behavior when a message is sent while a turn is running: "steer" (default),
+    /// "queue" (held until the turn ends), or "interrupt" (abort the turn, then send).
+    #[serde(default = "default_follow_up_behavior")]
+    pub follow_up_behavior: String,
 }
 
 fn default_true() -> bool {
@@ -792,6 +953,14 @@ fn default_doctor_schedule_time() -> String {
 
 fn default_git_delivery_mode() -> String {
     "pr".to_string()
+}
+
+fn default_send_shortcut() -> String {
+    "enter".to_string()
+}
+
+fn default_follow_up_behavior() -> String {
+    "steer".to_string()
 }
 
 fn default_inbox_window_hours() -> u32 {
@@ -842,6 +1011,11 @@ impl Default for Settings {
             doctor_idle_minutes: default_doctor_idle_minutes(),
             doctor_schedule_time: default_doctor_schedule_time(),
             privacy_reveal_default: None,
+            window_worktree_title: true,
+            side_chat_model: None,
+            visualize_enabled: true,
+            send_shortcut: default_send_shortcut(),
+            follow_up_behavior: default_follow_up_behavior(),
         }
     }
 }
@@ -1123,6 +1297,18 @@ pub struct OmpImportResult {
 // ---- E: Schedules (定时任务) ----
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScheduleNotify {
+    /// Every finished run creates an inbox todo.
+    #[default]
+    All,
+    /// Only failed runs and runs that stopped for approval/an answer.
+    Important,
+    /// Never create an inbox todo.
+    None,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScheduleRunMode {
     #[default]
@@ -1136,11 +1322,59 @@ pub enum ScheduleCadence {
     Interval {
         minutes: u32,
     },
+    /// `weekdays` empty: every `every` days (default 1) at local `time`.
+    /// `weekdays` non-empty: every `every` weeks (default 1) on those weekdays
+    /// (0 = Sunday … 6 = Saturday). `anchor` is a local date `YYYY-MM-DD` that
+    /// fixes the day/week phase when `every` > 1; the store fills today's local
+    /// date when missing.
     Daily {
         time: String,
         #[serde(default)]
         weekdays: Vec<u32>,
+        #[serde(
+            default = "default_schedule_every",
+            skip_serializing_if = "schedule_every_is_one"
+        )]
+        every: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        anchor: Option<String>,
     },
+    /// One-shot at an absolute instant (RFC3339 UTC).
+    Once {
+        at: String,
+    },
+    /// Every `every` months (default 1) on `day` (1-31, clamped to the month's
+    /// length) at local `time` (HH:MM). `anchor` (local date `YYYY-MM-DD`)
+    /// fixes the month phase when `every` > 1.
+    Monthly {
+        day: u32,
+        time: String,
+        #[serde(
+            default = "default_schedule_every",
+            skip_serializing_if = "schedule_every_is_one"
+        )]
+        every: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        anchor: Option<String>,
+    },
+}
+
+fn default_schedule_every() -> u32 {
+    1
+}
+
+/// `every` defaults to 1 and is omitted from JSON when it has the default
+/// value, keeping legacy cadence documents byte-identical.
+fn schedule_every_is_one(every: &u32) -> bool {
+    *every == 1
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScheduleLifecycle {
+    Active,
+    Paused,
+    Completed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1169,8 +1403,22 @@ pub struct Schedule {
     pub last_run_at: Option<String>,
     /// Status of the most recent run (derived from schedule_runs).
     pub last_run_status: Option<ScheduleRunStatus>,
+    /// Inbox policy per finished run (stored; default `all`).
+    pub notify: ScheduleNotify,
+    /// false = reuse the previous run's session when resumable (local mode only).
+    pub new_chat_each_run: bool,
     pub created_at: String,
     pub updated_at: String,
+    /// Stop repeating after this instant (RFC3339 UTC); null = never.
+    pub end_at: Option<String>,
+    /// Derived, not stored: `completed` = a `once` schedule that already ran, or a
+    /// recurring one past `end_at` or at its `max_runs` cap; `paused` = disabled
+    /// but not completed; else `active`.
+    pub lifecycle: ScheduleLifecycle,
+    /// Stop after this many runs (recurring only; `once` ignores it); NULL = unlimited.
+    pub max_runs: Option<u32>,
+    /// Runs started so far (counts toward `max_runs`).
+    pub runs_done: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1186,11 +1434,27 @@ pub struct ScheduleDraft {
     pub model: Option<String>,
     pub thinking: Option<String>,
     pub approval_mode: Option<String>,
+    /// Inbox policy; absent = `all` (backend default).
+    #[serde(default)]
+    pub notify: ScheduleNotify,
+    /// false = reuse the previous run's session when resumable; absent = true.
+    #[serde(default = "default_schedule_new_chat")]
+    pub new_chat_each_run: bool,
+    /// Stop repeating after this instant (RFC3339 UTC); null/absent = never.
+    /// Ignored for `once` cadences.
+    pub end_at: Option<String>,
+    /// Stop after this many runs (>= 1); null/absent = unlimited.
+    /// Ignored for `once` cadences.
+    pub max_runs: Option<u32>,
     #[serde(default = "default_schedule_enabled")]
     pub enabled: bool,
 }
 
 fn default_schedule_enabled() -> bool {
+    true
+}
+
+fn default_schedule_new_chat() -> bool {
     true
 }
 

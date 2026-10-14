@@ -4,6 +4,8 @@ export interface ModelOption {
 	name: string;
 	/** Thinking levels this model supports (omp `thinking` array). Empty when unknown/unsupported. */
 	thinking?: string[];
+	/** Context window in tokens when the catalog reports it. */
+	contextWindow?: number | null;
 }
 
 export interface CurrentModelSelection {
@@ -97,6 +99,10 @@ export function parseModels(data: unknown): ModelOption[] {
 					id: cleanId,
 					name: (typeof o.name === "string" && o.name.trim()) || key,
 					thinking,
+					contextWindow:
+						typeof o.contextWindow === "number" && o.contextWindow > 0
+							? o.contextWindow
+							: undefined,
 				});
 			}
 		}

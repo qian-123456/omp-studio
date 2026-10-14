@@ -13,6 +13,7 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+	Bell,
 	AlertCircle,
 	Archive,
 	Boxes,
@@ -26,19 +27,21 @@ import {
 	FolderInput,
 	FolderSearch,
 	GitBranch,
-	Globe,
-	Inbox,
-	Layers,
 	Loader2,
 	MessageCircleQuestion,
+	MoreHorizontal,
+	Pencil,
 	Pin,
 	Plus,
+	SquarePen,
 	Search,
 	Settings as SettingsIcon,
 	SlidersHorizontal,
+	Tag,
 	Trash2,
 	UnfoldVertical,
 	FoldVertical,
+	PanelLeftClose,
 	X,
 } from "lucide-react";
 import React, {
@@ -53,18 +56,34 @@ import clsx from "clsx";
 import type { Anchor } from "../../components/FloatingLayer";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { HoverScrollText } from "../../components/HoverScrollText";
-import type { Workspace, SessionMeta } from "../../lib/contracts";
+import type {
+	SessionGroup,
+	Workspace,
+	SessionMeta,
+} from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isInside } from "../../lib/paths";
 import { isComposing } from "../../lib/hooks";
-import { addWorkspace, removeWorkspace, updateSessionMeta } from "../../lib/ipc";
+import {
+	addWorkspace,
+	createSessionGroup,
+	deleteSessionGroup,
+	removeWorkspace,
+	renameSessionGroup,
+	updateSessionMeta,
+} from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
+import { useComposer } from "../../stores/composer";
+import { useLive } from "../../stores/live";
+import { isBlankDraft } from "../../lib/createSession";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
 import { useSettings } from "../settings/store";
 import { WorktreeHoverCard } from "../git/WorktreeHoverCard";
-import { useInboxBadge } from "../inbox/useInboxBadge";
+import { useInboxBadge, useModeActivity } from "../inbox/useInboxBadge";
+import { ModeActivityDot } from "./ModeActivityDot";
+import { switchSpaceMode } from "./switchMode";
 import { ArchiveUndoBar } from "./ArchiveUndoBar";
 import { archiveSessions } from "./archiveUndo";
 import { GroupHeader, getGroupStatusCounts } from "./GroupHeader";
@@ -80,10 +99,13 @@ import {
 	snapshotOrder,
 } from "./grouping";
 import {
-	startNewSessionFromContext,
-	startSessionAt,
-	startSessionInDir,
-} from "./newSession";
+	SPACE_MODE_META,
+	SPACE_MODES,
+	isGlobalWorkspaceId,
+	modeGlobalWorkspace,
+	modeHasProjects,
+} from "./modes";
+import { startNewSession, startSessionAt, startSessionInDir } from "./newSession";
 import {
 	requestArchive,
 	requestAssign,
@@ -93,16 +115,49 @@ import {
 } from "./sessionActions";
 import { SessionDialogs } from "./SessionDialogs";
 import { SessionRow } from "./SessionRow";
-import "./sidebarShortcuts";
+import { SIDEBAR_SEARCH_OPEN_EVENT } from "./sidebarShortcuts";
 import { useSidebarStore } from "./sidebarStore";
-import {
-	isGlobalGroupVisibleInAll,
-	isWorkspaceGroupVisibleInAll,
-} from "./sidebarVisibility";
 import { SIDEBAR_LIST_ATTR, getVisibleSessionIds } from "./visibleRows";
+import { groupsForMode, splitSessionsByGroup, useSessionGroups } from "./sessionGroups";
 
 const RECENT_LIMIT = 3;
 const RECENT_STEP = 5;
+/** Projects without worktrees show more sessions up front. */
+const NO_WORKTREE_RECENT_LIMIT = 5;
+
+const isMac =
+	typeof navigator !== "undefined" &&
+	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
+
+/** Reserves room for the overlay macOS traffic lights; collapses in fullscreen where they are hidden. */
+function TrafficLightSpacer() {
+	const [fullscreen, setFullscreen] = useState(false);
+	useEffect(() => {
+		if (!isMac) return;
+		let off: (() => void) | undefined;
+		let alive = true;
+		void import("@tauri-apps/api/window")
+			.then(async ({ getCurrentWindow }) => {
+				const win = getCurrentWindow();
+				const sync = async () => {
+					const fs = await win.isFullscreen();
+					if (alive) setFullscreen(fs);
+				};
+				await sync();
+				const un = await win.onResized(() => void sync());
+				if (alive) off = un;
+				else un();
+			})
+			.catch(() => {
+				/* not running inside Tauri (tests / browser): keep the spacer */
+			});
+		return () => {
+			alive = false;
+			off?.();
+		};
+	}, []);
+	return isMac && !fullscreen ? <div className="w-[64px] shrink-0" /> : null;
+}
 
 export interface WorkspacePalette {
 	folderColor: string;
@@ -118,7 +173,7 @@ export const WORKSPACE_PALETTES: WorkspacePalette[] = [
 ];
 
 export function getWorkspacePalette(idOrName: string): WorkspacePalette {
-	if (idOrName === "__global") {
+	if (isGlobalWorkspaceId(idOrName)) {
 		return { folderColor: "text-indigo-600 dark:text-indigo-400" };
 	}
 	let hash = 0;
@@ -229,17 +284,27 @@ export function SessionSidebar() {
 	const highlightId = useUi((s) => s.highlightId);
 	const setHighlightId = useUi((s) => s.setHighlightId);
 	const centerView = useUi((s) => s.centerView);
+	const toggleSidebar = useUi((s) => s.toggleSidebar);
 	const setCenter = useUi((s) => s.setCenter);
 	const openSettings = useUi((s) => s.openSettings);
 	const closeSettings = useUi((s) => s.closeSettings);
 	const openModal = useUi((s) => s.openModal);
 
 	const inboxBadge = useInboxBadge();
-
 	// Persistent sidebar store state (survives Cmd+B)
-	const activeWorkspaceId = useSidebarStore((s) => s.activeWorkspaceId);
-	const setActiveWorkspaceId = useSidebarStore((s) => s.setActiveWorkspaceId);
-	const checkWorkspaceFallback = useSidebarStore((s) => s.checkWorkspaceFallback);
+	const activeMode = useSidebarStore((s) => s.activeMode);
+	const setActiveMode = useSidebarStore((s) => s.setActiveMode);
+	const modeActivity = useModeActivity();
+	const otherActivity = useMemo(() => {
+		let badge = 0;
+		let running = 0;
+		for (const mode of SPACE_MODES) {
+			if (mode === activeMode) continue;
+			badge += modeActivity[mode].badge;
+			running += modeActivity[mode].running;
+		}
+		return badge > 0 || running > 0 ? { badge, running } : null;
+	}, [modeActivity, activeMode]);
 	// groupOpen subscribed selector (C1, Q02)
 	const groupOpen = useSidebarStore((s) => s.groupOpen);
 	const setGroupOpen = useSidebarStore((s) => s.setGroupOpen);
@@ -252,6 +317,13 @@ export function SessionSidebar() {
 	const setSectionCount = useSidebarStore((s) => s.setSectionCount);
 	const toggleSection = useSidebarStore((s) => s.toggleSection);
 	const creatingKey = useSidebarStore((s) => s.creatingKey);
+
+	// 无项目-area session groups (all modes; filtered per activeMode below)
+	const sessionGroups = useSessionGroups((s) => s.groups);
+	const loadSessionGroups = useSessionGroups((s) => s.load);
+	useEffect(() => {
+		void loadSessionGroups();
+	}, [loadSessionGroups]);
 
 	const searching = searchQuery.trim().length > 0;
 
@@ -268,18 +340,62 @@ export function SessionSidebar() {
 	const [loadError, setLoadError] = useState<string | null>(null);
 
 	// Dropdown and menu state
-	const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
+	const [modeMenuOpen, setModeMenuOpen] = useState(false);
+	const [searchOpen, setSearchOpen] = useState(false);
+	// ⌘F (focusSidebarSearch) asks the sidebar to reveal the collapsed search row.
+	useEffect(() => {
+		const open = () => setSearchOpen(true);
+		window.addEventListener(SIDEBAR_SEARCH_OPEN_EVENT, open);
+		return () => window.removeEventListener(SIDEBAR_SEARCH_OPEN_EVENT, open);
+	}, []);
 	const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
 	const [plusMenu, setPlusMenu] = useState<PlusMenuState | null>(null);
 	const [wsMenu, setWsMenu] = useState<WsMenuState | null>(null);
 	const wsMenuTriggerRef = useRef<HTMLElement | null>(null);
+
+	// 无项目 area UI state: open ⋯ group menu, inline rename, inline create.
+	const [grpMenu, setGrpMenu] = useState<{
+		group: SessionGroup;
+		anchor: Anchor;
+	} | null>(null);
+	const grpMenuTriggerRef = useRef<HTMLElement | null>(null);
+	const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
+	const [groupNameDraft, setGroupNameDraft] = useState("");
+	const [newGroupOpen, setNewGroupOpen] = useState(false);
+	const [newGroupName, setNewGroupName] = useState("");
+	const newGroupInputRef = useRef<HTMLInputElement>(null);
+	const groupRenameInputRef = useRef<HTMLInputElement>(null);
+	/** Guards create/rename against the blur that follows their own commit. */
+	const groupEditInFlight = useRef(false);
+
+	// Focus the inline group-name inputs when they open
+	useEffect(() => {
+		if (newGroupOpen) newGroupInputRef.current?.focus();
+	}, [newGroupOpen]);
+	useEffect(() => {
+		if (renamingGroupId) groupRenameInputRef.current?.focus();
+	}, [renamingGroupId]);
 
 	// Frozen order during hover to prevent row reshuffling under mouse (G14)
 	const [frozenOrder, setFrozenOrder] = useState<ReadonlyMap<string, number> | undefined>(undefined);
 	const lastGroupedRef = useRef<GroupedSessionsResult | null>(null);
 
 	const scrollRef = useRef<HTMLDivElement>(null);
-	const wsSwitcherRef = useRef<HTMLButtonElement>(null);
+	const modeSwitcherRef = useRef<HTMLButtonElement>(null);
+	const modeMenuRef = useRef<HTMLDivElement>(null);
+	// Mode menu is rendered in-flow under the header (no portal/measure), so
+	// outside clicks are handled here.
+	useEffect(() => {
+		if (!modeMenuOpen) return;
+		const onDown = (e: MouseEvent) => {
+			const t = e.target as Node;
+			if (modeMenuRef.current?.contains(t)) return;
+			if (modeSwitcherRef.current?.contains(t)) return;
+			setModeMenuOpen(false);
+		};
+		document.addEventListener("mousedown", onDown, true);
+		return () => document.removeEventListener("mousedown", onDown, true);
+	}, [modeMenuOpen]);
 	const filterBtnRef = useRef<HTMLButtonElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const plusTriggerRef = useRef<HTMLElement | null>(null);
@@ -300,43 +416,19 @@ export function SessionSidebar() {
 				setErrorMessage(`加载会话列表失败: ${msg}`);
 			});
 	}, [loadSessions]);
-	// Workspace fallback (S26: only when workspaces actually loaded)
-	useEffect(() => {
-		if (hasLoaded) {
-			checkWorkspaceFallback(workspaces);
-		}
-	}, [hasLoaded, workspaces, checkWorkspaceFallback]);
 
 	const globalWs = useMemo(
-		() => workspaces.find((w) => w.kind === "global") ?? null,
-		[workspaces],
+		() => modeGlobalWorkspace(workspaces, activeMode),
+		[workspaces, activeMode],
 	);
 
-	const projectWorkspaces = useMemo(
-		() =>
-			workspaces
-				.filter((w) => w.kind !== "global")
-				.sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name)),
-		[workspaces],
+	const modeGroups = useMemo(
+		() => groupsForMode(sessionGroups, activeMode),
+		[sessionGroups, activeMode],
 	);
 
-	const activeWs = useMemo(() => {
-		if (activeWorkspaceId === "__global") return globalWs;
-		if (activeWorkspaceId === "all") return null;
-		return workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
-	}, [workspaces, activeWorkspaceId, globalWs]);
-
-	const sessionCountsByWs = useMemo(() => {
-		const map = new Map<string, number>();
-		for (const s of Object.values(sessions)) {
-			if (!s.archived && s.workspaceId) {
-				map.set(s.workspaceId, (map.get(s.workspaceId) ?? 0) + 1);
-			}
-		}
-		return map;
-	}, [sessions]);
-
-	// Auto-follow active session's workspace (Q04: initialize with initial selected/last session id)
+	// Auto-follow: selecting a session of another space switches the mode so
+	// the picked row is always visible (replaces the old ws-scope autofollow).
 	const prevSelectedIdRef = useRef<string | null>(
 		useUi.getState().selectedSessionId ?? useUi.getState().lastSessionId ?? null,
 	);
@@ -344,17 +436,18 @@ export function SessionSidebar() {
 		if (selectedSessionId && selectedSessionId !== prevSelectedIdRef.current) {
 			prevSelectedIdRef.current = selectedSessionId;
 			const current = sessions[selectedSessionId];
-			if (current?.workspaceId && activeWorkspaceId !== "all") {
-				const targetWsId =
-					current.workspaceId === "global" ? "__global" : current.workspaceId;
-				if (targetWsId !== activeWorkspaceId) {
-					setActiveWorkspaceId(targetWsId);
-				}
+			if (current && current.mode !== activeMode) {
+				setActiveMode(current.mode);
 			}
 		} else {
 			prevSelectedIdRef.current = selectedSessionId;
 		}
-	}, [selectedSessionId, sessions, activeWorkspaceId, setActiveWorkspaceId]);
+	}, [selectedSessionId, sessions, activeMode, setActiveMode]);
+
+	// Each space shows one list: 通用对话 → global sessions + groups; project
+	// modes → project directories. Search stays scoped to the active space.
+	const showLoose = !modeHasProjects(activeMode);
+	const showProjects = modeHasProjects(activeMode);
 
 	// S10: Cancel pending arrow-key selection timer whenever selection changes or on unmount
 	useEffect(() => {
@@ -426,38 +519,53 @@ export function SessionSidebar() {
 	}, []);
 
 	// Compute grouped sessions with optional frozen order (C2: pass worktrees)
-	const sessionsList = useMemo(() => Object.values(sessions), [sessions]);
-	const groupByWorktree = useSettings((s) => s.settings?.sessionGroupByWorktree ?? true);
+	// Blank drafts (unnamed, no transcript, nothing typed) are not listed; they
+	// appear once the user types something or sends a message.
+	const composerActiveIds = useComposer((s) =>
+		Object.keys(s.drafts)
+			.filter((id) => s.drafts[id]?.trim() || (s.images[id]?.length ?? 0) > 0)
+			.concat(Object.keys(s.images).filter((id) => (s.images[id]?.length ?? 0) > 0))
+			.sort()
+			.join(","),
+	);
+	const sessionsList = useMemo(() => {
+		const active = new Set(composerActiveIds ? composerActiveIds.split(",") : []);
+		const lives = useLive.getState().sessions;
+		return Object.values(sessions).filter(
+			(s) => active.has(s.id) || !isBlankDraft(s, lives[s.id]),
+		);
+	}, [sessions, composerActiveIds]);
+	// Worktree grouping is a code-mode concept; other modes always get a flat list per project.
+	const groupByWorktreeSetting = useSettings((s) => s.settings?.sessionGroupByWorktree ?? true);
+	const groupByWorktree = activeMode === "code" && groupByWorktreeSetting;
 	const grouped = useMemo(() => {
 		const res = groupSessions(sessionsList, workspaces, {
 			searchQuery,
 			showArchived,
-			activeWorkspaceId,
+			mode: activeMode,
 			frozenOrder,
 			worktrees,
 			groupByWorktree,
 		});
 		lastGroupedRef.current = res;
 		return res;
-	}, [sessionsList, workspaces, searchQuery, showArchived, activeWorkspaceId, frozenOrder, worktrees, groupByWorktree]);
+	}, [sessionsList, workspaces, searchQuery, showArchived, activeMode, frozenOrder, worktrees, groupByWorktree]);
 
-	// Filter workspace groups visible in "all" mode
-	const visibleWorkspaceGroups = useMemo(() => {
-		if (activeWorkspaceId !== "all") {
-			return grouped.workspaceGroups;
-		}
-		return grouped.workspaceGroups.filter(isWorkspaceGroupVisibleInAll);
-	}, [grouped.workspaceGroups, activeWorkspaceId]);
-
-	const showGlobalInAll = useMemo(() => {
-		return isGlobalGroupVisibleInAll(grouped.globalGroup);
-	}, [grouped.globalGroup]);
+	// 无项目 sessions of the active mode, split into per-group buckets.
+	const noProjectSplit = useMemo(() => {
+		const all = grouped.globalGroup
+			? grouped.globalGroup.subgroups.flatMap((g) => g.sessions)
+			: [];
+		return splitSessionsByGroup(all, modeGroups);
+	}, [grouped.globalGroup, modeGroups]);
 
 	// Collect group keys for expand/collapse all
 	const allGroupKeys = useMemo(() => {
 		const keys: string[] = [];
 		if (grouped.pinnedSessions.length > 0) keys.push("__pinned");
-		if (grouped.globalGroup) keys.push("__global");
+		// 无项目 area + its user groups
+		keys.push("__global");
+		for (const g of modeGroups) keys.push(`grp:${g.id}`);
 		for (const wg of grouped.workspaceGroups) {
 			keys.push(wg.workspace.id);
 			if (wg.subgroups.some((s) => !s.deleted && s.sessions.length === 0))
@@ -467,7 +575,8 @@ export function SessionSidebar() {
 		keys.push("__unassigned");
 		if (grouped.deletedSessions.length > 0) keys.push("__deleted");
 		return keys;
-	}, [grouped]);
+	}, [grouped, modeGroups, searching]);
+
 
 	const areAllCollapsed = useMemo(() => {
 		if (allGroupKeys.length === 0) return false;
@@ -583,10 +692,10 @@ export function SessionSidebar() {
 		});
 	};
 
-	// Reset frozen order on filter/workspace changes, blur, pointerdown outside, or menu interactions (C9)
+	// Reset frozen order on filter/mode changes, blur, pointerdown outside, or menu interactions (C9)
 	useEffect(() => {
 		setFrozenOrder(undefined);
-	}, [searchQuery, showArchived, activeWorkspaceId]);
+	}, [searchQuery, showArchived, activeMode]);
 
 	useEffect(() => {
 		const handleBlur = () => setFrozenOrder(undefined);
@@ -604,10 +713,10 @@ export function SessionSidebar() {
 	}, []);
 
 	useEffect(() => {
-		if (wsMenu || plusMenu || filterPopoverOpen || wsDropdownOpen) {
+		if (wsMenu || plusMenu || filterPopoverOpen || modeMenuOpen || grpMenu) {
 			setFrozenOrder(undefined);
 		}
-	}, [wsMenu, plusMenu, filterPopoverOpen, wsDropdownOpen]);
+	}, [wsMenu, plusMenu, filterPopoverOpen, modeMenuOpen, grpMenu]);
 
 	// Q06 + reveal: when selectedSessionId changes and its row is not rendered,
 	// expand the containing workspace/group and subgroup, then scroll into view.
@@ -634,17 +743,10 @@ export function SessionSidebar() {
 		if (selectedSessionId === prevRevealedIdRef.current) return;
 		prevRevealedIdRef.current = selectedSessionId;
 
-		// 1. Filter checks: do nothing if filtered out by search / archived / workspace scope
+		// 1. Filter checks: do nothing if filtered out by search / archived / mode
 		if (target.archived && !showArchived) return;
 		if (searching && filterSessions([target], { searchQuery, showArchived }).length === 0) return;
-
-		if (activeWorkspaceId !== "all") {
-			if (activeWorkspaceId === "__global") {
-				if (target.workspaceId !== globalWs?.id && target.workspaceId !== "global") return;
-			} else {
-				if (target.workspaceId !== activeWorkspaceId) return;
-			}
-		}
+		if (target.mode !== activeMode) return;
 
 		// 2. Identify containing group and subgroup
 		let groupKeyToExpand: string | null = null;
@@ -653,8 +755,10 @@ export function SessionSidebar() {
 
 		if (target.pinned) {
 			groupKeyToExpand = "__pinned";
-		} else if (target.workspaceId === globalWs?.id || target.workspaceId === "global") {
-			groupKeyToExpand = "__global";
+		} else if (globalWs && target.workspaceId === globalWs.id) {
+			// 无项目 area: expand the SessionGroup holding the row (ungrouped
+			// rows render directly under the always-visible area list).
+			if (target.groupId) groupKeyToExpand = `grp:${target.groupId}`;
 		} else if (target.workspaceId) {
 			groupKeyToExpand = target.workspaceId;
 			const wg = grouped.workspaceGroups.find((w) => w.workspace.id === target.workspaceId);
@@ -749,13 +853,13 @@ export function SessionSidebar() {
 		showArchived,
 		searching,
 		searchQuery,
-		activeWorkspaceId,
+		activeMode,
 		globalWs,
 		setGroupOpen,
 		setSectionCount,
 	]);
 
-	// Workspace management actions
+	// Workspace management actions — adds land in the CURRENT space mode.
 	const handleAddWorkspace = async () => {
 		try {
 			let selectedPath: string | null = null;
@@ -773,11 +877,8 @@ export function SessionSidebar() {
 			}
 
 			if (selectedPath) {
-				const ws = await addWorkspace(selectedPath);
+				await addWorkspace(selectedPath, activeMode);
 				await loadSessions();
-				if (ws?.id) {
-					setActiveWorkspaceId(ws.id);
-				}
 				toast.success("已添加工作区");
 			}
 		} catch (err) {
@@ -799,9 +900,6 @@ export function SessionSidebar() {
 		try {
 			await removeWorkspace(ws.id);
 			await loadSessions();
-			if (activeWorkspaceId === ws.id) {
-				setActiveWorkspaceId("all");
-			}
 			toast.success(`已移除工作区「${ws.name}」`);
 		} catch (err) {
 			toast.error(`移除工作区失败: ${errMsg(err)}`);
@@ -841,6 +939,71 @@ export function SessionSidebar() {
 			ws,
 			anchor: { x: e.clientX, y: e.clientY },
 		});
+	};
+
+	// ---- 无项目 area: SessionGroup CRUD ----
+	const handleCreateGroup = async () => {
+		const name = newGroupName.trim();
+		setNewGroupName("");
+		setNewGroupOpen(false);
+		if (!name || groupEditInFlight.current) return;
+		groupEditInFlight.current = true;
+		try {
+			await createSessionGroup(activeMode, name);
+			await loadSessionGroups();
+			toast.success(`已创建分组「${name}」`);
+		} catch (err) {
+			toast.error(`创建分组失败: ${errMsg(err)}`);
+		} finally {
+			groupEditInFlight.current = false;
+		}
+	};
+
+	const handleRenameGroup = async (group: SessionGroup) => {
+		const name = groupNameDraft.trim();
+		setGroupNameDraft("");
+		setRenamingGroupId(null);
+		if (!name || name === group.name || groupEditInFlight.current) return;
+		groupEditInFlight.current = true;
+		try {
+			await renameSessionGroup(group.id, name);
+			await loadSessionGroups();
+			toast.success("已重命名分组");
+		} catch (err) {
+			toast.error(`重命名分组失败: ${errMsg(err)}`);
+		} finally {
+			groupEditInFlight.current = false;
+		}
+	};
+
+	const handleDeleteGroup = async (group: SessionGroup) => {
+		setGrpMenu(null);
+		const ok = await confirmDialog(
+			`确定删除分组「${group.name}」？\n分组内的会话将移回 Universal 列表，不会被删除。`,
+			{ title: "删除分组", danger: true, okLabel: "删除分组" },
+		);
+		if (!ok) return;
+		try {
+			await deleteSessionGroup(group.id);
+			// Ungroup locally right away; sessions:updated may follow with the
+			// backend's own view.
+			const all = useSessions.getState().sessions;
+			const moved = Object.values(all)
+				.filter((s) => s.groupId === group.id)
+				.map((s) => ({ ...s, groupId: null }));
+			if (moved.length > 0) useSessions.getState().upsert(moved);
+			await loadSessionGroups();
+			toast.success(`已删除分组「${group.name}」`);
+		} catch (err) {
+			toast.error(`删除分组失败: ${errMsg(err)}`);
+		}
+	};
+
+	const handleGroupContextMenu = (group: SessionGroup, e: React.MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		grpMenuTriggerRef.current = e.currentTarget as HTMLElement;
+		setGrpMenu({ group, anchor: { x: e.clientX, y: e.clientY } });
 	};
 
 	// List container keyboard navigation (S2, S8, S10, S11, S12/G17, S21)
@@ -977,58 +1140,104 @@ export function SessionSidebar() {
 
 	return (
 		<aside className="@container flex h-full flex-col bg-transparent text-neutral-300 text-xs select-none">
-			{/* Top Bar: Workspace Switcher Card + Search & Filters */}
-			<div className="relative border-b border-[var(--border-divider)] bg-transparent p-2 space-y-1.5">
-				{/* Workspace Switcher */}
-				<div className="flex items-center gap-1.5">
-					<button
-						ref={wsSwitcherRef}
-						type="button"
-						aria-haspopup="menu"
-						aria-expanded={wsDropdownOpen}
-						onClick={() => {
-							setWsDropdownOpen((v) => !v);
-							setFilterPopoverOpen(false);
-						}}
-						className="group flex min-w-0 flex-1 items-center justify-between rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-left transition-all hover:bg-[var(--bg-hover)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
-						title={
-							activeWorkspaceId === "__global"
-								? "全局工作区 (点击切换或管理)"
-								: activeWs
-									? `${activeWs.name} (${activeWs.path}) - 点击切换或管理`
-									: "全部工作区 (点击切换或管理)"
-						}
-					>
-						<div className="flex min-w-0 items-center gap-2">
-							<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--bg-active-fill)] text-neutral-300">
-								{activeWorkspaceId === "__global" ? (
-									<Globe size={13} className="text-indigo-400" />
-								) : activeWs ? (
-									<Folder size={13} className="text-amber-400/90" />
-								) : (
-									<Layers size={13} className="text-neutral-400" />
+			{/* Topbar row: mode title + inbox/search/collapse in the draggable title-bar strip */}
+			<div
+				data-tauri-drag-region
+				className="flex h-10 shrink-0 items-center border-b border-[var(--border-divider)] px-2.5 select-none"
+			>
+				<TrafficLightSpacer />
+				<div className="flex min-w-0 flex-1 items-center gap-1" data-tauri-drag-region>
+					{(() => {
+						const meta = SPACE_MODE_META[activeMode];
+						const ModeIcon = meta.icon;
+						return (
+							<button
+								ref={modeSwitcherRef}
+								type="button"
+								aria-haspopup="menu"
+								aria-expanded={modeMenuOpen}
+								onClick={() => {
+									setModeMenuOpen((v) => !v);
+									setFilterPopoverOpen(false);
+								}}
+								className="group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)]/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+								title={`${meta.label} 模式 (点击切换)`}
+							>
+								<ModeIcon size={16} className="shrink-0 text-indigo-400" />
+								<span className="whitespace-nowrap text-[17px] font-semibold leading-none tracking-[-0.01em] text-neutral-50">
+									{meta.label}
+								</span>
+								<ChevronDown
+									size={14}
+									strokeWidth={2}
+									className={clsx(
+										"shrink-0 text-neutral-500 transition-transform group-hover:text-neutral-300",
+										modeMenuOpen && "rotate-180 text-neutral-300",
+									)}
+								/>
+								{otherActivity && (
+									<ModeActivityDot activity={otherActivity} variant="dot" className="absolute -right-0.5 top-0.5" />
 								)}
-							</div>
-							<span className="truncate text-xs font-semibold text-neutral-200 group-hover:text-neutral-100">
-								{activeWorkspaceId === "__global"
-									? "全局工作区"
-									: activeWs
-										? activeWs.name
-										: "全部工作区"}
-							</span>
-						</div>
-						<ChevronDown
-							size={13}
+							</button>
+						);
+					})()}
+					<div className="ml-auto flex shrink-0 items-center gap-1">
+						<button
+							type="button"
+							onClick={() => setCenter("inbox")}
+							aria-label="收件箱"
+							title="收件箱"
 							className={clsx(
-								"shrink-0 text-neutral-500 transition-transform",
-								wsDropdownOpen && "rotate-180 text-neutral-300",
+								"relative flex h-7 w-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+								centerView === "inbox"
+									? "bg-[var(--bg-active-fill)] text-indigo-400"
+									: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 							)}
-						/>
-					</button>
+						>
+							<Bell size={16} strokeWidth={1.5} />
+							{inboxBadge > 0 && (
+								<span className="absolute right-0.5 top-0.5 min-w-[13px] rounded-full bg-indigo-500 px-[3px] text-center font-mono text-[8.5px] font-medium leading-[13px] text-white">
+									{inboxBadge > 99 ? "99+" : inboxBadge}
+								</span>
+							)}
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								if (searchOpen && !searchQuery && !showArchived) {
+									setSearchOpen(false);
+								} else {
+									setSearchOpen(true);
+									setTimeout(() => searchInputRef.current?.focus(), 0);
+								}
+							}}
+							aria-label="搜索"
+							title="搜索会话、分支 (⌘F)"
+							className={clsx(
+								"flex h-7 w-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+								searchOpen || searchQuery
+									? "bg-[var(--bg-active-fill)] text-neutral-100"
+									: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
+							)}
+						>
+							<Search size={16} strokeWidth={1.5} />
+						</button>
+						<button
+							type="button"
+							onClick={toggleSidebar}
+							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+							title="收起左侧栏 (⌘B)"
+						>
+							<PanelLeftClose size={16} strokeWidth={1.5} />
+						</button>
+					</div>
 				</div>
+			</div>
+			<div className="relative border-b border-[var(--border-divider)] bg-transparent px-2 pb-2 pt-1">
 
-				{/* Search & Filter Bar */}
-				<div className="flex items-center gap-1.5">
+				{/* Search & Filter Bar: revealed by the search icon / ⌘F, or while a filter is active */}
+				{(searchOpen || searchQuery || showArchived) && (
+				<div className="mt-1.5 flex items-center gap-1.5">
 					<div className="relative flex min-w-0 flex-1 items-center">
 						<Search
 							size={13}
@@ -1053,11 +1262,12 @@ export function SessionSidebar() {
 									if (visibleIds[0]) selectSession(visibleIds[0]);
 								} else if (e.key === "Escape") {
 									e.preventDefault();
-									setSearchQuery("");
+									if (searchQuery) setSearchQuery("");
+									else setSearchOpen(false);
 									scrollRef.current?.focus();
 								}
 							}}
-							placeholder="搜索会话、分支... (⌘F)"
+							placeholder="搜索会话、分支..."
 							className="w-full rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500/70 transition-colors focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 						/>
 						{searchQuery && (
@@ -1080,7 +1290,7 @@ export function SessionSidebar() {
 						aria-expanded={filterPopoverOpen}
 						onClick={() => {
 							setFilterPopoverOpen((v) => !v);
-							setWsDropdownOpen(false);
+							setModeMenuOpen(false);
 						}}
 						className={clsx(
 							"relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
@@ -1096,99 +1306,63 @@ export function SessionSidebar() {
 						)}
 					</button>
 				</div>
+				)}
 
 				{/* First-class Navigation List (S22: real accessible buttons, no button-in-button) */}
-				<div className="pt-0.5 space-y-0.5">
+				<div className="space-y-1 pt-1.5 pb-0.5">
 					{/* 1. 新建会话 */}
-					<div className="group flex h-7 min-h-[28px] items-center justify-between rounded-lg px-2 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors">
+					<div className="group flex h-9 items-center justify-between rounded-lg px-2.5 text-[14px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-hover)]">
 						<button
 							type="button"
-							onClick={(e) =>
-								void startNewSessionFromContext((ws) => handlePlusClick(ws, e))
-							}
-							className="flex flex-1 items-center gap-2 min-w-0 text-left focus-visible:outline-none focus-visible:underline"
-							title={
-								activeWs
-									? `在「${activeWs.name}」新建会话 (⌘N)`
-									: "新建会话 (⌘N)"
-							}
+							onClick={() => void startNewSession()}
+							className="flex min-w-0 flex-1 items-center gap-3 self-stretch text-left focus-visible:outline-none focus-visible:underline"
+							title="新建会话 (⌘N)"
 						>
-							<Plus
-								size={14}
-								className="shrink-0 text-neutral-400 group-hover:text-neutral-200 transition-colors"
+							<SquarePen
+								size={17}
+								strokeWidth={1.75}
+								className="shrink-0 text-neutral-300 transition-colors group-hover:text-neutral-100"
 							/>
 							<span className="truncate">新建会话</span>
 						</button>
-						<div className="flex items-center gap-1.5 shrink-0">
+						<div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
 							<button
 								type="button"
 								onClick={() => openModal("quick-ask")}
 								title="快速提问 (⌘⇧K)"
-								className="flex h-5 w-5 items-center justify-center rounded text-neutral-500 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400"
+								className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400"
 							>
-								<MessageCircleQuestion size={13} />
+								<MessageCircleQuestion size={15} />
 							</button>
-							<span className="font-mono text-[10px] text-neutral-400 select-none @max-[220px]:hidden">
+							<span className="select-none font-mono text-[11px] text-neutral-400 @max-[220px]:hidden">
 								⌘N
 							</span>
 						</div>
 					</div>
-
-					{/* 2. 收件箱 */}
-					<button
-						type="button"
-						onClick={() => setCenter("inbox")}
-						className={clsx(
-							"flex h-7 min-h-[28px] w-full items-center justify-between rounded-lg px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
-							centerView === "inbox"
-								? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
-								: "font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
-						)}
-						title="收件箱"
-					>
-						<div className="flex items-center gap-2 min-w-0">
-							<Inbox
-								size={14}
-								className={clsx(
-									"shrink-0 transition-colors",
-									centerView === "inbox"
-										? "text-indigo-400"
-										: "text-neutral-400 group-hover:text-neutral-200",
-								)}
-							/>
-							<span className="truncate">收件箱</span>
-						</div>
-						{inboxBadge > 0 && (
-							<span className="ml-auto rounded-full bg-indigo-500/20 px-1.5 py-0.2 text-[10px] font-mono font-medium text-indigo-400">
-								{inboxBadge}
-							</span>
-						)}
-					</button>
 
 					{/* 3. 定时任务 */}
 					<button
 						type="button"
 						onClick={() => setCenter("schedules")}
 						className={clsx(
-							"flex h-7 min-h-[28px] w-full items-center justify-between rounded-lg px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+							"group flex h-9 w-full items-center gap-3 rounded-lg px-2.5 text-left text-[14px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 							centerView === "schedules"
 								? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
-								: "font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
+								: "font-medium text-[var(--text)] hover:bg-[var(--bg-hover)]",
 						)}
 						title="定时任务"
 					>
-						<div className="flex items-center gap-2 min-w-0">
-							<Clock
-								size={14}
-								className={clsx(
-									"shrink-0 transition-colors",
-									centerView === "schedules"
-										? "text-amber-400"
-										: "text-neutral-400 group-hover:text-neutral-200",
-								)}
-							/>
-							<span className="truncate">定时任务</span>
-						</div>
+						<Clock
+							size={17}
+							strokeWidth={1.75}
+							className={clsx(
+								"shrink-0 transition-colors",
+								centerView === "schedules"
+									? "text-amber-400"
+									: "text-neutral-400 group-hover:text-neutral-200",
+							)}
+						/>
+						<span className="truncate">定时任务</span>
 					</button>
 
 					{/* 4. Skills 管理 */}
@@ -1196,201 +1370,85 @@ export function SessionSidebar() {
 						type="button"
 						onClick={() => setCenter("skills")}
 						className={clsx(
-							"flex h-7 min-h-[28px] w-full items-center justify-between rounded-lg px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+							"group flex h-9 w-full items-center gap-3 rounded-lg px-2.5 text-left text-[14px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 							centerView === "skills"
 								? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
-								: "font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
+								: "font-medium text-[var(--text)] hover:bg-[var(--bg-hover)]",
 						)}
 						title="Skills 管理"
 					>
-						<div className="flex items-center gap-2 min-w-0">
-							<Boxes
-								size={14}
-								className={clsx(
-									"shrink-0 transition-colors",
-									centerView === "skills"
-										? "text-emerald-400"
-										: "text-neutral-400 group-hover:text-neutral-200",
-								)}
-							/>
-							<span className="truncate">Skills 管理</span>
-						</div>
+						<Boxes
+							size={17}
+							strokeWidth={1.75}
+							className={clsx(
+								"shrink-0 transition-colors",
+								centerView === "skills"
+									? "text-emerald-400"
+									: "text-neutral-400 group-hover:text-neutral-200",
+							)}
+						/>
+						<span className="truncate">Skills 管理</span>
 					</button>
 				</div>
-			</div>
 
-			{/* Workspace Switcher Dropdown */}
-			{wsDropdownOpen && wsSwitcherRef.current && (
-				<FloatingLayer
-					anchor={wsSwitcherRef.current}
-					placement="bottom-start"
-					offset={4}
-					layer="popover"
-					ignoreRefs={[wsSwitcherRef]}
-					onDismiss={() => setWsDropdownOpen(false)}
-					style={{
-						width: wsSwitcherRef.current
-							? Math.max(wsSwitcherRef.current.offsetWidth, 240)
-							: 260,
-					}}
-					className="p-1.5 text-xs text-neutral-300"
-				>
+				{/* Space Mode Switcher Dropdown (anchored to the header, 8px gutter + 32px title row + 4px gap) */}
+				{modeMenuOpen && (
 					<div
-						role="menu"
-						aria-label="工作区切换"
-						className="space-y-0.5 focus:outline-none"
+						ref={modeMenuRef}
+						className="absolute left-2 top-1 z-[60] max-h-[70vh] w-[200px] overflow-y-auto rounded-xl border border-[var(--border-divider)] vibrancy-popover p-1.5 text-xs text-neutral-300 shadow-apple-modal backdrop-blur-2xl"
+					>
+					<MenuContainer
+						ariaLabel="切换模式"
+						onClose={() => setModeMenuOpen(false)}
+						triggerRef={modeSwitcherRef}
 					>
 						<div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-							工作区切换
+							切换模式
 						</div>
-
-						{/* All Workspaces */}
-						<button
-							type="button"
-							role="menuitem"
-							onClick={() => {
-								setActiveWorkspaceId("all");
-								setWsDropdownOpen(false);
-							}}
-							className={clsx(
-								"flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors",
-								activeWorkspaceId === "all"
-									? "bg-[var(--bg-hover)] font-medium text-[var(--text)]"
-									: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]/60 hover:text-[var(--text)]",
-							)}
-						>
-							<div className="flex items-center gap-2">
-								<Layers size={13} className="text-neutral-400" />
-								<span>全部工作区</span>
-							</div>
-							{activeWorkspaceId === "all" && (
-								<Check size={13} className="text-indigo-400" />
-							)}
-						</button>
-
-						{/* Global Workspace */}
-						{globalWs && (
-							<button
-								type="button"
-								role="menuitem"
-								onClick={() => {
-									setActiveWorkspaceId("__global");
-									setWsDropdownOpen(false);
-								}}
-								className={clsx(
-									"flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors",
-									activeWorkspaceId === "__global"
-										? "bg-[var(--bg-hover)] font-medium text-[var(--text)]"
-										: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]/60 hover:text-[var(--text)]",
-								)}
-							>
-								<div className="flex items-center gap-2">
-									<Globe size={13} className="text-indigo-400" />
-									<span>全局工作区</span>
-								</div>
-								{activeWorkspaceId === "__global" && (
-									<Check size={13} className="text-indigo-400" />
-								)}
-							</button>
-						)}
-
-						{projectWorkspaces.length > 0 && (
-							<div className="my-1 border-t border-neutral-800/80" />
-						)}
-
-						{/* Project Workspaces List */}
-						<div className="max-h-56 overflow-y-auto space-y-0.5">
-							{projectWorkspaces.map((ws) => {
-								const isSelected = activeWorkspaceId === ws.id;
-								const count = sessionCountsByWs.get(ws.id) ?? 0;
-								return (
-									<div
-										key={ws.id}
-										role="menuitem"
-										className={clsx(
-											"group flex items-center justify-between rounded-md px-2 py-1.5 transition-colors",
-											isSelected
-												? "bg-[var(--bg-hover)] font-medium text-[var(--text)]"
-												: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]/60 hover:text-[var(--text)]",
-										)}
-									>
-										<button
-											type="button"
-											onClick={() => {
-												setActiveWorkspaceId(ws.id);
-												setWsDropdownOpen(false);
-											}}
-											className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:underline"
-										>
-											<Folder
-												size={13}
-												className="shrink-0 text-amber-400/90"
-											/>
-											<span
-												className="truncate"
-												title={`${ws.name} (${ws.path})`}
-											>
-												{ws.name}
-											</span>
-											<span className="rounded-full bg-neutral-800/80 px-1.5 py-0.2 text-[10px] font-mono text-neutral-400">
-												{count}
-											</span>
-										</button>
-
-										<div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100">
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													handleRevealWorkspace(ws);
-												}}
-												title="在访达中打开"
-												className="rounded p-1 text-neutral-400 hover:bg-neutral-700/60 hover:text-neutral-200 focus-visible:opacity-100"
-											>
-												<FolderOpen size={12} />
-											</button>
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													handleRemoveWorkspace(ws);
-												}}
-												title="移除工作区"
-												className="rounded p-1 text-rose-400 hover:bg-rose-950/60 hover:text-rose-300 focus-visible:opacity-100"
-											>
-												<Trash2 size={12} />
-											</button>
-										</div>
-
-										{isSelected && (
-											<Check
-												size={13}
-												className="ml-1 shrink-0 text-indigo-400"
-											/>
-										)}
+						{SPACE_MODES.map((mode) => {
+							const meta = SPACE_MODE_META[mode];
+							const ModeIcon = meta.icon;
+							const isSelected = mode === activeMode;
+							return (
+								<button
+									key={mode}
+									type="button"
+									role="menuitem"
+									onClick={() => {
+										switchSpaceMode(mode);
+										setModeMenuOpen(false);
+									}}
+									className={clsx(
+										"flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors",
+										isSelected
+											? "bg-[var(--bg-hover)] font-medium text-[var(--text)]"
+											: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]/60 hover:text-[var(--text)]",
+									)}
+								>
+									<div className="flex items-center gap-2">
+										<ModeIcon
+											size={13}
+											className={clsx(
+												isSelected ? "text-indigo-400" : "text-neutral-400",
+											)}
+										/>
+										<span>{meta.label}</span>
 									</div>
-								);
-							})}
+									{isSelected ? (
+										<Check size={13} className="text-indigo-400" />
+									) : (
+										<ModeActivityDot activity={modeActivity[mode]} />
+									)}
+								</button>
+							);
+						})}
+						<div className="px-2 pt-1.5 pb-0.5 text-[10px] leading-4 text-neutral-600">
+							每个模式有独立的项目与会话；Universal 不属于任何项目
 						</div>
-
-						<div className="my-1 border-t border-neutral-800/80" />
-
-						{/* Add Workspace Action */}
-						<button
-							type="button"
-							role="menuitem"
-							onClick={() => {
-								setWsDropdownOpen(false);
-								void handleAddWorkspace();
-							}}
-							className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-indigo-400 transition-colors hover:bg-indigo-950/40 hover:text-indigo-300"
-						>
-							<FolderPlus size={13} />
-							<span>添加工作区目录…</span>
-						</button>
+					</MenuContainer>
 					</div>
-				</FloatingLayer>
-			)}
+				)}
+			</div>
 
 			{/* Filter Popover */}
 			{filterPopoverOpen && filterBtnRef.current && (
@@ -1569,17 +1627,18 @@ export function SessionSidebar() {
 							</div>
 						)}
 
-						{/* Single Workspace Mode: focused view */}
-						{activeWorkspaceId !== "all" && (
-							<div className="py-1">
-								{activeWorkspaceId === "__global" ? (
-									grouped.globalGroup && grouped.globalGroup.totalCount > 0 ? (
-										<div className="ml-[14px]">
-											<div className="ml-[8px] pl-2 my-0.5">
+						{/* 1. 无项目 area: the active mode's isolated global-workspace
+						    sessions — ungrouped rows + user SessionGroups (§Spaces). */}
+						{showLoose && (() => {
+							return (
+							<div className="mt-0.5">
+
+									<div className="pb-1" data-group-key="__global">
+										{/* Ungrouped 无项目 sessions */}
+										{noProjectSplit.ungrouped.length > 0 && (
+											<div className="space-y-1 px-2 my-0.5">
 												<SessionList
-													sessions={grouped.globalGroup.subgroups.flatMap(
-														(group) => group.sessions,
-													)}
+													sessions={noProjectSplit.ungrouped}
 													scopeKey="__global"
 													searching={searching}
 													onSetCount={setSectionCount}
@@ -1587,230 +1646,216 @@ export function SessionSidebar() {
 													workspaces={workspaces}
 													onRowFocus={focusList}
 													onBatchAction={handleBatchAction}
-													withSpine
+													large
 												/>
 											</div>
-										</div>
-									) : (
-										// G7: consider pinned count
-										!searchQuery &&
-										grouped.pinnedSessions.length === 0 && (
-											<div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500">
-												<div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-800/80 text-indigo-400">
-													<Globe size={18} />
-												</div>
-												<div className="text-xs font-medium text-neutral-200">
-													暂无全局会话
-												</div>
-												<div className="mt-1 text-[11px] text-neutral-500">
-													在此全局空间开启探索会话
-												</div>
-												<button
-													type="button"
-													onClick={() =>
-														globalWs && void startSessionInDir(globalWs, false)
-													}
-													className="mt-4 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm"
-												>
-													<Plus size={13} />
-													新建会话
-													<span className="ml-0.5 text-[10px] text-neutral-400 font-mono @max-[220px]:hidden">
-														⌘N
-													</span>
-												</button>
-											</div>
-										)
-									)
-								) : activeWs && grouped.workspaceGroups[0] ? (() => {
-									const wg = grouped.workspaceGroups[0];
-									const liveSubs = wg.subgroups.filter((s) => !s.deleted && s.sessions.length > 0);
-									const emptySubs = wg.subgroups.filter((s) => !s.deleted && s.sessions.length === 0);
-									const hasContent =
-										wg.totalCount > 0 ||
-										(wg.pinnedCount ?? 0) > 0 ||
-										liveSubs.length > 0 ||
-										emptySubs.length > 0 ||
-										wg.deletedSubgroups.length > 0;
-									return hasContent ? (
-										<div>
-											{liveSubs.length > 1 ||
-											(liveSubs[0] && liveSubs[0].kind !== "default" && !liveSubs[0].isMain) ? (
-												liveSubs.map((sub) => (
-													<CollapsibleSubgroup
-														key={sub.key}
-														sub={sub}
-														scopeKey={`${activeWs.id}|${sub.key}`}
-														searching={searching}
-														onSetCount={setSectionCount}
-														expanded={expandedSections}
-														onToggle={toggleSection}
-														onBatchArchive={() =>
-															void batchArchiveSessions(sub.label, sub.sessions)
-														}
-														workspaces={workspaces}
-														onRowFocus={focusList}
-														onBatchAction={handleBatchAction}
-														ws={activeWs}
-														onCreateSession={startSessionAt}
-														creatingKey={creatingKey}
-													/>
-												))
-											) : (
-												<div className="ml-[22px] pl-2 my-0.5">
-													<SessionList
-														sessions={liveSubs[0]?.sessions ?? []}
-														scopeKey={`${activeWs.id}|default`}
-														searching={searching}
-														onSetCount={setSectionCount}
-														expanded={expandedSections}
-														workspaces={workspaces}
-														onRowFocus={focusList}
-														onBatchAction={handleBatchAction}
-														withSpine
-													/>
-												</div>
-											)}
-											<EmptyWorktreesFolder
-												folderKey={`${activeWs.id}|__empty`}
-												ws={activeWs}
-												subgroups={emptySubs}
-												searching={searching}
-												isOpen={isGroupOpen(`${activeWs.id}|__empty`, false)}
-												onToggle={() =>
-													toggleGroup(`${activeWs.id}|__empty`, false)
-												}
-												expanded={expandedSections}
-												onToggleSection={toggleSection}
-												onSetCount={setSectionCount}
-												workspaces={workspaces}
-												onRowFocus={focusList}
-												onBatchAction={handleBatchAction}
-												onCreateSession={startSessionAt}
-												creatingKey={creatingKey}
-											/>
-											<DeletedWorktreesFolder
-												folderKey={`${activeWs.id}|__deleted`}
-												ws={activeWs}
-												subgroups={grouped.workspaceGroups[0].deletedSubgroups}
-												searching={searching}
-												isOpen={isGroupOpen(`${activeWs.id}|__deleted`, false)}
-												onToggle={() =>
-													toggleGroup(`${activeWs.id}|__deleted`, false)
-												}
-												onBatchArchive={batchArchiveSessions}
-												expanded={expandedSections}
-												onToggleSection={toggleSection}
-												onSetCount={setSectionCount}
-												workspaces={workspaces}
-												onRowFocus={focusList}
-												onBatchAction={handleBatchAction}
-												onCreateSession={startSessionAt}
-												creatingKey={creatingKey}
-											/>
-										</div>
-									) : (
-										// G7: consider pinned count
-										!searchQuery &&
-										(grouped.workspaceGroups[0].pinnedCount ?? 0) === 0 && (
-											<div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500">
-												<div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-800/80 text-amber-400">
-													<Folder size={18} />
-												</div>
-												<div className="text-xs font-medium text-neutral-200">
+										)}
+										{noProjectSplit.ungrouped.length === 0 &&
+											modeGroups.length === 0 &&
+											!searching && (
+												<div className="ml-[8px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
 													暂无会话
 												</div>
-												<div className="mt-1 text-[11px] text-neutral-500">
-													为此工作区创建第一个代码或任务会话
-												</div>
-												<button
-													type="button"
-													onClick={() => void startSessionInDir(activeWs, false)}
-													className="mt-4 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm"
-												>
-													<Plus size={13} />
-													新建会话
-													<span className="ml-0.5 text-[10px] text-neutral-400 font-mono @max-[220px]:hidden">
-														⌘N
-													</span>
-												</button>
-											</div>
-										)
-									);
-								})() : null}
-							</div>
-						)}
-
-						{/* All Workspaces Mode: multi-project overview */}
-						{activeWorkspaceId === "all" && (
-							<>
-								{/* 1. Global Workspace (S15/G6: render all subgroups) */}
-								{grouped.globalGroup && showGlobalInAll && (() => {
-									const palette = getWorkspacePalette("__global");
-									const isOpen = isGroupOpen("__global", true);
-									const allGlobalSessions = grouped.globalGroup.subgroups.flatMap(
-										(g) => g.sessions,
-									);
-									const statusCounts = getGroupStatusCounts(allGlobalSessions);
-									const isCreatingHeader =
-										creatingKey ===
-										`${grouped.globalGroup.workspace.id}|${grouped.globalGroup.workspace.path}`;
-
-									return (
-										<div className="mt-0.5">
-											<GroupHeader
-												groupKey="__global"
-												title="全局工作区"
-												icon={
-													<Globe
-														size={14}
-														className={clsx("shrink-0", palette.folderColor)}
-													/>
-												}
-												isOpen={isOpen}
-												onToggle={() => toggleGroup("__global", true)}
-												statusCounts={statusCounts}
-												actionButton={
-													<button
-														type="button"
-														onClick={(e) =>
-															handlePlusClick(grouped.globalGroup!.workspace, e)
-														}
-														title="新建会话"
-														disabled={creatingKey !== null}
-														className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
-													>
-														{isCreatingHeader ? (
-															<Loader2 size={13} className="animate-spin" />
-														) : (
-															<Plus size={13} />
-														)}
-													</button>
-												}
-											/>
-
-											{isOpen && (
-												<div className="pb-1 ml-[14px]" data-group-key="__global">
-													<div className="ml-[8px] pl-2 my-0.5">
-														<SessionList
-															sessions={allGlobalSessions}
-															scopeKey="__global"
-															searching={searching}
-															onSetCount={setSectionCount}
-															expanded={expandedSections}
-															workspaces={workspaces}
-															onRowFocus={focusList}
-															onBatchAction={handleBatchAction}
-															withSpine
-														/>
-													</div>
-												</div>
 											)}
-										</div>
-									);
-								})()}
 
-								{/* 2. Registered Project Workspaces */}
-								{visibleWorkspaceGroups.map((wg) => {
+										{/* User session groups of this mode */}
+										{modeGroups.map((g) => {
+											const grpSessions = noProjectSplit.byGroup[g.id] ?? [];
+											const grpKey = `grp:${g.id}`;
+											const grpOpen = isGroupOpen(grpKey, true);
+											const grpCreating =
+												globalWs && creatingKey === `${globalWs.id}|${globalWs.path}`;
+											return (
+												<div key={g.id} className="mt-0.5">
+													{renamingGroupId === g.id ? (
+														<div className="mx-1 px-1.5 py-1">
+															<input
+																ref={groupRenameInputRef}
+																autoFocus
+																type="text"
+																value={groupNameDraft}
+																onClick={(e) => e.stopPropagation()}
+																onChange={(e) => setGroupNameDraft(e.target.value)}
+																onBlur={() => {
+																	if (groupEditInFlight.current) return;
+																	void handleRenameGroup(g);
+																}}
+																onKeyDown={(e) => {
+																	if (isComposing(e)) return;
+																	if (e.key === "Enter") {
+																		e.preventDefault();
+																		void handleRenameGroup(g);
+																	} else if (e.key === "Escape") {
+																		e.preventDefault();
+																		// Swallow the blur that follows unmount so
+																		// Escape cancels instead of committing.
+																		groupEditInFlight.current = true;
+																		setRenamingGroupId(null);
+																		window.setTimeout(() => {
+																			groupEditInFlight.current = false;
+																		}, 0);
+																	}
+																}}
+																className="h-6 w-full rounded border border-[var(--primary)] bg-[var(--well-bg)] px-1.5 text-xs font-bold text-[var(--text)] outline-none"
+															/>
+														</div>
+													) : (
+														<GroupHeader
+															groupKey={grpKey}
+															title={g.name}
+															icon={
+																<Tag
+																	size={13}
+																	className="text-[var(--text-dim)] shrink-0"
+																/>
+															}
+															isOpen={grpOpen}
+															onToggle={() => toggleGroup(grpKey, true)}
+															statusCounts={getGroupStatusCounts(grpSessions)}
+															onContextMenu={(e) => handleGroupContextMenu(g, e)}
+															actionButton={
+																<div className="flex items-center shrink-0 ml-1">
+																	<button
+																		type="button"
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			if (globalWs)
+																				void startSessionInDir(globalWs, false, g.id);
+																		}}
+																		title="在分组内新建会话"
+																		disabled={!globalWs || creatingKey !== null}
+																		className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
+																	>
+																		{grpCreating ? (
+																			<Loader2 size={13} className="animate-spin" />
+																		) : (
+																			<Plus size={13} />
+																		)}
+																	</button>
+																	<button
+																		type="button"
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			const el = e.currentTarget as HTMLElement;
+																			grpMenuTriggerRef.current = el;
+																			setGrpMenu((prev) =>
+																				prev?.group.id === g.id
+																					? null
+																					: { group: g, anchor: el },
+																			);
+																		}}
+																		title="分组操作"
+																		className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
+																	>
+																		<MoreHorizontal size={13} />
+																	</button>
+																</div>
+															}
+														/>
+													)}
+													{grpOpen && (
+														<div className="pb-1 ml-[14px]" data-group-key={grpKey}>
+															{grpSessions.length > 0 ? (
+																<div className="ml-[8px] pl-2 my-0.5">
+																	<SessionList
+																		sessions={grpSessions}
+																		scopeKey={grpKey}
+																		searching={searching}
+																		onSetCount={setSectionCount}
+																		expanded={expandedSections}
+																		workspaces={workspaces}
+																		onRowFocus={focusList}
+																		onBatchAction={handleBatchAction}
+																		withSpine
+																	/>
+																</div>
+															) : (
+																!searching && (
+																	<div className="ml-[22px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
+																		暂无会话
+																	</div>
+																)
+															)}
+														</div>
+													)}
+												</div>
+											);
+										})}
+
+										{/* + 新建分组 inline entry */}
+										{newGroupOpen ? (
+											<div className="mx-1 mt-0.5 px-1.5 py-1">
+												<input
+													ref={newGroupInputRef}
+													autoFocus
+													type="text"
+													value={newGroupName}
+													placeholder="分组名称"
+													onClick={(e) => e.stopPropagation()}
+													onChange={(e) => setNewGroupName(e.target.value)}
+													onBlur={() => {
+														if (groupEditInFlight.current) return;
+														if (newGroupName.trim()) void handleCreateGroup();
+														else setNewGroupOpen(false);
+													}}
+													onKeyDown={(e) => {
+														if (isComposing(e)) return;
+														if (e.key === "Enter") {
+															e.preventDefault();
+															void handleCreateGroup();
+														} else if (e.key === "Escape") {
+															e.preventDefault();
+															// Swallow the blur that follows unmount so
+															// Escape cancels instead of creating.
+															groupEditInFlight.current = true;
+															setNewGroupOpen(false);
+															setNewGroupName("");
+															window.setTimeout(() => {
+																groupEditInFlight.current = false;
+															}, 0);
+														}
+													}}
+													className="h-6 w-full rounded border border-[var(--primary)] bg-[var(--well-bg)] px-1.5 text-xs text-[var(--text)] outline-none"
+												/>
+											</div>
+										) : (
+											<button
+												type="button"
+												onClick={(e) => {
+													e.stopPropagation();
+													setNewGroupName("");
+													setNewGroupOpen(true);
+												}}
+												className="mt-0.5 flex w-[calc(100%-8px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+											>
+												<Plus size={12} className="shrink-0" />
+												<span>新建分组</span>
+											</button>
+										)}
+									</div>
+							</div>
+							);
+						})()}
+
+						{showProjects && (
+						<>
+						{/* 2. 项目 section header: 「添加工作区目录…」 lands in the CURRENT space */}
+						<div className="mx-1 mt-1 flex items-center justify-between rounded-md px-2 py-1">
+							<span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)]">
+								项目
+							</span>
+							<button
+								type="button"
+								onClick={() => void handleAddWorkspace()}
+								title="添加工作区目录…"
+								className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
+							>
+								<Plus size={13} />
+							</button>
+						</div>
+
+						{/* 3. Registered Project Workspaces */}
+						{grouped.workspaceGroups.map((wg) => {
 									const palette = getWorkspacePalette(
 										wg.workspace.id || wg.workspace.name,
 									);
@@ -1922,6 +1967,7 @@ export function SessionSidebar() {
 																		onRowFocus={focusList}
 																		onBatchAction={handleBatchAction}
 																		withSpine
+																		recentLimit={NO_WORKTREE_RECENT_LIMIT}
 																	/>
 																</div>
 															)}
@@ -2047,7 +2093,7 @@ export function SessionSidebar() {
 																}
 																onAddWorkspace={async () => {
 																	try {
-																		await addWorkspace(grp.cwd);
+																		await addWorkspace(grp.cwd, activeMode);
 																		await loadSessions();
 																		toast.success(`已添加工作区「${grp.label}」`);
 																	} catch (err) {
@@ -2195,39 +2241,29 @@ export function SessionSidebar() {
 										)}
 									</div>
 								)}
-							</>
-						)}
 
+						</>
+						)}
 						{/* Search with 0 hits or Empty State (G11, S20) */}
-						{grouped.totalVisible === 0 && (
+						{grouped.totalVisible === 0 && showProjects && (
 							<div className="flex flex-col items-center justify-center p-6 text-center text-neutral-500">
 								{searchQuery ? (
 									(() => {
-										const allSessionsList = Object.values(sessions);
-										const allMatches = filterSessions(allSessionsList, {
+										// Search is scoped to the active space; archived matches
+										// of this mode get a one-click hint.
+										const modeSessionList = Object.values(sessions).filter(
+											(s) => s.mode === activeMode,
+										);
+										const allMatches = filterSessions(modeSessionList, {
 											searchQuery,
 											showArchived: true,
 										});
-										const otherWsMatches = allMatches.filter(
-											(s) =>
-												!s.archived && s.workspaceId !== activeWorkspaceId,
-										);
 										const archivedMatches = allMatches.filter((s) => s.archived);
 
 										return (
 											<div className="space-y-2">
 												<Search size={24} className="mx-auto text-neutral-600" />
 												<div className="text-xs">未找到匹配会话</div>
-												{otherWsMatches.length > 0 &&
-													activeWorkspaceId !== "all" && (
-														<button
-															type="button"
-															onClick={() => setActiveWorkspaceId("all")}
-															className="block mx-auto text-[11px] text-indigo-400 hover:underline"
-														>
-															其他工作区有 {otherWsMatches.length} 条匹配 · 搜索全部
-														</button>
-													)}
 												{archivedMatches.length > 0 && !showArchived && (
 													<button
 														type="button"
@@ -2247,58 +2283,49 @@ export function SessionSidebar() {
 											</div>
 										);
 									})()
-								) : activeWorkspaceId === "all" ? (
-									Object.keys(sessions).length === 0 && loadError ? (
-										// P5: retryable inline error block when loading failed
-										<div className="space-y-2">
-											<AlertCircle size={24} className="mx-auto text-rose-500" />
-											<div className="text-xs font-medium text-rose-300">
-												加载会话列表失败
-											</div>
-											<div className="text-[11px] text-neutral-400">
-												{loadError}
-											</div>
-											<button
-												type="button"
-												onClick={async () => {
-													setLoadError(null);
-													setErrorMessage(null);
-													try {
-														await loadSessions();
-													} catch (err) {
-														const msg = errMsg(err);
-														setLoadError(msg);
-														setErrorMessage(`加载会话列表失败: ${msg}`);
-													}
-												}}
-												className="mt-3 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm mx-auto"
-											>
-												重试
-											</button>
+								) : Object.keys(sessions).length === 0 && loadError ? (
+									// P5: retryable inline error block when loading failed
+									<div className="space-y-2">
+										<AlertCircle size={24} className="mx-auto text-rose-500" />
+										<div className="text-xs font-medium text-rose-300">
+											加载会话列表失败
 										</div>
-									) : (
-										// S20: Empty state copy points to real affordances + primary button
-										<div className="space-y-2">
-											<Inbox size={24} className="mx-auto text-neutral-600" />
-											<div className="text-xs font-medium text-neutral-200">
-												暂无任何会话
-											</div>
-											<div className="text-[11px] text-neutral-500">
-												通过顶部导航「新建会话」或添加工作区目录开始
-											</div>
-											<button
-												type="button"
-												onClick={() => void startNewSessionFromContext()}
-												className="mt-3 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm mx-auto"
-											>
-												<Plus size={13} />
-												新建会话
-												<span className="ml-0.5 text-[10px] text-neutral-400 font-mono @max-[220px]:hidden">
-													⌘N
-												</span>
-											</button>
+										<div className="text-[11px] text-neutral-400">
+											{loadError}
 										</div>
-									)
+										<button
+											type="button"
+											onClick={async () => {
+												setLoadError(null);
+												setErrorMessage(null);
+												try {
+													await loadSessions();
+												} catch (err) {
+													const msg = errMsg(err);
+													setLoadError(msg);
+													setErrorMessage(`加载会话列表失败: ${msg}`);
+												}
+											}}
+											className="mt-3 flex items-center gap-1.5 rounded-md border border-neutral-700/60 bg-neutral-800/90 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700/80 transition-colors shadow-sm mx-auto"
+										>
+											重试
+										</button>
+									</div>
+								) : grouped.workspaceGroups.length === 0 ? (
+									// S20: per-space empty state — the mode owns nothing yet
+									<div className="w-full space-y-1 text-left">
+										<div className="px-2 text-[12px] text-neutral-500">
+											这个模式还没有会话
+										</div>
+										<button
+											type="button"
+											onClick={() => void handleAddWorkspace()}
+											className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
+										>
+											<FolderPlus size={15} strokeWidth={1.75} className="shrink-0" />
+											<span className="truncate">添加项目目录</span>
+										</button>
+									</div>
 								) : null}
 							</div>
 						)}
@@ -2310,21 +2337,31 @@ export function SessionSidebar() {
 			<ArchiveUndoBar />
 
 			{/* Settings footer (S18: single accessible button) */}
-			<div className="shrink-0 border-t border-neutral-800/80 bg-neutral-900/50">
+			<div className="shrink-0 p-2">
 				<button
 					type="button"
 					onClick={() =>
 						centerView === "settings" ? closeSettings() : openSettings()
 					}
 					className={clsx(
-						"flex w-full items-center justify-start gap-2 px-4 py-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--border-active)]",
+						"group flex h-9 w-full items-center gap-3 rounded-lg px-2.5 text-left text-[14px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 						centerView === "settings"
-							? "bg-neutral-800 text-neutral-100 font-medium"
-							: "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60",
+							? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs hairline"
+							: "font-medium text-[var(--text)] hover:bg-[var(--bg-hover)]",
 					)}
+					title="设置"
 				>
-					<SettingsIcon size={14} />
-					<span>设置</span>
+					<SettingsIcon
+						size={17}
+						strokeWidth={1.75}
+						className={clsx(
+							"shrink-0 transition-colors",
+							centerView === "settings"
+								? "text-neutral-100"
+								: "text-neutral-400 group-hover:text-neutral-200",
+						)}
+					/>
+					<span className="truncate">设置</span>
 				</button>
 			</div>
 
@@ -2454,6 +2491,49 @@ export function SessionSidebar() {
 				</FloatingLayer>
 			)}
 
+			{/* Context menu: SessionGroup header (⋯ button / right-click) */}
+			{grpMenu && (
+				<FloatingLayer
+					anchor={grpMenu.anchor}
+					placement="bottom-start"
+					offset={4}
+					layer="menu"
+					ignoreRefs={grpMenuTriggerRef.current ? [grpMenuTriggerRef] : undefined}
+					onDismiss={() => setGrpMenu(null)}
+					className="w-44 py-1 text-xs text-neutral-300"
+				>
+					<MenuContainer
+						ariaLabel="分组操作"
+						onClose={() => setGrpMenu(null)}
+						triggerRef={grpMenuTriggerRef}
+					>
+						<button
+							type="button"
+							role="menuitem"
+							onClick={() => {
+								const g = grpMenu.group;
+								setGrpMenu(null);
+								setGroupNameDraft(g.name);
+								setRenamingGroupId(g.id);
+							}}
+							className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-100 text-left"
+						>
+							<Pencil size={13} />
+							重命名
+						</button>
+						<button
+							type="button"
+							role="menuitem"
+							onClick={() => void handleDeleteGroup(grpMenu.group)}
+							className="flex w-full items-center gap-2 px-3 py-1.5 text-[var(--status-error)] hover:bg-rose-500/15 text-left"
+						>
+							<Trash2 size={13} />
+							删除分组
+						</button>
+					</MenuContainer>
+				</FloatingLayer>
+			)}
+
 			{/* Global dialogs rendered portaled once (Contract 3, S7) */}
 			<SessionDialogs />
 		</aside>
@@ -2467,6 +2547,8 @@ interface SessionListProps {
 	expanded: Record<string, number>;
 	onSetCount: (key: string, count: number) => void;
 	withSpine?: boolean;
+	large?: boolean;
+	recentLimit?: number;
 	workspaces: Workspace[];
 	onRowFocus?: () => void;
 	onBatchAction: (action: "archive" | "pin" | "delete", ids: string[]) => void;
@@ -2480,6 +2562,8 @@ function SessionList({
 	scopeKey,
 	searching,
 	withSpine = false,
+	large = false,
+	recentLimit = RECENT_LIMIT,
 	expanded,
 	onSetCount,
 	workspaces,
@@ -2490,7 +2574,7 @@ function SessionList({
 
 	const SEARCH_LIMIT = 8;
 	const SEARCH_STEP = 10;
-	const limit = searching ? SEARCH_LIMIT : RECENT_LIMIT;
+	const limit = searching ? SEARCH_LIMIT : recentLimit;
 	const step = searching ? SEARCH_STEP : RECENT_STEP;
 
 	const moreKey = `${scopeKey}|more`;
@@ -2557,6 +2641,7 @@ function SessionList({
 						<SessionRow
 							session={session}
 							withSpine={withSpine}
+							large={large}
 							workspaces={workspaces}
 							onRowFocus={onRowFocus}
 							onBatchAction={onBatchAction}

@@ -127,3 +127,29 @@ export async function abortTurn(sessionId: string): Promise<void> {
 		throw err;
 	}
 }
+
+/**
+ * Abort the running turn, then wait until the live session stops streaming.
+ * Resolves `true` once idle (immediately if nothing was streaming) and `false`
+ * if the turn is still running after `timeoutMs`. Throws if the abort RPC fails.
+ */
+export async function interruptAndWait(sessionId: string, timeoutMs: number): Promise<boolean> {
+	if (useLive.getState().sessions[sessionId]?.streaming !== true) return true;
+	await abortTurn(sessionId);
+	return new Promise<boolean>((resolve) => {
+		let timer: number | undefined;
+		const finish = (idle: boolean) => {
+			if (timer !== undefined) window.clearTimeout(timer);
+			unsubscribe();
+			resolve(idle);
+		};
+		const unsubscribe = useLive.subscribe((state) => {
+			if (state.sessions[sessionId]?.streaming !== true) finish(true);
+		});
+		timer = window.setTimeout(() => {
+			finish(useLive.getState().sessions[sessionId]?.streaming !== true);
+		}, timeoutMs);
+		// The turn may have ended between the abort RPC and subscribing.
+		if (useLive.getState().sessions[sessionId]?.streaming !== true) finish(true);
+	});
+}

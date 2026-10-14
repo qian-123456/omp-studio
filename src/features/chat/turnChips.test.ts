@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TurnCheckpoint } from "../../lib/contracts";
-import { undoableTurn } from "./turnChips";
+import { canUndoTurn, undoCascade } from "./turnChips";
 
 function makeTurn(turnId: string, userItemId: string | null, extra: Partial<TurnCheckpoint> = {}): TurnCheckpoint {
 	return {
@@ -21,29 +21,55 @@ function makeTurn(turnId: string, userItemId: string | null, extra: Partial<Turn
 	};
 }
 
-describe("undoableTurn", () => {
-	it("returns the newest turn when restorable, not undone, and idle", () => {
-		const turns = [makeTurn("t1", "u1"), makeTurn("t2", "u2")];
-		expect(undoableTurn(turns, false)?.turnId).toBe("t2");
+describe("canUndoTurn", () => {
+	it("allows the newest turn when restorable, undone=false, files present, idle", () => {
+		expect(canUndoTurn(makeTurn("t2", "u2"), false)).toBe(true);
+	});
+
+	it("allows an OLDER turn that has file changes", () => {
+		// Newest stays eligible too — both may offer the button now.
+		expect(canUndoTurn(makeTurn("t1", "u1"), false)).toBe(true);
 	});
 
 	it("never offers undo while the session is working", () => {
-		const turns = [makeTurn("t1", "u1")];
-		expect(undoableTurn(turns, true)).toBeNull();
+		expect(canUndoTurn(makeTurn("t1", "u1"), true)).toBe(false);
 	});
 
-	it("hides the action when the newest turn is already undone or pruned", () => {
-		expect(undoableTurn([makeTurn("t1", "u1", { undone: true })], false)).toBeNull();
-		expect(undoableTurn([makeTurn("t1", "u1", { restorable: false })], false)).toBeNull();
-		expect(undoableTurn([], false)).toBeNull();
+	it("hides the action when undone, pruned, or file-less", () => {
+		expect(canUndoTurn(makeTurn("t1", "u1", { undone: true }), false)).toBe(false);
+		expect(canUndoTurn(makeTurn("t1", "u1", { restorable: false }), false)).toBe(false);
+		expect(canUndoTurn(makeTurn("t1", "u1", { files: [] }), false)).toBe(false);
+	});
+});
+
+describe("undoCascade", () => {
+	it("is just the target when it is the newest turn", () => {
+		const turns = [makeTurn("t1", "u1"), makeTurn("t2", "u2")];
+		const cascade = undoCascade(turns, turns[1]);
+		expect(cascade.map((t) => t.turnId)).toEqual(["t2"]);
 	});
 
-	it("does not offer undo on an older turn even if it is eligible", () => {
-		// Newest is undone → nothing is undoable (Rust also rejects non-newest).
+	it("includes every later non-undone turn, newest first", () => {
+		const turns = [
+			makeTurn("t1", "u1"),
+			makeTurn("t2", "u2"),
+			makeTurn("t3", "u3", { files: [] }), // no files — still rolled back
+		];
+		const cascade = undoCascade(turns, turns[0]);
+		expect(cascade.map((t) => t.turnId)).toEqual(["t3", "t2", "t1"]);
+	});
+
+	it("skips later turns that are already undone", () => {
 		const turns = [
 			makeTurn("t1", "u1"),
 			makeTurn("t2", "u2", { undone: true }),
+			makeTurn("t3", "u3"),
 		];
-		expect(undoableTurn(turns, false)).toBeNull();
+		const cascade = undoCascade(turns, turns[0]);
+		expect(cascade.map((t) => t.turnId)).toEqual(["t3", "t1"]);
+	});
+
+	it("returns empty when the target is not in the list", () => {
+		expect(undoCascade([makeTurn("t1", "u1")], makeTurn("t9", "u9"))).toEqual([]);
 	});
 });

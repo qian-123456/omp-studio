@@ -1,8 +1,9 @@
 //! Per-turn checkpoints: parse `omp-workspace.turn-checkpoint` entries from
 //! session .jsonl files, list them per session/worktree (enriched with
-//! `restorable`/`undone` from the repo's hidden `refs/omp/*`), and undo the
-//! newest turn — restore its files, roll back HEAD when its commits are still
-//! on top, and write `refs/omp/undone/<sid>/<turnId>` last.
+//! `restorable`/`undone` from the repo's hidden `refs/omp/*`), and undo any
+//! turn — the target plus every later non-undone turn cascade newest-first —
+//! restoring files, rolling back HEAD while each turn's commits are still on
+//! top, and writing `refs/omp/undone/<sid>/<turnId>` last per turn.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
@@ -333,9 +334,15 @@ fn head(dir: &Path) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// `git_undo_turn`: restore the newest non-undone turn's files to their
-/// `before` state, roll back HEAD when the turn's commits are still on top,
-/// then mark the turn undone. `force` skips the post-turn-edit conflict check.
+/// `git_undo_turn`: roll the workspace back to its state before `turn_id`
+/// started. That means the target turn AND every later non-undone turn of the
+/// session are undone, newest first (a cascade). Per turn: reset HEAD to
+/// `head_before` only while it still equals `head_after`, restore the turn's
+/// files from their `before` snapshot (created files deleted), then write
+/// `refs/omp/undone/<sid>/<turnId>`. `force` skips the post-turn-edit
+/// conflict check; without it a non-empty `conflicts` is returned and nothing
+/// is written. The whole cascade is pre-flighted before the first write:
+/// every non-undone turn after the target must be `restorable`.
 pub fn undo_turn(
     cwd: &Path,
     session_file: &Path,
@@ -349,26 +356,47 @@ pub fn undo_turn(
     let Some(idx) = turns.iter().position(|t| t.turn_id == turn_id) else {
         return Err("找不到这一轮".into());
     };
-    let turn = &turns[idx];
-    if turn.undone {
+    if turns[idx].undone {
         return Err("这一轮已经撤回过了".into());
     }
-    if turns.iter().skip(idx + 1).any(|t| !t.undone) {
-        return Err("只能撤回最近的一轮".into());
-    }
-    if !turn.restorable {
-        return Err("这一轮的存档已失效，无法撤回".into());
+    // Cascade: target + every later non-undone turn, processed newest first.
+    let cascade: Vec<&TurnCheckpoint> = turns[idx..].iter().filter(|t| !t.undone).rev().collect();
+
+    // Pre-flight (before ANY write): no turn in the cascade may be crossed
+    // when its snapshots are gone — a missing checkpoint means the workspace
+    // could not be returned to the state before the target started.
+    for t in &cascade {
+        if !t.restorable {
+            let name = if t.prompt.is_empty() {
+                t.turn_id.clone()
+            } else {
+                t.prompt.clone()
+            };
+            return Err(if t.turn_id == turn_id {
+                "这一轮的存档已失效，无法撤回".into()
+            } else {
+                format!("无法跨过「{name}」撤回更早的轮次：这一轮的存档已失效")
+            });
+        }
     }
 
-    // Post-turn edits to the turn's files block the undo unless forced.
-    let conflicts: Vec<String> = turn
-        .files
+    // Conflict pre-flight: a file conflicts when its current worktree blob
+    // differs from the `after` snapshot of the NEWEST cascaded turn that
+    // touched it (i.e. it was edited after that turn ended).
+    let mut expected: HashMap<&str, &str> = HashMap::new();
+    for t in &cascade {
+        for f in &t.files {
+            expected.entry(f.path.as_str()).or_insert(t.after.as_str());
+        }
+    }
+    let mut conflicts: Vec<String> = expected
         .iter()
-        .filter(|f| {
-            worktree_blob(cwd, &f.path).as_deref() != blob_at(cwd, &turn.after, &f.path).as_deref()
+        .filter(|(path, after)| {
+            worktree_blob(cwd, path).as_deref() != blob_at(cwd, after, path).as_deref()
         })
-        .map(|f| f.path.clone())
+        .map(|(path, _)| (*path).to_string())
         .collect();
+    conflicts.sort();
     if !conflicts.is_empty() && !force {
         return Ok(TurnUndoResult {
             conflicts,
@@ -377,12 +405,45 @@ pub fn undo_turn(
     }
 
     let mut result = TurnUndoResult::default();
+    let mut restored: Vec<String> = Vec::new();
+    let mut deleted: Vec<String> = Vec::new();
+    let mut undone_count = 0usize;
 
-    // HEAD: reset only when the turn's commits are still on top.
-    if !turn.commits.is_empty() {
+    for t in cascade {
+        if let Err(e) = undo_one(cwd, t, &mut result, &mut restored, &mut deleted) {
+            return Err(format!("已成功撤回 {undone_count} 轮后失败: {e}"));
+        }
+        undone_count += 1;
+    }
+
+    // Report each path once, under the OLDEST cascaded action that touched it
+    // (the last one that ran) — that is the state the file ends up in.
+    restored.sort();
+    restored.dedup();
+    deleted.sort();
+    deleted.dedup();
+    let deleted_set: HashSet<&str> = deleted.iter().map(String::as_str).collect();
+    restored.retain(|p| !deleted_set.contains(p.as_str()));
+    result.restored = restored;
+    result.deleted = deleted;
+    result.turns_undone = undone_count;
+    Ok(result)
+}
+
+/// One cascade step: reset HEAD only while this turn's commits are still on
+/// top, restore its files from `before` (created files deleted), then write
+/// the undone ref last — only after its files were restored.
+fn undo_one(
+    cwd: &Path,
+    t: &TurnCheckpoint,
+    result: &mut TurnUndoResult,
+    restored: &mut Vec<String>,
+    deleted: &mut Vec<String>,
+) -> Result<(), String> {
+    if !t.commits.is_empty() {
         let now = head(cwd);
-        if now.is_some() && now == turn.head_after {
-            if let Some(base) = &turn.head_before {
+        if now.is_some() && now == t.head_after {
+            if let Some(base) = &t.head_before {
                 git_ok(cwd, &["reset", "--mixed", base])
                     .map_err(|e| format!("回退版本历史失败: {e}"))?;
                 result.head_reset = true;
@@ -396,10 +457,10 @@ pub fn undo_turn(
 
     // Files: only the turn's files are touched. `restore --worktree` never
     // touches the real index; created files are deleted from disk.
-    for f in &turn.files {
+    for f in &t.files {
         if f.status == "A" {
             match std::fs::remove_file(cwd.join(&f.path)) {
-                Ok(()) => result.deleted.push(f.path.clone()),
+                Ok(()) => deleted.push(f.path.clone()),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => return Err(format!("删除 {} 失败: {e}", f.path)),
             }
@@ -408,25 +469,24 @@ pub fn undo_turn(
                 cwd,
                 &[
                     "restore",
-                    &format!("--source={}", turn.before),
+                    &format!("--source={}", t.before),
                     "--worktree",
                     "--",
                     &f.path,
                 ],
             )
             .map_err(|e| format!("恢复 {} 失败: {e}", f.path))?;
-            result.restored.push(f.path.clone());
+            restored.push(f.path.clone());
         }
     }
 
-    // Mark the turn undone only after every file was restored.
-    let sid = sanitize_sid(&turn.session_id);
+    let sid = sanitize_sid(&t.session_id);
     git_ok(
         cwd,
-        &["update-ref", &undone_ref(&sid, &turn.turn_id), &turn.before],
+        &["update-ref", &undone_ref(&sid, &t.turn_id), &t.before],
     )
     .map_err(|e| format!("标记撤回失败: {e}"))?;
-    Ok(result)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -940,19 +1000,35 @@ mod tests {
     }
 
     #[test]
-    fn undo_rejects_non_latest_and_non_restorable() {
-        let repo = temp_repo("guard");
+    fn undo_cascade_restores_oldest_before_state() {
+        let repo = temp_repo("cascade");
         let sid = "s1";
         write(&repo, "mod.txt", "m1\n");
-        write(&repo, "del.txt", "d\n");
         g(&repo, &["add", "-A"]);
         g(&repo, &["commit", "-q", "-m", "init"]);
 
-        let (_b1, _a1, e1) = make_turn(&repo, sid, "t1", "2026-09-29T10:00:00Z");
-        // Turn t2: just modify mod.txt again.
+        // t1: mod m1→m2, creates t1new.txt.
+        let b1 = snap(&repo, "t1 before");
+        write(&repo, "mod.txt", "m2\n");
+        write(&repo, "t1new.txt", "from t1\n");
+        let a1 = snap(&repo, "t1 after");
+        refs(&repo, sid, "t1", &b1, &a1);
+        let e1 = entry(
+            sid,
+            "t1",
+            "first",
+            &b1,
+            &a1,
+            None,
+            None,
+            &[],
+            &[("mod.txt", "M"), ("t1new.txt", "A")],
+            "2026-09-29T10:00:00Z",
+        );
+        // t2: mod m2→m3, creates t2new.txt.
         let b2 = snap(&repo, "t2 before");
         write(&repo, "mod.txt", "m3\n");
-        write(&repo, "new.txt", "n2\n");
+        write(&repo, "t2new.txt", "from t2\n");
         let a2 = snap(&repo, "t2 after");
         refs(&repo, sid, "t2", &b2, &a2);
         let e2 = entry(
@@ -964,23 +1040,244 @@ mod tests {
             None,
             None,
             &[],
-            &[("mod.txt", "M"), ("new.txt", "M")],
+            &[("mod.txt", "M"), ("t2new.txt", "A")],
             "2026-09-29T10:01:00Z",
         );
 
-        let sess = temp_dir("sess-guard");
+        let sess = temp_dir("sess-cascade");
         let file = session_file(&sess, &repo, sid, &[e1, e2]);
-        // t1 is not the newest non-undone turn.
+        // Undoing the OLDER turn cascades: both turns undone, workspace back
+        // to before t1 — including the shared file mod.txt.
+        let r = undo_turn(&repo, &file, "t1", false).unwrap();
+        assert_eq!(r.turns_undone, 2, "{r:?}");
+        assert_eq!(
+            std::fs::read_to_string(repo.join("mod.txt")).unwrap(),
+            "m1\n"
+        );
+        assert!(!repo.join("t1new.txt").exists());
+        assert!(!repo.join("t2new.txt").exists());
+        assert!(r.restored.contains(&"mod.txt".to_string()), "{r:?}");
+        assert!(r.deleted.contains(&"t1new.txt".to_string()), "{r:?}");
+        assert!(r.deleted.contains(&"t2new.txt".to_string()), "{r:?}");
+        for tid in ["t1", "t2"] {
+            assert_eq!(
+                g(&repo, &["rev-parse", &undone_ref(sid, tid)]),
+                g(&repo, &["rev-parse", &turn_ref(sid, tid, "before")])
+            );
+        }
+        // Undoing the newest turn alone only restores that turn.
+        let repo2 = temp_repo("cascade-newest");
+        write(&repo2, "mod.txt", "m1\n");
+        g(&repo2, &["add", "-A"]);
+        g(&repo2, &["commit", "-q", "-m", "init"]);
+        let b1 = snap(&repo2, "t1 before");
+        write(&repo2, "mod.txt", "m2\n");
+        let a1 = snap(&repo2, "t1 after");
+        refs(&repo2, sid, "t1", &b1, &a1);
+        let b2 = snap(&repo2, "t2 before");
+        write(&repo2, "mod.txt", "m3\n");
+        let a2 = snap(&repo2, "t2 after");
+        refs(&repo2, sid, "t2", &b2, &a2);
+        let sess2 = temp_dir("sess-cascade2");
+        let file2 = session_file(
+            &sess2,
+            &repo2,
+            sid,
+            &[
+                entry(
+                    sid,
+                    "t1",
+                    "first",
+                    &b1,
+                    &a1,
+                    None,
+                    None,
+                    &[],
+                    &[("mod.txt", "M")],
+                    "2026-09-29T10:00:00Z",
+                ),
+                entry(
+                    sid,
+                    "t2",
+                    "second",
+                    &b2,
+                    &a2,
+                    None,
+                    None,
+                    &[],
+                    &[("mod.txt", "M")],
+                    "2026-09-29T10:01:00Z",
+                ),
+            ],
+        );
+        let r = undo_turn(&repo2, &file2, "t2", false).unwrap();
+        assert_eq!(r.turns_undone, 1, "{r:?}");
+        assert_eq!(
+            std::fs::read_to_string(repo2.join("mod.txt")).unwrap(),
+            "m2\n"
+        );
+        assert!(git_ok(
+            &repo2,
+            &["rev-parse", "-q", "--verify", &undone_ref(sid, "t1")]
+        )
+        .is_err());
+        std::fs::remove_dir_all(&repo).unwrap();
+        std::fs::remove_dir_all(&repo2).unwrap();
+        std::fs::remove_dir_all(&sess).unwrap();
+        std::fs::remove_dir_all(&sess2).unwrap();
+    }
+
+    #[test]
+    fn undo_cascade_conflict_preflight_writes_nothing() {
+        let repo = temp_repo("casc-conflict");
+        let sid = "s1";
+        write(&repo, "mod.txt", "m1\n");
+        g(&repo, &["add", "-A"]);
+        g(&repo, &["commit", "-q", "-m", "init"]);
+
+        let b1 = snap(&repo, "t1 before");
+        write(&repo, "mod.txt", "m2\n");
+        let a1 = snap(&repo, "t1 after");
+        refs(&repo, sid, "t1", &b1, &a1);
+        let e1 = entry(
+            sid,
+            "t1",
+            "first",
+            &b1,
+            &a1,
+            None,
+            None,
+            &[],
+            &[("mod.txt", "M")],
+            "2026-09-29T10:00:00Z",
+        );
+        let b2 = snap(&repo, "t2 before");
+        write(&repo, "mod.txt", "m3\n");
+        write(&repo, "t2new.txt", "from t2\n");
+        let a2 = snap(&repo, "t2 after");
+        refs(&repo, sid, "t2", &b2, &a2);
+        let e2 = entry(
+            sid,
+            "t2",
+            "second",
+            &b2,
+            &a2,
+            None,
+            None,
+            &[],
+            &[("mod.txt", "M"), ("t2new.txt", "A")],
+            "2026-09-29T10:01:00Z",
+        );
+
+        // Edited after t2 ended → conflicts with the whole cascade.
+        write(&repo, "mod.txt", "post-turn edit\n");
+        let sess = temp_dir("sess-casc-conflict");
+        let file = session_file(&sess, &repo, sid, &[e1, e2]);
+        let r = undo_turn(&repo, &file, "t1", false).unwrap();
+        assert_eq!(r.conflicts, vec!["mod.txt".to_string()], "{r:?}");
+        assert_eq!(r.turns_undone, 0);
+        // Nothing written: file untouched, no undone refs, no deletes.
+        assert_eq!(
+            std::fs::read_to_string(repo.join("mod.txt")).unwrap(),
+            "post-turn edit\n"
+        );
+        assert!(repo.join("t2new.txt").exists());
+        for tid in ["t1", "t2"] {
+            assert!(git_ok(
+                &repo,
+                &["rev-parse", "-q", "--verify", &undone_ref(sid, tid)]
+            )
+            .is_err());
+        }
+        // force proceeds and restores to before t1 anyway.
+        let r = undo_turn(&repo, &file, "t1", true).unwrap();
+        assert_eq!(r.turns_undone, 2);
+        assert_eq!(
+            std::fs::read_to_string(repo.join("mod.txt")).unwrap(),
+            "m1\n"
+        );
+        std::fs::remove_dir_all(&repo).unwrap();
+        std::fs::remove_dir_all(&sess).unwrap();
+    }
+
+    #[test]
+    fn undo_blocks_on_non_restorable_later_turn() {
+        let repo = temp_repo("guard");
+        let sid = "s1";
+        write(&repo, "mod.txt", "m1\n");
+        write(&repo, "del.txt", "d\n");
+        g(&repo, &["add", "-A"]);
+        g(&repo, &["commit", "-q", "-m", "init"]);
+
+        let (_b1, _a1, e1) = make_turn(&repo, sid, "t1", "2026-09-29T10:00:00Z");
+        // Turn t2: modify mod.txt again — but its snapshot refs are pruned.
+        let b2 = snap(&repo, "t2 before");
+        write(&repo, "mod.txt", "m3\n");
+        write(&repo, "new.txt", "n2\n");
+        let a2 = snap(&repo, "t2 after");
+        // Deliberately NO refs for t2 → restorable=false.
+        let e2 = entry(
+            sid,
+            "t2",
+            "second turn",
+            &b2,
+            &a2,
+            None,
+            None,
+            &[],
+            &[("mod.txt", "M"), ("new.txt", "M")],
+            "2026-09-29T10:01:00Z",
+        );
+        // A file-less turn after t2 (refs exist) — cascades mark it undone.
+        let b3 = snap(&repo, "t3 before");
+        let a3 = snap(&repo, "t3 after");
+        refs(&repo, sid, "t3", &b3, &a3);
+        let e3 = entry(
+            sid,
+            "t3",
+            "no-op",
+            &b3,
+            &a3,
+            None,
+            None,
+            &[],
+            &[],
+            "2026-09-29T10:02:00Z",
+        );
+
+        let sess = temp_dir("sess-guard");
+        let file = session_file(&sess, &repo, sid, &[e1, e2, e3]);
+        // t1 cannot be undone: crossing t2 would be required but t2's
+        // snapshots are gone. Nothing may be written.
         let err = undo_turn(&repo, &file, "t1", false).unwrap_err();
-        assert!(err.contains("只能撤回最近的一轮"), "{err}");
-        // Once t2 is undone, t1 becomes undoable.
+        assert!(
+            err.contains("无法跨过") && err.contains("存档已失效"),
+            "{err}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(repo.join("mod.txt")).unwrap(),
+            "m3\n"
+        );
+        assert!(git_ok(
+            &repo,
+            &["rev-parse", "-q", "--verify", &undone_ref(sid, "t1")]
+        )
+        .is_err());
+
+        // Undoing the newest turn (t3, file-less) works alone.
+        let r = undo_turn(&repo, &file, "t3", false).unwrap();
+        assert_eq!(r.turns_undone, 1);
+
+        // Once t2 is marked undone out-of-band, t1's cascade skips it (t3
+        // was already undone) — t2's undone ref keeps it out.
         g(&repo, &["update-ref", &undone_ref(sid, "t2"), &b2]);
         // t1's conflict check: new.txt content changed since t1's after → force.
         let r = undo_turn(&repo, &file, "t1", true).unwrap();
         assert!(r.restored.contains(&"mod.txt".to_string()));
+        assert_eq!(r.turns_undone, 1); // t2 was already undone, t3 already undone
 
-        // Pruned refs → not restorable.
-        let e3 = entry(
+        // Target itself non-restorable → refused.
+        let e9 = entry(
             sid,
             "t9",
             "gone",
@@ -990,11 +1287,146 @@ mod tests {
             None,
             &[],
             &[("mod.txt", "M")],
-            "2026-09-29T10:02:00Z",
+            "2026-09-29T10:03:00Z",
         );
-        let file3 = session_file(&sess, &repo, sid, &[e3]);
-        let err = undo_turn(&repo, &file3, "t9", true).unwrap_err();
+        let file9 = session_file(&sess, &repo, sid, &[e9]);
+        let err = undo_turn(&repo, &file9, "t9", true).unwrap_err();
         assert!(err.contains("无法撤回"), "{err}");
+        std::fs::remove_dir_all(&repo).unwrap();
+        std::fs::remove_dir_all(&sess).unwrap();
+    }
+
+    #[test]
+    fn undo_cascade_resets_head_stepwise_when_commits_on_top() {
+        let repo = temp_repo("casc-head");
+        let sid = "s1";
+        write(&repo, "f.txt", "f1\n");
+        g(&repo, &["add", "-A"]);
+        g(&repo, &["commit", "-q", "-m", "init"]);
+
+        // t1 commits "turn commit 1" (f1→f2), t2 commits "turn commit 2" (f2→f3).
+        let hb1 = g(&repo, &["rev-parse", "HEAD"]);
+        let b1 = snap(&repo, "t1 before");
+        write(&repo, "f.txt", "f2\n");
+        g(&repo, &["add", "f.txt"]);
+        g(&repo, &["commit", "-q", "-m", "turn commit 1"]);
+        let ha1 = g(&repo, &["rev-parse", "HEAD"]);
+        let a1 = snap(&repo, "t1 after");
+        refs(&repo, sid, "t1", &b1, &a1);
+
+        let b2 = snap(&repo, "t2 before");
+        write(&repo, "f.txt", "f3\n");
+        g(&repo, &["add", "f.txt"]);
+        g(&repo, &["commit", "-q", "-m", "turn commit 2"]);
+        let ha2 = g(&repo, &["rev-parse", "HEAD"]);
+        let a2 = snap(&repo, "t2 after");
+        refs(&repo, sid, "t2", &b2, &a2);
+
+        let sess = temp_dir("sess-casc-head");
+        let file = session_file(
+            &sess,
+            &repo,
+            sid,
+            &[
+                entry(
+                    sid,
+                    "t1",
+                    "commit 1",
+                    &b1,
+                    &a1,
+                    Some(&hb1),
+                    Some(&ha1),
+                    &[&ha1],
+                    &[("f.txt", "M")],
+                    "2026-09-29T10:00:00Z",
+                ),
+                entry(
+                    sid,
+                    "t2",
+                    "commit 2",
+                    &b2,
+                    &a2,
+                    Some(&ha1),
+                    Some(&ha2),
+                    &[&ha2],
+                    &[("f.txt", "M")],
+                    "2026-09-29T10:01:00Z",
+                ),
+            ],
+        );
+        // Cascading undo of t1: t2 resets HEAD ha2→ha1, then t1 ha1→hb1.
+        let r = undo_turn(&repo, &file, "t1", false).unwrap();
+        assert!(r.head_reset, "{r:?}");
+        assert_eq!(r.turns_undone, 2);
+        assert!(r.warning.is_none(), "{r:?}");
+        assert_eq!(g(&repo, &["rev-parse", "HEAD"]), hb1);
+        assert_eq!(std::fs::read_to_string(repo.join("f.txt")).unwrap(), "f1\n");
+        std::fs::remove_dir_all(&repo).unwrap();
+        std::fs::remove_dir_all(&sess).unwrap();
+    }
+
+    #[test]
+    fn undo_cascade_error_reports_done_count() {
+        let repo = temp_repo("casc-fail");
+        let sid = "s1";
+        write(&repo, "mod.txt", "m1\n");
+        g(&repo, &["add", "-A"]);
+        g(&repo, &["commit", "-q", "-m", "init"]);
+
+        // t1 claims it created `newdir`, but by undo time that path is a
+        // non-empty directory → `remove_file` fails mid-cascade.
+        let b1 = snap(&repo, "t1 before");
+        write(&repo, "mod.txt", "m2\n");
+        write(&repo, "newdir/inner.txt", "x\n");
+        let a1 = snap(&repo, "t1 after");
+        refs(&repo, sid, "t1", &b1, &a1);
+        let e1 = entry(
+            sid,
+            "t1",
+            "first",
+            &b1,
+            &a1,
+            None,
+            None,
+            &[],
+            &[("mod.txt", "M"), ("newdir", "A")],
+            "2026-09-29T10:00:00Z",
+        );
+
+        let b2 = snap(&repo, "t2 before");
+        write(&repo, "other.txt", "o\n");
+        let a2 = snap(&repo, "t2 after");
+        refs(&repo, sid, "t2", &b2, &a2);
+        let e2 = entry(
+            sid,
+            "t2",
+            "second",
+            &b2,
+            &a2,
+            None,
+            None,
+            &[],
+            &[("other.txt", "A")],
+            "2026-09-29T10:01:00Z",
+        );
+
+        let sess = temp_dir("sess-casc-fail");
+        let file = session_file(&sess, &repo, sid, &[e1, e2]);
+        // t2 succeeds (newest first), t1 fails on restore — the error says
+        // how many turns were already rolled back.
+        let err = undo_turn(&repo, &file, "t1", true).unwrap_err();
+        assert!(err.contains("已成功撤回 1 轮"), "{err}");
+        // t2 was marked undone before the failure; t1's ref was not written.
+        assert!(git_ok(
+            &repo,
+            &["rev-parse", "-q", "--verify", &undone_ref(sid, "t2")]
+        )
+        .is_ok());
+        assert!(git_ok(
+            &repo,
+            &["rev-parse", "-q", "--verify", &undone_ref(sid, "t1")]
+        )
+        .is_err());
         std::fs::remove_dir_all(&repo).unwrap();
         std::fs::remove_dir_all(&sess).unwrap();
     }

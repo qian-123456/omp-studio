@@ -1,4 +1,4 @@
-import type { SessionMeta, WorktreeInfo, Workspace } from "../../lib/contracts";
+import type { SessionMeta, SpaceMode, WorktreeInfo, Workspace } from "../../lib/contracts";
 import { basename, isInside } from "../../lib/paths";
 
 export interface BranchSubgroup {
@@ -62,10 +62,10 @@ export interface GroupingOptions {
 	 */
 	worktrees?: Record<string, WorktreeInfo[]>;
 	/**
-	 * Filter sessions to a specific workspace ("all", "__global", or a workspace.id).
-	 * When set to a specific workspace, only that workspace's sessions and relevant pins are returned.
+	 * Space mode filter: only sessions recorded in this space are grouped;
+	 * other modes' sessions are invisible to every bucket.
 	 */
-	activeWorkspaceId?: string;
+	mode?: SpaceMode;
 	/**
 	 * When set, inside every list keep pinned-first, then ids present in the map
 	 * by rank asc, ids absent (new) first by updatedAt desc.
@@ -209,6 +209,29 @@ export function matchesSearch(
 	return true;
 }
 
+/**
+ * Side chats (forks with `parentId`) are real sessions only once their first
+ * user message lands: `createSideChat` spawns + prompts atomically, so a fork
+ * row that is still blank in every content signal (untitled, unlabeled,
+ * nothing replied, no turn in flight, no pending mark, nothing unread) is an
+ * unsent stub / a fork file that never received a prompt — it must not
+ * surface in the sidebar. Non-fork sessions are exempt: blank main drafts are
+ * governed by the caller's `isBlankDraft` + composer-activity check, which
+ * keeps a draft row while the user is typing into it (forks have no such
+ * main-composer draft, so no override is needed here).
+ */
+export function isEmptySideChat(s: SessionMeta): boolean {
+	return (
+		s.parentId !== null &&
+		s.status === "idle" &&
+		!s.pending &&
+		!s.unread &&
+		!s.title.trim() &&
+		!s.label.trim() &&
+		!s.lastAssistant
+	);
+}
+
 /** Filters a session list by search query, archive status, and deleted worktrees. */
 export function filterSessions(
 	sessions: SessionMeta[],
@@ -254,6 +277,10 @@ export function filterSessions(
 	};
 
 	return sessions.filter((session) => {
+		// Zero-message side chats are never listed (see isEmptySideChat).
+		if (isEmptySideChat(session)) {
+			return false;
+		}
 		if (!showArchived && isArchivedCascaded(session)) {
 			return false;
 		}
@@ -533,19 +560,24 @@ export function groupSessions(
 		? allSessions
 		: Object.values(allSessions);
 
-	const timeMap = buildSessionTimeMap(sessionList);
+	// Space filter first: sessions of other modes never enter any bucket,
+	// and workspaces of other modes never claim a session.
+	const mode = options.mode ?? "code";
+	const modeSessions = sessionList.filter((s) => s.mode === mode);
+	const modeWorkspaces = workspaces.filter((w) => w.mode === mode);
+
+	const timeMap = buildSessionTimeMap(modeSessions);
 	const compare = createSessionComparator(timeMap, options.frozenOrder);
 
-	const visibleSessions = filterSessions(sessionList, {
+	const visibleSessions = filterSessions(modeSessions, {
 		...options,
-		workspaces,
+		workspaces: modeWorkspaces,
 	});
 
-	const globalWs = workspaces.find((w) => w.kind === "global") ?? null;
-	const projectWorkspaces = workspaces
+	const globalWs = modeWorkspaces.find((w) => w.kind === "global") ?? null;
+	const projectWorkspaces = modeWorkspaces
 		.filter((w) => w.kind !== "global")
 		.sort((a, b) => (a.sort - b.sort) || a.name.localeCompare(b.name));
-
 	// Bucket sessions by resolved workspace membership.
 	const sessionMap = new Map<string, SessionMeta[]>();
 	for (const ws of projectWorkspaces) {
@@ -699,52 +731,20 @@ export function groupSessions(
 			})()
 		: null;
 
-	let finalPinnedSessions = pinnedSessions;
-	let finalGlobalGroup = globalGroup;
-	let finalWorkspaceGroups = workspaceGroups;
-	let finalUnassigned = unassigned;
-	let finalUnassignedGroups = unassignedGroups;
-	let finalDeletedSessions = deletedSessions;
-
-	const { activeWorkspaceId } = options;
-	// G1: treat activeWorkspaceId === globalWs.id exactly like "__global"
-	const isGlobalFilter =
-		activeWorkspaceId === "__global" ||
-		(Boolean(globalWs) && activeWorkspaceId === globalWs?.id);
-
-	if (activeWorkspaceId && activeWorkspaceId !== "all") {
-		if (isGlobalFilter) {
-			finalPinnedSessions = pinnedSessions.filter((s) => s.workspaceId === globalWs?.id);
-			finalWorkspaceGroups = [];
-			finalUnassigned = [];
-			finalUnassignedGroups = [];
-			finalDeletedSessions = [];
-			finalGlobalGroup = globalGroup;
-		} else {
-			const targetGroup = workspaceGroups.find((g) => g.workspace.id === activeWorkspaceId);
-			finalWorkspaceGroups = targetGroup ? [targetGroup] : [];
-			finalGlobalGroup = null;
-			finalPinnedSessions = pinnedSessions.filter((s) => s.workspaceId === activeWorkspaceId);
-			finalUnassigned = [];
-			finalUnassignedGroups = [];
-			finalDeletedSessions = [];
-		}
-	}
-
 	const totalVisible =
-		finalPinnedSessions.length +
-		(finalGlobalGroup?.totalCount ?? 0) +
-		finalWorkspaceGroups.reduce((acc, g) => acc + g.totalCount, 0) +
-		finalUnassigned.length +
-		finalDeletedSessions.length;
+		pinnedSessions.length +
+		(globalGroup?.totalCount ?? 0) +
+		workspaceGroups.reduce((acc, g) => acc + g.totalCount, 0) +
+		unassigned.length +
+		deletedSessions.length;
 
 	return {
-		pinnedSessions: finalPinnedSessions,
-		globalGroup: finalGlobalGroup,
-		unassigned: finalUnassigned,
-		unassignedGroups: finalUnassignedGroups,
-		deletedSessions: finalDeletedSessions,
-		workspaceGroups: finalWorkspaceGroups,
+		pinnedSessions,
+		globalGroup,
+		unassigned,
+		unassignedGroups,
+		deletedSessions,
+		workspaceGroups,
 		totalVisible,
 	};
 }

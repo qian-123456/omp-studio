@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionMeta } from "../../lib/contracts";
+import type { SessionMeta, Workspace } from "../../lib/contracts";
 import * as ipc from "../../lib/ipc";
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { installDraftAutoCleanup } from "./newSession";
+import { resolveNewSessionTargetWorkspace } from "./modes";
 
 vi.mock("../../lib/ipc", () => ({
 	deleteSession: vi.fn().mockResolvedValue(undefined),
@@ -39,9 +40,100 @@ function makeSession(partial: Partial<SessionMeta>): SessionMeta {
 		lastAssistant: null,
 		model: null,
 		attention: null,
+		mode: partial.mode ?? "code",
+		groupId: partial.groupId ?? null,
 		...partial,
 	};
 }
+
+function makeWs(partial: Partial<Workspace> & { id: string }): Workspace {
+	return {
+		path: `/repo/${partial.id}`,
+		name: partial.id,
+		kind: "project",
+		sort: 0,
+		mode: partial.mode ?? "code",
+		...partial,
+	};
+}
+
+describe("resolveNewSessionTargetWorkspace", () => {
+	const chatGlobal = makeWs({
+		id: "global",
+		name: "全局",
+		kind: "global",
+		sort: 9,
+		mode: "chat",
+	});
+	const alpha = makeWs({ id: "alpha", name: "Alpha", sort: 2 });
+	const beta = makeWs({ id: "beta", name: "Beta", sort: 1 });
+	const workProj = makeWs({ id: "wproj", name: "Work Proj", sort: 0, mode: "work" });
+	const workspaces = [alpha, chatGlobal, beta, workProj];
+
+	it("targets the project of the selected session within the active mode", () => {
+		const sessions = [makeSession({ id: "s1", workspaceId: "alpha" })];
+		expect(
+			resolveNewSessionTargetWorkspace("code", "s1", sessions, workspaces),
+		).toBe(alpha);
+	});
+
+	it("targets the most recently updated session's project when nothing is selected", () => {
+		const sessions = [
+			makeSession({
+				id: "old",
+				workspaceId: "alpha",
+				updatedAt: "2026-09-27T00:00:00Z",
+			}),
+			makeSession({
+				id: "new",
+				workspaceId: "beta",
+				updatedAt: "2026-09-29T00:00:00Z",
+			}),
+		];
+		expect(resolveNewSessionTargetWorkspace("code", null, sessions, workspaces)).toBe(
+			beta,
+		);
+	});
+
+	it("returns null in a project mode with no project sessions (no global fallback)", () => {
+		const sessions = [makeSession({ id: "w1", workspaceId: "wproj", mode: "work" })];
+		expect(resolveNewSessionTargetWorkspace("code", null, sessions, workspaces)).toBeNull();
+	});
+
+	it("never leaks sessions or workspaces across modes", () => {
+		const sessions = [
+			makeSession({ id: "c1", workspaceId: "alpha", mode: "code" }),
+			makeSession({ id: "w1", workspaceId: "wproj", mode: "work" }),
+		];
+		// Selected session belongs to another mode → ignored.
+		expect(
+			resolveNewSessionTargetWorkspace("work", "c1", sessions, workspaces),
+		).toBe(workProj);
+		expect(resolveNewSessionTargetWorkspace("work", null, sessions, workspaces)).toBe(
+			workProj,
+		);
+		// Work sessions are invisible to the code space.
+		expect(resolveNewSessionTargetWorkspace("code", "w1", sessions, workspaces)).toBe(
+			alpha,
+		);
+	});
+
+	it("通用对话 targets the global row; project modes never fall back to it", () => {
+		expect(resolveNewSessionTargetWorkspace("chat", null, [], workspaces)).toBe(
+			chatGlobal,
+		);
+		// Even with a selected project session, chat ignores projects.
+		const sessions = [makeSession({ id: "s1", workspaceId: "alpha" })];
+		expect(resolveNewSessionTargetWorkspace("chat", "s1", sessions, workspaces)).toBe(
+			chatGlobal,
+		);
+		expect(resolveNewSessionTargetWorkspace("study", null, [], workspaces)).toBeNull();
+	});
+
+	it("returns null when the mode has no workspaces at all", () => {
+		expect(resolveNewSessionTargetWorkspace("code", null, [], [])).toBeNull();
+	});
+});
 
 describe("installDraftAutoCleanup", () => {
 	let cleanup: () => void;

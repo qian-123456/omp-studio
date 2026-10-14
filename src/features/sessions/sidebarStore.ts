@@ -4,30 +4,24 @@
  */
 
 import { create } from "zustand";
-import type { Workspace } from "../../lib/contracts";
+import type { SpaceMode } from "../../lib/contracts";
+import { isSpaceMode } from "./modes";
 
-export const ACTIVE_WORKSPACE_KEY = "ompws:active-workspace-id";
+export const ACTIVE_MODE_KEY = "ompws:active-space-mode";
 export const COLLAPSED_GROUPS_KEY = "ompws:collapsed-groups";
 
-export function normalizeWorkspaceId(id: string): string {
-	if (id === "global") return "__global";
-	return id;
-}
-
-export function readActiveWorkspaceId(): string {
+export function readActiveMode(): SpaceMode {
 	try {
-		const raw = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-		if (!raw) return "all";
-		return normalizeWorkspaceId(raw);
+		const raw = localStorage.getItem(ACTIVE_MODE_KEY);
+		return isSpaceMode(raw) ? raw : "code";
 	} catch {
-		return "all";
+		return "code";
 	}
 }
 
-export function writeActiveWorkspaceId(id: string): void {
+export function writeActiveMode(mode: SpaceMode): void {
 	try {
-		const normalized = normalizeWorkspaceId(id);
-		localStorage.setItem(ACTIVE_WORKSPACE_KEY, normalized);
+		localStorage.setItem(ACTIVE_MODE_KEY, mode);
 	} catch {
 		/* ignore storage quota or private mode */
 	}
@@ -58,13 +52,10 @@ export function writeCollapsedGroups(state: Record<string, boolean>): void {
 		/* ignore */
 	}
 }
-
 export interface SidebarState {
-	/** Active workspace filter: "all", "__global", or a workspace.id */
-	activeWorkspaceId: string;
-	setActiveWorkspaceId: (id: string) => void;
-	/** Fallback to "all" only when workspaces have actually loaded (workspaces.length > 0) */
-	checkWorkspaceFallback: (workspaces: Workspace[]) => void;
+	/** Active space mode: the whole sidebar shows only this mode's data. */
+	activeMode: SpaceMode;
+	setActiveMode: (mode: SpaceMode) => void;
 
 	/** Explicit user expand/collapse toggles for workspace and special groups */
 	groupOpen: Record<string, boolean>;
@@ -106,24 +97,10 @@ export interface SidebarState {
 }
 
 export const useSidebarStore = create<SidebarState>((set, get) => ({
-	activeWorkspaceId: readActiveWorkspaceId(),
-	setActiveWorkspaceId: (id: string) => {
-		const normalized = normalizeWorkspaceId(id);
-		writeActiveWorkspaceId(normalized);
-		set({ activeWorkspaceId: normalized });
-	},
-	checkWorkspaceFallback: (workspaces: Workspace[]) => {
-		const current = get().activeWorkspaceId;
-		// S26: only fall back when workspaces actually loaded (workspaces.length > 0)
-		if (
-			workspaces.length > 0 &&
-			current !== "all" &&
-			current !== "__global" &&
-			!workspaces.some((w) => w.id === current)
-		) {
-			writeActiveWorkspaceId("all");
-			set({ activeWorkspaceId: "all" });
-		}
+	activeMode: readActiveMode(),
+	setActiveMode: (mode: SpaceMode) => {
+		writeActiveMode(mode);
+		set({ activeMode: mode });
 	},
 
 	groupOpen: readCollapsedGroups(),

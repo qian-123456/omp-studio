@@ -37,6 +37,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["thinking", "思考", "推理", "深度", "defaultThinkingLevel"],
 	},
 	{
+		id: "sideChatModel",
+		sectionId: "omp-roles",
+		label: "侧边对话专用模型",
+		description: "开启后新建侧边对话使用专用模型；关闭则继承主对话的模型与 thinking level",
+		keywords: ["side chat", "侧聊", "fork", "模型", "sidechat", "默认模型"],
+	},
+	{
 		id: "defaultApprovalMode",
 		sectionId: "general",
 		label: "默认审批模式 (Approval Mode)",
@@ -56,6 +63,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		label: "顶部子任务胶囊",
 		description: "对话产生并发子任务（Subagent）时，在窗口顶部显示胶囊指示条与进度",
 		keywords: ["capsule", "胶囊", "top capsule", "顶部胶囊", "子任务", "subagent", "状态栏"],
+	},
+	{
+		id: "windowWorktreeTitle",
+		sectionId: "general",
+		label: "窗口标题显示分支名",
+		description: "在系统窗口标题中附加当前工作树的 Git 分支，便于区分同时打开的多个实例",
+		keywords: ["window title", "窗口标题", "分支", "branch", "worktree", "工作树", "标题"],
 	},
 	{
 		id: "smartContextRouting",
@@ -196,6 +210,28 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		description: "流式回合中排队的消息在回合结束后自动逐条发送",
 		keywords: ["queue", "排队", "自动发送", "follow-up", "消息"],
 	},
+	{
+		id: "sendShortcut",
+		sectionId: "sessions",
+		label: "发送快捷键",
+		description: "Enter 发送，或 ⌘ Enter 发送（此时 Enter 换行）",
+		keywords: ["send", "enter", "shortcut", "快捷键", "发送", "换行", "command", "cmd", "⌘"],
+	},
+	{
+		id: "followUpBehavior",
+		sectionId: "sessions",
+		label: "任务进行中发送新消息",
+		description: "回合进行中发送的消息：引导（插入当前回合）、排队（回合结束后发送）或打断后发送",
+		keywords: ["follow-up", "steer", "queue", "interrupt", "引导", "排队", "打断", "进行中", "发送", "回合"],
+	},
+	{
+		id: "visualizeEnabled",
+		sectionId: "sessions",
+		label: "启用可视化（Visualize）",
+		description: "让 Agent 在回答里生成可交互的图表、示意图和模拟，渲染在沙箱中。",
+		keywords: ["visualize", "可视化", "图表", "chart", "diagram", "示意图", "模拟", "simulation", "sandbox", "沙箱"],
+	},
+
 
 	// 收件箱 (inbox, renamed from todos)
 	{

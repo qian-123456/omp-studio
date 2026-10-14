@@ -29,6 +29,8 @@ describe("createSession", () => {
 			model: null,
 			approvalMode: null,
 			planYolo: true,
+			mode: "code",
+			groupId: null,
 		});
 		expect(result.sessionId).toBe("s_123");
 		expect(result.stub.id).toBe("s_123");
@@ -51,6 +53,8 @@ describe("createSession", () => {
 			model: null,
 			approvalMode: null,
 			planYolo: null,
+			mode: "code",
+			groupId: null,
 		});
 	});
 
@@ -72,6 +76,8 @@ describe("createSession", () => {
 			model: null,
 			approvalMode: null,
 			planYolo: false,
+			mode: "code",
+			groupId: null,
 		});
 	});
 
@@ -120,9 +126,9 @@ describe("createSession", () => {
 	it("places a worktree session without explicit workspace in its project", async () => {
 		useSessions.setState({
 			workspaces: [
-				{ id: "g", path: "/home/.omp-workspace/global", name: "g", kind: "global", sort: 0 },
-				{ id: "repo", path: "/repo", name: "repo", kind: "project", sort: 1 },
-				{ id: "repo-other", path: "/repo-other", name: "o", kind: "project", sort: 2 },
+				{ id: "g", path: "/home/.omp-workspace/global", name: "g", kind: "global", sort: 0, mode: "code" },
+				{ id: "repo", path: "/repo", name: "repo", kind: "project", sort: 1, mode: "code" },
+				{ id: "repo-other", path: "/repo-other", name: "o", kind: "project", sort: 2, mode: "code" },
 			],
 		});
 		vi.mocked(ipc.rpcStart).mockResolvedValue({

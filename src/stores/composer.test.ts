@@ -11,7 +11,7 @@ globalThis.localStorage = {
 } as Storage;
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { type Annotation, formatWithAnnotations, useComposer } from "./composer";
+import { type Annotation, formatWithAnnotations, sideChatAnnKey, useComposer } from "./composer";
 
 function ann(partial: Omit<Annotation, "id">): Annotation {
 	return { ...partial, id: "x" };
@@ -66,7 +66,7 @@ describe("useComposer store", () => {
 			drafts: {},
 			history: [],
 			focusNonce: {},
-			sideChatRequest: null,
+			annotationTarget: "main",
 		});
 	});
 
@@ -149,5 +149,74 @@ describe("useComposer store", () => {
 
 		c.clearImages("s1");
 		expect(useComposer.getState().images["s1"]).toEqual([]);
+	});
+});
+
+describe("side-chat annotations", () => {
+	beforeEach(() => {
+		localStorage.clear();
+		useComposer.setState({
+			annotations: {},
+			annotationTarget: "main",
+		});
+	});
+
+	it("sideChatAnnKey namespaces staged annotations per parent", () => {
+		expect(sideChatAnnKey("p1")).toBe("sidechat:p1");
+		const c = useComposer.getState();
+		c.addAnnotation("p1", { source: "message", text: "main quote" });
+		c.addAnnotation(sideChatAnnKey("p1"), { source: "message", text: "side quote" });
+		c.addAnnotation(sideChatAnnKey("p2"), { source: "message", text: "other parent" });
+		const anns = useComposer.getState().annotations;
+		expect(anns["p1"]).toHaveLength(1);
+		expect(anns[sideChatAnnKey("p1")]).toHaveLength(1);
+		expect(anns[sideChatAnnKey("p1")]![0]!.text).toBe("side quote");
+		expect(anns[sideChatAnnKey("p2")]).toHaveLength(1);
+		// Clearing the main composer must not drop staged side-chat annotations
+		// (panel remount regression: staged data lives in the store, not in
+		// SideChatPanel local state).
+		c.clearAnnotations("p1");
+		expect(useComposer.getState().annotations[sideChatAnnKey("p1")]).toHaveLength(1);
+	});
+
+	it("moveAnnotation preserves fields and moves between main and side-chat lists", () => {
+		const c = useComposer.getState();
+		c.addAnnotation("p1", {
+			source: "message",
+			text: "quoted",
+			itemId: "item-9",
+			comment: "note",
+		});
+		const src = useComposer.getState().annotations["p1"]![0]!;
+		c.moveAnnotation("p1", sideChatAnnKey("p1"), src.id);
+		let anns = useComposer.getState().annotations;
+		expect(anns["p1"]).toHaveLength(0);
+		const moved = anns[sideChatAnnKey("p1")]![0]!;
+		expect(moved).toMatchObject({
+			source: "message",
+			text: "quoted",
+			itemId: "item-9",
+			comment: "note",
+		});
+		// Moving back appends to the destination list without touching others.
+		c.moveAnnotation(sideChatAnnKey("p1"), "p1", moved.id);
+		anns = useComposer.getState().annotations;
+		expect(anns[sideChatAnnKey("p1")]).toHaveLength(0);
+		expect(anns["p1"]![0]!.text).toBe("quoted");
+	});
+
+	it("moveAnnotation is a no-op for unknown ids", () => {
+		const c = useComposer.getState();
+		c.addAnnotation("p1", { source: "message", text: "quoted" });
+		const before = useComposer.getState().annotations;
+		c.moveAnnotation("p1", sideChatAnnKey("p1"), "missing");
+		expect(useComposer.getState().annotations).toBe(before);
+	});
+
+	it("remembers the annotation destination in localStorage", () => {
+		const c = useComposer.getState();
+		c.setAnnotationTarget("sidechat");
+		expect(useComposer.getState().annotationTarget).toBe("sidechat");
+		expect(localStorage.getItem("ompws:annotation-target")).toBe("sidechat");
 	});
 });

@@ -1,10 +1,10 @@
-import { CheckCircle2, Loader2, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { CheckCheck, CheckCircle2, Loader2, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Attention, SessionMeta } from "../../lib/contracts";
 import { relativeTime } from "../../lib/format";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
-import { useSessions } from "../../stores/sessions";
+import { markSessionSeen, useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { ATTENTION_ORDER } from "./attention";
 import { useInboxGroups } from "./useInboxBadge";
@@ -72,6 +72,15 @@ export function InboxPage() {
 	}, [rows, focusedIndex, selectSession]);
 
 	const count = (t: Tab) => (t === "all" ? groups.all.length : groups.byKind[t].length);
+	// 待回复 needs an answer and 运行中 is not finished, so neither is "read" in bulk.
+	const readable = [
+		...(tab === "all" || tab === "unread" ? groups.byKind.unread : []),
+		...(tab === "all" || tab === "error" ? groups.byKind.error : []),
+	];
+	const markAllRead = async () => {
+		await Promise.all(readable.map((s) => markSessionSeen(s.id)));
+		toast.info(`已将 ${readable.length} 个会话标为已读`);
+	};
 	const headerBtn =
 		"inline-flex items-center gap-1 rounded-lg border border-[var(--border-divider)] bg-[var(--bg-panel)] px-2 py-1 text-xs text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]";
 
@@ -101,6 +110,16 @@ export function InboxPage() {
 						</span>
 					</div>
 					<div className="flex items-center gap-2">
+						<button
+							type="button"
+							onClick={markAllRead}
+							disabled={readable.length === 0}
+							className={`${headerBtn} disabled:cursor-not-allowed disabled:opacity-40`}
+							title="将当前列表中的未读与中断会话全部标为已读"
+						>
+							<CheckCheck className="h-3.5 w-3.5" />
+							全部已读
+						</button>
 						<button
 							type="button"
 							onClick={async () => {

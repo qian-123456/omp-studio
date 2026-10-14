@@ -6,7 +6,6 @@ import {
 	GitBranch,
 	Minus,
 	Plus,
-	RefreshCw,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { computeSessionStats, formatTokens } from "../features/chat/sessionStats";
@@ -16,8 +15,8 @@ import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
 import { ompVersionLabel, useOmpUpdate } from "../stores/ompUpdate";
-import { getAppMemoryUsage, servicesList, type ProcessMemoryInfo } from "../lib/ipc";
-import type { ServiceInfo } from "../lib/contracts";
+import { getAppMemoryUsage, perfBreakdown, servicesList, type ProcessMemoryInfo } from "../lib/ipc";
+import type { PerfBreakdown, ServiceInfo } from "../lib/contracts";
 import { useZoom } from "../lib/zoom";
 
 export function BottomBar() {
@@ -63,6 +62,7 @@ export function BottomBar() {
 	);
 	// Real OS process physical memory (footprint across app + helpers)
 	const [memoryInfo, setMemoryInfo] = useState<ProcessMemoryInfo | null>(null);
+	const [perfData, setPerfData] = useState<PerfBreakdown | null>(null);
 	const [serviceRows, setServiceRows] = useState<ServiceInfo[] | null>(null);
 	const [perfOpen, setPerfOpen] = useState(false);
 	const statsBtnRef = useRef<HTMLButtonElement>(null);
@@ -87,10 +87,12 @@ export function BottomBar() {
 			try {
 				const memPromise = getAppMemoryUsage();
 				const srvPromise = perfOpen ? servicesList(true) : null;
-				const [mem, srv] = await Promise.all([memPromise, srvPromise]);
+				const perfPromise = perfOpen ? perfBreakdown() : null;
+				const [mem, srv, perf] = await Promise.all([memPromise, srvPromise, perfPromise]);
 				if (!cancelled) {
 					if (mem?.formatted) setMemoryInfo(mem);
 					if (srv !== null) setServiceRows(srv);
+					if (perf !== null) setPerfData(perf);
 				}
 			} catch {
 				/* ignore */
@@ -219,6 +221,7 @@ export function BottomBar() {
 					appMemory={realMemoryStr}
 					processes={memoryInfo?.processes}
 					services={serviceRows}
+					breakdown={perfData}
 					open={perfOpen}
 					onClose={() => setPerfOpen(false)}
 					ignoreRefs={[perfBtnRef]}
@@ -269,20 +272,6 @@ export function BottomBar() {
 					>
 						<Plus size={11} />
 					</button>
-				</div>
-
-				<span className="text-neutral-700">·</span>
-
-				{/* Sync state */}
-				<div className="flex items-center gap-1" title={streaming ? "正在生成中" : "会话状态已同步"}>
-					<RefreshCw
-						size={11}
-						className={clsx(
-							"transition-colors",
-							streaming ? "animate-spin text-indigo-400" : "text-neutral-500",
-						)}
-					/>
-					<span className="text-[10.5px]">{streaming ? "生成中" : "已同步"}</span>
 				</div>
 
 				{/* Git branch if available */}

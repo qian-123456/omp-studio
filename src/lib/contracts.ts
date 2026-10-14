@@ -3,6 +3,14 @@
  * Fields are camelCase; enum values are snake_case string unions.
  */
 
+/**
+ * Sidebar space ("mode"): visually independent spaces, nothing shared across them.
+ * `chat` (通用对话) is the project-less space: it owns the single global workspace
+ * and the SessionGroups; the other modes only hold project directories.
+ */
+export type SpaceMode = "code" | "work" | "study" | "research" | "chat";
+
+
 export type SessionStatus =
 	| "working"
 	| "awaiting_approval"
@@ -59,7 +67,7 @@ export interface SessionMeta {
 	externalPid: number | null;
 	pinned: boolean;
 	archived: boolean;
-	/** Resolved membership; null = 未归档. */
+	/** Resolved membership (explicit override or path match, same mode only); null = 未归档. */
 	workspaceId: string | null;
 	repoRoot: string | null;
 	git: GitBadge | null;
@@ -68,6 +76,10 @@ export interface SessionMeta {
 	model: string | null;
 	/** Derived inbox attention kind (no time window applied). */
 	attention: Attention | null;
+	/** Space this session belongs to; recorded at creation, default "code". */
+	mode: SpaceMode;
+	/** SessionGroup id inside the mode's 无项目 area; only global-workspace sessions. */
+	groupId: string | null;
 }
 
 /** Inbox / sidebar attention kind, one per session (precedence top→bottom). */
@@ -89,7 +101,18 @@ export interface Workspace {
 	name: string;
 	kind: WorkspaceKind;
 	sort: number;
+	/** Space this workspace belongs to (same dir may be a project in several modes). */
+	mode: SpaceMode;
 }
+
+/** Named group inside a mode's 无项目 area (grouping only, not a directory). */
+export interface SessionGroup {
+	id: string;
+	mode: SpaceMode;
+	name: string;
+	sort: number;
+}
+
 
 export type TranscriptKind =
 	| "user"
@@ -223,6 +246,14 @@ export interface StartOpts {
 	label?: string | null;
 	/** --plan-yolo: read-only plan mode, auto-approving plan into implementation. */
 	planYolo?: boolean | null;
+	/** --fork <path>: native fork of the parent session file. */
+	forkFile?: string | null;
+	/** --append-system-prompt: hidden instructions outside the visible transcript. */
+	appendSystemPrompt?: string | null;
+	/** Space the new session belongs to (default "code"); persisted on session_meta. */
+	mode?: SpaceMode;
+	/** SessionGroup to file the new session under (mode's 无项目 area only). */
+	groupId?: string | null;
 }
 
 export interface PendingUiRequest {
@@ -420,16 +451,18 @@ export interface TurnCheckpoint {
 }
 
 export interface TurnUndoResult {
-	/** Files written back to their pre-turn content. */
+	/** Files written back to their pre-turn content (deduped, final state). */
 	restored: string[];
-	/** Files removed because the turn created them. */
+	/** Files removed because a cascaded turn created them. */
 	deleted: string[];
-	/** Files changed after the turn ended; non-empty means nothing was touched (force=false). */
+	/** Files changed after the last cascaded turn ended; non-empty means nothing was touched (force=false). */
 	conflicts: string[];
-	/** HEAD moved back to headBefore (the turn's commits left the history). */
+	/** HEAD moved back across the cascade (each turn resets only while its commits are still on top). */
 	headReset: boolean;
 	/** Plain-Chinese note for the user, e.g. why history was left alone. */
 	warning: string | null;
+	/** How many turns were marked undone (rolling back an older turn also rolls back every later non-undone turn). */
+	turnsUndone: number;
 }
 
 export interface TmRun {
@@ -461,6 +494,38 @@ export interface ProcessMemoryInfo {
 	processes: number;
 }
 
+/** One memory bucket in `perf_breakdown` (bytes null = unknown). */
+export interface PerfBucket {
+	bytes: number | null;
+	processes: number;
+}
+
+/** One running omp-workspace instance; `label` = branch/worktree or "pid N". */
+export interface AppInstance {
+	pid: number;
+	label: string;
+	cwd: string | null;
+	isThis: boolean;
+}
+
+/**
+ * `perf_breakdown` result. `app` matches the bottom-bar number;
+ * bar segments (barAppBytes = app.bytes, barOmpBytes, otherBytes, freeBytes)
+ * are disjoint and sum to `totalBytes` when known.
+ */
+export interface PerfBreakdown {
+	app: PerfBucket;
+	ompSpawned: PerfBucket;
+	ompExternal: PerfBucket;
+	barOmpBytes: number | null;
+	otherBytes: number | null;
+	totalBytes: number | null;
+	usedBytes: number | null;
+	freeBytes: number | null;
+	instances: AppInstance[];
+	generatedAt: number;
+}
+
 export interface PairingInfo {
 	url: string;
 	qrSvg: string;
@@ -481,6 +546,12 @@ export interface UsageSummary {
 	cost: number;
 	/** "token-tracker" | "transcript" */
 	source: string;
+}
+
+/** Last-known thinking level / context size from the transcript (no live process). */
+export interface SessionSnapshot {
+	thinkingLevel: string | null;
+	contextTokens: number | null;
 }
 
 export interface Settings {
@@ -542,6 +613,25 @@ export interface Settings {
 	doctorScheduleTime: string;
 	/** Show real values in privacy chips by default (null ⇒ true). */
 	privacyRevealDefault: boolean | null;
+	/** Default true: OS window title shows "omp-workspace · <branch>" for the worktree the app was launched from. */
+	windowWorktreeTitle: boolean;
+	/**
+	 * Dedicated default model for new side-chat forks ("<selector>" or
+	 * "<selector>:<level>"). null = inherit the parent session's model;
+	 * a selector unavailable in the catalog falls back to the parent model.
+	 */
+	sideChatModel: string | null;
+	/**
+	 * Default true: app sessions are spawned with `--plugin-dir` pointing at the
+	 * bundled visualize plugin (~/.omp-workspace/plugins/omp-workspace-visualize),
+	 * so the model can emit ```` ```visualize ```` fragments that the chat
+	 * renders in a sandboxed viewer. false = skill absent + plain code block.
+	 */
+	visualizeEnabled: boolean;
+	/** Composer send shortcut: "enter" (Enter sends, Shift+Enter newline) or "mod-enter" (⌘/Ctrl+Enter sends). */
+	sendShortcut: "enter" | "mod-enter";
+	/** Follow-up when a message is sent during a running turn: steer | queue | interrupt (interrupt aborts, then sends). */
+	followUpBehavior: "steer" | "queue" | "interrupt";
 }
 
 /** Privacy placeholder risk tier (§4 [P]). */
@@ -918,8 +1008,30 @@ export interface OmpUsageReportData {
 export type ScheduleRunMode = "local" | "worktree";
 
 export type ScheduleCadence =
+	/** Every `minutes` minutes (UI offers minute/hour units). */
 	| { kind: "interval"; minutes: number }
-	| { kind: "daily"; time: string; weekdays?: number[] };
+	/**
+	 * `weekdays` empty/absent: every `every` days (default 1) at local `time`.
+	 * `weekdays` non-empty: every `every` weeks (default 1) on those weekdays (same
+	 * numbering as before) at `time`. `anchor` = local date YYYY-MM-DD that fixes the
+	 * day/week phase when `every` > 1; backend fills today's local date when missing.
+	 */
+	| { kind: "daily"; time: string; weekdays?: number[]; every?: number; anchor?: string }
+	/** One-shot at an absolute instant (RFC3339 UTC). */
+	| { kind: "once"; at: string }
+	/**
+	 * Every `every` months (default 1) on `day` (1-31, clamped to the month's length) at
+	 * local `time` (HH:MM). `anchor` (local date) fixes the month phase when `every` > 1.
+	 */
+	| { kind: "monthly"; day: number; time: string; every?: number; anchor?: string };
+
+export type ScheduleLifecycle = "active" | "paused" | "completed";
+
+/**
+ * Which runs create an inbox entry: `all` = every finished run; `important` = failed
+ * runs and runs that stopped to ask for approval/an answer; `none` = never.
+ */
+export type ScheduleNotify = "all" | "important" | "none";
 
 export type ScheduleRunStatus = "running" | "ok" | "error" | "skipped";
 
@@ -940,6 +1052,19 @@ export interface Schedule {
 	lastRunStatus: ScheduleRunStatus | null;
 	createdAt: string;
 	updatedAt: string;
+	/** Stop repeating after this instant (RFC3339 UTC); null = never. */
+	endAt: string | null;
+	/**
+	 * Derived by the backend: `completed` = a `once` schedule that already ran, or a
+	 * recurring one past `endAt`; `paused` = disabled but not completed; else `active`.
+	 */
+	lifecycle: ScheduleLifecycle;
+	/** Stop after this many runs; null = unlimited. */
+	maxRuns: number | null;
+	/** Runs started so far (counts toward `maxRuns`). */
+	runsDone: number;
+	notify: ScheduleNotify;
+	newChatEachRun: boolean;
 }
 
 export interface ScheduleDraft {
@@ -953,6 +1078,14 @@ export interface ScheduleDraft {
 	thinking?: string | null;
 	approvalMode?: string | null;
 	enabled?: boolean;
+	/** Stop repeating after this instant (RFC3339 UTC); null/absent = never. Ignored for `once`. */
+	endAt?: string | null;
+	/** Stop after this many runs (>=1); null/absent = unlimited. Ignored for `once`. */
+	maxRuns?: number | null;
+	/** Inbox policy per run; absent = backend default `all`. */
+	notify?: ScheduleNotify;
+	/** false = reuse the previous run's session when resumable; absent = true. */
+	newChatEachRun?: boolean;
 }
 
 export interface ScheduleRun {

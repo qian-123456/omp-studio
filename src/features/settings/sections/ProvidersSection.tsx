@@ -8,8 +8,11 @@ import { QuotaDashboardCard } from "./QuotaDashboardCard";
 type Tab = "config" | "quota";
 
 export function ProvidersSection() {
-	const requested = useUi((s) => s.settingsSection);
-	const [tab, setTab] = useState<Tab>(() => (useUi.getState().settingsSection === "quota" ? "quota" : "config"));
+	const requested = useUi((s) => (s.settingsPending ? s.settingsSection : null));
+	const [tab, setTab] = useState<Tab>(() => {
+		const s = useUi.getState();
+		return s.settingsPending && s.settingsSection === "quota" ? "quota" : "config";
+	});
 
 	useEffect(() => {
 		if (requested === "quota") setTab("quota");

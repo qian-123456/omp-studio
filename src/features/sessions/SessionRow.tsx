@@ -17,6 +17,7 @@ import {
 	PinOff,
 	Play,
 	Stethoscope,
+	Tag,
 	Trash2,
 } from "lucide-react";
 import React, { type MouseEvent, useEffect, useRef, useState } from "react";
@@ -46,6 +47,7 @@ import {
 	requestArchive,
 	requestAssign,
 	requestDelete,
+	requestMoveToGroup,
 	requestTakeover,
 	useSessionActions,
 } from "./sessionActions";
@@ -54,6 +56,8 @@ export interface SessionRowProps {
 	session: SessionMeta;
 	/** Draw this row's segment of the subgroup guide line at the row's left edge. */
 	withSpine?: boolean;
+	/** Navigation-row sizing (h-9, 14px) — used by the Universal space list. */
+	large?: boolean;
 	workspaces: Workspace[];
 	onRowFocus?: () => void;
 	onBatchAction: (action: "archive" | "pin" | "delete", ids: string[]) => void;
@@ -131,6 +135,7 @@ export function renderStatusDot(status: SessionMeta["status"]) {
 function SessionRowComponent({
 	session,
 	withSpine = false,
+	large = false,
 	workspaces,
 	onRowFocus,
 	onBatchAction,
@@ -252,7 +257,8 @@ function SessionRowComponent({
 	}, [menuOpen]);
 
 	const handleRowMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
-		if (hasActiveDialog || menuOpen || isRenaming) return;
+		// Empty drafts have nothing worth previewing; the card only covers the composer.
+		if (hasActiveDialog || menuOpen || isRenaming || !session.title?.trim()) return;
 		if (closeTimer.current !== null) {
 			window.clearTimeout(closeTimer.current);
 			closeTimer.current = null;
@@ -483,6 +489,20 @@ function SessionRowComponent({
 		session.updatedAt || session.createdAt,
 	);
 
+	// 无项目 (global-workspace) sessions can be filed into SessionGroups.
+	const wsOfSession = workspaces.find((w) => w.id === session.workspaceId);
+	const inGlobalArea = wsOfSession?.kind === "global";
+	const batchAllInGlobalArea =
+		selectedIds.size > 1 &&
+		isInSelectedSet &&
+		Array.from(selectedIds).every((id) => {
+			const s = useSessions.getState().sessions[id];
+			return (
+				s != null &&
+				workspaces.find((w) => w.id === s.workspaceId)?.kind === "global"
+			);
+		});
+
 	return (
 		<div
 			ref={rowRef}
@@ -495,7 +515,10 @@ function SessionRowComponent({
 			onMouseEnter={handleRowMouseEnter}
 			onMouseLeave={handleRowMouseLeave}
 			className={clsx(
-				"group relative mx-1.5 flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-[8px] min-h-[28px] py-1 pl-2 pr-2 transition-all",
+				"group relative flex cursor-pointer select-none items-center justify-between gap-1.5 transition-all",
+				large
+					? "mx-0 h-9 rounded-lg px-2.5"
+					: "mx-1.5 min-h-[28px] rounded-[8px] py-1 pl-2 pr-2",
 				rowBgCls,
 				isSelected
 					? "font-semibold text-[var(--text)]"
@@ -563,7 +586,8 @@ function SessionRowComponent({
 						text={sessionDisplayName(session)}
 						title=""
 						className={clsx(
-							"min-w-0 flex-initial max-w-full cursor-pointer text-xs transition-colors",
+							"min-w-0 flex-initial max-w-full cursor-pointer transition-colors",
+							large ? "text-[14px]" : "text-xs",
 							isSelected
 								? "font-semibold text-[var(--text)]"
 								: "font-normal text-[var(--text)]",
@@ -763,6 +787,21 @@ function SessionRowComponent({
 									<Pin size={13} />
 									批量置顶 / 取消置顶
 								</button>
+								{batchAllInGlobalArea && (
+									<button
+										role="menuitem"
+										tabIndex={-1}
+										type="button"
+										onClick={() => {
+											closeMenu(true);
+											requestMoveToGroup(Array.from(selectedIds));
+										}}
+										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+									>
+										<Tag size={13} />
+										批量移到分组…
+									</button>
+								)}
 								<div className="my-1 border-t border-[var(--border-divider)]" />
 								<button
 									role="menuitem"
@@ -861,6 +900,22 @@ function SessionRowComponent({
 									<FolderInput size={13} />
 									归入工作区…
 								</button>
+
+								{inGlobalArea && (
+									<button
+										role="menuitem"
+										tabIndex={-1}
+										type="button"
+										onClick={() => {
+											closeMenu(true);
+											requestMoveToGroup([session.id]);
+										}}
+										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
+									>
+										<Tag size={13} />
+										移到分组…
+									</button>
+								)}
 
 								<button
 									role="menuitem"
@@ -1005,6 +1060,7 @@ export const SessionRow = React.memo(SessionRowComponent, (prev, next) => {
 	return (
 		prev.session === next.session &&
 		prev.withSpine === next.withSpine &&
+		prev.large === next.large &&
 		prev.workspaces === next.workspaces &&
 		prev.onRowFocus === next.onRowFocus &&
 		prev.onBatchAction === next.onBatchAction

@@ -4,57 +4,49 @@ import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import {
 	ArrowUp,
-	Check,
 	ChevronDown,
 	CornerUpLeft,
 	ExternalLink,
 	GitBranch,
 	Loader2,
 	Plus,
+	SendHorizontal,
 	Trash2,
-	X,
 } from "lucide-react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ModelMenuContent } from "../../components/ModelSelect";
+import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionMeta } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
 import { acceptSession, createSideChat, getTranscript } from "../../lib/ipc";
-import { type ModelOption, resolveCurrentModel, toModelKey } from "../../lib/models";
+import { type ModelOption, resolveCurrentModel, resolveThinkingLevels, toModelKey } from "../../lib/models";
 import { sessionDisplayName } from "../../lib/sessionName";
 import { toast } from "../../lib/toast";
-import { useComposer } from "../../stores/composer";
+import { type Annotation, formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
+import { composeSelection, parseSelection, RESOLVABLE_ROLES, roleIdOf } from "../../components/modelSelectLogic";
+import { ensureSettings, useSettings } from "../settings/store";
+import { startNewSession } from "../sessions/newSession";
 import { SessionView } from "../chat/SessionView";
-import { startNewSessionFromContext } from "../sessions/newSession";
+import { AnnotationChip } from "../chat/AnnotationChip";
+import { textAnnotationsOf } from "../chat/annotations";
+import { sendPrompt } from "../chat/send";
 import { compareSessionLabels } from "./labelSort";
+import { MAX_SIDE_CHAT_DEPTH } from "./depth";
+import {
+	resolveSideChatModel,
+	sideChatModelLabel,
+	sideChatSelectorUsable,
+} from "./modelDefault";
+import { useSideChatView } from "./viewStore";
 
-const MAX_DEPTH = 3;
 const NO_MODELS: ModelOption[] = [];
-function getThinkingLabel(level: string) {
-	switch (level) {
-		case "off":
-			return { label: "关闭思考", desc: "不启用思考过程" };
-		case "minimal":
-			return { label: "微量思考", desc: "最少思考 tokens" };
-		case "low":
-			return { label: "低档思考", desc: "适度思考" };
-		case "medium":
-			return { label: "中档思考", desc: "平衡思考与速度" };
-		case "high":
-			return { label: "高档思考", desc: "深度思考推理" };
-		case "max":
-			return { label: "最大思考", desc: "极限推理" };
-		case "auto":
-		default:
-			return { label: "思考: 自动", desc: "遵循模型默认设置" };
-	}
-}
-
+const EMPTY_ANNS: Annotation[] = [];
 
 interface ContextMenuState {
 	x: number;
@@ -66,9 +58,15 @@ export function SideChatPanel() {
 	const selectedId = useUi((s) => s.selectedSessionId);
 	const selectSession = useUi((s) => s.selectSession);
 	const sessions = useSessions((s) => s.sessions);
-	const sideChatRequest = useComposer((s) => s.sideChatRequest);
-	const clearSideChatRequest = useComposer((s) => s.clearSideChatRequest);
-	const [childId, setChildId] = useState<string | null>(null);
+	// Open child thread is persisted per parent session: it survives panel
+	// collapse/expand, right-tab switches and restarts (unlike local state).
+	const storedChildId = useSideChatView((s) =>
+		selectedId ? (s.openChild[selectedId] ?? null) : null,
+	);
+	const childId = selectedId ? storedChildId : null;
+	const setChildId = (id: string | null) => {
+		if (selectedId) useSideChatView.getState().setOpenChild(selectedId, id);
+	};
 	const sideChatDrafts = useComposer((s) => s.sideChatDrafts);
 	const setSideChatDraft = useComposer((s) => s.setSideChatDraft);
 	const clearSideChatDraft = useComposer((s) => s.clearSideChatDraft);
@@ -80,43 +78,81 @@ export function SideChatPanel() {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-	const [pendingSelection, setPendingSelection] = useState<string | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	/** Question input of the slim staged-annotation bar in the open thread view. */
+	const stagedInputRef = useRef<HTMLInputElement | null>(null);
 	const catalog = useModelOptions();
 	const models = catalog ?? NO_MODELS;
-	// "" = inherit the parent session's model.
+	const dedicatedSetting = useSettings((s) => s.settings?.sideChatModel);
+	// "" = no per-panel override: use the dedicated setting, else inherit the parent.
 	const [selectedModel, setSelectedModel] = useState("");
-	const [thinking, setThinking] = useState("auto");
+	// "" = no override: the dedicated setting's level, else the parent session's.
+	const [thinking, setThinking] = useState("");
 	const [modelOpen, setModelOpen] = useState(false);
 	const modelMenuRef = useRef<HTMLDivElement>(null);
 	const [thinkingOpen, setThinkingOpen] = useState(false);
-	const thinkingMenuRef = useRef<HTMLDivElement>(null);
+	const parentThinking = useLive((s) => {
+		const v = selectedId ? s.sessions[selectedId]?.state?.thinkingLevel : undefined;
+		return typeof v === "string" ? v : undefined;
+	});
 
 
 	useEffect(() => {
 		void useModelCatalog.getState().refresh();
+		ensureSettings();
 	}, []);
-	const selectedModelOption = models.find(
-		(m) => toModelKey(m.provider, m.id) === selectedModel,
+
+	const effective = useMemo(
+		() => resolveSideChatModel(selectedModel, dedicatedSetting, catalog),
+		[selectedModel, dedicatedSetting, catalog],
 	);
-	const thinkingLevels = selectedModelOption?.thinking?.length
-		? ["auto", ...selectedModelOption.thinking.filter((l) => l !== "auto"), "off"]
+	const dedicatedPick = useMemo(
+		() => parseSelection(dedicatedSetting),
+		[dedicatedSetting],
+	);
+	const dedicatedUsable =
+		dedicatedPick.selector !== "" && sideChatSelectorUsable(dedicatedPick.selector, catalog);
+	const dedicatedLabel = dedicatedUsable ? sideChatModelLabel(dedicatedSetting, catalog) : "";
+	const effectiveOption = models.find(
+		(m) => toModelKey(m.provider, m.id) === effective.selector,
+	);
+	const effectiveThinking = thinking || effective.level || parentThinking || "auto";
+	const resolvedLevels = resolveThinkingLevels(
+		undefined,
+		effectiveOption?.thinking,
+		effectiveThinking,
+	);
+	const thinkingLevels = resolvedLevels.length
+		? resolvedLevels
 		: ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
 
 	const parent = selectedId ? sessions[selectedId] : undefined;
 	const children = Object.values(sessions)
 		.filter((s) => s.parentId === selectedId)
 		.sort((a, b) => compareSessionLabels(a.label, b.label));
-	const tooDeep = (parent?.forkDepth ?? 0) >= MAX_DEPTH;
+	const tooDeep = (parent?.forkDepth ?? 0) >= MAX_SIDE_CHAT_DEPTH;
 	const parentModel = useMemo(
 		() => resolveCurrentModel(parent?.model, models),
 		[parent?.model, models],
 	);
 	const activeModel = useMemo(
-		() => (selectedModel ? resolveCurrentModel(selectedModel, models) : parentModel),
-		[selectedModel, models, parentModel],
+		() => (effective.selector ? resolveCurrentModel(effective.selector, models) : parentModel),
+		[effective.selector, models, parentModel],
 	);
-	const displayModelName = activeModel.label || activeModel.id || "选择模型";
+	const effectiveRole = roleIdOf(effective.selector);
+	const baseModelName = effectiveRole
+		? RESOLVABLE_ROLES[effectiveRole]
+		: (activeModel.label || activeModel.id || "选择模型");
+	const displayModelName =
+		effective.source === "setting" && effective.level
+			? `${baseModelName} · ${effective.level}`
+			: baseModelName;
+	const annKey = selectedId ? sideChatAnnKey(selectedId) : "";
+	const stagedAll = useComposer((s) => s.annotations[annKey]) ?? EMPTY_ANNS;
+	const stagedAnns = useMemo(() => textAnnotationsOf(stagedAll), [stagedAll]);
+	// SelectionToolbar bumps this nonce each time it stages into our key.
+	const stagedFocusNonce = useComposer((s) => (annKey ? s.focusNonce[annKey] : 0));
+	const moveAnnotation = useComposer((s) => s.moveAnnotation);
 
 
 	// Esc returns to list when viewing a child session
@@ -124,47 +160,63 @@ export function SideChatPanel() {
 	// Esc closes context menu
 	useEscapeKey(() => setContextMenu(null), contextMenu !== null);
 
-	// Consume a pending side-chat request (selection toolbar / other features).
+	// Focus whichever question input is mounted when a new annotation is staged
+	// (also on first mount right after staging; a bumped-but-unconsumed nonce
+	// never drops). Staged annotations live in the store, so nothing is lost
+	// when this panel unmounts or the parent changes.
+	const lastFocusNonceRef = useRef(0);
 	useEffect(() => {
-		if (!sideChatRequest || sideChatRequest.parentSessionId !== selectedId)
-			return;
-		clearSideChatRequest();
-		// The selection is carried into createSideChat when the user hits send.
-		setPendingSelection(sideChatRequest.selection ?? null);
-		setChildId(null);
-		setTimeout(() => textareaRef.current?.focus(), 50);
-	}, [sideChatRequest, selectedId, clearSideChatRequest]);
+		const nonce = stagedFocusNonce ?? 0;
+		if (!nonce || nonce === lastFocusNonceRef.current) return;
+		lastFocusNonceRef.current = nonce;
+		setTimeout(() => {
+			const input =
+				childId && stagedAnns.length > 0
+					? stagedInputRef.current
+					: textareaRef.current;
+			input?.focus();
+		}, 50);
+	}, [stagedFocusNonce, childId, stagedAnns.length]);
+
 	useEffect(() => {
-		setChildId(null);
-		setPendingSelection(null);
 		setError(null);
 		setContextMenu(null);
 	}, [selectedId]);
 
-	const create = async () => {
+	const send = async () => {
 		const q = question.trim();
 		const parentId = selectedId;
-		if (!q || !parentId || busy) return;
+		if (!parentId || busy || (!q && stagedAnns.length === 0)) return;
+		const key = sideChatAnnKey(parentId);
+		const anns = stagedAll;
+		const selection = formatWithAnnotations("", anns) || undefined;
+		const questionText = q || "请结合引用内容回答";
+		const threadId = childId;
 		setBusy(true);
 		setError(null);
 		try {
-			// omp `--model` accepts a `provider/id:thinking` suffix.
-			const modelArg = selectedModel
-				? thinking !== "auto"
-					? `${selectedModel}:${thinking}`
-					: selectedModel
-				: null;
-			const info = await createSideChat(
-				parentId,
-				q,
-				pendingSelection ?? undefined,
-				modelArg ?? undefined,
-			);
+			if (threadId) {
+				// Open thread: the question plus numbered quote blocks append to it.
+				await sendPrompt(threadId, formatWithAnnotations(questionText, anns));
+			} else {
+				// omp `--model` accepts a `provider/id:thinking` suffix; the dedicated
+				// setting's stored level applies unless the thinking picker overrides it.
+				const modelArg = effective.selector
+					? composeSelection(effective.selector, effectiveThinking === "auto" ? null : effectiveThinking)
+					: null;
+				const info = await createSideChat(
+					parentId,
+					questionText,
+					selection,
+					modelArg ?? undefined,
+				);
+				// Parent switched while creating: don't leak the child into the new parent.
+				if (useUi.getState().selectedSessionId === parentId) {
+					setChildId(info.sessionId);
+				}
+			}
 			clearSideChatDraft(parentId);
-			// Parent switched while creating: don't leak child/state into the new parent.
-			if (useUi.getState().selectedSessionId !== parentId) return;
-			setPendingSelection(null);
-			setChildId(info.sessionId);
+			useComposer.getState().clearAnnotations(key);
 			if (textareaRef.current) {
 				textareaRef.current.style.height = "auto";
 			}
@@ -172,7 +224,7 @@ export function SideChatPanel() {
 		} catch (err) {
 			const msg = errMsg(err);
 			setError(msg);
-			toast.error(`创建侧聊失败: ${msg}`);
+			toast.error(`${threadId ? "发送侧聊消息失败" : "创建侧聊失败"}: ${msg}`);
 		} finally {
 			setBusy(false);
 		}
@@ -280,6 +332,52 @@ export function SideChatPanel() {
 						在主视图打开
 					</button>
 				</div>
+				{/* Staged-annotation bar: quotes waiting on this parent append to
+				    the open thread when sent from here (or the list composer). */}
+				{stagedAnns.length > 0 && (
+					<div className="flex shrink-0 items-center gap-2 border-b border-[var(--line)] px-2 py-1.5">
+						<div className="min-w-0 shrink-0">
+							<AnnotationChip
+								sessionId={annKey}
+								anchorSessionId={selectedId}
+								annotations={stagedAnns}
+								onMove={(id) => moveAnnotation(annKey, selectedId, id)}
+								moveLabel="移动到主对话"
+							/>
+						</div>
+						<input
+							ref={stagedInputRef}
+							value={question}
+							onChange={(e) => setQuestion(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key !== "Enter" || isComposing(e)) return;
+								e.preventDefault();
+								void send();
+							}}
+							placeholder="追问此侧聊（附引用），Enter 发送…"
+							aria-label="追加到侧聊的问题"
+							className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1 text-[12px] text-[var(--text)] outline-none placeholder:text-[var(--text-30)]"
+						/>
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => void send()}
+							title="发送到当前侧聊 (Enter)"
+							className={clsx(
+								"flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-all",
+								busy
+									? "bg-[var(--bg-hover)] text-[var(--text-40)] cursor-not-allowed"
+									: "bg-[var(--text)] text-[var(--bg-panel)] hover:opacity-90 active:scale-95",
+							)}
+						>
+							{busy ? (
+								<Loader2 size={12} className="animate-spin" />
+							) : (
+								<SendHorizontal size={12} />
+							)}
+						</button>
+					</div>
+				)}
 				<div className="min-h-0 flex-1">
 					<SessionView sessionId={childId} compact />
 				</div>
@@ -289,22 +387,6 @@ export function SideChatPanel() {
 
 	return (
 		<div className="flex h-full flex-col">
-			<div className="flex shrink-0 items-center justify-between border-b border-[var(--line)] px-3 py-2">
-				<div className="flex items-center gap-1.5 min-w-0">
-					<span className="text-[12px] font-medium text-[var(--text)]">独立侧聊</span>
-					{parent && (
-						<span
-							className="text-[11px] text-[var(--text-40)] truncate max-w-[200px]"
-							title={sessionDisplayName(parent)}
-						>
-							· 基于 {sessionDisplayName(parent)}
-						</span>
-					)}
-				</div>
-				<span className="text-[11px] text-[var(--text-40)] shrink-0">
-					{children.length > 0 ? `${children.length} 个分支` : "暂无分支"}
-				</span>
-			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto p-2">
 				{children.length === 0 && (
 					<div className="py-4 text-center text-[11px] text-[var(--text-40)]">
@@ -442,7 +524,7 @@ export function SideChatPanel() {
 						</div>
 						<button
 							type="button"
-							onClick={() => void startNewSessionFromContext()}
+							onClick={() => void startNewSession()}
 							className="mt-1 flex items-center gap-1.5 rounded-md bg-[var(--text)] px-3 py-1.5 text-[12px] font-medium text-[var(--bg-panel)] hover:opacity-90 transition-opacity"
 						>
 							<Plus size={13} />
@@ -456,22 +538,16 @@ export function SideChatPanel() {
 						)}
 
 						<div className="relative rounded-[22px] border border-[var(--line,var(--border))] bg-[var(--bg-panel)] shadow-xs transition-colors focus-within:border-[var(--hairline-strong,var(--border))]">
-							{/* Removable quote pill */}
-							{pendingSelection && (
-								<div className="flex items-center gap-1.5 px-3 pt-2.5 pb-0.5">
-									<span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-[var(--ghost-hover)] px-2 py-0.5 text-[11px] text-[var(--text-60)] max-w-full">
-										<span className="truncate max-w-[200px]" title={pendingSelection}>
-											引用: {pendingSelection}
-										</span>
-										<button
-											type="button"
-											onClick={() => setPendingSelection(null)}
-											className="shrink-0 text-[var(--text-40)] hover:text-[var(--text)] transition-colors"
-											title="移除引用"
-										>
-											<X size={10} />
-										</button>
-									</span>
+							{/* Staged annotations chip: hover to review/edit, move or delete. */}
+							{stagedAnns.length > 0 && (
+								<div className="px-3 pt-2.5">
+									<AnnotationChip
+										sessionId={annKey}
+										anchorSessionId={selectedId}
+										annotations={stagedAnns}
+										onMove={(id) => moveAnnotation(annKey, selectedId, id)}
+										moveLabel="移动到主对话"
+									/>
 								</div>
 							)}
 
@@ -487,7 +563,7 @@ export function SideChatPanel() {
 									if (e.key === "Enter" && !e.shiftKey) {
 										if (isComposing(e)) return;
 										e.preventDefault();
-										void create();
+										void send();
 									}
 								}}
 								placeholder="输入侧聊消息，/ 命令，Enter 发送…"
@@ -502,7 +578,7 @@ export function SideChatPanel() {
 										<button
 											type="button"
 											onClick={() => setModelOpen((v) => !v)}
-											title={`侧聊模型: ${displayModelName}${selectedModel ? "" : " (继承主会话)"}`}
+											title={`侧聊模型: ${displayModelName}${effective.source === "picker" ? "" : effective.source === "setting" ? " (侧聊专属)" : " (跟随主会话)"}`}
 											className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors select-none"
 										>
 											<span className="truncate max-w-36">{displayModelName}</span>
@@ -521,11 +597,20 @@ export function SideChatPanel() {
 											>
 												<ModelMenuContent
 													models={catalog}
-													currentValue={selectedModel}
-													extras={[{ value: "", label: parentModel.label ? `继承主会话 (${parentModel.label})` : "继承主会话模型" }]}
+													currentValue={effective.selector}
+													extras={[
+														{
+															value: "",
+															label: dedicatedUsable
+																? `默认：${dedicatedLabel}`
+																: parentModel.label
+																	? `默认：跟随主会话 (${parentModel.label})`
+																	: "默认：跟随主会话模型",
+														},
+													]}
 													onSelect={(key) => {
 														setSelectedModel(key);
-														setThinking("auto");
+														setThinking("");
 														setModelOpen(false);
 													}}
 												/>
@@ -533,74 +618,38 @@ export function SideChatPanel() {
 										)}
 									</div>
 
-									{/* Thinking Level Picker */}
-									<div className="relative" ref={thinkingMenuRef}>
-										<button
-											type="button"
-											onClick={() => setThinkingOpen((v) => !v)}
-											title={`思考等级: ${getThinkingLabel(thinking).label}`}
-											className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors select-none"
-										>
-											<span className="truncate">{thinking}</span>
-											<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
-										</button>
-
-										{thinkingOpen && (
-											<FloatingLayer
-												anchor={thinkingMenuRef.current}
-												placement="top-start"
-												offset={6}
-												layer="popover"
-												ignoreRefs={[thinkingMenuRef]}
-												onDismiss={() => setThinkingOpen(false)}
-												className="w-[200px] rounded-xl border border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] py-1 shadow-lg"
-											>
-												<div className="border-b border-[var(--line)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-40)]">
-													思考等级
-												</div>
-												<div className="py-0.5">
-													{thinkingLevels.map((lvl) => {
-														const opt = getThinkingLabel(lvl);
-														const isSelected = thinking === lvl;
-														return (
-															<button
-																key={lvl}
-																type="button"
-																onClick={() => {
-																	setThinking(lvl);
-																	setThinkingOpen(false);
-																}}
-																className={clsx(
-																	"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs transition-colors",
-																	isSelected
-																		? "bg-[var(--ghost-hover)] font-medium text-[var(--text)]"
-																		: "text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]",
-																)}
-															>
-																<span>{opt.label}</span>
-																{isSelected && <Check size={12} className="text-[var(--text)]" />}
-															</button>
-														);
-													})}
-												</div>
-											</FloatingLayer>
-										)}
-									</div>
+									{/* Thinking Level Picker (shared with the main composer) */}
+									<ThinkingLevelPicker
+										levels={thinkingLevels}
+										value={effectiveThinking}
+										open={thinkingOpen}
+										onOpenChange={setThinkingOpen}
+										onSelect={(lvl) => {
+											setThinking(lvl);
+											setThinkingOpen(false);
+										}}
+									/>
 								</div>
 
 								{/* Send Button */}
 								<button
 									type="button"
-									disabled={busy || !question.trim()}
-									onClick={() => void create()}
-									title={busy ? "正在创建侧聊…" : "创建侧聊 (Enter)"}
+									disabled={busy || (!question.trim() && stagedAnns.length === 0)}
+									onClick={() => void send()}
+									title={
+										busy
+											? "正在创建侧聊…"
+											: childId
+												? "发送到当前侧聊 (Enter)"
+												: "创建侧聊 (Enter)"
+									}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 shrink-0",
 										busy
-											? "bg-[var(--bg-hover)] text-[var(--text-40)] cursor-not-allowed"
-											: question.trim()
-												? "bg-[var(--text)] text-[var(--bg-panel)] hover:opacity-90 active:scale-95 shadow-xs"
-												: "bg-[var(--bg-hover)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed",
+												? "bg-[var(--bg-hover)] text-[var(--text-40)] cursor-not-allowed"
+												: question.trim() || stagedAnns.length > 0
+													? "bg-[var(--text)] text-[var(--bg-panel)] hover:opacity-90 active:scale-95 shadow-xs"
+													: "bg-[var(--bg-hover)] text-[var(--text-30,var(--text-dim))] cursor-not-allowed",
 									)}
 								>
 									{busy ? (

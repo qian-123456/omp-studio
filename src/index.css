@@ -34,6 +34,7 @@
 	--color-neutral-300: color-mix(in srgb, var(--text-muted) 55%, var(--text));
 	--color-neutral-200: var(--text);
 	--color-neutral-100: var(--text);
+	--color-neutral-50: var(--text);
 
 	/* amber — primary brand accent */
 	--color-amber-950: color-mix(in srgb, var(--accent) 20%, var(--bg));
@@ -824,6 +825,15 @@ body,
 	height: 100%;
 }
 
+/* The app is a fixed-viewport shell: never let the document itself scroll or
+ * rubber-band (inner panes scroll on their own). */
+html,
+body,
+#root {
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+
 body {
 	font-family: var(--font-sans);
 	font-size: 13px;
@@ -1237,21 +1247,38 @@ html[data-wallpaper="true"] .fixed.inset-0.bg-\[var\(--overlay\)\] {
 	}
 }
 
-/* Fade the thread scroll edges (top 1rem, bottom 22px above the composer)
+/* Gentle entrance for the new-task hero + composer. `backwards` (not `both`)
+ * so no lingering transform becomes a containing block afterwards. */
+@keyframes start-rise {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+}
+.start-rise {
+	animation: start-rise 0.3s ease-out backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+	.start-rise {
+		animation: none;
+	}
+}
+
+/* Fade the thread scroll edges (top 1rem, bottom 12px above the composer)
  * with masks instead of borders/shadows. */
 .thread-fade-mask {
 	-webkit-mask-image: linear-gradient(
 		to bottom,
 		transparent 0,
 		black 1rem,
-		black calc(100% - 22px),
+		black calc(100% - 12px),
 		transparent 100%
 	);
 	mask-image: linear-gradient(
 		to bottom,
 		transparent 0,
 		black 1rem,
-		black calc(100% - 22px),
+		black calc(100% - 12px),
 		transparent 100%
 	);
 }
@@ -1407,4 +1434,16 @@ html[data-theme="lavender"] {
 	.hljs-deletion {
 		color: #b31d28;
 	}
+}
+
+/* Quoted text of a message selection while its annotation comment is typed:
+ * the same sapphire as ::selection, kept painted after focus leaves the text. */
+::highlight(annotation-pending) {
+	background-color: rgba(56, 189, 248, 0.32);
+}
+
+/* Text of saved message annotations: a warm amber, distinct from the sapphire
+ * selection / pending colour. */
+::highlight(annotation-saved) {
+	background-color: rgba(251, 191, 36, 0.3);
 }

@@ -26,7 +26,8 @@ pub fn spawn_all(state: AppState) {
 
     let s1 = state.clone();
     tauri::async_runtime::spawn(async move {
-        // Ensure global workspace row exists.
+        // Ensure per-mode global workspace rows exist (lazily, for modes
+        // already referenced by sessions/workspaces/groups).
         {
             let db = s1.db.lock();
             if let Err(e) = crate::db::ensure_global_workspace(&db) {

@@ -35,6 +35,8 @@ const sessionMeta = (overrides: Partial<SessionMeta> = {}): SessionMeta => ({
 	lastAssistant: null,
 	model: null,
 	attention: null,
+	mode: "code",
+	groupId: null,
 	...overrides,
 });
 

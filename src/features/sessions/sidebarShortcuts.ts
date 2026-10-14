@@ -5,7 +5,7 @@
 
 import { isComposing } from "../../lib/hooks";
 import { useUi } from "../../stores/ui";
-import { startNewSessionFromContext } from "./newSession";
+import { startNewSession } from "./newSession";
 
 /** Checks if the event target is inside an editor, terminal, or component managing its own find (C5) */
 function isTargetOwningFind(target: HTMLElement | null): boolean {
@@ -17,9 +17,13 @@ function isTargetOwningFind(target: HTMLElement | null): boolean {
 	);
 }
 
-/** Opens the sidebar if collapsed and focuses + selects the search input (S19) */
+/** Window event asking the sidebar to reveal its (collapsed) search row. */
+export const SIDEBAR_SEARCH_OPEN_EVENT = "sidebar-search-open";
+
+/** Opens the sidebar if collapsed, reveals the search row, then focuses + selects the input (S19) */
 export function focusSidebarSearch(): void {
 	useUi.getState().setSidebarOpen(true);
+	window.dispatchEvent(new Event(SIDEBAR_SEARCH_OPEN_EVENT));
 	const tryFocus = () => {
 		const input = document.querySelector<HTMLInputElement>(
 			'input[data-sidebar-search="true"]',
@@ -55,10 +59,10 @@ export function registerSidebarShortcuts(): void {
 
 		const key = e.key.toLowerCase();
 
-		// Cmd+N: new session (works from input/composer too, S6)
+		// Cmd+N: start a new session in the active space (works from input/composer too, S6)
 		if (key === "n" && !e.shiftKey && !e.altKey) {
 			e.preventDefault();
-			void startNewSessionFromContext();
+			void startNewSession();
 			return;
 		}
 

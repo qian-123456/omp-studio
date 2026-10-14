@@ -789,8 +789,10 @@ pub async fn git_worktree_turns(
     blocking(move || turns::worktree_turns(&PathBuf::from(cwd), &sessions)).await
 }
 
-/// Undo the newest turn of a session: restore its files, roll back HEAD when
-/// the turn's commits are still on top, then mark the turn undone.
+/// Undo a turn of a session: restore it AND every later non-undone turn
+/// (newest first — the workspace returns to its state before that turn
+/// started), roll back HEAD while each turn's commits are still on top, then
+/// mark each turn undone.
 #[tauri::command]
 pub async fn git_undo_turn(
     _state: tauri::State<'_, AppState>,

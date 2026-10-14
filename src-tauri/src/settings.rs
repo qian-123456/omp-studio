@@ -3,6 +3,7 @@
 //! Enforces thread-safe, serialized settings updates and pure validation
 //! before persisting to SQLite and updating in-memory AppState.
 
+use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -12,6 +13,7 @@ use serde::Serialize;
 use crate::contracts::Settings;
 use crate::db;
 use crate::state::AppState;
+use tauri::Manager as _;
 use tauri_plugin_global_shortcut::Shortcut;
 
 /// Process-local async lock serializing full validate -> persist -> memory-update cycles.
@@ -210,6 +212,36 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
         }
     }
 
+    // 12. Side-chat dedicated model (passed as --model to the fork).
+    if let Some(model) = &settings.side_chat_model {
+        let trimmed = model.trim();
+        if has_nul_or_newline(model) {
+            return Err("侧聊专属模型不能包含空字符 (NUL) 或换行符".to_string());
+        }
+        if !trimmed.is_empty() && trimmed.starts_with('-') {
+            return Err("侧聊专属模型不能以 '-' 开头（防止选项参数注入）".to_string());
+        }
+    }
+
+    // 13. Composer send shortcut and follow-up behavior. Validated on save so invalid
+    // values never reach the frontend.
+    match settings.send_shortcut.as_str() {
+        "enter" | "mod-enter" => {}
+        other => {
+            return Err(format!(
+                "不支持的发送快捷键 \"{other}\"，仅支持 enter 或 mod-enter"
+            ));
+        }
+    }
+    match settings.follow_up_behavior.as_str() {
+        "steer" | "queue" | "interrupt" => {}
+        other => {
+            return Err(format!(
+                "不支持的任务进行中发送方式 \"{other}\"，仅支持 steer、queue 或 interrupt"
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -312,6 +344,92 @@ fn validate_hostname(host: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+// ---- OS window title (§9 D helper; called from lib.rs setup + save_settings) ----
+
+/// Applies `settings.window_worktree_title` to the main window's OS title.
+///
+/// Enabled: `<configured title> · <name>` where `<name>` is the git branch of the
+/// repository the process was launched from (HEAD's symbolic ref; the worktree's
+/// own directory name when HEAD is detached). The identity is resolved from the
+/// process cwd, which under `tauri dev` is `src-tauri/` inside the worktree.
+/// Disabled, no git repository reachable, or no main window: the original
+/// `tauri.conf.json` title is restored or kept — the lookup never errors out.
+pub fn apply_window_title(state: &AppState) {
+    let enabled = state.settings.read().window_worktree_title;
+    let identity = enabled.then(|| {
+        let cwd = std::env::current_dir().ok()?;
+        worktree_identity(&cwd)
+    });
+    let Some(identity) = identity.flatten() else {
+        return;
+    };
+    if let Some(window) = state.app.get_webview_window("main") {
+        let base = default_window_title(state);
+        if !base.is_empty() {
+            let _ = window.set_title(&window_title(&base, &identity));
+        }
+    }
+}
+
+/// The configured main-window title ("title" in tauri.conf.json, falling back to
+/// productName exactly like the initial window title does).
+fn default_window_title(state: &AppState) -> String {
+    let config = state.app.config();
+    config
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == "main")
+        .map(|w| w.title.clone())
+        .filter(|t| !t.is_empty())
+        .or_else(|| config.product_name.clone())
+        .unwrap_or_default()
+}
+
+/// `<base> · <identity>`; `identity` empty or equal to `base` yields `base`.
+fn window_title(base: &str, identity: &str) -> String {
+    if identity.is_empty() || identity == base {
+        base.to_string()
+    } else {
+        format!("{base} · {identity}")
+    }
+}
+
+/// Name identifying the worktree containing `dir`: the current branch, or the
+/// worktree's top-level directory name when HEAD is detached. `None` outside a
+/// work tree or when git is unavailable.
+fn worktree_identity(dir: &Path) -> Option<String> {
+    // symbolic-ref exits non-zero on a detached HEAD — that is the signal to
+    // fall back to the worktree's own directory name, not a lookup failure.
+    let branch = git_stdout(dir, &["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    if let Some(branch) = branch.filter(|b| !b.is_empty()) {
+        return Some(branch);
+    }
+    git_stdout(dir, &["rev-parse", "--show-toplevel"]).and_then(|top| worktree_dir_name(&top))
+}
+
+/// Runs `git -C <dir> <args>` and returns trimmed stdout on a zero exit code.
+fn git_stdout(dir: &Path, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then_some(output.stdout)
+        .map(|b| String::from_utf8_lossy(&b).trim().to_string())
+}
+
+/// Last path component of a worktree root; `None` for root or empty paths.
+fn worktree_dir_name(toplevel: &str) -> Option<String> {
+    Path::new(toplevel)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
 }
 
 // ---- OMP config bridge (`omp config list/set/reset`, §7 D) ----
@@ -679,6 +797,48 @@ mod tests {
     fn test_validate_default_settings() {
         let defaults = Settings::default();
         assert!(validate(&defaults).is_ok());
+    }
+
+    #[test]
+    fn test_validate_send_shortcut_and_follow_up_behavior() {
+        let mut settings = Settings::default();
+
+        for shortcut in ["enter", "mod-enter"] {
+            settings.send_shortcut = shortcut.to_string();
+            for behavior in ["steer", "queue", "interrupt"] {
+                settings.follow_up_behavior = behavior.to_string();
+                assert!(
+                    validate(&settings).is_ok(),
+                    "Expected valid: {shortcut}/{behavior}"
+                );
+            }
+        }
+
+        settings.follow_up_behavior = "steer".to_string();
+        for invalid in ["", "Enter", "mod_enter", "cmd-enter"] {
+            settings.send_shortcut = invalid.to_string();
+            let err = validate(&settings).unwrap_err();
+            assert!(err.contains("不支持的发送快捷键"), "{err}");
+        }
+
+        settings.send_shortcut = "enter".to_string();
+        for invalid in ["", "append", "STEER"] {
+            settings.follow_up_behavior = invalid.to_string();
+            let err = validate(&settings).unwrap_err();
+            assert!(err.contains("不支持的任务进行中发送方式"), "{err}");
+        }
+    }
+
+    #[test]
+    fn test_send_shortcut_and_follow_up_behavior_serde_defaults() {
+        // Stored settings JSON predating these keys must deserialize to the defaults.
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        let map = value.as_object_mut().unwrap();
+        map.remove("sendShortcut");
+        map.remove("followUpBehavior");
+        let parsed: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed.send_shortcut, "enter");
+        assert_eq!(parsed.follow_up_behavior, "steer");
     }
 
     #[test]
@@ -1205,7 +1365,9 @@ pub async fn omp_info(state: tauri::State<'_, AppState>) -> Result<OmpInfo, Stri
 }
 
 const OMP_UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
-const OMP_UPDATE_RUN_TIMEOUT: Duration = Duration::from_secs(300);
+/// `omp update` downloads the ~200 MB standalone binary; at ~0.6 MB/s (typical
+/// without a fast GitHub route) that already takes ~5 min, so keep generous headroom.
+const OMP_UPDATE_RUN_TIMEOUT: Duration = Duration::from_secs(1800);
 
 /// Return value of `omp_update_check`.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -1368,5 +1530,88 @@ mod update_tests {
     #[test]
     fn rate_limit_hint() {
         assert!(update_error("API rate limit exceeded").contains("速率限制"));
+    }
+}
+
+#[cfg(test)]
+mod window_title_tests {
+    use super::*;
+
+    #[test]
+    fn window_title_appends_identity() {
+        assert_eq!(
+            window_title("omp-workspace", "bug-fix"),
+            "omp-workspace · bug-fix"
+        );
+        assert_eq!(
+            window_title("omp-workspace", "main"),
+            "omp-workspace · main"
+        );
+        assert_eq!(window_title("omp-workspace", ""), "omp-workspace");
+        assert_eq!(
+            window_title("omp-workspace", "omp-workspace"),
+            "omp-workspace"
+        );
+    }
+
+    #[test]
+    fn worktree_dir_name_takes_basename() {
+        assert_eq!(
+            worktree_dir_name("/repo/.worktrees/bug-fix").as_deref(),
+            Some("bug-fix")
+        );
+        assert_eq!(worktree_dir_name("/repo").as_deref(), Some("repo"));
+        assert_eq!(worktree_dir_name("/"), None);
+        assert_eq!(worktree_dir_name(""), None);
+    }
+
+    #[test]
+    fn worktree_identity_outside_repo_is_none() {
+        assert_eq!(
+            worktree_identity(Path::new("/nonexistent-ompws-path")),
+            None
+        );
+    }
+
+    /// `git -C <dir>` shorthand; skips (passes) when git is not installed.
+    fn git(dir: &Path, args: &[&str]) -> bool {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    #[test]
+    fn worktree_identity_branch_and_detached_fallback() {
+        // Unique empty dir under TMPDIR; basename doubles as the detached fallback.
+        let dir = std::env::temp_dir().join(format!("ompws-wt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        if !git(&dir, &["init", "--quiet", "--initial-branch", "wt-test"]) {
+            let _ = std::fs::remove_dir_all(&dir);
+            return; // git unavailable: nothing else to verify
+        }
+
+        // Unborn branch still reports its name.
+        assert_eq!(worktree_identity(&dir).as_deref(), Some("wt-test"));
+        // Branch name, not the toplevel directory name.
+        assert!(git(&dir, &["checkout", "--quiet", "-b", "feat-1"]));
+        assert_eq!(worktree_identity(&dir).as_deref(), Some("feat-1"));
+
+        // Detached HEAD falls back to the worktree directory name.
+        assert!(git(&dir, &["config", "user.email", "t@t"]));
+        assert!(git(&dir, &["config", "user.name", "t"]));
+        assert!(git(
+            &dir,
+            &["commit", "--quiet", "--allow-empty", "-m", "init"]
+        ));
+        assert!(git(&dir, &["checkout", "--quiet", "--detach", "HEAD"]));
+        let want = dir.file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(worktree_identity(&dir).as_deref(), Some(want.as_str()));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,7 +1,7 @@
 import clsx from "clsx";
-import { PieChart, X } from "lucide-react";
+import { ArchiveRestore, Loader2, PieChart, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { useEscapeKey } from "../../lib/hooks";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { formatTokens } from "./sessionStats";
 
 interface ContextRingProps {
@@ -11,6 +11,10 @@ interface ContextRingProps {
 	usageObj?: Record<string, unknown> | null;
 	/** Optional formatted usage string (e.g. "44.8k tok"). */
 	totalTokensStr?: string | null;
+	/** Runs context compaction; the button is hidden when omitted. */
+	onCompact?: () => Promise<void>;
+	/** Disables the compact button (e.g. while a turn is streaming). */
+	compactDisabled?: boolean;
 	className?: string;
 }
 
@@ -18,14 +22,13 @@ export function ContextRing({
 	percent,
 	usageObj,
 	totalTokensStr,
+	onCompact,
+	compactDisabled,
 	className,
 }: ContextRingProps) {
 	const [open, setOpen] = useState(false);
-	const popoverRef = useRef<HTMLDivElement>(null);
-
-	useEscapeKey(() => {
-		if (open) setOpen(false);
-	}, open);
+	const [compacting, setCompacting] = useState(false);
+	const btnRef = useRef<HTMLButtonElement>(null);
 
 	// Determine normalized fraction (0.0 to 1.0) and display percentage (0 to 100)
 	let fraction = 0;
@@ -74,6 +77,7 @@ export function ContextRing({
 	return (
 		<div className={clsx("relative inline-flex items-center", className)}>
 			<button
+				ref={btnRef}
 				type="button"
 				onClick={() => setOpen((v) => !v)}
 				title={`上下文占用: ${pctInt}%${totalTokensStr ? ` (${totalTokensStr})` : ""}`}
@@ -117,32 +121,57 @@ export function ContextRing({
 
 			{/* Detail Popover */}
 			{open && (
-				<>
-					<div
-						className="fixed inset-0 z-30"
-						onMouseDown={(e) => {
-							if (e.target === e.currentTarget) {
-								setOpen(false);
-							}
+					<FloatingLayer
+						anchor={btnRef.current}
+						placement="top-start"
+						offset={8}
+						layer="popover"
+						ignoreRefs={[btnRef]}
+						onDismiss={() => setOpen(false)}
+						style={{
+							// --bg-panel is translucent in glass themes; layer it over solid --bg so nothing behind shows through.
+							backgroundColor: "var(--bg)",
+							backgroundImage: "linear-gradient(var(--bg-panel), var(--bg-panel))",
 						}}
-					/>
-					<div
-						ref={popoverRef}
-						onClick={(e) => e.stopPropagation()}
-						className="absolute bottom-full left-0 z-40 mb-2 w-64 rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-3 shadow-apple-card"
+						className="w-64 !border-[var(--line)] p-3 !shadow-apple-card"
 					>
 						<div className="mb-2.5 flex items-center justify-between border-b border-[var(--line)] pb-2">
 							<div className="flex items-center gap-1.5 text-xs font-medium text-[var(--text)]">
 								<PieChart size={13} className="text-[var(--text-60)]" />
 								<span>上下文占用明细</span>
 							</div>
-							<button
-								type="button"
-								onClick={() => setOpen(false)}
-								className="rounded-md p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-							>
-								<X size={12} />
-							</button>
+							<div className="flex items-center gap-1">
+								{onCompact && (
+									<button
+										type="button"
+										disabled={compacting || compactDisabled}
+										title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
+										onClick={async () => {
+											setCompacting(true);
+											try {
+												await onCompact();
+											} finally {
+												setCompacting(false);
+											}
+										}}
+										className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										{compacting ? (
+											<Loader2 size={12} className="animate-spin" />
+										) : (
+											<ArchiveRestore size={12} />
+										)}
+										<span>{compacting ? "压缩中…" : "压缩"}</span>
+									</button>
+								)}
+								<button
+									type="button"
+									onClick={() => setOpen(false)}
+									className="rounded-md p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+								>
+									<X size={12} />
+								</button>
+							</div>
 						</div>
 
 						<div className="space-y-2.5 text-xs">
@@ -209,8 +238,7 @@ export function ContextRing({
 								</div>
 							)}
 						</div>
-					</div>
-				</>
+					</FloatingLayer>
 			)}
 		</div>
 	);

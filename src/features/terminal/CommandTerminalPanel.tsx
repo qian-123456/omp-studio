@@ -41,6 +41,7 @@ import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { sideChatDefaultModelArg } from "../sidechat/modelDefault";
 import { useDrawerStore, type DrawerTab } from "./drawerStore";
 import { addTerminalTab } from "./terminalTabs";
 import {
@@ -418,7 +419,7 @@ export function CommandTerminalPanel() {
 			return;
 		}
 		try {
-			await createSideChat(sessionId, "终端输出", sel);
+			await createSideChat(sessionId, "终端输出", sel, sideChatDefaultModelArg() ?? undefined);
 			void useSessions.getState().load().catch(() => {});
 			useUi.getState().setRightTab("sidechat");
 			toast.success("已发送到侧聊");

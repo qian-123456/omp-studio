@@ -31,6 +31,8 @@ function meta(id: string, attention: Attention | null, hoursAgo: number, archive
 		lastAssistant: null,
 		model: null,
 		attention,
+		mode: "code",
+		groupId: null,
 	};
 }
 

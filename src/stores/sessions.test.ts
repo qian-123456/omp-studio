@@ -47,6 +47,8 @@ function createSession(
 		lastAssistant: null,
 		model: null,
 		attention: null,
+		mode: "code",
+		groupId: null,
 		...overrides,
 	};
 }
@@ -61,6 +63,7 @@ function createWorkspace(
 		name: `Workspace ${id}`,
 		kind: "project",
 		sort: 0,
+		mode: "code",
 		...overrides,
 	};
 }

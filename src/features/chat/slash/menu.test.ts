@@ -17,6 +17,7 @@ describe("slash menu — buildSlashSections", () => {
 			"状态",
 			"集成",
 			"设置",
+			"技能",
 		]);
 		expect(flattenSections(sections).map((i) => i.name)).toContain("fork");
 	});
@@ -87,5 +88,39 @@ describe("slash menu — buildSlashSections", () => {
 		const item = flattenSections(sections).find((i) => i.name === "translator");
 		expect(item?.argHint).toBe("<文本>");
 		expect(item?.registry).toBe(false);
+	});
+
+	it("registers a Visualize entry that shadows omp's skill:visualize command", () => {
+		const sections = buildSlashSections(
+			"",
+			[dynamic("skill:visualize", "skill")],
+			false,
+		);
+		const flat = flattenSections(sections);
+		const items = flat.filter((i) => i.name === "skill:visualize");
+		expect(items).toHaveLength(1);
+		expect(items[0].registry).toBe(true);
+		expect(items[0].group).toBe("技能");
+		expect(items[0].title).toBe("Visualize");
+		expect(items[0].description).toBe("创建可视化和交互工具");
+		expect(items[0].argHint).toBeTruthy();
+		// `/visualize` alias resolves to the same registry entry.
+		const alias = flattenSections(buildSlashSections("visualize", [], false));
+		expect(alias[0]?.name).toBe("skill:visualize");
+	});
+
+	it("hides Visualize when the visualizeEnabled setting is off", () => {
+		const names = (enabled?: boolean) =>
+			flattenSections(
+				buildSlashSections("", [], false, { visualizeEnabled: enabled }),
+			).map((i) => i.name);
+		expect(names()).toContain("skill:visualize");
+		expect(names(true)).toContain("skill:visualize");
+		expect(names(false)).not.toContain("skill:visualize");
+		// alias doesn't resurrect a gated command
+		const aliased = flattenSections(
+			buildSlashSections("visualize", [], false, { visualizeEnabled: false }),
+		);
+		expect(aliased.find((i) => i.name === "skill:visualize")).toBeUndefined();
 	});
 });

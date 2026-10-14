@@ -33,6 +33,7 @@ import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useSidebarStore } from "../sessions/sidebarStore";
 import { useBacklog } from "./backlogStore";
 import { AddImageButton, ImageThumbs, useImageAttach } from "./IdeaImages";
 import {
@@ -630,9 +631,25 @@ function DispatchDialog({
 					: `请依次处理以下 ${prompts.length} 项任务：\n\n${prompts.map((value, index) => `## 任务 ${index + 1}\n${value}`).join("\n\n")}`;
 			let targetId = existingId;
 			if (target === "new") {
-				const cwd = items[0]?.projectDir ?? currentProject ?? (await listWorkspaces()).find((workspace) => workspace.kind === "global")?.path;
-				if (!cwd) throw new Error("找不到可用于新会话的工作区");
-				const info = await rpcStart({ cwd });
+				// Dispatch lands in the active space: item project → current
+				// project → (通用对话 only) the global dir. Project modes have
+				// no project-less fallback.
+				const activeMode = useSidebarStore.getState().activeMode;
+				const globalPath =
+					activeMode === "chat"
+						? (await listWorkspaces()).find((workspace) => workspace.kind === "global")?.path
+						: undefined;
+				const cwd = items[0]?.projectDir ?? currentProject ?? globalPath;
+				if (!cwd) throw new Error("当前模式没有可用的项目目录，请先添加项目");
+				const info = await rpcStart({
+					cwd,
+					mode:
+						globalPath && cwd === globalPath
+							? "chat"
+							: activeMode === "chat"
+								? "code"
+								: activeMode,
+				});
 				targetId = info.sessionId;
 			} else if (!targetId) {
 				throw new Error("请选择目标会话");

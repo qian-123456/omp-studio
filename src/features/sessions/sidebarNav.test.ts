@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Workspace, SessionMeta } from "../../lib/contracts";
 import { groupSessions } from "./grouping";
-import {
-	isGlobalGroupVisibleInAll,
-	isWorkspaceGroupVisibleInAll,
-} from "./sidebarVisibility";
 
 function makeSession(partial: Partial<SessionMeta>): SessionMeta {
 	return {
@@ -32,6 +28,8 @@ function makeSession(partial: Partial<SessionMeta>): SessionMeta {
 		lastAssistant: partial.lastAssistant ?? null,
 		model: partial.model ?? null,
 		attention: null,
+		mode: partial.mode ?? "code",
+		groupId: partial.groupId ?? null,
 		...partial,
 	};
 }
@@ -42,6 +40,7 @@ const projWs: Workspace = {
 	path: "/repo/my-proj",
 	kind: "project",
 	sort: 0,
+	mode: "code",
 };
 
 const emptyWs: Workspace = {
@@ -50,6 +49,7 @@ const emptyWs: Workspace = {
 	path: "/repo/empty-proj",
 	kind: "project",
 	sort: 1,
+	mode: "code",
 };
 
 const globalWs: Workspace = {
@@ -58,39 +58,80 @@ const globalWs: Workspace = {
 	path: "/global",
 	kind: "global",
 	sort: 99,
+	mode: "code",
+};
+
+const workProjWs: Workspace = {
+	id: "wproj",
+	name: "Work Project",
+	path: "/work/proj",
+	kind: "project",
+	sort: 0,
+	mode: "work",
+};
+
+const workGlobalWs: Workspace = {
+	id: "global:work",
+	name: "Global",
+	path: "/work/global",
+	kind: "global",
+	sort: 99,
+	mode: "work",
 };
 
 describe("Sidebar Navigation & Filtering logic", () => {
-	it("hides empty workspace groups in 'all' mode while preserving active workspace when filtered", () => {
+	it("renders every project group of the mode, empty ones included", () => {
 		const session = makeSession({ id: "s1", workspaceId: "proj1" });
 		const grouped = groupSessions([session], [projWs, emptyWs, globalWs], {
-			activeWorkspaceId: "all",
+			mode: "code",
 		});
 
-		// 1. globalGroup has 0 sessions -> should be hidden from UI
-		expect(isGlobalGroupVisibleInAll(grouped.globalGroup)).toBe(false);
-
-		// 2. emptyWs has 0 sessions -> filtered out by real visibility helper
-		const visibleInAll = grouped.workspaceGroups.filter(isWorkspaceGroupVisibleInAll);
-		expect(visibleInAll.map((w) => w.workspace.id)).toEqual(["proj1"]);
-
-		// 3. When emptyWs is explicitly selected as active filter:
-		const groupedFiltered = groupSessions([session], [projWs, emptyWs, globalWs], {
-			activeWorkspaceId: "proj2",
-		});
-		expect(groupedFiltered.workspaceGroups).toHaveLength(1);
-		expect(groupedFiltered.workspaceGroups[0].workspace.id).toBe("proj2");
-		expect(groupedFiltered.workspaceGroups[0].totalCount).toBe(0);
+		expect(grouped.workspaceGroups.map((w) => w.workspace.id)).toEqual([
+			"proj1",
+			"proj2",
+		]);
+		expect(grouped.workspaceGroups[1].totalCount).toBe(0);
 	});
 
-	it("shows global group in 'all' mode only when it has sessions", () => {
+	it("shows the mode's global group only when it has sessions", () => {
 		const sGlobal = makeSession({ id: "g1", workspaceId: "global" });
-		const grouped = groupSessions([sGlobal], [projWs, emptyWs, globalWs], {
-			activeWorkspaceId: "all",
+		const grouped = groupSessions([sGlobal], [projWs, globalWs], {
+			mode: "code",
 		});
 
 		expect(grouped.globalGroup?.totalCount).toBe(1);
-		expect(isGlobalGroupVisibleInAll(grouped.globalGroup)).toBe(true);
+		expect(grouped.globalGroup?.workspace.id).toBe("global");
+
+		const emptyMode = groupSessions([], [projWs, globalWs], { mode: "code" });
+		expect(emptyMode.globalGroup).not.toBeNull();
+		expect(emptyMode.globalGroup?.totalCount).toBe(0);
+	});
+
+	it("keeps each mode's sidebar isolated from the other modes", () => {
+		const codeSession = makeSession({ id: "c1", workspaceId: "proj1" });
+		const workSession = makeSession({
+			id: "w1",
+			workspaceId: "wproj",
+			mode: "work",
+		});
+
+		const codeView = groupSessions(
+			[codeSession, workSession],
+			[projWs, globalWs, workProjWs, workGlobalWs],
+			{ mode: "code" },
+		);
+		expect(codeView.workspaceGroups.map((w) => w.workspace.id)).toEqual(["proj1"]);
+		expect(codeView.globalGroup?.workspace.id).toBe("global");
+		expect(codeView.totalVisible).toBe(1);
+
+		const workView = groupSessions(
+			[codeSession, workSession],
+			[projWs, globalWs, workProjWs, workGlobalWs],
+			{ mode: "work" },
+		);
+		expect(workView.workspaceGroups.map((w) => w.workspace.id)).toEqual(["wproj"]);
+		expect(workView.globalGroup?.workspace.id).toBe("global:work");
+		expect(workView.totalVisible).toBe(1);
 	});
 
 	it("includes empty worktree subgroups when worktrees are provided (C2)", () => {
@@ -100,6 +141,7 @@ describe("Sidebar Navigation & Filtering logic", () => {
 			{ path: "/repo/my-proj/.worktrees/feat-x", branch: "feat-x", head: "bbb", dirty: 0, sessionIds: [], ahead: 0, behind: 0 },
 		];
 		const grouped = groupSessions([session], [projWs], {
+			mode: "code",
 			worktrees: { proj1: worktrees },
 		});
 

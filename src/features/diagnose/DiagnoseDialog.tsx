@@ -91,9 +91,11 @@ export function DiagnoseDialog() {
 			let diagnoserId = selectedExistingId;
 			if (targetType === "new") {
 				const cwd = targetSession?.cwd || ".";
+				// The diagnoser lives in the diagnosed session's space.
 				const info = await rpcStart({
 					cwd,
 					model: newSessionModel.trim() || undefined,
+					mode: targetSession?.mode,
 				});
 				diagnoserId = info.sessionId;
 			} else {

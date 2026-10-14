@@ -65,6 +65,8 @@ export function isSessionMetaEqual(a: SessionMeta, b: SessionMeta): boolean {
 		a.pinned === b.pinned &&
 		a.archived === b.archived &&
 		a.workspaceId === b.workspaceId &&
+		a.mode === b.mode &&
+		a.groupId === b.groupId &&
 		a.repoRoot === b.repoRoot &&
 		a.lastAssistant === b.lastAssistant &&
 		a.model === b.model &&
@@ -80,7 +82,8 @@ export function isWorkspaceEqual(a: Workspace, b: Workspace): boolean {
 		a.path === b.path &&
 		a.name === b.name &&
 		a.kind === b.kind &&
-		a.sort === b.sort
+		a.sort === b.sort &&
+		a.mode === b.mode
 	);
 }
 

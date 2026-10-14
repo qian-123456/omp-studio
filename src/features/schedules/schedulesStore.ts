@@ -12,25 +12,58 @@ import {
 } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 
+export type EditorTab = "settings" | "history";
+
+const SEEN_KEY = "omp:schedules:seenRuns";
+/** Cap the seen list so localStorage never grows unboundedly. */
+const SEEN_CAP = 400;
+
+function readSeenRuns(): Record<string, true> {
+	try {
+		const raw = localStorage.getItem(SEEN_KEY);
+		if (!raw) return {};
+		const arr = JSON.parse(raw);
+		if (!Array.isArray(arr)) return {};
+		const out: Record<string, true> = {};
+		for (const id of arr.slice(-SEEN_CAP)) {
+			if (typeof id === "string") out[id] = true;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+function persistSeenRuns(seen: Record<string, true>): void {
+	try {
+		localStorage.setItem(SEEN_KEY, JSON.stringify(Object.keys(seen)));
+	} catch {
+		// Storage unavailable (private mode); seen state is best-effort.
+	}
+}
+
 export interface SchedulesState {
 	schedules: Schedule[];
 	runs: Record<string, ScheduleRun[]>;
 	loading: boolean;
 	runningScheduleIds: Record<string, boolean>;
-	expandedRuns: Record<string, boolean>;
+	/** Run ids the user has already seen (opened history/session for). */
+	seenRuns: Record<string, true>;
 	isEditorOpen: boolean;
 	editingSchedule: Schedule | null;
 	draftTemplate: Partial<ScheduleDraft> | null;
+	/** Which tab the editor opens on (history when a run just failed). */
+	editorTab: EditorTab;
 
 	load: () => Promise<void>;
-	loadRuns: (scheduleId: string) => Promise<void>;
-	toggleExpanded: (scheduleId: string) => void;
+	loadRuns: (scheduleId: string, limit?: number) => Promise<void>;
+	markRunSeen: (runId: string) => void;
 	toggleEnabled: (id: string, enabled: boolean) => Promise<void>;
 	runNow: (id: string) => Promise<void>;
 	removeSchedule: (id: string) => Promise<void>;
 	saveSchedule: (draft: ScheduleDraft) => Promise<Schedule | null>;
 	openCreate: (template?: Partial<ScheduleDraft>) => void;
-	openEdit: (schedule: Schedule) => void;
+	openEdit: (schedule: Schedule, tab?: EditorTab) => void;
 	closeEditor: () => void;
 }
 
@@ -41,10 +74,11 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 	runs: {},
 	loading: false,
 	runningScheduleIds: {},
-	expandedRuns: {},
+	seenRuns: readSeenRuns(),
 	isEditorOpen: false,
 	editingSchedule: null,
 	draftTemplate: null,
+	editorTab: "settings",
 
 	load: async () => {
 		set({ loading: true });
@@ -52,13 +86,10 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 			// Start listening to schedules:changed once
 			if (!unlisten) {
 				unlisten = await onSchedulesChanged(() => {
-					// Refresh schedules and any open runs lists
+					// Refresh schedules and every run list currently loaded
 					void get().load();
-					const expanded = get().expandedRuns;
-					for (const [sid, isExp] of Object.entries(expanded)) {
-						if (isExp) {
-							void get().loadRuns(sid);
-						}
+					for (const sid of Object.keys(get().runs)) {
+						void get().loadRuns(sid);
 					}
 				});
 			}
@@ -71,9 +102,9 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 		}
 	},
 
-	loadRuns: async (scheduleId: string) => {
+	loadRuns: async (scheduleId: string, limit = 20) => {
 		try {
-			const runs = await listScheduleRuns(scheduleId, 10);
+			const runs = await listScheduleRuns(scheduleId, limit);
 			set((state) => ({
 				runs: { ...state.runs, [scheduleId]: runs },
 			}));
@@ -82,17 +113,12 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 		}
 	},
 
-	toggleExpanded: (scheduleId: string) => {
-		const isExp = !!get().expandedRuns[scheduleId];
-		set((state) => ({
-			expandedRuns: {
-				...state.expandedRuns,
-				[scheduleId]: !isExp,
-			},
-		}));
-		if (!isExp) {
-			void get().loadRuns(scheduleId);
-		}
+	markRunSeen: (runId: string) => {
+		const seen = get().seenRuns;
+		if (seen[runId]) return;
+		const next: Record<string, true> = { ...seen, [runId]: true };
+		set({ seenRuns: next });
+		persistSeenRuns(next);
 	},
 
 	toggleEnabled: async (id: string, enabled: boolean) => {
@@ -165,14 +191,16 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 			isEditorOpen: true,
 			editingSchedule: null,
 			draftTemplate: template ?? null,
+			editorTab: "settings",
 		});
 	},
 
-	openEdit: (schedule: Schedule) => {
+	openEdit: (schedule: Schedule, tab: EditorTab = "settings") => {
 		set({
 			isEditorOpen: true,
 			editingSchedule: schedule,
 			draftTemplate: null,
+			editorTab: tab,
 		});
 	},
 
@@ -181,6 +209,7 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 			isEditorOpen: false,
 			editingSchedule: null,
 			draftTemplate: null,
+			editorTab: "settings",
 		});
 	},
 }));

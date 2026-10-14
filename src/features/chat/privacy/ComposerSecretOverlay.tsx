@@ -9,6 +9,7 @@ import { type ClipAction, runClipboardAction } from "./composerClipboard";
 import { ClipboardPaste, Copy, Lock, Scissors, TextSelect } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { FloatingLayer } from "../../../components/FloatingLayer";
+import { SelectionBubble } from "../../../components/SelectionBubble";
 import { addMark, type Highlight, type HighlightKind, isReplaced, toggleHighlight } from "./composerPrivacy";
 import { MarkSecretPopover } from "./MarkSecretPopover";
 import type { ComposerPrivacy } from "./useComposerPrivacy";
@@ -231,14 +232,10 @@ export function ComposerSecretOverlay({
 					{text.slice(validSelection.end)}
 				</div>
 			)}
-			{showPill && selSpan && (
-				<FloatingLayer anchor={selSpan} placement="top-start" offset={4} layer="menu">
-					<div className="flex items-center gap-0.5 rounded-md border border-[var(--line,var(--border))] bg-[var(--bg-panel)] px-0.5 py-0.5 text-[11px] text-[var(--text-60,var(--text-muted))] shadow-sm">
-						<PillButton icon={<Scissors size={11} />} label="剪切" onClick={() => void runAction("cut")} />
-						<PillButton icon={<Copy size={11} />} label="复制" onClick={() => void runAction("copy")} />
-						{canMark && <PillButton icon={<Lock size={11} />} label="标记为隐私" onClick={openMark} />}
-					</div>
-				</FloatingLayer>
+			{showPill && selSpan && canMark && (
+				<SelectionBubble anchor={selSpan}>
+					<PillButton icon={<Lock size={11} />} label="标记为隐私" onClick={openMark} />
+				</SelectionBubble>
 			)}
 			{menuAt && (
 				<FloatingLayer

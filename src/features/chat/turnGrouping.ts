@@ -65,14 +65,27 @@ export interface ProtocolBlock {
 }
 
 export type DisplayBlock = TurnBlock | ProtocolBlock;
-/** Format a chat message time; absent or invalid timestamps stay hidden. */
-export function formatMessageTimestamp(timestamp?: string | number | null): string {
+/**
+ * Format a chat message time; absent or invalid timestamps stay hidden.
+ * Today: "HH:mm"; earlier this year: "M月D日 HH:mm"; other years: "YYYY年M月D日 HH:mm".
+ */
+export function formatMessageTimestamp(
+	timestamp?: string | number | null,
+	now: Date = new Date(),
+): string {
 	if (timestamp == null || timestamp === "") return "";
 	const date = new Date(timestamp);
 	if (Number.isNaN(date.getTime())) return "";
 	const hours = String(date.getHours()).padStart(2, "0");
 	const minutes = String(date.getMinutes()).padStart(2, "0");
-	return `${hours}:${minutes}`;
+	const time = `${hours}:${minutes}`;
+	if (date.getFullYear() !== now.getFullYear()) {
+		return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+	}
+	if (date.getMonth() !== now.getMonth() || date.getDate() !== now.getDate()) {
+		return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+	}
+	return time;
 }
 
 /**
@@ -255,7 +268,26 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 		allItemIds: string[];
 		startTime?: string;
 		endTime?: string;
+		/** Wall time the agent sat idle (finished, waiting for a wake-up) inside this turn. */
+		idleMs?: number;
+		/** The last item ended the agent's run (assistant message without tool calls). */
+		lastIdle?: boolean;
 	} | null = null;
+
+	// Advance the turn end. A gap after a finished assistant message is idle time
+	// (e.g. a background-job notice waking the agent a day later), not work.
+	const bump = (
+		turn: NonNullable<typeof currentTurn>,
+		item: TranscriptItem,
+	) => {
+		if (!item.ts) return;
+		if (turn.lastIdle && turn.endTime) {
+			turn.idleMs =
+				(turn.idleMs ?? 0) + (computeDurationMs(turn.endTime, item.ts) ?? 0);
+		}
+		turn.endTime = item.ts;
+		turn.lastIdle = item.kind === "assistant" && !item.toolCalls?.length;
+	};
 
 	const finalizeCurrentTurn = () => {
 		if (!currentTurn) return;
@@ -266,10 +298,8 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 		// Calculate duration
 		let durationMs: number | undefined;
 		if (currentTurn.startTime && currentTurn.endTime) {
-			durationMs = computeDurationMs(
-				currentTurn.startTime,
-				currentTurn.endTime,
-			);
+			const wall = computeDurationMs(currentTurn.startTime, currentTurn.endTime);
+			if (wall !== undefined) durationMs = Math.max(0, wall - (currentTurn.idleMs ?? 0));
 		}
 
 		blocks.push({
@@ -353,7 +383,7 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 					text: item.text ?? "",
 				});
 				currentTurn.allItemIds.push(item.id);
-				if (item.ts) currentTurn.endTime = item.ts;
+				bump(currentTurn, item);
 				continue;
 			}
 			finalizeCurrentTurn();
@@ -377,7 +407,7 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 					item,
 				});
 				currentTurn.allItemIds.push(item.id);
-				if (item.ts) currentTurn.endTime = item.ts;
+				bump(currentTurn, item);
 				continue;
 			}
 			finalizeCurrentTurn();
@@ -416,7 +446,7 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 		// If tool result, attach to matching tool call in currentTurn
 		if (item.kind === "tool_result" || item.toolResult) {
 			currentTurn.allItemIds.push(item.id);
-			if (item.ts) currentTurn.endTime = item.ts;
+			bump(currentTurn, item);
 
 			const res = item.toolResult ?? {
 				toolCallId: "",
@@ -442,7 +472,7 @@ export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
 		// Assistant message
 		if (item.kind === "assistant") {
 			currentTurn.allItemIds.push(item.id);
-			if (item.ts) currentTurn.endTime = item.ts;
+			bump(currentTurn, item);
 
 			// Lookahead: is there another assistant or user message following?
 			let hasSubsequentAssistantOrUser = false;

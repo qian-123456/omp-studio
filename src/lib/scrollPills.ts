@@ -37,6 +37,7 @@ type Entry = {
 	visible: boolean;
 	hovered: boolean;
 	drag: { pointerId: number; startY: number; startScrollTop: number } | null;
+	ro: ResizeObserver;
 };
 
 const entries = new Map<HTMLElement, Entry>();
@@ -73,6 +74,12 @@ function entryFor(el: HTMLElement): Entry {
 		pill.className = PILL_CLASS;
 		pill.setAttribute("aria-hidden", "true");
 		document.body.appendChild(pill);
+		// Fires after layout, before paint: the pill tracks a resizing scroller
+		// (splitter drags) in the same frame instead of trailing one behind.
+		const ro = new ResizeObserver(() => {
+			const cur = entries.get(el);
+			if (cur?.visible) layout(el, cur);
+		});
 		const e: Entry = {
 			el,
 			pill,
@@ -80,7 +87,9 @@ function entryFor(el: HTMLElement): Entry {
 			visible: false,
 			hovered: false,
 			drag: null,
+			ro,
 		};
+		ro.observe(el);
 		attachPillHandlers(e);
 		entries.set(el, e);
 		entry = e;
@@ -165,6 +174,7 @@ function layout(el: HTMLElement, entry: Entry): void {
 	if (!el.isConnected) {
 		hide(entry);
 		entry.pill.remove();
+		entry.ro.disconnect();
 		entries.delete(el);
 		return;
 	}
@@ -214,8 +224,31 @@ function dedupeOverlap(keep: HTMLElement): boolean {
 	return true;
 }
 
+let suspended = false;
+/** Hide every pill instantly (no fade) and ignore scroll/wheel until resumed.
+ * Used while a splitter drag reflows the layout: reflow fires scroll events on
+ * several nested scrollers, which would otherwise flash overlapping pills. */
+export function suspendScrollPills(on: boolean): void {
+	suspended = on;
+	for (const [, entry] of entries) {
+		if (on) hide(entry);
+		entry.pill.style.display = on ? "none" : "";
+	}
+}
+
+/** While a modal is open, scrollers outside it are inert (backdrop). Their
+ * pill (z-index above the modal) would otherwise float over the dialog when
+ * background content scrolls, e.g. a streaming chat behind Settings. */
+const MODAL_SELECTOR = '[data-layer="modal"], [aria-modal="true"]';
+function isBehindModal(el: HTMLElement): boolean {
+	const modals = document.querySelectorAll(MODAL_SELECTOR);
+	if (modals.length === 0) return false;
+	for (const m of modals) if (m.contains(el)) return false;
+	return true;
+}
+
 function show(el: HTMLElement): void {
-	if (!el.isConnected) return;
+	if (suspended || !el.isConnected || isBehindModal(el)) return;
 	const entry = entryFor(el);
 	if (!dedupeOverlap(el)) return;
 	layout(el, entry);
@@ -223,6 +256,7 @@ function show(el: HTMLElement): void {
 	if (!entry.visible) {
 		entry.visible = true;
 		entry.pill.classList.add(PILL_VISIBLE);
+		ensureSync();
 	}
 	entry.idleTimer = window.setTimeout(() => {
 		entry.idleTimer = 0;
@@ -252,12 +286,59 @@ function hide(entry: Entry): void {
 	entry.pill.classList.remove(PILL_VISIBLE);
 }
 
+/** A visible pill is positioned with fixed coordinates computed from its
+ * scroller's rect. Layout changes that fire no scroll/resize event (dragging the
+ * right-panel splitter, sidebar toggle, …) would leave it stale until the next
+ * scroll, so re-sync every frame while at least one pill is visible. */
+let syncRaf = 0;
+function syncVisiblePills(): void {
+	syncRaf = 0;
+	let any = false;
+	for (const [el, entry] of Array.from(entries)) {
+		if (!entry.visible) continue;
+		if (isBehindModal(el)) {
+			hide(entry);
+			continue;
+		}
+		layout(el, entry);
+		if (entry.visible) any = true;
+	}
+	// Two visible pills on the same rail read as a ghost: keep only the deepest.
+	const vis = Array.from(entries).filter(([, e]) => e.visible && !e.drag);
+	for (let i = 0; i < vis.length; i++) {
+		for (let j = i + 1; j < vis.length; j++) {
+			const [a, ea] = vis[i];
+			const [b, eb] = vis[j];
+			if (!ea.visible || !eb.visible) continue;
+			const ra = a.getBoundingClientRect();
+			const rb = b.getBoundingClientRect();
+			const overlap =
+				Math.abs(ra.right - rb.right) <= 40 &&
+				!(ra.bottom < rb.top || rb.bottom < ra.top);
+			if (!overlap) continue;
+			// Ancestor loses to its descendant; unrelated rails: the older one yields.
+			hide(b.contains(a) ? eb : ea);
+		}
+	}
+	if (any) syncRaf = window.requestAnimationFrame(syncVisiblePills);
+}
+function ensureSync(): void {
+	if (syncRaf === 0) syncRaf = window.requestAnimationFrame(syncVisiblePills);
+}
+
 export function prune(): void {
+	// Sweep pill nodes no entry owns (leaked by a dead instance / lost entry).
+	const owned = new Set<Element>();
+	for (const entry of entries.values()) owned.add(entry.pill);
+	for (const p of document.querySelectorAll(`.${PILL_CLASS}`)) {
+		if (!owned.has(p)) p.remove();
+	}
 	for (const [el, entry] of Array.from(entries)) {
 		if (!el.isConnected || !isScrollable(el)) {
 			if (entry.drag) document.body.classList.remove(DRAG_BODY_CLASS);
 			hide(entry);
 			entry.pill.remove();
+			entry.ro.disconnect();
 			entries.delete(el);
 		}
 	}
@@ -274,6 +355,11 @@ export function hideAllScrollPills(): void {
 }
 
 export function startScrollPills(): () => void {
+	// A second live instance (HMR re-eval, double init) would stack its own
+	// pills on top of ours; tear any previous one down first.
+	const w = window as unknown as { __ompScrollPillsStop?: () => void };
+	w.__ompScrollPillsStop?.();
+	for (const p of document.querySelectorAll(`.${PILL_CLASS}`)) p.remove();
 	const onScroll = (e: Event) => {
 		const t = e.target;
 		const el =
@@ -367,7 +453,7 @@ export function startScrollPills(): () => void {
 
 	const onBlur = () => hideAllScrollPills();
 	window.addEventListener("blur", onBlur);
-	return () => {
+	const stop = () => {
 		window.removeEventListener("scroll", onScroll, { capture: true });
 		window.removeEventListener("wheel", onWheel, { capture: true });
 	window.removeEventListener("pointerdown", onDown, { capture: true });
@@ -377,11 +463,19 @@ export function startScrollPills(): () => void {
 		window.clearInterval(pruneTimer);
 		observer.disconnect();
 		if (moRaf !== 0) window.cancelAnimationFrame(moRaf);
+		if (syncRaf !== 0) {
+			window.cancelAnimationFrame(syncRaf);
+			syncRaf = 0;
+		}
 		window.removeEventListener("blur", onBlur);
 		for (const [, entry] of entries) {
 			hide(entry);
 			entry.pill.remove();
+			entry.ro.disconnect();
 		}
 		entries.clear();
+		if (w.__ompScrollPillsStop === stop) w.__ompScrollPillsStop = undefined;
 	};
+	w.__ompScrollPillsStop = stop;
+	return stop;
 }

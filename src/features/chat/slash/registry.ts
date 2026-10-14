@@ -12,6 +12,7 @@ import {
 	Bot,
 	Brain,
 	Cable,
+	ChartColumn,
 	ChartPie,
 	ClipboardCopy,
 	Cpu,
@@ -40,6 +41,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { copyText } from "../../../lib/dialogs";
 import { createSession } from "../../../lib/createSession";
 import { createSideChat, sessionExportHtml } from "../../../lib/ipc";
+import { sideChatDefaultModelArg } from "../../sidechat/modelDefault";
 import { toast } from "../../../lib/toast";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
@@ -84,7 +86,12 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 				toast.info("用法: /fork <问题>");
 				throw new SlashAbort();
 			}
-			const info = await createSideChat(ctx.sessionId, question);
+			const info = await createSideChat(
+				ctx.sessionId,
+				question,
+				undefined,
+				sideChatDefaultModelArg() ?? undefined,
+			);
 			useUi.getState().setRightTab("sidechat");
 			useUi.getState().selectSession(info.sessionId);
 		},
@@ -390,6 +397,22 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		icon: Settings,
 		group: "设置",
 		run: (ctx) => ctx.openSettings(),
+	},
+	// ---- 技能 ----
+	{
+		name: "skill:visualize",
+		aliases: ["visualize"],
+		title: "Visualize",
+		description: "创建可视化和交互工具",
+		icon: ChartColumn,
+		group: "技能",
+		argHint: "<要可视化的内容>",
+		feature: "visualize",
+		// omp registers skills as `/skill:<name>`; normalize the friendlier
+		// `/visualize` alias so both invocations reach the bundled skill.
+		run: async (ctx) => {
+			await ctx.sendPromptText(`/skill:visualize ${ctx.args.trim()}`.trim());
+		},
 	},
 ];
 

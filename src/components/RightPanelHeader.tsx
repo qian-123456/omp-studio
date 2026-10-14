@@ -34,6 +34,15 @@ import {
 } from "../features/terminal/terminalTabs";
 import { type RightTab, useUi } from "../stores/ui";
 import { FloatingLayer } from "./FloatingLayer";
+import {
+	MAX_TAB_WIDTH,
+	MIN_TAB_WIDTH,
+	MORE_BTN_FALLBACK_WIDTH,
+	PLUS_BTN_WIDTH,
+	TAB_GAP,
+	tabRowCapacity,
+	visibleTabs,
+} from "./rightPanelTabs";
 
 interface RightPanelHeaderProps {
 	activeTab: RightTab;
@@ -51,10 +60,6 @@ const PRIMARY_TABS: { id: RightTab; label: string; icon: IconType; iconColor: st
 	{ id: "heatmap", label: "Token 用量", icon: Coins, iconColor: "text-amber-400" },
 	{ id: "terminal", label: "终端", icon: SquareTerminal, iconColor: "text-emerald-400" },
 ];
-
-/** Narrowest a tab may shrink to (≈ icon + close) before it moves into the overflow menu. */
-const MIN_TAB_WIDTH = 64;
-const TAB_GAP = 2;
 
 /** One rendered Chrome tab: a panel tab, or a terminal instance of the active terminal panel tab. */
 interface HeaderTab {
@@ -82,14 +87,19 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 	const [overflowOpen, setOverflowOpen] = useState(false);
 	const plusBtnRef = useRef<HTMLButtonElement>(null);
 	const moreBtnRef = useRef<HTMLButtonElement>(null);
-	const rowRef = useRef<HTMLDivElement>(null);
-	const [rowWidth, setRowWidth] = useState(0);
+	const stripRef = useRef<HTMLDivElement>(null);
+	const [stripWidth, setStripWidth] = useState(0);
+	const [moreWidth, setMoreWidth] = useState(MORE_BTN_FALLBACK_WIDTH);
+	const [hoveredTab, setHoveredTab] = useState<string | null>(null);
 
+	// Measure the flex-1 strip that hosts [tabs, '+N', '+']. Its width is set
+	// by the header flex layout, not by the tabs inside it — measuring the
+	// shrink-to-fit tablist instead would feed capacity back into itself.
 	useLayoutEffect(() => {
-		const el = rowRef.current;
+		const el = stripRef.current;
 		if (!el) return;
-		setRowWidth(el.clientWidth);
-		const ro = new ResizeObserver(() => setRowWidth(el.clientWidth));
+		setStripWidth(el.clientWidth);
+		const ro = new ResizeObserver(() => setStripWidth(el.clientWidth));
 		ro.observe(el);
 		return () => ro.disconnect();
 	}, []);
@@ -126,16 +136,23 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 		];
 	});
 
-	// Keep store order, but swap the active tab into the last inline slot if it would overflow.
-	const capacity =
-		rowWidth > 0 ? Math.max(1, Math.floor((rowWidth + TAB_GAP) / (MIN_TAB_WIDTH + TAB_GAP))) : items.length;
-	let shown = items;
-	if (items.length > capacity) {
-		shown = items.slice(0, capacity);
-		const active = items.find((t) => t.active);
-		if (active && !shown.includes(active)) shown = [...shown.slice(0, capacity - 1), active];
-	}
+	// Capacity comes from the strip's real width minus the fixed controls:
+	// '+' always; '+N' only when tabs actually overflow (see tabRowCapacity).
+	const capacity = stripWidth > 0 ? tabRowCapacity(stripWidth, items.length, PLUS_BTN_WIDTH, moreWidth) : items.length;
+	const shown = visibleTabs(items, capacity);
 	const hidden = items.filter((t) => !shown.includes(t));
+	const hasOverflow = hidden.length > 0;
+
+	// The '+N' label widens with N's digit count, so track its real width.
+	useLayoutEffect(() => {
+		const el = moreBtnRef.current;
+		if (!hasOverflow || !el) return;
+		setMoreWidth(el.offsetWidth);
+		const ro = new ResizeObserver(() => setMoreWidth(el.offsetWidth));
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [hasOverflow]);
+
 
 	const closeButton = (tab: HeaderTab, size: number) => (
 		<button
@@ -171,57 +188,93 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 
 	return (
 		<div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-[var(--border-divider)] bg-neutral-950/80 px-1.5 select-none">
-			<div className="flex min-w-0 flex-1 items-center gap-1">
+			<div ref={stripRef} className="flex min-w-0 flex-1 items-center gap-1 self-stretch">
+				{/* flex-basis is set explicitly: a flex container's intrinsic width
+				    ignores its items' flex-basis, so without it every tab would
+				    collapse to its content width and clip its own label. */}
 				<div
-					ref={rowRef}
 					role="tablist"
-					className="flex min-w-0 flex-1 items-center overflow-hidden"
-					style={{ gap: TAB_GAP }}
+					className="flex h-10 min-w-0 shrink items-stretch self-start overflow-hidden"
+					style={{
+						gap: TAB_GAP,
+						flexBasis: shown.length * MAX_TAB_WIDTH + Math.max(0, shown.length - 1) * TAB_GAP,
+					}}
 				>
-					{shown.map((tab) => (
-						<div
-							key={tab.key}
-							role="tab"
-							aria-selected={tab.active}
-							title={tab.title}
-							onClick={tab.activate}
-							onMouseDown={(e) => {
-								if (e.button === 1) e.preventDefault();
-							}}
-							onAuxClick={(e) => {
-								if (e.button === 1) tab.close();
-							}}
-							style={{ minWidth: MIN_TAB_WIDTH }}
-							className={clsx(
-								"group relative flex h-7 max-w-[160px] shrink min-w-[56px] cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors",
-								tab.active
-									? "border border-neutral-700/80 bg-neutral-800/90 font-medium text-neutral-100 shadow-xs"
-									: "border border-transparent text-neutral-400 hover:border-neutral-800/60 hover:bg-neutral-800/50 hover:text-neutral-200",
-							)}
-						>
-							{tab.lead}
-							<span className="min-w-0 truncate">
-								{tab.label}
-							</span>
-							{tab.badge > 0 && (
-								<span className="shrink-0 rounded-full bg-neutral-700/80 px-1 text-[9px] font-medium leading-none text-neutral-300">
-									{tab.badge}
-								</span>
-							)}
+					{shown.map((tab, i) => {
+						const prev = shown[i - 1];
+						// Chrome hides the divider next to an active or hovered tab.
+						const dimSeparator =
+							!!prev &&
+							(prev.active || tab.active || prev.key === hoveredTab || tab.key === hoveredTab);
+						return (
 							<div
+								key={tab.key}
+								role="tab"
+								aria-selected={tab.active}
+								title={tab.title}
+								onClick={tab.activate}
+								onMouseEnter={() => setHoveredTab(tab.key)}
+								onMouseLeave={() => setHoveredTab((k) => (k === tab.key ? null : k))}
+								onMouseDown={(e) => {
+									if (e.button === 1) e.preventDefault();
+								}}
+								onAuxClick={(e) => {
+									if (e.button === 1) tab.close();
+								}}
+								style={{ flexBasis: MAX_TAB_WIDTH, minWidth: MIN_TAB_WIDTH }}
 								className={clsx(
-									"ml-auto shrink-0 items-center pl-0.5",
-									tab.active ? "flex" : "hidden group-hover:flex",
+									"group relative flex h-full shrink cursor-pointer items-center rounded-t-lg border-x border-t px-2 text-xs transition-colors",
+									tab.active
+										? "border-[var(--hairline)] bg-[var(--bg-panel)] font-medium text-neutral-100"
+										: "border-transparent text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
 								)}
 							>
-								<span className="hidden group-hover:flex">{detachButton(tab, 11)}</span>
-								{closeButton(tab, 11)}
+								{prev && (
+									<span
+										aria-hidden
+										className={clsx(
+											"pointer-events-none absolute top-1/2 left-[-1.5px] h-4 w-px -translate-y-1/2 bg-neutral-600",
+											dimSeparator && "opacity-0",
+										)}
+									/>
+								)}
+								{/* Label fades out at the right edge (no ellipsis); the fade widens on
+								    active/hover to leave room for the absolutely-placed close button. */}
+								<span
+									className={clsx(
+										"flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(to_right,black_calc(100%-var(--tab-fade-offset)-0.5rem),transparent_calc(100%-var(--tab-fade-offset)))]",
+										tab.detach
+											? tab.active
+												? "[--tab-fade-offset:1.75rem]"
+												: "[--tab-fade-offset:0px] group-hover:[--tab-fade-offset:1.75rem]"
+											: tab.active
+												? "[--tab-fade-offset:0.75rem]"
+												: "[--tab-fade-offset:0px] group-hover:[--tab-fade-offset:0.75rem]",
+									)}
+								>
+									{tab.lead}
+									<span className="shrink-0 whitespace-nowrap">{tab.label}</span>
+									{tab.badge > 0 && (
+										<span className="shrink-0 rounded-full bg-neutral-700/80 px-1 text-[9px] font-medium leading-none text-neutral-300">
+											{tab.badge}
+										</span>
+									)}
+								</span>
+								<div
+									className={clsx(
+										"absolute inset-y-0 right-1 items-center",
+										tab.active ? "flex" : "hidden group-hover:flex",
+									)}
+								>
+									<span className="hidden group-hover:flex">{detachButton(tab, 11)}</span>
+									{closeButton(tab, 11)}
+								</div>
 							</div>
-						</div>
-					))}
+						);
+					})}
 				</div>
 
-				{hidden.length > 0 && (
+				{hasOverflow && (
 					<button
 						ref={moreBtnRef}
 						type="button"

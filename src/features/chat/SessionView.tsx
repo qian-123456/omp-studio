@@ -17,9 +17,13 @@ import {
 } from "../../lib/ipc";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
+import { useUi } from "../../stores/ui";
 import { toast } from "../../lib/toast";
 import { abortTurn } from "./send";
+import { StartGlow } from "../../components/StartHero";
+import { MODAL_SELECTOR } from "../../components/FloatingLayer";
 import { ChatTrace } from "./ChatTrace";
+import { AnnotationMarkers } from "./AnnotationMarkers";
 import { Composer } from "./Composer";
 import { HeldQueueBar } from "./HeldQueueBar";
 import { QueuedBar, useQueueAutoSend } from "./QueuedBar";
@@ -27,8 +31,27 @@ import { MessageList } from "./MessageList";
 import { PendingUiCard } from "./PendingUiCard";
 import { AskPanel, useAskRouting } from "./ask/AskPanel";
 import { SelectionToolbar } from "./SelectionToolbar";
+import { ShareSelectionBar } from "./share/ShareSelectionBar";
+import { useShareSelection } from "./share/shareStore";
 
 const EMPTY_PENDING_UI: PendingUiRequest[] = [];
+
+/**
+ * A fresh draft is only a client-side stub until omp writes its transcript. If its
+ * RPC process is gone (app restart/crash) the backend has no meta, file or handle,
+ * so "session not found" can never succeed on retry: drop the stub instead.
+ */
+function dropStaleDraft(sessionId: string, err: unknown): boolean {
+	if (!errMsg(err).startsWith("session not found")) return false;
+	const s = useSessions.getState().sessions[sessionId];
+	if (!s || s.title?.trim() || s.label?.trim() || s.lastAssistant) return false;
+	useSessions.getState().remove([sessionId]);
+	if (useUi.getState().selectedSessionId === sessionId) {
+		useUi.getState().selectSession(null);
+	}
+	toast.info("这个草稿的后台会话已失效，已从列表移除");
+	return true;
+}
 
 export function SessionView({
 	sessionId,
@@ -76,6 +99,9 @@ export function SessionView({
 	useEffect(loadTurns, [loadTurns]);
 
 	const [isLoadingTranscript, setIsLoadingTranscript] = useState(true);
+	const [emptyState, setEmptyState] = useState(false);
+	// Empty sessions get a centered composer + quick prompts (like the start page).
+	const centered = emptyState && !compact;
 	const [transcriptError, setTranscriptError] = useState<string | null>(null);
 
 	const loadTranscript = useCallback(async () => {
@@ -85,6 +111,7 @@ export function SessionView({
 			const page = await getTranscript(sessionId);
 			setItems(sessionId, page.items, page.nextOffset);
 		} catch (err) {
+			if (dropStaleDraft(sessionId, err)) return;
 			setTranscriptError(errMsg(err));
 		} finally {
 			setIsLoadingTranscript(false);
@@ -106,10 +133,10 @@ export function SessionView({
 				}
 			})
 			.catch((err) => {
-				if (!cancelled) {
-					setTranscriptError(errMsg(err));
-					setIsLoadingTranscript(false);
-				}
+				if (cancelled) return;
+				if (dropStaleDraft(sessionId, err)) return;
+				setTranscriptError(errMsg(err));
+				setIsLoadingTranscript(false);
 			});
 
 		rpcPendingUi(sessionId)
@@ -143,26 +170,44 @@ export function SessionView({
 			});
 	}, [streaming, sessionId, setItems, appendItems, loadTurns]);
 
-	// Esc while generating aborts the turn. Capture phase + preventDefault so
-	// macOS WKWebView doesn't treat the key as "exit fullscreen". Only the main
-	// (non-compact) view owns the shortcut to avoid double-aborting.
+	// Esc while generating aborts the turn — but only when nothing else claims
+	// the key: the composer's slash/@ menus and the selection bubble call
+	// preventDefault, floating layers stop propagation, modals and foreign text
+	// fields own their Esc. Bubble phase so those handlers run first; the
+	// preventDefault below still stops WKWebView treating Esc as "exit fullscreen".
+	// Only the main (non-compact) view owns the shortcut to avoid double-aborting.
 	useEffect(() => {
 		if (!streaming || compact) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || e.isComposing) return;
+			if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
+			if (document.querySelector(MODAL_SELECTOR)) return;
+			const t = e.target instanceof Element ? e.target : null;
+			if (t?.closest('input, [contenteditable="true"]')) return;
+			if (t?.tagName === "TEXTAREA" && !t.hasAttribute("data-composer")) return;
 			e.preventDefault();
-			e.stopPropagation();
 			abortTurn(sessionId)
 				.then(() => toast.info("已终止对话生成"))
 				.catch((err) => toast.error(`终止失败: ${errMsg(err)}`));
 		};
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
 	}, [streaming, compact, sessionId]);
 
+	// Share-as-image selection mode replaces the Composer; leaving the session ends it.
+	const sharing = useShareSelection((s) => s.sessionId === sessionId);
+	useEffect(
+		() => () => {
+			if (useShareSelection.getState().sessionId === sessionId) {
+				useShareSelection.getState().cancel();
+			}
+		},
+		[sessionId],
+	);
+
 	return (
-		<div className="flex h-full flex-col">
-					<div className="relative min-h-0 flex-1 @container">
+		<div className={`relative @container flex h-full flex-col ${centered ? "justify-center pb-[6vh]" : ""}`}>
+			{centered && <StartGlow />}
+					<div className={`relative min-h-0 @container ${centered ? "flex-none" : "flex-1"}`}>
 						{!compact && (
 							<ChatTrace sessionId={sessionId} scrollRef={scrollRef} />
 						)}
@@ -183,11 +228,13 @@ export function SessionView({
 								sessionFile={sessionFile}
 								sessionWorking={status === "working"}
 								onTurnsChange={loadTurns}
+								onEmptyChange={setEmptyState}
 							/>
 							<SelectionToolbar
 								sessionId={sessionId}
 								containerRef={scrollRef}
 							/>
+							<AnnotationMarkers sessionId={sessionId} containerRef={scrollRef} />
 						</div>
 						{/* Viewport-pinned scroll-to-bottom (ZCode DWt: circular
 							icon button anchored outside the scrolled content). */}
@@ -215,7 +262,13 @@ export function SessionView({
 					</div>
 
 					{/* Pending dialogs at the stream bottom. */}
-					<div className="mx-auto w-[calc(100%-4rem)] @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl">
+					<div
+						className={
+							centered
+								? "mx-auto w-full max-w-[880px] px-6"
+								: "mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
+						}
+					>
 						{otherPendingUi.length > 0 && (
 							<div className="shrink-0 border-t border-[var(--line)] px-3 pb-1">
 								{otherPendingUi.map((req, i) => (
@@ -254,15 +307,19 @@ export function SessionView({
 						) : (
 							<HeldQueueBar sessionId={sessionId} streaming={false} />
 						)}
-						<div className={askActive ? "hidden" : undefined}>
-							<Composer
-								sessionId={sessionId}
-								readonly={external}
-								compact={compact}
-							/>
-						</div>
-					</div>
+						{sharing ? (
+							<ShareSelectionBar sessionId={sessionId} />
+						) : (
+							<div className={askActive ? "hidden" : centered ? "start-rise" : undefined}>
+								<Composer
+									sessionId={sessionId}
+									readonly={external}
+									compact={compact}
+								/>
+							</div>
+						)}
 
+					</div>
 		</div>
 	);
 }

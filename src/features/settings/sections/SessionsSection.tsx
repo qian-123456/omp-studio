@@ -56,7 +56,7 @@ export function SessionsSection() {
 				<ToggleRow
 					fieldId="sessionGroupByWorktree"
 					label="按工作树区分会话"
-					description="开启：项目下的会话按 Git 工作树 / 分支分组显示，并可在指定工作树新建会话。关闭：每个项目只显示一个平铺的会话列表，不再区分工作树。"
+					description="仅对代码空间生效：开启时项目下的会话按 Git 工作树 / 分支分组显示，并可在指定工作树新建会话。关闭则每个项目只显示一个平铺列表。工作 / 学习 / 研究 / 通用对话空间始终使用平铺列表。"
 					checked={settings?.sessionGroupByWorktree ?? true}
 					onChange={(v) => save({ sessionGroupByWorktree: v })}
 				/>
@@ -76,6 +76,19 @@ export function SessionsSection() {
 			</SettingsCard>
 
 			<CheckpointsSection />
+
+			<SettingsCard
+				title="可视化（Visualize）"
+				footer="只对在本应用里新开的对话生效；关闭后回答中的可视化代码按普通代码块显示。"
+			>
+				<ToggleRow
+					fieldId="visualizeEnabled"
+					label="启用可视化（Visualize）"
+					description="让 Agent 在回答里生成可交互的图表、示意图和模拟，渲染在沙箱中。"
+					checked={settings?.visualizeEnabled ?? true}
+					onChange={(v) => save({ visualizeEnabled: v })}
+				/>
+			</SettingsCard>
 		</div>
 	);
 }

@@ -10,7 +10,7 @@ pub(crate) mod external;
 pub(crate) mod parse;
 mod scan;
 mod status;
-mod store;
+pub(crate) mod store;
 mod tasks;
 pub(crate) mod transcript;
 mod usage;
@@ -139,6 +139,12 @@ fn rebuild_blocking(state: &AppState) {
             .collect(),
         false,
     );
+    {
+        let db = state.db.lock();
+        // Lazily create global (无项目) workspace rows/dirs for every mode
+        // already referenced by sessions/workspaces/groups.
+        let _ = crate::db::ensure_global_workspace(&db);
+    }
     {
         let db = state.db.lock();
         for path in &changed {
@@ -328,9 +334,7 @@ fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
             .collect();
         refresh_git(cwds, false);
     }
-    let global_dir = paths::global_dir().to_string_lossy().to_string();
-
-    // Compute phase.
+    // Compute phase (global dirs are derived per-mode inside build_meta).
     let mut pending_writes = Vec::new();
     let mut changed = Vec::new();
     let mut status_changes = Vec::new();
@@ -349,7 +353,7 @@ fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
             });
             let eff_cwd = scan::effective_cwd(&s.head, &row).to_string();
             let git = c.git.get(&eff_cwd).map(|g| g.1.clone()).unwrap_or_default();
-            let mut meta = scan::build_meta(s, &row, &git, &workspaces, &global_dir, parent_id);
+            let mut meta = scan::build_meta(s, &row, &git, &workspaces, parent_id);
             let rt = c.runtime.get(id).cloned().unwrap_or_default();
             let is_live = rt.live || live.contains(id);
             let path = s.path.to_string_lossy();

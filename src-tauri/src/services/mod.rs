@@ -3,6 +3,7 @@
 
 pub mod commands;
 pub mod files;
+pub mod perf;
 pub mod scan;
 
 use std::sync::OnceLock;

@@ -4,7 +4,9 @@ use std::collections::HashMap;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::contracts::{PendingKind, SessionMetaPatch, Workspace, WorkspaceKind};
+use crate::contracts::{
+    PendingKind, SessionGroup, SessionMetaPatch, SpaceMode, Workspace, WorkspaceKind,
+};
 
 /// One `session_meta` row.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -27,6 +29,10 @@ pub struct MetaRow {
     pub cwd_override: Option<String>,
     /// Last time the user viewed the session (`mark_seen`).
     pub last_seen_at: Option<String>,
+    /// Space the session belongs to; Code when the column is absent/'code'.
+    pub mode: SpaceMode,
+    /// SessionGroup inside the mode's 无项目 area (global sessions only).
+    pub group_id: Option<String>,
 }
 
 pub fn pending_to_str(p: PendingKind) -> &'static str {
@@ -69,7 +75,7 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
     let mut stmt = conn.prepare_cached(
         "SELECT session_id, custom_name, label, pinned, archived, parent_session_id, fork_depth,
                 workspace_id, unread, pending_kind, pending_since, accepted_at, suspended, seq,
-                cwd_override, last_seen_at
+                cwd_override, last_seen_at, mode, group_id
          FROM session_meta WHERE ?1 IS NULL OR session_id = ?1",
     )?;
     let rows = stmt.query_map(params![id], |r| {
@@ -92,6 +98,8 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
                 seq: r.get(13)?,
                 cwd_override: r.get(14)?,
                 last_seen_at: r.get(15)?,
+                mode: SpaceMode::from_str_lossy(&r.get::<_, String>(16)?),
+                group_id: r.get(17)?,
             },
         ))
     })?;
@@ -239,6 +247,37 @@ pub fn delete_row(conn: &Connection, id: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Record a session's space and (pre-validated) group at creation
+/// (`StartOpts`). `None` leaves the column untouched, so resume/restart
+/// spawns never clobber the stored mode/group.
+pub fn set_mode_group(
+    conn: &Connection,
+    id: &str,
+    mode: Option<SpaceMode>,
+    group_id: Option<&str>,
+) -> rusqlite::Result<()> {
+    if mode.is_none() && group_id.is_none() {
+        return Ok(());
+    }
+    conn.execute(
+        "INSERT INTO session_meta(session_id) VALUES(?1) ON CONFLICT(session_id) DO NOTHING",
+        params![id],
+    )?;
+    if let Some(m) = mode {
+        conn.execute(
+            "UPDATE session_meta SET mode = ?2 WHERE session_id = ?1",
+            params![id, m.as_str()],
+        )?;
+    }
+    if let Some(g) = group_id {
+        conn.execute(
+            "UPDATE session_meta SET group_id = ?2 WHERE session_id = ?1",
+            params![id, g],
+        )?;
+    }
+    Ok(())
+}
+
 // ---- workspaces ----
 
 fn kind_from_str(s: &str) -> WorkspaceKind {
@@ -251,7 +290,7 @@ fn kind_from_str(s: &str) -> WorkspaceKind {
 
 pub fn list_workspaces(conn: &Connection) -> rusqlite::Result<Vec<Workspace>> {
     let mut stmt = conn.prepare(
-        "SELECT id, path, name, kind, sort FROM workspaces
+        "SELECT id, path, name, kind, sort, mode FROM workspaces
          ORDER BY (kind = 'global') DESC, sort, name",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -261,6 +300,7 @@ pub fn list_workspaces(conn: &Connection) -> rusqlite::Result<Vec<Workspace>> {
             name: r.get(2)?,
             kind: kind_from_str(&r.get::<_, String>(3)?),
             sort: r.get(4)?,
+            mode: SpaceMode::from_str_lossy(&r.get::<_, String>(5)?),
         })
     })?;
     rows.collect()
@@ -277,9 +317,19 @@ pub fn normalize_path(path: &str) -> String {
     }
 }
 
-pub fn add_workspace(conn: &Connection, path: &str) -> rusqlite::Result<Workspace> {
+/// Add a project workspace to `mode`. The same disk directory may exist in
+/// several modes (unique on (path, mode)); re-adding the same (path, mode)
+/// returns the existing row.
+pub fn add_workspace(
+    conn: &Connection,
+    path: &str,
+    mode: SpaceMode,
+) -> rusqlite::Result<Workspace> {
     let path = normalize_path(path);
-    if let Some(ws) = list_workspaces(conn)?.into_iter().find(|w| w.path == path) {
+    if let Some(ws) = list_workspaces(conn)?
+        .into_iter()
+        .find(|w| w.path == path && w.mode == mode)
+    {
         return Ok(ws);
     }
     let name = std::path::Path::new(&path)
@@ -287,8 +337,8 @@ pub fn add_workspace(conn: &Connection, path: &str) -> rusqlite::Result<Workspac
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.clone());
     let sort: i64 = conn.query_row(
-        "SELECT COALESCE(MAX(sort), 0) + 1 FROM workspaces",
-        [],
+        "SELECT COALESCE(MAX(sort), 0) + 1 FROM workspaces WHERE mode = ?1",
+        params![mode.as_str()],
         |r| r.get(0),
     )?;
     let ws = Workspace {
@@ -297,10 +347,12 @@ pub fn add_workspace(conn: &Connection, path: &str) -> rusqlite::Result<Workspac
         name,
         kind: WorkspaceKind::Project,
         sort,
+        mode,
     };
     conn.execute(
-        "INSERT INTO workspaces(id, path, name, kind, sort, created_at) VALUES(?1, ?2, ?3, 'project', ?4, ?5)",
-        params![ws.id, ws.path, ws.name, ws.sort, now()],
+        "INSERT INTO workspaces(id, path, name, kind, sort, mode, created_at)
+		 VALUES(?1, ?2, ?3, 'project', ?4, ?5, ?6)",
+        params![ws.id, ws.path, ws.name, ws.sort, mode.as_str(), now()],
     )?;
     Ok(ws)
 }
@@ -340,23 +392,154 @@ pub fn reorder_workspaces(conn: &Connection, ids: &[String]) -> rusqlite::Result
     Ok(())
 }
 
+// ---- session groups (per-mode 无项目 categories) ----
+
+pub fn list_session_groups(conn: &Connection) -> rusqlite::Result<Vec<SessionGroup>> {
+    let mut stmt =
+        conn.prepare("SELECT id, mode, name, sort FROM session_groups ORDER BY mode, sort, name")?;
+    let rows = stmt.query_map([], |r| {
+        Ok(SessionGroup {
+            id: r.get(0)?,
+            mode: SpaceMode::from_str_lossy(&r.get::<_, String>(1)?),
+            name: r.get(2)?,
+            sort: r.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn get_session_group(conn: &Connection, id: &str) -> rusqlite::Result<Option<SessionGroup>> {
+    conn.query_row(
+        "SELECT id, mode, name, sort FROM session_groups WHERE id = ?1",
+        params![id],
+        |r| {
+            Ok(SessionGroup {
+                id: r.get(0)?,
+                mode: SpaceMode::from_str_lossy(&r.get::<_, String>(1)?),
+                name: r.get(2)?,
+                sort: r.get(3)?,
+            })
+        },
+    )
+    .optional()
+}
+
+pub fn create_session_group(
+    conn: &Connection,
+    mode: SpaceMode,
+    name: &str,
+) -> Result<SessionGroup, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("分组名不能为空".to_string());
+    }
+    let sort: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort), 0) + 1 FROM session_groups WHERE mode = ?1",
+            params![mode.as_str()],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let group = SessionGroup {
+        id: uuid::Uuid::new_v4().to_string(),
+        mode,
+        name: name.to_string(),
+        sort,
+    };
+    conn.execute(
+        "INSERT INTO session_groups(id, mode, name, sort, created_at) VALUES(?1, ?2, ?3, ?4, ?5)",
+        params![group.id, mode.as_str(), group.name, group.sort, now()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(group)
+}
+
+pub fn rename_session_group(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+) -> Result<SessionGroup, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("分组名不能为空".to_string());
+    }
+    let changed = conn
+        .execute(
+            "UPDATE session_groups SET name = ?2 WHERE id = ?1",
+            params![id, name],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("分组不存在".to_string());
+    }
+    get_session_group(conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "分组不存在".to_string())
+}
+
+/// Delete a group; its sessions become ungrouped (never deleted).
+pub fn delete_session_group(conn: &Connection, id: &str) -> Result<(), String> {
+    let changed = conn
+        .execute("DELETE FROM session_groups WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("分组不存在".to_string());
+    }
+    conn.execute(
+        "UPDATE session_meta SET group_id = NULL WHERE group_id = ?1",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn reorder_session_groups(conn: &Connection, ids: &[String]) -> rusqlite::Result<()> {
+    for (i, id) in ids.iter().enumerate() {
+        conn.execute(
+            "UPDATE session_groups SET sort = ?2 WHERE id = ?1",
+            params![id, i as i64],
+        )?;
+    }
+    Ok(())
+}
+
+/// Assign (`Some`) or unassign (`None`) a session's group. Group existence,
+/// mode match and global-workspace membership are validated by the caller.
+pub fn set_session_group(
+    conn: &Connection,
+    session_id: &str,
+    group_id: Option<&str>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO session_meta(session_id, group_id) VALUES(?1, ?2)
+		 ON CONFLICT(session_id) DO UPDATE SET group_id = excluded.group_id",
+        params![session_id, group_id],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
 
-    /// The two §6 tables catalog uses (db.rs keeps its migration private).
+    /// The §6 tables catalog uses (db.rs keeps its migration private).
+    /// Mirrors the post-v10 schema.
     pub fn test_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE workspaces(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+            "CREATE TABLE workspaces(id TEXT PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, mode TEXT NOT NULL DEFAULT 'code', created_at TEXT NOT NULL, UNIQUE(path, mode));
              CREATE TABLE session_meta(
                session_id TEXT PRIMARY KEY, file_path TEXT, custom_name TEXT, label TEXT,
                pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
                parent_session_id TEXT, fork_depth INTEGER NOT NULL DEFAULT 0,
                workspace_id TEXT, unread INTEGER NOT NULL DEFAULT 0, pending_kind TEXT, pending_since TEXT,
                accepted_at TEXT, last_seen_at TEXT, suspended INTEGER NOT NULL DEFAULT 0, created_by_app INTEGER NOT NULL DEFAULT 0,
-               seq INTEGER, cwd_override TEXT);
-             INSERT INTO workspaces VALUES('global', '/g', '🌐 全局', 'global', -1, 'now');",
+               seq INTEGER, cwd_override TEXT, mode TEXT NOT NULL DEFAULT 'code', group_id TEXT);
+             CREATE TABLE session_groups(
+               id TEXT PRIMARY KEY, mode TEXT NOT NULL, name TEXT NOT NULL,
+               sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+             INSERT INTO workspaces VALUES('global', '/g', '🌐 全局', 'global', -1, 'code', 'now');
+             INSERT INTO workspaces VALUES('global:work', '/g-work', '🌐 全局', 'global', -1, 'work', 'now');",
         )
         .unwrap();
         conn
@@ -446,14 +629,20 @@ pub mod tests {
     #[test]
     fn workspaces_crud() {
         let c = test_conn();
-        let a = add_workspace(&c, "/repo/a/").unwrap();
+        let a = add_workspace(&c, "/repo/a/", SpaceMode::Code).unwrap();
         assert_eq!((a.path.as_str(), a.name.as_str()), ("/repo/a", "a"));
-        assert_eq!(add_workspace(&c, "/repo/a").unwrap().id, a.id);
-        let b = add_workspace(&c, "/repo/b").unwrap();
+        assert_eq!(
+            add_workspace(&c, "/repo/a", SpaceMode::Code).unwrap().id,
+            a.id
+        );
+        let b = add_workspace(&c, "/repo/b", SpaceMode::Code).unwrap();
         reorder_workspaces(&c, &[b.id.clone(), a.id.clone()]).unwrap();
         let list = list_workspaces(&c).unwrap();
         let ids: Vec<_> = list.iter().map(|w| w.id.as_str()).collect();
-        assert_eq!(ids, vec!["global", b.id.as_str(), a.id.as_str()]);
+        assert_eq!(
+            ids,
+            vec!["global", "global:work", b.id.as_str(), a.id.as_str()]
+        );
         assert!(remove_workspace(&c, "global").is_err());
         apply_patch(
             &c,
@@ -466,6 +655,94 @@ pub mod tests {
         .unwrap();
         remove_workspace(&c, &a.id).unwrap();
         assert!(load_meta_row(&c, "s").workspace_id.is_none());
-        assert_eq!(list_workspaces(&c).unwrap().len(), 2);
+        assert_eq!(list_workspaces(&c).unwrap().len(), 3);
+    }
+
+    /// The same disk directory may be a project in several modes; each mode
+    /// gets its own workspace row and its own global row.
+    #[test]
+    fn same_path_in_two_modes() {
+        let c = test_conn();
+        let a = add_workspace(&c, "/repo/a", SpaceMode::Code).unwrap();
+        let w = add_workspace(&c, "/repo/a", SpaceMode::Work).unwrap();
+        assert_ne!(a.id, w.id);
+        assert_eq!(w.mode, SpaceMode::Work);
+        // Re-adding in either mode returns that mode's existing row.
+        assert_eq!(
+            add_workspace(&c, "/repo/a", SpaceMode::Code).unwrap().id,
+            a.id
+        );
+        assert_eq!(
+            add_workspace(&c, "/repo/a", SpaceMode::Work).unwrap().id,
+            w.id
+        );
+    }
+
+    /// Group CRUD + ungroup-on-delete; cross-mode assignment is rejected at
+    /// the command layer but `set_session_group` round-trips the column.
+    #[test]
+    fn session_groups_crud() {
+        let c = test_conn();
+        let g = create_session_group(&c, SpaceMode::Work, " 清理电脑 ").unwrap();
+        assert_eq!((g.mode, g.name.as_str()), (SpaceMode::Work, "清理电脑"));
+        assert!(create_session_group(&c, SpaceMode::Work, "  ").is_err());
+        let g2 = create_session_group(&c, SpaceMode::Work, "通用").unwrap();
+        let g_code = create_session_group(&c, SpaceMode::Code, "code-g").unwrap();
+        let renamed = rename_session_group(&c, &g.id, "改名").unwrap();
+        assert_eq!(renamed.name, "改名");
+        // sort is per-mode: work groups got 1,2; code group starts at 1.
+        assert_eq!(g_code.sort, 1);
+        reorder_session_groups(&c, &[g2.id.clone(), g.id.clone()]).unwrap();
+        let list = list_session_groups(&c).unwrap();
+        let work_ids: Vec<_> = list
+            .iter()
+            .filter(|x| x.mode == SpaceMode::Work)
+            .map(|x| x.id.as_str())
+            .collect();
+        assert_eq!(work_ids, vec![g2.id.as_str(), g.id.as_str()]);
+        // Assign then ungroup-on-delete.
+        set_session_group(&c, "s1", Some(&g.id)).unwrap();
+        assert_eq!(
+            load_meta_row(&c, "s1").group_id.as_deref(),
+            Some(g.id.as_str())
+        );
+        set_mode_group(&c, "s1", Some(SpaceMode::Work), None).unwrap();
+        assert_eq!(load_meta_row(&c, "s1").mode, SpaceMode::Work);
+        delete_session_group(&c, &g.id).unwrap();
+        assert!(load_meta_row(&c, "s1").group_id.is_none());
+        // The row's stored mode survives the ungroup.
+        assert_eq!(load_meta_row(&c, "s1").mode, SpaceMode::Work);
+        assert!(delete_session_group(&c, &g.id).is_err());
+        // Ungroup path: Some -> None.
+        set_session_group(&c, "s1", Some(&g2.id)).unwrap();
+        set_session_group(&c, "s1", None).unwrap();
+        assert!(load_meta_row(&c, "s1").group_id.is_none());
+    }
+
+    /// set_mode_group: None leaves columns untouched (resume spawns), Some wins.
+    #[test]
+    fn set_mode_group_upsert_semantics() {
+        let c = test_conn();
+        set_mode_group(&c, "s1", Some(SpaceMode::Study), Some("g1")).unwrap();
+        let row = load_meta_row(&c, "s1");
+        assert_eq!(row.mode, SpaceMode::Study);
+        assert_eq!(row.group_id.as_deref(), Some("g1"));
+        // Resume-style call: no mode/group -> untouched.
+        set_mode_group(&c, "s1", None, None).unwrap();
+        let row = load_meta_row(&c, "s1");
+        assert_eq!(row.mode, SpaceMode::Study);
+        assert_eq!(row.group_id.as_deref(), Some("g1"));
+        // Fresh row without args defaults to code.
+        set_mode_group(&c, "s2", None, None).unwrap();
+        assert_eq!(load_meta_row(&c, "s2").mode, SpaceMode::Code);
+    }
+
+    /// Legacy session without any session_meta row reads as code.
+    #[test]
+    fn missing_row_defaults_to_code() {
+        let c = test_conn();
+        let row = load_meta_row(&c, "ghost");
+        assert_eq!(row.mode, SpaceMode::Code);
+        assert_eq!(row.group_id, None);
     }
 }

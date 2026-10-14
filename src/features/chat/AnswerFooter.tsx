@@ -1,16 +1,19 @@
 /** [B] Codex-style quiet turn footer: one row of ghost icon buttons
- * (always visible on the latest turn, hover-reveal otherwise), details in
- * tooltips — no inline meta text, no colored pills. */
+ * (always visible on the latest turn, hover-reveal otherwise) with the answer
+ * time on hover right after the icons; details in tooltips — no inline meta text,
+ * no colored pills. */
 
-import { Copy, FileDiff, GitCommitHorizontal, RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { Copy, FileDiff, GitCommitHorizontal, RotateCcw, Share } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { createSideChat, gitUndoTurn } from "../../lib/ipc";
+import { sideChatDefaultModelArg } from "../sidechat/modelDefault";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
+import { canUndoTurn, undoCascade } from "./turnChips";
 
 /** Tiny status letters in the changed-files list; color only on the letter. */
 const STATUS_LETTER_STYLE: Record<string, string> = {
@@ -26,25 +29,49 @@ const BranchIcon = () => (
 	</svg>
 );
 
+/**
+ * Confirm, then roll back `cascade` (target turn + every later non-undone
+ * turn, newest first). The newest turn keeps the original single-turn
+ * wording; an older turn's dialog spells out the whole cascade.
+ */
 async function undoTurn(
 	cwd: string,
 	sessionFile: string,
 	turn: TurnCheckpoint,
+	cascade: TurnCheckpoint[],
 ): Promise<boolean> {
-	const n = turn.files.length;
-	const ok = await confirmDialog(
-		n > 0
-			? `撤回这一轮？这 ${n} 个文件会回到这一轮开始前的样子（这一轮新建的文件会被删除）。Agent 下一轮会收到通知。`
-			: "撤回这一轮？Agent 下一轮会收到通知。",
-		{ title: "撤回这一轮", danger: true, okLabel: "撤回" },
-	);
+	const laterCount = Math.max(0, cascade.length - 1);
+	const total = cascade.length;
+	const fileCount = new Set(cascade.flatMap((t) => t.files.map((f) => f.path)))
+		.size;
+
+	let title = "撤回这一轮";
+	let okLabel = "撤回";
+	let message: string;
+	if (laterCount === 0) {
+		const n = turn.files.length;
+		message =
+			n > 0
+				? `撤回这一轮？这 ${n} 个文件会回到这一轮开始前的样子（这一轮新建的文件会被删除）。Agent 下一轮会收到通知。`
+				: "撤回这一轮？Agent 下一轮会收到通知。";
+	} else {
+		title = `撤回 ${total} 轮`;
+		okLabel = `撤回这 ${total} 轮`;
+		message =
+			`撤回这一轮会连带撤回之后的 ${laterCount} 轮，共 ${total} 轮、` +
+			`${fileCount} 个文件会回到这一轮开始前的样子（这些轮次里新建的文件会被删除），` +
+			`这一轮之后的文件工作都会丢失。Agent 下一轮会收到通知。`;
+	}
+	const ok = await confirmDialog(message, { title, danger: true, okLabel });
 	if (!ok) return false;
 	try {
 		let res = await gitUndoTurn(cwd, sessionFile, turn.turnId, false);
 		if (res.conflicts.length > 0) {
 			const ok2 = await confirmDialog(
-				`这些文件在这一轮之后又被改过，继续撤回会丢掉后来的修改：\n${res.conflicts.join("\n")}`,
-				{ title: "撤回这一轮", danger: true, okLabel: "仍然撤回" },
+				laterCount === 0
+					? `这些文件在这一轮之后又被改过，继续撤回会丢掉后来的修改：\n${res.conflicts.join("\n")}`
+					: `这些文件在要撤回的 ${total} 轮之后又被改过，继续撤回会丢掉后来的修改：\n${res.conflicts.join("\n")}`,
+				{ title, danger: true, okLabel: "仍然撤回" },
 			);
 			if (!ok2) return false;
 			res = await gitUndoTurn(cwd, sessionFile, turn.turnId, true);
@@ -53,7 +80,10 @@ async function undoTurn(
 				return false;
 			}
 		}
-		const parts: string[] = ["已撤回这一轮"];
+		const undone = res.turnsUndone || total;
+		const parts: string[] = [
+			undone === 1 ? "已撤回这一轮" : `已撤回 ${undone} 轮`,
+		];
 		if (res.restored.length > 0)
 			parts.push(`恢复 ${res.restored.length} 个文件`);
 		if (res.deleted.length > 0)
@@ -73,16 +103,21 @@ export function AnswerFooter({
 	cwd,
 	sessionFile,
 	turnCheckpoint,
-	canUndo,
+	turns,
+	sessionWorking,
 	onDoneUndo,
 	answerText,
-	isLatestTurn,
+	answerTime,
+	answerItemId,
 }: {
 	sessionId: string;
 	cwd: string;
 	sessionFile: string;
 	turnCheckpoint?: TurnCheckpoint;
-	canUndo?: boolean;
+	/** All session checkpoints (oldest first) — the undo cascade of an older
+	 * turn also rolls back every later non-undone turn. */
+	turns?: TurnCheckpoint[];
+	sessionWorking?: boolean;
 	onDoneUndo?: () => void;
 	/** Accepted for contract stability; no longer rendered (duration lives
 	 * in ExecutionDisclosure). */
@@ -90,26 +125,41 @@ export function AnswerFooter({
 	durationMs?: number;
 	model?: string | null;
 	answerText?: string;
-	/** Always-visible footer on the newest turn (Codex shows it without hover). */
-	isLatestTurn?: boolean;
+	/** Answer timestamp (HH:mm), always visible at the row's left end. */
+	answerTime?: string;
+	/** Id of the answer transcript item; enables the share-as-image button. */
+	answerItemId?: string;
 }) {
 	const [filesOpen, setFilesOpen] = useState(false);
 	const [undoBusy, setUndoBusy] = useState(false);
 
 	const commit = turnCheckpoint?.commits?.[0];
+	const undoable =
+		turnCheckpoint !== undefined &&
+		canUndoTurn(turnCheckpoint, sessionWorking === true);
+	const cascade = useMemo(
+		() =>
+			turnCheckpoint && turns ? undoCascade(turns, turnCheckpoint) : undefined,
+		[turns, turnCheckpoint],
+	);
+	const cascadeLater = cascade ? Math.max(0, cascade.length - 1) : 0;
 	const iconBtn =
 		"flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
 
 	return (
-		<div
-			className={
-				"mt-1.5 flex min-h-5 flex-col gap-1 text-[11px] text-[var(--text-30)] " +
-				(isLatestTurn
-					? "opacity-100"
-					: "opacity-0 transition-opacity group-hover/answer:opacity-100 focus-within:opacity-100")
-			}
-		>
+		<div className="mt-1.5 flex min-h-5 w-full flex-col gap-1 text-[11px] text-[var(--text-30)]">
 			<div className="flex items-center gap-0.5">
+				{/* Answer time: fixed at the row's left edge so it stays put whether or
+				 * not the (hover-only) icon buttons after it are showing. */}
+				{answerTime && (
+					<span
+						className="mr-1.5 shrink-0 self-center tabular-nums leading-5"
+						title="回复时间"
+					>
+						{answerTime}
+					</span>
+				)}
+				<div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/answer:opacity-100 focus-within:opacity-100">
 				{turnCheckpoint && (
 					<>
 						{turnCheckpoint.undone && (
@@ -147,24 +197,29 @@ export function AnswerFooter({
 							</button>
 						)}
 
-						{canUndo && !turnCheckpoint.undone && (
+						{undoable && (
 							<button
 								type="button"
 								disabled={undoBusy}
 								onClick={() => {
 									setUndoBusy(true);
-									void undoTurn(cwd, sessionFile, turnCheckpoint).then(
-										(done) => {
-											setUndoBusy(false);
-											if (done) onDoneUndo?.();
-										},
-									);
+									void undoTurn(
+										cwd,
+										sessionFile,
+										turnCheckpoint,
+										cascade ?? [turnCheckpoint],
+									).then((done) => {
+										setUndoBusy(false);
+										if (done) onDoneUndo?.();
+									});
 								}}
 								className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-50"
 								title={
 									undoBusy
 										? "正在撤回…"
-										: "撤回这一轮：把改动的文件恢复回这一轮开始前的样子"
+										: cascadeLater > 0
+											? `撤回这一轮：工作区回到这一轮开始前的样子，之后的 ${cascadeLater} 轮也会被一并撤回`
+											: "撤回这一轮：把改动的文件恢复回这一轮开始前的样子"
 								}
 								aria-label="撤回这一轮"
 							>
@@ -206,6 +261,7 @@ export function AnswerFooter({
 									sessionId,
 									prompt,
 									answerText || undefined,
+									sideChatDefaultModelArg() ?? undefined,
 								);
 								void useSessions.getState().load().catch(() => {});
 								useUi.getState().setRightTab("sidechat");
@@ -221,6 +277,24 @@ export function AnswerFooter({
 					>
 						<BranchIcon />
 					</button>
+
+					{answerItemId && answerText && (
+						<button
+							type="button"
+							onClick={() =>
+								useUi
+									.getState()
+									.openModal("share-image", { sessionId, itemIds: [answerItemId] })
+							}
+							className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							title="分享为图片"
+							aria-label="分享为图片"
+						>
+							<Share size={12} />
+						</button>
+					)}
+				</div>
+
 			</div>
 
 			{/* Expandable changed-files list — status letter carries the color */}

@@ -1,184 +1,404 @@
 import clsx from "clsx";
 import {
-	AlertCircle,
 	CheckCircle2,
-	ChevronDown,
-	ChevronRight,
 	Clock,
+	Copy,
 	Edit2,
-	ExternalLink,
-	Folder,
-	GitBranch,
 	Loader2,
+	MoreHorizontal,
+	Pause,
+	PauseCircle,
+	PenLine,
 	Play,
 	Trash2,
-	XCircle,
 } from "lucide-react";
-import React, { useState } from "react";
-import type { Schedule, ScheduleRun } from "../../lib/contracts";
-import { useUi } from "../../stores/ui";
+import React, { useEffect, useRef, useState } from "react";
+import { FloatingLayer } from "../../components/FloatingLayer";
+import type { Schedule } from "../../lib/contracts";
+import { absoluteTime } from "../../lib/format";
+import { isComposing } from "../../lib/hooks";
 import { Switch } from "../settings/Switch";
-import { formatCadence, formatRelativeTime } from "./humanCadence";
+import { formatCadenceWithEnd, formatNextRun } from "./humanCadence";
+import { lifecycleOf } from "./scheduleUtils";
+import type { EditorTab } from "./schedulesStore";
 
 interface Props {
 	schedule: Schedule;
-	runs: ScheduleRun[];
-	isExpanded: boolean;
+	/** A run is actively executing for this schedule. */
 	isRunning: boolean;
-	onToggleExpanded: () => void;
+	/** Last run finished recently and the user has not opened it yet. */
+	isUnread: boolean;
 	onToggleEnabled: (enabled: boolean) => void;
 	onRunNow: () => void;
-	onEdit: () => void;
+	onOpen: (tab: EditorTab) => void;
+	onDuplicate: () => void;
 	onDelete: () => void;
+	/** Persist a new display name (already trimmed, non-empty, changed). */
+	onRename: (name: string) => void;
 }
+const MENU_ITEM =
+	"flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[var(--text-60)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-all active:scale-[0.98]";
 
 export const ScheduleRow = React.memo(function ScheduleRow({
 	schedule,
-	runs,
-	isExpanded,
 	isRunning,
-	onToggleExpanded,
+	isUnread,
 	onToggleEnabled,
 	onRunNow,
-	onEdit,
+	onOpen,
+	onDuplicate,
 	onDelete,
+	onRename,
 }: Props) {
+	const [menuOpen, setMenuOpen] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
-	const selectSession = useUi((s) => s.selectSession);
+	const menuBtnRef = useRef<HTMLButtonElement>(null);
+	const [renaming, setRenaming] = useState(false);
+	const [nameDraft, setNameDraft] = useState(schedule.name);
+	const nameInputRef = useRef<HTMLInputElement>(null);
 
-	// Runs load lazily on expand; the list row carries the latest status.
-	const lastRunStatus = runs[0]?.status ?? schedule.lastRunStatus ?? undefined;
+	useEffect(() => {
+		if (!renaming) return;
+		nameInputRef.current?.focus();
+		nameInputRef.current?.select();
+	}, [renaming]);
 
-	const handleOpenSession = (sessionId: string | null) => {
-		if (sessionId) {
-			selectSession(sessionId);
-		}
+	const startRename = () => {
+		setNameDraft(schedule.name);
+		setRenaming(true);
+	};
+	const finishRename = (commit: boolean) => {
+		setRenaming(false);
+		const next = nameDraft.trim();
+		if (commit && next && next !== schedule.name) onRename(next);
+	};
+
+	const lifecycle = lifecycleOf(schedule);
+	const runningNow = isRunning || schedule.lastRunStatus === "running";
+	const lastFailed = schedule.lastRunStatus === "error";
+	const completed = lifecycle === "completed";
+
+	const subtitle = formatCadenceWithEnd(
+		schedule.cadence,
+		schedule.endAt,
+		schedule.maxRuns,
+	);
+	const nextRun = schedule.nextRunAt;
+	const nextLabel = completed
+		? "已完成"
+		: !schedule.enabled
+			? "已暂停"
+			: nextRun
+				? `下次运行 ${formatNextRun(nextRun) ?? ""}`
+				: "";
+	/** "3/10" run progress toward a maxRuns cap. */
+	const progress =
+		schedule.maxRuns != null && schedule.maxRuns >= 1
+			? `${schedule.runsDone ?? 0}/${schedule.maxRuns}`
+			: null;
+	const statusText = runningNow
+		? "正在运行…"
+		: lastFailed
+			? `上次运行失败${nextLabel ? ` · ${nextLabel}` : ""}`
+			: nextLabel;
+	const secondary = [progress, statusText].filter(Boolean).join(" · ");
+
+	const closeMenu = () => {
+		setMenuOpen(false);
+		setConfirmDelete(false);
 	};
 
 	return (
-		<div className="border border-[var(--border-divider)] rounded-xl bg-[var(--bg-panel)] shadow-sm overflow-hidden transition-all">
-			{/* Main task card row */}
-			<div className="p-4 flex items-center justify-between gap-4">
-				{/* Left: Info */}
-				<div className="min-w-0 flex-1 space-y-1.5">
-					<div className="flex items-center gap-2.5">
-						<button
-							type="button"
-							onClick={onToggleExpanded}
-							className="p-0.5 rounded text-neutral-400 hover:text-neutral-200 transition-colors"
-							title={isExpanded ? "收起执行记录" : "展开执行记录"}
-						>
-							{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-						</button>
+		<div
+			role="button"
+			tabIndex={0}
+			onClick={() => onOpen(lastFailed ? "history" : "settings")}
+			onKeyDown={(e) => {
+				if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+					e.preventDefault();
+					onOpen(lastFailed ? "history" : "settings");
+				}
+			}}
+			className="group flex items-center gap-3.5 rounded-2xl border border-[var(--border-divider)] bg-[var(--bg-panel)] px-4 py-3.5 text-left transition-colors hover:border-[var(--hairline-strong)] hover:bg-[var(--bg-hover)]/40 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--hairline-strong)]"
+		>
+			{/* Status icon */}
+			<span
+				className={clsx(
+					"flex h-9 w-9 shrink-0 items-center justify-center rounded-xl hairline bg-[var(--bg-hover)]/60",
+					runningNow
+						? "text-[var(--text)]"
+						: completed
+							? "text-emerald-400"
+							: lastFailed
+								? "text-rose-400"
+								: "text-[var(--text-40)]",
+				)}
+				title={
+					runningNow
+						? "正在运行"
+						: completed
+							? "已完成"
+							: lastFailed
+								? "上次运行失败"
+								: lifecycle === "paused"
+									? "已暂停"
+									: "运行中"
+				}
+			>
+				{runningNow ? (
+					<Loader2 size={15} className="animate-spin motion-reduce:animate-none" />
+				) : completed ? (
+					<CheckCircle2 size={15} />
+				) : lifecycle === "paused" ? (
+					<PauseCircle size={15} />
+				) : (
+					<Clock size={15} />
+				)}
+			</span>
 
-						<h3 className="font-semibold text-sm text-neutral-100 truncate">
-							{schedule.name}
-						</h3>
-
-						{/* Worktree badge */}
-						{schedule.runMode === "worktree" && (
-							<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 font-medium">
-								<GitBranch size={11} />
-								<span>Worktree</span>
-							</span>
-						)}
-
-						{/* Last run status badge */}
-						<StatusBadge status={lastRunStatus} isRunningNow={isRunning} />
-					</div>
-
-					{/* Meta line */}
-					<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-400 pl-6">
-						<span className="inline-flex items-center gap-1.5 font-medium text-neutral-300">
-							<Clock size={12} className="text-neutral-400" />
-							{formatCadence(schedule.cadence)}
-						</span>
-
-						<span className="inline-flex items-center gap-1.5 text-neutral-400 truncate max-w-xs">
-							<Folder size={12} className="text-neutral-400" />
-							<span className="truncate" title={schedule.cwd}>
-								{schedule.cwd}
-							</span>
-						</span>
-
-						{schedule.enabled && schedule.nextRunAt && (
-							<span className="text-neutral-400">
-								下次：{formatRelativeTime(schedule.nextRunAt)}
-							</span>
-						)}
-
-						{schedule.lastRunAt && (
-							<span className="text-neutral-500">
-								上次：{formatRelativeTime(schedule.lastRunAt)}
-							</span>
-						)}
-					</div>
-				</div>
-
-				{/* Right: Actions */}
-				<div className="flex items-center gap-3 shrink-0">
-					{/* Enable switch */}
-					<div className="flex items-center gap-2">
-						<Switch
-							checked={schedule.enabled}
-							onChange={onToggleEnabled}
+			{/* Title + subtitle */}
+			<div className="min-w-0 flex-1">
+				<div className="flex items-center gap-2">
+					{renaming ? (
+						<input
+							ref={nameInputRef}
+							value={nameDraft}
+							aria-label="任务标题"
+							maxLength={80}
+							onChange={(e) => setNameDraft(e.target.value)}
+							onClick={(e) => e.stopPropagation()}
+							onKeyDown={(e) => {
+								e.stopPropagation();
+								if (isComposing(e)) return;
+								if (e.key === "Enter") {
+									e.preventDefault();
+									finishRename(true);
+								} else if (e.key === "Escape") {
+									e.preventDefault();
+									finishRename(false);
+								}
+							}}
+							onBlur={() => finishRename(true)}
+							className="min-w-0 flex-1 rounded-md bg-[var(--bg)] px-1.5 py-0.5 text-[13px] font-medium text-[var(--text)] hairline-outset focus:outline-none"
 						/>
-						<span className="text-xs text-neutral-400 w-7">
-							{schedule.enabled ? "启用" : "暂停"}
-						</span>
-					</div>
-
-					<div className="h-4 w-[1px] bg-[var(--border-divider)]" />
-
-					{/* Run now button */}
-					<button
-						type="button"
-						disabled={isRunning}
-						onClick={onRunNow}
-						className={clsx(
-							"px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors border",
-							isRunning
-								? "opacity-50 cursor-not-allowed bg-[var(--bg)] border-[var(--border-divider)] text-neutral-400"
-								: "bg-[var(--bg)] hover:bg-[var(--bg-hover)] border-[var(--border-divider)] text-neutral-200 hover:text-[var(--text)]",
-						)}
-						title="立即触发一次执行"
-					>
-						{isRunning ? (
-							<Loader2 size={12} className="animate-spin text-sky-400" />
-						) : (
-							<Play size={12} className="text-sky-400" />
-						)}
-						<span>立即运行</span>
-					</button>
-
-					{/* Edit button */}
-					<button
-						type="button"
-						onClick={onEdit}
-						className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-[var(--bg-hover)] transition-colors"
-						title="编辑任务"
-					>
-						<Edit2 size={14} />
-					</button>
-
-					{/* Delete button with confirm */}
-					{confirmDelete ? (
-						<div className="flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/30 rounded-md px-2 py-1">
-							<span className="text-[11px] text-rose-300">删除?</span>
+					) : (
+						<>
+							<h3 className="truncate text-[13px] font-medium text-[var(--text)]">
+								{schedule.name}
+							</h3>
 							<button
 								type="button"
-								onClick={() => {
-									onDelete();
-									setConfirmDelete(false);
+								aria-label="重命名"
+								title="重命名"
+								onClick={(e) => {
+									e.stopPropagation();
+									startRename();
 								}}
-								className="text-[11px] text-rose-400 hover:text-rose-200 font-bold"
+								className="shrink-0 rounded p-0.5 text-[var(--text-30)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover:opacity-100"
 							>
-								确定
+								<PenLine size={12} />
+							</button>
+						</>
+					)}
+					{schedule.runMode === "worktree" && (
+						<span className="shrink-0 rounded-md hairline bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-40)]">
+							Worktree
+						</span>
+					)}
+					{isUnread && (
+						<span
+							className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]"
+							title="有新的运行结果"
+						/>
+					)}
+				</div>
+				<div className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--text-40)]">
+					<span className="truncate" title={subtitle}>
+						{subtitle}
+					</span>
+					{(runningNow || nextLabel || lastFailed || progress) && (
+						<>
+							<span className="shrink-0 text-[var(--text-30)]">·</span>
+							<span
+								className={clsx(
+									"shrink-0",
+									lastFailed && !runningNow
+										? "text-rose-400"
+										: completed
+											? "text-emerald-400/80"
+											: "text-[var(--text-40)]",
+								)}
+								title={nextRun ? absoluteTime(nextRun) : undefined}
+							>
+								{secondary}
+							</span>
+						</>
+					)}
+				</div>
+			</div>
+
+			{/* Quick pause/resume */}
+			<div
+				className="flex shrink-0 items-center"
+				onClick={(e) => e.stopPropagation()}
+				onKeyDown={(e) => e.stopPropagation()}
+			>
+				<Switch
+					checked={schedule.enabled}
+					disabled={completed}
+					onChange={onToggleEnabled}
+					title={
+						completed
+							? "任务已完成"
+							: schedule.enabled
+								? "暂停任务"
+								: "恢复任务"
+					}
+					ariaLabel={schedule.enabled ? "暂停任务" : "恢复任务"}
+				/>
+			</div>
+
+			{/* Overflow menu */}
+			<div className="relative shrink-0">
+				<button
+					ref={menuBtnRef}
+					type="button"
+					aria-label="更多操作"
+					aria-haspopup="menu"
+					aria-expanded={menuOpen}
+					title="更多操作"
+					onClick={(e) => {
+						e.stopPropagation();
+						setConfirmDelete(false);
+						setMenuOpen((v) => !v);
+					}}
+					className={clsx(
+						"flex h-7 w-7 items-center justify-center rounded-lg transition-all active:scale-95",
+						menuOpen
+							? "bg-[var(--bg-active-fill)] text-[var(--text)]"
+							: "text-[var(--text-30)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
+					)}
+				>
+					<MoreHorizontal size={14} />
+				</button>
+
+				<FloatingLayer
+					anchor={menuOpen ? menuBtnRef.current : null}
+					placement="bottom-end"
+					offset={4}
+					layer="menu"
+					ignoreRefs={[menuBtnRef]}
+					onDismiss={closeMenu}
+					role="menu"
+					aria-orientation="vertical"
+					className="w-48 p-1 text-xs"
+				>
+					<button
+						type="button"
+						role="menuitem"
+						disabled={runningNow}
+						onClick={(e) => {
+							e.stopPropagation();
+							closeMenu();
+							onRunNow();
+						}}
+						className={MENU_ITEM}
+						title="立即触发一次执行"
+					>
+						<Play size={13} className="shrink-0 text-[var(--text-40)]" />
+						<span className="flex-1 truncate">立即运行</span>
+					</button>
+
+					<button
+						type="button"
+						role="menuitem"
+						disabled={completed}
+						onClick={(e) => {
+							e.stopPropagation();
+							closeMenu();
+							onToggleEnabled(!schedule.enabled);
+						}}
+						className={MENU_ITEM}
+						title={completed ? "任务已完成" : undefined}
+					>
+						{schedule.enabled ? (
+							<Pause size={13} className="shrink-0 text-[var(--text-40)]" />
+						) : (
+							<Play size={13} className="shrink-0 text-[var(--text-40)]" />
+						)}
+						<span className="flex-1 truncate">
+							{schedule.enabled ? "暂停" : "恢复"}
+						</span>
+					</button>
+
+					<button
+						type="button"
+						role="menuitem"
+						onClick={(e) => {
+							e.stopPropagation();
+							closeMenu();
+							onOpen("settings");
+						}}
+						className={MENU_ITEM}
+					>
+						<Edit2 size={13} className="shrink-0 text-[var(--text-40)]" />
+						<span className="flex-1 truncate">编辑</span>
+					</button>
+
+					<button
+						type="button"
+						role="menuitem"
+						onClick={(e) => {
+							e.stopPropagation();
+							closeMenu();
+							startRename();
+						}}
+						className={MENU_ITEM}
+					>
+						<PenLine size={13} className="shrink-0 text-[var(--text-40)]" />
+						<span className="flex-1 truncate">重命名</span>
+					</button>
+
+					<button
+						type="button"
+						role="menuitem"
+						onClick={(e) => {
+							e.stopPropagation();
+							closeMenu();
+							onDuplicate();
+						}}
+						className={MENU_ITEM}
+						title="以此任务的配置新建一个任务"
+					>
+						<Copy size={13} className="shrink-0 text-[var(--text-40)]" />
+						<span className="flex-1 truncate">复制</span>
+					</button>
+
+					<div className="my-1 border-t border-[var(--border-divider)]" />
+
+					{confirmDelete ? (
+						<div className="flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5">
+							<span className="flex-1 text-[11px] text-rose-300">
+								删除该任务？
+							</span>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									closeMenu();
+									onDelete();
+								}}
+								className="text-[11px] font-bold text-rose-400 hover:text-rose-200"
+							>
+								删除
 							</button>
 							<button
 								type="button"
-								onClick={() => setConfirmDelete(false)}
-								className="text-[11px] text-neutral-400 hover:text-neutral-200"
+								onClick={(e) => {
+									e.stopPropagation();
+									setConfirmDelete(false);
+								}}
+								className="text-[11px] text-[var(--text-40)] hover:text-[var(--text)]"
 							>
 								取消
 							</button>
@@ -186,130 +406,22 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 					) : (
 						<button
 							type="button"
-							onClick={() => setConfirmDelete(true)}
-							className="p-1.5 rounded-md text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-							title="删除任务"
+							role="menuitem"
+							onClick={(e) => {
+								e.stopPropagation();
+								setConfirmDelete(true);
+							}}
+							className={clsx(
+								MENU_ITEM,
+								"text-rose-400 hover:!bg-rose-500/10 hover:!text-rose-300",
+							)}
 						>
-							<Trash2 size={14} />
+							<Trash2 size={13} className="shrink-0" />
+							<span className="flex-1 truncate">删除</span>
 						</button>
 					)}
-				</div>
+				</FloatingLayer>
 			</div>
-
-			{/* Expandable run history */}
-			{isExpanded && (
-				<div className="border-t border-[var(--border-divider)] bg-[var(--bg)]/50 px-5 py-3">
-					<div className="flex items-center justify-between mb-2">
-						<span className="text-xs font-semibold text-neutral-400">
-							历史运行记录（近 10 次）
-						</span>
-						{runs.length === 0 && (
-							<span className="text-xs text-neutral-500">暂无运行历史</span>
-						)}
-					</div>
-
-					{runs.length > 0 && (
-						<div className="space-y-1.5">
-							{runs.map((r) => (
-								<div
-									key={r.id}
-									className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-divider)] text-xs"
-								>
-									<div className="flex items-center gap-2.5 min-w-0 flex-1">
-										<RunStatusIcon status={r.status} />
-										<span className="text-neutral-400 shrink-0">
-											{new Date(r.startedAt).toLocaleString("zh-CN", {
-												month: "2-digit",
-												day: "2-digit",
-												hour: "2-digit",
-												minute: "2-digit",
-											})}
-										</span>
-										{r.summary ? (
-											<span className="text-neutral-300 truncate font-mono text-[11px]">
-												{r.summary}
-											</span>
-										) : (
-											<span className="text-neutral-500 italic">无摘要</span>
-										)}
-									</div>
-
-									{r.sessionId && (
-										<button
-											type="button"
-											onClick={() => handleOpenSession(r.sessionId)}
-											className="shrink-0 text-[#0A84FF] hover:underline flex items-center gap-1 text-[11px]"
-											title="在主工作台打开该会话"
-										>
-											<span>查看会话</span>
-											<ExternalLink size={11} />
-										</button>
-									)}
-								</div>
-							))}
-						</div>
-					)}
-				</div>
-			)}
 		</div>
 	);
 });
-
-function StatusBadge({
-	status,
-	isRunningNow,
-}: {
-	status?: "running" | "ok" | "error" | "skipped";
-	isRunningNow: boolean;
-}) {
-	if (isRunningNow || status === "running") {
-		return (
-			<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 font-medium">
-				<Loader2 size={10} className="animate-spin" />
-				<span>运行中</span>
-			</span>
-		);
-	}
-	if (status === "ok") {
-		return (
-			<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-				<CheckCircle2 size={10} />
-				<span>成功</span>
-			</span>
-		);
-	}
-	if (status === "error") {
-		return (
-			<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 font-medium">
-				<XCircle size={10} />
-				<span>失败</span>
-			</span>
-		);
-	}
-	if (status === "skipped") {
-		return (
-			<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
-				<AlertCircle size={10} />
-				<span>已跳过</span>
-			</span>
-		);
-	}
-	return (
-		<span className="px-1.5 py-0.5 rounded text-[10px] bg-neutral-500/10 text-neutral-400 border border-neutral-500/20">
-			未运行
-		</span>
-	);
-}
-
-function RunStatusIcon({ status }: { status: "running" | "ok" | "error" | "skipped" }) {
-	if (status === "running") {
-		return <Loader2 size={14} className="animate-spin text-sky-400 shrink-0" />;
-	}
-	if (status === "ok") {
-		return <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />;
-	}
-	if (status === "error") {
-		return <XCircle size={14} className="text-rose-400 shrink-0" />;
-	}
-	return <AlertCircle size={14} className="text-amber-400 shrink-0" />;
-}

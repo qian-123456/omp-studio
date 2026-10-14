@@ -101,3 +101,25 @@ export function repoRootFromWorktree(wtPath: string): string {
 	if (winIdx !== -1) return wtPath.slice(0, winIdx);
 	return wtPath;
 }
+
+/** Tab of the worktree detail pane. */
+export type GitPaneTab = "changes" | "history";
+
+/**
+ * Effective detail-pane tab: a `manual` pick (segmented-control click) wins while
+ * set; `count === null` means the summary has not loaded yet, so keep showing the
+ * last `fallback` tab instead of flashing either pane. Once loaded, an empty
+ * worktree auto-shows history, a dirty one auto-shows changes.
+ */
+export function paneTab(
+	count: number | null,
+	manual: GitPaneTab | null,
+	fallback: GitPaneTab,
+): GitPaneTab {
+	return manual ?? (count === null ? fallback : count === 0 ? "history" : "changes");
+}
+
+/** True when a loaded change count crosses the empty/non-empty boundary. */
+export function countCrossedEmpty(prev: number | null, next: number | null): boolean {
+	return prev !== null && next !== null && prev !== next && (prev === 0 || next === 0);
+}

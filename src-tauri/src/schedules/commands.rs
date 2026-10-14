@@ -16,7 +16,7 @@ pub async fn schedules_save(
     state: State<'_, AppState>,
     schedule: ScheduleDraft,
 ) -> Result<Schedule, String> {
-    let saved = store::upsert(&state.db.lock(), &schedule).map_err(|e| e.to_string())?;
+    let saved = store::upsert(&state.db.lock(), &schedule)?;
     scheduler::notify_scheduler();
     let _ = state.app.emit("schedules:changed", ());
     Ok(saved)
@@ -36,7 +36,7 @@ pub async fn schedules_set_enabled(
     id: String,
     enabled: bool,
 ) -> Result<Schedule, String> {
-    let updated = store::set_enabled(&state.db.lock(), &id, enabled).map_err(|e| e.to_string())?;
+    let updated = store::set_enabled(&state.db.lock(), &id, enabled)?;
     scheduler::notify_scheduler();
     let _ = state.app.emit("schedules:changed", ());
     Ok(updated)

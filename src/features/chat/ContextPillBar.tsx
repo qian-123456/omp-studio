@@ -15,7 +15,7 @@ import {
 	Search,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { FloatingLayer } from "../../components/FloatingLayer";
@@ -83,12 +83,12 @@ function ActionRow({
 
 export function WorkspacePickerPopover({
 	anchor,
-	ignoreRef,
+	ignoreRefs,
 	activeWorkspaceId,
 	onClose,
 }: {
 	anchor: HTMLElement | null;
-	ignoreRef: React.RefObject<HTMLElement | null>;
+	ignoreRefs: RefObject<HTMLElement | null>[];
 	activeWorkspaceId: string | null;
 	onClose: () => void;
 }) {
@@ -139,7 +139,7 @@ export function WorkspacePickerPopover({
 			placement="top-start"
 			offset={6}
 			layer="popover"
-			ignoreRefs={[ignoreRef]}
+			ignoreRefs={ignoreRefs}
 			onDismiss={onClose}
 			className="w-[300px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)]"
 		>
@@ -316,7 +316,7 @@ function BranchPickerPopover({
 	onClose,
 }: {
 	anchor: HTMLElement | null;
-	ignoreRef: React.RefObject<HTMLElement | null>;
+	ignoreRef: RefObject<HTMLElement | null>;
 	sessionId: string;
 	cwd: string;
 	currentBranch: string;
@@ -434,15 +434,14 @@ function BranchPickerPopover({
 
 export function ContextPillBar({
 	sessionId,
-	workspaceOpen,
-	onWorkspaceOpenChange,
-	readonly,
+	onWorkspaceClick,
+	workspaceBtnRef,
 }: {
 	sessionId: string;
-	/** Controlled so the Add menu's "Work in a project" can open the picker. */
-	workspaceOpen: boolean;
-	onWorkspaceOpenChange: (open: boolean) => void;
-	readonly?: boolean;
+	/** Workspace pill click — Composer owns the picker so it can also be
+	 * opened from the Add menu after this bar has unmounted. */
+	onWorkspaceClick: () => void;
+	workspaceBtnRef: RefObject<HTMLButtonElement | null>;
 }) {
 	const meta = useSessions((s) => s.sessions[sessionId]);
 	const workspaces = useSessions((s) => s.workspaces);
@@ -451,7 +450,6 @@ export function ContextPillBar({
 	const isGlobal = !workspace || workspace.kind === "global";
 	const wsLabel = isGlobal ? "全局" : workspace.name;
 
-	const wsRef = useRef<HTMLButtonElement>(null);
 	const branchRef = useRef<HTMLButtonElement>(null);
 	const [branchOpen, setBranchOpen] = useState(false);
 	const [branch, setBranch] = useState<string | null | undefined>(undefined);
@@ -474,10 +472,9 @@ export function ContextPillBar({
 	return (
 		<div className="flex items-center gap-1.5 border-b border-[var(--line,var(--border-divider))] px-3.5 py-2 text-[var(--text-60,var(--text-muted))]">
 			<button
-				ref={wsRef}
+				ref={workspaceBtnRef}
 				type="button"
-				disabled={readonly}
-				onClick={() => onWorkspaceOpenChange(!workspaceOpen)}
+				onClick={onWorkspaceClick}
 				title={cwd || "全局"}
 				className={PILL}
 			>
@@ -485,14 +482,6 @@ export function ContextPillBar({
 				<span className="max-w-56 truncate">{wsLabel}</span>
 				<ChevronDown size={11} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
 			</button>
-			{workspaceOpen && (
-				<WorkspacePickerPopover
-					anchor={wsRef.current}
-					ignoreRef={wsRef}
-					activeWorkspaceId={workspace?.id ?? null}
-					onClose={() => onWorkspaceOpenChange(false)}
-				/>
-			)}
 
 			{branch === null ? (
 				<span className="px-2 py-1 text-[12.5px] text-[var(--text-40,var(--text-dim))]">未关联 Git</span>
@@ -501,7 +490,6 @@ export function ContextPillBar({
 					<button
 						ref={branchRef}
 						type="button"
-						disabled={readonly}
 						onClick={() => setBranchOpen((v) => !v)}
 						title={`当前分支: ${branch}`}
 						className={PILL}

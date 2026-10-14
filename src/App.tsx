@@ -1,4 +1,3 @@
-import { PanelLeftClose } from "lucide-react";
 import React, {
 	Suspense,
 	lazy,
@@ -11,14 +10,22 @@ import React, {
 import { QuickCapture } from "./features/backlog/QuickCapture";
 import { SessionView } from "./features/chat/SessionView";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
+import { useSidebarStore } from "./features/sessions/sidebarStore";
 import { StartPage } from "./features/home/StartPage";
 import { useDoctorAutoScheduler } from "./features/heatmap/doctorStore";
 import { startTodos } from "./features/todos/store";
 
 import { terminalSetCurrentSession } from "./lib/ipc";
+import { suspendScrollPills } from "./lib/scrollPills";
 import { useSessions } from "./stores/sessions";
 import { useOmpUpdate, watchOmpStaleness, watchOmpUpdateChecks } from "./stores/ompUpdate";
-import { type CenterView, useUi } from "./stores/ui";
+import {
+	MAX_SIDEBAR_WIDTH,
+	MIN_SIDEBAR_WIDTH,
+	SIDEBAR_COLLAPSE_THRESHOLD,
+	type CenterView,
+	useUi,
+} from "./stores/ui";
 import { Toaster } from "./components/Toaster";
 import { BottomBar } from "./components/BottomBar";
 import { CENTER_WITHOUT_RIGHT_PANEL, CenterHeader } from "./components/CenterHeader";
@@ -44,6 +51,9 @@ const QuickAskDialog = lazy(() =>
 const DiagnoseDialog = lazy(() =>
 	import("./features/diagnose/DiagnoseDialog").then((m) => ({ default: m.DiagnoseDialog })),
 );
+const ShareImageDialog = lazy(() =>
+	import("./features/chat/share/ShareImageDialog").then((m) => ({ default: m.ShareImageDialog })),
+);
 const NewSessionDialog = lazy(() =>
 	import("./features/git/NewSessionDialog").then((m) => ({ default: m.NewSessionDialog })),
 );
@@ -55,10 +65,6 @@ const ResumeMissingCwdDialog = lazy(() =>
 const SettingsOverlay = lazy(() =>
 	import("./features/settings/SettingsOverlay").then((m) => ({ default: m.SettingsOverlay })),
 );
-
-const isMac =
-	typeof navigator !== "undefined" &&
-	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
 
 /** Catches render errors so a broken view shows a readable message, not a black screen. */
 class ErrorBoundary extends React.Component<
@@ -131,6 +137,7 @@ export default function App() {
 	const toggleSidebar = useUi((s) => s.toggleSidebar);
 	const sidebarWidth = useUi((s) => s.sidebarWidth);
 	const setSidebarWidth = useUi((s) => s.setSidebarWidth);
+	const setSidebarOpen = useUi((s) => s.setSidebarOpen);
 
 	const centerView = useUi((s) => s.centerView);
 	const previousCenterView = useUi((s) => s.previousCenterView);
@@ -203,8 +210,13 @@ export default function App() {
 			if (!d || latestClientX === null) return;
 			// Live update without persisting; the store setter (which writes localStorage) runs on end.
 			if (d.side === "left") {
-				const w = Math.min(600, Math.max(180, latestClientX - d.grabOffsetX));
-				useUi.setState({ sidebarWidth: w });
+				const raw = latestClientX - d.grabOffsetX;
+				if (raw < SIDEBAR_COLLAPSE_THRESHOLD) {
+					useUi.setState({ sidebarOpen: false });
+				} else {
+					const w = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, raw));
+					useUi.setState({ sidebarOpen: true, sidebarWidth: w });
+				}
 			} else {
 				const w = Math.min(720, Math.max(260, window.innerWidth - latestClientX + d.grabOffsetX));
 				useUi.setState({ rightWidth: w });
@@ -225,8 +237,16 @@ export default function App() {
 			drag.current = null;
 			if (d) {
 				const s = useUi.getState();
-				if (d.side === "left") setSidebarWidth(s.sidebarWidth);
-				else setRightWidth(s.rightWidth);
+				if (d.side === "left") {
+					if (!s.sidebarOpen) {
+						setSidebarOpen(false);
+					} else {
+						setSidebarOpen(true);
+						setSidebarWidth(s.sidebarWidth);
+					}
+				} else {
+					setRightWidth(s.rightWidth);
+				}
 			}
 			setDraggingSide(null);
 		};
@@ -246,7 +266,12 @@ export default function App() {
 			window.removeEventListener("blur", end);
 			window.removeEventListener("keydown", onKey);
 		};
-	}, [draggingSide, setSidebarWidth, setRightWidth]);
+	}, [draggingSide, setSidebarWidth, setRightWidth, setSidebarOpen]);
+
+	useEffect(() => {
+		suspendScrollPills(draggingSide !== null);
+		return () => suspendScrollPills(false);
+	}, [draggingSide]);
 
 	// Global keyboard shortcuts: Cmd+B (left sidebar) / Cmd+J (right panel) / Cmd+[ (return to session/parent)
 	// Cmd+` (right-panel command terminal) / Cmd+Shift+` (selected session: chat ⇄ Agent terminal)
@@ -329,8 +354,11 @@ export default function App() {
 		const last = useUi.getState().lastSessionId;
 		if (!last) return;
 		const exists = useSessions.getState().sessions[last];
-		if (exists) {
+		// Modes are isolated: only restore a session that belongs to the active mode.
+		if (exists && exists.mode === useSidebarStore.getState().activeMode) {
 			useUi.setState({ selectedSessionId: last, centerView: "session" });
+		} else {
+			useUi.getState().leaveSession();
 		}
 	}, [hasLoaded]);
 
@@ -361,24 +389,6 @@ export default function App() {
 							style={{ width: sidebarWidth }}
 							className="flex shrink-0 flex-col vibrancy-chrome"
 						>
-							{/* Left column topbar — same width with right + bottom border */}
-							<div
-								data-tauri-drag-region
-								className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-divider)] px-2.5 select-none"
-							>
-								{/* macOS traffic light spacer */}
-								<div className={isMac ? "w-[68px] shrink-0" : "hidden"} />
-								<div className="flex-1" data-tauri-drag-region />
-								{/* Collapse sidebar button */}
-								<button
-									type="button"
-									onClick={toggleSidebar}
-									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
-									title="收起左侧栏 (⌘B)"
-								>
-									<PanelLeftClose size={15} />
-								</button>
-							</div>
 							<aside className="min-h-0 flex-1">
 								<SessionSidebar />
 							</aside>
@@ -442,6 +452,7 @@ export default function App() {
 			<Suspense fallback={null}>
 				<QuickAskDialog />
 				<DiagnoseDialog />
+				<ShareImageDialog />
 				<NewSessionDialog />
 				<ResumeMissingCwdDialog />
 				<SettingsOverlay />
