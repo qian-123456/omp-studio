@@ -11,9 +11,9 @@
  * - narrow: no margin to spare, so the rail collapses to 4px micro-ticks
  *   inside the 12px left padding and peeks open as an overlay on hover
  *   intent or keyboard focus.
- * In both modes, hover/focus fades in a liquid-glass pill behind the dashes.
- * The pill is a separate layer bleeding outside the strip, so showing it never
- * shifts a dash out from under the pointer. */
+ * The glass pill sits behind the expanded dashes (permanent in wide mode,
+ * shown with the peek in narrow mode); collapsed micro-ticks render bare,
+ * without a sliver of glass around them. */
 
 import clsx from "clsx";
 import {
@@ -31,7 +31,7 @@ import { collectChatTraceEntries, type ChatTraceEntry } from "./messageTrace";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
 const EMPTY_ECHOES: TranscriptItem[] = [];
-const ROW_PITCH_PX = 10;
+const ROW_PITCH_PX = 8;
 const TOOLTIP_OPEN_DELAY_MS = 120;
 const TOOLTIP_CLOSE_DELAY_MS = 80;
 /** Must match MessageList's `@min-[864px]` column breakpoint. */
@@ -40,24 +40,25 @@ const WIDE_MIN_PX = 864;
  * flash the pill / overlay open. */
 const PEEK_OPEN_DELAY_MS = 150;
 const PEEK_CLOSE_DELAY_MS = 200;
-/** Translucent fill + backdrop blur/saturation, a top specular sheen and a
- * hairline rim; collapses to a solid panel under reduced transparency. */
+/** Codex-style capsule: mostly-opaque panel fill + blur so it reads as glass
+ * on any theme, hairline ring, a light top edge and a real drop shadow —
+ * without the shadow it is invisible on near-white chat surfaces. */
 const GLASS_PILL =
-	"rounded-full bg-[color-mix(in_oklab,var(--bg-panel)_40%,transparent)] bg-linear-to-b from-white/15 via-transparent to-white/5 backdrop-blur-xl backdrop-saturate-[1.8] ring-1 ring-[var(--line)] shadow-[inset_0_1px_0_0_rgb(255_255_255/0.3),inset_0_-1px_0_0_rgb(255_255_255/0.06),0_8px_24px_-8px_rgb(0_0_0/0.3)] [@media(prefers-reduced-transparency:reduce)]:bg-[var(--bg-panel)] [@media(prefers-reduced-transparency:reduce)]:backdrop-filter-none";
-/** Must match the rail's expanded `w-8` and the pill's `-inset-x-0.5`. */
-const RAIL_EXPANDED_PX = 32;
-const PILL_BLEED_PX = 2;
+	"rounded-full bg-[color-mix(in_oklab,var(--bg-panel)_80%,transparent)] bg-linear-to-b from-white/10 via-transparent to-black/5 backdrop-blur-xl backdrop-saturate-[1.4] ring-1 ring-[var(--border)] shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25),0_6px_16px_-4px_rgb(0_0_0/0.25),0_2px_6px_-2px_rgb(0_0_0/0.12)] [@media(prefers-reduced-transparency:reduce)]:bg-[var(--bg-panel)] [@media(prefers-reduced-transparency:reduce)]:backdrop-filter-none";
+/** Must match the rail's expanded `w-7` and the pill's `-inset-x-1`. */
+const RAIL_EXPANDED_PX = 28;
+const PILL_BLEED_PX = 4;
 
 /** Dash scale/opacity falloff by distance from the hovered dash. Idle
  * (nothing hovered) keeps every dash unscaled — the active one is coloured
  * by the caller instead. */
 function dashStress(itemIndex: number, focusIndex: number | null) {
-	if (focusIndex === null) return { opacity: 0.58, scaleX: 1, focused: false };
+	if (focusIndex === null) return { opacity: 1, scaleX: 1, focused: false };
 	const dist = Math.abs(itemIndex - focusIndex);
-	if (dist === 0) return { opacity: 1, scaleX: 2.2, focused: true };
-	if (dist === 1) return { opacity: 0.86, scaleX: 1.6, focused: false };
-	if (dist === 2) return { opacity: 0.72, scaleX: 1.2, focused: false };
-	return { opacity: 0.58, scaleX: 1, focused: false };
+	if (dist === 0) return { opacity: 1, scaleX: 1.25, focused: true };
+	if (dist === 1) return { opacity: 0.85, scaleX: 1.15, focused: false };
+	if (dist === 2) return { opacity: 0.7, scaleX: 1.05, focused: false };
+	return { opacity: 0.55, scaleX: 1, focused: false };
 }
 
 export function ChatTrace({
@@ -280,16 +281,16 @@ export function ChatTrace({
 				}}
 				onBlur={() => schedulePeek(false)}
 				className={clsx(
-					"pointer-events-auto absolute top-1/2 flex max-h-[calc(100%-6rem)] -translate-y-1/2 flex-col",
-					wide ? "left-2 w-8 px-[5px]" : clsx("left-1 px-[2px]", peek ? "w-8" : "w-2"),
+					"pointer-events-auto absolute top-1/2 flex max-h-[calc(100%-6rem)] -translate-y-1/2 flex-col transition-[width] duration-150 ease-out",
+					wide ? "left-2 w-7 px-1" : clsx("left-1", peek ? "w-7 px-1" : "w-2 px-[2px]"),
 				)}
 			>
 				<div
 					aria-hidden
 					className={clsx(
-						"pointer-events-none absolute -inset-x-0.5 -inset-y-2 origin-left transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
+						"pointer-events-none absolute -inset-x-1 -inset-y-1.5 origin-left transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
 						GLASS_PILL,
-						peek ? "scale-100 opacity-100" : "scale-90 opacity-0",
+						peek ? "scale-100 opacity-100" : "scale-95 opacity-0",
 					)}
 				/>
 				<div
@@ -318,7 +319,7 @@ export function ChatTrace({
 							return (
 								<div
 									key={entry.id}
-									className="absolute left-0 top-0 h-2.5 w-full"
+									className="absolute left-0 top-0 h-2 w-full"
 									style={{ transform: `translateY(${i * ROW_PITCH_PX}px)` }}
 								>
 									<button
@@ -334,20 +335,20 @@ export function ChatTrace({
 										onPointerEnter={() => hoverIndex(i)}
 										onFocus={() => hoverIndex(i)}
 										onBlur={clearHover}
-										className="flex h-2.5 w-full items-center justify-start rounded-sm"
+										className="flex h-2 w-full items-center justify-start rounded-sm"
 									>
 										<span
 											className={clsx(
-												"block h-0.5 origin-left rounded-full transition-[width,height,opacity,transform,background-color] duration-150 ease-out motion-reduce:transition-none",
-												expanded ? "w-2.5" : "w-1",
+												"block origin-left rounded-full transition-[width,height,opacity,transform,background-color] duration-150 ease-out motion-reduce:transition-none",
+												expanded ? "h-[3px] w-4" : "h-1 w-1",
 												colored ? "bg-[var(--text)]" : "bg-[var(--text-30)]",
 											)}
 											style={{
 												opacity:
 													safeFocus === null && isActive
-														? 0.9
+														? 0.95
 														: entry.isRunning
-															? Math.max(stress.opacity, 0.72)
+															? Math.max(stress.opacity, 0.75)
 															: stress.opacity,
 												transform: `scaleX(${stress.scaleX})`,
 											}}
