@@ -215,7 +215,7 @@ export function SessionView({
 					</div>
 
 					{/* Pending dialogs at the stream bottom. */}
-					<div className="mx-auto w-full @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl">
+					<div className="mx-auto w-[calc(100%-4rem)] @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl">
 						{otherPendingUi.length > 0 && (
 							<div className="shrink-0 border-t border-[var(--line)] px-3 pb-1">
 								{otherPendingUi.map((req, i) => (

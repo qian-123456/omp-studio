@@ -61,8 +61,6 @@ import {
 	noticeSummary,
 	type TurnBlock,
 } from "./turnGrouping";
-import { undoableTurn } from "./turnChips";
-
 const EMPTY_ITEMS: TranscriptItem[] = [];
 const EMPTY_ECHOES: UserEcho[] = [];
 
@@ -141,6 +139,15 @@ function renderUserTextWithChips(
 /** 20px-square ghost icon button, matching the AnswerFooter actions. */
 const USER_ACTION_BTN =
 	"flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
+
+/**
+ * Row padding next to the ChatTrace rail. Symmetric at every width: when the
+ * column is centered the rail sits in the side margin, and when the column
+ * spans the pane the rail collapses into the left padding and only peeks
+ * open (as an overlay) on hover.
+ */
+const TRACE_GUTTER_PAD = "px-3";
+
 
 /**
  * User message: right-aligned Codex bubble (70% max width, 22px radius,
@@ -424,7 +431,8 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionCwd,
 	sessionFile,
 	turnCheckpoint,
-	canUndo,
+	turns,
+	sessionWorking = false,
 	onTurnsChange,
 	highlightedId,
 }: {
@@ -436,7 +444,8 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionCwd: string;
 	sessionFile: string;
 	turnCheckpoint?: TurnCheckpoint;
-	canUndo?: boolean;
+	turns?: TurnCheckpoint[];
+	sessionWorking?: boolean;
 	onTurnsChange?: () => void;
 	highlightedId?: string | null;
 }) {
@@ -524,10 +533,12 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						cwd={sessionCwd}
 						sessionFile={sessionFile}
 						turnCheckpoint={turnCheckpoint}
-						canUndo={canUndo}
+						turns={turns}
+						sessionWorking={sessionWorking}
 						onDoneUndo={onTurnsChange}
 						answerText={answerText}
-						isLatestTurn={isLatestTurn}
+						answerTime={answerTime}
+						answerItemId={block.answerItem?.id}
 					/>
 				</div>
 				)
@@ -838,11 +849,6 @@ export function MessageList({
 		return m;
 	}, [turns]);
 
-	const undoable = useMemo(
-		() => undoableTurn(turns, sessionWorking),
-		[turns, sessionWorking],
-	);
-
 	const hiddenCount = items.length - visible.length;
 	const hasContent =
 		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive;
@@ -983,7 +989,7 @@ export function MessageList({
 			<div
 				className={clsx(
 					"mx-auto flex w-full shrink-0 items-center justify-between py-1 text-[11px] text-[var(--text-30)] @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl",
-					traceGutter ? "pl-12 pr-3" : "px-3",
+					traceGutter ? TRACE_GUTTER_PAD : "px-3",
 				)}
 			>
 				{hiddenCount > 0 ? (
@@ -1085,7 +1091,7 @@ export function MessageList({
 			<div className="relative min-h-0 flex-1">
 				<div
 					ref={containerRef}
-					className="relative mx-auto w-full pb-8 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
+					className="relative mx-auto w-[calc(100%-4rem)] pb-8 @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl"
 				>
 					{/* Virtualized committed transcript */}
 					{blocks.length > 0 && (
@@ -1113,7 +1119,7 @@ export function MessageList({
 										style={{ transform: `translateY(${row.start}px)` }}
 										className={clsx(
 											"absolute left-0 top-0 w-full py-1 transition-colors duration-300",
-											traceGutter ? "pl-12 pr-3" : "px-3",
+											traceGutter ? TRACE_GUTTER_PAD : "px-3",
 											isHighlighted &&
 												"rounded-[10px] bg-[var(--ghost-hover)]",
 										)}
@@ -1128,7 +1134,8 @@ export function MessageList({
 												sessionCwd={sessionCwd}
 												sessionFile={sessionFile}
 												turnCheckpoint={cp}
-												canUndo={cp !== undefined && cp === undoable}
+												turns={turns}
+												sessionWorking={sessionWorking}
 												onTurnsChange={onTurnsChange}
 												highlightedId={highlightedId}
 											/>
@@ -1150,7 +1157,7 @@ export function MessageList({
 									id={`msg-${echo.id}`}
 									className={clsx(
 										"w-full py-1 opacity-90",
-										traceGutter ? "pl-12 pr-3" : "px-3",
+										traceGutter ? TRACE_GUTTER_PAD : "px-3",
 									)}
 								>
 									<UserRow sessionId={sessionId} item={echo} />
@@ -1165,7 +1172,7 @@ export function MessageList({
 							id="msg-live"
 							className={clsx(
 								"w-full py-1",
-								traceGutter ? "pl-12 pr-3" : "px-3",
+								traceGutter ? TRACE_GUTTER_PAD : "px-3",
 							)}
 						>
 							<StreamingRow
@@ -1181,7 +1188,7 @@ export function MessageList({
 					<div
 						className={clsx(
 							"w-full",
-							traceGutter ? "pl-12 pr-3" : "px-3",
+							traceGutter ? TRACE_GUTTER_PAD : "px-3",
 						)}
 					>
 						<CommandOutputList sessionId={sessionId} />
