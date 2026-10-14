@@ -5,15 +5,16 @@
  * reply) after 120ms; click jumps to the query via live store scrollToItem.
  * The idle highlight follows the query closest to the viewport top.
  *
- * Layout modes (the transcript keeps symmetric px-3 padding either way):
+ * Layout modes:
  * - wide (pane ≥ WIDE_MIN_PX): the centered column leaves ≥48px side
  *   margins, so the rail sits permanently in the left margin;
- * - narrow: no margin to spare, so the rail collapses to 4px micro-ticks
- *   inside the 12px left padding and peeks open as an overlay on hover
- *   intent or keyboard focus.
- * The glass pill sits behind the expanded dashes (permanent in wide mode,
- * shown with the peek in narrow mode); collapsed micro-ticks render bare,
- * without a sliver of glass around them. */
+ * - narrow: the column is inset 32px per side (MessageList/SessionView
+ *   `calc(100% - 4rem)`), which reproduces Codex's ≈16px dash-to-text
+ *   gap; the rail still collapses to short 8px stubs and peeks open to
+ *   full dashes on hover intent or keyboard focus.
+ * The glass pill sits behind the expanded dashes on hover (wide) or with
+ * the peek (narrow); collapsed stubs render bare, without a sliver of
+ * glass around them. */
 
 import clsx from "clsx";
 import {
@@ -40,11 +41,11 @@ const WIDE_MIN_PX = 864;
  * flash the pill / overlay open. */
 const PEEK_OPEN_DELAY_MS = 150;
 const PEEK_CLOSE_DELAY_MS = 200;
-/** Codex-style capsule: mostly-opaque panel fill + blur so it reads as glass
- * on any theme, hairline ring, a light top edge and a real drop shadow —
- * without the shadow it is invisible on near-white chat surfaces. */
+/** Codex-style capsule: ~40% panel fill + backdrop blur so the content
+ * reads through it, hairline ring, a light top edge and a drop shadow for
+ * lift on near-white chat surfaces. */
 const GLASS_PILL =
-	"rounded-full bg-[color-mix(in_oklab,var(--bg-panel)_80%,transparent)] bg-linear-to-b from-white/10 via-transparent to-black/5 backdrop-blur-xl backdrop-saturate-[1.4] ring-1 ring-[var(--border)] shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25),0_6px_16px_-4px_rgb(0_0_0/0.25),0_2px_6px_-2px_rgb(0_0_0/0.12)] [@media(prefers-reduced-transparency:reduce)]:bg-[var(--bg-panel)] [@media(prefers-reduced-transparency:reduce)]:backdrop-filter-none";
+	"rounded-full bg-[color-mix(in_oklab,var(--bg-panel)_40%,transparent)] bg-linear-to-b from-white/10 via-transparent to-black/5 backdrop-blur-xl backdrop-saturate-[1.4] ring-1 ring-[var(--border)] shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25),0_6px_16px_-4px_rgb(0_0_0/0.2),0_2px_6px_-2px_rgb(0_0_0/0.1)] [@media(prefers-reduced-transparency:reduce)]:bg-[var(--bg-panel)] [@media(prefers-reduced-transparency:reduce)]:backdrop-filter-none";
 /** Must match the rail's expanded `w-7` and the pill's `-inset-x-1`. */
 const RAIL_EXPANDED_PX = 28;
 const PILL_BLEED_PX = 4;
@@ -282,7 +283,7 @@ export function ChatTrace({
 				onBlur={() => schedulePeek(false)}
 				className={clsx(
 					"pointer-events-auto absolute top-1/2 flex max-h-[calc(100%-6rem)] -translate-y-1/2 flex-col transition-[width] duration-150 ease-out",
-					wide ? "left-2 w-7 px-1" : clsx("left-1", peek ? "w-7 px-1" : "w-2 px-[2px]"),
+					wide ? "left-2 w-7 px-1" : clsx(peek ? "left-2 w-7 px-1" : "left-3 w-2.5"),
 				)}
 			>
 				<div
@@ -340,7 +341,7 @@ export function ChatTrace({
 										<span
 											className={clsx(
 												"block origin-left rounded-full transition-[width,height,opacity,transform,background-color] duration-150 ease-out motion-reduce:transition-none",
-												expanded ? "h-[3px] w-4" : "h-1 w-1",
+												expanded ? "h-[3px] w-4" : "h-[3px] w-2",
 												colored ? "bg-[var(--text)]" : "bg-[var(--text-30)]",
 											)}
 											style={{
