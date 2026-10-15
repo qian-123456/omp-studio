@@ -1303,7 +1303,7 @@ export function Composer({
 				)}
 				{sketchOpen && (
 					<SketchPad
-						anchor={composerCardRef}
+						composerTop={composerCardRef.current?.getBoundingClientRect().top ?? null}
 						onCancel={() => setSketchOpen(false)}
 						onInsert={(d) => void handleInsertSketch(d)}
 					/>
