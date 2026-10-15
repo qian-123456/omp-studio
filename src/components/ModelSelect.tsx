@@ -501,18 +501,20 @@ function ThinkingStrip({
 	if (model && levels.length === 0) return null;
 	const options: { value: string | null; label: string }[] = [
 		{ value: null, label: roleId ? (model ? "跟随角色（默认）" : "跟随角色") : "默认" },
-		...levels.map((l) => ({ value: l, label: l })),
+		...["off", "auto", ...levels.filter((l) => l !== "off" && l !== "auto")].map((l) => ({
+			value: l,
+			label: l,
+		})),
 	];
 	return (
-		<div className="mt-1 flex shrink-0 items-center gap-2 border-t border-[var(--border-divider)] px-2.5 pb-0.5 pt-1.5">
-			<span className="flex shrink-0 select-none items-center gap-1 text-[10px] text-neutral-500">
-				<Brain size={11} aria-hidden />
-				思考强度
+		<div className="mt-1 flex shrink-0 items-center gap-1.5 border-t border-[var(--border-divider)] px-2.5 pb-0.5 pt-1.5">
+			<span className="flex shrink-0 select-none items-center text-neutral-500" title="思考强度">
+				<Brain size={13} aria-hidden />
 			</span>
 			<div
 				role="radiogroup"
 				aria-label="思考强度"
-				className="flex min-w-0 flex-wrap items-center gap-0.5 rounded-lg hairline bg-[var(--well-bg,var(--bg))] p-0.5"
+				className="flex min-w-0 flex-1 items-center justify-between gap-0.5 rounded-lg hairline bg-[var(--well-bg,var(--bg))] p-0.5"
 			>
 				{options.map((o) => {
 					const active = (level ?? null) === o.value;
@@ -524,7 +526,7 @@ function ThinkingStrip({
 							aria-checked={active}
 							onClick={() => onPick(o.value)}
 							className={clsx(
-								"cursor-pointer rounded-md px-2 py-0.5 text-[11px] transition-colors",
+								"cursor-pointer whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] transition-colors",
 								active
 									? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)] shadow-sm"
 									: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
