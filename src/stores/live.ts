@@ -532,6 +532,16 @@ function reduce(
 			if (!sessionName || !live.state) return live;
 			return { ...live, state: { ...live.state, sessionName } };
 		}
+		case "goal_updated": {
+			// `{goal, state}` — `state` is the same GoalModeState get_state.goal
+			// carries (it is null after a drop); refresh the cached snapshot.
+			const goal =
+				"state" in frame ? frame.state : (frame.goal ?? null);
+			return {
+				...live,
+				state: { ...(live.state ?? {}), goal: goal ?? null },
+			};
+		}
 		case "prompt_result": {
 			const pendingCommand = live.pendingCommand ?? null;
 			if (

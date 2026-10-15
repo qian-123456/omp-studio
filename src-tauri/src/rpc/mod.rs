@@ -8,8 +8,8 @@ mod frame;
 mod live_test;
 mod privacy_ext;
 mod process;
-mod sidechat;
-mod subagents;
+pub(crate) mod sidechat;
+pub(crate) mod subagents;
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};

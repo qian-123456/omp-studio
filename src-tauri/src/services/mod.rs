@@ -1,6 +1,7 @@
 //! [C] Local port/process listing, stop, reminders.
 //! Cross-module API per docs/ARCHITECTURE.md §9.
 
+pub mod clipboard;
 pub mod commands;
 pub mod files;
 pub mod perf;

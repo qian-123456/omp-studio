@@ -19,7 +19,8 @@ export type RightTab =
 	| "todos"
 	| "git"
 	| "services"
-	| "terminal";
+	| "terminal"
+	| "plan";
 
 export const MIN_SIDEBAR_WIDTH = 260;
 export const MAX_SIDEBAR_WIDTH = 600;
@@ -47,6 +48,7 @@ const RIGHT_TABS: readonly RightTab[] = [
 	"git",
 	"services",
 	"terminal",
+	"plan",
 ];
 
 /** Restore open panel tabs. No tab is active at launch: the panel opens on the tab picker. */

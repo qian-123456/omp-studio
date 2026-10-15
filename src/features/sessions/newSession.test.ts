@@ -95,9 +95,15 @@ describe("resolveNewSessionTargetWorkspace", () => {
 		);
 	});
 
-	it("returns null in a project mode with no project sessions (no global fallback)", () => {
+	it("falls back to an in-mode project that has no sessions yet, never another mode's", () => {
 		const sessions = [makeSession({ id: "w1", workspaceId: "wproj", mode: "work" })];
-		expect(resolveNewSessionTargetWorkspace("code", null, sessions, workspaces)).toBeNull();
+		const picked = resolveNewSessionTargetWorkspace("code", null, sessions, workspaces);
+		expect(picked?.mode).toBe("code");
+		expect(picked?.kind).toBe("project");
+	});
+
+	it("returns null in a project mode with no project at all (no global fallback)", () => {
+		expect(resolveNewSessionTargetWorkspace("code", null, [], [chatGlobal, workProj])).toBeNull();
 	});
 
 	it("never leaks sessions or workspaces across modes", () => {

@@ -14,6 +14,7 @@ import {
 	Cable,
 	ChartColumn,
 	ChartPie,
+	ClipboardCheck,
 	ClipboardCopy,
 	Cpu,
 	Database,
@@ -21,27 +22,39 @@ import {
 	Expand,
 	Eye,
 	FilePlus2,
+	Gauge,
 	GitFork,
 	Globe,
 	KeyRound,
 	Layers,
 	ListChecks,
 	ListTodo,
+	MessagesSquare,
 	Monitor,
+	NotebookPen,
 	PenLine,
+	Play,
 	Puzzle,
 	RotateCcw,
+	ScrollText,
 	Settings,
+	Share2,
+	ShieldAlert,
 	ShieldCheck,
+	Sparkles,
 	SquareSlash,
+	Target,
 	Wrench,
 	Zap,
 } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { copyText } from "../../../lib/dialogs";
+import { copyText, confirmDialog } from "../../../lib/dialogs";
 import { createSession } from "../../../lib/createSession";
-import { createSideChat, sessionExportHtml } from "../../../lib/ipc";
+import { ensureLive } from "../../../lib/ensureLive";
+import { createSideChat, sessionExportHtml, sessionShare } from "../../../lib/ipc";
+import { useChatUi } from "../chatUi";
 import { sideChatDefaultModelArg } from "../../sidechat/modelDefault";
+import { useComposer } from "../../../stores/composer";
 import { toast } from "../../../lib/toast";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
@@ -52,6 +65,36 @@ import { SlashAbort, type SlashCommandDef, type SlashContext } from "./types";
  * `command_output` (or a normal turn when the command invokes the agent). */
 const sendAsPrompt = async (ctx: SlashContext): Promise<void> => {
 	await ctx.sendPromptText(ctx.rawText);
+};
+
+/** `/fork`-style side chat opener shared by `/fork` and `/btw`. */
+const openSideChat = async (ctx: SlashContext, question: string) => {
+	const info = await createSideChat(
+		ctx.sessionId,
+		question,
+		undefined,
+		sideChatDefaultModelArg() ?? undefined,
+	);
+	useUi.getState().setRightTab("sidechat");
+	useUi.getState().selectSession(info.sessionId);
+};
+
+/** Goal mode state mirrored into get_state/goal_updated payloads. */
+interface GoalModeLike {
+	enabled?: boolean;
+	mode?: string;
+	goal?: { objective?: string; status?: string } | null;
+}
+
+const goalModeOf = (ctx: SlashContext): GoalModeLike | null => {
+	const g = ctx.live?.state?.goal;
+	return g && typeof g === "object" ? (g as GoalModeLike) : null;
+};
+
+const sendGoalOp = async (ctx: SlashContext, op: string, extra: Record<string, unknown> = {}) => {
+	if (!ctx.live?.alive) await ensureLive(ctx.sessionId);
+	await ctx.rpcSend({ type: "goal", op, ...extra });
+	await ctx.rpcSend({ type: "get_state" });
 };
 
 
@@ -86,14 +129,25 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 				toast.info("用法: /fork <问题>");
 				throw new SlashAbort();
 			}
-			const info = await createSideChat(
-				ctx.sessionId,
-				question,
-				undefined,
-				sideChatDefaultModelArg() ?? undefined,
-			);
-			useUi.getState().setRightTab("sidechat");
-			useUi.getState().selectSession(info.sessionId);
+			await openSideChat(ctx, question);
+		},
+	},
+	{
+		name: "btw",
+		title: "顺便问一句",
+		description: "开一个侧聊提问，不打断当前会话",
+		icon: MessagesSquare,
+		group: "会话",
+		argHint: "<问题>",
+		// omp's native `btw` RPC answers via btw_delta frames which the app
+		// does not render yet; the side chat gives the same side-question UX.
+		run: async (ctx) => {
+			const question = ctx.args.trim();
+			if (!question) {
+				toast.info("用法: /btw <问题>");
+				throw new SlashAbort();
+			}
+			await openSideChat(ctx, question);
 		},
 	},
 	{
@@ -199,6 +253,80 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		group: "会话",
 		run: sendAsPrompt,
 	},
+	{
+		name: "resume",
+		title: "继续",
+		description: "恢复上一次被打断的回合",
+		icon: Play,
+		group: "会话",
+		run: async (ctx) => {
+			const items = ctx.live?.items ?? [];
+			for (let i = items.length - 1; i >= 0; i--) {
+				const it = items[i];
+				if (it.kind !== "assistant") continue;
+				if (it.stopReason === "aborted") {
+					await ctx.sendPromptText("Continue");
+					return;
+				}
+				break;
+			}
+			toast.info("没有可恢复的回合");
+			throw new SlashAbort();
+		},
+	},
+	{
+		name: "plan",
+		title: "规划模式",
+		description: "切换规划模式：先出计划再执行",
+		icon: NotebookPen,
+		group: "会话",
+		// Client-side plan mode (prompt prefix + composer badge); the
+		// produced plan shows in the right-side 计划 tab. omp exposes no
+		// plan-mode RPC toggle for hosts.
+		run: async (ctx) => {
+			const composer = useComposer.getState();
+			const on = !(composer.planModes[ctx.sessionId] === true);
+			composer.setPlanMode(ctx.sessionId, on);
+			if (on) useUi.getState().setRightTab("plan");
+			toast.info(on ? "规划模式已开启：发送需求后生成计划" : "规划模式已关闭");
+		},
+	},
+	{
+		name: "goal",
+		title: "目标",
+		description: "设置或更新持续追求的目标",
+		icon: Target,
+		group: "会话",
+		argHint: "<目标描述 | pause | resume | off>",
+		run: async (ctx) => {
+			const arg = ctx.args.trim();
+			if (!arg) {
+				const g = goalModeOf(ctx)?.goal;
+				ctx.pushOutput("goal", g?.objective ? `当前目标：${g.objective}` : "当前没有目标");
+				return;
+			}
+			if (/^(?:off|drop)$/i.test(arg)) {
+				await sendGoalOp(ctx, "drop");
+				toast.success("已清除目标");
+				return;
+			}
+			if (/^(?:pause|暂停)$/i.test(arg)) {
+				await sendGoalOp(ctx, "pause");
+				toast.success("已暂停目标");
+				return;
+			}
+			if (/^(?:resume|继续)$/i.test(arg)) {
+				await sendGoalOp(ctx, "resume");
+				toast.success("已恢复目标");
+				return;
+			}
+			// Creating requires no active goal — drop the existing one first
+			// (same outcome as editing the objective).
+			if (goalModeOf(ctx)?.goal?.objective) await sendGoalOp(ctx, "drop");
+			await sendGoalOp(ctx, "create", { objective: arg });
+			toast.success(`已设置目标：${arg.length > 40 ? `${arg.slice(0, 40)}…` : arg}`);
+		},
+	},
 
 	// ---- 模型 ----
 	{
@@ -234,13 +362,25 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		},
 	},
 	{
+		name: "slow",
+		title: "慢速模式",
+		description: "切换低优先级/经济服务档位",
+		icon: Gauge,
+		group: "模型",
+		run: async (ctx) => {
+			const enabled = ctx.live?.state?.slowModeEnabled === true;
+			if (!ctx.live?.alive) await ensureLive(ctx.sessionId);
+			await ctx.rpcSend({ type: "set_slow_mode", enabled: !enabled });
+			toast.success(enabled ? "已关闭慢速模式" : "已开启慢速模式");
+		},
+	},
+	{
 		name: "advisor",
 		title: "顾问模型",
 		description: "切换顾问模型介入",
 		icon: Eye,
 		group: "模型",
-		settingsTarget: "advisor",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openSettingsTarget("advisor"),
 	},
 
 	// ---- 状态 ----
@@ -261,15 +401,15 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "查看上下文窗口的占用明细",
 		icon: Layers,
 		group: "状态",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openContextPopover(),
 	},
 	{
 		name: "usage",
 		title: "用量",
-		description: "查看供应商用量与限额",
+		description: "查看供应商订阅与配额",
 		icon: ChartPie,
 		group: "状态",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openSettingsTarget("quota"),
 	},
 	{
 		name: "tools",
@@ -290,11 +430,10 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	{
 		name: "todo",
 		title: "待办",
-		description: "查看或修改待办列表",
+		description: "查看待办列表面板",
 		icon: ListTodo,
 		group: "状态",
-		argHint: "[操作]",
-		run: sendAsPrompt,
+		run: () => useUi.getState().setRightTab("todos"),
 	},
 	{
 		name: "stats",
@@ -302,7 +441,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "查看会话统计数据",
 		icon: ChartPie,
 		group: "状态",
-		run: sendAsPrompt,
+		run: () => useChatUi.getState().setStatsOpen(true),
 	},
 
 	// ---- 集成 ----
@@ -312,8 +451,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "管理 MCP 服务器",
 		icon: Cable,
 		group: "集成",
-		settingsTarget: "mcp",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openSettingsTarget("mcp"),
 	},
 	{
 		name: "plugins",
@@ -322,8 +460,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "管理插件与扩展市场",
 		icon: Puzzle,
 		group: "集成",
-		settingsTarget: "plugins",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openSettingsTarget("plugins"),
 	},
 	{
 		name: "memory",
@@ -331,8 +468,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "维护记忆后端",
 		icon: Database,
 		group: "集成",
-		settingsTarget: "memory",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openSettingsTarget("memory"),
 	},
 	{
 		name: "browser",
@@ -340,8 +476,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "切换浏览器可见模式",
 		icon: Globe,
 		group: "集成",
-		settingsTarget: "browser",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openSettingsTarget("browser"),
 	},
 	{
 		name: "computer",
@@ -349,8 +484,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "切换计算机操作能力",
 		icon: Monitor,
 		group: "集成",
-		settingsTarget: "computerUse",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openSettingsTarget("computerUse"),
 	},
 	{
 		name: "extended-context",
@@ -358,8 +492,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "切换扩展上下文窗口",
 		icon: Expand,
 		group: "集成",
-		settingsTarget: "extendedContext",
-		run: sendAsPrompt,
+		run: (ctx) => ctx.openSettingsTarget("extendedContext"),
 	},
 
 	// ---- 设置 ----
@@ -397,6 +530,63 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		icon: Settings,
 		group: "设置",
 		run: (ctx) => ctx.openSettings(),
+	},
+
+	// ---- 更多 OMP 命令 (registry mirrors so they get Chinese labels; the
+	// same-named dynamic omp commands are shadowed) ----
+	{
+		name: "init",
+		title: "初始化项目",
+		description: "为当前项目生成 AGENTS.md 等配置",
+		icon: Sparkles,
+		group: "更多 OMP 命令",
+		run: sendAsPrompt,
+	},
+	{
+		name: "share",
+		title: "分享会话",
+		description: "生成当前会话的分享链接",
+		icon: Share2,
+		group: "更多 OMP 命令",
+		// Same flow as CenterHeader's 分享链接: confirm, sessionShare, copy.
+		run: async (ctx) => {
+			const ok = await confirmDialog(
+				"将把本会话加密后上传到 OMP 分享服务。拿到链接的任何人都能查看内容，已知密钥会自动脱敏。继续？",
+				{ title: "创建分享链接", okLabel: "创建并复制" },
+			);
+			if (!ok) throw new SlashAbort();
+			toast.info("正在生成分享链接…");
+			const url = await sessionShare(ctx.sessionId);
+			await copyText(url);
+			toast.success("分享链接已复制");
+		},
+	},
+	{
+		name: "review",
+		title: "代码审查",
+		description: "让代理审查当前改动",
+		icon: ClipboardCheck,
+		group: "更多 OMP 命令",
+		argHint: "[说明]",
+		run: sendAsPrompt,
+	},
+	{
+		name: "changelog",
+		title: "更新日志",
+		description: "查看 omp 版本更新内容",
+		icon: ScrollText,
+		group: "更多 OMP 命令",
+		// omp's changelog text has no transcript-less GUI surface; the About
+		// section is the app's version/update surface.
+		run: (ctx) => ctx.openSettingsTarget("about"),
+	},
+	{
+		name: "security",
+		title: "安全检查",
+		description: "检查环境与权限配置",
+		icon: ShieldAlert,
+		group: "更多 OMP 命令",
+		run: sendAsPrompt,
 	},
 	// ---- 技能 ----
 	{

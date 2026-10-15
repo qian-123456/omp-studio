@@ -787,6 +787,32 @@ pub struct PairingInfo {
     pub expires_at: String,
 }
 
+/// Which reachable base URL a pairing link is built on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PairingTarget {
+    #[default]
+    Lan,
+    Tunnel,
+    Ipv6,
+}
+
+/// Cloudflare DDNS (AAAA record, DNS-only) for the IPv6 direct listener.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DdnsStatus {
+    pub enabled: bool,
+    /// API token present in the vault (value never leaves the backend).
+    pub token_set: bool,
+    pub hostname: Option<String>,
+    /// Last IPv6 address successfully written to the AAAA record.
+    pub last_ip: Option<String>,
+    pub last_sync_at: Option<String>,
+    pub last_error: Option<String>,
+    /// True after 401/403/429 or repeated failure: no further API calls until a manual sync.
+    pub halted: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MobileStatus {
@@ -795,6 +821,16 @@ pub struct MobileStatus {
     pub lan_url: Option<String>,
     pub tunnel_url: Option<String>,
     pub cloudflared_installed: bool,
+    /// IPv6 direct HTTPS listener is bound.
+    pub ipv6_running: bool,
+    pub ipv6_port: u16,
+    /// Selected global-unicast IPv6 address of this machine, if any.
+    pub ipv6_address: Option<String>,
+    /// `https://<ddns hostname>:<port>` when DDNS is synced, else `https://[addr]:<port>`.
+    pub ipv6_url: Option<String>,
+    /// SHA-256 fingerprint of the self-signed certificate, colon-separated uppercase hex.
+    pub cert_sha256: Option<String>,
+    pub ddns: DdnsStatus,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -851,6 +887,20 @@ pub struct Settings {
     pub tunnel_mode: String,
     pub tunnel_name: Option<String>,
     pub tunnel_hostname: Option<String>,
+    /// IPv6 direct HTTPS listener (self-signed cert). Default false.
+    #[serde(default)]
+    pub mobile_ipv6_enabled: bool,
+    /// Default 7789.
+    #[serde(default = "default_mobile_ipv6_port")]
+    pub mobile_ipv6_port: u16,
+    /// Cloudflare DDNS (AAAA, DNS-only) for the IPv6 address. Default false.
+    /// The API token lives in the vault (slug `cloudflare-ddns`), never here.
+    #[serde(default)]
+    pub ddns_enabled: bool,
+    #[serde(default)]
+    pub ddns_zone_id: Option<String>,
+    #[serde(default)]
+    pub ddns_hostname: Option<String>,
     /// Default "CommandOrControl+Shift+I".
     pub quick_capture_shortcut: String,
     /// Debounced supervisor trigger interval; default 30, 0 = manual refresh only.
@@ -971,6 +1021,10 @@ fn default_omp_check_interval_hours() -> u32 {
     24
 }
 
+fn default_mobile_ipv6_port() -> u16 {
+    7789
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -991,6 +1045,11 @@ impl Default for Settings {
             tunnel_mode: "off".to_string(),
             tunnel_name: None,
             tunnel_hostname: None,
+            mobile_ipv6_enabled: false,
+            mobile_ipv6_port: default_mobile_ipv6_port(),
+            ddns_enabled: false,
+            ddns_zone_id: None,
+            ddns_hostname: None,
             quick_capture_shortcut: "CommandOrControl+Shift+I".to_string(),
             supervisor_interval_minutes: 30,
             notify_quiet_from: None,
@@ -1137,6 +1196,8 @@ pub struct ModelContextWindowEdit {
 pub struct PathCheck {
     pub exists: bool,
     pub is_dir: bool,
+    /// File size in bytes (0 for directories / missing paths).
+    pub size: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

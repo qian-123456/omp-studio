@@ -11,10 +11,12 @@ interface ContextRingProps {
 	usageObj?: Record<string, unknown> | null;
 	/** Optional formatted usage string (e.g. "44.8k tok"). */
 	totalTokensStr?: string | null;
-	/** Runs context compaction; the button is hidden when omitted. */
 	onCompact?: () => Promise<void>;
 	/** Disables the compact button (e.g. while a turn is streaming). */
 	compactDisabled?: boolean;
+	/** Controlled open state; falls back to internal state when undefined. */
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
 	className?: string;
 }
 
@@ -24,11 +26,17 @@ export function ContextRing({
 	totalTokensStr,
 	onCompact,
 	compactDisabled,
+	open: openProp,
+	onOpenChange,
 	className,
 }: ContextRingProps) {
-	const [open, setOpen] = useState(false);
+	const [openInner, setOpenInner] = useState(false);
+	const open = openProp ?? openInner;
+	const setOpen = (v: boolean | ((p: boolean) => boolean)) =>
+		onOpenChange ? onOpenChange(typeof v === "function" ? v(open) : v) : setOpenInner(v);
 	const [compacting, setCompacting] = useState(false);
 	const btnRef = useRef<HTMLButtonElement>(null);
+
 
 	// Determine normalized fraction (0.0 to 1.0) and display percentage (0 to 100)
 	let fraction = 0;

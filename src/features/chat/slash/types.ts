@@ -46,7 +46,8 @@ export interface SlashContext {
 	openModelPicker(): void;
 	/** Open the composer thinking-level picker. */
 	openThinkingPicker(): void;
-	/** Jump to a settings section (contract C4). */
+	/** Open the composer context-usage popover. */
+	openContextPopover(): void;
 	openSettingsTarget(target: SettingsTarget): void;
 	/** Open Settings without a specific target. */
 	openSettings(): void;

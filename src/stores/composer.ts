@@ -23,6 +23,14 @@ export interface ComposerImage {
 	height?: number;
 }
 
+/** Non-image attachment (📎#N token): real path is serialized into the
+ * outgoing prompt so omp can read the file itself. */
+export interface ComposerFile {
+	id: string;
+	path: string;
+	name?: string;
+}
+
 export interface ComposerState {
 	/** By sessionId. */
 	annotations: Record<string, Annotation[]>;
@@ -53,6 +61,12 @@ export interface ComposerState {
 	setImages(sessionId: string, images: ComposerImage[]): void;
 	removeImage(sessionId: string, idOrPath: string): void;
 	clearImages(sessionId: string): void;
+	/** Non-image file attachments per session (📎#N tokens). */
+	files: Record<string, ComposerFile[]>;
+	addFile(sessionId: string, path: string, name?: string): ComposerFile;
+	setFiles(sessionId: string, files: ComposerFile[]): void;
+	removeFile(sessionId: string, idOrPath: string): void;
+	clearFiles(sessionId: string): void;
 	/** Drafts per session so switching sessions does not lose typed input. */
 	drafts: Record<string, string>;
 	setDraft(sessionId: string, text: string): void;
@@ -256,6 +270,38 @@ export const useComposer = create<ComposerState>((set) => ({
 	clearImages: (sessionId) =>
 		set((s) => ({
 			images: { ...s.images, [sessionId]: [] },
+		})),
+	files: {},
+	addFile: (sessionId, path, name) => {
+		const file: ComposerFile = {
+			id: `cfile-${nextId++}`,
+			path,
+			name,
+		};
+		set((s) => ({
+			files: {
+				...s.files,
+				[sessionId]: [...(s.files[sessionId] ?? []), file],
+			},
+		}));
+		return file;
+	},
+	setFiles: (sessionId, files) =>
+		set((s) => ({
+			files: { ...s.files, [sessionId]: files },
+		})),
+	removeFile: (sessionId, idOrPath) =>
+		set((s) => ({
+			files: {
+				...s.files,
+				[sessionId]: (s.files[sessionId] ?? []).filter(
+					(f) => f.id !== idOrPath && f.path !== idOrPath,
+				),
+			},
+		})),
+	clearFiles: (sessionId) =>
+		set((s) => ({
+			files: { ...s.files, [sessionId]: [] },
 		})),
 	drafts: loadMap(STORAGE_KEY_DRAFTS),
 	setDraft: (sessionId, text) =>

@@ -1,20 +1,12 @@
 /** [B] Chat trace gutter — ported from ZCode desktop's TurnNavigator:
  * one dash per real user query, vertically centered on the left edge of the
- * stream. Hovering a dash stretches it (scaleX falloff on neighbours, 150ms
- * ease-out) and opens a preview popover (user query + its turn's assistant
- * reply) after 120ms; click jumps to the query via live store scrollToItem.
- * The idle highlight follows the query closest to the viewport top.
- *
- * Layout modes:
- * - wide (pane ≥ WIDE_MIN_PX): the centered column leaves ≥48px side
- *   margins, so the rail sits permanently in the left margin;
- * - narrow: the column is inset 32px per side (MessageList/SessionView
- *   `calc(100% - 4rem)`), which reproduces Codex's ≈16px dash-to-text
- *   gap; the rail still collapses to short 8px stubs and peeks open to
- *   full dashes on hover intent or keyboard focus.
- * The glass pill sits behind the expanded dashes on hover (wide) or with
- * the peek (narrow); collapsed stubs render bare, without a sliver of
- * glass around them. */
+ * stream. The rail always renders as short stub dashes; it never expands
+ * and never grows a glass capsule. Hovering or keyboard-focusing a dash
+ * darkens it and grows it longer (ChatGPT-style, extending rightwards
+ * inside the rail's fixed width) and opens a preview popover (user query +
+ * its turn's assistant reply) immediately; click jumps to the query via
+ * live store scrollToItem. The idle highlight follows the query closest
+ * to the viewport top. */
 
 import clsx from "clsx";
 import {
@@ -33,34 +25,7 @@ import { collectChatTraceEntries, type ChatTraceEntry } from "./messageTrace";
 const EMPTY_ITEMS: TranscriptItem[] = [];
 const EMPTY_ECHOES: TranscriptItem[] = [];
 const ROW_PITCH_PX = 8;
-const TOOLTIP_OPEN_DELAY_MS = 120;
 const TOOLTIP_CLOSE_DELAY_MS = 80;
-/** Must match MessageList's `@min-[864px]` column breakpoint. */
-const WIDE_MIN_PX = 864;
-/** Hover intent: crossing the left edge on the way into the pane must not
- * flash the pill / overlay open. */
-const PEEK_OPEN_DELAY_MS = 150;
-const PEEK_CLOSE_DELAY_MS = 200;
-/** Codex-style capsule: ~40% panel fill + backdrop blur so the content
- * reads through it, hairline ring, a light top edge and a drop shadow for
- * lift on near-white chat surfaces. */
-const GLASS_PILL =
-	"rounded-full bg-[color-mix(in_oklab,var(--bg-panel)_40%,transparent)] bg-linear-to-b from-white/10 via-transparent to-black/5 backdrop-blur-xl backdrop-saturate-[1.4] ring-1 ring-[var(--border)] shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25),0_6px_16px_-4px_rgb(0_0_0/0.2),0_2px_6px_-2px_rgb(0_0_0/0.1)] [@media(prefers-reduced-transparency:reduce)]:bg-[var(--bg-panel)] [@media(prefers-reduced-transparency:reduce)]:backdrop-filter-none";
-/** Must match the rail's expanded `w-7` and the pill's `-inset-x-1`. */
-const RAIL_EXPANDED_PX = 28;
-const PILL_BLEED_PX = 4;
-
-/** Dash scale/opacity falloff by distance from the hovered dash. Idle
- * (nothing hovered) keeps every dash unscaled — the active one is coloured
- * by the caller instead. */
-function dashStress(itemIndex: number, focusIndex: number | null) {
-	if (focusIndex === null) return { opacity: 1, scaleX: 1, focused: false };
-	const dist = Math.abs(itemIndex - focusIndex);
-	if (dist === 0) return { opacity: 1, scaleX: 1.25, focused: true };
-	if (dist === 1) return { opacity: 0.85, scaleX: 1.15, focused: false };
-	if (dist === 2) return { opacity: 0.7, scaleX: 1.05, focused: false };
-	return { opacity: 0.55, scaleX: 1, focused: false };
-}
 
 export function ChatTrace({
 	sessionId,
@@ -95,14 +60,10 @@ export function ChatTrace({
 	const [focusIndex, setFocusIndex] = useState<number | null>(null);
 	const [openIndex, setOpenIndex] = useState<number | null>(null);
 	const [overflowing, setOverflowing] = useState(false);
-	const [wide, setWide] = useState(false);
-	const [peek, setPeek] = useState(false);
-	const peekTimer = useRef(0);
 	const rafRef = useRef(0);
 	const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
 	const stripRef = useRef<HTMLDivElement>(null);
 	const railRef = useRef<HTMLDivElement>(null);
-	const openTimer = useRef(0);
 	const closeTimer = useRef(0);
 
 	// Idle highlight: among rendered user-query rows intersecting the viewport,
@@ -170,8 +131,6 @@ export function ChatTrace({
 		if (!el) return;
 		const update = () => {
 			setScrollable(el.scrollHeight > el.clientHeight + 8);
-			// offsetWidth includes the scrollbar, i.e. the @container's width.
-			setWide(el.offsetWidth >= WIDE_MIN_PX);
 		};
 		const ro = new ResizeObserver(update);
 		ro.observe(el);
@@ -206,17 +165,9 @@ export function ChatTrace({
 		setOverflowing(strip.scrollHeight > strip.clientHeight + 1);
 	}, [entries.length]);
 
-	useEffect(
-		() => () => {
-			window.clearTimeout(openTimer.current);
-			window.clearTimeout(closeTimer.current);
-			window.clearTimeout(peekTimer.current);
-		},
-		[],
-	);
+	useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
 	const clearHover = useCallback(() => {
-		window.clearTimeout(openTimer.current);
 		setFocusIndex(null);
 		window.clearTimeout(closeTimer.current);
 		closeTimer.current = window.setTimeout(
@@ -225,44 +176,17 @@ export function ChatTrace({
 		);
 	}, []);
 
-	const schedulePeek = useCallback((open: boolean) => {
-		window.clearTimeout(peekTimer.current);
-		peekTimer.current = window.setTimeout(
-			() => setPeek(open),
-			open ? PEEK_OPEN_DELAY_MS : PEEK_CLOSE_DELAY_MS,
-		);
+	const hoverIndex = useCallback((index: number) => {
+		window.clearTimeout(closeTimer.current);
+		setFocusIndex(index);
+		setOpenIndex(index);
 	}, []);
-
-	const hoverIndex = useCallback(
-		(index: number) => {
-			window.clearTimeout(closeTimer.current);
-			setFocusIndex(index);
-			if (openIndex !== null) {
-				// Already open — follow the pointer across dashes immediately
-				// (Radix tooltip behaviour in the original).
-				window.clearTimeout(openTimer.current);
-				setOpenIndex(index);
-				return;
-			}
-			window.clearTimeout(openTimer.current);
-			openTimer.current = window.setTimeout(() => {
-				setOpenIndex(index);
-			}, TOOLTIP_OPEN_DELAY_MS);
-		},
-		[openIndex],
-	);
 
 	if (entries.length < MIN_ENTRIES || !scrollable) return null;
 
 	const jump = (entry: ChatTraceEntry) => {
 		useLive.getState().scrollToItem(sessionId, entry.id);
 	};
-
-	const expanded = wide || peek;
-	// While collapsed, hover only arms the peek; stress and preview start once
-	// the rail is actually open.
-	const safeFocus =
-		expanded && focusIndex !== null && focusIndex < entries.length ? focusIndex : null;
 
 	return (
 		<nav
@@ -271,29 +195,9 @@ export function ChatTrace({
 		>
 			<div
 				ref={railRef}
-				onPointerEnter={() => schedulePeek(true)}
-				onPointerLeave={() => {
-					clearHover();
-					schedulePeek(false);
-				}}
-				onFocus={() => {
-					window.clearTimeout(peekTimer.current);
-					setPeek(true);
-				}}
-				onBlur={() => schedulePeek(false)}
-				className={clsx(
-					"pointer-events-auto absolute top-1/2 flex max-h-[calc(100%-6rem)] -translate-y-1/2 flex-col transition-[width] duration-150 ease-out",
-					wide ? "left-2 w-7 px-1" : clsx(peek ? "left-2 w-7 px-1" : "left-3 w-2.5"),
-				)}
+				onPointerLeave={clearHover}
+				className="pointer-events-auto absolute left-3 top-1/2 flex max-h-[calc(100%-6rem)] w-4 -translate-y-1/2 flex-col"
 			>
-				<div
-					aria-hidden
-					className={clsx(
-						"pointer-events-none absolute -inset-x-1 -inset-y-1.5 origin-left transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
-						GLASS_PILL,
-						peek ? "scale-100 opacity-100" : "scale-95 opacity-0",
-					)}
-				/>
 				<div
 					ref={stripRef}
 					onScroll={() => {
@@ -315,8 +219,8 @@ export function ChatTrace({
 					<div className="relative w-full" style={{ height: entries.length * ROW_PITCH_PX }}>
 						{entries.map((entry, i) => {
 							const isActive = entry.id === activeId;
-							const stress = dashStress(i, safeFocus);
-							const colored = stress.focused || (safeFocus === null && isActive);
+							const focused = focusIndex === i;
+							const colored = focused || (focusIndex === null && isActive);
 							return (
 								<div
 									key={entry.id}
@@ -340,18 +244,12 @@ export function ChatTrace({
 									>
 										<span
 											className={clsx(
-												"block origin-left rounded-full transition-[width,height,opacity,transform,background-color] duration-150 ease-out motion-reduce:transition-none",
-												expanded ? "h-[3px] w-4" : "h-[3px] w-2",
+												"block h-[3px] rounded-full transition-[width,opacity,background-color] duration-150 ease-out motion-reduce:transition-none",
+												focused ? "w-4" : "w-2",
 												colored ? "bg-[var(--text)]" : "bg-[var(--text-30)]",
 											)}
 											style={{
-												opacity:
-													safeFocus === null && isActive
-														? 0.95
-														: entry.isRunning
-															? Math.max(stress.opacity, 0.75)
-															: stress.opacity,
-												transform: `scaleX(${stress.scaleX})`,
+												opacity: focusIndex === null && isActive ? 0.95 : 1,
 											}}
 										/>
 									</button>
@@ -362,19 +260,16 @@ export function ChatTrace({
 				</div>
 			</div>
 
-			{expanded &&
-				openIndex !== null &&
+			{openIndex !== null &&
 				(() => {
 					const entry = entries[openIndex];
 					const btn = btnRefs.current[openIndex];
 					const rail = railRef.current;
 					if (!entry || !btn || !rail) return null;
 					const box = btn.getBoundingClientRect();
-					// Measured during render, i.e. possibly before the narrow
-					// rail's peek width commits: anchor to the stable rail origin
-					// plus the expanded pill extent instead of the button's edge.
-					const x =
-						rail.getBoundingClientRect().left + RAIL_EXPANDED_PX + PILL_BLEED_PX + 8;
+					// Anchor to the resting rail's right edge — its width never
+					// changes on hover, so the popup position is stable.
+					const x = rail.getBoundingClientRect().right + 8;
 					const y = Math.min(
 						Math.max(box.top + box.height / 2, 90),
 						window.innerHeight - 90,

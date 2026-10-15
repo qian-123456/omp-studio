@@ -129,8 +129,8 @@ const isMac =
 	typeof navigator !== "undefined" &&
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
 
-/** Reserves room for the overlay macOS traffic lights; collapses in fullscreen where they are hidden. */
-function TrafficLightSpacer() {
+/** True while the overlay macOS traffic lights occupy the title bar (windowed mode); they hide in fullscreen. */
+function useTrafficLightsVisible(): boolean {
 	const [fullscreen, setFullscreen] = useState(false);
 	useEffect(() => {
 		if (!isMac) return;
@@ -149,14 +149,14 @@ function TrafficLightSpacer() {
 				else un();
 			})
 			.catch(() => {
-				/* not running inside Tauri (tests / browser): keep the spacer */
+				/* not running inside Tauri (tests / browser): treated as windowed */
 			});
 		return () => {
 			alive = false;
 			off?.();
 		};
 	}, []);
-	return isMac && !fullscreen ? <div className="w-[64px] shrink-0" /> : null;
+	return isMac && !fullscreen;
 }
 
 export interface WorkspacePalette {
@@ -291,6 +291,9 @@ export function SessionSidebar() {
 	const openModal = useUi((s) => s.openModal);
 
 	const inboxBadge = useInboxBadge();
+	// Windowed macOS (overlay traffic lights visible) splits the topbar into
+	// two rows; fullscreen / non-mac keeps one row.
+	const trafficLightsVisible = useTrafficLightsVisible();
 	// Persistent sidebar store state (survives Cmd+B)
 	const activeMode = useSidebarStore((s) => s.activeMode);
 	const setActiveMode = useSidebarStore((s) => s.setActiveMode);
@@ -1138,101 +1141,141 @@ export function SessionSidebar() {
 		}
 	};
 
+	// Shared header controls, rendered in one row (fullscreen / non-mac) or
+	// split across two rows (windowed macOS — traffic lights need row one).
+	const modeMeta = SPACE_MODE_META[activeMode];
+	const ModeSwitcherIcon = modeMeta.icon;
+	const modeSwitcherButton = (
+		<button
+			ref={modeSwitcherRef}
+			type="button"
+			aria-haspopup="menu"
+			aria-expanded={modeMenuOpen}
+			onClick={() => {
+				setModeMenuOpen((v) => !v);
+				setFilterPopoverOpen(false);
+			}}
+			className="group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)]/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+			title={`${modeMeta.label} 模式 (点击切换)`}
+		>
+			<ModeSwitcherIcon size={16} className="shrink-0 text-indigo-400" />
+			<span className="whitespace-nowrap text-[17px] font-semibold leading-none tracking-[-0.01em] text-neutral-50">
+				{modeMeta.label}
+			</span>
+			<ChevronDown
+				size={14}
+				strokeWidth={2}
+				className={clsx(
+					"shrink-0 text-neutral-500 transition-transform group-hover:text-neutral-300",
+					modeMenuOpen && "rotate-180 text-neutral-300",
+				)}
+			/>
+			{otherActivity && (
+				<ModeActivityDot activity={otherActivity} variant="dot" className="absolute -right-0.5 top-0.5" />
+			)}
+		</button>
+	);
+	const inboxButton = (
+		<button
+			type="button"
+			onClick={() => setCenter("inbox")}
+			aria-label="收件箱"
+			title="收件箱"
+			className={clsx(
+				"relative flex h-7 w-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+				centerView === "inbox"
+					? "bg-[var(--bg-active-fill)] text-indigo-400"
+					: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
+			)}
+		>
+			<Bell size={16} strokeWidth={1.5} />
+			{inboxBadge > 0 && (
+				<span className="absolute right-0.5 top-0.5 min-w-[13px] rounded-full bg-indigo-500 px-[3px] text-center font-mono text-[8.5px] font-medium leading-[13px] text-white">
+					{inboxBadge > 99 ? "99+" : inboxBadge}
+				</span>
+			)}
+		</button>
+	);
+	const searchButton = (
+		<button
+			type="button"
+			onClick={() => {
+				if (searchOpen && !searchQuery && !showArchived) {
+					setSearchOpen(false);
+				} else {
+					setSearchOpen(true);
+					setTimeout(() => searchInputRef.current?.focus(), 0);
+				}
+			}}
+			aria-label="搜索"
+			title="搜索会话、分支 (⌘F)"
+			className={clsx(
+				"flex h-7 w-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+				searchOpen || searchQuery
+					? "bg-[var(--bg-active-fill)] text-neutral-100"
+					: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
+			)}
+		>
+			<Search size={16} strokeWidth={1.5} />
+		</button>
+	);
+	const collapseButton = (
+		<button
+			type="button"
+			onClick={toggleSidebar}
+			className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+			title="收起左侧栏 (⌘B)"
+		>
+			<PanelLeftClose size={16} strokeWidth={1.5} />
+		</button>
+	);
+
 	return (
 		<aside className="@container flex h-full flex-col bg-transparent text-neutral-300 text-xs select-none">
-			{/* Topbar row: mode title + inbox/search/collapse in the draggable title-bar strip */}
-			<div
-				data-tauri-drag-region
-				className="flex h-10 shrink-0 items-center border-b border-[var(--border-divider)] px-2.5 select-none"
-			>
-				<TrafficLightSpacer />
-				<div className="flex min-w-0 flex-1 items-center gap-1" data-tauri-drag-region>
-					{(() => {
-						const meta = SPACE_MODE_META[activeMode];
-						const ModeIcon = meta.icon;
-						return (
-							<button
-								ref={modeSwitcherRef}
-								type="button"
-								aria-haspopup="menu"
-								aria-expanded={modeMenuOpen}
-								onClick={() => {
-									setModeMenuOpen((v) => !v);
-									setFilterPopoverOpen(false);
-								}}
-								className="group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)]/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
-								title={`${meta.label} 模式 (点击切换)`}
-							>
-								<ModeIcon size={16} className="shrink-0 text-indigo-400" />
-								<span className="whitespace-nowrap text-[17px] font-semibold leading-none tracking-[-0.01em] text-neutral-50">
-									{meta.label}
-								</span>
-								<ChevronDown
-									size={14}
-									strokeWidth={2}
-									className={clsx(
-										"shrink-0 text-neutral-500 transition-transform group-hover:text-neutral-300",
-										modeMenuOpen && "rotate-180 text-neutral-300",
-									)}
-								/>
-								{otherActivity && (
-									<ModeActivityDot activity={otherActivity} variant="dot" className="absolute -right-0.5 top-0.5" />
-								)}
-							</button>
-						);
-					})()}
-					<div className="ml-auto flex shrink-0 items-center gap-1">
-						<button
-							type="button"
-							onClick={() => setCenter("inbox")}
-							aria-label="收件箱"
-							title="收件箱"
-							className={clsx(
-								"relative flex h-7 w-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
-								centerView === "inbox"
-									? "bg-[var(--bg-active-fill)] text-indigo-400"
-									: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
-							)}
-						>
-							<Bell size={16} strokeWidth={1.5} />
-							{inboxBadge > 0 && (
-								<span className="absolute right-0.5 top-0.5 min-w-[13px] rounded-full bg-indigo-500 px-[3px] text-center font-mono text-[8.5px] font-medium leading-[13px] text-white">
-									{inboxBadge > 99 ? "99+" : inboxBadge}
-								</span>
-							)}
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								if (searchOpen && !searchQuery && !showArchived) {
-									setSearchOpen(false);
-								} else {
-									setSearchOpen(true);
-									setTimeout(() => searchInputRef.current?.focus(), 0);
-								}
-							}}
-							aria-label="搜索"
-							title="搜索会话、分支 (⌘F)"
-							className={clsx(
-								"flex h-7 w-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
-								searchOpen || searchQuery
-									? "bg-[var(--bg-active-fill)] text-neutral-100"
-									: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
-							)}
-						>
-							<Search size={16} strokeWidth={1.5} />
-						</button>
-						<button
-							type="button"
-							onClick={toggleSidebar}
-							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
-							title="收起左侧栏 (⌘B)"
-						>
-							<PanelLeftClose size={16} strokeWidth={1.5} />
-						</button>
+			{/* Topbar: mode title + inbox/search/collapse in the draggable title-bar strip.
+			    Windowed macOS splits it into two rows — row one keeps the h-10 window-chrome
+			    line aligned with the center header and carries traffic lights + collapse;
+			    row two carries the mode switcher + inbox/search. */}
+			{trafficLightsVisible ? (
+				<>
+					<div
+						data-tauri-drag-region
+						className="flex h-10 shrink-0 items-center border-b border-[var(--border-divider)] px-2.5 select-none"
+					>
+						{/* Reserves room for the overlay traffic lights on the left. */}
+						<div className="w-[64px] shrink-0" />
+						<div className="ml-auto flex shrink-0 items-center" data-tauri-drag-region>
+							{collapseButton}
+						</div>
+					</div>
+					<div
+						data-tauri-drag-region
+						className="flex h-10 shrink-0 items-center border-b border-[var(--border-divider)] px-2.5 select-none"
+					>
+						<div className="flex min-w-0 flex-1 items-center gap-1" data-tauri-drag-region>
+							{modeSwitcherButton}
+							<div className="ml-auto flex shrink-0 items-center gap-1">
+								{inboxButton}
+								{searchButton}
+							</div>
+						</div>
+					</div>
+				</>
+			) : (
+				<div
+					data-tauri-drag-region
+					className="flex h-10 shrink-0 items-center border-b border-[var(--border-divider)] px-2.5 select-none"
+				>
+					<div className="flex min-w-0 flex-1 items-center gap-1" data-tauri-drag-region>
+						{modeSwitcherButton}
+						<div className="ml-auto flex shrink-0 items-center gap-1">
+							{inboxButton}
+							{searchButton}
+							{collapseButton}
+						</div>
 					</div>
 				</div>
-			</div>
+			)}
 			<div className="relative border-b border-[var(--border-divider)] bg-transparent px-2 pb-2 pt-1">
 
 				{/* Search & Filter Bar: revealed by the search icon / ⌘F, or while a filter is active */}

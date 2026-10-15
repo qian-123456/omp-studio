@@ -44,7 +44,7 @@ src-tauri/src/
   todos/            smart todo queue, system detection, supervisor, summaries, diagnose [D]
   backlog/          backlog store + prompt assembly                                    [D]
   notify/           native notifications, dock badge, sound                            [D]
-  mobile/           LAN HTTP server, pairing, QR, SSE, cloudflared tunnel              [E]
+  mobile/           LAN HTTP server, pairing, QR, SSE, cloudflared tunnel, IPv6 HTTPS + DDNS [E]
   terminal/         PTY sessions                                                       [E]
   schedules/        scheduled tasks, cadence, runner, background scheduler (§11 F)     [E]
   skills/           skills & extensions catalog, frontmatter parse, reader (§11 G)     [F]
@@ -276,7 +276,13 @@ pub struct PerfBreakdown { pub app: PerfBucket /* same footprint semantics as ap
   pub bar_omp_bytes: Option<u64> /* spawned+external minus macOS responsibility overlap; disjoint bar segment */, pub other_bytes: Option<u64> /* used - app - bar_omp, ≥0 */,
   pub total_bytes: Option<u64>, pub used_bytes: Option<u64>, pub free_bytes: Option<u64>, pub instances: Vec<AppInstance>, pub generated_at: u64 }
 pub struct PairingInfo { pub url: String, pub qr_svg: String, pub expires_at: String }
-pub struct MobileStatus { pub running: bool, pub port: u16, pub lan_url: Option<String>, pub tunnel_url: Option<String>, pub cloudflared_installed: bool }
+pub enum PairingTarget { Lan, Tunnel, Ipv6 }   // snake_case; default Lan
+pub struct DdnsStatus { pub enabled: bool, pub token_set: bool, pub hostname: Option<String>, pub last_ip: Option<String>,
+  pub last_sync_at: Option<String>, pub last_error: Option<String>, pub halted: bool /* 401/403/429 or 3 failures; manual sync clears */ }
+pub struct MobileStatus { pub running: bool, pub port: u16, pub lan_url: Option<String>, pub tunnel_url: Option<String>, pub cloudflared_installed: bool,
+  pub ipv6_running: bool, pub ipv6_port: u16, pub ipv6_address: Option<String>,
+  pub ipv6_url: Option<String> /* https://<ddns host>:<port> when DDNS synced to current addr, else https://[addr]:<port> */,
+  pub cert_sha256: Option<String> /* self-signed cert fingerprint, AA:BB:… */, pub ddns: DdnsStatus }
 
 pub struct UsageSummary { pub available: bool, pub tokens: u64, pub cost: f64, pub source: String /* "token-tracker" | "transcript" */ }
 
@@ -294,6 +300,10 @@ pub struct Settings {
   pub mobile_port: u16,              // default 7788
   pub tunnel_mode: String,           // "off" | "quick" | "named"; default "off"
   pub tunnel_name: Option<String>, pub tunnel_hostname: Option<String>,
+  pub mobile_ipv6_enabled: bool,     // default false; IPv6 direct HTTPS listener autostart (with mobile_enabled)
+  pub mobile_ipv6_port: u16,         // default 7789; 1024..=65535, != mobile_port
+  pub ddns_enabled: bool,            // default false; Cloudflare AAAA DDNS (token in vault slug `cloudflare-ddns`, never in settings)
+  pub ddns_zone_id: Option<String>, pub ddns_hostname: Option<String>,
   pub quick_capture_shortcut: String, // default "CommandOrControl+Shift+I"
   pub inbox_window_hours: u32,       // default 24; 1..=720; non-awaiting sessions idle longer than this leave the inbox + badge
   pub omp_check_interval_hours: u32, // default 24; 1..=720; hours between automatic omp update checks while the app runs
@@ -571,6 +581,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `tm_run(repo, sha, command: Option<String>) -> TmRun`, `tm_list() -> Vec<TmRun>`, `tm_stop(run_id, remove_worktree: bool)`
 - `services_list(all: bool) -> Vec<ServiceInfo>`, `services_stop(pid)`
 - `read_text_file(path) -> String`, `write_text_file(path, content)` (for the md editor; reject paths > 5 MB)
+- `save_clipboard_image(base64_png) -> String` — writes pasted image PNG bytes to `$APPCACHE/ompws-clip/<ts>.png` (asset-protocol scoped); `save_clipboard_file(base64_data, file_name?) -> String` — the non-image analogue for pasted/dropped File bytes with no filesystem path (`$APPCACHE/ompws-clip-files/<ts>-<name>`)
+- `clipboard_file_paths() -> Vec<String>` — macOS-only JXA/NSPasteboard read resolving real POSIX paths of files on the pasteboard (`NSFilenamesPboardType` then per-item `public.file-url`); `[]` elsewhere or when no file URLs exist. Composer paste/drop uses it so Finder-copied files attach by real path
 - `save_share_image(base64_png, path)` — chat share-as-image export: decodes a (optionally `data:`-prefixed) PNG and writes it to the absolute `.png` path chosen in the save dialog; never creates parent dirs. Clipboard copy of the image goes through `plugin-clipboard-manager` `writeImage` (needs the tauri `image-png` feature)
 - `app_memory_usage() -> ProcessMemoryInfo` — footprint attributed to this app (macOS responsibility API / Linux self RSS); ~2.5 s cache, powers the bottom-bar 性能 indicator
 - `perf_breakdown() -> PerfBreakdown` — system memory split for the perf popover: app tree / omp spawned-by-us vs external (ppid ancestry + responsibility set over `ps pid,ppid,rss,comm` rows — no argv) / other / free, plus omp-workspace instances labelled by worktree branch (lsof cwd + git rev-parse); `spawn_blocking`, ~3 s cache, fields `None` when a probe fails
@@ -584,8 +596,11 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `notify_test()`
 
 **E — mobile / terminal:**
-- `mobile_start() -> MobileStatus`, `mobile_stop()`, `mobile_status() -> MobileStatus`, `mobile_create_pairing() -> PairingInfo`, `mobile_revoke_all()`
+- `mobile_start() -> MobileStatus`, `mobile_stop()` (also stops the IPv6 listener and persists `mobile_ipv6_enabled=false`), `mobile_status() -> MobileStatus`,
+  `mobile_create_pairing(target: Option<PairingTarget>) -> PairingInfo` (default `lan`), `mobile_revoke_all()`
 - `tunnel_start() -> MobileStatus`, `tunnel_stop()`
+- `mobile_ipv6_start() -> MobileStatus` (persists `mobile_ipv6_enabled=true`), `mobile_ipv6_stop()` (persists false)
+- `mobile_ddns_set_token(token) -> DdnsStatus` (verifies, stores in vault), `mobile_ddns_clear_token() -> DdnsStatus`, `mobile_ddns_sync() -> DdnsStatus`
 - `term_open(cwd, command: Vec<String>, cols: u16, rows: u16) -> String /* termId */`, `term_write(term_id, data: String /* utf8 */)`, `term_resize(term_id, cols, rows)`, `term_close(term_id)`
 - `term_open_session(session_id, agent: String /* "omp"|"claude"|"codex" */, cols, rows) -> String` — one agent terminal per session (reopening, even with another agent, replaces the PTY); unknown agent → `Err("未知的 Agent: …")`. `omp`: stops the RPC process for that session if live, then runs `omp --resume <file> -e <extension_path> [-e <providers ext>]`; `claude`: `claude --continue`; `codex`: `codex resume --last` (RPC process untouched). All run in the session cwd (fallback home) with provider extra env; claude/codex are resolved against the login-shell-augmented PATH first and a missing CLI returns a Chinese `Err` before anything is torn down
 - `terminal_set_current_session(path: Option<String>)` — writes/clears `~/.omp-workspace/current-session`; `term_open` command-terminal shells (right panel) source generated `zdot/`/`bashrc`/`terminal-init.*` so bare `omp`/`claude`/`codex` resume that transcript (session terminals unaffected — they run `term_open_session` directly)
@@ -1089,7 +1104,16 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   stderr; `named` → `cloudflared tunnel run --url http://localhost:<port> <tunnel_name>` with public URL `https://<tunnel_hostname>`.
   If `cloudflared` is missing, return an error explaining `brew install cloudflared`. `MobilePanel` UI: start/stop server, LAN URL, "生成配对二维码"
   (render SVG), tunnel mode selector + start/stop + public URL + pairing QR for the public URL, 撤销所有设备, and a short guide text:
-  局域网直连 / Cloudflare Tunnel（有域名绑子域名、无域名用临时隧道；建议配 Cloudflare Access）.
+  局域网直连 / Cloudflare Tunnel（有域名绑子域名、无域名用临时隧道；建议配 Cloudflare Access）/ IPv6 直连.
+- IPv6 direct: second listener on `[::]:<mobile_ipv6_port>` (IPV6_V6ONLY, no SO_REUSEPORT), same router over TLS with a self-signed cert persisted
+  under `data_dir()/mobile-tls/` (dir 0700, key created 0600; SANs `localhost` + `ddns_hostname`; regenerated only in `mobile_ipv6_start`;
+  `cert_sha256` is the fingerprint of the cert being served); pairing cookie is `Secure` over TLS. Public-facing hardening: TLS handshake
+  runs per connection with a timeout (never inside the accept loop), header-read timeout, capped concurrent connections, connections
+  force-closed after a grace period on stop. Address = stable global unicast (2000::/3, no ULA/link-local/doc; prefer non-temporary).
+  CSRF compares exact host+port (bracket-aware for IPv6; missing port = scheme default, scheme from TLS or `x-forwarded-proto`).
+  DDNS (`mobile/ddns.rs`): Cloudflare API v4 AAAA upsert, `proxied=false`, called only when the address or configured host/zone changes
+  (loop ~5 min) or on manual sync; single in-flight API call (token verify included); 401/403/429 or 3 consecutive failures → `halted`
+  until `mobile_ddns_sync`. Token never logged or returned.
 - Terminal: `portable-pty`, reader thread → `terminal:data` (base64); multi-tab command terminal runs in `RightAside` as RightTab `"terminal"` (`CommandTerminalPanel`). Processes persist when panel/tab is hidden.
   Quote capture: Cmd+Shift+A (and floating/context buttons) adds the current selection as an Annotation `{source:"terminal"}` to the composer, or sends to side chat.
 - Extension (§8) + install at startup to `extension_path()` (overwrite when content differs) + `install_status_extension_globally`.

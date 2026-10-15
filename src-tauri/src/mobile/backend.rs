@@ -22,6 +22,10 @@ pub trait Backend: Send + Sync + 'static {
     fn send_prompt(&self, id: &str, text: &str) -> impl Future<Output = Result<(), String>> + Send;
     fn resume(&self, id: &str) -> impl Future<Output = Result<serde_json::Value, String>> + Send;
     fn subscribe(&self) -> broadcast::Receiver<AppEvent>;
+    /// Full app state for feature slices under `api/`. `None` in test mocks.
+    fn app_state(&self) -> Option<&AppState> {
+        None
+    }
 }
 
 /// Production backend: delegates to the §9 cross-module APIs.
@@ -55,5 +59,8 @@ impl Backend for AppBackend {
     }
     fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
         self.0.bus.subscribe()
+    }
+    fn app_state(&self) -> Option<&AppState> {
+        Some(&self.0)
     }
 }

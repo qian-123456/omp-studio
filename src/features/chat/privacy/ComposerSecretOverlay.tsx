@@ -66,11 +66,14 @@ export function ComposerSecretOverlay({
 	text,
 	taRef,
 	privacy,
+	indent = 0,
 }: {
 	sessionId: string;
 	text: string;
 	taRef: RefObject<HTMLTextAreaElement | null>;
 	privacy: ComposerPrivacy;
+	/** First-line indent in px (command chip width) mirrored from the textarea. */
+	indent?: number;
 }) {
 	const { highlights } = privacy;
 	const mirrorRef = useRef<HTMLDivElement>(null);
@@ -204,7 +207,7 @@ export function ComposerSecretOverlay({
 	return (
 		<>
 			{highlights.length > 0 && (
-				<div ref={mirrorRef} aria-hidden="true" className={clsx(MIRROR_CLASS, "z-0")} style={{ wordBreak: "break-word" }}>
+				<div ref={mirrorRef} aria-hidden="true" className={clsx(MIRROR_CLASS, "z-0")} style={{ wordBreak: "break-word", textIndent: indent }}>
 					{mirrorChildren(
 						text,
 						highlights.map((h) => ({
@@ -225,7 +228,7 @@ export function ComposerSecretOverlay({
 					ref={selMirrorRef}
 					aria-hidden="true"
 					className={clsx(MIRROR_CLASS, "invisible")}
-					style={{ wordBreak: "break-word" }}
+					style={{ wordBreak: "break-word", textIndent: indent }}
 				>
 					{text.slice(0, validSelection.start)}
 					<span ref={setSelSpan}>{selectedValue}</span>

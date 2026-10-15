@@ -519,3 +519,224 @@ fn qr_svg_renders() {
     let svg = super::qr_svg("http://192.168.1.2:7788/pair?code=abc").unwrap();
     assert!(svg.starts_with("<?xml") || svg.contains("<svg"));
 }
+
+#[test]
+fn test_ipv6_address_selection() {
+    use super::ipv6::{is_eligible_global_unicast, select_best_address, CandidateAddress};
+    use std::net::Ipv6Addr;
+    use std::str::FromStr;
+
+    // Rejection of non-global unicast
+    assert!(!is_eligible_global_unicast(
+        &Ipv6Addr::from_str("::1").unwrap()
+    ));
+    assert!(!is_eligible_global_unicast(
+        &Ipv6Addr::from_str("fe80::1").unwrap()
+    ));
+    assert!(!is_eligible_global_unicast(
+        &Ipv6Addr::from_str("fd00::1").unwrap()
+    ));
+    assert!(!is_eligible_global_unicast(
+        &Ipv6Addr::from_str("fc00::1").unwrap()
+    ));
+    assert!(!is_eligible_global_unicast(
+        &Ipv6Addr::from_str("2001:db8::1").unwrap()
+    ));
+    assert!(!is_eligible_global_unicast(
+        &Ipv6Addr::from_str("2001:0:1234::1").unwrap()
+    ));
+    assert!(!is_eligible_global_unicast(
+        &Ipv6Addr::from_str("2002:1234::1").unwrap()
+    ));
+
+    // Acceptance of global unicast (2000::/3)
+    let addr_temp = Ipv6Addr::from_str("2408:4005:1000::1").unwrap();
+    let addr_stable = Ipv6Addr::from_str("2408:4005:1000::2").unwrap();
+    assert!(is_eligible_global_unicast(&addr_temp));
+    assert!(is_eligible_global_unicast(&addr_stable));
+
+    // Prefers stable global over temporary
+    let candidates = vec![
+        CandidateAddress {
+            addr: addr_temp,
+            is_temporary: true,
+            is_deprecated: false,
+        },
+        CandidateAddress {
+            addr: addr_stable,
+            is_temporary: false,
+            is_deprecated: false,
+        },
+    ];
+    let selected = select_best_address(candidates).unwrap();
+    assert_eq!(selected, addr_stable);
+
+    // Prefers non-deprecated over deprecated
+    let addr_dep = Ipv6Addr::from_str("2408:4005:1000::3").unwrap();
+    let candidates = vec![
+        CandidateAddress {
+            addr: addr_dep,
+            is_temporary: false,
+            is_deprecated: true,
+        },
+        CandidateAddress {
+            addr: addr_temp,
+            is_temporary: true,
+            is_deprecated: false,
+        },
+    ];
+    let selected = select_best_address(candidates).unwrap();
+    assert_eq!(selected, addr_temp);
+
+    // All rejected when only non-eligible addresses present
+    let candidates = vec![
+        CandidateAddress {
+            addr: Ipv6Addr::from_str("fe80::1").unwrap(),
+            is_temporary: false,
+            is_deprecated: false,
+        },
+        CandidateAddress {
+            addr: Ipv6Addr::from_str("fd00::1").unwrap(),
+            is_temporary: false,
+            is_deprecated: false,
+        },
+    ];
+    assert!(select_best_address(candidates).is_none());
+}
+
+#[test]
+fn test_csrf_origin_host_matching() {
+    use axum::http::HeaderMap;
+
+    let check = |origin: Option<&str>, host: Option<&str>, tls: bool, xfp: Option<&str>| -> bool {
+        let mut headers = HeaderMap::new();
+        if let Some(o) = origin {
+            headers.insert(header::ORIGIN, o.parse().unwrap());
+        }
+        if let Some(h) = host {
+            headers.insert(header::HOST, h.parse().unwrap());
+        }
+        if let Some(p) = xfp {
+            headers.insert("x-forwarded-proto", p.parse().unwrap());
+        }
+        server::verify_csrf(&headers, tls).is_ok()
+    };
+
+    // LAN: explicit port on both sides, plain HTTP.
+    assert!(check(
+        Some("http://192.168.1.10:7788"),
+        Some("192.168.1.10:7788"),
+        false,
+        None
+    ));
+    assert!(check(
+        Some("http://localhost:7788"),
+        Some("localhost:7788"),
+        false,
+        None
+    ));
+
+    // cloudflared tunnel: https implied on both sides (x-forwarded-proto, no port).
+    assert!(check(
+        Some("https://foo.trycloudflare.com"),
+        Some("foo.trycloudflare.com"),
+        false,
+        Some("https")
+    ));
+
+    // IPv6 direct: bracketed literal over TLS with explicit port.
+    assert!(check(
+        Some("https://[2408:4005:1000::1]:7789"),
+        Some("[2408:4005:1000::1]:7789"),
+        true,
+        None
+    ));
+
+    // Reject: origin's implicit https port (443) vs explicit Host port 7789.
+    assert!(!check(
+        Some("https://home.example.com"),
+        Some("home.example.com:7789"),
+        false,
+        None
+    ));
+    assert!(!check(
+        Some("https://[2408:4005:1000::1]"),
+        Some("[2408:4005:1000::1]:7789"),
+        true,
+        None
+    ));
+
+    // Reject: scheme mismatch (https origin over plain-HTTP host).
+    assert!(!check(
+        Some("https://192.168.1.10:7788"),
+        Some("192.168.1.10:7788"),
+        false,
+        None
+    ));
+
+    // Reject: different IPv6 host.
+    assert!(!check(
+        Some("https://[2408:4005:2000::2]:7789"),
+        Some("[2408:4005:1000::1]:7789"),
+        true,
+        None
+    ));
+
+    // Reject: different port.
+    assert!(!check(
+        Some("https://[2408:4005:1000::1]:8888"),
+        Some("[2408:4005:1000::1]:7789"),
+        true,
+        None
+    ));
+
+    // Reject: different IPv4 host.
+    assert!(!check(
+        Some("http://192.168.1.11:7788"),
+        Some("192.168.1.10:7788"),
+        false,
+        None
+    ));
+
+    // Reject: Origin without a scheme.
+    assert!(!check(
+        Some("192.168.1.10:7788"),
+        Some("192.168.1.10:7788"),
+        false,
+        None
+    ));
+}
+
+#[tokio::test]
+async fn test_tls_pairing_sets_secure_cookie() {
+    let h = harness();
+
+    // Plain HTTP pairing does NOT set Secure
+    let (code1, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let (status, headers, _) = call(&h, get(&format!("/pair?code={code1}"), None)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let cookie = headers[header::SET_COOKIE].to_str().unwrap();
+    assert!(!cookie.contains("Secure"));
+
+    // Pairing over TLS (via TlsConnection extension layer) sets Secure
+    let (code2, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let tls_router = server::router(h.ctx.clone()).layer(axum::Extension(server::TlsConnection));
+    let res = tls_router
+        .oneshot(get(&format!("/pair?code={code2}"), None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
+    assert!(cookie.contains("; Secure"));
+
+    // Pairing behind reverse proxy with x-forwarded-proto: https also sets Secure
+    let (code3, _) = auth::create_pairing(&h.ctx.db.lock(), chrono::Utc::now()).unwrap();
+    let req = Request::get(format!("/pair?code={code3}"))
+        .header("x-forwarded-proto", "https")
+        .body(Body::empty())
+        .unwrap();
+    let res = server::router(h.ctx.clone()).oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
+    assert!(cookie.contains("; Secure"));
+}

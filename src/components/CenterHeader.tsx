@@ -289,7 +289,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 	const handleMobilePair = async () => {
 		setShareOpen(false);
 		try {
-			const info = await mobileCreatePairing(false);
+			const info = await mobileCreatePairing("lan");
 			setQrPairing(info);
 		} catch (e) {
 			toast.error(`获取配对码失败: ${errMsg(e)}`);

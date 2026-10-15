@@ -14,6 +14,11 @@ describe("validateSettingsShape", () => {
 			systemDetection: true,
 			defaultApprovalMode: "yolo",
 			mobilePort: 8080,
+			mobileIpv6Enabled: true,
+			mobileIpv6Port: 7789,
+			ddnsEnabled: true,
+			ddnsZoneId: "023e105f4ecef8ad9ca31a8372d0c353",
+			ddnsHostname: "home.example.com",
 			supervisorIntervalMinutes: 30,
 			idleSuspendMinutes: 60,
 			notifyQuietFrom: "22:00",
@@ -25,6 +30,11 @@ describe("validateSettingsShape", () => {
 			expect(res.value.systemDetection).toBe(true);
 			expect(res.value.defaultApprovalMode).toBe("yolo");
 			expect(res.value.mobilePort).toBe(8080);
+			expect(res.value.mobileIpv6Enabled).toBe(true);
+			expect(res.value.mobileIpv6Port).toBe(7789);
+			expect(res.value.ddnsEnabled).toBe(true);
+			expect(res.value.ddnsZoneId).toBe("023e105f4ecef8ad9ca31a8372d0c353");
+			expect(res.value.ddnsHostname).toBe("home.example.com");
 			expect(res.value.notifyQuietFrom).toBe("22:00");
 			expect(res.value.notifyQuietTo).toBe("08:00");
 		}
@@ -100,5 +110,34 @@ describe("validateSettingsShape", () => {
 		}
 		expect(validateSettingsShape({ followUpBehavior: "append" }).ok).toBe(false);
 		expect(validateSettingsShape({ followUpBehavior: 1 }).ok).toBe(false);
+	});
+
+	it("validates mobileIpv6Port boundaries and rejects invalid port", () => {
+		expect(validateSettingsShape({ mobileIpv6Port: 0 }).ok).toBe(false);
+		expect(validateSettingsShape({ mobileIpv6Port: 70000 }).ok).toBe(false);
+		expect(validateSettingsShape({ mobileIpv6Port: -1 }).ok).toBe(false);
+		expect(validateSettingsShape({ mobileIpv6Port: 1.5 }).ok).toBe(false);
+		expect(validateSettingsShape({ mobileIpv6Port: "7789" }).ok).toBe(false);
+		expect(validateSettingsShape({ mobileIpv6Port: 7789 }).ok).toBe(true);
+		expect(validateSettingsShape({ mobileIpv6Port: 1 }).ok).toBe(true);
+		expect(validateSettingsShape({ mobileIpv6Port: 65535 }).ok).toBe(true);
+	});
+
+	it("validates mobileIpv6Enabled and ddnsEnabled booleans", () => {
+		expect(validateSettingsShape({ mobileIpv6Enabled: "true" }).ok).toBe(false);
+		expect(validateSettingsShape({ ddnsEnabled: 1 }).ok).toBe(false);
+		expect(validateSettingsShape({ mobileIpv6Enabled: false }).ok).toBe(true);
+		expect(validateSettingsShape({ ddnsEnabled: true }).ok).toBe(true);
+	});
+
+	it("validates ddnsZoneId and ddnsHostname string or null", () => {
+		expect(validateSettingsShape({ ddnsHostname: null }).ok).toBe(true);
+		expect(validateSettingsShape({ ddnsZoneId: null }).ok).toBe(true);
+		expect(validateSettingsShape({ ddnsHostname: "home.example.com" }).ok).toBe(true);
+		expect(validateSettingsShape({ ddnsZoneId: "zone-123" }).ok).toBe(true);
+		expect(validateSettingsShape({ ddnsHostname: 12345 }).ok).toBe(false);
+		expect(validateSettingsShape({ ddnsZoneId: 12345 }).ok).toBe(false);
+		expect(validateSettingsShape({ ddnsHostname: "bad\nhost" }).ok).toBe(false);
+		expect(validateSettingsShape({ ddnsZoneId: "bad\0zone" }).ok).toBe(false);
 	});
 });

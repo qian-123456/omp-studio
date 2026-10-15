@@ -532,12 +532,34 @@ export interface PairingInfo {
 	expiresAt: string;
 }
 
+export type PairingTarget = "lan" | "tunnel" | "ipv6";
+
+export interface DdnsStatus {
+	enabled: boolean;
+	/** API token present in the vault (value never leaves the backend). */
+	tokenSet: boolean;
+	hostname: string | null;
+	lastIp: string | null;
+	lastSyncAt: string | null;
+	lastError: string | null;
+	/** True after 401/403/429 or repeated failure; cleared by a manual sync. */
+	halted: boolean;
+}
+
 export interface MobileStatus {
 	running: boolean;
 	port: number;
 	lanUrl: string | null;
 	tunnelUrl: string | null;
 	cloudflaredInstalled: boolean;
+	ipv6Running: boolean;
+	ipv6Port: number;
+	ipv6Address: string | null;
+	/** `https://<ddns host>:<port>` when synced, else `https://[addr]:<port>`. */
+	ipv6Url: string | null;
+	/** Self-signed certificate SHA-256 fingerprint (AA:BB:… uppercase). */
+	certSha256: string | null;
+	ddns: DdnsStatus;
 }
 
 export interface UsageSummary {
@@ -575,6 +597,14 @@ export interface Settings {
 	tunnelMode: string;
 	tunnelName: string | null;
 	tunnelHostname: string | null;
+	/** IPv6 direct HTTPS listener (self-signed cert). Default false. */
+	mobileIpv6Enabled: boolean;
+	/** Default 7789. */
+	mobileIpv6Port: number;
+	/** Cloudflare DDNS for the IPv6 address. Default false. */
+	ddnsEnabled: boolean;
+	ddnsZoneId: string | null;
+	ddnsHostname: string | null;
 	quickCaptureShortcut: string;
 	/** 0 = manual refresh only. */
 	supervisorIntervalMinutes: number;
@@ -771,6 +801,8 @@ export interface ModelContextWindowEdit {
 export interface PathCheck {
 	exists: boolean;
 	isDir: boolean;
+	/** File size in bytes (0 for directories / missing paths). */
+	size: number;
 }
 
 export interface DirEntry {

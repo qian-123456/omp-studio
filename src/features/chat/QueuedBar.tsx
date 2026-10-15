@@ -70,7 +70,7 @@ function QueuedRow({ sid, item, index }: { sid: string; item: HeldItem; index: n
 		document.addEventListener("mousedown", onDown);
 		return () => document.removeEventListener("mousedown", onDown);
 	}, [menuOpen]);
-	const text = stripImageMarkers(item.text).trim() || "（图片）";
+	const text = stripImageMarkers(item.text).trim() || "（附件）";
 	const iconBtn =
 		"shrink-0 rounded p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors";
 	return (

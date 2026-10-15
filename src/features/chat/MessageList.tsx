@@ -52,6 +52,8 @@ import {
 } from "./ExecutionDisclosure";
 import type { ImageAttachment } from "../../lib/contracts";
 import { getImageTokenPalette } from "./Composer";
+import { openPath } from "@tauri-apps/plugin-opener";
+import { parseInlineFiles } from "./fileAttach";
 import { Markdown } from "./markdown";
 import { isContextOverflowError, splitModelRef } from "./contextOverflow";
 import {
@@ -104,7 +106,7 @@ export function stripImageMarkers(text: string): string {
 			"",
 		)
 		.replace(
-			/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?::\s*[^\]]+)?\]|🖼️\s*#\d+/gu,
+			/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?::\s*[^\]]+)?\]|🖼️\s*#\d+|\[(?:File|文件)\s*#\d+(?::\s*[^\]]+)?\]|📎\s*#\d+/gu,
 			"",
 		)
 		.trim();
@@ -112,6 +114,11 @@ export function stripImageMarkers(text: string): string {
 
 const USER_MARKER_RE =
 	/\[(?:Image|图片)\s*#(\d+)(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|🖼️\s*#(\d+)/gu;
+
+/** File-attachment marker `[文件 #N: path]` / `[File #N: path]` / `📎#N`;
+ * groups: 1=num 2=path, 3=num (emoji form). */
+const USER_FILE_MARKER_RE =
+	/\[(?:File|文件)\s*#(\d+)(?::\s*([^\]]+))?\]|📎\s*#(\d+)/gu;
 
 /** User bubble text with image markers kept in place as clickable `#n`
  *  chips (Composer palette). Annotation-header noise is still stripped. */
@@ -126,42 +133,78 @@ function renderUserTextWithChips(
 		)
 		.trim();
 	const parts: React.ReactNode[] = [];
-	let last = 0;
+	// Merge image + file markers, ordered by position.
+	const markers: Array<{ at: number; len: number; kind: "img" | "file"; m: RegExpMatchArray }> = [];
 	for (const m of cleaned.matchAll(USER_MARKER_RE)) {
-		const at = m.index ?? 0;
+		markers.push({ at: m.index ?? 0, len: m[0].length, kind: "img", m });
+	}
+	for (const m of cleaned.matchAll(USER_FILE_MARKER_RE)) {
+		markers.push({ at: m.index ?? 0, len: m[0].length, kind: "file", m });
+	}
+	markers.sort((a, b) => a.at - b.at);
+	let last = 0;
+	for (const { at, len, kind, m } of markers) {
+		if (at < last) continue; // overlapping alternative — keep the earlier one
 		if (at > last) parts.push(<PrivacyText key={`t-${last}`} text={cleaned.slice(last, at)} />);
-		const num = Number.parseInt(m[1] ?? m[2] ?? "1", 10) || 1;
+		const num = Number.parseInt(m[1] ?? m[2] ?? m[3] ?? "1", 10) || 1;
 		const palette = getImageTokenPalette(num);
-		parts.push(
-			<button
-				key={`img-${at}`}
-				type="button"
-				onClick={() => onOpen(num)}
-				title={`查看图片 #${num}`}
-				className="mx-0.5 inline cursor-pointer align-baseline hover:opacity-80"
-				style={{ color: palette.hex }}
-			>
-				<span
-					className="underline decoration-2 underline-offset-[3px]"
-					style={{ color: palette.hex, textDecorationColor: palette.hex }}
+		if (kind === "file") {
+			const path = m[2]?.trim();
+			parts.push(
+				<button
+					key={`file-${at}`}
+					type="button"
+					onClick={() => {
+						if (path) {
+							void openPath(path).catch((e: unknown) =>
+								toast.error(`打开文件失败: ${errMsg(e)}`),
+							);
+						}
+					}}
+					title={path ? `打开文件 #${num}：${path}` : `文件 #${num}`}
+					className="mx-0.5 inline cursor-pointer align-baseline hover:opacity-80"
+					style={{ color: palette.hex }}
 				>
-					{`🖼️#${num}`}
-				</span>
-			</button>,
-		);
-		last = at + m[0].length;
+					<span
+						className="underline decoration-2 underline-offset-[3px]"
+						style={{ color: palette.hex, textDecorationColor: palette.hex }}
+					>
+						{`📎#${num}`}
+					</span>
+				</button>,
+			);
+		} else {
+			parts.push(
+				<button
+					key={`img-${at}`}
+					type="button"
+					onClick={() => onOpen(num)}
+					title={`查看图片 #${num}`}
+					className="mx-0.5 inline cursor-pointer align-baseline hover:opacity-80"
+					style={{ color: palette.hex }}
+				>
+					<span
+						className="underline decoration-2 underline-offset-[3px]"
+						style={{ color: palette.hex, textDecorationColor: palette.hex }}
+					>
+						{`🖼️#${num}`}
+					</span>
+				</button>,
+			);
+		}
+		last = at + len;
 	}
 	if (last < cleaned.length) parts.push(<PrivacyText key={`t-${last}`} text={cleaned.slice(last)} />);
 	return parts;
 }
 
 /**
- * Row padding that reserves the ChatTrace gutter. The dash strip lives at the
- * pane's left edge, so the 3rem reserve is only needed when the message column
- * spans the full pane (narrow); once it is centered with side margins the
- * padding is symmetric.
+ * Row padding that clears the ChatTrace gutter. The dash strip sits at the
+ * pane's left edge (≈28px), so the narrow layout uses an equal 2rem inset on
+ * both sides; once the column is centered with side margins the padding is
+ * the regular symmetric one.
  */
-const TRACE_GUTTER_PAD = "pl-14 pr-3 @min-[864px]:px-3";
+const TRACE_GUTTER_PAD = "px-8 @min-[864px]:px-3";
 
 /** 20px-square ghost icon button, matching the AnswerFooter actions. */
 const USER_ACTION_BTN =
@@ -224,7 +267,9 @@ const UserRow = React.memo(function UserRow({
 		setCollapsible(el.scrollHeight > el.clientHeight + 1);
 	}, [userText]);
 
-	const showBubble = userText.trim().length > 0;
+	// File-attachment markers render as chips even when they're the only content.
+	const hasFileMarkers = useMemo(() => parseInlineFiles(rawText).length > 0, [rawText]);
+	const showBubble = userText.trim().length > 0 || hasFileMarkers;
 	return (
 		<div
 			id={`msg-${item.id}`}

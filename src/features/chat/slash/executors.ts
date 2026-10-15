@@ -17,6 +17,8 @@ import { SlashAbort, type SlashContext } from "./types";
 export interface SlashDeps {
 	openModelPicker(): void;
 	openThinkingPicker(): void;
+	/** Open the composer's context-usage popover. */
+	openContextPopover(): void;
 	insertText(text: string): void;
 }
 
@@ -51,6 +53,7 @@ export function buildSlashContext(
 		insertText: deps.insertText,
 		openModelPicker: deps.openModelPicker,
 		openThinkingPicker: deps.openThinkingPicker,
+		openContextPopover: deps.openContextPopover,
 		openSettingsTarget,
 		openSettings: () => useUi.getState().openSettings(),
 	};

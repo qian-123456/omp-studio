@@ -26,7 +26,9 @@ export type SettingsTarget =
 	| "approvals"
 	| "providers"
 	| "compaction"
-	| "modelContext";
+	| "modelContext"
+	| "quota"
+	| "about";
 
 export const SETTINGS_TARGETS: Record<
 	SettingsTarget,
@@ -111,6 +113,17 @@ export const SETTINGS_TARGETS: Record<
 	modelContext: {
 		section: "context-window",
 		label: "上下文窗口",
+	},
+	// `quota` is the legacy nav alias for providers; ProvidersSection flips to
+	// the 订阅与配额 tab on that request.
+	quota: {
+		section: "quota",
+		focusKey: "quotaDashboard",
+		label: "订阅与配额",
+	},
+	about: {
+		section: "about",
+		label: "关于与更新",
 	},
 };
 

@@ -2,7 +2,9 @@
 
 use std::convert::Infallible;
 use std::sync::Arc;
+use std::time::Duration;
 
+use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
@@ -11,9 +13,14 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::stream::{self, Stream, StreamExt as _};
+use hyper::body::Incoming;
+use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
+use hyper_util::server::conn::auto;
+use hyper_util::service::TowerToHyperService;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, watch, Semaphore};
+use tower::ServiceExt as _;
 
 use super::auth;
 use super::backend::Backend;
@@ -29,7 +36,8 @@ pub struct Ctx<B> {
     pub shutdown: watch::Receiver<bool>,
 }
 
-pub struct ApiError(StatusCode, String);
+#[derive(Debug)]
+pub struct ApiError(pub StatusCode, pub String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -53,7 +61,9 @@ pub fn router<B: Backend>(ctx: Arc<Ctx<B>>) -> Router {
         .route("/sessions/{id}/prompt", post(prompt::<B>))
         .route("/sessions/{id}/resume", post(resume::<B>))
         .route("/sessions/{id}/last", get(last::<B>))
+        .route("/sessions/{id}/transcript", get(transcript::<B>))
         .route("/events", get(events::<B>))
+        .merge(super::api::routes::<B>())
         .route_layer(middleware::from_fn_with_state(
             ctx.clone(),
             require_auth::<B>,
@@ -61,24 +71,88 @@ pub fn router<B: Backend>(ctx: Arc<Ctx<B>>) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/pair", get(pair::<B>))
+        .route("/static/{*path}", get(static_asset))
         .nest("/api", api)
         .with_state(ctx)
+}
+
+async fn static_asset(Path(path): Path<String>) -> Response {
+    match super::assets::find(&path) {
+        Some((ct, body)) => (
+            [
+                (header::CONTENT_TYPE, ct),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
+            body,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 async fn index() -> impl IntoResponse {
     ([(header::CACHE_CONTROL, "no-store")], Html(INDEX_HTML))
 }
 
-fn extract_host_authority(val: &str) -> &str {
-    let stripped = val
-        .trim()
-        .strip_prefix("https://")
-        .or_else(|| val.trim().strip_prefix("http://"))
-        .unwrap_or(val.trim());
-    stripped.split('/').next().unwrap_or(stripped).trim()
+/// (scheme, authority) of an absolute URL, cutting the authority at the first
+/// path/query/fragment separator. `None` when the URL has no scheme.
+fn split_scheme_authority(url: &str) -> Option<(&str, &str)> {
+    let (scheme, rest) = url.trim().split_once("://")?;
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    Some((scheme, rest[..end].trim()))
 }
 
-fn verify_csrf(headers: &HeaderMap) -> Result<(), ApiError> {
+pub(crate) fn split_host_port(authority: &str) -> (&str, Option<&str>) {
+    let auth = authority.trim();
+    if auth.starts_with('[') {
+        if let Some(end) = auth.find(']') {
+            let host = &auth[..=end];
+            let rest = &auth[end + 1..];
+            let port = rest.strip_prefix(':').map(str::trim);
+            return (host, port);
+        }
+    }
+    match auth.split_once(':') {
+        Some((host, port)) => (host.trim(), Some(port.trim())),
+        None => (auth, None),
+    }
+}
+
+/// Default port for a scheme (https → 443, http → 80).
+fn scheme_default_port(scheme: &str) -> Option<u16> {
+    match scheme.to_ascii_lowercase().as_str() {
+        "https" => Some(443),
+        "http" => Some(80),
+        _ => None,
+    }
+}
+
+/// Effective port: the explicit one, or the scheme's default when omitted.
+/// An explicit but unparseable port yields `None` (never matches).
+fn effective_port(port: Option<&str>, scheme: &str) -> Option<u16> {
+    match port {
+        Some(p) => p.parse::<u16>().ok(),
+        None => scheme_default_port(scheme),
+    }
+}
+
+/// Exact host+port origin match. A missing port means the scheme's default
+/// (https → 443, http → 80), and the scheme itself must match too.
+/// Bracket-aware for IPv6 literals.
+fn origin_matches(expected_auth: &str, expected_scheme: &str, url: &str) -> bool {
+    let Some((scheme, actual_auth)) = split_scheme_authority(url) else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case(expected_scheme) {
+        return false;
+    }
+    let (actual_host, actual_port) = split_host_port(actual_auth);
+    let (exp_host, exp_port) = split_host_port(expected_auth);
+    actual_host.eq_ignore_ascii_case(exp_host)
+        && effective_port(actual_port, scheme) == effective_port(exp_port, expected_scheme)
+}
+
+pub(crate) fn verify_csrf(headers: &HeaderMap, is_tls: bool) -> Result<(), ApiError> {
     if let Some(site) = headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {
         if site.eq_ignore_ascii_case("cross-site") {
             return Err(ApiError(
@@ -88,40 +162,35 @@ fn verify_csrf(headers: &HeaderMap) -> Result<(), ApiError> {
         }
     }
 
-    let expected_host = headers
+    let expected_auth = headers
         .get("x-forwarded-host")
         .or_else(|| headers.get(header::HOST))
         .and_then(|v| v.to_str().ok())
-        .map(|h| h.trim());
+        .map(str::trim);
+    // The expected side's scheme comes from the connection itself, not from a
+    // spoofable header: TLS here, or a trusted proxy's forwarded proto.
+    let expected_scheme = if is_tls
+        || headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|p| p.eq_ignore_ascii_case("https"))
+    {
+        "https"
+    } else {
+        "http"
+    };
+    let untrusted = |what: &str| ApiError(StatusCode::FORBIDDEN, format!("{what} 来源不受信任"));
 
     if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
-        let origin_auth = extract_host_authority(origin);
-        if let Some(exp) = expected_host {
-            let exp_auth = extract_host_authority(exp);
-            let origin_host_only = origin_auth.split(':').next().unwrap_or(origin_auth);
-            let exp_host_only = exp_auth.split(':').next().unwrap_or(exp_auth);
-            if !origin_auth.eq_ignore_ascii_case(exp_auth)
-                && !origin_host_only.eq_ignore_ascii_case(exp_host_only)
-            {
-                return Err(ApiError(
-                    StatusCode::FORBIDDEN,
-                    "Origin 来源不受信任".into(),
-                ));
+        if let Some(exp) = expected_auth {
+            if !origin_matches(exp, expected_scheme, origin) {
+                return Err(untrusted("Origin"));
             }
         }
     } else if let Some(referer) = headers.get(header::REFERER).and_then(|v| v.to_str().ok()) {
-        let referer_auth = extract_host_authority(referer);
-        if let Some(exp) = expected_host {
-            let exp_auth = extract_host_authority(exp);
-            let ref_host_only = referer_auth.split(':').next().unwrap_or(referer_auth);
-            let exp_host_only = exp_auth.split(':').next().unwrap_or(exp_auth);
-            if !referer_auth.eq_ignore_ascii_case(exp_auth)
-                && !ref_host_only.eq_ignore_ascii_case(exp_host_only)
-            {
-                return Err(ApiError(
-                    StatusCode::FORBIDDEN,
-                    "Referer 来源不受信任".into(),
-                ));
+        if let Some(exp) = expected_auth {
+            if !origin_matches(exp, expected_scheme, referer) {
+                return Err(untrusted("Referer"));
             }
         }
     }
@@ -151,7 +220,8 @@ async fn require_auth<B: Backend>(
         _ => return ApiError(StatusCode::UNAUTHORIZED, "未配对或已被撤销".into()).into_response(),
     };
     if req.method() == axum::http::Method::POST {
-        if let Err(err) = verify_csrf(req.headers()) {
+        let is_tls = req.extensions().get::<TlsConnection>().is_some();
+        if let Err(err) = verify_csrf(req.headers(), is_tls) {
             return err.into_response();
         }
     }
@@ -170,10 +240,13 @@ fn pair_failed_page() -> Response {
         <h3>配对失败</h3><p>配对码无效、已使用或已过期（5 分钟有效）。请在电脑上重新生成二维码。</p></body>";
     (StatusCode::FORBIDDEN, Html(body)).into_response()
 }
+#[derive(Clone, Copy, Debug)]
+pub struct TlsConnection;
 
 async fn pair<B: Backend>(
     State(ctx): State<Arc<Ctx<B>>>,
     headers: HeaderMap,
+    tls_ext: Option<axum::Extension<TlsConnection>>,
     Query(q): Query<PairQuery>,
 ) -> Response {
     let Some(code) = q.code.filter(|c| !c.is_empty()) else {
@@ -188,10 +261,11 @@ async fn pair<B: Backend>(
         Ok(Some(t)) => t,
         _ => return pair_failed_page(),
     };
-    let https = headers
-        .get("x-forwarded-proto")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|p| p.eq_ignore_ascii_case("https"));
+    let https = tls_ext.is_some()
+        || headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|p| p.eq_ignore_ascii_case("https"));
     let cookie = format!(
         "{}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000{}",
         auth::COOKIE,
@@ -414,6 +488,68 @@ async fn last<B: Backend>(
     Ok(Json(json!({ "text": text })))
 }
 
+#[derive(Deserialize)]
+struct TranscriptQuery {
+    from: Option<u64>,
+}
+
+/// Cap on tool output / tool arguments sent to the phone; the desktop keeps the full text.
+const MOBILE_TOOL_TEXT_CAP: usize = 4000;
+
+fn cap_chars(s: &mut String, max: usize) {
+    if let Some((idx, _)) = s.char_indices().nth(max) {
+        s.truncate(idx);
+        s.push('…');
+    }
+}
+
+/// Normalized transcript page (same shape as the desktop `get_transcript`),
+/// with hidden items dropped and bulky tool payloads truncated.
+async fn transcript<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Query(q): Query<TranscriptQuery>,
+) -> ApiResult<Value> {
+    validate_id(&id)?;
+    let meta = ctx
+        .backend
+        .session(&id)
+        .await
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
+    let file = std::path::PathBuf::from(&meta.file);
+    let from = q.from.unwrap_or(0);
+    let sid = id.clone();
+    let page = tokio::task::spawn_blocking(move || {
+        if !file.exists() {
+            return Ok(crate::contracts::TranscriptPage {
+                session_id: sid,
+                ..Default::default()
+            });
+        }
+        crate::catalog::transcript::read_page(&file, &sid, from)
+    })
+    .await
+    .map_err(|e| bad_gateway(e.to_string()))?
+    .map_err(|e| bad_gateway(format!("读取记录失败: {e}")))?;
+    let mut page = page;
+    page.items.retain(|i| !i.hidden);
+    for item in &mut page.items {
+        if let Some(r) = item.tool_result.as_mut() {
+            cap_chars(&mut r.text, MOBILE_TOOL_TEXT_CAP);
+            r.details = None;
+        }
+        for c in &mut item.tool_calls {
+            if c.args.to_string().chars().count() > MOBILE_TOOL_TEXT_CAP {
+                let mut s = c.args.to_string();
+                cap_chars(&mut s, MOBILE_TOOL_TEXT_CAP);
+                c.args = Value::String(s);
+            }
+        }
+        item.usage = None;
+    }
+    Ok(Json(json!(page)))
+}
+
 /// Map bus events to SSE events the mobile page cares about.
 pub fn sse_event(ev: &AppEvent) -> Option<Event> {
     match ev {
@@ -426,6 +562,32 @@ pub fn sse_event(ev: &AppEvent) -> Option<Event> {
             Event::default()
                 .event("session")
                 .data(json!({ "sessionId": session_id, "old": old, "new": new }).to_string()),
+        ),
+        AppEvent::RpcFrame { session_id, frame } => {
+            let ty = frame.get("type").and_then(Value::as_str)?;
+            if !matches!(
+                ty,
+                "agent_start"
+                    | "agent_end"
+                    | "turn_start"
+                    | "turn_end"
+                    | "message_update"
+                    | "message_end"
+                    | "tool_execution_start"
+                    | "tool_execution_end"
+            ) {
+                return None;
+            }
+            Some(
+                Event::default()
+                    .event("rpc")
+                    .data(json!({ "sessionId": session_id, "frame": frame }).to_string()),
+            )
+        }
+        AppEvent::PromptSent { session_id } | AppEvent::UiResponded { session_id, .. } => Some(
+            Event::default()
+                .event("touch")
+                .data(json!({ "sessionId": session_id }).to_string()),
         ),
         _ => None,
     }
@@ -495,4 +657,115 @@ pub async fn serve<B: Backend>(listener: tokio::net::TcpListener, ctx: Arc<Ctx<B
             }
         })
         .await;
+}
+
+/// TLS handshake timeout for one accepted connection.
+const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Max wait for request headers; also bounds idle keep-alive connections
+/// (hyper re-arms it each time the connection waits for the next request head).
+const TLS_HEADER_READ_TIMEOUT: Duration = Duration::from_secs(10);
+/// Cap on concurrent TLS connections; excess peers wait in the kernel backlog
+/// instead of holding process file descriptors.
+const TLS_MAX_CONNECTIONS: usize = 64;
+/// How long in-flight requests may finish after stop before force-close.
+const TLS_STOP_GRACE: Duration = Duration::from_secs(3);
+
+/// Resolves when the shutdown watch flips to true (or its sender disappears).
+async fn shutdown_fired(sd: &mut watch::Receiver<bool>) {
+    loop {
+        if *sd.borrow() {
+            return;
+        }
+        if sd.changed().await.is_err() {
+            return;
+        }
+    }
+}
+
+/// Serve the same router over TLS until `shutdown` flips to true.
+///
+/// Unlike `axum::serve`, the TLS handshake runs inside the per-connection task
+/// (a silent client cannot stall the accept loop), hyper timeouts are armed,
+/// concurrent connections are capped, and stop force-closes stragglers after a
+/// short grace period.
+pub async fn serve_tls<B: Backend>(
+    listener: tokio::net::TcpListener,
+    acceptor: tokio_rustls::TlsAcceptor,
+    ctx: Arc<Ctx<B>>,
+) {
+    let mut sd = ctx.shutdown.clone();
+    let app = router(ctx)
+        .layer(axum::Extension(TlsConnection))
+        .map_request(|req: Request<Incoming>| req.map(Body::new));
+    let permits = Arc::new(Semaphore::new(TLS_MAX_CONNECTIONS));
+
+    let mut builder = auto::Builder::new(TokioExecutor::new());
+    builder
+        .http1()
+        .timer(TokioTimer::new())
+        .header_read_timeout(TLS_HEADER_READ_TIMEOUT);
+
+    let mut tasks: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
+    loop {
+        tokio::select! {
+            _ = shutdown_fired(&mut sd) => break,
+            // acquire_owned: the permit owns an Arc clone, so it is 'static
+            // and can move into the spawned connection task.
+            permit = permits.clone().acquire_owned() => {
+                let Ok(permit) = permit else { break };
+                let (tcp, addr) = tokio::select! {
+                    _ = shutdown_fired(&mut sd) => break,
+                    accepted = listener.accept() => match accepted {
+                        Ok(conn) => conn,
+                        Err(_) => {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            continue;
+                        }
+                    },
+                };
+                let app = app.clone();
+                let acceptor = acceptor.clone();
+                let builder = builder.clone();
+                tasks.spawn(async move {
+                    // Held for the whole connection; bounds concurrency.
+                    let _permit = permit;
+                    let tls_stream =
+                        match tokio::time::timeout(TLS_HANDSHAKE_TIMEOUT, acceptor.accept(tcp))
+                            .await
+                        {
+                            Ok(Ok(stream)) => stream,
+                            Ok(Err(e)) => {
+                                tracing::debug!("TLS handshake failed from {addr}: {e}");
+                                return;
+                            }
+                            Err(_) => {
+                                tracing::debug!("TLS handshake timed out from {addr}");
+                                return;
+                            }
+                        };
+                    let service = TowerToHyperService::new(app);
+                    let conn =
+                        builder.serve_connection_with_upgrades(TokioIo::new(tls_stream), service);
+                    if let Err(e) = conn.await {
+                        tracing::debug!("TLS connection error from {addr}: {e}");
+                    }
+                });
+            }
+        }
+    }
+
+    // Grace period: let in-flight requests finish (SSE ends on the shutdown
+    // watch), then force-close whatever is still open.
+    let grace = tokio::time::sleep(TLS_STOP_GRACE);
+    tokio::pin!(grace);
+    while !tasks.is_empty() {
+        tokio::select! {
+            _ = &mut grace => {
+                tasks.abort_all();
+                break;
+            }
+            _ = tasks.join_next() => {}
+        }
+    }
+    while tasks.join_next().await.is_some() {}
 }

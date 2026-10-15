@@ -43,6 +43,17 @@ pub async fn set_mobile_enabled(state: &AppState, enabled: bool) -> Result<(), S
     Ok(())
 }
 
+/// Atomically updates only the `mobile_ipv6_enabled` setting using the shared `SAVE_LOCK`.
+pub async fn set_mobile_ipv6_enabled(state: &AppState, enabled: bool) -> Result<(), String> {
+    let _guard = SAVE_LOCK.lock().await;
+
+    let mut settings = state.settings.read().clone();
+    settings.mobile_ipv6_enabled = enabled;
+    apply_locked(state, settings)?;
+
+    Ok(())
+}
+
 /// Validates, persists, and updates memory while the caller holds `SAVE_LOCK`.
 /// Avoids holding parking_lot synchronization guards across asynchronous await points.
 fn apply_locked(state: &AppState, settings: Settings) -> Result<Settings, String> {
@@ -90,6 +101,12 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
     // 3. Mobile port
     if settings.mobile_port == 0 {
         return Err("移动端端口号不能为 0".to_string());
+    }
+    if settings.mobile_ipv6_port < 1024 {
+        return Err("移动端 IPv6 端口号必须在 1024 到 65535 之间".to_string());
+    }
+    if settings.mobile_ipv6_port == settings.mobile_port {
+        return Err("移动端 IPv6 端口号不能与 IPv4 端口号相同".to_string());
     }
 
     // 4. OMP binary & model non-blank
@@ -175,6 +192,27 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
         let trimmed = raw_host.trim();
         if !trimmed.is_empty() {
             validate_hostname(trimmed)?;
+        }
+    }
+
+    // Validate ddns_hostname if provided
+    if let Some(raw_host) = &settings.ddns_hostname {
+        let trimmed = raw_host.trim();
+        if trimmed.is_empty() {
+            return Err("Cloudflare DDNS 域名不能为空".to_string());
+        }
+        validate_hostname(trimmed)?;
+    }
+
+    // Validate ddns_zone_id if provided (must be 32 lowercase hex characters)
+    if let Some(raw_zone) = &settings.ddns_zone_id {
+        let trimmed = raw_zone.trim();
+        let is_32_lower_hex = trimmed.len() == 32
+            && trimmed
+                .chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, 'a'..='f'));
+        if !is_32_lower_hex {
+            return Err("Cloudflare Zone ID 必须为 32 位小写十六进制字符串".to_string());
         }
     }
 
@@ -887,6 +925,57 @@ mod tests {
         assert!(err.contains("移动端端口号不能为 0"));
 
         settings.mobile_port = 8080;
+        assert!(validate(&settings).is_ok());
+    }
+
+    #[test]
+    fn test_validate_mobile_ipv6_port() {
+        let mut settings = Settings {
+            mobile_port: 7788,
+            mobile_ipv6_port: 7788,
+            ..Settings::default()
+        };
+        let err = validate(&settings).unwrap_err();
+        assert!(err.contains("不能与 IPv4 端口号相同"));
+
+        settings.mobile_ipv6_port = 1023;
+        let err = validate(&settings).unwrap_err();
+        assert!(err.contains("必须在 1024 到 65535 之间"));
+
+        settings.mobile_ipv6_port = 7789;
+        assert!(validate(&settings).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ddns_settings() {
+        // Empty ddns_hostname rejected
+        let mut settings = Settings {
+            ddns_hostname: Some("   ".to_string()),
+            ..Settings::default()
+        };
+        let err = validate(&settings).unwrap_err();
+        assert!(err.contains("Cloudflare DDNS 域名不能为空"));
+
+        // Invalid hostname format rejected
+        settings.ddns_hostname = Some("-invalid.example.com".to_string());
+        assert!(validate(&settings).is_err());
+
+        // Valid hostname accepted
+        settings.ddns_hostname = Some("ddns.example.com".to_string());
+        assert!(validate(&settings).is_ok());
+
+        // Invalid ddns_zone_id: length not 32
+        settings.ddns_zone_id = Some("abc123".to_string());
+        let err = validate(&settings).unwrap_err();
+        assert!(err.contains("32 位小写十六进制"));
+
+        // Invalid ddns_zone_id: uppercase hex rejected
+        settings.ddns_zone_id = Some("0123456789abcdef0123456789ABCDEF".to_string());
+        let err = validate(&settings).unwrap_err();
+        assert!(err.contains("32 位小写十六进制"));
+
+        // Valid ddns_zone_id accepted
+        settings.ddns_zone_id = Some("0123456789abcdef0123456789abcdef".to_string());
         assert!(validate(&settings).is_ok());
     }
 

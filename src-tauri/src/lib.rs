@@ -220,6 +220,8 @@ pub fn run() {
             services::commands::fs_read_dir,
             services::commands::validate_path,
             services::commands::save_clipboard_image,
+            services::clipboard::clipboard_file_paths,
+            services::clipboard::save_clipboard_file,
             services::commands::save_share_image,
             services::commands::app_memory_usage,
             services::commands::perf_breakdown,
@@ -276,8 +278,14 @@ pub fn run() {
             mobile::commands::mobile_status,
             mobile::commands::mobile_create_pairing,
             mobile::commands::mobile_revoke_all,
+            mobile::commands::mobile_ipv6_start,
+            mobile::commands::mobile_ipv6_stop,
             mobile::commands::tunnel_start,
             mobile::commands::tunnel_stop,
+            // E — mobile DDNS
+            mobile::ddns::mobile_ddns_set_token,
+            mobile::ddns::mobile_ddns_clear_token,
+            mobile::ddns::mobile_ddns_sync,
             // E — terminal
             terminal::commands::term_open,
             terminal::commands::term_write,

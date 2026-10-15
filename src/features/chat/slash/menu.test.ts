@@ -18,6 +18,7 @@ describe("slash menu — buildSlashSections", () => {
 			"集成",
 			"设置",
 			"技能",
+			"更多 OMP 命令",
 		]);
 		expect(flattenSections(sections).map((i) => i.name)).toContain("fork");
 	});
@@ -107,6 +108,21 @@ describe("slash menu — buildSlashSections", () => {
 		// `/visualize` alias resolves to the same registry entry.
 		const alias = flattenSections(buildSlashSections("visualize", [], false));
 		expect(alias[0]?.name).toBe("skill:visualize");
+	});
+
+	it("matches the newly registered GUI commands", () => {
+		const names = (q: string) =>
+			flattenSections(buildSlashSections(q, [], false)).map((i) => i.name);
+		expect(names("plan")).toContain("plan");
+		expect(names("goal")).toContain("goal");
+		expect(names("btw")).toContain("btw");
+		expect(names("resume")).toContain("resume");
+		expect(names("slow")).toContain("slow");
+		// /fork-style arg commands carry their hint through to the menu item
+		const fork = flattenSections(buildSlashSections("fork", [], false)).find(
+			(i) => i.name === "fork",
+		);
+		expect(fork?.argHint).toBeTruthy();
 	});
 
 	it("hides Visualize when the visualizeEnabled setting is off", () => {

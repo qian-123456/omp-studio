@@ -13,12 +13,20 @@ import {
 	Square,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { listWorkspaceFiles, readTextFile, rpcSend, saveClipboardImage, sessionSnapshot, sessionUsage } from "../../lib/ipc";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { clipboardFilePaths, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, validatePath } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment, SessionSnapshot } from "../../lib/contracts";
-import { AttachmentThumb } from "./ImageChips";
+import { AttachmentThumb, FileChip } from "./ImageChips";
+
+import {
+	baseName,
+	getFileTokenRanges,
+	isProbablyBinaryPath,
+	parseInlineFiles,
+} from "./fileAttach";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 export interface InlineImageToken {
 	match: string;
 	index: number;
@@ -41,7 +49,7 @@ export function getImageTokenPalette(index: number) {
 }
 
 export function renderHighlightedText(content: string) {
-	const regex = /(🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+\])/gu;
+	const regex = /(🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+\])/gu;
 	const parts: React.ReactNode[] = [];
 	let lastIdx = 0;
 	let match: RegExpExecArray | null;
@@ -133,6 +141,7 @@ import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
 import { formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { useUi } from "../../stores/ui";
 import { hasLiveUserActivity, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useHeldQueue } from "./heldQueue";
@@ -163,6 +172,9 @@ import { ModelMenuContent } from "../../components/ModelSelect";
 import { buildSlashSections, flattenSections, type SlashMenuItem } from "./slash/menu";
 import { SlashMenu } from "./slash/SlashMenu";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
+import { findSlashCommand } from "./slash/registry";
+import { loadChip, saveChip, serializeChip, type CommandChip } from "./slash/chip";
+import { CommandChipBadge } from "./slash/CommandChip";
 import { requestTakeover } from "../sessions/sessionActions";
 import { ContextPillBar, WorkspacePickerPopover } from "./ContextPillBar";
 import { AddMenuPopover } from "./AddMenuPopover";
@@ -171,6 +183,7 @@ import { ensureSettings, useSettings } from "../settings/store";
 import { runSessionBash } from "./sessionShell";
 import { textAnnotationsOf } from "./annotations";
 import { AnnotationChip } from "./AnnotationChip";
+import { GoalBar } from "./GoalBar";
 
 /** How long an interrupt waits for the aborted turn to stop before holding the message. */
 const INTERRUPT_WAIT_MS = 15_000;
@@ -232,17 +245,45 @@ export function Composer({
 	const [argHintLine, setArgHintLine] = useState<string | null>(null);
 
 	const taRef = useRef<HTMLTextAreaElement>(null);
+	const [contextOpen, setContextOpen] = useState(false);
 	const backdropRef = useRef<HTMLDivElement>(null);
 	const composerCardRef = useRef<HTMLDivElement>(null);
 	// Draft state bound to useComposer store so switching sessions does not lose input
 	const text = useComposer((s) => s.drafts[sessionId] ?? "");
-	const hasImageTokens = useMemo(
-		() => /(?:🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+\])/u.test(text),
+	const hasInlineTokens = useMemo(
+		() => /(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+\])/u.test(text),
 		[text],
 	);
 	const setDraft = useComposer((s) => s.setDraft);
 	const clearDraft = useComposer((s) => s.clearDraft);
 	const setText = (nextText: string) => setDraft(sessionId, nextText);
+
+	// Command chip: an atomic `/name` pinned to the input start; the draft
+	// holds only its arguments and `serializeChip` restores `/name args` on
+	// send. Persisted per session alongside drafts (see slash/chip.ts).
+	const [chip, setChipState] = useState<CommandChip | null>(() => loadChip(sessionId));
+	const setChip = useCallback(
+		(next: CommandChip | null) => {
+			setChipState(next);
+			saveChip(sessionId, next);
+		},
+		[sessionId],
+	);
+	useEffect(() => {
+		setChipState(loadChip(sessionId));
+	}, [sessionId]);
+	// Measured overlay width → text-indent on textarea + mirrors so typed
+	// args start right after the chip.
+	const chipElRef = useRef<HTMLSpanElement>(null);
+	const [chipIndent, setChipIndent] = useState(0);
+	useLayoutEffect(() => {
+		const el = chipElRef.current;
+		setChipIndent(el ? el.offsetWidth + 6 : 0);
+		if (!el) return;
+		const ro = new ResizeObserver(() => setChipIndent(el.offsetWidth + 6));
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [chip]);
 	const privacy = useComposerPrivacy(sessionId, text);
 	const privacyEntries = usePrivacy((s) => s.entries);
 	const libraryCandidates = useMemo(
@@ -280,13 +321,18 @@ export function Composer({
 	const composerImages = useComposer(
 		(s) => s.images[sessionId] ?? EMPTY_LIST,
 	);
+	const composerFiles = useComposer(
+		(s) => s.files[sessionId] ?? EMPTY_LIST,
+	);
 	const addImage = useComposer((s) => s.addImage);
+	const addFile = useComposer((s) => s.addFile);
 	const clearImages = useComposer((s) => s.clearImages);
+	const clearFiles = useComposer((s) => s.clearFiles);
 	const moveAnnotation = useComposer((s) => s.moveAnnotation);
 	const textAnnotations = useMemo(() => textAnnotationsOf(annotations), [annotations]);
 	// Quote annotations alone are a sendable message (formatWithAnnotations
 	// handles empty text); only a fully empty composer turns ▶ into resume.
-	const hasPayload = text.trim().length > 0 || textAnnotations.length > 0;
+	const hasPayload = text.trim().length > 0 || textAnnotations.length > 0 || chip !== null;
 	const resumeMode = canResume && !hasPayload;
 	// Send shortcut + follow-up behavior (Settings ▸ General); defaults until settings load.
 	const sendShortcut = normalizeSendShortcut(useSettings((s) => s.settings?.sendShortcut));
@@ -399,6 +445,17 @@ export function Composer({
 	const planMode = useComposer((s) => s.planModes[sessionId] === true);
 	const togglePlanMode = useComposer((s) => s.togglePlanMode);
 
+	// When a plan-mode turn yields, surface the produced plan in the
+	// right-side 计划 tab (once per streaming round).
+	const planPanelOpenedForTurn = useRef(false);
+	useEffect(() => {
+		if (streaming) planPanelOpenedForTurn.current = false;
+		else if (planMode && !planPanelOpenedForTurn.current) {
+			planPanelOpenedForTurn.current = true;
+			useUi.getState().setRightTab("plan");
+		}
+	}, [streaming, planMode]);
+
 	/** Attach one filesystem path: images go to the gallery, text files are
 	 * inlined as doc references, folders/binaries as path-only references. */
 	const attachPath = async (filePath: string, isDir = false) => {
@@ -416,11 +473,38 @@ export function Composer({
 			}
 			return;
 		}
+		// Known-binary formats never get inlined — even if a file happens to
+		// decode as UTF-8, office/archive payloads are meaningless as text.
+		if (isProbablyBinaryPath(filePath)) {
+			addAnnotation(sessionId, { source: "doc", file: filePath, text: `文件: ${filePath}` });
+			return;
+		}
 		try {
 			const content = await readTextFile(filePath);
 			addAnnotation(sessionId, { source: "doc", file: filePath, text: content });
 		} catch {
 			addAnnotation(sessionId, { source: "doc", file: filePath, text: `文件: ${filePath}` });
+		}
+	};
+
+	/** Attach a pasted/dropped path as an inline token instead of a doc
+	 * annotation: images get the 🖼️ gallery, everything else a 📎#N token
+	 * carrying the REAL path (omp reads the file when the prompt is sent). */
+	const attachPastedPath = async (filePath: string, isDir = false) => {
+		if (!isDir && IMAGE_EXT_RE.test(filePath)) {
+			await insertImageToken(filePath);
+			return;
+		}
+		processFilePath(filePath, isDir ? `${baseName(filePath)}/` : baseName(filePath));
+	};
+
+	/** Resolve a dropped path (from Tauri drag-drop) and attach it. */
+	const attachDroppedPath = async (filePath: string) => {
+		try {
+			const info = await validatePath(filePath);
+			await attachPastedPath(filePath, info.isDir);
+		} catch {
+			await attachPastedPath(filePath, false);
 		}
 	};
 
@@ -492,12 +576,13 @@ export function Composer({
 	/** True when the composer holds text outside the `/query` token —
 	 * hides `requiresEmptyComposer` commands. */
 	const composerHasOtherText = useMemo(() => {
+		if (chip) return true;
 		if (!slashToken) return false;
 		return (
 			text.slice(0, slashToken.start).trim().length > 0 ||
 			text.slice(slashToken.end).trim().length > 0
 		);
-	}, [text, slashToken]);
+	}, [text, slashToken, chip]);
 
 	const visualizeEnabled = useSettings((s) => s.settings?.visualizeEnabled !== false);
 	useEffect(ensureSettings, []);
@@ -635,29 +720,31 @@ export function Composer({
 			if (!models || models.length === 0) void loadModels();
 		},
 		openThinkingPicker: () => setThinkingOpen(true),
+		openContextPopover: () => setContextOpen(true),
 		insertText: (t) =>
 			setText(`${useComposer.getState().drafts[sessionId] ?? ""}${t}`),
 	});
 
-	/** Menu selection: arg commands fill `/name ` + hint; the rest run now,
-	 * removing only the `/token` and keeping any other draft text. */
+	/** Menu selection: arg commands become an atomic chip at the input start
+	 * (draft keeps only the args); the rest run now, removing only the
+	 * `/token` and keeping any other draft text. */
 	const selectSlashItem = (item: SlashMenuItem) => {
 		if (!slashToken) return;
 		setArgHintLine(null);
 		if (item.argHint) {
 			const before = text.slice(0, slashToken.start);
 			const after = text.slice(slashToken.end);
-			const replacement = `/${item.name} `;
-			const nextText = `${before}${replacement}${after}`;
+			// Any text around the token becomes the command's arguments.
+			const nextText = `${before}${after}`;
 			setText(nextText);
-			const nextCursor = before.length + replacement.length;
-			setCursorPos(nextCursor);
+			setChip({ name: item.name, title: item.title || item.name });
+			setCursorPos(before.length);
 			setMenuDismissed(true);
 			setArgHintLine(`/${item.name} ${item.argHint}`);
 			setTimeout(() => {
 				if (taRef.current) {
 					taRef.current.focus();
-					taRef.current.setSelectionRange(nextCursor, nextCursor);
+					taRef.current.setSelectionRange(before.length, before.length);
 				}
 			}, 0);
 			return;
@@ -685,11 +772,13 @@ export function Composer({
 	const submit = async (action: FollowUpAction) => {
 		const raw = text;
 		if (!hasPayload || busy) return;
-		const trimmedRaw = raw.trim();
+		// Chip + args serialize to the exact `/name args` the user would have
+		// typed — history, masking and dispatch all run on that form.
+		const trimmedRaw = serializeChip(chip, raw).trim();
 		// Privacy: replace marked / auto / accepted ranges with placeholders.
 		// The draft and local history keep the real text; everything sent is masked.
 		const maskedRaw = maskText(raw, privacy.highlights);
-		const trimmedMasked = maskedRaw.trim();
+		const trimmedMasked = serializeChip(chip, maskedRaw).trim();
 		const sentSecrets = replacedEntries(privacy.highlights);
 		const sessionEntryIds = privacy.sessionEntryIds;
 		const markScopes = privacy.draft.scopes;
@@ -716,9 +805,11 @@ export function Composer({
 					await sendSlashPrompt(sessionId, trimmedMasked);
 				}
 				finishPrivacySend();
+				setChip(null);
 				clearDraft(sessionId);
 				clearAnnotations(sessionId);
 				clearImages(sessionId);
+				clearFiles(sessionId);
 			} catch (err) {
 				if (!isResumeCancelled(err))
 					toast.error(`发送失败: ${errMsg(err)}`);
@@ -758,6 +849,28 @@ export function Composer({
 				: missingMarkers;
 		}
 
+		// Convert `📎#N` to `[文件 #N: <real path>]` — omp reads the file itself.
+		const currentSessionFiles = useComposer.getState().files[sessionId] ?? [];
+		outgoingRaw = outgoingRaw.replace(/📎\s*#(\d+)/gu, (_match, numStr) => {
+			const n = parseInt(numStr, 10);
+			const f = currentSessionFiles[n - 1];
+			return f?.path ? `[文件 #${n}: ${f.path}]` : `[文件 #${n}]`;
+		});
+		// Same missing-token safety as images: deleted 📎#N tokens still ship
+		// their path so nothing silently drops out of the prompt.
+		const missingFiles = currentSessionFiles.filter((_f, i) => {
+			const n = i + 1;
+			return !outgoingRaw.includes(`[文件 #${n}`);
+		});
+		if (missingFiles.length > 0) {
+			const missingMarkers = missingFiles
+				.map((f) => `[文件 #${currentSessionFiles.indexOf(f) + 1}: ${f.path}]`)
+				.join(" ");
+			outgoingRaw = outgoingRaw.trim()
+				? `${missingMarkers} ${outgoingRaw}`
+				: missingMarkers;
+		}
+
 		const imageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
 			id: img.id || `img-${i + 1}`,
 			path: img.path,
@@ -777,6 +890,7 @@ export function Composer({
 			clearDraft(sessionId);
 			clearAnnotations(sessionId);
 			clearImages(sessionId);
+			clearFiles(sessionId);
 			return;
 		}
 		setBusy(true);
@@ -801,6 +915,7 @@ export function Composer({
 			clearDraft(sessionId);
 			clearAnnotations(sessionId);
 			clearImages(sessionId);
+			clearFiles(sessionId);
 		} catch (err) {
 			if (!isResumeCancelled(err)) toast.error(`发送失败: ${errMsg(err)}`);
 		} finally {
@@ -877,49 +992,108 @@ export function Composer({
 		setDraft(sessionId, nextText);
 	};
 
+	const removeFileByIndex = (fileIndex: number, currentText?: string) => {
+		const textToUse = currentText !== undefined ? currentText : text;
+		const curFiles = useComposer.getState().files[sessionId] ?? [];
+		if (fileIndex < 0 || fileIndex >= curFiles.length) return;
+		const num = fileIndex + 1;
+		const nextFiles = curFiles.filter((_, idx) => idx !== fileIndex);
+		useComposer.getState().setFiles(sessionId, nextFiles);
+
+		// Remove token for this file from text: `📎 #1` or `[文件 #1: ...]`
+		const tokenRe = new RegExp(
+			`\\s*(?:📎\\s*#${num}|\\[(?:File|文件)\\s*#${num}(?::[^\\]]*)?\\])\\s*`,
+			"gu",
+		);
+		let nextText = textToUse.replace(tokenRe, " ").trim();
+		// Renumber remaining tokens > num
+		for (let i = num + 1; i <= curFiles.length; i++) {
+			const oldRe1 = new RegExp(`📎\\s*#${i}\\b`, "gu");
+			const oldRe2 = new RegExp(`(\\[(?:File|文件)\\s*#)${i}(\\b|\\]|:)`, "gu");
+			nextText = nextText.replace(oldRe1, `📎#${i - 1}`).replace(oldRe2, `$1${i - 1}$2`);
+		}
+		setText(nextText);
+		setDraft(sessionId, nextText);
+	};
+
+	/** Insert one atomic attachment token at the caret, restoring focus. Reads
+	 * the draft fresh so it also works from non-DOM events (Tauri drop). */
+	const insertMarkerAtCursor = (marker: string) => {
+		const currentText = useComposer.getState().drafts[sessionId] ?? "";
+		const ta = taRef.current;
+		const start = ta ? ta.selectionStart : Math.min(cursorPos, currentText.length);
+		const end = ta ? ta.selectionEnd : start;
+		const before = currentText.slice(0, start);
+		const after = currentText.slice(end);
+		const spacerBefore =
+			before.length > 0 && !before.endsWith(" ") && !before.endsWith("\n")
+				? " "
+				: "";
+		// Always leave a space after the token so the caret never sits flush
+		// against it (paste at end-of-text previously had no trailing gap).
+		const spacerAfter = after.startsWith(" ") || after.startsWith("\n") ? "" : " ";
+		const token = `${spacerBefore}${marker}${spacerAfter}`;
+		const nextText = `${before}${token}${after}`;
+		setText(nextText);
+		setDraft(sessionId, nextText);
+		const nextCursor = before.length + token.length;
+		setCursorPos(nextCursor);
+		setTimeout(() => {
+			if (taRef.current) {
+				taRef.current.focus();
+				taRef.current.setSelectionRange(nextCursor, nextCursor);
+			}
+		}, 0);
+	};
+
+	/** Register an image path as a `🖼️#N` token at the caret (saved clipboard
+	 * images and real paths alike). */
+	const insertImageToken = async (imagePath: string, name?: string) => {
+		try {
+			const dims = await getImageDimensions(convertFileSrc(imagePath));
+			const dimensions = dims.width > 0 && dims.height > 0 ? dims : undefined;
+			addImage(sessionId, imagePath, name, dimensions);
+			const nextNum = (useComposer.getState().images[sessionId] ?? []).length;
+			insertMarkerAtCursor(`🖼️#${nextNum}`);
+			toast.success(`已插入图片 #${nextNum}`);
+		} catch (err) {
+			toast.error(`处理图片失败: ${errMsg(err)}`);
+		}
+	};
+
 	const processImageFile = async (file: File | Blob) => {
 		try {
 			const base64 = await fileToBase64(file);
 			const savedPath = await saveClipboardImage(base64);
-			const dims = await getImageDimensions(convertFileSrc(savedPath));
-			const dimensions = dims.width > 0 && dims.height > 0 ? dims : undefined;
-
-			addImage(
-				sessionId,
-				savedPath,
-				file instanceof File ? file.name : undefined,
-				dimensions,
-			);
-			const currentImages = useComposer.getState().images[sessionId] ?? [];
-			const nextNum = currentImages.length;
-
-			const ta = taRef.current;
-			const start = ta ? ta.selectionStart : cursorPos;
-			const end = ta ? ta.selectionEnd : cursorPos;
-			const before = text.slice(0, start);
-			const after = text.slice(end);
-			const spacerBefore =
-				before.length > 0 && !before.endsWith(" ") && !before.endsWith("\n")
-					? " "
-					: "";
-			// Always leave a space after the token so the caret never sits flush
-			// against it (paste at end-of-text previously had no trailing gap).
-			const spacerAfter = after.startsWith(" ") || after.startsWith("\n") ? "" : " ";
-			const marker = `${spacerBefore}🖼️#${nextNum}${spacerAfter}`;
-			const nextText = `${before}${marker}${after}`;
-			setText(nextText);
-			setDraft(sessionId, nextText);
-			const nextCursor = before.length + marker.length;
-			setCursorPos(nextCursor);
-			setTimeout(() => {
-				if (taRef.current) {
-					taRef.current.focus();
-					taRef.current.setSelectionRange(nextCursor, nextCursor);
-				}
-			}, 0);
-			toast.success(`已插入图片 #${nextNum}`);
+			await insertImageToken(savedPath, file instanceof File ? file.name : undefined);
 		} catch (err) {
 			toast.error(`处理图片失败: ${errMsg(err)}`);
+		}
+	};
+
+	/** Register a non-image path as a `📎#N` token at the caret; the real
+	 * filesystem path is serialized into the outgoing prompt. */
+	const processFilePath = (filePath: string, name?: string) => {
+		try {
+			addFile(sessionId, filePath, name);
+			const nextNum = (useComposer.getState().files[sessionId] ?? []).length;
+			insertMarkerAtCursor(`📎#${nextNum}`);
+			toast.success(`已插入文件 #${nextNum}`);
+		} catch (err) {
+			toast.error(`附加文件失败: ${errMsg(err)}`);
+		}
+	};
+
+	/** WKWebView File objects carry no filesystem path: persist the bytes
+	 * under the app cache dir and attach that path as a 📎 token. File bytes
+	 * are never decoded or inlined here — binary formats stay safe. */
+	const processPastedFile = async (file: File) => {
+		try {
+			const base64 = await fileToBase64(file);
+			const savedPath = await saveClipboardFile(base64, file.name || undefined);
+			processFilePath(savedPath, file.name || undefined);
+		} catch (err) {
+			toast.error(`附加文件失败: ${errMsg(err)}`);
 		}
 	};
 
@@ -930,20 +1104,6 @@ export function Composer({
 			await processImageFile(new File([blob], `sketch-${Date.now()}.png`, { type: "image/png" }));
 		} catch (err) {
 			toast.error(`插入草图失败: ${errMsg(err)}`);
-		}
-	};
-
-	const processTextFile = async (file: File) => {
-		try {
-			const content = await file.text();
-			addAnnotation(sessionId, {
-				source: "doc",
-				file: file.name,
-				text: content,
-			});
-			toast.success(`已附加文件内容: ${file.name}`);
-		} catch (err) {
-			toast.error(`读取文件失败: ${errMsg(err)}`);
 		}
 	};
 
@@ -959,6 +1119,10 @@ export function Composer({
 		setIsDraggingOver(false);
 	};
 
+	/** DOM drop fallback: under Tauri the native drag-drop event delivers real
+	 * paths (see the listener effect below); this only fires for HTML5 drops
+	 * that carry File objects. Bytes go through processPastedFile — a docx is
+	 * never inlined as text. */
 	const onDrop = async (e: React.DragEvent<HTMLTextAreaElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -969,29 +1133,125 @@ export function Composer({
 			if (file.type.startsWith("image/")) {
 				await processImageFile(file);
 			} else {
-				await processTextFile(file);
+				await processPastedFile(file);
 			}
 		}
 	};
 
+	/** Paste: screenshots keep the image pipeline; a Finder copy resolves the
+	 * REAL paths from the macOS pasteboard so the file attaches as a token
+	 * (the filename is never pasted as text). */
 	const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
 		const items = e.clipboardData?.items;
 		if (!items) return;
-		let handledImage = false;
+		const fileItems: File[] = [];
+		const types: string[] = e.clipboardData ? Array.from(e.clipboardData.types) : [];
 		for (let i = 0; i < items.length; i++) {
 			const item = items[i];
-			if (item.type.startsWith("image/")) {
-				const blob = item.getAsFile();
-				if (blob) {
-					handledImage = true;
-					await processImageFile(blob);
-				}
+			if (item.kind !== "file") continue;
+			const f = item.getAsFile();
+			if (f) fileItems.push(f);
+		}
+		const hasFilesType = types.includes("Files");
+		if (fileItems.length === 0 && !hasFilesType) return;
+		// Files present → suppress default now, before any await, so the
+		// filename/text flavor can't sneak into the draft.
+		e.preventDefault();
+
+		const imageFiles = fileItems.filter((f) => f.type.startsWith("image/"));
+		const nonImageFiles = fileItems.filter((f) => !f.type.startsWith("image/"));
+		let nativePaths: string[] = [];
+		if (nonImageFiles.length > 0 || hasFilesType) {
+			try {
+				nativePaths = await clipboardFilePaths();
+			} catch {
+				nativePaths = [];
 			}
 		}
-		if (handledImage) {
-			e.preventDefault();
+
+		if (nativePaths.length === 0 && nonImageFiles.length === 0) {
+			if (imageFiles.length === 0) {
+				// Clipboard advertised Files but nothing resolved — surface it.
+				toast.error("无法读取剪贴板中的文件路径");
+				return;
+			}
+			// Screenshot-style image data only (no file URLs on the pasteboard).
+			for (const img of imageFiles) await processImageFile(img);
+			return;
+		}
+		// Attach real paths first, in pasteboard order (images included).
+		const covered = new Set(nativePaths.map((p) => baseName(p).toLowerCase()));
+		for (const p of nativePaths) await attachDroppedPath(p);
+		// Anything the pasteboard didn't resolve (no file URL) falls back to
+		// the File bytes: images through the image pipeline, the rest through
+		// a cache-dir write + 📎 token.
+		for (const f of fileItems) {
+			if (f.name && covered.has(f.name.toLowerCase())) continue;
+			if (f.type.startsWith("image/")) {
+				await processImageFile(f);
+			} else {
+				await processPastedFile(f);
+			}
 		}
 	};
+
+	// Tauri intercepts OS file drops before the DOM: listen for the native
+	// event and hit-test against this textarea so drops land as real paths.
+	const osDropRef = useRef<(paths: string[]) => void>(() => {});
+	useEffect(() => {
+		osDropRef.current = (paths) => {
+			for (const p of paths) void attachDroppedPath(p);
+		};
+	});
+	useEffect(() => {
+		const hitTest = (pos: { x: number; y: number }) => {
+			const ta = taRef.current;
+			if (!ta) return false;
+			// Drag-drop positions are physical pixels.
+			const scale = window.devicePixelRatio || 1;
+			const r = ta.getBoundingClientRect();
+			return (
+				pos.x / scale >= r.left &&
+				pos.x / scale <= r.right &&
+				pos.y / scale >= r.top &&
+				pos.y / scale <= r.bottom
+			);
+		};
+		let unlisten: (() => void) | undefined;
+		let disposed = false;
+		getCurrentWebview()
+			.onDragDropEvent((event) => {
+				const p = event.payload;
+				if (p.type === "enter" || p.type === "over") {
+					setIsDraggingOver(hitTest(p.position));
+				} else if (p.type === "drop") {
+					setIsDraggingOver(false);
+					if (hitTest(p.position) && p.paths.length > 0) {
+						osDropRef.current(p.paths);
+					}
+				} else {
+					setIsDraggingOver(false);
+				}
+			})
+			.then((u) => {
+				if (disposed) u();
+				else unlisten = u;
+			})
+			.catch((err) => console.warn("[composer] drag-drop listener failed", err));
+		return () => {
+			disposed = true;
+			unlisten?.();
+		};
+	}, []);
+
+	// Atomic caret targets: image + file tokens share navigation/deletion.
+	const tokenRanges = useMemo(
+		() =>
+			[...getImageTokenRanges(text), ...getFileTokenRanges(text)].sort(
+				(a, b) => a.start - b.start,
+			),
+		[text],
+	);
 
 	const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
 		if (isComposing(e)) return;
@@ -1000,7 +1260,7 @@ export function Composer({
 			const ta = taRef.current;
 			if (ta && !e.shiftKey && ta.selectionStart === ta.selectionEnd) {
 				const pos = ta.selectionStart;
-				const ranges = getImageTokenRanges(text);
+				const ranges = tokenRanges;
 				const token = ranges.find((r) => r.start < pos && pos <= r.end);
 				if (token) {
 					e.preventDefault();
@@ -1016,7 +1276,7 @@ export function Composer({
 			const ta = taRef.current;
 			if (ta && !e.shiftKey && ta.selectionStart === ta.selectionEnd) {
 				const pos = ta.selectionStart;
-				const ranges = getImageTokenRanges(text);
+				const ranges = tokenRanges;
 				const token = ranges.find((r) => r.start <= pos && pos < r.end);
 				if (token) {
 					e.preventDefault();
@@ -1026,20 +1286,30 @@ export function Composer({
 				}
 			}
 		}
+		// Command chip: one Backspace at the start of the args deletes it whole.
+		if (e.key === "Backspace" && chip && !e.shiftKey && !e.metaKey && !e.altKey) {
+			const ta = taRef.current;
+			if (ta && ta.selectionStart === 0 && ta.selectionEnd === 0) {
+				e.preventDefault();
+				setChip(null);
+				return;
+			}
+		}
 
-		// Atomic backspace for image token `🖼️ #N` or `[Image #N]`
+		// Atomic backspace for attachment tokens `🖼️ #N` / `📎 #N` (either bracket form)
 		if (e.key === "Backspace" && !e.shiftKey && !e.metaKey && !e.altKey) {
 			const ta = taRef.current;
 			if (ta && ta.selectionStart === ta.selectionEnd) {
 				const pos = ta.selectionStart;
 				const before = text.slice(0, pos);
-				const match = /(?:🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+(?:,[^\]]*)?\])\s*$/.exec(before);
+				const match = /(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])\s*$/.exec(before);
 				if (match) {
 					e.preventDefault();
 					const tokenStr = match[0];
 					const startIdx = pos - tokenStr.length;
 					const numMatch = /\d+/.exec(tokenStr);
-					const imgNum = numMatch ? parseInt(numMatch[0], 10) : null;
+					const tokNum = numMatch ? parseInt(numMatch[0], 10) : null;
+					const isFileToken = tokenStr.includes("📎") || /\[(?:File|文件)/.test(tokenStr);
 
 					const nextText = text.slice(0, startIdx) + text.slice(pos);
 					setText(nextText);
@@ -1048,27 +1318,29 @@ export function Composer({
 					setTimeout(() => {
 						ta.setSelectionRange(startIdx, startIdx);
 					}, 0);
-					if (imgNum !== null) {
-						removeImageByIndex(imgNum - 1, nextText);
+					if (tokNum !== null) {
+						if (isFileToken) removeFileByIndex(tokNum - 1, nextText);
+						else removeImageByIndex(tokNum - 1, nextText);
 					}
 					return;
 				}
 			}
 		}
 
-		// Atomic delete for image token `🖼️ #N` or `[Image #N]`
+		// Atomic delete for attachment tokens `🖼️ #N` / `📎 #N`
 		if (e.key === "Delete" && !e.shiftKey && !e.metaKey && !e.altKey) {
 			const ta = taRef.current;
 			if (ta && ta.selectionStart === ta.selectionEnd) {
 				const pos = ta.selectionStart;
 				const after = text.slice(pos);
-				const match = /^\s*(?:🖼️\s*#\d+|\[(?:Image|图片)\s*#\d+(?:,[^\]]*)?\])/.exec(after);
+				const match = /^\s*(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])/.exec(after);
 				if (match) {
 					e.preventDefault();
 					const tokenStr = match[0];
 					const endIdx = pos + tokenStr.length;
 					const numMatch = /\d+/.exec(tokenStr);
-					const imgNum = numMatch ? parseInt(numMatch[0], 10) : null;
+					const tokNum = numMatch ? parseInt(numMatch[0], 10) : null;
+					const isFileToken = tokenStr.includes("📎") || /\[(?:File|文件)/.test(tokenStr);
 
 					const nextText = text.slice(0, pos) + text.slice(endIdx);
 					setText(nextText);
@@ -1077,8 +1349,9 @@ export function Composer({
 					setTimeout(() => {
 						ta.setSelectionRange(pos, pos);
 					}, 0);
-					if (imgNum !== null) {
-						removeImageByIndex(imgNum - 1, nextText);
+					if (tokNum !== null) {
+						if (isFileToken) removeFileByIndex(tokNum - 1, nextText);
+						else removeImageByIndex(tokNum - 1, nextText);
 					}
 					return;
 				}
@@ -1136,6 +1409,7 @@ export function Composer({
 		if (e.key === "ArrowUp") {
 			if (text === "" && history.length > 0) {
 				e.preventDefault();
+				if (chip) setChip(null);
 				draftBeforeHistory.current = "";
 				const targetIdx = history.length - 1;
 				setHistoryIdx(targetIdx);
@@ -1223,6 +1497,22 @@ export function Composer({
 				!(taFocused && text.trim().length > 0) && (
 					<LibraryPromptCard entries={libraryCandidates} />
 				)}
+			{/* omp goal-mode bar: live objective directly above the composer. */}
+			<GoalBar
+				sessionId={sessionId}
+				onEdit={(objective) => {
+					setChip({ name: "goal", title: "目标" });
+					setText(objective);
+					setDraft(sessionId, objective);
+					setTimeout(() => {
+						const ta = taRef.current;
+						if (ta) {
+							ta.focus();
+							ta.setSelectionRange(objective.length, objective.length);
+						}
+					}, 0);
+				}}
+			/>
 			<div
 				ref={composerCardRef}
 				className={clsx(
@@ -1274,8 +1564,8 @@ export function Composer({
 					</div>
 				)}
 
-				{/* Attached image cards gallery (Codex style) */}
-				{composerImages.length > 0 && (
+				{/* Attached image cards + file chips (Codex style) */}
+				{(composerImages.length > 0 || composerFiles.length > 0) && (
 					<div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-2.5">
 						{composerImages.map((img, i) => (
 							<AttachmentThumb
@@ -1286,6 +1576,16 @@ export function Composer({
 								variant="strip"
 								onOpen={() => setPreviewImageIndex(i)}
 								onRemove={() => removeImageByIndex(i)}
+							/>
+						))}
+						{composerFiles.map((f, i) => (
+							<FileChip
+								key={f.id || `${i + 1}-${f.path}`}
+								path={f.path}
+								index={i + 1}
+								name={f.name}
+								variant="strip"
+								onRemove={() => removeFileByIndex(i)}
 							/>
 						))}
 					</div>
@@ -1315,8 +1615,9 @@ export function Composer({
 						text={text}
 						taRef={taRef}
 						privacy={privacy}
+						indent={chipIndent}
 					/>
-					{hasImageTokens && (
+					{hasInlineTokens && (
 						<div
 							ref={backdropRef}
 							aria-hidden="true"
@@ -1324,10 +1625,29 @@ export function Composer({
 							style={{
 								boxSizing: "border-box",
 								wordBreak: "break-word",
+								textIndent: chipIndent,
 							}}
 						>
 							{renderHighlightedText(text)}
 						</div>
+					)}
+					{chip && (
+						<span
+							ref={chipElRef}
+							className="absolute left-4 top-[11.5px] z-20"
+							onMouseDown={(e) => {
+								// Keep focus in the textarea; the × button handles removal.
+								if ((e.target as HTMLElement).closest("button")) return;
+								e.preventDefault();
+								const ta = taRef.current;
+								if (ta) {
+									ta.focus();
+									ta.setSelectionRange(ta.value.length, ta.value.length);
+								}
+							}}
+						>
+							<CommandChipBadge chip={chip} onRemove={() => setChip(null)} />
+						</span>
 					)}
 					<textarea
 						ref={taRef}
@@ -1346,7 +1666,7 @@ export function Composer({
 							setMenuDismissed(false);
 							setArgHintLine(null);
 							if (historyIdx !== -1) setHistoryIdx(-1);
-							// Sync composerImages if tokens were completely deleted from text
+							// Sync composerImages/composerFiles if tokens were deleted from text
 							const curImages = useComposer.getState().images[sessionId] ?? [];
 							if (curImages.length > 0) {
 								const remainingTokens = parseInlineImages(next);
@@ -1358,6 +1678,17 @@ export function Composer({
 									useComposer.getState().setImages(sessionId, filtered);
 								}
 							}
+							const curFiles = useComposer.getState().files[sessionId] ?? [];
+							if (curFiles.length > 0) {
+								const remainingTokens = parseInlineFiles(next);
+								const presentIndices = new Set(remainingTokens.map((t) => t.index));
+								if (curFiles.some((_, idx) => !presentIndices.has(idx + 1))) {
+									const filtered = curFiles.filter((_, idx) =>
+										presentIndices.has(idx + 1),
+									);
+									useComposer.getState().setFiles(sessionId, filtered);
+								}
+							}
 						}}
 						onSelect={(e) => {
 							const ta = e.target as HTMLTextAreaElement;
@@ -1366,7 +1697,7 @@ export function Composer({
 								return;
 							}
 							const pos = ta.selectionStart;
-							const ranges = getImageTokenRanges(text);
+							const ranges = tokenRanges;
 							const token = ranges.find((r) => r.start < pos && pos < r.end);
 							if (token) {
 								const snapPos = pos - token.start < token.end - pos ? token.start : token.end;
@@ -1383,7 +1714,7 @@ export function Composer({
 								return;
 							}
 							const pos = ta.selectionStart;
-							const ranges = getImageTokenRanges(text);
+							const ranges = tokenRanges;
 							const token = ranges.find((r) => r.start < pos && pos < r.end);
 							if (token) {
 								const snapPos = pos - token.start < token.end - pos ? token.start : token.end;
@@ -1400,7 +1731,7 @@ export function Composer({
 								return;
 							}
 							const pos = ta.selectionStart;
-							const ranges = getImageTokenRanges(text);
+							const ranges = tokenRanges;
 							const token = ranges.find((r) => r.start < pos && pos < r.end);
 							if (token) {
 								const snapPos = pos - token.start < token.end - pos ? token.start : token.end;
@@ -1419,14 +1750,16 @@ export function Composer({
 						onBlur={() => setTaFocused(false)}
 						rows={1}
 						placeholder={
-							streaming
-								? "输入后续消息…"
-								: "输入消息，/ 命令，@ 引用文件"
+							chip && !text
+								? `${chip.title || chip.name} ${findSlashCommand(chip.name)?.argHint ?? "<参数>"}`
+								: streaming
+									? "输入后续消息…"
+									: "输入消息，/ 命令，@ 引用文件"
 						}
-						style={{ outline: "none", boxShadow: "none" }}
+						style={{ outline: "none", boxShadow: "none", textIndent: chipIndent }}
 						className={clsx(
 							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]",
-							hasImageTokens
+							hasInlineTokens
 								? "relative z-10 text-transparent caret-[var(--text)] selection:bg-sky-500/30 selection:text-transparent"
 								: "relative text-[var(--text)]",
 						)}
@@ -1567,6 +1900,8 @@ export function Composer({
 							totalTokensStr={totalTokensStr}
 							onCompact={compactContext}
 							compactDisabled={streaming}
+							open={contextOpen}
+							onOpenChange={setContextOpen}
 							className="shrink-0"
 						/>
 

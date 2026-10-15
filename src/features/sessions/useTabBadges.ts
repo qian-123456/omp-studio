@@ -174,6 +174,7 @@ export function useTabBadges(
 			git: gitDirtyCount,
 			services: servicesCount,
 			terminal: terminalCount,
+			plan: 0,
 		}),
 		[todosBadge, gitDirtyCount, servicesCount, sidechatCount, heatmapCount, terminalCount],
 	);

@@ -106,10 +106,12 @@ pub fn validate_path_internal(path: &str) -> PathCheck {
         Ok(m) => PathCheck {
             exists: true,
             is_dir: m.is_dir(),
+            size: if m.is_file() { m.len() } else { 0 },
         },
         Err(_) => PathCheck {
             exists: false,
             is_dir: false,
+            size: 0,
         },
     }
 }

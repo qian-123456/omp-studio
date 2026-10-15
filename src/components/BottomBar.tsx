@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { computeSessionStats, formatTokens } from "../features/chat/sessionStats";
 import { PerfPopover } from "../features/chat/PerfPopover";
 import { SessionStatsPopover } from "../features/chat/SessionStatsPopover";
+import { useChatUi } from "../features/chat/chatUi";
 import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
@@ -54,7 +55,8 @@ export function BottomBar() {
 	};
 
 	// Session statistics (dsh style)
-	const [statsOpen, setStatsOpen] = useState(false);
+	const statsOpen = useChatUi((s) => s.statsOpen);
+	const setStatsOpen = useChatUi((s) => s.setStatsOpen);
 	const transcriptItems = live?.items ?? [];
 	const stats = useMemo(
 		() => computeSessionStats(transcriptItems, live),
@@ -151,7 +153,7 @@ export function BottomBar() {
 					<button
 						ref={statsBtnRef}
 						type="button"
-						onClick={() => setStatsOpen((v) => !v)}
+						onClick={() => setStatsOpen(!statsOpen)}
 						title="点击查看详细会话统计 (模型用时、TTFT、TPS、Token 消耗)"
 						className="group flex items-center gap-1.5 rounded-[6px] px-1.5 py-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97 transition-all"
 					>

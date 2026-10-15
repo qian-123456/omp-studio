@@ -12,6 +12,7 @@ import type {
 	BacklogRef,
 	BaseSyncResult,
 	BranchInfo,
+	DdnsStatus,
 	DiscoveredModel,
 	DirEntry,
 	GitHistory,
@@ -33,6 +34,7 @@ import type {
 	OmpImportResult,
 	OmpUsageReportData,
 	PairingInfo,
+	PairingTarget,
 	PathCheck,
 	PerfBreakdown,
 	PrivacyMarkScope,
@@ -382,6 +384,16 @@ export const validatePath = (path: string) =>
 export const saveClipboardImage = (base64Png: string) =>
 	invoke<string>("save_clipboard_image", { base64Png });
 
+/** Real filesystem paths of files on the macOS pasteboard (Finder copy).
+ * Empty when the clipboard holds no file URLs or reading is unsupported. */
+export const clipboardFilePaths = () =>
+	invoke<string[]>("clipboard_file_paths");
+
+/** Persist pasted/dropped bytes under the app cache dir; returns the path
+ * used as the file-attachment reference (WKWebView File objects carry none). */
+export const saveClipboardFile = (base64Data: string, fileName?: string) =>
+	invoke<string>("save_clipboard_file", { base64Data, fileName: fileName ?? null });
+
 export const saveShareImage = (base64Png: string, path: string) =>
 	invoke<void>("save_share_image", { base64Png, path });
 
@@ -564,11 +576,22 @@ export const mobileStop = () => invoke<void>("mobile_stop");
 
 export const mobileStatus = () => invoke<MobileStatus>("mobile_status");
 
-/** Generate a pairing link using the public tunnel URL when requested. */
-export const mobileCreatePairing = (viaTunnel = false) =>
-	invoke<PairingInfo>("mobile_create_pairing", { viaTunnel });
+/** Generate a pairing link using the requested target network (LAN, Cloudflare tunnel, or IPv6 direct). */
+export const mobileCreatePairing = (target: PairingTarget = "lan") =>
+	invoke<PairingInfo>("mobile_create_pairing", { target });
 
 export const mobileRevokeAll = () => invoke<void>("mobile_revoke_all");
+
+export const mobileIpv6Start = () => invoke<MobileStatus>("mobile_ipv6_start");
+
+export const mobileIpv6Stop = () => invoke<void>("mobile_ipv6_stop");
+
+export const mobileDdnsSetToken = (token: string) =>
+	invoke<DdnsStatus>("mobile_ddns_set_token", { token });
+
+export const mobileDdnsClearToken = () => invoke<DdnsStatus>("mobile_ddns_clear_token");
+
+export const mobileDdnsSync = () => invoke<DdnsStatus>("mobile_ddns_sync");
 
 export const tunnelStart = () => invoke<MobileStatus>("tunnel_start");
 

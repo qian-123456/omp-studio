@@ -17,6 +17,7 @@ import {
 	GitBranch,
 	MessageSquare,
 	Minus,
+	NotebookPen,
 	PanelRightClose,
 	Plus,
 	SquareTerminal,
@@ -59,6 +60,7 @@ const PRIMARY_TABS: { id: RightTab; label: string; icon: IconType; iconColor: st
 	{ id: "services", label: "服务", icon: Cpu, iconColor: "text-purple-400" },
 	{ id: "heatmap", label: "Token 用量", icon: Coins, iconColor: "text-amber-400" },
 	{ id: "terminal", label: "终端", icon: SquareTerminal, iconColor: "text-emerald-400" },
+	{ id: "plan", label: "计划", icon: NotebookPen, iconColor: "text-amber-400" },
 ];
 
 /** One rendered Chrome tab: a panel tab, or a terminal instance of the active terminal panel tab. */

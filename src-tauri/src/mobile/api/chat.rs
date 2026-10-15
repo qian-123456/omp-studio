@@ -1,0 +1,1356 @@
+//! Mobile API: chat composer slice (upload, rich prompt, abort, slash commands,
+//! goal, plan mode, composer state). Mirrors the desktop `send.ts` /
+//! `Composer.tsx` / `slash/registry.ts` RPC calls.
+//!
+//! ## Routes
+//! All paths are relative to `/api`; errors are `{ "error": "..." }`. Every route
+//! needs a known, non-archived session (404 / 400) and a real `AppState` (503 in
+//! test mocks).
+//!
+//! - `POST /sessions/{id}/upload?name=<file name>` — raw request body (no
+//!   multipart, ≤ 20 MiB, 413 above) → `{path, name, size}`. `name` is sanitized
+//!   (directory parts, `..`, control and reserved characters removed). Stored
+//!   under `<app-data>/mobile-uploads/<sessionId>/`; `path` is the absolute path
+//!   to append to the prompt text. An existing file is never overwritten (a
+//!   short random prefix is added instead).
+//! - `POST /sessions/{id}/prompt-ex`
+//!   `{text, images?: [{mime, data /*base64, no data: prefix*/}], streamingBehavior?: "steer"|"followUp"}`
+//!   → `{ok: true, streaming: bool}`. Same RPC path as desktop `sendPrompt`: the
+//!   session is resumed if needed, then `{type:"prompt", message, images:[{type:"image",
+//!   data, mimeType}]}`; while a turn is streaming `streamingBehavior` is attached
+//!   (default `followUp`). `text` or ≥1 image required; body ≤ 30 MiB; images must
+//!   be png/jpeg/gif/webp. When plan mode is on (see below) and `text` is not a
+//!   `/command`, the desktop plan prefix is prepended.
+//! - `POST /sessions/{id}/abort` → `{ok: true}`; 409 when the session is not live.
+//! - `GET /sessions/{id}/slash-commands` →
+//!   `[{name, title, description, argHint?, group, kind: "native"|"forward"|"custom", needsArg: bool}]`.
+//!   Curated list: session commands that run remotely, commands forwarded to omp as
+//!   plain `/name args` text, plus custom commands/skills reported by the live omp
+//!   process (`get_available_commands`) that the desktop registry does not shadow.
+//!   Desktop-only commands (pickers, settings, browser/computer…) are not listed.
+//! - `POST /sessions/{id}/slash` `{name, args?}` (name without `/`, aliases ok) →
+//!   `{ok: true, output?: string, sessionId?: string, forwarded?: bool, planMode?: bool}`.
+//!   `output` is a text block to show in the thread; `sessionId` means the client
+//!   should open that (new / side-chat) session. Forwarded commands are sent as a
+//!   `/name args` prompt (their reply arrives as `command_output` SSE frames).
+//!   Native: new, fork, btw, rename, compact, handoff, resume, plan, goal, model,
+//!   thinking, fast, slow, status. 400 for desktop-only or malformed names.
+//! - `GET /sessions/{id}/composer-state` →
+//!   `{live, streaming, model, thinkingLevel, planMode, goal: {objective, status}|null,
+//!   fastMode, slowMode, state}`; `state` is the raw omp `get_state` data (null when
+//!   the session process is not running — then `model` falls back to the catalog).
+//! - `POST /sessions/{id}/goal` `{objective}` (set; replaces an existing goal) or
+//!   `{op: "pause"|"resume"|"drop"}` → `{ok: true, goal}`. `DELETE /sessions/{id}/goal`
+//!   clears (= `op: "drop"`).
+//! - `GET /sessions/{id}/plan-mode` → `{on}`; `POST /sessions/{id}/plan-mode`
+//!   `{on?: bool}` (omitted = toggle) → `{on}`. Plan mode is client-side on desktop
+//!   too (prompt prefix); the mobile flag lives in server memory per session and is
+//!   independent of the desktop's flag.
+
+use std::path::{Path as FsPath, PathBuf};
+use std::sync::Arc;
+
+use axum::body::Bytes;
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use axum::http::StatusCode;
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use base64::Engine as _;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use tauri::Manager as _;
+
+use crate::contracts::{SessionMeta, StartOpts};
+use crate::mobile::backend::Backend;
+use crate::mobile::server::{ApiError, Ctx};
+use crate::state::{AppEvent, AppState};
+
+type ApiResult<T> = Result<Json<T>, ApiError>;
+
+/// Raw-body upload cap.
+const MAX_UPLOAD: usize = 20 * 1024 * 1024;
+/// Prompt body cap (base64 images inline).
+const MAX_PROMPT_BODY: usize = 30 * 1024 * 1024;
+/// Longest stored file name in bytes (before any collision prefix).
+const MAX_NAME_BYTES: usize = 120;
+
+/// Prepended to outgoing prompts while plan mode is on (same as `Composer.tsx`).
+const PLAN_MODE_PREFIX: &str = "[规划模式] 请先分析需求并给出详细的分步实施计划，在我确认之前不要修改任何文件或执行有副作用的操作。\n\n";
+
+static PLAN_MODES: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(Vec::new());
+
+pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
+    Router::new()
+        .route(
+            "/sessions/{id}/upload",
+            post(upload::<B>).route_layer(DefaultBodyLimit::max(MAX_UPLOAD)),
+        )
+        .route(
+            "/sessions/{id}/prompt-ex",
+            post(prompt_ex::<B>).route_layer(DefaultBodyLimit::max(MAX_PROMPT_BODY)),
+        )
+        .route("/sessions/{id}/abort", post(abort::<B>))
+        .route("/sessions/{id}/slash-commands", get(slash_commands::<B>))
+        .route("/sessions/{id}/slash", post(slash::<B>))
+        .route("/sessions/{id}/composer-state", get(composer_state::<B>))
+        .route(
+            "/sessions/{id}/goal",
+            post(goal_set::<B>).delete(goal_clear::<B>),
+        )
+        .route(
+            "/sessions/{id}/plan-mode",
+            get(plan_get::<B>).post(plan_set::<B>),
+        )
+}
+
+// ---------------------------------------------------------------- helpers
+
+fn err(code: StatusCode, msg: impl Into<String>) -> ApiError {
+    ApiError(code, msg.into())
+}
+
+fn bad_request(msg: impl Into<String>) -> ApiError {
+    err(StatusCode::BAD_REQUEST, msg)
+}
+
+fn bad_gateway(msg: String) -> ApiError {
+    err(StatusCode::BAD_GATEWAY, msg)
+}
+
+fn check_id(id: &str) -> Result<(), ApiError> {
+    if id.is_empty()
+        || id.len() > 128
+        || id.contains("..")
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err(bad_request("非法标识符"));
+    }
+    Ok(())
+}
+
+fn app<B: Backend>(ctx: &Ctx<B>) -> Result<&AppState, ApiError> {
+    ctx.backend
+        .app_state()
+        .ok_or_else(|| err(StatusCode::SERVICE_UNAVAILABLE, "服务不可用"))
+}
+
+/// Validate the id and load a non-archived session.
+async fn load_session<B: Backend>(ctx: &Ctx<B>, id: &str) -> Result<SessionMeta, ApiError> {
+    check_id(id)?;
+    let meta = ctx
+        .backend
+        .session(id)
+        .await
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "会话不存在"))?;
+    if meta.archived {
+        return Err(bad_request("已归档的会话不可操作"));
+    }
+    Ok(meta)
+}
+
+/// Send one RPC command to a live session, like `rpc_send` (privacy refresh for
+/// prompts, `PromptSent` event for prompt-like commands).
+async fn rpc_cmd(state: &AppState, id: &str, command: Value) -> Result<Value, String> {
+    let ty = command
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let handle = if ty == "prompt" {
+        crate::rpc::refresh_privacy(state, id).await?
+    } else {
+        crate::rpc::get_handle(id).ok_or("session is not live")?
+    };
+    let resp = crate::rpc::send_command(&handle, command).await?;
+    if matches!(
+        ty.as_str(),
+        "prompt" | "steer" | "follow_up" | "abort_and_prompt"
+    ) {
+        state.emit(AppEvent::PromptSent {
+            session_id: id.to_string(),
+        });
+    }
+    Ok(resp)
+}
+
+/// Resume the session process when needed.
+async fn live(state: &AppState, id: &str) -> Result<(), ApiError> {
+    crate::rpc::ensure_live(state, id, None)
+        .await
+        .map(|_| ())
+        .map_err(bad_gateway)
+}
+
+fn data_of(resp: &Value) -> &Value {
+    resp.get("data").unwrap_or(resp)
+}
+
+/// `get_state` data of a live session; `None` when not live or on failure.
+async fn live_state(id: &str) -> Option<Value> {
+    let handle = crate::rpc::get_handle(id)?;
+    let resp = crate::rpc::send_command(&handle, json!({"type": "get_state"}))
+        .await
+        .ok()?;
+    Some(data_of(&resp).clone())
+}
+
+/// Send a prompt (optionally with images) the way desktop `sendPrompt` does.
+async fn send_prompt_ex(
+    state: &AppState,
+    id: &str,
+    message: &str,
+    images: Vec<Value>,
+    behavior: Option<&str>,
+) -> Result<bool, ApiError> {
+    live(state, id).await?;
+    let streaming = crate::rpc::get_handle(id)
+        .is_some_and(|h| h.streaming.load(std::sync::atomic::Ordering::SeqCst));
+    let mut cmd = json!({"type": "prompt", "message": message});
+    if !images.is_empty() {
+        cmd["images"] = Value::Array(images);
+    }
+    if streaming {
+        cmd["streamingBehavior"] = json!(behavior.unwrap_or("followUp"));
+    }
+    rpc_cmd(state, id, cmd).await.map_err(bad_gateway)?;
+    Ok(streaming)
+}
+
+// ------------------------------------------------------------ pure helpers
+
+/// Reduce a client-supplied file name to a safe single path component.
+/// Never returns an empty string, `.` or `..`.
+fn sanitize_filename(raw: &str) -> String {
+    let last = raw.rsplit(['/', '\\']).next().unwrap_or("");
+    let cleaned: String = last
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect();
+    let cleaned = cleaned.trim().trim_start_matches('.').trim();
+    if cleaned.is_empty() {
+        return "upload".into();
+    }
+    if cleaned.len() <= MAX_NAME_BYTES {
+        return cleaned.to_string();
+    }
+    // Truncate on a char boundary, keeping a short extension.
+    let (stem, ext) = match cleaned.rfind('.') {
+        Some(i) if cleaned.len() - i <= 16 => (&cleaned[..i], &cleaned[i..]),
+        _ => (cleaned, ""),
+    };
+    let budget = MAX_NAME_BYTES - ext.len();
+    let mut end = budget.min(stem.len());
+    while !stem.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &stem[..end], ext)
+}
+
+fn check_upload_size(len: usize) -> Result<(), ApiError> {
+    if len == 0 {
+        return Err(bad_request("文件为空"));
+    }
+    if len > MAX_UPLOAD {
+        return Err(err(StatusCode::PAYLOAD_TOO_LARGE, "文件超过 20MB 上限"));
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct ImageIn {
+    mime: String,
+    data: String,
+}
+
+/// Validate images and convert to omp `ImageContent` blocks.
+fn build_images(images: &[ImageIn]) -> Result<Vec<Value>, ApiError> {
+    let mut out = Vec::with_capacity(images.len());
+    for img in images {
+        let mime = img.mime.trim().to_ascii_lowercase();
+        let mime = if mime == "image/jpg" {
+            "image/jpeg".into()
+        } else {
+            mime
+        };
+        if !matches!(
+            mime.as_str(),
+            "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+        ) {
+            return Err(bad_request("不支持的图片格式（仅 png/jpeg/gif/webp）"));
+        }
+        let data = img.data.trim();
+        if data.is_empty()
+            || base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .is_err()
+        {
+            return Err(bad_request("图片数据不是有效的 base64"));
+        }
+        out.push(json!({"type": "image", "data": data, "mimeType": mime}));
+    }
+    Ok(out)
+}
+
+fn apply_plan_prefix(text: &str, plan_on: bool) -> String {
+    if plan_on && !text.trim_start().starts_with('/') {
+        format!("{PLAN_MODE_PREFIX}{text}")
+    } else {
+        text.to_string()
+    }
+}
+
+fn is_plan_on(id: &str) -> bool {
+    PLAN_MODES.lock().iter().any(|s| s == id)
+}
+
+fn set_plan(id: &str, on: bool) {
+    let mut set = PLAN_MODES.lock();
+    set.retain(|s| s != id);
+    if on {
+        set.push(id.to_string());
+    }
+}
+
+fn valid_behavior(b: &str) -> bool {
+    matches!(b, "steer" | "followUp")
+}
+
+// ----------------------------------------------------------------- upload
+
+#[derive(Deserialize)]
+struct UploadQuery {
+    name: Option<String>,
+}
+
+fn uploads_dir(state: &AppState, session_id: &str) -> PathBuf {
+    let base = state
+        .app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| crate::paths::data_dir());
+    base.join("mobile-uploads").join(session_id)
+}
+
+/// First free path for `name` in `dir`; adds a random prefix on collision.
+fn unique_path(dir: &FsPath, name: &str) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let rand = &uuid::Uuid::new_v4().simple().to_string()[..8];
+    dir.join(format!("{rand}-{name}"))
+}
+
+async fn upload<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Query(q): Query<UploadQuery>,
+    body: Bytes,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    check_upload_size(body.len())?;
+    let name = sanitize_filename(q.name.as_deref().unwrap_or(""));
+    let dir = uploads_dir(state, &id);
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| {
+        err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("创建目录失败：{e}"),
+        )
+    })?;
+    let path = unique_path(&dir, &name);
+    tokio::fs::write(&path, &body).await.map_err(|e| {
+        err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("保存文件失败：{e}"),
+        )
+    })?;
+    Ok(Json(json!({
+        "path": path.to_string_lossy(),
+        "name": path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(name),
+        "size": body.len(),
+    })))
+}
+
+// ------------------------------------------------------- prompt / abort
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PromptExBody {
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    images: Vec<ImageIn>,
+    streaming_behavior: Option<String>,
+}
+
+async fn prompt_ex<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<PromptExBody>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    let text = body.text.trim();
+    if text.is_empty() && body.images.is_empty() {
+        return Err(bad_request("内容为空"));
+    }
+    if let Some(b) = body.streaming_behavior.as_deref() {
+        if !valid_behavior(b) {
+            return Err(bad_request("streamingBehavior 必须是 steer 或 followUp"));
+        }
+    }
+    let images = build_images(&body.images)?;
+    // omp rejects an empty message; images without text get a neutral one.
+    let text = if text.is_empty() {
+        "（图片）"
+    } else {
+        text
+    };
+    let message = apply_plan_prefix(text, is_plan_on(&id));
+    let streaming = send_prompt_ex(
+        state,
+        &id,
+        &message,
+        images,
+        body.streaming_behavior.as_deref(),
+    )
+    .await?;
+    Ok(Json(json!({"ok": true, "streaming": streaming})))
+}
+
+async fn abort<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    if !crate::rpc::is_live(&id) {
+        return Err(err(StatusCode::CONFLICT, "会话未在运行"));
+    }
+    rpc_cmd(state, &id, json!({"type": "abort"}))
+        .await
+        .map_err(bad_gateway)?;
+    Ok(Json(json!({"ok": true})))
+}
+
+// ------------------------------------------------------- slash commands
+
+struct Cmd {
+    name: &'static str,
+    title: &'static str,
+    description: &'static str,
+    arg_hint: Option<&'static str>,
+    group: &'static str,
+    /// true = executed by this server; false = forwarded as `/name args`.
+    native: bool,
+    needs_arg: bool,
+}
+
+const fn cmd(
+    name: &'static str,
+    title: &'static str,
+    description: &'static str,
+    arg_hint: Option<&'static str>,
+    group: &'static str,
+    native: bool,
+    needs_arg: bool,
+) -> Cmd {
+    Cmd {
+        name,
+        title,
+        description,
+        arg_hint,
+        group,
+        native,
+        needs_arg,
+    }
+}
+
+/// Curated mobile commands (subset of `slash/registry.ts`).
+const CURATED: &[Cmd] = &[
+    cmd(
+        "new",
+        "新会话",
+        "在当前目录开始一个新会话",
+        None,
+        "会话",
+        true,
+        false,
+    ),
+    cmd(
+        "fork",
+        "分叉",
+        "带着问题分叉出一个侧聊",
+        Some("<问题>"),
+        "会话",
+        true,
+        true,
+    ),
+    cmd(
+        "btw",
+        "顺便问一句",
+        "开一个侧聊提问，不打断当前会话",
+        Some("<问题>"),
+        "会话",
+        true,
+        true,
+    ),
+    cmd(
+        "rename",
+        "重命名",
+        "修改当前会话的名称",
+        Some("<名称>"),
+        "会话",
+        true,
+        true,
+    ),
+    cmd(
+        "compact",
+        "压缩上下文",
+        "压缩会话上下文，可附带自定义指令",
+        Some("[指令]"),
+        "会话",
+        true,
+        false,
+    ),
+    cmd(
+        "handoff",
+        "交接",
+        "总结当前会话为交接文档并压缩上下文",
+        None,
+        "会话",
+        true,
+        false,
+    ),
+    cmd(
+        "retry",
+        "重试",
+        "重试上一次失败的回合",
+        None,
+        "会话",
+        false,
+        false,
+    ),
+    cmd(
+        "resume",
+        "继续",
+        "恢复上一次被打断的回合",
+        None,
+        "会话",
+        true,
+        false,
+    ),
+    cmd(
+        "plan",
+        "规划模式",
+        "切换规划模式：先出计划再执行",
+        None,
+        "会话",
+        true,
+        false,
+    ),
+    cmd(
+        "goal",
+        "目标",
+        "设置或更新持续追求的目标",
+        Some("<目标描述 | pause | resume | off>"),
+        "会话",
+        true,
+        false,
+    ),
+    cmd(
+        "model",
+        "切换模型",
+        "切换当前会话模型",
+        Some("<provider/模型 id>"),
+        "模型",
+        true,
+        true,
+    ),
+    cmd(
+        "thinking",
+        "思考等级",
+        "设置思考等级",
+        Some("<等级>"),
+        "模型",
+        true,
+        true,
+    ),
+    cmd(
+        "fast",
+        "快速模式",
+        "切换快速服务档位",
+        Some("[on|off]"),
+        "模型",
+        true,
+        false,
+    ),
+    cmd(
+        "slow",
+        "慢速模式",
+        "切换低优先级/经济服务档位",
+        Some("[on|off]"),
+        "模型",
+        true,
+        false,
+    ),
+    cmd(
+        "status",
+        "会话状态",
+        "查看模型、思考、目标与运行状态",
+        None,
+        "状态",
+        true,
+        false,
+    ),
+    cmd(
+        "tools",
+        "工具列表",
+        "列出当前对代理可见的工具",
+        None,
+        "状态",
+        false,
+        false,
+    ),
+    cmd(
+        "jobs",
+        "后台任务",
+        "查看异步后台任务状态",
+        None,
+        "状态",
+        false,
+        false,
+    ),
+    cmd(
+        "init",
+        "初始化项目",
+        "为当前项目生成 AGENTS.md 等配置",
+        None,
+        "更多 OMP 命令",
+        false,
+        false,
+    ),
+    cmd(
+        "review",
+        "代码审查",
+        "让代理审查当前改动",
+        Some("[说明]"),
+        "更多 OMP 命令",
+        false,
+        false,
+    ),
+    cmd(
+        "security",
+        "安全检查",
+        "检查环境与权限配置",
+        None,
+        "更多 OMP 命令",
+        false,
+        false,
+    ),
+    cmd(
+        "skill:visualize",
+        "Visualize",
+        "创建可视化和交互工具",
+        Some("<要可视化的内容>"),
+        "技能",
+        false,
+        true,
+    ),
+];
+
+/// Desktop registry commands that need desktop UI (or are served natively
+/// above). Dynamic omp commands with these names are shadowed, as on desktop.
+const DESKTOP_ONLY: &[&str] = &[
+    "export",
+    "copy",
+    "share",
+    "changelog",
+    "todo",
+    "stats",
+    "context",
+    "usage",
+    "advisor",
+    "mcp",
+    "plugins",
+    "plugin",
+    "marketplace",
+    "memory",
+    "browser",
+    "computer",
+    "extended-context",
+    "agents",
+    "approvals",
+    "login",
+    "settings",
+    "models",
+    "visualize",
+];
+
+fn is_curated(name: &str) -> bool {
+    CURATED.iter().any(|c| c.name == name)
+}
+
+/// Canonical command name: strips `/`, lower-cases aliases handled by the
+/// desktop registry (`models`→`model`, `visualize`→`skill:visualize`).
+fn canonical_name(raw: &str) -> String {
+    let n = raw.trim().trim_start_matches('/');
+    match n {
+        "models" => "model".into(),
+        "visualize" => "skill:visualize".into(),
+        _ => n.to_string(),
+    }
+}
+
+fn valid_cmd_name(n: &str) -> bool {
+    !n.is_empty()
+        && n.len() <= 64
+        && n.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'))
+}
+
+async fn slash_commands<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    let mut list: Vec<Value> = CURATED
+        .iter()
+        .map(|c| {
+            json!({
+                "name": c.name,
+                "title": c.title,
+                "description": c.description,
+                "argHint": c.arg_hint,
+                "group": c.group,
+                "kind": if c.native { "native" } else { "forward" },
+                "needsArg": c.needs_arg,
+            })
+        })
+        .collect();
+    // Custom commands/skills as discovered by the running omp process; a
+    // failure (not live, resume error) just yields the curated list.
+    if live(state, &id).await.is_ok() {
+        if let Some(handle) = crate::rpc::get_handle(&id) {
+            if let Ok(resp) =
+                crate::rpc::send_command(&handle, json!({"type": "get_available_commands"})).await
+            {
+                let data = data_of(&resp);
+                let arr = data
+                    .get("commands")
+                    .and_then(Value::as_array)
+                    .or_else(|| data.as_array());
+                for c in arr.into_iter().flatten() {
+                    let Some(name) = c.get("name").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    let name = name.trim_start_matches('/');
+                    if !valid_cmd_name(name)
+                        || is_curated(name)
+                        || DESKTOP_ONLY.contains(&name)
+                        || list.iter().any(|v| v["name"] == name)
+                    {
+                        continue;
+                    }
+                    let hint = c
+                        .pointer("/input/hint")
+                        .or_else(|| c.get("hint"))
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty());
+                    list.push(json!({
+                        "name": name,
+                        "title": name,
+                        "description": c.get("description").and_then(Value::as_str).unwrap_or(""),
+                        "argHint": hint,
+                        "group": "自定义",
+                        "kind": "custom",
+                        "needsArg": false,
+                    }));
+                }
+            }
+        }
+    }
+    Ok(Json(Value::Array(list)))
+}
+
+#[derive(Deserialize)]
+struct SlashBody {
+    name: String,
+    #[serde(default)]
+    args: String,
+}
+
+fn goal_of(state: &Value) -> Option<(String, String)> {
+    let g = state.get("goal")?;
+    let goal = g.get("goal").unwrap_or(g);
+    let objective = goal.get("objective")?.as_str()?.to_string();
+    let status = goal
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    Some((objective, status))
+}
+
+fn goal_json(state: &Value) -> Value {
+    goal_of(state).map_or(Value::Null, |(o, s)| json!({"objective": o, "status": s}))
+}
+
+/// Goal ops exactly as `registry.ts`/`GoalBar`: `{type:"goal", op, ...}` then
+/// a `get_state` refresh. Returns the refreshed state.
+async fn goal_op(
+    state: &AppState,
+    id: &str,
+    op: &str,
+    objective: Option<&str>,
+) -> Result<Value, ApiError> {
+    live(state, id).await?;
+    let mut cmd = json!({"type": "goal", "op": op});
+    if let Some(o) = objective {
+        cmd["objective"] = json!(o);
+    }
+    rpc_cmd(state, id, cmd).await.map_err(bad_gateway)?;
+    let resp = rpc_cmd(state, id, json!({"type": "get_state"}))
+        .await
+        .map_err(bad_gateway)?;
+    Ok(data_of(&resp).clone())
+}
+
+/// Create a goal, dropping an existing one first (desktop `/goal <text>`).
+async fn goal_create(state: &AppState, id: &str, objective: &str) -> Result<Value, ApiError> {
+    live(state, id).await?;
+    if let Some(cur) = live_state(id).await {
+        if goal_of(&cur).is_some() {
+            goal_op(state, id, "drop", None).await?;
+        }
+    }
+    goal_op(state, id, "create", Some(objective)).await
+}
+
+fn short(s: &str, n: usize) -> String {
+    if s.chars().count() > n {
+        format!("{}…", s.chars().take(n).collect::<String>())
+    } else {
+        s.to_string()
+    }
+}
+
+fn model_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Object(o) => {
+            let p = o.get("provider").and_then(Value::as_str).unwrap_or("");
+            let id = o
+                .get("id")
+                .or_else(|| o.get("modelId"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            match (p.is_empty(), id.is_empty()) {
+                (false, false) => format!("{p}/{id}"),
+                (true, false) => id.to_string(),
+                _ => p.to_string(),
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+fn status_text(id: &str, meta: &SessionMeta, st: Option<&Value>) -> String {
+    let mut lines = vec!["**会话状态**".to_string()];
+    match st {
+        Some(st) => {
+            let model = st.get("model").map(model_text).filter(|s| !s.is_empty());
+            lines.push(format!(
+                "- 模型：{}",
+                model
+                    .or_else(|| meta.model.clone())
+                    .unwrap_or_else(|| "未知".into())
+            ));
+            if let Some(t) = st.get("thinkingLevel").and_then(Value::as_str) {
+                lines.push(format!("- 思考等级：{t}"));
+            }
+            let streaming = st
+                .get("isStreaming")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            lines.push(format!(
+                "- 状态：{}",
+                if streaming { "运行中" } else { "空闲" }
+            ));
+            if let Some(p) = st.pointer("/contextUsage/percent").and_then(Value::as_f64) {
+                lines.push(format!("- 上下文占用：{:.0}%", p * 100.0));
+            }
+            if let Some((o, s)) = goal_of(st) {
+                lines.push(format!("- 目标：{}（{s}）", short(&o, 60)));
+            }
+        }
+        None => {
+            lines.push(format!(
+                "- 模型：{}",
+                meta.model.clone().unwrap_or_else(|| "未知".into())
+            ));
+            lines.push("- 状态：进程未运行".into());
+        }
+    }
+    lines.push(format!(
+        "- 规划模式：{}",
+        if is_plan_on(id) { "开" } else { "关" }
+    ));
+    lines.join("\n")
+}
+
+fn parse_toggle(args: &str, current: bool) -> Result<bool, ApiError> {
+    match args.trim().to_ascii_lowercase().as_str() {
+        "" => Ok(!current),
+        "on" | "开" | "1" | "true" => Ok(true),
+        "off" | "关" | "0" | "false" => Ok(false),
+        _ => Err(bad_request("参数必须是 on 或 off")),
+    }
+}
+
+/// Resolve `/model` args to `(provider, modelId)`: `provider/id` directly,
+/// otherwise a unique id match among the process's available models.
+async fn resolve_model(
+    state: &AppState,
+    id: &str,
+    arg: &str,
+) -> Result<(String, String), ApiError> {
+    if let Some((p, m)) = arg.split_once('/') {
+        let (p, m) = (p.trim(), m.trim());
+        if !p.is_empty() && !m.is_empty() {
+            return Ok((p.into(), m.into()));
+        }
+    }
+    let resp = rpc_cmd(state, id, json!({"type": "get_available_models"}))
+        .await
+        .map_err(bad_gateway)?;
+    let data = data_of(&resp);
+    let arr = data
+        .get("models")
+        .and_then(Value::as_array)
+        .or_else(|| data.as_array());
+    let hits: Vec<(String, String)> = arr
+        .into_iter()
+        .flatten()
+        .filter_map(|m| {
+            let mid = m.get("id").and_then(Value::as_str)?;
+            let p = m.get("provider").and_then(Value::as_str)?;
+            (mid == arg).then(|| (p.to_string(), mid.to_string()))
+        })
+        .collect();
+    match hits.len() {
+        1 => Ok(hits.into_iter().next().unwrap_or_default()),
+        0 => Err(bad_request("未找到该模型，请使用 provider/模型 id")),
+        _ => Err(bad_request("模型 id 不唯一，请使用 provider/模型 id")),
+    }
+}
+
+async fn slash<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<SlashBody>,
+) -> ApiResult<Value> {
+    let meta = load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    let name = canonical_name(&body.name);
+    if !valid_cmd_name(&name) {
+        return Err(bad_request("非法命令名"));
+    }
+    let args = body.args.trim();
+    let ok = |extra: Value| -> ApiResult<Value> {
+        let mut v = json!({"ok": true});
+        if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
+            o.extend(e.clone());
+        }
+        Ok(Json(v))
+    };
+    let fwd_id = id.clone();
+    let forward = |text: String| {
+        let text = text.trim().to_string();
+        let id = fwd_id.clone();
+        async move {
+            send_prompt_ex(state, &id, &text, Vec::new(), None).await?;
+            Ok::<_, ApiError>(Json(json!({"ok": true, "forwarded": true})))
+        }
+    };
+
+    match name.as_str() {
+        "new" => {
+            if meta.cwd.is_empty() {
+                return Err(bad_request("无法确定当前目录"));
+            }
+            let info = crate::rpc::start(
+                state,
+                &StartOpts {
+                    cwd: meta.cwd.clone(),
+                    mode: Some(meta.mode),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(bad_gateway)?;
+            ok(json!({"sessionId": info.session_id}))
+        }
+        "fork" | "btw" => {
+            if args.is_empty() {
+                return Err(bad_request(format!("用法: /{name} <问题>")));
+            }
+            let st = state.app.state::<AppState>();
+            let info = crate::rpc::commands::create_side_chat(
+                st,
+                id.clone(),
+                None,
+                args.to_string(),
+                None,
+            )
+            .await
+            .map_err(bad_gateway)?;
+            ok(json!({"sessionId": info.session_id}))
+        }
+        "rename" => {
+            if args.is_empty() {
+                return Err(bad_request("用法: /rename <名称>"));
+            }
+            live(state, &id).await?;
+            rpc_cmd(
+                state,
+                &id,
+                json!({"type": "set_session_name", "name": args}),
+            )
+            .await
+            .map_err(bad_gateway)?;
+            ok(json!({"output": format!("已重命名为「{args}」")}))
+        }
+        "compact" => {
+            live(state, &id).await?;
+            let mut cmd = json!({"type": "compact"});
+            if !args.is_empty() {
+                cmd["customInstructions"] = json!(args);
+            }
+            rpc_cmd(state, &id, cmd).await.map_err(bad_gateway)?;
+            let _ = rpc_cmd(state, &id, json!({"type": "get_state"})).await;
+            ok(json!({"output": "上下文压缩完成"}))
+        }
+        "handoff" => {
+            live(state, &id).await?;
+            let resp = rpc_cmd(state, &id, json!({"type": "handoff"}))
+                .await
+                .map_err(bad_gateway)?;
+            let path = data_of(&resp).get("savedPath").and_then(Value::as_str);
+            ok(
+                json!({"output": path.map_or("交接完成".to_string(), |p| format!("交接文档已保存: {p}"))}),
+            )
+        }
+        // Desktop only continues when the last assistant message was aborted;
+        // the transcript check is left to omp (a stray "Continue" is harmless).
+        "resume" => {
+            send_prompt_ex(state, &id, "Continue", Vec::new(), None).await?;
+            ok(json!({}))
+        }
+        "plan" => {
+            let on = parse_toggle(args, is_plan_on(&id))?;
+            set_plan(&id, on);
+            ok(json!({
+                "planMode": on,
+                "output": if on { "规划模式已开启：发送需求后生成计划" } else { "规划模式已关闭" },
+            }))
+        }
+        "goal" => {
+            let lower = args.to_ascii_lowercase();
+            if args.is_empty() {
+                let cur = live_state(&id).await;
+                let text = match cur.as_ref().and_then(goal_of) {
+                    Some((o, _)) => format!("当前目标：{o}"),
+                    None => "当前没有目标".into(),
+                };
+                return ok(json!({"output": text}));
+            }
+            let st = if matches!(lower.as_str(), "off" | "drop") {
+                goal_op(state, &id, "drop", None).await?
+            } else if matches!(lower.as_str(), "pause") || args == "暂停" {
+                goal_op(state, &id, "pause", None).await?
+            } else if matches!(lower.as_str(), "resume") || args == "继续" {
+                goal_op(state, &id, "resume", None).await?
+            } else {
+                goal_create(state, &id, args).await?
+            };
+            ok(json!({"goal": goal_json(&st)}))
+        }
+        "model" => {
+            if args.is_empty() {
+                return Err(bad_request("用法: /model <provider/模型 id>"));
+            }
+            live(state, &id).await?;
+            let (provider, model_id) = resolve_model(state, &id, args).await?;
+            rpc_cmd(
+                state,
+                &id,
+                json!({"type": "set_model", "provider": provider, "modelId": model_id}),
+            )
+            .await
+            .map_err(bad_gateway)?;
+            let _ = rpc_cmd(state, &id, json!({"type": "get_state"})).await;
+            ok(json!({"output": format!("已切换模型：{provider}/{model_id}")}))
+        }
+        "thinking" => {
+            let level = args.to_ascii_lowercase();
+            if level.is_empty()
+                || !level
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(bad_request("用法: /thinking <等级>"));
+            }
+            live(state, &id).await?;
+            rpc_cmd(
+                state,
+                &id,
+                json!({"type": "set_thinking_level", "level": level}),
+            )
+            .await
+            .map_err(bad_gateway)?;
+            let _ = rpc_cmd(state, &id, json!({"type": "get_state"})).await;
+            ok(json!({"output": format!("思考等级：{level}")}))
+        }
+        "fast" | "slow" => {
+            live(state, &id).await?;
+            let key = if name == "fast" {
+                "fastModeEnabled"
+            } else {
+                "slowModeEnabled"
+            };
+            let cur = live_state(&id)
+                .await
+                .and_then(|s| s.get(key).and_then(Value::as_bool))
+                .unwrap_or(false);
+            let enabled = parse_toggle(args, cur)?;
+            let ty = if name == "fast" {
+                "set_fast_mode"
+            } else {
+                "set_slow_mode"
+            };
+            rpc_cmd(state, &id, json!({"type": ty, "enabled": enabled}))
+                .await
+                .map_err(bad_gateway)?;
+            let label = if name == "fast" {
+                "快速模式"
+            } else {
+                "慢速模式"
+            };
+            ok(json!({"output": format!("{label}已{}", if enabled { "开启" } else { "关闭" })}))
+        }
+        "status" => {
+            let st = live_state(&id).await;
+            ok(json!({"output": status_text(&id, &meta, st.as_ref())}))
+        }
+        n if is_curated(n) => forward(format!("/{n} {args}")).await,
+        n if DESKTOP_ONLY.contains(&n) => Err(bad_request("该命令仅桌面端可用")),
+        // Custom command / skill reported by omp.
+        n => forward(format!("/{n} {args}")).await,
+    }
+}
+
+// -------------------------------------------------- composer state & goal
+
+async fn composer_state<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    let meta = load_session(&ctx, &id).await?;
+    let st = live_state(&id).await;
+    let streaming = crate::rpc::get_handle(&id)
+        .is_some_and(|h| h.streaming.load(std::sync::atomic::Ordering::SeqCst));
+    let model = st
+        .as_ref()
+        .and_then(|s| s.get("model"))
+        .map(model_text)
+        .filter(|s| !s.is_empty())
+        .or(meta.model.clone());
+    Ok(Json(json!({
+        "live": st.is_some(),
+        "streaming": streaming,
+        "model": model,
+        "thinkingLevel": st.as_ref().and_then(|s| s.get("thinkingLevel")).cloned(),
+        "planMode": is_plan_on(&id),
+        "goal": st.as_ref().map_or(Value::Null, goal_json),
+        "fastMode": st.as_ref().and_then(|s| s.get("fastModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
+        "slowMode": st.as_ref().and_then(|s| s.get("slowModeEnabled")).and_then(Value::as_bool).unwrap_or(false),
+        "state": st,
+    })))
+}
+
+#[derive(Deserialize)]
+struct GoalBody {
+    objective: Option<String>,
+    op: Option<String>,
+}
+
+async fn goal_set<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<GoalBody>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    let st = match (body.op.as_deref(), body.objective.as_deref().map(str::trim)) {
+        (Some(op @ ("pause" | "resume" | "drop")), _) => goal_op(state, &id, op, None).await?,
+        (Some(_), _) => return Err(bad_request("op 必须是 pause、resume 或 drop")),
+        (None, Some(o)) if !o.is_empty() => goal_create(state, &id, o).await?,
+        _ => return Err(bad_request("缺少 objective")),
+    };
+    Ok(Json(json!({"ok": true, "goal": goal_json(&st)})))
+}
+
+async fn goal_clear<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    let st = goal_op(state, &id, "drop", None).await?;
+    Ok(Json(json!({"ok": true, "goal": goal_json(&st)})))
+}
+
+#[derive(Deserialize)]
+struct PlanBody {
+    on: Option<bool>,
+}
+
+async fn plan_get<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    Ok(Json(json!({"on": is_plan_on(&id)})))
+}
+
+async fn plan_set<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<PlanBody>,
+) -> ApiResult<Value> {
+    load_session(&ctx, &id).await?;
+    let on = body.on.unwrap_or_else(|| !is_plan_on(&id));
+    set_plan(&id, on);
+    Ok(Json(json!({"on": on})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitizer_strips_paths_and_dots() {
+        assert_eq!(sanitize_filename("../../etc/passwd"), "passwd");
+        assert_eq!(sanitize_filename("a\\b\\c.txt"), "c.txt");
+        assert_eq!(sanitize_filename(".."), "upload");
+        assert_eq!(sanitize_filename("."), "upload");
+        assert_eq!(sanitize_filename(""), "upload");
+        assert_eq!(sanitize_filename("dir/"), "upload");
+        assert_eq!(sanitize_filename("..hidden"), "hidden");
+        assert_eq!(sanitize_filename("a:b*c?.txt"), "abc.txt");
+        assert_eq!(sanitize_filename("x\0y\n.md"), "xy.md");
+        assert_eq!(sanitize_filename("  报告 1.pdf "), "报告 1.pdf");
+    }
+
+    #[test]
+    fn sanitizer_truncates_on_char_boundary_keeping_ext() {
+        let long = format!("{}.txt", "文".repeat(100));
+        let out = sanitize_filename(&long);
+        assert!(out.len() <= MAX_NAME_BYTES);
+        assert!(out.ends_with(".txt"));
+        assert!(out.starts_with('文'));
+        let no_ext = "a".repeat(500);
+        assert_eq!(sanitize_filename(&no_ext).len(), MAX_NAME_BYTES);
+    }
+
+    #[test]
+    fn size_cap() {
+        assert!(check_upload_size(1).is_ok());
+        assert!(check_upload_size(MAX_UPLOAD).is_ok());
+        assert_eq!(
+            check_upload_size(MAX_UPLOAD + 1).unwrap_err().0,
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        assert_eq!(check_upload_size(0).unwrap_err().0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn unique_path_avoids_overwrite() {
+        let dir = std::env::temp_dir().join(format!("chat-up-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = unique_path(&dir, "f.txt");
+        assert_eq!(a, dir.join("f.txt"));
+        std::fs::write(&a, b"x").unwrap();
+        let b = unique_path(&dir, "f.txt");
+        assert_ne!(a, b);
+        assert!(b.file_name().unwrap().to_string_lossy().ends_with("-f.txt"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn images_validated() {
+        let ok = ImageIn {
+            mime: "image/JPG".into(),
+            data: "aGk=".into(),
+        };
+        let v = build_images(&[ok]).ok().unwrap();
+        assert_eq!(v[0]["mimeType"], "image/jpeg");
+        assert_eq!(v[0]["type"], "image");
+        let bad_mime = ImageIn {
+            mime: "text/html".into(),
+            data: "aGk=".into(),
+        };
+        assert!(build_images(&[bad_mime]).is_err());
+        let bad_data = ImageIn {
+            mime: "image/png".into(),
+            data: "***".into(),
+        };
+        assert!(build_images(&[bad_data]).is_err());
+        let empty = ImageIn {
+            mime: "image/png".into(),
+            data: " ".into(),
+        };
+        assert!(build_images(&[empty]).is_err());
+    }
+
+    #[test]
+    fn plan_prefix_skips_slash_commands() {
+        assert!(apply_plan_prefix("做点事", true).starts_with("[规划模式]"));
+        assert_eq!(apply_plan_prefix("/compact", true), "/compact");
+        assert_eq!(apply_plan_prefix("做点事", false), "做点事");
+    }
+
+    #[test]
+    fn names_and_toggles() {
+        assert_eq!(canonical_name("/models"), "model");
+        assert_eq!(canonical_name("visualize"), "skill:visualize");
+        assert!(valid_cmd_name("skill:visualize"));
+        assert!(!valid_cmd_name("a b"));
+        assert!(!valid_cmd_name("../x"));
+        assert!(parse_toggle("", false).ok().unwrap());
+        assert!(!parse_toggle("off", true).ok().unwrap());
+        assert!(parse_toggle("maybe", true).is_err());
+    }
+
+    #[test]
+    fn goal_parsing_accepts_both_shapes() {
+        let wrapped = json!({"goal": {"goal": {"objective": "ship", "status": "active"}}});
+        assert_eq!(goal_of(&wrapped), Some(("ship".into(), "active".into())));
+        let bare = json!({"goal": {"objective": "x"}});
+        assert_eq!(goal_of(&bare), Some(("x".into(), String::new())));
+        assert_eq!(goal_of(&json!({"goal": null})), None);
+    }
+
+    #[test]
+    fn plan_flag_roundtrip() {
+        set_plan("t-1", true);
+        assert!(is_plan_on("t-1"));
+        set_plan("t-1", false);
+        assert!(!is_plan_on("t-1"));
+    }
+}

@@ -48,6 +48,8 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		"notifySound",
 		"capsuleVisible",
 		"mobileEnabled",
+		"mobileIpv6Enabled",
+		"ddnsEnabled",
 		"homeShowCompletedTodos",
 		"dockBadgeEnabled",
 		"sessionTurnAutoRefresh",
@@ -124,6 +126,14 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 			return { ok: false, error: "移动端端口号必须是 1 到 65535 之间的整数" };
 		}
 		out.mobilePort = port;
+	}
+
+	if ("mobileIpv6Port" in raw) {
+		const port = raw.mobileIpv6Port;
+		if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
+			return { ok: false, error: "IPv6 端口号必须是 1 到 65535 之间的整数" };
+		}
+		out.mobileIpv6Port = port;
 	}
 
 	if ("supervisorIntervalMinutes" in raw) {
@@ -216,6 +226,28 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 			return { ok: false, error: "公网域名不能包含空字符或换行符" };
 		}
 		out.tunnelHostname = val;
+	}
+
+	if ("ddnsZoneId" in raw) {
+		const val = raw.ddnsZoneId;
+		if (val !== null && typeof val !== "string") {
+			return { ok: false, error: "DDNS Zone ID 必须是字符串或 null" };
+		}
+		if (typeof val === "string" && /[\0\r\n]/.test(val)) {
+			return { ok: false, error: "DDNS Zone ID 不能包含空字符或换行符" };
+		}
+		out.ddnsZoneId = val;
+	}
+
+	if ("ddnsHostname" in raw) {
+		const val = raw.ddnsHostname;
+		if (val !== null && typeof val !== "string") {
+			return { ok: false, error: "DDNS 域名必须是字符串或 null" };
+		}
+		if (typeof val === "string" && /[\0\r\n]/.test(val)) {
+			return { ok: false, error: "DDNS 域名不能包含空字符或换行符" };
+		}
+		out.ddnsHostname = val;
 	}
 
 	if ("newSessionModel" in raw) {

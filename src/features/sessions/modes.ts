@@ -113,7 +113,8 @@ export function resolveWorkspaceIdForMode(
  * Pick the workspace a new session should target inside `mode`:
  * 通用对话 → the global workspace. Project modes → the project of the
  * currently selected session (same mode), else the most recently updated
- * session's project in the mode, else null (the launcher asks for a directory).
+ * session's project in the mode, else the mode's first project, else null (the
+ * launcher asks for a directory).
  */
 export function resolveNewSessionTargetWorkspace(
 	mode: SpaceMode,
@@ -145,7 +146,9 @@ export function resolveNewSessionTargetWorkspace(
 			best = ws;
 		}
 	}
-	// Project modes have no project-less fallback; 通用对话 always uses global.
+	// 通用对话 always uses global; project modes fall back to the first project
+	// even when it has no sessions yet (otherwise the launcher spins forever
+	// because `ready` is true but nothing is ever created).
 	if (mode === "chat") return modeGlobalWorkspace(workspaces, mode);
-	return best;
+	return best ?? projects[0] ?? null;
 }
