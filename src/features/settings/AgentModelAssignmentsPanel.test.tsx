@@ -1,0 +1,95 @@
+// @vitest-environment jsdom
+/**
+ * Settings ▸ 模型角色: the scope row is the table card's first row and the only
+ * place that explains the scope, so switching scope must re-read the layer it
+ * writes, and 项目 must be unreachable when there is no project to configure.
+ */
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { rolesRead, rolesSet } = vi.hoisted(() => ({ rolesRead: vi.fn(), rolesSet: vi.fn() }));
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(() => Promise.reject(new Error("no tauri"))) }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(() => Promise.resolve(() => {})), emit: vi.fn() }));
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: vi.fn(() => Promise.resolve("0.0.0-test")) }));
+vi.mock("../../lib/ipc", () => ({
+	ompModelRolesRead: rolesRead,
+	ompModelRolesSet: rolesSet,
+}));
+
+import { useSessions } from "../../stores/sessions";
+import { useUi } from "../../stores/ui";
+import { AgentModelAssignmentsPanel } from "./AgentModelAssignmentsPanel";
+
+const SNAPSHOT = {
+	global: {
+		path: "/home/u/.omp/config.yml",
+		exists: true,
+		modelRoles: { default: "openai/gpt-5" },
+		agentModelOverrides: {},
+	},
+	project: null,
+	agents: [],
+};
+
+const NO_PROJECT_GUIDE = "先在侧栏添加一个项目或打开一个会话";
+
+beforeEach(() => {
+	rolesRead.mockReset().mockResolvedValue(SNAPSHOT);
+	rolesSet.mockReset().mockRejectedValue(new Error("unused"));
+	useUi.setState({ selectedSessionId: null, lastSessionId: null });
+	useSessions.setState({ sessions: {}, workspaces: [] });
+});
+
+afterEach(cleanup);
+
+describe("模型角色 scope row", () => {
+	it("disables the project scope and explains it once when there is no project", async () => {
+		render(<AgentModelAssignmentsPanel />);
+		await waitFor(() => expect(screen.getByTestId("role-table")).toBeTruthy());
+
+		const project = screen.getByRole("radio", { name: "项目" }) as HTMLButtonElement;
+		expect(project.disabled).toBe(true);
+		expect(project.title).toBe(NO_PROJECT_GUIDE);
+		// The row's own description is the only explanation: no separate warning block.
+		expect(screen.queryByText(NO_PROJECT_GUIDE)).toBeNull();
+		expect(screen.getByText("对所有项目生效，不受当前会话所在项目影响。")).toBeTruthy();
+		expect(rolesRead).toHaveBeenCalledWith(null, null);
+
+		// One card holds both the scope row and the table.
+		const card = screen.getByTestId("role-table").closest("section");
+		expect(card).not.toBeNull();
+		expect(card!.contains(screen.getByText("配置范围"))).toBe(true);
+		expect(card!.parentElement).toBe(screen.getByTestId("model-roles-panel"));
+	});
+
+	it("reveals the project picker and reads the project layer once 项目 is chosen", async () => {
+		useSessions.setState({
+			workspaces: [{ id: "w1", name: "alpha", path: "/repo/alpha", kind: "project", sort: 0, mode: "code" }],
+		});
+		render(<AgentModelAssignmentsPanel />);
+		await waitFor(() => expect(rolesRead).toHaveBeenCalledWith(null, null));
+
+		fireEvent.click(screen.getByRole("radio", { name: "项目" }));
+
+		await waitFor(() => expect(rolesRead).toHaveBeenCalledWith("/repo/alpha", null));
+		expect((screen.getByLabelText("选择要配置的项目") as HTMLSelectElement).value).toBe("/repo/alpha");
+		expect(screen.getByText(/只写入/).textContent).toContain("alpha");
+	});
+
+	it("re-reads the current scope from the header action", async () => {
+		render(<AgentModelAssignmentsPanel />);
+		await waitFor(() => expect(screen.getByTestId("role-table")).toBeTruthy());
+		const before = rolesRead.mock.calls.length;
+
+		const reload = screen.getByRole("button", { name: "重新读取模型角色" });
+		// It is a page-level action: in the header, not inside the card.
+		const header = reload.parentElement!.parentElement!;
+		expect(header.contains(screen.getByRole("heading", { name: "模型角色" }))).toBe(true);
+		expect(screen.getByTestId("role-table").closest("section")!.contains(reload)).toBe(false);
+
+		fireEvent.click(reload);
+
+		await waitFor(() => expect(rolesRead.mock.calls.length).toBe(before + 1));
+	});
+});

@@ -99,7 +99,7 @@ src/
     ui.tsx                   SectionHeader, SettingsCard, SettingRow, ToggleRow, CommitInput, useSaveStatus/SaveIndicator
     useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
     settingsNav.ts           SettingsNavContext / useSettingsNav (search query + navigate)
-    AgentModelAssignmentsPanel.tsx  `omp-roles`: discovered agents, effective-model reasons, global/project roles, collapsed named overrides
+    AgentModelAssignmentsPanel.tsx  `omp-roles`: page header + one card holding the 配置范围 row and the 角色分配 table (agents, effective-model reasons, global/project roles, collapsed named overrides)
     FallbackChainsSection.tsx  `model-fallback`: preserved fallback-chain and role-cycle settings; no modelRoles writes
   features/mobile/           pairing / tunnel panel (inside settings or its own modal)  [E]
   features/terminal/         right-panel command terminal & agent terminal center view  [E]

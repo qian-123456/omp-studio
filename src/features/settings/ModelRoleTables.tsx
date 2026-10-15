@@ -433,15 +433,12 @@ export function RoleAssignmentTable({ rows, query, ctx }: { rows: AssignmentRow[
 		]),
 	);
 	if (visible.length === 0) {
-		return <p className="py-6 text-center text-xs text-neutral-500">没有与「{query}」匹配的角色或代理。</p>;
+		return <p className="px-4 py-6 text-center text-xs text-neutral-500">没有与「{query}」匹配的角色或代理。</p>;
 	}
 
 	return (
-		<div
-			className="overflow-hidden rounded-xl hairline"
-			data-testid="role-table"
-			data-scope={ctx.scope}
-		>
+		// Rows only: the card, its divider and its clipping belong to the panel.
+		<div data-testid="role-table" data-scope={ctx.scope}>
 			{visible.map((r, i) => {
 				const key = `${r.kind}:${r.name}`;
 				const isOpen = open.has(key);

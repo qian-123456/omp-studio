@@ -143,10 +143,7 @@ export function SideChatPanel() {
 	const baseModelName = effectiveRole
 		? RESOLVABLE_ROLES[effectiveRole]
 		: (activeModel.label || activeModel.id || "选择模型");
-	const displayModelName =
-		effective.source === "setting" && effective.level
-			? `${baseModelName} · ${effective.level}`
-			: baseModelName;
+	const displayModelName = baseModelName;
 	const annKey = selectedId ? sideChatAnnKey(selectedId) : "";
 	const stagedAll = useComposer((s) => s.annotations[annKey]) ?? EMPTY_ANNS;
 	const stagedAnns = useMemo(() => textAnnotationsOf(stagedAll), [stagedAll]);

@@ -1,11 +1,11 @@
 /**
- * [D] Settings ▸ 模型角色 (`omp-roles`): one 「角色分配」 table for roles and
- * sub-agents. Reads and writes go only through `omp_model_roles_read/set` — never
- * the generic config list or raw config text.
+ * [D] Settings ▸ 模型角色 (`omp-roles`): page header, one 「配置范围」 row and one
+ * 「角色分配」 table, all inside a single card.
  *
- * Scope tabs (global | project, one scope at a time) come first. The scope always
- * starts at global on entry and never follows the selected session; a project is
- * only ever chosen explicitly.
+ * The scope row is the table's first row: it decides which config file every
+ * control below writes to, so it stays visible while the table loads and reads
+ * as part of the table instead of a card of its own. Reloading is a page-level
+ * action and lives in the header.
  */
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,7 +20,7 @@ import { useSessions } from "../../stores/sessions";
 import { type AssignmentScope, type AssignmentTable, buildAssignmentRows } from "./agentModelAssignments";
 import { type AssignmentContext, RoleAssignmentTable } from "./ModelRoleTables";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { SettingsCard } from "./ui";
+import { SectionHeader, SettingRow, SettingsCard } from "./ui";
 import { useSettingsScopeSessionId, useSettingsSessionModel } from "./useAppSettings";
 
 const EMPTY_LAYER: Record<string, string> = {};
@@ -116,7 +116,7 @@ function useModelRoleState(cwd: string | null, sessionModel: string | null): Mod
 	};
 }
 
-interface ScopeBarProps {
+interface ScopeRowProps {
 	scope: AssignmentScope;
 	onScope: (scope: AssignmentScope) => void;
 	pick: string | null;
@@ -124,18 +124,34 @@ interface ScopeBarProps {
 	sessionCwd: string | null;
 	workspaces: Workspace[];
 	busy: boolean;
-	loading: boolean;
-	onReload: () => void;
 }
 
-/** One scope at a time. The project defaults to the session's project and can be switched to any registered one. */
-function ScopeBar({ scope, onScope, pick, onPick, sessionCwd, workspaces, busy, loading, onReload }: ScopeBarProps) {
+/**
+ * First row of the table card. One scope at a time: the project defaults to the
+ * session's project and can be switched to any registered one. Without any
+ * project to configure the 项目 option is disabled, so this row is the only
+ * place that explains the scope — no second warning elsewhere.
+ */
+function ScopeRow({ scope, onScope, pick, onPick, sessionCwd, workspaces, busy }: ScopeRowProps) {
 	// A picked path that is no longer registered stays selectable so the select never shows a blank value.
 	const unlisted = pick !== null && pick !== sessionCwd && !workspaces.some((w) => w.path === pick);
+	const projectName = pick === null ? "" : (workspaces.find((w) => w.path === pick)?.name ?? basename(pick));
 	return (
-		<SettingsCard fieldId="modelRoleContext">
-			<div className="space-y-2.5 p-3.5">
-				<div className="flex flex-wrap items-center gap-2">
+		<SettingRow
+			label="配置范围"
+			description={
+				scope === "project" && pick !== null ? (
+					<span title={pick}>
+						只写入「<span className="font-medium text-neutral-200">{projectName}</span>」，未设置的角色继承全局。
+					</span>
+				) : scope === "project" ? (
+					"先在侧栏添加一个项目或打开一个会话。"
+				) : (
+					"对所有项目生效，不受当前会话所在项目影响。"
+				)
+			}
+			control={
+				<>
 					<Segmented<AssignmentScope>
 						size="sm"
 						aria-label="配置范围"
@@ -144,21 +160,28 @@ function ScopeBar({ scope, onScope, pick, onPick, sessionCwd, workspaces, busy, 
 						onChange={onScope}
 						options={[
 							{ value: "global", label: "全局", title: "写入全局配置，对所有项目生效" },
-							{ value: "project", label: "项目", title: "只写入所选项目的配置，未设置的角色继承全局" },
+							{
+								value: "project",
+								label: "项目",
+								disabled: pick === null,
+								title:
+									pick === null
+										? "先在侧栏添加一个项目或打开一个会话"
+										: "只写入所选项目的配置，未设置的角色继承全局",
+							},
 						]}
 					/>
-					{scope === "project" && (
+					{scope === "project" && pick !== null && (
 						<NativeSelect
 							aria-label="选择要配置的项目"
-							value={pick ?? ""}
+							value={pick}
 							disabled={busy}
 							onChange={(e) => onPick(e.target.value === "" ? null : e.target.value)}
 							className="text-[11px]"
-							containerClassName="min-w-0 max-w-[340px] flex-1"
+							containerClassName="w-[220px]"
 						>
-							{pick === null && <option value="">选择项目…</option>}
 							{sessionCwd !== null && <option value={sessionCwd}>当前会话项目（{basename(sessionCwd)}）</option>}
-							{unlisted && pick !== null && (
+							{unlisted && (
 								<option value={pick}>
 									{basename(pick)} — {pick}
 								</option>
@@ -172,39 +195,14 @@ function ScopeBar({ scope, onScope, pick, onPick, sessionCwd, workspaces, busy, 
 								))}
 						</NativeSelect>
 					)}
-					<button
-						type="button"
-						onClick={onReload}
-						disabled={busy || loading}
-						title="重新读取模型角色"
-						aria-label="重新读取模型角色"
-						className={`${REFRESH_BTN} ml-auto`}
-					>
-						<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-					</button>
-				</div>
-				<p className="text-[11px] leading-5 text-neutral-400">
-					{scope === "global" ? (
-						"全局：写入全局配置，对所有项目生效；不受当前会话所在项目影响。"
-					) : pick !== null ? (
-						<>
-							项目：<span className="font-medium text-neutral-200">{workspaces.find((w) => w.path === pick)?.name ?? basename(pick)}</span>{" "}
-							<span className="font-mono text-neutral-500" title={pick}>
-								{pick}
-							</span>
-							<span className="text-neutral-500">　仅对在该目录启动的会话生效；未设置的角色继承全局</span>
-						</>
-					) : (
-						<span className="text-amber-300/90">请先选择一个项目；未选择时不会写入任何项目配置。</span>
-					)}
-				</p>
-			</div>
-		</SettingsCard>
+				</>
+			}
+		/>
 	);
 }
 
 /**
- * Model-assignment panel: scope bar and the single 「角色分配」 table.
+ * Model-assignment panel: header, scope row and the single 「角色分配」 table.
  * `query` filters the table rows.
  */
 export function AgentModelAssignmentsPanel({ query = "" }: { query?: string }) {
@@ -266,60 +264,65 @@ export function AgentModelAssignmentsPanel({ query = "" }: { query?: string }) {
 		roles: projectLayer ? { ...globalRoles, ...projectLayer.modelRoles } : globalRoles,
 	};
 
-	const needsProject = scope === "project" && projectPath === null;
-
 	return (
-		<div className="space-y-5" data-testid="model-roles-panel">
-			<ScopeBar
-				scope={scope}
-				onScope={setScope}
-				pick={pick}
-				onPick={setPicked}
-				sessionCwd={sessionCwd}
-				workspaces={workspaces}
-				busy={writing}
-				loading={loading}
-				onReload={reload}
-			/>
-
-			{needsProject && (
-				<div className="rounded-xl hairline bg-amber-500/10 px-3.5 py-3 text-[11px] leading-5 text-amber-200" data-testid="project-guide">
-					还没有可配置的项目：先在侧栏添加一个项目或打开一个会话；在此之前不会显示或写入任何项目配置。
-				</div>
-			)}
-
-			{!needsProject && error && (
-				<div
-					role="alert"
-					className="flex items-start gap-2 rounded-xl hairline bg-rose-950/20 px-3 py-2 text-[11px] leading-5 text-rose-300"
-				>
-					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-					<span className="min-w-0 flex-1 break-all">
-						{snapshot ? `读取失败，保留上次结果：${error}` : `无法读取模型角色：${error}`}
-					</span>
+		<div className="space-y-6" data-testid="model-roles-panel">
+			<SectionHeader
+				title="模型角色"
+				description="为每个角色与子代理指定模型，可全局设置或按项目覆盖"
+				actions={
 					<button
 						type="button"
 						onClick={reload}
-						className="shrink-0 whitespace-nowrap rounded-md bg-rose-500/20 px-1.5 py-0.5 font-medium text-rose-100 hover:bg-rose-500/30 active:scale-95 transition-all"
+						disabled={writing || loading}
+						title="重新读取模型角色"
+						aria-label="重新读取模型角色"
+						className={REFRESH_BTN}
 					>
-						重新读取
+						<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
 					</button>
-				</div>
-			)}
+				}
+			/>
 
-			{!needsProject && snapshot === null && !error && (
-				<div className="flex items-center gap-2 text-xs text-neutral-500">
-					<Loader2 className="h-3.5 w-3.5 animate-spin" />
-					正在读取模型角色…
-				</div>
-			)}
+			<SettingsCard clip>
+				<ScopeRow
+					scope={scope}
+					onScope={setScope}
+					pick={pick}
+					onPick={setPicked}
+					sessionCwd={sessionCwd}
+					workspaces={workspaces}
+					busy={writing}
+				/>
 
-			{!needsProject && snapshot !== null && (
-				<div key={`${scope}\u0001${projectPath ?? ""}`} className="space-y-3" data-field-id="modelRolesTable">
-					<h2 className="text-sm font-semibold text-neutral-100">角色分配</h2>
-					<RoleAssignmentTable rows={rows} query={query.trim()} ctx={ctx} />
-				</div>
-			)}
+				{error && (
+					<div role="alert" className="flex items-start gap-2 px-4 py-3 text-[11px] leading-5 text-rose-300">
+						<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+						<span className="min-w-0 flex-1 break-all">
+							{snapshot ? `读取失败，保留上次结果：${error}` : `无法读取模型角色：${error}`}
+						</span>
+						<button
+							type="button"
+							onClick={reload}
+							className="shrink-0 whitespace-nowrap rounded-md bg-rose-500/20 px-1.5 py-0.5 font-medium text-rose-100 hover:bg-rose-500/30 active:scale-95 transition-all"
+						>
+							重新读取
+						</button>
+					</div>
+				)}
+
+				{snapshot === null && !error && (
+					<div className="flex items-center gap-2 px-4 py-3 text-xs text-neutral-500">
+						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						正在读取模型角色…
+					</div>
+				)}
+
+				{snapshot !== null && (
+					<div key={`${scope}\u0001${projectPath ?? ""}`} data-field-id="modelRolesTable">
+						<RoleAssignmentTable rows={rows} query={query.trim()} ctx={ctx} />
+					</div>
+				)}
+			</SettingsCard>
 		</div>
 	);
 }

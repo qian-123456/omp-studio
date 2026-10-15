@@ -37,12 +37,15 @@ export function SettingsCard({
 	title,
 	footer,
 	fieldId,
+	clip,
 	children,
 }: {
 	title?: ReactNode;
 	footer?: ReactNode;
 	/** Renders `data-field-id` on the card (deep links to a whole card). */
 	fieldId?: string;
+	/** Clip children to the rounded corners (rows that paint their own hover background). */
+	clip?: boolean;
 	children: ReactNode;
 }) {
 	return (
@@ -50,7 +53,12 @@ export function SettingsCard({
 			{title && (
 				<h3 className="px-1 text-[11px] font-semibold text-neutral-400">{title}</h3>
 			)}
-			<div className="divide-y divide-[var(--border-divider)] rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card">
+			<div
+				className={clsx(
+					"divide-y divide-[var(--border-divider)] rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card",
+					clip && "overflow-hidden",
+				)}
+			>
 				{children}
 			</div>
 			{footer && <div className="px-1 text-[11px] leading-4 text-neutral-500">{footer}</div>}
