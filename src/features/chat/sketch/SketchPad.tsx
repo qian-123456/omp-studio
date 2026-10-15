@@ -108,6 +108,9 @@ const DRAW_TOOLS: Record<string, true> = {
 	eraser: true,
 };
 
+/** Last shape picked from the popover, remembered across sketch sessions. */
+const SHAPE_KIND_STORAGE_KEY = "ompws:sketch-shape-kind";
+
 /** Canvas surface colors follow the app theme, mirroring ChatGPT's sketch modal. */
 const CANVAS_BG_DARK = "#212121";
 const CANVAS_BG_LIGHT = "#ffffff";
@@ -711,8 +714,19 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 			};
 	const editorRef = useRef<SketchEditor | null>(null);
 	if (editorRef.current == null) {
+		let storedShape: string | null = null;
+		try {
+			storedShape = localStorage.getItem(SHAPE_KIND_STORAGE_KEY);
+		} catch {
+			/* storage unavailable */
+		}
 		editorRef.current = createSketchEditor({
 			tool: "pen",
+			shapeKind:
+				storedShape != null &&
+				(SHAPE_ORDER as readonly string[]).includes(storedShape)
+					? (storedShape as ShapeKind)
+					: "line",
 			style: { color: dark ? "#ffffff" : "#000000" },
 		});
 	}
@@ -1123,6 +1137,11 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 		(kind: ShapeKind) => {
 			// Shape names double as tools in the real editor.
 			editor.setTool(kind);
+			try {
+				localStorage.setItem(SHAPE_KIND_STORAGE_KEY, kind);
+			} catch {
+				/* storage unavailable */
+			}
 			lastDrawToolRef.current = "shapes";
 			setShapesOpen(false);
 			committedRef.current?.focus();

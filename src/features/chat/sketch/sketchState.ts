@@ -3454,6 +3454,7 @@ export function createSketchEditor(init: {
 	document?: SketchDoc;
 	tool?: SketchTool | ShapeKind;
 	style?: Partial<StrokeStyle>;
+	shapeKind?: ShapeKind;
 	eraserSizePx?: number;
 	drawingWidthPx?: number;
 	textSizePx?: number;
@@ -3466,9 +3467,9 @@ export function createSketchEditor(init: {
 		: isDrawableShapeTool(initTool)
 			? "shapes"
 			: (initTool as SketchTool);
-	let shapeKind: ShapeKind = isDrawableShapeTool(initTool)
-		? (initTool as ShapeKind)
-		: "line";
+	let shapeKind: ShapeKind =
+		init.shapeKind ??
+		(isDrawableShapeTool(initTool) ? (initTool as ShapeKind) : "line");
 	let eraserSize = clampEraserSize(init.eraserSizePx);
 	let drawingWidth =
 		init.drawingWidthPx == null ? undefined : clampDrawingWidth(init.drawingWidthPx);
@@ -4273,15 +4274,15 @@ export function createSketchEditor(init: {
 				notify();
 				return true;
 			}
-			const newSelection = isDrawableShapeTool(g.tool) ? obj.id : null;
+			// The shape tool stays armed so shapes can be drawn back-to-back
+			// with the same kind. The real editor switches to `select` and
+			// selects the new object here; this app deliberately keeps
+			// stamping until the user picks another tool.
 			const styleBefore = style;
-			if (newSelection != null) {
-				tool = "select";
-				adoptObjectStyle(obj);
-			}
+			if (isDrawableShapeTool(g.tool)) adoptObjectStyle(obj);
 			return commitDoc(
 				{ schemaVersion: 1, objects: [...doc.objects, obj] },
-				newSelection,
+				null,
 				{ styleBefore },
 			);
 		}

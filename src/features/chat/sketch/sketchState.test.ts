@@ -330,17 +330,30 @@ describe("vector eraser", () => {
 });
 
 describe("shapes", () => {
-	it("commits a rectangle and selects it, switching to select", () => {
+	it("keeps the shape tool armed and unselected so shapes stamp repeatedly", () => {
 		const ed = createSketchEditor();
-		drawShape(ed, "rectangle", [100, 100], [300, 200]);
-		const s = ed.getSnapshot();
-		expect(s.activeTool).toBe("select");
-		const rect = s.document.objects[0]!;
-		expect(rect.kind).toBe("rectangle");
-		if (rect.kind === "rectangle") {
-			expect(rect.bounds).toEqual({ x: 100, y: 100, width: 200, height: 100 });
+		ed.setTool("rectangle");
+		// Two raw drags with no re-pick in between.
+		for (const [x, y] of [
+			[100, 100],
+			[300, 300],
+		] as const) {
+			ed.pointerDown(sample(x, y, { pointerId: 1 }));
+			ed.pointerMove(sample(x + 80, y + 60, { pointerId: 1 }));
+			ed.pointerUp(sample(x + 80, y + 60, { pointerId: 1 }));
 		}
-		expect(s.selectionId).toBe(rect.id);
+		const s = ed.getSnapshot();
+		expect(s.activeTool).toBe("shapes");
+		expect(s.shapeKind).toBe("rectangle");
+		expect(s.selectionId).toBeNull();
+		expect(s.document.objects.map((o) => o.kind)).toEqual([
+			"rectangle",
+			"rectangle",
+		]);
+		const rect = s.document.objects[0]!;
+		if (rect.kind === "rectangle") {
+			expect(rect.bounds).toEqual({ x: 100, y: 100, width: 80, height: 60 });
+		}
 	});
 
 	it("Shift constrains rectangles to squares (max extent)", () => {
@@ -493,6 +506,7 @@ describe("selection, move, resize, flip", () => {
 		const ed = createSketchEditor();
 		drawShape(ed, "rectangle", [100, 100], [200, 160]);
 		ed.setTool("select");
+		ed.selectObject(objects(ed)[0]!.id);
 		ed.pointerDown(sample(150, 130));
 		ed.pointerMove(sample(180, 160));
 		expect(ed.getSnapshot().preview?.transformKind).toBe("move");
@@ -512,6 +526,7 @@ describe("selection, move, resize, flip", () => {
 		const sel = objects(ed)[0]!;
 		// Selection bounds are stroke-inflated: half width (6) around the box.
 		ed.setTool("select");
+		ed.selectObject(sel.id);
 		ed.pointerDown(sample(200 + 6, 160 + 6)); // se handle (stroke-inflated)
 		ed.pointerMove(sample(260, 220));
 		expect(ed.getSnapshot().preview?.transformKind).toBe("resize");
@@ -528,6 +543,7 @@ describe("selection, move, resize, flip", () => {
 		const ed = createSketchEditor();
 		drawShape(ed, "triangle", [100, 100], [200, 200]);
 		ed.setTool("select");
+		ed.selectObject(objects(ed)[0]!.id);
 		// Drag the se handle (inflated bounds: 206,206) left past nw.
 		ed.pointerDown(sample(206, 206));
 		ed.pointerMove(sample(50, 50));
@@ -575,6 +591,7 @@ describe("clipboard and misc", () => {
 	it("deleteSelection removes the object and clears selection", () => {
 		const ed = createSketchEditor();
 		drawShape(ed, "rectangle", [10, 10], [60, 60]);
+		ed.selectObject(objects(ed)[0]!.id);
 		expect(ed.deleteSelection()).toBe(true);
 		expect(objects(ed)).toHaveLength(0);
 		expect(ed.getSnapshot().selectionId).toBeNull();
