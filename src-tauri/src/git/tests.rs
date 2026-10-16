@@ -564,3 +564,13 @@ fn discard_all_keeps_ignored_files() {
     assert!(status::summary(&repo).files.is_empty());
     std::fs::remove_dir_all(&repo).unwrap();
 }
+
+#[test]
+fn extract_commit_message_handles_model_replies() {
+    use commands::extract_commit_message as x;
+    assert_eq!(x("fix(git): pin role\n"), "fix(git): pin role");
+    assert_eq!(x("```\nfix(a): b\n```"), "fix(a): b");
+    assert_eq!(x("```git\nfix(a): b\n\n- c\n```"), "fix(a): b\n\n- c");
+    let chatty = "I'll write it.\n\n**Check:** short.\n\n```\nfix(a): b\n\n- c\n```\n";
+    assert_eq!(x(chatty), "fix(a): b\n\n- c");
+}

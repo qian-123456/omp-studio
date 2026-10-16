@@ -736,13 +736,31 @@ pub async fn git_commit_suggest(
     let suggestion =
         crate::todos::omp::run_print(&state, model_to_use, &prompt, Duration::from_secs(60))
             .await?;
-    let clean = suggestion
-        .trim()
-        .trim_start_matches("```git")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim();
-    Ok(clean.to_string())
+    Ok(extract_commit_message(&suggestion))
+}
+
+/// Pull the commit message out of a model reply. Some models narrate before
+/// answering; when the reply holds a fenced block, the last block is the
+/// message. Otherwise the whole trimmed reply is used.
+pub fn extract_commit_message(reply: &str) -> String {
+    let mut blocks: Vec<&str> = Vec::new();
+    let mut parts = reply.split("```");
+    parts.next(); // text before the first fence
+    while let (Some(inside), Some(_after)) = (parts.next(), parts.next()) {
+        blocks.push(inside);
+    }
+    match blocks.last() {
+        Some(block) => {
+            let block = block.trim_start_matches([' ', '\t']);
+            // Drop an info string such as "git" on the opening fence line.
+            let body = match block.split_once('\n') {
+                Some((first, rest)) if !first.contains(' ') && first.len() < 12 => rest,
+                _ => block,
+            };
+            body.trim().to_string()
+        }
+        None => reply.trim().trim_matches('`').trim().to_string(),
+    }
 }
 
 /// Save every uncommitted change (new files included) as one commit.
