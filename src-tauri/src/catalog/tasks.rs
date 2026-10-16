@@ -149,6 +149,48 @@ async fn run_external_loop(state: AppState) {
             crate::rpc::set_suspended(&state, &session_id, true);
         }
 
+        // A terminal omp that opened our session file while the app's RPC held
+        // it forks into a NEW file (parentSession = our id); the app's child
+        // would keep appending to the old file and the two histories diverge.
+        // Release the app side and tell the user.
+        let live: Vec<(String, String)> = crate::rpc::registry()
+            .read()
+            .values()
+            .map(|h| (h.session_id.read().clone(), h.session_file.read().clone()))
+            .collect();
+        let mut own_pids: Vec<u32> = crate::rpc::registry()
+            .read()
+            .values()
+            .map(|h| h.pid)
+            .collect();
+        own_pids.push(own_pid);
+        let forks =
+            external::detect_forks(&live, &status_files, external::pid_alive, &own_pids, |f| {
+                super::parse::read_head(std::path::Path::new(f))
+                    .ok()
+                    .flatten()
+                    .and_then(|h| h.parent_session)
+            });
+        for fork in forks {
+            let handle = crate::rpc::get_handle(&fork.live_session_id);
+            if let Some(handle) = handle {
+                warn!(
+                    "terminal omp forked live session {} into {}; stopping app-owned RPC",
+                    fork.live_session_id, fork.fork_session_id
+                );
+                let _ = crate::rpc::stop(&handle).await;
+                crate::rpc::set_suspended(&state, &fork.live_session_id, true);
+                let _ = tauri::Emitter::emit(
+                    &state.app,
+                    "sessions:forked",
+                    serde_json::json!({
+                        "sessionId": fork.live_session_id,
+                        "forkSessionId": fork.fork_session_id,
+                    }),
+                );
+            }
+        }
+
         let changed = {
             let mut c = cat().lock();
             if c.external != new_ext {

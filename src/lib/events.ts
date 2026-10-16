@@ -52,6 +52,13 @@ export const onSessionsRemoved = (
 ): Promise<UnlistenFn> =>
 	listen<string[]>("sessions:removed", (e) => cb(e.payload));
 
+export const onSessionForked = (
+	cb: (p: { sessionId: string; forkSessionId: string }) => void,
+): Promise<UnlistenFn> =>
+	listen<{ sessionId: string; forkSessionId: string }>("sessions:forked", (e) =>
+		cb(e.payload),
+	);
+
 export const onRpcFrame = (
 	cb: (payload: RpcFramePayload) => void,
 ): Promise<UnlistenFn> =>

@@ -136,6 +136,55 @@ pub fn external_map(
     map
 }
 
+/// An external (terminal) omp that opened an app-owned live session's file
+/// while we held it: omp refuses to share the file and forks into a NEW
+/// session file (`parentSession` = the app session id) — the two copies then
+/// diverge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalFork {
+    /// The app-owned live session that was forked.
+    pub live_session_id: String,
+    /// Session id of the terminal's fork.
+    pub fork_session_id: String,
+    pub pid: u32,
+}
+
+/// `live` = (session id, session file) of app-owned handles. A live external
+/// status file (pid != own) whose file differs and whose header names a live
+/// session as parent (`parent_of(file)`) is such a fork.
+pub fn detect_forks(
+    live: &[(String, String)],
+    status: &[StatusFile],
+    alive: impl Fn(u32) -> bool,
+    own_pids: &[u32],
+    parent_of: impl Fn(&str) -> Option<String>,
+) -> Vec<ExternalFork> {
+    let mut out = Vec::new();
+    for s in status {
+        if s.session_file.is_empty()
+            || s.state == "exited"
+            || own_pids.contains(&s.pid)
+            || !alive(s.pid)
+        {
+            continue;
+        }
+        let Some(parent) = parent_of(&s.session_file) else {
+            continue;
+        };
+        if live
+            .iter()
+            .any(|(id, file)| *id == parent && *file != s.session_file && *id != s.session_id)
+        {
+            out.push(ExternalFork {
+                live_session_id: parent,
+                fork_session_id: s.session_id.clone(),
+                pid: s.pid,
+            });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,5 +256,24 @@ mod tests {
         assert!(parse_status_file("{}").is_none());
         assert!(pid_alive(std::process::id()));
         assert!(!pid_alive(0));
+    }
+
+    #[test]
+    fn detects_terminal_fork_of_live_session() {
+        let live = vec![("a".to_string(), "/a.jsonl".to_string())];
+        let sf = |id: &str, file: &str, pid: u32| StatusFile {
+            session_id: id.into(),
+            session_file: file.into(),
+            pid,
+            state: "idle".into(),
+        };
+        let status = vec![sf("b", "/b.jsonl", 9), sf("a", "/a.jsonl", 5)];
+        let parent = |f: &str| (f == "/b.jsonl").then(|| "a".to_string());
+        let forks = detect_forks(&live, &status, |_| true, &[1], parent);
+        assert_eq!(forks.len(), 1);
+        assert_eq!(forks[0].live_session_id, "a");
+        assert_eq!(forks[0].fork_session_id, "b");
+        assert!(detect_forks(&live, &status, |_| false, &[1], parent).is_empty());
+        assert!(detect_forks(&live, &status, |_| true, &[9], parent).is_empty());
     }
 }

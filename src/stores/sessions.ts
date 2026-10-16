@@ -6,7 +6,8 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { SessionMeta, Workspace } from "../lib/contracts";
-import { onSessionsRemoved, onSessionsUpdated } from "../lib/events";
+import { toast } from "../lib/toast";
+import { onSessionForked, onSessionsRemoved, onSessionsUpdated } from "../lib/events";
 import { listSessions, listWorkspaces, markSeen } from "../lib/ipc";
 import { useUi } from "./ui";
 
@@ -467,7 +468,12 @@ export async function startSessionEvents(): Promise<void> {
 			throw err;
 		}
 
-		activeUnlisteners = [r1.value, r2.value];
+		const unlistenForked = await onSessionForked(() => {
+			toast.error(
+				"该会话已在终端中被另一个 omp 打开并另存为新的会话文件，应用端已暂停原会话以避免内容分叉；请在列表中打开终端里的新会话继续。",
+			);
+		});
+		activeUnlisteners = [r1.value, r2.value, unlistenForked];
 	})().finally(() => {
 		startEventsPromise = null;
 	});
