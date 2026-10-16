@@ -25,6 +25,11 @@ import type {
 	MobileStatus,
 	Model,
 	ModelContextWindowEdit,
+	ModelProbeResult,
+	ModelReplaceEdit,
+	ModelReplaceRecord,
+	ModelReplaceResult,
+	ModelUsageScan,
 	OauthLoginProvider,
 	OauthLoginStatus,
 	OmpConfigListResult,
@@ -159,9 +164,6 @@ export const sessionExportHtml = (sessionId: string) =>
 export const sessionShare = (sessionId: string) =>
 	invoke<string>("session_share", { sessionId });
 
-/** One-shot throwaway question to the supervisor model (scratchpad, no session). */
-export const quickAsk = (prompt: string, model?: string) =>
-	invoke<string>("quick_ask", { prompt, model });
 /** AI doctor diagnosis on a distilled session skeleton prompt; null model → settings.doctorModel. */
 export const heatmapDiagnose = (prompt: string, model: string | null) =>
 	invoke<string>("heatmap_diagnose", { prompt, model });
@@ -406,7 +408,7 @@ export const getAppMemoryUsage = () =>
 export const perfBreakdown = () =>
 	invoke<PerfBreakdown>("perf_breakdown");
 
-// ---- D — todos / supervisor / summaries / diagnose ----
+// ---- D — todos / summaries / diagnose ----
 
 export const todosList = (includeClosed: boolean) =>
 	invoke<Todo[]>("todos_list", { includeClosed });
@@ -416,8 +418,6 @@ export const todosAct = (id: string, action: "done" | "ignore" | "reopen") =>
 
 export const todosCounts = () => invoke<TodoCounts>("todos_counts");
 
-
-export const supervisorRefresh = () => invoke<void>("supervisor_refresh");
 
 export const summaryGet = (sessionId: string, ensure: boolean) =>
 	invoke<string | null>("summary_get", { sessionId, ensure });
@@ -490,6 +490,29 @@ export const ompModelRolesSet = (
 	value: string | null,
 	sessionModel: string | null,
 ) => invoke<ModelRoleSnapshot>("omp_model_roles_set", { cwd, scope, table, name, value, sessionModel });
+
+// ---- D — settings (bulk model replace, §7 model_replace.rs) ----
+
+/** Every stored model reference across global/project config, app settings and schedules. */
+export const modelUsageScan = () => invoke<ModelUsageScan>("model_usage_scan");
+
+/** Apply planned edits; `recordId` appends to that record (retry of failed items). */
+export const modelReplaceApply = (
+	fromModel: string,
+	toModel: string,
+	edits: ModelReplaceEdit[],
+	recordId: string | null = null,
+) => invoke<ModelReplaceResult>("model_replace_apply", { fromModel, toModel, edits, recordId });
+
+/** Applied replacements, newest first. */
+export const modelReplaceHistory = () => invoke<ModelReplaceRecord[]>("model_replace_history");
+
+/** Restore one record's previous values (items whose value changed again are skipped). */
+export const modelReplaceUndo = (recordId: string) =>
+	invoke<ModelReplaceResult>("model_replace_undo", { recordId });
+
+/** One-shot real probe of a selector; never called automatically. */
+export const modelProbe = (model: string) => invoke<ModelProbeResult>("model_probe", { model });
 
 // ---- providers ----
 

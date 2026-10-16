@@ -28,7 +28,6 @@ import {
 	FolderSearch,
 	GitBranch,
 	Loader2,
-	MessageCircleQuestion,
 	MoreHorizontal,
 	Pencil,
 	Pin,
@@ -288,7 +287,6 @@ export function SessionSidebar() {
 	const setCenter = useUi((s) => s.setCenter);
 	const openSettings = useUi((s) => s.openSettings);
 	const closeSettings = useUi((s) => s.closeSettings);
-	const openModal = useUi((s) => s.openModal);
 
 	const inboxBadge = useInboxBadge();
 	// Windowed macOS (overlay traffic lights visible) splits the topbar into
@@ -1368,19 +1366,9 @@ export function SessionSidebar() {
 							/>
 							<span className="truncate">新建会话</span>
 						</button>
-						<div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-							<button
-								type="button"
-								onClick={() => openModal("quick-ask")}
-								title="快速提问 (⌘⇧K)"
-								className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400"
-							>
-								<MessageCircleQuestion size={15} />
-							</button>
-							<span className="select-none font-mono text-[11px] text-neutral-400 @max-[220px]:hidden">
-								⌘N
-							</span>
-						</div>
+						<span className="shrink-0 select-none font-mono text-[11px] text-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 @max-[220px]:hidden">
+							⌘N
+						</span>
 					</div>
 
 					{/* 3. 定时任务 */}

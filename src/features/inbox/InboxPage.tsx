@@ -1,51 +1,73 @@
-import { CheckCheck, CheckCircle2, Loader2, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { Check, CheckCheck, CheckCircle2, Loader2, RefreshCw, Settings as SettingsIcon, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Attention, SessionMeta } from "../../lib/contracts";
+import type { Todo } from "../../lib/contracts";
 import { relativeTime } from "../../lib/format";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import { markSessionSeen, useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { ATTENTION_ORDER } from "./attention";
+import { useTodos } from "../todos/store";
+import { INBOX_ORDER, type InboxEntry, type InboxKind, type InboxSessionKind } from "./attention";
 import { useInboxGroups } from "./useInboxBadge";
 
-type Tab = "all" | "unread" | "error" | "awaiting";
+type Tab = "all" | Exclude<InboxKind, "running">;
 
 const TABS: { id: Tab; label: string }[] = [
 	{ id: "all", label: "全部" },
+	{ id: "approval", label: "待审批" },
+	{ id: "question", label: "提问" },
+	{ id: "error", label: "报错" },
+	{ id: "interrupted", label: "中断" },
 	{ id: "unread", label: "未读" },
-	{ id: "error", label: "中断" },
-	{ id: "awaiting", label: "待回复" },
+	{ id: "schedule", label: "定时任务" },
 ];
 
-const SECTION_LABEL: Record<Attention, string> = {
-	awaiting: "待回复",
-	error: "报错 / 中断",
-	unread: "已完成，未查看",
+const SECTION_LABEL: Record<InboxKind, string> = {
+	approval: "待审批",
+	question: "提问",
+	error: "报错",
+	interrupted: "中断",
+	unread: "未读（已完成，未查看）",
+	schedule: "定时任务",
 	running: "运行中",
 };
 
 const EMPTY_TEXT: Record<Tab, string> = {
-	all: "暂时没有需要你关注的会话",
+	all: "暂时没有需要你处理的事项",
+	approval: "没有待审批的会话",
+	question: "没有等你回答的提问",
+	error: "没有报错的会话",
+	interrupted: "没有中断的会话",
 	unread: "没有未查看的已完成会话",
-	error: "没有报错或中断的会话",
-	awaiting: "没有等你回复的会话",
+	schedule: "没有待处理的定时任务",
 };
 
 export function InboxPage() {
 	const groups = useInboxGroups();
 	const selectSession = useUi((s) => s.selectSession);
+	const setCenter = useUi((s) => s.setCenter);
 	const openSettings = useUi((s) => s.openSettings);
 	const loadSessions = useSessions((s) => s.load);
+	const actTodo = useTodos((s) => s.act);
 	const [tab, setTab] = useState<Tab>("all");
 	const [focusedIndex, setFocusedIndex] = useState(0);
 
-	const rows = tab === "all" ? groups.all : groups.byKind[tab];
+	const rows = tab === "all" ? groups.all : groups.entries[tab];
 
 	// Keep focus valid when rows disappear (viewed / answered / expired).
 	useEffect(() => {
 		setFocusedIndex((i) => Math.max(0, Math.min(i, rows.length - 1)));
 	}, [rows.length]);
+
+	const openEntry = (e: InboxEntry) => {
+		if (e.type === "session") {
+			selectSession(e.session.id);
+		} else if (e.todo.sessionId) {
+			selectSession(e.todo.sessionId);
+		} else {
+			setCenter("schedules");
+		}
+	};
 
 	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
@@ -63,20 +85,22 @@ export function InboxPage() {
 				const target = rows[focusedIndex];
 				if (target) {
 					e.preventDefault();
-					selectSession(target.id);
+					openEntry(target);
 				}
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [rows, focusedIndex, selectSession]);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: openEntry only closes over stable store actions
+	}, [rows, focusedIndex, selectSession, setCenter]);
 
-	const count = (t: Tab) => (t === "all" ? groups.all.length : groups.byKind[t].length);
-	// 待回复 needs an answer and 运行中 is not finished, so neither is "read" in bulk.
-	const readable = [
-		...(tab === "all" || tab === "unread" ? groups.byKind.unread : []),
-		...(tab === "all" || tab === "error" ? groups.byKind.error : []),
-	];
+	const count = (t: Tab) => (t === "all" ? groups.all.length : groups.entries[t].length);
+	// Approval/question need an answer and 运行中 is not finished, so none is "read" in bulk.
+	// Schedule todos are never touched here.
+	const bulk: InboxSessionKind[] = ["unread", "error", "interrupted"];
+	const readable = bulk
+		.filter((k) => tab === "all" || tab === k)
+		.flatMap((k) => groups.byKind[k]);
 	const markAllRead = async () => {
 		await Promise.all(readable.map((s) => markSessionSeen(s.id)));
 		toast.info(`已将 ${readable.length} 个会话标为已读`);
@@ -84,17 +108,22 @@ export function InboxPage() {
 	const headerBtn =
 		"inline-flex items-center gap-1 rounded-lg border border-[var(--border-divider)] bg-[var(--bg-panel)] px-2 py-1 text-xs text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]";
 
-	const renderRow = (s: SessionMeta) => {
-		const idx = rows.indexOf(s);
-		return (
-			<InboxRow
-				key={s.id}
-				session={s}
+	const renderRow = (e: InboxEntry) => {
+		const idx = rows.indexOf(e);
+		const onOpen = () => {
+			setFocusedIndex(idx);
+			openEntry(e);
+		};
+		const key = e.type === "session" ? `s:${e.session.id}` : `t:${e.todo.id}`;
+		return e.type === "session" ? (
+			<InboxRow key={key} entry={e} focused={idx === focusedIndex} onOpen={onOpen} />
+		) : (
+			<ScheduleRow
+				key={key}
+				todo={e.todo}
 				focused={idx === focusedIndex}
-				onOpen={() => {
-					setFocusedIndex(idx);
-					selectSession(s.id);
-				}}
+				onOpen={onOpen}
+				onAct={(action) => void actTodo(e.todo.id, action)}
 			/>
 		);
 	};
@@ -106,7 +135,7 @@ export function InboxPage() {
 					<div className="flex items-center gap-3">
 						<h2 className="text-sm font-semibold">收件箱</h2>
 						<span className="hidden text-[11px] text-[var(--text-dim)] sm:inline">
-							j/k 切换 · Enter 进入会话
+							j/k 切换 · Enter 打开
 						</span>
 					</div>
 					<div className="flex items-center gap-2">
@@ -115,7 +144,7 @@ export function InboxPage() {
 							onClick={markAllRead}
 							disabled={readable.length === 0}
 							className={`${headerBtn} disabled:cursor-not-allowed disabled:opacity-40`}
-							title="将当前列表中的未读与中断会话全部标为已读"
+							title="将当前列表中的未读、报错与中断会话全部标为已读"
 						>
 							<CheckCheck className="h-3.5 w-3.5" />
 							全部已读
@@ -124,6 +153,7 @@ export function InboxPage() {
 							type="button"
 							onClick={async () => {
 								await loadSessions();
+								await useTodos.getState().refresh();
 								toast.info("已刷新数据");
 							}}
 							className={headerBtn}
@@ -174,13 +204,13 @@ export function InboxPage() {
 						</div>
 					) : tab === "all" ? (
 						<div className="space-y-5">
-							{ATTENTION_ORDER.filter((k) => groups.byKind[k].length > 0).map((k) => (
+							{INBOX_ORDER.filter((k) => groups.entries[k].length > 0).map((k) => (
 								<section key={k}>
 									<h4 className="mb-1 flex items-center gap-1.5 px-2 text-xs font-semibold text-[var(--text-dim)]">
 										{SECTION_LABEL[k]}
-										<span className="font-mono text-[10px]">{groups.byKind[k].length}</span>
+										<span className="font-mono text-[10px]">{groups.entries[k].length}</span>
 									</h4>
-									<div>{groups.byKind[k].map(renderRow)}</div>
+									<div>{groups.entries[k].map(renderRow)}</div>
 								</section>
 							))}
 						</div>
@@ -193,17 +223,25 @@ export function InboxPage() {
 	);
 }
 
-/** Sidebar-matching status symbol for an attention kind. */
-function AttentionMark({ kind }: { kind: Attention }) {
+/** Sidebar-matching status symbol for an inbox session kind. */
+function KindMark({ kind }: { kind: InboxSessionKind }) {
 	switch (kind) {
-		case "awaiting":
+		case "approval":
 			return (
 				<span className="shrink-0 whitespace-nowrap rounded-[4px] bg-sky-500/15 px-1 text-[9px] font-semibold leading-[14px] text-sky-400">
-					待回复
+					待审批
+				</span>
+			);
+		case "question":
+			return (
+				<span className="shrink-0 whitespace-nowrap rounded-[4px] bg-sky-500/15 px-1 text-[9px] font-semibold leading-[14px] text-sky-400">
+					提问
 				</span>
 			);
 		case "error":
-			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-red-500" title="中断" />;
+			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-red-500" title="报错" />;
+		case "interrupted":
+			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-amber-500" title="中断" />;
 		case "unread":
 			return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-blue-500" title="未读" />;
 		case "running":
@@ -211,18 +249,25 @@ function AttentionMark({ kind }: { kind: Attention }) {
 	}
 }
 
+function rowClass(focused: boolean): string {
+	return `flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--bg-hover)] ${
+		focused ? "bg-[var(--bg-hover)] ring-1 ring-[var(--border-divider)]" : ""
+	}`;
+}
+
 function InboxRow({
-	session: s,
+	entry,
 	focused,
 	onOpen,
 }: {
-	session: SessionMeta;
+	entry: Extract<InboxEntry, { type: "session" }>;
 	focused: boolean;
 	onOpen: () => void;
 }) {
-	const kind = s.attention ?? "unread";
+	const s = entry.session;
+	const kind = entry.kind;
 	const pendingTitle = useLive((st) => {
-		if (kind !== "awaiting") return null;
+		if (kind !== "approval" && kind !== "question") return null;
 		for (const req of st.sessions[s.id]?.pendingUi ?? []) {
 			const r = req.request as { title?: unknown; message?: unknown } | null;
 			if (typeof r?.title === "string" && r.title) return r.title;
@@ -237,11 +282,13 @@ function InboxRow({
 	const resultText = s.lastAssistant ?? s.result?.summary ?? "";
 	let detail: string;
 	switch (kind) {
-		case "awaiting":
+		case "approval":
+		case "question":
 			detail = pendingTitle ?? s.lastAssistant ?? "";
 			break;
 		case "error":
-			detail = `${s.status === "interrupted" ? "中断" : "报错"}${resultText ? ` · ${resultText}` : ""}`;
+		case "interrupted":
+			detail = `${kind === "interrupted" ? "中断" : "报错"}${resultText ? ` · ${resultText}` : ""}`;
 			break;
 		case "unread":
 			detail = s.lastAssistant ?? "";
@@ -258,12 +305,10 @@ function InboxRow({
 				if (focused && el) el.scrollIntoView({ block: "nearest" });
 			}}
 			onClick={onOpen}
-			className={`flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--bg-hover)] ${
-				focused ? "bg-[var(--bg-hover)] ring-1 ring-[var(--border-divider)]" : ""
-			}`}
+			className={rowClass(focused)}
 		>
 			<div className="flex w-full min-w-0 items-center gap-2">
-				<AttentionMark kind={kind} />
+				<KindMark kind={kind} />
 				<span className="min-w-0 shrink truncate text-sm font-medium">
 					{s.title || s.label || s.id}
 				</span>
@@ -279,5 +324,51 @@ function InboxRow({
 				{detail || "\u00a0"}
 			</div>
 		</button>
+	);
+}
+
+function ScheduleRow({
+	todo,
+	focused,
+	onOpen,
+	onAct,
+}: {
+	todo: Todo;
+	focused: boolean;
+	onOpen: () => void;
+	onAct: (action: "done" | "ignore") => void;
+}) {
+	const actBtn =
+		"inline-flex shrink-0 items-center gap-0.5 rounded-md border border-[var(--border-divider)] px-1.5 py-0.5 text-[11px] text-[var(--text-dim)] hover:bg-[var(--bg-panel)] hover:text-[var(--text)]";
+	return (
+		<div
+			ref={(el) => {
+				if (focused && el) el.scrollIntoView({ block: "nearest" });
+			}}
+			className={rowClass(focused)}
+		>
+			<div className="flex w-full min-w-0 items-center gap-2">
+				<button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+					<span className="shrink-0 whitespace-nowrap rounded-[4px] bg-blue-500/15 px-1 text-[9px] font-semibold leading-[14px] text-blue-300">
+						定时任务
+					</span>
+					<span className="min-w-0 flex-1 truncate text-sm font-medium">{todo.title}</span>
+					<span className="shrink-0 text-[11px] tabular-nums text-[var(--text-dim)]">
+						{relativeTime(todo.createdAt)}
+					</span>
+				</button>
+				<button type="button" className={actBtn} onClick={() => onAct("done")} title="标为完成">
+					<Check className="h-3 w-3" />
+					完成
+				</button>
+				<button type="button" className={actBtn} onClick={() => onAct("ignore")} title="忽略">
+					<X className="h-3 w-3" />
+					忽略
+				</button>
+			</div>
+			<div className="w-full truncate pl-[15px] text-xs text-[var(--text-dim)]">
+				{todo.detail || "\u00a0"}
+			</div>
+		</div>
 	);
 }

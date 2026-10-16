@@ -66,13 +66,6 @@ export function registerSidebarShortcuts(): void {
 			return;
 		}
 
-		// Cmd+Shift+K: quick ask modal (S6)
-		if (key === "k" && e.shiftKey && !e.altKey) {
-			e.preventDefault();
-			useUi.getState().openModal("quick-ask");
-			return;
-		}
-
 		// Cmd+F: focus and select sidebar search input (S19)
 		if (key === "f" && !e.shiftKey && !e.altKey) {
 			if (e.defaultPrevented) return;

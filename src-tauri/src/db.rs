@@ -172,6 +172,27 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         )?;
         conn.pragma_update(None, "user_version", 11)?;
     }
+    // v12: the supervisor feature is gone; drop its leftover todo rows.
+    if version < 12 {
+        conn.execute_batch(
+            "DELETE FROM todos WHERE kind = 'suggestion' OR source = 'supervisor';",
+        )?;
+        conn.pragma_update(None, "user_version", 12)?;
+    }
+    // v13: bulk model replace keeps its undo log (newest 10 records).
+    if version < 13 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS model_replace_log(
+               id TEXT PRIMARY KEY,
+               created_at TEXT NOT NULL,
+               from_model TEXT NOT NULL,
+               to_model TEXT NOT NULL,
+               edits TEXT NOT NULL,
+               undone_at TEXT
+             );",
+        )?;
+        conn.pragma_update(None, "user_version", 13)?;
+    }
     Ok(())
 }
 
@@ -251,7 +272,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, 13);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -274,7 +295,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 11);
+        assert_eq!(v3, 13);
     }
 
     #[test]
@@ -284,7 +305,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 11);
+        assert_eq!(v, 13);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -311,7 +332,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 11);
+        assert_eq!(v, 13);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(schedules)")
             .unwrap()
@@ -386,7 +407,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 11);
+        assert_eq!(v, 13);
         // Pre-existing row inherits the documented defaults.
         let (notify, new_chat): (String, i64) = conn
             .query_row(
@@ -481,7 +502,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 11);
+        assert_eq!(v, 13);
         // Pre-existing row: NULL cap, zero runs.
         let (max_runs, runs_done): (Option<i64>, i64) = conn
             .query_row(
@@ -541,7 +562,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 11);
+        assert_eq!(v, 13);
         // Pre-existing rows default to code.
         let mode: String = conn
             .query_row(
@@ -646,5 +667,78 @@ mod tests {
             one("SELECT mode FROM session_meta WHERE session_id='s2'"),
             "code"
         );
+    }
+
+    /// v12 deletes leftover supervisor/suggestion todo rows and keeps the rest.
+    #[test]
+    fn migrate_v12_drops_supervisor_todos() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.pragma_update(None, "user_version", 11).unwrap();
+        for (id, kind, source) in [
+            ("a", "suggestion", "supervisor"),
+            ("b", "suggestion", "system"),
+            ("c", "review", "supervisor"),
+            ("d", "review", "system"),
+        ] {
+            conn.execute(
+                "INSERT INTO todos(id, kind, source, status, title, detail, payload, priority, created_at, updated_at)
+                 VALUES(?1, ?2, ?3, 'open', 't', '', '{}', 1, 't', 't')",
+                rusqlite::params![id, kind, source],
+            )
+            .unwrap();
+        }
+        migrate(&conn).unwrap();
+        let ids: Vec<String> = conn
+            .prepare("SELECT id FROM todos")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .flatten()
+            .collect();
+        assert_eq!(ids, vec!["d".to_string()]);
+    }
+
+    /// v13 adds the bulk model-replace undo log.
+    #[test]
+    fn migrate_v13_creates_model_replace_log() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 13);
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(model_replace_log)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            cols,
+            [
+                "id",
+                "created_at",
+                "from_model",
+                "to_model",
+                "edits",
+                "undone_at"
+            ]
+        );
+        conn.execute(
+            "INSERT INTO model_replace_log(id, created_at, from_model, to_model, edits)
+             VALUES('r1', 't', 'a', 'b', '[]')",
+            [],
+        )
+        .unwrap();
+        let undone: Option<String> = conn
+            .query_row(
+                "SELECT undone_at FROM model_replace_log WHERE id='r1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(undone, None);
     }
 }

@@ -1,4 +1,4 @@
-/** [D] Settings store shared by SettingsPage, TodoHome switches and TopCapsule. */
+/** [D] Settings store shared by SettingsPage and TopCapsule. */
 
 import { create } from "zustand";
 import type { Settings } from "../../lib/contracts";
@@ -7,8 +7,6 @@ import { getSettings, saveSettings } from "../../lib/ipc";
 /** Mirror of `Settings::default()` in contracts.rs (used by import / restore). */
 export const DEFAULT_SETTINGS: Settings = {
 	systemDetection: true,
-	supervisorEnabled: false,
-	supervisorModel: "smol",
 	smartContextRouting: false,
 	idleSuspendMinutes: 15,
 	defaultApprovalMode: "yolo",
@@ -29,13 +27,11 @@ export const DEFAULT_SETTINGS: Settings = {
 	ddnsZoneId: null,
 	ddnsHostname: null,
 	quickCaptureShortcut: "CommandOrControl+Shift+I",
-	supervisorIntervalMinutes: 30,
 	inboxWindowHours: 24,
 	ompCheckIntervalHours: 24,
 	notifyQuietFrom: null,
 	notifyQuietTo: null,
 	newSessionModel: null,
-	homeShowCompletedTodos: false,
 	dockBadgeEnabled: true,
 	sessionTurnAutoRefresh: true,
 	sessionGroupByWorktree: true,

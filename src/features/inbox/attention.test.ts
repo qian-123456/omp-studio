@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { Attention, SessionMeta } from "../../lib/contracts";
+import type { Attention, SessionMeta, SessionStatus, Todo } from "../../lib/contracts";
 import { groupInbox } from "./attention";
 
 const NOW = Date.parse("2026-10-02T12:00:00Z");
 const H = 3_600_000;
 
-function meta(id: string, attention: Attention | null, hoursAgo: number, archived = false): SessionMeta {
+function meta(
+	id: string,
+	attention: Attention | null,
+	hoursAgo: number,
+	archived = false,
+	status: SessionStatus = "idle",
+): SessionMeta {
 	return {
 		id,
 		tool: "omp",
@@ -17,7 +23,7 @@ function meta(id: string, attention: Attention | null, hoursAgo: number, archive
 		updatedAt: new Date(NOW - hoursAgo * H).toISOString(),
 		parentId: null,
 		forkDepth: 0,
-		status: "idle",
+		status,
 		unread: false,
 		pending: null,
 		live: false,
@@ -36,6 +42,22 @@ function meta(id: string, attention: Attention | null, hoursAgo: number, archive
 	};
 }
 
+function todo(id: string, kind: Todo["kind"] = "schedule_run", status: Todo["status"] = "open", ageH = 1): Todo {
+	return {
+		id,
+		kind,
+		source: "schedule",
+		status,
+		sessionId: null,
+		title: id,
+		detail: "",
+		payload: null,
+		priority: 0,
+		createdAt: new Date(NOW - ageH * H).toISOString(),
+		updatedAt: new Date(NOW - ageH * H).toISOString(),
+	};
+}
+
 describe("groupInbox", () => {
 	it("drops error/unread older than the window but keeps the boundary", () => {
 		const g = groupInbox(
@@ -49,19 +71,63 @@ describe("groupInbox", () => {
 	});
 
 	it("never expires awaiting or running", () => {
-		const g = groupInbox([meta("a", "awaiting", 500), meta("r", "running", 500)], NOW, 1);
-		expect(g.byKind.awaiting.map((s) => s.id)).toEqual(["a"]);
+		const g = groupInbox(
+			[meta("a", "awaiting", 500, false, "awaiting_approval"), meta("r", "running", 500)],
+			NOW,
+			1,
+		);
+		expect(g.byKind.approval.map((s) => s.id)).toEqual(["a"]);
 		expect(g.byKind.running.map((s) => s.id)).toEqual(["r"]);
 	});
 
-	it("counts awaiting+error+unread in the badge but not running or none", () => {
+	it("splits awaiting into approval/question and error into error/interrupted by status", () => {
 		const g = groupInbox(
-			[meta("a", "awaiting", 1), meta("e", "error", 1), meta("u", "unread", 1), meta("r", "running", 1), meta("n", null, 1)],
+			[
+				meta("ap", "awaiting", 1, false, "awaiting_approval"),
+				meta("q", "awaiting", 1, false, "awaiting_answer"),
+				meta("e", "error", 1, false, "error"),
+				meta("i", "error", 1, false, "interrupted"),
+			],
 			NOW,
 			24,
 		);
-		expect(g.badge).toBe(3);
-		expect(g.all.map((s) => s.id)).toEqual(["a", "e", "u", "r"]);
+		expect(g.byKind.approval.map((s) => s.id)).toEqual(["ap"]);
+		expect(g.byKind.question.map((s) => s.id)).toEqual(["q"]);
+		expect(g.byKind.error.map((s) => s.id)).toEqual(["e"]);
+		expect(g.byKind.interrupted.map((s) => s.id)).toEqual(["i"]);
+	});
+
+	it("counts actionable kinds and schedule todos in the badge but not running or none", () => {
+		const g = groupInbox(
+			[
+				meta("a", "awaiting", 1, false, "awaiting_approval"),
+				meta("e", "error", 1),
+				meta("u", "unread", 1),
+				meta("r", "running", 1),
+				meta("n", null, 1),
+			],
+			NOW,
+			24,
+			[todo("s1"), todo("s2")],
+		);
+		expect(g.badge).toBe(5);
+		expect(g.all.map((e) => e.kind)).toEqual(["approval", "error", "unread", "schedule", "schedule", "running"]);
+	});
+
+	it("only includes open schedule_run todos, newest first, ignoring the window", () => {
+		const g = groupInbox(
+			[],
+			NOW,
+			1,
+			[
+				todo("old", "schedule_run", "open", 500),
+				todo("new", "schedule_run", "open", 2),
+				todo("done", "schedule_run", "done"),
+				todo("other", "review"),
+			],
+		);
+		expect(g.schedule.map((t) => t.id)).toEqual(["new", "old"]);
+		expect(g.badge).toBe(2);
 	});
 
 	it("excludes archived sessions everywhere", () => {

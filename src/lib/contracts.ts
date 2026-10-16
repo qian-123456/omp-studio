@@ -269,13 +269,12 @@ export type TodoKind =
 	| "error"
 	| "interrupted"
 	| "review"
-	| "suggestion"
 	| "service_left"
 	/** A scheduled-task run finished; payload: {"scheduleId","runId","ok":bool}. */
 	| "schedule_run";
 
-/** `schedule` rows are always visible (not gated by system/supervisor switches). */
-export type TodoSource = "system" | "supervisor" | "schedule";
+/** `schedule` rows are always visible (not gated by the system-detection switch). */
+export type TodoSource = "system" | "schedule";
 
 export type TodoStatus = "open" | "done" | "ignored";
 
@@ -287,7 +286,7 @@ export interface Todo {
 	sessionId: string | null;
 	title: string;
 	detail: string;
-	/** Approval/Question: {uiRequest}; Suggestion: {action}. */
+	/** Approval/Question: {uiRequest}. */
 	payload: unknown;
 	/** Higher = more urgent. */
 	priority: number;
@@ -580,9 +579,6 @@ export interface SessionSnapshot {
 
 export interface Settings {
 	systemDetection: boolean;
-	supervisorEnabled: boolean;
-	/** Passed as --model. */
-	supervisorModel: string;
 	smartContextRouting: boolean;
 	/** 0 = never. */
 	idleSuspendMinutes: number;
@@ -608,8 +604,6 @@ export interface Settings {
 	ddnsZoneId: string | null;
 	ddnsHostname: string | null;
 	quickCaptureShortcut: string;
-	/** 0 = manual refresh only. */
-	supervisorIntervalMinutes: number;
 	/** Hours before non-blocking inbox todos auto-hide (1..=720). */
 	inboxWindowHours: number;
 	/** Hours between automatic omp update checks while the app runs (1..=720). */
@@ -619,7 +613,6 @@ export interface Settings {
 	notifyQuietTo: string | null;
 	/** Default model for new sessions (stored for future use). */
 	newSessionModel: string | null;
-	homeShowCompletedTodos: boolean;
 	dockBadgeEnabled: boolean;
 	sessionTurnAutoRefresh: boolean;
 	/** Default true: split sessions under a project by git worktree/branch; false = one flat list per project. */
@@ -635,7 +628,7 @@ export interface Settings {
 	ompAutoUpdate: boolean | null;
 	/** Git delivery mode: "pr" (default, opens GitHub PR) or "direct" (merges locally and pushes to main). */
 	gitDeliveryMode?: "pr" | "direct" | string;
-	/** AI doctor (heatmap diagnosis) model; default "smol"; empty falls back to supervisorModel. */
+	/** AI doctor (heatmap diagnosis) model; default "smol". */
 	doctorModel: string;
 	/** Auto diagnosis mode; default "manual" (never spends tokens without user action). */
 	doctorAutoMode: "manual" | "idle" | "scheduled";
@@ -775,6 +768,99 @@ export interface ModelRoleSnapshot {
 	global: ModelRoleLayer;
 	project: ModelRoleLayer | null;
 	agents: AgentModelAssignment[];
+}
+
+// ---- D — bulk model replace (全局批量替换模型) ----
+// Mirrors `src-tauri/src/model_replace.rs` (serde camelCase; tagged enums use `kind`).
+
+export type ModelRefScope = "global" | "project";
+
+/** Where one stored model reference lives. */
+export type ModelRefLocation =
+	| { kind: "role"; scope: ModelRefScope; projectPath: string | null; name: string }
+	| { kind: "agentOverride"; scope: ModelRefScope; projectPath: string | null; name: string }
+	| { kind: "appSetting"; field: "newSessionModel" | "sideChatModel" | "doctorModel" }
+	| { kind: "schedule"; id: string; name: string };
+
+/** One stored value (never pre-filtered by the source model). */
+export interface ModelUsageRef {
+	location: ModelRefLocation;
+	/** Raw stored value; comma lists kept as-is, YAML sequences joined with ",". */
+	value: string;
+	/** Schedule only (thinking column); null otherwise. */
+	thinking: string | null;
+}
+
+export interface FallbackChainsSnapshot {
+	/** Global `retry.fallbackChains`; `{}` when absent. */
+	chains: Record<string, string[]>;
+}
+
+export interface ScannedProject {
+	path: string;
+	name: string;
+	status: "ok" | "missing" | "error";
+	error: string | null;
+}
+
+export interface ModelUsageScan {
+	refs: ModelUsageRef[];
+	fallbackChains: FallbackChainsSnapshot;
+	/** omp unavailable etc.; chains are `{}` when set. */
+	fallbackChainsError: string | null;
+	projects: ScannedProject[];
+}
+
+/** One chain-key change; null = key absent (create) / delete. */
+export interface ChainChange {
+	key: string;
+	before: string[] | null;
+	after: string[] | null;
+}
+
+export type ModelReplaceEdit =
+	| {
+			kind: "value";
+			location: ModelRefLocation;
+			before: string;
+			after: string;
+			/** Meaningful for schedules only; null/null elsewhere. */
+			thinkingBefore: string | null;
+			thinkingAfter: string | null;
+	  }
+	| {
+			kind: "fallbackChain";
+			/** Original chain key, for display. */
+			label: string;
+			changes: ChainChange[];
+	  };
+
+export interface ModelReplaceItemResult {
+	edit: ModelReplaceEdit;
+	ok: boolean;
+	error: string | null;
+}
+
+export interface ModelReplaceResult {
+	/** null when nothing succeeded and no record was appended to. */
+	recordId: string | null;
+	results: ModelReplaceItemResult[];
+}
+
+export interface ModelReplaceRecord {
+	id: string;
+	createdAt: string;
+	fromModel: string;
+	toModel: string;
+	/** Successful edits only. */
+	edits: ModelReplaceEdit[];
+	undoneAt: string | null;
+}
+
+export interface ModelProbeResult {
+	ok: boolean;
+	latencyMs: number;
+	detail: string;
 }
 
 /** Return value of `app_paths`. */

@@ -54,7 +54,7 @@ export interface CommandOutputEntry {
 	kind: "omp" | "app";
 }
 
-// Re-exported for existing consumers (todos/logic.ts, TopCapsule).
+// Re-exported for existing consumers (TopCapsule).
 export type { SubagentInfo } from "../features/chat/subagents/types";
 
 export interface LiveTool {

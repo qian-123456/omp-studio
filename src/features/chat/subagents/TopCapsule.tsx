@@ -6,13 +6,13 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { FloatingLayer } from "../../components/FloatingLayer";
-import { copyText } from "../../lib/dialogs";
-import { toast } from "../../lib/toast";
-import { useLive } from "../../stores/live";
-import { useUi } from "../../stores/ui";
-import { useSettings } from "../settings/store";
-import { subagentBucket, subagentCounts } from "./logic";
+import { FloatingLayer } from "../../../components/FloatingLayer";
+import { copyText } from "../../../lib/dialogs";
+import { toast } from "../../../lib/toast";
+import { useLive } from "../../../stores/live";
+import { useUi } from "../../../stores/ui";
+import { useSettings } from "../../settings/store";
+import { subagentBucket, subagentCounts } from "./counts";
 
 export function TopCapsule() {
 	const settings = useSettings((s) => s.settings);

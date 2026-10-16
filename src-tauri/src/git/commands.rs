@@ -731,7 +731,7 @@ pub async fn git_commit_suggest(
     );
 
     // Commit messages always use omp's `commit` role (Settings ▸ model roles),
-    // independent of the supervisor model.
+    // independent of any other model setting.
     let model_to_use = "commit";
     let suggestion =
         crate::todos::omp::run_print(&state, model_to_use, &prompt, Duration::from_secs(60))

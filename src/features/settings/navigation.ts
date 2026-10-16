@@ -143,6 +143,11 @@ export function sectionSearchTerms(id: string, ompEntries: OmpConfigEntry[]): st
 			"task",
 			"点名",
 			"agentModelOverrides",
+			"批量替换",
+			"替换模型",
+			"批量替换模型",
+			"批量改模型",
+			"换模型",
 		];
 	}
 	if (id === "model-fallback") {

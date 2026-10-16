@@ -40,7 +40,6 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 
 	const boolKeys: (keyof Settings)[] = [
 		"systemDetection",
-		"supervisorEnabled",
 		"smartContextRouting",
 		"notifyTurnEnd",
 		"notifyApproval",
@@ -50,7 +49,6 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		"mobileEnabled",
 		"mobileIpv6Enabled",
 		"ddnsEnabled",
-		"homeShowCompletedTodos",
 		"dockBadgeEnabled",
 		"sessionTurnAutoRefresh",
 		"sessionGroupByWorktree",
@@ -136,14 +134,6 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 		out.mobileIpv6Port = port;
 	}
 
-	if ("supervisorIntervalMinutes" in raw) {
-		const val = raw.supervisorIntervalMinutes;
-		if (typeof val !== "number" || !Number.isInteger(val) || val < 0 || val > 10080) {
-			return { ok: false, error: "监工触发间隔必须是 0 到 10080 分钟之间的整数" };
-		}
-		out.supervisorIntervalMinutes = val;
-	}
-
 	if ("inboxWindowHours" in raw) {
 		const val = raw.inboxWindowHours;
 		if (typeof val !== "number" || !Number.isInteger(val) || val < 1 || val > 720) {
@@ -177,17 +167,6 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 			return { ok: false, error: "OMP 可执行文件路径不能包含空字符或换行符" };
 		}
 		out.ompBinary = val;
-	}
-
-	if ("supervisorModel" in raw) {
-		const val = raw.supervisorModel;
-		if (typeof val !== "string" || val.trim().length === 0) {
-			return { ok: false, error: "监工模型不能为空" };
-		}
-		if (/[\0\r\n]/.test(val)) {
-			return { ok: false, error: "监工模型不能包含空字符或换行符" };
-		}
-		out.supervisorModel = val;
 	}
 
 	if ("quickCaptureShortcut" in raw) {

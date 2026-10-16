@@ -251,7 +251,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 						</button>
 					)}
 				</div>
-				<nav ref={navRef} aria-label="设置分类" className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+				<nav ref={navRef} aria-label="设置分类" className="-mr-2.5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-2.5">
 					{noMatches ? (
 						<div className="px-2 py-3 text-center text-[11px] leading-4 text-neutral-500">
 							没有匹配「{navQuery.trim()}」的设置项

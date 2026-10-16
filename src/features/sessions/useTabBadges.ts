@@ -3,25 +3,9 @@ import { onServicesChanged } from "../../lib/events";
 import { gitSummary, servicesList } from "../../lib/ipc";
 import { type SessionLive, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
-import type { SessionMeta, Todo as TodoItem } from "../../lib/contracts";
-import { useTodos } from "../todos/store";
+import type { SessionMeta } from "../../lib/contracts";
 import type { RightTab } from "../../stores/ui";
 import { useDrawerStore, countLiveCommandTabs } from "../terminal/drawerStore";
-
-export function computeTodosBadge(
-	counts: { open: number },
-	todos: TodoItem[],
-	selectedSessionId: string | null,
-): number {
-	if (!selectedSessionId) return counts.open;
-	let sessionOpen = 0;
-	for (const t of todos) {
-		if (t.sessionId === selectedSessionId && t.status === "open") {
-			sessionOpen++;
-		}
-	}
-	return sessionOpen > 0 ? sessionOpen : counts.open;
-}
 
 export function computeSidechatBadge(
 	sessions: Record<string, SessionMeta>,
@@ -41,15 +25,6 @@ export function computeHeatmapBadge(
 	liveSession: SessionLive | undefined,
 ): number {
 	return liveSession?.items.length ?? 0;
-}
-
-export function useTodosBadge(selectedSessionId: string | null): number {
-	return useTodos(
-		useCallback(
-			(s) => computeTodosBadge(s.counts, s.todos, selectedSessionId),
-			[selectedSessionId],
-		),
-	);
 }
 
 /**
@@ -158,7 +133,6 @@ export function useHeatmapBadge(sessionId: string | null): number {
 export function useTabBadges(
 	selectedSessionId: string | null,
 ): Record<RightTab, number> {
-	const todosBadge = useTodosBadge(selectedSessionId);
 	const gitDirtyCount = useGitDirtyBadge(selectedSessionId);
 	const servicesCount = useServicesBadge();
 	const sidechatCount = useSidechatBadge(selectedSessionId);
@@ -170,12 +144,11 @@ export function useTabBadges(
 			explorer: 0,
 			sidechat: sidechatCount,
 			heatmap: heatmapCount,
-			todos: todosBadge,
 			git: gitDirtyCount,
 			services: servicesCount,
 			terminal: terminalCount,
 			plan: 0,
 		}),
-		[todosBadge, gitDirtyCount, servicesCount, sidechatCount, heatmapCount, terminalCount],
+		[gitDirtyCount, servicesCount, sidechatCount, heatmapCount, terminalCount],
 	);
 }

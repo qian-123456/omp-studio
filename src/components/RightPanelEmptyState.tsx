@@ -1,7 +1,6 @@
 import clsx from "clsx";
 import {
 	Coins,
-	CheckSquare,
 	Cpu,
 	Folder,
 	GitBranch,
@@ -38,13 +37,7 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 			icon: GitBranch,
 			iconColor: "text-orange-400",
 		},
-		{
-			id: "todos",
-			label: "待办",
-			icon: CheckSquare,
-			iconColor: "text-indigo-400",
-		},
-		{
+			{
 			id: "sidechat",
 			label: "辅助对话",
 			icon: MessageSquare,

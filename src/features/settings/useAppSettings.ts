@@ -18,7 +18,6 @@ import { useSettings } from "./store";
 export class SettingsValidationError extends Error {}
 
 function validatePatch(patch: Partial<Settings>): string | null {
-	if (patch.supervisorModel !== undefined && !patch.supervisorModel.trim()) return "监工模型不能为空";
 	if (patch.ompBinary !== undefined && !patch.ompBinary.trim()) return "OMP 命令行程序不能为空";
 	return null;
 }

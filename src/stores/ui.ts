@@ -16,7 +16,6 @@ export type RightTab =
 	| "explorer"
 	| "sidechat"
 	| "heatmap"
-	| "todos"
 	| "git"
 	| "services"
 	| "terminal"
@@ -44,7 +43,6 @@ const RIGHT_TABS: readonly RightTab[] = [
 	"explorer",
 	"sidechat",
 	"heatmap",
-	"todos",
 	"git",
 	"services",
 	"terminal",

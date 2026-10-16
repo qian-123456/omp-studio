@@ -1,4 +1,4 @@
-/** Settings ▸ 收件箱 (`inbox`): todo detection and the read-only supervisor. */
+/** Settings ▸ 收件箱 (`inbox`): todo detection and auto-hide window. */
 import { ModelSelect, type ModelExtraOption } from "../../../components/ModelSelect";
 import { parseSelection } from "../../../components/modelSelectLogic";
 import { Segmented } from "../../../components/Segmented";
@@ -15,7 +15,7 @@ import {
 	useSaveStatus,
 } from "../ui";
 
-const SUPERVISOR_EXTRAS: ModelExtraOption[] = [
+const MODEL_ROLE_EXTRAS: ModelExtraOption[] = [
 	{ value: "smol", label: "快速模型 (smol)", hint: "内置默认" },
 	{ value: "default", label: "主力模型 (default)", hint: "主力角色" },
 	{ value: "slow", label: "深度模型 (slow)", hint: "深度角色" },
@@ -29,20 +29,9 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function InboxSection() {
 	const { settings, save } = useAppSettings();
-	const { models, catalogKeys } = useCatalogModels();
-	const modelSave = useSaveStatus();
-
-	const current = settings?.supervisorModel ?? "";
-	const supervisorOn = settings?.supervisorEnabled ?? false;
-	const currentSelector = parseSelection(current).selector;
-	const isRole = Object.prototype.hasOwnProperty.call(ROLE_LABELS, currentSelector);
-	const modelLabel = isRole
-		? ROLE_LABELS[currentSelector]
-		: (models.find((m) => toModelKey(m.provider, m.id) === currentSelector)?.id ?? (current || "选择模型"));
-
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="收件箱" description="把需要你处理的事情（审批、提问、报错等）集中成待办，并可让 AI 定期给出建议" />
+			<SectionHeader title="收件箱" description="把需要你处理的事情（审批、提问、报错等）集中到侧边栏收件箱" />
 			<SettingsCard title="待办">
 				<ToggleRow
 					fieldId="systemDetection"
@@ -50,13 +39,6 @@ export function InboxSection() {
 					description="会话里出现审批请求、提问、报错、中断或等你验收时，自动加入收件箱"
 					checked={settings?.systemDetection ?? true}
 					onChange={(v) => save({ systemDetection: v })}
-				/>
-				<ToggleRow
-					fieldId="homeShowCompletedTodos"
-					label="默认展开已处理待办"
-					description="首页待办卡片默认也显示已经处理过的历史事项"
-					checked={settings?.homeShowCompletedTodos ?? false}
-					onChange={(v) => save({ homeShowCompletedTodos: v })}
 				/>
 				<SettingRow
 					fieldId="inboxWindowHours"
@@ -79,72 +61,6 @@ export function InboxSection() {
 						</div>
 					}
 				/>
-			</SettingsCard>
-			<SettingsCard
-				title="监工建议"
-				footer="监工只读取会话摘要并给出建议，不会替你执行任何操作；每次分析都会调用一次所选模型，会产生少量费用。"
-			>
-				<ToggleRow
-					fieldId="supervisorEnabled"
-					label="后台监工建议 (Supervisor)"
-					description="定期查看各会话进展和收件箱，给出下一步建议"
-					checked={supervisorOn}
-					onChange={(v) => save({ supervisorEnabled: v })}
-				/>
-				<div
-					className={`divide-y divide-[var(--border-divider)] transition-opacity ${supervisorOn ? "" : "opacity-50"}`}
-					inert={!supervisorOn}
-					aria-disabled={!supervisorOn}
-				>
-					{!supervisorOn && (
-						<div className="px-4 py-2 text-[11px] text-neutral-500">打开上面的「后台监工建议」后，以下设置才会生效</div>
-					)}
-					<SettingRow
-						fieldId="supervisorModel"
-						label="监工模型"
-						description="用来生成建议的模型；建议选择速度快、价格低的模型"
-						status={modelSave.status}
-						statusError={modelSave.error}
-						control={
-							<ModelSelect
-								direction="down"
-								widthClass="w-[360px]"
-								label={modelLabel}
-								buttonClass={MODEL_PICKER_BUTTON_CLASS}
-								models={models}
-								currentValue={catalogKeys.has(currentSelector) || isRole ? current : ""}
-								extras={SUPERVISOR_EXTRAS}
-								thinking
-								allowCustom
-								onSelect={(v) => {
-									if (!v.trim()) return;
-									void modelSave.run(() => save({ supervisorModel: v.trim() }));
-								}}
-							/>
-						}
-					/>
-					<SettingRow
-						fieldId="supervisorIntervalMinutes"
-						label="分析间隔（分钟）"
-						description="会话状态变化后，至少隔这么久才再分析一次"
-						hint="可填 0 或 5–10080（7 天）；0 表示只在你手动刷新时分析，1–4 会自动调整为 5"
-						control={
-							<div className="flex items-center gap-1.5">
-								<CommitInput
-									type="number"
-									min={0}
-									max={10080}
-									className="w-24"
-									aria-label="监工分析间隔（分钟）"
-									value={String(settings?.supervisorIntervalMinutes ?? 30)}
-									normalize={normalizeInterval}
-									onCommit={(v) => save({ supervisorIntervalMinutes: Number(v) })}
-								/>
-								<span className="text-xs text-neutral-500">分钟</span>
-							</div>
-						}
-					/>
-				</div>
 			</SettingsCard>
 		</div>
 	);
@@ -183,7 +99,7 @@ export function DoctorSection() {
 							buttonClass={MODEL_PICKER_BUTTON_CLASS}
 							models={models}
 							currentValue={catalogKeys.has(doctorSelector) || doctorIsRole ? doctorCurrent : ""}
-							extras={SUPERVISOR_EXTRAS}
+							extras={MODEL_ROLE_EXTRAS}
 							thinking
 							allowCustom
 							onSelect={(v) => {
@@ -249,9 +165,3 @@ export function DoctorSection() {
 	);
 }
 
-/** 0 = manual only; otherwise clamp to [5, 10080]. */
-function normalizeInterval(raw: string): string {
-	const n = parseInt(raw, 10);
-	if (!Number.isFinite(n) || n <= 0) return "0";
-	return String(Math.min(10080, Math.max(5, n)));
-}

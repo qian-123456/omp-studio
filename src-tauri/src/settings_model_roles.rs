@@ -18,7 +18,10 @@
 //! `disabledProviders` and Claude `enabledPlugins` that only decides which roots are active. Those
 //! values are never returned over IPC, logged, or written.
 
+mod chains;
 mod discovery;
+
+pub(crate) use chains::{edit_chains, read_chains, ChainStep};
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -893,9 +896,20 @@ fn plan_remove(
 /// A removed entry keeps its comment: the entry text is replaced by the comment alone, on the
 /// same line, so comment bytes are unchanged. Entries without a comment lose their line.
 fn entry_extent(text: &str, parts: &EntryParts, label: &str) -> Result<EntryExtent, String> {
-    let line = line_start(text, parts.key_start);
-    check_indent(text, line, parts.key_start, label)?;
     let content_end = parts.value.map_or(parts.colon_end, |(_, end)| end);
+    item_extent(text, parts.key_start, content_end, label)
+}
+
+/// Removal of the line-leading token at `start` (a key or a `-` marker) whose content ends at
+/// `content_end`: a trailing comment is kept on its own line, otherwise the line is deleted.
+fn item_extent(
+    text: &str,
+    start: usize,
+    content_end: usize,
+    label: &str,
+) -> Result<EntryExtent, String> {
+    let line = line_start(text, start);
+    check_indent(text, line, start, label)?;
     let break_at = line_break(text, content_end);
     let tail = &text[content_end..break_at];
     let body = tail
@@ -904,12 +918,12 @@ fn entry_extent(text: &str, parts: &EntryParts, label: &str) -> Result<EntryExte
     let line_end = line_end_incl(text, content_end);
     if body.is_empty() {
         return Ok(EntryExtent {
-            splice: delete_line(text, line, parts.key_start),
+            splice: delete_line(text, line, start),
             line_end,
         });
     }
     if body.starts_with('#') {
-        let indent = &text[line..parts.key_start];
+        let indent = &text[line..start];
         let comment = tail.trim_start_matches(is_inline_space);
         return Ok(EntryExtent {
             splice: Splice {
@@ -1460,6 +1474,130 @@ fn parse_op(table: &str, name: &str, value: Option<String>) -> Result<EditOp, St
         },
         None => EditOp::Remove { table, name },
     })
+}
+
+/// Validates one stored selector value: either a single selector, or a comma list of selectors
+/// (`selector_text` joins omp's string arrays with `,`). Whitespace is refused outright: the
+/// stored projection never contains any.
+pub(crate) fn validate_value_list(raw: &str) -> Result<String, String> {
+    if raw.is_empty() {
+        return Err("模型值不能为空".to_string());
+    }
+    if raw.chars().any(char::is_whitespace) {
+        return Err("模型值不能包含空白；逗号列表请用半角逗号紧邻连接".to_string());
+    }
+    let parts: Vec<&str> = raw.split(',').collect();
+    if parts.iter().any(|part| part.is_empty()) {
+        return Err("模型值列表不能包含空项".to_string());
+    }
+    for part in parts {
+        validate_value(part)?;
+    }
+    Ok(raw.to_string())
+}
+
+// ---------- bulk model replace (model_replace.rs) ----------
+
+/// `modelRoles` / `task.agentModelOverrides` of one config file, read for the
+/// bulk-replace scan. Values are the comma-joined selector projection.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct LayerRefs {
+    pub(crate) model_roles: BTreeMap<String, String>,
+    pub(crate) overrides: BTreeMap<String, String>,
+}
+
+/// Global omp config file (`config.yml`, or `config.yaml` when only that exists).
+pub(crate) fn global_config_file() -> Result<PathBuf, String> {
+    let ctx = Ctx::resolve(None)?;
+    Ok(global_config_path(&ctx))
+}
+
+/// Reads the two model tables of one config file. A missing file is not an error.
+pub(crate) fn layer_refs(path: &Path, label: &str) -> Result<LayerRefs, String> {
+    let file = read_config(path, label)?;
+    let root = parse_yaml(&file.text, label)?;
+    let values = project_layer(&root);
+    Ok(LayerRefs {
+        model_roles: values.model_roles,
+        overrides: values.overrides,
+    })
+}
+
+/// Outcome of [`replace_value`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReplaceOutcome {
+    /// The entry no longer holds the expected value; nothing was written.
+    Stale,
+    /// The entry was already the requested value; nothing was written.
+    Unchanged,
+    /// The file was written.
+    Written,
+}
+
+/// Guarded single-entry edit for the bulk model replace flow.
+///
+/// One read-modify-write of one `modelRoles` / `task.agentModelOverrides` entry under
+/// [`WRITE_LOCK`], reusing the lossless planner ([`plan_edit`]) and the guarded atomic writer
+/// ([`write_guarded`]). The edit is refused as [`ReplaceOutcome::Stale`] when the entry no
+/// longer projects to `before`, so a concurrent change is never overwritten. A YAML sequence
+/// value is written back as its comma-joined scalar equivalent.
+pub(crate) fn replace_value(
+    cwd: Option<&str>,
+    scope: &str,
+    table: &str,
+    name: &str,
+    before: &str,
+    after: &str,
+) -> Result<ReplaceOutcome, String> {
+    let scope = Scope::parse(scope)?;
+    let table = Table::parse(table)?;
+    let name = validate_name(name)?;
+    let after = validate_value_list(after)?;
+    let ctx = Ctx::resolve(cwd)?;
+    let _guard = WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (path, label) = match scope {
+        Scope::Global => (global_config_path(&ctx), GLOBAL_LABEL),
+        Scope::Project => (
+            project_config_path(&ctx)
+                .ok_or_else(|| "未选择项目目录，无法写入项目层".to_string())?,
+            PROJECT_LABEL,
+        ),
+    };
+    // Fresh read under the lock: never edit a cached copy.
+    let current = read_config(&path, label)?;
+    if scope == Scope::Global
+        && !current.exists
+        && is_file(&ctx.agent_dir.join(LEGACY_SETTINGS_NAME))
+    {
+        return Err(
+            "检测到旧版 settings.json；请先让 omp 迁移为 config.yml 后再设置模型角色，文件未修改"
+                .to_string(),
+        );
+    }
+    let values = project_layer(&parse_yaml(&current.text, label)?);
+    let stored = match table {
+        Table::ModelRoles => values.model_roles.get(&name),
+        Table::AgentModelOverrides => values.overrides.get(&name),
+    };
+    if stored.map(String::as_str) != Some(before) {
+        return Ok(ReplaceOutcome::Stale);
+    }
+    let op = EditOp::Set {
+        table,
+        name,
+        value: after,
+    };
+    let Some(next) = plan_edit(&current.text, &op, label)? else {
+        return Ok(ReplaceOutcome::Unchanged);
+    };
+    write_guarded(
+        &path,
+        current.exists.then_some(current.bytes.as_slice()),
+        &next,
+    )?;
+    Ok(ReplaceOutcome::Written)
 }
 
 fn normalize_session(raw: Option<String>) -> Option<String> {

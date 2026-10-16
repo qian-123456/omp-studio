@@ -21,4 +21,15 @@ describe("normalizeMath", () => {
 		const src = "`$$`\n\n```sh\necho $$\n```\n";
 		expect(normalizeMath(src)).toBe(src);
 	});
+
+	it("renders pandoc-style single-dollar math", () => {
+		expect(normalizeMath("是的，$1 + 1 = 2$。")).toBe("是的，$$1 + 1 = 2$$。");
+		expect(normalizeMath("$\\to$ and $\\alpha+1$")).toBe("$$\\to$$ and $$\\alpha+1$$");
+	});
+
+	it("keeps currency-like single dollars as prose", () => {
+		for (const s of ["costs $5 and $6", "from $5-$10 total", "花了$5，赚了$10", "a \\$b$ c"]) {
+			expect(normalizeMath(s)).toBe(s);
+		}
+	});
 });

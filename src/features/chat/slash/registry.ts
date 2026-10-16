@@ -28,7 +28,6 @@ import {
 	KeyRound,
 	Layers,
 	ListChecks,
-	ListTodo,
 	MessagesSquare,
 	Monitor,
 	NotebookPen,
@@ -67,7 +66,7 @@ const sendAsPrompt = async (ctx: SlashContext): Promise<void> => {
 	await ctx.sendPromptText(ctx.rawText);
 };
 
-/** `/fork`-style side chat opener shared by `/fork` and `/btw`. */
+/** `/fork` side chat opener (real forked session). */
 const openSideChat = async (ctx: SlashContext, question: string) => {
 	const info = await createSideChat(
 		ctx.sessionId,
@@ -138,14 +137,12 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "开一个侧聊提问，不打断当前会话",
 		icon: MessagesSquare,
 		group: "会话",
-		argHint: "<问题>",
-		// omp's native `btw` RPC answers via btw_delta frames which the app
-		// does not render yet; the side chat gives the same side-question UX.
+		argHint: "[问题]",
 		run: async (ctx) => {
 			const question = ctx.args.trim();
 			if (!question) {
-				toast.info("用法: /btw <问题>");
-				throw new SlashAbort();
+				useUi.getState().setRightTab("sidechat");
+				return;
 			}
 			await openSideChat(ctx, question);
 		},
@@ -426,14 +423,6 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		icon: ListChecks,
 		group: "状态",
 		run: sendAsPrompt,
-	},
-	{
-		name: "todo",
-		title: "待办",
-		description: "查看待办列表面板",
-		icon: ListTodo,
-		group: "状态",
-		run: () => useUi.getState().setRightTab("todos"),
 	},
 	{
 		name: "stats",

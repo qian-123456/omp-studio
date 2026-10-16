@@ -30,14 +30,14 @@ describe("useUi right panel", () => {
 	});
 
 	it("expands to the neighbour activated by closing the active tab", () => {
-		useUi.getState().setRightTab("todos");
+		useUi.getState().setRightTab("sidechat");
 		useUi.getState().setRightTab("git");
-		// Active "git"; close it while expanded → "todos" becomes active.
+		// Active "git"; close it while expanded → "sidechat" becomes active.
 		useUi.getState().closeRightTab("git");
-		expect(useUi.getState().rightTab).toBe("todos");
+		expect(useUi.getState().rightTab).toBe("sidechat");
 		useUi.getState().toggleRight(); // collapse
 		useUi.getState().toggleRight(); // expand
-		expect(useUi.getState().rightTab).toBe("todos");
+		expect(useUi.getState().rightTab).toBe("sidechat");
 	});
 
 	it("persists the restored active tab for the next launch", () => {

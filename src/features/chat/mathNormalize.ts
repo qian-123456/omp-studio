@@ -7,14 +7,15 @@
  * - balanced `$$…$$` (no blank line inside) → fenced block on its own lines
  * - a lone `$$` (unclosed, e.g. mid-stream) → escaped, shown as text
  * - fenced code blocks and inline code spans are left untouched
- * - single-dollar spans that start with a LaTeX command (`$\to$`, `$\alpha+1$`)
- *   become inline `$$…$$` (single-dollar math is off globally so `$5 and $6`
- *   stays prose; a leading backslash-letter makes the intent unambiguous)
+ * - single-dollar spans follow the pandoc rule — opening `$` not followed by
+ *   whitespace, closing `$` not preceded by whitespace and not followed by a
+ *   digit — and become inline `$$…$$` (`$1 + 1 = 2$`, `$\to$`). Single-dollar
+ *   math is off globally so `$5 and $6` / `$5-$10` stay prose.
  */
 
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const MATH_RE = /(`+)(?:(?!\1)[\s\S])*?\1|\$\$((?:(?!\n[ \t]*\n)[\s\S])+?)\$\$|\$\$/g;
-const INLINE_CMD_RE = /(`+)(?:(?!\1)[\s\S])*?\1|(?<![$\\])\$(?!\$)(\\[a-zA-Z][^$\n]*?)(?<![\s\\])\$(?!\$)/g;
+const INLINE_RE = /(`+)(?:(?!\1)[\s\S])*?\1|(?<![$\\])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?![$\d])/g;
 
 function normalizeSegment(segment: string): string {
 	if (!segment.includes("$")) return segment;
@@ -22,7 +23,7 @@ function normalizeSegment(segment: string): string {
 		if (body !== undefined) return `\n\n$$\n${body.trim()}\n$$\n\n`;
 		return match.startsWith("$$") ? "\\$\\$" : match;
 	});
-	return display.replace(INLINE_CMD_RE, (match, _ticks: string, body: string | undefined) =>
+	return display.replace(INLINE_RE, (match, _ticks: string, body: string | undefined) =>
 		body !== undefined ? `$$${body}$$` : match,
 	);
 }

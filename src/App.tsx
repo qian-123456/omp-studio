@@ -45,9 +45,6 @@ const SkillsPage = lazy(() =>
 );
 
 // Lazy-load heavy overlay modals so cold-start bundle stays small
-const QuickAskDialog = lazy(() =>
-	import("./features/chat/QuickAskDialog").then((m) => ({ default: m.QuickAskDialog })),
-);
 const DiagnoseDialog = lazy(() =>
 	import("./features/diagnose/DiagnoseDialog").then((m) => ({ default: m.DiagnoseDialog })),
 );
@@ -450,7 +447,6 @@ export default function App() {
 			{/* Global modals — render nothing unless ui.modal matches. Lazy loaded in Suspense */}
 			<QuickCapture />
 			<Suspense fallback={null}>
-				<QuickAskDialog />
 				<DiagnoseDialog />
 				<ShareImageDialog />
 				<NewSessionDialog />

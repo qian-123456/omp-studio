@@ -54,9 +54,9 @@ pub fn privacy_extension_path() -> PathBuf {
         .join("omp-workspace-privacy.ts")
 }
 
-/// `~/.omp-workspace/supervisor-sessions/`
-pub fn supervisor_dir() -> PathBuf {
-    data_dir().join("supervisor-sessions")
+/// `~/.omp-workspace/oneshot-sessions/`
+pub fn oneshot_dir() -> PathBuf {
+    data_dir().join("oneshot-sessions")
 }
 
 /// `~/.omp/agent/sessions/`
@@ -66,7 +66,7 @@ pub fn omp_sessions_dir() -> PathBuf {
 
 /// Create all app-owned directories at startup.
 pub fn ensure_dirs() -> io::Result<()> {
-    for dir in [data_dir(), global_dir(), status_dir(), supervisor_dir()] {
+    for dir in [data_dir(), global_dir(), status_dir(), oneshot_dir()] {
         std::fs::create_dir_all(&dir)?;
     }
     if let Some(parent) = extension_path().parent() {

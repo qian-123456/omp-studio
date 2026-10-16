@@ -159,7 +159,7 @@ export function AdvancedSection() {
 		});
 		if (!first) return;
 		const second = await confirmDialog(
-			"再次确认：全部设置（含通知、监工、隧道等）都会被重置，且无法撤销。",
+			"再次确认：全部设置（含通知、隧道等）都会被重置，且无法撤销。",
 			{ danger: true, okLabel: "确认重置" },
 		);
 		if (!second) return;
@@ -290,7 +290,7 @@ export function AdvancedSection() {
 					fieldId="resetSettings"
 					danger
 					label="恢复默认设置"
-					description="把本应用的所有设置（通知、监工、远程访问等）恢复成刚安装时的样子，无法撤销。建议先导出备份。"
+					description="把本应用的所有设置（通知、远程访问等）恢复成刚安装时的样子，无法撤销。建议先导出备份。"
 					control={
 						<button
 							type="button"

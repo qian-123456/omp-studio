@@ -1,57 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { SessionMeta, Todo as TodoItem } from "../../lib/contracts";
+import type { SessionMeta } from "../../lib/contracts";
 import type { SessionLive } from "../../stores/live";
 import {
 	computeHeatmapBadge,
 	computeSidechatBadge,
-	computeTodosBadge,
 } from "./useTabBadges";
 
 describe("useTabBadges pure compute functions", () => {
-	it("computeTodosBadge returns active session open count or fallback to global open", () => {
-		const todos: TodoItem[] = [
-			{
-				id: "t1",
-				sessionId: "s1",
-				status: "open",
-				kind: "review",
-				source: "system",
-				title: "Review",
-				detail: "",
-				priority: 1,
-				payload: {},
-				createdAt: "1",
-				updatedAt: "1",
-			},
-			{
-				id: "t2",
-				sessionId: "s2",
-				status: "open",
-				kind: "error",
-				source: "system",
-				title: "Error",
-				detail: "",
-				priority: 1,
-				payload: {},
-				createdAt: "2",
-				updatedAt: "2",
-			},
-		];
-		const counts = { open: 2 };
-
-		// Session s1 has 1 open todo
-		expect(computeTodosBadge(counts, todos, "s1")).toBe(1);
-
-		// Session s2 has 1 open todo
-		expect(computeTodosBadge(counts, todos, "s2")).toBe(1);
-
-		// Session s3 has 0 open todos, falls back to total open count
-		expect(computeTodosBadge(counts, todos, "s3")).toBe(2);
-
-		// When no session selected (null), returns total open count
-		expect(computeTodosBadge(counts, todos, null)).toBe(2);
-	});
-
 	it("computeSidechatBadge counts sidechats belonging to selectedSessionId", () => {
 		const sessions: Record<string, SessionMeta> = {
 			s1: { id: "s1", parentId: null } as unknown as SessionMeta,

@@ -430,7 +430,6 @@ pub enum TodoKind {
     Error,
     Interrupted,
     Review,
-    Suggestion,
     ServiceLeft,
     /// A scheduled-task run finished; payload: {"scheduleId","runId","ok":bool}.
     ScheduleRun,
@@ -440,8 +439,7 @@ pub enum TodoKind {
 #[serde(rename_all = "snake_case")]
 pub enum TodoSource {
     System,
-    Supervisor,
-    /// Always visible (not gated by system/supervisor switches).
+    /// Always visible (not gated by the system-detection switch).
     Schedule,
 }
 
@@ -463,9 +461,9 @@ pub struct Todo {
     pub session_id: Option<String>,
     pub title: String,
     pub detail: String,
-    /// Approval/Question: {"uiRequest": <raw request>}; Suggestion: {"action": ...}.
+    /// Approval/Question: {"uiRequest": <raw request>}.
     pub payload: serde_json::Value,
-    /// Higher = more urgent; Approval 50, Question 40, Error 30, Interrupted 25, Review 20, Suggestion 10.
+    /// Higher = more urgent; Approval 50, Question 40, Error 30, Interrupted 25, Review 20, ServiceLeft 15, ScheduleRun 12.
     pub priority: i32,
     pub created_at: String,
     pub updated_at: String,
@@ -863,10 +861,6 @@ pub struct Settings {
     /// Default true.
     pub system_detection: bool,
     /// Default false.
-    pub supervisor_enabled: bool,
-    /// Default "smol" (passed as --model).
-    pub supervisor_model: String,
-    /// Default false.
     pub smart_context_routing: bool,
     /// Default 15; 0 = never.
     pub idle_suspend_minutes: u32,
@@ -905,15 +899,11 @@ pub struct Settings {
     pub ddns_hostname: Option<String>,
     /// Default "CommandOrControl+Shift+I".
     pub quick_capture_shortcut: String,
-    /// Debounced supervisor trigger interval; default 30, 0 = manual refresh only.
-    pub supervisor_interval_minutes: u32,
     /// "HH:MM" quiet-hours window for notifications; None or half-open pair = off.
     pub notify_quiet_from: Option<String>,
     pub notify_quiet_to: Option<String>,
     /// Default model for new sessions (stored for future use, not yet consumed).
     pub new_session_model: Option<String>,
-    /// Default false: expand completed todos on the home page queue.
-    pub home_show_completed_todos: bool,
     /// Default true: dock badge shows the open todo count.
     pub dock_badge_enabled: bool,
     /// Default true: background refresh of session summaries.
@@ -943,7 +933,7 @@ pub struct Settings {
     /// Git delivery mode for main branch: "pr" (default, opens GitHub PR) or "direct" (merges locally and pushes to main).
     #[serde(default = "default_git_delivery_mode")]
     pub git_delivery_mode: String,
-    /// AI doctor (heatmap diagnosis) model; default "smol"; empty falls back to supervisor_model.
+    /// AI doctor (heatmap diagnosis) model; default "smol"; empty falls back to "smol".
     #[serde(default = "default_doctor_model")]
     pub doctor_model: String,
     /// "manual" (default) | "idle" | "scheduled".
@@ -1031,8 +1021,6 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             system_detection: true,
-            supervisor_enabled: false,
-            supervisor_model: "smol".to_string(),
             smart_context_routing: false,
             idle_suspend_minutes: 15,
             default_approval_mode: "yolo".to_string(),
@@ -1053,11 +1041,9 @@ impl Default for Settings {
             ddns_zone_id: None,
             ddns_hostname: None,
             quick_capture_shortcut: "CommandOrControl+Shift+I".to_string(),
-            supervisor_interval_minutes: 30,
             notify_quiet_from: None,
             notify_quiet_to: None,
             new_session_model: None,
-            home_show_completed_todos: false,
             dock_badge_enabled: true,
             session_turn_auto_refresh: true,
             session_group_by_worktree: true,

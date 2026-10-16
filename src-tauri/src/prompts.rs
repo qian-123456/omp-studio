@@ -9,7 +9,6 @@ pub const SIDE_CHAT: &str = include_str!("../prompts/side_chat.md");
 pub const SIDE_CHAT_BOUNDARY: &str = include_str!("../prompts/side_chat_boundary.md");
 pub const CONTEXT_ROUTE: &str = include_str!("../prompts/context_route.md");
 pub const SUMMARY: &str = include_str!("../prompts/summary.md");
-pub const SUPERVISOR: &str = include_str!("../prompts/supervisor.md");
 pub const DIAGNOSE: &str = include_str!("../prompts/diagnose.md");
 pub const BACKLOG_DISPATCH: &str = include_str!("../prompts/backlog_dispatch.md");
 pub const VISUALIZE_HINT: &str = include_str!("../prompts/visualize_hint.md");
@@ -64,7 +63,6 @@ mod tests {
             SIDE_CHAT,
             CONTEXT_ROUTE,
             SUMMARY,
-            SUPERVISOR,
             DIAGNOSE,
             BACKLOG_DISPATCH,
         ] {

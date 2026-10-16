@@ -4,10 +4,10 @@
  *
  * The scope row is the table's first row: it decides which config file every
  * control below writes to, so it stays visible while the table loads and reads
- * as part of the table instead of a card of its own. Reloading is a page-level
- * action and lives in the header.
+ * as part of the table instead of a card of its own. Reloading and the
+ * 「批量替换模型」 flow are page-level actions and live in the header.
  */
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
@@ -18,9 +18,11 @@ import type { ModelOption } from "../../lib/models";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { useSessions } from "../../stores/sessions";
 import { type AssignmentScope, type AssignmentTable, buildAssignmentRows } from "./agentModelAssignments";
+import { ModelReplaceDialog } from "./modelReplace/ModelReplaceDialog";
+import { useModelReplaceStore } from "./modelReplace/store";
 import { type AssignmentContext, RoleAssignmentTable } from "./ModelRoleTables";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { SectionHeader, SettingRow, SettingsCard } from "./ui";
+import { SectionHeader, SETTINGS_BUTTON_CLASS, SettingRow, SettingsCard } from "./ui";
 import { useSettingsScopeSessionId, useSettingsSessionModel } from "./useAppSettings";
 
 const EMPTY_LAYER: Record<string, string> = {};
@@ -52,6 +54,8 @@ function useModelRoleState(cwd: string | null, sessionModel: string | null): Mod
 	const [error, setError] = useState<string | null>(null);
 	const [reads, setReads] = useState(0);
 	const [writes, setWrites] = useState(0);
+	// A bulk replace rewrites these files behind our back; its revision re-reads the snapshot.
+	const revision = useModelReplaceStore((s) => s.revision);
 	const latest = useRef({ cwd, sessionModel });
 	latest.current = { cwd, sessionModel };
 	const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -80,7 +84,7 @@ function useModelRoleState(cwd: string | null, sessionModel: string | null): Mod
 				setReads((n) => n - 1);
 			}
 		});
-	}, [cwd, sessionModel, enqueue]);
+	}, [cwd, sessionModel, enqueue, revision]);
 
 	useEffect(() => {
 		refresh();
@@ -214,6 +218,8 @@ export function AgentModelAssignmentsPanel({ query = "" }: { query?: string }) {
 	// Entering the page always starts at global; the scope never follows the selected session.
 	const [scope, setScope] = useState<AssignmentScope>("global");
 	const [picked, setPicked] = useState<string | null>(null);
+	// The bulk-replace dialog is a nested modal over the whole panel; it owns its own state.
+	const [replaceOpen, setReplaceOpen] = useState(false);
 	// The project tab starts on the session's project (else the first registered one); the user may switch freely.
 	const pick = picked ?? sessionCwd ?? workspaces[0]?.path ?? null;
 	// Global reads pass cwd = null so no project layer is ever mixed into the global view.
@@ -270,16 +276,27 @@ export function AgentModelAssignmentsPanel({ query = "" }: { query?: string }) {
 				title="模型角色"
 				description="为每个角色与子代理指定模型，可全局设置或按项目覆盖"
 				actions={
-					<button
-						type="button"
-						onClick={reload}
-						disabled={writing || loading}
-						title="重新读取模型角色"
-						aria-label="重新读取模型角色"
-						className={REFRESH_BTN}
-					>
-						<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-					</button>
+					<>
+						<button
+							type="button"
+							onClick={() => setReplaceOpen(true)}
+							title="批量替换模型"
+							className={SETTINGS_BUTTON_CLASS}
+						>
+							<ArrowLeftRight className="h-3.5 w-3.5" />
+							批量替换模型
+						</button>
+						<button
+							type="button"
+							onClick={reload}
+							disabled={writing || loading}
+							title="重新读取模型角色"
+							aria-label="重新读取模型角色"
+							className={REFRESH_BTN}
+						>
+							<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+						</button>
+					</>
 				}
 			/>
 
@@ -323,6 +340,8 @@ export function AgentModelAssignmentsPanel({ query = "" }: { query?: string }) {
 					</div>
 				)}
 			</SettingsCard>
+
+			{replaceOpen && <ModelReplaceDialog onClose={() => setReplaceOpen(false)} />}
 		</div>
 	);
 }

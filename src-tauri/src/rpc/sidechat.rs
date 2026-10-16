@@ -195,15 +195,14 @@ fn fallback_context(cwd: &str) -> String {
     format!("Project: {cwd}\n\ngit status --short:\n{status}")
 }
 
-/// `omp -p --no-session --no-tools --model <supervisor_model>` classification.
+/// `omp -p --no-session --no-tools --model smol` classification.
 /// Returns one of selection_only | fork_continue | global, or None.
 async fn classify_route(
     state: &AppState,
     selection: &Option<String>,
     question: &str,
 ) -> Option<String> {
-    let model =
-        crate::todos::omp::normalize_model_selector(&state.settings.read().supervisor_model);
+    let model = crate::todos::omp::normalize_model_selector("smol");
     let binary = state.settings.read().omp_binary.clone();
     let mut vars: HashMap<&str, String> = HashMap::new();
     vars.insert("selection", selection.clone().unwrap_or_default());

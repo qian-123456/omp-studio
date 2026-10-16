@@ -22,7 +22,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { FloatingLayer } from "./FloatingLayer";
-import { TopCapsule } from "../features/todos/TopCapsule";
+import { TopCapsule } from "../features/chat/subagents/TopCapsule";
 import { IdeasCapsule } from "../features/backlog/IdeasCapsule";
 import { formatSessionMarkdown } from "../features/chat/exportMarkdown";
 import { useShareSelection } from "../features/chat/share/shareStore";

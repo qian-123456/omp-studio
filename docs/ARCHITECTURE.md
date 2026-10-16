@@ -41,7 +41,7 @@ src-tauri/src/
   rpc/              omp --mode rpc process manager, idle suspend, takeover; subagents.rs reads subagent transcripts [B]
   git/              git status/log/diff/worktrees/time machine                         [C]
   services/         local port/process listing, stop, reminders, memory breakdown (perf.rs)      [C]
-  todos/            smart todo queue, system detection, supervisor, summaries, diagnose [D]
+  todos/            smart todo queue, system detection, summaries, diagnose [D]
   backlog/          backlog store + prompt assembly                                    [D]
   notify/           native notifications, dock badge, sound                            [D]
   mobile/           LAN HTTP server, pairing, QR, SSE, cloudflared tunnel, IPv6 HTTPS + DDNS [E]
@@ -51,6 +51,7 @@ src-tauri/src/
   settings_mcp.rs   OMP-managed mcp.json files: list/upsert/remove/enable servers (masked secrets, atomic writes) [D]
   settings_plugins.rs  OMP plugin roots + lockfiles: list/enable plugins                  [D]
   settings_model_roles.rs  agent discovery, model precedence, narrow lossless YAML role edits [D]
+  model_replace.rs  bulk model replace: usage scan, guarded apply/undo, replace log, model probe (§7 D) [D]
   privacy/          privacy placeholders: store, classify, file writers, commands       [P]
   visualize.rs      bundled visualize plugin install + spawn `--plugin-dir` wiring      [B]
 src-tauri/mobile/index.html   mobile web app (single file, vanilla JS)                 [E]
@@ -84,7 +85,7 @@ src/
   features/git/              right tab: changes + time machine; worktree dialogs        [C]
   features/services/         right tab: services                                        [C]
   features/editor/           center "文档" view: md preview/annotate/edit               [C]
-  features/todos/            queue store, smart detection logic, top capsule, todo row  [D]
+  features/todos/            todo queue store (`useTodos`, feeds the inbox 定时任务 rows)  [D]
   features/inbox/            session-status hub center page (tabs), attention helper, useInboxBadge (§11 D) [D]
   features/backlog/          backlog store, quick capture modal, top-bar 想法 capsule + dropdown [D]
   features/schedules/        scheduled tasks center page, cadence editor, run history (§11 F) [E]
@@ -99,8 +100,9 @@ src/
     ui.tsx                   SectionHeader, SettingsCard, SettingRow, ToggleRow, CommitInput, useSaveStatus/SaveIndicator
     useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
     settingsNav.ts           SettingsNavContext / useSettingsNav (search query + navigate)
-    AgentModelAssignmentsPanel.tsx  `omp-roles`: page header + one card holding the 配置范围 row and the 角色分配 table (agents, effective-model reasons, global/project roles, collapsed named overrides)
+    AgentModelAssignmentsPanel.tsx  `omp-roles`: page header (incl. 「批量替换模型」 button) + one card holding the 配置范围 row and the 角色分配 table (agents, effective-model reasons, global/project roles, collapsed named overrides)
     FallbackChainsSection.tsx  `model-fallback`: preserved fallback-chain and role-cycle settings; no modelRoles writes
+    modelReplace/            批量替换模型 dialog: usage overview + probe, X→Y pick, per-row preview, results/retry, live-session switch, history/undo; pure value transforms in a tested module
   features/mobile/           pairing / tunnel panel (inside settings or its own modal)  [E]
   features/terminal/         right-panel command terminal & agent terminal center view  [E]
 ```
@@ -126,14 +128,14 @@ Rules for parallel work:
 | `~/.omp-workspace/extension/omp-workspace-status.ts` | extension installed at startup from `include_str!` |
 | `~/.omp-workspace/extension/omp-workspace-checkpoints.ts` | turn checkpoints extension (§8.1), installed at startup; loaded only when `settings.turn_checkpoints == Some(true)` |
 | `~/.omp-workspace/plugins/omp-workspace-visualize/` | bundled omp plugin (`plugin.json` + `skills/visualize/SKILL.md`) embedded via `include_str!` from `src-tauri/resources/plugins/`; installed at startup, spawned via `--plugin-dir` when `settings.visualize_enabled` (default true) |
-| `~/.omp-workspace/supervisor-sessions/` | `--session-dir` for supervisor / summarizer runs |
+| `~/.omp-workspace/oneshot-sessions/` | cwd / `--session-dir` for one-shot `omp -p` runs (summaries, quick ask, diagnose) |
 | `~/.omp-workspace/privacy/secrets.json` | privacy entries (placeholders+aliases, value, track, wholeWord, optional `cutoffs`) + `nativeHash` (from entries without cutoffs); read live by the privacy extension (0600, dir 0700, atomic) |
 | `~/.omp-workspace/privacy/omp-overlay.yml` | `secrets.enabled: true`, passed via `PI_CONFIG_FILES` when ≥1 natively tracked (tracked, cutoff-free) entry |
 | `~/.omp/agent/secrets.yml` | managed block (`# >>> omp-workspace privacy …` markers) of tracked entries WITHOUT any session cutoff for OMP's native secrets layer; user bytes preserved; not created while there are no such entries; non-sequence file ⇒ not written, status `conflict` (§8.2 fail-closed) |
 | `<repo>/.worktrees/<name>` | session worktrees (branch `omp/<name>`) and time-machine worktrees (`tm-<shortsha>`, detached) |
 
 `paths.rs` exposes `data_dir()`, `db_path()`, `global_dir()`, `spaces_dir()`, `global_dir_for(mode)`, `status_dir()`, `extension_path()`,
-`supervisor_dir()`, `omp_sessions_dir()`; `ensure_dirs()` is called at startup.
+`oneshot_dir()`, `omp_sessions_dir()`; `ensure_dirs()` is called at startup.
 
 ## 4. Shared types (`contracts.rs` ⇄ `lib/contracts.ts`)
 
@@ -237,14 +239,14 @@ pub struct StartOpts {
 }
 pub struct PendingUiRequest { pub session_id: String, pub request: serde_json::Value /* raw extension_ui_request */, pub received_at: String }
 
-pub enum TodoKind { Approval, Question, Error, Interrupted, Review, Suggestion, ServiceLeft, ScheduleRun }
-pub enum TodoSource { System, Supervisor, Schedule } // Schedule: always visible (not gated by system/supervisor switches)
+pub enum TodoKind { Approval, Question, Error, Interrupted, Review, ServiceLeft, ScheduleRun }
+pub enum TodoSource { System, Schedule } // Schedule: always visible (not gated by the system-detection switch)
 pub enum TodoStatus { Open, Done, Ignored }
 pub struct Todo {
   pub id: String, pub kind: TodoKind, pub source: TodoSource, pub status: TodoStatus,
   pub session_id: Option<String>, pub title: String, pub detail: String,
-  pub payload: serde_json::Value,  // Approval/Question: {"uiRequest": <raw request>}; Suggestion: {"action": ...}
-  pub priority: i32,               // higher = more urgent; Approval 50, Question 40, Error 30, Interrupted 25, Review 20, Suggestion 10
+  pub payload: serde_json::Value,  // Approval/Question: {"uiRequest": <raw request>}
+  pub priority: i32,               // higher = more urgent; Approval 50, Question 40, Error 30, Interrupted 25, Review 20, ServiceLeft 15, ScheduleRun 12
   pub created_at: String, pub updated_at: String,
 }
 pub struct TodoCounts { pub open: u32, pub total: u32 }
@@ -288,8 +290,6 @@ pub struct UsageSummary { pub available: bool, pub tokens: u64, pub cost: f64, p
 
 pub struct Settings {
   pub system_detection: bool,        // default true
-  pub supervisor_enabled: bool,      // default false
-  pub supervisor_model: String,      // default "smol" (passed as --model)
   pub smart_context_routing: bool,   // default false
   pub idle_suspend_minutes: u32,     // default 15; 0 = never
   pub default_approval_mode: String, // default "write"
@@ -309,7 +309,7 @@ pub struct Settings {
   pub omp_check_interval_hours: u32, // default 24; 1..=720; hours between automatic omp update checks while the app runs
   // … (later fields: see contracts.rs)
   pub turn_checkpoints: Option<bool>, // default None = never asked; Some(true) loads the checkpoints extension (§8.1)
-  pub doctor_model: String,          // default "smol"; AI 会诊 model; empty → supervisor_model
+  pub doctor_model: String,          // default "smol"; AI 会诊 model; empty → "smol"
   pub doctor_auto_mode: String,      // "manual" | "idle" | "scheduled"; default "manual" (no tokens spent without user action)
   pub doctor_idle_minutes: u32,      // default 30; 1..=10080; used in "idle" mode
   pub doctor_schedule_time: String,  // "HH:MM"; default "23:00"; used in "scheduled" mode
@@ -450,7 +450,7 @@ Frontend events (`app.emit`), names are exact:
 | `session_groups:changed` | `null` | A (after any session-group create/rename/delete/reorder/assign) |
 | `privacy_changed` | `null` | P (after every privacy mutation) |
 
-## 6. SQLite schema (`db.rs`, migrations v1 → … → v11)
+## 6. SQLite schema (`db.rs`, migrations v1 → … → v13)
 
 ```sql
 CREATE TABLE workspaces(id TEXT PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, mode TEXT NOT NULL DEFAULT 'code', created_at TEXT NOT NULL, UNIQUE(path, mode));  -- v10 rebuilt: uniqueness moved from path to (path, mode); pre-v10 rows keep mode='code'
@@ -501,8 +501,11 @@ CREATE TABLE secret_entries(id TEXT PRIMARY KEY, value TEXT NOT NULL UNIQUE, lab
 CREATE TABLE secret_aliases(placeholder TEXT PRIMARY KEY, entry_id TEXT NOT NULL);
 CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, since_ms INTEGER, PRIMARY KEY(session_id, entry_id));
 -- since_ms (v6): epoch-ms cutoff for "protect only future content"; NULL = whole history. Set once when the link is created.
+-- v13: bulk model replace log (newest 10 kept); edits = JSON ModelReplaceEdit[] of successful edits only
+CREATE TABLE model_replace_log(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, from_model TEXT NOT NULL, to_model TEXT NOT NULL,
+  edits TEXT NOT NULL, undone_at TEXT);
 ```
-Use a `user_version` pragma for migrations (current: v11). `db.rs` also provides `load_settings`/`save_settings` and
+Use a `user_version` pragma for migrations (current: v13; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`). `db.rs` also provides `load_settings`/`save_settings` and
 `ensure_global_workspace(conn)` (creates the single global workspace row `global`/`~/.omp-workspace/global`, owned by
 the `chat` space). v11 moves the global row and every session group (and grouped sessions) to `chat` and drops the
 v10 per-mode `global:<mode>` rows (their dirs stay on disk).
@@ -529,8 +532,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 **A — catalog (added):**
 - `session_export_html(session_id) -> String` — runs `omp --export <file>`, returns the produced HTML path
 - `session_share(session_id) -> String` — runs `omp share <file>` (same as `/share`: E2E-encrypted snapshot uploaded to the configured share store), returns the share link
-- `quick_ask(prompt: String) -> String` — one-shot `omp -p --no-tools --no-session` (supervisor/smol model)
-- `heatmap_diagnose(prompt: String, model: Option<String>) -> String` — AI 会诊: one-shot `omp -p` (120s) on the distilled session skeleton prompt (never raw transcripts); model = `model` → `doctor_model` → `supervisor_model` → "smol"; returns raw model text (frontend parses JSON); never writes files
+- `heatmap_diagnose(prompt: String, model: Option<String>) -> String` — AI 会诊: one-shot `omp -p` (120s) on the distilled session skeleton prompt (never raw transcripts); model = `model` → `doctor_model` → "smol"; returns raw model text (frontend parses JSON); never writes files
 
 
 **B — rpc:**
@@ -589,7 +591,6 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **D — todos / backlog / notify:**
 - `todos_list(include_closed: bool) -> Vec<Todo>`, `todos_act(id, action: "done"|"ignore"|"reopen")`, `todos_counts() -> TodoCounts`
-- `supervisor_refresh()`
 - `summary_get(session_id, ensure: bool) -> Option<String>`
 - `diagnose_build_prompt(target_session_id) -> String`
 - `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(id) -> String`
@@ -637,6 +638,11 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `omp_model_roles_set(cwd: Option<String>, scope: "global" | "project", table: "modelRoles" | "agentModelOverrides", name: String, value: Option<String>, session_model: Option<String>) -> ModelRoleSnapshot` — single-entry lossless YAML edit; `None` removes the entry (project removal restores inheritance). Preserves unrelated bytes, comments, order, permissions and symlinks; rejects unsafe structures without writing.
 - `ModelRoleLayer = { path, exists, modelRoles: Record<string,string>, agentModelOverrides: Record<string,string> }`; `ModelRoleSnapshot = { global: ModelRoleLayer, project: ModelRoleLayer | null, agents: AgentModelAssignment[] }`.
 - `AgentModelAssignment = { name, source: "builtin" | "user" | "project", declaredModel: string | null, effectiveModel: string | null, effectiveSource: "override" | "global" | "project" | "agent" | "session" | "unresolved", reason: string }`. Named global overrides win even over project settings; otherwise agent declaration → `modelRoles.task` → current session model. Roles merge per key (project > global), aliases resolve recursively, and missing/cyclic aliases are explicitly unresolved. Builtin scout/sonic declare `@smol`.
+- Bulk model replace (`model_replace.rs`; types mirrored in `lib/contracts.ts`): scope = global + every registered project workspace's `modelRoles` / `task.agentModelOverrides`, global `retry.fallbackChains` (keys and items), settings `newSessionModel` / `sideChatModel` / `doctorModel`, and `schedules.model` (+ `thinking`). Agent `.md` frontmatter, providers.json, models.yml and session history are never touched; `@role` aliases are never rewritten.
+  - `model_usage_scan() -> ModelUsageScan { refs: ModelUsageRef[], fallbackChains: { chains: Record<string,string[]> }, fallbackChainsError, projects: ScannedProject[] }` — `ModelUsageRef = { location: ModelRefLocation, value, thinking }`; `ModelRefLocation` is tagged by `kind`: `role` / `agentOverride` `{ scope, projectPath, name }`, `appSetting { field }`, `schedule { id, name }`. Missing/unreadable project dirs are reported per project (`status: ok | missing | error`), never fail the scan.
+  - `model_replace_apply(fromModel, toModel, edits: ModelReplaceEdit[], recordId: Option<String>) -> ModelReplaceResult { recordId, results: { edit, ok, error }[] }` — `ModelReplaceEdit` is `{ kind: "value", location, before, after, thinkingBefore, thinkingAfter }` or `{ kind: "fallbackChain", label, changes: { key, before: string[] | null, after: string[] | null }[] }`. Every edit re-reads the current value and fails without writing unless it equals `before`; YAML edits reuse the lossless role writer. `retry.fallbackChains` is read straight from the global config file (scan and apply) and all chain edits of one call become one guarded, comment-preserving byte-splice write (item replace/delete/append, in-place key rename, block and flow sequences); it never goes through `omp config set`, which rewrites the whole file and drops comments. Other edits still apply when one fails. Successful edits are logged (new record, or appended to `recordId` for retries); newest 10 records kept.
+  - `model_replace_history() -> ModelReplaceRecord[]` (newest first; `{ id, createdAt, fromModel, toModel, edits, undoneAt }`), `model_replace_undo(recordId) -> ModelReplaceResult` — applies inverse edits with the same verification; a location changed since the replace is skipped (「当前值已被修改，已跳过」); sets `undoneAt`.
+  - `model_probe(model) -> ModelProbeResult { ok, latencyMs, detail }` — one real one-shot call with `todos::omp::run_print`'s flags plus `--config <dataDir>/omp-probe.yml` (`retry.modelFallback: false`, so omp's own fallback chains cannot answer for a dead model); manual only (overview 「测试」 button). Overview flags 「可能失效」 only once the model catalogue has entries.
 - `omp_info() -> OmpInfo { found, resolvedPath, version, agentDir, configPath, configExists }` — resolves `settings.ompBinary` on the augmented PATH, runs `omp --version` (first line; null on failure), reports the omp agent dir (honors `PI_CODING_AGENT_DIR` / profile env) and `<agentDir>/config.yml`; used by Settings ▸ 通用 「OMP 环境」
 - `omp_update_check() -> OmpUpdateStatus { current, latest, updateAvailable, output }` — runs `omp update --check` (30s timeout, neutral cwd, augmented PATH, ANSI stripped); parses `Current version:` / `New version available:` / `Already up to date`; non-zero exit → Err with output (GitHub rate-limit hint appended when applicable); used by Settings ▸ 版本与更新 and the BottomBar omp chip
 - `omp_update_run() -> OmpUpdateResult { success, output, versionAfter }` — runs `omp update` (300s timeout), then re-probes `omp --version`; frontend then refreshes omp info, update status and the model catalog, and `stores/ompUpdateSessions.beginSwitch` moves sessions live at that moment to the new binary via `rpc_restart` (idle ones immediately, busy ones as soon as they go idle; one aggregate toast). `settings.ompAutoUpdate` (null = off) runs the update automatically when a check finds a new version. Settings ▸ 版本与更新 「立即重启所有会话」 force-restarts every live session.
@@ -775,23 +781,21 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/settings/SettingsOverlay` | overlay when `centerView === "settings"`, keeps underlying center view mounted |
 | `features/terminal/CommandTerminalPanel` | 终端: body of RightTab `"terminal"` in `RightAside` (multi-tab login shells; tab strip — tabs, status, "+" new tab (added synchronously, cwd resolved at spawn), close kills PTY, fold to background service — lives in `terminalTabs.ts` (`addTerminalTab`/`closeTerminalTab`/`detachTerminalTab`); `RightPanelHeader` renders each visible terminal as its own Chrome-style tab while the terminal panel tab is active, so there is a single header row; agent ops: quote selection to composer annotation ⌘⇧A, send selection to side chat; search ⌘F; context menu). xterm/PTY instances live in `drawerRegistry` and are re-attached + re-fitted when the panel remounts, so processes and scrollback survive right-panel tab switches, closing the panel and session switches. Showing the tab with zero visible command tabs spawns one; closing/folding the last one closes the panel tab. Tab metas in `drawerStore` (persisted `ompws:drawer-tabs`). Entry: header 终端图标按钮 or ⌘` (toggles the right panel on this tab). Right-panel badge = live command tabs. |
 | `components/CenterHeader` 终端图标按钮 | Toggles RightTab `"terminal"` in the right panel (`setRightTab("terminal")`, or closes right panel if already showing). No badge. Shortcut ⌘`. |
-| `features/todos/TopCapsule` | top bar, right |
+| `features/chat/subagents/TopCapsule` | top bar, right |
 | `features/backlog/IdeasCapsule` | top bar, right (next to TopCapsule) |
 | `features/backlog/QuickCapture` | global modal (always mounted) |
 | `features/diagnose/DiagnoseDialog` | global modal (always mounted; opened via `ui.openModal("diagnose", {sessionId})`) |
-| `features/git/QuickAskDialog` | global modal (opened via `ui.openModal("quick-ask")` or ⌘⇧K) |
 | `features/sidechat/SideChatPanel` | right tab `sidechat` |
 | `features/heatmap/HeatmapPanel` | right tab `heatmap` |
 | `features/git/GitPanel` | right tab `git` |
 | `features/services/ServicesPanel` | right tab `services` |
-| `features/todos/TodoPanel` | right tab `todos` |
 | `features/explorer/FileExplorer` | right tab `explorer` |
 | `features/mobile/MobilePanel` | inside SettingsPage (under `mobile` section) |
 | `features/git/NewSessionDialog` | global modal (`ui.openModal("new-session", {workspaceId?, cwd?, branch?, useWorktree?})`) |
 | `features/sessions/ResumeMissingCwdDialog` | global modal (`ui.openModal("resume-missing-cwd", {sessionId, cwd, repoRoot, worktreeName?})`, driven by `lib/ensureLive.ts`) |
 
 Sidebar navigation (Codex-style vertical nav list at the top of the left sidebar):
-1. **新建会话** (`⌘N`): `startNewSession()` (`features/sessions/newSession.ts`) resolves the sidebar's active workspace via `resolveStartPageWorkspaceId` ("all"/stale → first project workspace, "__global" → global workspace) and calls `startSessionInDir`, which opens or reuses an empty draft there — the real Composer is the only place a task is started. With no workspace it clears the selection and `StartPage` (the launcher shown while no session is selected) asks for a project directory. Right-side button **快速提问** (`⌘⇧K`) opens `QuickAskDialog`. Per-workspace/worktree "+" controls still create drafts directly (`startSessionInDir`/`startSessionAt`/`startSessionInWorktree`).
+1. **新建会话** (`⌘N`): `startNewSession()` (`features/sessions/newSession.ts`) resolves the sidebar's active workspace via `resolveStartPageWorkspaceId` ("all"/stale → first project workspace, "__global" → global workspace) and calls `startSessionInDir`, which opens or reuses an empty draft there — the real Composer is the only place a task is started. With no workspace it clears the selection and `StartPage` (the launcher shown while no session is selected) asks for a project directory. Per-workspace/worktree "+" controls still create drafts directly (`startSessionInDir`/`startSessionAt`/`startSessionInWorktree`).
 2. **收件箱**: `setCenter("inbox")`; badge via `useInboxBadge()` (awaiting + error + unread sessions within the window).
 3. **定时任务**: `setCenter("schedules")`; management for automated schedule runs.
 4. **技能与扩展**: `setCenter("skills")`; browser for available skills and extension plugins.
@@ -806,7 +810,7 @@ type CenterView =
   | "schedules"
   | "skills"
   | "settings";
-type RightTab = "explorer" | "sidechat" | "heatmap" | "todos" | "git" | "services" | "terminal";
+type RightTab = "explorer" | "sidechat" | "heatmap" | "git" | "services" | "terminal";
 interface UiState {
   centerView: CenterView; selectedSessionId: string | null; docPath: string | null;
   rightTab: RightTab | null; openRightTabs: RightTab[]; rightOpen: boolean;  // Chrome-style open tabs, persisted (ompws:right-tabs / ompws:right-tab)
@@ -970,6 +974,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   skill → 技能, custom/file → 自定义命令, extension/mcp_prompt → 扩展, other builtins → 更多 OMP 命令). `SlashMenu` is the Codex-style
   popup (gear "去设置" → `openSettingsTarget`). Unknown `/x` is sent to omp as a prompt; `command_output` frames render in
   `CommandOutputList` at the end of the thread.
+- Side chats: `/btw [问题]` and `/fork <问题>` both open the real forked side chat (`createSideChat`, then select the child and open the `sidechat` right tab); `/btw` with no question only opens the 辅助对话 tab. Mobile maps `/btw` to the same fork path.
 - Composer: Codex-style single container; one "N 条批注" chip above the input (hover/focus opens a popover listing every quote with its comment, edit ✎ / delete 🗑 / locate), textarea, bottom
   toolbar (attach, model picker, thinking level, held pill, context ring, round send/stop). Model picker (`get_available_models`/`set_model`), thinking
   level (`set_thinking_level`). If session not live → `rpc_ensure_live` first. Two settings (`sendShortcut`, `followUpBehavior`; in the settings JSON, defaults
@@ -1038,7 +1043,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   session and focus its composer. Opening a session in an *existing* worktree skips the dialog
   (`startSessionInWorktree(cwd)` in `features/sessions/newSession.ts`).
 
-### D — Inbox (smart todos + backlog), supervisor, summaries, diagnose, notifications, settings (backend + frontend)
+### D — Inbox (smart todos + backlog), summaries, diagnose, notifications, settings (backend + frontend)
 - System detection (when `settings.system_detection`): subscribe to bus. Create/refresh todos with `dedupe_key`:
   approval/question `ui:<sessionId>:<requestId>` (payload `{uiRequest}`), review `review:<sessionId>`, error `error:<sessionId>`,
   interrupted `interrupted:<sessionId>`. Resolve automatically (status Done) when: `UiResponded` for that request; `SessionAccepted` or
@@ -1048,10 +1053,6 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   and syncs absent status todos.
 - `todos_act(done)` on a Review todo → call the same logic as `accept_session` (emit `SessionAccepted`; A reacts). On Approval todo the
   frontend shows Approve/Deny inline and calls `rpc_ui_respond`; the todo resolves via `UiResponded`.
-- Supervisor (when enabled): triggered by `supervisor_refresh` or debounced status changes (≥5 min apart). Builds a digest of recent sessions
-  (label, title, status, summary) + open backlog, runs `omp -p --no-tools --no-session --model <supervisor_model>` with
-  `prompts/supervisor.md`, expects a JSON array `[{title, detail, sessionId?, action?: {type:"dispatch_backlog", backlogId, targetSessionId}}]`;
-  inserts Suggestion todos (`source: supervisor`). Parse defensively (extract first JSON array).
 - Summaries: `todos::summary` returns the latest `compaction` summary from the transcript if present, else a cached `summaries` row if
   `upto_offset` is recent enough, else (if `ensure`) generates with `omp -p --no-tools --no-session --model smol` from a condensed transcript
   (last ~40 user/assistant texts, truncated) using `prompts/summary.md`. Background refresh: every 3 min for sessions active in the last hour
@@ -1069,16 +1070,14 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Inbox (status hub): `SessionMeta.attention` is derived by A — `awaiting` (awaiting_approval/answer; leaves when answered), `error`
   (error/interrupted not viewed since `pending_since`; viewing hides it from the inbox only, the sidebar red marker stays), `unread`
   (unread or pending Review — one concept, one blue dot everywhere; viewing clears it globally via `mark_seen`), `running` (working).
-  Consumers drop non-awaiting sessions whose `updated_at` is older than `inbox_window_hours`; archived sessions excluded. Todos are not shown.
+  Consumers drop non-awaiting sessions whose `updated_at` is older than `inbox_window_hours`; archived sessions excluded. Open `schedule_run` todos (定时任务, from `todos_list`) are also shown by the inbox page and counted in the sidebar 收件箱 badge — frontend only; the Dock badge (`inbox_badge_count`) stays sessions-only.
 - `InboxPage`: tabs 全部 / 未读 / 中断 / 待回复 with counts; 全部 groups 待回复 → 报错 / 中断 → 已完成，未查看 → 运行中. Compact two-line
   rows (symbol, title, project · branch, time; one-line snippet), click opens the session, no inline actions; gear → Settings `"inbox"`.
 - `IdeasCapsule`: top-bar pill 「想法」 with the count of `inbox`-status backlog items; dropdown: quick add, all non-closed items
   (current project first by `project_dir` vs selected session cwd), 填入当前会话, 派发 (existing/new session), 进行中 items show the
   linked session's status and a done checkbox, collapsed 已完成 section.
-- `useInboxBadge()`: sidebar 收件箱 badge from `useSessions` via the same attention + window rule as the Dock badge.
-- `TopCapsule`: pill `待处理 open/total` (hidden if `!capsule_visible`), click → popover with the compact queue; second segment shows the selected
-  session's subagents from `stores/live.ts` (运行中/完成/失败 counts, click → details list).
-- `TodoPanel` (right tab): same queue filtered to the selected session.
+- `useInboxBadge()`: sidebar 收件箱 badge from `useSessions` via the same attention + window rule as the Dock badge, plus open `schedule_run` todos.
+- `TopCapsule`: subagent capsule; shows the selected session's subagents from `stores/live.ts` (运行中/完成/失败 counts, click → details list).
 - `SettingsPage`: navigation organized into 5 top-level groups:
   - 常规: `general` (通用), `appearance` (外观), `notifications` (通知)
   - 模型: `providers` (API 供应商), `omp-roles` (模型角色: effective agents, global/project roles, named overrides), `model-fallback` (回退链与切换), `omp-model` (模型与目录), `omp-thinking` (思考与采样), `omp-retry` (重试与回退)
@@ -1130,7 +1129,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Execution options: spawned RPC session gets `--model`/`--approval-mode`/`label` from the schedule and applies the stored `thinking` level via the `set_thinking_level` RPC (same command as the interactive composer) before the prompt is sent.
 - Isolated execution: supports `local` cwd or `worktree` mode (creates isolated worktree `.worktrees/sched-<slug>-<id8>` via git).
 - Completion detection: spawns RPC session with label `⏰ <name>`, subscribes to bus; turn completion detected by transition to `SessionStatus::Review` or `Idle` (after work started) → `Ok`; `Error` / `Interrupted` / non-zero process exit → `Error`. Timeout cap 1 hour.
-- Todo write: writes `ScheduleRun` record with status and last assistant text summary, updates schedule's `last_run_at` (and derives `last_run_status` via `SCHEDULE_COLS` subquery), and writes a `Todo` with kind `schedule_run`, source `schedule` (always visible, not gated by system/supervisor switches), dedupe key `sched:<run_id>`, payload `{"scheduleId","runId","ok":bool}`. Emits `schedules:changed`.
+- Todo write: writes `ScheduleRun` record with status and last assistant text summary, updates schedule's `last_run_at` (and derives `last_run_status` via `SCHEDULE_COLS` subquery), and writes a `Todo` with kind `schedule_run`, source `schedule` (always visible, not gated by the system-detection switch), dedupe key `sched:<run_id>`, payload `{"scheduleId","runId","ok":bool}`. Emits `schedules:changed`.
 - Notify policy (`Schedule.notify`, DB v8): the `sched:<run_id>` todo is gated by `should_create_inbox_todo` —
   `all` = always (legacy behavior), `important` = only failed runs (`!ok`, incl. `finish_with_error` early exits)
   or runs observed in `AwaitingApproval`/`AwaitingAnswer`, `none` = never (the `schedule_runs` row is still written).
@@ -1160,7 +1159,7 @@ All floating and layered surfaces throughout the desktop app MUST adhere to the 
 - **Viewport containment**: `FloatingLayer` automatically computes placement, flips to the opposite side when the preferred side lacks space, and clamps within `usableViewport()`. The usable viewport explicitly excludes the app bottom status bar (`[data-app-bottombar]`), ensuring floating surfaces never slide underneath it.
 - **Stacking tiers (`Z_LAYER`)**: Stacking order is strictly governed by `Z_LAYER` (mirrored as `--z-*` CSS variables in `index.css`), never ad-hoc integers:
   - `drawer`: 40 (`--z-drawer: 40`) — e.g. `SkillsPage` detail drawer
-  - `modal`: 50 (`--z-modal: 50`) — e.g. `NewSessionDialog`, `QuickAskDialog`, `DiagnoseDialog`, `ResumeMissingCwdDialog`, `ImageChip` full preview
+  - `modal`: 50 (`--z-modal: 50`) — e.g. `NewSessionDialog`, `DiagnoseDialog`, `ResumeMissingCwdDialog`, `ImageChip` full preview
   - `popover`: 60 (`--z-popover: 60`) — e.g. `PerfPopover`, `SessionStatsPopover`, filter popovers
   - `menu`: 65 (`--z-menu: 65`) — e.g. context menus, dropdown action menus (`plusMenu`, `wsMenu`, `ModelSelect`, `ThemeMenu`)
   - `hovercard`: 70 (`--z-hovercard: 70`) — e.g. `SessionHoverCard`, `WorktreeHoverCard`, heatmap tooltips

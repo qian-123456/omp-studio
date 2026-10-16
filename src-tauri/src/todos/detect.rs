@@ -174,10 +174,7 @@ async fn handle(state: &AppState, ev: AppEvent) {
             session_id,
             old,
             new,
-        } => {
-            super::supervisor::on_status_change(state);
-            on_status(state, &session_id, old, new, enabled).await
-        }
+        } => on_status(state, &session_id, old, new, enabled).await,
         AppEvent::SessionsChanged { ids } => {
             let mut changed = false;
             if enabled {
@@ -589,14 +586,14 @@ mod tests {
         );
         store::upsert(&c, "review:deleted_sess", &t_review, true).unwrap();
         store::upsert(&c, "error:deleted_sess", &t_error, true).unwrap();
-        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 2);
+        assert_eq!(store::list(&c, false, true).unwrap().len(), 2);
 
         // Reconcile with empty catalog (session is gone)
         let changed = reconcile_db(&c, true, &[], &[], &HashSet::new(), &[]);
         assert!(changed);
 
         // Both zombie todos must be resolved
-        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 0);
+        assert_eq!(store::list(&c, false, true).unwrap().len(), 0);
     }
 
     #[test]
@@ -609,7 +606,7 @@ mod tests {
         let t_quest = ui_todo("name", "dead_sess", TodoKind::Question, &req2);
         store::insert_absent(&c, "ui:dead_sess:r1", &t_appr).unwrap();
         store::insert_absent(&c, "ui:dead_sess:r2", &t_quest).unwrap();
-        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 2);
+        assert_eq!(store::list(&c, false, true).unwrap().len(), 2);
 
         // Session exists in catalog but is not live (live_pending is empty)
         let s = SessionMeta {
@@ -622,7 +619,7 @@ mod tests {
         assert!(changed);
 
         // Both orphaned UI todos must be resolved
-        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 0);
+        assert_eq!(store::list(&c, false, true).unwrap().len(), 0);
     }
 
     #[test]
@@ -630,11 +627,11 @@ mod tests {
         let c = store::test_conn();
         let t = NewTodo::system(TodoKind::Review, "s1", "Review".into(), String::new());
         store::upsert(&c, "review:s1", &t, true).unwrap();
-        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 1);
+        assert_eq!(store::list(&c, false, true).unwrap().len(), 1);
 
         // Leaving Review into Idle -> resolves review:s1
         let changed = resolve_status_leaving(&c, "s1", SessionStatus::Idle);
         assert!(changed);
-        assert_eq!(store::list(&c, false, true, true).unwrap().len(), 0);
+        assert_eq!(store::list(&c, false, true).unwrap().len(), 0);
     }
 }

@@ -272,16 +272,12 @@ async fn heatmap_diagnose<B: Backend>(
     }
     let model = {
         let s = state.settings.read();
-        let picked = [
-            body.model.as_deref().unwrap_or(""),
-            s.doctor_model.as_str(),
-            s.supervisor_model.as_str(),
-        ]
-        .into_iter()
-        .map(str::trim)
-        .find(|m| !m.is_empty())
-        .unwrap_or("smol")
-        .to_string();
+        let picked = [body.model.as_deref().unwrap_or(""), s.doctor_model.as_str()]
+            .into_iter()
+            .map(str::trim)
+            .find(|m| !m.is_empty())
+            .unwrap_or("smol")
+            .to_string();
         picked
     };
     let text = crate::todos::omp::run_print(state, &model, prompt, Duration::from_secs(120))

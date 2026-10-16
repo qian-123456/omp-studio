@@ -7,6 +7,7 @@ mod contracts;
 mod db;
 mod git;
 mod mobile;
+mod model_replace;
 mod notify;
 mod paths;
 mod privacy;
@@ -164,7 +165,6 @@ pub fn run() {
             catalog::commands::list_workspace_files,
             catalog::commands::session_export_html,
             catalog::commands::session_share,
-            catalog::commands::quick_ask,
             catalog::commands::heatmap_diagnose,
             // B — rpc
             rpc::commands::rpc_start,
@@ -225,11 +225,10 @@ pub fn run() {
             services::commands::save_share_image,
             services::commands::app_memory_usage,
             services::commands::perf_breakdown,
-            // D — todos / supervisor / summaries / diagnose
+            // D — todos / summaries / diagnose
             todos::commands::todos_list,
             todos::commands::todos_act,
             todos::commands::todos_counts,
-            todos::commands::supervisor_refresh,
             todos::commands::summary_get,
             todos::commands::diagnose_build_prompt,
             todos::commands::dispatch_prompt,
@@ -248,6 +247,12 @@ pub fn run() {
             settings::omp_project_config_read,
             settings_model_roles::omp_model_roles_read,
             settings_model_roles::omp_model_roles_set,
+            // D — bulk model replace (全局批量替换模型)
+            model_replace::model_usage_scan,
+            model_replace::model_replace_apply,
+            model_replace::model_replace_history,
+            model_replace::model_replace_undo,
+            model_replace::model_probe,
             settings::omp_info,
             settings::omp_update_check,
             settings::omp_update_run,

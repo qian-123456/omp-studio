@@ -19,7 +19,6 @@ describe("validateSettingsShape", () => {
 			ddnsEnabled: true,
 			ddnsZoneId: "023e105f4ecef8ad9ca31a8372d0c353",
 			ddnsHostname: "home.example.com",
-			supervisorIntervalMinutes: 30,
 			idleSuspendMinutes: 60,
 			notifyQuietFrom: "22:00",
 			notifyQuietTo: "08:00",
@@ -48,7 +47,6 @@ describe("validateSettingsShape", () => {
 	it("rejects out of range numbers", () => {
 		expect(validateSettingsShape({ mobilePort: 0 }).ok).toBe(false);
 		expect(validateSettingsShape({ mobilePort: 70000 }).ok).toBe(false);
-		expect(validateSettingsShape({ supervisorIntervalMinutes: 10081 }).ok).toBe(false);
 		expect(validateSettingsShape({ idleSuspendMinutes: -1 }).ok).toBe(false);
 	});
 

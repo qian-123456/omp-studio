@@ -118,14 +118,6 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
         return Err("OMP 可执行文件路径不能包含空字符 (NUL) 或换行符".to_string());
     }
 
-    let model = settings.supervisor_model.trim();
-    if model.is_empty() {
-        return Err("模型名称不能为空".to_string());
-    }
-    if has_nul_or_newline(&settings.supervisor_model) {
-        return Err("模型名称不能包含空字符 (NUL) 或换行符".to_string());
-    }
-
     if has_nul_or_newline(&settings.doctor_model) {
         return Err("诊断模型名称不能包含空字符 (NUL) 或换行符".to_string());
     }
@@ -220,11 +212,6 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
     let shortcut = settings.quick_capture_shortcut.trim();
     if !shortcut.is_empty() {
         Shortcut::from_str(shortcut).map_err(|e| format!("快捷键格式无效 \"{shortcut}\": {e}"))?;
-    }
-
-    // 9. Supervisor interval: sanity cap at one week; 0 = manual only.
-    if settings.supervisor_interval_minutes > 7 * 24 * 60 {
-        return Err("监工触发间隔不能超过 10080 分钟 (7 天)".to_string());
     }
 
     // 10. Notification quiet hours: "HH:MM", both bounds set together.
@@ -718,9 +705,21 @@ pub async fn omp_config_set(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    validate_config_key(&key)?;
-    validate_config_value(&key, &value)?;
-    let (exe, path) = omp_exe(&state);
+    set_omp_config_value(&state, &key, &value).await
+}
+
+/// Writes one whole config value through `omp config set <key> <value>`.
+///
+/// Record-typed keys (`retry.fallbackChains`) are rewritten as a whole: the caller reads
+/// the current value, edits it, and passes the serialized result here.
+pub(crate) async fn set_omp_config_value(
+    state: &AppState,
+    key: &str,
+    value: &str,
+) -> Result<(), String> {
+    validate_config_key(key)?;
+    validate_config_value(key, value)?;
+    let (exe, path) = omp_exe(state);
     if !exe.is_file() {
         return Err(format!(
             "未找到 OMP 命令行程序 \"{}\"",
@@ -728,9 +727,9 @@ pub async fn omp_config_set(
         ));
     }
     let args: Vec<&str> = if value.starts_with('-') {
-        vec!["set", &key, "--", &value]
+        vec!["set", key, "--", value]
     } else {
-        vec!["set", &key, &value]
+        vec!["set", key, value]
     };
     run_omp_config(&exe, &path, &args).await?;
     Ok(())
@@ -995,16 +994,6 @@ mod tests {
             .unwrap_err()
             .contains("OMP 可执行文件路径不能为空"));
         settings.omp_binary = "omp".to_string();
-
-        settings.supervisor_model = "".to_string();
-        assert!(validate(&settings)
-            .unwrap_err()
-            .contains("模型名称不能为空"));
-
-        settings.supervisor_model = "  \t ".to_string();
-        assert!(validate(&settings)
-            .unwrap_err()
-            .contains("模型名称不能为空"));
     }
 
     #[test]
@@ -1028,17 +1017,6 @@ mod tests {
             .unwrap_err()
             .contains("不能包含空字符 (NUL) 或换行符"));
         settings.omp_binary = "omp".to_string();
-
-        settings.supervisor_model = "smol\0".to_string();
-        assert!(validate(&settings)
-            .unwrap_err()
-            .contains("不能包含空字符 (NUL) 或换行符"));
-
-        settings.supervisor_model = "smol\n".to_string();
-        assert!(validate(&settings)
-            .unwrap_err()
-            .contains("不能包含空字符 (NUL) 或换行符"));
-        settings.supervisor_model = "smol".to_string();
 
         settings.tunnel_name = Some("my\0tunnel".to_string());
         assert!(validate(&settings)
@@ -1177,26 +1155,6 @@ mod tests {
 
         settings.quick_capture_shortcut = "Ctrl++".to_string();
         assert!(validate(&settings).unwrap_err().contains("快捷键格式无效"));
-    }
-
-    #[test]
-    fn test_validate_supervisor_interval_cap() {
-        let mut settings = Settings {
-            supervisor_interval_minutes: 30,
-            ..Default::default()
-        };
-        assert!(validate(&settings).is_ok());
-
-        settings.supervisor_interval_minutes = 0; // manual only
-        assert!(validate(&settings).is_ok());
-
-        settings.supervisor_interval_minutes = 7 * 24 * 60;
-        assert!(validate(&settings).is_ok());
-
-        settings.supervisor_interval_minutes = 7 * 24 * 60 + 1;
-        assert!(validate(&settings)
-            .unwrap_err()
-            .contains("不能超过 10080 分钟"));
     }
 
     #[test]

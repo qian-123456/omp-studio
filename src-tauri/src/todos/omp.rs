@@ -1,4 +1,4 @@
-//! One-shot `omp -p` runner for summaries / supervisor (prompt via stdin).
+//! One-shot `omp -p` runner for summaries (prompt via stdin).
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -213,7 +213,7 @@ pub async fn run_print(
     if !model.is_empty() {
         cmd.arg("--model").arg(&model);
     }
-    cmd.current_dir(paths::supervisor_dir())
+    cmd.current_dir(paths::oneshot_dir())
         .env("PATH", path)
         .envs(crate::providers::omp_spawn_env())
         .stdin(Stdio::piped())

@@ -6,7 +6,6 @@ import { RightPanelEmptyState } from "./RightPanelEmptyState";
 import { FileExplorer } from "../features/explorer/FileExplorer";
 import { SideChatPanel } from "../features/sidechat/SideChatPanel";
 import { HeatmapPanel } from "../features/heatmap/HeatmapPanel";
-import { TodoPanel } from "../features/todos/TodoPanel";
 import { GitPanel } from "../features/git/GitPanel";
 import { ServicesPanel } from "../features/services/ServicesPanel";
 import { CommandTerminalPanel } from "../features/terminal/CommandTerminalPanel";
@@ -48,8 +47,6 @@ function RightPanelBody({ tab }: { tab: RightTab }) {
 			return <SideChatPanel />;
 		case "heatmap":
 			return <HeatmapPanel />;
-		case "todos":
-			return <TodoPanel />;
 		case "git":
 			return <GitPanel />;
 		case "services":

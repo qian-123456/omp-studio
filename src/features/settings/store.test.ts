@@ -23,14 +23,14 @@ describe("settings store", () => {
 
 		// Call update twice concurrently
 		const p1 = useSettings.getState().update({ systemDetection: false });
-		const p2 = useSettings.getState().update({ supervisorEnabled: true });
+		const p2 = useSettings.getState().update({ dockBadgeEnabled: false });
 
 		await expect(Promise.all([p1, p2])).rejects.toThrow("Disk full");
 
 		// Should have rolled back to the last confirmed settings
 		const current = useSettings.getState().settings;
 		expect(current?.systemDetection).toBe(false);
-		expect(current?.supervisorEnabled).toBe(false);
+		expect(current?.dockBadgeEnabled).toBe(true);
 		expect(useSettings.getState().error).toContain("Disk full");
 
 		saveSpy.mockRestore();
@@ -51,7 +51,7 @@ describe("settings store", () => {
 
 		// Call update A and update B concurrently
 		const p1 = useSettings.getState().update({ systemDetection: false });
-		const p2 = useSettings.getState().update({ supervisorEnabled: true });
+		const p2 = useSettings.getState().update({ dockBadgeEnabled: false });
 
 		await expect(p1).rejects.toThrow("Update A failed");
 		await expect(p2).resolves.toBeUndefined();
@@ -59,7 +59,7 @@ describe("settings store", () => {
 		const current = useSettings.getState().settings;
 		// A should have rolled back to initial (true), B should remain applied (true)
 		expect(current?.systemDetection).toBe(true);
-		expect(current?.supervisorEnabled).toBe(true);
+		expect(current?.dockBadgeEnabled).toBe(false);
 
 		saveSpy.mockRestore();
 	});

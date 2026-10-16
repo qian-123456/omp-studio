@@ -769,31 +769,9 @@ pub async fn session_share(
     parse_share_url(&stdout).ok_or_else(|| format!("未能从 omp 输出中解析分享链接: {stdout}"))
 }
 
-/// One-shot throwaway question to the supervisor model (`omp -p` scratchpad).
-/// Uses the configured supervisor model; falls back to "smol" when unset.
-/// Passing an explicit `model` overrides both.
-#[tauri::command]
-pub async fn quick_ask(
-    state: tauri::State<'_, AppState>,
-    prompt: String,
-    model: Option<String>,
-) -> Result<String, String> {
-    let prompt = prompt.trim();
-    if prompt.is_empty() {
-        return Err("问题不能为空".to_string());
-    }
-    let model = model.unwrap_or_else(|| state.settings.read().supervisor_model.clone());
-    let model = if model.trim().is_empty() {
-        "smol".to_string()
-    } else {
-        model.trim().to_string()
-    };
-    crate::todos::omp::run_print(&state, &model, prompt, std::time::Duration::from_secs(60)).await
-}
-
 /// AI doctor diagnosis for the heatmap panel. `prompt` is built from the
 /// distilled session skeleton (never raw transcripts). Model: explicit `model`,
-/// else `doctor_model`, else `supervisor_model`, else "smol".
+/// else `doctor_model`, else "smol".
 #[tauri::command]
 pub async fn heatmap_diagnose(
     state: tauri::State<'_, AppState>,
@@ -806,16 +784,12 @@ pub async fn heatmap_diagnose(
     }
     let model = {
         let s = state.settings.read();
-        let picked = [
-            model.as_deref().unwrap_or(""),
-            s.doctor_model.as_str(),
-            s.supervisor_model.as_str(),
-        ]
-        .into_iter()
-        .map(str::trim)
-        .find(|m| !m.is_empty())
-        .unwrap_or("smol")
-        .to_string();
+        let picked = [model.as_deref().unwrap_or(""), s.doctor_model.as_str()]
+            .into_iter()
+            .map(str::trim)
+            .find(|m| !m.is_empty())
+            .unwrap_or("smol")
+            .to_string();
         picked
     };
     crate::todos::omp::run_print(&state, &model, prompt, std::time::Duration::from_secs(120)).await

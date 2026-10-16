@@ -242,27 +242,6 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["system", "detection", "系统待办", "待办检测", "错误", "监听"],
 	},
 	{
-		id: "supervisorEnabled",
-		sectionId: "inbox",
-		label: "后台监工建议 (Supervisor)",
-		description: "后台定期分析长会话进展并提供非阻塞优化建议",
-		keywords: ["supervisor", "监工", "后台监工", "巡检", "建议", "优化"],
-	},
-	{
-		id: "supervisorModel",
-		sectionId: "inbox",
-		label: "监工模型",
-		description: "监工调用 omp -p 时指定的轻量模型，建议保持快速或低成本模型",
-		keywords: ["supervisor model", "监工模型", "建议模型", "轻量模型", "smol"],
-	},
-	{
-		id: "supervisorIntervalMinutes",
-		sectionId: "inbox",
-		label: "分析间隔（分钟）",
-		description: "会话状态变化后至少隔多久再分析一次；0 表示只手动刷新",
-		keywords: ["interval", "触发间隔", "巡检间隔", "频率", "去抖", "分钟"],
-	},
-	{
 		id: "inboxWindowHours",
 		sectionId: "inbox",
 		label: "自动移出时间（小时）",
@@ -275,13 +254,6 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		label: "自动检查间隔",
 		description: "应用运行期间，每隔这么久检查一次 omp 新版本",
 		keywords: ["check interval", "检查间隔", "自动检查", "小时", "omp", "更新"],
-	},
-	{
-		id: "homeShowCompletedTodos",
-		sectionId: "inbox",
-		label: "默认展开已处理待办",
-		description: "首页待办卡片默认展示历史已归档的条目",
-		keywords: ["completed", "已处理", "已归档", "已完成", "展开", "待办"],
 	},
 	{
 		id: "doctorModel",

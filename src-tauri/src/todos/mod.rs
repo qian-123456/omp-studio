@@ -1,4 +1,4 @@
-//! [D] Smart todo queue, system detection, supervisor, summaries, diagnose.
+//! [D] Smart todo queue, system detection, summaries, diagnose.
 //! Cross-module API per docs/ARCHITECTURE.md §9.
 
 pub mod commands;
@@ -8,7 +8,6 @@ pub mod omp;
 pub mod sessions;
 pub mod store;
 pub mod summary;
-pub mod supervisor;
 pub mod transcript;
 
 use tauri::Emitter as _;
@@ -22,14 +21,13 @@ pub fn init(state: AppState) {
     summary::spawn_refresh(state);
 }
 
-fn visibility(state: &AppState) -> (bool, bool) {
-    let s = state.settings.read();
-    (s.system_detection, s.supervisor_enabled)
+fn show_system(state: &AppState) -> bool {
+    state.settings.read().system_detection
 }
 
 pub async fn list(state: &AppState, include_closed: bool) -> Vec<Todo> {
-    let (sys, sup) = visibility(state);
-    store::list(&state.db.lock(), include_closed, sys, sup).unwrap_or_default()
+    let sys = show_system(state);
+    store::list(&state.db.lock(), include_closed, sys).unwrap_or_default()
 }
 
 /// `action`: "done" | "ignore" | "reopen".
@@ -63,8 +61,8 @@ pub async fn counts(state: &AppState) -> TodoCounts {
 }
 
 pub fn counts_sync(state: &AppState) -> TodoCounts {
-    let (sys, sup) = visibility(state);
-    store::counts(&state.db.lock(), sys, sup)
+    let sys = show_system(state);
+    store::counts(&state.db.lock(), sys)
 }
 
 /// Latest compaction summary, cached row, or (if `ensure`) generate one.

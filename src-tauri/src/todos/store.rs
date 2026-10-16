@@ -30,7 +30,6 @@ pub fn priority_of(kind: TodoKind) -> i32 {
         TodoKind::Review => 20,
         TodoKind::ServiceLeft => 15,
         TodoKind::ScheduleRun => 12,
-        TodoKind::Suggestion => 10,
     }
 }
 
@@ -67,7 +66,7 @@ fn row_to_todo(r: &Row) -> rusqlite::Result<Todo> {
     let payload: String = r.get(7)?;
     Ok(Todo {
         id: r.get(0)?,
-        kind: parse_enum(&kind).unwrap_or(TodoKind::Suggestion),
+        kind: parse_enum(&kind).unwrap_or(TodoKind::Review),
         source: parse_enum(&source).unwrap_or(TodoSource::System),
         status: parse_enum(&status).unwrap_or(TodoStatus::Open),
         session_id: r.get(4)?,
@@ -183,12 +182,11 @@ pub fn resolve_session_kinds(
     Ok(changed)
 }
 
-fn source_filter(show_system: bool, show_supervisor: bool) -> &'static str {
-    match (show_system, show_supervisor) {
-        (true, true) => "1=1",
-        (true, false) => "source IN ('system', 'schedule')",
-        (false, true) => "source IN ('supervisor', 'schedule')",
-        (false, false) => "source = 'schedule'",
+fn source_filter(show_system: bool) -> &'static str {
+    if show_system {
+        "1=1"
+    } else {
+        "source = 'schedule'"
     }
 }
 
@@ -197,9 +195,8 @@ pub fn list(
     conn: &Connection,
     include_closed: bool,
     show_system: bool,
-    show_supervisor: bool,
 ) -> rusqlite::Result<Vec<Todo>> {
-    let f = source_filter(show_system, show_supervisor);
+    let f = source_filter(show_system);
     let mut out = Vec::new();
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLS} FROM todos WHERE status = 'open' AND {f} ORDER BY priority DESC, created_at ASC"
@@ -215,8 +212,8 @@ pub fn list(
 }
 
 /// `open` = open todos; `total` = open + closed within the last 24 h.
-pub fn counts(conn: &Connection, show_system: bool, show_supervisor: bool) -> TodoCounts {
-    let f = source_filter(show_system, show_supervisor);
+pub fn counts(conn: &Connection, show_system: bool) -> TodoCounts {
+    let f = source_filter(show_system);
     let since = (chrono::Utc::now() - chrono::Duration::hours(24)).to_rfc3339();
     let q = |sql: String, p: &[&dyn rusqlite::ToSql]| -> u32 {
         conn.query_row(&sql, p, |r| r.get::<_, i64>(0)).unwrap_or(0) as u32
@@ -295,15 +292,15 @@ mod tests {
         let c = test_conn();
         assert!(upsert(&c, "review:s1", &t(TodoKind::Review, "s1"), true).unwrap());
         assert!(upsert(&c, "review:s1", &t(TodoKind::Review, "s1"), true).unwrap());
-        assert_eq!(list(&c, false, true, true).unwrap().len(), 1);
+        assert_eq!(list(&c, false, true).unwrap().len(), 1);
         assert!(resolve_key(&c, "review:s1").unwrap());
         assert!(!resolve_key(&c, "review:s1").unwrap());
-        assert_eq!(list(&c, false, true, true).unwrap().len(), 0);
+        assert_eq!(list(&c, false, true).unwrap().len(), 0);
         // Closed rows stay closed without reopen, reopen otherwise.
         assert!(!upsert(&c, "review:s1", &t(TodoKind::Review, "s1"), false).unwrap());
         assert!(!insert_absent(&c, "review:s1", &t(TodoKind::Review, "s1")).unwrap());
         assert!(upsert(&c, "review:s1", &t(TodoKind::Review, "s1"), true).unwrap());
-        assert_eq!(list(&c, true, true, true).unwrap().len(), 1);
+        assert_eq!(list(&c, true, true).unwrap().len(), 1);
     }
 
     #[test]
@@ -311,17 +308,17 @@ mod tests {
         let c = test_conn();
         upsert(&c, "review:s1", &t(TodoKind::Review, "s1"), true).unwrap();
         upsert(&c, "ui:s1:1", &t(TodoKind::Approval, "s1"), false).unwrap();
-        let mut sug = t(TodoKind::Suggestion, "s2");
-        sug.source = TodoSource::Supervisor;
-        upsert(&c, "sup:x", &sug, false).unwrap();
-        let l = list(&c, false, true, true).unwrap();
+        let mut sched = t(TodoKind::ScheduleRun, "s2");
+        sched.source = TodoSource::Schedule;
+        upsert(&c, "sched:x", &sched, false).unwrap();
+        let l = list(&c, false, true).unwrap();
         assert_eq!(l[0].kind, TodoKind::Approval);
         assert_eq!(l[0].priority, 50);
-        assert_eq!(l.last().unwrap().kind, TodoKind::Suggestion);
-        assert_eq!(list(&c, false, true, false).unwrap().len(), 2);
-        assert_eq!(list(&c, false, false, true).unwrap().len(), 1);
+        assert_eq!(l.last().unwrap().kind, TodoKind::ScheduleRun);
+        // System detection off: only schedule rows remain visible.
+        assert_eq!(list(&c, false, false).unwrap().len(), 1);
         resolve_prefix(&c, "ui:s1:").unwrap();
-        let n = counts(&c, true, true);
+        let n = counts(&c, true);
         assert_eq!((n.open, n.total), (2, 3));
     }
 

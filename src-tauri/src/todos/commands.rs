@@ -1,4 +1,4 @@
-//! [D] Tauri commands: todos + supervisor + summaries + diagnose (§7).
+//! [D] Tauri commands: todos + summaries + diagnose (§7).
 
 use crate::contracts::{Todo, TodoCounts};
 use crate::state::AppState;
@@ -27,11 +27,6 @@ pub async fn todos_counts(state: tauri::State<'_, AppState>) -> Result<TodoCount
 }
 
 #[tauri::command]
-pub async fn supervisor_refresh(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    crate::todos::supervisor::refresh(&state).await
-}
-
-#[tauri::command]
 pub async fn summary_get(
     state: tauri::State<'_, AppState>,
     session_id: String,
@@ -49,7 +44,7 @@ pub async fn diagnose_build_prompt(
 }
 
 /// [D, added] Send a prompt to a session via `rpc::send_prompt` (ensure_live + prompt /
-/// followUp when streaming). Used by diagnose, backlog dispatch and suggestion actions.
+/// followUp when streaming). Used by diagnose and backlog dispatch.
 #[tauri::command]
 pub async fn dispatch_prompt(
     state: tauri::State<'_, AppState>,

@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
+import { startTodos, useTodos } from "../todos/store";
 import { useSessions } from "../../stores/sessions";
 import { useSettings } from "../settings/store";
 import type { SessionMeta, SpaceMode } from "../../lib/contracts";
 import { SPACE_MODES } from "../sessions/modes";
-import { useSidebarStore } from "../sessions/sidebarStore";
 import { type InboxGroups, groupInbox } from "./attention";
 
 const TICK_MS = 60_000;
 
-/** Live inbox groups of the active space mode; re-evaluated every minute so
- * entries age out of the time window without a session change. */
+/** Live inbox groups across ALL space modes (code/work/study share one inbox);
+ * re-evaluated every minute so entries age out of the time window without a
+ * session change. */
 export function useInboxGroups(): InboxGroups {
 	const sessions = useSessions((s) => s.sessions);
-	const mode = useSidebarStore((s) => s.activeMode);
+	const todos = useTodos((s) => s.todos);
 	const windowHours = useSettings((s) => s.settings?.inboxWindowHours ?? 24);
+	useEffect(() => {
+		void startTodos();
+	}, []);
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => {
 		const id = window.setInterval(() => setNow(Date.now()), TICK_MS);
@@ -21,22 +25,18 @@ export function useInboxGroups(): InboxGroups {
 	}, []);
 	return useMemo(
 		() =>
-			groupInbox(
-				Object.values(sessions).filter((s) => s.mode === mode),
-				now,
-				windowHours,
-			),
-		[sessions, mode, now, windowHours],
+			groupInbox(Object.values(sessions), now, windowHours, todos),
+		[sessions, now, windowHours, todos],
 	);
 }
 
-/** Sidebar 收件箱 badge: awaiting + error + unread within the window. */
+/** Sidebar 收件箱 badge: attention sessions within the window + open schedule todos. */
 export function useInboxBadge(): number {
 	return useInboxGroups().badge;
 }
 
 export interface ModeActivity {
-	/** awaiting + error + unread within the window (same rule as the inbox badge). */
+	/** Session badge only (approval/question/error/interrupted/unread within the window). */
 	badge: number;
 	/** Sessions currently running. */
 	running: number;
