@@ -656,9 +656,9 @@
 		}
 		let h = "";
 		const model = shortModel(cstate.model);
-		if (model) h += '<span class="ch-chip">' + esc(model) + "</span>";
-		if (cstate.thinkingLevel && cstate.thinkingLevel !== "off")
-			h += '<span class="ch-chip">思考 ' + esc(cstate.thinkingLevel) + "</span>";
+		if (model) h += '<button class="ch-chip pick" data-chip="model">' + esc(model) + " ▾</button>";
+		if (model || cstate.thinkingLevel)
+			h += '<button class="ch-chip pick" data-chip="think">思考 ' + esc(cstate.thinkingLevel || "auto") + " ▾</button>";
 		if (cstate.planMode) h += '<button class="ch-chip plan" data-chip="plan">规划模式 ●</button>';
 		if (cstate.goal && cstate.goal.objective)
 			h +=
@@ -679,6 +679,7 @@
 		try {
 			const st = await M.api("GET", "/sessions/" + id + "/composer-state");
 			if (id !== cur) return;
+			if (st.thinkingLevel == null && cstate && cstate.thinkingLevel) st.thinkingLevel = cstate.thinkingLevel;
 			cstate = st;
 			if (st.streaming && !working) working = true;
 			else if (!st.streaming && working && !streamMsg && Date.now() - lastSend > 4000) {
@@ -689,7 +690,7 @@
 			renderChatHeader();
 			updateSendBtn();
 			renderMessages();
-			if (!$("ch-sheet").classList.contains("hidden")) renderSheet();
+			if (!$("ch-sheet").classList.contains("hidden") && sheetView !== "model" && sheetView !== "think") renderSheet();
 		} catch (e) {
 			if (e.message !== "unauthorized") console.warn(e);
 		}
@@ -957,8 +958,155 @@
 	}
 	let sheetView = "menu";
 
+	// ---------- composer: model / thinking pickers ----------
+
+	const THINK_DESC = {
+		auto: "跟随模型的默认力度",
+		off: "不启用深度推理思考",
+		minimal: "轻度推理，适合简单问答",
+		low: "较少推理步骤，响应较快",
+		medium: "均衡推理与响应速度",
+		high: "完整多步推理，适合复杂分析",
+		xhigh: "高强度推理，适合复杂推演",
+		max: "无限制深度推理，耗费最多预算",
+	};
+	let pk = null; // {id, models, current, thinkingLevel, liveThinking, loading, err, q}
+
+	function currentModelOpt() {
+		if (!pk || !pk.current) return null;
+		const c = pk.current;
+		return (
+			pk.models.find((m) => m.id === c.id && (!c.provider || m.provider === c.provider)) ||
+			pk.models.find((m) => m.id === c.id) ||
+			null
+		);
+	}
+	// Mirrors desktop resolveThinkingLevels: live levels, else catalog; auto first, off last.
+	function thinkLevels() {
+		const opt = currentModelOpt();
+		const sup = pk.liveThinking && pk.liveThinking.length ? pk.liveThinking : (opt && opt.thinking) || [];
+		const cur = pk.thinkingLevel || "";
+		if (!sup.length) return cur ? [cur] : [];
+		const lv = ["auto", ...sup.filter((l) => l !== "auto")];
+		if (!lv.includes("off")) lv.push("off");
+		if (cur && !lv.includes(cur)) lv.push(cur);
+		return lv;
+	}
+	function applyFacts(r) {
+		if (pk) {
+			pk.current = r.current;
+			pk.thinkingLevel = r.thinkingLevel;
+			pk.liveThinking = r.liveThinking || [];
+		}
+		const m = r.current ? (r.current.provider ? r.current.provider + "/" : "") + r.current.id : cstate && cstate.model;
+		cstate = Object.assign({}, cstate, { model: m, thinkingLevel: r.thinkingLevel });
+		renderChips();
+	}
+	async function openPicker(view) {
+		const id = cur;
+		sheetView = view;
+		pk = { id, models: [], current: null, thinkingLevel: cstate && cstate.thinkingLevel, liveThinking: [], loading: true, err: "", q: "" };
+		$("ch-sheet").classList.remove("hidden");
+		renderSheet();
+		try {
+			const r = await M.api("GET", "/sessions/" + id + "/models");
+			if (!pk || pk.id !== id) return;
+			pk.models = r.models || [];
+			pk.loading = false;
+			applyFacts(r);
+		} catch (e) {
+			if (!pk || pk.id !== id) return;
+			pk.loading = false;
+			pk.err = e.message;
+		}
+		if (sheetView === view && !$("ch-sheet").classList.contains("hidden")) renderSheet();
+	}
+	function modelListHtml() {
+		const q = pk.q.trim().toLowerCase();
+		const c = pk.current;
+		const groups = new Map();
+		for (const m of pk.models) {
+			if (q && !(m.provider + "/" + m.id + " " + m.name).toLowerCase().includes(q)) continue;
+			if (!groups.has(m.provider)) groups.set(m.provider, []);
+			groups.get(m.provider).push(m);
+		}
+		if (!groups.size) return '<div class="ch-empty">' + (pk.models.length ? "没有匹配的模型" : "没有可用模型") + "</div>";
+		let h = "";
+		for (const [prov, list] of groups) {
+			h += '<div class="ch-gl">' + esc(prov) + "</div>";
+			for (const m of list) {
+				const on = c && c.id === m.id && (!c.provider || c.provider === m.provider);
+				h +=
+					'<button class="ch-row ch-pk' + (on ? " on" : "") + '" data-pm="' + esc(m.provider + "/" + m.id) + '"><span class="n">' +
+					esc(m.name && m.name !== m.provider + "/" + m.id ? m.name : m.id) + "</span>" +
+					'<span class="d">' + esc(m.id) + "</span>" + (on ? '<span class="ck">✓</span>' : "") + "</button>";
+			}
+		}
+		return h;
+	}
+	function renderPicker() {
+		const p = $("ch-panel");
+		if (pk.loading) {
+			p.innerHTML = '<div class="ch-ptitle">' + (sheetView === "model" ? "选择模型" : "思考等级") + '</div><div class="ch-empty">加载中…</div>';
+			return;
+		}
+		if (pk.err) {
+			p.innerHTML = '<div class="ch-ptitle">加载失败</div><div class="ch-empty">' + esc(pk.err) + "</div>";
+			return;
+		}
+		if (sheetView === "model") {
+			p.innerHTML =
+				'<div class="ch-ptitle">选择模型</div>' +
+				(pk.models.length > 8 ? '<input id="pk-q" class="ch-gin" type="search" placeholder="搜索模型…" value="' + esc(pk.q) + '">' : "") +
+				'<div id="pk-list" class="ch-pklist">' + modelListHtml() + "</div>";
+			const qi = p.querySelector("#pk-q");
+			if (qi)
+				qi.oninput = () => {
+					pk.q = qi.value;
+					$("pk-list").innerHTML = modelListHtml();
+				};
+			return;
+		}
+		const lv = thinkLevels();
+		const cur = pk.thinkingLevel || "auto";
+		p.innerHTML =
+			'<div class="ch-ptitle">思考等级</div><div class="ch-pklist">' +
+			(lv.length
+				? lv
+						.map(
+							(l) =>
+								'<button class="ch-row ch-pk' + (l === cur ? " on" : "") + '" data-pt="' + esc(l) + '"><span class="n">' + esc(l) + "</span>" +
+								'<span class="d">' + esc(THINK_DESC[l] || "") + "</span>" + (l === cur ? '<span class="ck">✓</span>' : "") + "</button>",
+						)
+						.join("")
+				: '<div class="ch-empty">当前模型不支持调整思考等级</div>') +
+			"</div>";
+	}
+	async function pickModel(key) {
+		const i = key.indexOf("/");
+		const provider = key.slice(0, i);
+		const modelId = key.slice(i + 1);
+		closeSheet();
+		try {
+			applyFacts(await M.api("POST", "/sessions/" + cur + "/model", { provider, modelId }));
+			M.toast("已切换模型：" + modelId);
+		} catch (e) {
+			M.toast("切换失败：" + e.message);
+		}
+	}
+	async function pickThinking(level) {
+		closeSheet();
+		try {
+			applyFacts(await M.api("POST", "/sessions/" + cur + "/thinking", { level }));
+			M.toast("思考等级：" + level);
+		} catch (e) {
+			M.toast("切换失败：" + e.message);
+		}
+	}
+
 	function renderSheet() {
 		const p = $("ch-panel");
+		if (sheetView === "model" || sheetView === "think") return renderPicker();
 		if (sheetView === "goal") {
 			const g = cstate && cstate.goal && cstate.goal.objective ? cstate.goal : null;
 			p.innerHTML =
@@ -1006,6 +1154,8 @@
 			sheetView = t.dataset.sheet;
 			return renderSheet();
 		}
+		if (t.dataset.pm) return pickModel(t.dataset.pm);
+		if (t.dataset.pt) return pickThinking(t.dataset.pt);
 		if (t.dataset.goal) return goalAction(t.dataset.goal);
 		switch (t.dataset.act) {
 			case "file":
@@ -1139,6 +1289,8 @@
 			const c = e.target.closest("[data-chip]");
 			if (!c) return;
 			if (c.dataset.chip === "plan") togglePlan();
+			else if (c.dataset.chip === "model") openPicker("model");
+			else if (c.dataset.chip === "think") openPicker("think");
 			else openSheet("goal");
 		});
 		$("ch-atts").addEventListener("click", (e) => {

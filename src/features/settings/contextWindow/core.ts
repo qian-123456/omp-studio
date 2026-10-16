@@ -148,19 +148,37 @@ export function exceedsUpstream(row: Pick<CwRow, "upstreamWindow">, value: numbe
 
 export const rowKey = (r: Pick<CwRow, "providerId" | "modelId">) => `${r.providerId}/${r.modelId}`;
 
-export const FAMILIES = ["Claude", "GPT", "Gemini", "DeepSeek", "Qwen", "其他"] as const;
-export type Family = (typeof FAMILIES)[number];
+/** Known vendor families, ordered; first match wins. Unmatched models fall into "其他". */
+const BRANDS: readonly { name: string; test: RegExp }[] = [
+	{ name: "Claude", test: /^(claude|anthropic|opus|sonnet|haiku)$/ },
+	{ name: "GPT", test: /^(gpt|chatgpt|codex|openai)/ },
+	{ name: "Gemini", test: /^(gemini|gemma|google)$/ },
+	{ name: "DeepSeek", test: /^deepseek/ },
+	{ name: "Qwen", test: /^(qwen|qwq|qvq|alibaba)/ },
+	{ name: "GLM", test: /^(glm|zhipu|zai|chatglm|z-ai)/ },
+	{ name: "Kimi", test: /^(kimi|moonshot|moonshotai)/ },
+	{ name: "MiniMax", test: /^(minimax|abab)/ },
+	{ name: "Grok", test: /^(grok|xai|x-ai)$/ },
+	{ name: "MiMo", test: /^(mimo|xiaomi)/ },
+	{ name: "Muse", test: /^muse/ },
+];
+
+export const OTHER_FAMILY = "其他";
+/** Brands sorted alphabetically at load time (adding a BRANDS entry needs no manual ordering); "其他" always last. */
+export const FAMILIES: readonly string[] = [
+	...BRANDS.map((b) => b.name).sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" })),
+	OTHER_FAMILY,
+];
+export type Family = string;
 
 /** Vendor family from the raw model id. */
 export function modelFamily(modelId: string): Family {
 	const tokens = tokenizeModelId(modelId);
-	const has = (re: RegExp) => tokens.some((t) => re.test(t));
-	if (has(/^(claude|anthropic|opus|sonnet|haiku)$/)) return "Claude";
-	if (has(/^(gpt|chatgpt|codex)/) || /^o\d/.test(tokens[0] ?? "")) return "GPT";
-	if (has(/^(gemini|gemma)$/)) return "Gemini";
-	if (has(/^deepseek/)) return "DeepSeek";
-	if (has(/^(qwen|qwq|qvq)/)) return "Qwen";
-	return "其他";
+	for (const b of BRANDS) {
+		if (tokens.some((t) => b.test.test(t))) return b.name;
+	}
+	if (/^o\d/.test(tokens[0] ?? "")) return "GPT";
+	return OTHER_FAMILY;
 }
 
 export type StatusFilter = "all" | "unset" | "mixed" | "set";

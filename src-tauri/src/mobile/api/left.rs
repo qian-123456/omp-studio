@@ -23,8 +23,11 @@
 //! - `POST /left/sessions` `{cwd}` → `LiveSessionInfo` `{sessionId, sessionFile, pid, cwd}`.
 //!   `cwd` must be inside a registered workspace/worktree (or the global dir);
 //!   mode is derived (`chat` for the global dir, else the workspace's mode).
-//! - `PATCH /left/sessions/{id}` `{customName?, pinned?, archived?}` → `SessionMeta`
-//!   (`customName: ""` clears the name; 404 unknown id).
+//! - `PATCH /left/sessions/{id}` `{customName?, pinned?, archived?, workspaceId?}` → `SessionMeta`
+//!   (`customName: ""` clears the name; 404 unknown id). `workspaceId` = 归入工作区: a registered
+//!   non-global workspace id of the session's own space, or `""` to restore automatic assignment.
+//! - `POST /left/workspaces` `{path}` → `Workspace` (添加为工作区). `path` must be the cwd of an
+//!   existing session (so the phone cannot register arbitrary directories); the space is that session's.
 //!
 //! Inbox
 //! - `GET /left/inbox` → `{windowHours, badge, order: ["awaiting","error","unread","running"],
@@ -118,6 +121,7 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .route("/left/skills/toggle", post(skill_toggle::<B>))
         .route("/left/extensions/toggle", post(extension_toggle::<B>))
         .route("/left/settings", get(settings_summary::<B>))
+        .route("/left/workspaces", post(add_workspace::<B>))
 }
 
 // ---------- errors / helpers ----------
@@ -859,6 +863,32 @@ struct PatchSessionBody {
     custom_name: Option<String>,
     pinned: Option<bool>,
     archived: Option<bool>,
+    workspace_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AddWorkspaceBody {
+    path: String,
+}
+
+async fn add_workspace<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Json(body): Json<AddWorkspaceBody>,
+) -> ApiResult<Workspace> {
+    let st = app(&ctx)?;
+    let want = norm_path(body.path.trim());
+    if want.is_empty() {
+        return Err(bad_request("目录不能为空"));
+    }
+    let metas = ctx.backend.sessions().await;
+    let Some(src) = metas.iter().find(|s| norm_path(&s.cwd) == want) else {
+        return Err(bad_request("该目录下没有会话"));
+    };
+    let state = st.app.state::<AppState>();
+    let ws = crate::catalog::commands::add_workspace(state, src.cwd.clone(), Some(src.mode))
+        .await
+        .map_err(bad_gateway)?;
+    Ok(Json(ws))
 }
 
 async fn patch_session<B: Backend>(
@@ -867,8 +897,19 @@ async fn patch_session<B: Backend>(
     Json(body): Json<PatchSessionBody>,
 ) -> ApiResult<SessionMeta> {
     let st = app(&ctx)?;
-    if ctx.backend.session(&id).await.is_none() {
+    let Some(current) = ctx.backend.session(&id).await else {
         return Err(not_found("会话不存在"));
+    };
+    if let Some(wid) = body.workspace_id.as_deref().filter(|w| !w.is_empty()) {
+        let ok = {
+            let db = st.db.lock();
+            store::list_workspaces(&db).map_err(internal)?
+        }
+        .iter()
+        .any(|w| w.id == wid && w.kind != WorkspaceKind::Global && w.mode == current.mode);
+        if !ok {
+            return Err(bad_request("工作区不存在或不属于该会话所在空间"));
+        }
     }
     if body
         .custom_name
@@ -881,7 +922,7 @@ async fn patch_session<B: Backend>(
         custom_name: body.custom_name,
         pinned: body.pinned,
         archived: body.archived,
-        workspace_id: None,
+        workspace_id: body.workspace_id,
     };
     let state = st.app.state::<AppState>();
     let meta = crate::catalog::commands::update_session_meta(state, id, patch)

@@ -8,7 +8,8 @@
  */
 import clsx from "clsx";
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Pencil, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../../components/FloatingLayer";
 import { HoverScrollText } from "../../../components/HoverScrollText";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
@@ -44,6 +45,8 @@ import { useCatalogModels } from "../useAppSettings";
 
 /** `to` is the value written (null deletes); `shown` is the window to display afterwards when it differs (catalog undo). */
 type Edit = { row: CwRow; to: number | null; shown?: number | null };
+type Section = { key: string; name: string; rows: CwRow[] };
+type FlatItem = { kind: "head"; section: Section } | { kind: "row"; row: CwRow };
 
 const fmt = (n: number) => formatTokens(n).toUpperCase();
 
@@ -158,14 +161,15 @@ export function ContextWindowSection() {
 				: { tokens: Math.max(0, window - DEFAULT_RESERVE_TOKENS), unreachable: window <= DEFAULT_RESERVE_TOKENS };
 
 	// ── Filters ──
-	const [family, setFamily] = useState<Family | "all">("all");
+	const [family, setFamily] = useState<Family | "all">(FAMILIES[0] ?? "all");
 	const [query, setQuery] = useState("");
 	const [providerFilter, setProviderFilter] = useState("all");
 	const [status, setStatus] = useState<StatusFilter>("all");
 	const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 
-	const keywords = keywordsOf(query);
+	const deferredQuery = useDeferredValue(query);
+	const keywords = keywordsOf(deferredQuery);
 	const familyCounts = useMemo(() => {
 		const m = new Map<Family, number>();
 		for (const r of rows) m.set(modelFamily(r.modelId), (m.get(modelFamily(r.modelId)) ?? 0) + 1);
@@ -207,6 +211,27 @@ export function ContextWindowSection() {
 	}, [rows, family, providerFilter, keywords.join(" "), status, windowsByType]);
 
 	const rowsByKey = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
+
+	// Flattened (section header + visible rows) list feeding the virtualizer.
+	const flatItems = useMemo<FlatItem[]>(
+		() =>
+			sections.flatMap((s): FlatItem[] => [
+				{ kind: "head", section: s },
+				...(collapsed.has(s.key) ? [] : s.rows.map((row): FlatItem => ({ kind: "row", row }))),
+			]),
+		[sections, collapsed],
+	);
+	const listRef = useRef<HTMLDivElement>(null);
+	const virtualizer = useVirtualizer({
+		count: flatItems.length,
+		getScrollElement: () => listRef.current,
+		estimateSize: (i) => (flatItems[i]?.kind === "head" ? 42 : 33),
+		overscan: 12,
+		getItemKey: (i) => {
+			const it = flatItems[i];
+			return it ? (it.kind === "head" ? `h:${it.section.key}` : `r:${rowKey(it.row)}`) : i;
+		},
+	});
 	const selectedRows = [...selected].map((k) => rowsByKey.get(k)).filter((r): r is CwRow => r != null);
 
 	// ── Writing with undo ──
@@ -399,7 +424,7 @@ export function ContextWindowSection() {
 				<div className="flex min-h-[320px]">
 					{/* Family rail */}
 					<div className="w-24 shrink-0 space-y-0.5 self-start p-2">
-						{(["all", ...FAMILIES] as const).map((f) => {
+						{(["all", ...FAMILIES.filter((f) => f === family || (familyCounts.get(f) ?? 0) > 0)] as const).map((f) => {
 							const count = f === "all" ? rows.length : (familyCounts.get(f) ?? 0);
 							return (
 								<button
@@ -459,10 +484,8 @@ export function ContextWindowSection() {
 							/>
 						</div>
 
-						{/* Settings dialog is min(80vh, 820px) tall; reserve room for the card's title, search row and selection footer so the whole card fits one view. */}
-						<div className="max-h-[calc(min(80vh,820px)-270px)] space-y-2 overflow-y-auto">
 						{sections.length > 0 && (
-							<div className="sticky top-0 z-10 flex items-center gap-2 bg-[var(--bg-panel)] px-2 py-1 text-[10px] text-neutral-500">
+							<div className="flex items-center gap-2 bg-[var(--bg-panel)] px-2 py-1 text-[10px] text-neutral-500">
 								<span className="w-[13px] shrink-0" />
 								<span className="min-w-0 flex-1" title="模型的原始 ID（供应商接口里的名字）">
 									模型 ID
@@ -482,41 +505,53 @@ export function ContextWindowSection() {
 						{sections.length === 0 && (
 							<div className="py-10 text-center text-[11px] text-neutral-500">没有符合条件的模型</div>
 						)}
-						{sections.map((s) => {
-							const keys = s.rows.map(rowKey);
-							const allOn = keys.every((k) => selected.has(k));
-							const windows = windowsByType.get(s.key)?.size ?? 0;
-							const isCollapsed = collapsed.has(s.key);
-							return (
-								<div key={s.key} className="rounded-lg hairline">
-									<div className="flex items-center gap-2 bg-[var(--well-bg)] px-2 py-1.5 text-[11px]">
-										<input
-											type="checkbox"
-											aria-label={`选择 ${s.name} 全部`}
-											checked={allOn}
-											onChange={(e) => toggle(keys, e.target.checked)}
-										/>
-										<button
-											type="button"
-											className="flex min-w-0 flex-1 items-center gap-1 text-left font-medium text-neutral-200"
-											onClick={() =>
-												setCollapsed((prev) => {
-													const next = new Set(prev);
-													isCollapsed ? next.delete(s.key) : next.add(s.key);
-													return next;
-												})
-											}
-										>
-											{isCollapsed ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
-											<HoverScrollText text={s.name} className="min-w-0 flex-1" title={s.name} />
-										</button>
-										<span className="shrink-0 text-neutral-500">{new Set(s.rows.map((r) => r.providerId)).size} 个供应商</span>
-										{windows > 1 && <span className="text-amber-400">{windows} 种窗口⚠</span>}
-									</div>
-									{!isCollapsed &&
-										s.rows.map((r) => (
+						{/* Settings dialog is min(80vh, 820px) tall; reserve room for the card's title, search row, column header and selection footer so the whole card fits one view.
+						    Rows are virtualized: the unfiltered list is ~1800 models. */}
+						<div ref={listRef} className="max-h-[calc(min(80vh,820px)-290px)] overflow-y-auto">
+							<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+								{virtualizer.getVirtualItems().map((v) => {
+									const item = flatItems[v.index];
+									if (!item) return null;
+									const pos = { transform: `translateY(${v.start}px)` };
+									if (item.kind === "head") {
+										const s = item.section;
+										const keys = s.rows.map(rowKey);
+										const allOn = keys.every((k) => selected.has(k));
+										const windows = windowsByType.get(s.key)?.size ?? 0;
+										const isCollapsed = collapsed.has(s.key);
+										return (
+											<div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className="absolute left-0 top-0 w-full pt-2" style={pos}>
+												<div className="flex items-center gap-2 rounded-t-lg bg-[var(--well-bg)] px-2 py-1.5 text-[11px] hairline">
+													<input
+														type="checkbox"
+														aria-label={`选择 ${s.name} 全部`}
+														checked={allOn}
+														onChange={(e) => toggle(keys, e.target.checked)}
+													/>
+													<button
+														type="button"
+														className="flex min-w-0 flex-1 items-center gap-1 text-left font-medium text-neutral-200"
+														onClick={() =>
+															setCollapsed((prev) => {
+																const next = new Set(prev);
+																isCollapsed ? next.delete(s.key) : next.add(s.key);
+																return next;
+															})
+														}
+													>
+														{isCollapsed ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
+														<HoverScrollText text={s.name} className="min-w-0 flex-1" title={s.name} />
+													</button>
+													<span className="shrink-0 text-neutral-500">{new Set(s.rows.map((r) => r.providerId)).size} 个供应商</span>
+													{windows > 1 && <span className="text-amber-400">{windows} 种窗口⚠</span>}
+												</div>
+											</div>
+										);
+									}
+									const r = item.row;
+									return (
+										<div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className="absolute left-0 top-0 w-full" style={pos}>
 											<ModelRowView
-												key={rowKey(r)}
 												row={r}
 												checked={selected.has(rowKey(r))}
 												onCheck={(on) => toggle([rowKey(r)], on)}
@@ -524,10 +559,10 @@ export function ContextWindowSection() {
 												compactionOn={compactionOn}
 												onEdit={(to) => applyWithUndo([{ row: r, to }], r.modelId)}
 											/>
-										))}
-								</div>
-							);
-						})}
+										</div>
+									);
+								})}
+							</div>
 						</div>
 					</div>
 				</div>

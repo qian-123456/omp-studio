@@ -46,6 +46,17 @@
 //!   `{on?: bool}` (omitted = toggle) → `{on}`. Plan mode is client-side on desktop
 //!   too (prompt prefix); the mobile flag lives in server memory per session and is
 //!   independent of the desktop's flag.
+//! - `GET /sessions/{id}/models` →
+//!   `{models: [{provider, id, name, thinking: [level], contextWindow?}], current: {provider, id}|null,
+//!   thinkingLevel: string|null, liveThinking: [level], live: bool}`. Read-only, NEVER resumes the
+//!   session: `models` is the global catalog (`omp models --json`, models.db fallback — same as
+//!   desktop `list_models`); `current`/`thinkingLevel`/`liveThinking` come from the live process
+//!   when running, else from session metadata and the transcript snapshot. Client derives the level
+//!   list like desktop `resolveThinkingLevels` (live → catalog `thinking`; `auto` first, `off` last).
+//! - `POST /sessions/{id}/model` `{provider, modelId}` → `{ok: true, …same facts as GET}`.
+//!   Resumes the session if needed (like desktop), then `set_model`; a running turn is not aborted.
+//! - `POST /sessions/{id}/thinking` `{level}` → `{ok: true, …same facts as GET}`; same resume rules,
+//!   `set_thinking_level`.
 
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
@@ -93,6 +104,9 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .route("/sessions/{id}/slash-commands", get(slash_commands::<B>))
         .route("/sessions/{id}/slash", post(slash::<B>))
         .route("/sessions/{id}/composer-state", get(composer_state::<B>))
+        .route("/sessions/{id}/models", get(models_get::<B>))
+        .route("/sessions/{id}/model", post(model_set::<B>))
+        .route("/sessions/{id}/thinking", post(thinking_set::<B>))
         .route(
             "/sessions/{id}/goal",
             post(goal_set::<B>).delete(goal_clear::<B>),
@@ -717,7 +731,6 @@ async fn slash_commands<B: Backend>(
     Path(id): Path<String>,
 ) -> ApiResult<Value> {
     load_session(&ctx, &id).await?;
-    let state = app(&ctx)?;
     let mut list: Vec<Value> = CURATED
         .iter()
         .map(|c| {
@@ -732,9 +745,10 @@ async fn slash_commands<B: Backend>(
             })
         })
         .collect();
-    // Custom commands/skills as discovered by the running omp process; a
-    // failure (not live, resume error) just yields the curated list.
-    if live(state, &id).await.is_ok() {
+    // Custom commands/skills as discovered by the running omp process. Never
+    // resume here: this is a read-only GET fired on chat open, and resuming
+    // would take over (kill) an external omp running the session.
+    {
         if let Some(handle) = crate::rpc::get_handle(&id) {
             if let Ok(resp) =
                 crate::rpc::send_command(&handle, json!({"type": "get_available_commands"})).await
@@ -1183,6 +1197,146 @@ async fn composer_state<B: Backend>(
     })))
 }
 
+// ------------------------------------------------- model / thinking pickers
+
+/// Flatten omp's `thinking` field: `["low","high"]` or `{efforts:[…]}`.
+fn extract_levels(v: Option<&Value>) -> Vec<String> {
+    let arr = match v {
+        Some(Value::Array(a)) => Some(a),
+        Some(Value::Object(o)) => o.get("efforts").and_then(Value::as_array),
+        _ => None,
+    };
+    arr.into_iter()
+        .flatten()
+        .filter_map(|x| x.as_str().map(str::to_string))
+        .collect()
+}
+
+/// Split `provider/id`; a bare id yields an empty provider.
+fn split_model(text: &str) -> (String, String) {
+    match text.split_once('/') {
+        Some((p, m)) => (p.trim().to_string(), m.trim().to_string()),
+        None => (String::new(), text.trim().to_string()),
+    }
+}
+
+/// Model + thinking-level facts for the pickers. Reads only: a live process is
+/// queried through its existing handle, otherwise the transcript snapshot and
+/// session metadata are used. Never resumes the session.
+async fn model_facts(state: &AppState, meta: &SessionMeta, id: &str) -> Value {
+    let st = live_state(id).await;
+    let model_v = st.as_ref().and_then(|s| s.get("model"));
+    let text = model_v
+        .map(model_text)
+        .filter(|s| !s.is_empty())
+        .or_else(|| meta.model.clone())
+        .unwrap_or_default();
+    let (provider, model_id) = split_model(&text);
+    let live_level = st
+        .as_ref()
+        .and_then(|s| s.get("thinkingLevel"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let thinking_level = match live_level {
+        Some(l) => Some(l),
+        None => crate::catalog::commands::session_snapshot(
+            state.app.state::<AppState>(),
+            id.to_string(),
+        )
+        .await
+        .ok()
+        .and_then(|s| s.thinking_level),
+    };
+    json!({
+        "live": st.is_some(),
+        "current": if model_id.is_empty() { Value::Null } else { json!({"provider": provider, "id": model_id}) },
+        "thinkingLevel": thinking_level,
+        "liveThinking": extract_levels(model_v.and_then(|m| m.get("thinking"))),
+    })
+}
+
+async fn models_get<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    let meta = load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    // Global catalog: separate read-only omp process, same source as desktop.
+    let models = crate::catalog::commands::list_models(state.app.state::<AppState>())
+        .await
+        .map_err(bad_gateway)?;
+    let mut out = model_facts(state, &meta, &id).await;
+    out["models"] = serde_json::to_value(models).unwrap_or(Value::Null);
+    Ok(Json(out))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetModelBody {
+    provider: String,
+    model_id: String,
+}
+
+/// Resumes the session if needed (like desktop); `set_model` itself does not
+/// abort a running turn.
+async fn model_set<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<SetModelBody>,
+) -> ApiResult<Value> {
+    let meta = load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    let (provider, model_id) = (body.provider.trim(), body.model_id.trim());
+    if provider.is_empty() || model_id.is_empty() || provider.len() > 200 || model_id.len() > 400 {
+        return Err(bad_request("模型参数无效"));
+    }
+    live(state, &id).await?;
+    rpc_cmd(
+        state,
+        &id,
+        json!({"type": "set_model", "provider": provider, "modelId": model_id}),
+    )
+    .await
+    .map_err(bad_gateway)?;
+    let mut out = model_facts(state, &meta, &id).await;
+    out["ok"] = json!(true);
+    Ok(Json(out))
+}
+
+#[derive(Deserialize)]
+struct SetThinkingBody {
+    level: String,
+}
+
+async fn thinking_set<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Path(id): Path<String>,
+    Json(body): Json<SetThinkingBody>,
+) -> ApiResult<Value> {
+    let meta = load_session(&ctx, &id).await?;
+    let state = app(&ctx)?;
+    let level = body.level.trim().to_ascii_lowercase();
+    if level.is_empty()
+        || level.len() > 32
+        || !level
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(bad_request("思考等级无效"));
+    }
+    live(state, &id).await?;
+    rpc_cmd(
+        state,
+        &id,
+        json!({"type": "set_thinking_level", "level": level}),
+    )
+    .await
+    .map_err(bad_gateway)?;
+    let mut out = model_facts(state, &meta, &id).await;
+    out["ok"] = json!(true);
+    Ok(Json(out))
+}
+
 #[derive(Deserialize)]
 struct GoalBody {
     objective: Option<String>,
@@ -1352,5 +1506,16 @@ mod tests {
         assert!(is_plan_on("t-1"));
         set_plan("t-1", false);
         assert!(!is_plan_on("t-1"));
+    }
+
+    #[test]
+    fn model_helpers_parse_shapes() {
+        let arr = json!(["low", "high"]);
+        assert_eq!(extract_levels(Some(&arr)), vec!["low", "high"]);
+        let obj = json!({"mode": "effort", "efforts": ["medium", 3]});
+        assert_eq!(extract_levels(Some(&obj)), vec!["medium"]);
+        assert!(extract_levels(None).is_empty());
+        assert_eq!(split_model("a/b/c"), ("a".into(), "b/c".into()));
+        assert_eq!(split_model(" m "), (String::new(), "m".into()));
     }
 }

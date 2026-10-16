@@ -50,13 +50,13 @@
 					h("span", { class: "name" }, sessionName(s)),
 					h("span", { class: "time" }, relTime(s.updatedAt)),
 				),
-				s.lastAssistant ? h("div", { class: "sub" }, s.lastAssistant.replace(/\s+/g, " ").slice(0, 160)) : null,
-				h(
-					"div",
-					{ class: "st", style: { color: warn ? "var(--warn)" : "var(--muted)" } },
-					(STATUS_LABEL[st] || st) + (s.live ? " · 在线" : "") + (s.unread ? " · 未读" : ""),
-					extra ? " · " + extra : "",
-				),
+				st !== "idle" || s.unread || s.live || extra
+					? h(
+							"div",
+							{ class: "st", style: { color: warn ? "var(--warn)" : "var(--muted)" } },
+							[st !== "idle" ? STATUS_LABEL[st] || st : null, s.live ? "在线" : null, s.unread ? "未读" : null, extra || null].filter(Boolean).join(" · "),
+						)
+					: null,
 			),
 			onMore
 				? h(
@@ -195,45 +195,126 @@
 	/* ---------------------------------------------------------------- grouped tree */
 
 	let treeMode = "code";
-	const collapsed = new Set(["archived"]);
+	/* Group open/closed overrides keyed like desktop (`groupOpen`): key -> bool. Absent = the per-group default
+	   (desktop `isGroupOpen(key, defaultOpen)`). Module-level so it survives SSE reloads and re-mounts. */
+	const groupOpen = new Map();
+	const DELETED_WT_LIMIT = 5;
+	const DELETED_WT_STEP = 5;
+	const UNASSIGNED_DIR_LIMIT = 10;
+	const UNASSIGNED_DIR_STEP = 10;
+	/** Desktop `getGroupStatusCounts`. */
+	function statusCounts(sessions) {
+		const c = { working: 0, awaiting: 0, error: 0, unread: 0 };
+		for (const s of sessions) {
+			if (s.status === "working") c.working++;
+			else if (s.status === "awaiting_approval" || s.status === "awaiting_answer") c.awaiting++;
+			else if (s.status === "error" || s.status === "interrupted") c.error++;
+			if (s.unread || s.status === "review" || s.pending === "review") c.unread++;
+		}
+		return c;
+	}
+	/** Status bubbles shown on COLLAPSED headers only (desktop `StatusBubbles`). */
+	function bubbles(sessions) {
+		const c = statusCounts(sessions);
+		if (!(c.working || c.awaiting || c.error || c.unread)) return null;
+		return h(
+			"span",
+			{ class: "lf-bubs" },
+			c.working ? h("span", { class: "lf-bub work", title: c.working + " 个运行中会话" }, h("span", { class: "sdot s-working" }), String(c.working)) : null,
+			c.awaiting ? h("span", { class: "lf-bub await", title: c.awaiting + " 个待回复会话" }, c.awaiting + " 待回复") : null,
+			c.unread ? h("span", { class: "lf-bub unread", title: c.unread + " 个未读会话" }, h("i", {}), String(c.unread)) : null,
+			c.error ? h("span", { class: "lf-bub err", title: c.error + " 个异常或中断会话" }, h("i", {}), String(c.error)) : null,
+		);
+	}
+	/* Progressive-disclosure state, shared by every tree instance so it survives re-render / SSE refresh. */
+	const expandedCounts = new Map();
+	const RECENT_LIMIT = 3;
+	const RECENT_STEP = 5;
+	const NO_WT_LIMIT = 5;
+	const SEARCH_LIMIT = 8;
+	const SEARCH_STEP = 10;
+	const needsAttn = (s) => s.status === "working" || s.status === "awaiting_approval" || s.status === "awaiting_answer";
+	const MODE_ICON = { code: "</>", work: "💼", study: "📖", research: "🔬", chat: "💬" };
+	const baseName = (p) => String(p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p || "";
+	const otherModeBusy = (mode) =>
+		M.state.sessions.some((s) => (s.mode || "code") !== mode && !s.archived && needsAttn(s));
+	const modeBusy = (mode) => M.state.sessions.some((s) => (s.mode || "code") === mode && !s.archived && needsAttn(s));
 
-	function createTree(host) {
+	function openModeMenu(onPick) {
+		const close = sheet(
+			"切换模式",
+			MODES.map(([id, label]) => ({
+				label: h(
+					"span",
+					{ class: "lf-mode-item" + (id === treeMode ? " cur" : "") },
+					h("span", { class: "lf-mode-ic" }, MODE_ICON[id]),
+					h("span", { class: "lf-mode-nm" }, label),
+					modeBusy(id) && id !== treeMode ? h("span", { class: "lf-act-dot" }) : null,
+					id === treeMode ? h("span", { class: "lf-mode-ck" }, "✓") : null,
+				),
+				run: () => onPick(id),
+			})),
+		);
+		return close;
+	}
+
+	/** Keep only sessions whose id is in `ids`; drop emptied subgroups/groups (search view of the tree). */
+	function filterTree(d, ids) {
+		const f = (l) => l.filter((s) => ids.has(s.id));
+		const fsub = (sb) => ({ ...sb, sessions: f(sb.sessions), totalCount: f(sb.sessions).length });
+		const fgroup = (g) => {
+			const subgroups = g.subgroups.map(fsub).filter((sb) => sb.sessions.length);
+			const deletedSubgroups = g.deletedSubgroups.map(fsub).filter((sb) => sb.sessions.length);
+			if (!subgroups.length && !deletedSubgroups.length) return null;
+			return { ...g, subgroups, deletedSubgroups, pinnedCount: 0, totalCount: subgroups.reduce((n, sb) => n + sb.sessions.length, 0) };
+		};
+		return {
+			pinned: f(d.pinned),
+			globalGroup: d.globalGroup ? fgroup(d.globalGroup) : null,
+			workspaceGroups: d.workspaceGroups.map(fgroup).filter(Boolean),
+			unassignedGroups: d.unassignedGroups.map((u) => ({ ...u, sessions: f(u.sessions) })).filter((u) => u.sessions.length),
+			deletedSessions: f(d.deletedSessions),
+			archived: f(d.archived),
+		};
+	}
+
+	function createTree(host, opts) {
+		const searching = !!(opts && opts.searching);
 		let alive = true;
 		let timer = 0;
 		let data = null;
 		let err = null;
-		const modeBar = h(
-			"div",
-			{ class: "lf-modes" },
-			MODES.map(([id, label]) =>
-				h("button", { class: "lf-mode", dataset: { mode: id }, onclick: () => ((treeMode = id), load()) }, label),
-			),
-		);
+		let filterIds = null; /* searching mode: Set of matching session ids (null = no query yet) */
+		const modeBtn = h("button", { class: "lf-modebtn", "aria-haspopup": "menu", onclick: () => openModeMenu((id) => ((treeMode = id), load(), opts && opts.onModeChange && opts.onModeChange())) });
+		const modeBar = h("div", { class: "lf-modes" }, modeBtn);
 		const body = h("div", { class: "lf-tree" });
 		host.append(modeBar, body);
-
-		const section = (key, title, count, content, actions) => {
-			const off = collapsed.has(key);
-			return h(
-				"div",
-				{ class: "lf-sec" },
-				h(
-					"div",
-					{
-						class: "lf-sec-h",
-						onclick: () => {
-							off ? collapsed.delete(key) : collapsed.add(key);
-							render();
-						},
-					},
-					h("span", { class: "lf-caret" }, off ? "▸" : "▾"),
-					h("span", { class: "lf-sec-t" }, title),
-					h("span", { class: "lf-cnt" }, String(count)),
-					actions || null,
-				),
-				off ? null : content,
+		const renderModeBtn = () => {
+			const label = (MODES.find((m) => m[0] === treeMode) || MODES[0])[1];
+			modeBtn.textContent = "";
+			modeBtn.append(
+				h("span", { class: "lf-mode-ic" }, MODE_ICON[treeMode]),
+				h("span", { class: "lf-mode-cur" }, label),
+				h("span", { class: "lf-chev" }, "▾"),
+				...(otherModeBusy(treeMode) ? [h("span", { class: "lf-act-dot abs" })] : []),
 			);
+			modeBtn.title = label + " 模式（点击切换）";
 		};
+
+		/** Desktop `isGroupOpen`: forced open while searching, else user override, else default. */
+		const isOpen = (key, def) => searching || (groupOpen.has(key) ? groupOpen.get(key) : def);
+		const toggleOpen = (key, def) => {
+			if (searching) return;
+			groupOpen.set(key, !isOpen(key, def));
+			render();
+		};
+		const projTitle = (name, hint) =>
+			h(
+				"span",
+				{ class: "lf-proj" },
+				h("span", { class: "lf-proj-ic" }, "📁"),
+				h("span", { class: "lf-proj-tx" }, h("span", { class: "lf-proj-nm" }, name), hint ? h("span", { class: "lf-proj-path" }, hint) : null),
+			);
 		const plusBtn = (cwd, label) =>
 			h(
 				"button",
@@ -247,65 +328,285 @@
 				},
 				"＋",
 			);
-		const list = (sessions) => sessions.map((s) => sessionRow(s, sessionActions));
-		function groupEls(g, prefix) {
+		const rerender = () => render();
+		/** Capped list with 展开 N 条 / 收起 and hairline gaps (desktop SessionList). */
+		function cappedList(scopeKey, sessions, baseLimit) {
+			const limit = searching ? SEARCH_LIMIT : baseLimit;
+			const step = searching ? SEARCH_STEP : RECENT_STEP;
+			const moreKey = scopeKey + "|more";
+			const curId = M.state.currentSession && M.state.currentSession.id;
+			const visible = Math.min(Math.max(expandedCounts.get(moreKey) ?? limit, limit), sessions.length);
+			const keep = (s, i) => i < visible || needsAttn(s) || s.id === curId;
+			const shown = sessions.filter(keep);
+			const hidden = sessions.length - shown.length;
+			const next = Math.min(visible + step, sessions.length);
+			const fresh = sessions.slice(visible, next).filter((s) => !needsAttn(s) && s.id !== curId).length;
+			const expandable = fresh > 0 ? fresh : Math.min(step, hidden);
 			const out = [];
-			const ws = g.workspace;
-			const title = g.isGlobal ? "无项目" : ws.name || ws.path;
-			const subs = g.subgroups.filter((x) => x.sessions.length || x.createCwd);
-			const content = h(
+			let skipped = 0;
+			sessions.forEach((s, i) => {
+				if (!keep(s, i)) return void skipped++;
+				if (skipped > 0) {
+					out.push(h("div", { class: "lf-gap", "aria-hidden": "true" }, h("span", {}), h("em", {}, skipped + " 条未显示"), h("span", {})));
+					skipped = 0;
+				}
+				out.push(sessionRow(s, sessionActions));
+			});
+			const showExpand = hidden > 0;
+			const showCollapse = visible > limit;
+			if (showExpand || showCollapse)
+				out.push(
+					h(
+						"div",
+						{ class: "lf-more-bar" },
+						h("span", { class: "ln" }),
+						showExpand
+							? h("button", { class: "lf-more-btn", onclick: () => (expandedCounts.set(moreKey, visible + step), rerender()) }, "＋ 展开 " + expandable + " 条")
+							: null,
+						showExpand && showCollapse ? h("span", { class: "sep" }, "｜") : null,
+						showCollapse
+							? h("button", { class: "lf-more-btn dim", onclick: () => (expandedCounts.delete(moreKey), rerender()) }, "▴ 收起")
+							: null,
+						h("span", { class: "ln" }),
+					),
+				);
+			return out;
+		}
+		const flatList = (sessions) => sessions.map((s) => sessionRow(s, sessionActions));
+		/** `展开 N <unit>` / `收起` bar for capped lists of subgroups (dirs / deleted worktrees). */
+		function capBar(moreKey, total, limit, step, unit, exemptWhenSearching) {
+			const visible = Math.min(Math.max(expandedCounts.get(moreKey) ?? limit, limit), total);
+			const hidden = total - visible;
+			if (total <= limit) return { visible, bar: null };
+			if (searching && exemptWhenSearching) return { visible: total, bar: null };
+			const bar = h(
 				"div",
-				{},
-				subs.map((sg) => {
-					const key = prefix + ":" + ws.id + ":" + sg.key;
-					const label = sg.kind === "default" ? "" : (sg.kind === "branch" ? "⎇ " : "🌿 ") + sg.label + (sg.isMain ? " (主)" : "");
-					if (!label) return h("div", {}, list(sg.sessions), sg.sessions.length ? null : h("div", { class: "lf-none" }, "暂无会话"));
+				{ class: "lf-more-bar" },
+				h("span", { class: "ln" }),
+				hidden > 0 ? h("button", { class: "lf-more-btn", onclick: () => (expandedCounts.set(moreKey, visible + step), rerender()) }, "＋ 展开 " + Math.min(step, hidden) + " 个" + unit) : null,
+				hidden > 0 && visible > limit ? h("span", { class: "sep" }, "｜") : null,
+				visible > limit ? h("button", { class: "lf-more-btn dim", onclick: () => (expandedCounts.delete(moreKey), rerender()) }, "▴ 收起") : null,
+				h("span", { class: "ln" }),
+			);
+			return { visible, bar };
+		}
+		async function batchArchive(title, sessions) {
+			const list = sessions.filter((s) => !s.archived);
+			if (!list.length) return M.toast("该分组下无需要归档的会话");
+			if (!(await M.confirm("确定批量归档「" + title + "」下的 " + list.length + " 个会话？"))) return;
+			const rs = await Promise.allSettled(list.map((s) => M.api("PATCH", "/left/sessions/" + encodeURIComponent(s.id), { archived: true })));
+			const fail = rs.filter((r) => r.status === "rejected").length;
+			M.toast(fail ? "已归档 " + (list.length - fail) + " 个，" + fail + " 个失败" : "已归档 " + list.length + " 个会话");
+			await M.refreshSessions().catch(() => {});
+			M.emit("lf:sessions-dirty", null);
+		}
+		const actBtn = (label, text, fn, cls) =>
+			h(
+				"button",
+				{
+					class: "iconbtn lf-act" + (cls ? " " + cls : ""),
+					"aria-label": label,
+					onclick: (e) => {
+						e.stopPropagation();
+						fn();
+					},
+				},
+				text,
+			);
+		/** Generic collapsible header + body. `def` = desktop default-open rule; bubbles only while collapsed. */
+		function group(key, def, { cls, level, title, count, actions, status, body: bodyFn }) {
+			const open = isOpen(key, def);
+			return h(
+				"div",
+				{ class: cls || "" },
+				h(
+					"div",
+					{ class: level === "sub" ? "lf-sub-h" : "lf-sec-h", onclick: () => toggleOpen(key, def) },
+					h("span", { class: "lf-caret" }, open ? "▾" : "▸"),
+					title,
+					count != null ? h("span", { class: "lf-cnt" }, String(count)) : null,
+					open || !status ? null : bubbles(status),
+					actions || null,
+				),
+				open ? bodyFn() : null,
+			);
+		}
+		/** Desktop CollapsibleSubgroup: live non-empty open, empty/deleted collapsed. */
+		function subgroupEl(sub, scopeKey, onArchive) {
+			const empty = sub.sessions.length === 0;
+			return group(scopeKey + "|sub", !(sub.deleted || empty), {
+				cls: "lf-sub" + (empty && !sub.deleted ? " lf-dimwrap" : ""),
+				level: "sub",
+				title: [
+					h("span", { class: "lf-br-ic" }, sub.kind === "worktree" ? "⑂" : "⎇"),
+					h("span", { class: "lf-sec-t" }, sub.label),
+					sub.isMain ? h("span", { class: "lf-tag" }, "主目录") : null,
+					sub.deleted ? h("span", { class: "lf-tag" }, "已清理") : null,
+					!sub.deleted && empty ? h("span", { class: "lf-tag it" }, "暂无会话") : null,
+				],
+				count: empty ? null : sub.sessions.length,
+				status: sub.sessions,
+				actions: [
+					!sub.deleted && sub.createCwd ? plusBtn(sub.createCwd, sub.label) : null,
+					sub.deleted && onArchive ? actBtn("归档该分支全部会话", "🗄", onArchive) : null,
+				],
+				body: () => h("div", { class: "lf-nest" }, cappedList(scopeKey, sub.sessions, RECENT_LIMIT)),
+			});
+		}
+		function emptyFolder(gkey, subs) {
+			if (!subs.length) return null;
+			const fk = gkey + "|__empty";
+			return group(fk, false, {
+				cls: "lf-sub lf-dimwrap",
+				level: "sub",
+				title: [h("span", { class: "lf-br-ic" }, "⎇"), h("span", { class: "lf-sec-t" }, "空闲工作树 (" + subs.length + ")")],
+				body: () => h("div", { class: "lf-nest" }, subs.map((sb) => subgroupEl(sb, fk + "|" + sb.key))),
+			});
+		}
+		function deletedFolder(gkey, subs) {
+			if (!subs.length) return null;
+			const fk = gkey + "|__deleted";
+			const all = subs.flatMap((sb) => sb.sessions);
+			return group(fk, false, {
+				cls: "lf-sub lf-dimwrap",
+				level: "sub",
+				title: [h("span", { class: "lf-br-ic" }, "⑂"), h("span", { class: "lf-sec-t" }, "已清理工作树 (" + subs.length + ")")],
+				status: subs.flatMap((sb) => sb.sessions),
+				actions: actBtn("一键归档全部已清理工作树的会话", "🗄", () => batchArchive("已清理工作树", all)),
+				body: () => {
+					const { visible, bar } = capBar(fk + "|wt_more", subs.length, DELETED_WT_LIMIT, DELETED_WT_STEP, "工作树");
+					return h("div", { class: "lf-nest" }, subs.slice(0, visible).map((sb) => subgroupEl(sb, fk + "|" + sb.key, () => batchArchive(sb.label, sb.sessions))), bar);
+				},
+			});
+		}
+		function groupEls(g, prefix) {
+			const ws = g.workspace;
+			const title = g.isGlobal ? "无项目" : ws.name || baseName(ws.path);
+			const gkey = prefix + ":" + ws.id;
+			const live = g.subgroups.filter((x) => !x.deleted && x.sessions.length > 0);
+			const empty = g.subgroups.filter((x) => !x.deleted && x.sessions.length === 0);
+			return [
+				group(gkey, true, {
+					cls: "lf-sec lf-project",
+					title: projTitle(title, g.isGlobal ? "" : ws.path),
+					count: g.totalCount,
+					status: g.subgroups.filter((x) => !x.deleted),
+					actions: ws.path ? plusBtn(ws.path, title) : null,
+					body: () => {
+						const trulyEmpty = g.totalCount === 0 && (g.pinnedCount ?? 0) === 0 && !live.length && !empty.length && !g.deletedSubgroups.length;
+						if (trulyEmpty) return h("div", { class: "lf-none" }, "暂无会话");
+						const multi = live.length > 1 || (live[0] && live[0].kind !== "default" && !live[0].isMain);
+						return h(
+							"div",
+							{},
+							multi ? live.map((sb) => subgroupEl(sb, gkey + "|" + sb.key, null)) : cappedList(gkey + "|default", live[0] ? live[0].sessions : [], NO_WT_LIMIT),
+							emptyFolder(gkey, empty),
+							deletedFolder(gkey, g.deletedSubgroups),
+						);
+					},
+				}),
+			];
+		}
+		/** One directory under 未归入工作区 (desktop UnassignedDirSubgroup). */
+		function unassignedDir(u) {
+			const key = "__unassigned|" + u.key;
+			return group(key, false, {
+				cls: "lf-sub",
+				level: "sub",
+				title: [h("span", { class: "lf-br-ic" }, "📁"), h("span", { class: "lf-sec-t", title: u.cwd }, u.label || baseName(u.cwd))],
+				count: u.sessions.length,
+				status: u.sessions,
+				actions: [
+					actBtn("归档该目录下全部会话", "🗄", () => batchArchive(u.label, u.sessions)),
+					actBtn("将 " + u.cwd + " 添加为工作区", "＋📁", async () => {
+						try {
+							await M.api("POST", "/left/workspaces", { path: u.cwd });
+							M.toast("已添加工作区「" + u.label + "」");
+							await load();
+						} catch (e) {
+							M.toast("添加工作区失败：" + e.message);
+						}
+					}, "lf-addws"),
+				],
+				body: () => h("div", { class: "lf-nest" }, cappedList(key, u.sessions, RECENT_LIMIT)),
+			});
+		}
+		async function assignAll(sessions) {
+			let dirs;
+			try {
+				dirs = (await M.api("GET", "/left/dirs")).dirs.filter((x) => x.kind === "workspace" && x.mode === treeMode);
+			} catch (e) {
+				return M.toast("加载工作区失败：" + e.message);
+			}
+			if (!dirs.length) return M.toast("当前空间还没有工作区");
+			sheet(
+				"归入工作区（" + sessions.length + " 个会话）",
+				dirs.map((x) => ({
+					label: x.label || x.path,
+					run: async () => {
+						const rs = await Promise.allSettled(sessions.map((s) => M.api("PATCH", "/left/sessions/" + encodeURIComponent(s.id), { workspaceId: x.workspaceId })));
+						const fail = rs.filter((r) => r.status === "rejected").length;
+						M.toast(fail === sessions.length ? "更新工作区归属失败" : fail ? "已更新 " + (sessions.length - fail) + " 个，" + fail + " 个失败" : "已更新工作区归属");
+						await M.refreshSessions().catch(() => {});
+						M.emit("lf:sessions-dirty", null);
+					},
+				})),
+			);
+		}
+		function unassignedBucket(d) {
+			const dirs = d.unassignedGroups;
+			const all = dirs.flatMap((u) => u.sessions);
+			return group("__unassigned", false, {
+				cls: "lf-sec lf-project",
+				title: [h("span", { class: "lf-proj-ic" }, "🔍"), h("span", { class: "lf-sec-t" }, "未归入工作区")],
+				count: all.length,
+				status: all,
+				body: () => {
+					const { visible, bar } = capBar("__unassigned|dir_more", dirs.length, UNASSIGNED_DIR_LIMIT, UNASSIGNED_DIR_STEP, "目录", true);
 					return h(
 						"div",
-						{ class: "lf-sub" },
+						{},
+						dirs.slice(0, visible).map(unassignedDir),
+						bar,
 						h(
 							"div",
-							{
-								class: "lf-sub-h",
-								onclick: () => {
-									collapsed.has(key) ? collapsed.delete(key) : collapsed.add(key);
-									render();
-								},
-							},
-							h("span", { class: "lf-caret" }, collapsed.has(key) ? "▸" : "▾"),
-							h("span", { class: "lf-sec-t" }, label),
-							h("span", { class: "lf-cnt" }, String(sg.totalCount ?? sg.sessions.length)),
-							sg.createCwd ? plusBtn(sg.createCwd, sg.label) : null,
+							{ class: "lf-more-bar" },
+							h("span", { class: "ln" }),
+							h("button", { class: "lf-more-btn", onclick: () => batchArchive("未归入工作区", all) }, "🗄 全部归档 (" + all.length + ")"),
+							h("span", { class: "sep" }, "｜"),
+							h("button", { class: "lf-more-btn", onclick: () => assignAll(all) }, "归入工作区…"),
+							h("span", { class: "ln" }),
 						),
-						collapsed.has(key) ? null : list(sg.sessions),
 					);
-				}),
-				g.deletedSubgroups.length
-					? g.deletedSubgroups.map((sg) =>
-							h("div", { class: "lf-sub" }, h("div", { class: "lf-sub-h lf-dim" }, "已删除 · " + sg.label), list(sg.sessions)),
-						)
-					: null,
-			);
-			out.push(section(prefix + ":" + ws.id, title, g.totalCount, content, ws.path ? plusBtn(ws.path, title) : null));
-			return out;
+				},
+			});
 		}
 		function render() {
 			if (!alive) return;
-			for (const b of modeBar.children) b.classList.toggle("active", b.dataset.mode === treeMode);
+			renderModeBtn();
 			body.textContent = "";
 			if (err) return void body.appendChild(h("div", { class: "empty" }, "加载失败：" + err));
 			if (!data) return void body.appendChild(h("div", { class: "empty" }, "加载中…"));
-			const d = data;
+			if (searching && !filterIds) return;
+			const d = searching ? filterTree(data, filterIds) : data;
 			const parts = [];
-			if (d.pinned.length) parts.push(section("pinned", "📌 置顶", d.pinned.length, h("div", {}, list(d.pinned))));
+			if (d.pinned.length) parts.push(group("__pinned", true, { cls: "lf-sec", title: h("span", { class: "lf-sec-t" }, "📌 置顶"), count: d.pinned.length, status: d.pinned, body: () => h("div", {}, flatList(d.pinned)) }));
 			if (d.globalGroup) parts.push(...groupEls(d.globalGroup, "g"));
 			for (const g of d.workspaceGroups) parts.push(...groupEls(g, "w"));
-			for (const u of d.unassignedGroups)
+			if (d.unassignedGroups.length) parts.push(unassignedBucket(d));
+			if (d.deletedSessions.length)
 				parts.push(
-					section("u:" + u.key, "未归档 · " + (u.label || u.cwd), u.sessions.length, h("div", {}, list(u.sessions)), plusBtn(u.cwd, u.label || u.cwd)),
+					group("__deleted", false, {
+						cls: "lf-sec lf-dimwrap",
+						title: [h("span", { class: "lf-proj-ic" }, "⑂"), h("span", { class: "lf-sec-t" }, "已清理工作树")],
+						count: d.deletedSessions.length,
+						status: d.deletedSessions,
+						actions: actBtn("一键归档全部已清理工作树的会话", "🗄", () => batchArchive("已清理工作树", d.deletedSessions)),
+						body: () => h("div", {}, cappedList("__deleted", d.deletedSessions, RECENT_LIMIT)),
+					}),
 				);
-			if (d.archived.length) parts.push(section("archived", "归档", d.archived.length, h("div", {}, list(d.archived))));
-			if (!parts.length) parts.push(h("div", { class: "empty" }, "没有会话"));
+			if (d.archived.length) parts.push(group("archived", false, { cls: "lf-sec", title: h("span", { class: "lf-sec-t" }, "🗄 已归档"), count: d.archived.length, body: () => h("div", {}, cappedList("archived", d.archived, NO_WT_LIMIT)) }));
+			if (!parts.length) parts.push(h("div", { class: "empty" }, searching ? "没有匹配的会话" : "没有会话"));
 			body.append(...parts);
 		}
 		async function load() {
@@ -330,6 +631,10 @@
 		load();
 		return {
 			reload: load,
+			setFilter(ids) {
+				filterIds = ids;
+				render();
+			},
 			destroy() {
 				alive = false;
 				clearTimeout(timer);
@@ -437,16 +742,19 @@
 			const input = h("input", { class: "lf-input", type: "search", placeholder: "搜索会话、分支…", autocomplete: "off" });
 			const arch = h("input", { type: "checkbox" });
 			const out = h("div", {});
+			const treeHost = h("div", {});
+			const tree = createTree(treeHost, { searching: true, onModeChange: () => run() });
 			el.append(
 				h("div", { class: "lf-bar col" }, input, h("label", { class: "lf-check" }, arch, " 包含已归档")),
 				out,
+				treeHost,
 			);
 			async function run() {
 				const q = input.value.trim();
 				const my = ++seq;
-				if (!q) return void (out.textContent = "");
+				if (!q) return void ((out.textContent = ""), tree.setFilter(null));
 				try {
-					const r = await M.api("GET", "/left/search?q=" + encodeURIComponent(q) + "&archived=" + (arch.checked ? 1 : 0));
+					const r = await M.api("GET", "/left/search?q=" + encodeURIComponent(q) + "&mode=" + treeMode + "&archived=" + (arch.checked ? 1 : 0));
 					if (my !== seq) return;
 					out.textContent = "";
 					if (r.branches && r.branches.length) {
@@ -471,11 +779,7 @@
 								),
 							);
 					}
-					if (r.sessions && r.sessions.length) {
-						out.appendChild(h("div", { class: "lf-sec-h static" }, h("span", { class: "lf-sec-t" }, "会话"), h("span", { class: "lf-cnt" }, String(r.sessions.length))));
-						for (const s of r.sessions) out.appendChild(sessionRow(s, sessionActions));
-					}
-					if (!out.children.length) out.appendChild(h("div", { class: "empty" }, "没有匹配结果"));
+					tree.setFilter(new Set((r.sessions || []).map((s) => s.id)));
 				} catch (e) {
 					if (my === seq) out.replaceChildren(h("div", { class: "empty" }, "搜索失败：" + e.message));
 				}
@@ -486,7 +790,10 @@
 			};
 			input.addEventListener("input", soon);
 			arch.addEventListener("change", run);
-			this.cleanup = () => clearTimeout(timer);
+			this.cleanup = () => {
+				clearTimeout(timer);
+				tree.destroy();
+			};
 			input.focus();
 		},
 		unmount() {

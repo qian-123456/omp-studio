@@ -97,13 +97,41 @@ function entryFor(el: HTMLElement): Entry {
 	return entry;
 }
 
+/** The scroller's rect intersected with every clipping ancestor and the
+ * viewport — a scroller taller than its clipped container (modal body, card)
+ * must not draw its pill in the clipped-away region. */
+function visibleRect(el: HTMLElement) {
+	const r = el.getBoundingClientRect();
+	let top = r.top;
+	let bottom = r.bottom;
+	let left = r.left;
+	let right = r.right;
+	for (let a = el.parentElement; a; a = a.parentElement) {
+		const st = getComputedStyle(a);
+		if (st.overflowX === "visible" && st.overflowY === "visible") continue;
+		const ar = a.getBoundingClientRect();
+		top = Math.max(top, ar.top);
+		bottom = Math.min(bottom, ar.bottom);
+		left = Math.max(left, ar.left);
+		right = Math.min(right, ar.right);
+	}
+	top = Math.max(top, 0);
+	left = Math.max(left, 0);
+	bottom = Math.min(bottom, window.innerHeight);
+	right = Math.min(right, window.innerWidth);
+	return { top, bottom, left, right, height: Math.max(0, bottom - top) };
+}
+
 /** Track geometry shared by layout() and drag math. */
 function metrics(el: HTMLElement) {
-	const rect = el.getBoundingClientRect();
+	const rect = visibleRect(el);
 	const trackH = rect.height;
-	const pillH = Math.max(
-		PILL_MIN_H,
-		Math.round((el.clientHeight / el.scrollHeight) * trackH),
+	const pillH = Math.min(
+		trackH,
+		Math.max(
+			PILL_MIN_H,
+			Math.round((el.clientHeight / el.scrollHeight) * trackH),
+		),
 	);
 	return { rect, trackH, pillH, maxScroll: el.scrollHeight - el.clientHeight };
 }
@@ -180,7 +208,11 @@ function layout(el: HTMLElement, entry: Entry): void {
 	}
 	const { scrollTop, scrollHeight, clientHeight } = el;
 	const { rect, trackH, pillH, maxScroll } = metrics(el);
-	if (scrollHeight <= clientHeight + 1 || rect.height <= 0) {
+	if (
+		scrollHeight <= clientHeight + 1 ||
+		rect.height < PILL_MIN_H ||
+		rect.right - rect.left <= PILL_W
+	) {
 		hide(entry);
 		return;
 	}
@@ -200,11 +232,11 @@ function layout(el: HTMLElement, entry: Entry): void {
 function dedupeOverlap(keep: HTMLElement): boolean {
 	const keepEntry = entries.get(keep);
 	if (keepEntry?.drag) return true; // never suppress a pill mid-drag
-	const kr = keep.getBoundingClientRect();
+	const kr = visibleRect(keep);
 	const kLeft = kr.right - PILL_W - 2;
 	for (const [otherEl, other] of entries) {
 		if (otherEl === keep || !other.visible) continue;
-		const or = otherEl.getBoundingClientRect();
+		const or = visibleRect(otherEl);
 		const oLeft = or.right - PILL_W - 2;
 		const overlap =
 			Math.abs(kLeft - oLeft) <= 40 &&
@@ -310,8 +342,8 @@ function syncVisiblePills(): void {
 			const [a, ea] = vis[i];
 			const [b, eb] = vis[j];
 			if (!ea.visible || !eb.visible) continue;
-			const ra = a.getBoundingClientRect();
-			const rb = b.getBoundingClientRect();
+			const ra = visibleRect(a);
+			const rb = visibleRect(b);
 			const overlap =
 				Math.abs(ra.right - rb.right) <= 40 &&
 				!(ra.bottom < rb.top || rb.bottom < ra.top);
