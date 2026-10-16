@@ -301,7 +301,7 @@ function IdeasPanel({
 		const otherProject =
 			view !== "project" && item.projectDir && projectRoot(item.projectDir) !== projectRoot(currentProject);
 		return (
-			<div key={item.id} className="rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] p-2">
+			<div key={item.id} className="rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] px-2 py-1.5">
 				<div className="flex items-start gap-2">
 					{item.status === "inbox" && (
 						<input
@@ -351,7 +351,7 @@ function IdeasPanel({
 						)}
 					</div>
 				</div>
-				<div className="mt-1 flex items-center justify-end gap-0.5">
+				<div className="flex items-center justify-end gap-0.5">
 					{item.status === "inbox" && (
 						<>
 							<button
@@ -424,9 +424,9 @@ function IdeasPanel({
 								if (isComposing(e)) return;
 								e.currentTarget.form?.requestSubmit();
 							}}
-							placeholder="随手记一条，可粘贴/拖入图片…（Shift+Enter 换行）"
-							minHeight={64}
-							maxHeight={200}
+							placeholder="随手记一条…（Shift+Enter 换行）"
+							minHeight={36}
+							maxHeight={120}
 							boxClass="rounded-lg border-[var(--border-divider)] focus:border-sky-500"
 						/>
 					</div>

@@ -131,29 +131,48 @@ export function IdeaTextView({
 }) {
 	const doc = useMemo(() => storedToDoc(stored, refImages), [stored, refImages]);
 	const [preview, setPreview] = useState<number | null>(null);
+	const [expanded, setExpanded] = useState(false);
+	const [overflowing, setOverflowing] = useState(false);
+	const pRef = useRef<HTMLParagraphElement>(null);
+	// Measure only while clamped; once expanded keep the toggle so it can collapse again.
+	useLayoutEffect(() => {
+		const p = pRef.current;
+		if (p && !expanded) setOverflowing(p.scrollHeight > p.clientHeight + 1);
+	}, [doc.text, expanded]);
 	return (
-		<p className={`whitespace-pre-wrap break-words ${className}`}>
-			{splitTokens(doc.text).map((s, i) => {
-				if (s.kind === "text") return <span key={`t${i}-${s.value.length}`}>{s.value}</span>;
-				const path = doc.images[s.index - 1];
-				if (!path) return null;
-				const hex = getImageTokenPalette(s.index).hex;
-				return (
-					<button
-						key={`i${i}-${s.index}`}
-						type="button"
-						onClick={() => setPreview(s.index - 1)}
-						title={`${path}（点击预览）`}
-						className="mx-0.5 inline-flex items-center gap-0.5 rounded px-1 align-baseline text-[11px] font-medium hover:brightness-125"
-						style={{ color: hex, backgroundColor: `${hex}22` }}
-					>
-						<Paperclip className="h-3 w-3" />#{s.index}
-					</button>
-				);
-			})}
+		<div>
+			<p ref={pRef} className={`whitespace-pre-wrap break-words ${expanded ? "" : "line-clamp-3"} ${className}`}>
+				{splitTokens(doc.text).map((s, i) => {
+					if (s.kind === "text") return <span key={`t${i}-${s.value.length}`}>{s.value}</span>;
+					const path = doc.images[s.index - 1];
+					if (!path) return null;
+					const hex = getImageTokenPalette(s.index).hex;
+					return (
+						<button
+							key={`i${i}-${s.index}`}
+							type="button"
+							onClick={() => setPreview(s.index - 1)}
+							title={`${path}（点击预览）`}
+							className="mx-0.5 inline-flex items-center gap-0.5 rounded px-1 align-baseline text-[11px] font-medium hover:brightness-125"
+							style={{ color: hex, backgroundColor: `${hex}22` }}
+						>
+							<Paperclip className="h-3 w-3" />#{s.index}
+						</button>
+					);
+				})}
+			</p>
+			{(overflowing || expanded) && (
+				<button
+					type="button"
+					onClick={() => setExpanded((v) => !v)}
+					className="mt-0.5 text-[10px] text-sky-400 hover:underline"
+				>
+					{expanded ? "收起" : "展开全文"}
+				</button>
+			)}
 			{preview !== null && (
 				<ImagePreviewModal images={previewImages(doc.images)} initialIndex={preview} onClose={() => setPreview(null)} />
 			)}
-		</p>
+		</div>
 	);
 }
