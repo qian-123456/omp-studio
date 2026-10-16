@@ -15,19 +15,18 @@ import { ompUsageReport } from "../../../lib/ipc";
 import { SettingsCard } from "../ui";
 import {
 	type AccountSheetProvider,
-	LimitBar,
 	QuotaAccountSheet,
 	QuotaBar,
 } from "./QuotaAccountSheet";
 import { ProviderBrandLogo } from "./ProviderBrandLogo";
 import {
-	dedupeLimits,
 	findWindowResetsAt,
-	formatCountdownCompact,
 	formatHumanWindowName,
+	formatLimitStatus,
 	formatRelativeTime,
 	resolveBrandConfig,
 } from "./quotaHelpers";
+import { buildQuotaRows } from "./quotaRows";
 
 interface ProviderGroup extends AccountSheetProvider {
 	totalAccounts: number;
@@ -211,39 +210,58 @@ function ProviderQuotaCard({
 					.join(" · ") || "已授权账号"
 			: p.unmetered[0]?.enterpriseUrl || "已连接账号";
 	const shortName = p.brand.name.split(" ").pop() ?? p.brand.name;
+	const rows = buildQuotaRows(p.reports, now);
+	const overage = p.reports
+		.map((r) => r.metadata?.overageBalanceUsd)
+		.filter((v): v is number => typeof v === "number");
+	const overageTotal = overage.reduce((s, v) => s + v, 0);
 
-	const body = multi ? (
-		p.capacity.length > 0 ? (
+	const body =
+		rows.length > 0 ? (
+			rows.map((row) => (
+				<QuotaBar
+					key={row.key}
+					label={row.label}
+					usedPct={row.usedPct}
+					statusText={row.statusText}
+					caption={row.caption}
+					title={row.title}
+					tone={row.tone}
+					brandColor={p.brand.progressColor}
+				/>
+			))
+		) : p.capacity.length > 0 ? (
 			p.capacity.map((cap) => {
 				const usedPct =
 					cap.accounts > 0 ? Math.min(100, (cap.usedAccounts / cap.accounts) * 100) : 0;
 				const resetsAt = findWindowResetsAt(p.allLimits, cap.window);
-				const countdown =
-					resetsAt && resetsAt > now ? `${formatCountdownCompact(resetsAt - now)} 后重置` : "持续滚动";
-				const tone = usedPct >= 100 ? "rose" : usedPct >= 80 ? "amber" : "neutral";
+				const status = formatLimitStatus(usedPct, resetsAt, now);
 				return (
 					<QuotaBar
 						key={cap.window}
 						label={`${shortName} ${formatHumanWindowName(cap.window)}`}
 						usedPct={usedPct}
-						statusText={usedPct >= 100 ? "100% 耗尽" : `已用 ${usedPct.toFixed(1)}%`}
-						caption={`${countdown} · 共享池余 ${cap.remainingAccounts.toFixed(2)}/${cap.accounts} 个账号配额`}
-						title="共享池按账号汇总（数据来自 OMP）：已用比例 = 已用账号配额 / 账号总数；进度条与百分比含义一致"
-						tone={tone}
+						statusText={status.usedText}
+						caption={status.resetText ?? "持续滚动"}
+						title="按账号汇总（数据来自 OMP）：已用比例 = 已用账号配额 / 账号总数"
+						tone={status.color}
 						brandColor={p.brand.progressColor}
 					/>
 				);
 			})
 		) : (
-			<div className="text-xs text-neutral-500">暂无共享池容量汇总，查看明细了解各账号配额</div>
-		)
-	) : single && (single.limits ?? []).length > 0 ? (
-		dedupeLimits(single.limits).map((lim) => (
-			<LimitBar key={lim.id} lim={lim} now={now} brandColor={p.brand.progressColor} />
-		))
-	) : (
-		<div className="text-xs text-neutral-500">已连接 · 暂无时间窗口限额</div>
-	);
+			<div className="text-xs text-neutral-500">已连接 · 暂无时间窗口限额</div>
+		);
+
+	const footnotes = [
+		p.reports.length > 0 && p.unmetered.length > 0
+			? `${p.unmetered.length} 个账号暂无用量数据`
+			: null,
+		overage.length > 0
+			? `超额余额 ${overageTotal < 0 ? "-" : ""}$${Math.abs(overageTotal).toFixed(2)}`
+			: null,
+		multi ? `共 ${p.totalAccounts} 个账号 · 点击卡片查看各账号详情` : null,
+	].filter(Boolean);
 
 	return (
 		<div
@@ -312,9 +330,9 @@ function ProviderQuotaCard({
 
 			<div className="space-y-2.5">{body}</div>
 
-			{multi && (
+			{footnotes.length > 0 && (
 				<div className="border-t border-[var(--border-divider)] pt-2.5 text-[10px] text-neutral-500">
-					共 {p.totalAccounts} 个账号共享池 · 点击卡片查看各账号详情
+					{footnotes.join(" · ")}
 				</div>
 			)}
 		</div>
