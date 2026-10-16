@@ -566,11 +566,17 @@ fn discard_all_keeps_ignored_files() {
 }
 
 #[test]
-fn extract_commit_message_handles_model_replies() {
-    use commands::extract_commit_message as x;
-    assert_eq!(x("fix(git): pin role\n"), "fix(git): pin role");
-    assert_eq!(x("```\nfix(a): b\n```"), "fix(a): b");
-    assert_eq!(x("```git\nfix(a): b\n\n- c\n```"), "fix(a): b\n\n- c");
-    let chatty = "I'll write it.\n\n**Check:** short.\n\n```\nfix(a): b\n\n- c\n```\n";
-    assert_eq!(x(chatty), "fix(a): b\n\n- c");
+fn parse_commit_draft_validates_model_reply() {
+    use commands::parse_commit_draft as p;
+    assert_eq!(
+        p(r#"{"type":"fix","scope":"git","summary":"pin role."}"#).unwrap(),
+        "fix(git): pin role"
+    );
+    let chatty = "Problem: x\n```json\n{\"type\":\"feat\",\"summary\":\"add a\",\"bullets\":[\"- one\",\"two\"]}\n```";
+    assert_eq!(p(chatty).unwrap(), "feat: add a\n\n- one\n- two");
+    assert!(p("I'll write a conventional commit message").is_err());
+    assert!(p(r#"{"type":"wip","summary":"x"}"#).is_err());
+    assert!(p(r#"{"type":"fix","summary":"x","extra":1}"#).is_err());
+    let long = "a".repeat(80);
+    assert!(p(&format!(r#"{{"type":"fix","summary":"{long}"}}"#)).is_err());
 }

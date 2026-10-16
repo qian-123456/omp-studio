@@ -721,11 +721,11 @@ pub async fn git_commit_suggest(
     let prompt = format!(
         "Write a git commit message for the changes below.\n\
          Rules:\n\
-         1. Conventional Commits: `type(scope): summary`, type is one of feat, fix, refactor, docs, test, chore, perf, style, build, ci, revert.\n\
-         2. English, imperative mood, lowercase summary, no trailing period, first line at most 72 characters.\n\
-         3. Reuse the scope names of the recent commits below when they fit.\n\
-         4. Only for large changes: a blank line, then at most 5 short `- ` bullet points.\n\
-         5. Output only the message itself: no code fences, quotes, or commentary.\n\n\
+         - English, imperative mood, lowercase summary, no trailing period.\n\
+         - Reuse the scope names of the recent commits below when they fit.\n\
+         - Add bullets only for large changes, at most 5 short ones.\n\n\
+         Reply with exactly one JSON object that matches this JSON Schema, and nothing else:\n\
+         {COMMIT_DRAFT_SCHEMA}\n\n\
          Recent commits:\n{recent}\n\
          Changes (may be truncated):\n{capped_diff}"
     );
@@ -736,31 +736,84 @@ pub async fn git_commit_suggest(
     let suggestion =
         crate::todos::omp::run_print(&state, model_to_use, &prompt, Duration::from_secs(60))
             .await?;
-    Ok(extract_commit_message(&suggestion))
+    parse_commit_draft(&suggestion)
 }
 
-/// Pull the commit message out of a model reply. Some models narrate before
-/// answering; when the reply holds a fenced block, the last block is the
-/// message. Otherwise the whole trimmed reply is used.
-pub fn extract_commit_message(reply: &str) -> String {
-    let mut blocks: Vec<&str> = Vec::new();
-    let mut parts = reply.split("```");
-    parts.next(); // text before the first fence
-    while let (Some(inside), Some(_after)) = (parts.next(), parts.next()) {
-        blocks.push(inside);
+/// JSON Schema the model must answer with. `omp -p` cannot enforce a schema,
+/// so `parse_commit_draft` re-validates every field.
+const COMMIT_DRAFT_SCHEMA: &str = r#"{
+  "type": "object",
+  "required": ["type", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "type": {"enum": ["feat", "fix", "refactor", "docs", "test", "chore", "perf", "style", "build", "ci", "revert"]},
+    "scope": {"type": "string", "description": "optional, e.g. git, chat"},
+    "summary": {"type": "string", "maxLength": 60},
+    "bullets": {"type": "array", "maxItems": 5, "items": {"type": "string"}}
+  }
+}"#;
+
+const COMMIT_TYPES: &[&str] = &[
+    "feat", "fix", "refactor", "docs", "test", "chore", "perf", "style", "build", "ci", "revert",
+];
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommitDraft {
+    #[serde(rename = "type")]
+    kind: String,
+    scope: Option<String>,
+    summary: String,
+    #[serde(default)]
+    bullets: Vec<String>,
+}
+
+/// Find the last JSON object in `reply` that fits `CommitDraft` (the model may
+/// wrap it in prose or a code fence), validate it, and render the message.
+pub fn parse_commit_draft(reply: &str) -> Result<String, String> {
+    let draft = reply
+        .match_indices('{')
+        .filter_map(|(i, _)| {
+            serde_json::Deserializer::from_str(&reply[i..])
+                .into_iter::<CommitDraft>()
+                .next()?
+                .ok()
+        })
+        .next_back()
+        .ok_or_else(|| "模型没有按约定的 JSON 格式返回，请重试".to_string())?;
+
+    if !COMMIT_TYPES.contains(&draft.kind.as_str()) {
+        return Err(format!("模型返回了未知的提交类型：{}", draft.kind));
     }
-    match blocks.last() {
-        Some(block) => {
-            let block = block.trim_start_matches([' ', '\t']);
-            // Drop an info string such as "git" on the opening fence line.
-            let body = match block.split_once('\n') {
-                Some((first, rest)) if !first.contains(' ') && first.len() < 12 => rest,
-                _ => block,
-            };
-            body.trim().to_string()
-        }
-        None => reply.trim().trim_matches('`').trim().to_string(),
+    let summary = draft.summary.trim().trim_end_matches('.').trim();
+    if summary.is_empty() || summary.contains('\n') {
+        return Err("模型返回的提交摘要为空或含换行，请重试".to_string());
     }
+    let scope = draft
+        .scope
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let head = match scope {
+        Some(s) => format!("{}({s}): {summary}", draft.kind),
+        None => format!("{}: {summary}", draft.kind),
+    };
+    if head.chars().count() > 72 {
+        return Err("模型返回的提交首行超过 72 个字符，请重试".to_string());
+    }
+    let bullets: Vec<String> = draft
+        .bullets
+        .iter()
+        .map(|b| b.trim().trim_start_matches("- ").trim())
+        .filter(|b| !b.is_empty())
+        .take(5)
+        .map(|b| format!("- {b}"))
+        .collect();
+    Ok(if bullets.is_empty() {
+        head
+    } else {
+        format!("{head}\n\n{}", bullets.join("\n"))
+    })
 }
 
 /// Save every uncommitted change (new files included) as one commit.
