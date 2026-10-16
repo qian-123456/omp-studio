@@ -105,7 +105,7 @@ describe("inline skill chip (offset model)", () => {
 	});
 
 	it("serializes token to the front, joining the remaining text", () => {
-		const c = { ...base, offset: 5 };
+		const c = { ...base, offset: 6 };
 		expect(serializeChip(c, `hello ${lit} world`)).toBe("/skill:grill-me hello world");
 		expect(serializeChip({ ...base, offset: 6 }, `hello\n${lit} world`)).toBe(
 			"/skill:grill-me hello\nworld",
@@ -129,7 +129,9 @@ describe("inline skill chip (offset model)", () => {
 		expect(shiftChipOffset(prev, `ab ${lit} cdEF`, 3, L)).toBe(3); // edit after
 		expect(shiftChipOffset(prev, `ab ${lit}X cd`, 3, L)).toBe(3); // at literal end
 		expect(shiftChipOffset(prev, `abX${lit} cd`.replace("abX", "ab X"), 3, L)).toBe(4); // insert at offset
-		expect(shiftChipOffset(prev, "ab /skill: cd", 3, L)).toBe(3); // overlap → collapses
+		const o = shiftChipOffset(prev, "ab /skill: cd", 3, L); // overlap → edit start
+		expect(o).toBe(10);
+		expect(inlineChipRange({ ...base, offset: o }, "ab /skill: cd")).toBeNull();
 	});
 
 	it("invalidates when the literal is broken or glued to a word", () => {
