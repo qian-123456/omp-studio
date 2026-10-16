@@ -36,7 +36,7 @@ import { useUi } from "../../stores/ui";
 import { useSidebarStore } from "../sessions/sidebarStore";
 import { useBacklog } from "./backlogStore";
 import { IdeaEditor, type IdeaEditorHandle, IdeaTextView } from "./IdeaEditor";
-import { AddImageButton, useImageAttach } from "./IdeaImages";
+import { useImageAttach } from "./IdeaImages";
 import {
 	docToStored,
 	ensureTokens,
@@ -343,6 +343,22 @@ function IdeasPanel({
 								</span>
 							)}
 							<span className="ml-auto">{renderAdded(item)}</span>
+							<span className="-mr-1 flex items-center">
+								<button
+									type="button"
+									onClick={() => {
+										const d = storedToDoc(item.text, refImagePaths(item.refs));
+										setEditBuffer({ id: item.id, text: d.text, images: d.images });
+									}}
+									className={iconBtn}
+									title="编辑"
+								>
+									<Edit3 className="h-3 w-3" />
+								</button>
+								<button type="button" onClick={() => void deleteIdea(item.id)} className={`${iconBtn} hover:text-rose-400`} title="删除">
+									<Trash2 className="h-3 w-3" />
+								</button>
+							</span>
 						</div>
 						{editingId === item.id ? (
 							<EditIdeaBox id={item.id} onSave={() => void saveEdit(item.id)} onCancel={cancelEdit} />
@@ -351,50 +367,34 @@ function IdeasPanel({
 						)}
 					</div>
 				</div>
-				<div className="flex items-center justify-end gap-0.5">
-					{item.status === "inbox" && (
-						<>
-							<button
-								type="button"
-								disabled={!selectedSessionId}
-								onClick={() => void fillCurrent(item)}
-								className={`${iconBtn} inline-flex items-center gap-1 disabled:opacity-40`}
-								title={selectedSessionId ? "追加到当前会话输入框" : "当前未选择会话"}
-							>
-								<CornerDownLeft className="h-3 w-3" />
-								填入当前会话
-							</button>
-							<button
-								type="button"
-								onClick={() => onDispatch([item])}
-								className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-sky-300 hover:bg-sky-500/10"
-							>
-								<Send className="h-3 w-3" />
-								派发
-							</button>
-						</>
-					)}
-					<button
-						type="button"
-						onClick={() => {
-							const d = storedToDoc(item.text, refImagePaths(item.refs));
-							setEditBuffer({ id: item.id, text: d.text, images: d.images });
-						}}
-						className={iconBtn}
-						title="编辑"
-					>
-						<Edit3 className="h-3 w-3" />
-					</button>
-					<button type="button" onClick={() => void deleteIdea(item.id)} className={`${iconBtn} hover:text-rose-400`} title="删除">
-						<Trash2 className="h-3 w-3" />
-					</button>
-				</div>
+				{item.status === "inbox" && (
+					<div className="flex items-center justify-end gap-0.5">
+						<button
+							type="button"
+							disabled={!selectedSessionId}
+							onClick={() => void fillCurrent(item)}
+							className={`${iconBtn} inline-flex items-center gap-1 disabled:opacity-40`}
+							title={selectedSessionId ? "追加到当前会话输入框" : "当前未选择会话"}
+						>
+							<CornerDownLeft className="h-3 w-3" />
+							填入当前会话
+						</button>
+						<button
+							type="button"
+							onClick={() => onDispatch([item])}
+							className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-sky-300 hover:bg-sky-500/10"
+						>
+							<Send className="h-3 w-3" />
+							派发
+						</button>
+					</div>
+				)}
 			</div>
 		);
 	};
 
 	return (
-		<div className="space-y-3 text-xs">
+		<div className="space-y-2 text-xs">
 			<div className="flex items-center justify-between border-b border-[var(--border-divider)] pb-2">
 				<span className="font-semibold text-[var(--text)]">想法收集</span>
 				<button type="button" onClick={onClose} className="text-[var(--text-dim)] hover:text-[var(--text)]">
@@ -405,9 +405,18 @@ function IdeasPanel({
 			<form
 				onSubmit={add}
 				{...attach.dropProps}
-				className={`space-y-2 rounded-lg ${attach.dragging ? "outline-dashed outline-1 outline-sky-500" : ""}`}
+				className={`space-y-1 rounded-lg ${attach.dragging ? "outline-dashed outline-1 outline-sky-500" : ""}`}
 			>
 				<div className="flex items-start gap-1.5">
+					<button
+						type="button"
+						onClick={attach.pick}
+						title="添加图片"
+						aria-label="添加图片"
+						className="mt-[3px] inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[var(--border-divider)] text-[var(--text-dim)] transition-colors hover:border-sky-500 hover:text-sky-400"
+					>
+						<Plus className="h-4 w-4" />
+					</button>
 					<div className="min-w-0 flex-1">
 						<IdeaEditor
 							ref={composerRef}
@@ -460,10 +469,6 @@ function IdeasPanel({
 							</button>
 						);
 					})}
-					<AddImageButton
-						onClick={attach.pick}
-						className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
-					/>
 					{attach.fileInput}
 				</div>
 			</form>
