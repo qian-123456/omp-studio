@@ -103,6 +103,17 @@ fn apply_with(
         return Ok(());
     }
 
+    commit_text(path, existed, &text, &|written| check(written, entries))
+}
+
+/// Write `text` to `path` with a timestamped backup, run `check` on the read-back
+/// content, and restore the original on any failure.
+pub(super) fn commit_text(
+    path: &Path,
+    existed: bool,
+    text: &str,
+    check: &dyn Fn(&str) -> Result<(), String>,
+) -> Result<(), String> {
     let backup = if existed {
         let b = backup_path(path);
         std::fs::copy(path, &b).map_err(|e| format!("备份 models.yml 失败: {}", e.kind()))?;
@@ -114,12 +125,12 @@ fn apply_with(
         None
     };
 
-    let result = std::fs::write(path, &text)
+    let result = std::fs::write(path, text)
         .map_err(|e| format!("写入 models.yml 失败: {}", e.kind()))
         .and_then(|_| {
             let written = std::fs::read_to_string(path)
                 .map_err(|e| format!("回读 models.yml 失败: {}", e.kind()))?;
-            check(&written, entries)
+            check(&written)
         });
     if let Err(err) = result {
         let restored = match &backup {
@@ -134,7 +145,7 @@ fn apply_with(
     Ok(())
 }
 
-fn backup_path(path: &Path) -> PathBuf {
+pub(super) fn backup_path(path: &Path) -> PathBuf {
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S%3f");
     let name = path
         .file_name()
@@ -175,15 +186,15 @@ fn verify(text: &str, entries: &[ModelContextWindowEdit]) -> Result<(), String> 
 // Line-level YAML editing (block style only).
 // ---------------------------------------------------------------------------
 
-struct Line<'a> {
-    indent: usize,
+pub(super) struct Line<'a> {
+    pub(super) indent: usize,
     /// `Some((key, rest_after_colon))` for `key: value` mapping lines.
-    entry: Option<(String, &'a str)>,
+    pub(super) entry: Option<(String, &'a str)>,
     /// Blank or comment-only line.
-    trivia: bool,
+    pub(super) trivia: bool,
 }
 
-fn parse_line(raw: &str) -> Line<'_> {
+pub(super) fn parse_line(raw: &str) -> Line<'_> {
     let body = raw.trim_end_matches(['\n', '\r']);
     let trimmed = body.trim_start_matches(' ');
     let indent = body.len() - trimmed.len();
@@ -229,12 +240,12 @@ fn parse_key(s: &str) -> Option<(String, &str)> {
 }
 
 /// True when the value part after `key:` is empty (a nested block follows).
-fn opens_block(rest: &str) -> bool {
+pub(super) fn opens_block(rest: &str) -> bool {
     let r = rest.trim();
     r.is_empty() || r.starts_with('#')
 }
 
-fn yaml_key(k: &str) -> String {
+pub(super) fn yaml_key(k: &str) -> String {
     if !k.is_empty()
         && k.chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
@@ -248,7 +259,7 @@ fn yaml_key(k: &str) -> String {
 
 /// Exclusive end of the block owned by the key at `start` with indent `indent`:
 /// one past the last non-trivia line deeper than `indent`.
-fn block_end(lines: &[&str], start: usize, indent: usize) -> usize {
+pub(super) fn block_end(lines: &[&str], start: usize, indent: usize) -> usize {
     let mut end = start + 1;
     for (i, raw) in lines.iter().enumerate().skip(start + 1) {
         let l = parse_line(raw);
@@ -265,7 +276,7 @@ fn block_end(lines: &[&str], start: usize, indent: usize) -> usize {
 
 /// Find direct child `key` inside block `(start, end)` whose parent indent is
 /// `parent_indent` (`None` = document root). Returns (line index, child indent).
-fn find_child(
+pub(super) fn find_child(
     lines: &[&str],
     range: (usize, usize),
     parent_indent: Option<usize>,
@@ -293,7 +304,7 @@ fn find_child(
     Ok((None, child_indent))
 }
 
-fn ensure_newline(out: &mut [String], at: usize) {
+pub(super) fn ensure_newline(out: &mut [String], at: usize) {
     if at > 0 {
         if let Some(prev) = out.get_mut(at - 1) {
             if !prev.ends_with('\n') {

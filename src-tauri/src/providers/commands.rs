@@ -196,6 +196,11 @@ pub async fn provider_list() -> Result<Vec<ProviderConfig>, String> {
     for provider in &mut providers {
         provider.has_key = vault::contains(&provider.slug);
     }
+    // models.yml is the source of truth for providers OMP itself defines.
+    super::models_yml_providers::overlay_models(
+        &super::models_yml_providers::models_yml_path(),
+        &mut providers,
+    );
     providers.sort_by_key(|p| p.sort);
     Ok(providers)
 }
@@ -216,6 +221,13 @@ pub async fn provider_save(
 
     let mut providers = store::load();
     validate_unique(&config, &providers)?;
+    // OMP reads `providers.<slug>.models` from models.yml itself: write there first so
+    // a failure leaves the app store untouched. No-op for app-only providers.
+    super::models_yml_providers::write_models(
+        &super::models_yml_providers::models_yml_path(),
+        &config.slug,
+        &config.models,
+    )?;
     let now = now_iso();
     let new_key = api_key.as_deref().map(str::trim).filter(|k| !k.is_empty());
 

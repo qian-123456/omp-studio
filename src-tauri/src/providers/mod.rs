@@ -7,6 +7,7 @@
 //! the macOS Keychain). Child processes get decrypted keys via [`env_pairs`].
 
 pub mod commands;
+pub mod models_yml_providers;
 pub mod models_yml_write;
 pub mod oauth;
 pub mod omp_config;
@@ -111,8 +112,11 @@ pub fn env_pairs() -> Vec<(String, String)> {
 /// Routing metadata env var (`OMP_WORKSPACE_PROVIDERS`) for OMP-spawning processes.
 pub fn terminal_extra_env() -> Option<(String, String)> {
     let keys = env_pairs();
+    // Providers defined in OMP's own models.yml are registered by OMP itself.
+    let managed = models_yml_providers::managed_slugs(&models_yml_providers::models_yml_path());
     let routable: Vec<_> = store::load()
         .into_iter()
+        .filter(|p| !managed.contains(&p.slug))
         .filter(|p| {
             p.api == crate::contracts::ProviderApi::Ollama
                 || keys.iter().any(|(name, _)| name == &p.env_var)

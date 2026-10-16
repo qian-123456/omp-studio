@@ -126,7 +126,11 @@ pub fn parse_yaml_providers(text: &str, require_markers: bool) -> Vec<RawParsedP
 
         // Check sub-sections (models / modelOverrides)
         if let Some(sec) = &current_section {
-            if indent > section_indent {
+            // YAML allows block sequence items at the same indent as their key
+            // (`models:` / `- id: x`, which is how omp writes them).
+            let same_indent_item =
+                *sec == SubSection::Models && indent == section_indent && trimmed.starts_with("- ");
+            if indent > section_indent || same_indent_item {
                 match sec {
                     SubSection::Models => match section_child_indent {
                         None => section_child_indent = Some(indent),
@@ -156,6 +160,10 @@ pub fn parse_yaml_providers(text: &str, require_markers: bool) -> Vec<RawParsedP
         if let Some(sec) = &current_section {
             match sec {
                 SubSection::Models => {
+                    if section_child_indent != Some(indent) {
+                        // Fields (and nested lists such as `input:` / `efforts:`) of a model item.
+                        continue;
+                    }
                     if let Some(rest) = trimmed.strip_prefix("- ") {
                         let item = rest.trim();
                         let model_id = if let Some((k, v)) = item.split_once(':') {
@@ -171,6 +179,7 @@ pub fn parse_yaml_providers(text: &str, require_markers: bool) -> Vec<RawParsedP
                             prov.model_ids.push(model_id.to_string());
                         }
                     } else if let Some((k, _)) = trimmed.split_once(':') {
+                        // Map-form model keys sit at the child indent.
                         let k = k.trim().trim_matches(|c| c == '"' || c == '\'');
                         if !k.is_empty() && k != "id" && !prov.model_ids.iter().any(|m| m == k) {
                             prov.model_ids.push(k.to_string());
