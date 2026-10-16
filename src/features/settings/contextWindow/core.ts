@@ -63,6 +63,29 @@ export function ruleKeywordsForSelection(modelIds: readonly string[]): string[] 
 	return keyTokens[0].filter((t, i, arr) => arr.indexOf(t) === i && keyTokens.every((ts) => ts.includes(t)));
 }
 
+/** Tri-state of a set of row keys against the selection. */
+export type CheckState = "none" | "some" | "all";
+
+export function selectionState(keys: readonly string[], selected: ReadonlySet<string>): CheckState {
+	if (keys.length === 0) return "none";
+	let on = 0;
+	for (const k of keys) if (selected.has(k)) on++;
+	return on === 0 ? "none" : on === keys.length ? "all" : "some";
+}
+
+/**
+ * 「记住为规则」keywords when the selection is a whole vendor brand (every row of `family`
+ * selected): the brand's own name (e.g. `glm`) instead of one model's tokens, provided every
+ * selected id carries it. Otherwise falls back to {@link ruleKeywordsForSelection}.
+ */
+export function ruleKeywordsForBrand(family: string, wholeBrand: boolean, modelIds: readonly string[]): string[] {
+	if (wholeBrand && family !== OTHER_FAMILY && modelIds.length > 0) {
+		const kw = [family.toLowerCase()];
+		if (modelIds.every((id) => ruleMatches({ keywords: kw }, id))) return kw;
+	}
+	return ruleKeywordsForSelection(modelIds);
+}
+
 /** True when the raw model id contains every rule keyword (typo-tolerant). */
 export function matchRule(rule: Pick<ContextWindowRule, "keywords">, modelId: string): boolean {
 	return ruleMatches(rule, modelId);

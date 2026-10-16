@@ -33,7 +33,8 @@ import {
 	modelFamily,
 	planRule,
 	rowKey,
-	ruleKeywordsForSelection,
+	ruleKeywordsForBrand,
+	selectionState,
 	saveRules,
 	takenOverCount,
 } from "../contextWindow/core";
@@ -233,6 +234,8 @@ export function ContextWindowSection() {
 		},
 	});
 	const selectedRows = [...selected].map((k) => rowsByKey.get(k)).filter((r): r is CwRow => r != null);
+	const filteredKeys = useMemo(() => sections.flatMap((s) => s.rows.map(rowKey)), [sections]);
+	const filterState = selectionState(filteredKeys, selected);
 
 	// ── Writing with undo ──
 	const [undo, setUndo] = useState<{ label: string; edits: Edit[] } | null>(null);
@@ -338,7 +341,9 @@ export function ContextWindowSection() {
 	const [remember, setRemember] = useState(false);
 	const bulkValue = parseContextInput(bulkInput);
 	const bulkGrows = bulkValue != null && selectedRows.some((r) => exceedsUpstream(r, bulkValue));
-	const ruleKeywords = ruleKeywordsForSelection(selectedRows.map((r) => r.modelId));
+	const familyKeys = family === "all" ? [] : rows.filter((r) => modelFamily(r.modelId) === family).map(rowKey);
+	const wholeBrand = familyKeys.length > 0 && familyKeys.every((k) => selected.has(k));
+	const ruleKeywords = ruleKeywordsForBrand(family, wholeBrand, selectedRows.map((r) => r.modelId));
 
 	const applySelected = async () => {
 		if (bulkValue == null) return;
@@ -486,7 +491,22 @@ export function ContextWindowSection() {
 
 						{sections.length > 0 && (
 							<div className="flex items-center gap-2 bg-[var(--bg-panel)] px-2 py-1 text-[10px] text-neutral-500">
-								<span className="w-[13px] shrink-0" />
+								<input
+									type="checkbox"
+									aria-label="全选当前筛选"
+									ref={(el) => {
+										if (el) el.indeterminate = filterState === "some";
+									}}
+									checked={filterState === "all"}
+									onChange={(e) => toggle(filteredKeys, e.target.checked)}
+								/>
+								<button
+									type="button"
+									className="shrink-0 text-[var(--accent)]"
+									onClick={() => toggle(filteredKeys, filterState !== "all")}
+								>
+									{filterState === "all" ? "取消全选" : "全选当前筛选"} ({filteredKeys.length})
+								</button>
 								<span className="min-w-0 flex-1" title="模型的原始 ID（供应商接口里的名字）">
 									模型 ID
 								</span>
@@ -605,7 +625,9 @@ export function ContextWindowSection() {
 									onChange={(e) => setRemember(e.target.checked)}
 								/>
 								记住为规则
-								{ruleKeywords.length > 0 ? `（${ruleKeywords.join(" ")}）` : "：所选模型没有共同名称，无法记为规则"}
+								{ruleKeywords.length > 0
+									? `（${wholeBrand ? `整个 ${family} 品牌：` : ""}${ruleKeywords.join(" ")}）`
+									: "：所选模型没有共同名称，无法记为规则"}
 							</label>
 							<button
 								type="button"

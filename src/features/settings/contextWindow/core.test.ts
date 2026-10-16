@@ -3,6 +3,8 @@ import {
 	type ContextWindowRule,
 	compactionTriggerPoint,
 	pickRule,
+	ruleKeywordsForBrand,
+	selectionState,
 	resolveNewModelWindow,
 	ruleKeywordsForSelection,
 } from "./core";
@@ -84,5 +86,28 @@ describe("ruleKeywordsForSelection", () => {
 
 	it("returns no keywords when the selection shares no name", () => {
 		expect(ruleKeywordsForSelection(["gpt-5", "deepseek-v3"])).toEqual([]);
+	});
+});
+
+describe("selectionState", () => {
+	it("is tri-state over the filtered keys", () => {
+		const keys = ["a/1", "a/2", "b/1"];
+		expect(selectionState(keys, new Set())).toBe("none");
+		expect(selectionState(keys, new Set(["a/1", "zzz"]))).toBe("some");
+		expect(selectionState(keys, new Set(keys))).toBe("all");
+		expect(selectionState([], new Set(keys))).toBe("none");
+	});
+});
+
+describe("ruleKeywordsForBrand", () => {
+	const glm = ["glm-5.3-flash-free", "z-ai/glm-4.6", "glm-5.3-flash-free"];
+	it("uses the brand name for a whole-brand selection", () => {
+		expect(ruleKeywordsForBrand("GLM", true, ["glm-5.3-flash-free"])).toEqual(["glm"]);
+		expect(ruleKeywordsForBrand("GLM", true, glm)).toEqual(["glm"]);
+	});
+	it("falls back to the model tokens when not the whole brand or brand name is absent", () => {
+		expect(ruleKeywordsForBrand("GLM", false, ["glm-5.3-flash-free"])).toEqual(ruleKeywordsForSelection(["glm-5.3-flash-free"]));
+		expect(ruleKeywordsForBrand("GLM", true, ["zhipu-x", "zai-y"])).toEqual([]);
+		expect(ruleKeywordsForBrand("其他", true, ["foo-1", "foo-2"])).toEqual(["foo"]);
 	});
 });
