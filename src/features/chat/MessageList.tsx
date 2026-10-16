@@ -62,6 +62,7 @@ import {
 } from "./messageTrace";
 import { abortTurn, sendPrompt } from "./send";
 import { CommandOutputList } from "./slash/CommandOutputList";
+import { RetryNoticeList } from "./RetryNoticeList";
 import {
 	formatDurationCompact,
 	formatMessageTimestamp,
@@ -1443,6 +1444,7 @@ export function MessageList({
 						)}
 					>
 						<CommandOutputList sessionId={sessionId} />
+						<RetryNoticeList sessionId={sessionId} />
 					</div>
 				</div>
 			</div>

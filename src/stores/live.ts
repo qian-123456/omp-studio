@@ -6,6 +6,7 @@
  * and a transcript cache shared with the heatmap.
  */
 
+import { type RetryNotice, retryNoticeFromFrame } from "./retryNotice";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type {
@@ -99,6 +100,9 @@ export interface SessionLive {
 	commands: SlashCommand[];
 	/** Ephemeral slash-command outputs shown at the end of the thread. */
 	commandOutputs: CommandOutputEntry[];
+	/** Retry / model-fallback status rows shown at the end of the thread;
+	 * cleared when the user sends the next message. */
+	retryNotices?: RetryNotice[];
 	/** Slash command last sent as a prompt; annotates command_output frames. */
 	pendingCommand?: string | null;
 	/** Live tool executions keyed by toolCallId (reset each turn). */
@@ -496,6 +500,20 @@ function reduce(
 		}
 		case "available_commands_update": {
 			return { ...live, commands: normalizeCommands(frame.commands) };
+		}
+		case "auto_retry_start":
+		case "auto_retry_end":
+		case "retry_fallback_applied":
+		case "retry_fallback_succeeded": {
+			const n = retryNoticeFromFrame(frame);
+			if (!n) return live;
+			return {
+				...live,
+				retryNotices: [
+					...(live.retryNotices ?? []),
+					{ ...n, id: nextOutputId++ },
+				].slice(-20),
+			};
 		}
 		case "command_output": {
 			// Slash commands executed by omp emit their text here instead of as a
@@ -920,10 +938,8 @@ export const useLive = create<LiveState>((set) => ({
 					...s.sessions,
 					[sessionId]: {
 						...live,
-						pendingUserEchoes: [
-							...live.pendingUserEchoes,
-							echo,
-						],
+						pendingUserEchoes: [...live.pendingUserEchoes, echo],
+						retryNotices: steer ? live.retryNotices : [],
 					},
 				},
 			};
