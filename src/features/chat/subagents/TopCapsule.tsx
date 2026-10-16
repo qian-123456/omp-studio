@@ -9,19 +9,19 @@ import { useEffect, useRef, useState } from "react";
 import { FloatingLayer } from "../../../components/FloatingLayer";
 import { copyText } from "../../../lib/dialogs";
 import { toast } from "../../../lib/toast";
-import { useLive } from "../../../stores/live";
 import { useUi } from "../../../stores/ui";
 import { useSettings } from "../../settings/store";
 import { subagentBucket, subagentCounts } from "./counts";
+import { SubagentSheet } from "./SubagentSheet";
+import { useSessionSubagents } from "./useSessionSubagents";
 
 export function TopCapsule() {
 	const settings = useSettings((s) => s.settings);
 	const loadSettings = useSettings((s) => s.load);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 
-	const live = useLive((s) =>
-		selectedSessionId ? s.sessions[selectedSessionId] : undefined,
-	);
+	const { parentFile, subagents, rows } = useSessionSubagents(selectedSessionId);
+	const [sheetId, setSheetId] = useState<string | null>(null);
 
 	const [openSubPopover, setOpenSubPopover] = useState(false);
 	const [expandedSubId, setExpandedSubId] = useState<string | null>(null);
@@ -34,13 +34,14 @@ export function TopCapsule() {
 	// Auto-collapse popovers when selected session changes
 	useEffect(() => {
 		setOpenSubPopover(false);
+		setSheetId(null);
 	}, [selectedSessionId]);
 
 	if (settings && !settings.capsuleVisible) {
 		return null;
 	}
 
-	const subagents = live?.subagents ?? {};
+	// Disk-backed list also covers sessions driven by an external omp CLI.
 	const subCounts = subagentCounts(subagents);
 	const hasSubagents = Object.keys(subagents).length > 0;
 
@@ -186,6 +187,15 @@ export function TopCapsule() {
 												<Copy className="h-2.5 w-2.5" />
 												<span>复制</span>
 											</button>
+											{rows[id]?.filePath && (
+												<button
+													type="button"
+													onClick={() => setSheetId(id)}
+													className="inline-flex items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100"
+												>
+													查看详情
+												</button>
+											)}
 										</div>
 										{sub.progress?.retryFailure?.errorMessage && (
 											<div className="rounded border border-[var(--line)] p-1.5 text-[var(--status-error)]">
@@ -199,6 +209,13 @@ export function TopCapsule() {
 					})}
 				</div>
 			</FloatingLayer>
+			{sheetId && rows[sheetId] && (
+				<SubagentSheet
+					parentFile={parentFile}
+					row={rows[sheetId]}
+					onClose={() => setSheetId(null)}
+				/>
+			)}
 		</div>
 	);
 }

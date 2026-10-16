@@ -959,6 +959,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   Clicking a row opens `SubagentSheet` (right slide-over, `Z_LAYER.modal`): 概览 / 提示词 / 过程 / 输出, tailing
   `subagent_transcript` every 1.5 s while running.
 - Answer footer (`AnswerFooter.tsx`): one quiet row — ghost icon buttons left (changed-files list toggle, saved commit jumping to
+  `TopCapsule` uses `useSessionSubagents(sessionId)`: on-disk `subagent_list` summaries (re-polled every 3 s while the session is `external`/`working`) merged with live RPC subagents (live wins per id), so sessions driven by an external `omp` CLI show their subagents in the capsule popover, with a 「查看详情」 button opening `SubagentSheet`. `TaskToolBlock` polls the same way for unfinished calls of external sessions. No IPC change.
   git timeline via `useTurnNav.showCommit`, "撤回这一轮" rollback with cascade conflict detection, copy, side-chat fork) and the
   answer time on hover at the right end (opacity-reserved, never shifts); hover-only on older turns, always visible on the latest.
 - Image attachments: `ImageAttachment` (blob refs, clip files, mimeType, width, height) rendered via `ImageChips.tsx` with Tauri asset

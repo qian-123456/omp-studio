@@ -203,19 +203,35 @@ export function TaskToolBlock({
 
 	// History / async-resume: pull summaries from the on-disk session dir so
 	// pending spawn receipts resolve to real statuses and outputs.
+	const watching = useSessions((s) => {
+		const st = s.sessions[sessionId]?.status;
+		return st === "external" || st === "working";
+	});
 	useEffect(() => {
 		if (!parentFile) return;
 		let cancelled = false;
-		subagentList(parentFile)
-			.then((list) => {
-				if (!cancelled) setFileList(list);
-			})
-			.catch(() => {});
+		let timer: number | undefined;
+		const tick = () => {
+			subagentList(parentFile)
+				.then((list) => {
+					if (!cancelled) setFileList(list);
+				})
+				.catch(() => {})
+				.finally(() => {
+					// External CLI sessions have no RPC frames: keep polling the
+					// on-disk subagent files while the tool call is unfinished.
+					if (!cancelled && watching && !finished) {
+						timer = window.setTimeout(tick, 3000);
+					}
+				});
+		};
+		tick();
 		return () => {
 			cancelled = true;
+			clearTimeout(timer);
 		};
 		// Re-fetch when the tool call finishes so final statuses land.
-	}, [parentFile, finished]);
+	}, [parentFile, finished, watching]);
 
 	const { context, rows } = useMemo(
 		() =>
