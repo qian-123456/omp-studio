@@ -173,6 +173,7 @@ import { buildSlashSections, flattenSections, type SlashMenuItem } from "./slash
 import { SlashMenu } from "./slash/SlashMenu";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
 import { findSlashCommand } from "./slash/registry";
+import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
 import { loadChip, saveChip, serializeChip, type CommandChip } from "./slash/chip";
 import { CommandChipBadge } from "./slash/CommandChip";
 import { requestTakeover } from "../sessions/sessionActions";
@@ -250,7 +251,7 @@ export function Composer({
 	const composerCardRef = useRef<HTMLDivElement>(null);
 	// Draft state bound to useComposer store so switching sessions does not lose input
 	const text = useComposer((s) => s.drafts[sessionId] ?? "");
-	const hasInlineTokens = useMemo(
+	const hasImageTokens = useMemo(
 		() => /(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+\])/u.test(text),
 		[text],
 	);
@@ -262,6 +263,7 @@ export function Composer({
 	// holds only its arguments and `serializeChip` restores `/name args` on
 	// send. Persisted per session alongside drafts (see slash/chip.ts).
 	const [chip, setChipState] = useState<CommandChip | null>(() => loadChip(sessionId));
+	const hasInlineTokens = hasImageTokens || chip !== null;
 	const setChip = useCallback(
 		(next: CommandChip | null) => {
 			setChipState(next);
@@ -737,10 +739,9 @@ export function Composer({
 			// Any text around the token becomes the command's arguments.
 			const nextText = `${before}${after}`;
 			setText(nextText);
-			setChip({ name: item.name, title: item.title || item.name });
+			setChip({ name: item.name, title: item.title || item.name, argHint: item.argHint });
 			setCursorPos(before.length);
 			setMenuDismissed(true);
-			setArgHintLine(`/${item.name} ${item.argHint}`);
 			setTimeout(() => {
 				if (taRef.current) {
 					taRef.current.focus();
@@ -1253,6 +1254,27 @@ export function Composer({
 		[text],
 	);
 
+	/** Apply a list edit through `execCommand` so the browser keeps native
+	 * undo/redo; falls back to a direct value write when it is unavailable. */
+	const applyTextEdit = (ta: HTMLTextAreaElement, edit: ListEdit) => {
+		if (edit.from !== edit.to || edit.insert !== "") {
+			ta.setSelectionRange(edit.from, edit.to);
+			const ok =
+				edit.insert === ""
+					? document.execCommand("delete")
+					: document.execCommand("insertText", false, edit.insert);
+			if (!ok) {
+				const next = applyListEdit(ta.value, edit);
+				setText(next);
+				setDraft(sessionId, next);
+			}
+		}
+		requestAnimationFrame(() => {
+			ta.setSelectionRange(edit.selStart, edit.selEnd);
+			setCursorPos(edit.selStart);
+		});
+	};
+
 	const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
 		if (isComposing(e)) return;
 		// Atomic ArrowLeft navigation across image token
@@ -1402,6 +1424,40 @@ export function Composer({
 				e.preventDefault();
 				setMenuDismissed(true);
 				return;
+			}
+		}
+
+		// Markdown list editing: Enter (when it would insert a newline) continues
+		// the list; Tab / Shift+Tab indent or outdent list items. Menus above and
+		// IME composition (early return) take precedence.
+		if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+			const ta = taRef.current;
+			if (ta) {
+				const decision =
+					e.key === "Enter"
+						? decideEnterKey(
+								{
+									key: e.key,
+									shiftKey: e.shiftKey,
+									metaKey: false,
+									ctrlKey: false,
+									altKey: false,
+									isComposing: false,
+								},
+								sendShortcut,
+							)
+						: null;
+				const edit =
+					decision === "newline"
+						? continueListOnEnter(ta.value, ta.selectionStart, ta.selectionEnd)
+						: e.key === "Tab"
+							? indentList(ta.value, ta.selectionStart, ta.selectionEnd, e.shiftKey)
+							: null;
+				if (edit) {
+					e.preventDefault();
+					applyTextEdit(ta, edit);
+					return;
+				}
 			}
 		}
 
@@ -1625,29 +1681,18 @@ export function Composer({
 							style={{
 								boxSizing: "border-box",
 								wordBreak: "break-word",
-								textIndent: chipIndent,
 							}}
 						>
+							{chip && (
+								<span
+									ref={chipElRef}
+									className="mr-[6px] inline-block h-[21px] align-top text-[13px] leading-[21px]"
+								>
+									<CommandChipBadge chip={chip} />
+								</span>
+							)}
 							{renderHighlightedText(text)}
 						</div>
-					)}
-					{chip && (
-						<span
-							ref={chipElRef}
-							className="absolute left-4 top-[11.5px] z-20"
-							onMouseDown={(e) => {
-								// Keep focus in the textarea; the × button handles removal.
-								if ((e.target as HTMLElement).closest("button")) return;
-								e.preventDefault();
-								const ta = taRef.current;
-								if (ta) {
-									ta.focus();
-									ta.setSelectionRange(ta.value.length, ta.value.length);
-								}
-							}}
-						>
-							<CommandChipBadge chip={chip} onRemove={() => setChip(null)} />
-						</span>
 					)}
 					<textarea
 						ref={taRef}
@@ -1751,7 +1796,7 @@ export function Composer({
 						rows={1}
 						placeholder={
 							chip && !text
-								? `${chip.title || chip.name} ${findSlashCommand(chip.name)?.argHint ?? "<参数>"}`
+								? (chip.argHint ?? findSlashCommand(chip.name)?.argHint ?? "<参数>")
 								: streaming
 									? "输入后续消息…"
 									: "输入消息，/ 命令，@ 引用文件"

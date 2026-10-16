@@ -11,7 +11,7 @@ globalThis.localStorage = {
 } as Storage;
 
 import { describe, expect, it } from "vitest";
-import { loadChip, saveChip, serializeChip } from "./chip";
+import { chipLabel, isSkillChip, loadChip, saveChip, serializeChip } from "./chip";
 
 describe("serializeChip — chip ↔ wire text", () => {
 	it("serializes chip + args to the literal /name args form", () => {
@@ -60,5 +60,26 @@ describe("chip persistence", () => {
 		mem.set("ompws:command-chips", JSON.stringify({ s1: { name: "a b" }, s2: "x" }));
 		expect(loadChip("s1")).toBeNull();
 		expect(loadChip("s2")).toBeNull();
+	});
+});
+
+describe("skill chip", () => {
+	const skill = { name: "skill:grill-me", title: "grill-me", argHint: "arguments" };
+
+	it("shows the bare skill name without the skill: prefix", () => {
+		expect(isSkillChip(skill)).toBe(true);
+		expect(chipLabel(skill)).toBe("grill-me");
+		expect(isSkillChip({ name: "skill:", title: "x" })).toBe(false);
+		expect(isSkillChip({ name: "fork", title: "分叉" })).toBe(false);
+	});
+
+	it("still serializes to the literal /skill:name args wire text", () => {
+		expect(serializeChip(skill, "")).toBe("/skill:grill-me");
+		expect(serializeChip(skill, "review this")).toBe("/skill:grill-me review this");
+	});
+
+	it("persists the ghost argHint across reloads", () => {
+		saveChip("sk1", skill);
+		expect(loadChip("sk1")).toEqual(skill);
 	});
 });

@@ -3,6 +3,7 @@
  * serializes back to the exact `/name args` string a user would have typed,
  * so transport/history/queue behavior is unchanged. */
 
+import { Sparkles } from "lucide-react";
 import { DYNAMIC_COMMAND_ICON, findSlashCommand } from "./registry";
 import type { SlashCommandDef } from "./types";
 
@@ -12,6 +13,14 @@ export interface CommandChip {
 	/** Display title captured at menu pick time (dynamic omp commands may
 	 * have none — the name is shown then). */
 	title: string;
+	/** Ghost argument hint shown inline after the chip while args are empty. */
+	argHint?: string;
+}
+
+const SKILL_PREFIX = "skill:";
+
+export function isSkillChip(chip: CommandChip): boolean {
+	return chip.name.startsWith(SKILL_PREFIX) && chip.name.length > SKILL_PREFIX.length;
 }
 
 /** `chip + args` → the literal text omp expects (contract). */
@@ -27,10 +36,12 @@ export function serializeChip(
 export function chipIcon(
 	chip: CommandChip,
 ): SlashCommandDef["icon"] {
+	if (isSkillChip(chip)) return Sparkles;
 	return findSlashCommand(chip.name)?.icon ?? DYNAMIC_COMMAND_ICON;
 }
 
 export function chipLabel(chip: CommandChip): string {
+	if (isSkillChip(chip)) return chip.name.slice(SKILL_PREFIX.length);
 	return findSlashCommand(chip.name)?.title || chip.title || chip.name;
 }
 
@@ -54,7 +65,12 @@ function readAll(): ChipMap {
 			const name = (v as Record<string, unknown>).name;
 			const title = (v as Record<string, unknown>).title;
 			if (typeof name === "string" && /^[^\s/]+$/.test(name)) {
-				out[sid] = { name, title: typeof title === "string" ? title : name };
+				const argHint = (v as Record<string, unknown>).argHint;
+				out[sid] = {
+					name,
+					title: typeof title === "string" ? title : name,
+					...(typeof argHint === "string" ? { argHint } : {}),
+				};
 			}
 		}
 		return out;
@@ -70,7 +86,11 @@ export function loadChip(sessionId: string): CommandChip | null {
 export function saveChip(sessionId: string, chip: CommandChip | null): void {
 	try {
 		const map = readAll();
-		if (chip) map[sessionId] = { name: chip.name, title: chip.title };
+		if (chip) map[sessionId] = {
+				name: chip.name,
+				title: chip.title,
+				...(chip.argHint ? { argHint: chip.argHint } : {}),
+			};
 		else delete map[sessionId];
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
 	} catch {
