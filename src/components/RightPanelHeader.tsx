@@ -382,7 +382,9 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 						<span>新建终端</span>
 					</button>
 					<div className="my-1 border-t border-[var(--border-divider)]" />
-					{PRIMARY_TABS.map((tab) => {
+					{/* 计划 is not a manual option: plan mode auto-opens it
+					    (see Composer / /plan). */}
+					{PRIMARY_TABS.filter((tab) => tab.id !== "plan").map((tab) => {
 						const Icon = tab.icon;
 						const badge = tabBadges[tab.id] ?? 0;
 						const isOpen = openRightTabs.includes(tab.id);

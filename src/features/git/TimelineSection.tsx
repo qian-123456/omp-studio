@@ -208,7 +208,7 @@ function CommitRow({
 				>
 					<span
 						className={clsx(
-							"line-clamp-2 text-xs leading-[18px] transition-colors",
+							"break-words text-xs leading-[18px] transition-colors",
 							parsed.kind === "merge"
 								? "text-neutral-500"
 								: expanded
