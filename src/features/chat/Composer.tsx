@@ -174,7 +174,18 @@ import { SlashMenu } from "./slash/SlashMenu";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
 import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
-import { loadChip, saveChip, serializeChip, type CommandChip } from "./slash/chip";
+import {
+	chipLiteral,
+	findChipRange,
+	inlineChipRange,
+	insertChipAt,
+	isSkillChip,
+	loadChip,
+	saveChip,
+	serializeChip,
+	shiftChipOffset,
+	type CommandChip,
+} from "./slash/chip";
 import { CommandChipBadge } from "./slash/CommandChip";
 import { requestTakeover } from "../sessions/sessionActions";
 import { ContextPillBar, WorkspacePickerPopover } from "./ContextPillBar";
@@ -257,7 +268,6 @@ export function Composer({
 	);
 	const setDraft = useComposer((s) => s.setDraft);
 	const clearDraft = useComposer((s) => s.clearDraft);
-	const setText = (nextText: string) => setDraft(sessionId, nextText);
 
 	// Command chip: an atomic `/name` pinned to the input start; the draft
 	// holds only its arguments and `serializeChip` restores `/name args` on
@@ -274,6 +284,28 @@ export function Composer({
 	useEffect(() => {
 		setChipState(loadChip(sessionId));
 	}, [sessionId]);
+	// Inline (skill) chips keep their literal in the draft; every draft edit
+	// shifts the recorded offset, and an edit that breaks the literal drops
+	// the chip (the text stays as plain text).
+	const setText = (nextText: string) => {
+		if (chip?.offset !== undefined) {
+			const prev = useComposer.getState().drafts[sessionId] ?? "";
+			const offset = shiftChipOffset(prev, nextText, chip.offset, chipLiteral(chip).length);
+			const moved = { ...chip, offset };
+			if (!inlineChipRange(moved, nextText)) setChip(null);
+			else if (offset !== chip.offset) setChip(moved);
+		}
+		setDraft(sessionId, nextText);
+	};
+	const inlineRange = useMemo(() => inlineChipRange(chip, text), [chip, text]);
+	const legacyChip = chip !== null && chip.offset === undefined;
+	// Draft changed behind our back (restore, insertText, session switch):
+	// re-anchor to the nearest intact literal or drop the chip.
+	useEffect(() => {
+		if (!chip || chip.offset === undefined || inlineRange) return;
+		const found = findChipRange(chip, text, chip.offset);
+		setChip(found ? { ...chip, offset: found.start } : null);
+	}, [chip, text, inlineRange, setChip]);
 	// Measured overlay width → text-indent on textarea + mirrors so typed
 	// args start right after the chip.
 	const chipElRef = useRef<HTMLSpanElement>(null);
@@ -285,7 +317,7 @@ export function Composer({
 		const ro = new ResizeObserver(() => setChipIndent(el.offsetWidth + 6));
 		ro.observe(el);
 		return () => ro.disconnect();
-	}, [chip]);
+	}, [chip, legacyChip]);
 	const privacy = useComposerPrivacy(sessionId, text);
 	const privacyEntries = usePrivacy((s) => s.entries);
 	const libraryCandidates = useMemo(
@@ -572,8 +604,10 @@ export function Composer({
 	// Slash token at cursor position (opens the command menu)
 	const slashToken = useMemo(() => {
 		if (menuDismissed) return null;
+		// The chip's own `/skill:x` literal must not reopen the menu.
+		if (inlineRange && cursorPos > inlineRange.start && cursorPos <= inlineRange.end) return null;
 		return getSlashToken(text, cursorPos);
-	}, [text, cursorPos, menuDismissed]);
+	}, [text, cursorPos, menuDismissed, inlineRange]);
 
 	/** True when the composer holds text outside the `/query` token —
 	 * hides `requiresEmptyComposer` commands. */
@@ -733,6 +767,27 @@ export function Composer({
 	const selectSlashItem = (item: SlashMenuItem) => {
 		if (!slashToken) return;
 		setArgHintLine(null);
+		if (item.argHint && isSkillChip({ name: item.name, title: "" })) {
+			// Skill: the token lives right where `/query` was typed.
+			const next = insertChipAt(
+				{ name: item.name, title: item.title || item.name, argHint: item.argHint },
+				text,
+				slashToken.start,
+				slashToken.end,
+			);
+			// Replace any previous inline chip (its literal stays as plain text).
+			setChip(next.chip);
+			setDraft(sessionId, next.text);
+			setCursorPos(next.caret);
+			setMenuDismissed(true);
+			setTimeout(() => {
+				if (taRef.current) {
+					taRef.current.focus();
+					taRef.current.setSelectionRange(next.caret, next.caret);
+				}
+			}, 0);
+			return;
+		}
 		if (item.argHint) {
 			const before = text.slice(0, slashToken.start);
 			const after = text.slice(slashToken.end);
@@ -779,7 +834,7 @@ export function Composer({
 		// Privacy: replace marked / auto / accepted ranges with placeholders.
 		// The draft and local history keep the real text; everything sent is masked.
 		const maskedRaw = maskText(raw, privacy.highlights);
-		const trimmedMasked = serializeChip(chip, maskedRaw).trim();
+		const trimmedMasked = serializeChip(chip, maskedRaw, inlineRange ? "fuzzy" : "exact").trim();
 		const sentSecrets = replacedEntries(privacy.highlights);
 		const sessionEntryIds = privacy.sessionEntryIds;
 		const markScopes = privacy.draft.scopes;
@@ -1267,10 +1322,14 @@ export function Composer({
 	// Atomic caret targets: image + file tokens share navigation/deletion.
 	const tokenRanges = useMemo(
 		() =>
-			[...getImageTokenRanges(text), ...getFileTokenRanges(text)].sort(
-				(a, b) => a.start - b.start,
-			),
-		[text],
+			[
+				...getImageTokenRanges(text),
+				...getFileTokenRanges(text),
+				...(inlineRange && chip
+					? [{ ...inlineRange, num: 0, token: chipLiteral(chip) }]
+					: []),
+			].sort((a, b) => a.start - b.start),
+		[text, inlineRange, chip],
 	);
 
 	/** Apply a list edit through `execCommand` so the browser keeps native
@@ -1328,7 +1387,24 @@ export function Composer({
 			}
 		}
 		// Command chip: one Backspace at the start of the args deletes it whole.
-		if (e.key === "Backspace" && chip && !e.shiftKey && !e.metaKey && !e.altKey) {
+		if (e.key === "Backspace" && inlineRange && !e.shiftKey && !e.metaKey && !e.altKey) {
+			const ta = taRef.current;
+			if (ta && ta.selectionStart === ta.selectionEnd) {
+				const pos = ta.selectionStart;
+				const spaceAfter = text[inlineRange.end] === " ";
+				if (pos === inlineRange.end || (spaceAfter && pos === inlineRange.end + 1)) {
+					e.preventDefault();
+					const cutEnd = spaceAfter ? inlineRange.end + 1 : inlineRange.end;
+					const nextText = text.slice(0, inlineRange.start) + text.slice(cutEnd);
+					setChip(null);
+					setDraft(sessionId, nextText);
+					setCursorPos(inlineRange.start);
+					setTimeout(() => ta.setSelectionRange(inlineRange.start, inlineRange.start), 0);
+					return;
+				}
+			}
+		}
+		if (e.key === "Backspace" && legacyChip && !e.shiftKey && !e.metaKey && !e.altKey) {
 			const ta = taRef.current;
 			if (ta && ta.selectionStart === 0 && ta.selectionEnd === 0) {
 				e.preventDefault();
@@ -1690,7 +1766,7 @@ export function Composer({
 						text={text}
 						taRef={taRef}
 						privacy={privacy}
-						indent={chipIndent}
+						indent={legacyChip ? chipIndent : 0}
 					/>
 					{hasInlineTokens && (
 						<div
@@ -1702,7 +1778,7 @@ export function Composer({
 								wordBreak: "break-word",
 							}}
 						>
-							{chip && (
+							{legacyChip && chip && (
 								<span
 									ref={chipElRef}
 									className="mr-[6px] inline-block h-[21px] align-top text-[13px] leading-[21px]"
@@ -1710,7 +1786,25 @@ export function Composer({
 									<CommandChipBadge chip={chip} />
 								</span>
 							)}
-							{renderHighlightedText(text)}
+							{inlineRange && chip ? (
+								<>
+									{renderHighlightedText(text.slice(0, inlineRange.start))}
+									<span className="relative inline-block whitespace-pre align-top">
+										<span className="invisible">{chipLiteral(chip)}</span>
+										<span className="absolute inset-y-0 left-0 flex items-center overflow-hidden">
+											<CommandChipBadge chip={chip} />
+										</span>
+									</span>
+									{renderHighlightedText(text.slice(inlineRange.end))}
+									{text.slice(inlineRange.end).trim() === "" && (
+										<span className="text-[var(--text-30,var(--text-dim))]">
+											{chip.argHint ?? findSlashCommand(chip.name)?.argHint ?? "<参数>"}
+										</span>
+									)}
+								</>
+							) : (
+								renderHighlightedText(text)
+							)}
 						</div>
 					)}
 					<textarea
@@ -1814,13 +1908,13 @@ export function Composer({
 						onBlur={() => setTaFocused(false)}
 						rows={1}
 						placeholder={
-							chip && !text
+							legacyChip && !text
 								? (chip.argHint ?? findSlashCommand(chip.name)?.argHint ?? "<参数>")
 								: streaming
 									? "输入后续消息…"
 									: "输入消息，/ 命令，@ 引用文件"
 						}
-						style={{ outline: "none", boxShadow: "none", textIndent: chipIndent }}
+						style={{ outline: "none", boxShadow: "none", textIndent: legacyChip ? chipIndent : 0 }}
 						className={clsx(
 							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]",
 							hasInlineTokens

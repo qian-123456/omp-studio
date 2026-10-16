@@ -62,6 +62,8 @@ import {
 } from "./messageTrace";
 import { abortTurn, sendPrompt } from "./send";
 import { CommandOutputList } from "./slash/CommandOutputList";
+import { parseLeadingCommand } from "./slash/chip";
+import { CommandChipBadge } from "./slash/CommandChip";
 import { RetryNoticeList } from "./RetryNoticeList";
 import {
 	formatDurationCompact,
@@ -133,6 +135,24 @@ function renderUserTextWithChips(
 			"",
 		)
 		.trim();
+	const parts: React.ReactNode[] = [];
+	// Leading `/skill:x` (or known command) → same token the composer shows.
+	const lead = parseLeadingCommand(cleaned);
+	if (lead) {
+		parts.push(
+			<span key="lead-cmd" className="mr-1.5 inline-block align-baseline">
+				<CommandChipBadge chip={lead.chip} />
+			</span>,
+		);
+		return [...parts, ...renderUserTextWithChipsBody(lead.rest, onOpen)];
+	}
+	return renderUserTextWithChipsBody(cleaned, onOpen);
+}
+
+function renderUserTextWithChipsBody(
+	cleaned: string,
+	onOpen: (markerNum: number) => void,
+): React.ReactNode[] {
 	const parts: React.ReactNode[] = [];
 	// Merge image + file markers, ordered by position.
 	const markers: Array<{ at: number; len: number; kind: "img" | "file"; m: RegExpMatchArray }> = [];

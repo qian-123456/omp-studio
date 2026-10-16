@@ -83,3 +83,78 @@ describe("skill chip", () => {
 		expect(loadChip("sk1")).toEqual(skill);
 	});
 });
+
+import { findChipRange, inlineChipRange, insertChipAt, parseLeadingCommand, shiftChipOffset } from "./chip";
+
+describe("inline skill chip (offset model)", () => {
+	const base = { name: "skill:grill-me", title: "grill-me", argHint: "arguments" };
+	const lit = "/skill:grill-me";
+
+	it("inserts the token where the /query was typed", () => {
+		const text = "long text here /gri";
+		const r = insertChipAt(base, text, 15, text.length);
+		expect(r.text).toBe(`long text here ${lit} `);
+		expect(r.chip.offset).toBe(15);
+		expect(r.caret).toBe(r.text.length);
+		expect(inlineChipRange(r.chip, r.text)).toEqual({ start: 15, end: 15 + lit.length });
+	});
+
+	it("does not add a second space when whitespace follows", () => {
+		const r = insertChipAt(base, "a /g b", 2, 4);
+		expect(r.text).toBe(`a ${lit} b`);
+	});
+
+	it("serializes token to the front, joining the remaining text", () => {
+		const c = { ...base, offset: 5 };
+		expect(serializeChip(c, `hello ${lit} world`)).toBe("/skill:grill-me hello world");
+		expect(serializeChip({ ...base, offset: 6 }, `hello\n${lit} world`)).toBe(
+			"/skill:grill-me hello\nworld",
+		);
+		expect(serializeChip({ ...base, offset: 0 }, `${lit} `)).toBe("/skill:grill-me");
+		expect(serializeChip({ ...base, offset: 4 }, `abc ${lit}`)).toBe("/skill:grill-me abc");
+	});
+
+	it("fuzzy locate tolerates shifted offsets (masked text)", () => {
+		const c = { ...base, offset: 20 };
+		expect(serializeChip(c, `[X] ${lit} y`)).toBe(`/skill:grill-me [X] ${lit} y`);
+		expect(serializeChip(c, `[X] ${lit} y`, "fuzzy")).toBe("/skill:grill-me [X] y");
+		expect(findChipRange(c, `a ${lit} ${lit}`, 100)?.start).toBe(`a ${lit} `.length);
+	});
+
+	it("shifts the offset for edits before, keeps it for edits after", () => {
+		const L = lit.length;
+		const prev = `ab ${lit} cd`;
+		expect(shiftChipOffset(prev, `XXab ${lit} cd`, 3, L)).toBe(5); // insert before
+		expect(shiftChipOffset(prev, `b ${lit} cd`, 3, L)).toBe(2); // delete before
+		expect(shiftChipOffset(prev, `ab ${lit} cdEF`, 3, L)).toBe(3); // edit after
+		expect(shiftChipOffset(prev, `ab ${lit}X cd`, 3, L)).toBe(3); // at literal end
+		expect(shiftChipOffset(prev, `abX${lit} cd`.replace("abX", "ab X"), 3, L)).toBe(4); // insert at offset
+		expect(shiftChipOffset(prev, "ab /skill: cd", 3, L)).toBe(3); // overlap → collapses
+	});
+
+	it("invalidates when the literal is broken or glued to a word", () => {
+		const c = { ...base, offset: 3 };
+		expect(inlineChipRange(c, `ab ${lit} cd`)).not.toBeNull();
+		expect(inlineChipRange(c, `ab ${lit}x cd`)).toBeNull();
+		expect(inlineChipRange(c, "ab /skill:grill cd")).toBeNull();
+	});
+
+	it("persists the offset", () => {
+		saveChip("off1", { ...base, offset: 7 });
+		expect(loadChip("off1")).toEqual({ ...base, offset: 7 });
+	});
+});
+
+describe("parseLeadingCommand", () => {
+	it("splits a leading skill command from its text", () => {
+		const r = parseLeadingCommand("/skill:grill-me 那你先给我做个计划");
+		expect(r?.chip.name).toBe("skill:grill-me");
+		expect(r?.rest).toBe("那你先给我做个计划");
+	});
+	it("handles bare skill and ignores plain text / unknown commands", () => {
+		expect(parseLeadingCommand("/skill:x")?.rest).toBe("");
+		expect(parseLeadingCommand("hello /skill:x")).toBeNull();
+		expect(parseLeadingCommand("/definitely-not-a-command a")).toBeNull();
+		expect(parseLeadingCommand("/skill:")).toBeNull();
+	});
+});
