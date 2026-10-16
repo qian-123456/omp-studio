@@ -4,6 +4,7 @@ import {
 	ensureTokens,
 	insertImages,
 	reconcileDoc,
+	removeImage,
 	splitTokens,
 	storedToDoc,
 	toComposerText,
@@ -45,6 +46,13 @@ describe("reconcileDoc", () => {
 
 	it("drops out-of-range tokens", () => {
 		expect(reconcileDoc({ text: "x 🖼️ #5", images: ["/a"] })).toEqual({ text: "x ", images: [] });
+	});
+});
+
+describe("removeImage", () => {
+	it("drops all tokens of the image and renumbers", () => {
+		const doc = { text: "a 🖼️ #1 b 🖼️ #2 🖼️ #1", images: ["/a", "/b"] };
+		expect(removeImage(doc, 1)).toEqual({ text: "a  b 🖼️ #1 ", images: ["/b"] });
 	});
 });
 

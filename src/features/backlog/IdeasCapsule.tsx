@@ -36,12 +36,13 @@ import { useUi } from "../../stores/ui";
 import { useSidebarStore } from "../sessions/sidebarStore";
 import { useBacklog } from "./backlogStore";
 import { IdeaEditor, type IdeaEditorHandle, IdeaTextView } from "./IdeaEditor";
-import { useImageAttach } from "./IdeaImages";
+import { ImageThumbs, useImageAttach } from "./IdeaImages";
 import {
 	docToStored,
 	ensureTokens,
 	insertImages,
 	reconcileDoc,
+	removeImage,
 	refImagePaths,
 	storedToDoc,
 	toComposerText,
@@ -448,6 +449,13 @@ function IdeasPanel({
 						记录
 					</button>
 				</div>
+				<ImageThumbs
+					paths={doc.images}
+					onRemove={(p) => {
+						const r = removeImage(doc, doc.images.indexOf(p) + 1);
+						setDraft({ text: r.text, images: r.images });
+					}}
+				/>
 				<div className="flex items-center gap-1.5">
 					{KINDS.map((k) => {
 						const meta = KIND_META[k];

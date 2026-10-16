@@ -1715,32 +1715,6 @@ export function Composer({
 					</div>
 				)}
 
-				{/* Attached image cards + file chips (Codex style) */}
-				{(composerImages.length > 0 || composerFiles.length > 0) && (
-					<div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-2.5">
-						{composerImages.map((img, i) => (
-							<AttachmentThumb
-								key={img.id || `${i + 1}-${img.path}`}
-								path={img.path}
-								index={i + 1}
-								showIndex
-								variant="strip"
-								onOpen={() => setPreviewImageIndex(i)}
-								onRemove={() => removeImageByIndex(i)}
-							/>
-						))}
-						{composerFiles.map((f, i) => (
-							<FileChip
-								key={f.id || `${i + 1}-${f.path}`}
-								path={f.path}
-								index={i + 1}
-								name={f.name}
-								variant="strip"
-								onRemove={() => removeFileByIndex(i)}
-							/>
-						))}
-					</div>
-				)}
 				{previewImageIndex !== null && (
 					<ImagePreviewModal
 						images={composerImages.map((img, i) => ({
@@ -1923,6 +1897,33 @@ export function Composer({
 						)}
 					/>
 				</div>
+
+				{/* Attached image thumbnails + file chips, below the input (click to enlarge) */}
+				{(composerImages.length > 0 || composerFiles.length > 0) && (
+					<div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-1 pb-1.5">
+						{composerImages.map((img, i) => (
+							<AttachmentThumb
+								key={img.id || `${i + 1}-${img.path}`}
+								path={img.path}
+								index={i + 1}
+								showIndex
+								variant="strip"
+								onOpen={() => setPreviewImageIndex(i)}
+								onRemove={() => removeImageByIndex(i)}
+							/>
+						))}
+						{composerFiles.map((f, i) => (
+							<FileChip
+								key={f.id || `${i + 1}-${f.path}`}
+								path={f.path}
+								index={i + 1}
+								name={f.name}
+								variant="strip"
+								onRemove={() => removeFileByIndex(i)}
+							/>
+						))}
+					</div>
+				)}
 
 				{/* Arg hint shown after picking `/name <arg>` from the menu. */}
 				{argHintLine && (

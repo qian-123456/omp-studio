@@ -89,6 +89,12 @@ export function reconcileDoc(doc: TokenDoc): TokenDoc {
 	return { text, images: keep.map((n) => doc.images[n - 1]) };
 }
 
+/** Remove image `n` (1-based): delete its tokens, then renumber the rest. */
+export function removeImage(doc: TokenDoc, n: number): TokenDoc {
+	const text = doc.text.replace(imageTokenRegex(), (m, k: string) => (Number(k) === n ? "" : m));
+	return reconcileDoc({ text, images: doc.images });
+}
+
 /** Paths of `image` refs (legacy storage), in order. */
 export const refImagePaths = (refs: readonly BacklogRef[]): string[] =>
 	refs.flatMap((r) => (r.kind === "image" && r.path ? [r.path] : []));
