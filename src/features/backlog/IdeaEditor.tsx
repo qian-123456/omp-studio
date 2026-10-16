@@ -78,6 +78,7 @@ export const IdeaEditor = forwardRef<
 				value={doc.text}
 				autoFocus={autoFocus}
 				spellCheck={false}
+				rows={1}
 				placeholder={placeholder}
 				onChange={(e) => onChange({ text: e.target.value, images: doc.images })}
 				onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
