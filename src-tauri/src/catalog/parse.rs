@@ -284,6 +284,11 @@ pub fn parse_tail(bytes: &[u8]) -> TailInfo {
 
 /// First user text (≤40 chars) from the head of the file — title fallback.
 pub fn read_first_user(path: &Path) -> Option<String> {
+    read_first_user_text(path).map(|t| snippet(&t, 40))
+}
+
+/// Full cleaned text of the first user message in the head of the file.
+pub fn read_first_user_text(path: &Path) -> Option<String> {
     let f = File::open(path).ok()?;
     let mut buf = Vec::new();
     f.take(FIRST_USER_BYTES).read_to_end(&mut buf).ok()?;
@@ -306,7 +311,7 @@ pub fn read_first_user(path: &Path) -> Option<String> {
         let raw = content_text(msg.get("content"));
         let clean = strip_image_markers(strip_system_reminders(&raw));
         if !clean.is_empty() {
-            return Some(snippet(&clean, 40));
+            return Some(clean);
         }
     }
     None

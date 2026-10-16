@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub const SIDE_CHAT: &str = include_str!("../prompts/side_chat.md");
 pub const SIDE_CHAT_BOUNDARY: &str = include_str!("../prompts/side_chat_boundary.md");
 pub const CONTEXT_ROUTE: &str = include_str!("../prompts/context_route.md");
+pub const SESSION_TITLE: &str = include_str!("../prompts/session_title.md");
 pub const SUMMARY: &str = include_str!("../prompts/summary.md");
 pub const DIAGNOSE: &str = include_str!("../prompts/diagnose.md");
 pub const BACKLOG_DISPATCH: &str = include_str!("../prompts/backlog_dispatch.md");
@@ -62,6 +63,7 @@ mod tests {
         for t in [
             SIDE_CHAT,
             CONTEXT_ROUTE,
+            SESSION_TITLE,
             SUMMARY,
             DIAGNOSE,
             BACKLOG_DISPATCH,

@@ -2,6 +2,7 @@
 //! Cross-module API per docs/ARCHITECTURE.md §9.
 #![allow(dead_code)]
 
+mod autotitle;
 pub mod commands;
 mod frame;
 #[cfg(test)]
@@ -55,6 +56,7 @@ pub fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
 pub fn init(state: AppState) {
     privacy_ext::install();
     crate::visualize::install();
+    autotitle::spawn(state.clone());
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
