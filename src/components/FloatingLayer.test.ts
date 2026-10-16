@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computePosition } from "./FloatingLayer";
+import { computePosition, Z_LAYER } from "./FloatingLayer";
 
 function makeRect(x: number, y: number, width: number, height: number): DOMRect {
 	return {
@@ -84,5 +84,14 @@ describe("computePosition centered surfaces", () => {
 		expect(pos.maxHeight).toBe(692);
 		expect(pos.top).toBe(vp.top);
 		expect(pos.top + pos.maxHeight).toBe(vp.bottom);
+	});
+});
+
+describe("Z_LAYER stacking", () => {
+	it("keeps the image lightbox above popover, menu and hovercard but below toast", () => {
+		expect(Z_LAYER.lightbox).toBeGreaterThan(Z_LAYER.hovercard);
+		expect(Z_LAYER.lightbox).toBeGreaterThan(Z_LAYER.menu);
+		expect(Z_LAYER.lightbox).toBeGreaterThan(Z_LAYER.popover);
+		expect(Z_LAYER.lightbox).toBeLessThan(Z_LAYER.toast);
 	});
 });

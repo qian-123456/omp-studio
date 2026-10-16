@@ -26,6 +26,8 @@ export const Z_LAYER = {
 	popover: 60,
 	menu: 65,
 	hovercard: 70,
+	/** Full-screen image lightbox: must cover every popover/menu/hovercard that spawned it. */
+	lightbox: 80,
 	toast: 100,
 } as const;
 export type ZLayer = keyof typeof Z_LAYER;
@@ -206,6 +208,8 @@ export interface FloatingLayerProps {
 	children: ReactNode;
 }
 
+const LIGHTBOX_SELECTOR = '[data-layer="lightbox"]';
+
 /** Modal surfaces: FloatingLayer modal tier plus any ARIA modal dialog. */
 export const MODAL_SELECTOR = '[data-layer="modal"], [aria-modal="true"]';
 
@@ -247,12 +251,16 @@ export function FloatingLayer({
 		if (!anchor || !onDismiss) return;
 		const onDown = (e: MouseEvent) => {
 			const t = e.target as Node;
+			// Clicks inside an open lightbox (portaled outside this layer) must not dismiss the layer that spawned it.
+			if (t instanceof Element && t.closest(LIGHTBOX_SELECTOR)) return;
 			if (ref.current?.contains(t)) return;
 			if (ignoreRefs?.some((r) => r.current?.contains(t))) return;
 			onDismiss();
 		};
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
+				// Escape closes the topmost lightbox first; it handles the key itself.
+				if (document.querySelector(LIGHTBOX_SELECTOR)) return;
 				e.stopPropagation();
 				onDismiss();
 			}

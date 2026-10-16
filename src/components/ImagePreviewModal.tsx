@@ -102,8 +102,11 @@ export function ImagePreviewModal({
 
 	return createPortal(
 		<div
+			data-layer="lightbox"
+			role="dialog"
+			aria-modal="true"
 			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4 select-none"
-			style={{ zIndex: Z_LAYER.modal }}
+			style={{ zIndex: Z_LAYER.lightbox }}
 			onClick={onClose}
 			onWheel={handleWheel}
 			onTouchStart={onTouchStart}
