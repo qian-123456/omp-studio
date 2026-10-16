@@ -136,9 +136,16 @@ export function IdeaTextView({
 	const [overflowing, setOverflowing] = useState(false);
 	const pRef = useRef<HTMLParagraphElement>(null);
 	// Measure only while clamped; once expanded keep the toggle so it can collapse again.
+	// Re-measure on every size change: a scrollbar appearing or the popover resizing re-wraps
+	// the text after mount, and a stale one-shot measurement leaves a clamp ellipsis with no toggle.
 	useLayoutEffect(() => {
 		const p = pRef.current;
-		if (p && !expanded) setOverflowing(p.scrollHeight > p.clientHeight + 1);
+		if (!p || expanded) return;
+		const measure = () => setOverflowing(p.scrollHeight > p.clientHeight + 1);
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(p);
+		return () => ro.disconnect();
 	}, [doc.text, expanded]);
 	return (
 		<div>
