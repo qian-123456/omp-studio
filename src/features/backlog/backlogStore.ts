@@ -12,7 +12,9 @@ export interface BacklogDraft {
 
 export interface BacklogEditBuffer {
 	id: string;
+	/** Editable text: image tokens (`🖼️ #N`) index into `images`. */
 	text: string;
+	images?: string[];
 }
 
 const DRAFT_KEY = "ompws:backlog-draft";
@@ -53,7 +55,10 @@ function readEditBuffer(): BacklogEditBuffer | null {
 		const raw = localStorage.getItem(EDIT_KEY);
 		if (!raw) return null;
 		const v = JSON.parse(raw) as Partial<BacklogEditBuffer>;
-		return typeof v.id === "string" && typeof v.text === "string" ? { id: v.id, text: v.text } : null;
+		if (typeof v.id !== "string" || typeof v.text !== "string") return null;
+		return Array.isArray(v.images)
+			? { id: v.id, text: v.text, images: v.images.filter((p): p is string => typeof p === "string") }
+			: { id: v.id, text: v.text };
 	} catch {
 		return null;
 	}

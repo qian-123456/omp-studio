@@ -16,7 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { NativeSelect } from "../../components/NativeSelect";
-import type { BacklogItem, BacklogKind, BacklogRef, BacklogStatus } from "../../lib/contracts";
+import type { BacklogItem, BacklogKind, BacklogStatus } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import {
 	backlogAdd,
@@ -35,14 +35,24 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useSidebarStore } from "../sessions/sidebarStore";
 import { useBacklog } from "./backlogStore";
-import { AddImageButton, ImageThumbs, useImageAttach } from "./IdeaImages";
+import { IdeaEditor, type IdeaEditorHandle, IdeaTextView } from "./IdeaEditor";
+import { AddImageButton, useImageAttach } from "./IdeaImages";
+import {
+	docToStored,
+	ensureTokens,
+	insertImages,
+	reconcileDoc,
+	refImagePaths,
+	storedToDoc,
+	toComposerText,
+	type TokenDoc,
+} from "./ideaTokens";
 import {
 	appendToDraft,
 	filterIdeas,
 	formatAddedTime,
 	groupIdeasByProject,
 	type IdeasFilter,
-	ideaImages,
 	linkedSessionStatus,
 	partitionIdeas,
 	projectRoot,
@@ -198,29 +208,31 @@ function IdeasPanel({
 	const setEditBuffer = useBacklog((s) => s.setEditBuffer);
 	const cancelEdit = useBacklog((s) => s.clearEditBuffer);
 	const editingId = editBuffer?.id ?? null;
-	const editText = editBuffer?.text ?? "";
 	const [showFinished, setShowFinished] = useState(false);
 
+	const composerRef = useRef<IdeaEditorHandle>(null);
+	// Drafts saved before inline tokens existed get tokens for their loose images.
+	const doc = useMemo(() => ensureTokens({ text, images }), [text, images]);
 	const attach = useImageAttach((paths) => {
-		const cur = useBacklog.getState().draft.images;
-		setDraft({ images: [...cur, ...paths.filter((p) => !cur.includes(p))] });
+		const d = useBacklog.getState().draft;
+		const r = insertImages(ensureTokens({ text: d.text, images: d.images }), composerRef.current?.caret() ?? d.text.length, paths);
+		composerRef.current?.placeCaret(r.caret);
+		setDraft({ text: r.doc.text, images: r.doc.images });
 	});
 
 	const add = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (isComposing({ key: "Enter" })) return;
-		const trimmed = text.trim();
-		if (!trimmed && images.length === 0) return;
+		const stored = docToStored(doc);
+		if (!stored) {
+			toast.error("先写点内容或粘贴图片再记录");
+			composerRef.current?.placeCaret(doc.text.length);
+			return;
+		}
 		setAdding(true);
 		try {
-			const refs: BacklogRef[] = images.map((path) => ({
-				kind: "image",
-				path,
-				text: null,
-				lines: null,
-				sessionId: null,
-			}));
-			await backlogAdd(trimmed || "（图片）", kind, refs, currentProject);
+			// Images travel inline as `[图片: path]` tags in the text; no image refs.
+			await backlogAdd(stored, kind, [], currentProject);
 			useBacklog.getState().clearDraft();
 			await useBacklog.getState().load();
 		} catch (err) {
@@ -231,13 +243,16 @@ function IdeasPanel({
 	};
 
 	const saveEdit = async (id: string) => {
-		const trimmed = (useBacklog.getState().editBuffer?.text ?? "").trim();
-		if (!trimmed) {
+		const buf = useBacklog.getState().editBuffer;
+		const stored = buf ? docToStored(bufferDoc(buf)) : "";
+		if (!stored) {
 			toast.error("内容不能为空");
 			return;
 		}
 		try {
-			await backlogUpdate(id, { text: trimmed });
+			// Images now live in the text; keep only non-image refs.
+			const refs = (useBacklog.getState().items.find((i) => i.id === id)?.refs ?? []).filter((r) => r.kind !== "image");
+			await backlogUpdate(id, { text: stored, refs });
 			if (useBacklog.getState().editBuffer?.id === id) cancelEdit();
 			await useBacklog.getState().load();
 		} catch (err) {
@@ -250,21 +265,9 @@ function IdeasPanel({
 		try {
 			const composer = useComposer.getState();
 			const existing = composer.drafts[selectedSessionId] ?? "";
-			const imgs = ideaImages(item);
-			let imagePlaceholders = "";
-			if (imgs.length > 0) {
-				const existingParsed = parseInlineImages(existing);
-				const startIdx =
-					existingParsed.length > 0
-						? Math.max(...existingParsed.map((t) => t.index)) + 1
-						: 1;
-				imagePlaceholders = imgs
-					.map((p, i) => `[Image #${startIdx + i}: ${p}]`)
-					.join(" ");
-			}
-			const itemContent = imagePlaceholders
-				? `${item.text} ${imagePlaceholders}`
-				: item.text;
+			const existingParsed = parseInlineImages(existing);
+			const startIdx = existingParsed.length > 0 ? Math.max(...existingParsed.map((t) => t.index)) + 1 : 1;
+			const itemContent = toComposerText(item.text, refImagePaths(item.refs), startIdx);
 			composer.setDraft(selectedSessionId, appendToDraft(existing, itemContent));
 			composer.focusComposer(selectedSessionId);
 			await backlogUpdate(item.id, { status: "dispatched", targetSessionId: selectedSessionId });
@@ -342,25 +345,10 @@ function IdeasPanel({
 							<span className="ml-auto">{renderAdded(item)}</span>
 						</div>
 						{editingId === item.id ? (
-							<input
-								autoFocus
-								value={editText}
-								onChange={(e) => setEditBuffer({ id: item.id, text: e.target.value })}
-								onKeyDown={(e) => {
-									if (isComposing(e)) return;
-									if (e.key === "Enter") void saveEdit(item.id);
-									if (e.key === "Escape") cancelEdit();
-								}}
-								onBlur={() => {
-									// Window lost focus (app switch / reload): keep the buffer.
-									if (document.hasFocus()) cancelEdit();
-								}}
-								className="w-full rounded border border-sky-500 bg-[var(--bg)] px-1.5 py-0.5 text-[var(--text)] focus:outline-none"
-							/>
+							<EditIdeaBox id={item.id} onSave={() => void saveEdit(item.id)} onCancel={cancelEdit} />
 						) : (
-							<p className="break-words text-[var(--text)]">{item.text}</p>
+							<IdeaTextView stored={item.text} refImages={refImagePaths(item.refs)} className="text-[var(--text)]" />
 						)}
-						<ImageThumbs paths={ideaImages(item)} size="h-10 w-10" />
 					</div>
 				</div>
 				<div className="mt-1 flex items-center justify-end gap-0.5">
@@ -389,7 +377,8 @@ function IdeasPanel({
 					<button
 						type="button"
 						onClick={() => {
-							setEditBuffer({ id: item.id, text: item.text });
+							const d = storedToDoc(item.text, refImagePaths(item.refs));
+							setEditBuffer({ id: item.id, text: d.text, images: d.images });
 						}}
 						className={iconBtn}
 						title="编辑"
@@ -418,28 +407,38 @@ function IdeasPanel({
 				{...attach.dropProps}
 				className={`space-y-2 rounded-lg ${attach.dragging ? "outline-dashed outline-1 outline-sky-500" : ""}`}
 			>
-				<div className="flex items-center gap-1.5">
-					<input
-						value={text}
-						onChange={(e) => setDraft({ text: e.target.value })}
-						onPaste={attach.onPaste}
-						onKeyDown={(e) => {
-							// Enter that commits an IME candidate must not submit the form.
-							if (isComposing(e) && e.key === "Enter") e.preventDefault();
-						}}
-						placeholder="随手记一条，可粘贴/拖入图片…"
-						className="flex-1 rounded-lg border border-[var(--border-divider)] bg-[var(--bg)] px-2.5 py-1.5 text-[var(--text)] placeholder:text-[var(--text-dim)] focus:border-sky-500 focus:outline-none"
-					/>
+				<div className="flex items-start gap-1.5">
+					<div className="min-w-0 flex-1">
+						<IdeaEditor
+							ref={composerRef}
+							doc={doc}
+							onChange={(d) => {
+								const r = reconcileDoc(d);
+								setDraft({ text: r.text, images: r.images });
+							}}
+							onPaste={attach.onPaste}
+							onKeyDown={(e) => {
+								// Enter submits; Shift+Enter inserts a newline; IME-commit Enter does neither.
+								if (e.key !== "Enter" || e.shiftKey) return;
+								e.preventDefault();
+								if (isComposing(e)) return;
+								e.currentTarget.form?.requestSubmit();
+							}}
+							placeholder="随手记一条，可粘贴/拖入图片…（Shift+Enter 换行）"
+							minHeight={64}
+							maxHeight={200}
+							boxClass="rounded-lg border-[var(--border-divider)] focus:border-sky-500"
+						/>
+					</div>
 					<button
 						type="submit"
-						disabled={adding || (!text.trim() && images.length === 0)}
-						className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1.5 font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+						disabled={adding}
+						className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-3 py-1.5 font-medium text-white shadow-sm transition-colors hover:bg-sky-500 active:bg-sky-700 disabled:cursor-not-allowed disabled:bg-[var(--bg-hover)] disabled:text-[var(--text-dim)]"
 					>
 						{adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
 						记录
 					</button>
 				</div>
-				<ImageThumbs paths={images} onRemove={(p) => setDraft({ images: images.filter((x) => x !== p) })} />
 				<div className="flex items-center gap-1.5">
 					{KINDS.map((k) => {
 						const meta = KIND_META[k];
@@ -576,7 +575,7 @@ function IdeasPanel({
 								<div key={item.id} className="mt-1 rounded px-1 py-1 opacity-70">
 									<div className="flex items-center gap-2">
 										<span className="font-mono text-[10px] font-semibold text-[var(--text-40)]">#{index + 1}</span>
-										<span className="min-w-0 flex-1 truncate text-[var(--text-dim)] line-through">{item.text}</span>
+										<span className="min-w-0 flex-1 truncate text-[var(--text-dim)] line-through">{storedToDoc(item.text, refImagePaths(item.refs)).text}</span>
 										{renderAdded(item)}
 										<button
 											type="button"
@@ -591,12 +590,62 @@ function IdeasPanel({
 											<Trash2 className="h-3 w-3" />
 										</button>
 									</div>
-									<ImageThumbs paths={ideaImages(item)} size="h-8 w-8" />
 								</div>
 							))}
 					</div>
 				)}
 			</div>
+		</div>
+	);
+}
+
+/** Edit buffer → editable doc (buffers saved before inline tokens carry raw `[图片: path]` tags). */
+function bufferDoc(buf: { text: string; images?: string[] }): TokenDoc {
+	return buf.images ? ensureTokens({ text: buf.text, images: buf.images }) : storedToDoc(buf.text);
+}
+
+/** In-place editor for one idea: auto-growing, Enter saves, Esc cancels, paste/drop adds image tokens. */
+function EditIdeaBox({ id, onSave, onCancel }: { id: string; onSave: () => void; onCancel: () => void }) {
+	const buf = useBacklog((s) => s.editBuffer);
+	const setEditBuffer = useBacklog((s) => s.setEditBuffer);
+	const ref = useRef<IdeaEditorHandle>(null);
+	const attach = useImageAttach((paths) => {
+		const b = useBacklog.getState().editBuffer;
+		if (!b || b.id !== id) return;
+		const r = insertImages(bufferDoc(b), ref.current?.caret() ?? b.text.length, paths);
+		ref.current?.placeCaret(r.caret);
+		setEditBuffer({ id, text: r.doc.text, images: r.doc.images });
+	});
+	if (!buf || buf.id !== id) return null;
+	return (
+		<div {...attach.dropProps} className={`rounded ${attach.dragging ? "outline-dashed outline-1 outline-sky-500" : ""}`}>
+			<IdeaEditor
+				ref={ref}
+				doc={bufferDoc(buf)}
+				autoFocus
+				onChange={(d) => {
+					const r = reconcileDoc(d);
+					setEditBuffer({ id, text: r.text, images: r.images });
+				}}
+				onPaste={attach.onPaste}
+				onKeyDown={(e) => {
+					if (e.key === "Escape") {
+						onCancel();
+						return;
+					}
+					if (e.key !== "Enter" || e.shiftKey) return;
+					e.preventDefault();
+					if (!isComposing(e)) onSave();
+				}}
+				onBlur={() => {
+					// Window lost focus (app switch / reload): keep the buffer.
+					if (document.hasFocus()) onCancel();
+				}}
+				minHeight={52}
+				maxHeight={240}
+				boxClass="rounded border-sky-500"
+			/>
+			<div className="mt-0.5 text-[10px] text-[var(--text-dim)]">Enter 保存 · Shift+Enter 换行 · Esc 取消</div>
 		</div>
 	);
 }

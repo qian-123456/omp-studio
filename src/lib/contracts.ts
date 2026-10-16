@@ -332,6 +332,8 @@ export interface BacklogPatch {
 	kind?: BacklogKind;
 	status?: BacklogStatus;
 	targetSessionId?: string;
+	/** Replaces refs wholesale (used when image tokens are removed while editing). */
+	refs?: BacklogRef[];
 }
 
 export interface GitFileChange {

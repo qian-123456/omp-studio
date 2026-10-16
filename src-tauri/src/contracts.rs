@@ -529,6 +529,8 @@ pub struct BacklogPatch {
     pub kind: Option<BacklogKind>,
     pub status: Option<BacklogStatus>,
     pub target_session_id: Option<String>,
+    /// Replaces the item's refs wholesale (e.g. when an image token is deleted while editing).
+    pub refs: Option<Vec<BacklogRef>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -93,16 +93,20 @@ pub fn update(conn: &Connection, id: &str, patch: &BacklogPatch) -> Result<Backl
     if let Some(t) = &patch.target_session_id {
         item.target_session_id = (!t.is_empty()).then(|| t.clone());
     }
+    if let Some(r) = &patch.refs {
+        item.refs = r.clone();
+    }
     item.updated_at = now();
     conn.execute(
-        "UPDATE backlog SET text = ?2, kind = ?3, status = ?4, target_session_id = ?5, updated_at = ?6 WHERE id = ?1",
+        "UPDATE backlog SET text = ?2, kind = ?3, status = ?4, target_session_id = ?5, updated_at = ?6, refs = ?7 WHERE id = ?1",
         params![
             id,
             item.text,
             enum_str(item.kind),
             enum_str(item.status),
             item.target_session_id,
-            item.updated_at
+            item.updated_at,
+            serde_json::to_string(&item.refs).unwrap_or_else(|_| "[]".into())
         ],
     )
     .map_err(|e| e.to_string())?;

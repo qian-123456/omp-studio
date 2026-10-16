@@ -592,7 +592,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `supervisor_refresh()`
 - `summary_get(session_id, ensure: bool) -> Option<String>`
 - `diagnose_build_prompt(target_session_id) -> String`
-- `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(id) -> String`
+- `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(id) -> String`
 - `notify_test()`
 
 **E — mobile / terminal:**
