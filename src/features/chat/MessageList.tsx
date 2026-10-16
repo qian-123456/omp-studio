@@ -41,7 +41,7 @@ import { PrivacyText } from "../privacy/SecretChip";
 import { AnswerFooter } from "./AnswerFooter";
 import { isShareableAnswer, isShareableUser } from "./share/shareEntries";
 import { useShareSelection } from "./share/shareStore";
-import { AttachmentThumb } from "./ImageChips";
+import { AttachmentThumb, FileChip } from "./ImageChips";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
 	ExecutionDisclosure,
@@ -268,6 +268,16 @@ const UserRow = React.memo(function UserRow({
 		setCollapsible(el.scrollHeight > el.clientHeight + 1);
 	}, [userText]);
 
+	const fileAttachments = useMemo(() => {
+		const seen = new Set<string>();
+		const out: Array<{ index: number; path: string }> = [];
+		for (const t of parseInlineFiles(rawText)) {
+			if (!t.path || seen.has(t.path)) continue;
+			seen.add(t.path);
+			out.push({ index: t.index, path: t.path });
+		}
+		return out;
+	}, [rawText]);
 	// File-attachment markers render as chips even when they're the only content.
 	const hasFileMarkers = useMemo(() => parseInlineFiles(rawText).length > 0, [rawText]);
 	const showBubble = userText.trim().length > 0 || hasFileMarkers;
@@ -276,8 +286,8 @@ const UserRow = React.memo(function UserRow({
 			id={`msg-${item.id}`}
 			className="group/user-row relative flex w-full flex-col items-end gap-1.5 py-1"
 		>
-			{validImages.length > 0 && (
-				<div className="flex max-w-[70%] flex-wrap justify-end gap-1.5">
+			{(validImages.length > 0 || fileAttachments.length > 0) && (
+				<div className="flex max-w-[70%] flex-wrap items-start justify-end gap-1.5">
 					{validImages.map((img, i) => (
 						<AttachmentThumb
 							key={img.id}
@@ -287,6 +297,9 @@ const UserRow = React.memo(function UserRow({
 							variant="bubble"
 							onOpen={() => setPreviewIndex(i)}
 						/>
+					))}
+					{fileAttachments.map((f) => (
+						<FileChip key={`file-${f.path}`} path={f.path} index={f.index} variant="bubble" />
 					))}
 				</div>
 			)}
