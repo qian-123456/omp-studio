@@ -10,6 +10,8 @@ import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import React, { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema, type Options as Schema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkMath from "remark-math";
@@ -272,7 +274,25 @@ const REMARK_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["re
 	remarkCjkFriendly,
 	[remarkMath, { singleDollarTextMath: false }],
 ];
+/** Strict allowlist for model-written inline HTML (details/summary, kbd, sub/sup, mark…).
+ * Runs before katex/highlight so only remark-math / fenced-language classes survive. */
+const SANITIZE_SCHEMA: Schema = {
+	...defaultSchema,
+	tagNames: [...(defaultSchema.tagNames ?? []), "mark"],
+	attributes: {
+		...defaultSchema.attributes,
+		code: [
+			...(defaultSchema.attributes?.code ?? []).filter(
+				(a) => !(Array.isArray(a) && a[0] === "className"),
+			),
+			["className", /^language-./, "math-inline", "math-display"],
+		],
+		details: ["open"],
+	},
+};
 const REHYPE_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]> = [
+	rehypeRaw,
+	[rehypeSanitize, SANITIZE_SCHEMA],
 	[rehypeKatex, { throwOnError: false, strict: false }],
 	rehypeMathBlocks,
 	[rehypeHighlight, { detect: false }],
