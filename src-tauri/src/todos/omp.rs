@@ -165,6 +165,32 @@ pub fn normalize_model_selector(model: &str) -> String {
     }
 }
 
+/// Overlay that turns off the `native` discovery provider for one-shot runs.
+/// That provider is where omp finds user/project MCP servers (and AGENTS.md);
+/// without it a text-only prompt no longer waits on MCP startup or ships every
+/// MCP tool schema to the model. `--no-tools` only covers built-in tools.
+const LIGHT_OVERLAY: &str = "disabledProviders:\n  - native\n";
+
+/// Flags that keep a text-only `omp -p` run from loading extensions, skills,
+/// rules and MCP servers. Model auth and role settings are unaffected.
+pub fn lightweight_args() -> Vec<String> {
+    let mut args: Vec<String> = ["--no-extensions", "--no-skills", "--no-rules"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+    let path = paths::data_dir().join("omp-light.yml");
+    let current = std::fs::read_to_string(&path).ok();
+    let ready = current.as_deref() == Some(LIGHT_OVERLAY)
+        || std::fs::create_dir_all(paths::data_dir())
+            .and_then(|()| std::fs::write(&path, LIGHT_OVERLAY))
+            .is_ok();
+    if ready {
+        args.push("--config".into());
+        args.push(path.to_string_lossy().into_owned());
+    }
+    args
+}
+
 /// Run `omp -p --no-tools --no-session --model <model>` with `prompt` on stdin and
 /// return trimmed stdout.
 pub async fn run_print(
@@ -179,6 +205,7 @@ pub async fn run_print(
     let exe = resolve_binary(&bin, &path);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.args(["-p", "--no-tools", "--no-session", "--no-title"]);
+    cmd.args(lightweight_args());
     if let Some(ext) = crate::providers::try_extension_path() {
         cmd.arg("-e").arg(ext);
     }

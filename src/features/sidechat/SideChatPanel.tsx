@@ -95,6 +95,11 @@ export function SideChatPanel() {
 		const v = selectedId ? s.sessions[selectedId]?.state?.thinkingLevel : undefined;
 		return typeof v === "string" ? v : undefined;
 	});
+	// Parent's live model capabilities (`thinking`): used when inheriting the parent model.
+	const parentLiveThinking = useLive((s) => {
+		const m = selectedId ? s.sessions[selectedId]?.state?.model : undefined;
+		return m && typeof m === "object" ? (m as Record<string, unknown>).thinking : undefined;
+	});
 
 
 	useEffect(() => {
@@ -113,18 +118,7 @@ export function SideChatPanel() {
 	const dedicatedUsable =
 		dedicatedPick.selector !== "" && sideChatSelectorUsable(dedicatedPick.selector, catalog);
 	const dedicatedLabel = dedicatedUsable ? sideChatModelLabel(dedicatedSetting, catalog) : "";
-	const effectiveOption = models.find(
-		(m) => toModelKey(m.provider, m.id) === effective.selector,
-	);
 	const effectiveThinking = thinking || effective.level || parentThinking || "auto";
-	const resolvedLevels = resolveThinkingLevels(
-		undefined,
-		effectiveOption?.thinking,
-		effectiveThinking,
-	);
-	const thinkingLevels = resolvedLevels.length
-		? resolvedLevels
-		: ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
 
 	const parent = selectedId ? sessions[selectedId] : undefined;
 	const children = Object.values(sessions)
@@ -139,6 +133,32 @@ export function SideChatPanel() {
 		() => (effective.selector ? resolveCurrentModel(effective.selector, models) : parentModel),
 		[effective.selector, models, parentModel],
 	);
+	const effectiveOption = models.find(
+		(m) => toModelKey(m.provider, m.id) === activeModel.value,
+	);
+	// Live capabilities only describe the parent's model; use them only when inheriting it.
+	const resolvedLevels = resolveThinkingLevels(
+		effective.selector ? undefined : parentLiveThinking,
+		effectiveOption?.thinking,
+		effectiveThinking,
+	);
+	// Unknown capabilities (role selectors, catalog without `thinking`): offer the
+	// standard ladder instead of a lone current level.
+	const thinkingLevels =
+		resolvedLevels.length > 1
+			? resolvedLevels
+			: Array.from(
+					new Set([
+						"auto",
+						"off",
+						"minimal",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						...resolvedLevels,
+					]),
+				);
 	const effectiveRole = roleIdOf(effective.selector);
 	const baseModelName = effectiveRole
 		? RESOLVABLE_ROLES[effectiveRole]

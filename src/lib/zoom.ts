@@ -1,6 +1,7 @@
 /**
  * Shared UI zoom state, persistence, and keyboard shortcuts (Cmd/Ctrl +/-, Cmd/Ctrl 0).
  */
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useState } from "react";
 
 export const ZOOM_STORAGE_KEY = "ompws:ui-zoom";
@@ -22,11 +23,30 @@ export function readStoredZoom(): number {
 	return DEFAULT_ZOOM;
 }
 
+/**
+ * Inside Tauri the zoom is the webview's native page zoom, NOT CSS `zoom` on
+ * <html>: with CSS zoom, getBoundingClientRect()/clientX report zoomed viewport
+ * px while `position: fixed` left/top/width are multiplied by the zoom again, so
+ * every viewport-anchored overlay (popovers, scroll pills, context menus,
+ * clamping against innerWidth) lands off by (zoom - 1) × its coordinate and
+ * overflows the window edge. Native page zoom keeps one coordinate space.
+ * Outside Tauri (plain browser) CSS zoom remains the only option.
+ */
 export function applyZoom(zoomPercent: number): void {
 	try {
-		const val = `${zoomPercent}%`;
-		// CSS zoom property is supported in WebKit / Chromium
-		(document.documentElement.style as unknown as { zoom: string }).zoom = val;
+		const style = document.documentElement.style as unknown as { zoom: string };
+		if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+			// Keep the inline override: it pins <html> to 100% so the density
+			// presets' stylesheet `zoom` never stacks on top of native zoom.
+			style.zoom = "100%";
+			getCurrentWebview()
+				.setZoom(zoomPercent / 100)
+				.catch(() => {
+					/* webview zoom unavailable; stay unzoomed rather than mis-place overlays */
+				});
+		} else {
+			style.zoom = `${zoomPercent}%`;
+		}
 		localStorage.setItem(ZOOM_STORAGE_KEY, String(zoomPercent));
 	} catch {
 		/* ignore */

@@ -11,6 +11,7 @@
 		"core:window:allow-set-focus",
 		"core:window:allow-set-badge-count",
 		"core:window:allow-start-dragging",
+		"core:webview:allow-set-webview-zoom",
 		"notification:default",
 		"notification:allow-notify",
 		"global-shortcut:default",

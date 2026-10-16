@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { FolderTree, RefreshCw, Undo2 } from "lucide-react";
+import { FolderTree, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GitCommit, GitSummary, TmRun, WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
@@ -419,17 +419,6 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 							>
 								{selectedName ?? basename(selected)}
 							</span>
-							{selected !== top && (
-								<button
-									type="button"
-									title="回到当前"
-									aria-label="回到当前"
-									onClick={() => setFocus(null)}
-									className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
-								>
-									<Undo2 size={12} />
-								</button>
-							)}
 							<Segmented
 								value={tab}
 								onChange={(t) => setManualTab({ path: selected, tab: t })}

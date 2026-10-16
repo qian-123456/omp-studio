@@ -730,12 +730,9 @@ pub async fn git_commit_suggest(
          Changes (may be truncated):\n{capped_diff}"
     );
 
-    let model = state.settings.read().supervisor_model.clone();
-    let model_to_use = if model.trim().is_empty() {
-        "smol"
-    } else {
-        model.trim()
-    };
+    // Commit messages always use omp's `commit` role (Settings ▸ model roles),
+    // independent of the supervisor model.
+    let model_to_use = "commit";
     let suggestion =
         crate::todos::omp::run_print(&state, model_to_use, &prompt, Duration::from_secs(60))
             .await?;
