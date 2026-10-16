@@ -132,6 +132,8 @@ describe("compact quota status helpers", () => {
 		const now = 1_000_000;
 		expect(formatLimitStatus(100, now + 4 * H + 49 * M, now)).toEqual({
 			text: "100% 耗尽 · 4h 49m后恢复",
+			usedText: "100% 耗尽",
+			resetText: "4h 49m 后恢复",
 			badge: "已耗尽",
 			isExhausted: true,
 			isWarning: false,

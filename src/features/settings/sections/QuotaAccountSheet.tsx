@@ -56,13 +56,17 @@ export function QuotaBar({
 	label,
 	usedPct,
 	statusText,
+	caption,
 	tone,
 	brandColor,
 	title,
 }: {
 	label: string;
 	usedPct: number;
+	/** Short right-aligned value, e.g. "已用 49.0%". */
 	statusText: string;
+	/** Muted line under the bar (reset countdown, pool remainder). */
+	caption?: string | null;
 	tone: "rose" | "amber" | "neutral";
 	brandColor: string;
 	title?: string;
@@ -70,12 +74,11 @@ export function QuotaBar({
 	const fill =
 		tone === "rose" ? "#f43f5e" : tone === "amber" ? "#f59e0b" : brandColor;
 	return (
-		<div className="space-y-1.5">
+		<div className="space-y-1.5" title={title}>
 			<div className="flex items-baseline justify-between gap-3 text-xs">
 				<span className="min-w-0 break-words font-medium text-neutral-200">{label}</span>
 				<span
 					className={`shrink-0 whitespace-nowrap font-mono text-[11px] ${STATUS_TEXT_CLASS[tone]}`}
-					title={title}
 				>
 					{statusText}
 				</span>
@@ -86,6 +89,9 @@ export function QuotaBar({
 					style={{ width: `${Math.max(1.5, usedPct)}%`, backgroundColor: fill }}
 				/>
 			</div>
+			{caption ? (
+				<div className="text-right text-[10px] text-neutral-500">{caption}</div>
+			) : null}
 		</div>
 	);
 }
@@ -102,13 +108,14 @@ export function LimitBar({
 	const usedPct = limitUsedPct(lim);
 	const status = formatLimitStatus(usedPct, lim.window?.resetsAt ?? null, now);
 	const title = `已用 ${usedPct.toFixed(1)}%，剩余 ${(100 - usedPct).toFixed(1)}%${
-		lim.window?.resetsAt && lim.window.resetsAt > now ? "；末尾为距离额度重置的剩余时间" : ""
+		status.resetText ? `；${status.resetText}` : ""
 	}`;
 	return (
 		<QuotaBar
 			label={lim.label}
 			usedPct={usedPct}
-			statusText={status.text}
+			statusText={status.usedText}
+			caption={status.resetText}
 			tone={status.color}
 			brandColor={brandColor}
 			title={title}

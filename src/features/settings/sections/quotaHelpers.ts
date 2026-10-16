@@ -327,6 +327,10 @@ export function findWindowResetsAt(limits: OmpUsageLimit[], windowKey: string): 
 
 export interface LimitStatus {
 	text: string;
+	/** Short used-share label ("已用 49.0%" / "100% 耗尽"), no countdown. */
+	usedText: string;
+	/** Countdown caption ("2h 58m 后重置"), null when no future reset is known. */
+	resetText: string | null;
 	badge: string;
 	isExhausted: boolean;
 	isWarning: boolean;
@@ -339,6 +343,8 @@ export function formatLimitStatus(usedPct: number, resetsAt: number | null, now:
 	if (usedPct >= 100) {
 		return {
 			text: hasCountdown ? `100% 耗尽 · ${formatCountdownCompact(remainingMs)}后恢复` : "100% 耗尽 · 恢复中",
+			usedText: "100% 耗尽",
+			resetText: hasCountdown ? `${formatCountdownCompact(remainingMs)} 后恢复` : "恢复中",
 			badge: "已耗尽",
 			isExhausted: true,
 			isWarning: false,
@@ -346,9 +352,10 @@ export function formatLimitStatus(usedPct: number, resetsAt: number | null, now:
 		};
 	}
 	const usedText = `已用 ${usedPct.toFixed(1)}%`;
-	const text = hasCountdown ? `${usedText} · ${formatCountdownCompact(remainingMs)} 后重置` : usedText;
+	const resetText = hasCountdown ? `${formatCountdownCompact(remainingMs)} 后重置` : null;
+	const text = resetText ? `${usedText} · ${resetText}` : usedText;
 	if (usedPct >= 80) {
-		return { text, badge: "高用量", isExhausted: false, isWarning: true, color: "amber" };
+		return { text, usedText, resetText, badge: "高用量", isExhausted: false, isWarning: true, color: "amber" };
 	}
-	return { text, badge: "正常", isExhausted: false, isWarning: false, color: "neutral" };
+	return { text, usedText, resetText, badge: "正常", isExhausted: false, isWarning: false, color: "neutral" };
 }

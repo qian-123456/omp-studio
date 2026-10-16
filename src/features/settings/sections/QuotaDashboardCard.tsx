@@ -226,8 +226,9 @@ function ProviderQuotaCard({
 						key={cap.window}
 						label={`${shortName} ${formatHumanWindowName(cap.window)}`}
 						usedPct={usedPct}
-						statusText={`余 ${cap.remainingAccounts.toFixed(2)}× 账号配额 · ${countdown}`}
-						title="余 N× 表示共享池中剩余的账号配额数量；进度条为已用比例；末尾为距离重置的剩余时间"
+						statusText={usedPct >= 100 ? "100% 耗尽" : `已用 ${usedPct.toFixed(1)}%`}
+						caption={`${countdown} · 共享池余 ${cap.remainingAccounts.toFixed(2)}/${cap.accounts} 个账号配额`}
+						title="共享池按账号汇总（数据来自 OMP）：已用比例 = 已用账号配额 / 账号总数；进度条与百分比含义一致"
 						tone={tone}
 						brandColor={p.brand.progressColor}
 					/>
