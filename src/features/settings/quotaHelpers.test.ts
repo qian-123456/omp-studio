@@ -139,10 +139,10 @@ describe("compact quota status helpers", () => {
 		});
 		expect(formatLimitStatus(100, null, now).text).toBe("100% 耗尽 · 恢复中");
 		const warn = formatLimitStatus(85, now + 45 * M, now);
-		expect(warn).toMatchObject({ text: "85.0% · 45m", badge: "高用量", isWarning: true, color: "amber" });
+		expect(warn).toMatchObject({ text: "已用 85.0% · 45m 后重置", badge: "高用量", isWarning: true, color: "amber" });
 		const normal = formatLimitStatus(32, now + 2 * 24 * H + 8 * H, now);
-		expect(normal).toMatchObject({ text: "32.0% · 2d 8h", badge: "正常", isExhausted: false, color: "neutral" });
-		expect(formatLimitStatus(32, now - 1, now).text).toBe("32.0%");
+		expect(normal).toMatchObject({ text: "已用 32.0% · 2d 8h 后重置", badge: "正常", isExhausted: false, color: "neutral" });
+		expect(formatLimitStatus(32, now - 1, now).text).toBe("已用 32.0%");
 	});
 
 	it("limitUsedPct calculates percentages and clamps bounds cleanly", () => {

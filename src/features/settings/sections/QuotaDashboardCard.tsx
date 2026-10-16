@@ -219,7 +219,7 @@ function ProviderQuotaCard({
 					cap.accounts > 0 ? Math.min(100, (cap.usedAccounts / cap.accounts) * 100) : 0;
 				const resetsAt = findWindowResetsAt(p.allLimits, cap.window);
 				const countdown =
-					resetsAt && resetsAt > now ? formatCountdownCompact(resetsAt - now) : "持续滚动";
+					resetsAt && resetsAt > now ? `${formatCountdownCompact(resetsAt - now)} 后重置` : "持续滚动";
 				const tone = usedPct >= 100 ? "rose" : usedPct >= 80 ? "amber" : "neutral";
 				return (
 					<QuotaBar
@@ -227,6 +227,7 @@ function ProviderQuotaCard({
 						label={`${shortName} ${formatHumanWindowName(cap.window)}`}
 						usedPct={usedPct}
 						statusText={`余 ${cap.remainingAccounts.toFixed(2)}× 账号配额 · ${countdown}`}
+						title="余 N× 表示共享池中剩余的账号配额数量；进度条为已用比例；末尾为距离重置的剩余时间"
 						tone={tone}
 						brandColor={p.brand.progressColor}
 					/>
@@ -263,7 +264,7 @@ function ProviderQuotaCard({
 			tabIndex={multi ? 0 : undefined}
 		>
 			<div className="flex items-start justify-between gap-3">
-				<div className="flex min-w-0 items-center gap-2.5">
+				<div className="flex min-w-0 flex-1 items-center gap-2.5">
 					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border-divider)] bg-[var(--bg-panel)]">
 						<ProviderBrandLogo
 							providerId={p.providerId}
@@ -273,12 +274,12 @@ function ProviderQuotaCard({
 						/>
 					</div>
 					<div className="min-w-0">
-						<div className="flex items-center gap-2">
-							<span className="truncate text-sm font-semibold text-neutral-100">
+						<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+							<span className="break-words text-sm font-semibold text-neutral-100">
 								{p.brand.name}
 							</span>
 							<span
-								className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${p.brand.badgeClass}`}
+								className={`max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${p.brand.badgeClass}`}
 							>
 								{p.brand.badge}
 							</span>

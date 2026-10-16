@@ -58,20 +58,25 @@ export function QuotaBar({
 	statusText,
 	tone,
 	brandColor,
+	title,
 }: {
 	label: string;
 	usedPct: number;
 	statusText: string;
 	tone: "rose" | "amber" | "neutral";
 	brandColor: string;
+	title?: string;
 }) {
 	const fill =
 		tone === "rose" ? "#f43f5e" : tone === "amber" ? "#f59e0b" : brandColor;
 	return (
 		<div className="space-y-1.5">
-			<div className="flex items-center justify-between gap-3 text-xs">
-				<span className="truncate font-medium text-neutral-200">{label}</span>
-				<span className={`shrink-0 font-mono text-[11px] ${STATUS_TEXT_CLASS[tone]}`}>
+			<div className="flex items-baseline justify-between gap-3 text-xs">
+				<span className="min-w-0 break-words font-medium text-neutral-200">{label}</span>
+				<span
+					className={`shrink-0 whitespace-nowrap font-mono text-[11px] ${STATUS_TEXT_CLASS[tone]}`}
+					title={title}
+				>
 					{statusText}
 				</span>
 			</div>
@@ -96,6 +101,9 @@ export function LimitBar({
 }) {
 	const usedPct = limitUsedPct(lim);
 	const status = formatLimitStatus(usedPct, lim.window?.resetsAt ?? null, now);
+	const title = `已用 ${usedPct.toFixed(1)}%，剩余 ${(100 - usedPct).toFixed(1)}%${
+		lim.window?.resetsAt && lim.window.resetsAt > now ? "；末尾为距离额度重置的剩余时间" : ""
+	}`;
 	return (
 		<QuotaBar
 			label={lim.label}
@@ -103,6 +111,7 @@ export function LimitBar({
 			statusText={status.text}
 			tone={status.color}
 			brandColor={brandColor}
+			title={title}
 		/>
 	);
 }

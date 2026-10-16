@@ -345,9 +345,8 @@ export function formatLimitStatus(usedPct: number, resetsAt: number | null, now:
 			color: "rose",
 		};
 	}
-	const text = hasCountdown
-		? `${usedPct.toFixed(1)}% · ${formatCountdownCompact(remainingMs)}`
-		: `${usedPct.toFixed(1)}%`;
+	const usedText = `已用 ${usedPct.toFixed(1)}%`;
+	const text = hasCountdown ? `${usedText} · ${formatCountdownCompact(remainingMs)} 后重置` : usedText;
 	if (usedPct >= 80) {
 		return { text, badge: "高用量", isExhausted: false, isWarning: true, color: "amber" };
 	}
