@@ -43,7 +43,7 @@ export const useAbortState = create<AbortState>((set) => ({
 export async function sendPrompt(
 	sessionId: string,
 	text: string,
-	opts?: { steer?: boolean; images?: ImageAttachment[] },
+	opts?: { steer?: boolean; images?: ImageAttachment[]; onEchoed?: () => void },
 ): Promise<void> {
 	const trimmed = text.trim();
 	if (!trimmed) return;
@@ -65,6 +65,9 @@ export async function sendPrompt(
 		opts?.steer === true &&
 		useLive.getState().sessions[sessionId]?.streaming === true;
 	useLive.getState().addUserEcho(sessionId, trimmed, opts?.images, steerEcho);
+	// The message is now visible in the thread: let the caller release its input
+	// instead of holding the text until slow resume/RPC calls below finish.
+	opts?.onEchoed?.();
 	if (external) {
 		await takeoverExternal(sessionId);
 	} else if (!useLive.getState().sessions[sessionId]?.alive) {

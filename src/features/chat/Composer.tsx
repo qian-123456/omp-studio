@@ -895,6 +895,24 @@ export function Composer({
 			return;
 		}
 		setBusy(true);
+		// Release the input as soon as the message is echoed into the thread; the
+		// resume/RPC awaits below can take seconds. Restore everything if the send fails.
+		const prevAnnotations = annotations;
+		let released = false;
+		const releaseComposer = () => {
+			released = true;
+			clearDraft(sessionId);
+			clearAnnotations(sessionId);
+			clearImages(sessionId);
+			clearFiles(sessionId);
+		};
+		const restoreComposer = () => {
+			if (!released) return;
+			if (!useComposer.getState().drafts[sessionId]) setDraft(sessionId, raw);
+			useComposer.getState().setImages(sessionId, currentSessionImages);
+			useComposer.getState().setFiles(sessionId, currentSessionFiles);
+			for (const { id: _id, ...a } of prevAnnotations) addAnnotation(sessionId, a);
+		};
 		try {
 			// Interrupt: abort and wait for the turn to stop. If it keeps running,
 			// hold the message rather than dropping it.
@@ -906,18 +924,19 @@ export function Composer({
 				await sendPrompt(sessionId, message, {
 					steer: action === "steer",
 					images: imageAttachments,
+					onEchoed: releaseComposer,
 				});
+				// Cancelled takeover returns without echoing: keep the draft for retry.
+				if (!released) return;
 			} else {
 				pushHeld(sessionId, message, imageAttachments);
 				toast.error("打断超时，回合仍在运行：消息已暂存，回合结束后自动发送");
+				releaseComposer();
 			}
 			pushHistory(raw.trim());
 			finishPrivacySend();
-			clearDraft(sessionId);
-			clearAnnotations(sessionId);
-			clearImages(sessionId);
-			clearFiles(sessionId);
 		} catch (err) {
+			restoreComposer();
 			if (!isResumeCancelled(err)) toast.error(`发送失败: ${errMsg(err)}`);
 		} finally {
 			setBusy(false);
