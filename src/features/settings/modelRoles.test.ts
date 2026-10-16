@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
 	BUILTIN_ROLES,
+	buildWildcard,
+	classifyChainEntry,
+	classifyChainKey,
 	customRoles,
+	formatChainEntry,
 	parseChain,
+	parseWildcard,
 	roleValue,
+	ruleKeys,
 	serializeChain,
+	splitChainEntry,
 	splitRoleValue,
+	validateChainEntry,
+	validateChainKey,
 	withChain,
 } from "./modelRoles";
 
@@ -57,6 +66,17 @@ describe("splitRoleValue", () => {
 		expect(splitRoleValue("agnes-free/agnes-2.5-flash:auto")).toEqual({
 			selector: "agnes-free/agnes-2.5-flash",
 			thinkingSuffix: "auto",
+		});
+	});
+
+	it("splits the :off and :inherit suffixes", () => {
+		expect(splitRoleValue("agnes-free/agnes-3.0-flash:off")).toEqual({
+			selector: "agnes-free/agnes-3.0-flash",
+			thinkingSuffix: "off",
+		});
+		expect(splitRoleValue("openai/gpt-5:inherit")).toEqual({
+			selector: "openai/gpt-5",
+			thinkingSuffix: "inherit",
 		});
 	});
 
@@ -181,5 +201,98 @@ describe("withChain", () => {
 		});
 		expect(withChain(chains, "web", null)).toEqual({ tiny: [] });
 		expect(chains).toEqual({ web: ["web/exa"], tiny: [] });
+	});
+});
+
+describe("withChain key preservation", () => {
+	it("keeps model/provider rule keys and their order on role writes", () => {
+		const chains = {
+			"openai/gpt-5": ["anthropic/x:high"],
+			default: ["@smol"],
+			"openrouter/google/*": [],
+			"anthropic/*": ["openrouter/*"],
+		};
+		const next = withChain(chains, "default", ["@web"]);
+		expect(Object.keys(next)).toEqual(["openai/gpt-5", "default", "openrouter/google/*", "anthropic/*"]);
+		expect(next["openrouter/google/*"]).toEqual([]);
+		expect(Object.keys(withChain(chains, "default", null))).toEqual([
+			"openai/gpt-5",
+			"openrouter/google/*",
+			"anthropic/*",
+		]);
+	});
+});
+
+describe("splitChainEntry / formatChainEntry", () => {
+	it("splits only real thinking levels", () => {
+		expect(splitChainEntry("openai/gpt-5:high")).toEqual({ selector: "openai/gpt-5", level: "high" });
+		expect(splitChainEntry("ollama/qwen:7b")).toEqual({ selector: "ollama/qwen:7b", level: null });
+		expect(splitChainEntry("localhost:11434/x:max")).toEqual({ selector: "localhost:11434/x", level: "max" });
+		expect(splitChainEntry("openai/x:auto")).toEqual({ selector: "openai/x:auto", level: null });
+	});
+	it("round-trips through formatChainEntry", () => {
+		expect(formatChainEntry("openai/x", "low")).toBe("openai/x:low");
+		expect(formatChainEntry(" openai/x ", null)).toBe("openai/x");
+	});
+});
+
+describe("wildcards", () => {
+	it("parses provider and prefixed wildcards", () => {
+		expect(parseWildcard("openai/*")).toEqual({ provider: "openai", prefix: "" });
+		expect(parseWildcard("openrouter/google/*")).toEqual({ provider: "openrouter", prefix: "google" });
+		expect(parseWildcard("openrouter/a/b/*")).toEqual({ provider: "openrouter", prefix: "a/b" });
+	});
+	it("rejects malformed wildcards", () => {
+		expect(parseWildcard("/*")).toBeNull();
+		expect(parseWildcard("openai/gpt-*")).toBeNull();
+		expect(parseWildcard("a/*/b/*")).toBeNull();
+		expect(parseWildcard("openai")).toBeNull();
+		expect(parseWildcard("a//*")).toBeNull();
+	});
+	it("builds wildcards and trims stray slashes/stars", () => {
+		expect(buildWildcard("openai")).toBe("openai/*");
+		expect(buildWildcard("openrouter", "google")).toBe("openrouter/google/*");
+		expect(buildWildcard("openrouter", "/google/*")).toBe("openrouter/google/*");
+		expect(buildWildcard(" openrouter ", "  ")).toBe("openrouter/*");
+	});
+});
+
+describe("chain entry validation", () => {
+	it("classifies entry kinds", () => {
+		expect(classifyChainEntry("openai/gpt-5:high")).toBe("model");
+		expect(classifyChainEntry("@smol")).toBe("role");
+		expect(classifyChainEntry("anthropic/*")).toBe("wildcard");
+		expect(classifyChainEntry("openrouter/google/*")).toBe("wildcard");
+		expect(classifyChainEntry("gpt-5")).toBe("invalid");
+		expect(classifyChainEntry("")).toBe("invalid");
+	});
+	it("flags bad shapes", () => {
+		expect(validateChainEntry("openai/")).not.toBeNull();
+		expect(validateChainEntry("/x")).not.toBeNull();
+		expect(validateChainEntry("@")).not.toBeNull();
+		expect(validateChainEntry("@a/b")).not.toBeNull();
+		expect(validateChainEntry("openai/*:high")).not.toBeNull();
+		expect(validateChainEntry("openai/gp*")).not.toBeNull();
+		expect(validateChainEntry("open ai/x")).not.toBeNull();
+		expect(validateChainEntry("ollama/qwen:7b")).toBeNull();
+	});
+});
+
+describe("chain key validation", () => {
+	it("classifies keys", () => {
+		expect(classifyChainKey("default")).toBe("role");
+		expect(classifyChainKey("openai/gpt-5")).toBe("model");
+		expect(classifyChainKey("openai/*")).toBe("provider");
+		expect(classifyChainKey("openrouter/google/*")).toBe("prefix");
+		expect(classifyChainKey("a/gp*")).toBe("invalid");
+		expect(classifyChainKey("agent:x")).toBe("invalid");
+	});
+	it("rejects empty and suffixed keys", () => {
+		expect(validateChainKey("")).not.toBeNull();
+		expect(validateChainKey("openai/x:high")).not.toBeNull();
+		expect(validateChainKey("ollama/qwen:7b")).toBeNull();
+	});
+	it("ruleKeys picks only slash keys", () => {
+		expect(ruleKeys({ smol: [], "a/b": [], "a/*": [] })).toEqual(["a/b", "a/*"]);
 	});
 });

@@ -120,8 +120,12 @@ const BUILTIN_ROLE_IDS: Record<string, true> = Object.fromEntries(
 	BUILTIN_ROLES.map((r) => [r.id, true]),
 );
 
-/** Thinking levels recognized as a trailing `:level` when a value is split, e.g. "anthropic/x:high". */
+/**
+ * omp's full thinking-suffix grammar, recognized as a trailing `:level` when a
+ * value is split, e.g. "anthropic/x:high" or "agnes-free/x:off".
+ */
 export const THINKING_SUFFIXES = [
+	"off",
 	"minimal",
 	"low",
 	"medium",
@@ -129,6 +133,7 @@ export const THINKING_SUFFIXES = [
 	"xhigh",
 	"max",
 	"auto",
+	"inherit",
 ] as const;
 
 export type ThinkingSuffix = (typeof THINKING_SUFFIXES)[number];
@@ -249,4 +254,120 @@ export function asRecord(v: unknown): Record<string, unknown> {
 export function asStringList(v: unknown): string[] {
 	if (!Array.isArray(v)) return [];
 	return v.filter((x): x is string => typeof x === "string");
+}
+
+/** Thinking suffixes a fallback-chain entry may carry (omp 18 settings docs). */
+export const CHAIN_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+const CHAIN_LEVEL_LOOKUP: Record<string, true> = Object.fromEntries(CHAIN_LEVELS.map((l) => [l, true]));
+
+export interface ChainEntryParts {
+	/** Entry without the thinking suffix. */
+	selector: string;
+	/** Bare level ("high") or null when the entry inherits the failing turn's level. */
+	level: string | null;
+}
+
+/**
+ * Split a chain entry into selector + thinking level. Only a trailing
+ * `:off|minimal|low|medium|high|xhigh|max` counts, so ids with colons
+ * ("ollama/qwen:7b", "localhost:11434/x") stay intact.
+ */
+export function splitChainEntry(entry: string): ChainEntryParts {
+	const t = entry.trim();
+	const idx = t.lastIndexOf(":");
+	if (idx > 0 && CHAIN_LEVEL_LOOKUP[t.slice(idx + 1)]) {
+		return { selector: t.slice(0, idx), level: t.slice(idx + 1) };
+	}
+	return { selector: t, level: null };
+}
+
+/** Inverse of splitChainEntry. */
+export function formatChainEntry(selector: string, level: string | null): string {
+	const s = selector.trim();
+	return level ? `${s}:${level}` : s;
+}
+
+export interface WildcardParts {
+	provider: string;
+	/** Id prefix without slashes ("google" for "openrouter/google/*"), "" for a plain provider wildcard. */
+	prefix: string;
+}
+
+/** Parse `provider/*` or `provider/prefix/*`; null when the selector is not a well-formed wildcard. */
+export function parseWildcard(selector: string): WildcardParts | null {
+	if (!selector.endsWith("/*")) return null;
+	const body = selector.slice(0, -2);
+	if (body.includes("*") || /\s/.test(body)) return null;
+	const slash = body.indexOf("/");
+	const provider = slash === -1 ? body : body.slice(0, slash);
+	const prefix = slash === -1 ? "" : body.slice(slash + 1);
+	if (!provider || (slash !== -1 && !prefix) || prefix.startsWith("/") || prefix.endsWith("/")) return null;
+	return { provider, prefix };
+}
+
+/** Build `provider/*` or `provider/prefix/*`; stray slashes/stars on the prefix are trimmed. */
+export function buildWildcard(provider: string, prefix = ""): string {
+	const p = prefix.trim().replace(/\*+$/, "").replace(/^\/+|\/+$/g, "");
+	return p ? `${provider.trim()}/${p}/*` : `${provider.trim()}/*`;
+}
+
+export type ChainEntryKind = "role" | "model" | "wildcard" | "invalid";
+
+/** Classify a chain entry (with or without thinking suffix). */
+export function classifyChainEntry(entry: string): ChainEntryKind {
+	return validateChainEntry(entry) === null ? entryKind(splitChainEntry(entry).selector) : "invalid";
+}
+
+function entryKind(selector: string): ChainEntryKind {
+	if (selector.startsWith("@")) return "role";
+	return selector.includes("*") ? "wildcard" : "model";
+}
+
+/** Plain-language problem with a chain entry, or null when it is well-formed. */
+export function validateChainEntry(entry: string): string | null {
+	const t = entry.trim();
+	if (!t) return "不能为空";
+	if (/\s/.test(t)) return "不能包含空格";
+	const { selector, level } = splitChainEntry(t);
+	if (selector.startsWith("@")) {
+		return /^@[^/*:@]+$/.test(selector) ? null : "角色别名写成 @角色名，例如 @smol";
+	}
+	if (selector.includes("*")) {
+		if (!parseWildcard(selector)) return "通配符只能写成 供应商/* 或 供应商/前缀/*";
+		return level ? "通配符条目总是沿用当前思考强度，不能加 :强度" : null;
+	}
+	const slash = selector.indexOf("/");
+	if (slash <= 0 || slash === selector.length - 1) return "需要写成 供应商/模型，例如 openai/gpt-5";
+	return null;
+}
+
+export type ChainKeyKind = "role" | "model" | "provider" | "prefix" | "invalid";
+
+/** Classify a `retry.fallbackChains` key: role name, exact model, provider wildcard or prefixed wildcard. */
+export function classifyChainKey(key: string): ChainKeyKind {
+	if (validateChainKey(key) !== null) return "invalid";
+	if (!key.includes("/")) return "role";
+	const w = parseWildcard(key);
+	if (!w) return "model";
+	return w.prefix ? "prefix" : "provider";
+}
+
+/** Plain-language problem with a chain key, or null when it is usable. */
+export function validateChainKey(key: string): string | null {
+	if (!key.trim()) return "不能为空";
+	if (key !== key.trim() || /\s/.test(key)) return "不能包含空格";
+	if (!key.includes("/")) {
+		return /[*:@]/.test(key) ? "角色名不能包含 * : @" : null;
+	}
+	if (key.includes("*")) return parseWildcard(key) ? null : "通配符只能写成 供应商/* 或 供应商/前缀/*";
+	const slash = key.indexOf("/");
+	if (slash <= 0 || slash === key.length - 1) return "需要写成 供应商/模型";
+	if (splitChainEntry(key).level) return "规则对象不能带 :强度";
+	return null;
+}
+
+/** Chain keys that are model / provider rules (contain "/"), in record order. */
+export function ruleKeys(chains: Record<string, unknown>): string[] {
+	return Object.keys(chains).filter((k) => k.includes("/"));
 }

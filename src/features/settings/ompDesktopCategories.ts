@@ -63,8 +63,10 @@ const HIDDEN_PREFIXES: readonly string[] = [
 
 /**
  * Individual hidden keys. `modelRoles` and `task.agentModelOverrides` are edited
- * by the 模型角色 page; `retry.fallbackChains`, `cycleOrder` and `modelRoleStorage`
- * by the 回退链与切换 page. None of them appear in the flat list; the rest are
+ * by the 模型角色 page; `retry.fallbackChains` and the six fallback switches
+ * (`retry.modelFallback`, `retry.fallbackOn`, `retry.fallbackRevertPolicy`,
+ * `retry.usageAwareFallback`, `retry.usageReservePct`, `retry.usageReservePolicy`),
+ * `cycleOrder` and `modelRoleStorage` by the 回退链与切换 page. None of them appear in the flat list; the rest are
  * TUI-only settings with no desktop surface.
  */
 const HIDDEN_KEYS: Record<string, true> = {
@@ -85,6 +87,12 @@ const HIDDEN_KEYS: Record<string, true> = {
 	modelRoles: true,
 	"task.agentModelOverrides": true,
 	"retry.fallbackChains": true,
+	"retry.modelFallback": true,
+	"retry.fallbackOn": true,
+	"retry.fallbackRevertPolicy": true,
+	"retry.usageAwareFallback": true,
+	"retry.usageReservePct": true,
+	"retry.usageReservePolicy": true,
 	modelRoleStorage: true,
 	cycleOrder: true,
 	// Edited by Settings ▸ 上下文窗口 (context-window page).

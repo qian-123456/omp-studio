@@ -1,109 +1,186 @@
 /**
- * [D] Step 1 of 批量替换模型: every model currently referenced, grouped by
- * selector, with its reference count, a 可能失效 badge when it is missing from
- * the model catalogue and a manual 测试 probe per row (never automatic).
- * Clicking a row's 选为来源 picks the source model X.
+ * [D] Step 1 of 批量替换模型: every model currently referenced, grouped by kind
+ * (missing from the catalogue / chat / search / judge / other), with its
+ * reference count, every location it appears in (expandable) and a manual 测试
+ * probe per row (never automatic; kinds without a real test show a hint).
+ * A row's 替换 button picks it as the model to replace.
+ *
+ * Row layout: a one-line header (model · chips · first location + 「全部 N 处」
+ * toggle · fixed-width actions). Expanding lists every location, one per line;
+ * a probe result opens in its own full-width, wrapped, collapsible area under
+ * the row, so the columns above never shift.
  */
-import { AlertTriangle, Loader2, PlayCircle, RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, ArrowRightLeft, ChevronDown, ChevronRight, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { HoverScrollText } from "../../../components/HoverScrollText";
 import type { ModelProbeResult, ModelUsageScan } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
 import { modelProbe } from "../../../lib/ipc";
+import { KIND_GROUP_ORDER, KIND_GROUP_TITLES, probeKindOf, useModelKindCatalog } from "./kinds";
 import { buildOverview, type OverviewRow } from "./logic";
-import { BTN_GHOST, Chip } from "./parts";
+import { Chip } from "./parts";
 
-/** One row's probe state; each probe is a real one-shot call the user asked for. */
-function ProbeCell({ selector }: { selector: string }) {
+/** Outcome of one probe: a result, or the error that prevented getting one. */
+interface ProbeOutcome {
+	ok: boolean;
+	latencyMs: number | null;
+	detail: string;
+}
+
+function formatLatency(ms: number): string {
+	// A probe runs a real omp call, so its wall time includes omp startup (seconds).
+	return ms >= 2000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+/** Full-width probe result: status line + collapsible, wrapped, selectable detail. */
+function ProbeResultView({ outcome }: { outcome: ProbeOutcome }) {
+	const [open, setOpen] = useState(!outcome.ok);
+	const hasDetail = outcome.detail.trim() !== "";
+	const summary = outcome.ok
+		? `可用${outcome.latencyMs === null ? "" : ` · ${formatLatency(outcome.latencyMs)}`}`
+		: "不可用";
+	return (
+		<div
+			className={`mt-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-5 ${
+				outcome.ok ? "bg-emerald-500/10 text-emerald-300" : "bg-rose-500/10 text-rose-300"
+			}`}
+		>
+			<button
+				type="button"
+				onClick={() => setOpen((v) => !v)}
+				disabled={!hasDetail}
+				aria-expanded={open}
+				className="flex w-full items-center gap-1 text-left font-medium disabled:cursor-default"
+			>
+				{hasDetail ? (
+					open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />
+				) : null}
+				{summary}
+				{hasDetail && <span className="font-normal opacity-70">{open ? "（收起详情）" : "（展开详情）"}</span>}
+			</button>
+			{hasDetail && open && (
+				<pre className="mt-1 max-h-48 select-text overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-4 opacity-90">
+					{outcome.detail}
+				</pre>
+			)}
+		</div>
+	);
+}
+
+const ACTIONS_CLASS = "flex w-[176px] shrink-0 items-center justify-end gap-2";
+const TEST_SLOT_CLASS = "flex w-[84px] shrink-0 justify-end";
+
+function OverviewRowView({
+	row,
+	showGroupFlag,
+	onReplace,
+}: {
+	row: OverviewRow;
+	/** True once the kind catalogue is loaded (so `row.group` is meaningful). */
+	showGroupFlag: boolean;
+	onReplace: (row: OverviewRow) => void;
+}) {
+	const [expanded, setExpanded] = useState(false);
 	const [probing, setProbing] = useState(false);
-	const [result, setResult] = useState<ModelProbeResult | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const [outcome, setOutcome] = useState<ProbeOutcome | null>(null);
+	const probeKind = showGroupFlag ? probeKindOf(row.group) : "chat";
+	const total = row.sources.length;
+	const first = row.sources[0];
 
 	const run = async () => {
+		if (probeKind === null) return;
 		setProbing(true);
-		setError(null);
+		setOutcome(null);
 		try {
-			setResult(await modelProbe(selector));
+			const result: ModelProbeResult = await modelProbe(row.selector, probeKind);
+			setOutcome({ ok: result.ok, latencyMs: result.latencyMs, detail: result.detail });
 		} catch (e) {
-			setResult(null);
-			setError(errMsg(e));
+			setOutcome({ ok: false, latencyMs: null, detail: errMsg(e) });
 		} finally {
 			setProbing(false);
 		}
 	};
 
-	const failed = error !== null || (result !== null && !result.ok);
-	const detail = error ?? result?.detail ?? "";
-	// A probe runs a real `omp -p`, so its wall time includes omp startup (seconds).
-	const latency = result === null ? "" : result.latencyMs >= 2000 ? `${(result.latencyMs / 1000).toFixed(1)}s` : `${result.latencyMs}ms`;
 	return (
-		<>
-			<button
-				type="button"
-				onClick={() => void run()}
-				disabled={probing}
-				title={`用一次真实调用测试 ${selector}（含 omp 启动，通常几秒）`}
-				className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50"
-			>
-				{probing ? <Loader2 className="h-3 w-3 animate-spin" /> : "测试"}
-			</button>
-			{probing && <span className="text-[10px] text-neutral-500">测试中…（真实调用）</span>}
-			{!probing && (result || error) && (
-				<span
-					title={detail}
-					className={`max-w-[220px] truncate text-[10px] ${failed ? "text-rose-300" : "text-emerald-300"}`}
-				>
-					{failed ? "不可用" : `可用 ${latency}`}
-					{detail ? ` · ${detail}` : ""}
-				</span>
+		<div className="border-t border-[var(--border-divider)] px-3 py-2 text-[11px]">
+			<div className="flex items-center gap-2">
+				<HoverScrollText
+					text={row.selector}
+					className="min-w-0 flex-[2]"
+					innerClassName="font-mono text-neutral-200"
+					title={row.selector}
+				/>
+				<Chip tone="neutral">{row.count} 处引用</Chip>
+				{row.levels.length > 0 && (
+					<Chip tone="info" title="已带思考等级引用">
+						{row.levels.join("/")}
+					</Chip>
+				)}
+				<div className="flex min-w-0 flex-[3] items-center gap-2">
+					<span className="min-w-0 flex-1 truncate text-neutral-500" title={first ? `${first.scope} · ${first.title}` : ""}>
+						{first ? `${first.title} · ${first.scope}` : ""}
+					</span>
+					<button
+						type="button"
+						onClick={() => setExpanded((v) => !v)}
+						aria-expanded={expanded}
+						title={expanded ? "收起位置列表" : "展开查看全部出现位置"}
+						className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 py-0.5 text-[10px] text-sky-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
+					>
+						{expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+						全部 {total} 处
+					</button>
+				</div>
+				<div className={ACTIONS_CLASS}>
+					<div className={TEST_SLOT_CLASS}>
+						{probeKind === null ? (
+							<span
+								title="此类型暂不支持测试"
+								className="whitespace-nowrap rounded-full bg-[var(--well-bg)] px-2.5 py-0.5 text-[10px] text-neutral-500"
+							>
+								不支持测试
+							</span>
+						) : (
+							<button
+								type="button"
+								onClick={() => void run()}
+								disabled={probing}
+								title={`用一次真实调用测试 ${row.selector}（含 omp 启动，通常几秒）`}
+								className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full hairline bg-[var(--well-bg)] px-2.5 py-0.5 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 disabled:opacity-50"
+							>
+								{probing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
+								测试
+							</button>
+						)}
+					</div>
+					<button
+						type="button"
+						onClick={() => onReplace(row)}
+						title="把这个模型的所有引用换成另一个模型"
+						className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent)] transition-all hover:bg-[color-mix(in_oklab,var(--accent)_28%,transparent)] active:scale-95"
+					>
+						<ArrowRightLeft className="h-3 w-3" />
+						替换
+					</button>
+				</div>
+			</div>
+			{expanded && (
+				<ul className="mt-1.5 space-y-0.5 rounded-lg bg-[var(--well-bg)] px-2.5 py-1.5">
+					{row.sources.map((s) => (
+						<li key={`${s.scope}\u0000${s.title}`} className="flex items-start gap-2 leading-5">
+							<span className="w-20 shrink-0 break-all text-neutral-500">{s.scope}</span>
+							<span className="min-w-0 flex-1 break-all text-neutral-300">{s.title}</span>
+						</li>
+					))}
+				</ul>
 			)}
-		</>
-	);
-}
-
-function OverviewRowView({
-	row,
-	catalogReady,
-	onPick,
-}: {
-	row: OverviewRow;
-	catalogReady: boolean;
-	onPick: (selector: string) => void;
-}) {
-	return (
-		<div className="flex items-center gap-2 border-t border-[var(--border-divider)] px-3 py-2 text-[11px]">
-			<HoverScrollText
-				text={row.selector}
-				className="min-w-0 flex-[2]"
-				innerClassName="font-mono text-neutral-200"
-				title={row.selector}
-			/>
-			<Chip tone="neutral">{row.count} 处引用</Chip>
-			{row.levels.length > 0 && (
-				<Chip tone="info" title="已带思考等级引用">
-					{row.levels.join("/")}
-				</Chip>
+			{probing && (
+				<p className="mt-1.5 flex items-center gap-1.5 text-[10px] text-neutral-500">
+					<Loader2 className="h-3 w-3 animate-spin" />
+					测试中…（真实调用）
+				</p>
 			)}
-			{catalogReady && !row.inCatalog && row.referencedAsModel && (
-				<Chip tone="warn" title="模型目录里没有这个模型，可能已失效或被改名">
-					可能失效
-				</Chip>
-			)}
-			<HoverScrollText
-				text={row.sources.join("、") + (row.extraSources > 0 ? ` 等 ${row.sources.length + row.extraSources} 处` : "")}
-				className="min-w-0 flex-[3]"
-				innerClassName="text-neutral-500"
-				title={row.sources.join("、")}
-			/>
-			<ProbeCell selector={row.selector} />
-			<button
-				type="button"
-				onClick={() => onPick(row.selector)}
-				title={`把 ${row.selector} 作为要替换的模型`}
-				className={BTN_GHOST}
-			>
-				选为来源
-			</button>
+			{!probing && outcome !== null && <ProbeResultView outcome={outcome} />}
 		</div>
 	);
 }
@@ -112,36 +189,54 @@ export function ModelReplaceOverview({
 	scan,
 	loading,
 	error,
-	catalogKeys,
 	onRescan,
-	onPick,
+	onReplace,
 }: {
 	scan: ModelUsageScan | null;
 	loading: boolean;
 	error: string | null;
-	catalogKeys: ReadonlySet<string>;
 	onRescan: () => void;
-	onPick: (selector: string) => void;
+	onReplace: (row: OverviewRow) => void;
 }) {
-	const rows = useMemo(() => buildOverview(scan, catalogKeys), [scan, catalogKeys]);
-	// An empty catalogue means "not loaded yet" or "omp unavailable": it says nothing about
-	// any single model, so no row is flagged until the catalogue has entries.
-	const catalogReady = catalogKeys.size > 0;
+	const kindEntries = useModelKindCatalog((s) => s.entries);
+	const kindBySelector = useModelKindCatalog((s) => s.kindBySelector);
+	const kindLoading = useModelKindCatalog((s) => s.loading);
+	const kindError = useModelKindCatalog((s) => s.error);
+	useEffect(() => {
+		void useModelKindCatalog.getState().load();
+	}, []);
+
+	// Only a loaded catalogue says anything about a model: while loading or after an
+	// error no row is grouped or flagged as missing.
+	const kindsReady = kindEntries !== null && kindError === null;
+	const rows = useMemo(() => buildOverview(scan, kindsReady ? kindBySelector : null), [scan, kindsReady, kindBySelector]);
+	const sections = useMemo(
+		() =>
+			KIND_GROUP_ORDER.map((group) => ({ group, rows: rows.filter((r) => r.group === group) })).filter(
+				(s) => s.rows.length > 0,
+			),
+		[rows],
+	);
+
+	const rescan = () => {
+		onRescan();
+		void useModelKindCatalog.getState().load(true);
+	};
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="flex items-center justify-between gap-3 px-3 pb-2">
 				<p className="text-[11px] leading-5 text-neutral-400">
-					下面是当前所有模型引用的使用情况。选一个模型作为「来源 X」，再把它的引用批量换成另一个模型。
+					下面是当前所有模型引用的使用情况。点某个模型右侧的「替换」，就能把它的所有引用批量换成另一个模型。
 				</p>
 				<button
 					type="button"
-					onClick={onRescan}
-					disabled={loading}
-					title="重新扫描模型引用"
+					onClick={rescan}
+					disabled={loading || kindLoading}
+					title="重新扫描模型引用和模型目录"
 					className="inline-flex shrink-0 items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50"
 				>
-					<RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+					<RefreshCw className={`h-3 w-3 ${loading || kindLoading ? "animate-spin" : ""}`} />
 					重新扫描
 				</button>
 			</div>
@@ -153,6 +248,22 @@ export function ModelReplaceOverview({
 						{scan ? `扫描失败，保留上次结果：${error}` : `无法扫描模型引用：${error}`}
 					</span>
 				</div>
+			)}
+
+			{kindError !== null && (
+				<div role="alert" className="mx-3 mb-2 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-300">
+					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+					<span className="min-w-0 flex-1 break-all">
+						无法加载模型目录，暂不分组，也无法判断哪些模型已失效：{kindError}
+					</span>
+				</div>
+			)}
+
+			{kindLoading && kindEntries === null && (
+				<p className="mx-3 mb-2 flex items-center gap-2 text-[11px] text-neutral-400">
+					<Loader2 className="h-3 w-3 animate-spin" />
+					正在加载模型目录（用于分类，约需几秒）…
+				</p>
 			)}
 
 			{loading && scan === null && (
@@ -169,26 +280,28 @@ export function ModelReplaceOverview({
 			)}
 
 			{rows.length > 0 && (
-				<div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
-					<div className="rounded-xl hairline">
-						<div className="flex items-center gap-2 rounded-t-xl bg-[var(--well-bg)] px-3 py-1.5 text-[10px] text-neutral-500">
-							<span className="min-w-0 flex-[2]">模型</span>
-							<span className="flex-[3]">出现位置</span>
-							<span className="flex-1" />
+				<div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-2">
+					{(kindsReady ? sections : [{ group: null, rows }]).map((section) => (
+						<div key={section.group ?? "all"} className="rounded-xl hairline">
+							{section.group !== null && (
+								<div className="rounded-t-xl bg-[var(--well-bg)] px-3 py-1.5 text-[11px] font-medium text-neutral-300">
+									{KIND_GROUP_TITLES[section.group]}
+									<span className="ml-1.5 font-normal text-neutral-500">{section.rows.length}</span>
+								</div>
+							)}
+							<div className="flex items-center gap-2 bg-[var(--well-bg)] px-3 py-1 text-[10px] text-neutral-500">
+								<span className="min-w-0 flex-[2]">模型</span>
+								<span className="flex-[3]">出现位置</span>
+								<span className={ACTIONS_CLASS} />
+							</div>
+							{section.rows.map((row) => (
+								<OverviewRowView key={row.selector} row={row} showGroupFlag={kindsReady} onReplace={onReplace} />
+							))}
 						</div>
-						{rows.map((row) => (
-							<OverviewRowView key={row.selector} row={row} catalogReady={catalogReady} onPick={onPick} />
-						))}
-					</div>
-					{!catalogReady && (
-						<p className="flex items-start gap-1.5 px-1 pt-2 text-[10px] leading-4 text-amber-300/80">
-							<AlertTriangle className="mt-px h-3 w-3 shrink-0" />
-							模型目录尚未加载（或 omp 不可用），暂时无法判断哪些模型已失效；可点「测试」逐个确认。
-						</p>
-					)}
-					<p className="flex items-start gap-1.5 px-1 pt-2 text-[10px] leading-4 text-neutral-500">
+					))}
+					<p className="flex items-start gap-1.5 px-1 text-[10px] leading-4 text-neutral-500">
 						<PlayCircle className="mt-px h-3 w-3 shrink-0" />
-						「测试」会用一次真实调用探测该模型（消耗少量 token），只在点击时执行。
+						「测试」会按模型类型用一次真实调用探测它（消耗少量 token），只在点击时执行。
 					</p>
 				</div>
 			)}

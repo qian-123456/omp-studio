@@ -51,6 +51,8 @@ const MAX_LIST_CHARS: usize = 1024;
 const PROBE_OVERLAY: &str = "retry:\n  modelFallback: false\n";
 const PROBE_PROMPT: &str = "Reply with the single word: ok";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
+const SEARCH_QUERY: &str = "rust programming language";
+const JUDGE_QUERY: &str = "greet function";
 const PROBE_NOTE: &str = "已关闭回退链切换（retry.modelFallback=false）；配额等待与重试仍生效";
 
 // ---------- IPC types (mirrored in src/lib/contracts.ts) ----------
@@ -1111,29 +1113,143 @@ pub async fn model_replace_undo(
     })
 }
 
-/// One-shot probe of one model through `omp -p`, so 「测试」 reflects a real call.
+/// One catalog row of `omp models --kind all --json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelKindEntry {
+    pub selector: String,
+    pub kind: String,
+    pub provider: String,
+    pub name: Option<String>,
+    /// Supported thinking levels (omp `thinking`: an array, or `{efforts: [...]}`); empty when
+    /// the model has no thinking control.
+    pub thinking: Vec<String>,
+}
+
+/// Every catalog entry of every kind (chat, search, judge, …), so the UI can tell what a stored
+/// selector actually is.
+#[tauri::command]
+pub async fn model_kind_catalog(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<ModelKindEntry>, String> {
+    let bin = state.settings.read().omp_binary.clone();
+    kind_catalog(&bin).await
+}
+
+async fn kind_catalog(bin: &str) -> Result<Vec<ModelKindEntry>, String> {
+    let cwd = std::env::temp_dir();
+    // Only `omp models` takes `-e`; `search` / `find` reject it.
+    let extension = crate::providers::try_extension_path();
+    let mut args = vec!["models", "--kind", "all", "--json"];
+    let extension_text = extension.as_ref().map(|path| path.to_string_lossy());
+    if let Some(text) = extension_text.as_deref() {
+        args.extend(["-e", text]);
+    }
+    let run = run_omp(bin, &args, &cwd).await?;
+    if !run.success {
+        return Err(failure_detail(&run));
+    }
+    parse_kind_catalog(&run.stdout)
+}
+
+/// Parses the array or `{models: [...]}` shape. A missing `selector` falls back to
+/// `provider/id`, a missing `kind` to `chat`; rows with no derivable selector are skipped.
+fn parse_kind_catalog(stdout: &str) -> Result<Vec<ModelKindEntry>, String> {
+    let value: serde_json::Value = serde_json::from_str(stdout.trim())
+        .map_err(|error| format!("无法解析模型目录：{error}"))?;
+    let rows = match &value {
+        serde_json::Value::Array(rows) => rows,
+        serde_json::Value::Object(map) => match map.get("models") {
+            Some(serde_json::Value::Array(rows)) => rows,
+            _ => return Err("模型目录格式不正确".to_string()),
+        },
+        _ => return Err("模型目录格式不正确".to_string()),
+    };
+    let text = |row: &serde_json::Value, key: &str| {
+        row.get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    let mut entries = Vec::with_capacity(rows.len());
+    for row in rows {
+        let provider = text(row, "provider");
+        let selector = text(row, "selector").or_else(|| {
+            let id = text(row, "id")?;
+            Some(format!("{}/{id}", provider.as_deref()?))
+        });
+        let Some(selector) = selector else { continue };
+        let provider = provider
+            .or_else(|| selector.split_once('/').map(|(head, _)| head.to_string()))
+            .unwrap_or_default();
+        let thinking = row
+            .get("thinking")
+            .and_then(|value| {
+                value
+                    .as_array()
+                    .or_else(|| value.get("efforts")?.as_array())
+            })
+            .map(|levels| {
+                levels
+                    .iter()
+                    .filter_map(|level| level.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        entries.push(ModelKindEntry {
+            kind: text(row, "kind").unwrap_or_else(|| "chat".to_string()),
+            name: text(row, "name"),
+            selector,
+            provider,
+            thinking,
+        });
+    }
+    Ok(entries)
+}
+
+/// Probes one model of the given kind so 「测试」 reflects a real call.
 #[tauri::command]
 pub async fn model_probe(
     state: tauri::State<'_, AppState>,
     model: String,
+    kind: String,
 ) -> Result<ModelProbeResult, String> {
+    let bin = state.settings.read().omp_binary.clone();
+    probe_model(&bin, model, kind).await
+}
+
+async fn probe_model(bin: &str, model: String, kind: String) -> Result<ModelProbeResult, String> {
     let model = model.trim().to_string();
     if model.is_empty() {
         return Err("请先选择要测试的模型".to_string());
     }
+    if model.contains(['\n', '\r']) || model.starts_with('-') {
+        return Err("模型名称不合法".to_string());
+    }
+    if !matches!(kind.as_str(), "chat" | "search" | "judge") {
+        return Err("此类型暂不支持测试".to_string());
+    }
     let started = Instant::now();
-    let outcome = run_probe(state.inner(), &model).await;
+    let outcome = match kind.as_str() {
+        "search" => run_search_probe(bin, &model).await,
+        "judge" => run_judge_probe(bin, &model).await,
+        _ => run_probe(bin, &model)
+            .await
+            .map(|output| format!("{}（{PROBE_NOTE}）", probe_summary(&output)))
+            .map_err(|error| format!("{error}（{PROBE_NOTE}）")),
+    };
     let latency_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
     Ok(match outcome {
-        Ok(output) => ModelProbeResult {
+        Ok(detail) => ModelProbeResult {
             ok: true,
             latency_ms,
-            detail: format!("{}（{PROBE_NOTE}）", probe_summary(&output)),
+            detail,
         },
-        Err(error) => ModelProbeResult {
+        Err(detail) => ModelProbeResult {
             ok: false,
             latency_ms,
-            detail: format!("{error}（{PROBE_NOTE}）"),
+            detail,
         },
     })
 }
@@ -1159,14 +1275,222 @@ fn probe_overlay() -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Finished omp process, output decoded lossily.
+struct OmpRun {
+    success: bool,
+    status: String,
+    stdout: String,
+    stderr: String,
+}
+
+/// Runs `omp <args>` with the same exe resolution, augmented PATH and provider env as the
+/// catalog listing, under [`PROBE_TIMEOUT`].
+async fn run_omp(bin: &str, args: &[&str], cwd: &Path) -> Result<OmpRun, String> {
+    crate::todos::omp::init_login_path().await;
+    let path = crate::todos::omp::augmented_path();
+    let exe = crate::todos::omp::resolve_binary(bin, &path);
+    let mut cmd = tokio::process::Command::new(&exe);
+    cmd.args(args);
+    cmd.current_dir(cwd)
+        .env("PATH", path)
+        .envs(crate::providers::omp_spawn_env())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let child = cmd
+        .spawn()
+        .map_err(|error| format!("无法启动 {}：{error}", exe.display()))?;
+    let output = tokio::time::timeout(PROBE_TIMEOUT, child.wait_with_output())
+        .await
+        .map_err(|_| "omp 测试超时".to_string())?
+        .map_err(|error| format!("omp 执行失败：{error}"))?;
+    Ok(OmpRun::from(output))
+}
+
+impl From<std::process::Output> for OmpRun {
+    fn from(output: std::process::Output) -> Self {
+        Self {
+            success: output.status.success(),
+            status: output.status.to_string(),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        }
+    }
+}
+
+/// Removes ANSI escapes and box-drawing frame characters, trims every line and drops the ones
+/// that were pure frame. Content is never shortened.
+fn clean_output(text: &str) -> Vec<String> {
+    static ANSI: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let ansi = ANSI.get_or_init(|| {
+        regex::Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)").unwrap()
+    });
+    let stripped = ansi.replace_all(text, "");
+    let mut lines = Vec::new();
+    for line in stripped.lines() {
+        let framed: String = line
+            .chars()
+            .map(|c| {
+                if ('\u{2500}'..='\u{257f}').contains(&c) {
+                    ' '
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let line = framed.trim();
+        if !line.is_empty() {
+            lines.push(line.to_string());
+        }
+    }
+    lines
+}
+
+/// Full readable failure text of a run: cleaned stderr then stdout, duplicates removed, the
+/// first omp `Error:` line moved to the front.
+fn failure_detail(run: &OmpRun) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for line in clean_output(&run.stderr)
+        .into_iter()
+        .chain(clean_output(&run.stdout))
+    {
+        if !lines.contains(&line) {
+            lines.push(line);
+        }
+    }
+    if let Some(index) = lines
+        .iter()
+        .position(|line| line.to_ascii_lowercase().starts_with("error"))
+    {
+        let line = lines.remove(index);
+        lines.insert(0, line);
+    }
+    if lines.is_empty() {
+        return format!("omp 退出（{}）", run.status);
+    }
+    lines.join("\n")
+}
+
+async fn run_search_probe(bin: &str, model: &str) -> Result<String, String> {
+    let cwd = std::env::temp_dir();
+    let run = run_omp(
+        bin,
+        &[
+            "search",
+            "--model",
+            model,
+            "-l",
+            "1",
+            "--compact",
+            SEARCH_QUERY,
+        ],
+        &cwd,
+    )
+    .await?;
+    if run.success {
+        Ok("搜索服务可用".to_string())
+    } else {
+        Err(failure_detail(&run))
+    }
+}
+
+/// Removes the judge probe's temp project on every exit path.
+struct TempProject(PathBuf);
+
+impl Drop for TempProject {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Pins `modelRoles.judge` to `model` in a throwaway project and runs `omp find`, whose
+/// filename judgment goes through the judge role. The empty `judge` fallback chain stops omp
+/// from answering with another judge.
+async fn run_judge_probe(bin: &str, model: &str) -> Result<String, String> {
+    let project =
+        TempProject(crate::paths::data_dir().join(format!("judge-probe-{}", uuid::Uuid::new_v4())));
+    let config = project.0.join(".omp").join("config.yml");
+    std::fs::create_dir_all(config.parent().expect("config has a parent"))
+        .map_err(|error| format!("无法创建测试目录：{error}"))?;
+    std::fs::write(&config, judge_probe_config(model)?)
+        .map_err(|error| format!("无法写入测试配置：{error}"))?;
+    std::fs::write(
+        project.0.join("greet.js"),
+        "function greet(name) {\n  return `hello ${name}`;\n}\n",
+    )
+    .map_err(|error| format!("无法写入测试文件：{error}"))?;
+    let dir = project.0.to_string_lossy().into_owned();
+    let run = run_omp(
+        bin,
+        &["find", JUDGE_QUERY, &dir, "--json", "-q"],
+        &project.0,
+    )
+    .await?;
+    judge_outcome(&run)
+}
+
+/// Project config for the judge probe; the selector is a JSON string, which is valid YAML, so
+/// spaces and non-ASCII are safe.
+fn judge_probe_config(model: &str) -> Result<String, String> {
+    let quoted =
+        serde_json::to_string(model).map_err(|error| format!("模型名称不合法：{error}"))?;
+    Ok(format!(
+        "modelRoles:\n  judge: {quoted}\nretry:\n  fallbackChains:\n    judge: []\n"
+    ))
+}
+
+/// Exit 0 with `stats.errors > 0` is still a failure: omp reports judge errors in the JSON.
+fn judge_outcome(run: &OmpRun) -> Result<String, String> {
+    let stats = run
+        .stdout
+        .find('{')
+        .and_then(|start| {
+            serde_json::from_str::<serde_json::Value>(run.stdout[start..].trim()).ok()
+        })
+        .and_then(|value| value.get("stats").cloned());
+    let Some(stats) = stats else {
+        return Err(if run.success {
+            format!(
+                "无法解析 omp find 输出：{}",
+                clean_output(&run.stdout).join("\n")
+            )
+        } else {
+            failure_detail(run)
+        });
+    };
+    let errors = stats
+        .get("errors")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    if run.success && errors == 0 {
+        return Ok("判定模型可用".to_string());
+    }
+    let failures: Vec<String> = stats
+        .get("failures")
+        .and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .flat_map(clean_output)
+                .collect()
+        })
+        .unwrap_or_default();
+    Err(if failures.is_empty() {
+        failure_detail(run)
+    } else {
+        failures.join("\n")
+    })
+}
+
 /// Real one-shot call. Mirrors `todos::omp::run_print` (`--no-tools --no-session`) and adds the
 /// [`PROBE_OVERLAY`] `--config` overlay, which `run_print` has no way to pass; without it a
 /// `retry.fallbackChains` member could answer for a dead model.
-async fn run_probe(state: &AppState, model: &str) -> Result<String, String> {
+async fn run_probe(bin: &str, model: &str) -> Result<String, String> {
     crate::todos::omp::init_login_path().await;
-    let bin = state.settings.read().omp_binary.clone();
     let path = crate::todos::omp::augmented_path();
-    let exe = crate::todos::omp::resolve_binary(&bin, &path);
+    let exe = crate::todos::omp::resolve_binary(bin, &path);
     let overlay = probe_overlay()?;
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.args(["-p", "--no-tools", "--no-session", "--no-title"]);
@@ -1199,19 +1523,11 @@ async fn run_probe(state: &AppState, model: &str) -> Result<String, String> {
         .await
         .map_err(|_| "omp 测试超时".to_string())?
         .map_err(|error| format!("omp 执行失败：{error}"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail: String = stderr
-            .chars()
-            .rev()
-            .take(400)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        return Err(format!("omp 退出（{}）：{}", output.status, tail.trim()));
+    let run = OmpRun::from(output);
+    if !run.success {
+        return Err(failure_detail(&run));
     }
+    let stdout = clean_output(&run.stdout).join("\n");
     if stdout.is_empty() {
         return Err("omp 没有返回内容".to_string());
     }
@@ -2092,6 +2408,101 @@ mod tests {
             })
             .unwrap(),
             serde_json::json!({ "ok": true, "latencyMs": 12, "detail": "ok" })
+        );
+    }
+
+    fn run(success: bool, stdout: &str, stderr: &str) -> OmpRun {
+        OmpRun {
+            success,
+            status: if success {
+                "exit status: 0"
+            } else {
+                "exit status: 1"
+            }
+            .to_string(),
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+        }
+    }
+
+    #[test]
+    fn kind_catalog_parses_array_and_wrapped_shapes() {
+        let array = r#"[{"selector":"web/exa","kind":"search","provider":"web","id":"exa","name":"Exa","thinking":null}]"#;
+        let wrapped = format!(r#"{{"models":{array}}}"#);
+        let expected = vec![ModelKindEntry {
+            selector: "web/exa".to_string(),
+            kind: "search".to_string(),
+            provider: "web".to_string(),
+            name: Some("Exa".to_string()),
+            thinking: Vec::new(),
+        }];
+        assert_eq!(parse_kind_catalog(array).unwrap(), expected);
+        assert_eq!(parse_kind_catalog(&wrapped).unwrap(), expected);
+    }
+
+    #[test]
+    fn kind_catalog_fills_missing_selector_and_kind() {
+        let rows =
+            r#"[{"provider":"openai","id":"gpt-6"},{"selector":"a/b","name":""},{"id":"orphan"}]"#;
+        let entries = parse_kind_catalog(rows).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].selector, "openai/gpt-6");
+        assert_eq!(entries[0].kind, "chat");
+        assert_eq!(entries[0].provider, "openai");
+        assert_eq!(entries[1].selector, "a/b");
+        assert_eq!(entries[1].provider, "a");
+        assert_eq!(entries[1].name, None);
+        assert!(parse_kind_catalog(r#"{"nope":1}"#).is_err());
+    }
+
+    #[test]
+    fn kind_catalog_reads_thinking_array_and_efforts_object() {
+        let rows = r#"[
+            {"selector":"a/flat","thinking":["low","high","max"]},
+            {"selector":"a/obj","thinking":{"mode":"effort","efforts":["minimal","medium"]}},
+            {"selector":"a/none"}
+        ]"#;
+        let entries = parse_kind_catalog(rows).unwrap();
+        assert_eq!(entries[0].thinking, ["low", "high", "max"]);
+        assert_eq!(entries[1].thinking, ["minimal", "medium"]);
+        assert!(entries[2].thinking.is_empty());
+    }
+
+    #[test]
+    fn boxed_error_becomes_clean_full_text_with_error_first() {
+        let framed = "\u{1b}[31m╭──────────────╮\u{1b}[0m\n│ Error: No web search model matches selector \"web/x\" │\n│ Try another selector, then run it again with a much longer explanation that must survive intact │\n╰──────────────╯\n";
+        let detail = failure_detail(&run(false, "", &format!("Details follow\n{framed}")));
+        assert_eq!(
+            detail,
+            "Error: No web search model matches selector \"web/x\"\nDetails follow\nTry another selector, then run it again with a much longer explanation that must survive intact"
+        );
+        let long = "x".repeat(2000);
+        assert_eq!(failure_detail(&run(false, &long, "")), long);
+        assert_eq!(
+            failure_detail(&run(false, "", " \n")),
+            "omp 退出（exit status: 1）"
+        );
+    }
+
+    #[test]
+    fn judge_exit_zero_with_errors_is_failure() {
+        let stdout = r#"{"stats":{"errors":1,"failures":["filenames: judgment: no judge model available"]}}"#;
+        let detail = judge_outcome(&run(true, stdout, "")).unwrap_err();
+        assert_eq!(detail, "filenames: judgment: no judge model available");
+        assert!(judge_outcome(&run(true, r#"{"stats":{"errors":0,"failures":[]}}"#, "")).is_ok());
+        assert!(judge_outcome(&run(false, r#"{"stats":{"errors":0}}"#, "boom")).is_err());
+        assert_eq!(
+            judge_outcome(&run(false, "", "Error: bad")).unwrap_err(),
+            "Error: bad"
+        );
+    }
+
+    #[test]
+    fn judge_config_quotes_unusual_selectors() {
+        let config = judge_probe_config("聪明 AI-散户/gpt-6-astra").unwrap();
+        assert_eq!(
+            config,
+            "modelRoles:\n  judge: \"聪明 AI-散户/gpt-6-astra\"\nretry:\n  fallbackChains:\n    judge: []\n"
         );
     }
 }

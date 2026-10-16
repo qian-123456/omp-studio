@@ -253,6 +253,7 @@ pub fn run() {
             model_replace::model_replace_history,
             model_replace::model_replace_undo,
             model_replace::model_probe,
+            model_replace::model_kind_catalog,
             settings::omp_info,
             settings::omp_update_check,
             settings::omp_update_run,

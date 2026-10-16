@@ -389,6 +389,7 @@ export const OMP_CONFIG_KEY_ZH: Record<string, string> = {
 	skillful: "提示词中列出技能",
 	"providers.anthropic.serverSideFallback": "Anthropic 服务端回退（Fable 5）",
 	"retry.fallbackChains": "重试回退链",
+	"retry.fallbackOn": "回退触发条件",
 	"retry.fallbackRevertPolicy": "回退恢复策略",
 	"retry.maxDelayMs": "重试最大延迟（毫秒）",
 	"retry.maxRetries": "重试次数",

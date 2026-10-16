@@ -6,17 +6,20 @@
 import { describe, expect, it } from "vitest";
 import type {
 	ChainChange,
+	ModelKindEntry,
 	ModelReplaceEdit,
 	ModelReplaceItemResult,
 	ModelUsageRef,
 	ModelUsageScan,
 } from "../../../lib/contracts";
+import { resolveThinkingLevels } from "../../../lib/models";
 import {
 	appSettingLabel,
 	buildOverview,
 	buildPlan,
 	editKey,
 	invertEdit,
+	isModelSelector,
 	listCandidates,
 	liveSessionsOnModel,
 	mergeResults,
@@ -26,6 +29,9 @@ import {
 	sameModel,
 	selectorOf,
 	summarizeEdit,
+	levelsForSelector,
+	sanitizeOverrides,
+	supportedLevel,
 	THINKING_LEVELS,
 	withLevel,
 } from "./logic";
@@ -135,12 +141,118 @@ describe("replaceValue", () => {
 	});
 });
 
+describe("full thinking-suffix grammar", () => {
+	const FLASH = "agnes-free/agnes-3.0-flash";
+
+	it("matches :off and :inherit candidates against the bare source", () => {
+		expect(selectorOf(`${FLASH}:off`)).toBe(FLASH);
+		expect(sameModel(`${FLASH}:off`, FLASH)).toBe(true);
+		expect(sameModel(`${FLASH}:inherit`, FLASH)).toBe(true);
+		expect(sameModel(FLASH, `${FLASH}:off`)).toBe(true);
+	});
+
+	it("replaces :off / :inherit items and writes the chosen level", () => {
+		expect(replaceValue(`${FLASH}:off,${GPT}`, FLASH, withLevel(OPUS, "high"))).toBe(`${OPUS}:high,${GPT}`);
+		expect(replaceValue(`${FLASH}:inherit`, FLASH, OPUS)).toBe(OPUS);
+		expect(withLevel(OPUS, "off")).toBe(`${OPUS}:off`);
+	});
+
+	it("plans a replace for an :off role value and an :inherit chain item", () => {
+		const plan = buildPlan({
+			scan: scanOf([roleRef("default", `${FLASH}:off`)], { web: [`${FLASH}:inherit`] }),
+			fromModel: FLASH,
+			toModel: OPUS,
+			level: "off",
+		});
+		expect(plan.rows.map((r) => r.after)).toEqual([`${OPUS}:off`, OPUS + ":off"]);
+	});
+
+	it("keeps inherit a known suffix but never offers it", () => {
+		expect(THINKING_LEVELS).toContain("inherit");
+		expect(levelsForSelector([kindEntry(OPUS, ["low", "high"])], OPUS)).not.toContain("inherit");
+	});
+});
+
+const kindEntry = (selector: string, thinking: string[]): ModelKindEntry => ({
+	selector,
+	kind: "chat",
+	provider: selector.slice(0, selector.indexOf("/")),
+	name: null,
+	thinking,
+});
+
+describe("catalog thinking levels", () => {
+	const MIMO = "magpie/opencode-zen/mimo-v2.6-flash-free";
+	const SONNET = "anthropic/claude-sonnet-5-5";
+	const entries = [
+		kindEntry(MIMO, ["minimal", "low", "medium", "high", "xhigh"]),
+		kindEntry(SONNET, ["low", "medium", "high", "xhigh", "max"]),
+		kindEntry("web/exa", []),
+	];
+
+	it("offers exactly what resolveThinkingLevels gives for the catalog entry", () => {
+		expect(levelsForSelector(entries, MIMO)).toEqual(
+			resolveThinkingLevels(undefined, ["minimal", "low", "medium", "high", "xhigh"], null),
+		);
+		expect(levelsForSelector(entries, MIMO)).not.toContain("max");
+		expect(levelsForSelector(entries, SONNET)).toContain("max");
+	});
+
+	it("offers nothing for a model without thinking, an unknown model, no target or no catalog", () => {
+		expect(levelsForSelector(entries, "web/exa")).toEqual([]);
+		expect(levelsForSelector(entries, "nobody/unknown")).toEqual([]);
+		expect(levelsForSelector(entries, "")).toEqual([]);
+		expect(levelsForSelector(null, MIMO)).toEqual([]);
+	});
+
+	it("falls back to 模型默认 (null) for an unsupported level", () => {
+		const mimo = levelsForSelector(entries, MIMO);
+		expect(supportedLevel("max", mimo)).toBeNull();
+		expect(supportedLevel("xhigh", mimo)).toBe("xhigh");
+		expect(supportedLevel(null, mimo)).toBeNull();
+		expect(supportedLevel("high", [])).toBeNull();
+	});
+
+	it("makes row override levels explicit and valid for the override's own target", () => {
+		const out = sanitizeOverrides(
+			{
+				inherits: { model: MIMO },
+				explicitBad: { model: MIMO, level: "max" },
+				onSharedTarget: { level: "max" },
+				noThinking: { model: "web/exa", level: "high" },
+			},
+			SONNET,
+			"max",
+			entries,
+		);
+		expect(out.inherits?.level).toBeNull();
+		expect(out.explicitBad?.level).toBeNull();
+		expect(out.onSharedTarget?.level).toBe("max");
+		expect(out.noThinking?.level).toBeNull();
+	});
+});
+
+describe("non-model sources", () => {
+	it("never matches a bare role name or a glob as the source", () => {
+		expect(sameModel("smol", "smol")).toBe(false);
+		expect(sameModel("google-antigravity/*", "google-antigravity/*")).toBe(false);
+		expect(sameModel("@smol", "@smol")).toBe(false);
+		const plan = buildPlan({
+			scan: scanOf([roleRef("default", "smol")], { smol: [OPUS], "google-antigravity/*": [GPT] }),
+			fromModel: "smol",
+			toModel: OPUS,
+			level: null,
+		});
+		expect(plan.rows).toEqual([]);
+	});
+});
+
 describe("labels", () => {
 	it("names built-in roles and app settings in Chinese", () => {
 		expect(roleTitle("default")).toBe("default · 主力模型");
 		expect(roleTitle("custom-role")).toBe("custom-role");
 		expect(appSettingLabel("newSessionModel")).toBe("新会话默认模型");
-		expect(appSettingLabel("doctorModel")).toBe("医生模型");
+		expect(appSettingLabel("doctorModel")).toBe("诊断模型");
 	});
 
 	it("maps project paths to scanned names", () => {
@@ -150,50 +262,81 @@ describe("labels", () => {
 	});
 });
 
+describe("isModelSelector", () => {
+	it("accepts provider/id and rejects roles, aliases and globs", () => {
+		expect(isModelSelector(OPUS)).toBe(true);
+		expect(isModelSelector("web/exa")).toBe(true);
+		for (const bad of ["smol", "web", "@smol", "google-antigravity/*", "a/b?", "a/[x]", ""]) {
+			expect(isModelSelector(bad)).toBe(false);
+		}
+	});
+});
+
 describe("buildOverview", () => {
+	const kinds = new Map([
+		[OPUS, "chat"],
+		[GPT, "chat"],
+		["web/exa", "search"],
+	]);
+
 	it("groups values, chain keys and chain items by stripped selector", () => {
 		const scan = scanOf(
-			[roleRef("default", `${OPUS}:high,${GPT}`), appRef("doctorModel", OPUS), scheduleRef("s1", "日报", SMOL, "low")],
-			{ [OPUS]: [`${SMOL}:max`, "@default"] },
+			[roleRef("default", `${OPUS}:high,${GPT}`), appRef("doctorModel", OPUS), scheduleRef("s1", "日报", GPT, "low")],
+			{ [OPUS]: [`${GPT}:max`, "@default"] },
 		);
-		const rows = buildOverview(scan, new Set([OPUS, GPT]));
+		const rows = buildOverview(scan, kinds);
 
-		expect(rows.map((r) => r.selector)).toEqual([OPUS, SMOL, GPT]);
+		expect(rows.map((r) => r.selector)).toEqual([OPUS, GPT]);
 		const opus = rows[0];
 		expect(opus.count).toBe(3); // role, app setting, chain key
 		expect(opus.levels).toEqual(["high"]);
-		expect(opus.inCatalog).toBe(true);
-		expect(opus.sources).toHaveLength(3);
-		expect(opus.extraSources).toBe(0);
+		expect(opus.group).toBe("chat");
 		// The alias is not a model and never shows up.
 		expect(rows.some((r) => r.selector.includes("@"))).toBe(false);
 		// Levels come from the stored values (`:max` on the chain item); a schedule's
 		// thinking column is a separate field and does not mark the model.
-		expect(rows.find((r) => r.selector === SMOL)).toMatchObject({ count: 2, levels: ["max"] });
+		expect(rows[1]).toMatchObject({ count: 3, levels: ["max"] });
 	});
 
-	it("marks models missing from the catalogue and reports empty scans", () => {
-		const rows = buildOverview(scanOf([roleRef("default", "gone/model")]), new Set([GPT]));
-		expect(rows).toEqual([
-			{
-				selector: "gone/model",
-				count: 1,
-				levels: [],
-				inCatalog: false,
-				referencedAsModel: true,
-				sources: ["default · 主力模型（全局）"],
-				extraSources: 0,
-			},
+	it("keeps every source with its scope", () => {
+		const refs = [
+			roleRef("default", OPUS),
+			roleRef("fast", OPUS, "project"),
+			overrideRef("worker", OPUS),
+			appRef("sideChatModel", OPUS),
+			scheduleRef("s1", "日报", OPUS),
+			scheduleRef("s2", "周报", OPUS),
+		];
+		const [row] = buildOverview(scanOf(refs, { default: [OPUS] }), kinds);
+		expect(row.count).toBe(7);
+		expect(row.sources).toEqual([
+			{ scope: "全局", title: "default · 主力模型" },
+			{ scope: "alpha", title: "fast" },
+			{ scope: "全局", title: "子代理 worker" },
+			{ scope: "应用设置", title: "侧边对话专用模型" },
+			{ scope: "定时任务", title: "日报" },
+			{ scope: "定时任务", title: "周报" },
+			{ scope: "回退链", title: "链 default" },
 		]);
-		expect(buildOverview(null, new Set())).toEqual([]);
 	});
 
-	it("lists chain keys without flagging a role-name key as a missing model", () => {
-		const rows = buildOverview(scanOf([], { default: [OPUS], [OPUS]: ["@smol"] }), new Set([GPT]));
-		const key = rows.find((r) => r.selector === "default");
-		expect(key).toMatchObject({ inCatalog: false, referencedAsModel: false });
-		// A chain key that is also used as a model keeps the model flag.
-		expect(rows.find((r) => r.selector === OPUS)).toMatchObject({ inCatalog: false, referencedAsModel: true });
+	it("skips role names, aliases and globs", () => {
+		const scan = scanOf([appRef("doctorModel", "smol"), roleRef("default", `@smol,${OPUS}`)], {
+			web: [OPUS],
+			"google-antigravity/*": [GPT],
+			[GPT]: ["@default"],
+		});
+		expect(buildOverview(scan, kinds).map((r) => r.selector)).toEqual([OPUS, GPT]);
+	});
+
+	it("assigns groups from the kind map and flags missing only when it is loaded", () => {
+		const scan = scanOf([roleRef("default", "gone/model"), roleRef("web", "web/exa"), roleRef("x", "img/one")]);
+		const loaded = new Map([...kinds, ["img/one", "image"]]);
+		const groups = Object.fromEntries(buildOverview(scan, loaded).map((r) => [r.selector, r.group]));
+		expect(groups).toEqual({ "gone/model": "missing", "web/exa": "search", "img/one": "other" });
+		// Not loaded (or failed): nothing is missing.
+		expect(buildOverview(scan, null).some((r) => r.group === "missing")).toBe(false);
+		expect(buildOverview(null, loaded)).toEqual([]);
 	});
 });
 

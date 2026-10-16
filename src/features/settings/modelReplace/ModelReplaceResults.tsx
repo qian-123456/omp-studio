@@ -80,7 +80,7 @@ function LiveSessionsCard({
 	return (
 		<div className="mx-3 mb-3 rounded-xl hairline">
 			<div className="flex items-center justify-between gap-2 rounded-t-xl bg-[var(--well-bg)] px-3 py-1.5 text-[10px] text-neutral-500">
-				<span>仍在「{fromModel}」上运行的会话（{candidates.length}）</span>
+				<span className="min-w-0 break-all">仍在「{fromModel}」上运行的会话（{candidates.length}）</span>
 				<span className="text-neutral-500">写入配置不会改变运行中的会话</span>
 			</div>
 			{candidates.map((candidate) => (
@@ -94,10 +94,10 @@ function LiveSessionsCard({
 						onChange={(e) => setPicked((prev) => ({ ...prev, [candidate.sessionId]: e.target.checked }))}
 						className={CHECKBOX_CLASS}
 					/>
-					<span className="min-w-0 flex-1 truncate text-neutral-300" title={candidate.cwd ?? candidate.sessionId}>
+					<span className="min-w-0 flex-1 break-all text-neutral-300" title={candidate.cwd ?? candidate.sessionId}>
 						{candidate.title}
 					</span>
-					<span className="shrink-0 font-mono text-[10px] text-neutral-500">{candidate.value}</span>
+					<span className="max-w-[45%] shrink-0 break-all font-mono text-[10px] text-neutral-500">{candidate.value}</span>
 				</label>
 			))}
 			<div className="flex items-center gap-2 border-t border-[var(--border-divider)] px-3 py-2">
@@ -123,6 +123,7 @@ export function ModelReplaceResults({
 	fromModel,
 	toModel,
 	level,
+	liveSwitch,
 	projectNames,
 	retrying,
 	onRetry,
@@ -131,6 +132,8 @@ export function ModelReplaceResults({
 	fromModel: string;
 	toModel: string;
 	level: string | null;
+	/** Live sessions only switch to chat models; hidden for search / judge targets. */
+	liveSwitch: boolean;
 	projectNames: Record<string, string>;
 	retrying: boolean;
 	onRetry: (edits: ModelReplaceEdit[]) => void;
@@ -162,9 +165,9 @@ export function ModelReplaceResults({
 						</button>
 					</>
 				)}
-				<span className="flex items-center gap-1 font-mono text-[10px] text-neutral-500">
+				<span className="flex min-w-0 flex-wrap items-center gap-1 break-all font-mono text-[10px] text-neutral-500">
 					{fromModel}
-					<ArrowRight className="h-3 w-3" />
+					<ArrowRight className="h-3 w-3 shrink-0" />
 					{toModel}
 					{level ? `:${level}` : ""}
 				</span>
@@ -189,16 +192,16 @@ export function ModelReplaceResults({
 										<span className="font-medium text-neutral-200">{summary.title}</span>
 										<Chip tone="neutral">{summary.context}</Chip>
 									</div>
-									<div className="mt-0.5 font-mono text-[10px] text-neutral-500">
+									<div className="mt-0.5 whitespace-pre-wrap break-all font-mono text-[10px] text-neutral-500">
 										{summary.before} → {summary.after}
 									</div>
 									{summary.details.map((line) => (
-										<div key={line} className="font-mono text-[10px] text-neutral-500">
+										<div key={line} className="whitespace-pre-wrap break-all font-mono text-[10px] text-neutral-500">
 											{line}
 										</div>
 									))}
 									{!result.ok && result.error !== null && (
-										<div className="mt-0.5 break-all text-rose-300">{result.error}</div>
+										<div className="mt-0.5 whitespace-pre-wrap break-all text-rose-300">{result.error}</div>
 									)}
 								</div>
 							</div>
@@ -207,7 +210,7 @@ export function ModelReplaceResults({
 				</div>
 			</div>
 
-			<LiveSessionsCard fromModel={fromModel} toModel={toModel} level={level} />
+			{liveSwitch && <LiveSessionsCard fromModel={fromModel} toModel={toModel} level={level} />}
 		</div>
 	);
 }

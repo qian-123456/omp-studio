@@ -1548,6 +1548,14 @@ export const OMP_CONFIG_META: Record<string, OmpConfigMeta> = {
 		group: "Retry & Fallback",
 		type: "record"
 	},
+	"retry.fallbackOn": {
+		label: "Fallback Trigger",
+		group: "Retry & Fallback",
+		description: "Which failures may trigger a model fallback",
+		type: "enum",
+		values: ["any", "usage-limit", "except-usage-limit"],
+		options: [{ value: "any", label: "Any error", description: "Fall back on any retryable failure" }, { value: "usage-limit", label: "Usage limit only", description: "Fall back only when usage or quota is exhausted" }, { value: "except-usage-limit", label: "Except usage limit", description: "Fall back on every failure except usage or quota exhaustion" }]
+	},
 	"retry.fallbackRevertPolicy": {
 		label: "Fallback Revert Policy",
 		group: "Retry & Fallback",

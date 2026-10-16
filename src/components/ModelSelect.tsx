@@ -201,6 +201,7 @@ export function ModelMenuContent({
 			<button
 				key={keyPrefix + key}
 				type="button"
+				title={key}
 				onClick={() => pickModel(key)}
 				className={clsx(ROW_CLASS, isSelected ? ROW_SELECTED : ROW_IDLE)}
 			>

@@ -312,6 +312,7 @@ export const OMP_CONFIG_DESC_ZH: Record<string, string> = {
 	repetitionPenalty: "重复 Token 的惩罚（-1 = 供应商默认）",
 	"retry.fallbackChains":
 		"JSON 对象：把模型角色、模型选择器（\"provider/model-id\"）或供应商通配符（\"provider/*\"）映射到有序回退选择器，例如 {\"default\":[\"openai/gpt-4o-mini\"],\"google-antigravity/*\":[\"google/*\",\"google-vertex/*\"]}。面向模型的键在该模型/供应商活跃时生效（不论角色）；\"provider/*\" 条目保留失败模型的 id、只更换供应商。带 id 前缀的通配符（\"openrouter/google/*\"）会给失败模型的裸 id 重新加前缀（google-antigravity/gemini-x → openrouter/google/gemini-x），作为键时只匹配该前缀下该供应商的 id。回退条目可带显式思考后缀（\"provider/model:low\"、\":high\"、\":max\"、\":off\"）；裸条目继承失败回合的力度，\"provider/*\" 条目始终继承",
+	"retry.fallbackOn": "哪类失败可以触发模型回退：任何错误 / 仅用量或配额耗尽 / 用量耗尽以外的错误",
 	"retry.fallbackRevertPolicy": "回退后何时切回主模型",
 	"retry.maxDelayMs":
 		"重试之间的最大等待（毫秒）。当供应商要求等待超过该值且没有凭据或模型回退可用时，请求快速失败而非挂起（例如 3 小时的 Anthropic 限流窗口）。0 = 不设上限，让会话在供应商声明的配额重置后自动恢复",

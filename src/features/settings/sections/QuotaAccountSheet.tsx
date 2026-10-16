@@ -137,7 +137,7 @@ export function QuotaAccountSheet({
 
 	return createPortal(
 		<div
-			className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6 backdrop-blur-xs"
 			onClick={onClose}
 			role="presentation"
 		>
@@ -145,7 +145,7 @@ export function QuotaAccountSheet({
 				role="dialog"
 				aria-modal="true"
 				aria-label={`${brand.name} 账号明细`}
-				className="animate-in slide-in-from-right flex h-full w-full max-w-lg flex-col border-l border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-2xl duration-200"
+				className="animate-in fade-in zoom-in-95 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-2xl duration-200"
 				onClick={(e) => e.stopPropagation()}
 			>
 				<div className="flex items-center justify-between gap-3 border-b border-[var(--border-divider)] px-4 py-3.5">

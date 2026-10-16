@@ -25,6 +25,8 @@ import type {
 	MobileStatus,
 	Model,
 	ModelContextWindowEdit,
+	ModelKindEntry,
+	ModelProbeKind,
 	ModelProbeResult,
 	ModelReplaceEdit,
 	ModelReplaceRecord,
@@ -511,8 +513,12 @@ export const modelReplaceHistory = () => invoke<ModelReplaceRecord[]>("model_rep
 export const modelReplaceUndo = (recordId: string) =>
 	invoke<ModelReplaceResult>("model_replace_undo", { recordId });
 
-/** One-shot real probe of a selector; never called automatically. */
-export const modelProbe = (model: string) => invoke<ModelProbeResult>("model_probe", { model });
+/** One-shot real probe of a selector, exercised the way its kind is used; never called automatically. */
+export const modelProbe = (model: string, kind: ModelProbeKind) =>
+	invoke<ModelProbeResult>("model_probe", { model, kind });
+
+/** Every catalog model of every kind (`omp models --kind all --json`); slow (~8s). */
+export const modelKindCatalog = () => invoke<ModelKindEntry[]>("model_kind_catalog");
 
 // ---- providers ----
 

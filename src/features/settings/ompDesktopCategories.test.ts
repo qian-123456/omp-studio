@@ -61,6 +61,19 @@ describe("isDesktopRelevant", () => {
 		expect(isDesktopRelevant("symbolPreset")).toBe(false);
 		expect(isDesktopRelevant("modelRoles")).toBe(false);
 		expect(isDesktopRelevant("retry.fallbackChains")).toBe(false);
+		for (const k of [
+			"retry.modelFallback",
+			"retry.fallbackOn",
+			"retry.fallbackRevertPolicy",
+			"retry.usageAwareFallback",
+			"retry.usageReservePct",
+			"retry.usageReservePolicy",
+		]) {
+			expect(isDesktopRelevant(k)).toBe(false);
+		}
+		expect(isDesktopRelevant("retry.maxRetries")).toBe(true);
+		expect(isDesktopRelevant("retry.maxDelayMs")).toBe(true);
+		expect(isDesktopRelevant("retry.waitForUsageReset")).toBe(true);
 		expect(isDesktopRelevant("read.toolResultPreview")).toBe(false);
 		expect(isDesktopRelevant("readLineNumbers")).toBe(false);
 		expect(isDesktopRelevant("setupVersion")).toBe(false);

@@ -6,32 +6,43 @@
  */
 import { AlertTriangle, ArrowRight, Info } from "lucide-react";
 import { useState } from "react";
-import type { ModelOption } from "../../../lib/models";
-import { HoverScrollText } from "../../../components/HoverScrollText";
+import type { ModelKindEntry } from "../../../lib/contracts";
+import type { KindGroup } from "./kinds";
 import type { Plan, PlanRow, RowOverride } from "./logic";
+import { levelsForSelector, supportedLevel } from "./logic";
 import { BTN_GHOST, CHECKBOX_CLASS, Chip, LevelSelect, TargetPicker } from "./parts";
 
 /** Shown wherever the scan's project coverage matters. */
 export const PROJECT_SCOPE_NOTICE = "仅覆盖在本桌面端添加的项目";
 
 const SMALL_PICKER_BUTTON =
-	"flex h-6 max-w-[200px] items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 text-left text-[10px] text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50";
+	"flex min-h-6 w-[340px] max-w-full items-center justify-between gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-left text-[10px] text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50";
+
+interface PickerData {
+	entries: ModelKindEntry[] | null;
+	loading: boolean;
+	error: string | null;
+	/** Overrides stay on the dialog target's kind. */
+	group: KindGroup;
+}
 
 function PlanRowView({
 	row,
-	models,
+	picker,
 	override,
 	onOverride,
 	onToggle,
 }: {
 	row: PlanRow;
-	models: ModelOption[] | null;
+	picker: PickerData;
 	override: RowOverride | undefined;
 	onOverride: (override: RowOverride | null) => void;
 	onToggle: (checked: boolean) => void;
 }) {
 	const [editing, setEditing] = useState(false);
 	const open = editing || override !== undefined;
+	// The level options belong to this row's own target, not the shared one.
+	const levels = levelsForSelector(picker.entries, row.model);
 	return (
 		<div className="flex items-start gap-2 border-t border-[var(--border-divider)] px-3 py-2 text-[11px]">
 			<input
@@ -43,7 +54,7 @@ function PlanRowView({
 			/>
 			<div className="min-w-0 flex-1">
 				<div className="flex flex-wrap items-center gap-1.5">
-					<span className="font-medium text-neutral-200">{row.title}</span>
+					<span className="min-w-0 break-words font-medium text-neutral-200">{row.title}</span>
 					<Chip tone="neutral">{row.context}</Chip>
 					{row.conflict && (
 						<Chip tone="warn" title="目标回退链键已存在：勾选后把 X 的条目合并进去，不覆盖原有链">
@@ -56,51 +67,72 @@ function PlanRowView({
 						</Chip>
 					)}
 					{override !== undefined && (
-						<Chip tone="good" title="这一行使用单独的目标模型/等级">
-							已覆盖目标
+						<Chip tone="good" title="这一行没有用统一目标，而是单独指定了模型或思考等级">
+							单独指定
 						</Chip>
 					)}
+					{!open && (
+						<button
+							type="button"
+							onClick={() => setEditing(true)}
+							className={`${BTN_GHOST} ml-auto`}
+							title={
+								levels.length > 0
+									? "只有这一行换成和统一目标不同的模型（可同时选思考等级），其他行不受影响"
+									: "只有这一行换成和统一目标不同的模型，其他行不受影响"
+							}
+						>
+							换成别的模型
+						</button>
+					)}
 				</div>
-				<div className="mt-1 flex items-center gap-1.5 font-mono text-[10px]">
-					<HoverScrollText
-						text={row.before}
-						className="min-w-0 flex-1"
-						innerClassName="text-neutral-500 line-through decoration-neutral-700"
-						title={row.before}
-					/>
-					<ArrowRight size={10} className="shrink-0 text-neutral-600" />
-					<HoverScrollText
-						text={row.after}
-						className="min-w-0 flex-1"
-						innerClassName="text-neutral-200"
-						title={row.after}
-					/>
+				<div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2 font-mono text-[10px]">
+					{/* `break-words` only splits inside a token when it cannot fit; browsers already break after `/` and `-`. */}
+					<span className="whitespace-pre-wrap break-words text-neutral-500 line-through decoration-neutral-700">
+						{row.before}
+					</span>
+					<ArrowRight size={10} className="mt-0.5 shrink-0 text-neutral-600" />
+					<span className="whitespace-pre-wrap break-words text-neutral-200">{row.after}</span>
 				</div>
-			</div>
-			<div className="flex shrink-0 items-center gap-1">
-				{open ? (
-					<>
+				{open && (
+					<div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--well-bg)] px-2 py-1.5">
+						<span className="shrink-0 text-[10px] text-neutral-500">这一行换成</span>
 						<TargetPicker
 							value={row.model}
-							models={models}
+							entries={picker.entries}
+							loading={picker.loading}
+							error={picker.error}
+							initialGroup={picker.group}
+							lockGroup={picker.group}
 							caption={`仅替换「${row.title}」`}
 							buttonClass={SMALL_PICKER_BUTTON}
-							onSelect={(model) => onOverride({ ...override, model })}
+							onSelect={(model) =>
+								onOverride({
+									...override,
+									model,
+									level: supportedLevel(row.level, levelsForSelector(picker.entries, model)),
+								})
+							}
 						/>
 						<LevelSelect
 							value={row.level}
+							levels={levels}
 							onChange={(level) => onOverride({ ...override, level })}
 							ariaLabel={`「${row.title}」的思考等级`}
-							containerClassName="w-24"
+							containerClassName="w-40"
 						/>
-						<button type="button" onClick={() => onOverride(null)} className={BTN_GHOST}>
-							恢复默认
+						<button
+							type="button"
+							onClick={() => {
+								setEditing(false);
+								onOverride(null);
+							}}
+							className={BTN_GHOST}
+							title="这一行重新使用统一目标"
+						>
+							改回统一目标
 						</button>
-					</>
-				) : (
-					<button type="button" onClick={() => setEditing(true)} className={BTN_GHOST} title="单独指定这一行的目标模型与思考等级">
-						覆盖目标
-					</button>
+					</div>
 				)}
 			</div>
 		</div>
@@ -110,18 +142,25 @@ function PlanRowView({
 export function ModelReplacePlanPreview({
 	plan,
 	fromModel,
-	models,
+	entries,
+	kindsLoading,
+	kindsError,
+	targetGroup,
 	overrides,
 	onOverride,
 	onToggle,
 }: {
 	plan: Plan;
 	fromModel: string;
-	models: ModelOption[] | null;
+	entries: ModelKindEntry[] | null;
+	kindsLoading: boolean;
+	kindsError: string | null;
+	targetGroup: KindGroup;
 	overrides: Record<string, RowOverride>;
 	onOverride: (rowId: string, override: RowOverride | null) => void;
 	onToggle: (rowId: string, checked: boolean) => void;
 }) {
+	const picker: PickerData = { entries, loading: kindsLoading, error: kindsError, group: targetGroup };
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-[11px] text-neutral-400">
@@ -146,7 +185,7 @@ export function ModelReplacePlanPreview({
 			<div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
 				{plan.rows.length === 0 ? (
 					<p className="px-1 py-6 text-xs text-neutral-500">
-						没有引用到「<span className="font-mono text-neutral-300">{fromModel}</span>」的配置，换个来源模型试试。
+						没有引用到「<span className="break-all font-mono text-neutral-300">{fromModel}</span>」的配置，换个来源模型试试。
 					</p>
 				) : (
 					plan.groups.map((group) => (
@@ -159,7 +198,7 @@ export function ModelReplacePlanPreview({
 								<PlanRowView
 									key={row.id}
 									row={row}
-									models={models}
+									picker={picker}
 									override={overrides[row.id]}
 									onOverride={(override) => onOverride(row.id, override)}
 									onToggle={(checked) => onToggle(row.id, checked)}
@@ -175,14 +214,10 @@ export function ModelReplacePlanPreview({
 							未能扫描的位置（{plan.skippedProjects.length}）— 这些位置不会被修改
 						</div>
 						{plan.skippedProjects.map((project) => (
-							<div key={project.path} className="flex items-center gap-2 border-t border-[var(--border-divider)] px-3 py-1.5 text-[11px]">
-								<span className="shrink-0 text-neutral-300" title={project.path}>
-									{project.name}
-								</span>
-								<span className="min-w-0 flex-1 truncate font-mono text-[10px] text-neutral-600" title={project.path}>
-									{project.path}
-								</span>
-								<span className="shrink-0 text-amber-300">{project.reason}</span>
+							<div key={project.path} className="flex items-start gap-2 border-t border-[var(--border-divider)] px-3 py-1.5 text-[11px]">
+								<span className="shrink-0 text-neutral-300">{project.name}</span>
+								<span className="min-w-0 flex-1 break-all font-mono text-[10px] text-neutral-600">{project.path}</span>
+								<span className="max-w-[40%] shrink-0 break-all text-amber-300">{project.reason}</span>
 							</div>
 						))}
 					</div>

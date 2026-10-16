@@ -26,15 +26,20 @@ function EditList({ record, projectNames }: { record: ModelReplaceRecord; projec
 				const restored = summarizeEdit(invertEdit(edit), projectNames);
 				return (
 					<div key={`${summary.title}:${index}`} className="py-1 text-[10px]">
-						<div className="flex items-center gap-1.5">
-							<span className="text-neutral-300">{summary.title}</span>
+						<div className="flex flex-wrap items-center gap-1.5">
+							<span className="min-w-0 break-all text-neutral-300">{summary.title}</span>
 							<Chip tone="neutral">{summary.context}</Chip>
 						</div>
-						<div className="font-mono text-neutral-500">
+						<div className="whitespace-pre-wrap break-all font-mono text-neutral-500">
 							{summary.before} → {summary.after}
 						</div>
+						{summary.details.map((line) => (
+							<div key={line} className="whitespace-pre-wrap break-all font-mono text-neutral-600">
+								{line}
+							</div>
+						))}
 						{record.undoneAt === null && (
-							<div className="font-mono text-neutral-600">撤销后恢复为 {restored.after}</div>
+							<div className="whitespace-pre-wrap break-all font-mono text-neutral-600">撤销后恢复为 {restored.after}</div>
 						)}
 					</div>
 				);
@@ -64,9 +69,9 @@ function UndoResults({
 							<XCircle className="mt-0.5 h-3 w-3 shrink-0 text-rose-400" />
 						)}
 						<span className="min-w-0 flex-1">
-							<span className="text-neutral-300">{summary.title}</span>
-							<span className="ml-1 text-neutral-500">{summary.context}</span>
-							<span className="ml-1 break-all text-neutral-400">
+							<span className="break-all text-neutral-300">{summary.title}</span>
+							<span className="ml-1 break-all text-neutral-500">{summary.context}</span>
+							<span className="ml-1 whitespace-pre-wrap break-all text-neutral-400">
 								{result.ok ? "已恢复" : (result.error ?? "撤销失败")}
 							</span>
 						</span>
@@ -143,10 +148,10 @@ export function ModelReplaceHistory({
 								<button
 									type="button"
 									onClick={() => setExpanded((prev) => ({ ...prev, [record.id]: !isOpen }))}
-									className="flex min-w-0 flex-1 items-center gap-2 text-left"
+									className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-left"
 									title="展开本次替换的每一处改动"
 								>
-									<span className="min-w-0 truncate font-mono text-neutral-300">
+									<span className="min-w-0 break-all font-mono text-neutral-300">
 										{record.fromModel} → {record.toModel}
 									</span>
 									<Chip tone="neutral">{record.edits.length} 项</Chip>

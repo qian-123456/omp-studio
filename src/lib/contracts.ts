@@ -860,7 +860,23 @@ export interface ModelReplaceRecord {
 export interface ModelProbeResult {
 	ok: boolean;
 	latencyMs: number;
+	/** Full, untruncated outcome text (ANSI and box-drawing frames stripped). */
 	detail: string;
+}
+
+/** How `model_probe` exercises a selector: chat one-shot, web search, or judge request. */
+export type ModelProbeKind = "chat" | "search" | "judge";
+
+/** One row of `omp models --kind all --json`. */
+export interface ModelKindEntry {
+	/** `provider/id`, exactly as config values reference it. */
+	selector: string;
+	/** omp catalog kind: chat | tiny | search | judge | image | tts | stt | embedding | rerank | video | … */
+	kind: string;
+	provider: string;
+	name: string | null;
+	/** Thinking levels the catalog says this model supports (omp `thinking`); empty = no thinking control. */
+	thinking: string[];
 }
 
 /** Return value of `app_paths`. */

@@ -12,6 +12,7 @@
 
 import type {
 	ChainChange,
+	ModelKindEntry,
 	ModelRefLocation,
 	ModelReplaceEdit,
 	ModelReplaceItemResult,
@@ -19,9 +20,10 @@ import type {
 	ScannedProject,
 } from "../../../lib/contracts";
 import type { ModelOption } from "../../../lib/models";
-import { resolveCurrentModel } from "../../../lib/models";
+import { resolveCurrentModel, resolveThinkingLevels } from "../../../lib/models";
 import { basename } from "../../../lib/paths";
 import { BUILTIN_ROLES, splitRoleValue, THINKING_SUFFIXES } from "../modelRoles";
+import { type KindGroup, kindGroup } from "./kinds";
 
 // ── selectors, comma lists, levels ───────────────────────────────────
 
@@ -30,10 +32,14 @@ export function selectorOf(value: string): string {
 	return splitRoleValue(value).selector;
 }
 
-/** True when a stored candidate refers to exactly `model` (suffix insensitive, provider sensitive). */
+/**
+ * True when a stored candidate refers to exactly `model` (suffix insensitive,
+ * provider sensitive). Only real model selectors match: a bare role name, an
+ * `@role` alias or a glob as `model` never matches anything.
+ */
 export function sameModel(candidate: string, model: string): boolean {
 	const target = selectorOf(model);
-	return target !== "" && selectorOf(candidate) === target;
+	return isModelSelector(target) && selectorOf(candidate) === target;
 }
 
 /** The value a replacement writes: `model` plus `:<level>` when a level is chosen. */
@@ -41,8 +47,42 @@ export function withLevel(model: string, level: string | null | undefined): stri
 	return level ? `${model}:${level}` : model;
 }
 
-/** Thinking levels the pickers offer (the suffixes `splitRoleValue` recognizes). */
+/** Every suffix omp understands (`splitRoleValue` recognizes all of them), in display order. */
 export const THINKING_LEVELS: readonly string[] = THINKING_SUFFIXES;
+
+/**
+ * Thinking levels the catalog offers for `selector` (`auto`, the supported levels, `off`),
+ * via the app-wide `resolveThinkingLevels`. Empty when the model is unknown or has no
+ * thinking control, i.e. when no level suffix may be written.
+ */
+export function levelsForSelector(entries: readonly ModelKindEntry[] | null, selector: string): string[] {
+	const entry = selector ? entries?.find((e) => e.selector === selector) : undefined;
+	return resolveThinkingLevels(undefined, entry?.thinking, null);
+}
+
+/** `level` when `levels` offers it, else null (模型默认, no suffix). */
+export function supportedLevel(level: string | null | undefined, levels: readonly string[]): string | null {
+	return level && levels.includes(level) ? level : null;
+}
+
+/**
+ * Row overrides whose level is made explicit and valid for the override's own target:
+ * a level inherited from the shared target that the override model cannot take becomes null.
+ */
+export function sanitizeOverrides(
+	overrides: Record<string, RowOverride>,
+	toModel: string,
+	sharedLevel: string | null,
+	entries: readonly ModelKindEntry[] | null,
+): Record<string, RowOverride> {
+	const out: Record<string, RowOverride> = {};
+	for (const [id, override] of Object.entries(overrides)) {
+		const model = override.model?.trim() || toModel;
+		const wanted = override.level !== undefined ? override.level : sharedLevel;
+		out[id] = { ...override, level: supportedLevel(wanted, levelsForSelector(entries, model)) };
+	}
+	return out;
+}
 
 /** Trimmed, non-empty candidates of a stored comma list (omp `split_candidates`). */
 export function listCandidates(value: string): string[] {
@@ -85,7 +125,7 @@ export const GROUP_TITLES: Record<PlanGroup, string> = {
 const APP_SETTING_LABELS: Record<string, string> = {
 	newSessionModel: "新会话默认模型",
 	sideChatModel: "侧边对话专用模型",
-	doctorModel: "医生模型",
+	doctorModel: "诊断模型",
 };
 
 export function appSettingLabel(field: string): string {
@@ -142,15 +182,25 @@ export function locationInfo(location: ModelRefLocation, names: Record<string, s
 	};
 }
 
-/** One-line origin of a reference, used by the overview's source list. */
-function sourceLabel(location: ModelRefLocation, names: Record<string, string>): string {
-	const info = locationInfo(location, names);
-	return info.context === "全局" || info.context === "应用设置"
-		? `${info.title}（${info.context}）`
-		: `${info.title} · ${info.context}`;
+/**
+ * Whether a candidate is a model selector rather than a bare role name
+ * (`smol`, `web`), an `@role` alias or a glob chain key (`provider/*`):
+ * it contains `/`, does not start with `@` and has no glob characters.
+ */
+export function isModelSelector(candidate: string): boolean {
+	const value = candidate.trim();
+	return value.includes("/") && !value.startsWith("@") && !/[*?[]/.test(value);
 }
 
 // ── overview ─────────────────────────────────────────────────────────
+
+/** One place a model is referenced. */
+export interface OverviewSource {
+	/** 全局 / project name / 回退链 / 应用设置 / 定时任务. */
+	scope: string;
+	/** What exactly references it (role, setting, schedule, chain key…). */
+	title: string;
+}
 
 export interface OverviewRow {
 	/** Selector with any thinking suffix stripped — the value that gets matched. */
@@ -159,26 +209,26 @@ export interface OverviewRow {
 	count: number;
 	/** Observed thinking levels, in `THINKING_LEVELS` order. */
 	levels: string[];
-	inCatalog: boolean;
 	/**
-	 * The selector is used as a model somewhere (a stored value or a chain item).
-	 * Chain keys are listed too, but a key is usually a role name — it must not
-	 * be reported as a missing model.
+	 * Kind group from the kind catalogue: `missing` only when the catalogue is
+	 * loaded and lacks the selector. While it is not loaded the group is `chat`
+	 * and callers should not display it.
 	 */
-	referencedAsModel: boolean;
-	/** Up to three origins. */
-	sources: string[];
-	extraSources: number;
+	group: KindGroup;
+	/** Every distinct place the model is referenced. */
+	sources: OverviewSource[];
 }
 
 /**
  * Every model currently referenced anywhere in the scan, grouped by selector:
  * stored values (comma-list items counted individually) plus fallback-chain keys
- * and items. `@role` aliases are not models and are skipped.
+ * and items. Role names, `@role` aliases and globs are not models and are
+ * skipped. `kindBySelector` is null until the kind catalogue has loaded (or when
+ * it failed): no row is then grouped as missing.
  */
 export function buildOverview(
 	scan: ModelUsageScan | null,
-	catalogKeys: ReadonlySet<string>,
+	kindBySelector: ReadonlyMap<string, string> | null,
 ): OverviewRow[] {
 	if (scan === null) return [];
 	const names = projectNameMap(scan.projects);
@@ -186,53 +236,44 @@ export function buildOverview(
 		selector: string;
 		count: number;
 		levels: Set<string>;
-		referencedAsModel: boolean;
-		sources: Set<string>;
+		sources: Map<string, OverviewSource>;
 	}
 	const bySelector = new Map<string, Acc>();
-	const add = (candidate: string, source: string, asModel: boolean) => {
-		const trimmed = candidate.trim();
-		if (!trimmed || trimmed.startsWith("@")) return;
-		const { selector, thinkingSuffix } = splitRoleValue(trimmed);
-		if (!selector) return;
+	const add = (candidate: string, source: OverviewSource) => {
+		const { selector, thinkingSuffix } = splitRoleValue(candidate.trim());
+		if (!isModelSelector(selector)) return;
 		const acc = bySelector.get(selector) ?? {
 			selector,
 			count: 0,
 			levels: new Set<string>(),
-			referencedAsModel: false,
-			sources: new Set<string>(),
+			sources: new Map<string, OverviewSource>(),
 		};
 		acc.count += 1;
-		acc.referencedAsModel ||= asModel;
 		if (thinkingSuffix) acc.levels.add(thinkingSuffix);
-		if (acc.sources.size < 4) acc.sources.add(source);
+		acc.sources.set(`${source.scope}\u0000${source.title}`, source);
 		bySelector.set(selector, acc);
 	};
 
 	for (const ref of scan.refs) {
-		const source = sourceLabel(ref.location, names);
-		for (const candidate of listCandidates(ref.value)) add(candidate, source, true);
+		const info = locationInfo(ref.location, names);
+		const source = { scope: info.context, title: info.title };
+		for (const candidate of listCandidates(ref.value)) add(candidate, source);
 	}
 	const chains = scan.fallbackChains?.chains ?? {};
 	for (const [key, items] of Object.entries(chains)) {
-		add(key, `回退链键 ${key}`, false);
-		for (const item of items) add(item, `回退链 ${key}`, true);
+		add(key, { scope: "回退链", title: `链键 ${key}` });
+		for (const item of items) add(item, { scope: "回退链", title: `链 ${key}` });
 	}
 
 	return [...bySelector.values()]
 		.sort((a, b) => b.count - a.count || a.selector.localeCompare(b.selector))
-		.map((acc) => {
-			const sources = [...acc.sources];
-			return {
-				selector: acc.selector,
-				count: acc.count,
-				levels: THINKING_LEVELS.filter((l) => acc.levels.has(l)),
-				inCatalog: catalogKeys.has(acc.selector),
-				referencedAsModel: acc.referencedAsModel,
-				sources: sources.slice(0, 3),
-				extraSources: Math.max(0, sources.length - 3),
-			};
-		});
+		.map((acc) => ({
+			selector: acc.selector,
+			count: acc.count,
+			levels: THINKING_LEVELS.filter((l) => acc.levels.has(l)),
+			group: kindBySelector === null ? "chat" : kindGroup(kindBySelector.get(acc.selector)),
+			sources: [...acc.sources.values()],
+		}));
 }
 
 // ── plan ─────────────────────────────────────────────────────────────

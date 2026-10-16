@@ -10,7 +10,7 @@
 
 - **桌面相关**：影响 agent 核心 / RPC 行为的键，按 8 个桌面原生类目展示（§3）。
 - **TUI 专用**：只影响终端界面的键，整组隐藏（§2）。
-- **模型角色与回退链**：`modelRoles`、`task.agentModelOverrides` 与 `retry.fallbackChains` 从扁平列表中抽出，分别由「模型角色」「回退链与切换」两个专用页维护（§4）。
+- **模型角色与回退链**：`modelRoles`、`task.agentModelOverrides` 与 `retry.fallbackChains` 及六个回退开关键（`retry.modelFallback`、`retry.fallbackOn`、`retry.fallbackRevertPolicy`、`retry.usageAwareFallback`、`retry.usageReservePct`、`retry.usageReservePolicy`）从扁平列表中抽出，分别由「模型角色」「回退链与切换」两个专用页维护（§4）。
 
 ## 2. 分类原则
 
@@ -25,9 +25,9 @@
 隐藏规则：
 
 - 前缀：`theme.` `statusLine.` `composer.` `tui.` `display.` `terminal.` `startup.` `keybindings.` `paste.` `shellMinimizer.` `speech.` `stt.` `live.` `ttsr.` `spelling.`
-- 精确键：`symbolPreset` `colorBlindMode` `showHardwareCursor` `autocompleteMaxVisible` `emojiAutocomplete` `treeFilterMode` `autoResume` `doubleEscapeAction` `completion.notify` `error.notify` `readLineNumbers` `read.toolResultPreview` `setupVersion` `modelRoles` `task.agentModelOverrides` `retry.fallbackChains` `cycleOrder` `modelRoleStorage` `extendedContext`
+- 精确键：`symbolPreset` `colorBlindMode` `showHardwareCursor` `autocompleteMaxVisible` `emojiAutocomplete` `treeFilterMode` `autoResume` `doubleEscapeAction` `completion.notify` `error.notify` `readLineNumbers` `read.toolResultPreview` `setupVersion` `modelRoles` `task.agentModelOverrides` `retry.fallbackChains` `retry.modelFallback` `retry.fallbackOn` `retry.fallbackRevertPolicy` `retry.usageAwareFallback` `retry.usageReservePct` `retry.usageReservePolicy` `cycleOrder` `modelRoleStorage` `extendedContext`
 
-专属隐藏键不进入扁平列表：`modelRoles`、`task.agentModelOverrides` 由「模型角色」页维护；`retry.fallbackChains`、`cycleOrder`、`modelRoleStorage` 由「回退链与切换」页维护；`extendedContext` 由「上下文窗口」页维护。`task.*` 类目中的其他键照常显示。
+专属隐藏键不进入扁平列表：`modelRoles`、`task.agentModelOverrides` 由「模型角色」页维护；`retry.fallbackChains`、六个回退开关键（见上）、`cycleOrder`、`modelRoleStorage` 由「回退链与切换」页维护（`retry.maxRetries` / `retry.maxDelayMs` / `retry.waitForUsageReset` 仍在「重试与回退」扁平页）；`extendedContext` 由「上下文窗口」页维护。`task.*` 类目中的其他键照常显示。
 
 ## 3. 类目表
 
@@ -42,14 +42,14 @@
 | `providers` | 网络与扩展 | 其余 `providers.*` `searxng.*` `exa.*` `auth.*` `extensions` `disabledExtensions` `extensionHandlers.*` `dev.*` `gc.*` `commit.*` `git.*` |
 | `advanced` | 其他 OMP 配置 | 兜底桶：其他桌面相关但未命中以上规则的可见键（如 `shellPath`、`power.*`） |
 
-导航「模型」组中，`模型角色`（`omp-roles`）与 `回退链与切换`（`model-fallback`）是两个专用页（§4）；其余类目各对应一个扁平键列表。`modelRoles`、`task.agentModelOverrides`、`retry.fallbackChains`、`cycleOrder`、`modelRoleStorage` 不再重复出现在扁平列表中。
+导航「模型」组中，`模型角色`（`omp-roles`）与 `回退链与切换`（`model-fallback`）是两个专用页（§4）；其余类目各对应一个扁平键列表。`modelRoles`、`task.agentModelOverrides`、`retry.fallbackChains`、六个回退开关键、`cycleOrder`、`modelRoleStorage` 不再重复出现在扁平列表中。
 
 ## 4. 模型角色与回退链
 
 导航「模型」组里有两个独立页面，各自只写一类键：
 
 - **模型角色**（`omp-roles`）：`AgentModelAssignmentsPanel.tsx` 渲染，只读写 `modelRoles.*` 与 `task.agentModelOverrides.*`。
-- **回退链与切换**（`model-fallback`）：`FallbackChainsSection.tsx` 渲染，读写 `retry.fallbackChains.*`、`cycleOrder`、`modelRoleStorage`。
+- **回退链与切换**（`model-fallback`）：`FallbackChainsSection.tsx` 渲染，读写 `retry.fallbackChains.*`、`cycleOrder`、`modelRoleStorage`；顶部的 `FallbackSwitchesCard.tsx` 读写六个回退开关键（`retry.modelFallback` 总开关、`retry.fallbackOn`、`retry.fallbackRevertPolicy`、`retry.usageAwareFallback`、`retry.usageReservePct`、`retry.usageReservePolicy`），均为标量键，用 `omp config set <key> <value>` 即时保存。
 
 ### 4.1 模型角色
 

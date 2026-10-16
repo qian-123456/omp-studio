@@ -43,3 +43,27 @@ the compile cache across worktrees (do not hardcode it in repo config).
 - No floating `latest`/`*` dependency versions.
 - Module stubs return `Err("not implemented")` / empty values until filled.
 - `src-tauri/prompts/*.md` are LLM prompt templates loaded via `include_str!`.
+
+## UI rules (recurring mistakes — check every UI change against these)
+
+- **Never stack long model/provider lists linearly.** Any model picker uses the
+  app's grouped two-pane picker (`ModelMenuContent` / `ModelSelect` in
+  `src/components/ModelSelect.tsx`: providers left, that provider's models right,
+  search flattens). Do not hand-roll a flat scrolling list of hundreds of models.
+- **No content-hiding ellipsis.** Text that matters (model names, locations,
+  before→after values, error messages) must be fully readable: wrap it, or give a
+  visible expand/「全部 N 处」 control. `truncate` alone, with no way to see the
+  rest, is a bug; probe/command errors are always shown in full (selectable).
+- **No "…" in button labels.** Write 「替换」, not 「替换…」 — users read the
+  trailing ellipsis as cut-off text.
+- **Actions must look like actions.** Buttons and status get visible shape:
+  filled/tinted buttons for primary actions, bordered or pill (capsule) buttons for
+  secondary ones, chips for counts/status. Never render a clickable action as plain
+  text that blends into the row.
+- **Multi-step flows can go back.** Every wizard step after the first has 「上一步」
+  and keeps the user's choices when going back.
+- **Options come from real data.** Choices such as thinking levels are read from
+  the selected model's catalog capabilities (`thinking`, via `resolveThinkingLevels`
+  in `src/lib/models.ts`) — never a hard-coded superset the model may not support.
+- **Plain labels.** Buttons and badges say what happens in everyday words
+  (「换成别的模型」), not jargon like 「覆盖目标」.
