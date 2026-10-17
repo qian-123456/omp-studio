@@ -878,9 +878,10 @@ export function SessionSidebar() {
 			}
 
 			if (selectedPath) {
-				await addWorkspace(selectedPath, activeMode);
+				const ws = await addWorkspace(selectedPath, activeMode);
 				await loadSessions();
 				toast.success("已添加工作区");
+				await startSessionInDir(ws, false);
 			}
 		} catch (err) {
 			toast.error(`添加工作区失败: ${errMsg(err)}`);
