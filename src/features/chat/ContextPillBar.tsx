@@ -25,7 +25,7 @@ import { addWorkspace, gitBadge, gitListBranchesDetailed, gitListWorktrees, gitR
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { startSessionInDir } from "../sessions/newSession";
+import { startSessionInDir, startSessionInWorktree } from "../sessions/newSession";
 import { runSessionBash, shellQuote } from "./sessionShell";
 
 const PILL =
@@ -371,7 +371,12 @@ function BranchPickerPopover({
 			onClose();
 			return;
 		}
-		if (occupied[name]) return;
+		const other = occupied[name];
+		if (other) {
+			onClose();
+			void startSessionInWorktree(other);
+			return;
+		}
 		void run(`git checkout ${shellQuote(name)}`, `已切换到分支 ${name}`);
 	};
 
@@ -412,16 +417,15 @@ function BranchPickerPopover({
 							<button
 								key={b.name}
 								type="button"
-								disabled={!!other}
-								title={other ? `已在另一个工作区检出：${other}` : undefined}
+								title={other ? `在该分支的工作树中新建会话：${other}` : undefined}
 								onClick={() => checkout(b.name)}
-								className={`${ROW} ${other ? "opacity-50 cursor-not-allowed" : ""}`}
+								className={ROW}
 							>
 								<GitBranch size={13} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
 								<span className="min-w-0 flex-1 truncate">{b.displayName || b.name}</span>
 								{other && (
 									<span className="shrink-0 rounded-full border border-[var(--line,var(--border-divider))] px-1.5 text-[10.5px] text-[var(--text-40,var(--text-dim))]">
-										其他工作区使用中
+										已有工作树，点击切换
 									</span>
 								)}
 								{b.name === currentBranch && <Check size={13} className="shrink-0" />}
