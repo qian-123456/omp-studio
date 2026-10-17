@@ -798,9 +798,8 @@ pub fn parse_commit_draft(reply: &str) -> Result<String, String> {
         Some(s) => format!("{}({s}): {summary}", draft.kind),
         None => format!("{}: {summary}", draft.kind),
     };
-    if head.chars().count() > 72 {
-        return Err("模型返回的提交首行超过 72 个字符，请重试".to_string());
-    }
+    // No length cap: the prompt asks for a short summary, but an over-long one is
+    // still a usable message. The UI clips it for display only.
     let bullets: Vec<String> = draft
         .bullets
         .iter()

@@ -111,7 +111,10 @@ function CommitComposer({
 			}
 			setPhase("saving");
 			await gitCommit(cwd, msg);
-			toast.success(`已存档：${msg.split("\n")[0]}`);
+			const first = msg.split("\n")[0];
+			toast.success(
+				`已存档：${first.length > 72 ? `${first.slice(0, 72)}…（完整说明见历史）` : first}`,
+			);
 			setMessage("");
 			setCustom(false);
 			onCommitted();

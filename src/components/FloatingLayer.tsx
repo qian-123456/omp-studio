@@ -285,6 +285,9 @@ export function FloatingLayer({
 			)}
 			style={{
 				...style,
+				// Position must never animate: a `duration-*` class would otherwise
+				// transition left/top from the -9999 pre-measure spot (flies in from the far left).
+				transitionProperty: "none",
 				zIndex: Z_LAYER[layer],
 				left: pos?.left ?? -9999,
 				top: pos?.top ?? -9999,

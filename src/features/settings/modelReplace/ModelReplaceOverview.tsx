@@ -12,7 +12,6 @@
  */
 import { AlertTriangle, ArrowRightLeft, ChevronDown, ChevronRight, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { HoverScrollText } from "../../../components/HoverScrollText";
 import type { ModelProbeResult, ModelUsageScan } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
 import { modelProbe } from "../../../lib/ipc";
@@ -67,8 +66,9 @@ function ProbeResultView({ outcome }: { outcome: ProbeOutcome }) {
 	);
 }
 
-const ACTIONS_CLASS = "flex w-[176px] shrink-0 items-center justify-end gap-2";
-const TEST_SLOT_CLASS = "flex w-[84px] shrink-0 justify-end";
+/** One shared grid for header + rows so every column lines up across rows. */
+const ROW_GRID =
+	"grid grid-cols-[minmax(0,1.6fr)_56px_112px_minmax(0,2fr)_168px] gap-x-3";
 
 function OverviewRowView({
 	row,
@@ -100,64 +100,64 @@ function OverviewRowView({
 			setProbing(false);
 		}
 	};
-
 	return (
-		<div className="border-t border-[var(--border-divider)] px-3 py-2 text-[11px]">
-			<div className="flex items-center gap-2">
-				<HoverScrollText
-					text={row.selector}
-					className="min-w-0 flex-[2]"
-					innerClassName="font-mono text-neutral-200"
-					title={row.selector}
-				/>
-				<Chip tone="neutral">{row.count} 处引用</Chip>
-				{row.levels.length > 0 && (
-					<Chip tone="info" title="已带思考等级引用">
-						{row.levels.join("/")}
-					</Chip>
-				)}
-				<div className="flex min-w-0 flex-[3] items-center gap-2">
-					<span className="min-w-0 flex-1 truncate text-neutral-500" title={first ? `${first.scope} · ${first.title}` : ""}>
-						{first ? `${first.title} · ${first.scope}` : ""}
-					</span>
-					<button
-						type="button"
-						onClick={() => setExpanded((v) => !v)}
-						aria-expanded={expanded}
-						title={expanded ? "收起位置列表" : "展开查看全部出现位置"}
-						className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 py-0.5 text-[10px] text-sky-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
-					>
-						{expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-						全部 {total} 处
-					</button>
+		<div className="border-t border-[var(--border-divider)] px-4 py-2.5 text-[11px] transition-colors hover:bg-[var(--bg-hover)]/40">
+			<div className={`${ROW_GRID} items-center`}>
+				<span className="break-all font-mono text-xs leading-5 text-neutral-100" title={row.selector}>
+					{row.selector}
+				</span>
+				<span>
+					<Chip tone="neutral">{row.count} 处</Chip>
+				</span>
+				<span className="flex flex-wrap gap-1">
+					{row.levels.length > 0 ? (
+						<Chip tone="info" title="已带思考等级引用">
+							{row.levels.join("/")}
+						</Chip>
+					) : (
+						<span className="text-neutral-600">—</span>
+					)}
+				</span>
+				<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+					<span className="min-w-0 break-all text-neutral-400">{first ? `${first.title} · ${first.scope}` : ""}</span>
+					{total > 1 && (
+						<button
+							type="button"
+							onClick={() => setExpanded((v) => !v)}
+							aria-expanded={expanded}
+							title={expanded ? "收起位置列表" : "展开查看全部出现位置"}
+							className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-sky-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
+						>
+							{expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+							全部 {total} 处
+						</button>
+					)}
 				</div>
-				<div className={ACTIONS_CLASS}>
-					<div className={TEST_SLOT_CLASS}>
-						{probeKind === null ? (
-							<span
-								title="此类型暂不支持测试"
-								className="whitespace-nowrap rounded-full bg-[var(--well-bg)] px-2.5 py-0.5 text-[10px] text-neutral-500"
-							>
-								不支持测试
-							</span>
-						) : (
-							<button
-								type="button"
-								onClick={() => void run()}
-								disabled={probing}
-								title={`用一次真实调用测试 ${row.selector}（含 omp 启动，通常几秒）`}
-								className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full hairline bg-[var(--well-bg)] px-2.5 py-0.5 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 disabled:opacity-50"
-							>
-								{probing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
-								测试
-							</button>
-						)}
-					</div>
+				<div className="flex items-center justify-end gap-2">
+					{probeKind === null ? (
+						<span
+							title="此类型暂不支持测试"
+							className="whitespace-nowrap rounded-full bg-[var(--well-bg)] px-2.5 py-1 text-[10px] text-neutral-500"
+						>
+							不支持测试
+						</span>
+					) : (
+						<button
+							type="button"
+							onClick={() => void run()}
+							disabled={probing}
+							title={`用一次真实调用测试 ${row.selector}（含 omp 启动，通常几秒）`}
+							className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full hairline bg-[var(--well-bg)] px-3 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 disabled:opacity-50"
+						>
+							{probing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
+							测试
+						</button>
+					)}
 					<button
 						type="button"
 						onClick={() => onReplace(row)}
 						title="把这个模型的所有引用换成另一个模型"
-						className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent)] transition-all hover:bg-[color-mix(in_oklab,var(--accent)_28%,transparent)] active:scale-95"
+						className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] px-3 py-1 text-[11px] font-medium text-[var(--accent)] transition-all hover:bg-[color-mix(in_oklab,var(--accent)_28%,transparent)] active:scale-95"
 					>
 						<ArrowRightLeft className="h-3 w-3" />
 						替换
@@ -225,8 +225,8 @@ export function ModelReplaceOverview({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex items-center justify-between gap-3 px-3 pb-2">
-				<p className="text-[11px] leading-5 text-neutral-400">
+			<div className="flex items-center justify-between gap-4 px-4 pb-3">
+				<p className="text-xs leading-5 text-neutral-400">
 					下面是当前所有模型引用的使用情况。点某个模型右侧的「替换」，就能把它的所有引用批量换成另一个模型。
 				</p>
 				<button
@@ -234,7 +234,7 @@ export function ModelReplaceOverview({
 					onClick={rescan}
 					disabled={loading || kindLoading}
 					title="重新扫描模型引用和模型目录"
-					className="inline-flex shrink-0 items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50"
+					className="inline-flex shrink-0 items-center gap-1.5 rounded-full hairline bg-[var(--bg-active-fill)] px-3 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50"
 				>
 					<RefreshCw className={`h-3 w-3 ${loading || kindLoading ? "animate-spin" : ""}`} />
 					重新扫描
@@ -280,24 +280,35 @@ export function ModelReplaceOverview({
 			)}
 
 			{rows.length > 0 && (
-				<div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-2">
+				<div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 pb-3">
 					{(kindsReady ? sections : [{ group: null, rows }]).map((section) => (
-						<div key={section.group ?? "all"} className="rounded-xl hairline">
+						<section
+							key={section.group ?? "all"}
+							className="overflow-hidden rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/40"
+						>
 							{section.group !== null && (
-								<div className="rounded-t-xl bg-[var(--well-bg)] px-3 py-1.5 text-[11px] font-medium text-neutral-300">
+								<header className="flex items-center gap-2 bg-[var(--well-bg)] px-4 py-2.5 text-xs font-semibold text-neutral-200">
+									<span
+										aria-hidden
+										className={`h-1.5 w-1.5 shrink-0 rounded-full ${section.group === "missing" ? "bg-amber-400" : "bg-[var(--accent)]"}`}
+									/>
 									{KIND_GROUP_TITLES[section.group]}
-									<span className="ml-1.5 font-normal text-neutral-500">{section.rows.length}</span>
-								</div>
+									<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-px text-[10px] font-normal text-neutral-400">
+										{section.rows.length}
+									</span>
+								</header>
 							)}
-							<div className="flex items-center gap-2 bg-[var(--well-bg)] px-3 py-1 text-[10px] text-neutral-500">
-								<span className="min-w-0 flex-[2]">模型</span>
-								<span className="flex-[3]">出现位置</span>
-								<span className={ACTIONS_CLASS} />
+							<div className={`${ROW_GRID} border-t border-[var(--border-divider)] px-4 py-1.5 text-[10px] font-medium tracking-wide text-neutral-500`}>
+								<span>模型</span>
+								<span>引用</span>
+								<span>思考等级</span>
+								<span>出现位置</span>
+								<span />
 							</div>
 							{section.rows.map((row) => (
 								<OverviewRowView key={row.selector} row={row} showGroupFlag={kindsReady} onReplace={onReplace} />
 							))}
-						</div>
+						</section>
 					))}
 					<p className="flex items-start gap-1.5 px-1 text-[10px] leading-4 text-neutral-500">
 						<PlayCircle className="mt-px h-3 w-3 shrink-0" />

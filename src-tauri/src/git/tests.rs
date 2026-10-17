@@ -577,6 +577,10 @@ fn parse_commit_draft_validates_model_reply() {
     assert!(p("I'll write a conventional commit message").is_err());
     assert!(p(r#"{"type":"wip","summary":"x"}"#).is_err());
     assert!(p(r#"{"type":"fix","summary":"x","extra":1}"#).is_err());
+    // Over-long summaries are kept intact, never rejected.
     let long = "a".repeat(80);
-    assert!(p(&format!(r#"{{"type":"fix","summary":"{long}"}}"#)).is_err());
+    assert_eq!(
+        p(&format!(r#"{{"type":"fix","summary":"{long}"}}"#)).unwrap(),
+        format!("fix: {long}")
+    );
 }
