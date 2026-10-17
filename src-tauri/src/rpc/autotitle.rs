@@ -120,7 +120,6 @@ async fn generate(state: &AppState, message: &str) -> Option<String> {
 }
 
 #[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 struct TitleDraft {
     title: String,
 }
@@ -187,7 +186,7 @@ mod tests {
             Some("Fix login".into())
         );
         assert_eq!(parse_title("Fix login"), None);
-        assert_eq!(parse_title(r#"{"title":"a","extra":1}"#), None);
+        assert_eq!(parse_title(r#"{"title":"a","extra":1}"#), Some("a".into()));
         assert_eq!(parse_title(r#"{"title":"  "}"#), None);
     }
 
