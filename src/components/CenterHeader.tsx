@@ -30,6 +30,7 @@ import { sessionDisplayName } from "../lib/sessionName";
 import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
 import { type CenterView, useUi } from "../stores/ui";
+import { usePendingSession } from "../features/sessions/pendingSession";
 import type { PairingInfo, SessionStatus } from "../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../lib/dialogs";
 import { isComposing, useEscapeKey } from "../lib/hooks";
@@ -156,6 +157,10 @@ export const CenterHeader = React.memo(function CenterHeader({
 		),
 	);
 
+	// New-session placeholder: a fresh session is on its way, so no "back" affordance.
+	const placeholderShowing = usePendingSession(
+		(s) => s.pending !== null && effectiveCenterView === "session" && !selectedSessionId,
+	);
 	const isViewingSession =
 		effectiveCenterView === "session" && !!selectedSessionId && !!activeSession;
 
@@ -376,7 +381,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 						</div>
 					) : (
 						<div className="flex min-w-0 items-center gap-2">
-							{activeSession ? (
+							{placeholderShowing ? null : activeSession ? (
 								<button
 									type="button"
 									onClick={returnToSession}
