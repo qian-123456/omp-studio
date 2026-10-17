@@ -287,6 +287,15 @@ pub struct TranscriptItem {
     /// Attached images (blob refs, clip files, or unresolvable markers).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<ImageAttachment>,
+    /// Assistant only: whole-request duration in ms (omp `message.duration`).
+    #[serde(default)]
+    pub duration: Option<u64>,
+    /// Assistant only: time to first token in ms (omp `message.ttft`).
+    #[serde(default)]
+    pub ttft: Option<u64>,
+    /// Assistant only: completion time in epoch ms (omp `message.completedAt`).
+    #[serde(default)]
+    pub completed_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

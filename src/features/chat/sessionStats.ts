@@ -1,5 +1,6 @@
 import type { TranscriptItem } from "../../lib/contracts";
 import type { SessionLive } from "../../stores/live";
+import { type RequestStat, requestStatFromItem } from "./requestStats";
 
 export interface ComputedSessionStats {
 	rounds: number;
@@ -10,11 +11,45 @@ export interface ComputedSessionStats {
 	cacheRead: number;
 	cacheWrite: number;
 	cacheHitRate: number; // 0 - 100
+	/** Σ request durations reported by the model; 0 when nothing recorded one. */
 	modelDurationMs: number;
 	toolDurationMs: number;
-	avgTtftMs: number;
-	tps: number;
+	/** Mean of the real per-request `ttft` values; null when none were recorded. */
+	avgTtftMs: number | null;
+	/** Σ output ÷ Σ duration over requests that recorded a duration; null when none did. */
+	tps: number | null;
+	/** Number of model requests that recorded a duration. */
+	timedRequests: number;
 	hasData: boolean;
+}
+
+/** Identity of one request for de-duplicating live entries the transcript
+ * already carries (same message, same completion, same output). */
+function requestKey(stat: RequestStat): string {
+	return [stat.startedAt, stat.completedAt, stat.durationMs, stat.usage?.output].join("/");
+}
+
+/** Real stats of every model request in the session: transcript items first,
+ * then the live requests of the current turn not yet in the transcript. */
+export function sessionRequestStats(
+	items: TranscriptItem[] = [],
+	live?: SessionLive,
+): RequestStat[] {
+	const stats: RequestStat[] = [];
+	const seen = new Set<string>();
+	const push = (stat: RequestStat) => {
+		const key = requestKey(stat);
+		if (seen.has(key)) return;
+		seen.add(key);
+		stats.push(stat);
+	};
+	for (const item of items) {
+		const stat = requestStatFromItem(item);
+		if (stat) push(stat);
+	}
+	// Live requests of the current turn, not yet persisted to the transcript.
+	for (const req of live?.liveRequests ?? []) push(req.stat);
+	return stats;
 }
 
 export function computeSessionStats(
@@ -33,13 +68,13 @@ export function computeSessionStats(
 
 	let toolDurationMs = 0;
 	let modelDurationMs = 0;
-	const ttftList: number[] = [];
+	let timedOutput = 0;
+	let timedMs = 0;
+	let timedRequests = 0;
+	let ttftSum = 0;
+	let ttftCount = 0;
 
-	let prevItem: TranscriptItem | null = null;
-
-	for (let i = 0; i < items.length; i++) {
-		const item = items[i];
-
+	for (const item of items) {
 		if (item.kind === "user") {
 			rounds++;
 		} else if (item.kind === "assistant") {
@@ -58,42 +93,21 @@ export function computeSessionStats(
 			cacheWrite += item.usage.cacheWrite || 0;
 			totalTokens += item.usage.totalTokens || (item.usage.input + item.usage.output);
 		}
+	}
 
-		// Calculate approximate TTFT: time between user message and first assistant item
-		if (
-			prevItem &&
-			prevItem.kind === "user" &&
-			(item.kind === "assistant" || item.toolCalls?.length > 0)
-		) {
-			const userTs = new Date(prevItem.ts).getTime();
-			const astTs = new Date(item.ts).getTime();
-			if (!Number.isNaN(userTs) && !Number.isNaN(astTs) && astTs >= userTs) {
-				const diff = astTs - userTs;
-				if (diff < 60_000) {
-					// exclude idle pauses
-					ttftList.push(diff);
-				}
-			}
+	// Real per-request timing comes from the messages themselves; live requests
+	// of the current turn are folded in until the transcript catches up.
+	for (const stat of sessionRequestStats(items, live)) {
+		if (stat.durationMs != null && stat.durationMs > 0) {
+			modelDurationMs += stat.durationMs;
+			timedMs += stat.durationMs;
+			timedOutput += stat.usage?.output ?? 0;
+			timedRequests++;
 		}
-
-		// Approximate duration between consecutive events
-		if (prevItem) {
-			const prevTs = new Date(prevItem.ts).getTime();
-			const curTs = new Date(item.ts).getTime();
-			if (!Number.isNaN(prevTs) && !Number.isNaN(curTs) && curTs >= prevTs) {
-				const delta = curTs - prevTs;
-				if (delta < 300_000) {
-					// exclude long pauses (> 5 min)
-					if (item.kind === "tool_result" || prevItem.toolCalls?.length > 0) {
-						toolDurationMs += delta;
-					} else if (item.kind === "assistant") {
-						modelDurationMs += delta;
-					}
-				}
-			}
+		if (stat.ttftMs != null) {
+			ttftSum += stat.ttftMs;
+			ttftCount++;
 		}
-
-		prevItem = item;
 	}
 
 	// Incorporate live tool execution times if available
@@ -114,18 +128,6 @@ export function computeSessionStats(
 	const cacheHitRate =
 		totalInput > 0 ? Math.min(100, Math.max(0, (cacheRead / totalInput) * 100)) : 0;
 
-	// Average TTFT
-	const avgTtftMs =
-		ttftList.length > 0
-			? ttftList.reduce((a, b) => a + b, 0) / ttftList.length
-			: 0;
-
-	// TPS (tokens per second)
-	let tps = 0;
-	if (modelDurationMs > 0 && outputTokens > 0) {
-		tps = Math.round((outputTokens / (modelDurationMs / 1000)) * 10) / 10;
-	}
-
 	return {
 		rounds,
 		steps,
@@ -137,8 +139,9 @@ export function computeSessionStats(
 		cacheHitRate,
 		modelDurationMs,
 		toolDurationMs,
-		avgTtftMs,
-		tps,
+		avgTtftMs: ttftCount > 0 ? ttftSum / ttftCount : null,
+		tps: timedMs > 0 ? timedOutput / (timedMs / 1000) : null,
+		timedRequests,
 		hasData: rounds > 0 || steps > 0 || totalTokens > 0,
 	};
 }

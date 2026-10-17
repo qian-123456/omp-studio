@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TranscriptItem } from "../../lib/contracts";
+import type { SessionLive } from "../../stores/live";
 import {
 	computeSessionStats,
 	formatDuration,
 	formatTokens,
+	sessionRequestStats,
 } from "./sessionStats";
 
 function makeItem(partial: Partial<TranscriptItem>): TranscriptItem {
@@ -112,6 +114,89 @@ describe("computeSessionStats", () => {
 		// totalInput = 18500 + 500 (cacheWrite) + 1500 = 20500; 18500/20500 = 90.24%
 		expect(stats.cacheHitRate).toBeCloseTo(90.2, 1);
 		expect(stats.hasData).toBe(true);
-		expect(stats.avgTtftMs).toBe(2500);
+		// No request recorded duration/ttft in this fixture → no estimate.
+		expect(stats.avgTtftMs).toBeNull();
+		expect(stats.tps).toBeNull();
+		expect(stats.modelDurationMs).toBe(0);
+	});
+
+	it("derives real TTFT and TPS from per-request durations", () => {
+		// Session #65 fixture: one request, 306 output tokens over 6967 ms.
+		const items: TranscriptItem[] = [
+			makeItem({ kind: "user", ts: "2026-03-29T10:00:00.000Z" }),
+			makeItem({
+				kind: "assistant",
+				ts: "2026-03-29T10:00:06.967Z",
+				completedAt: Date.parse("2026-03-29T10:00:06.967Z"),
+				duration: 6967,
+				ttft: 2400,
+				usage: {
+					input: 2,
+					output: 306,
+					cacheRead: 27100,
+					cacheWrite: 3592,
+					totalTokens: 31000,
+					cost: 0.069,
+				},
+			}),
+		];
+		const stats = computeSessionStats(items);
+		expect(stats.modelDurationMs).toBe(6967);
+		expect(stats.timedRequests).toBe(1);
+		expect(stats.avgTtftMs).toBe(2400);
+		expect(stats.tps).toBeCloseTo(43.9, 1);
+	});
+
+	it("sums durations across requests and averages their ttft", () => {
+		const items: TranscriptItem[] = [
+			makeItem({ kind: "assistant", duration: 6967, ttft: 2400 }),
+			makeItem({ kind: "assistant", duration: 3033, ttft: 1600 }),
+		];
+		const stats = computeSessionStats(items);
+		expect(stats.modelDurationMs).toBe(10000);
+		expect(stats.avgTtftMs).toBe(2000);
+		// No usage on these items → 0 output tokens over 10 s.
+		expect(stats.tps).toBe(0);
+	});
+
+	it("folds live requests in and does not double-count transcript copies", () => {
+		const usage = {
+			input: 1,
+			output: 200,
+			cacheRead: 10,
+			cacheWrite: 5,
+			totalTokens: 216,
+			cost: 0.01,
+		};
+		const stat = {
+			startedAt: 1000,
+			completedAt: 3000,
+			durationMs: 2000,
+			ttftMs: 500,
+			usage,
+		};
+		const item = makeItem({
+			kind: "assistant",
+			completedAt: 3000,
+			duration: 2000,
+			ttft: 500,
+			usage,
+		});
+		const liveRequests = [
+			{ id: "r1", toolCallIds: [], hasText: false, stat },
+			{
+				id: "r2",
+				toolCallIds: [],
+				hasText: true,
+				stat: { ...stat, startedAt: 4000, completedAt: 6000 },
+			},
+		];
+		const live = { liveRequests } as unknown as SessionLive;
+		expect(sessionRequestStats([item], live)).toHaveLength(2);
+		const stats = computeSessionStats([item], live);
+		expect(stats.modelDurationMs).toBe(4000);
+		// Two distinct requests of 200 output tokens over 2 s each.
+		expect(stats.tps).toBeCloseTo(400 / 4, 5);
+		expect(stats.avgTtftMs).toBe(500);
 	});
 });

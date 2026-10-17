@@ -680,13 +680,6 @@ details.fold .lbl {
 .tool-st.bad {
 	color: var(--err);
 }
-.think .txt {
-	color: var(--muted);
-	white-space: pre-wrap;
-	font-size: 14px;
-	max-height: 300px;
-	overflow: auto;
-}
 .notice {
 	align-self: center;
 	font-size: 12px;
@@ -1030,6 +1023,86 @@ textarea.lf-input { resize: vertical; }
 .ch-local { background: var(--panel); border: 1px dashed var(--border); border-radius: 10px; padding: 8px 12px; margin-top: 8px; }
 .ch-local pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font: 13px ui-monospace, Menlo, monospace; }
 .ch-lbl { font-size: 11px; color: var(--muted); }
+
+/* ---------- request stats line + tap card ---------- */
+.stat {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 2px 10px;
+	width: 100%;
+	min-height: 30px;
+	margin: 2px 0 6px;
+	padding: 4px 2px;
+	border: none;
+	border-radius: 8px;
+	background: none;
+	color: var(--muted);
+	font: 12px/1.5 ui-monospace, Menlo, monospace;
+	font-variant-numeric: tabular-nums;
+	text-align: left;
+	overflow-wrap: anywhere;
+}
+.stat:active { background: var(--panel2); }
+.stat.on { background: var(--panel2); }
+.stat-f { white-space: nowrap; }
+.stat-f i { font-style: normal; margin-right: 2px; opacity: .85; }
+.stat-f.t { opacity: .6; }
+.st-ov { position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column; justify-content: flex-end; }
+.st-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.st-card {
+	position: relative;
+	max-height: 82%;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	background: var(--panel);
+	border-radius: 18px 18px 0 0;
+	padding: 12px 16px calc(env(safe-area-inset-bottom) + 16px);
+	box-shadow: 0 -6px 24px rgba(0,0,0,.45);
+}
+.st-hd { display: flex; align-items: center; gap: 8px; }
+.st-hd .st-t { font-weight: 600; font-size: 15px; }
+.st-hd .st-x { margin-left: auto; width: 34px; height: 34px; border: none; background: none; color: var(--muted); font-size: 17px; }
+.st-when { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+.st-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); }
+.st-g { flex: none; width: 20px; text-align: center; font-size: 14px; }
+.st-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.st-n { font-size: 14px; }
+.st-d { color: var(--muted); font-size: 12px; }
+.st-v { flex: none; font: 13px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.st-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; margin-top: 12px; background: var(--panel2); }
+.st-bar i { display: block; height: 100%; }
+.st-bar .a, .st-leg .sw.a { background: var(--accent); }
+.st-bar .b, .st-leg .sw.b { background: var(--ok); }
+.st-leg { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 12px; margin-top: 6px; }
+.st-leg .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+
+/* thinking step: label row + preview, styled like the tool fold boxes */
+.think-pv {
+	margin: 6px 0;
+	padding: 7px 12px 8px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	font-size: 14px;
+}
+.think-pv > .nm {
+	font-weight: 600;
+	color: var(--text);
+	margin-bottom: 2px;
+}
+/* ---------- thinking preview ---------- */
+.pv {
+	border-left: 2px solid transparent;
+	padding-left: 8px;
+	color: var(--muted);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.pv .pv-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pv.live { max-height: 3.1em; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.pv.on { border-left-color: var(--border); max-height: 9em; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.pv.on .pv-t { display: block; -webkit-line-clamp: unset; line-clamp: unset; overflow: visible; }
 .composer { position: relative; }
 .ch-wrap { position: relative; }
 .composer .box { padding-left: 6px; }

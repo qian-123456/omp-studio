@@ -18,6 +18,11 @@ pub const ASSETS: &[(&str, &str, &str)] = &[
         include_str!("../../mobile/js/chat.js"),
     ),
     (
+        "js/request-stats.js",
+        "text/javascript; charset=utf-8",
+        include_str!("../../mobile/js/request-stats.js"),
+    ),
+    (
         "js/sketch.js",
         "text/javascript; charset=utf-8",
         include_str!("../../mobile/js/sketch.js"),

@@ -11,13 +11,17 @@ import {
 	Search,
 	Terminal,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import type { ToolResultInfo, TranscriptItem } from "../../lib/contracts";
+import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { useLive } from "../../stores/live";
 import { ActivityHeader } from "./ActivityHeader";
 import { Markdown } from "./markdown";
 import { isTaskTool, TaskToolBlock } from "./subagents/TaskToolBlock";
 import { ToolCard, type ToolStatus } from "./ToolCard";
+import { ThinkingPreview } from "./ThinkingPreview";
+import { RequestStatsLine, TurnTotalsHover } from "./RequestStatsLine";
+import type { RequestStat } from "./requestStats";
 import {
 	type ActivityGroupKind,
 	activityGroupSummary,
@@ -26,6 +30,10 @@ import {
 	noticeBody,
 	noticeLabel,
 	noticeSummary,
+	type ParallelRunMark,
+	type PlacedStep,
+	parallelToolRuns,
+	requestAnchors,
 } from "./turnGrouping";
 
 /**
@@ -50,9 +58,62 @@ export type StepShape =
 			call: { id: string; name: string; args: unknown; intent: string | null };
 			result?: ToolResultInfo;
 			item?: TranscriptItem;
+			/** Live rows: the completed request that issued this call. */
+			requestId?: string;
 	  };
 
 type ToolStep = Extract<StepShape, { kind: "tool" }>;
+
+/**
+ * Per-request stats for one turn's step list: one model request per entry,
+ * placed under the unit (standalone row or folded group) its last row is in.
+ */
+export interface TurnStatsPlan {
+	requests: { id: string; stat: RequestStat; toolCallIds: string[] }[];
+	/** The answer request: its line is rendered by the caller, not here. */
+	answerRequestId?: string;
+}
+
+/** Row id → the stats lines that render directly under it. */
+export type StatsRows = Map<string, RequestStat[]>;
+
+/**
+ * Thin hairline on the right edge joining the rows one request issued in
+ * parallel; the run's ends stop short so the bracket reads as one group.
+ */
+function parallelBracketClass(mark: ParallelRunMark | undefined): string {
+	if (!mark) return "";
+	return clsx(
+		"relative after:absolute after:right-0 after:w-px after:bg-[var(--line)] after:content-['']",
+		mark.first ? "after:top-1" : "after:-top-1",
+		mark.last ? "after:bottom-1" : "after:-bottom-1",
+	);
+}
+
+/**
+ * Turns a turn's stats plan into "row id → the lines to render right under it".
+ * The answer request is left out: its line renders above the answer footer, so
+ * it stays visible even when the steps above stay collapsed.
+ */
+function resolveStatsRows(
+	unitSteps: PlacedStep[][],
+	plan: TurnStatsPlan | undefined,
+): StatsRows {
+	const rows: StatsRows = new Map();
+	if (!plan) return rows;
+	const requests = plan.requests.filter((r) => r.id !== plan.answerRequestId);
+	const anchors = requestAnchors(unitSteps.flat(), requests);
+	for (const req of requests) {
+		const anchor = anchors.get(req.id);
+		// No tool row of its own (pure thinking / prose): the caller renders
+		// this request's line after the whole list.
+		if (!anchor) continue;
+		const list = rows.get(anchor);
+		if (list) list.push(req.stat);
+		else rows.set(anchor, [req.stat]);
+	}
+	return rows;
+}
 
 /** Shared Codex user-bubble visual (user rows and in-turn steers). */
 export const USER_BUBBLE_CLASS =
@@ -100,7 +161,12 @@ function useDisclosure(forceExpanded?: boolean | null) {
 	return { open: isOpen, toggle: () => setIsOpen((v) => !v) };
 }
 
-/** Reasoning row: "正在思考" shimmer while running, "思考了 N 秒" once done. */
+/**
+ * Reasoning row: "正在思考" shimmer while running, "思考了 N 秒" once done.
+ * With 「显示思考内容预览」 on, a 2-line dim peek of the reasoning sits under
+ * the header and the row opens a scrollable full-text box instead of the
+ * plain markdown body.
+ */
 function ThinkingRow({
 	anchorId,
 	thinking,
@@ -115,6 +181,7 @@ function ThinkingRow({
 	forceExpanded?: boolean | null;
 }) {
 	const { open, toggle } = useDisclosure(forceExpanded);
+	const previewOn = useDisplayPrefs((s) => s.thinkingPreview);
 	const expandable = thinking.trim() !== "";
 	const label = running
 		? "正在思考"
@@ -131,7 +198,15 @@ function ThinkingRow({
 				open={open}
 				onToggle={toggle}
 			/>
-			{expandable && open && (
+			{expandable && previewOn && (
+				<ThinkingPreview
+					thinking={thinking}
+					running={running}
+					open={open}
+					onToggle={toggle}
+				/>
+			)}
+			{expandable && open && !previewOn && (
 				<div className="pb-1 pt-0.5 text-[13px] leading-5 text-[var(--text-40)]">
 					<Markdown text={thinking} />
 				</div>
@@ -185,12 +260,18 @@ function ToolGroupRow({
 	statusFor,
 	forceExpanded,
 	renderTool,
+	statsRows,
+	parallel,
 }: {
 	group: ActivityGroupKind;
 	steps: ToolStep[];
 	statusFor: (step: ToolStep) => ToolStatus;
 	forceExpanded?: boolean | null;
-	renderTool: (step: ToolStep) => ReactNode;
+	renderTool: (step: ToolStep, mark?: ParallelRunMark) => ReactNode;
+	/** Stats lines to render under the group's own rows. */
+	statsRows: StatsRows;
+	/** Parallel-run marks for the group's rows. */
+	parallel: Map<string, ParallelRunMark>;
 }) {
 	const { open, toggle } = useDisclosure(forceExpanded);
 	const statuses = steps.map(statusFor);
@@ -216,7 +297,18 @@ function ToolGroupRow({
 			/>
 			{open && (
 				<div className="flex flex-col gap-0.5 ps-5 pb-1">
-					{steps.map(renderTool)}
+					{steps.map((step) => (
+						<Fragment key={step.id}>
+							{renderTool(step, parallel.get(step.id))}
+							{statsRows.get(step.id)?.map((stat, i) => (
+								<RequestStatsLine
+									key={`${step.id}-${i}`}
+									stat={stat}
+									className="ms-5"
+								/>
+							))}
+						</Fragment>
+					))}
 				</div>
 			)}
 		</div>
@@ -233,13 +325,28 @@ export function TurnSteps({
 	forceExpanded,
 	toolResultsByCallId,
 	highlightedStepId,
+	statsPlan,
 }: {
 	sessionId: string;
 	steps: StepShape[];
 	forceExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 	highlightedStepId?: string | null;
+	/** Per-request stats, placed under the row each request ends on. */
+	statsPlan?: TurnStatsPlan;
 }) {
+	const units = useMemo(() => groupActivityUnits(steps), [steps]);
+	const unitSteps = useMemo(
+		() => units.map((unit) => (unit.kind === "group" ? unit.steps : [unit.step])),
+		[units],
+	);
+	// Brackets are per unit: each unit is its own contiguous container, so a
+	// parallel run never appears to span a folded group or a text row.
+	const parallel = useMemo(() => parallelToolRuns(unitSteps), [unitSteps]);
+	const statsRows = useMemo(
+		() => resolveStatsRows(unitSteps, statsPlan),
+		[unitSteps, statsPlan],
+	);
 	const thinkingDurations = useLive(
 		(s) => s.sessions[sessionId]?.thinkingDurations,
 	);
@@ -255,7 +362,7 @@ export function TurnSteps({
 		return step.item ? "done" : "called";
 	};
 
-	const renderTool = (step: ToolStep) => {
+	const renderTool = (step: ToolStep, mark?: ParallelRunMark) => {
 		const call = step.call;
 		const res = step.result ?? toolResultsByCallId?.get(call.id);
 		const live = liveTools?.[call.id];
@@ -271,8 +378,10 @@ export function TurnSteps({
 				key={step.id}
 				id={`msg-${step.id}`}
 				data-tool-id={call.id}
+				data-parallel={mark ? (mark.first ? "first" : mark.last ? "last" : "mid") : undefined}
 				className={clsx(
 					"transition-all duration-300",
+					parallelBracketClass(mark),
 					isStepHighlighted &&
 						"rounded-lg ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg)] shadow-md",
 				)}
@@ -307,7 +416,62 @@ export function TurnSteps({
 		);
 	};
 
-	const units = groupActivityUnits(steps);
+	const statsUnder = (step: StepShape) =>
+		statsRows.get(step.id)?.map((stat, i) => (
+			<RequestStatsLine key={`${step.id}-${i}`} stat={stat} className="ms-5" />
+		));
+
+	// Requests with no tool row of their own (pure thinking / prose) render
+	// after the list, in arrival order.
+	const trailingStats = (statsPlan?.requests ?? [])
+		.filter((r) => r.id !== statsPlan?.answerRequestId)
+		.filter((r) => !r.toolCallIds.length)
+		.map((r) => r.stat);
+
+	const renderStep = (step: StepShape) => {
+		switch (step.kind) {
+			case "thinking": {
+				const recorded = step.item ? thinkingDurations?.[step.item.id] : undefined;
+				return (
+					<ThinkingRow
+						key={step.id}
+						anchorId={`msg-${step.id}`}
+						thinking={step.thinking}
+						durationMs={
+							step.durationMs ??
+							(recorded ? recorded.endedAt - recorded.startedAt : undefined)
+						}
+						running={step.running}
+						forceExpanded={forceExpanded}
+					/>
+				);
+			}
+			case "text":
+				return (
+					<div
+						key={step.id}
+						id={`msg-${step.id}`}
+						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
+					>
+						<Markdown text={step.text} sessionId={sessionId} />
+					</div>
+				);
+			case "notice":
+				return (
+					<NoticeStep key={step.id} step={step} forceExpanded={forceExpanded} />
+				);
+			case "steer":
+				return (
+					<div key={step.id} id={`msg-${step.id}`} className="flex justify-end py-1">
+						<div className={USER_BUBBLE_CLASS}>
+							<div className="whitespace-pre-wrap break-words">{step.text}</div>
+						</div>
+					</div>
+				);
+			case "tool":
+				return renderTool(step, parallel.get(step.id));
+		}
+	};
 
 	return (
 		<div className="flex flex-col gap-1">
@@ -321,64 +485,22 @@ export function TurnSteps({
 							statusFor={statusFor}
 							forceExpanded={forceExpanded}
 							renderTool={renderTool}
+							statsRows={statsRows}
+							parallel={parallel}
 						/>
 					);
 				}
-
 				const step = unit.step;
-				switch (step.kind) {
-					case "thinking": {
-						const recorded = step.item
-							? thinkingDurations?.[step.item.id]
-							: undefined;
-						return (
-							<ThinkingRow
-								key={step.id}
-								anchorId={`msg-${step.id}`}
-								thinking={step.thinking}
-								durationMs={
-									step.durationMs ??
-									(recorded ? recorded.endedAt - recorded.startedAt : undefined)
-								}
-								running={step.running}
-								forceExpanded={forceExpanded}
-							/>
-						);
-					}
-					case "text":
-						return (
-							<div
-								key={step.id}
-								id={`msg-${step.id}`}
-								className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
-							>
-								<Markdown text={step.text} sessionId={sessionId} />
-							</div>
-						);
-					case "notice":
-						return (
-							<NoticeStep
-								key={step.id}
-								step={step}
-								forceExpanded={forceExpanded}
-							/>
-						);
-					case "steer":
-						return (
-							<div
-								key={step.id}
-								id={`msg-${step.id}`}
-								className="flex justify-end py-1"
-							>
-								<div className={USER_BUBBLE_CLASS}>
-									<div className="whitespace-pre-wrap break-words">{step.text}</div>
-								</div>
-							</div>
-						);
-					case "tool":
-						return renderTool(step);
-				}
+				return (
+					<div key={step.id} className="flex flex-col gap-1">
+						{renderStep(step)}
+						{statsUnder(step)}
+					</div>
+				);
 			})}
+			{trailingStats.map((stat, i) => (
+				<RequestStatsLine key={`trailing-${i}`} stat={stat} />
+			))}
 		</div>
 	);
 }
@@ -396,6 +518,10 @@ export function ExecutionDisclosure({
 	forceExpanded,
 	toolResultsByCallId,
 	highlightedStepId,
+	/** Per-request stats lines for the expanded steps. */
+	statsPlan,
+	/** Whole-turn totals revealed on hover of the 「已处理」 divider. */
+	turnStats,
 }: {
 	sessionId: string;
 	steps: StepShape[];
@@ -405,6 +531,8 @@ export function ExecutionDisclosure({
 	forceExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 	highlightedStepId?: string | null;
+	statsPlan?: TurnStatsPlan;
+	turnStats?: RequestStat[];
 }) {
 	const { open: expanded, toggle } = useDisclosure(forceExpanded);
 	const elapsed = useElapsedMs(startedAt, Boolean(isStreaming));
@@ -422,31 +550,33 @@ export function ExecutionDisclosure({
 
 	return (
 		<div className="my-1 flex flex-col">
-			<button
-				type="button"
-				onClick={toggle}
-				className="group/act inline-flex w-fit items-center gap-1 rounded py-0.5 text-left select-none"
-				title={expanded ? "收起执行步骤" : "展开查看执行步骤"}
-				aria-expanded={expanded}
-			>
-				<span
-					className={clsx(
-						"text-[length:var(--chat-font-size)] leading-6",
-						isStreaming
-							? "shimmer-text"
-							: "text-[var(--text-30)] transition-colors group-hover/act:text-[var(--text-60)]",
-					)}
+			<TurnTotalsHover stats={turnStats ?? []}>
+				<button
+					type="button"
+					onClick={toggle}
+					className="group/act inline-flex w-fit items-center gap-1 rounded py-0.5 text-left select-none"
+					title={expanded ? "收起执行步骤" : "展开查看执行步骤"}
+					aria-expanded={expanded}
 				>
-					{titleText}
-				</span>
-				<ChevronRight
-					size={12}
-					className={clsx(
-						"shrink-0 text-[var(--text-30)] transition-transform duration-150",
-						expanded && "rotate-90",
-					)}
-				/>
-			</button>
+					<span
+						className={clsx(
+							"text-[length:var(--chat-font-size)] leading-6",
+							isStreaming
+								? "shimmer-text"
+								: "text-[var(--text-30)] transition-colors group-hover/act:text-[var(--text-60)]",
+						)}
+					>
+						{titleText}
+					</span>
+					<ChevronRight
+						size={12}
+						className={clsx(
+							"shrink-0 text-[var(--text-30)] transition-transform duration-150",
+							expanded && "rotate-90",
+						)}
+					/>
+				</button>
+			</TurnTotalsHover>
 
 			{expanded && (
 				<div className="pt-1.5 pb-1">
@@ -456,6 +586,7 @@ export function ExecutionDisclosure({
 						forceExpanded={forceExpanded}
 						toolResultsByCallId={toolResultsByCallId}
 						highlightedStepId={highlightedStepId}
+						statsPlan={statsPlan}
 					/>
 				</div>
 			)}

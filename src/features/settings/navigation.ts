@@ -193,6 +193,13 @@ export function sectionSearchTerms(id: string, ompEntries: OmpConfigEntry[]): st
 			"quota", "额度", "订阅", "subscription", "用量", "限额", "速率", "rate limit", "claude pro", "copilot", "重置",
 		];
 	}
+	if (id === "appearance") {
+		return [
+			...registryKeywordsForSection(id),
+			"请求统计", "token", "tokens", "速度", "首字", "首字延迟", "缓存", "费用", "耗时", "总耗时",
+			"思考", "预览", "思考预览", "ttft", "tps",
+		];
+	}
 	if (id === "about") {
 		return ["关于", "版本", "更新", "升级", "自动更新", "会话切换", "旧版本", "立即切换", "重新检查", "version", "update", "upgrade", "auto update", "about", "omp update", "检查更新", "检查间隔", "check interval"];
 	}

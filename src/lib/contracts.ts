@@ -176,6 +176,12 @@ export interface TranscriptItem {
 	hidden: boolean;
 	/** Structured image attachments. */
 	images?: ImageAttachment[];
+	/** Assistant only: total request duration in ms (omp `message.duration`). */
+	duration?: number | null;
+	/** Assistant only: time to first token in ms (omp `message.ttft`). */
+	ttft?: number | null;
+	/** Assistant only: completion time, epoch ms (omp `message.completedAt`). */
+	completedAt?: number | null;
 }
 
 export interface TranscriptPage {

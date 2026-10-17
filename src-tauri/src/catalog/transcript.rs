@@ -169,6 +169,9 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                 .get("stopReason")
                 .and_then(Value::as_str)
                 .map(str::to_string);
+            item.duration = num_u64(msg.get("duration"));
+            item.ttft = num_u64(msg.get("ttft"));
+            item.completed_at = num_i64(msg.get("completedAt"));
         }
         "toolResult" => {
             item.kind = TranscriptKind::ToolResult;
@@ -236,6 +239,19 @@ pub fn parse_usage(u: &Value) -> Usage {
         usage.total_tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
     }
     usage
+}
+
+/// Non-negative JSON number as u64; accepts integer or float spelling and
+/// rejects anything else (negatives included, where the cast would wrap).
+fn num_u64(v: Option<&Value>) -> Option<u64> {
+    let n = v?.as_f64()?;
+    (n >= 0.0 && n <= u64::MAX as f64).then_some(n as u64)
+}
+
+/// Epoch-ms JSON number as i64 (accepts integer or float spelling).
+fn num_i64(v: Option<&Value>) -> Option<i64> {
+    let n = v?.as_f64()?;
+    (n >= i64::MIN as f64 && n <= i64::MAX as f64).then_some(n as i64)
 }
 
 /// Sum assistant `usage` over the whole transcript: (total tokens, cost).
@@ -469,5 +485,37 @@ mod tests {
         assert_eq!(items[0].kind, TranscriptKind::User);
         assert_eq!(items[0].text.as_deref(), Some("actual prompt"));
         assert!(items[0].hidden);
+    }
+
+    #[test]
+    fn request_stats_parsed_for_assistant_messages() {
+        let with = r#"{"type":"message","id":"a","timestamp":"T","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"model":"m","stopReason":"stop","duration":6967.0,"ttft":2400,"completedAt":1759345643000,"usage":{"input":2,"output":306,"cacheRead":27000,"cacheWrite":3592}}}"#;
+        let item = normalize_entry(&serde_json::from_str(with).unwrap()).unwrap();
+        assert_eq!(item.kind, TranscriptKind::Assistant);
+        assert_eq!(item.duration, Some(6967));
+        assert_eq!(item.ttft, Some(2400));
+        assert_eq!(item.completed_at, Some(1_759_345_643_000));
+
+        // Older transcripts carry none of them: every field stays None.
+        let old = r#"{"type":"message","id":"b","timestamp":"T","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"output":1}}}"#;
+        let item = normalize_entry(&serde_json::from_str(old).unwrap()).unwrap();
+        assert_eq!(
+            (item.duration, item.ttft, item.completed_at),
+            (None, None, None)
+        );
+
+        // Non-assistant items and non-numeric values never carry request stats.
+        let user = r#"{"type":"message","id":"c","timestamp":"T","message":{"role":"user","content":[{"type":"text","text":"hi"}],"duration":10,"ttft":"1","completedAt":true}}"#;
+        let item = normalize_entry(&serde_json::from_str(user).unwrap()).unwrap();
+        assert_eq!(
+            (item.duration, item.ttft, item.completed_at),
+            (None, None, None)
+        );
+        let bad = r#"{"type":"message","id":"d","timestamp":"T","message":{"role":"assistant","content":[],"duration":"1s","ttft":-5,"completedAt":null}}"#;
+        let item = normalize_entry(&serde_json::from_str(bad).unwrap()).unwrap();
+        assert_eq!(
+            (item.duration, item.ttft, item.completed_at),
+            (None, None, None)
+        );
     }
 }

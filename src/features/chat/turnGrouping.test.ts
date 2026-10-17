@@ -11,6 +11,10 @@ import {
 	groupTurnBlocks,
 	noticeBody,
 	noticeSummary,
+	parallelToolRuns,
+	type PlacedStep,
+	requestAnchors,
+	turnRequestItems,
 	type TurnStep,
 } from "./turnGrouping";
 
@@ -524,5 +528,58 @@ describe("activity grouping", () => {
 				"glob",
 			]);
 		}
+	});
+});
+
+describe("per-request stats placement", () => {
+	/** Row list shaped like a turn's rendered steps, with its folded units. */
+	const rows = [
+		{ id: "r1", kind: "tool", call: { id: "c1" }, item: makeItem({ id: "a1", kind: "assistant" }) },
+		{ id: "r2", kind: "tool", call: { id: "c2" }, item: makeItem({ id: "a1", kind: "assistant" }) },
+		{ id: "r3", kind: "tool", call: { id: "c3" }, item: makeItem({ id: "a2", kind: "assistant" }) },
+		{ id: "th", kind: "thinking", item: makeItem({ id: "a3", kind: "assistant" }) },
+	];
+
+	it("hangs a parallel request's line under its LAST row", () => {
+		const anchors = requestAnchors(rows, [
+			{ id: "a1", toolCallIds: ["c1", "c2"] },
+			{ id: "a2", toolCallIds: ["c3"] },
+		]);
+		expect(anchors.get("a1")).toBe("r2");
+		expect(anchors.get("a2")).toBe("r3");
+	});
+
+	it("maps a request with no tool row to null (trailing line)", () => {
+		const anchors = requestAnchors(rows, [{ id: "a3", toolCallIds: [] }]);
+		expect(anchors.get("a3")).toBeNull();
+	});
+
+	it("orders request items by first appearance, answer last", () => {
+		const answer = makeItem({ id: "a4", kind: "assistant", text: "done" });
+		expect(turnRequestItems(rows, answer).map((i) => i.id)).toEqual([
+			"a1",
+			"a2",
+			"a3",
+			"a4",
+		]);
+	});
+
+	it("brackets a parallel run but never spans units", () => {
+		const marks = parallelToolRuns([rows.slice(0, 2), [rows[2]], [rows[3]]]);
+		expect(marks.get("r1")).toEqual({ first: true, last: false });
+		expect(marks.get("r2")).toEqual({ first: false, last: true });
+		expect(marks.get("r3")).toBeUndefined();
+	});
+
+	it("brackets live rows that share a request id", () => {
+		const live: PlacedStep[] = [
+			{ id: "t1", kind: "tool", call: { id: "c1" }, requestId: "req-1" },
+			{ id: "t2", kind: "tool", call: { id: "c2" }, requestId: "req-1" },
+		];
+		const marks = parallelToolRuns([live]);
+		expect([...marks.entries()]).toEqual([
+			["t1", { first: true, last: false }],
+			["t2", { first: false, last: true }],
+		]);
 	});
 });

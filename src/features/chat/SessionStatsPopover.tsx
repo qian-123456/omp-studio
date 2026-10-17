@@ -28,13 +28,14 @@ export function SessionStatsPopover({
 	if (!open) return null;
 
 	const ttftStr =
-		stats.avgTtftMs > 0
+		stats.avgTtftMs != null && stats.avgTtftMs > 0
 			? stats.avgTtftMs < 1000
 				? `${Math.round(stats.avgTtftMs)}ms`
 				: `${(stats.avgTtftMs / 1000).toFixed(1)}秒`
 			: "—";
 
-	const tpsStr = stats.tps > 0 ? `${stats.tps} tok/s` : "—";
+	// 「—」when no request of the session recorded a duration.
+	const tpsStr = stats.tps != null ? `${stats.tps.toFixed(1)} tok/s` : "—";
 
 	return (
 		<FloatingLayer

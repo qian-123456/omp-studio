@@ -77,6 +77,109 @@ describe("live reducer — streaming lifecycle", () => {
 	});
 });
 
+describe("live reducer — liveRequests", () => {
+	// Real omp assistant `message_end` payload (session #65): 306 output
+	// tokens over 6967 ms with two parallel tool calls.
+	const assistantMessage = {
+		id: "msg_65",
+		role: "assistant",
+		responseId: "resp_abc",
+		content: [
+			{ type: "toolCall", id: "call_1", name: "grep", arguments: {} },
+			{ type: "toolCall", id: "call_2", name: "read", arguments: {} },
+		],
+		usage: {
+			input: 2,
+			output: 306,
+			cacheRead: 27100,
+			cacheWrite: 3592,
+			totalTokens: 31000,
+			cost: { input: 0, output: 0.06, cacheRead: 0.009, cacheWrite: 0, total: 0.069 },
+		},
+		duration: 6967,
+		ttft: 2400,
+		completedAt: 1770000000000,
+	};
+
+	it("appends one LiveRequest per assistant message_end", () => {
+		frame({
+			type: "message_update",
+			message: { ...assistantMessage, content: [] },
+		});
+		frame({
+			type: "message_end",
+			messageId: "msg_65",
+			timestamp: assistantMessage.completedAt,
+			message: assistantMessage,
+		});
+		const reqs = live().liveRequests;
+		expect(reqs).toHaveLength(1);
+		expect(reqs[0].id).toBe("resp_abc");
+		expect(reqs[0].toolCallIds).toEqual(["call_1", "call_2"]);
+		expect(reqs[0].hasText).toBe(false);
+		expect(reqs[0].stat.durationMs).toBe(6967);
+		expect(reqs[0].stat.ttftMs).toBe(2400);
+		expect(reqs[0].stat.completedAt).toBe(assistantMessage.completedAt);
+		expect(reqs[0].stat.startedAt).toBe(assistantMessage.completedAt - 6967);
+		expect(reqs[0].stat.usage).toEqual({
+			input: 2,
+			output: 306,
+			cacheRead: 27100,
+			cacheWrite: 3592,
+			totalTokens: 31000,
+			cost: 0.069,
+		});
+	});
+
+	it("records requests seen without a streaming snapshot, in order", () => {
+		frame({ type: "agent_start" });
+		frame({
+			type: "message_end",
+			timestamp: 1,
+			message: { ...assistantMessage, content: [{ type: "text", text: "done" }] },
+		});
+		frame({
+			type: "message_end",
+			timestamp: 2,
+			message: { ...assistantMessage, responseId: "resp_def", id: "msg_66" },
+		});
+		expect(live().liveRequests.map((r) => r.id)).toEqual(["resp_abc", "resp_def"]);
+		expect(live().liveRequests[0].hasText).toBe(true);
+	});
+
+	it("ignores non-assistant message_end and falls back to messageId/index ids", () => {
+		frame({ type: "message_end", message: { role: "user", content: [] } });
+		expect(live().liveRequests).toHaveLength(0);
+		frame({
+			type: "message_end",
+			message: { ...assistantMessage, responseId: undefined },
+		});
+		expect(live().liveRequests[0].id).toBe("msg_65");
+		frame({
+			type: "message_end",
+			message: { role: "assistant", content: [], usage: null },
+		});
+		expect(live().liveRequests[1].id).toBe("req-2");
+	});
+
+	it("resets at turn start together with the tool map", () => {
+		frame({ type: "agent_start" });
+		frame({ type: "tool_execution_start", toolCallId: "call_1", toolName: "grep" });
+		frame({ type: "message_end", message: assistantMessage });
+		expect(live().liveRequests).toHaveLength(1);
+		expect(Object.keys(live().tools)).toHaveLength(1);
+		frame({ type: "agent_end", isTerminal: true });
+		expect(live().liveRequests).toHaveLength(0);
+	});
+
+	it("resets on process exit", () => {
+		frame({ type: "message_end", message: assistantMessage });
+		expect(live().liveRequests).toHaveLength(1);
+		useLive.getState().reduceProcess({ sessionId: SID, running: false, exitCode: 0 });
+		expect(live().liveRequests).toHaveLength(0);
+	});
+});
+
 describe("live reducer — pending UI", () => {
 	it("tracks select/confirm/input/editor, ignores setWidget", () => {
 		frame({

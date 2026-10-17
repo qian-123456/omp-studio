@@ -545,7 +545,8 @@ async fn transcript<B: Backend>(
                 c.args = Value::String(s);
             }
         }
-        item.usage = None;
+        // usage/duration/ttft/completedAt are kept: the phone renders the same
+        // per-request stats line as the desktop.
     }
     Ok(Json(json!(page)))
 }

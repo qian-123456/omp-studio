@@ -79,6 +79,7 @@ describe("SideChat actions", () => {
 					subagents: {},
 					streamingMessage: null,
 					commands: [],
+					liveRequests: [],
 					tools: {},
 					items: [
 						{

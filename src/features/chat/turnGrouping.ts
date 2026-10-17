@@ -690,3 +690,102 @@ export function groupActivityUnits<
 	flush();
 	return units;
 }
+
+// ---- per-request stats line placement -----------------------------------
+
+/** Structural view of a rendered row; TurnStep and live pseudo-steps both fit. */
+export type PlacedStep = {
+	id: string;
+	kind: string;
+	call?: { id: string };
+	item?: TranscriptItem | null;
+	/** Live rows have no transcript item; the completed request id stands in. */
+	requestId?: string;
+};
+
+/**
+ * The row each request's stats line hangs under: the LAST of that request's
+ * tool rows, so parallel tool calls (one request, several rows) collapse into
+ * a single line under the last one. Requests with no tool row of their own
+ * map to null — the caller renders their lines after the whole list.
+ */
+export function requestAnchors(
+	rows: PlacedStep[],
+	requests: { id: string; toolCallIds: string[] }[],
+): Map<string, string | null> {
+	const out = new Map<string, string | null>();
+	for (const req of requests) {
+		const ids = new Set(req.toolCallIds);
+		let anchor: string | null = null;
+		for (const row of rows) {
+			if (row.kind === "tool" && row.call && ids.has(row.call.id)) anchor = row.id;
+		}
+		out.set(req.id, anchor);
+	}
+	return out;
+}
+
+/** Where a row sits inside its parallel run (the thin right-hand bracket). */
+export interface ParallelRunMark {
+	first: boolean;
+	last: boolean;
+}
+
+/**
+ * Marks the runs of ≥2 rows one model request issued together (parallel tool
+ * calls), so the renderer can join them with a thin bracket. Runs never span
+ * units: each unit is its own contiguous container.
+ */
+export function parallelToolRuns(
+	unitSteps: PlacedStep[][],
+): Map<string, ParallelRunMark> {
+	const out = new Map<string, ParallelRunMark>();
+	for (const unit of unitSteps) {
+		let run: PlacedStep[] = [];
+		let runOwner: string | null = null;
+		const flush = () => {
+			if (run.length > 1) {
+				const last = run.length - 1;
+				run.forEach((row, i) => {
+					out.set(row.id, { first: i === 0, last: i === last });
+				});
+			}
+			run = [];
+			runOwner = null;
+		};
+		for (const row of unit) {
+			const owner = row.kind === "tool" ? (row.requestId ?? row.item?.id ?? null) : null;
+			if (owner && owner === runOwner) {
+				run.push(row);
+				continue;
+			}
+			flush();
+			runOwner = owner;
+			if (owner) run.push(row);
+		}
+		flush();
+	}
+	return out;
+}
+
+/**
+ * The assistant items behind a turn's rendered rows — one entry per model
+ * request, in first-appearance order (the answer last). Feeds the per-request
+ * stats lines and the turn totals of the 「已处理」 divider.
+ */
+export function turnRequestItems(
+	steps: PlacedStep[],
+	answerItem?: TranscriptItem | null,
+): TranscriptItem[] {
+	const seen = new Set<string>();
+	const out: TranscriptItem[] = [];
+	const push = (item?: TranscriptItem | null) => {
+		if (!item || item.kind !== "assistant" || seen.has(item.id)) return;
+		seen.add(item.id);
+		out.push(item);
+	};
+	for (const step of steps) push(step.item);
+	push(answerItem);
+	return out;
+}
+

@@ -152,6 +152,139 @@
 		);
 	}
 
+	// ---------- request stats (TUI-style line + tap card) ----------
+
+	const R = M.requestStats; // vanilla port of src/features/chat/requestStats.ts
+	const statByItem = new Map(); // assistant item id -> stat (rebuilt every render)
+	let statCardId = null; // item id whose card is open
+
+	function statLineHtml(id, stat) {
+		statByItem.set(id, stat);
+		const parts = R.formatRequestStat(stat)
+			.map((p) => '<span class="stat-f' + (p.field === "time" ? " t" : "") + '"><i>' + esc(p.glyph) + "</i>" + esc(p.text) + "</span>")
+			.join("");
+		return (
+			'<button class="stat' + (statCardId === id ? " on" : "") + '" data-stat="' + esc(id) + '" aria-label="请求详情">' +
+			parts +
+			"</button>"
+		);
+	}
+
+	function statBarHtml(stat) {
+		const dur = stat.durationMs;
+		const ttft = stat.ttftMs;
+		if (!(dur > 0) || ttft == null) return "";
+		const w = Math.min(98, Math.max(2, (ttft / dur) * 100));
+		return (
+			'<div class="st-bar" aria-hidden="true"><i class="a" style="width:' + w.toFixed(1) + '%"></i><i class="b"></i></div>' +
+			'<div class="st-leg"><span><i class="sw a"></i>等第一个字 ' + esc(R.formatStatSeconds(ttft)) + "</span><span><i class=\"sw b\"></i>生成 " +
+			esc(R.formatStatSeconds(Math.max(0, dur - ttft))) +
+			"</span></div>"
+		);
+	}
+
+	function statCardHtml(stat) {
+		// Same anchor as the desktop card: the request's start time.
+		const at = stat.startedAt ?? stat.completedAt;
+		const when =
+			at == null ? "时间未知" : R.isToday(at) ? "今天 " + R.formatStatClock(at) : R.formatStatDateTime(at);
+		const rows = R.FIELD_IDS.map((f) => {
+			const m = R.FIELDS[f];
+			return (
+				'<div class="st-row"><span class="st-g">' + esc(m.glyph || "·") + '</span><div class="st-mid"><span class="st-n">' +
+				esc(m.label) +
+				'</span><span class="st-d">' +
+				esc(m.description) +
+				'</span></div><span class="st-v">' +
+				esc(R.fieldText(stat, f) ?? R.MISSING) +
+				"</span></div>"
+			);
+		}).join("");
+		return (
+			'<div class="st-scrim" data-stclose="1"></div><div class="st-card" role="dialog" aria-label="请求详情">' +
+			'<div class="st-hd"><span class="st-t">这次请求</span><button class="st-x" data-stclose="1" aria-label="关闭">✕</button></div>' +
+			'<div class="st-when">' +
+			esc(when) +
+			"</div>" +
+			rows +
+			statBarHtml(stat) +
+			"</div>"
+		);
+	}
+
+	function openStatCard(id) {
+		const stat = statByItem.get(id);
+		const ov = $("st-ov");
+		if (!stat || !ov) return;
+		statCardId = id;
+		ov.innerHTML = statCardHtml(stat);
+		ov.classList.remove("hidden");
+		for (const b of ov.querySelectorAll(".st-x")) b.addEventListener("click", closeStatCard);
+	}
+
+	function closeStatCard() {
+		statCardId = null;
+		const ov = root && $("st-ov");
+		if (ov) {
+			ov.classList.add("hidden");
+			ov.innerHTML = "";
+		}
+		if (root) for (const l of root.querySelectorAll(".stat.on")) l.classList.remove("on");
+	}
+
+	function toggleStatCard(id) {
+		if (statCardId === id) closeStatCard();
+		else openStatCard(id);
+	}
+
+	// ---------- thinking preview ----------
+
+	const pvOpen = new Set(); // step keys whose preview is expanded
+	const LIVE_TAIL_CHARS = 160;
+
+	/** Collapsed preview while thinking still streams: the newest two lines. */
+	function liveTail(text) {
+		const lines = String(text || "")
+			.replace(/\r\n?/g, "\n")
+			.replace(/\s+$/, "")
+			.split("\n")
+			.filter((l) => l.trim() !== "");
+		if (!lines.length) return "";
+		const tail = lines.slice(-2).join("\n");
+		if (tail.length <= LIVE_TAIL_CHARS) return tail;
+		const last = lines[lines.length - 1];
+		if (last.length <= LIVE_TAIL_CHARS) return last;
+		return "…" + last.slice(last.length - LIVE_TAIL_CHARS);
+	}
+
+	function previewHtml(s) {
+		const on = pvOpen.has(s.key);
+		const text = s.live ? liveTail(s.text) : s.text;
+		if (!text || !text.trim()) return "";
+		return (
+			'<div class="pv' +
+			(on ? " on" : "") +
+			(s.live ? " live" : "") +
+			'" data-pv="' +
+			esc(s.key) +
+			'" role="button" tabindex="0" aria-expanded="' +
+			(on ? "true" : "false") +
+			'" aria-label="查看完整思考内容"><span class="pv-t">' +
+			esc(text) +
+			"</span></div>"
+		);
+	}
+
+	function togglePreview(key, on) {
+		if (on) pvOpen.add(key);
+		else pvOpen.delete(key);
+		for (const el of root.querySelectorAll('.pv[data-pv="' + CSS.escape(key) + '"]')) {
+			el.classList.toggle("on", on);
+			el.setAttribute("aria-expanded", on ? "true" : "false");
+			// Follow the newest words while reasoning streams, like subtitles.
+			if (el.classList.contains("live")) el.scrollTop = el.scrollHeight;
+		}
+	}
 
 	// ---------- turn grouping (mirrors desktop turnGrouping.ts, lite) ----------
 
@@ -211,7 +344,11 @@
 					err: r ? r.isError : lt && lt.isError,
 				});
 			}
-			if (isAnswer) t.answer = it;
+			// One stats line per model request. The answer request keeps it out of the
+			// fold: it renders between the answer text and the footer, always visible.
+			const stat = R.requestStatFromItem(it);
+			if (stat && isAnswer) t.answerStat = { itemId: it.id, stat };
+			else if (stat) t.steps.push({ kind: "stat", key: "st-" + it.id, itemId: it.id, stat });
 		}
 		t.asst = [];
 		return t;
@@ -266,13 +403,18 @@
 		const open = toolOpen.has(s.key);
 		switch (s.kind) {
 			case "thinking":
+				// Always-visible label + 2-line preview (tap the preview to expand),
+				// matching the desktop 「思考了 N 秒」 row; no collapsed fold to open first.
 				return (
-					'<details class="fold think" data-k="' + s.key + '"' + (open || s.live ? " open" : "") +
-					'><summary><span class="chev">▶</span><span class="nm">' + (s.live ? "思考中…" : "思考过程") +
-					'</span></summary><div class="body"><div class="txt">' + esc(s.text) + "</div></div></details>"
+					'<div class="think-pv" data-k="' + s.key + '"><div class="nm">' + (s.live ? "思考中…" : "思考过程") +
+					"</div>" +
+					previewHtml(s) +
+					"</div>"
 				);
 			case "text":
 				return '<div class="md">' + md(s.text) + "</div>";
+			case "stat":
+				return statLineHtml(s.itemId, s.stat);
 			case "notice":
 				return '<div class="notice">' + esc(s.text) + "</div>";
 			default:
@@ -287,7 +429,7 @@
 	function foldLabel(t) {
 		if (t.running) return "正在处理 " + fmtDur(Date.now() - (t.start || turnStart.get(t.id) || Date.now())) + "…";
 		const d = t.end > t.start && t.start ? " · " + fmtDur(t.end - t.start) : "";
-		return "已处理 " + t.steps.length + " 个步骤" + d;
+		return "已处理 " + t.steps.filter((s) => s.kind !== "stat").length + " 个步骤" + d;
 	}
 
 	function turnHtml(t) {
@@ -308,6 +450,8 @@
 		}
 		if (t.answer && t.answer.text) a += '<div class="md">' + md(t.answer.text) + "</div>";
 		else if (t.liveText) a += '<div class="md">' + md(t.liveText) + "</div>";
+		// The answer request's stats line always shows, under the answer text.
+		if (t.answerStat) a += statLineHtml(t.answerStat.itemId, t.answerStat.stat);
 		if (t.running && !t.steps.length && !t.answer && !t.liveText) a += '<div class="typing"><i></i><i></i><i></i></div>';
 		if (a) h += '<div class="msg-asst">' + a + "</div>";
 		return h;
@@ -316,6 +460,7 @@
 	function renderMessages() {
 		const box = $("msgs");
 		const results = {};
+		statByItem.clear(); // rebuilt below; the open card reads it by item id
 		for (const it of items) if (it.toolResult) results[it.toolResult.toolCallId] = it.toolResult;
 		const blocks = buildBlocks(results);
 		for (const o of optimistic) {
@@ -380,6 +525,8 @@
 		box.innerHTML = parts.join("");
 		if (stick) sc.scrollTop = sc.scrollHeight;
 		$("jump").classList.toggle("hidden", stick);
+		// Re-renders wipe the card; keep it open for the same request while its data survives.
+		if (statCardId && statByItem.has(statCardId) && !$("st-ov").classList.contains("hidden")) openStatCard(statCardId);
 	}
 
 	function tick() {
@@ -625,6 +772,7 @@
 			<div class="ch-scrim" id="ch-scrim"></div>
 			<div class="ch-panel" id="ch-panel"></div>
 		</div>
+		<div id="st-ov" class="st-ov hidden"></div>
 		<input id="f-any" type="file" multiple hidden>
 		<input id="f-img" type="file" accept="image/*" multiple hidden>
 		<input id="f-cam" type="file" accept="image/*" capture="environment" hidden>`;
@@ -1271,6 +1419,9 @@
 		foldOverride.clear();
 		toolOpen.clear();
 		turnStart.clear();
+		statByItem.clear();
+		pvOpen.clear();
+		statCardId = null;
 		fetching = false;
 		fetchAgain = false;
 		M.setCurrentSession(cur);
@@ -1320,12 +1471,19 @@
 			ta.focus();
 		});
 		$("msgs").addEventListener("click", (e) => {
+			const s = e.target.closest("[data-stat]");
+			if (s) return toggleStatCard(s.dataset.stat);
+			const p = e.target.closest("[data-pv]");
+			if (p) return togglePreview(p.dataset.pv, !pvOpen.has(p.dataset.pv));
 			const h = e.target.closest("[data-fold]");
 			if (!h) return;
 			const f = h.parentElement;
 			const open = !f.classList.contains("open");
 			foldOverride.set(h.dataset.fold, open);
 			f.classList.toggle("open", open);
+		});
+		$("st-ov").addEventListener("click", (e) => {
+			if (e.target.closest("[data-stclose]")) closeStatCard();
 		});
 		$("msgs").addEventListener(
 			"toggle",

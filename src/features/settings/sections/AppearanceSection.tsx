@@ -1,4 +1,4 @@
-/** Settings ▸ 外观 (`appearance`): theme, chat font size, UI density, zoom. */
+/** Settings ▸ 外观 (`appearance`): theme, chat font size, UI density, zoom, request stats, thinking preview. */
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { Segmented } from "../../../components/Segmented";
 import { ThemePicker } from "../../../components/ThemePicker";
@@ -14,6 +14,7 @@ import {
 } from "../../../lib/theme";
 import { DEFAULT_ZOOM, useZoom } from "../../../lib/zoom";
 import { SectionHeader, SettingRow, SettingsCard } from "../ui";
+import { ConversationDisplayCard, RequestStatsCard } from "./RequestStatsCards";
 
 const DEFAULT_FONT_SIZE: FontSize = "md";
 const DEFAULT_UI_SCALE: UiScale = "standard";
@@ -47,7 +48,7 @@ export function AppearanceSection() {
 		<div className="space-y-6">
 			<SectionHeader
 				title="外观"
-				description="主题配色、文字大小与界面缩放；修改立即生效，只影响本机"
+				description="主题配色、文字大小、界面缩放与对话里的统计显示；修改立即生效，只影响本机"
 				actions={
 					anyChanged ? (
 						<button
@@ -154,6 +155,8 @@ export function AppearanceSection() {
 					}
 				/>
 			</SettingsCard>
+			<RequestStatsCard />
+			<ConversationDisplayCard />
 		</div>
 	);
 }

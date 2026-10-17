@@ -31,7 +31,7 @@ import type {
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
-import { useLive, type LiveTool, type UserEcho } from "../../stores/live";
+import { useLive, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
@@ -49,6 +49,7 @@ import {
 	ProcessingTimer,
 	TurnSteps,
 	type StepShape,
+	type TurnStatsPlan,
 	USER_BUBBLE_CLASS,
 } from "./ExecutionDisclosure";
 import type { ImageAttachment } from "../../lib/contracts";
@@ -66,12 +67,15 @@ import { CommandOutputList } from "./slash/CommandOutputList";
 import { parseLeadingCommand } from "./slash/chip";
 import { CommandChipBadge } from "./slash/CommandChip";
 import { RetryNoticeList } from "./RetryNoticeList";
+import { RequestStatsLine } from "./RequestStatsLine";
+import { type RequestStat, requestStatFromItem } from "./requestStats";
 import {
 	formatDurationCompact,
 	formatMessageTimestamp,
 	groupTurnBlocks,
 	noticeLabel,
 	noticeSummary,
+	turnRequestItems,
 	type TurnBlock,
 } from "./turnGrouping";
 import {
@@ -98,6 +102,7 @@ function steerStep(echo: UserEcho): StepShape {
 		text: stripImageMarkers(echo.text ?? ""),
 	};
 }
+const EMPTY_REQUESTS: LiveRequest[] = [];
 const EMPTY_TOOLS: Record<string, LiveTool> = {};
 
 const asObj = (v: unknown): Record<string, unknown> =>
@@ -624,6 +629,38 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		);
 	}, [highlightedId, block.intermediateSteps]);
 
+	// One model request per assistant message in the turn; the answer's own
+	// request renders under the answer body instead of inside the steps.
+	const requests = useMemo(() => {
+		const out: TurnStatsPlan["requests"] = [];
+		const push = (item: TranscriptItem | null | undefined) => {
+			const stat = item ? requestStatFromItem(item) : null;
+			if (!stat || !item) return;
+			out.push({
+				id: item.id,
+				stat,
+				toolCallIds: (item.toolCalls ?? []).map((c) => c.id),
+			});
+		};
+		for (const item of turnRequestItems(block.intermediateSteps)) push(item);
+		push(block.answerItem);
+		return out;
+	}, [block.intermediateSteps, block.answerItem]);
+	const answerRequestId = block.answerItem?.id;
+	const statsPlan = useMemo<TurnStatsPlan | undefined>(
+		() =>
+			requests.length > 0 ? { requests, answerRequestId } : undefined,
+		[requests, answerRequestId],
+	);
+	const turnStats = useMemo<RequestStat[]>(
+		() => requests.map((r) => r.stat),
+		[requests],
+	);
+	const answerStat = useMemo(() => {
+		if (!answerRequestId) return null;
+		return requests.find((r) => r.id === answerRequestId)?.stat ?? null;
+	}, [requests, answerRequestId]);
+
 	return (
 		<div className="flex flex-col py-1">
 			{/* User query bubble (absent when the turn has no visible user message) */}
@@ -648,6 +685,8 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					forceExpanded={hasHighlightedStep || toolsExpanded}
 					toolResultsByCallId={toolResultsByCallId}
 					highlightedStepId={hasHighlightedStep ? highlightedId : null}
+					statsPlan={statsPlan}
+					turnStats={turnStats}
 				/>
 			)}
 			{/* Assistant answer — plain prose on the thread column */}
@@ -688,6 +727,11 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 							/>
 						)}
 
+					{/* The answer request's stats line sits above the footer and is
+					    always visible, even when the steps above stay collapsed. */}
+					{answerStat && (
+						<RequestStatsLine stat={answerStat} className="mt-0.5" omitTime />
+					)}
 					{/* Hover-only ghost footer */}
 					{!selecting && (
 						<AnswerFooter
@@ -774,6 +818,27 @@ const StreamingRow = React.memo(function StreamingRow({
 	const thinkingEndedAt = useLive(
 		(s) => s.sessions[sessionId]?.thinkingEndedAt ?? null,
 	);
+	const liveRequests = useLive(
+		(s) => s.sessions[sessionId]?.liveRequests ?? EMPTY_REQUESTS,
+	);
+	/** Which completed request each rendered tool call belongs to. */
+	const requestOfCall = useMemo(() => {
+		const byCall = new Map<string, string>();
+		for (const req of liveRequests) {
+			for (const callId of req.toolCallIds) byCall.set(callId, req.id);
+		}
+		return byCall;
+	}, [liveRequests]);
+	const statsPlan = useMemo<TurnStatsPlan>(
+		() => ({
+			requests: liveRequests.map((r) => ({
+				id: r.id,
+				stat: r.stat,
+				toolCallIds: r.toolCallIds,
+			})),
+		}),
+		[liveRequests],
+	);
 	// The row mounts when the turn starts streaming; tick from that moment.
 	const [streamStartedAt] = useState(() => Date.now());
 
@@ -820,6 +885,7 @@ const StreamingRow = React.memo(function StreamingRow({
 						intent: live?.intent ?? null,
 					},
 					result: hist,
+					requestId: requestOfCall.get(id),
 				});
 			} else if (t === "text") {
 				const txt = String(o.text ?? "");
@@ -840,6 +906,7 @@ const StreamingRow = React.memo(function StreamingRow({
 					intent: live.intent,
 				},
 				result: toolResultsByCallId?.get(id),
+				requestId: requestOfCall.get(id),
 			});
 		}
 		const msgKey = streamingMessage?.timestamp;
@@ -868,6 +935,7 @@ const StreamingRow = React.memo(function StreamingRow({
 		echoes,
 		liveTools,
 		toolResultsByCallId,
+		requestOfCall,
 		thinkingStartedAt,
 		thinkingEndedAt,
 	]);
@@ -885,6 +953,7 @@ const StreamingRow = React.memo(function StreamingRow({
 				steps={steps}
 				forceExpanded={toolsExpanded}
 				toolResultsByCallId={toolResultsByCallId}
+				statsPlan={liveRequests.length > 0 ? statsPlan : undefined}
 			/>
 			{/* Idle streaming state: session is working but nothing emitted yet */}
 			{steps.length === 0 && (

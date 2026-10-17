@@ -74,12 +74,13 @@ src/
   stores/sessions.ts         SessionMeta map, loaded via list_sessions + events         [LEAD]
   stores/composer.ts         annotations (pills) per session + side-chat requests       [LEAD]
   stores/live.ts             per-session live RPC state (streaming, pending UI, subagents, state) [B]
+  stores/displayPrefs.ts    local display prefs: request-stats line + fields, thinking preview (localStorage, not the Rust Settings contract) [LEAD]
   stores/explorer.ts         pinned explorer workspace (Git worktree map → explorer)    [C]
   stores/turnNav.ts          chat turn ⇄ git commit jump requests (§8.1)                [C]
   stores/worktrees.ts        live git worktrees per workspace id (git_list_worktrees)   [A]
   features/home/             composer-first start screen (StartPage)                    [A]
   features/sessions/         left column, Codex-style navigation (§10)                  [A]
-  features/chat/             center session view, composer, turn grouping, tool cards, answer footer (§11 B) [B]
+  features/chat/             center session view, composer, turn grouping, tool cards, answer footer, per-request stats line + thinking preview (requestStats.ts) (§11 B) [B]
   features/sidechat/         right tab: forks                                           [B]
   features/heatmap/          right tab: minimap                                         [B]
   features/git/              right tab: changes + time machine; worktree dialogs        [C]
@@ -222,6 +223,9 @@ pub struct TranscriptItem {
   pub usage: Option<Usage>, pub model: Option<String>, pub stop_reason: Option<String>,
   pub hidden: bool,               // custom_message display:false, system reminders
   pub images: Vec<ImageAttachment>, // attached images (blob refs, clip files, or unresolvable markers)
+  pub duration: Option<u64>,   // assistant only: whole request in ms (omp `message.duration`)
+  pub ttft: Option<u64>,       // assistant only: time to first token in ms (omp `message.ttft`)
+  pub completed_at: Option<i64>, // assistant only: request end, epoch ms (omp `message.completedAt`)
 }
 pub struct TranscriptPage { pub session_id: String, pub items: Vec<TranscriptItem>, pub next_offset: u64 /* byte offset for incremental reads */, pub reset: bool }
 

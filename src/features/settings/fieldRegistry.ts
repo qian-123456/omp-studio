@@ -1,3 +1,11 @@
+import { REQUEST_STAT_FIELDS } from "../chat/requestStats";
+import { REQUEST_STAT_FIELD_IDS, type RequestStatField } from "../../stores/displayPrefs";
+
+/** `data-field-id` (and registry id) of each per-field stats switch row. */
+export const REQUEST_STAT_FIELD_ROW_IDS = Object.fromEntries(
+	REQUEST_STAT_FIELD_IDS.map((f) => [f, `requestStats:${f}`]),
+) as Record<RequestStatField, string>;
+
 export interface FieldDefinition {
 	id: string;
 	sectionId: string;
@@ -121,6 +129,36 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		label: "界面缩放",
 		description: "调节窗口视图比例（快捷键：Cmd/Ctrl +/-，重置：Cmd/Ctrl 0）",
 		keywords: ["zoom", "缩放", "放大", "缩小", "比例", "视图"],
+	},
+	{
+		id: "requestStats",
+		sectionId: "appearance",
+		label: "显示请求统计",
+		description: "每次模型请求下方显示开始时间、输入输出、缓存、首字延迟和速度",
+		keywords: ["请求统计", "request stats", "统计", "token", "用量", "开关", "显示", "缓存", "速度", "首字", "延迟", "耗时", "费用", "价格"],
+	},
+	...REQUEST_STAT_FIELD_IDS.map<FieldDefinition>((f) => ({
+		id: REQUEST_STAT_FIELD_ROW_IDS[f],
+		sectionId: "appearance",
+		label: REQUEST_STAT_FIELDS[f].glyph
+			? `${REQUEST_STAT_FIELDS[f].glyph} ${REQUEST_STAT_FIELDS[f].label}`
+			: REQUEST_STAT_FIELDS[f].label,
+		description: REQUEST_STAT_FIELDS[f].description,
+		keywords: [
+			"请求统计",
+			`requestStats:${f}`,
+			f,
+			REQUEST_STAT_FIELDS[f].label,
+			"token",
+			"统计",
+		],
+	})),
+	{
+		id: "thinkingPreview",
+		sectionId: "appearance",
+		label: "显示思考内容预览",
+		description: "在「思考了 N 秒」下面预览思考内容，点一下可以展开更多",
+		keywords: ["thinking", "思考", "预览", "推理", "thinkingPreview", "思考内容"],
 	},
 
 	// 通知

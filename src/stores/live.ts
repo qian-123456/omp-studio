@@ -23,6 +23,10 @@ import type {
 } from "../features/chat/subagents/types";
 import type * as IpcModule from "../lib/ipc";
 import {
+	type RequestStat,
+	requestStatFromMessage,
+} from "../features/chat/requestStats";
+import {
 	onRpcFrame,
 	onRpcProcess,
 	type RpcFramePayload,
@@ -80,6 +84,19 @@ export interface AgentMessage {
 	timestamp?: number;
 	[key: string]: unknown;
 }
+/**
+ * One completed model request (= one assistant message), recorded when its
+ * `message_end` frame arrives. Carries the real per-request metrics omp
+ * attaches to the message (`duration`, `ttft`, `usage`, `completedAt`).
+ */
+export interface LiveRequest {
+	id: string;
+	/** Ids of the toolCall parts in this message's content. */
+	toolCallIds: string[];
+	/** The message carried non-empty assistant text (the answer row). */
+	hasText: boolean;
+	stat: RequestStat;
+}
 
 /** Optimistic user bubble; `steer` marks an in-turn steer echo. */
 export type UserEcho = TranscriptItem & { steer?: boolean };
@@ -120,6 +137,9 @@ export interface SessionLive {
 	thinkingEndedAt?: number | null;
 	/** Completed thinking durations by message/item id */
 	thinkingDurations?: Record<string, { startedAt: number; endedAt: number }>;
+	/** Completed model requests of the current turn, in arrival order
+	 * (reset together with `tools`). */
+	liveRequests: LiveRequest[];
 }
 export const emptySessionLive = (): SessionLive => ({
 	streaming: false,
@@ -130,6 +150,7 @@ export const emptySessionLive = (): SessionLive => ({
 	commands: [],
 	commandOutputs: [],
 	pendingCommand: null,
+	liveRequests: [],
 	tools: {},
 	items: [],
 	pendingUserEchoes: [],
@@ -307,6 +328,45 @@ function reconcileEchoes(
 	return rest;
 }
 
+/** One finished model request from an assistant `message_end` message. */
+function liveRequestFromMessage(
+	msg: AgentMessage,
+	fallbackTs: number,
+	existing: LiveRequest[],
+): LiveRequest {
+	const content = Array.isArray(msg.content) ? msg.content : [];
+	const toolCallIds: string[] = [];
+	let hasText = false;
+	for (const part of content) {
+		const o = asFrame(part);
+		if (o.type === "tool_use" || o.type === "toolCall") {
+			const id = str(o.id);
+			if (id) toolCallIds.push(id);
+		} else if (
+			o.type === "text" &&
+			typeof o.text === "string" &&
+			o.text.length > 0
+		) {
+			hasText = true;
+		}
+	}
+	// Prefer the provider's response id; fall back to the message id and
+	// finally to a stable per-turn sequence number.
+	const id =
+		str(msg.responseId) ||
+		str(msg.id) ||
+		`req-${existing.length + 1}`;
+	return {
+		id,
+		toolCallIds,
+		hasText,
+		stat: requestStatFromMessage(
+			msg as unknown as Record<string, unknown>,
+			fallbackTs,
+		),
+	};
+}
+
 /** Dialog methods that wait for a host answer (mirrors the Rust side). */
 const INTERACTIVE_METHODS = new Set(["select", "confirm", "input", "editor"]);
 
@@ -369,17 +429,21 @@ function reduce(
 			};
 		}
 		case "message_end": {
-			// Skip ends for messages we never tracked (e.g. user echoes).
-			if (!live.streamingMessage) return live;
 			const ts =
 				typeof frame.timestamp === "number" ? frame.timestamp : Date.now();
+			// The completed message carries the real per-request metrics
+			// (duration / ttft / usage / completedAt).
+			const ended = asFrame(frame.message) as AgentMessage;
+			const isAssistant = !ended.role || ended.role === "assistant";
+			// Skip ends for messages we never tracked (e.g. user echoes).
+			if (!live.streamingMessage && !isAssistant) return live;
 			const thinkingEndedAt =
 				live.thinkingStartedAt && !live.thinkingEndedAt
 					? ts
 					: live.thinkingEndedAt;
 			const msgId =
 				str(frame.messageId) ||
-				(live.streamingMessage && typeof live.streamingMessage.id === "string"
+				(typeof live.streamingMessage?.id === "string"
 					? live.streamingMessage.id
 					: "");
 			const thinkingDurations = { ...(live.thinkingDurations ?? {}) };
@@ -389,11 +453,17 @@ function reduce(
 					endedAt: thinkingEndedAt,
 				};
 			}
+			// Record the finished model request even when we never saw its
+			// streaming snapshot (no message_update for this message).
+			const liveRequests = isAssistant
+				? [...live.liveRequests, liveRequestFromMessage(ended, ts, live.liveRequests)]
+				: live.liveRequests;
 			return {
 				...live,
 				streamingMessage: null,
 				thinkingEndedAt,
 				thinkingDurations,
+				liveRequests,
 			};
 		}
 		case "tool_execution_start": {
@@ -472,7 +542,7 @@ function reduce(
 		}
 		case "agent_end": {
 			if (frame.isTerminal === false) return live;
-			return { ...live, streaming: false, streamingMessage: null, tools: {} };
+			return { ...live, streaming: false, streamingMessage: null, tools: {}, liveRequests: [] };
 		}
 		case "extension_ui_request": {
 			const method = str(frame.method);
@@ -572,6 +642,7 @@ function reduce(
 					streaming: false,
 					streamingMessage: null,
 					tools: {},
+					liveRequests: [],
 					pendingCommand: null,
 					commandOutputs: [
 						...live.commandOutputs,
@@ -590,12 +661,13 @@ function reduce(
 				streaming: false,
 				streamingMessage: null,
 				tools: {},
+				liveRequests: [],
 				pendingCommand: null,
 			};
 		}
 		case "error": {
 			// Transport/process errors (e.g. socket closed) must not leave a turn stuck.
-			return { ...live, streaming: false, streamingMessage: null, tools: {} };
+			return { ...live, streaming: false, streamingMessage: null, tools: {}, liveRequests: [] };
 		}
 		case "subagent_lifecycle": {
 			// Frame: {type, payload:{id, agent, agentSource, description?, status,
@@ -680,6 +752,7 @@ function reduce(
 						streaming: false,
 						streamingMessage: null,
 						tools: {},
+						liveRequests: [],
 						pendingCommand: null,
 						commandOutputs:
 							pendingCommand && str(frame.error).trim()
@@ -854,6 +927,7 @@ export const useLive = create<LiveState>((set) => ({
 						streamingMessage: null,
 						pendingUi: [],
 						tools: {},
+						liveRequests: [],
 					};
 			void exitCode;
 			return { sessions: { ...s.sessions, [sessionId]: next } };
