@@ -408,6 +408,13 @@ function IdeasPanel({
 				{...attach.dropProps}
 				className={`space-y-1 rounded-lg ${attach.dragging ? "outline-dashed outline-1 outline-sky-500" : ""}`}
 			>
+				<ImageThumbs
+					paths={doc.images}
+					onRemove={(p) => {
+						const r = removeImage(doc, doc.images.indexOf(p) + 1);
+						setDraft({ text: r.text, images: r.images });
+					}}
+				/>
 				<div className="flex items-start gap-1.5">
 					<button
 						type="button"
@@ -449,13 +456,6 @@ function IdeasPanel({
 						记录
 					</button>
 				</div>
-				<ImageThumbs
-					paths={doc.images}
-					onRemove={(p) => {
-						const r = removeImage(doc, doc.images.indexOf(p) + 1);
-						setDraft({ text: r.text, images: r.images });
-					}}
-				/>
 				<div className="flex items-center gap-1.5">
 					{KINDS.map((k) => {
 						const meta = KIND_META[k];
