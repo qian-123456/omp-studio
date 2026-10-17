@@ -1069,6 +1069,7 @@ export function MessageList({
 			item,
 			(instance.scrollOffset ?? 0) + instance.scrollAdjustments,
 			!instance.itemSizeCache.has(item.key),
+			shouldFollow(followRef.current),
 		);
 
 	// Last turn block — its footer stays visible even without hover.
@@ -1214,13 +1215,14 @@ export function MessageList({
 	// Runs synchronously post-commit (before paint), covering first mount,
 	// the sessionId switch commit, the clear→load commits, pending echoes,
 	// and the streaming row mounting/unmounting — without timers.
+	const totalSize = virtualizer.getTotalSize();
 	useLayoutEffect(() => {
 		const el = scrollRef.current;
 		if (el && shouldFollow(followRef.current)) {
 			el.scrollTop = el.scrollHeight;
 			followRef.current = onWroteBottom(followRef.current, Date.now());
 		}
-	}, [sessionId, blocks.length, pendingEchoes.length, isStreamingActive, showHidden, scrollRef]);
+	}, [sessionId, blocks.length, pendingEchoes.length, isStreamingActive, showHidden, totalSize, scrollRef]);
 
 	// Auto-scroll when new blocks arrive: the pin already ran pre-paint; this
 	// passive pass coalesces the trailing write (handles heights that settle

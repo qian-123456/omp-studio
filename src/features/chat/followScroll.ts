@@ -134,6 +134,11 @@ export function shouldCompensateResize(
 	item: { start: number; end: number },
 	viewportTop: number,
 	firstMeasure: boolean,
+	following = false,
 ): boolean {
+	// A pinned stream re-pins to the bottom after every size change; shifting
+	// scrollTop from the virtualizer's cached (stale-after-pin) offset on top
+	// of that fights the pin and can strand the viewport mid-answer.
+	if (following) return false;
 	return firstMeasure ? item.start < viewportTop : item.end <= viewportTop;
 }

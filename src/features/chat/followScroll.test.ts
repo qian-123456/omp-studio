@@ -161,6 +161,12 @@ describe("resize scroll compensation", () => {
 		expect(shouldCompensateResize(estimated, VIEWPORT_TOP, true)).toBe(true);
 	});
 
+	it("never compensates while following: the bottom pin owns the position", () => {
+		const above = { start: 100, end: 300 };
+		expect(shouldCompensateResize(above, VIEWPORT_TOP, false, true)).toBe(false);
+		expect(shouldCompensateResize({ start: 300, end: 540 }, VIEWPORT_TOP, true, true)).toBe(false);
+	});
+
 	it("item at or below the viewport top never compensates", () => {
 		const atTop = { start: 400, end: 600 };
 		const below = { start: 800, end: 900 };
