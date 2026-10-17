@@ -21,7 +21,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { BranchInfo, Workspace } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
-import { addWorkspace, gitBadge, gitListBranchesDetailed, gitRepoRoot } from "../../lib/ipc";
+import { addWorkspace, gitBadge, gitListBranchesDetailed, gitListWorktrees, gitRepoRoot } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -325,12 +325,25 @@ function BranchPickerPopover({
 }) {
 	const [query, setQuery] = useState("");
 	const [branches, setBranches] = useState<BranchInfo[] | null>(null);
+	// branch name -> path of the *other* worktree that has it checked out
+	// (git refuses `checkout` of such a branch).
+	const [occupied, setOccupied] = useState<Record<string, string>>({});
 	useEffect(() => {
 		let cancelled = false;
 		void (async () => {
 			const root = (await gitRepoRoot(cwd).catch(() => null)) ?? cwd;
-			const list = await gitListBranchesDetailed(root).catch(() => []);
-			if (!cancelled) setBranches(list.filter((b) => !b.isRemote));
+			const [list, wts] = await Promise.all([
+				gitListBranchesDetailed(root).catch(() => []),
+				gitListWorktrees(root).catch(() => []),
+			]);
+			if (cancelled) return;
+			const here = cwd.replace(/\/+$/, "");
+			const occ: Record<string, string> = {};
+			for (const w of wts) {
+				if (w.branch && w.path.replace(/\/+$/, "") !== here) occ[w.branch] = w.path;
+			}
+			setOccupied(occ);
+			setBranches(list.filter((b) => !b.isRemote));
 		})();
 		return () => {
 			cancelled = true;
@@ -358,6 +371,7 @@ function BranchPickerPopover({
 			onClose();
 			return;
 		}
+		if (occupied[name]) return;
 		void run(`git checkout ${shellQuote(name)}`, `已切换到分支 ${name}`);
 	};
 
@@ -392,13 +406,28 @@ function BranchPickerPopover({
 				) : filtered.length === 0 ? (
 					<div className="px-2 py-2 text-[12px] text-[var(--text-40,var(--text-dim))]">无匹配的分支</div>
 				) : (
-					filtered.map((b) => (
-						<button key={b.name} type="button" onClick={() => checkout(b.name)} className={ROW}>
-							<GitBranch size={13} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
-							<span className="min-w-0 flex-1 truncate">{b.displayName || b.name}</span>
-							{b.name === currentBranch && <Check size={13} className="shrink-0" />}
-						</button>
-					))
+					filtered.map((b) => {
+						const other = occupied[b.name];
+						return (
+							<button
+								key={b.name}
+								type="button"
+								disabled={!!other}
+								title={other ? `已在另一个工作区检出：${other}` : undefined}
+								onClick={() => checkout(b.name)}
+								className={`${ROW} ${other ? "opacity-50 cursor-not-allowed" : ""}`}
+							>
+								<GitBranch size={13} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
+								<span className="min-w-0 flex-1 truncate">{b.displayName || b.name}</span>
+								{other && (
+									<span className="shrink-0 rounded-full border border-[var(--line,var(--border-divider))] px-1.5 text-[10.5px] text-[var(--text-40,var(--text-dim))]">
+										其他工作区使用中
+									</span>
+								)}
+								{b.name === currentBranch && <Check size={13} className="shrink-0" />}
+							</button>
+						);
+					})
 				)}
 			</div>
 			<div className="border-t border-[var(--line,var(--border-divider))] p-1">
