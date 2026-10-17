@@ -3,8 +3,8 @@
 //! omp disables its own title generation in RPC mode (`PI_NO_TITLE=1`, see the
 //! RPC protocol reference), so sessions stayed named after their first user
 //! message. After the first terminal `agent_end` of an untitled session this
-//! generates a title with `omp -p --no-session --no-tools --model smol` and
-//! applies it through the `set_session_name` RPC command.
+//! generates a title with a one-shot `omp -p` run on the `tiny` role (JSON reply,
+//! re-validated) and applies it through the `set_session_name` RPC command.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -14,10 +14,10 @@ use serde_json::{json, Value};
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::catalog::parse;
-use crate::state::{AppEvent, AppState};
 use crate::prompts;
+use crate::state::{AppEvent, AppState};
 
-const TITLE_MODEL: &str = "smol";
+const TITLE_MODEL: &str = "tiny";
 const MAX_TITLE_CHARS: usize = 60;
 const MAX_MESSAGE_CHARS: usize = 1200;
 const GENERATE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -111,12 +111,34 @@ async fn generate(state: &AppState, message: &str) -> Option<String> {
     let prompt = prompts::render(prompts::SESSION_TITLE, &vars);
     // `run_print` skips MCP/extension loading; the full tool set made Gemini reject the request.
     match crate::todos::omp::run_print(state, TITLE_MODEL, &prompt, GENERATE_TIMEOUT).await {
-        Ok(out) => clean_title(&out),
+        Ok(out) => parse_title(&out),
         Err(e) => {
             tracing::warn!("autotitle: title generation failed: {e}");
             None
         }
     }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TitleDraft {
+    title: String,
+}
+
+/// Find the last JSON object in `reply` that fits `TitleDraft` (the model may wrap
+/// it in prose or a code fence) and normalize its title. `omp -p` cannot enforce a
+/// schema, so the shape is re-validated here.
+fn parse_title(reply: &str) -> Option<String> {
+    let draft = reply
+        .match_indices('{')
+        .filter_map(|(i, _)| {
+            serde_json::Deserializer::from_str(&reply[i..])
+                .into_iter::<TitleDraft>()
+                .next()?
+                .ok()
+        })
+        .next_back()?;
+    clean_title(&draft.title)
 }
 
 /// First non-empty line, stripped of wrapping quotes / `Title:` prefix /
@@ -152,6 +174,21 @@ mod tests {
             &json!({"type":"agent_end","isTerminal":false})
         ));
         assert!(!is_terminal_agent_end(&json!({"type":"agent_start"})));
+    }
+
+    #[test]
+    fn parse_title_reads_schema_json() {
+        assert_eq!(
+            parse_title(r#"{"title": "修复登录 bug"}"#),
+            Some("修复登录 bug".into())
+        );
+        assert_eq!(
+            parse_title("Sure!\n```json\n{\"title\":\"Fix login.\"}\n```"),
+            Some("Fix login".into())
+        );
+        assert_eq!(parse_title("Fix login"), None);
+        assert_eq!(parse_title(r#"{"title":"a","extra":1}"#), None);
+        assert_eq!(parse_title(r#"{"title":"  "}"#), None);
     }
 
     #[test]
