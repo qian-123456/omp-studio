@@ -596,9 +596,14 @@ export function Composer({
 
 	// Focus textarea whenever focusNonce increments (e.g. from SelectionToolbar)
 	useEffect(() => {
-		if (focusNonce) {
-			taRef.current?.focus();
-		}
+		if (!focusNonce) return;
+		const ta = taRef.current;
+		if (!ta) return;
+		const wasFocused = document.activeElement === ta;
+		ta.focus();
+		// A pre-filled draft (e.g. text typed in the new-session placeholder) must
+		// not leave the caret at position 0.
+		if (!wasFocused) ta.setSelectionRange(ta.value.length, ta.value.length);
 	}, [focusNonce]);
 
 	// Slash token at cursor position (opens the command menu)
