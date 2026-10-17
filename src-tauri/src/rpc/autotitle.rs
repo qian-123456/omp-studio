@@ -15,7 +15,7 @@ use tokio::sync::broadcast::error::RecvError;
 
 use crate::catalog::parse;
 use crate::state::{AppEvent, AppState};
-use crate::{paths, prompts};
+use crate::prompts;
 
 const TITLE_MODEL: &str = "smol";
 const MAX_TITLE_CHARS: usize = 60;
@@ -105,39 +105,18 @@ async fn maybe_title(state: &AppState, session_id: &str) {
 }
 
 async fn generate(state: &AppState, message: &str) -> Option<String> {
-    let model = crate::todos::omp::normalize_model_selector(TITLE_MODEL);
-    let binary = state.settings.read().omp_binary.clone();
     let clipped: String = message.chars().take(MAX_MESSAGE_CHARS).collect();
     let mut vars = std::collections::HashMap::new();
     vars.insert("message", clipped);
     let prompt = prompts::render(prompts::SESSION_TITLE, &vars);
-
-    let output = tokio::time::timeout(GENERATE_TIMEOUT, async {
-        let mut cmd = tokio::process::Command::new(binary);
-        cmd.args([
-            "-p",
-            &prompt,
-            "--no-session",
-            "--no-tools",
-            "--model",
-            &model,
-        ]);
-        if let Some(ext) = crate::providers::try_extension_path() {
-            cmd.arg("-e").arg(ext);
+    // `run_print` skips MCP/extension loading; the full tool set made Gemini reject the request.
+    match crate::todos::omp::run_print(state, TITLE_MODEL, &prompt, GENERATE_TIMEOUT).await {
+        Ok(out) => clean_title(&out),
+        Err(e) => {
+            tracing::warn!("autotitle: title generation failed: {e}");
+            None
         }
-        cmd.current_dir(paths::global_dir())
-            .envs(crate::providers::omp_spawn_env())
-            .kill_on_drop(true)
-            .output()
-            .await
-    })
-    .await
-    .ok()?
-    .ok()?;
-    if !output.status.success() {
-        return None;
     }
-    clean_title(&String::from_utf8_lossy(&output.stdout))
 }
 
 /// First non-empty line, stripped of wrapping quotes / `Title:` prefix /
