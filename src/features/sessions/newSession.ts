@@ -5,7 +5,7 @@
  */
 
 import type { Workspace } from "../../lib/contracts";
-import { createSession, findEmptyDraft } from "../../lib/createSession";
+import { findEmptyDraft } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
 import {
 	deleteSession,
@@ -22,6 +22,7 @@ import { useWorktrees } from "../../stores/worktrees";
 import { useSidebarStore } from "./sidebarStore";
 import { useSettings } from "../settings/store";
 import { resolveNewSessionTargetWorkspace } from "./modes";
+import { startSessionOptimistic } from "./pendingSession";
 
 let creationInFlight = false;
 
@@ -79,15 +80,12 @@ export async function startSessionInDir(
 			}
 		}
 
-		const { sessionId, stub } = await createSession({
+		await startSessionOptimistic({
 			cwd,
 			workspaceId: ws.id,
 			mode: ws.mode,
 			groupId: ws.kind === "global" ? (groupId ?? null) : null,
 		});
-		useSessions.getState().upsert([stub]);
-		useUi.getState().selectSession(sessionId);
-		useComposer.getState().focusComposer(sessionId);
 	} catch (err) {
 		toast.error(`创建会话失败: ${errMsg(err)}`);
 	} finally {
@@ -116,14 +114,11 @@ export async function startSessionAt(
 			return;
 		}
 
-		const { sessionId, stub } = await createSession({
+		await startSessionOptimistic({
 			cwd,
 			workspaceId: ws.id,
 			mode: ws.mode,
 		});
-		useSessions.getState().upsert([stub]);
-		useUi.getState().selectSession(sessionId);
-		useComposer.getState().focusComposer(sessionId);
 	} catch (err) {
 		toast.error(`创建会话失败: ${errMsg(err)}`);
 	} finally {
@@ -149,14 +144,11 @@ export async function startSessionInWorktree(cwd: string): Promise<void> {
 			useComposer.getState().focusComposer(draft.id);
 			return;
 		}
-		const { sessionId, stub } = await createSession({
+		await startSessionOptimistic({
 			cwd,
 			model: useSettings.getState().settings?.newSessionModel || null,
 			mode,
 		});
-		useSessions.getState().upsert([stub]);
-		useUi.getState().selectSession(sessionId);
-		useComposer.getState().focusComposer(sessionId);
 	} catch (err) {
 		toast.error(`创建会话失败: ${errMsg(err)}`);
 	} finally {

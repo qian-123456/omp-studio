@@ -11,6 +11,8 @@ import { QuickCapture } from "./features/backlog/QuickCapture";
 import { SessionView } from "./features/chat/SessionView";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
 import { useSidebarStore } from "./features/sessions/sidebarStore";
+import { PendingSessionView } from "./features/sessions/PendingSessionView";
+import { usePendingSession } from "./features/sessions/pendingSession";
 import { StartPage } from "./features/home/StartPage";
 import { useDoctorAutoScheduler } from "./features/heatmap/doctorStore";
 import { startTodos } from "./features/todos/store";
@@ -101,11 +103,18 @@ class ErrorBoundary extends React.Component<
 
 function MainCenterView({ activeView }: { activeView: CenterView }) {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
+	const hasPending = usePendingSession((s) => s.pending !== null);
 	const docPath = useUi((s) => s.docPath);
 	let view: ReactNode;
 	switch (activeView) {
 		case "session":
-			view = selectedSessionId ? <SessionView sessionId={selectedSessionId} /> : <StartPage />;
+			view = selectedSessionId ? (
+				<SessionView sessionId={selectedSessionId} />
+			) : hasPending ? (
+				<PendingSessionView />
+			) : (
+				<StartPage />
+			);
 			break;
 		case "doc":
 			view = docPath ? <DocView path={docPath} /> : <StartPage />;
