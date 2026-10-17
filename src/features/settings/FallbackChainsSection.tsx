@@ -1,7 +1,6 @@
 /**
  * [D] Settings ▸ 回退链与切换 (`model-fallback`): per-role fallback chains
- * (`retry.fallbackChains`), the in-session switch order (`cycleOrder`) and where
- * the terminal /model picker saves roles (`modelRoleStorage`).
+ * (`retry.fallbackChains`) and the in-session switch order (`cycleOrder`).
  *
  * Primary role models are edited only in Settings ▸ 模型角色
  * (AgentModelAssignmentsPanel); this file never writes `modelRoles`. Chains are
@@ -11,7 +10,6 @@
 import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { Children, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NativeSelect } from "../../components/NativeSelect";
-import { Segmented } from "../../components/Segmented";
 import type { OmpConfigEntry } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
@@ -363,7 +361,6 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 	const error = useOmpConfigStore((s) => s.error);
 	const load = useOmpConfigStore((s) => s.load);
 	const models = useModelOptions() ?? NO_MODELS;
-	const [storageBusy, setStorageBusy] = useState(false);
 
 	useEffect(() => {
 		void load();
@@ -380,7 +377,6 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 
 	const roles = useMemo(() => asRecord(entryValue(entries, "modelRoles")), [entries]);
 	const chains = useMemo(() => asRecord(entryValue(entries, "retry.fallbackChains")), [entries]);
-	const storage = entryValue(entries, "modelRoleStorage") === "project" ? "project" : "global";
 	const cycle = useMemo(() => asStringList(entryValue(entries, "cycleOrder")), [entries]);
 	const customIds = useMemo(() => customRoles(roles), [roles]);
 	const allRoleIds = useMemo(() => [...BUILTIN_ROLES.map((r) => r.id), ...customIds], [customIds]);
@@ -399,19 +395,6 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 	const kindRows = KIND_ROLES.filter(matchRole);
 	const customRows = customIds.filter((id) => matchRole({ id, zhLabel: id, description: "" }));
 	const anyRole = chatRows.length + kindRows.length + customRows.length > 0;
-
-	const setStorage = async (mode: string) => {
-		if (mode === storage || storageBusy) return;
-		setStorageBusy(true);
-		try {
-			await ompConfigSet("modelRoleStorage", mode);
-			handleChanged();
-		} catch (e) {
-			toast.error(`保存 modelRoleStorage 失败：${errMsg(e)}`);
-		} finally {
-			setStorageBusy(false);
-		}
-	};
 
 	const defaultChain = parseChain(chains.default);
 	const defaultInherit =
@@ -504,36 +487,6 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 					</div>
 
 					{showSwitches && <UsageAwareCard onSaved={handleChanged} />}
-
-					<div>
-						<h3 className="mb-1.5 px-1 text-[11px] font-semibold text-neutral-400">
-							高级
-							<span className="ml-1.5 font-normal text-neutral-500">终端里用 /model 换模型时，改动存到哪</span>
-						</h3>
-						<div className="space-y-3 rounded-xl hairline bg-[var(--bg-panel)] p-3.5 shadow-apple-card">
-							<div>
-								<div className="mb-1.5 flex items-center gap-2">
-									<span className="text-[11px] font-semibold text-neutral-300">命令行 /model 保存位置</span>
-									<span className="text-[10px] text-neutral-500">(modelRoleStorage)</span>
-								</div>
-								<Segmented
-									size="sm"
-									value={storage}
-									disabled={storageBusy}
-									onChange={(m) => void setStorage(m)}
-									options={[
-										{ value: "global", label: "全局统一" },
-										{ value: "project", label: "按项目决定" },
-									]}
-								/>
-								<p className="mt-1.5 text-[11px] leading-[1.4] text-neutral-500">
-									{storage === "global"
-										? "终端 /model 默认写入全局配置"
-										: "终端 /model 优先写入当前项目 .omp/config.yml，实现仓库专属模型"}
-								</p>
-							</div>
-						</div>
-					</div>
 				</>
 			)}
 		</div>
