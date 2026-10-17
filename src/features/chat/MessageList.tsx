@@ -41,6 +41,7 @@ import { PrivacyText } from "../privacy/SecretChip";
 import { AnswerFooter } from "./AnswerFooter";
 import { isShareableAnswer, isShareableUser } from "./share/shareEntries";
 import { useShareSelection } from "./share/shareStore";
+import { useLineClampOverflow } from "../../lib/useLineClamp";
 import { AttachmentThumb, FileChip } from "./ImageChips";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
@@ -247,7 +248,6 @@ const UserRow = React.memo(function UserRow({
 	const messageTime = formatMessageTimestamp(item.ts);
 	const userText = useMemo(() => stripImageMarkers(rawText), [rawText]);
 	const [expanded, setExpanded] = useState(false);
-	const [collapsible, setCollapsible] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
 	const [editing, setEditing] = useState(false);
@@ -282,11 +282,7 @@ const UserRow = React.memo(function UserRow({
 		[item.images],
 	);
 
-	useEffect(() => {
-		const el = textRef.current;
-		if (!el) return;
-		setCollapsible(el.scrollHeight > el.clientHeight + 1);
-	}, [userText]);
+	const collapsible = useLineClampOverflow(textRef, "line-clamp-4", 4, [userText, editing]);
 
 	const fileAttachments = useMemo(() => {
 		const seen = new Set<string>();
@@ -380,7 +376,7 @@ const UserRow = React.memo(function UserRow({
 						ref={textRef}
 						className={clsx(
 							"whitespace-pre-wrap break-words",
-							!expanded && "line-clamp-4",
+							!expanded && collapsible && "line-clamp-4",
 						)}
 					>
 						{renderUserTextWithChips(rawText, (num) => {

@@ -21,6 +21,7 @@ beforeEach(() => {
 	);
 	Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => heights.scroll });
 	Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => heights.client });
+	vi.spyOn(window, "getComputedStyle").mockReturnValue({ lineHeight: "20px", fontSize: "14px" } as CSSStyleDeclaration);
 });
 
 afterEach(() => {
@@ -38,6 +39,13 @@ describe("IdeaTextView truncation", () => {
 		heights = { scroll: 80, client: 40 };
 		render(<IdeaTextView stored="long" refImages={[]} />);
 		expect(screen.getByText("展开全文")).toBeTruthy();
+	});
+
+	it("does not clamp when the natural height is only slightly over the clamp (taller inline chips)", () => {
+		heights = { scroll: 64, client: 60 };
+		const { container } = render(<IdeaTextView stored="chips" refImages={[]} />);
+		expect(screen.queryByText("展开全文")).toBeNull();
+		expect(container.querySelector(".line-clamp-3")).toBeNull();
 	});
 
 	it("re-measures on resize: toggle appears when re-wrapping overflows, and disappears when it fits again", () => {

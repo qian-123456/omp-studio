@@ -1,6 +1,7 @@
 import { Paperclip } from "lucide-react";
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
+import { useLineClampOverflow } from "../../lib/useLineClamp";
 import { getImageTokenPalette } from "../chat/Composer";
 import { splitTokens, storedToDoc, type TokenDoc } from "./ideaTokens";
 
@@ -133,23 +134,13 @@ export function IdeaTextView({
 	const doc = useMemo(() => storedToDoc(stored, refImages), [stored, refImages]);
 	const [preview, setPreview] = useState<number | null>(null);
 	const [expanded, setExpanded] = useState(false);
-	const [overflowing, setOverflowing] = useState(false);
 	const pRef = useRef<HTMLParagraphElement>(null);
-	// Measure only while clamped; once expanded keep the toggle so it can collapse again.
-	// Re-measure on every size change: a scrollbar appearing or the popover resizing re-wraps
-	// the text after mount, and a stale one-shot measurement leaves a clamp ellipsis with no toggle.
-	useLayoutEffect(() => {
-		const p = pRef.current;
-		if (!p || expanded) return;
-		const measure = () => setOverflowing(p.scrollHeight > p.clientHeight + 1);
-		measure();
-		const ro = new ResizeObserver(measure);
-		ro.observe(p);
-		return () => ro.disconnect();
-	}, [doc.text, expanded]);
+	// Measured unclamped and re-measured on resize; a block that fits is never clamped, so no
+	// ellipsis appears without hidden text behind it.
+	const overflowing = useLineClampOverflow(pRef, "line-clamp-3", 3, [doc.text]);
 	return (
 		<div>
-			<p ref={pRef} className={`whitespace-pre-wrap break-words ${expanded ? "" : "line-clamp-3"} ${className}`}>
+			<p ref={pRef} className={`whitespace-pre-wrap break-words ${!expanded && overflowing ? "line-clamp-3" : ""} ${className}`}>
 				{splitTokens(doc.text).map((s, i) => {
 					if (s.kind === "text") return <span key={`t${i}-${s.value.length}`}>{s.value}</span>;
 					const path = doc.images[s.index - 1];
@@ -169,7 +160,7 @@ export function IdeaTextView({
 					);
 				})}
 			</p>
-			{(overflowing || expanded) && (
+			{overflowing && (
 				<button
 					type="button"
 					onClick={() => setExpanded((v) => !v)}
