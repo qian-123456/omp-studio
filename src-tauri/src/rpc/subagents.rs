@@ -81,6 +81,8 @@ struct AgentMeta {
     model: Option<String>,
     thinking_level: Option<String>,
     system_prompt: Option<String>,
+    /// `session_init.agent`: the omp agent type.
+    agent: Option<String>,
     /// Full first user message (the spawned prompt / assignment).
     prompt: Option<String>,
     message_count: u32,
@@ -111,6 +113,13 @@ fn accumulate(meta: &mut AgentMeta, v: &Value) {
                 meta.system_prompt = v
                     .get("systemPrompt")
                     .and_then(Value::as_str)
+                    .map(str::to_string);
+            }
+            if meta.agent.is_none() {
+                meta.agent = v
+                    .get("agent")
+                    .and_then(Value::as_str)
+                    .filter(|a| !a.is_empty())
                     .map(str::to_string);
             }
         }
@@ -255,6 +264,7 @@ fn summary_from(
         status,
         model: scan.meta.model.clone(),
         thinking_level: scan.meta.thinking_level.clone(),
+        agent: scan.meta.agent.clone(),
         prompt: scan
             .meta
             .prompt
@@ -405,7 +415,7 @@ mod tests {
         "\n",
         r#"{"type":"thinking_level_change","id":"t","timestamp":"T2","thinkingLevel":"high"}"#,
         "\n",
-        r#"{"type":"session_init","id":"i","timestamp":"T3","systemPrompt":"SYS"}"#,
+        r#"{"type":"session_init","id":"i","timestamp":"T3","systemPrompt":"SYS","agent":"scout"}"#,
         "\n",
         r#"{"type":"message","id":"u","timestamp":"T4","message":{"role":"user","content":[{"type":"text","text":"do the thing"}]}}"#,
         "\n",
@@ -435,6 +445,7 @@ mod tests {
         assert_eq!(done.status, SubagentStatus::Completed);
         assert_eq!(done.model.as_deref(), Some("prov/mid"));
         assert_eq!(done.thinking_level.as_deref(), Some("high"));
+        assert_eq!(done.agent.as_deref(), Some("scout"));
         assert_eq!(done.prompt.as_deref(), Some("do the thing"));
         assert_eq!(done.tool_call_count, 1);
         assert_eq!(done.request_count, 2);

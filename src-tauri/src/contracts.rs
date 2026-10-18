@@ -333,6 +333,8 @@ pub struct SubagentSummary {
     pub model: Option<String>,
     /// From `thinking_level_change`.
     pub thinking_level: Option<String>,
+    /// omp agent type (scout / task / reviewer / ...) from `session_init.agent`.
+    pub agent: Option<String>,
     /// First user message, whitespace-collapsed preview (≤160 chars).
     pub prompt: Option<String>,
     pub message_count: u32,

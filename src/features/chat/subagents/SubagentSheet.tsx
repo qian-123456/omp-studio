@@ -7,13 +7,25 @@
 import clsx from "clsx";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
+	Brain,
 	Check,
+	ChevronDown,
 	ChevronRight,
+	ChevronUp,
+	CircleDollarSign,
 	Clock,
+	Coins,
 	Copy,
+	Cpu,
 	ExternalLink,
+	Gauge,
+	Layers,
 	Loader2,
+	Send,
 	Square,
+	Tag,
+	Timer,
+	Wrench,
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -144,17 +156,38 @@ function argPreview(args: unknown): string {
 	return j && j !== "{}" ? (j.length > 80 ? `${j.slice(0, 80)}…` : j) : "";
 }
 
-function StatCell({ label, value }: { label: string; value?: string }) {
+function StatCard({
+	icon: StatIcon,
+	label,
+	value,
+	wide,
+}: {
+	icon: typeof Check;
+	label: string;
+	value?: string;
+	wide?: boolean;
+}) {
 	if (!value) return null;
 	return (
-		<div>
-			<div className="text-[11px] text-[var(--text-30)]">{label}</div>
-			<div className="mt-0.5 truncate text-[12px] text-[var(--text)]" title={value}>
-				{value}
+		<div
+			className={clsx(
+				"rounded-[14px] border border-[var(--line)] bg-[var(--ghost-hover)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
+				wide && "col-span-2",
+			)}
+		>
+			<div className="flex items-center gap-1.5 text-[11px] text-[var(--text-40)]">
+				<StatIcon size={12} />
+				{label}
 			</div>
+			<div className="mt-0.5 break-words text-[12.5px] font-medium text-[var(--text)]">{value}</div>
 		</div>
 	);
 }
+
+const GLASS_BTN =
+	"grid h-6 w-6 shrink-0 place-items-center rounded-full border border-[var(--line)] bg-[var(--ghost-hover)] text-[var(--text-60)] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] transition-colors hover:text-[var(--text)] disabled:opacity-30";
+const CHIP =
+	"rounded-full border border-[var(--line)] bg-[var(--ghost-hover)] px-2 py-0.5 text-[var(--text-60)]";
 
 /// `<parent-stem>/<id>.jsonl` → `<dir>/<parent-stem>.jsonl`.
 function deriveParentFile(agentFile: string): string | undefined {
@@ -172,16 +205,22 @@ export function SubagentSheet({
 	row,
 	context,
 	onClose,
+	onPrev,
+	onNext,
 }: {
 	parentFile?: string;
 	row: AgentRow;
 	context?: string;
 	onClose: () => void;
+	/** Step to the previous / next subagent in tree order; undefined disables the arrow. */
+	onPrev?: () => void;
+	onNext?: () => void;
 }) {
 	const [tab, setTab] = useState<Tab>("overview");
 	const [data, setData] = useState<SubagentTranscript | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [systemOpen, setSystemOpen] = useState(false);
+	const [taskOpen, setTaskOpen] = useState(false);
 	const nextByteRef = useRef(0);
 	const itemsRef = useRef<TranscriptItem[]>([]);
 	const [items, setItems] = useState<TranscriptItem[]>([]);
@@ -262,6 +301,7 @@ export function SubagentSheet({
 	// omp prefixes every subagent prompt with this; hide it in the "负责什么" summary.
 	const assignmentText =
 		row.assignment ?? taskPrompt?.replace(/^Complete assignment thoroughly:\s*/, "");
+	const longTask = (assignmentText?.length ?? 0) > 360 || (assignmentText?.split("\n").length ?? 0) > 6;
 
 	const outputText =
 		data?.output ?? row.output ?? undefined;
@@ -284,67 +324,85 @@ export function SubagentSheet({
 			aria-modal="true"
 			aria-label={`子代理 ${row.id}`}
 		>
-			{/* Dim layer; click closes */}
-			<div
-				className="absolute inset-0 bg-[var(--overlay)]"
-				onMouseDown={onClose}
-			/>
+			{/* Very light dim; click closes */}
+			<div className="absolute inset-0 bg-black/10" onMouseDown={onClose} />
 			<aside
-				className="absolute inset-y-0 right-0 flex w-[min(560px,46vw)] flex-col border-l border-[var(--line)] bg-[var(--bg-panel)] text-[var(--text)] shadow-apple-modal"
+				className="liquid-glass sa-sheet-in absolute bottom-10 right-3 top-[52px] flex w-[min(560px,46vw)] flex-col text-[var(--text)]"
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
-				<div className="flex items-center gap-2 border-b border-[var(--line)] px-4 py-3">
-					<Icon
-						size={14}
-						className={clsx("shrink-0", spin && "animate-spin")}
-						style={{ color }}
-					/>
-					<span className="truncate text-sm font-semibold">
-						{row.id.includes(".") ? row.id.split(".").join(" > ") : row.id}
-					</span>
-					{row.agent && row.agent !== "task" && (
-						<span className="shrink-0 font-mono text-[11px] text-[var(--text-30)]">
-							⟦{row.agent}⟧
+				<div className="flex flex-col gap-2 px-4 pb-2.5 pt-3.5">
+					<div className="flex items-center gap-2">
+						<Icon
+							size={15}
+							className={clsx("shrink-0", spin && "animate-spin")}
+							style={{ color }}
+						/>
+						<span className="min-w-0 flex-1 break-words text-[14px] font-bold" title={row.id}>
+							{row.id.includes(".") ? row.id.split(".").join(" > ") : row.id}
 						</span>
-					)}
-					<span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-40)]">
-						{[
-							formatShortModel(row.model),
-							row.thinkingLevel,
-							statusText,
-							duration,
-						]
-							.filter(Boolean)
-							.join(" · ")}
-					</span>
-					<button
-						type="button"
-						onClick={onClose}
-						className="shrink-0 rounded p-1 text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-						aria-label="关闭"
-					>
-						<X size={14} />
-					</button>
+						{(onPrev || onNext) && (
+							<>
+								<button
+									type="button"
+									onClick={onPrev}
+									disabled={!onPrev}
+									aria-label="上一个子代理"
+									title="上一个（↑）"
+									className={GLASS_BTN}
+								>
+									<ChevronUp size={14} />
+								</button>
+								<button
+									type="button"
+									onClick={onNext}
+									disabled={!onNext}
+									aria-label="下一个子代理"
+									title="下一个（↓）"
+									className={GLASS_BTN}
+								>
+									<ChevronDown size={14} />
+								</button>
+							</>
+						)}
+						<button type="button" onClick={onClose} className={GLASS_BTN} aria-label="关闭" title="关闭（Esc）">
+							<X size={14} />
+						</button>
+					</div>
+					<div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+						{row.agent && <span className={CHIP}>{row.agent}</span>}
+						{row.model && <span className={CHIP} title={row.model}>{formatShortModel(row.model)}</span>}
+						{row.thinkingLevel && <span className={CHIP}>{row.thinkingLevel}</span>}
+						<span className={CHIP} style={{ color }}>
+							{[statusText, duration].filter(Boolean).join(" · ")}
+						</span>
+					</div>
 				</div>
 
-				{/* Tabs */}
-				<div className="flex gap-1 border-b border-[var(--line)] px-3 py-1.5">
-					{TABS.map((t) => (
-						<button
-							key={t.id}
-							type="button"
-							onClick={() => setTab(t.id)}
-							className={clsx(
-								"rounded px-2 py-1 text-[12px] transition-colors",
-								tab === t.id
-									? "bg-[var(--bg-active-fill)] text-[var(--text)]"
-									: "text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]",
-							)}
-						>
-							{t.label}
-						</button>
-					))}
+				{/* Tabs: segmented pill with sliding highlight */}
+				<div className="px-4 pb-2.5">
+					<div className="relative grid grid-cols-4 rounded-full border border-[var(--line)] bg-[var(--ghost-hover)] p-0.5">
+						<span
+							aria-hidden
+							className="sa-seg-thumb absolute inset-y-0.5 left-0.5 w-[calc((100%-4px)/4)] rounded-full bg-[var(--bg-active-fill)] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_1px_2px_rgba(0,0,0,0.15)]"
+							style={{ transform: `translateX(${TABS.findIndex((t) => t.id === tab) * 100}%)` }}
+						/>
+						{TABS.map((t) => (
+							<button
+								key={t.id}
+								type="button"
+								onClick={() => setTab(t.id)}
+								className={clsx(
+									"relative rounded-full py-1 text-[12px] transition-colors",
+									tab === t.id
+										? "font-semibold text-[var(--text)]"
+										: "text-[var(--text-40)] hover:text-[var(--text-60)]",
+								)}
+							>
+								{t.label}
+							</button>
+						))}
+					</div>
 				</div>
 
 				{/* Body */}
@@ -352,36 +410,57 @@ export function SubagentSheet({
 					{tab === "overview" && (
 						<div className="space-y-4">
 							{assignmentText && (
-								<section>
-									<div className="mb-1 text-[11px] text-[var(--text-30)]">
-										负责什么
+								<section className="rounded-[14px] border border-[var(--line)] bg-[var(--ghost-hover)] px-3 py-2.5">
+									<div className="mb-1 flex items-center justify-between">
+										<span className="text-[11px] text-[var(--text-40)]">负责什么</span>
+										<CopyButton text={assignmentText} label="复制" />
 									</div>
-									<p className="line-clamp-[12] whitespace-pre-wrap break-words text-[12.5px] leading-5 text-[var(--text-60)]">
+									<p
+										className={clsx(
+											"whitespace-pre-wrap break-words text-[12.5px] leading-5 text-[var(--text-60)]",
+											!taskOpen && longTask && "line-clamp-6",
+										)}
+									>
 										{assignmentText}
 									</p>
+									{longTask && (
+										<button
+											type="button"
+											onClick={() => setTaskOpen(!taskOpen)}
+											className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--ghost-hover)] px-2.5 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:text-[var(--text)]"
+										>
+											{taskOpen ? "收起" : "展开全文"}
+											<ChevronRight size={11} className={clsx("transition-transform", taskOpen ? "-rotate-90" : "rotate-90")} />
+										</button>
+									)}
 								</section>
 							)}
-							<section className="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-[10px] border border-[var(--line)] px-3 py-2.5">
-								<StatCell label="模型" value={row.model} />
-								<StatCell label="思考等级" value={row.thinkingLevel} />
-								<StatCell label="模型角色" value={row.modelRole} />
-								<StatCell
+							<section className="grid grid-cols-2 gap-2">
+								<StatCard icon={Cpu} label="模型" value={row.model} wide />
+								<StatCard icon={Brain} label="思考等级" value={row.thinkingLevel} />
+								<StatCard icon={Tag} label="模型角色" value={row.modelRole} />
+								<StatCard
+									icon={Layers}
 									label="来源"
 									value={row.agentSource ? SOURCE_TEXT[row.agentSource] ?? row.agentSource : undefined}
 								/>
-								<StatCell
+								<StatCard
+									icon={Wrench}
 									label="工具次数"
 									value={row.toolCount ? String(row.toolCount) : undefined}
 								/>
-								<StatCell
+								<StatCard
+									icon={Send}
 									label="请求数"
 									value={row.requests ? String(row.requests) : undefined}
 								/>
-								<StatCell
+								<StatCard
+									icon={Coins}
 									label="Tokens"
 									value={row.tokens ? formatTokens(row.tokens) : undefined}
 								/>
-								<StatCell
+								<StatCard
+									icon={Gauge}
 									label="上下文"
 									value={
 										row.contextTokens && row.contextWindow
@@ -391,7 +470,8 @@ export function SubagentSheet({
 												: undefined
 									}
 								/>
-								<StatCell
+								<StatCard
+									icon={CircleDollarSign}
 									label="费用"
 									value={
 										typeof row.cost === "number" && Number.isFinite(row.cost)
@@ -399,7 +479,7 @@ export function SubagentSheet({
 											: undefined
 									}
 								/>
-								<StatCell label="用时" value={duration} />
+								<StatCard icon={Timer} label="用时" value={duration} />
 							</section>
 							{row.status === "running" && row.currentTool && (
 								<section>

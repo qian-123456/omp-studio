@@ -390,6 +390,7 @@ pub struct SkillsCatalog {
 pub enum SubagentStatus { Pending, Running, Completed, Failed, Aborted } // snake_case
 pub struct SubagentSummary {
   pub id: String, pub status: SubagentStatus, pub model: Option<String>, pub thinking_level: Option<String>,
+  pub agent: Option<String> /* omp agent type, session_init.agent */,
   pub prompt: Option<String> /* first user message preview */, pub message_count: u32, pub tool_call_count: u32,
   pub request_count: u32, pub tokens: u64 /* input+output+cacheWrite */, pub cost: f64,
   pub started_at: Option<String>, pub ended_at: Option<String>, pub output_path: Option<String>, pub file_path: String,

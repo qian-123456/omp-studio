@@ -144,8 +144,8 @@ export function GeneralSection() {
 			<SettingsCard title="界面与快捷键">
 				<ToggleRow
 					fieldId="capsuleVisible"
-					label="顶部子任务胶囊"
-					description="当前会话派生并发子任务（Subagent）时，在窗口顶部栏显示胶囊指示器，点击可查看各子任务进度与详情。"
+					label="顶部子代理胶囊"
+					description="当前会话派生并发子代理（Subagents）时，在窗口顶部栏显示胶囊指示器，点击可展开查看各子代理的进度与详情。"
 					checked={settings?.capsuleVisible ?? true}
 					onChange={(v) => save({ capsuleVisible: v })}
 				/>

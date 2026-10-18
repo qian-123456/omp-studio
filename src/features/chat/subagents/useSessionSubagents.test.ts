@@ -7,6 +7,7 @@ const disk = (over: Partial<SubagentSummary>): SubagentSummary => ({
 	status: "running",
 	model: "p/m",
 	thinkingLevel: null,
+	agent: null,
 	prompt: "Complete assignment thoroughly:\nScan the repo",
 	messageCount: 2,
 	toolCallCount: 3,

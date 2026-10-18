@@ -35,6 +35,7 @@ export function mergeDiskAndLive(
 		const line = firstLine(s.prompt);
 		subagents[s.id] = {
 			status: s.status,
+			agent: s.agent ?? undefined,
 			label: line ?? s.id,
 			index,
 			task: s.prompt ?? undefined,
@@ -46,6 +47,7 @@ export function mergeDiskAndLive(
 			status: s.status,
 			line,
 			task: s.prompt ?? undefined,
+			agent: s.agent ?? undefined,
 			model: s.model ?? undefined,
 			thinkingLevel: s.thinkingLevel ?? undefined,
 			toolCount: s.toolCallCount,
@@ -63,7 +65,7 @@ export function mergeDiskAndLive(
 		}
 	});
 	Object.entries(live).forEach(([id, info]) => {
-		subagents[id] = { ...subagents[id], ...info };
+		subagents[id] = { ...subagents[id], ...info, agent: info.agent ?? subagents[id]?.agent };
 		rows[id] = {
 			...(rows[id] ?? { id, index: info.index ?? Object.keys(rows).length }),
 			status: info.status,

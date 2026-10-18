@@ -137,6 +137,7 @@ describe("heatmap distribution analyzer", () => {
 			model: "claude-3-7-sonnet",
 			prompt: "调研 Token 监控方案",
 			thinkingLevel: null,
+			agent: null,
 			messageCount: 8,
 			toolCallCount: 6,
 			requestCount: 4,

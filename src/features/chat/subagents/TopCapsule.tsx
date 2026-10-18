@@ -1,19 +1,203 @@
-import {
-	AlertCircle,
-	Bot,
-	ChevronRight,
-	Copy,
-	X,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { FloatingLayer } from "../../../components/FloatingLayer";
-import { copyText } from "../../../lib/dialogs";
-import { toast } from "../../../lib/toast";
+import clsx from "clsx";
+import { Bot, Check, ChevronDown, ChevronUp, Pause, X } from "lucide-react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { claimEscape } from "../../../lib/escapeClaim";
+import type { SubagentInfo } from "../../../stores/live";
 import { useUi } from "../../../stores/ui";
 import { useSettings } from "../../settings/store";
-import { subagentBucket, subagentCounts } from "./counts";
+import { subagentCounts } from "./counts";
+import { formatShortModel } from "../turnGrouping";
+import type { AgentRow } from "./merge";
+import { SubagentHoverCard } from "./SubagentHoverCard";
 import { SubagentSheet } from "./SubagentSheet";
+import {
+	MAX_VISIBLE_ROWS,
+	type RowState,
+	type TreeNode,
+	activityText,
+	buildSubagentTree,
+	capTree,
+	elapsedMs,
+	flattenTree,
+	moreLabel,
+	roleTone,
+	shouldAutoExpand,
+	statusSummary,
+	subagentTitle,
+} from "./subagentTree";
 import { useSessionSubagents } from "./useSessionSubagents";
+
+const TINT = {
+	running: "bg-[color-mix(in_oklab,var(--status-info)_16%,transparent)] text-[var(--status-info)]",
+	done: "bg-[color-mix(in_oklab,var(--status-success)_16%,transparent)] text-[var(--status-success)]",
+	failed: "bg-[color-mix(in_oklab,var(--status-error)_16%,transparent)] text-[var(--status-error)]",
+} as const;
+
+function Spinner() {
+	return (
+		<span className="inline-block h-2.5 w-2.5 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent" />
+	);
+}
+
+const ROLE_TINT = {
+	scout: "bg-[color-mix(in_oklab,var(--status-renamed)_18%,transparent)] text-[var(--status-renamed)]",
+	task: "bg-[color-mix(in_oklab,var(--accent)_18%,transparent)] text-[var(--accent)]",
+	reviewer: "bg-[color-mix(in_oklab,var(--status-warning)_18%,transparent)] text-[var(--status-warning)]",
+	other: "bg-[var(--ghost-hover)] text-[var(--text-60)]",
+} as const;
+
+/** Single non-redundant status summary (running / all done / done+failed). */
+function SummaryBadge({
+	counts,
+	small,
+}: {
+	counts: { running: number; done: number; failed: number };
+	small?: boolean;
+}) {
+	const s = statusSummary(counts);
+	const seg = clsx(
+		"inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
+		small ? "h-[18px] px-1.5 text-[11px]" : "h-5 px-[7px] text-[12px]",
+	);
+	if (s.mode === "running") {
+		return (
+			<>
+				<span className={clsx(seg, TINT.running)}>
+					<Spinner />
+					{s.running} 运行中
+				</span>
+				<span className="text-[11px] tabular-nums text-[var(--text-40)]">{s.progress}</span>
+			</>
+		);
+	}
+	if (s.mode === "done") {
+		return (
+			<span className={clsx(seg, TINT.done)}>
+				<Check className="h-3 w-3" strokeWidth={3} />
+				{s.label}
+			</span>
+		);
+	}
+	return (
+		<>
+			<span className={clsx(seg, TINT.done)}>✓ {s.done}</span>
+			<span className={clsx(seg, TINT.failed)}>✕ {s.failed}</span>
+		</>
+	);
+}
+
+function StatusGlyph({ state }: { state: RowState }) {
+	return (
+		<span
+			className={clsx(
+				"grid w-3.5 shrink-0 place-items-center text-[12px] font-bold",
+				state === "running" && "text-[var(--status-info)]",
+				state === "done" && "text-[var(--status-success)]",
+				state === "failed" && "text-[var(--status-error)]",
+				state === "waiting" && "text-[var(--status-warning)]",
+			)}
+		>
+			{state === "running" ? (
+				<Spinner />
+			) : state === "done" ? (
+				<Check className="h-3 w-3" strokeWidth={3} />
+			) : state === "failed" ? (
+				<X className="h-3 w-3" strokeWidth={3} />
+			) : (
+				<Pause className="h-3 w-3" />
+			)}
+		</span>
+	);
+}
+
+interface RowCtx {
+	subagents: Record<string, SubagentInfo>;
+	rows: Record<string, AgentRow>;
+	selectedId: string | null;
+	now: number;
+	onOpen: (id: string) => void;
+	onHover: (id: string | null, el?: Element) => void;
+	perRowModel: boolean;
+}
+
+function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
+	return (
+		<>
+			{nodes.map((n) => {
+				const info = ctx.subagents[n.id];
+				const row = ctx.rows[n.id];
+				const act = activityText(info, row, n.state);
+				const title = subagentTitle(n.id, info, row);
+				const role = info.agent || row?.agent;
+				const model = formatShortModel(row?.model ?? info.progress?.resolvedModel);
+				const sub =
+					n.state === "running" ? act.text : n.state === "failed" ? act.text : "";
+				return (
+					<li key={n.id}>
+						<div
+							role="button"
+							tabIndex={0}
+							data-selected={ctx.selectedId === n.id}
+							data-subagent-row={n.id}
+							onClick={() => ctx.onOpen(n.id)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									ctx.onOpen(n.id);
+								}
+							}}
+							onMouseEnter={(e) => ctx.onHover(n.id, e.currentTarget)}
+							onMouseLeave={() => ctx.onHover(null)}
+							className="glass-row flex h-7 cursor-pointer items-center gap-[7px] rounded-[10px] px-2 text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
+							title={title}
+						>
+							<StatusGlyph state={n.state} />
+							<span
+								className={clsx(
+									"min-w-0 flex-1 truncate",
+									n.state === "done" && "text-[var(--text-60)]",
+									n.state === "waiting" && "font-semibold text-[var(--status-warning)]",
+									(n.state === "running" || n.state === "failed") && "font-semibold",
+								)}
+							>
+								{title}
+							</span>
+							{role && (
+								<span
+									className={clsx(
+										"shrink-0 rounded-md px-1.5 text-[10.5px] font-medium",
+										ROLE_TINT[roleTone(role)],
+									)}
+								>
+									{role}
+								</span>
+							)}
+							{ctx.perRowModel && model && (
+								<span className="shrink-0 whitespace-nowrap text-[11px] text-[var(--text-40)]">{model}</span>
+							)}
+						</div>
+						{sub && (
+							<div
+								className={clsx(
+									"ml-[28px] truncate pb-1 text-[11px]",
+									act.error ? "text-[var(--status-error)]" : "text-[var(--text-40)]",
+								)}
+								title={sub}
+							>
+								{sub}
+							</div>
+						)}
+						{n.children.length > 0 && (
+							<ul>
+								<TreeRows nodes={n.children} ctx={ctx} />
+							</ul>
+						)}
+					</li>
+				);
+			})}
+		</>
+	);
+}
 
 export function TopCapsule() {
 	const settings = useSettings((s) => s.settings);
@@ -22,198 +206,214 @@ export function TopCapsule() {
 
 	const { parentFile, subagents, rows } = useSessionSubagents(selectedSessionId);
 	const [sheetId, setSheetId] = useState<string | null>(null);
-
-	const [openSubPopover, setOpenSubPopover] = useState(false);
-	const [expandedSubId, setExpandedSubId] = useState<string | null>(null);
-	const triggerRef = useRef<HTMLButtonElement>(null);
+	const [open, setOpen] = useState(false);
+	const [showAll, setShowAll] = useState(false);
+	const [hover, setHover] = useState<{ id: string; el: Element } | null>(null);
+	const [now, setNow] = useState(() => Date.now());
+	const anchorRef = useRef<HTMLDivElement>(null);
+	const panelRef = useRef<HTMLDivElement>(null);
+	const seenRef = useRef<Set<string>>(new Set());
 
 	useEffect(() => {
 		void loadSettings();
 	}, [loadSettings]);
 
-	// Auto-collapse popovers when selected session changes
+	// Fresh session: collapse everything and forget which subagents were seen.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the session id on purpose
 	useEffect(() => {
-		setOpenSubPopover(false);
+		setOpen(false);
 		setSheetId(null);
+		setShowAll(false);
+		setHover(null);
+		seenRef.current = new Set();
 	}, [selectedSessionId]);
+
+	// A new unfinished subagent re-expands the panel.
+	useEffect(() => {
+		if (shouldAutoExpand(seenRef.current, subagents)) setOpen(true);
+		for (const id of Object.keys(subagents)) seenRef.current.add(id);
+	}, [subagents]);
+
+	const counts = subagentCounts(subagents);
+	const total = counts.running + counts.done + counts.failed;
+
+	// Tick running elapsed times while the panel is open.
+	useEffect(() => {
+		if (!open || counts.running === 0) return;
+		setNow(Date.now());
+		const t = window.setInterval(() => setNow(Date.now()), 1000);
+		return () => window.clearInterval(t);
+	}, [open, counts.running]);
+
+	const tree = useMemo(() => buildSubagentTree(subagents), [subagents]);
+	const capped = useMemo(
+		() => (showAll ? { roots: tree, hidden: 0, hiddenAllDone: true } : capTree(tree, MAX_VISIBLE_ROWS)),
+		[tree, showAll],
+	);
+	const visibleIds = useMemo(() => flattenTree(capped.roots).map((n) => n.id), [capped]);
+	const parentName = useMemo(() => {
+		const m: Record<string, string> = {};
+		for (const n of flattenTree(tree)) {
+			for (const c of n.children) m[c.id] = n.id;
+		}
+		return m;
+	}, [tree, subagents]);
+
+	// ↑ / ↓ move the open detail between rows, in the order the tree shows them.
+	useEffect(() => {
+		if (!open || !sheetId) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+			const t = e.target as Node | null;
+			if (t !== document.body && !(t && panelRef.current?.contains(t))) return;
+			const i = visibleIds.indexOf(sheetId);
+			if (i < 0) return;
+			const next = visibleIds[i + (e.key === "ArrowDown" ? 1 : -1)];
+			if (!next) return;
+			e.preventDefault();
+			setSheetId(next);
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [open, sheetId, visibleIds]);
+	// Escape / outside click collapses the panel (not while a detail sheet is open).
+	useEffect(() => {
+		if (!open || sheetId) return;
+		const onDown = (e: MouseEvent) => {
+			const t = e.target as Node;
+			if (anchorRef.current?.contains(t)) return;
+			if (t instanceof Element && t.closest('[data-layer]')) return;
+			setOpen(false);
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape") return;
+			if (document.querySelector('[data-layer="lightbox"], [data-layer="modal"], [aria-modal="true"]')) return;
+			e.stopPropagation();
+			claimEscape(e);
+			setOpen(false);
+		};
+		document.addEventListener("mousedown", onDown, true);
+		document.addEventListener("keydown", onKey, true);
+		return () => {
+			document.removeEventListener("mousedown", onDown, true);
+			document.removeEventListener("keydown", onKey, true);
+		};
+	}, [open, sheetId]);
 
 	if (settings && !settings.capsuleVisible) {
 		return null;
 	}
-
-	// Disk-backed list also covers sessions driven by an external omp CLI.
-	const subCounts = subagentCounts(subagents);
-	const hasSubagents = Object.keys(subagents).length > 0;
-
-	if (!hasSubagents) {
+	if (total === 0) {
 		return null;
 	}
 
+	const modelOf = (id: string) =>
+		formatShortModel(rows[id]?.model ?? subagents[id]?.progress?.resolvedModel);
+	const modelSet = new Set(Object.keys(subagents).map(modelOf).filter(Boolean));
+	const sharedModel = modelSet.size === 1 ? [...modelSet][0] : "";
+	const perRowModel = modelSet.size > 1;
+	const ctx: RowCtx = {
+		subagents,
+		rows,
+		selectedId: sheetId,
+		now,
+		onOpen: (id) => setSheetId(id),
+		onHover: (id, el) => setHover(id && el ? { id, el } : null),
+		perRowModel,
+	};
+	const hoverInfo = hover ? subagents[hover.id] : undefined;
+	const hoverState = hover ? flattenTree(tree).find((n) => n.id === hover.id)?.state : undefined;
+
 	return (
-		<div className="relative flex items-center">
-			<div className="flex items-center rounded-full border border-neutral-700/80 bg-neutral-800/80 p-0.5 text-xs shadow-sm">
+		<div ref={anchorRef} className="pointer-events-none absolute right-4 top-3 z-30 flex max-w-[calc(100%-2rem)] justify-end">
+			{!open && (
 				<button
-					ref={triggerRef}
 					type="button"
-					onClick={() => setOpenSubPopover(!openSubPopover)}
-					className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium transition-colors ${
-						openSubPopover
-							? "bg-neutral-700 text-neutral-100"
-							: "text-neutral-300 hover:bg-neutral-700/60 hover:text-neutral-100"
-					}`}
-					title="查看当前会话的子任务状态"
+					onClick={() => setOpen(true)}
+					aria-expanded={false}
+					style={{ "--glass-radius": "999px" } as CSSProperties}
+					className="liquid-glass pointer-events-auto relative inline-flex h-8 items-center gap-1.5 py-0 pl-2.5 pr-1.5 text-[12px] text-[var(--text)]"
+					title="展开子代理（Subagents）状态面板"
 				>
-					<Bot className="h-3.5 w-3.5 text-violet-400" />
-					<span>子任务</span>
-					{subCounts.running > 0 && (
-						<span className="rounded bg-sky-500/20 px-1 py-0.2 text-[10px] text-sky-300">
-							{subCounts.running} 运行
-						</span>
-					)}
-					{subCounts.done > 0 && (
-						<span className="rounded bg-emerald-500/20 px-1 py-0.2 text-[10px] text-emerald-300">
-							{subCounts.done} 完成
-						</span>
-					)}
-					{subCounts.failed > 0 && (
-						<span className="rounded bg-rose-500/20 px-1 py-0.2 text-[10px] text-rose-300">
-							{subCounts.failed} 失败
-						</span>
-					)}
+					<Bot className="h-[15px] w-[15px] shrink-0 text-[var(--accent)]" />
+					<span className="text-[12.5px] font-semibold">子代理</span>
+					<SummaryBadge counts={counts} />
+					<span className="grid h-[22px] w-[22px] place-items-center rounded-full text-[var(--text-60)]">
+						<ChevronDown className="h-3.5 w-3.5" />
+					</span>
 				</button>
-			</div>
-
-			<FloatingLayer
-				anchor={openSubPopover ? triggerRef.current : null}
-				placement="bottom-end"
-				offset={6}
-				layer="popover"
-				onDismiss={() => setOpenSubPopover(false)}
-				ignoreRefs={[triggerRef]}
-				className="w-80 p-3"
-			>
-				<div className="mb-2 flex items-center justify-between border-b border-neutral-800 pb-2">
-					<div className="text-xs font-semibold text-neutral-200">
-						子任务列表 ({Object.keys(subagents).length})
+			)}
+			{open && (
+				<div
+					role="dialog"
+					aria-label="子代理状态"
+					className="liquid-glass pointer-events-auto w-[400px] max-w-full p-2 text-[12.5px] text-[var(--text)]"
+				>
+					<div ref={panelRef} className="outline-none">
+					<div className="flex items-center gap-1.5 py-1 pl-1.5 pr-0.5">
+						<Bot className="h-[15px] w-[15px] shrink-0 text-[var(--accent)]" />
+						<span className="shrink-0 whitespace-nowrap text-[12.5px] font-semibold">子代理</span>
+						<span className="flex min-w-0 flex-1 items-center gap-1.5">
+							<SummaryBadge counts={counts} small />
+						</span>
+						<button
+							type="button"
+							onClick={() => setOpen(false)}
+							className="grid h-[22px] w-[22px] place-items-center rounded-full text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							title="收起为胶囊"
+							aria-label="收起子代理面板"
+						>
+							<ChevronUp className="h-3.5 w-3.5" />
+						</button>
 					</div>
-					<button
-						type="button"
-						onClick={() => setOpenSubPopover(false)}
-						className="text-neutral-500 hover:text-neutral-300"
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
+					{sharedModel && (
+						<div className="pb-1 pl-[27px] text-[11px] text-[var(--text-40)]" title="所有子代理使用的模型">
+							全部使用 {sharedModel}
+						</div>
+					)}
+
+					<ul className="sa-tree sa-tree-root">
+						<TreeRows nodes={capped.roots} ctx={ctx} />
+						{(capped.hidden > 0 || (showAll && tree.length > 0 && flattenTree(tree).length > MAX_VISIBLE_ROWS)) && (
+							<li>
+								<button
+									type="button"
+									onClick={() => setShowAll(!showAll)}
+									className="flex h-[26px] w-full items-center gap-1 rounded-[10px] px-2 text-left text-[12px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+								>
+									{showAll ? "收起多余的行" : moreLabel(capped.hidden, capped.hiddenAllDone)}
+									{showAll ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+								</button>
+							</li>
+						)}
+					</ul>
+					</div>
 				</div>
+			)}
 
-				<div className="max-h-72 space-y-1.5 overflow-y-auto">
-					{Object.entries(subagents).map(([id, sub]) => {
-						const agent =
-							typeof sub.agent === "string" && sub.agent ? sub.agent : null;
-						const task = typeof sub.task === "string" ? sub.task : "";
-						const bucket = subagentBucket(String(sub.status ?? ""));
-						const isExpanded = expandedSubId === id;
+			{hover && hoverInfo && hoverState && open && (
+				<SubagentHoverCard
+					id={hover.id}
+					info={hoverInfo}
+					row={rows[hover.id]}
+					state={hoverState}
+					elapsed={elapsedMs(hoverInfo, rows[hover.id], hoverState, now)}
+					parentName={parentName[hover.id]}
+					anchor={hover.el}
+				/>
+			)}
 
-						return (
-							<div
-								key={id}
-								onClick={() =>
-									setExpandedSubId(isExpanded ? null : id)
-								}
-								className={`cursor-pointer rounded-lg border transition-all ${
-									isExpanded
-										? "border-neutral-700 bg-neutral-900/90 shadow-sm"
-										: "border-neutral-800 bg-neutral-950/60 hover:border-neutral-700"
-								} p-2 text-xs`}
-							>
-								<div className="flex items-center justify-between gap-1.5">
-									<div className="flex min-w-0 items-center gap-1.5">
-										<span className="truncate font-medium text-neutral-200">
-											{agent || sub.label || id}
-										</span>
-										<ChevronRight
-											className={`h-3 w-3 shrink-0 text-neutral-500 transition-transform ${
-												isExpanded ? "rotate-90" : ""
-											}`}
-										/>
-									</div>
-
-									<span
-										className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-											bucket === "failed"
-												? "border border-rose-500/30 bg-rose-500/20 text-rose-300"
-												: bucket === "running"
-													? "bg-sky-500/20 text-sky-300"
-													: bucket === "done"
-														? "bg-emerald-500/20 text-emerald-300"
-														: "bg-neutral-800 text-neutral-400"
-										}`}
-									>
-										{bucket === "failed" && (
-											<AlertCircle className="h-2.5 w-2.5 text-rose-400" />
-										)}
-										<span>{sub.status || "未知"}</span>
-									</span>
-								</div>
-
-								{task && (
-									<div
-										className={`mt-1 text-[11px] text-neutral-400 ${
-											isExpanded
-												? "whitespace-pre-wrap break-words leading-relaxed"
-												: "line-clamp-2"
-										}`}
-									>
-										{task}
-									</div>
-								)}
-
-								{isExpanded && (
-									<div
-										className="mt-2 space-y-1.5 border-t border-neutral-800/80 pt-2 text-[11px]"
-										onClick={(e) => e.stopPropagation()}
-									>
-										<div className="flex items-center justify-between text-neutral-400">
-											<span>
-												ID: <code className="text-neutral-300">{id}</code>
-											</span>
-											<button
-												type="button"
-												onClick={async () => {
-													await copyText(task || id);
-													toast.success("已复制任务信息");
-												}}
-												className="inline-flex items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100"
-											>
-												<Copy className="h-2.5 w-2.5" />
-												<span>复制</span>
-											</button>
-											{rows[id]?.filePath && (
-												<button
-													type="button"
-													onClick={() => setSheetId(id)}
-													className="inline-flex items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100"
-												>
-													查看详情
-												</button>
-											)}
-										</div>
-										{sub.progress?.retryFailure?.errorMessage && (
-											<div className="rounded border border-[var(--line)] p-1.5 text-[var(--status-error)]">
-												错误: {sub.progress.retryFailure.errorMessage}
-											</div>
-										)}
-									</div>
-								)}
-							</div>
-						);
-					})}
-				</div>
-			</FloatingLayer>
 			{sheetId && rows[sheetId] && (
 				<SubagentSheet
 					parentFile={parentFile}
 					row={rows[sheetId]}
 					onClose={() => setSheetId(null)}
+					onPrev={visibleIds.indexOf(sheetId) > 0 ? () => setSheetId(visibleIds[visibleIds.indexOf(sheetId) - 1]) : undefined}
+					onNext={
+						visibleIds.indexOf(sheetId) >= 0 && visibleIds.indexOf(sheetId) < visibleIds.length - 1
+							? () => setSheetId(visibleIds[visibleIds.indexOf(sheetId) + 1])
+							: undefined
+					}
 				/>
 			)}
 		</div>

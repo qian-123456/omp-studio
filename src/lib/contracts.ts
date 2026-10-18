@@ -207,6 +207,8 @@ export interface SubagentSummary {
 	status: SubagentStatus;
 	model: string | null;
 	thinkingLevel: string | null;
+	/** omp agent type (scout / task / reviewer / ...), from `session_init.agent`. */
+	agent: string | null;
 	prompt: string | null;
 	messageCount: number;
 	toolCallCount: number;

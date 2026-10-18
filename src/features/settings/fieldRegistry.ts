@@ -68,9 +68,9 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "capsuleVisible",
 		sectionId: "general",
-		label: "顶部子任务胶囊",
-		description: "对话产生并发子任务（Subagent）时，在窗口顶部显示胶囊指示条与进度",
-		keywords: ["capsule", "胶囊", "top capsule", "顶部胶囊", "子任务", "subagent", "状态栏"],
+		label: "顶部子代理胶囊",
+		description: "对话派生并发子代理（Subagents）时，在窗口顶部显示胶囊指示条与进度",
+		keywords: ["capsule", "胶囊", "top capsule", "顶部胶囊", "子代理", "子任务", "subagent", "subagents", "状态栏"],
 	},
 	{
 		id: "windowWorktreeTitle",

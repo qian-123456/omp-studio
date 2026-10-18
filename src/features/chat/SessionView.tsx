@@ -34,6 +34,7 @@ import { SelectionToolbar } from "./SelectionToolbar";
 import { ShareSelectionBar } from "./share/ShareSelectionBar";
 import { useShareSelection } from "./share/shareStore";
 import { claimEscape, isEscapeClaimed } from "../../lib/escapeClaim";
+import { TopCapsule } from "./subagents/TopCapsule";
 
 const EMPTY_PENDING_UI: PendingUiRequest[] = [];
 
@@ -205,9 +206,13 @@ export function SessionView({
 	);
 
 	return (
-		<div className={`relative @container flex h-full flex-col ${centered ? "justify-center pb-[6vh]" : ""}`}>
+		<div
+			data-session-view=""
+			className={`relative @container flex h-full flex-col ${centered ? "justify-center pb-[6vh]" : ""}`}
+		>
 			{centered && <StartGlow />}
 					<div className={`relative min-h-0 @container ${centered ? "flex-none" : "flex-1"}`}>
+						{!compact && <TopCapsule />}
 						{!compact && (
 							<ChatTrace sessionId={sessionId} scrollRef={scrollRef} />
 						)}
