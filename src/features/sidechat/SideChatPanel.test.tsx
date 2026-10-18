@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Ipc from "../../lib/ipc";
 import type { SessionMeta } from "../../lib/contracts";
@@ -223,5 +224,17 @@ describe("SideChatPanel existing side chats", () => {
 		useSideChatView.getState().setOpenChild("p1", "gone");
 		render(<SideChatPanel />);
 		await waitFor(() => expect(useSideChatView.getState().openTabs["p1"]).toEqual(["child-new"]));
+	});
+});
+
+describe("SideChatPanel auto-opened blank tab", () => {
+	it("opens exactly one blank tab even when effects run twice (StrictMode)", () => {
+		useSideChatView.setState({ openChild: {}, openTabs: {}, pending: {} });
+		render(
+			<StrictMode>
+				<SideChatPanel />
+			</StrictMode>,
+		);
+		expect(useSideChatView.getState().openTabs["p1"]).toHaveLength(1);
 	});
 });

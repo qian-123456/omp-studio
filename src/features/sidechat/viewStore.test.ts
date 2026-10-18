@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUi } from "../../stores/ui";
 import {
 	closeTabResult,
@@ -125,5 +125,17 @@ describe("useSideChatView", () => {
 		expect(useSideChatView.getState().pending).toEqual({ "new:a": "hello" });
 		v.setPending("new:a", null);
 		expect(useSideChatView.getState().pending).toEqual({});
+	});
+});
+
+describe("side-chat tab restore", () => {
+	it("a reload restores real side chats but not blank (never created) tabs", async () => {
+		localStorage.setItem("omp_sidechat_open_tabs", JSON.stringify({ p1: ["c1", "new:a0", "new:b1"], p2: ["new:c2"] }));
+		localStorage.setItem("omp_sidechat_open_child", JSON.stringify({ p1: "new:b1", p2: "new:c2" }));
+		vi.resetModules();
+		const fresh = await import("./viewStore");
+		const s = fresh.useSideChatView.getState();
+		expect(s.openTabs).toEqual({ p1: ["c1"] });
+		expect(s.openChild).toEqual({});
 	});
 });

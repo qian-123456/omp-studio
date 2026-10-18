@@ -13,7 +13,7 @@ import { useUi } from "../../stores/ui";
 const STORAGE_KEY = "omp_sidechat_open_child";
 const TABS_STORAGE_KEY = "omp_sidechat_open_tabs";
 
-/** Load a parentId -> childId map; empty values are dropped. */
+/** Load a parentId -> childId map; empty and blank (never created) ids are dropped. */
 function loadMap(key: string): Record<string, string> {
 	try {
 		if (typeof localStorage === "undefined") return {};
@@ -24,7 +24,7 @@ function loadMap(key: string): Record<string, string> {
 			return {};
 		const out: Record<string, string> = {};
 		for (const [k, v] of Object.entries(parsed)) {
-			if (typeof v === "string" && v) out[k] = v;
+			if (typeof v === "string" && v && !isBlankTab(v)) out[k] = v;
 		}
 		return out;
 	} catch {
@@ -32,7 +32,7 @@ function loadMap(key: string): Record<string, string> {
 	}
 }
 
-/** Load a parentId -> childId[] map; non-string / empty / duplicate ids are dropped. */
+/** Load a parentId -> childId[] map; non-string / empty / duplicate / blank ids are dropped (blank tabs hold no session and must not survive a reload). */
 function loadTabs(key: string): Record<string, string[]> {
 	try {
 		if (typeof localStorage === "undefined") return {};
@@ -44,7 +44,7 @@ function loadTabs(key: string): Record<string, string[]> {
 		const out: Record<string, string[]> = {};
 		for (const [k, v] of Object.entries(parsed)) {
 			if (!Array.isArray(v)) continue;
-			const ids = [...new Set(v.filter((x): x is string => typeof x === "string" && !!x))];
+			const ids = [...new Set(v.filter((x): x is string => typeof x === "string" && !!x && !isBlankTab(x)))];
 			if (ids.length > 0) out[k] = ids;
 		}
 		return out;

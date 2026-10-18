@@ -52,11 +52,14 @@ export function SideChatPanel() {
 		}
 	}, [parentId, tabs, sessions]);
 
-	// Nothing open for this parent while the group is showing: offer a blank new chat.
+	// Nothing open for this parent while the group is showing: offer ONE blank new chat.
+	// Re-reads the store: this effect can run twice with the same stale `active`
+	// (StrictMode double-invoke, or a second panel mount) and must not add a second blank tab.
 	useEffect(() => {
-		if (parentId && !active && useUi.getState().rightTab === "sidechat") {
-			useSideChatView.getState().openBlankTab(parentId);
-		}
+		if (!parentId || active || useUi.getState().rightTab !== "sidechat") return;
+		const view = useSideChatView.getState();
+		if (resolveActiveTab(view.openTabs[parentId], view.openChild[parentId])) return;
+		view.openBlankTab(parentId);
 	}, [parentId, active]);
 
 	if (!parentId) {
