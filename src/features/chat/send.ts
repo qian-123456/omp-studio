@@ -9,6 +9,7 @@ import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import type { ImageAttachment, PrivacyMarkScope, SecretEntry } from "../../lib/contracts";
 import { resolveLinkScope } from "./privacy/composerPrivacy";
+import { isForkDraftId, sendFromForkDraft } from "../sessions/forkDraft";
 
 export interface AbortState {
 	aborting: Record<string, boolean>;
@@ -47,6 +48,16 @@ export async function sendPrompt(
 ): Promise<void> {
 	const trimmed = text.trim();
 	if (!trimmed) return;
+	// Fork draft: the first send creates the fork, then sends this text there.
+	if (isForkDraftId(sessionId)) {
+		const { onEchoed, ...rest } = opts ?? {};
+		return sendFromForkDraft(
+			sessionId,
+			trimmed,
+			{ images: opts?.images, onEchoed },
+			(newId) => sendPrompt(newId, trimmed, rest),
+		);
+	}
 	// Session running in an external terminal: take it over (the backend stops
 	// the external PID and waits for it to flush its exit record) before
 	// resuming an app-owned RPC process. Cancel aborts the send.

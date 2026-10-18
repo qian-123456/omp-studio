@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { WorktreeInfo } from "../../lib/contracts";
 import { gitRemoveWorktree } from "../../lib/ipc";
+import { claimEscape } from "../../lib/escapeClaim";
 
 interface ModalProps {
 	wt: WorktreeInfo;
@@ -16,7 +17,7 @@ function RemoveWorktreeModal({ wt, onResolve }: ModalProps) {
 	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
-				e.preventDefault();
+				claimEscape(e);
 				onResolve(null);
 			}
 		};
@@ -28,7 +29,7 @@ function RemoveWorktreeModal({ wt, onResolve }: ModalProps) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
+			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) onResolve(null);
 			}}

@@ -47,35 +47,27 @@ import {
 	Zap,
 } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { copyText, confirmDialog } from "../../../lib/dialogs";
+import { copyText, confirmDialog, errMsg } from "../../../lib/dialogs";
 import { createSession } from "../../../lib/createSession";
-import { ensureLive } from "../../../lib/ensureLive";
-import { createSideChat, sessionExportHtml, sessionShare } from "../../../lib/ipc";
+import { ensureLive, isResumeCancelled } from "../../../lib/ensureLive";
+import { sessionExportHtml, sessionShare } from "../../../lib/ipc";
+import { useLive } from "../../../stores/live";
 import { useChatUi } from "../chatUi";
-import { sideChatDefaultModelArg } from "../../sidechat/modelDefault";
+import { openSideChatTab } from "../../sidechat/sideChatActions";
+import { forkAndSend, isForkDraftId, startFork } from "../../sessions/forkDraft";
+import { sendPrompt } from "../send";
 import { useComposer } from "../../../stores/composer";
 import { toast } from "../../../lib/toast";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
 import { buildStatusCard } from "./status";
+import { runCompaction } from "./compaction";
 import { SlashAbort, type SlashCommandDef, type SlashContext } from "./types";
 
 /** Forward the whole `/name args` input to omp; the reply arrives as
  * `command_output` (or a normal turn when the command invokes the agent). */
 const sendAsPrompt = async (ctx: SlashContext): Promise<void> => {
 	await ctx.sendPromptText(ctx.rawText);
-};
-
-/** `/fork` side chat opener (real forked session). */
-const openSideChat = async (ctx: SlashContext, question: string) => {
-	const info = await createSideChat(
-		ctx.sessionId,
-		question,
-		undefined,
-		sideChatDefaultModelArg() ?? undefined,
-	);
-	useUi.getState().setRightTab("sidechat");
-	useUi.getState().selectSession(info.sessionId);
 };
 
 /** Goal mode state mirrored into get_state/goal_updated payloads. */
@@ -117,18 +109,21 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	},
 	{
 		name: "fork",
-		title: "分叉",
-		description: "带着问题分叉出一个侧聊",
+		title: "分支",
+		description: "复制当前对话为新会话；可附带第一条消息",
 		icon: GitFork,
 		group: "会话",
-		argHint: "<问题>",
+		argHint: "[消息]",
 		run: async (ctx) => {
-			const question = ctx.args.trim();
-			if (!question) {
-				toast.info("用法: /fork <问题>");
-				throw new SlashAbort();
+			if (isForkDraftId(ctx.sessionId)) {
+				throw new SlashAbort("已在分支草稿中，直接发送消息即可");
 			}
-			await openSideChat(ctx, question);
+			const text = ctx.args.trim();
+			if (!text) {
+				await startFork(ctx.sessionId);
+				return;
+			}
+			await forkAndSend(ctx.sessionId, text, (id) => sendPrompt(id, text));
 		},
 	},
 	{
@@ -141,10 +136,10 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		run: async (ctx) => {
 			const question = ctx.args.trim();
 			if (!question) {
-				useUi.getState().setRightTab("sidechat");
+				await openSideChatTab(ctx.sessionId);
 				return;
 			}
-			await openSideChat(ctx, question);
+			await openSideChatTab(ctx.sessionId, { question });
 		},
 	},
 	{
@@ -160,8 +155,10 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 				toast.info("用法: /rename <名称>");
 				throw new SlashAbort();
 			}
-			await ctx.rpcSend({ type: "set_session_name", name });
-			toast.success(`已重命名为「${name}」`);
+			ctx.track("rename", "正在重命名", async () => {
+				await ctx.rpcSend({ type: "set_session_name", name });
+				return `已重命名为「${name}」`;
+			});
 		},
 	},
 	{
@@ -173,12 +170,16 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		argHint: "[指令]",
 		settingsTarget: "compaction",
 		run: async (ctx) => {
-			toast.info("正在压缩上下文…");
-			const command: Record<string, unknown> = { type: "compact" };
-			if (ctx.args.trim())
-				command.customInstructions = ctx.args.trim();
-			await ctx.rpcSend(command);
-			toast.success("上下文压缩完成");
+			// Fire and forget: runCompaction owns the transcript status row.
+			void runCompaction({
+				sessionId: ctx.sessionId,
+				instructions: ctx.args,
+				rpcSend: ctx.rpcSend,
+				ensureAlive: async () => {
+					if (!ctx.live?.alive) await ensureLive(ctx.sessionId);
+				},
+				errorText: (err) => (isResumeCancelled(err) ? null : errMsg(err)),
+			});
 		},
 	},
 	{
@@ -189,16 +190,30 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		group: "会话",
 		settingsTarget: "compaction",
 		run: async (ctx) => {
-			toast.info("正在生成交接文档…");
-			const resp = await ctx.rpcSend({ type: "handoff" });
-			const data = (resp.data ?? resp) as Record<string, unknown> | null;
-			const path =
-				data && typeof data.savedPath === "string"
-					? data.savedPath
-					: null;
-			toast.success(
-				path ? `交接文档已保存: ${path}` : "交接完成",
-				6000,
+			// One divider in the thread: running → done/error in place.
+			const live = useLive.getState();
+			const running = live.sessions[ctx.sessionId]?.flowNotices.some(
+				(n) => n.kind === "handoff" && n.status === "running",
+			);
+			if (running) return;
+			const noticeId = live.beginFlowNotice(ctx.sessionId, "handoff");
+			void ctx.rpcSend({ type: "handoff" }).then(
+				(resp) => {
+					useLive.getState().finishFlowNotice(ctx.sessionId, noticeId, { status: "done" });
+					const data = (resp.data ?? resp) as Record<string, unknown> | null;
+					if (data && typeof data.savedPath === "string") {
+						ctx.pushOutput("handoff", `交接文档已保存：${data.savedPath}`);
+					}
+				},
+				(err) => {
+					if (isResumeCancelled(err)) {
+						useLive.getState().dismissFlowNotice(ctx.sessionId, noticeId);
+						return;
+					}
+					useLive
+						.getState()
+						.finishFlowNotice(ctx.sessionId, noticeId, { status: "error", detail: errMsg(err) });
+				},
 			);
 		},
 	},
@@ -209,13 +224,15 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		icon: Download,
 		group: "会话",
 		run: async (ctx) => {
-			const outPath = await sessionExportHtml(ctx.sessionId);
-			toast.success(`已导出 HTML: ${outPath}`, 6000);
-			try {
-				await revealItemInDir(outPath);
-			} catch {
-				/* reveal failure is non-fatal */
-			}
+			ctx.track("export", "正在导出 HTML", async () => {
+				const outPath = await sessionExportHtml(ctx.sessionId);
+				try {
+					await revealItemInDir(outPath);
+				} catch {
+					/* reveal failure is non-fatal */
+				}
+				return `已导出 HTML：${outPath}`;
+			});
 		},
 	},
 	{
@@ -225,21 +242,19 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		icon: ClipboardCopy,
 		group: "会话",
 		run: async (ctx) => {
-			const resp = await ctx.rpcSend({ type: "get_last_assistant_text" });
-			const data = resp.data ?? resp;
-			const text =
-				typeof data === "string"
-					? data
-					: typeof (data as Record<string, unknown>)?.text ===
-							"string"
-						? ((data as Record<string, unknown>).text as string)
-						: "";
-			if (!text.trim()) {
-				toast.info("暂无可复制的助手回复");
-				return;
-			}
-			await copyText(text);
-			toast.success("已复制最近一条助手回复");
+			ctx.track("copy", "正在复制最近一条助手回复", async () => {
+				const resp = await ctx.rpcSend({ type: "get_last_assistant_text" });
+				const data = resp.data ?? resp;
+				const text =
+					typeof data === "string"
+						? data
+						: typeof (data as Record<string, unknown>)?.text === "string"
+							? ((data as Record<string, unknown>).text as string)
+							: "";
+				if (!text.trim()) return "暂无可复制的助手回复";
+				await copyText(text);
+				return "已复制最近一条助手回复";
+			});
 		},
 	},
 	{
@@ -285,7 +300,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 			const on = !(composer.planModes[ctx.sessionId] === true);
 			composer.setPlanMode(ctx.sessionId, on);
 			if (on) useUi.getState().setRightTab("plan");
-			toast.info(on ? "规划模式已开启：发送需求后生成计划" : "规划模式已关闭");
+			ctx.pushOutput("plan", on ? "规划模式已开启：发送需求后生成计划" : "规划模式已关闭");
 		},
 	},
 	{
@@ -303,25 +318,34 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 				return;
 			}
 			if (/^(?:off|drop)$/i.test(arg)) {
-				await sendGoalOp(ctx, "drop");
-				toast.success("已清除目标");
+				ctx.track("goal", "正在清除目标", async () => {
+					await sendGoalOp(ctx, "drop");
+					return "已清除目标";
+				});
 				return;
 			}
 			if (/^(?:pause|暂停)$/i.test(arg)) {
-				await sendGoalOp(ctx, "pause");
-				toast.success("已暂停目标");
+				ctx.track("goal", "正在暂停目标", async () => {
+					await sendGoalOp(ctx, "pause");
+					return "已暂停目标";
+				});
 				return;
 			}
 			if (/^(?:resume|继续)$/i.test(arg)) {
-				await sendGoalOp(ctx, "resume");
-				toast.success("已恢复目标");
+				ctx.track("goal", "正在恢复目标", async () => {
+					await sendGoalOp(ctx, "resume");
+					return "已恢复目标";
+				});
 				return;
 			}
 			// Creating requires no active goal — drop the existing one first
 			// (same outcome as editing the objective).
-			if (goalModeOf(ctx)?.goal?.objective) await sendGoalOp(ctx, "drop");
-			await sendGoalOp(ctx, "create", { objective: arg });
-			toast.success(`已设置目标：${arg.length > 40 ? `${arg.slice(0, 40)}…` : arg}`);
+			const hadGoal = Boolean(goalModeOf(ctx)?.goal?.objective);
+			ctx.track("goal", "正在设置目标", async () => {
+				if (hadGoal) await sendGoalOp(ctx, "drop");
+				await sendGoalOp(ctx, "create", { objective: arg });
+				return `已设置目标：${arg}`;
+			});
 		},
 	},
 
@@ -354,8 +378,10 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		settingsTarget: "fastMode",
 		run: async (ctx) => {
 			const enabled = ctx.live?.state?.fastModeEnabled === true;
-			await ctx.rpcSend({ type: "set_fast_mode", enabled: !enabled });
-			toast.success(enabled ? "已关闭快速模式" : "已开启快速模式");
+			ctx.track("fast", "正在切换快速模式", async () => {
+				await ctx.rpcSend({ type: "set_fast_mode", enabled: !enabled });
+				return enabled ? "已关闭快速模式" : "已开启快速模式";
+			});
 		},
 	},
 	{
@@ -366,9 +392,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		group: "模型",
 		run: async (ctx) => {
 			const enabled = ctx.live?.state?.slowModeEnabled === true;
-			if (!ctx.live?.alive) await ensureLive(ctx.sessionId);
-			await ctx.rpcSend({ type: "set_slow_mode", enabled: !enabled });
-			toast.success(enabled ? "已关闭慢速模式" : "已开启慢速模式");
+			ctx.track("slow", "正在切换慢速模式", async () => {
+				if (!ctx.live?.alive) await ensureLive(ctx.sessionId);
+				await ctx.rpcSend({ type: "set_slow_mode", enabled: !enabled });
+				return enabled ? "已关闭慢速模式" : "已开启慢速模式";
+			});
 		},
 	},
 	{
@@ -440,7 +468,31 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "管理 MCP 服务器",
 		icon: Cable,
 		group: "集成",
-		run: (ctx) => ctx.openSettingsTarget("mcp"),
+		argHint: "<子命令>",
+		subcommands: [
+			{ name: "add", description: "添加服务器", usage: "<name> [--scope project|user] [--url <url>] [-- <command...>]" },
+			{ name: "list", description: "列出服务器" },
+			{ name: "remove", description: "移除服务器", usage: "<name> [--scope project|user]" },
+			{ name: "test", description: "测试连接", usage: "<name>" },
+			{ name: "reauth", description: "重新授权", usage: "<name>" },
+			{ name: "unauth", description: "清除授权", usage: "<name>" },
+			{ name: "enable", description: "启用服务器", usage: "<name>" },
+			{ name: "disable", description: "停用服务器", usage: "<name>" },
+			{ name: "smithery-search", description: "搜索 Smithery 服务器", usage: "<keyword> [--scope project|user] [--limit <1-100>] [--semantic]" },
+			{ name: "smithery-login", description: "登录 Smithery" },
+			{ name: "smithery-logout", description: "退出 Smithery" },
+			{ name: "reconnect", description: "重新连接服务器", usage: "<name>" },
+			{ name: "reload", description: "重新加载配置" },
+			{ name: "resources", description: "查看资源" },
+			{ name: "prompts", description: "查看提示词" },
+			{ name: "notifications", description: "查看通知" },
+			{ name: "help", description: "查看帮助" },
+		],
+		run: (ctx) => {
+			if (ctx.args.trim()) return sendAsPrompt(ctx);
+			ctx.openSettingsTarget("mcp");
+			return undefined;
+		},
 	},
 	{
 		name: "plugins",
@@ -544,10 +596,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 				{ title: "创建分享链接", okLabel: "创建并复制" },
 			);
 			if (!ok) throw new SlashAbort();
-			toast.info("正在生成分享链接…");
-			const url = await sessionShare(ctx.sessionId);
-			await copyText(url);
-			toast.success("分享链接已复制");
+			ctx.track("share", "正在生成分享链接", async () => {
+				const url = await sessionShare(ctx.sessionId);
+				await copyText(url);
+				return `分享链接已复制：${url}`;
+			});
 		},
 	},
 	{

@@ -58,6 +58,7 @@ import { removeWorktreeFlow } from "./removeWorktree";
 import { type MenuEntry, WorktreeActionMenu } from "./WorktreeActionMenu";
 import { WorktreeCommitPopover } from "./WorktreeCommitPopover";
 import { WorktreeHoverCard, useHeadCommit, ago } from "./WorktreeHoverCard";
+import { claimEscape } from "../../lib/escapeClaim";
 
 const CONFLICT_PREFIX = "CONFLICT:";
 
@@ -946,7 +947,7 @@ export function WorktreeSection({
 									void handleCreateWorktree();
 								}
 								if (e.key === "Escape") {
-									e.preventDefault();
+									claimEscape(e);
 									setShowCreate(false);
 								}
 							}}

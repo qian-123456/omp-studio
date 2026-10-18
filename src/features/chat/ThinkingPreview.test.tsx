@@ -28,23 +28,11 @@ describe("livePreviewText", () => {
 });
 
 describe("ThinkingPreview", () => {
-	it("collapsed: shows the head and toggles open", () => {
-		let toggles = 0;
-		render(
-			<ThinkingPreview
-				thinking={LONG}
-				running={false}
-				open={false}
-				onToggle={() => {
-					toggles += 1;
-				}}
-			/>,
+	it("finished and collapsed: renders nothing (the header is the one-liner)", () => {
+		const { container } = render(
+			<ThinkingPreview thinking={LONG} running={false} open={false} onToggle={() => {}} />,
 		);
-		const btn = screen.getByRole("button");
-		expect(btn.getAttribute("aria-expanded")).toBe("false");
-		expect(btn.textContent).toContain("第一行");
-		fireEvent.click(btn);
-		expect(toggles).toBe(1);
+		expect(container.textContent).toBe("");
 	});
 
 	it("expanded: shows the full text and no toggle button", () => {
@@ -61,8 +49,21 @@ describe("ThinkingPreview", () => {
 		expect(container.textContent).toContain("第五行");
 	});
 
-	it("running: previews the newest words instead of the head", () => {
-		render(<ThinkingPreview thinking={LONG} running open={false} onToggle={() => {}} />);
-		expect(screen.getByRole("button").textContent).toBe("第四行\n第五行");
+	it("running: a rolling peek of the newest lines that toggles open", () => {
+		let toggles = 0;
+		render(
+			<ThinkingPreview
+				thinking={LONG}
+				running
+				open={false}
+				onToggle={() => {
+					toggles += 1;
+				}}
+			/>,
+		);
+		const btn = screen.getByRole("button");
+		expect(btn.textContent).toBe("第四行\n第五行");
+		fireEvent.click(btn);
+		expect(toggles).toBe(1);
 	});
 });

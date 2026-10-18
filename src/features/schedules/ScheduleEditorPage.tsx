@@ -1347,16 +1347,15 @@ export function ScheduleEditorPage({
 											align="end"
 										/>
 
-										{/* Thinking-level picker (levels of the selected model) */}
-										{thinkingLevels.length > 0 && (
-											<ThinkingLevelPicker
-												levels={thinkingLevels}
-												value={modelSel.level ?? "auto"}
-												open={openMenu === "thinking"}
-												onOpenChange={(v) => setOpenMenu(v ? "thinking" : null)}
-												onSelect={pickThinkingLevel}
-											/>
-										)}
+										{/* Thinking chip: levels of the selected model, or a grey 未配置/不支持 chip */}
+										<ThinkingLevelPicker
+											levels={thinkingLevels}
+											reasoning={selectedModel?.reasoning}
+											value={modelSel.level ?? "auto"}
+											open={openMenu === "thinking"}
+											onOpenChange={(v) => setOpenMenu(v ? "thinking" : null)}
+											onSelect={pickThinkingLevel}
+										/>
 									</div>
 								</div>
 							</div>

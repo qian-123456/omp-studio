@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { makeUserEcho, useLive } from "./live";
+import { isFlowBusy, makeUserEcho, queuedEchoIds, useLive } from "./live";
 
 const SID = "s1";
 
@@ -117,6 +117,10 @@ describe("live reducer — liveRequests", () => {
 		expect(reqs[0].id).toBe("resp_abc");
 		expect(reqs[0].toolCallIds).toEqual(["call_1", "call_2"]);
 		expect(reqs[0].hasText).toBe(false);
+		expect(reqs[0].parts).toEqual([
+			{ kind: "tool", id: "call_1" },
+			{ kind: "tool", id: "call_2" },
+		]);
 		expect(reqs[0].stat.durationMs).toBe(6967);
 		expect(reqs[0].stat.ttftMs).toBe(2400);
 		expect(reqs[0].stat.completedAt).toBe(assistantMessage.completedAt);
@@ -658,5 +662,133 @@ describe("makeUserEcho images", () => {
 		useLive.getState().addUserEcho("img-s", "hi", [{ id: "p", path: "/tmp/c.png" }]);
 		const echoes = useLive.getState().sessions["img-s"].pendingUserEchoes;
 		expect(echoes[echoes.length - 1]?.images).toEqual([{ id: "p", path: "/tmp/c.png" }]);
+	});
+});
+
+describe("live reducer — queued messages", () => {
+	const queued = () => queuedEchoIds(live());
+
+	it("an echo sent while a turn streams is queued until omp delivers it", () => {
+		frame({ type: "agent_start" });
+		useLive.getState().addUserEcho(SID, "follow up", undefined, true);
+		const id = live().pendingUserEchoes[0].id;
+		expect(queued().has(id)).toBe(true);
+		// The user message entering the conversation = sent.
+		frame({ type: "message_start", message: { role: "user", content: "follow up" } });
+		expect(queued().has(id)).toBe(false);
+		expect(live().pendingUserEchoes).toHaveLength(1); // still awaiting transcript confirmation
+	});
+
+	it("queue_update keeps an echo queued while omp lists it, array content delivers too", () => {
+		useLive.getState().addUserEcho(SID, "later");
+		const id = live().pendingUserEchoes[0].id;
+		expect(queued().has(id)).toBe(false); // idle send: not queued
+		frame({ type: "queue_update", steering: [], followUp: ["later"], liveSteered: 0 });
+		expect(queued().has(id)).toBe(true);
+		frame({ type: "queue_update", steering: [], followUp: [], liveSteered: 0 });
+		expect(queued().has(id)).toBe(false);
+	});
+
+	it("get_state.queuedMessages seeds the omp queue", () => {
+		frame({
+			type: "response",
+			command: "get_state",
+			success: true,
+			data: { isStreaming: true, queuedMessages: { steering: ["a"], followUp: ["b"], liveSteered: 0 } },
+		});
+		expect(live().ompQueue).toEqual({ steering: ["a"], followUp: ["b"] });
+	});
+
+	it("a message sent during compaction is queued until delivered, in send order", () => {
+		frame({ type: "auto_compaction_start", reason: "threshold", action: "context-full" });
+		expect(isFlowBusy(live())).toBe(true);
+		useLive.getState().addUserEcho(SID, "one");
+		useLive.getState().addUserEcho(SID, "two");
+		const [a, b] = live().pendingUserEchoes.map((e) => e.id);
+		expect([...queued()]).toEqual([a, b]);
+		frame({ type: "auto_compaction_end", action: "context-full", result: { tokensBefore: 9000 } });
+		expect(isFlowBusy(live())).toBe(false);
+		// Still undelivered → still queued; delivery flips them one at a time.
+		expect(queued().size).toBe(2);
+		frame({
+			type: "message_end",
+			message: { role: "user", content: [{ type: "text", text: "one" }] },
+		});
+		expect([...queued()]).toEqual([b]);
+	});
+
+	it("a confirmed transcript item removes the echo entirely", () => {
+		frame({ type: "agent_start" });
+		useLive.getState().addUserEcho(SID, "x y", undefined, true);
+		useLive.getState().appendItems(
+			SID,
+			[
+				{
+					id: "u9",
+					parentId: null,
+					ts: "t",
+					kind: "user",
+					text: "x y",
+					thinking: null,
+					toolCalls: [],
+					toolResult: null,
+					usage: null,
+					model: null,
+					stopReason: null,
+					hidden: false,
+				},
+			],
+			5,
+		);
+		expect(live().pendingUserEchoes).toHaveLength(0);
+		expect(queued().size).toBe(0);
+	});
+});
+
+describe("live reducer — compaction / handoff dividers", () => {
+	it("auto compaction runs then settles in place with tokens", () => {
+		frame({ type: "auto_compaction_start", reason: "threshold", action: "context-full" });
+		expect(live().flowNotices).toMatchObject([{ kind: "compaction", status: "running" }]);
+		frame({ type: "auto_compaction_end", action: "context-full", result: { tokensBefore: 123_000 } });
+		expect(live().flowNotices).toMatchObject([
+			{ kind: "compaction", status: "done", tokensBefore: 123_000 },
+		]);
+		expect(live().flowNotices[0].endedAt).toBeTypeOf("number");
+	});
+
+	it("handoff action, abort, error and skipped end", () => {
+		frame({ type: "auto_compaction_start", reason: "x", action: "handoff" });
+		frame({ type: "auto_compaction_end", action: "handoff", aborted: true });
+		expect(live().flowNotices).toMatchObject([{ kind: "handoff", status: "error" }]);
+		frame({ type: "auto_compaction_start", reason: "x", action: "context-full" });
+		frame({ type: "auto_compaction_end", action: "context-full", skipped: true });
+		expect(live().flowNotices).toHaveLength(1);
+	});
+
+	it("is anchored after the last transcript item and a second start while running is ignored", () => {
+		useLive.getState().appendItems(
+			SID,
+			[
+				{
+					id: "i1",
+					parentId: null,
+					ts: "t",
+					kind: "assistant",
+					text: "a",
+					thinking: null,
+					toolCalls: [],
+					toolResult: null,
+					usage: null,
+					model: null,
+					stopReason: null,
+					hidden: false,
+				},
+			],
+			1,
+		);
+		const id = useLive.getState().beginFlowNotice(SID, "compaction");
+		frame({ type: "auto_compaction_start", reason: "x", action: "context-full" });
+		expect(live().flowNotices).toHaveLength(1);
+		expect(live().flowNotices[0]).toMatchObject({ id, anchorId: "i1" });
 	});
 });

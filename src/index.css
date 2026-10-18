@@ -131,14 +131,20 @@
  * are ported from omp-web's palettes (same semantic variable names).
  */
 :root {
-	/* Stacking scale — mirrors Z_LAYER in src/components/FloatingLayer.tsx */
-	--z-drawer: 40;
-	--z-modal: 50;
-	--z-popover: 60;
-	--z-menu: 65;
-	--z-hovercard: 70;
-	--z-lightbox: 80;
-	--z-toast: 100;
+	/* Stacking scale — mirrors Z_LOCAL / Z_LAYER in src/components/FloatingLayer.tsx (zLayerGuard.test.ts enforces sync). See docs/LAYERS.md */
+	--z-local-base: 0;
+	--z-local-raised: 10;
+	--z-local-overlay: 20;
+	--z-local-chrome: 30;
+	--z-local-handle: 40;
+	--z-pill: 50;
+	--z-drawer: 100;
+	--z-popover: 200;
+	--z-menu: 300;
+	--z-modal: 400;
+	--z-hovercard: 500;
+	--z-lightbox: 600;
+	--z-toast: 700;
 	--bg: #161618;
 	--bg-panel: #1C1C1E;
 	--bg-hover: #2C2C2E;
@@ -926,7 +932,7 @@ textarea {
 /* JS-drawn overlay pill. position: fixed; top/left/height set per-frame. */
 .scroll-pill {
 	position: fixed;
-	z-index: 9999;
+	z-index: var(--z-pill); /* lowest tier; scrollPills.ts lifts it above a floating container */
 	border-radius: 999px;
 	background: light-dark(rgba(150, 150, 150, 0.28), rgba(200, 200, 200, 0.26));
 	opacity: 0;

@@ -70,7 +70,12 @@ export const IdeaEditor = forwardRef<
 	}, [doc.text, minHeight, maxHeight]);
 
 	const segments = useMemo(() => splitTokens(doc.text), [doc.text]);
-	const base = `w-full whitespace-pre-wrap break-words border px-2.5 py-1.5 text-xs leading-5 ${boxClass}`;
+	// Both layers share every property that can change glyph advances or wrapping. Without
+	// this the transparent textarea (which owns the caret) and the visible overlay drift apart
+	// (kerning/ligatures split differently across chip spans; a classic scrollbar narrows only
+	// the textarea's wrap width), leaving the caret far right of the painted text until the
+	// next reflow. The textarea scrollbar is hidden so its content box equals the overlay's.
+	const base = `w-full whitespace-pre-wrap break-words border px-2.5 py-1.5 text-xs leading-5 [font-kerning:none] [font-variant-ligatures:none] [tab-size:4] [word-break:normal] ${boxClass}`;
 
 	return (
 		<div className="relative">
@@ -86,7 +91,7 @@ export const IdeaEditor = forwardRef<
 				onKeyDown={onKeyDown}
 				onPaste={onPaste}
 				onBlur={onBlur}
-				className={`${base} block resize-none bg-[var(--bg)] text-transparent caret-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none`}
+				className={`${base} block resize-none bg-[var(--bg)] text-transparent caret-[var(--text)] placeholder:text-[var(--text-dim)] [scrollbar-width:none] focus:outline-none [&::-webkit-scrollbar]:hidden`}
 				style={{ minHeight }}
 			/>
 			<div aria-hidden className={`${base} pointer-events-none absolute inset-0 overflow-hidden border-transparent text-[var(--text)]`}>

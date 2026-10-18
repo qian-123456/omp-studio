@@ -132,11 +132,32 @@ pub async fn takeover_external(
 pub async fn create_side_chat(
     state: tauri::State<'_, AppState>,
     parent_session_id: String,
-    selection: Option<String>,
-    question: String,
     model: Option<String>,
 ) -> Result<LiveSessionInfo, String> {
-    crate::rpc::sidechat::create(&state, &parent_session_id, selection, question, model).await
+    crate::rpc::sidechat::create(&state, &parent_session_id, model).await
+}
+
+/// Full-session fork of `parent_session_id` (cut at the last complete turn or
+/// after `entry_id`). Never sends a prompt; the caller sends the first message.
+#[tauri::command]
+pub async fn fork_session(
+    state: tauri::State<'_, AppState>,
+    parent_id: String,
+    entry_id: Option<String>,
+    model: Option<String>,
+) -> Result<LiveSessionInfo, String> {
+    crate::rpc::fork::create(&state, &parent_id, entry_id, model).await
+}
+
+/// First message of a side chat (context + selection + question prompt).
+#[tauri::command]
+pub async fn side_chat_ask(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    question: String,
+    selection: Option<String>,
+) -> Result<(), String> {
+    crate::rpc::sidechat::ask(&state, &session_id, question, selection).await
 }
 
 /// Contract C5: subagent sessions of a parent session file

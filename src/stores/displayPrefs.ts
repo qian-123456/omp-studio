@@ -30,7 +30,12 @@ const KEYS = {
 	requestStats: "ompws:request-stats",
 	requestStatFields: "ompws:request-stat-fields",
 	thinkingPreview: "ompws:thinking-preview",
+	sideChatHandback: "ompws:side-chat-handback",
 } as const;
+
+/** 「回传给父会话」: 整理成结论 (summary) or 手动选择 (select) from the side-chat selection bubble. */
+export type SideChatHandbackMode = "summary" | "select";
+export const DEFAULT_SIDE_CHAT_HANDBACK: SideChatHandbackMode = "summary";
 
 function readStorage(key: string): string | null {
 	try {
@@ -73,16 +78,24 @@ function readFields(): RequestStatFieldPrefs {
 	return out;
 }
 
+function readHandback(): SideChatHandbackMode {
+	const raw = readStorage(KEYS.sideChatHandback);
+	return raw === "select" || raw === "summary" ? raw : DEFAULT_SIDE_CHAT_HANDBACK;
+}
+
 export interface DisplayPrefsState {
 	/** Show the per-request stats line (「请求统计」). */
 	requestStats: boolean;
 	/** Which fields the stats line shows. */
 	requestStatFields: RequestStatFieldPrefs;
-	/** Show the 2-line thinking preview under 「思考了 N 秒」. */
+	/** Roll the newest two lines of reasoning under 「正在思考」 while it streams. */
 	thinkingPreview: boolean;
 	setRequestStats(on: boolean): void;
 	setRequestStatField(field: RequestStatField, on: boolean): void;
 	setThinkingPreview(on: boolean): void;
+	/** How a side chat hands its result back to the parent session. */
+	sideChatHandback: SideChatHandbackMode;
+	setSideChatHandback(mode: SideChatHandbackMode): void;
 }
 
 /** Local display preferences, persisted per machine in localStorage (like font size). */
@@ -102,5 +115,10 @@ export const useDisplayPrefs = create<DisplayPrefsState>((set, get) => ({
 	setThinkingPreview: (on) => {
 		writeStorage(KEYS.thinkingPreview, on ? "1" : "0");
 		set({ thinkingPreview: on });
+	},
+	sideChatHandback: readHandback(),
+	setSideChatHandback: (mode) => {
+		writeStorage(KEYS.sideChatHandback, mode);
+		set({ sideChatHandback: mode });
 	},
 }));

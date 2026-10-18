@@ -9,6 +9,7 @@ import {
 	inferWorktreeName,
 	matchesSearch,
 	needsAttention,
+	nestSideChats,
 	snapshotOrder,
 } from "./grouping";
 
@@ -40,6 +41,7 @@ function makeSession(partial: Partial<SessionMeta>): SessionMeta {
 		attention: null,
 		mode: partial.mode ?? "code",
 		groupId: partial.groupId ?? null,
+		kind: partial.kind ?? null,
 	};
 }
 
@@ -893,5 +895,36 @@ describe("unassignedGroups grouping (G15 / Contract 5)", () => {
 		expect(res.unassigned.map((s) => s.id)).toEqual(["s3", "s2", "s1"]);
 		expect(UNASSIGNED_LABEL).toBe("未归入工作区");
 		expect(DELETED_LABEL).toBe("已清理的工作树");
+	});
+});
+
+describe("nestSideChats", () => {
+	const side = (id: string, parentId: string | null) =>
+		makeSession({ id, parentId, forkDepth: 1, kind: "side" });
+
+	it("places side chats right after their parent, keeping sibling order", () => {
+		const list = [
+			makeSession({ id: "a" }),
+			side("a.1", "b"),
+			makeSession({ id: "b" }),
+			side("a.2", "a"),
+			side("b.1", "b"),
+		];
+		expect(nestSideChats(list).map((s) => s.id)).toEqual(["a", "a.2", "b", "a.1", "b.1"]);
+	});
+
+	it("keeps a side chat in place when its parent is not in the list", () => {
+		const list = [makeSession({ id: "x" }), side("orphan", "gone"), makeSession({ id: "y" })];
+		expect(nestSideChats(list).map((s) => s.id)).toEqual(["x", "orphan", "y"]);
+	});
+
+	it("does not touch full forks and returns the same array without side chats", () => {
+		const list = [makeSession({ id: "a" }), makeSession({ id: "f", parentId: "a", kind: "fork" })];
+		expect(nestSideChats(list)).toBe(list);
+	});
+
+	it("nests side chats of side chats", () => {
+		const list = [side("c2", "c1"), makeSession({ id: "p" }), side("c1", "p")];
+		expect(nestSideChats(list).map((s) => s.id)).toEqual(["p", "c1", "c2"]);
 	});
 });

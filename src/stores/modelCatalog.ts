@@ -31,6 +31,7 @@ export function readCachedModels(): Model[] | null {
 					? o.thinking.filter((t): t is string => typeof t === "string")
 					: undefined,
 				contextWindow: typeof o.contextWindow === "number" ? o.contextWindow : null,
+				reasoning: typeof o.reasoning === "boolean" ? o.reasoning : undefined,
 			});
 		}
 		return out.length > 0 ? out : null;

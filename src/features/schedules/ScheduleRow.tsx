@@ -21,6 +21,7 @@ import { Switch } from "../settings/Switch";
 import { formatCadenceWithEnd, formatNextRun } from "./humanCadence";
 import { lifecycleOf } from "./scheduleUtils";
 import type { EditorTab } from "./schedulesStore";
+import { claimEscape } from "../../lib/escapeClaim";
 
 interface Props {
 	schedule: Schedule;
@@ -174,7 +175,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 									e.preventDefault();
 									finishRename(true);
 								} else if (e.key === "Escape") {
-									e.preventDefault();
+									claimEscape(e);
 									finishRename(false);
 								}
 							}}

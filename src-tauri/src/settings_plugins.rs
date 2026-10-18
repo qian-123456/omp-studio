@@ -461,6 +461,32 @@ pub async fn plugin_set_enabled(
     set_enabled_impl(&user_root, cwd_path, &name, enabled)
 }
 
+/// Remove one extension module from disk: a file (or a symlink, link only) or an
+/// `index.ts|js` directory.
+fn delete_extension_path(p: &Path) -> Result<(), String> {
+    let meta = std::fs::symlink_metadata(p).map_err(|e| format!("读取扩展失败: {e}"))?;
+    let res = if meta.is_dir() {
+        std::fs::remove_dir_all(p)
+    } else {
+        std::fs::remove_file(p)
+    };
+    res.map_err(|e| format!("删除扩展失败: {e}"))
+}
+
+/// `extension_delete` (§7 D): permanently delete one discovered extension module.
+/// `path` must equal the path of an extension that `skills_list(cwd)` currently
+/// reports, so the command can never delete an arbitrary location.
+#[tauri::command]
+pub async fn extension_delete(cwd: Option<String>, path: String) -> Result<(), String> {
+    let catalog = crate::skills::commands::skills_list(cwd).await?;
+    if !catalog.extensions.iter().any(|e| e.path == path) {
+        return Err("该路径不是已发现的扩展模块，已拒绝删除".to_string());
+    }
+    tokio::task::spawn_blocking(move || delete_extension_path(Path::new(&path)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,6 +504,24 @@ mod tests {
         std::fs::write(path, text).unwrap();
     }
 
+    #[test]
+    fn delete_extension_path_removes_file_and_dir_extensions() {
+        let dir = temp_dir("ext-delete");
+        let file = dir.join("a.ts.disabled");
+        write(&file, "x");
+        let ext_dir = dir.join("b");
+        write(&ext_dir.join("index.ts"), "x");
+        let keep = dir.join("keep.ts");
+        write(&keep, "x");
+
+        delete_extension_path(&file).unwrap();
+        delete_extension_path(&ext_dir).unwrap();
+
+        assert!(!file.exists());
+        assert!(!ext_dir.exists());
+        assert!(keep.exists());
+        assert!(delete_extension_path(&file).is_err());
+    }
     #[test]
     fn lists_npm_and_lock_only_plugins() {
         let dir = temp_dir("list");

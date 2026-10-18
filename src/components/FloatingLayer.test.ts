@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computePosition, Z_LAYER } from "./FloatingLayer";
+import { computePosition, nestedZ, Z_LAYER } from "./FloatingLayer";
 
 function makeRect(x: number, y: number, width: number, height: number): DOMRect {
 	return {
@@ -93,5 +93,26 @@ describe("Z_LAYER stacking", () => {
 		expect(Z_LAYER.lightbox).toBeGreaterThan(Z_LAYER.menu);
 		expect(Z_LAYER.lightbox).toBeGreaterThan(Z_LAYER.popover);
 		expect(Z_LAYER.lightbox).toBeLessThan(Z_LAYER.toast);
+	});
+
+	it("orders tiers pill < drawer < popover < menu < modal < hovercard < lightbox < toast", () => {
+		const order = [
+			Z_LAYER.pill,
+			Z_LAYER.drawer,
+			Z_LAYER.popover,
+			Z_LAYER.menu,
+			Z_LAYER.modal,
+			Z_LAYER.hovercard,
+			Z_LAYER.lightbox,
+			Z_LAYER.toast,
+		];
+		expect(order).toEqual([...order].sort((a, b) => a - b));
+		expect(new Set(order).size).toBe(order.length);
+	});
+
+	it("nests floating layers above their floating parent, ignoring local values", () => {
+		expect(nestedZ(Z_LAYER.popover, [Z_LAYER.modal])).toBe(Z_LAYER.modal + 1);
+		expect(nestedZ(Z_LAYER.menu, [Z_LAYER.popover])).toBe(Z_LAYER.menu);
+		expect(nestedZ(Z_LAYER.popover, [10, 40])).toBe(Z_LAYER.popover);
 	});
 });

@@ -133,16 +133,26 @@ export function insertImages(doc: TokenDoc, caret: number, paths: readonly strin
 }
 
 /**
- * Stored idea text → chat composer text: inline tags become `[Image #k: path]` (k from
- * `startIdx`), legacy ref images are appended.
+ * Stored idea text → chat composer draft text. Each inline `[图片: path]` tag (and each legacy
+ * ref image, appended at the end) becomes the composer's own `🖼️#N` token, where N comes from
+ * `numberOf(path)` — the image's slot in the composer's attachment list.
  */
-export function toComposerText(stored: string, refImages: readonly string[], startIdx: number): string {
-	let k = startIdx;
+export function toComposerText(
+	stored: string,
+	refImages: readonly string[],
+	numberOf: (path: string) => number,
+): string {
 	const seen = new Set<string>();
 	const text = stored.replace(STORED_TAG, (_m, p: string) => {
 		seen.add(p);
-		return `[Image #${k++}: ${p}]`;
+		return `🖼️#${numberOf(p)}`;
 	});
-	const extra = refImages.filter((p) => !seen.has(p)).map((p) => `[Image #${k++}: ${p}]`);
+	const extra = refImages.filter((p) => !seen.has(p)).map((p) => `🖼️#${numberOf(p)}`);
 	return extra.length > 0 ? `${text} ${extra.join(" ")}`.trim() : text;
+}
+
+/** Every image path an item references (inline tags first, then legacy refs), deduped, in order. */
+export function storedImagePaths(stored: string, refImages: readonly string[]): string[] {
+	const paths = [...stored.matchAll(STORED_TAG)].map((m) => m[1]);
+	return [...new Set([...paths, ...refImages])];
 }

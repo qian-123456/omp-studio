@@ -10,7 +10,7 @@ import type {
 	ModelReplaceRecord,
 } from "../../../lib/contracts";
 import { timeWithTitle } from "../../../lib/format";
-import { invertEdit, type EditSummary, summarizeEdit } from "./logic";
+import { editsScopeLabel, invertEdit, type EditSummary, summarizeEdit } from "./logic";
 import { BTN_PRIMARY, Chip } from "./parts";
 
 export interface UndoOutcome {
@@ -155,6 +155,7 @@ export function ModelReplaceHistory({
 										{record.fromModel} → {record.toModel}
 									</span>
 									<Chip tone="neutral">{record.edits.length} 项</Chip>
+									<Chip tone="neutral">范围：{editsScopeLabel(record.edits, projectNames)}</Chip>
 									{record.undoneAt !== null && <Chip tone="info">已撤销</Chip>}
 								</button>
 								<span className="shrink-0 text-[10px] text-neutral-500" title={time.title}>

@@ -13,6 +13,7 @@ import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { sendPrompt } from "../chat/send";
+import { closeForkDraft } from "./forkDraft";
 
 export interface PendingSession {
 	/** Identity of this attempt; a newer attempt or a cancel invalidates older ones. */
@@ -61,6 +62,7 @@ export async function startSessionOptimistic(
 	opts: CreateSessionOpts,
 ): Promise<void> {
 	const token = nextToken++;
+	closeForkDraft();
 	usePendingSession.setState({
 		pending: { token, cwd: opts.cwd, text: "", submit: false },
 	});

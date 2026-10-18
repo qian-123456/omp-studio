@@ -21,6 +21,7 @@ import {
 	Puzzle,
 	RefreshCw,
 	Search,
+	Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -29,8 +30,9 @@ import type {
 	PluginCatalog,
 	PluginItem,
 } from "../../lib/contracts";
-import { errMsg } from "../../lib/dialogs";
+import { confirmDialog, errMsg } from "../../lib/dialogs";
 import {
+	extensionDelete,
 	ompConfigList,
 	ompConfigSet,
 	pluginsList,
@@ -173,6 +175,25 @@ export function PluginsSection({
 			await reload();
 		} catch (e) {
 			toast.error(`更新扩展状态失败: ${errMsg(e)}`);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const deleteExtension = async (ext: ExtensionItem) => {
+		if (busy) return;
+		const ok = await confirmDialog(
+			`永久删除扩展模块「${ext.name}」？\n${ext.path}\n文件会直接从磁盘删除，无法恢复。`,
+			{ title: "删除扩展模块", danger: true, okLabel: "删除" },
+		);
+		if (!ok) return;
+		setBusy(`ext:${ext.path}`);
+		try {
+			await extensionDelete(ext.path, cwd);
+			toast.success(`已删除扩展 ${ext.name}，新会话生效`);
+			await reload();
+		} catch (e) {
+			toast.error(`删除扩展失败: ${errMsg(e)}`);
 		} finally {
 			setBusy(null);
 		}
@@ -426,6 +447,17 @@ export function PluginsSection({
 										className="rounded-lg p-1 text-neutral-500 hover:bg-[var(--bg-hover)] hover:text-neutral-300 active:scale-95 transition-all"
 									>
 										<ExternalLink className="h-3 w-3" />
+									</button>
+									<button
+										type="button"
+										onClick={() => void deleteExtension(ext)}
+										disabled={busy !== null}
+										title="永久删除这个扩展模块"
+										aria-label={`删除扩展 ${ext.name}`}
+										className="inline-flex items-center gap-1 rounded-lg hairline bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/20 active:scale-95 transition-all disabled:opacity-50"
+									>
+										<Trash2 className="h-3 w-3" />
+										删除
 									</button>
 									{busy === `ext:${ext.path}` && busyIcon}
 									<Switch

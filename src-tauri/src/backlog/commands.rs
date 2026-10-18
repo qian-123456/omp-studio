@@ -43,10 +43,17 @@ pub async fn backlog_delete(state: tauri::State<'_, AppState>, id: String) -> Re
 #[tauri::command]
 pub async fn backlog_build_prompt(
     state: tauri::State<'_, AppState>,
-    id: String,
+    ids: Vec<String>,
 ) -> Result<String, String> {
-    let item = store::get(&state.db.lock(), &id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "条目不存在".to_string())?;
-    Ok(super::prompt::build(&state, &item).await)
+    let mut items = Vec::with_capacity(ids.len());
+    for id in &ids {
+        let item = store::get(&state.db.lock(), id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "条目不存在".to_string())?;
+        items.push(item);
+    }
+    if items.is_empty() {
+        return Err("请选择要派发的条目".to_string());
+    }
+    Ok(super::prompt::build_batch(&state, &items).await)
 }

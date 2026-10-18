@@ -2,7 +2,7 @@
  * Pure helpers behind the shared `ModelSelect`: thinking-suffix parse/compose,
  * role → model resolution (omp `modelRoles`), and the recent-models list.
  */
-import { type ModelOption, toModelKey } from "../lib/models";
+import { type ModelOption, resolveThinkingLevels, toModelKey } from "../lib/models";
 
 /** Thinking levels accepted as a trailing `:<level>` on a model/role selector. */
 export const THINKING_LEVELS = [
@@ -118,6 +118,55 @@ export function describeResolution(r: RoleResolution, levelOverride?: string | n
 	const level = levelOverride ?? r.level;
 	const base = r.kind === "followDefault" ? `跟随主力：${name}` : name;
 	return level ? `${base} · ${level}` : base;
+}
+
+/** The chip's value for a suffix-less selector: follow the model's (or role's) own level. */
+export const FOLLOW_LEVEL = "auto";
+
+/**
+ * Levels the thinking chip offers for `selector`: the capabilities of the
+ * selected model (a role resolves to its model). Empty when the model is unknown
+ * or has no thinking control, so the chip is not rendered. The current level is
+ * kept visible even when the catalog does not list it.
+ */
+export function thinkingModelFor(
+	selector: string,
+	models: ModelOption[] | null,
+	roles: Record<string, unknown>,
+): ModelOption | null {
+	if (!selector || selector.startsWith("__")) return null;
+	const roleId = roleIdOf(selector);
+	if (!roleId) return findModel(selector, models);
+	const r = resolveRole(roles, roleId, models);
+	return r.kind === "auto" ? null : r.model;
+}
+
+export function thinkingLevelsFor(
+	selector: string,
+	models: ModelOption[] | null,
+	roles: Record<string, unknown>,
+	level: string | null,
+): string[] {
+	const model = thinkingModelFor(selector, models, roles);
+	if (!model || !model.thinking || model.thinking.length === 0) return [];
+	return resolveThinkingLevels(undefined, model.thinking, level);
+}
+
+/** Selector after a chip pick: `auto` writes the bare selector, anything else `selector:level`. */
+export function applyThinkingLevel(selector: string, level: string): string {
+	return composeSelection(selector, level === FOLLOW_LEVEL ? null : level);
+}
+
+/** Keep the previous level across a model switch only when the new model still offers it. */
+export function carryLevel(
+	nextSelector: string,
+	prevLevel: string | null,
+	models: ModelOption[] | null,
+	roles: Record<string, unknown>,
+): string {
+	if (!prevLevel || prevLevel === FOLLOW_LEVEL) return nextSelector;
+	const levels = thinkingLevelsFor(nextSelector, models, roles, null);
+	return levels.includes(prevLevel) ? composeSelection(nextSelector, prevLevel) : nextSelector;
 }
 
 export const RECENT_MODELS_CAP = 5;

@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
-import type { BacklogItem, BacklogStatus, SessionMeta } from "../../lib/contracts";
+import type { BacklogItem, BacklogStatus, SessionMeta, SessionStatus, Workspace } from "../../lib/contracts";
 import {
 	appendToDraft,
+	buildBatchFillText,
+	CAPTURE_PROJECT_NONE,
+	captureProjectOptions,
+	resolveCaptureProject,
+	byCreatedDesc,
 	filterIdeas,
 	formatAddedTime,
 	groupIdeasByProject,
 	ideaImages,
-	partitionIdeas,
+	ideaPhase,
+	needsAttentionCount,
+	partitionByPhase,
+	rangeSelection,
 	sessionOptionLabel,
+	splitByProject,
 } from "./ideasLogic";
 
 const sessionMeta = (overrides: Partial<SessionMeta> = {}): SessionMeta => ({
@@ -88,41 +97,173 @@ const items = [
 	item("closed", "closed", null, "2026-01-06T00:00:00Z"),
 ];
 
-describe("partitionIdeas", () => {
-	it("orders active strictly by createdAt desc, ignoring later updates and project", () => {
-		const { active } = partitionIdeas(items);
-		expect(active.map((i) => i.id)).toEqual(["global", "new-other", "new-here", "old-here"]);
+const nonFinished = items
+	.filter((i) => i.status !== "done" && i.status !== "closed")
+	.sort(byCreatedDesc);
+
+describe("ideaPhase", () => {
+	it("maps inbox to pending", () => {
+		expect(ideaPhase(item("1", "inbox", null, "2026-01-01T00:00:00Z"), undefined)).toBe("pending");
 	});
 
-	it("falls back to updatedAt when createdAt is missing", () => {
-		const legacy = { ...item("legacy", "inbox", null, ""), updatedAt: "2026-01-10T00:00:00Z" };
-		expect(partitionIdeas([...items, legacy]).active[0].id).toBe("legacy");
+	it("maps done and closed to finished", () => {
+		expect(ideaPhase(item("1", "done", null, "2026-01-01T00:00:00Z"), undefined)).toBe("finished");
+		expect(ideaPhase(item("2", "closed", null, "2026-01-01T00:00:00Z"), undefined)).toBe("finished");
 	});
 
-	it("moves done and closed items to finished, newest first", () => {
-		expect(partitionIdeas(items).finished.map((i) => i.id)).toEqual(["closed", "done"]);
+	it("maps dispatched with missing session to review", () => {
+		expect(ideaPhase(item("1", "dispatched", null, "2026-01-01T00:00:00Z"), undefined)).toBe("review");
+	});
+
+	it("maps dispatched with archived session to review even if working", () => {
+		const session = sessionMeta({ status: "working", archived: true });
+		expect(ideaPhase(item("1", "dispatched", null, "2026-01-01T00:00:00Z"), session)).toBe("review");
+	});
+
+	it("maps dispatched with active working states to running and all other statuses to review", () => {
+		const runningStatuses: SessionStatus[] = ["working", "awaiting_approval", "awaiting_answer"];
+		for (const status of runningStatuses) {
+			const session = sessionMeta({ status, archived: false });
+			expect(ideaPhase(item("1", "dispatched", null, "2026-01-01T00:00:00Z"), session)).toBe("running");
+		}
+
+		const reviewStatuses: SessionStatus[] = [
+			"idle",
+			"review",
+			"error",
+			"interrupted",
+			"suspended",
+			"external",
+		];
+		for (const status of reviewStatuses) {
+			const session = sessionMeta({ status, archived: false });
+			expect(ideaPhase(item("1", "dispatched", null, "2026-01-01T00:00:00Z"), session)).toBe("review");
+		}
+	});
+});
+
+describe("partitionByPhase", () => {
+	it("partitions items into phases with newest-created first and updatedAt fallback", () => {
+		const sessionMap: Record<string, SessionMeta> = {
+			s_work: sessionMeta({ id: "s_work", status: "working" }),
+			s_idle: sessionMeta({ id: "s_idle", status: "idle" }),
+		};
+
+		const testItems: BacklogItem[] = [
+			item("p_old", "inbox", null, "2026-01-01T00:00:00Z"),
+			item("p_new", "inbox", null, "2026-01-03T00:00:00Z"),
+			{ ...item("p_legacy", "inbox", null, ""), updatedAt: "2026-01-05T00:00:00Z" },
+			{ ...item("r_run1", "dispatched", null, "2026-01-02T00:00:00Z"), targetSessionId: "s_work" },
+			{ ...item("r_run2", "dispatched", null, "2026-01-04T00:00:00Z"), targetSessionId: "s_work" },
+			{ ...item("v_rev1", "dispatched", null, "2026-01-02T00:00:00Z"), targetSessionId: "s_idle" },
+			{ ...item("v_rev2", "dispatched", null, "2026-01-06T00:00:00Z"), targetSessionId: "s_idle" },
+			item("f_done", "done", null, "2026-01-01T00:00:00Z"),
+			item("f_closed", "closed", null, "2026-01-07T00:00:00Z"),
+		];
+
+		const buckets = partitionByPhase(testItems, sessionMap);
+		expect(buckets.pending.map((i) => i.id)).toEqual(["p_legacy", "p_new", "p_old"]);
+		expect(buckets.running.map((i) => i.id)).toEqual(["r_run2", "r_run1"]);
+		expect(buckets.review.map((i) => i.id)).toEqual(["v_rev2", "v_rev1"]);
+		expect(buckets.finished.map((i) => i.id)).toEqual(["f_closed", "f_done"]);
+	});
+});
+
+describe("needsAttentionCount", () => {
+	it("counts pending and review items, ignoring running and finished", () => {
+		const sessionMap: Record<string, SessionMeta> = {
+			s_work: sessionMeta({ id: "s_work", status: "working" }),
+			s_idle: sessionMeta({ id: "s_idle", status: "idle" }),
+		};
+		const testItems: BacklogItem[] = [
+			item("p1", "inbox", null, "2026-01-01T00:00:00Z"),
+			item("p2", "inbox", null, "2026-01-02T00:00:00Z"),
+			{ ...item("run", "dispatched", null, "2026-01-03T00:00:00Z"), targetSessionId: "s_work" },
+			{ ...item("rev1", "dispatched", null, "2026-01-04T00:00:00Z"), targetSessionId: "s_idle" },
+			{ ...item("rev2", "dispatched", null, "2026-01-05T00:00:00Z"), targetSessionId: null },
+			item("fin1", "done", null, "2026-01-06T00:00:00Z"),
+			item("fin2", "closed", null, "2026-01-07T00:00:00Z"),
+		];
+		expect(needsAttentionCount(testItems, sessionMap)).toBe(4);
+	});
+});
+
+describe("rangeSelection", () => {
+	const ids = ["a", "b", "c", "d", "e"];
+
+	it("selects forward range inclusively following list order", () => {
+		expect(rangeSelection(ids, "b", "d")).toEqual(["b", "c", "d"]);
+	});
+
+	it("selects backward range inclusively following list order", () => {
+		expect(rangeSelection(ids, "d", "b")).toEqual(["b", "c", "d"]);
+	});
+
+	it("returns only target when anchor is null", () => {
+		expect(rangeSelection(ids, null, "c")).toEqual(["c"]);
+	});
+
+	it("returns only target when anchor is unknown or not in list", () => {
+		expect(rangeSelection(ids, "nonexistent", "c")).toEqual(["c"]);
+	});
+
+	it("returns empty array when target is unknown or not in list", () => {
+		expect(rangeSelection(ids, "b", "nonexistent")).toEqual([]);
+		expect(rangeSelection(ids, null, "nonexistent")).toEqual([]);
+	});
+});
+
+describe("splitByProject", () => {
+	it("groups by projectRoot preserving group order of first appearance and item order inside", () => {
+		const testItems: BacklogItem[] = [
+			item("g1", "inbox", null, "2026-01-01T00:00:00Z"),
+			item("p1_a", "inbox", "/repo-a", "2026-01-02T00:00:00Z"),
+			item("p2_a", "inbox", "/repo-b", "2026-01-03T00:00:00Z"),
+			item("p1_b", "inbox", "/repo-a/.worktrees/wt1", "2026-01-04T00:00:00Z"),
+			item("g2", "inbox", null, "2026-01-05T00:00:00Z"),
+			item("p2_b", "inbox", "/repo-b", "2026-01-06T00:00:00Z"),
+		];
+
+		const split = splitByProject(testItems);
+		expect(split.map((grp) => grp.map((i) => i.id))).toEqual([
+			["g1", "g2"],
+			["p1_a", "p1_b"],
+			["p2_a", "p2_b"],
+		]);
+	});
+
+	it("handles null-project group correctly", () => {
+		const nullItems = [
+			item("g1", "inbox", null, "2026-01-01T00:00:00Z"),
+			item("g2", "inbox", null, "2026-01-02T00:00:00Z"),
+		];
+		expect(splitByProject(nullItems).map((grp) => grp.map((i) => i.id))).toEqual([
+			["g1", "g2"],
+		]);
+	});
+
+	it("returns empty array for empty items", () => {
+		expect(splitByProject([])).toEqual([]);
 	});
 });
 
 describe("filterIdeas", () => {
-	const { active } = partitionIdeas(items);
 	it("current keeps only the current project's items in order; nothing without a project", () => {
-		expect(filterIdeas(active, "current", "/p/a").map((i) => i.id)).toEqual(["new-here", "old-here"]);
-		expect(filterIdeas(active, "current", null)).toEqual([]);
-		expect(filterIdeas(active, "all", null)).toBe(active);
+		expect(filterIdeas(nonFinished, "current", "/p/a").map((i) => i.id)).toEqual(["new-here", "old-here"]);
+		expect(filterIdeas(nonFinished, "current", null)).toEqual([]);
+		expect(filterIdeas(nonFinished, "all", null)).toBe(nonFinished);
 	});
 });
 
 describe("groupIdeasByProject", () => {
 	it("puts current project first, global last, items newest first", () => {
-		const groups = groupIdeasByProject(partitionIdeas(items).active, "/p/a");
+		const groups = groupIdeasByProject(nonFinished, "/p/a");
 		expect(groups.map((g) => [g.project, g.label, g.isCurrent, g.items.map((i) => i.id)])).toEqual([
 			["/p/a", "a", true, ["new-here", "old-here"]],
 			["/p/b", "b", false, ["new-other"]],
 			[null, "未关联项目", false, ["global"]],
 		]);
 	});
-
 	it("orders non-current projects by their newest item", () => {
 		const groups = groupIdeasByProject(
 			[item("x", "inbox", "/p/x", "2026-01-01T00:00:00Z"), item("y", "inbox", "/p/y", "2026-01-09T00:00:00Z")],
@@ -166,6 +307,20 @@ describe("appendToDraft", () => {
 	});
 });
 
+describe("buildBatchFillText", () => {
+	it("adds the header, numbers items and tags each with its type", () => {
+		const text = buildBatchFillText([
+			{ kind: "bug", body: "崩溃 🖼️#1" },
+			{ kind: "todo", body: "加测试\n第二行" },
+			{ kind: "idea", body: "做个 🖼️#2 并参考 🖼️#1" },
+		]);
+		expect(text).toBe(
+			"以下是 3 个待处理问题（缺陷/待办/想法），请逐条处理：\n\n" +
+				"1. 【缺陷】崩溃 🖼️#1\n2. 【待办】加测试\n   第二行\n3. 【想法】做个 🖼️#2 并参考 🖼️#1",
+		);
+	});
+});
+
 describe("formatAddedTime", () => {
 	const now = new Date(2026, 9, 3, 14, 30);
 	it("uses relative time within a day, else MM-DD HH:mm", () => {
@@ -174,5 +329,29 @@ describe("formatAddedTime", () => {
 		expect(formatAddedTime(new Date(2026, 9, 3, 11, 0).toISOString(), now)).toBe("3小时前");
 		expect(formatAddedTime(new Date(2026, 8, 1, 9, 5).toISOString(), now)).toBe("09-01 09:05");
 		expect(formatAddedTime("bogus", now)).toBe("");
+	});
+});
+
+describe("capture project choice", () => {
+	it("follows the current project by default, honours explicit pick and 'none'", () => {
+		expect(resolveCaptureProject(null, "/p/a")).toBe("/p/a");
+		expect(resolveCaptureProject(null, null)).toBeNull();
+		expect(resolveCaptureProject("/p/b", "/p/a")).toBe("/p/b");
+		expect(resolveCaptureProject(CAPTURE_PROJECT_NONE, "/p/a")).toBeNull();
+	});
+
+	it("lists real projects deduped by path, skipping the global workspace", () => {
+		const ws = (id: string, path: string, name: string, kind: "project" | "global", mode: "code" | "chat") =>
+			({ id, path, name, kind, sort: 0, mode }) as Workspace;
+		const opts = captureProjectOptions([
+			ws("1", "/p/b", "beta", "project", "code"),
+			ws("2", "/p/a", "alpha", "project", "code"),
+			ws("3", "/p/a", "alpha", "project", "chat"),
+			ws("4", "/g", "global", "global", "chat"),
+		]);
+		expect(opts).toEqual([
+			{ path: "/p/a", name: "alpha" },
+			{ path: "/p/b", name: "beta" },
+		]);
 	});
 });

@@ -97,7 +97,7 @@ export function PendingSessionView() {
 										submit();
 									}
 								}}
-								className="relative w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))] disabled:opacity-60"
+								className="relative w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))] disabled:opacity-60"
 							/>
 							<div className="flex items-center justify-between gap-2 px-2.5 pb-2 text-[12px]">
 								<div className="flex items-center gap-0.5">

@@ -21,6 +21,7 @@ const DRAFT_KEY = "ompws:backlog-draft";
 const CAPTURE_KEY = "ompws:backlog-capture-draft";
 const EDIT_KEY = "ompws:backlog-edit-buffer";
 const LAST_KIND_KEY = "ompws:backlog-last-kind";
+const CAPTURE_PROJECT_KEY = "ompws:backlog-capture-project";
 const KINDS: readonly BacklogKind[] = ["todo", "bug", "idea"];
 
 const isKind = (v: unknown): v is BacklogKind => KINDS.includes(v as BacklogKind);
@@ -64,6 +65,14 @@ function readEditBuffer(): BacklogEditBuffer | null {
 	}
 }
 
+function readCaptureProject(): string | null {
+	try {
+		return localStorage.getItem(CAPTURE_PROJECT_KEY);
+	} catch {
+		return null;
+	}
+}
+
 function write(key: string, value: string | null) {
 	try {
 		if (value === null) localStorage.removeItem(key);
@@ -92,6 +101,12 @@ interface BacklogState {
 	/** Last chosen category; default for new captures. */
 	lastKind: BacklogKind;
 	setLastKind(k: BacklogKind): void;
+	/**
+	 * Project chosen for new ideas: null = follow the current session's project,
+	 * `CAPTURE_PROJECT_NONE` = no project, otherwise a project dir. Persisted.
+	 */
+	captureProject: string | null;
+	setCaptureProject(pick: string | null): void;
 }
 
 const initialLastKind = readLastKind();
@@ -152,5 +167,10 @@ export const useBacklog = create<BacklogState>((set, get) => ({
 	setLastKind: (k) => {
 		set({ lastKind: k });
 		write(LAST_KIND_KEY, k);
+	},
+	captureProject: readCaptureProject(),
+	setCaptureProject: (pick) => {
+		set({ captureProject: pick });
+		write(CAPTURE_PROJECT_KEY, pick);
 	},
 }));

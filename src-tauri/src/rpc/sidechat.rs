@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use super::forkcut;
 use crate::contracts::{LiveSessionInfo, StartOpts};
 use crate::state::AppState;
 use crate::{catalog, paths, prompts, rpc, todos};
@@ -13,12 +14,13 @@ const MAX_FORK_DEPTH: u8 = 3;
 /// Below this confidence the context router falls back to the default route.
 const ROUTE_MIN_CONFIDENCE: f64 = 0.6;
 
-/// `create_side_chat` command implementation.
+/// `create_side_chat` command implementation: fork the parent into a new side
+/// chat session. NEVER sends a prompt — the first message goes through [`ask`].
+/// The fork is cut at the last complete turn so unfinished work of a running
+/// parent (or a dangling tool call) is not inherited.
 pub async fn create(
     state: &AppState,
     parent_session_id: &str,
-    selection: Option<String>,
-    question: String,
     model: Option<String>,
 ) -> Result<LiveSessionInfo, String> {
     let parent = catalog::get(state, parent_session_id).await;
@@ -31,7 +33,6 @@ pub async fn create(
         .map(|m| m.label.clone())
         .filter(|l| !l.is_empty())
         .unwrap_or_else(|| "#?".to_string());
-    let parent_title = parent.as_ref().map(|m| m.title.clone()).unwrap_or_default();
     let parent_file = parent.as_ref().map(|m| m.file.clone()).unwrap_or_default();
     let cwd = parent
         .as_ref()
@@ -44,32 +45,17 @@ pub async fn create(
         child_count(state, parent_session_id).await + 1
     );
 
-    let context = build_context(state, parent_session_id, &cwd, &selection, &question).await;
-
-    let mut vars: HashMap<&str, String> = HashMap::new();
-    vars.insert("parent_label", parent_label);
-    vars.insert("parent_title", parent_title);
-    vars.insert("cwd", cwd.clone());
-    vars.insert("parent_file", parent_file.clone());
-    vars.insert("context", context);
-    vars.insert("selection", selection.clone().unwrap_or_default());
-    vars.insert("question", question.clone());
-    let first_prompt = prompts::render(prompts::SIDE_CHAT, &vars);
-
-    // A running parent has unfinished work in its transcript; a side chat must
-    // not inherit it, so fork from a copy cut at the in-flight turn's prompt.
-    let parent_running = parent
-        .as_ref()
-        .is_some_and(|m| m.status == crate::contracts::SessionStatus::Working);
-    let trimmed_fork = if parent_running {
-        truncate_in_flight_turn(&parent_file)
-    } else {
-        None
-    };
+    let trimmed_fork = forkcut::truncate(
+        &parent_file,
+        forkcut::Cut::LastCompleteTurn,
+        "omp-sidechat-fork",
+    )
+    .ok()
+    .flatten();
     let fork_file = trimmed_fork
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or(parent_file.clone());
+        .unwrap_or(parent_file);
 
     let started = rpc::start(
         state,
@@ -79,7 +65,9 @@ pub async fn create(
             label: Some(label.clone()),
             model: model.filter(|m| !m.trim().is_empty()),
             fork_file: Some(fork_file).filter(|f| !f.is_empty()),
-            append_system_prompt: Some(prompts::SIDE_CHAT_BOUNDARY.to_string()),
+            // The boundary rides in the first user prompt (see `ask`), NOT in
+            // `--append-system-prompt`: a changed system prompt invalidates
+            // the whole forked prefix in the provider's prompt cache.
             // Side chats live in the parent's space.
             mode: Some(parent.as_ref().map(|m| m.mode).unwrap_or_default()),
             ..Default::default()
@@ -91,32 +79,23 @@ pub async fn create(
     }
     let info = started?;
 
-    let q = question.trim();
-    let custom_name = if !q.is_empty() {
-        let truncated: String = q.chars().take(40).collect();
-        Some(truncated)
-    } else {
-        None
-    };
-
     // B owns only these session_meta columns; A owns the rest of the row.
     {
         let db = state.db.lock();
         let _ = db.execute(
-            "INSERT INTO session_meta(session_id, file_path, label, custom_name, parent_session_id, fork_depth, created_by_app)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, 1)
+            "INSERT INTO session_meta(session_id, file_path, label, parent_session_id, fork_depth, created_by_app, kind)
+             VALUES(?1, ?2, ?3, ?4, ?5, 1, 'side')
              ON CONFLICT(session_id) DO UPDATE SET
                file_path = excluded.file_path,
                label = excluded.label,
-               custom_name = COALESCE(excluded.custom_name, session_meta.custom_name),
                parent_session_id = excluded.parent_session_id,
                fork_depth = excluded.fork_depth,
-               created_by_app = 1",
+               created_by_app = 1,
+               kind = 'side'",
             rusqlite::params![
                 info.session_id,
                 info.session_file,
                 label,
-                custom_name,
                 parent_session_id,
                 parent_depth + 1,
             ],
@@ -126,9 +105,91 @@ pub async fn create(
             tracing::warn!("privacy inherit_session: {e}");
         }
     }
+    catalog::recompute_async(state, Some(vec![info.session_id.clone()])).await;
 
-    rpc::send_prompt(state, &info.session_id, &first_prompt).await?;
     Ok(info)
+}
+
+/// `side_chat_ask` command implementation: send the side chat's first message
+/// (rendered `side_chat.md`: parent context + selection + question) as exactly
+/// one prompt. Later messages use the ordinary send path.
+pub async fn ask(
+    state: &AppState,
+    session_id: &str,
+    question: String,
+    selection: Option<String>,
+) -> Result<(), String> {
+    let q = question.trim();
+    if q.is_empty() {
+        return Err("question must not be empty".into());
+    }
+    // The fork's transcript may not be cataloged yet; the session_meta row
+    // written by `create` is authoritative for the parent link.
+    let own = catalog::get(state, session_id).await;
+    let parent_id = match own.as_ref().and_then(|m| m.parent_id.clone()) {
+        Some(p) => p,
+        None => {
+            let db = state.db.lock();
+            db.query_row(
+                "SELECT parent_session_id FROM session_meta WHERE session_id = ?1",
+                rusqlite::params![session_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .ok()
+            .flatten()
+            .ok_or_else(|| format!("session {session_id} is not a side chat"))?
+        }
+    };
+    let parent = catalog::get(state, &parent_id).await;
+    let cwd = own
+        .as_ref()
+        .map(|m| m.cwd.clone())
+        .filter(|c| !c.is_empty())
+        .or_else(|| {
+            parent
+                .as_ref()
+                .map(|m| m.cwd.clone())
+                .filter(|c| !c.is_empty())
+        })
+        .unwrap_or_else(|| paths::global_dir().to_string_lossy().to_string());
+
+    let context = build_context(state, &parent_id, &cwd, &selection, &question).await;
+    let mut vars: HashMap<&str, String> = HashMap::new();
+    vars.insert(
+        "parent_label",
+        parent
+            .as_ref()
+            .map(|m| m.label.clone())
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| "#?".to_string()),
+    );
+    vars.insert(
+        "parent_title",
+        parent.as_ref().map(|m| m.title.clone()).unwrap_or_default(),
+    );
+    vars.insert("cwd", cwd);
+    vars.insert(
+        "parent_file",
+        parent.as_ref().map(|m| m.file.clone()).unwrap_or_default(),
+    );
+    vars.insert("context", context);
+    vars.insert("boundary", prompts::SIDE_CHAT_BOUNDARY.trim().to_string());
+    vars.insert("selection", selection.unwrap_or_default());
+    vars.insert("question", question.clone());
+    let prompt = prompts::render(prompts::SIDE_CHAT, &vars);
+
+    // Name the side chat after its first question (never overrides a rename).
+    let name: String = q.chars().take(40).collect();
+    {
+        let db = state.db.lock();
+        let _ = db.execute(
+            "UPDATE session_meta SET custom_name = COALESCE(custom_name, ?2) WHERE session_id = ?1",
+            rusqlite::params![session_id, name],
+        );
+    }
+    catalog::recompute_async(state, Some(vec![session_id.to_string()])).await;
+
+    rpc::send_prompt(state, session_id, &prompt).await
 }
 
 /// Children already registered under this parent: session_meta rows plus any
@@ -253,29 +314,6 @@ fn parse_route(text: &str) -> Option<String> {
     (confidence >= ROUTE_MIN_CONFIDENCE).then(|| route.to_string())
 }
 
-/// Copy `file` to a temp path keeping everything up to and including the last
-/// user message (the in-flight turn's prompt); later assistant/tool entries
-/// belong to unfinished work and are dropped. None when the file cannot be read
-/// or has no user message (the caller then forks the whole file).
-fn truncate_in_flight_turn(file: &str) -> Option<std::path::PathBuf> {
-    let text = std::fs::read_to_string(file).ok()?;
-    let lines: Vec<&str> = text.lines().collect();
-    let last_user = lines.iter().rposition(|l| is_user_message_line(l))?;
-    let out =
-        std::env::temp_dir().join(format!("omp-sidechat-fork-{}.jsonl", uuid::Uuid::new_v4()));
-    let mut body = lines[..=last_user].join("\n");
-    body.push('\n');
-    std::fs::write(&out, body).ok()?;
-    Some(out)
-}
-
-fn is_user_message_line(line: &str) -> bool {
-    serde_json::from_str::<Value>(line).ok().is_some_and(|v| {
-        v.get("type").and_then(Value::as_str) == Some("message")
-            && v.pointer("/message/role").and_then(Value::as_str) == Some("user")
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,34 +341,19 @@ mod tests {
     }
 
     #[test]
-    fn truncate_in_flight_turn_cuts_after_last_user_message() {
-        let dir = std::env::temp_dir().join(format!("omp-sc-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let src = dir.join("parent.jsonl");
-        std::fs::write(
-            &src,
-            concat!(
-                r#"{"type":"session","id":"p"}"#,
-                "\n",
-                r#"{"type":"message","message":{"role":"user","content":"first"}}"#,
-                "\n",
-                r#"{"type":"message","message":{"role":"assistant","content":"done"}}"#,
-                "\n",
-                r#"{"type":"message","message":{"role":"user","content":"second"}}"#,
-                "\n",
-                r#"{"type":"message","message":{"role":"assistant","content":"mid-turn"}}"#,
-                "\n",
-                r#"{"type":"message","message":{"role":"toolResult","content":"x"}}"#,
-                "\n",
-            ),
-        )
-        .unwrap();
-        let out = truncate_in_flight_turn(src.to_str().unwrap()).unwrap();
-        let kept = std::fs::read_to_string(&out).unwrap();
-        assert_eq!(kept.lines().count(), 4);
-        assert!(kept.contains("second") && !kept.contains("mid-turn"));
-        assert!(truncate_in_flight_turn(dir.join("missing.jsonl").to_str().unwrap()).is_none());
-        let _ = std::fs::remove_dir_all(&dir);
-        let _ = std::fs::remove_file(out);
+    fn first_prompt_carries_boundary_and_stays_display_parsable() {
+        let mut vars: HashMap<&str, String> = HashMap::new();
+        vars.insert("parent_label", "#1".into());
+        vars.insert("parent_title", "t".into());
+        vars.insert("cwd", "/x".into());
+        vars.insert("boundary", prompts::SIDE_CHAT_BOUNDARY.trim().to_string());
+        vars.insert("context", "ctx".into());
+        vars.insert("question", "why?".into());
+        let p = prompts::render(prompts::SIDE_CHAT, &vars);
+        assert!(p.starts_with("Side chat forked from main session"));
+        assert!(p.contains("reference only"));
+        // Boundary comes before the volatile context/question.
+        assert!(p.find("reference only").unwrap() < p.find("ctx").unwrap());
+        assert!(p.trim_end().ends_with("## User question\nwhy?"));
     }
 }

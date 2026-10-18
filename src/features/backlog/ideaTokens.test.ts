@@ -7,6 +7,7 @@ import {
 	removeImage,
 	splitTokens,
 	storedToDoc,
+	storedImagePaths,
 	toComposerText,
 } from "./ideaTokens";
 
@@ -86,11 +87,14 @@ describe("splitTokens", () => {
 });
 
 describe("toComposerText", () => {
-	it("rewrites tags as chat image markers and appends ref-only images", () => {
-		expect(toComposerText("看 [图片: /a.png]", ["/a.png", "/b.png"], 3)).toBe(
-			"看 [Image #3: /a.png] [Image #4: /b.png]",
-		);
-		expect(toComposerText("纯文字", [], 1)).toBe("纯文字");
+	it("rewrites tags as composer image tokens and appends ref-only images", () => {
+		const num = (p: string) => ({ "/a.png": 3, "/b.png": 4 })[p] ?? 0;
+		expect(toComposerText("看 [图片: /a.png]", ["/a.png", "/b.png"], num)).toBe("看 🖼️#3 🖼️#4");
+		expect(toComposerText("纯文字", [], num)).toBe("纯文字");
+	});
+
+	it("storedImagePaths lists inline then ref images, deduped", () => {
+		expect(storedImagePaths("[图片: /b] x [图片: /a] [图片: /b]", ["/a", "/c"])).toEqual(["/b", "/a", "/c"]);
 	});
 });
 

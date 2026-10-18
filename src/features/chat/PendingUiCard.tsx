@@ -8,6 +8,7 @@ import { isComposing } from "../../lib/hooks";
 import { allowedToolsList, rpcUiRespond } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
+import { claimEscape } from "../../lib/escapeClaim";
 
 const asObj = (v: unknown): Record<string, unknown> =>
 	typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
@@ -313,7 +314,7 @@ export function PendingUiCard({
 						onKeyDown={(e) => {
 							if (isComposing(e)) return;
 							if (e.key === "Escape") {
-								e.preventDefault();
+								claimEscape(e);
 								void respond({ cancelled: true });
 							} else if (
 								(method === "input" && e.key === "Enter" && !e.shiftKey) ||

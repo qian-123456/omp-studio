@@ -81,7 +81,7 @@ src/
   features/home/             composer-first start screen (StartPage)                    [A]
   features/sessions/         left column, Codex-style navigation (§10)                  [A]
   features/chat/             center session view, composer, turn grouping, tool cards, answer footer, per-request stats line + thinking preview (requestStats.ts) (§11 B) [B]
-  features/sidechat/         right tab: forks                                           [B]
+  features/sidechat/         right tab group: one tab per side chat (blank new-chat tab → create + ask) [B]
   features/heatmap/          right tab: minimap                                         [B]
   features/git/              right tab: changes + time machine; worktree dialogs        [C]
   features/services/         right tab: services                                        [C]
@@ -97,6 +97,7 @@ src/
     navigation.ts            NAV_GROUPS + per-section search terms, ompCategoryOf/ompSectionId
     sections/                one component per nav id; sections/index.ts = id → component map
       AgentsMdSection.tsx    `agents-md`: edit global ~/.omp/agent/AGENTS.md or project <cwd>/AGENTS.md | <cwd>/.omp/AGENTS.md (agentsMd.ts = target/conflict helpers)
+      PromptCompositionSection.tsx `prompt-composition`: 系统提示词构成 — project picker (opened from the 「上下文占用明细」 popover button, preselected via `stores/promptComposition.openPromptComposition(cwd)`; else last used / Universal), category totals + per-item raw text, optimization hints, and 「让 AI 帮我优化」 (new session in a chosen workspace, default Universal; the prompt from `promptComposition.ts#buildOptimizePrompt` is prefilled via `composer.setDraft`, never sent, and instructs the AI to get user consent before changing any file)
       ShortcutRecorder.tsx   key-combo recorder → Tauri accelerator string (used by 通用 「快速记录快捷键」)
     ui.tsx                   SectionHeader, SettingsCard, SettingRow, ToggleRow, CommitInput, useSaveStatus/SaveIndicator
     useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
@@ -181,6 +182,7 @@ pub struct SessionMeta {                // #[derive(Debug, Clone, Default, Parti
   pub updated_at: String,         // file mtime
   pub parent_id: Option<String>,  // fork parent session id (side chats)
   pub fork_depth: u8,             // 0 main, 1..=3
+  pub kind: Option<String>,       // "side" = side chat, "fork" = full fork copy, None = ordinary; from session_meta.kind (NULL + fork_depth>0 + created_by_app is projected as "side")
   pub status: SessionStatus,
   pub unread: bool,               // new output not yet seen (cleared by viewing)
   pub pending: Option<PendingKind>, // cleared ONLY by an action
@@ -397,8 +399,10 @@ pub struct SubagentTranscript {
   pub prompt: Option<String>, pub items: Vec<TranscriptItem>, pub output: Option<String>, pub output_path: Option<String>,
   pub next_byte: u64 /* incremental tail cursor */, pub reset: bool,
 }
-// Catalog model (A); context_window comes from `omp models --json` `contextWindow` (None when unknown)
-pub struct Model { pub provider: String, pub id: String, pub name: String, pub thinking: Vec<String>, pub context_window: Option<u64> }
+// Catalog model (A); context_window comes from `omp models --json` `contextWindow` (None when unknown);
+// reasoning = `omp models --json` `reasoning` (None when omp omits it). `thinking` empty + reasoning true →
+// 「未配置思考等级」 chip; reasoning false → 「不支持思考」 (ThinkingLevelPicker via `thinkingChipState`).
+pub struct Model { pub provider: String, pub id: String, pub name: String, pub thinking: Vec<String>, pub context_window: Option<u64>, pub reasoning: Option<bool> }
 // models.yml contextWindow override edit; context_window None = delete the override
 pub struct ModelContextWindowEdit { pub provider_id: String, pub model_id: String, pub context_window: Option<u64> }
 // MCP / plugin settings types (McpConfigSnapshot, McpServerItem, McpFileInfo, McpKv, PluginCatalog, PluginItem,
@@ -464,7 +468,8 @@ CREATE TABLE session_meta(
   parent_session_id TEXT, fork_depth INTEGER NOT NULL DEFAULT 0,
   workspace_id TEXT, unread INTEGER NOT NULL DEFAULT 0, pending_kind TEXT, pending_since TEXT,
   accepted_at TEXT, last_seen_at TEXT, suspended INTEGER NOT NULL DEFAULT 0, created_by_app INTEGER NOT NULL DEFAULT 0,
-  seq INTEGER);                                  -- local number when title has no "#<n>"
+  seq INTEGER,                                   -- local number when title has no "#<n>"
+  kind TEXT);                                    -- v14: 'side' | 'fork' | NULL (ALTER-added, listed here for reading)
   -- v2 adds: session_meta.cwd_override TEXT    -- resume dir override picked after the original worktree dir was deleted
   -- v10 adds: session_meta.mode TEXT NOT NULL DEFAULT 'code'   -- space recorded at creation; pre-existing rows are 'code'
   -- v10 adds: session_meta.group_id TEXT      -- SessionGroup id inside the mode's 无项目 area (global-workspace sessions only)
@@ -509,7 +514,7 @@ CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, s
 CREATE TABLE model_replace_log(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, from_model TEXT NOT NULL, to_model TEXT NOT NULL,
   edits TEXT NOT NULL, undone_at TEXT);
 ```
-Use a `user_version` pragma for migrations (current: v13; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`). `db.rs` also provides `load_settings`/`save_settings` and
+Use a `user_version` pragma for migrations (current: v14; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`). `db.rs` also provides `load_settings`/`save_settings` and
 `ensure_global_workspace(conn)` (creates the single global workspace row `global`/`~/.omp-workspace/global`, owned by
 the `chat` space). v11 moves the global row and every session group (and grouped sessions) to `chat` and drops the
 v10 per-mode `global:<mode>` rows (their dirs stay on disk).
@@ -555,8 +560,10 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `subagent_transcript(parent_file: String, agent_id: String, from_byte: Option<u64>) -> SubagentTranscript` — `parent_file`
   must be an existing `.jsonl` under `~/.omp/agent/sessions`; `agent_id` rejects separators/leading dot
 - `takeover_external(session_id) -> LiveSessionInfo` — SIGTERM external pid, wait ≤5s (SIGKILL after), then `rpc_start` with resume
-- `create_side_chat(parent_session_id, selection: Option<String>, question: String, model: Option<String>) -> LiveSessionInfo` — §B spec;
-  `model` is an omp `--model` value (`<selector>` or `<selector>:<level>`), None = inherit the parent session's model; the fork records the parent's space (`session_meta.mode`)
+- `create_side_chat(parent_session_id, model: Option<String>) -> LiveSessionInfo` — §B spec; forks the parent and NEVER sends a prompt
+  (`side_chat_ask` sends the first message). `model` is an omp `--model` value (`<selector>` or `<selector>:<level>`), None = inherit the parent session's model; the fork records the parent's space (`session_meta.mode`) and `kind='side'`
+- `side_chat_ask(session_id, question: String, selection: Option<String>)` — sends the side chat's first prompt (rendered `prompts/side_chat.md`: parent context + selection + question); later messages use the ordinary `send_prompt`
+- `fork_session(parent_id: String, entry_id: Option<String>, model: Option<String>) -> LiveSessionInfo` — full-session fork (never sends a prompt). Writes a cut copy of the parent's session file (`rpc/forkcut.rs`, shared with side chats: `Cut::LastCompleteTurn` = last assistant message without tool call, in-flight turn dropped; `Cut::AfterEntry(entry_id)` = exactly after the pinned answer, unknown id is an error) and starts omp with `--fork <cut file>` (temp file removed after start); no depth limit, no boundary prompt, all tools. Registers `session_meta` with `kind='fork'`, `parent_session_id`, `fork_depth 0`, `custom_name` `分支：<parent title>` (autotitle skips sessions with a parentSession header), inherits privacy placeholders; records the parent's space; model = explicit, else the parent's `provider/id`. Errors (missing file, held by a terminal) are returned in full. Mobile `/fork <消息>` = `fork_session` + send; mobile `/btw` stays a side chat; `GET /sessions/{id}/sidechats` and the empty-stub/archive-cascade rules only treat `kind='side'` as side chats (forks never cascade-archive)
 
 **C — git / services:**
 - `git_summary(cwd) -> GitSummary`, `git_log(cwd, limit: u32) -> GitHistory` (commits + `fork_point`/`base` for the timeline's "inherited from base" divider), `git_diff(cwd, path: Option<String>, sha: Option<String>) -> String`
@@ -597,7 +604,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `todos_list(include_closed: bool) -> Vec<Todo>`, `todos_act(id, action: "done"|"ignore"|"reopen")`, `todos_counts() -> TodoCounts`
 - `summary_get(session_id, ensure: bool) -> Option<String>`
 - `diagnose_build_prompt(target_session_id) -> String`
-- `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(id) -> String`
+- `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(ids: Vec<String>) -> String` (one item → full template; several → one preamble + compact numbered list + one closing)
 - `notify_test()`
 
 **E — mobile / terminal:**
@@ -635,6 +642,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `mcp_server_upsert(cwd, path, name, patch: Value)` — merge patch (null deletes; env/headers merge per key; masked values preserved)
 - `mcp_server_remove(cwd, path, name)`, `mcp_server_set_enabled(cwd, name, enabled: bool)`
 - `plugins_list(cwd: Option<String>) -> PluginCatalog`, `plugin_set_enabled(cwd, name, enabled: bool)` — writes `plugins.<name>.enabled` in the scope lockfile
+- `extension_delete(cwd: Option<String>, path: String)` — permanently deletes one extension module; `path` must match an entry of `skills_list(cwd).extensions` (else rejected)
 - `omp_config_list() -> OmpConfigListResult`, `omp_config_set(key, value)`, `omp_config_reset(key)` — shell out to `omp config` in a neutral empty cwd (`$TMPDIR/ompws-omp-config-cwd`, no `.omp/`) so they reflect global settings only
 - `omp_project_config_read(cwd) -> OmpProjectConfigFile { path, exists, content }` — reads fixed `<cwd>/.omp/config.yml` (cwd must be an existing absolute dir); missing file → `exists: false, content: ""`
 - `omp_model_roles_read(cwd: Option<String>, session_model: Option<String>) -> ModelRoleSnapshot` — returns only `modelRoles` and `task.agentModelOverrides` per config layer plus discovered agent assignments; never returns configuration source text or other keys.
@@ -648,6 +656,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
   - `model_replace_history() -> ModelReplaceRecord[]` (newest first; `{ id, createdAt, fromModel, toModel, edits, undoneAt }`), `model_replace_undo(recordId) -> ModelReplaceResult` — applies inverse edits with the same verification; a location changed since the replace is skipped (「当前值已被修改，已跳过」); sets `undoneAt`.
   - `model_probe(model, kind) -> ModelProbeResult { ok, latencyMs, detail }` — manual only (overview 「测试」 button), 60s timeout for every kind, `detail` is the full text (ANSI and box-drawing frames stripped, an omp `Error:` line first; never truncated). Dispatch on `kind`: `chat` = one real one-shot call with `todos::omp::run_print`'s flags plus `--config <dataDir>/omp-probe.yml` (`retry.modelFallback: false`, so omp's own fallback chains cannot answer for a dead model); `search` = `omp search --model <sel> -l 1 --compact <query>`; `judge` = a throwaway `<dataDir>/judge-probe-<uuid>/` project whose `.omp/config.yml` pins `modelRoles.judge` and sets `retry.fallbackChains.judge: []`, then `omp find <query> <dir> --json -q` (cwd = that dir; ok = exit 0 and `stats.errors == 0`, otherwise the detail is the joined `stats.failures`; the dir is always removed); any other kind → Err `此类型暂不支持测试`. Overview flags 「可能失效」 only once the model catalogue has entries.
   - `model_kind_catalog() -> ModelKindEntry[]` (`{ selector, kind, provider, name, thinking }`) — runs `omp models --kind all --json` (augmented PATH, `-e` extension, neutral cwd, 60s timeout); accepts an array or `{ models: [...] }`; a missing `selector` becomes `provider/id`, a missing `kind` becomes `chat`; `thinking` = the model's supported levels (array or `{efforts}`; empty = no thinking control), which drive the dialog's level pickers via `resolveThinkingLevels`. Lets the UI tell chat models from `web/*` search services and judge models.
+- `prompt_composition_probe(cwd) -> PromptComposition` (`prompt_composition.rs`; types mirrored in `lib/contracts.ts`) — what a brand-new empty session in `cwd` carries in context, at zero model cost. Spawns a throwaway `omp --mode rpc --no-session --cwd <cwd>` (augmented PATH, provider/privacy env, `--model` from `newSessionModel`, privacy + providers `-e` extensions, visualize plugin + hint; the status/checkpoints extensions are skipped because they write per-session files), reads `ready`, sends `get_state` twice (second after 1.5 s so async MCP tools have registered; the larger result wins) and uses `systemPrompt` (string blocks), `dumpTools` and `contextUsage`. 45 s budget (`cwd` must be an existing dir). The child is always shut down: stdin closed, 3 s grace, then `killpg` of its process group (also on error/timeout; `kill_on_drop` covers cancellation); no session file is created. `PromptComposition { cwd, categories: PromptCategory[], totalTokens, reportedTokens, contextWindow, hints: PromptHint[], probeMs, estimateNote }`; `PromptCategory { id: system|rules|skills|tools|mcp|other, label, tokens, items: PromptItem[] }` (all six always present, in that order); `PromptItem { id, title, detail, text, tokens }`; `PromptHint { id, kind, severity: info|warn, title, detail, itemIds, quote }`. Categorisation: block 0 minus its `<skills>` list = 系统 prompt 主体 (`system:base`); each `- name: description` skill = one `skills` item (`skill:<name>`); the block containing `<repo-rules>` yields one `rules` item per `<file path="…">` (`rule:<n>`, title = full path) and the rest (workstation, tail instructions) = `other`; other blocks = `other`; each `dumpTools` entry = a `tools` item (`tool:<name>`, text = pretty JSON of name/description/parameters/examples), tools named `mcp__<server>…` = `mcp` items with `detail` = server. `tokens` are ESTIMATES (non-CJK chars ÷ 3 rounded up, CJK chars × 1; `estimateNote` states it); `reportedTokens` is omp's own `contextUsage.tokens` for reference. Hints are rule-based (no AI): largest items (≥ 5%), duplicate paragraphs (≥ 80 chars) shared by rule files, big/total rule files, oversized skill descriptions (> 220 chars) / skills share ≥ 10%, MCP tools loaded every session, oversized MCP tools.
 - `omp_info() -> OmpInfo { found, resolvedPath, version, agentDir, configPath, configExists }` — resolves `settings.ompBinary` on the augmented PATH, runs `omp --version` (first line; null on failure), reports the omp agent dir (honors `PI_CODING_AGENT_DIR` / profile env) and `<agentDir>/config.yml`; used by Settings ▸ 通用 「OMP 环境」
 - `omp_update_check() -> OmpUpdateStatus { current, latest, updateAvailable, output }` — runs `omp update --check` (30s timeout, neutral cwd, augmented PATH, ANSI stripped); parses `Current version:` / `New version available:` / `Already up to date`; non-zero exit → Err with output (GitHub rate-limit hint appended when applicable); used by Settings ▸ 版本与更新 and the BottomBar omp chip
 - `omp_update_run() -> OmpUpdateResult { success, output, versionAfter }` — runs `omp update` (300s timeout), then re-probes `omp --version`; frontend then refreshes omp info, update status and the model catalog, and `stores/ompUpdateSessions.beginSwitch` moves sessions live at that moment to the new binary via `rpc_restart` (idle ones immediately, busy ones as soon as they go idle; one aggregate toast). `settings.ompAutoUpdate` (null = off) runs the update automatically when a check finds a new version. Settings ▸ 版本与更新 「立即重启所有会话」 force-restarts every live session.
@@ -928,11 +937,21 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   `跳过`/Esc responds `{cancelled:true}` (cancels the whole ask). Unmatched/out-of-sync requests fall back to `PendingUiCard`.
 - Idle suspend: every 60 s, live sessions not streaming, no pending UI, no activity for `idle_suspend_minutes` → `rpc_stop`, set `session_meta.suspended=1`.
   `rpc_ensure_live` clears it.
-- Side chat: parent must have `fork_depth < 3`. Label = parent label + "." + (count of existing children + 1). Start with
-  `StartOpts{cwd: parent cwd, parent_session_id, label}`, store `session_meta` (parent, depth, label, created_by_app), then send the first
-  prompt rendered from `src-tauri/prompts/side_chat.md` (guard rules: this is a side chat forked from the main session; do not modify files
+- Side chat: parent must have `fork_depth < 3`. Label = parent label + "." + (count of existing children + 1). `create` starts
+  `StartOpts{cwd: parent cwd, parent_session_id, label, fork_file}` (all tools stay enabled; the boundary text
+  `prompts/side_chat_boundary.md` — answer only the question, never continue the parent's pending/inherited work, use tools only when
+  needed, no file/state changes unless asked — is rendered into the FIRST user prompt of `side_chat.md`, never `--append-system-prompt`: any
+  system-prompt/cache-shape change makes omp drop the inherited cache key and cold-misses the whole forked prefix. `build_command` also
+  pins `--prompt-cache-key` to the fork source's header `providerPromptCacheKey` (fallback: its session `id`) for every `--fork` spawn,
+  and to the header key on `--resume`)
+  and stores `session_meta` (parent, depth, label, created_by_app, `kind='side'`). The forked
+  file is a copy cut at the END OF THE LAST COMPLETE TURN (last assistant message without a tool call; the in-flight turn — trailing
+  unanswered user message, dangling tool call, pending tool results — is dropped; the copy is also made when the parent is idle if its tail is
+  not clean), so nothing starts running and nothing unfinished is inherited. `ask` then sends exactly one prompt rendered from
+  `src-tauri/prompts/side_chat.md` (guard rules: this is a side chat forked from the main session; do not modify files
   the main session is working on unless asked; if context is missing, read the parent transcript at `<parent jsonl path>`), containing:
-  parent summary (`todos::summary(state, parent, true)`, fallback: project path + `git status --short` output) + selection (if any) + question.
+  parent summary (`todos::summary(state, parent, true)`, fallback: project path + `git status --short` output) + selection (if any) + question,
+  and names the side chat after the question when it has no custom name.
   When `settings.smart_context_routing` is on, classify the question with a quick `omp -p --no-session --no-tools --model smol` call using
   `prompts/context_route.md` into `selection_only | fork_continue | global` and pick context accordingly (low confidence → default).
   `settings.side_chat_model` (侧聊专属模型, Settings ▸ 通用; `"<selector>"` or `"<selector>:<level>"`) supplies the fork's `--model` when
@@ -981,7 +1000,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   skill → 技能, custom/file → 自定义命令, extension/mcp_prompt → 扩展, other builtins → 更多 OMP 命令). `SlashMenu` is the Codex-style
   popup (gear "去设置" → `openSettingsTarget`). Unknown `/x` is sent to omp as a prompt; `command_output` frames render in
   `CommandOutputList` at the end of the thread.
-- Side chats: `/btw [问题]` and `/fork <问题>` both open the real forked side chat (`createSideChat`, then select the child and open the `sidechat` right tab); `/btw` with no question only opens the 辅助对话 tab. Mobile maps `/btw` to the same fork path.
+- Side chats: `/btw [问题]` opens a blank side-chat tab in the right panel (revealing it) via `openSideChatTab`; with a question the same first-message flow as the panel runs at once (echo → `createSideChat` → `sideChatAsk`). The main view never changes. Mobile maps `/btw` to create + ask. 终端面板 「发送到侧聊」 stages the selection as a `sidechat:<parentId>` annotation and opens a blank tab without sending. Sidebar rows: `kind === "side"` → chat-bubble icon, indented under the parent (`grouping.nestSideChats`), title + running dot only; `kind === "fork"` → normal row with a 分叉 badge (not nested, not hidden by the empty-stub or parent-archive rules).
+- Full-session fork (`features/sessions/forkDraft.ts`, `ForkDraftView.tsx`): entry points are the answer-footer fork icon (pins that answer's entry id) and `/fork`. Decided at click time by `startFork`: parent idle (not streaming, status not working/awaiting_approval/awaiting_answer) → `forkSession` runs IMMEDIATELY (no prompt), the new real session opens in the main area with an empty focused composer; parent running → lazy DRAFT (`useForkDraft`, synthetic id `fork-draft:<uuid>`, `selectedSessionId` stays null like the pending-session placeholder): shows the parent transcript read-only (cut client-side at the pinned entry), notice outside the composer, no backend row/file/process, not in the sidebar. The regular Composer runs against the draft id; `sendPrompt` routes that id to `sendFromForkDraft`: local echo → `forkSession(parent, pinnedEntry)` (cut computed at send time; in-flight turn dropped) → swap to the real session → `sendPrompt(newId, text)`; fork failure removes the echo and restores the composer. `/fork <text>` (`forkAndSend`) forks now in either state and sends that text. The composer/sent message only ever contain what the user typed; the inherited conversation travels in the forked session file. Leaving the pane discards a draft.
 - Composer: Codex-style single container; one "N 条批注" chip above the input (hover/focus opens a popover listing every quote with its comment, edit ✎ / delete 🗑 / locate), textarea, bottom
   toolbar (attach, model picker, thinking level, held pill, context ring, round send/stop). Model picker (`get_available_models`/`set_model`), thinking
   level (`set_thinking_level`). If session not live → `rpc_ensure_live` first. Two settings (`sendShortcut`, `followUpBehavior`; in the settings JSON, defaults
@@ -1004,7 +1024,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   (kept after completion; seeded via `get_subagents` on attach). `tool_execution_update` keeps `partialResult.details`.
   `command_output` → `commandOutputs` (tagged with `pendingCommand`), `config_update` → model/thinking, `session_info_update` → title,
   `prompt_result` errors → output entry.
-- `SideChatPanel`: lists children of the selected session (label, title, status); "新建侧聊" composer; staged annotations (`sidechat:<parentId>`) show as an "N 条批注" chip (move-to-main via `moveAnnotation`); send formats them via `formatWithAnnotations` and appends to the open thread (`sendPrompt`) or creates a new side chat (`createSideChat`, quote blocks passed as `selection`); a slim staged bar under the open thread's header accepts the same send; the selected child shows as a compact embedded `SessionView` (prop `compact`). Depth > 3 → "请开新主会话".
+- `SideChatPanel` (right tab `sidechat`, a tab *group*): there is no base 「辅助对话」 tab and no list page. `RightPanelHeader` renders one tab per open side chat of the selected session (key `sidechat:<id>`, title = the chat's title, full on hover); ids come from `features/sidechat/viewStore.ts` (`openTabs[parent]`, `openChild[parent]`; persisted `omp_sidechat_open_tabs` / `omp_sidechat_open_child`, no migration needed) and are either a real session id or a blank new-chat id `new:<n>` (no backend session yet). The header 「+」 menu item 「新辅助对话」 opens a blank tab; closing a tab closes only that tab (the conversation stays in the sidebar tree, delete goes through the sidebar row); closing the last tab closes the `sidechat` group (`closeRightTab`). Tab right-click menu and the thread's visible 「更多」 button offer 「在主视图打开」 / 「回传给父会话」 (`SIDE_CHAT_TAB_ACTIONS`). A real tab shows a compact embedded `SessionView` (prop `compact`, its own composer for later messages via `sendPrompt`); a blank tab shows the new-chat composer (model/thinking picker, staged `sidechat:<parentId>` annotations as an "N 条批注" chip with move-to-main). Send flow of the blank tab (`sideChatActions.sendFirstMessage`): pending bubble at once (`viewStore.pending`) → `createSideChat(parentId, model?)` (forks, never prompts) → `useLive.addUserEcho` into the new session → `useSessions.load` → `bindTab(blank → session id)` → `sideChatAsk(sessionId, question, selection)`. Nothing starts without a typed message. Composer toolbar shrinks (`min-w-0`) so the send/stop button stays inside the panel. Depth > 3 → "请开新主会话".
+- Side-chat hand-back (「回传给父会话」), preference `useDisplayPrefs.sideChatHandback` (`"summary"` default | `"select"`, localStorage `ompws:side-chat-handback`, Settings ▸ 外观 ▸ 对话显示 「回传给父会话的方式」, applied live). Nothing is ever auto-sent to the parent and no model run starts without a user click. **summary (整理成结论)**: the tab menu / 「更多」 item 「回传给父会话」 (`openHandback`; hidden in select mode via `visibleSideChatActions`) opens the modal-tier `HandbackDialog` (`ui.modal` name `side-chat-handback`, props `{childId}`) and, on that click only, sends ONE instruction (`HANDBACK_PROMPT`, starts with `【回传整理】`) into the side chat through `sendPrompt`, so it shows as the user's message there; refused with a toast while the side chat is mid-turn. `handbackRun.ts` (`useHandback` store per child: running/ready/error) waits for the turn to end, reads the transcript and `extractHandbackDraft` takes the last assistant text after the last instruction. The dialog edits the draft; 「插入主对话输入框」 (`stageInParent`) adds an `Annotation` `{source:"message", text, label:"来自辅助对话：<title>"}` to the PARENT's composer (new optional `Annotation.label`: replaces the source label in the chip popover, shows the full text, formats as `[n] (label)` in `formatWithAnnotations`), selects the parent and focuses its composer; optional 「同时附上完整对话」 appends the pre-instruction transcript in a `<details>` quote. Cancel/close never aborts the run (the instruction stays visible in the side chat). **select (手动选择)**: `SelectionToolbar` inside a side chat shows an extra 「发到主对话」 bubble action (`showSendToMainBubbleAction`) that stages the selected text through `stageInParent` the same way. Pure logic and tests: `features/sidechat/handbackLogic.ts`.
 - `HeatmapPanel`: one cell per transcript message (grid, ~10px squares), user=blue, assistant brightness ∝ log(total tokens),
   toolResult grey, error red; tooltip with tokens/time; click scrolls the stream to that message (expose `scrollToItem(id)` via a small
   event in `stores/live.ts` or a DOM id `msg-<id>`).
@@ -1164,13 +1185,6 @@ All floating and layered surfaces throughout the desktop app MUST adhere to the 
 
 - **FloatingLayer portal**: All floating surfaces (menus, popovers, hovercards, context menus, tooltips, dialogs) MUST use `FloatingLayer` portaled to `document.body`, never inline absolute positioning.
 - **Viewport containment**: `FloatingLayer` automatically computes placement, flips to the opposite side when the preferred side lacks space, and clamps within `usableViewport()`. The usable viewport explicitly excludes the app bottom status bar (`[data-app-bottombar]`), ensuring floating surfaces never slide underneath it.
-- **Stacking tiers (`Z_LAYER`)**: Stacking order is strictly governed by `Z_LAYER` (mirrored as `--z-*` CSS variables in `index.css`), never ad-hoc integers:
-  - `drawer`: 40 (`--z-drawer: 40`) — e.g. `SkillsPage` detail drawer
-  - `modal`: 50 (`--z-modal: 50`) — e.g. `NewSessionDialog`, `DiagnoseDialog`, `ResumeMissingCwdDialog`
-  - `popover`: 60 (`--z-popover: 60`) — e.g. `PerfPopover`, `SessionStatsPopover`, filter popovers
-  - `menu`: 65 (`--z-menu: 65`) — e.g. context menus, dropdown action menus (`plusMenu`, `wsMenu`, `ModelSelect`, `ThemeMenu`)
-  - `hovercard`: 70 (`--z-hovercard: 70`) — e.g. `SessionHoverCard`, `WorktreeHoverCard`, heatmap tooltips
-  - `lightbox`: 80 (`--z-lightbox: 80`) — `ImagePreviewModal` full-screen image preview; sits above popovers/menus that spawn it (clicks/Escape inside it do not dismiss the spawning `FloatingLayer`)
-  - `toast`: 100 (`--z-toast: 100`) — global notification toasts
+- **Stacking tiers (`Z_LAYER`)**: full table, nesting rule and "how to add an overlay" in `docs/LAYERS.md`. Order low→high: local (`Z_LOCAL` 0–40, component-internal only) < `pill` 50 (scroll pills) < `drawer` 100 (`SkillsPage` detail drawer) < `popover` 200 (`PerfPopover`, `SessionStatsPopover`, ideas panel) < `menu` 300 (context/action menus, `ModelSelect`) < `modal` 400 (`confirmDialog`, `NewSessionDialog`, settings, provider dialogs) < `hovercard` 500 (`SessionHoverCard`, heatmap tooltips) < `lightbox` 600 (`ImagePreviewModal`; clicks/Escape inside it do not dismiss the spawning `FloatingLayer`) < `toast` 700. Mirrored as `--z-*` CSS vars (`index.css`, usable as `z-(--z-modal)`); never ad-hoc integers (guard: `src/lib/zLayerGuard.test.ts`). A `FloatingLayer` anchored inside another floating surface sits at `max(own tier, parent z + 1)`, so pickers/menus opened inside a dialog render above it.
 - **No `position: fixed` inside `.vibrancy-chrome`**: Surfaces styled with `.vibrancy-chrome` apply `backdrop-filter: blur(20px) saturate(190%)`. By CSS specification, `backdrop-filter` creates a new containing block for `position: fixed` elements and a local stacking context, trapping any descendant with `position: fixed` or `z-index` and causing it to be clipped or painted over by sibling layout columns. Floating surfaces must always portal to `document.body` via `FloatingLayer`.
 - **Asset protocol & image preview**: Tauri asset protocol is enabled (`features = ["macos-private-api", "protocol-asset"]` in `Cargo.toml`, scopes `["$HOME/.omp/agent/blobs/**", "$APPCACHE/ompws-clip/**"]` in `tauri.conf.json`). Attached images (`ImageAttachment`) are rendered via `ImageChips.tsx`, and click-to-preview (`ImagePreviewModal`) is portaled at `Z_LAYER.lightbox`.

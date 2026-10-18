@@ -10,13 +10,23 @@
  * a probe result opens in its own full-width, wrapped, collapsible area under
  * the row, so the columns above never shift.
  */
-import { AlertTriangle, ArrowRightLeft, ChevronDown, ChevronRight, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, ChevronDown, ChevronRight, Loader2, PlayCircle, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { NativeSelect } from "../../../components/NativeSelect";
 import type { ModelProbeResult, ModelUsageScan } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
 import { modelProbe } from "../../../lib/ipc";
 import { KIND_GROUP_ORDER, KIND_GROUP_TITLES, probeKindOf, useModelKindCatalog } from "./kinds";
-import { buildOverview, type OverviewRow } from "./logic";
+import {
+	buildOverview,
+	filterOverviewRows,
+	highlightParts,
+	type OverviewRow,
+	type ReplaceScope,
+	scopeOptions,
+	searchTerms,
+	sourceMatches,
+} from "./logic";
 import { Chip } from "./parts";
 
 /** Outcome of one probe: a result, or the error that prevented getting one. */
@@ -72,10 +82,13 @@ const ROW_GRID =
 
 function OverviewRowView({
 	row,
+	terms,
 	showGroupFlag,
 	onReplace,
 }: {
 	row: OverviewRow;
+	/** Lower-cased search terms to highlight. */
+	terms: readonly string[];
 	/** True once the kind catalogue is loaded (so `row.group` is meaningful). */
 	showGroupFlag: boolean;
 	onReplace: (row: OverviewRow) => void;
@@ -85,7 +98,8 @@ function OverviewRowView({
 	const [outcome, setOutcome] = useState<ProbeOutcome | null>(null);
 	const probeKind = showGroupFlag ? probeKindOf(row.group) : "chat";
 	const total = row.sources.length;
-	const first = row.sources[0];
+	// While searching, lead with a location that matches so the hit is visible without expanding.
+	const first = row.sources.find((s) => sourceMatches(s, terms)) ?? row.sources[0];
 
 	const run = async () => {
 		if (probeKind === null) return;
@@ -104,7 +118,7 @@ function OverviewRowView({
 		<div className="border-t border-[var(--border-divider)] px-4 py-2.5 text-[11px] transition-colors hover:bg-[var(--bg-hover)]/40">
 			<div className={`${ROW_GRID} items-center`}>
 				<span className="break-all font-mono text-xs leading-5 text-neutral-100" title={row.selector}>
-					{row.selector}
+					<Highlight text={row.selector} terms={terms} />
 				</span>
 				<span>
 					<Chip tone="neutral">{row.count} 处</Chip>
@@ -119,7 +133,9 @@ function OverviewRowView({
 					)}
 				</span>
 				<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-					<span className="min-w-0 break-all text-neutral-400">{first ? `${first.title} · ${first.scope}` : ""}</span>
+					<span className="min-w-0 break-all text-neutral-400">
+						{first ? <Highlight text={`${first.title} · ${first.scope}`} terms={terms} /> : ""}
+					</span>
 					{total > 1 && (
 						<button
 							type="button"
@@ -168,8 +184,12 @@ function OverviewRowView({
 				<ul className="mt-1.5 space-y-0.5 rounded-lg bg-[var(--well-bg)] px-2.5 py-1.5">
 					{row.sources.map((s) => (
 						<li key={`${s.scope}\u0000${s.title}`} className="flex items-start gap-2 leading-5">
-							<span className="w-20 shrink-0 break-all text-neutral-500">{s.scope}</span>
-							<span className="min-w-0 flex-1 break-all text-neutral-300">{s.title}</span>
+							<span className="w-20 shrink-0 break-all text-neutral-500">
+								<Highlight text={s.scope} terms={terms} />
+							</span>
+							<span className="min-w-0 flex-1 break-all text-neutral-300">
+								<Highlight text={s.title} terms={terms} />
+							</span>
 						</li>
 					))}
 				</ul>
@@ -185,16 +205,41 @@ function OverviewRowView({
 	);
 }
 
+function Highlight({ text, terms }: { text: string; terms: readonly string[] }) {
+	return (
+		<>
+			{highlightParts(text, terms).map((part, i) =>
+				part.match ? (
+					// biome-ignore lint/suspicious/noArrayIndexKey: parts are positional and static per text
+					<mark key={i} className="rounded-sm bg-[color-mix(in_oklab,var(--accent)_30%,transparent)] px-px text-inherit">
+						{part.text}
+					</mark>
+				) : (
+					part.text
+				),
+			)}
+		</>
+	);
+}
+
 export function ModelReplaceOverview({
 	scan,
 	loading,
 	error,
+	scope,
+	query,
+	onScopeChange,
+	onQueryChange,
 	onRescan,
 	onReplace,
 }: {
 	scan: ModelUsageScan | null;
 	loading: boolean;
 	error: string | null;
+	scope: ReplaceScope;
+	query: string;
+	onScopeChange: (scope: ReplaceScope) => void;
+	onQueryChange: (query: string) => void;
 	onRescan: () => void;
 	onReplace: (row: OverviewRow) => void;
 }) {
@@ -209,13 +254,19 @@ export function ModelReplaceOverview({
 	// Only a loaded catalogue says anything about a model: while loading or after an
 	// error no row is grouped or flagged as missing.
 	const kindsReady = kindEntries !== null && kindError === null;
-	const rows = useMemo(() => buildOverview(scan, kindsReady ? kindBySelector : null), [scan, kindsReady, kindBySelector]);
+	const scopeOptions_ = useMemo(() => scopeOptions(scan), [scan]);
+	const rows = useMemo(
+		() => buildOverview(scan, kindsReady ? kindBySelector : null, scope),
+		[scan, kindsReady, kindBySelector, scope],
+	);
+	const terms = useMemo(() => searchTerms(query), [query]);
+	const visibleRows = useMemo(() => filterOverviewRows(rows, query), [rows, query]);
 	const sections = useMemo(
 		() =>
-			KIND_GROUP_ORDER.map((group) => ({ group, rows: rows.filter((r) => r.group === group) })).filter(
+			KIND_GROUP_ORDER.map((group) => ({ group, rows: visibleRows.filter((r) => r.group === group) })).filter(
 				(s) => s.rows.length > 0,
 			),
-		[rows],
+		[visibleRows],
 	);
 
 	const rescan = () => {
@@ -239,6 +290,46 @@ export function ModelReplaceOverview({
 					<RefreshCw className={`h-3 w-3 ${loading || kindLoading ? "animate-spin" : ""}`} />
 					重新扫描
 				</button>
+			</div>
+
+			<div className="flex flex-wrap items-center gap-2 px-4 pb-3">
+				<label className="relative min-w-48 flex-1">
+					<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-500" />
+					<input
+						type="text"
+						value={query}
+						onChange={(e) => onQueryChange(e.target.value)}
+						placeholder="搜索模型名、供应商或位置"
+						aria-label="搜索模型引用"
+						className="w-full rounded-lg hairline bg-[var(--bg-active-fill)] py-1.5 pl-8 pr-8 text-xs text-[var(--text)] placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)]"
+					/>
+					{query !== "" && (
+						<button
+							type="button"
+							onClick={() => onQueryChange("")}
+							aria-label="清除搜索"
+							title="清除搜索"
+							className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-500 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
+						>
+							<X className="h-3 w-3" />
+						</button>
+					)}
+				</label>
+				<span className="shrink-0 text-[11px] text-neutral-500">范围</span>
+				<NativeSelect
+					aria-label="替换范围"
+					value={scope}
+					onChange={(e) => onScopeChange(e.target.value as ReplaceScope)}
+					containerClassName="w-72"
+					className="text-[11px]"
+					title={scopeOptions_.find((o) => o.value === scope)?.title}
+				>
+					{scopeOptions_.map((o) => (
+						<option key={o.value} value={o.value} title={o.title}>
+							{o.label}
+						</option>
+					))}
+				</NativeSelect>
 			</div>
 
 			{error !== null && (
@@ -275,13 +366,21 @@ export function ModelReplaceOverview({
 
 			{scan !== null && rows.length === 0 && (
 				<div className="px-3 py-6 text-xs text-neutral-500">
-					没有扫描到任何模型引用。先在「模型角色」里给角色指定模型，或在定时任务里选择模型。
+					{scope === "all"
+						? "没有扫描到任何模型引用。先在「模型角色」里给角色指定模型，或在定时任务里选择模型。"
+						: "这个范围内没有模型引用。把范围改成「全部」可以看到所有位置。"}
 				</div>
 			)}
 
-			{rows.length > 0 && (
+			{rows.length > 0 && visibleRows.length === 0 && (
+				<div className="px-3 py-6 text-xs text-neutral-500">
+					没有匹配「{query.trim()}」的模型引用。试试模型名、供应商或位置（如角色、项目名）的一部分。
+				</div>
+			)}
+
+			{visibleRows.length > 0 && (
 				<div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 pb-3">
-					{(kindsReady ? sections : [{ group: null, rows }]).map((section) => (
+					{(kindsReady ? sections : [{ group: null, rows: visibleRows }]).map((section) => (
 						<section
 							key={section.group ?? "all"}
 							className="overflow-hidden rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)]/40"
@@ -306,7 +405,13 @@ export function ModelReplaceOverview({
 								<span />
 							</div>
 							{section.rows.map((row) => (
-								<OverviewRowView key={row.selector} row={row} showGroupFlag={kindsReady} onReplace={onReplace} />
+								<OverviewRowView
+									key={row.selector}
+									row={row}
+									terms={terms}
+									showGroupFlag={kindsReady}
+									onReplace={onReplace}
+								/>
 							))}
 						</section>
 					))}

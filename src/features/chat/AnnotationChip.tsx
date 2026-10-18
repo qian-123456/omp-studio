@@ -8,6 +8,7 @@ import { FloatingLayer } from "../../components/FloatingLayer";
 import { isComposing } from "../../lib/hooks";
 import { type Annotation, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
+import { claimEscape } from "../../lib/escapeClaim";
 
 /** Grace period so the pointer can cross the (zero-gap) seam between chip and popover. */
 const HOVER_CLOSE_DELAY_MS = 120;
@@ -21,6 +22,7 @@ const SOURCE_LABEL: Record<Annotation["source"], string> = {
 
 /** Entry header: quotes from messages are labelled as such; others show their location. */
 function entryLabel(a: Annotation): string {
+	if (a.label) return a.label;
 	if (a.source === "message") return SOURCE_LABEL.message;
 	const where = [a.file, a.lines].filter(Boolean).join(" ");
 	return where || SOURCE_LABEL[a.source];
@@ -49,9 +51,9 @@ function AnnotationEntry({
 	anchorSessionId: string;
 	onEdit: (id: string | null) => void;
 	onRemove: () => void;
-	/** Moves this annotation to the other annotation list (main ↔ side chat). */
+	/** Moves this annotation to the other annotation list (main ⇄ side chat). */
 	onMove?: (id: string) => void;
-	/** Tooltip/aria for the move button, e.g. "移动到辅助对话". */
+	/** Tooltip/aria for the move button. */
 	moveLabel?: string;
 }) {
 	const updateAnnotation = useComposer((s) => s.updateAnnotation);
@@ -80,7 +82,9 @@ function AnnotationEntry({
 				<div className="text-[11px] text-[var(--text-40,var(--text-dim))]">
 					<span className="tabular-nums">{index}.</span> {entryLabel(a)}
 				</div>
-				<div className="mt-0.5 line-clamp-4 whitespace-pre-wrap break-words leading-relaxed text-[var(--text-60,var(--text-muted))]">
+				<div
+					className={`mt-0.5 whitespace-pre-wrap break-words leading-relaxed text-[var(--text-60,var(--text-muted))] ${a.label ? "max-h-64 overflow-y-auto" : "line-clamp-4"}`}
+				>
 					{a.text}
 				</div>
 				{editing ? (
@@ -97,7 +101,7 @@ function AnnotationEntry({
 								e.stopPropagation();
 								finish(true);
 							} else if (e.key === "Escape") {
-								e.preventDefault();
+								claimEscape(e);
 								e.stopPropagation();
 								finish(false);
 							}
@@ -135,7 +139,7 @@ function AnnotationEntry({
 						title={moveLabel}
 						onClick={() => {
 							onMove(a.id);
-							// Moving deletes the entry from this list; reset state like onRemove.
+							// Moving removes the entry from this list; reset state like onRemove.
 							onRemove();
 						}}
 						className={iconBtn}
@@ -173,9 +177,9 @@ export function AnnotationChip({
 	annotations: Annotation[];
 	/** Session whose message stream the "locate" action scrolls; defaults to `sessionId`. */
 	anchorSessionId?: string;
-	/** Moves an annotation to the other list (main ↔ side chat); hides the button when absent. */
+	/** Moves an annotation to the other list (main ⇄ side chat); hides the button when absent. */
 	onMove?: (id: string) => void;
-	/** Tooltip/aria for the move button, e.g. "移动到辅助对话". */
+	/** Tooltip/aria for the move button, e.g. "移到辅助对话". */
 	moveLabel?: string;
 }) {
 	const removeAnnotation = useComposer((s) => s.removeAnnotation);

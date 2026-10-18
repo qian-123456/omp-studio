@@ -17,6 +17,7 @@ import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { NativeSelect } from "../../components/NativeSelect";
+import { claimEscape } from "../../lib/escapeClaim";
 
 type Tab = "preview" | "split" | "edit";
 
@@ -409,7 +410,7 @@ export function DocView({ path }: { path: string }) {
 									if (annTarget) annotate();
 								}
 								if (e.key === "Escape") {
-									e.preventDefault();
+									claimEscape(e);
 									if (!comment.trim()) {
 										setSel(null);
 										window.getSelection()?.removeAllRanges();

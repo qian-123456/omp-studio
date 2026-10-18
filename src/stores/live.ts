@@ -6,6 +6,7 @@
  * and a transcript cache shared with the heatmap.
  */
 
+import { normalizeThinkContent } from "../lib/thinkTags";
 import { type RetryNotice, retryNoticeFromFrame } from "./retryNotice";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
@@ -56,6 +57,8 @@ export interface CommandOutputEntry {
 	text: string;
 	ts: number;
 	kind: "omp" | "app";
+	/** App-local command run state: a running row becomes its result in place. */
+	status?: "running" | "done" | "error";
 }
 
 // Re-exported for existing consumers (TopCapsule).
@@ -95,11 +98,51 @@ export interface LiveRequest {
 	toolCallIds: string[];
 	/** The message carried non-empty assistant text (the answer row). */
 	hasText: boolean;
+	/** The message's content in arrival order, so a live turn can keep the
+	 * finished thinking / prose / tool rows where they happened. */
+	parts: LiveRequestPart[];
 	stat: RequestStat;
 }
 
-/** Optimistic user bubble; `steer` marks an in-turn steer echo. */
-export type UserEcho = TranscriptItem & { steer?: boolean };
+/** One ordered content part of a completed request. */
+export type LiveRequestPart =
+	| { kind: "thinking"; text: string; durationMs?: number }
+	| { kind: "text"; text: string }
+	| { kind: "tool"; id: string };
+
+/**
+ * Optimistic user bubble. `steer` marks an in-turn steer echo; `held` marks a
+ * message sent while the session could not start a model request for it
+ * (turn streaming, compaction/handoff running) — it counts as queued until
+ * omp delivers it (`delivered`, from the user `message_start/end` frame).
+ */
+export type UserEcho = TranscriptItem & {
+	steer?: boolean;
+	held?: boolean;
+	delivered?: boolean;
+};
+
+/** Compaction / handoff progress shown as a one-row divider in the thread. */
+export type FlowNoticeKind = "compaction" | "handoff";
+export interface FlowNotice {
+	id: number;
+	kind: FlowNoticeKind;
+	status: "running" | "done" | "error";
+	startedAt: number;
+	endedAt?: number;
+	/** Id of the last transcript item when it started: the divider sits after it. */
+	anchorId: string | null;
+	tokensBefore?: number;
+	tokensAfter?: number;
+	/** Error / "nothing to compact" explanation. */
+	detail?: string;
+}
+
+/** omp's own queued user messages (`queue_update` / `get_state.queuedMessages`). */
+export interface OmpQueue {
+	steering: string[];
+	followUp: string[];
+}
 
 export interface SessionLive {
 	/** A turn is in flight. */
@@ -140,6 +183,10 @@ export interface SessionLive {
 	/** Completed model requests of the current turn, in arrival order
 	 * (reset together with `tools`). */
 	liveRequests: LiveRequest[];
+	/** Compaction / handoff dividers, oldest first. */
+	flowNotices: FlowNotice[];
+	/** Messages omp itself holds back (steer / follow-up); texts only. */
+	ompQueue: OmpQueue;
 }
 export const emptySessionLive = (): SessionLive => ({
 	streaming: false,
@@ -151,6 +198,8 @@ export const emptySessionLive = (): SessionLive => ({
 	commandOutputs: [],
 	pendingCommand: null,
 	liveRequests: [],
+	flowNotices: [],
+	ompQueue: { steering: [], followUp: [] },
 	tools: {},
 	items: [],
 	pendingUserEchoes: [],
@@ -328,26 +377,135 @@ function reconcileEchoes(
 	return rest;
 }
 
+const queueTexts = (v: unknown): string[] =>
+	Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+/** Parse omp's `{steering, followUp}` queue snapshot (queue_update / get_state). */
+export const ompQueueFrom = (v: unknown): OmpQueue => {
+	const o = asFrame(v);
+	return { steering: queueTexts(o.steering), followUp: queueTexts(o.followUp) };
+};
+
+/** A compaction or handoff is running: no model request starts until it ends. */
+export const isFlowBusy = (live: Pick<SessionLive, "flowNotices" | "state">): boolean =>
+	live.flowNotices.some((n) => n.status === "running") || live.state?.isCompacting === true;
+
+/**
+ * Ids of optimistic user bubbles that are queued, i.e. not yet part of any
+ * model request. An echo is queued while omp still lists its text in its
+ * steering/follow-up queue (`queue_update`), or when it was sent while the
+ * session was busy (`held`) and omp has not delivered it yet (`delivered` is
+ * set by the user `message_start/end` frame). Confirmed echoes leave
+ * `pendingUserEchoes` entirely (reconcileEchoes), so "sent" = not in the set.
+ */
+export function queuedEchoIds(
+	live: Pick<SessionLive, "pendingUserEchoes" | "ompQueue">,
+): Set<string> {
+	const remaining = [...live.ompQueue.steering, ...live.ompQueue.followUp];
+	const ids = new Set<string>();
+	for (const echo of live.pendingUserEchoes) {
+		const i = remaining.findIndex((t) => echoMatches(echo.text ?? "", t));
+		if (i >= 0) {
+			remaining.splice(i, 1);
+			ids.add(echo.id);
+		} else if (echo.held && !echo.delivered) {
+			ids.add(echo.id);
+		}
+	}
+	return ids;
+}
+
+/** Plain text of a `message_*` frame's user message. */
+function userMessageText(msg: Frame): string {
+	if (typeof msg.content === "string") return msg.content;
+	if (!Array.isArray(msg.content)) return "";
+	return msg.content
+		.map((p) => (asFrame(p).type === "text" ? str(asFrame(p).text) : ""))
+		.filter(Boolean)
+		.join("\n");
+}
+
+/** Mark the first undelivered held echo matching `text` as delivered. */
+function markEchoDelivered(echoes: UserEcho[], text: string): UserEcho[] {
+	const i = echoes.findIndex((e) => e.held && !e.delivered && echoMatches(e.text ?? "", text));
+	if (i < 0) return echoes;
+	return echoes.map((e, j) => (j === i ? { ...e, delivered: true } : e));
+}
+
+/** Add a running compaction/handoff divider anchored after the last transcript item. */
+export function beginFlowNotice(
+	live: SessionLive,
+	kind: FlowNoticeKind,
+	id: number,
+	now: number,
+): SessionLive {
+	const notice: FlowNotice = {
+		id,
+		kind,
+		status: "running",
+		startedAt: now,
+		anchorId: live.items[live.items.length - 1]?.id ?? null,
+	};
+	return { ...live, flowNotices: [...live.flowNotices, notice].slice(-20) };
+}
+
+/** Settle a divider in place; a missing id is ignored. */
+export function finishFlowNotice(
+	live: SessionLive,
+	id: number,
+	patch: Pick<FlowNotice, "status"> &
+		Partial<Pick<FlowNotice, "tokensBefore" | "tokensAfter" | "detail">>,
+	now: number,
+): SessionLive {
+	if (!live.flowNotices.some((n) => n.id === id)) return live;
+	return {
+		...live,
+		flowNotices: live.flowNotices.map((n) =>
+			n.id === id ? { ...n, ...patch, endedAt: now } : n,
+		),
+	};
+}
+
 /** One finished model request from an assistant `message_end` message. */
 function liveRequestFromMessage(
 	msg: AgentMessage,
 	fallbackTs: number,
 	existing: LiveRequest[],
+	thinkingMs?: number,
 ): LiveRequest {
-	const content = Array.isArray(msg.content) ? msg.content : [];
+	const content = normalizeThinkContent(
+		Array.isArray(msg.content) ? msg.content : [],
+	);
 	const toolCallIds: string[] = [];
+	const parts: LiveRequestPart[] = [];
 	let hasText = false;
+	let thinkingTimed = false;
 	for (const part of content) {
 		const o = asFrame(part);
 		if (o.type === "tool_use" || o.type === "toolCall") {
 			const id = str(o.id);
-			if (id) toolCallIds.push(id);
+			if (id) {
+				toolCallIds.push(id);
+				parts.push({ kind: "tool", id });
+			}
+		} else if (o.type === "thinking" || o.type === "thought") {
+			const text = str(o.thinking ?? o.text);
+			if (!text) continue;
+			// The store tracks one thinking span per request: it belongs to
+			// the first thinking part.
+			parts.push({
+				kind: "thinking",
+				text,
+				durationMs: thinkingTimed ? undefined : thinkingMs,
+			});
+			thinkingTimed = true;
 		} else if (
 			o.type === "text" &&
 			typeof o.text === "string" &&
 			o.text.length > 0
 		) {
 			hasText = true;
+			if (o.text.trim()) parts.push({ kind: "text", text: o.text });
 		}
 	}
 	// Prefer the provider's response id; fall back to the message id and
@@ -360,6 +518,7 @@ function liveRequestFromMessage(
 		id,
 		toolCallIds,
 		hasText,
+		parts,
 		stat: requestStatFromMessage(
 			msg as unknown as Record<string, unknown>,
 			fallbackTs,
@@ -402,7 +561,10 @@ function reduce(
 						: Date.now();
 			let thinkingStartedAt = live.thinkingStartedAt ?? null;
 			let thinkingEndedAt = live.thinkingEndedAt ?? null;
-			const content = Array.isArray(msg.content) ? msg.content : [];
+			const content = normalizeThinkContent(
+				Array.isArray(msg.content) ? msg.content : [],
+				{ streaming: true },
+			);
 			const hasThinking = content.some((p) => {
 				const o = asFrame(p);
 				return o.type === "thinking" || o.type === "thought";
@@ -435,6 +597,17 @@ function reduce(
 			// (duration / ttft / usage / completedAt).
 			const ended = asFrame(frame.message) as AgentMessage;
 			const isAssistant = !ended.role || ended.role === "assistant";
+			if (ended.role === "user") {
+				return live.pendingUserEchoes.length
+					? {
+							...live,
+							pendingUserEchoes: markEchoDelivered(
+								live.pendingUserEchoes,
+								userMessageText(ended as Frame),
+							),
+						}
+					: live;
+			}
 			// Skip ends for messages we never tracked (e.g. user echoes).
 			if (!live.streamingMessage && !isAssistant) return live;
 			const thinkingEndedAt =
@@ -456,7 +629,17 @@ function reduce(
 			// Record the finished model request even when we never saw its
 			// streaming snapshot (no message_update for this message).
 			const liveRequests = isAssistant
-				? [...live.liveRequests, liveRequestFromMessage(ended, ts, live.liveRequests)]
+				? [
+						...live.liveRequests,
+						liveRequestFromMessage(
+							ended,
+							ts,
+							live.liveRequests,
+							live.thinkingStartedAt && thinkingEndedAt
+								? thinkingEndedAt - live.thinkingStartedAt
+								: undefined,
+						),
+					]
 				: live.liveRequests;
 			return {
 				...live,
@@ -543,6 +726,46 @@ function reduce(
 		case "agent_end": {
 			if (frame.isTerminal === false) return live;
 			return { ...live, streaming: false, streamingMessage: null, tools: {}, liveRequests: [] };
+		}
+		case "auto_compaction_start": {
+			if (live.flowNotices.some((n) => n.status === "running")) return live;
+			const kind = str(frame.action) === "handoff" ? "handoff" : "compaction";
+			return beginFlowNotice(live, kind, nextOutputId++, Date.now());
+		}
+		case "auto_compaction_end": {
+			const running = [...live.flowNotices].reverse().find((n) => n.status === "running");
+			if (!running) return live;
+			const now = Date.now();
+			if (frame.skipped === true) {
+				return { ...live, flowNotices: live.flowNotices.filter((n) => n.id !== running.id) };
+			}
+			const error = str(frame.errorMessage);
+			if (frame.aborted === true || error) {
+				return finishFlowNotice(
+					live,
+					running.id,
+					{ status: "error", detail: error || "已取消" },
+					now,
+				);
+			}
+			const before = asFrame(frame.result).tokensBefore;
+			return finishFlowNotice(
+				live,
+				running.id,
+				{ status: "done", ...(typeof before === "number" ? { tokensBefore: before } : {}) },
+				now,
+			);
+		}
+		case "queue_update":
+			return { ...live, ompQueue: ompQueueFrom(frame) };
+		case "message_start": {
+			// A user message entering the conversation = a held echo got delivered.
+			const msg = asFrame(frame.message);
+			if (msg.role !== "user" || !live.pendingUserEchoes.length) return live;
+			return {
+				...live,
+				pendingUserEchoes: markEchoDelivered(live.pendingUserEchoes, userMessageText(msg)),
+			};
 		}
 		case "extension_ui_request": {
 			const method = str(frame.method);
@@ -783,6 +1006,10 @@ function reduce(
 						...live,
 						state: data,
 						streaming: data.isStreaming === true,
+						ompQueue:
+							data.queuedMessages !== undefined
+								? ompQueueFrom(data.queuedMessages)
+								: live.ompQueue,
 					};
 				case "get_available_commands":
 					return {
@@ -881,6 +1108,26 @@ export interface LiveState {
 	addCommandOutput(sessionId: string, command: string, text: string): void;
 	/** Dismiss one ephemeral command output block. */
 	dismissCommandOutput(sessionId: string, id: number): void;
+	/** Add a running status row for a local slash command; returns its id. */
+	beginCommandRun(sessionId: string, command: string, text: string): number;
+	/** Turn a running row into its final result (done / error) in place. */
+	finishCommandRun(
+		sessionId: string,
+		id: number,
+		status: "done" | "error",
+		text: string,
+	): void;
+	/** Add a running compaction/handoff divider to the thread; returns its id. */
+	beginFlowNotice(sessionId: string, kind: FlowNoticeKind): number;
+	/** Settle a divider (done / error) in place. */
+	finishFlowNotice(
+		sessionId: string,
+		id: number,
+		patch: Pick<FlowNotice, "status"> &
+			Partial<Pick<FlowNotice, "tokensBefore" | "tokensAfter" | "detail">>,
+	): void;
+	/** Remove a divider (cancelled before anything happened). */
+	dismissFlowNotice(sessionId: string, id: number): void;
 }
 
 export const useLive = create<LiveState>((set) => ({
@@ -1007,6 +1254,9 @@ export const useLive = create<LiveState>((set) => ({
 			// Only a steer into an in-flight turn is in-turn; anything else is a
 			// next-turn bubble.
 			if (steer && live.streaming) echo.steer = true;
+			// Sent while a turn streams or a compaction/handoff runs: queued
+			// until omp actually delivers it.
+			if (live.streaming || isFlowBusy(live)) echo.held = true;
 			return {
 				sessions: {
 					...s.sessions,
@@ -1076,6 +1326,87 @@ export const useLive = create<LiveState>((set) => ({
 								kind: "app",
 						} satisfies CommandOutputEntry,
 						].slice(-50),
+					},
+				},
+			};
+		}),
+	beginCommandRun: (sessionId, command, text) => {
+		const id = nextOutputId++;
+		set((s) => {
+			const live = s.sessions[sessionId] ?? emptySessionLive();
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						commandOutputs: [
+							...live.commandOutputs,
+							{
+								id,
+								command,
+								text,
+								ts: Date.now(),
+								kind: "app",
+								status: "running",
+							} satisfies CommandOutputEntry,
+						].slice(-50),
+					},
+				},
+			};
+		});
+		return id;
+	},
+	finishCommandRun: (sessionId, id, status, text) =>
+		set((s) => {
+			const live = s.sessions[sessionId];
+			if (!live) return s;
+			const exists = live.commandOutputs.some((o) => o.id === id);
+			const outputs = exists
+				? live.commandOutputs.map((o) =>
+						o.id === id ? { ...o, status, text, ts: Date.now() } : o,
+					)
+				: [
+						...live.commandOutputs,
+						{ id, text, ts: Date.now(), kind: "app", status } satisfies CommandOutputEntry,
+					].slice(-50);
+			return {
+				sessions: { ...s.sessions, [sessionId]: { ...live, commandOutputs: outputs } },
+			};
+		}),
+	beginFlowNotice: (sessionId, kind) => {
+		const id = nextOutputId++;
+		set((s) => {
+			const live = s.sessions[sessionId] ?? emptySessionLive();
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: beginFlowNotice(live, kind, id, Date.now()),
+				},
+			};
+		});
+		return id;
+	},
+	finishFlowNotice: (sessionId, id, patch) =>
+		set((s) => {
+			const live = s.sessions[sessionId];
+			if (!live) return s;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: finishFlowNotice(live, id, patch, Date.now()),
+				},
+			};
+		}),
+	dismissFlowNotice: (sessionId, id) =>
+		set((s) => {
+			const live = s.sessions[sessionId];
+			if (!live) return s;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						flowNotices: live.flowNotices.filter((n) => n.id !== id),
 					},
 				},
 			};

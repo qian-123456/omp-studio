@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { SlashCommand } from "../../../stores/live";
-import { buildSlashSections, flattenSections } from "./menu";
+import {
+	buildSlashSections,
+	buildSubcommandItems,
+	findCommandItemExact,
+	findSubcommandExact,
+	flattenSections,
+	subcommandsFor,
+} from "./menu";
 
 const dynamic = (
 	name: string,
@@ -138,5 +145,74 @@ describe("slash menu — buildSlashSections", () => {
 			buildSlashSections("visualize", [], false, { visualizeEnabled: false }),
 		);
 		expect(aliased.find((i) => i.name === "skill:visualize")).toBeUndefined();
+	});
+});
+
+describe("slash menu — subcommands", () => {
+	const mcp = findCommandItemExact("mcp", []);
+
+	it("findCommandItemExact hits mcp and carries subcommands", () => {
+		expect(mcp?.name).toBe("mcp");
+		expect(mcp?.argHint).toBe("<子命令>");
+		expect(mcp?.subcommands?.length).toBe(17);
+	});
+
+	it("findCommandItemExact rejects no-arg, unknown and case-mismatched tokens", () => {
+		expect(findCommandItemExact("status", [])).toBeNull();
+		expect(findCommandItemExact("nope", [])).toBeNull();
+		expect(findCommandItemExact("MCP", [])).toBeNull();
+	});
+
+	it("findCommandItemExact resolves dynamic names/aliases and defaults the hint", () => {
+		const cmds = [
+			dynamic("deploy", "custom", { aliases: ["dp"], subcommands: [{ name: "prod" }] }),
+			dynamic("plain", "custom"),
+			dynamic("mcp", "builtin", { hint: "x" }),
+		];
+		expect(findCommandItemExact("dp", cmds)?.name).toBe("deploy");
+		expect(findCommandItemExact("deploy", cmds)?.argHint).toBe("<子命令>");
+		expect(findCommandItemExact("plain", cmds)).toBeNull();
+		// registry wins over a dynamic duplicate
+		expect(findCommandItemExact("mcp", cmds)?.registry).toBe(true);
+	});
+
+	it("subcommandsFor prefers the registry list over dynamic", () => {
+		const cmds = [
+			dynamic("mcp", "builtin", { subcommands: [{ name: "zzz" }] }),
+			dynamic("deploy", "custom", { subcommands: [{ name: "prod" }] }),
+		];
+		expect(subcommandsFor("mcp", cmds).some((s) => s.name === "enable")).toBe(true);
+		expect(subcommandsFor("mcp", cmds).some((s) => s.name === "zzz")).toBe(false);
+		expect(subcommandsFor("deploy", cmds)).toEqual([{ name: "prod" }]);
+		expect(subcommandsFor("status", cmds)).toEqual([]);
+		expect(subcommandsFor("unknown", cmds)).toEqual([]);
+	});
+
+	it("buildSubcommandItems filters prefix first, then substring; empty = all", () => {
+		if (!mcp) throw new Error("mcp item missing");
+		expect(buildSubcommandItems(mcp, "")).toHaveLength(17);
+		const names = buildSubcommandItems(mcp, "re").map((i) => i.name);
+		expect(names).toEqual(["remove", "reauth", "reconnect", "reload", "resources"]);
+		// prefix matches (smithery-*) come before substring matches (list, ...)
+		const s = buildSubcommandItems(mcp, "s").map((i) => i.name);
+		expect(s.slice(0, 3)).toEqual(["smithery-search", "smithery-login", "smithery-logout"]);
+		expect(s.indexOf("list")).toBeGreaterThan(s.indexOf("smithery-logout"));
+		expect(buildSubcommandItems(mcp, "ENA").map((i) => i.name)).toEqual(["enable"]);
+		expect(buildSubcommandItems(mcp, "zzz")).toEqual([]);
+		const first = buildSubcommandItems(mcp, "test")[0];
+		expect(first).toMatchObject({
+			name: "test",
+			subOf: "mcp",
+			title: "",
+			group: "子命令",
+			argHint: "<name>",
+			registry: true,
+		});
+	});
+
+	it("findSubcommandExact matches exact names only", () => {
+		if (!mcp) throw new Error("mcp item missing");
+		expect(findSubcommandExact(mcp, "enable")?.name).toBe("enable");
+		expect(findSubcommandExact(mcp, "enab")).toBeNull();
 	});
 });

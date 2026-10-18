@@ -80,6 +80,8 @@ describe("SideChat actions", () => {
 					streamingMessage: null,
 					commands: [],
 					liveRequests: [],
+					flowNotices: [],
+					ompQueue: { steering: [], followUp: [] },
 					tools: {},
 					items: [
 						{

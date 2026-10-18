@@ -14,7 +14,7 @@ export function computeSidechatBadge(
 	if (!selectedSessionId) return 0;
 	let count = 0;
 	for (const id in sessions) {
-		if (sessions[id]?.parentId === selectedSessionId) {
+		if (sessions[id]?.parentId === selectedSessionId && sessions[id]?.kind !== "fork") {
 			count++;
 		}
 	}

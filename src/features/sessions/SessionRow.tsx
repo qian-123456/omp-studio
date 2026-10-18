@@ -11,23 +11,26 @@ import {
 	GitBranch,
 	GitFork,
 	Loader2,
+	MessageSquare,
 	MoreHorizontal,
 	Pencil,
 	Pin,
 	PinOff,
 	Play,
+	RotateCw,
 	Stethoscope,
 	Tag,
 	Trash2,
 } from "lucide-react";
 import React, { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { SessionMeta, Workspace } from "../../lib/contracts";
-import { copyText, errMsg } from "../../lib/dialogs";
+import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { absoluteTime, relativeTime } from "../../lib/format";
 import { isSessionBusy } from "../../lib/createSession";
+import { sideChatTitle } from "../sidechat/sideChatTitle";
 import { sessionDisplayName } from "../../lib/sessionName";
 import { isComposing } from "../../lib/hooks";
-import { acceptSession, updateSessionMeta } from "../../lib/ipc";
+import { acceptSession, rpcRestart, updateSessionMeta } from "../../lib/ipc";
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
@@ -51,6 +54,8 @@ import {
 	requestTakeover,
 	useSessionActions,
 } from "./sessionActions";
+import { restartNeedsConfirm, restartState } from "./sessionRestart";
+import { claimEscape } from "../../lib/escapeClaim";
 
 export interface SessionRowProps {
 	session: SessionMeta;
@@ -166,6 +171,10 @@ function SessionRowComponent({
 				s.sessions[session.parentId]?.label ||
 				session.parentId.slice(0, 6)
 			: undefined,
+	);
+
+	const sideChatName = useSessions((s) =>
+		session.kind === "side" && !session.title?.trim() ? sideChatTitle(session.id, s.sessions) : null,
 	);
 
 	// Rows inside the 已清理的工作树 bucket are dimmed by that bucket's own
@@ -442,6 +451,34 @@ function SessionRowComponent({
 		}
 	};
 
+	const restart = restartState(session);
+	const handleRestart = async () => {
+		if (busy || restart.kind === "disabled") return;
+		closeMenu(true);
+		if (restart.kind === "live" && restartNeedsConfirm(session)) {
+			const ok = await confirmDialog(
+				"该会话正在运行或等待回复，重启会中断当前回合（历史会保留）。确定重启？",
+				{ title: "重启会话", okLabel: "重启", danger: true },
+			);
+			if (!ok) return;
+		}
+		setBusy(true);
+		try {
+			if (restart.kind === "live") {
+				await rpcRestart(session.id);
+				toast.success(`已重启会话「${sessionDisplayName(session)}」`);
+			} else {
+				await ensureLive(session.id);
+				toast.success(`已启动会话「${sessionDisplayName(session)}」，未发送任何消息`);
+			}
+		} catch (err) {
+			if (isResumeCancelled(err)) return;
+			toast.error(`重启会话失败: ${errMsg(err)}`);
+		} finally {
+			setBusy(false);
+		}
+	};
+
 	const handleCopy = async (
 		text: string | null | undefined,
 		label: string,
@@ -542,13 +579,30 @@ function SessionRowComponent({
 
 			{/* Title column: status mark sits directly after title text (U3 / R13) */}
 			<div className="flex min-w-0 flex-1 items-center gap-1.5">
-				{session.parentId && (
+				{session.kind === "side" ? (
 					<span
 						className="shrink-0 text-[var(--text-dim)]"
+						title={`辅助对话（来自：${parentTitle || "已不在列表中的会话"}）`}
+					>
+						<MessageSquare size={11} />
+					</span>
+				) : session.kind === "fork" ? (
+					<span
+						className="inline-flex shrink-0 items-center gap-0.5 rounded bg-indigo-500/15 px-1 text-[10px] leading-4 text-indigo-400"
 						title={`分叉自: ${parentTitle || "已不在列表中的会话"}`}
 					>
-						<GitFork size={11} />
+						<GitFork size={9} />
+						分叉
 					</span>
+				) : (
+					session.parentId && (
+						<span
+							className="shrink-0 text-[var(--text-dim)]"
+							title={`分叉自: ${parentTitle || "已不在列表中的会话"}`}
+						>
+							<GitFork size={11} />
+						</span>
+					)
 				)}
 				{isRenaming ? (
 					<input
@@ -572,7 +626,7 @@ function SessionRowComponent({
 									restoreSidebarFocus(null);
 								});
 							} else if (e.key === "Escape") {
-								e.preventDefault();
+								claimEscape(e);
 								e.stopPropagation();
 								setIsRenaming(false);
 								setRenameDraft(sessionDisplayName(session));
@@ -583,7 +637,7 @@ function SessionRowComponent({
 					/>
 				) : (
 					<HoverScrollText
-						text={sessionDisplayName(session)}
+						text={sideChatName ?? sessionDisplayName(session)}
 						title=""
 						className={clsx(
 							"min-w-0 flex-initial max-w-full cursor-pointer transition-colors",
@@ -594,7 +648,7 @@ function SessionRowComponent({
 						)}
 					/>
 				)}
-				{!isRenaming && !session.title?.trim() && (
+				{!isRenaming && !session.title?.trim() && session.kind !== "side" && (
 					<span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] leading-4 text-amber-400">
 						草稿
 					</span>
@@ -714,7 +768,7 @@ function SessionRowComponent({
 						onKeyDown={(e) => {
 							e.stopPropagation();
 							if (e.key === "Escape") {
-								e.preventDefault();
+								claimEscape(e);
 								closeMenu(true);
 								return;
 							}
@@ -1009,6 +1063,34 @@ function SessionRowComponent({
 								>
 									<FolderOpen size={13} />
 									在访达中打开
+								</button>
+
+								<button
+									role="menuitem"
+									tabIndex={-1}
+									type="button"
+									disabled={busy || restart.kind === "disabled"}
+									title={
+										restart.kind === "disabled"
+											? restart.reason
+											: restart.kind === "wake"
+												? "启动该会话的 omp 进程，不发送任何消息"
+												: "停止该会话的 omp 进程并在同一会话上重新启动，历史保留"
+									}
+									onClick={() => {
+										void handleRestart();
+									}}
+									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+								>
+									<RotateCw size={13} className={busy ? "animate-spin" : undefined} />
+									<span className="flex min-w-0 flex-col">
+										<span>重启会话</span>
+										{restart.kind === "disabled" && (
+											<span className="text-[10px] text-[var(--text-muted)]">
+												{restart.reason}
+											</span>
+										)}
+									</span>
 								</button>
 
 								<div className="my-1 border-t border-[var(--border-divider)]" />

@@ -15,6 +15,7 @@ import { HoverScrollText } from "../../../components/HoverScrollText";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
 import { ompModelsContextWindowOverrides, ompModelsSetContextWindows } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
+import { useModelCatalog } from "../../../stores/modelCatalog";
 import { formatTokens } from "../../providers/modelEntry";
 import { useProviders } from "../../providers/store";
 import { AutoCompactionCard } from "../AutoCompactionCard";
@@ -82,6 +83,8 @@ async function writeEdits(edits: Edit[]): Promise<void> {
 			cat.map((e) => ({ providerId: e.row.providerId, modelId: e.row.modelId, contextWindow: e.to })),
 		);
 	}
+	// The composer's context popover reads windows from the shared catalog: re-read models.yml now.
+	await useModelCatalog.getState().refresh();
 }
 
 export function ContextWindowSection() {
@@ -745,7 +748,7 @@ export function ContextWindowSection() {
 			)}
 
 			{undo && (
-				<div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl hairline bg-[var(--bg-panel)] px-4 py-2 text-xs text-neutral-200 shadow-apple-card">
+				<div className="fixed bottom-6 left-1/2 z-(--z-toast) flex -translate-x-1/2 items-center gap-3 rounded-xl hairline bg-[var(--bg-panel)] px-4 py-2 text-xs text-neutral-200 shadow-apple-card">
 					<span>
 						已更新 {undo.edits.length} 个模型的窗口（{undo.label}）
 					</span>

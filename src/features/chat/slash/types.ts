@@ -19,7 +19,8 @@ export type SlashGroup =
 	| "技能"
 	| "自定义命令"
 	| "扩展"
-	| "更多 OMP 命令";
+	| "更多 OMP 命令"
+	| "子命令";
 
 /** Commands the user typed as `/name args`. Executors may throw `SlashAbort`
  * to keep the composer text (usage hints) — any other error is toasted and
@@ -40,6 +41,10 @@ export interface SlashContext {
 	sendPromptText(text: string): Promise<void>;
 	/** Push an app-local result block into the thread. */
 	pushOutput(command: string, text: string): void;
+	/** Run async work in the background as one transcript status row
+	 * (running → result text / error). Returns immediately so the composer
+	 * clears on Enter; validation/usage hints must happen before calling. */
+	track(command: string, runningText: string, work: () => Promise<string>): void;
 	/** Insert text into the composer draft (append at cursor end). */
 	insertText(text: string): void;
 	/** Open the composer model picker. */
@@ -51,6 +56,14 @@ export interface SlashContext {
 	openSettingsTarget(target: SettingsTarget): void;
 	/** Open Settings without a specific target. */
 	openSettings(): void;
+}
+
+/** A subcommand of a slash command (`/mcp enable <name>`). */
+export interface SlashSubcommand {
+	name: string;
+	description?: string;
+	/** Argument usage after the subcommand, e.g. "<name> [--scope project|user]". */
+	usage?: string;
 }
 
 export interface SlashCommandDef {
@@ -65,6 +78,8 @@ export interface SlashCommandDef {
 	/** Placeholder for the argument, e.g. "<名称>". Its presence means the
 	 * command takes args: selecting it fills `/name ` instead of running. */
 	argHint?: string;
+	/** Static subcommands; picking one merges it into the command chip. */
+	subcommands?: SlashSubcommand[];
 	/** Codex semantics: hidden unless the composer is empty apart from the
 	 * slash token (or the command is being typed alone). */
 	requiresEmptyComposer?: boolean;

@@ -79,7 +79,7 @@ export function DoctorView({
 	};
 
 	return (
-		<div className="space-y-3">
+		<div className="min-w-0 space-y-3 break-words [overflow-wrap:anywhere]">
 			{/* Lens selector */}
 			<div className={CARD}>
 				<div className="mb-2 text-[11.5px] font-medium text-neutral-200">选择会诊方向</div>
@@ -172,7 +172,7 @@ export function DoctorView({
 								</span>
 							)}
 						</div>
-						<div className="text-[11.5px] leading-relaxed text-neutral-200">{result.conclusion}</div>
+						<div className="text-[11.5px] leading-relaxed text-neutral-200 break-words">{result.conclusion}</div>
 						{result.systemicTags.length > 0 && (
 							<div className="mt-2 flex flex-wrap gap-1">
 								{result.systemicTags.map((t) => (
@@ -299,7 +299,7 @@ function PrescriptionCard({ sessionId, prescription }: { sessionId: string; pres
 				value={text}
 				onChange={(e) => setText(e.target.value)}
 				rows={4}
-				className="w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-2 font-mono text-[10.5px] text-neutral-200 outline-none focus:border-[var(--accent)]"
+				className="w-full min-w-0 resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-2 font-mono text-[10.5px] text-neutral-200 outline-none focus:border-[var(--accent)]"
 			/>
 			<div className="mt-1.5 flex justify-end gap-1.5">
 				<button

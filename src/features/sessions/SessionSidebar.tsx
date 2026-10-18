@@ -113,11 +113,14 @@ import {
 	requestRowMenu,
 } from "./sessionActions";
 import { SessionDialogs } from "./SessionDialogs";
+import { LoadFailed } from "../../components/LoadFailed";
+import { deriveLoadState } from "../../lib/loadState";
 import { SessionRow } from "./SessionRow";
 import { SIDEBAR_SEARCH_OPEN_EVENT } from "./sidebarShortcuts";
 import { useSidebarStore } from "./sidebarStore";
 import { SIDEBAR_LIST_ATTR, getVisibleSessionIds } from "./visibleRows";
 import { groupsForMode, splitSessionsByGroup, useSessionGroups } from "./sessionGroups";
+import { claimEscape } from "../../lib/escapeClaim";
 
 const RECENT_LIMIT = 3;
 const RECENT_STEP = 5;
@@ -252,7 +255,7 @@ function MenuContainer({
 			e.stopPropagation();
 			items[items.length - 1]?.focus();
 		} else if (e.key === "Escape") {
-			e.preventDefault();
+			claimEscape(e);
 			e.stopPropagation();
 			onClose();
 		}
@@ -277,6 +280,8 @@ export function SessionSidebar() {
 	const workspaces = useSessions((s) => s.workspaces);
 	const hasLoaded = useSessions((s) => s.hasLoaded);
 	const loadSessions = useSessions((s) => s.load);
+	const storeLoadError = useSessions((s) => s.loadError);
+	const loadState = deriveLoadState(hasLoaded, storeLoadError);
 
 	const selectSession = useUi((s) => s.selectSession);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
@@ -1303,7 +1308,7 @@ export function SessionSidebar() {
 									const visibleIds = getVisibleSessionIds();
 									if (visibleIds[0]) selectSession(visibleIds[0]);
 								} else if (e.key === "Escape") {
-									e.preventDefault();
+									claimEscape(e);
 									if (searchQuery) setSearchQuery("");
 									else setSearchOpen(false);
 									scrollRef.current?.focus();
@@ -1427,7 +1432,7 @@ export function SessionSidebar() {
 				{modeMenuOpen && (
 					<div
 						ref={modeMenuRef}
-						className="absolute left-2 top-1 z-[60] max-h-[70vh] w-[200px] overflow-y-auto rounded-xl border border-[var(--border-divider)] vibrancy-popover p-1.5 text-xs text-neutral-300 shadow-apple-modal backdrop-blur-2xl"
+						className="absolute left-2 top-1 z-(--z-popover) max-h-[70vh] w-[200px] overflow-y-auto rounded-xl border border-[var(--border-divider)] vibrancy-popover p-1.5 text-xs text-neutral-300 shadow-apple-modal backdrop-blur-2xl"
 					>
 					<MenuContainer
 						ariaLabel="切换模式"
@@ -1589,9 +1594,13 @@ export function SessionSidebar() {
 				}}
 				className="group/list flex-1 overflow-y-auto divide-y divide-neutral-800/40 pb-8 focus:outline-none"
 			>
+				{loadState === "error" && (
+					<LoadFailed what="会话列表" error={storeLoadError} onRetry={() => void loadSessions().catch(() => {})} />
+				)}
 				{/* Cold-start skeleton rows */}
-				{!hasLoaded && (
-					<div className="p-2 space-y-3 animate-pulse">
+				{loadState === "loading" && (
+					<div className="p-2 space-y-3 animate-pulse" role="status">
+						<div className="px-1 text-[11px] text-neutral-500">正在加载中</div>
 						<div className="flex items-center gap-2 mb-2 px-1">
 							<div className="h-3.5 bg-neutral-800/80 rounded w-20" />
 							<div className="h-3.5 bg-neutral-800/40 rounded w-5 ml-auto" />
@@ -1718,7 +1727,7 @@ export function SessionSidebar() {
 																		e.preventDefault();
 																		void handleRenameGroup(g);
 																	} else if (e.key === "Escape") {
-																		e.preventDefault();
+																		claimEscape(e);
 																		// Swallow the blur that follows unmount so
 																		// Escape cancels instead of committing.
 																		groupEditInFlight.current = true;
@@ -1836,7 +1845,7 @@ export function SessionSidebar() {
 															e.preventDefault();
 															void handleCreateGroup();
 														} else if (e.key === "Escape") {
-															e.preventDefault();
+															claimEscape(e);
 															// Swallow the blur that follows unmount so
 															// Escape cancels instead of creating.
 															groupEditInFlight.current = true;

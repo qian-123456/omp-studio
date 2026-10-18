@@ -11,6 +11,7 @@ import {
 	FileText,
 	FolderOpen,
 	Globe,
+	Hourglass,
 	ListTodo,
 	type LucideIcon,
 	MessageCircleQuestion,
@@ -56,6 +57,7 @@ type ToolFamily =
 	| "todo"
 	| "web"
 	| "task"
+	| "wait"
 	| "other";
 
 const TOOL_FAMILY: Record<string, ToolFamily> = {
@@ -91,6 +93,9 @@ const TOOL_FAMILY: Record<string, ToolFamily> = {
 	web_search: "web",
 	task: "task",
 	agent: "task",
+	wait: "wait",
+	wait_threads: "wait",
+	await: "wait",
 };
 
 /** Verb-first labels per status, Codex-style ("正在读取" / "已读取" / "运行失败"). */
@@ -105,6 +110,7 @@ const VERBS: Record<ToolFamily, { doing: string; did: string; base: string }> = 
 	todo: { doing: "正在更新待办", did: "已更新待办", base: "更新待办" },
 	web: { doing: "正在获取网页", did: "已获取网页", base: "获取网页" },
 	task: { doing: "正在运行子代理", did: "已运行子代理", base: "子代理" },
+	wait: { doing: "正在等待", did: "已等待", base: "等待" },
 	other: { doing: "正在调用工具", did: "已调用工具", base: "调用工具" },
 };
 
@@ -124,6 +130,7 @@ const FAMILY_ICON: Record<ToolFamily, LucideIcon> = {
 	todo: ListTodo,
 	web: Globe,
 	task: Bot,
+	wait: Hourglass,
 	other: Wrench,
 };
 
@@ -160,6 +167,7 @@ function toolDetail(
 		case "web":
 			return pick(args, ["url", "uri", "query"]) ?? "";
 		case "todo":
+		case "wait":
 			return "";
 		case "task": {
 			const desc = pick(args, ["task", "description", "name"]);
@@ -339,6 +347,12 @@ function ToolCardBody({
 		status,
 	);
 	const stat = diffStat(diff);
+	// An empty `{}` payload is noise, and a wait call has nothing to show but
+	// its description.
+	const hasArgsBody =
+		args !== undefined &&
+		toolFamily(name) !== "wait" &&
+		!(typeof args === "object" && args !== null && Object.keys(args).length === 0);
 
 	const hasBody = Boolean(
 		command ||
@@ -346,7 +360,7 @@ function ToolCardBody({
 			diff ||
 			output ||
 			(name === "write" && typeof asObj(args).content === "string") ||
-			(args !== undefined && !command && !file),
+			hasArgsBody,
 	);
 
 	return (
@@ -441,7 +455,7 @@ function ToolCardBody({
 							/>
 						)}
 
-					{args !== undefined && !command && !file && name !== "write" && (
+					{hasArgsBody && !command && !file && name !== "write" && (
 						<QuietMonoBlock
 							body={JSON.stringify(args, null, 2)}
 							copyLabel="复制参数"

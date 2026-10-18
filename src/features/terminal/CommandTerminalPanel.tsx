@@ -29,7 +29,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { copyText, errMsg } from "../../lib/dialogs";
 import {
 	appPaths,
-	createSideChat,
 	termClose,
 	termOpen,
 	termResize,
@@ -38,10 +37,10 @@ import {
 } from "../../lib/ipc";
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
-import { useComposer } from "../../stores/composer";
+import { sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { sideChatDefaultModelArg } from "../sidechat/modelDefault";
+import { openSideChatTab } from "../sidechat/sideChatActions";
 import { useDrawerStore, type DrawerTab } from "./drawerStore";
 import { addTerminalTab } from "./terminalTabs";
 import {
@@ -407,7 +406,7 @@ export function CommandTerminalPanel() {
 	}, []);
 	captureSelectionRef.current = captureSelection;
 
-	const handleSendToSideChat = useCallback(async () => {
+	const handleSendToSideChat = useCallback(() => {
 		setContextMenu(null);
 		const id = useDrawerStore.getState().activeTabId;
 		const entry = id ? drawerRegistry.get(id) : undefined;
@@ -418,14 +417,9 @@ export function CommandTerminalPanel() {
 			toast.info("未选中任何终端文本");
 			return;
 		}
-		try {
-			await createSideChat(sessionId, "终端输出", sel, sideChatDefaultModelArg() ?? undefined);
-			void useSessions.getState().load().catch(() => {});
-			useUi.getState().setRightTab("sidechat");
-			toast.success("已发送到侧聊");
-		} catch (e) {
-			toast.error(`发送到侧聊失败: ${errMsg(e)}`);
-		}
+		// Stage the output as quoted context in a blank side chat; nothing is sent.
+		useComposer.getState().addAnnotation(sideChatAnnKey(sessionId), { source: "terminal", text: sel });
+		void openSideChatTab(sessionId);
 	}, []);
 
 	return (

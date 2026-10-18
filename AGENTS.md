@@ -37,6 +37,16 @@ cargo fmt                    # format (CI expects fmt-clean)
 `sccache` is installed; export `RUSTC_WRAPPER=sccache` in your own shell to share
 the compile cache across worktrees (do not hardcode it in repo config).
 
+**Live dev app check (recurring mistake).** When a `pnpm tauri dev` instance is
+running from this worktree, every frontend change must end with a look at that
+window (bring it to front, screenshot it). A blank/white window is a failure,
+never "the window is off-screen": the webview did a full reload while files were
+half-edited (e.g. one file importing an export another edit had not added yet)
+and stays white even after the code is fixed. `touch index.html` makes Vite
+full-reload it; then confirm the app renders. Do not let several agents edit
+files that import each other while the live app is watching — land the shared
+module first.
+
 ## Style
 
 - UI text: Simplified Chinese. Code, comments, commit messages: English.
@@ -67,3 +77,8 @@ the compile cache across worktrees (do not hardcode it in repo config).
   in `src/lib/models.ts`) — never a hard-coded superset the model may not support.
 - **Plain labels.** Buttons and badges say what happens in everyday words
   (「换成别的模型」), not jargon like 「覆盖目标」.
+- **Never use a raw z-index for floating UI.** Popovers, menus, modals, drawers,
+  hover cards, lightboxes and toasts use `FloatingLayer` / `Z_LAYER`
+  (`src/components/FloatingLayer.tsx`), or `z-(--z-modal)`-style classes in
+  `className`; only `z-0/10/20/30/40` for purely local stacking. Enforced by
+  `src/lib/zLayerGuard.test.ts`. See `docs/LAYERS.md`.

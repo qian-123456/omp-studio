@@ -10,6 +10,7 @@ import {
 	FolderPlus,
 	GitBranch,
 	Globe,
+	Loader2,
 	PanelRight,
 	Plus,
 	Search,
@@ -214,7 +215,7 @@ export function CreateBranchDialog({
 
 	return createPortal(
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
 			onClick={onClose}
 		>
 			<div
@@ -543,7 +544,12 @@ export function ContextPillBar({
 						/>
 					)}
 				</>
-			) : null}
+			) : (
+				<span className="flex items-center gap-1.5 px-2 py-1 text-[12.5px] text-[var(--text-40,var(--text-dim))]">
+					<Loader2 size={12} className="animate-spin" />
+					读取分支
+				</span>
+			)}
 		</div>
 	);
 }

@@ -4,7 +4,7 @@
 
 import clsx from "clsx";
 import { type JSX, useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, Loader2, X } from "lucide-react";
 import { useLive, type CommandOutputEntry } from "../../../stores/live";
 import { Markdown } from "../markdown";
 
@@ -59,7 +59,11 @@ function OutputBlock({
 						/{entry.command}
 					</span>
 				)}
+				{entry.status === "running" && (
+					<Loader2 size={11} className="animate-spin" aria-label="进行中" />
+				)}
 				<span>{time}</span>
+				{entry.status !== "running" && (
 				<button
 					type="button"
 					onClick={onDismiss}
@@ -69,11 +73,13 @@ function OutputBlock({
 				>
 					<X size={11} />
 				</button>
+				)}
 			</div>
 			<div
 				ref={bodyRef}
 				className={clsx(
-					"overflow-hidden text-[12px] leading-5 text-[var(--text-60,var(--text-muted))]",
+					"select-text overflow-hidden text-[12px] leading-5 text-[var(--text-60,var(--text-muted))]",
+					entry.status === "error" && "!text-[var(--danger,#dc2626)]",
 					!expanded && "max-h-[132px]",
 				)}
 			>

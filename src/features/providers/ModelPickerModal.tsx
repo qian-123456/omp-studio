@@ -72,7 +72,7 @@ export function ModelPickerModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
+			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) onClose();
 			}}

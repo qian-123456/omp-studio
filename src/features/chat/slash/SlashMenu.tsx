@@ -15,6 +15,8 @@ export interface SlashMenuProps {
 	activeIndex: number;
 	/** Triggered when the query/box is empty but nothing matched. */
 	empty: boolean;
+	/** Footer hint override (subcommand menu says 选择 rather than 执行). */
+	footer?: string;
 	onSelect(item: SlashMenuItem): void;
 	onDismiss(): void;
 }
@@ -24,6 +26,7 @@ export function SlashMenu({
 	sections,
 	activeIndex,
 	empty,
+	footer = "↑↓ 选择 · ↵ 执行 · Esc 关闭",
 	onSelect,
 	onDismiss,
 }: SlashMenuProps) {
@@ -63,7 +66,7 @@ export function SlashMenu({
 								const active = flatIndex === activeIndex;
 								return (
 									<SlashRow
-										key={item.name}
+										key={item.subOf ? `${item.subOf} ${item.name}` : item.name}
 										item={item}
 										active={active}
 										onSelect={onSelect}
@@ -76,7 +79,7 @@ export function SlashMenu({
 				)}
 			</div>
 			<div className="border-t border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-30,var(--text-dim))]">
-				↑↓ 选择 · ↵ 执行 · Esc 关闭
+				{footer}
 			</div>
 		</FloatingLayer>
 	);
@@ -117,7 +120,7 @@ function SlashRow({
 			<div className="min-w-0 flex-1">
 				<div className="flex items-baseline gap-1.5 text-[13px] leading-5">
 					<span className="shrink-0 font-mono text-[var(--text)]">
-						/{item.name}
+						/{item.subOf ? `${item.subOf} ${item.name}` : item.name}
 					</span>
 					{item.title && (
 						<span className="truncate text-[var(--text-60,var(--text-muted))]">

@@ -1,14 +1,16 @@
-/** [B] Thinking-content preview under 「思考了 N 秒」: a dim 2-line peek when
- * collapsed (the newest words while reasoning still streams, like subtitles),
- * and a left-ruled, internally scrollable full-text box when expanded.
+/** [B] Thinking-content body under the 「思考 · N秒」 header. Finished thinking
+ * is just the one-line header; this component renders only while reasoning
+ * streams (a rolling peek of the newest two lines, like subtitles) or when
+ * the row is expanded (left-ruled, internally scrollable full text).
  * Collapsing never hides content irrecoverably — expanding always reaches the
  * whole thinking text. */
 
 import { useEffect, useRef } from "react";
 import { Markdown } from "./markdown";
+import { useRevealText } from "./useRevealText";
 
-/** Roughly two 12px lines of CJK/Latin reasoning text. */
-const LIVE_TAIL_CHARS = 160;
+/** Enough characters to fill two wrapped 12px lines of the peek box. */
+const LIVE_TAIL_CHARS = 240;
 
 /**
  * Collapsed preview text while reasoning is still streaming: the newest two
@@ -43,6 +45,9 @@ export function ThinkingPreview({
 	onToggle: () => void;
 }) {
 	const boxRef = useRef<HTMLDivElement>(null);
+	// Collapsed peek paces its characters like the body; the expanded box
+	// paces inside <Markdown>.
+	const revealedThinking = useRevealText(thinking, running === true && !open);
 
 	// Follow the end while streaming, like subtitles following a voice.
 	useEffect(() => {
@@ -55,12 +60,13 @@ export function ThinkingPreview({
 		return (
 			<div
 				ref={boxRef}
-				className="mt-0.5 max-h-30 overflow-y-auto overscroll-contain border-s border-[var(--line)] ps-2.5 text-[13px] leading-5 text-[var(--text-40)]"
+				className="mt-0.5 max-h-80 overflow-y-auto overscroll-contain border-s border-[var(--line)] ps-2.5 text-[13px] leading-5 text-[var(--text-40)]"
 			>
-				<Markdown text={thinking} />
+				<Markdown text={thinking} streaming={running} />
 			</div>
 		);
 	}
+	if (!running) return null;
 
 	return (
 		<button
@@ -68,11 +74,11 @@ export function ThinkingPreview({
 			onClick={onToggle}
 			aria-expanded={false}
 			title="查看完整思考内容"
-			className="mt-px block w-full cursor-pointer rounded text-left text-[12px] leading-5 text-[var(--text-40)] hover:text-[var(--text-60)]"
+			className="mt-px flex h-10 w-full cursor-pointer flex-col justify-end overflow-hidden rounded text-left text-[12px] leading-5 text-[var(--text-40)] hover:text-[var(--text-60)]"
 		>
-			{/* WebKit ignores -webkit-line-clamp on <button> itself; clamp an inner box. */}
-			<span className="line-clamp-2 whitespace-pre-wrap break-words">
-				{running ? livePreviewText(thinking) : thinking}
+			{/* Bottom-anchored fixed 2-line window: older lines scroll out the top. */}
+			<span className="whitespace-pre-wrap break-words">
+				{livePreviewText(revealedThinking)}
 			</span>
 		</button>
 	);

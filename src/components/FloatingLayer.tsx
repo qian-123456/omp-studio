@@ -6,14 +6,33 @@ import {
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { claimEscape } from "../lib/escapeClaim";
 
 /**
- * Global stacking scale. Every floating surface MUST use one of these tiers
- * (also exposed as CSS vars `--z-*` in index.css) instead of ad-hoc z-index.
+ * Page-local stacking inside one component (sticky headers, a badge above a
+ * sibling, splitter handles). Never use for anything that floats or overlays.
+ * Tailwind `z-0/10/20/30/40` are the only allowed raw classes and map 1:1 to
+ * these values. See docs/LAYERS.md.
+ */
+export const Z_LOCAL = {
+	base: 0,
+	raised: 10,
+	overlay: 20,
+	chrome: 30,
+	handle: 40,
+} as const;
+
+/**
+ * Global stacking scale, low -> high:
+ * pill < drawer < popover < menu < modal < hovercard < lightbox < toast.
+ * Every floating surface MUST use one of these tiers (also exposed as CSS vars
+ * `--z-*` in index.css, kept in sync by zLayerGuard.test.ts; use Tailwind
+ * `z-(--z-modal)` in className) instead of ad-hoc z-index. See docs/LAYERS.md.
  *
  * Floating surfaces are portaled to `document.body`, so they never get trapped
  * inside a `backdrop-filter` / `transform` ancestor (which turns `position:
@@ -21,16 +40,44 @@ import { createPortal } from "react-dom";
  * that sibling columns paint over).
  */
 export const Z_LAYER = {
-	drawer: 40,
-	modal: 50,
-	popover: 60,
-	menu: 65,
-	hovercard: 70,
+	/** Overlay scroll pills of ordinary page scrollers (scrollPills.ts); above every Z_LOCAL value. */
+	pill: 50,
+	drawer: 100,
+	popover: 200,
+	menu: 300,
+	/** Modal dialogs (confirmDialog, settings, pickers). Above popovers/menus, so a confirm spawned from a popover covers it. */
+	modal: 400,
+	hovercard: 500,
 	/** Full-screen image lightbox: must cover every popover/menu/hovercard that spawned it. */
-	lightbox: 80,
-	toast: 100,
+	lightbox: 600,
+	toast: 700,
 } as const;
 export type ZLayer = keyof typeof Z_LAYER;
+
+/** Lowest tier that counts as "floating" (scroll pill lifting, nesting). */
+export const Z_FLOATING_MIN = Z_LAYER.drawer;
+
+/**
+ * Nesting rule (pure): a floating layer opened from inside another floating
+ * surface sits at max(own tier, parent z + 1). Local page values never count.
+ */
+export function nestedZ(own: number, ancestorZ: readonly number[]): number {
+	let z = own;
+	for (const a of ancestorZ) {
+		if (Number.isFinite(a) && a >= Z_FLOATING_MIN && a + 1 > z) z = a + 1;
+	}
+	return z;
+}
+
+/** z-indexes of an element's ancestors (self excluded) that are floating surfaces. */
+function ancestorFloatingZ(el: Element): number[] {
+	const out: number[] = [];
+	for (let n = el.parentElement; n; n = n.parentElement) {
+		const z = Number.parseInt(getComputedStyle(n).zIndex, 10);
+		if (!Number.isNaN(z) && z >= Z_FLOATING_MIN) out.push(z);
+	}
+	return out;
+}
 
 export type Placement =
 	| "bottom-start"
@@ -194,7 +241,7 @@ export interface FloatingLayerProps {
 	anchor: Anchor | null;
 	placement?: Placement;
 	offset?: number;
-	layer?: ZLayer;
+	layer?: Exclude<ZLayer, "pill">;
 	/** Outside mousedown / Escape. Omit for non-dismissable surfaces (hover cards). */
 	onDismiss?: () => void;
 	/** Elements whose clicks must NOT dismiss (typically the trigger button). */
@@ -212,6 +259,16 @@ const LIGHTBOX_SELECTOR = '[data-layer="lightbox"]';
 
 /** Modal surfaces: FloatingLayer modal tier plus any ARIA modal dialog. */
 export const MODAL_SELECTOR = '[data-layer="modal"], [aria-modal="true"]';
+
+/** True when a modal surface mounted after `self` (so stacked above it, not `self` or nested with it) is open. */
+function modalAbove(self: HTMLElement | null): boolean {
+	if (!self) return false;
+	for (const m of document.querySelectorAll(MODAL_SELECTOR)) {
+		if (m === self || self.contains(m) || m.contains(self)) continue;
+		if (self.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING) return true;
+	}
+	return false;
+}
 
 /**
  * The single floating primitive: portal + fixed positioning + viewport
@@ -235,6 +292,11 @@ export function FloatingLayer({
 	const pos = useAnchoredPosition(anchor, ref, placement, offset);
 	const isHovercard = layer === "hovercard";
 	const [modalOpen, setModalOpen] = useState(false);
+	// Nested floating UI (a picker opened from a dialog, a menu from a popover) must stay above its parent.
+	const z = useMemo(
+		() => (anchor instanceof Element ? nestedZ(Z_LAYER[layer], ancestorFloatingZ(anchor)) : Z_LAYER[layer]),
+		[anchor, layer],
+	);
 
 	// Hover cards sit above popovers, but must never cover an open modal dialog:
 	// hide them while any modal surface is mounted.
@@ -253,6 +315,8 @@ export function FloatingLayer({
 			const t = e.target as Node;
 			// Clicks inside an open lightbox (portaled outside this layer) must not dismiss the layer that spawned it.
 			if (t instanceof Element && t.closest(LIGHTBOX_SELECTOR)) return;
+			// Interacting with a modal stacked above (e.g. a confirm spawned from this popover) must not dismiss it.
+			if (modalAbove(ref.current)) return;
 			if (ref.current?.contains(t)) return;
 			if (ignoreRefs?.some((r) => r.current?.contains(t))) return;
 			onDismiss();
@@ -261,7 +325,10 @@ export function FloatingLayer({
 			if (e.key === "Escape") {
 				// Escape closes the topmost lightbox first; it handles the key itself.
 				if (document.querySelector(LIGHTBOX_SELECTOR)) return;
+				// A modal stacked above this layer owns Escape (its own cancel handler must receive it).
+				if (modalAbove(ref.current)) return;
 				e.stopPropagation();
+				claimEscape(e);
 				onDismiss();
 			}
 		};
@@ -288,7 +355,7 @@ export function FloatingLayer({
 				// Position must never animate: a `duration-*` class would otherwise
 				// transition left/top from the -9999 pre-measure spot (flies in from the far left).
 				transitionProperty: "none",
-				zIndex: Z_LAYER[layer],
+				zIndex: z,
 				left: pos?.left ?? -9999,
 				top: pos?.top ?? -9999,
 				maxHeight: pos?.maxHeight,

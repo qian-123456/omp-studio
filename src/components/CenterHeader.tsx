@@ -29,8 +29,10 @@ import { useShareSelection } from "../features/chat/share/shareStore";
 import { sessionDisplayName } from "../lib/sessionName";
 import { useLive } from "../stores/live";
 import { useSessions } from "../stores/sessions";
+import { deriveLoadState } from "../lib/loadState";
 import { type CenterView, useUi } from "../stores/ui";
 import { usePendingSession } from "../features/sessions/pendingSession";
+import { backLabel, resolveBackTarget, shouldEscapeGoBack } from "../lib/centerBack";
 import type { PairingInfo, SessionStatus } from "../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../lib/dialogs";
 import { isComposing, useEscapeKey } from "../lib/hooks";
@@ -41,6 +43,7 @@ import {
 	updateSessionMeta,
 } from "../lib/ipc";
 import { toast } from "../lib/toast";
+import { claimEscape, isEscapeClaimed } from "../lib/escapeClaim";
 
 
 
@@ -105,7 +108,6 @@ export const CenterHeader = React.memo(function CenterHeader({
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const lastSessionId = useUi((s) => s.lastSessionId);
 	const selectSession = useUi((s) => s.selectSession);
-	const returnToSession = useUi((s) => s.returnToSession);
 	const setCenter = useUi((s) => s.setCenter);
 	const isTerminalOpen = useUi((s) => s.rightOpen && s.rightTab === "terminal");
 	const handleToggleTerminal = useCallback(() => {
@@ -163,6 +165,16 @@ export const CenterHeader = React.memo(function CenterHeader({
 	);
 	const isViewingSession =
 		effectiveCenterView === "session" && !!selectedSessionId && !!activeSession;
+	// Session selected (e.g. restored) but the session index has not arrived yet.
+	const sessionsLoadState = deriveLoadState(
+		useSessions((s) => s.hasLoaded),
+		useSessions((s) => s.loadError),
+	);
+	const sessionMetaPending =
+		effectiveCenterView === "session" &&
+		!!selectedSessionId &&
+		!activeSession &&
+		sessionsLoadState !== "ready";
 
 	// Narrow live subscription: only boolean flags, so streaming tokens NEVER re-render CenterHeader!
 	const sessionStreaming = useLive(
@@ -302,6 +314,52 @@ export const CenterHeader = React.memo(function CenterHeader({
 	};
 
 
+	const backTarget = resolveBackTarget({
+		view: effectiveCenterView,
+		selectedSessionId,
+		lastSessionId,
+		sessionExists: () => !!activeSession,
+		placeholderShowing,
+	});
+	const backText = backTarget
+		? backLabel(backTarget, activeSession ? sessionDisplayName(activeSession) : null)
+		: "";
+	const goBack = () => {
+		if (!backTarget) return;
+		if (backTarget.kind === "session") selectSession(backTarget.sessionId);
+		else setCenter("home");
+	};
+
+	// Esc leaves a full-page view, but only when no editor/dialog/popover owns it.
+	const goBackRef = useRef(goBack);
+	goBackRef.current = goBack;
+	const hasBackTarget = !!backTarget;
+	useEffect(() => {
+		if (!hasBackTarget || centerView === "settings") return;
+		const onKey = (e: KeyboardEvent) => {
+			const el = e.target as HTMLElement | null;
+			const editable =
+				!!el &&
+				(el.isContentEditable ||
+					["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) ||
+					!!el.closest?.(".cm-editor, .monaco-editor"));
+			if (
+				shouldEscapeGoBack({
+					key: e.key,
+					escapeClaimed: isEscapeClaimed(e),
+					composing: isComposing({ nativeEvent: e, key: e.key }),
+					targetEditable: editable,
+					overlayOpen: !!document.querySelector('[role="dialog"],[aria-modal="true"]'),
+					hasBackTarget: true,
+				})
+			) {
+				goBackRef.current();
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [hasBackTarget, centerView]);
+
 	return (
 		<>
 			<header
@@ -363,7 +421,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 											e.preventDefault();
 											void saveTitle();
 										} else if (e.key === "Escape") {
-											e.preventDefault();
+											claimEscape(e);
 											setEditingTitle(false);
 										}
 									}}
@@ -379,34 +437,34 @@ export const CenterHeader = React.memo(function CenterHeader({
 								</span>
 							)}
 						</div>
+					) : sessionMetaPending ? (
+						<div
+							role="status"
+							className={clsx(
+								"flex min-w-0 items-center gap-2 text-[13px]",
+								sessionsLoadState === "error" ? "text-red-400" : "animate-pulse text-neutral-500",
+							)}
+						>
+							<span className="h-2 w-2 shrink-0 rounded-full bg-neutral-700" />
+							{sessionsLoadState === "error" ? "会话信息加载失败" : "正在加载中"}
+						</div>
 					) : (
 						<div className="flex min-w-0 items-center gap-2">
-							{placeholderShowing ? null : activeSession ? (
-								<button
-									type="button"
-									onClick={returnToSession}
-									className="flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-0.5 text-xs text-indigo-300 hover:bg-indigo-500/20 hover:text-indigo-200 active:scale-95 transition-all"
-									title={`返回会话: ${sessionDisplayName(activeSession)}`}
-								>
-									<ArrowLeft size={13} />
-									<span className="max-w-[180px] truncate">
-										返回 {sessionDisplayName(activeSession)}
-									</span>
-								</button>
-							) : (
-								effectiveCenterView !== "home" && (
-									// No session to return to (e.g. right after a restart):
-									// still offer a way out of full-page views.
+							{backTarget && (
+								<>
 									<button
 										type="button"
-										onClick={() => setCenter("home")}
-										className="flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-0.5 text-xs text-indigo-300 hover:bg-indigo-500/20 hover:text-indigo-200 active:scale-95 transition-all"
-										title="返回首页"
+										onClick={goBack}
+										className="flex min-w-0 max-w-[240px] items-center gap-1.5 rounded-md py-0.5 pl-1 pr-2 text-left text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-100 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+										title={`返回${backTarget.kind === "session" ? "会话" : ""}：${backText}（Esc）`}
 									>
-										<ArrowLeft size={13} />
-										<span>返回首页</span>
+										<ArrowLeft size={14} strokeWidth={1.75} className="shrink-0" />
+										<span className="line-clamp-2 break-words text-xs leading-[14px]">
+											{backText}
+										</span>
 									</button>
-								)
+									<span className="shrink-0 text-neutral-600">/</span>
+								</>
 							)}
 							{CENTER_TITLE[effectiveCenterView] && (
 								<span className="text-[13px] font-medium text-neutral-300 shrink-0">
@@ -545,7 +603,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 			{qrPairing &&
 				createPortal(
 					<div
-						className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-xs p-4"
+						className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] backdrop-blur-xs p-4"
 						onMouseDown={(e) => {
 							if (e.target === e.currentTarget) setQrPairing(null);
 						}}

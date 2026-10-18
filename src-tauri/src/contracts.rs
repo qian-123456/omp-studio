@@ -119,6 +119,9 @@ pub struct SessionMeta {
     pub parent_id: Option<String>,
     /// 0 main, 1..=3.
     pub fork_depth: u8,
+    /// "side" (side chat) | "fork" (full fork copy) | None (ordinary session).
+    #[serde(default)]
+    pub kind: Option<String>,
     pub status: SessionStatus,
     /// New output not yet seen (cleared by viewing).
     pub unread: bool,
@@ -1176,6 +1179,10 @@ pub struct Model {
     /// Context window in tokens from `omp models --json`; `None` when unknown.
     #[serde(default)]
     pub context_window: Option<u64>,
+    /// `reasoning` from `omp models --json`: the model can think even when no
+    /// thinking levels are configured. `None` when the catalog does not say.
+    #[serde(default)]
+    pub reasoning: Option<bool>,
 }
 
 /// One `models.yml` `providers.<providerId>.modelOverrides.<modelId>.contextWindow`

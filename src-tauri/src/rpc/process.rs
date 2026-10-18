@@ -20,6 +20,9 @@ use crate::{paths, rpc};
 
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const CMD_TIMEOUT: Duration = Duration::from_secs(120);
+/// Compaction/handoff summarise the whole context with a model call and can
+/// legitimately run for many minutes.
+const LONG_CMD_TIMEOUT: Duration = Duration::from_secs(900);
 /// Grace period between stdin close and SIGKILL on stop.
 const STOP_GRACE: Duration = Duration::from_secs(5);
 
@@ -320,6 +323,38 @@ async fn augmented_path() -> String {
         .clone()
 }
 
+/// Prompt-cache key a session transcript already uses, read from its `session`
+/// header (`providerPromptCacheKey`). `fall_back_to_id` (forks) also accepts the
+/// header's own `id`, which omp uses as the key when none is recorded. The
+/// header sits within the first few lines (a `title` row may precede it).
+fn transcript_cache_key(file: &str, fall_back_to_id: bool) -> Option<String> {
+    use std::io::BufRead;
+    let reader = std::io::BufReader::new(std::fs::File::open(file).ok()?);
+    for line in reader.lines().take(4) {
+        let Ok(v) = serde_json::from_str::<Value>(&line.ok()?) else {
+            continue;
+        };
+        if v.get("type").and_then(Value::as_str) != Some("session") {
+            continue;
+        }
+        let field = |k: &str| {
+            v.get(k)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        };
+        return field("providerPromptCacheKey").or_else(|| {
+            if fall_back_to_id {
+                field("id")
+            } else {
+                None
+            }
+        });
+    }
+    None
+}
+
 fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process::Command, String> {
     let approval_mode = opts
         .approval_mode
@@ -351,6 +386,22 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     }
     if let Some(file) = &opts.fork_file {
         cmd.arg("--fork").arg(file);
+    }
+    // omp falls back to the NEW session's id as the provider prompt-cache key
+    // whenever any cache-shape flag (--model, --append-system-prompt, ...) is
+    // present, which sends a forked/resumed session to a cold cache. Pin the
+    // key the source transcript already used instead.
+    if let Some(key) = opts
+        .fork_file
+        .as_deref()
+        .and_then(|f| transcript_cache_key(f, true))
+        .or_else(|| {
+            opts.resume_file
+                .as_deref()
+                .and_then(|f| transcript_cache_key(f, false))
+        })
+    {
+        cmd.arg("--prompt-cache-key").arg(key);
     }
     // Visualize skill plugin: loaded for app sessions unless the user opted
     // out (§settings.visualize_enabled). Registers the `visualize` skill +
@@ -424,7 +475,11 @@ pub async fn send_command(
         .stdin_tx
         .send(command.to_string())
         .map_err(|_| "session stdin closed".to_string())?;
-    match tokio::time::timeout(CMD_TIMEOUT, rx).await {
+    let timeout = match command.get("type").and_then(Value::as_str) {
+        Some("compact" | "handoff") => LONG_CMD_TIMEOUT,
+        _ => CMD_TIMEOUT,
+    };
+    match tokio::time::timeout(timeout, rx).await {
         Ok(Ok(resp)) => {
             if resp.get("success").and_then(Value::as_bool) == Some(false) {
                 let err = resp
@@ -1060,5 +1115,62 @@ mod tests {
 
         std::env::remove_var("OMPWS_DATA_DIR");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn session_file(lines: &[&str]) -> (PathBuf, String) {
+        let dir = std::env::temp_dir().join(format!("ompws-ckey-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("s.jsonl");
+        std::fs::write(&file, format!("{}\n", lines.join("\n"))).unwrap();
+        (dir, file.to_string_lossy().to_string())
+    }
+
+    #[test]
+    fn transcript_cache_key_reads_header_after_title_row() {
+        let (dir, file) = session_file(&[
+            r#"{"type":"title","title":"t"}"#,
+            r#"{"type":"session","id":"child","providerPromptCacheKey":"parent-key"}"#,
+        ]);
+        assert_eq!(
+            transcript_cache_key(&file, true).as_deref(),
+            Some("parent-key")
+        );
+        assert_eq!(
+            transcript_cache_key(&file, false).as_deref(),
+            Some("parent-key")
+        );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn transcript_cache_key_falls_back_to_id_only_for_forks() {
+        let (dir, file) = session_file(&[r#"{"type":"session","id":"parent-id"}"#]);
+        assert_eq!(
+            transcript_cache_key(&file, true).as_deref(),
+            Some("parent-id")
+        );
+        assert_eq!(transcript_cache_key(&file, false), None);
+        assert_eq!(transcript_cache_key("/nonexistent/x.jsonl", true), None);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn fork_spawn_pins_parent_prompt_cache_key() {
+        let (dir, file) = session_file(&[r#"{"type":"session","id":"parent-id"}"#]);
+        let opts = StartOpts {
+            cwd: "/tmp".into(),
+            fork_file: Some(file),
+            model: Some("openai/gpt-5".into()),
+            ..Default::default()
+        };
+        let args: Vec<String> = build_command(&opts, &Settings::default())
+            .unwrap()
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        let pos = args.iter().position(|a| a == "--prompt-cache-key").unwrap();
+        assert_eq!(args[pos + 1], "parent-id");
+        std::fs::remove_dir_all(dir).ok();
     }
 }

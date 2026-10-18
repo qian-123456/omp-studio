@@ -33,6 +33,9 @@ pub struct MetaRow {
     pub mode: SpaceMode,
     /// SessionGroup inside the mode's 无项目 area (global sessions only).
     pub group_id: Option<String>,
+    /// "side" | "fork" | None; legacy side chats (fork_depth > 0 created by
+    /// the app, kind NULL) are projected as "side".
+    pub kind: Option<String>,
 }
 
 pub fn pending_to_str(p: PendingKind) -> &'static str {
@@ -75,7 +78,8 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
     let mut stmt = conn.prepare_cached(
         "SELECT session_id, custom_name, label, pinned, archived, parent_session_id, fork_depth,
                 workspace_id, unread, pending_kind, pending_since, accepted_at, suspended, seq,
-                cwd_override, last_seen_at, mode, group_id
+                cwd_override, last_seen_at, mode, group_id,
+                COALESCE(kind, CASE WHEN fork_depth > 0 AND created_by_app = 1 THEN 'side' END)
          FROM session_meta WHERE ?1 IS NULL OR session_id = ?1",
     )?;
     let rows = stmt.query_map(params![id], |r| {
@@ -100,6 +104,7 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
                 last_seen_at: r.get(15)?,
                 mode: SpaceMode::from_str_lossy(&r.get::<_, String>(16)?),
                 group_id: r.get(17)?,
+                kind: r.get(18)?,
             },
         ))
     })?;
@@ -534,7 +539,7 @@ pub mod tests {
                parent_session_id TEXT, fork_depth INTEGER NOT NULL DEFAULT 0,
                workspace_id TEXT, unread INTEGER NOT NULL DEFAULT 0, pending_kind TEXT, pending_since TEXT,
                accepted_at TEXT, last_seen_at TEXT, suspended INTEGER NOT NULL DEFAULT 0, created_by_app INTEGER NOT NULL DEFAULT 0,
-               seq INTEGER, cwd_override TEXT, mode TEXT NOT NULL DEFAULT 'code', group_id TEXT);
+               seq INTEGER, cwd_override TEXT, mode TEXT NOT NULL DEFAULT 'code', group_id TEXT, kind TEXT);
              CREATE TABLE session_groups(
                id TEXT PRIMARY KEY, mode TEXT NOT NULL, name TEXT NOT NULL,
                sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);

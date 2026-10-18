@@ -2,25 +2,42 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { sideChatAnnKey, useComposer } from "../../stores/composer";
+import { useComposer } from "../../stores/composer";
 import { SelectionToolbar } from "./SelectionToolbar";
 
 // sessions/ui stores pull in Tauri plumbing; the toolbar only reads these slots.
+const h = vi.hoisted(() => ({
+	sessions: {} as Record<string, { forkDepth: number; kind?: "side" | "fork" | null }>,
+	openChild: {} as Record<string, string>,
+	openNewSideChat: vi.fn(),
+	revealSideChat: vi.fn(),
+	setOpenChild: vi.fn(),
+}));
 vi.mock("../../stores/sessions", () => ({
-	useSessions: (
-		selector: (s: { sessions: Record<string, { forkDepth: number }> }) => unknown,
-	) => selector({ sessions: {} }),
+	useSessions: (selector: (s: { sessions: typeof h.sessions }) => unknown) =>
+		selector({ sessions: h.sessions }),
+}));
+vi.mock("../sidechat/viewStore", () => ({
+	useSideChatView: {
+		getState: () => ({ openChild: h.openChild, setOpenChild: h.setOpenChild }),
+	},
+	isBlankTab: (id: string) => id.startsWith("new:"),
+	openNewSideChat: h.openNewSideChat,
+	revealSideChat: h.revealSideChat,
 }));
 
 const setRightTab = vi.fn();
 const openModal = vi.fn();
 vi.mock("../../stores/ui", () => ({
-	useUi: (
-		selector: (s: {
-			setRightTab: typeof setRightTab;
-			openModal: typeof openModal;
-		}) => unknown,
-	) => selector({ setRightTab, openModal }),
+	useUi: Object.assign(
+		(
+			selector: (s: {
+				setRightTab: typeof setRightTab;
+				openModal: typeof openModal;
+			}) => unknown,
+		) => selector({ setRightTab, openModal }),
+		{ subscribe: () => () => {}, getState: () => ({ setRightTab, openModal }) },
+	),
 }));
 
 beforeAll(() => {
@@ -40,20 +57,22 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	localStorage.clear();
 	useComposer.setState({ annotations: {}, focusNonce: {}, annotationTarget: "main" });
+	h.sessions = {};
+	h.openChild = {};
 });
 
 afterEach(cleanup);
 
 const STREAM_TEXT = "hello world from transcript";
 
-function Host() {
+function Host({ sessionId = "sess-1", compact = false }: { sessionId?: string; compact?: boolean }) {
 	const ref = useRef<HTMLDivElement>(null);
 	return (
 		<div>
 			<div ref={ref} data-testid="stream">
 				<div id="msg-42">{STREAM_TEXT}</div>
 			</div>
-			<SelectionToolbar sessionId="sess-1" containerRef={ref} />
+			<SelectionToolbar sessionId={sessionId} containerRef={ref} compact={compact} />
 		</div>
 	);
 }
@@ -146,16 +165,63 @@ describe("SelectionToolbar comment box", () => {
 		expect(annsOf("sess-1")).toHaveLength(2);
 	});
 
-	it("stages into the side-chat key when that destination is selected", () => {
+	it("main selection: choosing 辅助对话 stages for the side chat and reveals a blank new tab", () => {
+		render(<Host />);
+		const ta = openCommentBox();
+		fireEvent.click(screen.getByRole("radio", { name: "辅助对话" }));
+		expect(useComposer.getState().annotationTarget).toBe("sidechat");
+		expect(localStorage.getItem("ompws:annotation-target")).toBe("sidechat");
+		fireEvent.change(ta, { target: { value: "侧聊批注" } });
+		fireEvent.click(screen.getByRole("button", { name: "确认批注" }));
+		expect(annsOf("sidechat:sess-1")).toHaveLength(1);
+		expect(annsOf("sidechat:sess-1")[0].comment).toBe("侧聊批注");
+		expect(annsOf("sess-1")).toBeUndefined();
+		expect(h.openNewSideChat).toHaveBeenCalledWith("sess-1");
+	});
+
+	it("main selection: reuses the open side-chat thread's composer", () => {
+		h.openChild = { "sess-1": "child-9" };
 		useComposer.getState().setAnnotationTarget("sidechat");
 		render(<Host />);
 		const ta = openCommentBox();
-		fireEvent.change(ta, { target: { value: "侧聊批注" } });
-		fireEvent.mouseDown(screen.getByTestId("stream"));
-		const key = sideChatAnnKey("sess-1");
-		expect(annsOf(key)).toHaveLength(1);
-		expect(annsOf(key)[0].comment).toBe("侧聊批注");
-		expect(annsOf("sess-1")).toBeUndefined();
+		fireEvent.change(ta, { target: { value: "x" } });
+		fireEvent.click(screen.getByRole("button", { name: "确认批注" }));
+		expect(annsOf("child-9")).toHaveLength(1);
+		expect(h.setOpenChild).toHaveBeenCalledWith("sess-1", "child-9");
+		expect(h.revealSideChat).toHaveBeenCalled();
+		expect(h.openNewSideChat).not.toHaveBeenCalled();
+	});
+
+	it("main selection defaults to the main composer", () => {
+		render(<Host />);
+		const ta = openCommentBox();
+		expect(screen.getByRole("radio", { name: "主对话" })).toBeTruthy();
+		fireEvent.change(ta, { target: { value: "主" } });
+		fireEvent.click(screen.getByRole("button", { name: "确认批注" }));
+		expect(annsOf("sess-1")).toHaveLength(1);
+		expect(h.openNewSideChat).not.toHaveBeenCalled();
+	});
+
+	it("selection inside the right-panel side chat shows no chooser and stages into its own session", () => {
+		h.sessions = { "sess-1": { forkDepth: 1, kind: "side" } };
+		useComposer.getState().setAnnotationTarget("sidechat");
+		render(<Host compact />);
+		const ta = openCommentBox();
+		expect(screen.queryByRole("radio")).toBeNull();
+		fireEvent.change(ta, { target: { value: "当前对话批注" } });
+		fireEvent.click(screen.getByRole("button", { name: "确认批注" }));
+		expect(annsOf("sess-1")).toHaveLength(1);
+		expect(annsOf("sess-1")[0].comment).toBe("当前对话批注");
+		expect(annsOf("sidechat:sess-1")).toBeUndefined();
+		expect(h.openNewSideChat).not.toHaveBeenCalled();
+		expect(h.revealSideChat).not.toHaveBeenCalled();
+	});
+
+	it("a side-chat session shown in the main area still offers the target choice", () => {
+		h.sessions = { "sess-1": { forkDepth: 1, kind: "side" } };
+		render(<Host />);
+		openCommentBox();
+		expect(screen.getAllByRole("radio").length).toBe(2);
 	});
 
 	it("Esc discards the typed comment instead of staging it", () => {

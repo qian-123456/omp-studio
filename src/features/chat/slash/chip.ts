@@ -22,6 +22,8 @@ export interface CommandChip {
 	argHint?: string;
 	/** Inline chips: index of the literal `/name` inside the draft text. */
 	offset?: number;
+	/** Subcommand merged into the chip (`/mcp enable`); legacy chips only. */
+	sub?: string;
 }
 
 const SKILL_PREFIX = "skill:";
@@ -154,7 +156,8 @@ export function serializeChip(
 		}
 	}
 	const args = argsText.trim();
-	return args ? `/${chip.name} ${args}` : `/${chip.name}`;
+	const head = chip.sub ? `/${chip.name} ${chip.sub}` : `/${chip.name}`;
+	return args ? `${head} ${args}` : head;
 }
 
 export function chipIcon(
@@ -166,7 +169,8 @@ export function chipIcon(
 
 export function chipLabel(chip: CommandChip): string {
 	if (isSkillChip(chip)) return chip.name.slice(SKILL_PREFIX.length);
-	return findSlashCommand(chip.name)?.title || chip.title || chip.name;
+	const base = findSlashCommand(chip.name)?.title || chip.title || chip.name;
+	return chip.sub ? `${base} ${chip.sub}` : base;
 }
 
 
@@ -191,10 +195,12 @@ function readAll(): ChipMap {
 			if (typeof name === "string" && /^[^\s/]+$/.test(name)) {
 				const argHint = (v as Record<string, unknown>).argHint;
 				const offset = (v as Record<string, unknown>).offset;
+				const sub = (v as Record<string, unknown>).sub;
 				out[sid] = {
 					name,
 					title: typeof title === "string" ? title : name,
 					...(typeof argHint === "string" ? { argHint } : {}),
+					...(typeof sub === "string" && /^[^\s/]+$/.test(sub) ? { sub } : {}),
 					...(typeof offset === "number" && Number.isInteger(offset) && offset >= 0
 						? { offset }
 						: {}),
@@ -218,6 +224,7 @@ export function saveChip(sessionId: string, chip: CommandChip | null): void {
 				name: chip.name,
 				title: chip.title,
 				...(chip.argHint ? { argHint: chip.argHint } : {}),
+				...(chip.sub ? { sub: chip.sub } : {}),
 				...(chip.offset !== undefined ? { offset: chip.offset } : {}),
 			};
 		else delete map[sessionId];
@@ -239,6 +246,13 @@ export function parseLeadingCommand(
 	if (!m) return null;
 	const name = m[1] as string;
 	const chip: CommandChip = { name, title: name };
-	if (!isSkillChip(chip) && !findSlashCommand(name)) return null;
-	return { chip, rest: text.slice(m[0].length).replace(/^[ \t]+/, "") };
+	const def = findSlashCommand(name);
+	if (!isSkillChip(chip) && !def) return null;
+	let rest = text.slice(m[0].length).replace(/^[ \t]+/, "");
+	const sm = /^([^\s/]+)(?=\s|$)/.exec(rest);
+	if (sm && def?.subcommands?.some((s) => s.name === sm[1])) {
+		chip.sub = sm[1];
+		rest = rest.slice(sm[0].length).replace(/^[ \t]+/, "");
+	}
+	return { chip, rest };
 }

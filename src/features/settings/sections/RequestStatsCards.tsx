@@ -3,15 +3,17 @@
  * 「对话显示」 (thinking preview). Both are local display preferences stored
  * in localStorage by `useDisplayPrefs` — no Rust settings round-trip.
  */
+import { Segmented } from "../../../components/Segmented";
 import { REQUEST_STAT_FIELDS } from "../../chat/requestStats";
 import {
 	REQUEST_STAT_FIELD_IDS,
 	DEFAULT_REQUEST_STAT_FIELDS,
 	useDisplayPrefs,
 	type RequestStatField,
+	type SideChatHandbackMode,
 } from "../../../stores/displayPrefs";
 import { REQUEST_STAT_FIELD_ROW_IDS } from "../fieldRegistry";
-import { SettingsCard, ToggleRow } from "../ui";
+import { SettingRow, SettingsCard, ToggleRow } from "../ui";
 
 /** 「↘ 输入」/「$ 费用」/「开始时间」 (time has no glyph). */
 function fieldLabel(field: RequestStatField): string {
@@ -65,15 +67,39 @@ export function RequestStatsCard() {
 export function ConversationDisplayCard() {
 	const thinkingPreview = useDisplayPrefs((s) => s.thinkingPreview);
 	const setThinkingPreview = useDisplayPrefs((s) => s.setThinkingPreview);
+	const sideChatHandback = useDisplayPrefs((s) => s.sideChatHandback);
+	const setSideChatHandback = useDisplayPrefs((s) => s.setSideChatHandback);
 
 	return (
 		<SettingsCard title="对话显示" footer="这些设置保存在本机、立即生效。">
 			<ToggleRow
 				fieldId="thinkingPreview"
-				label="显示思考内容预览"
-				description="在「思考了 N 秒」下面预览思考内容，点一下可以展开更多"
+				label="思考时显示最新两行"
+				description="模型思考时在「正在思考」下面滚动显示最新两行；思考结束后折叠成一行，点一下可展开全文"
 				checked={thinkingPreview}
 				onChange={setThinkingPreview}
+			/>
+			<SettingRow
+				fieldId="sideChatHandback"
+				label="回传给父会话的方式"
+				description={
+					sideChatHandback === "summary"
+						? "整理成结论：让辅助对话把讨论定下来的结论写成一段，确认后放进主对话输入框"
+						: "手动选择：在辅助对话里选中文字，点「发到主对话」放进主对话输入框"
+				}
+				hint="默认：整理成结论。两种方式都不会自动发送给主对话。"
+				control={
+					<Segmented<SideChatHandbackMode>
+						aria-label="回传给父会话的方式"
+						size="sm"
+						value={sideChatHandback}
+						onChange={setSideChatHandback}
+						options={[
+							{ value: "summary", label: "整理成结论" },
+							{ value: "select", label: "手动选择" },
+						]}
+					/>
+				}
 			/>
 		</SettingsCard>
 	);

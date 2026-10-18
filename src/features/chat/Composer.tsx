@@ -140,7 +140,9 @@ import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
-import { formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { formatWithAnnotations, useComposer } from "../../stores/composer";
+import { moveToMain, moveToSideChat } from "../sidechat/annotationRoute";
+import { MAX_SIDE_CHAT_DEPTH } from "../sidechat/depth";
 import { useUi } from "../../stores/ui";
 import { hasLiveUserActivity, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
@@ -169,9 +171,18 @@ import {
 	toModelKey,
 } from "../../lib/models";
 import { ModelMenuContent } from "../../components/ModelSelect";
-import { buildSlashSections, flattenSections, type SlashMenuItem } from "./slash/menu";
+import {
+	buildSlashSections,
+	buildSubcommandItems,
+	findCommandItemExact,
+	findSubcommandExact,
+	flattenSections,
+	type SlashMenuItem,
+} from "./slash/menu";
+import { detectFirstWordSpace, detectSpaceToken, splitFirstWord } from "./slash/spaceToken";
 import { SlashMenu } from "./slash/SlashMenu";
 import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executors";
+import { runCompaction, useCompaction } from "./slash/compaction";
 import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
 import {
@@ -196,6 +207,7 @@ import { runSessionBash } from "./sessionShell";
 import { textAnnotationsOf } from "./annotations";
 import { AnnotationChip } from "./AnnotationChip";
 import { GoalBar } from "./GoalBar";
+import { claimEscape } from "../../lib/escapeClaim";
 
 /** How long an interrupt waits for the aborted turn to stop before holding the message. */
 const INTERRUPT_WAIT_MS = 15_000;
@@ -224,6 +236,13 @@ function getSlashToken(fullText: string, cursor: number): SlashToken | null {
 	const query = match[2];
 	const start = beforeCursor.length - fullToken.length;
 	return { query, start, end: cursor };
+}
+
+/** Ghost/placeholder hint for a legacy chip. A merged subcommand shows only
+ * its own usage (none when it takes no arguments). */
+function chipHintText(chip: CommandChip): string {
+	if (chip.sub) return chip.argHint ?? "";
+	return chip.argHint ?? findSlashCommand(chip.name)?.argHint ?? "<参数>";
 }
 
 export function Composer({
@@ -362,7 +381,6 @@ export function Composer({
 	const addFile = useComposer((s) => s.addFile);
 	const clearImages = useComposer((s) => s.clearImages);
 	const clearFiles = useComposer((s) => s.clearFiles);
-	const moveAnnotation = useComposer((s) => s.moveAnnotation);
 	const textAnnotations = useMemo(() => textAnnotationsOf(annotations), [annotations]);
 	// Quote annotations alone are a sendable message (formatWithAnnotations
 	// handles empty text); only a fully empty composer turns ▶ into resume.
@@ -385,6 +403,16 @@ export function Composer({
 
 	// @ file-completion state
 	const sessionMeta = useSessions((s) => s.sessions[sessionId]);
+	// Annotation move ⇄: main composer → side chat; a side chat's own composer (embedded
+	// in the right panel) → its parent's main composer. Depth-capped parents cannot fork.
+	const annotationMove = useMemo(() => {
+		const parentId = sessionMeta?.parentId;
+		if (compact && parentId) {
+			return { label: "移到主对话", run: (id: string) => moveToMain(sessionId, parentId, id) };
+		}
+		if ((sessionMeta?.forkDepth ?? 0) >= MAX_SIDE_CHAT_DEPTH) return null;
+		return { label: "移到辅助对话", run: (id: string) => moveToSideChat(sessionId, id) };
+	}, [compact, sessionId, sessionMeta?.parentId, sessionMeta?.forkDepth]);
 	const [atFiles, setAtFiles] = useState<string[] | null>(null);
 	const atToken = useMemo(() => {
 		const beforeCursor = text.slice(0, cursorPos);
@@ -640,6 +668,29 @@ export function Composer({
 
 	useEffect(() => setMenuIndex(0), [slashToken?.query]);
 
+	// Subcommand menu: a legacy chip whose command takes subcommands lists them
+	// while the caret sits in the draft's first word.
+	const subParent = useMemo(
+		() => (legacyChip && chip && !chip.sub ? findCommandItemExact(chip.name, commands) : null),
+		[legacyChip, chip, commands],
+	);
+	const subQuery = useMemo(() => {
+		const before = text.slice(0, cursorPos);
+		return /^\S*$/.test(before) ? before : null;
+	}, [text, cursorPos]);
+	const subItems = useMemo(
+		() =>
+			subParent?.subcommands?.length && subQuery !== null && !menuDismissed
+				? buildSubcommandItems(subParent, subQuery)
+				: [],
+		[subParent, subQuery, menuDismissed],
+	);
+	const subSections = useMemo(
+		() => (subItems.length > 0 ? [{ label: "子命令" as const, items: subItems }] : []),
+		[subItems],
+	);
+	useEffect(() => setMenuIndex(0), [subQuery]);
+
 	const state = live?.state ?? {};
 	const stateThinkingLevel =
 		typeof state.thinkingLevel === "string" ? state.thinkingLevel : (snapshot?.thinkingLevel ?? undefined);
@@ -661,17 +712,22 @@ export function Composer({
 
 	// Context usage calculations for ContextRing
 	const contextRaw = live?.state?.contextUsage;
+	// Catalog window (models.yml, refreshed when Settings ▸ 上下文窗口 writes) wins over the
+	// window baked into the running omp process, so a settings change shows up immediately.
 	const contextWindow = currentModelOption?.contextWindow;
-	const contextUsageObj: Record<string, unknown> | null =
-		typeof contextRaw === "object" && contextRaw !== null
-			? (contextRaw as Record<string, unknown>)
-			: snapshot?.contextTokens != null && contextWindow
-				? {
-						tokens: snapshot.contextTokens,
-						contextWindow,
-						percent: (snapshot.contextTokens / contextWindow) * 100,
-					}
-				: null;
+	const liveUsage =
+		typeof contextRaw === "object" && contextRaw !== null ? (contextRaw as Record<string, unknown>) : null;
+	const contextUsageObj: Record<string, unknown> | null = liveUsage
+		? contextWindow && typeof liveUsage.tokens === "number"
+			? { ...liveUsage, contextWindow, percent: (liveUsage.tokens / contextWindow) * 100 }
+			: liveUsage
+		: snapshot?.contextTokens != null && contextWindow
+			? {
+					tokens: snapshot.contextTokens,
+					contextWindow,
+					percent: (snapshot.contextTokens / contextWindow) * 100,
+				}
+			: null;
 	const contextPct =
 		typeof contextUsageObj?.percent === "number"
 			? contextUsageObj.percent
@@ -698,16 +754,16 @@ export function Composer({
 			else toast.error(`切换思考等级失败: ${errMsg(err)}`);
 		}
 	};
+	const compacting = useCompaction((s) => s.active[sessionId] === true);
 	const compactContext = async () => {
-		toast.info("正在压缩上下文…");
-		try {
-			if (!live?.alive) await ensureLive(sessionId);
-			await rpcSend(sessionId, { type: "compact" });
-			await rpcSend(sessionId, { type: "get_state" });
-			toast.success("上下文压缩完成");
-		} catch (err) {
-			if (!isResumeCancelled(err)) toast.error(`压缩失败: ${errMsg(err)}`);
-		}
+		await runCompaction({
+			sessionId,
+			rpcSend: (command) => rpcSend(sessionId, command),
+			ensureAlive: async () => {
+				if (!live?.alive) await ensureLive(sessionId);
+			},
+			errorText: (err) => (isResumeCancelled(err) ? null : errMsg(err)),
+		});
 	};
 	const loadModels = async () => {
 		// Catalog (`omp models --json`) first; get_available_models is only a
@@ -769,16 +825,21 @@ export function Composer({
 	/** Menu selection: arg commands become an atomic chip at the input start
 	 * (draft keeps only the args); the rest run now, removing only the
 	 * `/token` and keeping any other draft text. */
-	const selectSlashItem = (item: SlashMenuItem) => {
-		if (!slashToken) return;
+	const selectSlashItem = (
+		item: SlashMenuItem,
+		ctx?: { text: string; token: { query: string; start: number; end: number } },
+	) => {
+		const tok = ctx?.token ?? slashToken;
+		const src = ctx?.text ?? text;
+		if (!tok) return;
 		setArgHintLine(null);
 		if (item.argHint && isSkillChip({ name: item.name, title: "" })) {
 			// Skill: the token lives right where `/query` was typed.
 			const next = insertChipAt(
 				{ name: item.name, title: item.title || item.name, argHint: item.argHint },
-				text,
-				slashToken.start,
-				slashToken.end,
+				src,
+				tok.start,
+				tok.end,
 			);
 			// Replace any previous inline chip (its literal stays as plain text).
 			setChip(next.chip);
@@ -793,15 +854,16 @@ export function Composer({
 			}, 0);
 			return;
 		}
-		if (item.argHint) {
-			const before = text.slice(0, slashToken.start);
-			const after = text.slice(slashToken.end);
+		if (item.argHint || item.subcommands?.length) {
+			const before = src.slice(0, tok.start);
+			const after = src.slice(tok.end);
 			// Any text around the token becomes the command's arguments.
 			const nextText = `${before}${after}`;
 			setText(nextText);
 			setChip({ name: item.name, title: item.title || item.name, argHint: item.argHint });
 			setCursorPos(before.length);
-			setMenuDismissed(true);
+			// Commands with subcommands open the subcommand menu right away.
+			setMenuDismissed(!item.subcommands?.length);
 			setTimeout(() => {
 				if (taRef.current) {
 					taRef.current.focus();
@@ -810,8 +872,8 @@ export function Composer({
 			}, 0);
 			return;
 		}
-		const before = text.slice(0, slashToken.start);
-		const after = text.slice(slashToken.end);
+		const before = src.slice(0, tok.start);
+		const after = src.slice(tok.end);
 		setText(`${before}${after}`);
 		setCursorPos(before.length);
 		setMenuDismissed(true);
@@ -829,6 +891,22 @@ export function Composer({
 			}
 			setTimeout(() => taRef.current?.focus(), 0);
 		})();
+	};
+	/** Merge a picked subcommand into the legacy chip and drop the typed word. */
+	const selectSubcommand = (item: SlashMenuItem, rest?: string) => {
+		if (!chip || chip.offset !== undefined || chip.sub) return;
+		const { argHint: _drop, ...base } = chip;
+		setChip({ ...base, sub: item.name, ...(item.argHint ? { argHint: item.argHint } : {}) });
+		setText(rest ?? splitFirstWord(text).rest);
+		setCursorPos(0);
+		setMenuDismissed(true);
+		setArgHintLine(null);
+		setTimeout(() => {
+			if (taRef.current) {
+				taRef.current.focus();
+				taRef.current.setSelectionRange(0, 0);
+			}
+		}, 0);
 	};
 	const submit = async (action: FollowUpAction) => {
 		const raw = text;
@@ -1413,7 +1491,17 @@ export function Composer({
 			const ta = taRef.current;
 			if (ta && ta.selectionStart === 0 && ta.selectionEnd === 0) {
 				e.preventDefault();
-				setChip(null);
+				if (chip?.sub) {
+					// Only the merged subcommand goes; the chip stays.
+					const { sub: _s, argHint: _a, ...base } = chip;
+					const hint =
+						findCommandItemExact(chip.name, commands)?.argHint ??
+						findSlashCommand(chip.name)?.argHint;
+					setChip({ ...base, ...(hint ? { argHint: hint } : {}) });
+					setMenuDismissed(false);
+				} else {
+					setChip(null);
+				}
 				return;
 			}
 		}
@@ -1496,8 +1584,30 @@ export function Composer({
 				return;
 			}
 			if (e.key === "Escape") {
-				e.preventDefault();
+				claimEscape(e);
 				setAtFiles(null);
+				return;
+			}
+		}
+
+		// Subcommand menu keyboard navigation
+		if (subItems.length > 0) {
+			if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+				e.preventDefault();
+				setMenuIndex(
+					(i) => (i + (e.key === "ArrowDown" ? 1 : -1) + subItems.length) % subItems.length,
+				);
+				return;
+			}
+			if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+				e.preventDefault();
+				const item = subItems[Math.min(menuIndex, subItems.length - 1)];
+				if (item) selectSubcommand(item);
+				return;
+			}
+			if (e.key === "Escape") {
+				claimEscape(e);
+				setMenuDismissed(true);
 				return;
 			}
 		}
@@ -1521,7 +1631,7 @@ export function Composer({
 				return;
 			}
 			if (e.key === "Escape") {
-				e.preventDefault();
+				claimEscape(e);
 				setMenuDismissed(true);
 				return;
 			}
@@ -1714,8 +1824,8 @@ export function Composer({
 							key={sessionId}
 							sessionId={sessionId}
 							annotations={textAnnotations}
-							onMove={(id) => moveAnnotation(sessionId, sideChatAnnKey(sessionId), id)}
-							moveLabel="移动到辅助对话"
+							onMove={annotationMove?.run}
+							moveLabel={annotationMove?.label}
 						/>
 					</div>
 				)}
@@ -1777,7 +1887,7 @@ export function Composer({
 						<div
 							ref={backdropRef}
 							aria-hidden="true"
-							className="pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] text-[var(--text)] select-none"
+							className="pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] text-[var(--text)] select-none"
 							style={{
 								boxSizing: "border-box",
 								wordBreak: "break-word",
@@ -1786,7 +1896,7 @@ export function Composer({
 							{legacyChip && chip && (
 								<span
 									ref={chipElRef}
-									className="mr-[6px] inline-block h-[21px] align-top text-[13px] leading-[21px]"
+									className="mr-[6px] inline-block h-[19px] align-top text-[13px] leading-[19px]"
 								>
 									<CommandChipBadge chip={chip} />
 								</span>
@@ -1803,7 +1913,7 @@ export function Composer({
 									{renderHighlightedText(text.slice(inlineRange.end))}
 									{text.slice(inlineRange.end).trim() === "" && (
 										<span className="text-[var(--text-30,var(--text-dim))]">
-											{chip.argHint ?? findSlashCommand(chip.name)?.argHint ?? "<参数>"}
+											{chipHintText(chip)}
 										</span>
 									)}
 								</>
@@ -1823,6 +1933,35 @@ export function Composer({
 						}}
 						onChange={(e) => {
 							const next = e.target.value;
+							const caret = e.target.selectionStart ?? next.length;
+							// Space right after an exact arg-taking `/command` makes it a chip.
+							if (!legacyChip) {
+								const tok = detectSpaceToken(text, next, caret);
+								const item = tok ? findCommandItemExact(tok.query, commands) : null;
+								if (tok && item) {
+									setHistoryIdx(-1);
+									selectSlashItem(item, { text, token: tok });
+									return;
+								}
+							}
+							// Space right after an exact subcommand name merges it into the chip.
+							if (subParent) {
+								const fw = detectFirstWordSpace(text, next, caret);
+								const sub = fw ? findSubcommandExact(subParent, fw.word) : null;
+								if (fw && sub) {
+									selectSubcommand({
+										name: sub.name,
+										subOf: subParent.name,
+										title: "",
+										description: sub.description ?? "",
+										argHint: sub.usage,
+										group: "子命令",
+										icon: subParent.icon,
+										registry: subParent.registry,
+									}, fw.rest);
+									return;
+								}
+							}
 							setText(next);
 							setDraft(sessionId, next);
 							setCursorPos(e.target.selectionStart ?? next.length);
@@ -1914,14 +2053,14 @@ export function Composer({
 						rows={1}
 						placeholder={
 							legacyChip && !text
-								? (chip.argHint ?? findSlashCommand(chip.name)?.argHint ?? "<参数>")
+								? chipHintText(chip)
 								: streaming
 									? "输入后续消息…"
 									: "输入消息，/ 命令，@ 引用文件"
 						}
 						style={{ outline: "none", boxShadow: "none", textIndent: legacyChip ? chipIndent : 0 }}
 						className={clsx(
-							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]",
+							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]",
 							hasInlineTokens
 								? "relative z-10 text-transparent caret-[var(--text)] selection:bg-sky-500/30 selection:text-transparent"
 								: "relative text-[var(--text)]",
@@ -1938,8 +2077,9 @@ export function Composer({
 
 				{/* Bottom toolbar: attach / model / thinking (left); held pill,
 				 * context ring and send/stop (right). */}
-				<div className="flex items-center justify-between gap-2 px-2.5 pb-2 text-[12px]">
-					<div className="flex items-center gap-0.5">
+				<div className="@container">
+				<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-2.5 pb-2 text-[12px]">
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
 						<button
 							ref={addBtnRef}
 							type="button"
@@ -1947,7 +2087,7 @@ export function Composer({
 							aria-label="添加"
 							title="添加文件、项目、目标或规划模式"
 							className={clsx(
-								"flex h-7 w-7 items-center justify-center rounded-md hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors",
+								"flex h-7 shrink-0 w-7 items-center justify-center rounded-md hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors",
 								addMenuOpen ? "bg-[var(--ghost-hover,var(--bg-hover))] text-[var(--text)]" : "text-[var(--text-60,var(--text-muted))]",
 							)}
 						>
@@ -1974,7 +2114,7 @@ export function Composer({
 						)}
 
 						{/* Model picker */}
-						<div className="relative" ref={modelMenuRef}>
+						<div className="relative min-w-0" ref={modelMenuRef}>
 							<button
 								type="button"
 								onClick={() => {
@@ -1982,9 +2122,9 @@ export function Composer({
 									if (!models || models.length === 0) void loadModels();
 								}}
 								title={current.label || sessionMeta?.model || "选择模型"}
-								className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
+								className="flex max-w-full min-w-0 items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 							>
-								<span className={clsx("truncate", compact ? "max-w-24" : "max-w-36")}>
+								<span className={clsx("min-w-0 truncate", compact ? "max-w-24" : "max-w-36")}>
 									{current.label ||
 										sessionMeta?.model ||
 										(models === null ? "加载中…" : "选择模型…")}
@@ -2027,22 +2167,21 @@ export function Composer({
 							)}
 						</div>
 
-						{/* Thinking-level picker (per-model levels) */}
-						{thinkingLevels.length > 0 && (
-							<ThinkingLevelPicker
-								levels={thinkingLevels}
-								value={currentThinking}
-								open={thinkingOpen}
-								onOpenChange={setThinkingOpen}
-								onSelect={(level) => void selectThinkingLevel(level)}
-							/>
-						)}
+						{/* Thinking chip: levels from the catalog, or a grey 未配置/不支持 chip; never hidden */}
+						<ThinkingLevelPicker
+							levels={thinkingLevels}
+							reasoning={currentModelOption?.reasoning}
+							value={currentThinking}
+							open={thinkingOpen}
+							onOpenChange={setThinkingOpen}
+							onSelect={(level) => void selectThinkingLevel(level)}
+						/>
 					</div>
 
 					{/* Right side actions */}
-					<div className="flex items-center gap-1.5">
+					<div className="flex shrink-0 items-center gap-1.5">
 						{/* Held queue count pill: post-turn only (manual mode, un-dismisses the bar);
-						    while streaming the QueuedBar popover lists the items itself. */}
+						    while streaming the items show as queued bubbles in the thread. */}
 						{held.length > 0 && !streaming && (
 							<button
 								type="button"
@@ -2063,6 +2202,7 @@ export function Composer({
 							totalTokensStr={totalTokensStr}
 							onCompact={compactContext}
 							compactDisabled={streaming}
+							compacting={compacting}
 							open={contextOpen}
 							onOpenChange={setContextOpen}
 							className="shrink-0"
@@ -2140,6 +2280,7 @@ export function Composer({
 						</div>
 					</div>
 				</div>
+				</div>
 			</div>
 
 			{/* @ file-completion menu — floats above the composer box. */}
@@ -2174,7 +2315,18 @@ export function Composer({
 			)}
 
 			{/* Slash-command menu — Codex-style grouped popup. */}
-			{slashToken && (
+			{subItems.length > 0 ? (
+				<SlashMenu
+					anchor={composerCardRef.current}
+					sections={subSections}
+					activeIndex={Math.min(menuIndex, Math.max(0, subItems.length - 1))}
+					empty={false}
+					footer="↑↓ 选择 · ↵ 选择 · Esc 关闭"
+					onSelect={selectSubcommand}
+					onDismiss={() => setMenuDismissed(true)}
+				/>
+			) : (
+				slashToken && (
 				<SlashMenu
 					anchor={composerCardRef.current}
 					sections={slashSections}
@@ -2186,6 +2338,7 @@ export function Composer({
 					onSelect={selectSlashItem}
 					onDismiss={() => setMenuDismissed(true)}
 				/>
+				)
 			)}
 		</div>
 	);

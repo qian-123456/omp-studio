@@ -8,8 +8,9 @@ import {
 	Terminal,
 } from "lucide-react";
 import type { SlashCommand } from "../../../stores/live";
-import { SLASH_COMMANDS } from "./registry";
-import type { SlashCommandDef, SlashGroup } from "./types";
+
+import { findSlashCommand, SLASH_COMMANDS } from "./registry";
+import type { SlashCommandDef, SlashGroup, SlashSubcommand } from "./types";
 
 export interface SlashMenuItem {
 	/** Slash name inserted/executed. */
@@ -22,6 +23,10 @@ export interface SlashMenuItem {
 	settingsTarget?: SlashCommandDef["settingsTarget"];
 	/** True for registry commands (native execution path). */
 	registry: boolean;
+	/** Parent command name when this item is a subcommand entry. */
+	subOf?: string;
+	/** Present when the command takes subcommands. */
+	subcommands?: SlashSubcommand[];
 }
 
 export interface SlashMenuSection {
@@ -39,6 +44,7 @@ const GROUP_ORDER: SlashGroup[] = [
 	"自定义命令",
 	"扩展",
 	"更多 OMP 命令",
+	"子命令",
 ];
 
 const SOURCE_GROUP: Record<string, SlashGroup> = {
@@ -92,6 +98,7 @@ function toItem(def: SlashCommandDef): SlashMenuItem {
 		argHint: def.argHint,
 		settingsTarget: def.settingsTarget,
 		registry: true,
+		...(def.subcommands?.length ? { subcommands: def.subcommands } : {}),
 	};
 }
 
@@ -103,8 +110,9 @@ function toDynamicItem(c: SlashCommand): SlashMenuItem {
 		description: c.description ?? "",
 		icon: GROUP_ICON[group],
 		group,
-		argHint: c.hint ?? c.input?.hint,
+		argHint: c.hint ?? c.input?.hint ?? (c.subcommands?.length ? "<子命令>" : undefined),
 		registry: false,
+		...(c.subcommands?.length ? { subcommands: c.subcommands } : {}),
 	};
 }
 
@@ -173,4 +181,61 @@ export function buildSlashSections(
 
 export function flattenSections(sections: SlashMenuSection[]): SlashMenuItem[] {
 	return sections.flatMap((s) => s.items);
+}
+
+/** Subcommands of a command: registry (name/alias) first, else the dynamic one. */
+export function subcommandsFor(name: string, commands: SlashCommand[]): SlashSubcommand[] {
+	const def = findSlashCommand(name);
+	if (def) return def.subcommands ?? [];
+	const dyn = commands.find((c) => c.name === name);
+	return dyn?.subcommands ?? [];
+}
+
+/** One menu item per subcommand, filtered by `query` (prefix matches first). */
+export function buildSubcommandItems(parent: SlashMenuItem, query: string): SlashMenuItem[] {
+	const q = query.toLowerCase();
+	const prefix: SlashMenuItem[] = [];
+	const inner: SlashMenuItem[] = [];
+	for (const sub of parent.subcommands ?? []) {
+		const n = sub.name.toLowerCase();
+		const item: SlashMenuItem = {
+			name: sub.name,
+			subOf: parent.name,
+			title: "",
+			description: sub.description ?? "",
+			argHint: sub.usage,
+			group: "子命令",
+			icon: parent.icon,
+			registry: parent.registry,
+		};
+		if (n.startsWith(q)) prefix.push(item);
+		else if (n.includes(q)) inner.push(item);
+	}
+	return [...prefix, ...inner];
+}
+
+/** Item whose name/alias equals `token` exactly, only if it takes arguments. */
+export function findCommandItemExact(token: string, commands: SlashCommand[]): SlashMenuItem | null {
+	let item: SlashMenuItem | null = null;
+	const def = SLASH_COMMANDS.find((d) => d.name === token || d.aliases?.includes(token));
+	if (def) item = toItem(def);
+	else {
+		const taken = new Set<string>();
+		for (const d of SLASH_COMMANDS) {
+			taken.add(d.name);
+			for (const a of d.aliases ?? []) taken.add(a);
+		}
+		const c = commands.find(
+			(x) =>
+				(x.name === token || x.aliases?.includes(token)) &&
+				!taken.has(x.name) &&
+				!x.aliases?.some((a) => taken.has(a)),
+		);
+		if (c) item = toDynamicItem(c);
+	}
+	return item && (item.argHint || item.subcommands?.length) ? item : null;
+}
+
+export function findSubcommandExact(parent: SlashMenuItem, word: string): SlashSubcommand | null {
+	return parent.subcommands?.find((s) => s.name === word) ?? null;
 }

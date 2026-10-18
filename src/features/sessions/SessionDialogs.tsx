@@ -20,6 +20,7 @@ import {
 	type ArchiveWorktreeTarget,
 	useSessionActions,
 } from "./sessionActions";
+import { claimEscape } from "../../lib/escapeClaim";
 
 export function restoreSidebarFocus(prevElement: HTMLElement | null) {
 	if (
@@ -192,7 +193,7 @@ function ArchiveWorktreeModal({
 				onKeyDown={(e) => {
 					e.stopPropagation();
 					if (e.key === "Escape") {
-						e.preventDefault();
+						claimEscape(e);
 						onClose();
 					}
 					handleTabTrap(e);
@@ -400,7 +401,7 @@ function AssignWorkspaceModal({
 				onKeyDown={(e) => {
 					e.stopPropagation();
 					if (e.key === "Escape" && !busy) {
-						e.preventDefault();
+						claimEscape(e);
 						onClose();
 					}
 					handleTabTrap(e);
@@ -564,7 +565,7 @@ function MoveToGroupModal({
 				onKeyDown={(e) => {
 					e.stopPropagation();
 					if (e.key === "Escape" && !busy) {
-						e.preventDefault();
+						claimEscape(e);
 						onClose();
 					}
 					handleTabTrap(e);
@@ -689,7 +690,7 @@ function TakeoverModal({
 				onKeyDown={(e) => {
 					e.stopPropagation();
 					if (e.key === "Escape" && !busy) {
-						e.preventDefault();
+						claimEscape(e);
 						onClose();
 					}
 					handleTabTrap(e);

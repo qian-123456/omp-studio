@@ -142,6 +142,7 @@ function PlanRowView({
 export function ModelReplacePlanPreview({
 	plan,
 	fromModel,
+	scopeLabel,
 	entries,
 	kindsLoading,
 	kindsError,
@@ -151,6 +152,8 @@ export function ModelReplacePlanPreview({
 	onToggle,
 }: {
 	plan: Plan;
+	/** Display name of the replace scope (全部 / 全局 / 项目：<name>). */
+	scopeLabel: string;
 	fromModel: string;
 	entries: ModelKindEntry[] | null;
 	kindsLoading: boolean;
@@ -166,6 +169,9 @@ export function ModelReplacePlanPreview({
 			<div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-[11px] text-neutral-400">
 				<span>
 					将修改 <span className="font-medium text-neutral-200">{plan.edits.length}</span> 项
+				</span>
+				<span className="rounded-full bg-[var(--well-bg)] px-2 py-0.5 text-[10px] text-neutral-300" title="替换范围，在第一步选择">
+					范围：{scopeLabel}
 				</span>
 				<span className="flex items-center gap-1">
 					<Info className="h-3 w-3 shrink-0" />
@@ -185,7 +191,7 @@ export function ModelReplacePlanPreview({
 			<div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
 				{plan.rows.length === 0 ? (
 					<p className="px-1 py-6 text-xs text-neutral-500">
-						没有引用到「<span className="break-all font-mono text-neutral-300">{fromModel}</span>」的配置，换个来源模型试试。
+						「{scopeLabel}」范围内没有引用到「<span className="break-all font-mono text-neutral-300">{fromModel}</span>」的配置，换个来源模型或范围试试。
 					</p>
 				) : (
 					plan.groups.map((group) => (

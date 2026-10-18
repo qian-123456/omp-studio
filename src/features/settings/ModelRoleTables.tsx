@@ -12,6 +12,7 @@
 import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ModelSelect } from "../../components/ModelSelect";
+import { parseSelection } from "../../components/modelSelectLogic";
 import { NativeSelect } from "../../components/NativeSelect";
 import { errMsg } from "../../lib/dialogs";
 import type { ModelOption } from "../../lib/models";
@@ -292,7 +293,7 @@ function RowEditor({
 						direction="down"
 						align="start"
 						widthClass="w-[360px]"
-						label={pinned ? (shown ?? "") : "选择模型"}
+						label={pinned ? parseSelection(shown ?? "").selector : "选择模型"}
 						buttonClass={`${MODEL_PICKER_BUTTON_CLASS} ${pinned ? "" : "italic text-neutral-400"}`}
 						models={ctx.models}
 						currentValue={pinned ? (shown ?? "") : ""}

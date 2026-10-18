@@ -11,6 +11,7 @@ import { useUi } from "../../../stores/ui";
 import { openSettingsTarget } from "../../settings/settingsTargets";
 import { sendPrompt } from "../send";
 import { findSlashCommand } from "./registry";
+import { trackCommand } from "./track";
 import { SlashAbort, type SlashContext } from "./types";
 
 /** UI hooks the registry needs but must not wire itself. */
@@ -50,6 +51,9 @@ export function buildSlashContext(
 		sendPromptText: (text) => sendSlashPrompt(sessionId, text),
 		pushOutput: (command, text) =>
 			useLive.getState().addCommandOutput(sessionId, command, text),
+		track: (command, runningText, work) => {
+			void trackCommand(sessionId, command, runningText, work);
+		},
 		insertText: deps.insertText,
 		openModelPicker: deps.openModelPicker,
 		openThinkingPicker: deps.openThinkingPicker,

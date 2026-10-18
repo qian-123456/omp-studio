@@ -18,6 +18,9 @@ import {
 	buildOverview,
 	buildPlan,
 	editKey,
+	editsScopeLabel,
+	filterOverviewRows,
+	highlightParts,
 	invertEdit,
 	isModelSelector,
 	listCandidates,
@@ -28,6 +31,9 @@ import {
 	roleTitle,
 	sameModel,
 	selectorOf,
+	scopeOptions,
+	searchTerms,
+	sourceMatches,
 	summarizeEdit,
 	levelsForSelector,
 	sanitizeOverrides,
@@ -757,5 +763,107 @@ describe("liveSessionsOnModel", () => {
 
 	it("returns nothing without a target", () => {
 		expect(liveSessionsOnModel([{ sessionId: "a", title: "A", cwd: null, modelState: "anthropic/claude-opus" }], models, "")).toEqual([]);
+	});
+});
+
+describe("replace scope", () => {
+	const betaRef = (name: string, value: string): ModelUsageRef => ({
+		location: { kind: "role", scope: "project", projectPath: "/repo/beta", name },
+		value,
+		thinking: null,
+	});
+	const scan = scanOf(
+		[
+			roleRef("default", OPUS),
+			roleRef("smol", OPUS, "project"),
+			betaRef("plan", OPUS),
+			appRef("doctorModel", OPUS),
+			scheduleRef("s1", "nightly", OPUS),
+		],
+		{ default: [OPUS, GPT] },
+	);
+
+	it("lists 全部, 全局 and only projects that hold model references", () => {
+		const options = scopeOptions(scanOf([roleRef("default", OPUS), roleRef("smol", OPUS, "project"), betaRef("plan", "smol")]));
+		expect(options.map((o) => o.value)).toEqual(["all", "global", "project:/repo/alpha"]);
+		expect(options[2]?.label).toBe("项目：alpha");
+	});
+
+	it("plans only the chosen project's locations (no chains, settings or schedules)", () => {
+		const plan = buildPlan({ scan, fromModel: OPUS, toModel: GPT, level: null, scope: "project:/repo/alpha" });
+		expect(plan.rows.map((r) => r.id)).toEqual(["role:project:/repo/alpha:smol"]);
+		expect(plan.edits).toHaveLength(1);
+	});
+
+	it("global scope covers global config, chains, settings and schedules but no project", () => {
+		const plan = buildPlan({ scan, fromModel: OPUS, toModel: GPT, level: null, scope: "global" });
+		expect(plan.rows.map((r) => r.group).sort()).toEqual(["appSetting", "chain", "global", "schedule"]);
+	});
+
+	it("scope all plans everything", () => {
+		const plan = buildPlan({ scan, fromModel: OPUS, toModel: GPT, level: null });
+		expect(plan.rows).toHaveLength(6);
+	});
+
+	it("scopes the overview counts and sources", () => {
+		const rows = buildOverview(scan, null, "project:/repo/beta");
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.count).toBe(1);
+		expect(rows[0]?.sources.map((s) => s.scope)).toEqual(["beta"]);
+	});
+
+	it("labels the scope a recorded replacement touched", () => {
+		const names = { "/repo/alpha": "alpha", "/repo/beta": "beta" };
+		const edit = (location: Extract<ModelReplaceEdit, { kind: "value" }>["location"]): ModelReplaceEdit => ({
+			kind: "value",
+			location,
+			before: OPUS,
+			after: GPT,
+			thinkingBefore: null,
+			thinkingAfter: null,
+		});
+		const global = edit({ kind: "role", scope: "global", projectPath: null, name: "default" });
+		const alpha = edit({ kind: "role", scope: "project", projectPath: "/repo/alpha", name: "smol" });
+		const beta = edit({ kind: "role", scope: "project", projectPath: "/repo/beta", name: "plan" });
+		expect(editsScopeLabel([global], names)).toBe("全局");
+		expect(editsScopeLabel([alpha], names)).toBe("项目：alpha");
+		expect(editsScopeLabel([alpha, beta], names)).toBe("2 个项目");
+		expect(editsScopeLabel([global, alpha], names)).toBe("全局 + 项目：alpha");
+	});
+});
+
+describe("overview search", () => {
+	const scan = scanOf([roleRef("default", OPUS), roleRef("smol", GPT, "project"), appRef("doctorModel", GPT)]);
+	const rows = buildOverview(scan, null);
+
+	it("keeps everything for a blank query", () => {
+		expect(filterOverviewRows(rows, "   ")).toEqual(rows);
+	});
+
+	it("matches model id and provider case-insensitively", () => {
+		expect(filterOverviewRows(rows, "OPENAI").map((r) => r.selector)).toEqual([GPT]);
+		expect(filterOverviewRows(rows, "claude").map((r) => r.selector)).toEqual([OPUS]);
+	});
+
+	it("matches location text and requires every term", () => {
+		expect(filterOverviewRows(rows, "主力模型").map((r) => r.selector)).toEqual([OPUS]);
+		expect(filterOverviewRows(rows, "alpha").map((r) => r.selector)).toEqual([GPT]);
+		expect(filterOverviewRows(rows, "gpt 诊断").map((r) => r.selector)).toEqual([GPT]);
+		expect(filterOverviewRows(rows, "gpt 主力模型")).toEqual([]);
+	});
+
+	it("highlights every case-insensitive occurrence", () => {
+		expect(highlightParts("Open/open-ai", ["open"])).toEqual([
+			{ text: "Open", match: true },
+			{ text: "/", match: false },
+			{ text: "open", match: true },
+			{ text: "-ai", match: false },
+		]);
+		expect(highlightParts("abc", [])).toEqual([{ text: "abc", match: false }]);
+	});
+
+	it("finds the location a term matches", () => {
+		const sources = [{ scope: "全局", title: "default · 主力模型" }, { scope: "alpha", title: "smol" }];
+		expect(sources.find((s) => sourceMatches(s, searchTerms("ALPHA")))).toBe(sources[1]);
 	});
 });

@@ -8,16 +8,20 @@ import React, {
 	type ReactNode,
 } from "react";
 import { QuickCapture } from "./features/backlog/QuickCapture";
+import { HandbackDialog } from "./features/sidechat/HandbackDialog";
 import { SessionView } from "./features/chat/SessionView";
 import { SessionSidebar } from "./features/sessions/SessionSidebar";
 import { useSidebarStore } from "./features/sessions/sidebarStore";
 import { PendingSessionView } from "./features/sessions/PendingSessionView";
 import { usePendingSession } from "./features/sessions/pendingSession";
+import { ForkDraftView } from "./features/sessions/ForkDraftView";
+import { useForkDraft } from "./features/sessions/forkDraft";
 import { StartPage } from "./features/home/StartPage";
 import { useDoctorAutoScheduler } from "./features/heatmap/doctorStore";
 import { startTodos } from "./features/todos/store";
 
 import { terminalSetCurrentSession } from "./lib/ipc";
+import { installNativeShortcuts } from "./lib/nativeShortcuts";
 import { suspendScrollPills } from "./lib/scrollPills";
 import { useSessions } from "./stores/sessions";
 import { useOmpUpdate, watchOmpStaleness, watchOmpUpdateChecks } from "./stores/ompUpdate";
@@ -104,12 +108,15 @@ class ErrorBoundary extends React.Component<
 function MainCenterView({ activeView }: { activeView: CenterView }) {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const hasPending = usePendingSession((s) => s.pending !== null);
+	const hasForkDraft = useForkDraft((s) => s.draft !== null);
 	const docPath = useUi((s) => s.docPath);
 	let view: ReactNode;
 	switch (activeView) {
 		case "session":
 			view = selectedSessionId ? (
 				<SessionView sessionId={selectedSessionId} />
+			) : hasForkDraft ? (
+				<ForkDraftView />
 			) : hasPending ? (
 				<PendingSessionView />
 			) : (
@@ -299,7 +306,9 @@ export default function App() {
 				toggleRight();
 			} else if (e.key === "[" && !e.shiftKey && !e.altKey) {
 				e.preventDefault();
-				if (parentId) {
+				// On a full-page view (doc/inbox/…) ⌘[ leaves it first; only on the
+				// session itself does it climb to the side-chat parent.
+				if (parentId && effectiveCenterView === "session") {
 					selectSession(parentId);
 				} else {
 					returnToSession();
@@ -325,6 +334,8 @@ export default function App() {
 		selectSession,
 		returnToSession,
 	]);
+
+	useEffect(() => installNativeShortcuts(), []);
 
 	// Initialize todos subscription; load versions and auto-check omp updates at the configured interval
 	useEffect(() => {
@@ -385,7 +396,7 @@ export default function App() {
 			<div className="relative z-10 flex min-h-0 flex-1">
 				{/* Invisible drag overlay prevents text selection and event loss across iframes/terminals */}
 				{isDragging && (
-					<div className="fixed inset-0 z-50 cursor-col-resize select-none" />
+					<div className="fixed inset-0 z-(--z-pill) cursor-col-resize select-none" />
 				)}
 
 				{/* Left column: topbar cell + session sidebar, strictly matches sidebarWidth */}
@@ -455,6 +466,7 @@ export default function App() {
 			<Toaster />
 			{/* Global modals — render nothing unless ui.modal matches. Lazy loaded in Suspense */}
 			<QuickCapture />
+			<HandbackDialog />
 			<Suspense fallback={null}>
 				<DiagnoseDialog />
 				<ShareImageDialog />

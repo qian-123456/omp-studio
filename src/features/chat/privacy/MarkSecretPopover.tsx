@@ -7,6 +7,7 @@ import { errMsg } from "../../../lib/dialogs";
 import { isComposing } from "../../../lib/hooks";
 import { privacyClassify, privacyMark } from "../../../lib/ipc";
 import { defaultMarkScope, needsScopeChoice } from "./composerPrivacy";
+import { claimEscape } from "../../../lib/escapeClaim";
 
 const REASON_TEXT: Record<string, string> = {
 	TOO_SHORT: "内容太短（至少 3 个字符），无法标记",
@@ -110,7 +111,7 @@ export function MarkSecretPopover({
 								e.preventDefault();
 								void confirm(defaultMarkScope(cls.sessionOccurrences));
 							} else if (e.key === "Escape") {
-								e.preventDefault();
+								claimEscape(e);
 								onClose();
 							}
 						}}

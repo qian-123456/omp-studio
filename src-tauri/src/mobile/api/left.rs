@@ -231,7 +231,8 @@ fn is_busy_status(s: SessionStatus) -> bool {
 
 /// Unsent side-chat stub: a fork row blank in every content signal.
 fn is_empty_side_chat(s: &SessionMeta) -> bool {
-    s.parent_id.is_some()
+    s.kind.as_deref() == Some("side")
+        && s.parent_id.is_some()
         && s.status == SessionStatus::Idle
         && s.pending.is_none()
         && !s.unread
@@ -246,7 +247,13 @@ fn is_archived_cascaded(s: &SessionMeta, by_id: &HashMap<&str, &SessionMeta>) ->
     if s.archived {
         return true;
     }
-    if s.live || s.pinned || s.pending.is_some() || is_busy_status(s.status) {
+    // Full forks are independent sessions: archiving the parent never cascades.
+    if s.live
+        || s.pinned
+        || s.pending.is_some()
+        || is_busy_status(s.status)
+        || s.kind.as_deref() == Some("fork")
+    {
         return false;
     }
     let mut seen = vec![s.id.as_str()];
@@ -1684,6 +1691,7 @@ mod tests {
         let mut s = meta("f", "/x", "2026-01-01T00:00:00Z");
         s.title = String::new();
         s.parent_id = Some("p".into());
+        s.kind = Some("side".into());
         assert!(is_empty_side_chat(&s));
         s.unread = true;
         assert!(!is_empty_side_chat(&s));

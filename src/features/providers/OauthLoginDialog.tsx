@@ -27,6 +27,8 @@ import { ProviderBrandLogo } from "../settings/sections/ProviderBrandLogo";
 
 interface Props {
 	onClose: () => void;
+	/** When set, the login flow for this provider starts as soon as the list loads. */
+	initialProviderId?: string;
 }
 
 type Phase = "list" | "flow";
@@ -54,7 +56,7 @@ interface FlowState {
 	} | null;
 }
 
-export function OauthLoginDialog({ onClose }: Props) {
+export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const loadOmp = useProviders((s) => s.loadOmp);
 
@@ -231,6 +233,18 @@ export function OauthLoginDialog({ onClose }: Props) {
 		}
 	};
 
+	// Deep-link entry (e.g. quota sheet「重新登录」): skip the list and start
+	// the flow for the requested provider once the list has loaded.
+	const autoStartedRef = useRef(false);
+	useEffect(() => {
+		if (!initialProviderId || autoStartedRef.current || listLoading) return;
+		const target = providers.find((p) => p.id === initialProviderId);
+		if (!target || !target.available) return;
+		autoStartedRef.current = true;
+		void startFlow(target);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [initialProviderId, listLoading, providers]);
+
 	const handlePromptResponse = async (payload: {
 		value?: string;
 		confirmed?: boolean;
@@ -314,7 +328,7 @@ export function OauthLoginDialog({ onClose }: Props) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
+			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) void handleDismiss();
 			}}

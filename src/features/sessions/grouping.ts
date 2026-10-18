@@ -211,7 +211,7 @@ export function matchesSearch(
 
 /**
  * Side chats (forks with `parentId`) are real sessions only once their first
- * user message lands: `createSideChat` spawns + prompts atomically, so a fork
+ * user message lands: `createSideChat` forks without a prompt, so a fork
  * row that is still blank in every content signal (untitled, unlabeled,
  * nothing replied, no turn in flight, no pending mark, nothing unread) is an
  * unsent stub / a fork file that never received a prompt — it must not
@@ -222,6 +222,7 @@ export function matchesSearch(
  */
 export function isEmptySideChat(s: SessionMeta): boolean {
 	return (
+		s.kind !== "fork" &&
 		s.parentId !== null &&
 		s.status === "idle" &&
 		!s.pending &&
@@ -230,6 +231,37 @@ export function isEmptySideChat(s: SessionMeta): boolean {
 		!s.label.trim() &&
 		!s.lastAssistant
 	);
+}
+
+/**
+ * Reorder an already sorted list so every side chat (`kind === "side"`) sits
+ * right after its parent (oldest-first among siblings keeps the given order).
+ * Side chats whose parent is not in the list keep their original position.
+ */
+export function nestSideChats(sorted: SessionMeta[]): SessionMeta[] {
+	if (!sorted.some((s) => s.kind === "side")) return sorted;
+	const ids = new Set(sorted.map((s) => s.id));
+	const kids = new Map<string, SessionMeta[]>();
+	for (const s of sorted) {
+		if (s.kind === "side" && s.parentId && s.parentId !== s.id && ids.has(s.parentId)) {
+			kids.set(s.parentId, [...(kids.get(s.parentId) ?? []), s]);
+		}
+	}
+	const out: SessionMeta[] = [];
+	const emitted = new Set<string>();
+	const emit = (s: SessionMeta) => {
+		if (emitted.has(s.id)) return;
+		emitted.add(s.id);
+		out.push(s);
+		for (const k of kids.get(s.id) ?? []) emit(k);
+	};
+	for (const s of sorted) {
+		const nested = s.kind === "side" && s.parentId && s.parentId !== s.id && ids.has(s.parentId);
+		if (!nested) emit(s);
+	}
+	// Cycles of side chats (never produced by the backend) still render.
+	for (const s of sorted) emit(s);
+	return out;
 }
 
 /** Filters a session list by search query, archive status, and deleted worktrees. */
@@ -259,7 +291,9 @@ export function filterSessions(
 			Boolean(s.pending) ||
 			s.status === "working" ||
 			s.status === "awaiting_approval" ||
-			s.status === "awaiting_answer"
+			s.status === "awaiting_answer" ||
+			// Full forks are independent sessions: the parent's archive never hides them.
+			s.kind === "fork"
 		) {
 			return false;
 		}
@@ -499,7 +533,7 @@ export function createSubgroups(
 				isMain: index === 0,
 				path: wt.path,
 				createCwd: wt.path,
-				sessions: [...(worktreeItems.get(wt.path) ?? [])].sort(compare),
+				sessions: nestSideChats([...(worktreeItems.get(wt.path) ?? [])].sort(compare)),
 				totalCount: worktreeItems.get(wt.path)?.length ?? 0,
 			},
 		}));
@@ -518,7 +552,7 @@ export function createSubgroups(
 			deleted: bucket.deleted,
 			isMain: bucket.isMain,
 			createCwd: bucket.items[0]?.cwd,
-			sessions: [...bucket.items].sort(compare),
+			sessions: nestSideChats([...bucket.items].sort(compare)),
 			totalCount: bucket.items.length,
 		})),
 	);
@@ -607,8 +641,8 @@ export function groupSessions(
 	const pinnedSessions = visibleSessions
 		.filter((s) => s.pinned)
 		.sort(compare);
-	const unassigned = [...unassignedLive].sort(compare);
-	const deletedSessions = [...unassignedDeleted].sort(compare);
+	const unassigned = nestSideChats([...unassignedLive].sort(compare));
+	const deletedSessions = nestSideChats([...unassignedDeleted].sort(compare));
 
 	// Group unassigned live sessions by repoRoot ?? cwd (Contract 5 / G15)
 	const unassignedGroupMap = new Map<string, SessionMeta[]>();
@@ -631,7 +665,7 @@ export function groupSessions(
 	}[] = [];
 
 	for (const [cwd, items] of unassignedGroupMap.entries()) {
-		const sorted = [...items].sort(compare);
+		const sorted = nestSideChats([...items].sort(compare));
 		let newest = 0;
 		for (const item of items) {
 			const t = timeMap.get(item.id) ?? 0;
@@ -688,7 +722,7 @@ export function groupSessions(
 						deleted: false,
 						isMain: true,
 						createCwd: ws.path,
-						sessions: [...items].sort(compare),
+						sessions: nestSideChats([...items].sort(compare)),
 						totalCount: items.length,
 					},
 				],

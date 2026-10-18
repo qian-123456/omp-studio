@@ -71,7 +71,57 @@ pub fn format_image(path: &str) -> String {
     format!("- Attached Image: [图片: {path}]")
 }
 
+/// Prompt for one or more items. A single item uses the full `backlog_dispatch.md`
+/// template; several share ONE preamble and ONE closing instruction.
+pub async fn build_batch(state: &AppState, items: &[BacklogItem]) -> String {
+    if let [item] = items {
+        return build(state, item).await;
+    }
+    let mut entries = Vec::with_capacity(items.len());
+    for item in items {
+        entries.push((
+            item.kind,
+            item.text.as_str(),
+            render_refs(state, item).await,
+        ));
+    }
+    compose_batch(&entries)
+}
+
+fn kind_tag(kind: BacklogKind) -> &'static str {
+    match kind {
+        BacklogKind::Idea => "idea",
+        BacklogKind::Bug => "bug",
+        BacklogKind::Todo => "task",
+    }
+}
+
+/// Pure assembly of a multi-item prompt from `(kind, text, rendered refs)`.
+fn compose_batch(entries: &[(BacklogKind, &str, String)]) -> String {
+    let mut out = format!(
+        "Please handle the following {} backlog items in order.",
+        entries.len()
+    );
+    for (i, (kind, text, refs)) in entries.iter().enumerate() {
+        out.push_str(&format!("\n\n## {} [{}]\n{}", i + 1, kind_tag(*kind), text));
+        if !refs.is_empty() {
+            out.push_str("\n\nRelated context:\n");
+            out.push_str(refs);
+        }
+    }
+    out.push_str("\n\nWhen done, report per item what you changed and how you verified it.");
+    out
+}
+
 pub async fn build(state: &AppState, item: &BacklogItem) -> String {
+    let mut vars = HashMap::new();
+    vars.insert("kind", kind_label(item.kind).to_string());
+    vars.insert("text", item.text.clone());
+    vars.insert("refs", render_refs(state, item).await);
+    prompts::render(prompts::BACKLOG_DISPATCH, &vars)
+}
+
+async fn render_refs(state: &AppState, item: &BacklogItem) -> String {
     let mut parts = Vec::new();
     for r in &item.refs {
         match r.kind.as_str() {
@@ -107,16 +157,36 @@ pub async fn build(state: &AppState, item: &BacklogItem) -> String {
             }
         }
     }
-    let mut vars = HashMap::new();
-    vars.insert("kind", kind_label(item.kind).to_string());
-    vars.insert("text", item.text.clone());
-    vars.insert("refs", parts.join("\n"));
-    prompts::render(prompts::BACKLOG_DISPATCH, &vars)
+    parts.join("\n")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn batch_prompt_has_single_preamble_and_closing() {
+        let entries: Vec<(BacklogKind, &str, String)> = (1..=23)
+            .map(|i| {
+                let kind = if i % 2 == 0 {
+                    BacklogKind::Bug
+                } else {
+                    BacklogKind::Todo
+                };
+                (kind, "body", "- Attached Image: [图片: /a.png]".to_string())
+            })
+            .collect();
+        let out = compose_batch(&entries);
+        assert_eq!(
+            out.matches("Please handle the following 23 backlog items")
+                .count(),
+            1
+        );
+        assert_eq!(out.matches("When done, report per item").count(), 1);
+        assert!(!out.contains("Please take on"));
+        assert!(out.contains("## 1 [task]\nbody") && out.contains("## 2 [bug]"));
+        assert!(out.starts_with("Please handle") && out.ends_with("verified it."));
+    }
 
     #[test]
     fn formats_refs() {

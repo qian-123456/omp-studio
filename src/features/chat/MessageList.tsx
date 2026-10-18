@@ -12,6 +12,7 @@ import {
 	Copy,
 	Eye,
 	EyeOff,
+	Loader2,
 	Pencil,
 	RotateCcw,
 } from "lucide-react";
@@ -31,18 +32,26 @@ import type {
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
-import { useLive, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
+import { isFlowItem, withFlowNotices } from "./flowNotice";
+import { QueuedBubbles } from "./QueuedBubbles";
+import { queuedEchoIds, useLive, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
+import { currentLocateId, useLocate } from "../../stores/locate";
+import { LocatePill } from "./LocatePill";
 import { useUi } from "../../stores/ui";
 import { StartHero } from "../../components/StartHero";
 import { openContextWindowForModel } from "../settings/settingsTargets";
 import { PrivacyText } from "../privacy/SecretChip";
 import { AnswerFooter } from "./AnswerFooter";
+import { isForkDraftId } from "../sessions/forkDraft";
+import { ClampedProse } from "./ClampedProse";
 import { isShareableAnswer, isShareableUser } from "./share/shareEntries";
 import { useShareSelection } from "./share/shareStore";
 import { useLineClampOverflow } from "../../lib/useLineClamp";
+import { normalizeThinkContent } from "../../lib/thinkTags";
 import { AttachmentThumb, FileChip } from "./ImageChips";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
 	ExecutionDisclosure,
@@ -75,6 +84,7 @@ import {
 	groupTurnBlocks,
 	noticeLabel,
 	noticeSummary,
+	splitInterimProse,
 	turnRequestItems,
 	type TurnBlock,
 } from "./turnGrouping";
@@ -84,11 +94,13 @@ import {
 	onScrollPosition,
 	USER_INPUT_WINDOW_MS,
 	onWroteBottom,
+	shouldAnchorTurnTop,
 	shouldFollow,
 	shouldCompensateResize,
 	type FollowScrollState,
 } from "./followScroll";
 import { estimateBlockHeight } from "./blockEstimate";
+import { claimEscape } from "../../lib/escapeClaim";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
 const EMPTY_ECHOES: UserEcho[] = [];
@@ -336,13 +348,13 @@ const UserRow = React.memo(function UserRow({
 			)}
 			{editing ? (
 				<div className="flex w-full max-w-[70%] flex-col gap-2 rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5">
-					<textarea
+					<AutoGrowTextarea
 						autoFocus
 						value={draft}
 						onChange={(e) => setDraft(e.target.value)}
 						onKeyDown={(e) => {
 							if (e.key === "Escape") {
-								e.preventDefault();
+								claimEscape(e);
 								e.stopPropagation();
 								setEditing(false);
 							} else if (
@@ -354,8 +366,7 @@ const UserRow = React.memo(function UserRow({
 								void resendEdited();
 							}
 						}}
-						rows={Math.min(10, Math.max(2, draft.split("\n").length))}
-						className="w-full resize-y bg-transparent text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)] outline-none"
+						className="w-full resize-none bg-transparent text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)] outline-none"
 					/>
 					<div className="flex justify-end gap-1.5 text-[12px]">
 						<button
@@ -371,7 +382,7 @@ const UserRow = React.memo(function UserRow({
 							onClick={() => void resendEdited()}
 							className="rounded-md bg-[var(--text)] px-2.5 py-1 text-[var(--bg)] transition-opacity hover:opacity-90 disabled:opacity-40"
 						>
-							{resending ? "发送中…" : "重新发送"}
+							{resending ? "发送中" : "重新发送"}
 						</button>
 					</div>
 				</div>
@@ -406,7 +417,7 @@ const UserRow = React.memo(function UserRow({
 				<div
 					className={clsx(
 						"flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/user-row:opacity-100",
-						editing && "hidden",
+						(editing || isForkDraftId(sessionId)) && "hidden",
 					)}
 				>
 					<button
@@ -497,6 +508,7 @@ const ProtocolRow = React.memo(function ProtocolRow({
 	const label = noticeLabel(item);
 	const summary = noticeSummary(item);
 	const text = summary ? `${label} · ${summary}` : label;
+	const running = isFlowItem(item) && item.flow.status === "running";
 
 	return (
 		<div
@@ -505,10 +517,11 @@ const ProtocolRow = React.memo(function ProtocolRow({
 		>
 			<div className="h-px flex-1 bg-[var(--line)]" />
 			<span
-				className="shrink-0 truncate px-1 text-[11px] text-[var(--text-30)]"
+				className="flex shrink-0 items-center gap-1 truncate px-1 text-[11px] text-[var(--text-30)]"
 				title={text}
 			>
 				{text}
+				{running && <Loader2 size={11} className="animate-spin" aria-label="进行中" />}
 			</span>
 			<div className="h-px flex-1 bg-[var(--line)]" />
 		</div>
@@ -628,6 +641,10 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					(s.call.id === highlightedId || s.result?.toolCallId === highlightedId)),
 		);
 	}, [highlightedId, block.intermediateSteps]);
+	const { folded, prose } = useMemo(
+		() => splitInterimProse(block.intermediateSteps),
+		[block.intermediateSteps],
+	);
 
 	// One model request per assistant message in the turn; the answer's own
 	// request renders under the answer body instead of inside the steps.
@@ -675,10 +692,10 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 			)}
 
 			{/* Collapsed intermediate steps under the worked-for divider */}
-			{block.intermediateSteps.length > 0 && (
+			{folded.length > 0 && (
 				<ExecutionDisclosure
 					sessionId={sessionId}
-					steps={block.intermediateSteps}
+					steps={folded}
 					durationMs={block.durationMs}
 					isStreaming={streamingThisTurn && !block.answerItem}
 					startedAt={turnStartedAt}
@@ -688,6 +705,21 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					statsPlan={statsPlan}
 					turnStats={turnStats}
 				/>
+			)}
+			{/* Interim assistant prose stays on the thread column: it was readable
+			    while streaming and must not vanish into the fold. */}
+			{prose.map((step) =>
+				step.kind === "text" ? (
+					<div
+						key={step.id}
+						id={`msg-${step.id}`}
+						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
+					>
+						<ClampedProse>
+							<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
+						</ClampedProse>
+					</div>
+				) : null,
 			)}
 			{/* Assistant answer — plain prose on the thread column */}
 			{block.answerItem && (
@@ -733,7 +765,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						<RequestStatsLine stat={answerStat} className="mt-0.5" omitTime />
 					)}
 					{/* Hover-only ghost footer */}
-					{!selecting && (
+					{!selecting && !isForkDraftId(sessionId) && (
 						<AnswerFooter
 							sessionId={sessionId}
 							cwd={sessionCwd}
@@ -803,6 +835,7 @@ const StreamingRow = React.memo(function StreamingRow({
 	const echoes = useLive(
 		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
 	);
+	const ompQueue = useLive((s) => s.sessions[sessionId]?.ompQueue);
 	// Step index each in-flight steer was sent at, scoped to the streaming
 	// message it interrupted: the steer stays where persisted grouping will
 	// later place it (after the steps already emitted when it was sent).
@@ -847,10 +880,58 @@ const StreamingRow = React.memo(function StreamingRow({
 	// → plain markdown text. Live tools without a matching call are appended.
 	const steps = useMemo<LivePseudoStep[]>(() => {
 		const out: LivePseudoStep[] = [];
-		const content = Array.isArray(streamingMessage?.content)
-			? (streamingMessage.content as unknown[])
-			: [];
+		const content = normalizeThinkContent(
+			Array.isArray(streamingMessage?.content)
+				? (streamingMessage.content as unknown[])
+				: [],
+			{ streaming: true },
+		);
 		const seen = new Set<string>();
+		const pushTool = (id: string, args: unknown, name: string | undefined) => {
+			seen.add(id);
+			const live = liveTools[id];
+			out.push({
+				id: `live-tool-${id}`,
+				kind: "tool",
+				call: {
+					id,
+					name: live?.toolName ?? name ?? "",
+					args: live?.args ?? args ?? {},
+					intent: live?.intent ?? null,
+				},
+				result: toolResultsByCallId?.get(id),
+				requestId: requestOfCall.get(id),
+			});
+		};
+		// Finished requests first, in arrival order: their thinking / prose /
+		// tool rows stay where they happened instead of collapsing to the top.
+		liveRequests.forEach((req, reqIdx) => {
+			req.parts.forEach((part, partIdx) => {
+				if (part.kind === "thinking") {
+					out.push({
+						id: `live-thinking-r${reqIdx}-${partIdx}`,
+						kind: "thinking",
+						thinking: part.text,
+						durationMs: part.durationMs,
+					});
+				} else if (part.kind === "text") {
+					out.push({
+						id: `live-text-r${reqIdx}-${partIdx}`,
+						kind: "text",
+						text: part.text,
+					});
+				} else if (!seen.has(part.id)) {
+					pushTool(part.id, undefined, undefined);
+				}
+			});
+		});
+		// The in-flight message comes last; only its newest thinking part can
+		// still be running, and it is the final row of the block.
+		let lastThinkingIdx = -1;
+		content.forEach((part, i) => {
+			const t = asObj(part).type;
+			if (t === "thinking" || t === "thought") lastThinkingIdx = i;
+		});
 		let partIdx = 0;
 		for (const part of content) {
 			const o = asObj(part);
@@ -859,38 +940,32 @@ const StreamingRow = React.memo(function StreamingRow({
 			if (t === "thinking" || t === "thought") {
 				const thinking = String(o.thinking ?? o.text ?? "");
 				if (!thinking) continue;
+				const isLast = partIdx - 1 === lastThinkingIdx;
+				const running = isLast && !thinkingEndedAt;
 				out.push({
 					id: `live-thinking-${partIdx}`,
 					kind: "thinking",
 					thinking,
-					running: !thinkingEndedAt,
+					running,
 					durationMs:
-						thinkingStartedAt && thinkingEndedAt
+						isLast && thinkingStartedAt && thinkingEndedAt
 							? thinkingEndedAt - thinkingStartedAt
 							: undefined,
 				});
 			} else if (t === "tool_use" || t === "toolCall") {
 				const id = String(o.id ?? "");
-				if (!id) continue;
-				seen.add(id);
-				const live = liveTools[id];
-				const hist = toolResultsByCallId?.get(id);
-				out.push({
-					id: `live-tool-${id}`,
-					kind: "tool",
-					call: {
-						id,
-						name: live?.toolName ?? String(o.name ?? ""),
-						args: live?.args ?? o.input ?? o.arguments ?? {},
-						intent: live?.intent ?? null,
-					},
-					result: hist,
-					requestId: requestOfCall.get(id),
-				});
+				if (!id || seen.has(id)) continue;
+				pushTool(id, o.input ?? o.arguments, String(o.name ?? ""));
 			} else if (t === "text") {
 				const txt = String(o.text ?? "");
 				if (!txt.trim()) continue;
-				out.push({ id: `live-text-${partIdx}`, kind: "text", text: txt });
+				out.push({
+					id: `live-text-${partIdx}`,
+					kind: "text",
+					text: txt,
+					// Only the part the model is writing right now is unfinished.
+					streaming: partIdx === content.length,
+				});
 			}
 		}
 		// Live tools never declared in the streaming message still render.
@@ -911,7 +986,12 @@ const StreamingRow = React.memo(function StreamingRow({
 		}
 		const msgKey = streamingMessage?.timestamp;
 		const anchors = steerAnchors.current;
-		const steers = echoes.filter((e) => e.steer);
+		const queued = ompQueue
+			? queuedEchoIds({ pendingUserEchoes: echoes, ompQueue })
+			: new Set<string>();
+		// A queued steer is not part of the running request yet: it shows as a
+		// grey queued bubble below and joins the steps once delivered.
+		const steers = echoes.filter((e) => e.steer && !queued.has(e.id));
 		for (const id of anchors.keys()) {
 			if (!steers.some((e) => e.id === id)) anchors.delete(id);
 		}
@@ -933,7 +1013,9 @@ const StreamingRow = React.memo(function StreamingRow({
 	}, [
 		streamingMessage,
 		echoes,
+		ompQueue,
 		liveTools,
+		liveRequests,
 		toolResultsByCallId,
 		requestOfCall,
 		thinkingStartedAt,
@@ -1005,6 +1087,8 @@ export function MessageList({
 	const pendingEchoes = useLive(
 		(s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES,
 	);
+	const ompQueue = useLive((s) => s.sessions[sessionId]?.ompQueue);
+	const flowNotices = useLive((s) => s.sessions[sessionId]?.flowNotices);
 	const isStreamingActive = useLive(
 		(s) =>
 			Boolean(
@@ -1014,13 +1098,14 @@ export function MessageList({
 	);
 	// In-turn steers render inside StreamingRow at their step position; only
 	// next-turn echoes (or steers orphaned after the stream ends) sit here.
-	const bottomEchoes = useMemo(
-		() =>
-			isStreamingActive
-				? pendingEchoes.filter((e) => !e.steer)
-				: pendingEchoes,
-		[pendingEchoes, isStreamingActive],
-	);
+	const bottomEchoes = useMemo(() => {
+		// Queued echoes are drawn by QueuedBubbles (grey, "排队中").
+		const queued = ompQueue
+			? queuedEchoIds({ pendingUserEchoes: pendingEchoes, ompQueue })
+			: new Set<string>();
+		const sent = pendingEchoes.filter((e) => !queued.has(e.id));
+		return isStreamingActive ? sent.filter((e) => !e.steer) : sent;
+	}, [pendingEchoes, ompQueue, isStreamingActive]);
 	const scrollRequest = useLive((s) => s.sessions[sessionId]?.scrollRequest);
 
 	const [showHidden, setShowHidden] = useState(false);
@@ -1091,9 +1176,15 @@ export function MessageList({
 		[items],
 	);
 
+	// Compaction / handoff dividers sit in the flow right after the item that
+	// was last when they started.
+	const withNotices = useMemo(
+		() => withFlowNotices(items, flowNotices ?? []),
+		[items, flowNotices],
+	);
 	const visible = useMemo(
-		() => filterVisibleItems(items, showHidden),
-		[items, showHidden],
+		() => filterVisibleItems(withNotices, showHidden),
+		[withNotices, showHidden],
 	);
 
 	// Group visible items into TurnBlocks and ProtocolBlocks
@@ -1110,7 +1201,7 @@ export function MessageList({
 		return m;
 	}, [turns]);
 
-	const hiddenCount = items.length - visible.length;
+	const hiddenCount = withNotices.length - visible.length;
 	const hasContent =
 		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive;
 	const isEmptyState = !isLoadingTranscript && !transcriptError && !hasContent;
@@ -1256,7 +1347,14 @@ export function MessageList({
 		const target = containerRef.current;
 		if (!el || !target) return;
 		const ro = new ResizeObserver(() => {
-			scrollToBottomThrottled();
+			const el2 = scrollRef.current;
+			// Pin in the same frame the content grew (before paint). A deferred
+			// write lets one frame paint at the old offset, which reads as the
+			// output block jittering on every streamed line.
+			if (el2 && shouldFollow(followRef.current)) {
+				el2.scrollTop = el2.scrollHeight;
+				followRef.current = onWroteBottom(followRef.current, Date.now());
+			}
 		});
 		ro.observe(target);
 		return () => {
@@ -1292,6 +1390,74 @@ export function MessageList({
 			followRef.current = onWroteBottom(followRef.current, Date.now());
 		}
 	}, [sessionId, blocks.length, pendingEchoes.length, isStreamingActive, showHidden, totalSize, scrollRef]);
+
+	// Final-answer landing: when a streamed turn commits, keep the user's
+	// message as high as possible so the answer body is readable without
+	// scrolling (see shouldAnchorTurnTop). Declared after the pin above so it
+	// overrides the bottom pin in the same pre-paint pass.
+	const lastTurnIndex = useMemo(() => {
+		for (let i = blocks.length - 1; i >= 0; i--) {
+			if (blocks[i].type === "turn") return i;
+		}
+		return -1;
+	}, [blocks]);
+	const lastTurnKey = useMemo(() => {
+		const b = lastTurnIndex >= 0 ? blocks[lastTurnIndex] : null;
+		if (!b || b.type !== "turn") return null;
+		return `${b.id}:${b.answerItem?.id ?? ""}:${b.intermediateSteps.length}`;
+	}, [blocks, lastTurnIndex]);
+	const anchorArmRef = useRef<{ startKey: string | null } | null>(null);
+	useLayoutEffect(() => {
+		anchorArmRef.current = null;
+	}, [sessionId]);
+	useLayoutEffect(() => {
+		if (isStreamingActive && !anchorArmRef.current) {
+			anchorArmRef.current = { startKey: lastTurnKey };
+		}
+		const arm = anchorArmRef.current;
+		if (!arm || isStreamingActive) return;
+		const el = scrollRef.current;
+		if (!el) return;
+		const following = shouldFollow(followRef.current);
+		if (!following) {
+			anchorArmRef.current = null;
+			return;
+		}
+		const targetTop =
+			lastTurnIndex >= 0
+				? (virtualizer.getOffsetForIndex(lastTurnIndex, "start")?.[0] ?? null)
+				: null;
+		if (
+			!shouldAnchorTurnTop({
+				armed: true,
+				streaming: false,
+				following,
+				startKey: arm.startKey,
+				nowKey: lastTurnKey,
+				targetTop,
+				maxTop: el.scrollHeight - el.clientHeight,
+			})
+		) {
+			// Committed but already fully visible at the bottom: nothing to move.
+			if (lastTurnKey !== arm.startKey) anchorArmRef.current = null;
+			return;
+		}
+		anchorArmRef.current = null;
+		followRef.current = detach(followRef.current);
+		virtualizer.scrollToIndex(lastTurnIndex, { align: "start" });
+	}, [sessionId, isStreamingActive, lastTurnKey, lastTurnIndex, scrollRef, virtualizer]);
+
+	// Sending a message re-arms follow-bottom even after the viewport was left
+	// above the stream (final-answer anchor, or the user scrolling away).
+	const echoCountRef = useRef(0);
+	useLayoutEffect(() => {
+		const n = pendingEchoes.length;
+		if (n > echoCountRef.current && !shouldFollow(followRef.current)) {
+			followRef.current = initialFollowScroll(Date.now());
+			emitScrollState({ nearBottom: true, hasNewMessages: false });
+		}
+		echoCountRef.current = n;
+	}, [pendingEchoes.length]);
 
 	// Auto-scroll when new blocks arrive: the pin already ran pre-paint; this
 	// passive pass coalesces the trailing write (handles heights that settle
@@ -1368,8 +1534,45 @@ export function MessageList({
 		flashHighlight(revealTurn.userItemId, 2500);
 	}, [revealTurn, blocks, virtualizer, sessionId, isLoadingTranscript, flashHighlight]);
 
+	// Consume Token-panel "locate this tool call" targets: scroll to the call's
+	// turn, flash it (the turn's fold / group / card mount or force open while
+	// the flash is active), and retry the precise scroll as the rows grow open.
+	const locateTarget = useLocate((s) => (s.target?.sessionId === sessionId ? s.target : null));
+	const lastHandledLocate = useRef(0);
+	useEffect(() => {
+		if (!locateTarget || locateTarget.nonce === lastHandledLocate.current) return;
+		if (isLoadingTranscript) return;
+		const callId = currentLocateId(locateTarget);
+		if (!callId) return;
+		lastHandledLocate.current = locateTarget.nonce;
+		const idx = blocks.findIndex(
+			(b) =>
+				b.type === "turn" &&
+				b.intermediateSteps.some(
+					(s) =>
+						s.kind === "tool" &&
+						(s.call.id === callId || s.result?.toolCallId === callId),
+				),
+		);
+		if (idx < 0) {
+			toast.info("没有在当前对话里找到这次调用");
+			return;
+		}
+		followRef.current = detach(followRef.current);
+		virtualizer.scrollToIndex(idx, { align: "center", behavior: "smooth" });
+		flashHighlight(callId, 2000);
+		for (const delay of [150, 450, 900]) {
+			window.setTimeout(() => {
+				document
+					.querySelector(`[data-tool-id="${CSS.escape(callId)}"]`)
+					?.scrollIntoView({ behavior: "smooth", block: "center" });
+			}, delay);
+		}
+	}, [locateTarget, blocks, virtualizer, isLoadingTranscript, flashHighlight]);
+	const [locateHost, setLocateHost] = useState<HTMLDivElement | null>(null);
 	return (
-		<div className="relative flex h-full flex-col">
+		<div ref={setLocateHost} className="relative flex h-full flex-col">
+			<LocatePill sessionId={sessionId} host={locateHost} />
 			{/* Top toolbar */}
 			<div
 				className={clsx(
@@ -1391,19 +1594,23 @@ export function MessageList({
 				) : (
 					<div />
 				)}
-				<button
-					type="button"
-					onClick={() => setToolsExpanded((v) => !v)}
-					className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
-					title={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
-					aria-label={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
-				>
-					{toolsExpanded ? (
-						<ChevronsDownUp size={12} />
-					) : (
-						<ChevronsUpDown size={12} />
-					)}
-				</button>
+				{hasContent ? (
+					<button
+						type="button"
+						onClick={() => setToolsExpanded((v) => !v)}
+						className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
+						title={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
+						aria-label={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
+					>
+						{toolsExpanded ? (
+							<ChevronsDownUp size={12} />
+						) : (
+							<ChevronsUpDown size={12} />
+						)}
+					</button>
+				) : (
+					<div />
+				)}
 			</div>
 
 			{/* Loading transcript affordance */}
@@ -1535,6 +1742,12 @@ export function MessageList({
 							/>
 						</div>
 					)}
+
+					{/* Queued user messages: not yet sent into a model request */}
+					<QueuedBubbles
+						sessionId={sessionId}
+						className={clsx("w-full", traceGutter ? TRACE_GUTTER_PAD : "px-3")}
+					/>
 
 					{/* Inline slash-command output (omp command_output / app-local results) */}
 					<div

@@ -158,6 +158,36 @@ describe("批量替换模型 dialog", () => {
 		expect(screen.getByRole("button", { name: "应用 2 项" })).toBeTruthy();
 	});
 
+	it("replaces only inside the chosen project scope, with search active", async () => {
+		const PROJECT_EDIT: ModelReplaceEdit = {
+			kind: "value",
+			location: { kind: "role", scope: "project", projectPath: "/repo/alpha", name: "smol" },
+			before: OPUS,
+			after: GPT,
+			thinkingBefore: null,
+			thinkingAfter: null,
+		};
+		scanMock.mockResolvedValue({
+			...SCAN,
+			refs: [...SCAN.refs, { location: PROJECT_EDIT.location, value: OPUS, thinking: null }],
+			projects: [{ path: "/repo/alpha", name: "alpha", status: "ok", error: null }],
+		});
+		render(<ModelReplaceDialog onClose={() => undefined} />);
+		await screen.findByText(/模型目录中找不到/);
+
+		fireEvent.change(screen.getByLabelText("搜索模型引用"), { target: { value: "CLAUDE" } });
+		fireEvent.change(screen.getByLabelText("替换范围"), { target: { value: "project:/repo/alpha" } });
+		fireEvent.click((await screen.findAllByTitle(REPLACE_BUTTON_TITLE))[0]);
+		await pickTarget(GPT);
+		fireEvent.click(screen.getByRole("button", { name: "预览改动" }));
+		await screen.findByText("范围：项目：alpha");
+
+		applyMock.mockResolvedValueOnce({ recordId: "rec-3", results: [{ edit: PROJECT_EDIT, ok: true, error: null }] });
+		fireEvent.click(screen.getByRole("button", { name: "应用 1 项" }));
+		await screen.findByText("成功 1");
+		expect(applyMock).toHaveBeenCalledWith(OPUS, GPT, [PROJECT_EDIT], null);
+	});
+
 	it("applies the planned edits, then retries the failures on the same record", async () => {
 		await openPreview();
 		applyMock.mockResolvedValueOnce({

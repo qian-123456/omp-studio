@@ -17,6 +17,7 @@ import type { SubagentSummary, TranscriptItem } from "../../lib/contracts";
 import { relativeTime } from "../../lib/format";
 import { subagentList } from "../../lib/ipc";
 import { useLive } from "../../stores/live";
+import { useLocate } from "../../stores/locate";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { DoctorView } from "./DoctorView";
@@ -55,7 +56,6 @@ export function HeatmapPanel() {
 	const items = useLive((s) =>
 		selectedId ? (s.sessions[selectedId]?.items ?? EMPTY_ITEMS) : EMPTY_ITEMS,
 	);
-	const scrollToItem = useLive((s) => s.scrollToItem);
 
 	// Tabs & Navigation state
 	const [mainTab, setMainTab] = useState<MainTab>("session");
@@ -187,7 +187,7 @@ export function HeatmapPanel() {
 	}, [allSessions, timeRange, sortBy]);
 
 	return (
-		<div className="flex h-full flex-col overflow-y-auto text-xs">
+		<div className="flex h-full min-w-0 flex-col overflow-y-auto overflow-x-hidden text-xs">
 			{/* Top Segmented Switcher */}
 			<div className="p-3 pb-2.5 hairline-b sticky top-0 bg-[var(--bg-panel)] z-10 flex items-center justify-between">
 				<Segmented
@@ -213,7 +213,7 @@ export function HeatmapPanel() {
 
 			{/* Main Tab Content */}
 			{mainTab === "session" ? (
-				<div className="flex-1 p-3 space-y-3">
+				<div className="flex-1 min-w-0 p-3 space-y-3">
 					{!selectedId ? (
 						<div className="p-6 text-center text-xs text-neutral-500">
 							选择一个会话查看 Token 用量
@@ -277,11 +277,11 @@ export function HeatmapPanel() {
 							{/* 2. Bento Card: Context Gauge & Target Overview */}
 							<div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3 shadow-sm">
 								<div className="flex items-center justify-between mb-1.5">
-									<div className="flex items-center gap-1.5 min-w-0">
-										<span className="font-medium text-neutral-200 text-[12px] truncate">
+									<div className="flex flex-wrap items-center gap-1.5 min-w-0">
+										<span className="font-medium text-neutral-200 text-[12px] break-words min-w-0">
 											{activeAnalysis.name}
 										</span>
-										<span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-neutral-400 truncate">
+										<span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-neutral-400 break-all min-w-0">
 											{activeAnalysis.model}
 										</span>
 									</div>
@@ -483,7 +483,7 @@ export function HeatmapPanel() {
 																	)}
 																/>
 															)}
-															<span className="font-mono text-[11px] font-medium text-neutral-200 truncate">
+															<span className="font-mono text-[11px] font-medium text-neutral-200 break-all min-w-0">
 																{item.name}
 															</span>
 														</div>
@@ -500,7 +500,7 @@ export function HeatmapPanel() {
 													</div>
 													<div
 														className={clsx(
-															"text-[10.5px] mb-1.5 leading-relaxed",
+															"text-[10.5px] mb-1.5 leading-relaxed break-words [overflow-wrap:anywhere]",
 															item.status === "waste"
 																? "text-amber-300/90 font-medium"
 																: "text-neutral-400",
@@ -525,9 +525,17 @@ export function HeatmapPanel() {
 																type="button"
 																onClick={(e) => {
 																	e.stopPropagation();
-																	scrollToItem(selectedId, item.targetItemId!);
+																	useLocate
+																		.getState()
+																		.locate(
+																			selectedId,
+																			item.name,
+																			(item.callDetails ?? [{ targetItemId: item.targetItemId! }]).map(
+																				(c) => c.targetItemId,
+																			),
+																		);
 																}}
-																className="px-2 py-0.5 rounded bg-[var(--bg-hover)] hover:bg-[var(--accent)] hover:text-white text-neutral-300 transition-colors"
+																className="rounded-full border border-[var(--accent)]/50 px-2 py-0.5 text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white"
 															>
 																定位到会话
 															</button>
@@ -539,20 +547,20 @@ export function HeatmapPanel() {
 														<div className="mt-2.5 pt-2 border-t border-[var(--border-divider)] space-y-1">
 															<div className="text-[10px] text-neutral-400 font-medium flex items-center justify-between mb-1">
 																<span>具体调用历史 ({item.callDetails!.length} 次)</span>
-																<span className="text-[9.5px] text-neutral-500">点击定位可高亮展开该步</span>
+																<span className="text-[9.5px] text-neutral-500">点击「定位」跳到对话中的这一步，可用上一处/下一处切换</span>
 															</div>
 															<div className="max-h-48 overflow-y-auto space-y-1 pr-0.5 no-scrollbar">
 																{item.callDetails!.map((call, cIdx) => (
 																	<div
 																		key={`${call.id}-${cIdx}`}
-																		className="flex items-center justify-between gap-1.5 rounded bg-[var(--bg-panel)]/80 px-2 py-1 text-[10px] hover:bg-[var(--bg-hover)] transition-colors"
+																		className="flex items-start justify-between gap-1.5 rounded bg-[var(--bg-panel)]/80 px-2 py-1 text-[10px] hover:bg-[var(--bg-hover)] transition-colors"
 																	>
 																		<div className="flex items-center gap-1.5 min-w-0 flex-1">
 																			<span className="font-mono text-neutral-500 text-[9px] shrink-0">
 																				#{cIdx + 1}
 																			</span>
 																			<span
-																				className="font-mono text-neutral-300 truncate"
+																				className="font-mono text-neutral-300 break-all min-w-0"
 																				title={call.label}
 																			>
 																				{call.label}
@@ -571,9 +579,17 @@ export function HeatmapPanel() {
 																				type="button"
 																				onClick={(e) => {
 																					e.stopPropagation();
-																					if (selectedId) scrollToItem(selectedId, call.targetItemId);
+																					if (selectedId)
+																						useLocate
+																							.getState()
+																							.locate(
+																								selectedId,
+																								item.name,
+																								item.callDetails!.map((c) => c.targetItemId),
+																								cIdx,
+																							);
 																				}}
-																				className="px-1.5 py-0.2 rounded bg-[var(--bg-hover)] hover:bg-[var(--accent)] hover:text-white text-neutral-300 transition-colors"
+																				className="rounded-full border border-[var(--accent)]/50 px-2 py-0.5 text-[10px] text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white"
 																			>
 																				定位
 																			</button>
@@ -594,7 +610,7 @@ export function HeatmapPanel() {
 				</div>
 			) : mainTab === "global" ? (
 				/* Global OMP Sessions Explorer View */
-				<div className="flex-1 p-3 space-y-3">
+				<div className="flex-1 min-w-0 p-3 space-y-3">
 					<SystemicIssuesCard
 						sessions={sessions}
 						onSelect={(id) => {
@@ -682,7 +698,7 @@ export function HeatmapPanel() {
 										)}
 									>
 										<div className="flex items-center justify-between mb-1">
-											<div className="font-medium text-neutral-200 truncate pr-2 text-[11.5px]">
+											<div className="font-medium text-neutral-200 break-words min-w-0 pr-2 text-[11.5px]">
 												{meta.title || "未命名会话"}
 											</div>
 											<div className="text-[10px] text-neutral-500 shrink-0 font-mono">
@@ -697,7 +713,7 @@ export function HeatmapPanel() {
 												{meta.git?.branch && (
 													<>
 														<span className="text-neutral-600">·</span>
-														<span className="text-neutral-500 truncate max-w-[80px]">
+														<span className="text-neutral-500 break-all min-w-0">
 															{meta.git.branch}
 														</span>
 													</>
@@ -722,7 +738,7 @@ export function HeatmapPanel() {
 					</div>
 				</div>
 			) : (
-				<div className="flex-1 p-3 space-y-3">
+				<div className="flex-1 min-w-0 p-3 space-y-3">
 					{!selectedId ? (
 						<div className="p-6 text-center text-xs text-neutral-500">先在左侧选择一个对话，再开始 AI 会诊</div>
 					) : (

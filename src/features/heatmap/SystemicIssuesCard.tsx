@@ -33,7 +33,7 @@ export function SystemicIssuesCard({
 									<span className="shrink-0 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-neutral-400">
 										{it.scopeLabel}
 									</span>
-									<span className="truncate font-medium text-amber-400">{it.tag}</span>
+									<span className="min-w-0 break-words font-medium text-amber-400">{it.tag}</span>
 								</div>
 								<span className="shrink-0 font-mono text-[10px] text-neutral-400">×{it.count}</span>
 							</div>
@@ -44,7 +44,7 @@ export function SystemicIssuesCard({
 										key={id}
 										type="button"
 										onClick={() => onSelect(id)}
-										className="max-w-[140px] truncate rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-neutral-300 hover:bg-[var(--bg-hover)]"
+										className="max-w-full break-all rounded border border-[var(--border)] px-1.5 py-0.5 text-left text-[10px] text-neutral-300 hover:bg-[var(--bg-hover)]"
 										title={sessions[id]?.title ?? id}
 									>
 										{sessions[id]?.title || id.slice(0, 8)}

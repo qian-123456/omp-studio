@@ -19,6 +19,7 @@ import { useUi } from "../../stores/ui";
 import { FileIcon } from "./FileIcon";
 import { FileTreeNode } from "./FileTreeNode";
 import { WorkspaceCard } from "./WorkspaceCard";
+import { claimEscape } from "../../lib/escapeClaim";
 
 export function FileExplorer() {
 	const workspaces = useSessions((s) => s.workspaces);
@@ -293,7 +294,7 @@ export function FileExplorer() {
 							onKeyDown={(e) => {
 								if (isComposing(e)) return;
 								if (e.key === "Escape") {
-									e.preventDefault();
+									claimEscape(e);
 									if (searchQuery) setSearchQuery("");
 									else setSearchOpen(false);
 								}

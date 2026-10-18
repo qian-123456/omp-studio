@@ -1,3 +1,5 @@
+import { Z_FLOATING_MIN, Z_LAYER } from "../components/FloatingLayer";
+
 /**
  * Custom overlay scroll pills.
  *
@@ -279,11 +281,33 @@ function isBehindModal(el: HTMLElement): boolean {
 	return true;
 }
 
+/** Pills of ordinary page scrollers sit at the lowest tier, below every floating surface. */
+export const PILL_BASE_Z = Z_LAYER.pill;
+
+/** Pure: pill z-index for a scroller whose ancestors carry these numeric z-indexes.
+ * Scrollers living inside a floating tier (>= drawer) draw just above it so their
+ * own pill stays visible; every other scroller stays below all floating surfaces. */
+export function pillZIndex(ancestorZ: readonly number[]): number {
+	let max = 0;
+	for (const z of ancestorZ) if (Number.isFinite(z) && z > max) max = z;
+	return max >= Z_FLOATING_MIN ? max + 1 : PILL_BASE_Z;
+}
+
+function applyPillZ(el: HTMLElement, pill: HTMLElement): void {
+	const zs: number[] = [];
+	for (let n: HTMLElement | null = el; n; n = n.parentElement) {
+		const z = Number.parseInt(getComputedStyle(n).zIndex, 10);
+		if (!Number.isNaN(z)) zs.push(z);
+	}
+	pill.style.zIndex = String(pillZIndex(zs));
+}
+
 function show(el: HTMLElement): void {
 	if (suspended || !el.isConnected || isBehindModal(el)) return;
 	const entry = entryFor(el);
 	if (!dedupeOverlap(el)) return;
 	layout(el, entry);
+	if (!entry.visible) applyPillZ(el, entry.pill);
 	if (entry.idleTimer !== 0) window.clearTimeout(entry.idleTimer);
 	if (!entry.visible) {
 		entry.visible = true;

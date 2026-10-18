@@ -66,7 +66,6 @@ describe("useComposer store", () => {
 			drafts: {},
 			history: [],
 			focusNonce: {},
-			annotationTarget: "main",
 		});
 	});
 
@@ -181,24 +180,13 @@ describe("side-chat annotations", () => {
 
 	it("moveAnnotation preserves fields and moves between main and side-chat lists", () => {
 		const c = useComposer.getState();
-		c.addAnnotation("p1", {
-			source: "message",
-			text: "quoted",
-			itemId: "item-9",
-			comment: "note",
-		});
+		c.addAnnotation("p1", { source: "message", text: "quoted", itemId: "item-9", comment: "note" });
 		const src = useComposer.getState().annotations["p1"]![0]!;
 		c.moveAnnotation("p1", sideChatAnnKey("p1"), src.id);
 		let anns = useComposer.getState().annotations;
 		expect(anns["p1"]).toHaveLength(0);
 		const moved = anns[sideChatAnnKey("p1")]![0]!;
-		expect(moved).toMatchObject({
-			source: "message",
-			text: "quoted",
-			itemId: "item-9",
-			comment: "note",
-		});
-		// Moving back appends to the destination list without touching others.
+		expect(moved).toMatchObject({ source: "message", text: "quoted", itemId: "item-9", comment: "note" });
 		c.moveAnnotation(sideChatAnnKey("p1"), "p1", moved.id);
 		anns = useComposer.getState().annotations;
 		expect(anns[sideChatAnnKey("p1")]).toHaveLength(0);
@@ -214,9 +202,17 @@ describe("side-chat annotations", () => {
 	});
 
 	it("remembers the annotation destination in localStorage", () => {
-		const c = useComposer.getState();
-		c.setAnnotationTarget("sidechat");
+		useComposer.getState().setAnnotationTarget("sidechat");
 		expect(useComposer.getState().annotationTarget).toBe("sidechat");
 		expect(localStorage.getItem("ompws:annotation-target")).toBe("sidechat");
+	});
+});
+
+describe("attachImages", () => {
+	it("numbers paths in order, reusing images already attached", () => {
+		const c = useComposer.getState();
+		c.addImage("att", "/x.png");
+		expect(c.attachImages("att", ["/y.png", "/x.png", "/y.png"])).toEqual([2, 1, 2]);
+		expect(useComposer.getState().images["att"].map((i) => i.path)).toEqual(["/x.png", "/y.png"]);
 	});
 });

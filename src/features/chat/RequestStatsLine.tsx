@@ -1,10 +1,10 @@
 /** [B] Per-request model stats: one dim TUI-style line under the last row of
  * every assistant message, its hover/tap explanation card (field meanings +
- * 等第一个字 / 生成 split), and the whole-turn totals for the 「已处理」 divider.
+ * 等第一个字 / 生成 split), and the whole-turn summary rows of the 「已处理」 area.
  * Values come from omp's own per-request metrics via `requestStats.ts`. */
 
 import clsx from "clsx";
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import {
@@ -14,6 +14,7 @@ import {
 	formatStatTokens,
 	type RequestStat,
 } from "./requestStats";
+import { formatDurationCompact } from "./turnGrouping";
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -54,7 +55,7 @@ function useHoverCard() {
 			// Measure on open: the row may have scrolled during the dwell.
 			setAnchor(target.getBoundingClientRect());
 			setOpen(true);
-		}, 250);
+		}, 600);
 	}, []);
 
 	// The short close delay lets the pointer travel from the line to the card
@@ -218,7 +219,7 @@ export function RequestStatsLine({
 		<>
 			<div
 				className={clsx(
-					"flex flex-wrap items-baseline gap-x-2 font-mono text-[11px] leading-5 tabular-nums",
+					"flex w-fit max-w-full flex-wrap items-baseline gap-x-2 font-mono text-[11px] leading-5 tabular-nums",
 					className,
 				)}
 				onMouseEnter={enterProps}
@@ -255,83 +256,59 @@ export function RequestStatsLine({
 	);
 }
 
-/** 「请求次数 · 总输入 · 总输出 · 平均速度」 for the 「已处理」 divider hover. */
-function TurnTotalsCard({ stats }: { stats: RequestStat[] }) {
-	const withCost = useDisplayPrefs((s) => s.requestStatFields.cost);
-	const totals = useMemo(() => aggregateRequestStats(stats), [stats]);
-	return (
-		<div className="flex w-[230px] flex-col gap-1 p-3">
-			<FieldRow
-				label="请求次数"
-				value={`${totals.count} 次`}
-				description="这一轮里模型一共被调用了几次"
-			/>
-			<FieldRow
-				glyph={REQUEST_STAT_FIELDS.input.glyph}
-				label="总输入"
-				value={formatStatTokens(totals.input)}
-				description="各次请求输入（含写入缓存）的总和"
-			/>
-			<FieldRow
-				glyph={REQUEST_STAT_FIELDS.output.glyph}
-				label="总输出"
-				value={formatStatTokens(totals.output)}
-				description="各次请求输出的总和"
-			/>
-			<FieldRow
-				glyph={REQUEST_STAT_FIELDS.tps.glyph}
-				label="平均速度"
-				value={totals.avgTps == null ? "—" : `${totals.avgTps.toFixed(1)}/s`}
-				description="总输出 ÷ 总耗时（只计录得耗时的请求）"
-			/>
-			{withCost && (
-				<FieldRow
-					glyph={REQUEST_STAT_FIELDS.cost.glyph}
-					label="总费用"
-					value={`$${totals.cost.toFixed(totals.cost < 1 ? 3 : 2)}`}
-					description="这一轮所有请求的费用合计"
-				/>
-			)}
-		</div>
-	);
-}
-
 /**
- * Wraps a trigger (the 「已处理」 divider) and reveals the turn totals on hover /
- * keyboard focus. The trigger itself renders untouched.
+ * Whole-turn summary shown as the first rows of the expanded 「已处理」 area:
+ * duration, request count, total input/output, average speed (and cost when
+ * enabled), one label/value pair per row. Plain inline content, no popup.
  */
-export function TurnTotalsHover({
+export function TurnSummaryRows({
 	stats,
-	children,
+	durationMs,
 }: {
 	stats: RequestStat[];
-	children: ReactNode;
+	durationMs?: number;
 }) {
-	const enabled = useDisplayPrefs((s) => s.requestStats);
-	// Hover only: a click on the divider toggles the steps, not this card.
-	const { open, anchor, enterProps, cardProps } = useHoverCard();
-	if (!enabled || stats.length === 0) return <>{children}</>;
-
+	const withCost = useDisplayPrefs((s) => s.requestStatFields.cost);
+	const totals = useMemo(() => aggregateRequestStats(stats), [stats]);
+	const rows: { label: string; value: string }[] = [];
+	if (durationMs) rows.push({ label: "总用时", value: formatDurationCompact(durationMs) });
+	if (totals.count > 0) {
+		rows.push({ label: "请求次数", value: `${totals.count} 次` });
+		rows.push({
+			label: "总输入",
+			value: `${REQUEST_STAT_FIELDS.input.glyph}${formatStatTokens(totals.input)}`,
+		});
+		rows.push({
+			label: "总输出",
+			value: `${REQUEST_STAT_FIELDS.output.glyph}${formatStatTokens(totals.output)}`,
+		});
+		rows.push({
+			label: "缓存命中",
+			value: `${REQUEST_STAT_FIELDS.cache.glyph}${formatStatTokens(totals.cacheRead)}`,
+		});
+		rows.push({
+			label: "平均速度",
+			value:
+				totals.avgTps == null
+					? "—"
+					: `${REQUEST_STAT_FIELDS.tps.glyph}${totals.avgTps.toFixed(1)}/s`,
+		});
+		if (withCost) {
+			rows.push({
+				label: "总费用",
+				value: `$${totals.cost.toFixed(totals.cost < 1 ? 3 : 2)}`,
+			});
+		}
+	}
+	if (rows.length === 0) return null;
 	return (
-		<>
-			<div
-				className="w-fit"
-				onMouseEnter={enterProps}
-				onMouseLeave={cardProps.onMouseLeave}
-			>
-				{children}
-			</div>
-			{open && anchor && (
-				<FloatingLayer
-					anchor={anchor}
-					placement="bottom-start"
-					offset={6}
-					layer="hovercard"
-					{...cardProps}
-				>
-					<TurnTotalsCard stats={stats} />
-				</FloatingLayer>
-			)}
-		</>
+		<dl className="mb-1 grid w-fit grid-cols-[repeat(3,max-content)] gap-x-5 gap-y-0.5 text-[11px] leading-4">
+			{rows.map((r) => (
+				<div key={r.label} className="flex items-baseline gap-1.5 whitespace-nowrap">
+					<dt className="text-[var(--text-40)]">{r.label}</dt>
+					<dd className="m-0 font-mono tabular-nums text-[var(--text-60)]">{r.value}</dd>
+				</div>
+			))}
+		</dl>
 	);
 }

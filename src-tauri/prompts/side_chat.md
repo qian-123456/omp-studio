@@ -1,5 +1,8 @@
 Side chat forked from main session {{parent_label}} ("{{parent_title}}"), working in `{{cwd}}`.
 
+## Rules for this side chat
+{{boundary}}
+
 ## Context from the main session
 {{context}}
 

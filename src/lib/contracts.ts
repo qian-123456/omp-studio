@@ -60,6 +60,8 @@ export interface SessionMeta {
 	parentId: string | null;
 	/** 0 main, 1..=3. */
 	forkDepth: number;
+	/** "side" = side chat, "fork" = full fork copy, null = ordinary session. */
+	kind?: "side" | "fork" | null;
 	status: SessionStatus;
 	unread: boolean;
 	pending: PendingKind | null;
@@ -873,6 +875,62 @@ export interface ModelProbeResult {
 /** How `model_probe` exercises a selector: chat one-shot, web search, or judge request. */
 export type ModelProbeKind = "chat" | "search" | "judge";
 
+// ---- 系统提示词构成 (prompt_composition.rs) ----
+
+export type PromptCategoryId = "system" | "rules" | "skills" | "tools" | "mcp" | "other";
+
+export interface PromptItem {
+	id: string;
+	title: string;
+	/** Secondary line (e.g. MCP server). */
+	detail: string | null;
+	/** Raw text as omp sends it. */
+	text: string;
+	/** Estimated tokens. */
+	tokens: number;
+}
+
+export interface PromptCategory {
+	id: PromptCategoryId;
+	label: string;
+	tokens: number;
+	items: PromptItem[];
+}
+
+export interface PromptHint {
+	id: string;
+	kind:
+		| "largest"
+		| "duplicate"
+		| "big_skill"
+		| "skills_total"
+		| "big_rule"
+		| "rules_total"
+		| "mcp_always"
+		| "big_mcp_tool";
+	severity: "info" | "warn";
+	title: string;
+	detail: string;
+	itemIds: string[];
+	/** Full quoted text (duplicate paragraph). */
+	quote: string | null;
+}
+
+/** What a brand-new empty session in `cwd` carries in its context. */
+export interface PromptComposition {
+	cwd: string;
+	categories: PromptCategory[];
+	/** Sum of the estimated category totals. */
+	totalTokens: number;
+	/** omp's own `contextUsage.tokens` for the empty session (reference only). */
+	reportedTokens: number | null;
+	contextWindow: number | null;
+	hints: PromptHint[];
+	probeMs: number;
+	/** How `tokens` are estimated; shown verbatim. */
+	estimateNote: string;
+}
+
 /** One row of `omp models --kind all --json`. */
 export interface ModelKindEntry {
 	/** `provider/id`, exactly as config values reference it. */
@@ -899,6 +957,8 @@ export interface Model {
 	thinking?: string[];
 	/** Context window in tokens from `omp models --json`; null when unknown. */
 	contextWindow?: number | null;
+	/** `reasoning` from `omp models --json`: can think even with no levels configured; null/absent = unknown. */
+	reasoning?: boolean | null;
 }
 
 /** models.yml `providers.<providerId>.modelOverrides.<modelId>.contextWindow`; null deletes. */

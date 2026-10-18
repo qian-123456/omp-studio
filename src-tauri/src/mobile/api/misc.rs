@@ -139,7 +139,9 @@ async fn sidechats<B: Backend>(
         .sessions()
         .await
         .into_iter()
-        .filter(|m| m.parent_id.as_deref() == Some(id.as_str()))
+        .filter(|m| {
+            m.parent_id.as_deref() == Some(id.as_str()) && m.kind.as_deref() == Some("side")
+        })
         .collect();
     to_json(rows)
 }
@@ -164,7 +166,10 @@ async fn sidechat_create<B: Backend>(
     if ctx.backend.session(&id).await.is_none() {
         return Err(ApiError(StatusCode::NOT_FOUND, "会话不存在".into()));
     }
-    let info = crate::rpc::sidechat::create(state, &id, body.selection, body.question, body.model)
+    let info = crate::rpc::sidechat::create(state, &id, body.model)
+        .await
+        .map_err(gateway)?;
+    crate::rpc::sidechat::ask(state, &info.session_id, body.question, body.selection)
         .await
         .map_err(gateway)?;
     to_json(info)

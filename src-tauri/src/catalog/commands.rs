@@ -456,12 +456,14 @@ fn parse_models_value(
                     .get("contextWindow")
                     .and_then(|v| v.as_u64())
                     .filter(|w| *w > 0);
+                let reasoning = item.get("reasoning").and_then(|v| v.as_bool());
                 out.push(Model {
                     provider: provider.to_string(),
                     id: id.to_string(),
                     name: name.to_string(),
                     thinking,
                     context_window,
+                    reasoning,
                 });
             }
         }

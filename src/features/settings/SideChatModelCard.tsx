@@ -27,7 +27,7 @@ export function SideChatModelCard() {
 	const enabled = current !== "" || armed;
 	const selector = parseSelection(current).selector;
 	const pickerValue = catalogKeys.has(selector) || roleIdOf(selector) ? current : "";
-	const label = current ? sideChatModelLabel(current, models) : "选择模型";
+	const label = current ? sideChatModelLabel(selector, models) : "选择模型";
 
 	return (
 		<SettingsCard title="侧边对话" fieldId="sideChatModel">
@@ -47,7 +47,7 @@ export function SideChatModelCard() {
 			{enabled && (
 				<SettingRow
 					label="模型"
-					description="可附带 thinking level；所选模型不在列表中时自动回退为主对话模型。"
+					description="模型右侧可单独选择思考等级；所选模型不在列表中时自动回退为主对话模型。"
 					status={pickSave.status}
 					statusError={pickSave.error}
 					control={

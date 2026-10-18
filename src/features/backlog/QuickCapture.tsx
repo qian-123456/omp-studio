@@ -9,7 +9,9 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useBacklog } from "./backlogStore";
+import { CaptureProjectSelect } from "./CaptureProjectSelect";
 import { AddImageButton, ImageThumbs, useImageAttach } from "./IdeaImages";
+import { resolveCaptureProject } from "./ideasLogic";
 
 const KIND_META: Record<
 	BacklogKind,
@@ -100,7 +102,6 @@ export function QuickCapture() {
 
 	const handleSubmit = async (e?: React.FormEvent) => {
 		if (e) e.preventDefault();
-		if (isComposing({ key: "Enter" })) return;
 		const trimmed = text.trim();
 		if (!trimmed && images.length === 0) return;
 		setSubmitting(true);
@@ -113,7 +114,12 @@ export function QuickCapture() {
 			for (const path of images) {
 				refs.push({ kind: "image", path, text: null, lines: null, sessionId: null });
 			}
-			await backlogAdd(trimmed || "（图片）", kind, refs, currentSession?.cwd ?? null);
+			await backlogAdd(
+				trimmed || "（图片）",
+				kind,
+				refs,
+				resolveCaptureProject(useBacklog.getState().captureProject, currentSession?.cwd ?? null),
+			);
 			useBacklog.getState().clearCaptureDraft();
 			toast.success("已记入收集箱");
 			closeModal();
@@ -127,7 +133,7 @@ export function QuickCapture() {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--overlay)] pt-24 backdrop-blur-xs"
+			className="fixed inset-0 z-(--z-modal) flex items-start justify-center bg-[var(--overlay)] pt-24 backdrop-blur-xs"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeModal();
 			}}
@@ -237,6 +243,7 @@ export function QuickCapture() {
 							</label>
 						)}
 					</div>
+					<CaptureProjectSelect currentProject={currentSession?.cwd ?? null} />
 
 					<div className="flex items-center justify-end gap-2 border-t border-[var(--border-divider)] pt-3">
 						<button

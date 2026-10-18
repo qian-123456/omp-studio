@@ -73,6 +73,7 @@ import {
 	IconUndo,
 } from "./sketchIcons";
 import type { SketchIconProps } from "./sketchIcons";
+import { claimEscape, isEscapeClaimed } from "../../../lib/escapeClaim";
 
 export interface SketchPadProps {
 	/** Called with a `data:image/png` URL of the finished sketch. */
@@ -1343,7 +1344,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 					if (editor.deleteSelection()) e.preventDefault();
 					return;
 				case "Escape":
-					if (consumeEscape()) e.preventDefault();
+					if (consumeEscape()) claimEscape(e);
 					return;
 				case "ArrowUp":
 				case "ArrowDown":
@@ -1457,11 +1458,11 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 	// Escape handler leaves this surface alone.
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || e.defaultPrevented) return;
+			if (e.key !== "Escape" || isEscapeClaimed(e)) return;
 			if (isEditableTarget(e.target)) return;
 			if (sessionRef.current != null) return;
 			if (consumeEscape()) {
-				e.preventDefault();
+				claimEscape(e);
 				return;
 			}
 			requestClose();
@@ -1487,7 +1488,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 		};
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
-				e.preventDefault();
+				claimEscape(e);
 				setShapesOpen(false);
 			}
 		};
@@ -1592,7 +1593,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 	return createPortal(
 		<div
 			data-sketch-overlay=""
-			className="absolute inset-0 z-50 bg-[var(--overlay)] backdrop-blur-md"
+			className="absolute inset-0 z-(--z-modal) bg-[var(--overlay)] backdrop-blur-md"
 			onPointerDown={(e) => {
 				if (e.target === e.currentTarget) requestClose();
 			}}
@@ -2114,7 +2115,7 @@ function TextEditor(props: {
 						e.key === "Escape" ||
 						(e.key === "Enter" && (e.metaKey || e.ctrlKey))
 					) {
-						e.preventDefault();
+						claimEscape(e);
 						props.onCommit(true);
 					}
 				}}

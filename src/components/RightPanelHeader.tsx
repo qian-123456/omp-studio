@@ -34,6 +34,14 @@ import {
 } from "../features/terminal/terminalTabs";
 import { type RightTab, useUi } from "../stores/ui";
 import { FloatingLayer } from "./FloatingLayer";
+import { sessionDisplayName } from "../lib/sessionName";
+import { openNewSideChat, isBlankTab, resolveActiveTab, useSideChatView } from "../features/sidechat/viewStore";
+import { NEW_SIDE_CHAT_TITLE, sideChatTitle } from "../features/sidechat/sideChatTitle";
+import { SIDE_CHAT_TAB_ACTIONS } from "../features/sidechat/sideChatActions";
+import { visibleSideChatActions } from "../features/sidechat/handbackLogic";
+import { useDisplayPrefs } from "../stores/displayPrefs";
+import { useComposer } from "../stores/composer";
+import { useSessions } from "../stores/sessions";
 import {
 	MAX_TAB_WIDTH,
 	MIN_TAB_WIDTH,
@@ -73,6 +81,8 @@ interface HeaderTab {
 	close(): void;
 	/** Terminal instances only: fold into a background service. */
 	detach?: () => void;
+	/** Right-click menu entries (side-chat tabs). */
+	menu?: { key: string; label: string; run: () => void | Promise<void> }[];
 }
 
 export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps) {
@@ -91,6 +101,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 	const [stripWidth, setStripWidth] = useState(0);
 	const [moreWidth, setMoreWidth] = useState(MORE_BTN_FALLBACK_WIDTH);
 	const [hoveredTab, setHoveredTab] = useState<string | null>(null);
+	const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: NonNullable<HeaderTab["menu"]> } | null>(null);
 
 	// Measure the flex-1 strip that hosts [tabs, '+N', '+']. Its width is set
 	// by the header flex layout, not by the tabs inside it — measuring the
@@ -104,8 +115,17 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 		return () => ro.disconnect();
 	}, []);
 
+	const selectedId = useUi((s) => s.selectedSessionId);
+	const sessions = useSessions((s) => s.sessions);
+	const parentTabs = useSideChatView((s) => (selectedId ? s.openTabs[selectedId] : undefined));
+	const storedSideTab = useSideChatView((s) => (selectedId ? s.openChild[selectedId] : undefined));
+	const activeSideTab = resolveActiveTab(parentTabs, storedSideTab);
+	const handbackMode = useDisplayPrefs((s) => s.sideChatHandback);
 	const visibleTerminals = drawerTabs.filter((t) => !t.detached);
-	const items: HeaderTab[] = openRightTabs.flatMap((id): HeaderTab[] => {
+	// The side-chat group is shown whenever the selected session has side-chat tabs.
+	const groupIds: RightTab[] =
+		parentTabs?.length && !openRightTabs.includes("sidechat") ? [...openRightTabs, "sidechat"] : openRightTabs;
+	const items: HeaderTab[] = groupIds.flatMap((id): HeaderTab[] => {
 		const info = PRIMARY_TABS.find((t) => t.id === id);
 		if (!info) return [];
 		if (id === "terminal" && activeTab === "terminal" && visibleTerminals.length > 0) {
@@ -122,6 +142,41 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 			}));
 		}
 		const Icon = info.icon;
+		if (id === "sidechat") {
+			// One tab per open side chat of the selected session; no base tab.
+			if (!selectedId) return [];
+			return (parentTabs ?? []).flatMap((tid): HeaderTab[] => {
+				const blank = isBlankTab(tid);
+				const c = blank ? undefined : sessions[tid];
+				if (!blank && (!c || c.parentId !== selectedId)) return [];
+				const name = c ? (sideChatTitle(tid, sessions) ?? sessionDisplayName(c)) : NEW_SIDE_CHAT_TITLE;
+				return [
+					{
+						key: `sidechat:${tid}`,
+						label: name,
+						title: name,
+						lead: <Icon size={13} className={clsx(info.iconColor, "shrink-0")} />,
+						badge: 0,
+						active: id === activeTab && activeSideTab === tid,
+						activate: () => {
+							useSideChatView.getState().setOpenChild(selectedId, tid);
+							setRightTab("sidechat");
+						},
+						close: () => {
+							if (blank) useComposer.getState().clearSideChatDraft(tid);
+							useSideChatView.getState().closeTab(selectedId, tid);
+						},
+						menu: blank
+							? undefined
+							: visibleSideChatActions(SIDE_CHAT_TAB_ACTIONS, handbackMode).map((a) => ({
+									key: a.key,
+									label: a.label,
+									run: () => a.run(tid),
+								})),
+					},
+				];
+			});
+		}
 		return [
 			{
 				key: id,
@@ -213,6 +268,11 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 								aria-selected={tab.active}
 								title={tab.title}
 								onClick={tab.activate}
+								onContextMenu={(e) => {
+									if (!tab.menu) return;
+									e.preventDefault();
+									setTabMenu({ x: e.clientX, y: e.clientY, items: tab.menu });
+								}}
 								onMouseEnter={() => setHoveredTab(tab.key)}
 								onMouseLeave={() => setHoveredTab((k) => (k === tab.key ? null : k))}
 								onMouseDown={(e) => {
@@ -320,6 +380,30 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 				<PanelRightClose size={15} />
 			</button>
 
+			{/* Tab right-click menu (side-chat tabs) */}
+			<FloatingLayer
+				anchor={tabMenu ? { x: tabMenu.x, y: tabMenu.y } : null}
+				layer="menu"
+				placement="bottom-start"
+				offset={2}
+				onDismiss={() => setTabMenu(null)}
+				className="min-w-36 py-1 text-xs"
+			>
+				{tabMenu?.items.map((item) => (
+					<button
+						key={item.key}
+						type="button"
+						onClick={() => {
+							setTabMenu(null);
+							void item.run();
+						}}
+						className="flex w-full items-center px-3 py-1.5 text-left text-neutral-300 transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
+					>
+						{item.label}
+					</button>
+				))}
+			</FloatingLayer>
+
 			{/* Overflow menu: every tab, so the full list is reachable */}
 			<FloatingLayer
 				anchor={overflowOpen && hidden.length > 0 ? moreBtnRef.current : null}
@@ -385,13 +469,14 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 					{PRIMARY_TABS.filter((tab) => tab.id !== "plan").map((tab) => {
 						const Icon = tab.icon;
 						const badge = tabBadges[tab.id] ?? 0;
-						const isOpen = openRightTabs.includes(tab.id);
+						const isOpen = openRightTabs.includes(tab.id) && tab.id !== "sidechat";
 						return (
 							<button
 								key={tab.id}
 								type="button"
 								onClick={() => {
-									setRightTab(tab.id);
+									if (tab.id === "sidechat" && selectedId) openNewSideChat(selectedId);
+									else setRightTab(tab.id);
 									setMenuOpen(false);
 								}}
 								className={clsx(
@@ -403,7 +488,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 							>
 								<div className="flex items-center gap-2.5">
 									<Icon size={14} className={tab.iconColor} />
-									<span>{tab.label}</span>
+									<span>{tab.id === "sidechat" ? "新辅助对话" : tab.label}</span>
 								</div>
 								<div className="flex items-center gap-1.5">
 									{badge > 0 && (

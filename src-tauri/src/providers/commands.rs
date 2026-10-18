@@ -44,41 +44,6 @@ fn is_reserved_env_var(name: &str) -> bool {
     )
 }
 
-fn is_private_or_loopback_domain(domain: &str) -> bool {
-    let lower = domain.to_ascii_lowercase();
-    lower == "localhost"
-        || lower.ends_with(".localhost")
-        || lower == "local"
-        || lower.ends_with(".local")
-}
-
-fn is_private_or_loopback_ipv4(ip: std::net::Ipv4Addr) -> bool {
-    let o = ip.octets();
-    o[0] == 127
-        || o[0] == 10
-        || (o[0] == 172 && (16..=31).contains(&o[1]))
-        || (o[0] == 192 && o[1] == 168)
-        || (o[0] == 169 && o[1] == 254)
-}
-
-fn is_private_or_loopback_ipv6(ip: std::net::Ipv6Addr) -> bool {
-    ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00
-}
-
-fn is_private_or_loopback(host: &str) -> bool {
-    if is_private_or_loopback_domain(host) {
-        return true;
-    }
-    if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
-        return is_private_or_loopback_ipv4(ip);
-    }
-    let unbracketed = host.trim_start_matches('[').trim_end_matches(']');
-    if let Ok(ip) = unbracketed.parse::<std::net::Ipv6Addr>() {
-        return is_private_or_loopback_ipv6(ip);
-    }
-    false
-}
-
 /// Validate user-editable fields. Key values are never part of the config.
 pub(crate) fn validate(config: &ProviderConfig) -> Result<(), String> {
     let name = config.name.trim();
@@ -98,15 +63,11 @@ pub(crate) fn validate(config: &ProviderConfig) -> Result<(), String> {
     let base_url = config.base_url.trim();
     let url = reqwest::Url::parse(base_url)
         .map_err(|_| "Base URL 必须是有效的 http:// 或 https:// 地址".to_string())?;
-    let host = match url.host_str() {
-        Some(h) => h,
-        None => return Err("Base URL 必须是有效的 http:// 或 https:// 地址".to_string()),
-    };
-    if !matches!(url.scheme(), "http" | "https") {
+    if url.host_str().is_none() {
         return Err("Base URL 必须是有效的 http:// 或 https:// 地址".to_string());
     }
-    if url.scheme() == "http" && !is_private_or_loopback(host) {
-        return Err("非本地或非私有网络地址必须使用 HTTPS 协议以防止密钥泄漏".to_string());
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("Base URL 必须是有效的 http:// 或 https:// 地址".to_string());
     }
     if !url.username().is_empty()
         || url.password().is_some()
@@ -1421,7 +1382,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_enforces_https_or_private_network() {
+    fn validate_allows_http_on_any_host() {
         // Valid HTTPS
         assert!(validate(&config("Name", "slug", "https://api.openai.com/v1", "KEY")).is_ok());
 
@@ -1440,12 +1401,9 @@ mod tests {
         .is_ok());
         assert!(validate(&config("Name", "slug", "http://[::1]:8000/v1", "KEY")).is_ok());
 
-        // Invalid HTTP public internet addresses
-        let c = config("Name", "slug", "http://api.openai.com/v1", "KEY");
-        assert!(validate(&c).unwrap_err().contains("HTTPS"));
-
-        let c2 = config("Name", "slug", "http://8.8.8.8:8000/v1", "KEY");
-        assert!(validate(&c2).unwrap_err().contains("HTTPS"));
+        // Public-internet plain HTTP is allowed (the UI shows a warning instead).
+        assert!(validate(&config("Name", "slug", "http://api.openai.com/v1", "KEY")).is_ok());
+        assert!(validate(&config("Name", "slug", "http://8.8.8.8:8000/v1", "KEY")).is_ok());
     }
 
     #[test]

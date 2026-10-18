@@ -6,6 +6,8 @@ export interface ModelOption {
 	thinking?: string[];
 	/** Context window in tokens when the catalog reports it. */
 	contextWindow?: number | null;
+	/** Catalog `reasoning` flag: the model can think even when `thinking` lists no levels. */
+	reasoning?: boolean | null;
 }
 
 export interface CurrentModelSelection {
@@ -64,6 +66,19 @@ export function resolveThinkingLevels(
 	if (current && !levels.includes(current)) levels.push(current);
 	return levels;
 }
+
+/** What the thinking chip shows for a model.
+ *  - `levels`: selectable levels (omp reports them, or live/current ones exist).
+ *  - `unconfigured`: reasoning-capable but no levels configured → grey chip opening model settings.
+ *  - `unsupported`: the model does not think → grey, non-interactive chip. */
+export type ThinkingChipState = { kind: "levels"; levels: string[] } | { kind: "unconfigured" } | { kind: "unsupported" };
+
+/** Chip state from already-resolved levels plus the catalog `reasoning` flag. */
+export function thinkingChipState(levels: readonly string[], reasoning?: boolean | null): ThinkingChipState {
+	if (levels.length > 0) return { kind: "levels", levels: [...levels] };
+	return reasoning === true ? { kind: "unconfigured" } : { kind: "unsupported" };
+}
+
 export function parseModels(data: unknown): ModelOption[] {
 	if (!data) return [];
 	const d = data as Record<string, unknown>;
@@ -103,6 +118,7 @@ export function parseModels(data: unknown): ModelOption[] {
 						typeof o.contextWindow === "number" && o.contextWindow > 0
 							? o.contextWindow
 							: undefined,
+					reasoning: typeof o.reasoning === "boolean" ? o.reasoning : undefined,
 				});
 			}
 		}

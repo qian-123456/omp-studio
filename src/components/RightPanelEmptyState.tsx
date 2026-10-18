@@ -9,6 +9,8 @@ import {
 	SquareTerminal,
 } from "lucide-react";
 import React from "react";
+import { deriveLoadState } from "../lib/loadState";
+import { useSessions } from "../stores/sessions";
 import { type RightTab, useUi } from "../stores/ui";
 
 interface RightPanelEmptyStateProps {
@@ -18,6 +20,12 @@ interface RightPanelEmptyStateProps {
 export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 	const setRightTab = useUi((s) => s.setRightTab);
 	const toggleRight = useUi((s) => s.toggleRight);
+	// Tab badges are derived from the session index; show a placeholder until it arrives.
+	const badgesLoading =
+		deriveLoadState(
+			useSessions((s) => s.hasLoaded),
+			useSessions((s) => s.loadError),
+		) === "loading";
 
 	const PRIMARY_OPTIONS: {
 		id: RightTab;
@@ -116,7 +124,14 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 										</span>
 									</div>
 
-									{badge > 0 && (
+									{badgesLoading && (
+										<span
+											role="status"
+											title="正在加载中"
+											className="h-4 w-6 animate-pulse rounded-full bg-neutral-700/60"
+										/>
+									)}
+									{!badgesLoading && badge > 0 && (
 										<span className="rounded-full bg-neutral-700/80 px-2 py-0.5 text-[10px] font-medium text-neutral-300">
 											{badge}
 										</span>

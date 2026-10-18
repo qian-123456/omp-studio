@@ -142,3 +142,31 @@ export function shouldCompensateResize(
 	if (following) return false;
 	return firstMeasure ? item.start < viewportTop : item.end <= viewportTop;
 }
+
+/**
+ * Final-answer landing. While a turn streams the viewport pins to the bottom;
+ * when the turn commits, the answer would sit under that pin with the user's
+ * message long scrolled away and the answer's start below the fold. Instead the
+ * view re-anchors on the turn's start — the user message as high as possible —
+ * but only when that actually moves the view (a turn shorter than the viewport
+ * is already fully visible at the bottom) and only if the user was still
+ * following the stream (scrolling away to read must not be yanked).
+ *
+ * `startKey` is the latest committed turn's identity when streaming began,
+ * `nowKey` the identity now; they differ once the transcript has caught up.
+ */
+export function shouldAnchorTurnTop(i: {
+	armed: boolean;
+	streaming: boolean;
+	following: boolean;
+	startKey: string | null;
+	nowKey: string | null;
+	/** Scroll offset of the turn's start, null when unknown. */
+	targetTop: number | null;
+	/** Largest reachable scrollTop (scrollHeight - clientHeight). */
+	maxTop: number;
+}): boolean {
+	if (!i.armed || i.streaming || !i.following) return false;
+	if (i.nowKey === null || i.nowKey === i.startKey) return false;
+	return i.targetTop !== null && i.targetTop < i.maxTop - 1;
+}

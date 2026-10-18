@@ -297,6 +297,7 @@ pub fn build_meta(
         created_at: s.head.created_at.clone(),
         updated_at,
         fork_depth: row.fork_depth,
+        kind: row.kind.clone(),
         parent_id,
         pinned: row.pinned,
         archived: row.archived,

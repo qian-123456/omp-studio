@@ -14,7 +14,9 @@ import {
 	parallelToolRuns,
 	type PlacedStep,
 	requestAnchors,
+	splitInterimProse,
 	turnRequestItems,
+	type TurnBlock,
 	type TurnStep,
 } from "./turnGrouping";
 
@@ -581,5 +583,50 @@ describe("per-request stats placement", () => {
 			["t1", { first: true, last: false }],
 			["t2", { first: false, last: true }],
 		]);
+	});
+});
+
+describe("splitInterimProse", () => {
+	it("keeps assistant prose out of the fold, in order, and folds the rest", () => {
+		const a1 = makeItem({ id: "a1", kind: "assistant", text: "先看看" });
+		const a2 = makeItem({ id: "a2", kind: "assistant", text: "再改" });
+		const tr = makeItem({ id: "t1", kind: "tool_result" });
+		const steps: TurnStep[] = [
+			{ id: "text-a1", kind: "text", item: a1, text: "先看看" },
+			{ id: "thinking-a2", kind: "thinking", item: a2, thinking: "hm" },
+			{ id: "orphan-result-t1", kind: "text", item: tr, text: "[工具输出]" },
+			{ id: "text-a2", kind: "text", item: a2, text: "再改" },
+		];
+		const { folded, prose } = splitInterimProse(steps);
+		expect(prose.map((s) => s.id)).toEqual(["text-a1", "text-a2"]);
+		expect(folded.map((s) => s.id)).toEqual(["thinking-a2", "orphan-result-t1"]);
+	});
+});
+
+describe("think tags inside assistant text", () => {
+	it("moves tagged reasoning into a thinking step and keeps only the reply as the answer", () => {
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u1", kind: "user", text: "hi" }),
+			makeItem({ id: "a1", kind: "assistant", text: "<think>先想想</think>\n\n答案" }),
+		]);
+		const turn = blocks[0] as TurnBlock;
+		expect(turn.answerItem?.text).toBe("答案");
+		expect(turn.intermediateSteps.map((s) => s.id)).toEqual(["thinking-a1"]);
+		const step = turn.intermediateSteps[0];
+		expect(step.kind === "thinking" && step.thinking).toBe("先想想");
+	});
+
+	it("appends tagged reasoning to an existing thinking block", () => {
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u1", kind: "user", text: "hi" }),
+			makeItem({
+				id: "a1",
+				kind: "assistant",
+				thinking: "A",
+				text: "<think>B</think>done",
+			}),
+		]);
+		const step = (blocks[0] as TurnBlock).intermediateSteps[0];
+		expect(step.kind === "thinking" && step.thinking).toBe("A\n\nB");
 	});
 });

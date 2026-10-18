@@ -156,9 +156,16 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "thinkingPreview",
 		sectionId: "appearance",
-		label: "显示思考内容预览",
-		description: "在「思考了 N 秒」下面预览思考内容，点一下可以展开更多",
+		label: "思考时显示最新两行",
+		description: "模型思考时在「正在思考」下面滚动显示最新两行；思考结束后折叠成一行，点一下可展开全文",
 		keywords: ["thinking", "思考", "预览", "推理", "thinkingPreview", "思考内容"],
+	},
+	{
+		id: "sideChatHandback",
+		sectionId: "appearance",
+		label: "回传给父会话的方式",
+		description: "辅助对话的结果怎样放回主对话：整理成结论，或手动选择文字",
+		keywords: ["回传", "辅助对话", "侧聊", "父会话", "结论", "手动选择", "sideChatHandback"],
 	},
 
 	// 通知
@@ -433,6 +440,14 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		label: "编辑 AGENTS.md",
 		description: "查看、编辑并保存 agent 的长期说明，新会话生效",
 		keywords: ["编辑", "保存", "预览", "markdown", "instructions", "长期说明", "约定"],
+	},
+	// 系统提示词构成
+	{
+		id: "promptCompositionOverview",
+		sectionId: "prompt-composition",
+		label: "系统提示词构成",
+		description: "新会话一开始带多少内容：系统提示词、规则文件、Skills、工具说明、MCP 工具，按类别看 token 占比",
+		keywords: ["系统提示词", "system prompt", "prompt", "token", "占用", "上下文", "规则文件", "skills", "工具说明", "mcp", "精简", "优化", "让 AI 帮我优化"],
 	},
 ];
 

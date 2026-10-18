@@ -26,13 +26,14 @@ import { ChatTrace } from "./ChatTrace";
 import { AnnotationMarkers } from "./AnnotationMarkers";
 import { Composer } from "./Composer";
 import { HeldQueueBar } from "./HeldQueueBar";
-import { QueuedBar, useQueueAutoSend } from "./QueuedBar";
+import { useQueueAutoSend } from "./QueuedBar";
 import { MessageList } from "./MessageList";
 import { PendingUiCard } from "./PendingUiCard";
 import { AskPanel, useAskRouting } from "./ask/AskPanel";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { ShareSelectionBar } from "./share/ShareSelectionBar";
 import { useShareSelection } from "./share/shareStore";
+import { claimEscape, isEscapeClaimed } from "../../lib/escapeClaim";
 
 const EMPTY_PENDING_UI: PendingUiRequest[] = [];
 
@@ -172,19 +173,18 @@ export function SessionView({
 
 	// Esc while generating aborts the turn — but only when nothing else claims
 	// the key: the composer's slash/@ menus and the selection bubble call
-	// preventDefault, floating layers stop propagation, modals and foreign text
-	// fields own their Esc. Bubble phase so those handlers run first; the
-	// preventDefault below still stops WKWebView treating Esc as "exit fullscreen".
+	// claimEscape, floating layers stop propagation, modals and foreign text
+	// fields own their Esc. Bubble phase so those handlers run first.
 	// Only the main (non-compact) view owns the shortcut to avoid double-aborting.
 	useEffect(() => {
 		if (!streaming || compact) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
+			if (e.key !== "Escape" || e.isComposing || isEscapeClaimed(e)) return;
 			if (document.querySelector(MODAL_SELECTOR)) return;
 			const t = e.target instanceof Element ? e.target : null;
 			if (t?.closest('input, [contenteditable="true"]')) return;
 			if (t?.tagName === "TEXTAREA" && !t.hasAttribute("data-composer")) return;
-			e.preventDefault();
+			claimEscape(e);
 			abortTurn(sessionId)
 				.then(() => toast.info("已终止对话生成"))
 				.catch((err) => toast.error(`终止失败: ${errMsg(err)}`));
@@ -233,6 +233,7 @@ export function SessionView({
 							<SelectionToolbar
 								sessionId={sessionId}
 								containerRef={scrollRef}
+								compact={compact}
 							/>
 							<AnnotationMarkers sessionId={sessionId} containerRef={scrollRef} />
 						</div>
@@ -300,13 +301,10 @@ export function SessionView({
 							)
 						)}
 
-						{/* Streaming → Codex popover list. Post-turn → manual bar; with auto-send on
-						    the queue is already drained (a failed send restores its item here). */}
-						{streaming ? (
-							<QueuedBar sessionId={sessionId} />
-						) : (
-							<HeldQueueBar sessionId={sessionId} streaming={false} />
-						)}
+						{/* Queued messages are grey "排队中" bubbles in the thread (QueuedBubbles).
+						    Post-turn manual bar: edit/merge/reorder; with auto-send on the queue is
+						    already drained (a failed send restores its item here). */}
+						{!streaming && <HeldQueueBar sessionId={sessionId} streaming={false} />}
 						{sharing ? (
 							<ShareSelectionBar sessionId={sessionId} />
 						) : (

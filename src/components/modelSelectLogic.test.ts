@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ModelOption } from "../lib/models";
 import {
+	applyThinkingLevel,
+	carryLevel,
 	composeSelection,
 	describeResolution,
 	isRecordableModelKey,
@@ -9,6 +11,7 @@ import {
 	removeRecent,
 	resolveRole,
 	roleIdOf,
+	thinkingLevelsFor,
 } from "./modelSelectLogic";
 
 const MODELS: ModelOption[] = [
@@ -78,5 +81,34 @@ describe("recent models", () => {
 		const list = ["a/1", "a/2", "a/3"];
 		expect(removeRecent(list, "a/2")).toEqual(["a/1", "a/3"]);
 		expect(removeRecent(list, "not-in-list")).toEqual(["a/1", "a/2", "a/3"]);
+	});
+});
+
+describe("thinking chip helpers", () => {
+	const CAT: ModelOption[] = [
+		{ provider: "a", id: "m1", name: "M1", thinking: ["low", "high"] },
+		{ provider: "a", id: "m2", name: "M2", thinking: ["high", "xhigh"] },
+		{ provider: "a", id: "plain", name: "Plain", thinking: [] },
+	];
+	it("offers the selected model's levels via resolveThinkingLevels", () => {
+		expect(thinkingLevelsFor("a/m1", CAT, {}, null)).toEqual(["auto", "low", "high", "off"]);
+		expect(thinkingLevelsFor("a/plain", CAT, {}, null)).toEqual([]);
+		expect(thinkingLevelsFor("a/unknown", CAT, {}, null)).toEqual([]);
+		expect(thinkingLevelsFor("", CAT, {}, null)).toEqual([]);
+	});
+	it("resolves a role to its model's levels", () => {
+		expect(thinkingLevelsFor("smol", CAT, { smol: "a/m2:high" }, null)).toEqual(["auto", "high", "xhigh", "off"]);
+		expect(thinkingLevelsFor("smol", CAT, {}, null)).toEqual([]);
+	});
+	it("writes auto as the bare selector, other levels as a suffix", () => {
+		expect(applyThinkingLevel("a/m1", "auto")).toBe("a/m1");
+		expect(applyThinkingLevel("a/m1", "high")).toBe("a/m1:high");
+		expect(applyThinkingLevel("smol", "off")).toBe("smol:off");
+	});
+	it("keeps the level across a model switch only when still supported", () => {
+		expect(carryLevel("a/m2", "high", CAT, {})).toBe("a/m2:high");
+		expect(carryLevel("a/m2", "low", CAT, {})).toBe("a/m2");
+		expect(carryLevel("a/plain", "high", CAT, {})).toBe("a/plain");
+		expect(carryLevel("a/m1", null, CAT, {})).toBe("a/m1");
 	});
 });

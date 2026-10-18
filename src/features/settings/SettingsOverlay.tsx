@@ -39,7 +39,7 @@ function SettingsOverlayInner() {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4 sm:p-6"
+			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4 sm:p-6"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) closeSettings();
 			}}

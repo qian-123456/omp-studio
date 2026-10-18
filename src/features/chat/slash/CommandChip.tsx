@@ -12,7 +12,7 @@ export function CommandChipBadge({ chip }: { chip: CommandChip }) {
 	return (
 		<span
 			data-command-chip={chip.name}
-			title={`/${chip.name}`}
+			title={`/${chip.name}${chip.sub ? ` ${chip.sub}` : ""}`}
 			className={`inline-flex items-center gap-1 align-top font-medium select-none ${skill ? "text-violet-500" : "text-[var(--text)]"}`}
 		>
 			<Icon size={13} className={`shrink-0 self-center ${tone}`} />

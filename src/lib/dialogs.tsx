@@ -12,6 +12,7 @@ import { useCallback, useEffect, useId, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Z_LAYER } from "../components/FloatingLayer";
 import { isComposing, useEscapeKey } from "./hooks";
+import { claimEscape } from "./escapeClaim";
 
 const CANCEL_BTN_CLASS =
 	"press-scale rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors";
@@ -63,7 +64,7 @@ function ConfirmDialogView({
 					if (e.key === "Escape") {
 						// stopPropagation above would keep Esc from reaching the
 						// window listener, so cancel here directly.
-						e.preventDefault();
+						claimEscape(e);
 						cancel();
 						return;
 					}

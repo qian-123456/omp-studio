@@ -7,6 +7,7 @@ import {
 	initialFollowScroll,
 	onScrollPosition,
 	onWroteBottom,
+	shouldAnchorTurnTop,
 	shouldCompensateResize,
 	shouldFollow,
 } from "./followScroll";
@@ -174,5 +175,33 @@ describe("resize scroll compensation", () => {
 			expect(shouldCompensateResize(item, VIEWPORT_TOP, true)).toBe(false);
 			expect(shouldCompensateResize(item, VIEWPORT_TOP, false)).toBe(false);
 		}
+	});
+});
+
+describe("shouldAnchorTurnTop", () => {
+	const base = {
+		armed: true,
+		streaming: false,
+		following: true,
+		startKey: "turn-a:x:1",
+		nowKey: "turn-b:y:2",
+		targetTop: 400,
+		maxTop: 900,
+	};
+	it("anchors once the transcript has committed a new turn", () => {
+		expect(shouldAnchorTurnTop(base)).toBe(true);
+	});
+	it("waits while streaming or before the transcript catches up", () => {
+		expect(shouldAnchorTurnTop({ ...base, streaming: true })).toBe(false);
+		expect(shouldAnchorTurnTop({ ...base, nowKey: base.startKey })).toBe(false);
+		expect(shouldAnchorTurnTop({ ...base, nowKey: null })).toBe(false);
+	});
+	it("never yanks a detached or unarmed viewport", () => {
+		expect(shouldAnchorTurnTop({ ...base, following: false })).toBe(false);
+		expect(shouldAnchorTurnTop({ ...base, armed: false })).toBe(false);
+	});
+	it("skips when the turn already fits (target at or past the bottom)", () => {
+		expect(shouldAnchorTurnTop({ ...base, targetTop: 900 })).toBe(false);
+		expect(shouldAnchorTurnTop({ ...base, targetTop: null })).toBe(false);
 	});
 });

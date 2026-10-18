@@ -1,30 +1,16 @@
 /** [B] Right tab: side-chat forks of the selected session. */
 
-import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
-import {
-	ArrowUp,
-	ChevronDown,
-	CornerUpLeft,
-	ExternalLink,
-	GitBranch,
-	Loader2,
-	Plus,
-	SendHorizontal,
-	Trash2,
-} from "lucide-react";
+import { ArrowUp, ChevronDown, Loader2, MoreHorizontal, Plus } from "lucide-react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ModelMenuContent } from "../../components/ModelSelect";
 import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { SessionMeta } from "../../lib/contracts";
-import { confirmDialog, errMsg } from "../../lib/dialogs";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
-import { acceptSession, createSideChat, getTranscript } from "../../lib/ipc";
+import { errMsg } from "../../lib/dialogs";
+import { isComposing } from "../../lib/hooks";
 import { type ModelOption, resolveCurrentModel, resolveThinkingLevels, toModelKey } from "../../lib/models";
-import { sessionDisplayName } from "../../lib/sessionName";
 import { toast } from "../../lib/toast";
-import { type Annotation, formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { type Annotation, sideChatAnnKey, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -35,52 +21,116 @@ import { startNewSession } from "../sessions/newSession";
 import { SessionView } from "../chat/SessionView";
 import { AnnotationChip } from "../chat/AnnotationChip";
 import { textAnnotationsOf } from "../chat/annotations";
-import { sendPrompt } from "../chat/send";
-import { compareSessionLabels } from "./labelSort";
+import { moveToMain } from "./annotationRoute";
 import { MAX_SIDE_CHAT_DEPTH } from "./depth";
 import {
 	resolveSideChatModel,
 	sideChatModelLabel,
 	sideChatSelectorUsable,
 } from "./modelDefault";
-import { useSideChatView } from "./viewStore";
+import { SIDE_CHAT_TAB_ACTIONS, sendFirstMessage } from "./sideChatActions";
+import { visibleSideChatActions } from "./handbackLogic";
+import { useDisplayPrefs } from "../../stores/displayPrefs";
+import { isBlankTab, resolveActiveTab, useSideChatView } from "./viewStore";
 
 const NO_MODELS: ModelOption[] = [];
 const EMPTY_ANNS: Annotation[] = [];
 
-interface ContextMenuState {
-	x: number;
-	y: number;
-	session: SessionMeta;
+/** Right tab body: the active side-chat tab of the selected session (thread or blank new chat). */
+export function SideChatPanel() {
+	const parentId = useUi((s) => s.selectedSessionId);
+	const sessions = useSessions((s) => s.sessions);
+	const tabs = useSideChatView((s) => (parentId ? s.openTabs[parentId] : undefined));
+	const stored = useSideChatView((s) => (parentId ? s.openChild[parentId] : undefined));
+	const active = resolveActiveTab(tabs, stored);
+
+	// Drop tabs whose session no longer exists (deleted from the sidebar).
+	useEffect(() => {
+		if (!parentId || !tabs || Object.keys(sessions).length === 0) return;
+		for (const id of tabs) {
+			if (!isBlankTab(id) && !sessions[id]) useSideChatView.getState().closeTab(parentId, id);
+		}
+	}, [parentId, tabs, sessions]);
+
+	// Nothing open for this parent while the group is showing: offer a blank new chat.
+	useEffect(() => {
+		if (parentId && !active && useUi.getState().rightTab === "sidechat") {
+			useSideChatView.getState().openBlankTab(parentId);
+		}
+	}, [parentId, active]);
+
+	if (!parentId) {
+		return <div className="p-3 text-xs text-[var(--text-40)]">选择一个会话后可开辅助对话</div>;
+	}
+	if (!active) return null;
+	if (isBlankTab(active)) return <NewSideChat key={active} parentId={parentId} tabId={active} />;
+	return <SideChatThread key={active} childId={active} />;
 }
 
-export function SideChatPanel() {
-	const selectedId = useUi((s) => s.selectedSessionId);
-	const selectSession = useUi((s) => s.selectSession);
-	const sessions = useSessions((s) => s.sessions);
-	// Open child thread is persisted per parent session: it survives panel
-	// collapse/expand, right-tab switches and restarts (unlike local state).
-	const storedChildId = useSideChatView((s) =>
-		selectedId ? (s.openChild[selectedId] ?? null) : null,
+/** An existing side chat: a compact thread view plus a 更多 menu for the extra actions. */
+function SideChatThread({ childId }: { childId: string }) {
+	const [open, setOpen] = useState(false);
+	const btnRef = useRef<HTMLButtonElement>(null);
+	const handbackMode = useDisplayPrefs((s) => s.sideChatHandback);
+	return (
+		<div className="flex h-full flex-col">
+			<div className="flex shrink-0 justify-end px-2 pt-1.5">
+				<button
+					ref={btnRef}
+					type="button"
+					aria-label="更多操作"
+					title="更多操作"
+					onClick={() => setOpen((v) => !v)}
+					className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+				>
+					<MoreHorizontal size={15} />
+				</button>
+				<FloatingLayer
+					anchor={open ? btnRef.current : null}
+					layer="menu"
+					placement="bottom-end"
+					offset={4}
+					ignoreRefs={[btnRef]}
+					onDismiss={() => setOpen(false)}
+					className="min-w-36 py-1 text-xs"
+				>
+					{visibleSideChatActions(SIDE_CHAT_TAB_ACTIONS, handbackMode).map((a) => (
+						<button
+							key={a.key}
+							type="button"
+							onClick={() => {
+								setOpen(false);
+								void a.run(childId);
+							}}
+							className="flex w-full items-center px-3 py-1.5 text-left text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+						>
+							{a.label}
+						</button>
+					))}
+				</FloatingLayer>
+			</div>
+			<div className="min-h-0 flex-1">
+				<SessionView sessionId={childId} compact />
+			</div>
+		</div>
 	);
-	const childId = selectedId ? storedChildId : null;
-	const setChildId = (id: string | null) => {
-		if (selectedId) useSideChatView.getState().setOpenChild(selectedId, id);
-	};
+}
+
+/** A blank new side chat: nothing exists on the backend until the first message is sent. */
+function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
+	const selectedId = parentId;
+	const sessions = useSessions((s) => s.sessions);
 	const sideChatDrafts = useComposer((s) => s.sideChatDrafts);
 	const setSideChatDraft = useComposer((s) => s.setSideChatDraft);
 	const clearSideChatDraft = useComposer((s) => s.clearSideChatDraft);
-	// Draft is strictly scoped to the parent session; no cross-parent leaking.
-	const question = selectedId ? (sideChatDrafts[selectedId] ?? "") : "";
-	const setQuestion = (val: string) => {
-		if (selectedId) setSideChatDraft(selectedId, val);
-	};
+	// The draft belongs to this blank tab.
+	const question = sideChatDrafts[tabId] ?? "";
+	const setQuestion = (val: string) => setSideChatDraft(tabId, val);
 	const [busy, setBusy] = useState(false);
+	/** First message while the session is being created: shown as a pending bubble. */
+	const pendingQuestion = useSideChatView((s) => s.pending[tabId] ?? null);
 	const [error, setError] = useState<string | null>(null);
-	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-	/** Question input of the slim staged-annotation bar in the open thread view. */
-	const stagedInputRef = useRef<HTMLInputElement | null>(null);
 	const catalog = useModelOptions();
 	const models = catalog ?? NO_MODELS;
 	const dedicatedSetting = useSettings((s) => s.settings?.sideChatModel);
@@ -120,10 +170,7 @@ export function SideChatPanel() {
 	const dedicatedLabel = dedicatedUsable ? sideChatModelLabel(dedicatedSetting, catalog) : "";
 	const effectiveThinking = thinking || effective.level || parentThinking || "auto";
 
-	const parent = selectedId ? sessions[selectedId] : undefined;
-	const children = Object.values(sessions)
-		.filter((s) => s.parentId === selectedId)
-		.sort((a, b) => compareSessionLabels(a.label, b.label));
+	const parent = sessions[parentId];
 	const tooDeep = (parent?.forkDepth ?? 0) >= MAX_SIDE_CHAT_DEPTH;
 	const parentModel = useMemo(
 		() => resolveCurrentModel(parent?.model, models),
@@ -169,13 +216,7 @@ export function SideChatPanel() {
 	const stagedAnns = useMemo(() => textAnnotationsOf(stagedAll), [stagedAll]);
 	// SelectionToolbar bumps this nonce each time it stages into our key.
 	const stagedFocusNonce = useComposer((s) => (annKey ? s.focusNonce[annKey] : 0));
-	const moveAnnotation = useComposer((s) => s.moveAnnotation);
 
-
-	// Esc returns to list when viewing a child session
-	useEscapeKey(() => setChildId(null), childId !== null && contextMenu === null);
-	// Esc closes context menu
-	useEscapeKey(() => setContextMenu(null), contextMenu !== null);
 
 	// Focus whichever question input is mounted when a new annotation is staged
 	// (also on first mount right after staging; a bumped-but-unconsumed nonce
@@ -187,348 +228,66 @@ export function SideChatPanel() {
 		if (!nonce || nonce === lastFocusNonceRef.current) return;
 		lastFocusNonceRef.current = nonce;
 		setTimeout(() => {
-			const input =
-				childId && stagedAnns.length > 0
-					? stagedInputRef.current
-					: textareaRef.current;
+			const input = textareaRef.current;
 			input?.focus();
 		}, 50);
-	}, [stagedFocusNonce, childId, stagedAnns.length]);
+	}, [stagedFocusNonce, tabId, stagedAnns.length]);
 
 	useEffect(() => {
 		setError(null);
-		setContextMenu(null);
-	}, [selectedId]);
+	}, [tabId]);
 
 	const send = async () => {
 		const q = question.trim();
-		const parentId = selectedId;
-		if (!parentId || busy || (!q && stagedAnns.length === 0)) return;
-		const key = sideChatAnnKey(parentId);
-		const anns = stagedAll;
-		const selection = formatWithAnnotations("", anns) || undefined;
-		const questionText = q || "请结合引用内容回答";
-		const threadId = childId;
+		if (busy || (!q && stagedAnns.length === 0)) return;
+		// omp `--model` accepts a `provider/id:thinking` suffix; the dedicated
+		// setting's stored level applies unless the thinking picker overrides it.
+		const modelArg = effective.selector
+			? composeSelection(effective.selector, effectiveThinking === "auto" ? null : effectiveThinking)
+			: null;
 		setBusy(true);
 		setError(null);
+		// The input empties at once (the message shows as a pending bubble);
+		// the draft comes back if the chat cannot be created.
+		clearSideChatDraft(tabId);
+		if (textareaRef.current) textareaRef.current.style.height = "auto";
 		try {
-			if (threadId) {
-				// Open thread: the question plus numbered quote blocks append to it.
-				await sendPrompt(threadId, formatWithAnnotations(questionText, anns));
-			} else {
-				// omp `--model` accepts a `provider/id:thinking` suffix; the dedicated
-				// setting's stored level applies unless the thinking picker overrides it.
-				const modelArg = effective.selector
-					? composeSelection(effective.selector, effectiveThinking === "auto" ? null : effectiveThinking)
-					: null;
-				const info = await createSideChat(
-					parentId,
-					questionText,
-					selection,
-					modelArg ?? undefined,
-				);
-				// Parent switched while creating: don't leak the child into the new parent.
-				if (useUi.getState().selectedSessionId === parentId) {
-					setChildId(info.sessionId);
-				}
-			}
-			clearSideChatDraft(parentId);
-			useComposer.getState().clearAnnotations(key);
-			if (textareaRef.current) {
-				textareaRef.current.style.height = "auto";
-			}
-			void useSessions.getState().load().catch(() => {});
+			await sendFirstMessage({
+				parentId,
+				tabId,
+				text: q,
+				annotations: stagedAll,
+				model: modelArg,
+			});
 		} catch (err) {
 			const msg = errMsg(err);
+			setSideChatDraft(tabId, q);
 			setError(msg);
-			toast.error(`${threadId ? "发送侧聊消息失败" : "创建侧聊失败"}: ${msg}`);
+			toast.error(`创建辅助对话失败: ${msg}`);
 		} finally {
 			setBusy(false);
 		}
 	};
 
-	const handleSendBackToParent = async (targetChildId: string) => {
-		const parentId = sessions[targetChildId]?.parentId ?? selectedId;
-		if (!parentId) {
-			toast.error("未找到父会话");
-			return;
-		}
-
-		let items = useLive.getState().sessions[targetChildId]?.items ?? [];
-		if (items.length === 0) {
-			try {
-				const page = await getTranscript(targetChildId);
-				items = page.items ?? [];
-			} catch (err) {
-				console.error("Failed to fetch transcript for sidechat", err);
-			}
-		}
-
-		const assistantItems = items.filter(
-			(it) => it.kind === "assistant" && it.text && it.text.trim().length > 0,
-		);
-		const lastAssistant = assistantItems[assistantItems.length - 1];
-
-		if (!lastAssistant || !lastAssistant.text) {
-			toast.info("侧聊中暂无助手回复可回传");
-			return;
-		}
-
-		useComposer.getState().addAnnotation(parentId, {
-			source: "message",
-			text: lastAssistant.text,
-			itemId: lastAssistant.id,
-		});
-		selectSession(parentId);
-		toast.success("已注入父会话输入框");
-	};
-
-	const handleDelete = async (childSessionId: string, label: string) => {
-		setContextMenu(null);
-		const ok = await confirmDialog(
-			`确定要删除侧聊分支「${label}」吗？此操作不可逆。`,
-			{
-				danger: true,
-				title: "删除侧聊",
-				okLabel: "删除",
-			},
-		);
-		if (!ok) return;
-		try {
-			try {
-				await invoke("delete_session", { sessionId: childSessionId });
-				toast.success(`侧聊 ${label} 已删除`);
-			} catch {
-				await acceptSession(childSessionId, true);
-				toast.info(`无法删除，已改为归档`);
-			}
-			if (childId === childSessionId) {
-				setChildId(null);
-			}
-			void useSessions.getState().load().catch(() => {});
-		} catch (e) {
-			toast.error(`删除侧聊失败: ${errMsg(e)}`);
-		}
-	};
-
-	if (!selectedId) {
-		return (
-			<div className="p-3 text-xs text-[var(--text-40)]">选择一个会话后可开侧聊</div>
-		);
-	}
-
-	// Selected child → embedded compact SessionView.
-	if (childId) {
-		return (
-			<div className="flex h-full flex-col">
-				<div className="flex shrink-0 items-center gap-1 border-b border-[var(--line)] px-2 py-1">
-					<button
-						type="button"
-						onClick={() => setChildId(null)}
-						title="返回侧聊列表 (Esc)"
-						className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
-					>
-						← 返回列表 (Esc)
-					</button>
-					<div className="flex-1" />
-					<button
-						type="button"
-						onClick={() => void handleSendBackToParent(childId)}
-						title="将侧聊最后一条助手回复回传至父会话输入框"
-						className="flex items-center gap-1 rounded border border-[var(--line)] px-2 py-0.5 text-[11px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
-					>
-						<CornerUpLeft size={11} />
-						回传给父会话
-					</button>
-					<button
-						type="button"
-						onClick={() => selectSession(childId)}
-						title="在主聊天视图中打开此侧聊"
-						className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
-					>
-						在主视图打开
-					</button>
-				</div>
-				{/* Staged-annotation bar: quotes waiting on this parent append to
-				    the open thread when sent from here (or the list composer). */}
-				{stagedAnns.length > 0 && (
-					<div className="flex shrink-0 items-center gap-2 border-b border-[var(--line)] px-2 py-1.5">
-						<div className="min-w-0 shrink-0">
-							<AnnotationChip
-								sessionId={annKey}
-								anchorSessionId={selectedId}
-								annotations={stagedAnns}
-								onMove={(id) => moveAnnotation(annKey, selectedId, id)}
-								moveLabel="移动到主对话"
-							/>
-						</div>
-						<input
-							ref={stagedInputRef}
-							value={question}
-							onChange={(e) => setQuestion(e.target.value)}
-							onKeyDown={(e) => {
-								if (e.key !== "Enter" || isComposing(e)) return;
-								e.preventDefault();
-								void send();
-							}}
-							placeholder="追问此侧聊（附引用），Enter 发送…"
-							aria-label="追加到侧聊的问题"
-							className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1 text-[12px] text-[var(--text)] outline-none placeholder:text-[var(--text-30)]"
-						/>
-						<button
-							type="button"
-							disabled={busy}
-							onClick={() => void send()}
-							title="发送到当前侧聊 (Enter)"
-							className={clsx(
-								"flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-all",
-								busy
-									? "bg-[var(--bg-hover)] text-[var(--text-40)] cursor-not-allowed"
-									: "bg-[var(--text)] text-[var(--bg-panel)] hover:opacity-90 active:scale-95",
-							)}
-						>
-							{busy ? (
-								<Loader2 size={12} className="animate-spin" />
-							) : (
-								<SendHorizontal size={12} />
-							)}
-						</button>
-					</div>
-				)}
-				<div className="min-h-0 flex-1">
-					<SessionView sessionId={childId} compact />
-				</div>
-			</div>
-		);
-	}
-
 	return (
 		<div className="flex h-full flex-col">
 			<div className="min-h-0 flex-1 overflow-y-auto p-2">
-				{children.length === 0 && (
+				{pendingQuestion ? (
+					<div className="mb-2 ml-auto flex max-w-[85%] flex-col items-end gap-1">
+						<div className="whitespace-pre-wrap rounded-2xl bg-[var(--bg-hover)] px-3 py-2 text-[13px] text-[var(--text)]">
+							{pendingQuestion}
+						</div>
+						<div className="flex items-center gap-1 text-[10px] text-[var(--text-40)]">
+							<Loader2 size={10} className="animate-spin" />
+							正在创建辅助对话
+						</div>
+					</div>
+				) : (
 					<div className="py-4 text-center text-[11px] text-[var(--text-40)]">
-						还没有侧聊。在正文中划选文字或在下方快速提问。
+						输入问题开始新的辅助对话，或在正文中划选文字后提问。
 					</div>
 				)}
-				{children.map((c, idx) => {
-					const childLabel =
-						c.label && c.label !== parent?.label
-							? c.label
-							: `${parent?.label || "#?"}.${idx + 1}`;
-					const childTitle = sessionDisplayName(c);
-					return (
-						<div
-							key={c.id}
-							onContextMenu={(e) => {
-								e.preventDefault();
-								const menuWidth = 160;
-								const menuHeight = 160;
-								const x =
-									e.clientX + menuWidth > window.innerWidth
-										? Math.max(8, e.clientX - menuWidth)
-										: e.clientX;
-								const y =
-									e.clientY + menuHeight > window.innerHeight
-										? Math.max(8, e.clientY - menuHeight)
-										: e.clientY;
-								setContextMenu({ x, y, session: c });
-							}}
-							className="group mb-1 flex w-full items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--bg)] px-2.5 py-1.5 text-left hover:bg-[var(--ghost-hover)] transition-colors"
-						>
-							<button
-								type="button"
-								onClick={() => setChildId(c.id)}
-								className="flex min-w-0 flex-1 items-center gap-2 text-left"
-							>
-								<GitBranch size={12} className="shrink-0 text-indigo-400" />
-								<span className="shrink-0 font-mono text-[11px] text-[var(--text-60)]">
-									{childLabel}
-								</span>
-								<span
-									className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-80)]"
-									title={childTitle}
-								>
-									{childTitle}
-								</span>
-								<ChildStatus id={c.id} fallback={c.status} />
-							</button>
-							<button
-								type="button"
-								title="删除侧聊"
-								onClick={(e) => {
-									e.stopPropagation();
-									void handleDelete(c.id, childLabel);
-								}}
-								className="shrink-0 rounded p-1 text-[var(--text-40)] opacity-0 group-hover:opacity-100 hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] focus:opacity-100 transition-opacity"
-							>
-								<Trash2 size={12} />
-							</button>
-						</div>
-					);
-				})}
 			</div>
-
-			{/* Context menu for child session */}
-			<FloatingLayer
-				anchor={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
-				layer="menu"
-				placement="bottom-start"
-				offset={2}
-				onDismiss={() => setContextMenu(null)}
-				className="min-w-36 py-1 text-xs"
-			>
-				{contextMenu && (
-					<>
-						<button
-							type="button"
-							onClick={() => {
-								setChildId(contextMenu.session.id);
-								setContextMenu(null);
-							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
-						>
-							<GitBranch size={13} className="text-[var(--text-40)]" />
-							在侧栏查看
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								selectSession(contextMenu.session.id);
-								setContextMenu(null);
-							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
-						>
-							<ExternalLink size={13} className="text-[var(--text-40)]" />
-							在主视图打开
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								void handleSendBackToParent(contextMenu.session.id);
-								setContextMenu(null);
-							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] transition-colors"
-						>
-							<CornerUpLeft size={13} className="text-[var(--text-40)]" />
-							回传给父会话
-						</button>
-						<div className="my-1 border-t border-[var(--line)]" />
-						<button
-							type="button"
-							onClick={() => {
-								const sid = contextMenu.session.id;
-								const slabel = contextMenu.session.label;
-								setContextMenu(null);
-								void handleDelete(sid, slabel);
-							}}
-							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--status-error)] hover:bg-[var(--ghost-hover)] transition-colors"
-						>
-							<Trash2 size={13} />
-							删除侧聊
-						</button>
-					</>
-				)}
-			</FloatingLayer>
 
 			<div className="shrink-0 border-t border-[var(--line)] px-3 pb-3 pt-2">
 				{tooDeep ? (
@@ -562,8 +321,8 @@ export function SideChatPanel() {
 										sessionId={annKey}
 										anchorSessionId={selectedId}
 										annotations={stagedAnns}
-										onMove={(id) => moveAnnotation(annKey, selectedId, id)}
-										moveLabel="移动到主对话"
+										onMove={(id) => moveToMain(annKey, parentId, id)}
+										moveLabel="移到主对话"
 									/>
 								</div>
 							)}
@@ -585,20 +344,20 @@ export function SideChatPanel() {
 								}}
 								placeholder="输入侧聊消息，/ 命令，Enter 发送…"
 								rows={1}
-								className="w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 font-sans text-[13px] leading-[1.5] text-[var(--text)] placeholder:text-[var(--text-30,var(--text-dim))] outline-none max-h-36 min-h-[44px]"
+								className="w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 font-sans text-[13px] leading-[1.35] text-[var(--text)] placeholder:text-[var(--text-30,var(--text-dim))] outline-none max-h-36 min-h-[44px]"
 							/>
 
-							<div className="flex items-center justify-between gap-2 px-2.5 pb-2 text-[12px]">
-								<div className="flex items-center gap-1 select-none">
+							<div className="flex min-w-0 items-end justify-between gap-2 px-2.5 pb-2 text-[12px]">
+								<div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-0.5 select-none">
 									{/* Model Picker */}
-									<div className="relative" ref={modelMenuRef}>
+									<div className="relative max-w-full shrink-0" ref={modelMenuRef}>
 										<button
 											type="button"
 											onClick={() => setModelOpen((v) => !v)}
 											title={`侧聊模型: ${displayModelName}${effective.source === "picker" ? "" : effective.source === "setting" ? " (侧聊专属)" : " (跟随主会话)"}`}
-											className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors select-none"
+											className="flex min-w-0 max-w-full items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors select-none"
 										>
-											<span className="truncate max-w-36">{displayModelName}</span>
+											<span className="min-w-0 break-all text-left">{displayModelName}</span>
 											<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
 										</button>
 
@@ -638,6 +397,7 @@ export function SideChatPanel() {
 									{/* Thinking Level Picker (shared with the main composer) */}
 									<ThinkingLevelPicker
 										levels={thinkingLevels}
+										reasoning={effectiveOption?.reasoning}
 										value={effectiveThinking}
 										open={thinkingOpen}
 										onOpenChange={setThinkingOpen}
@@ -653,13 +413,7 @@ export function SideChatPanel() {
 									type="button"
 									disabled={busy || (!question.trim() && stagedAnns.length === 0)}
 									onClick={() => void send()}
-									title={
-										busy
-											? "正在创建侧聊…"
-											: childId
-												? "发送到当前侧聊 (Enter)"
-												: "创建侧聊 (Enter)"
-									}
+									title={busy ? "正在发送" : "发送 (Enter)"}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 shrink-0",
 										busy
@@ -681,20 +435,6 @@ export function SideChatPanel() {
 				)}
 			</div>
 		</div>
-	);
-}
-
-function ChildStatus({
-	id,
-	fallback,
-}: {
-	id: string;
-	fallback: string;
-}) {
-	const streaming = useLive((s) => s.sessions[id]?.streaming === true);
-	const label = streaming ? "运行中" : fallback === "idle" ? "空闲" : fallback;
-	return (
-		<span className="shrink-0 text-[10px] text-[var(--text-40)]">{label}</span>
 	);
 }
 

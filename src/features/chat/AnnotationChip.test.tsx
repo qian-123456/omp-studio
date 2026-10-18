@@ -37,31 +37,30 @@ const openPopover = () => {
 };
 
 describe("AnnotationChip move button", () => {
-	it("calls onMove with the annotation id", () => {
+	it("calls onMove with the annotation id without deleting it from the store", () => {
 		const onMove = vi.fn();
 		render(
 			<AnnotationChip
 				sessionId="sess-1"
 				annotations={[ann("a1")]}
 				onMove={onMove}
-				moveLabel="移动到辅助对话"
+				moveLabel="移到辅助对话"
 			/>,
 		);
 		openPopover();
-		fireEvent.click(
-			screen.getByRole("button", { name: "移动到辅助对话" }),
-		);
+		fireEvent.click(screen.getByRole("button", { name: "移到辅助对话" }));
 		expect(onMove).toHaveBeenCalledWith("a1");
-		// Moving is not deleting: the store list is untouched.
 		expect(useComposer.getState().annotations["sess-1"]).toBeUndefined();
 	});
 
 	it("hides the move button without onMove", () => {
 		render(<AnnotationChip sessionId="sess-1" annotations={[ann("a1")]} />);
 		openPopover();
-		expect(screen.queryByRole("button", { name: /移动/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /移到/ })).toBeNull();
 	});
+});
 
+describe("AnnotationChip locate", () => {
 	it("locate uses anchorSessionId instead of the store key", () => {
 		render(
 			<AnnotationChip

@@ -21,7 +21,7 @@ export function Toaster() {
 	if (items.length === 0) return null;
 	return (
 		<div
-			className="pointer-events-none fixed bottom-6 right-6 z-[100] flex w-80 flex-col gap-2 select-text"
+			className="pointer-events-none fixed bottom-6 right-6 z-(--z-toast) flex w-80 flex-col gap-2 select-text"
 			role="status"
 			aria-live="polite"
 		>

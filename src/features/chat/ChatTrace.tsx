@@ -276,7 +276,7 @@ export function ChatTrace({
 					);
 					return createPortal(
 						<div
-							className="pointer-events-none fixed z-50 w-80 max-w-[calc(100vw-2rem)] -translate-y-1/2 rounded-md border border-[var(--line)] bg-[var(--bg-panel)] p-3 text-[var(--text)] shadow-apple-card"
+							className="pointer-events-none fixed z-(--z-hovercard) w-80 max-w-[calc(100vw-2rem)] -translate-y-1/2 rounded-md border border-[var(--line)] bg-[var(--bg-panel)] p-3 text-[var(--text)] shadow-apple-card"
 							style={{ left: x, top: y }}
 						>
 							<div className="space-y-2">

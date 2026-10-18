@@ -5,13 +5,14 @@
 import clsx from "clsx";
 import {
 	Bell,
+	Brain,
 	ChevronRight,
 	type LucideIcon,
 	Pencil,
 	Search,
 	Terminal,
 } from "lucide-react";
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { ToolResultInfo, TranscriptItem } from "../../lib/contracts";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { useLive } from "../../stores/live";
@@ -20,7 +21,7 @@ import { Markdown } from "./markdown";
 import { isTaskTool, TaskToolBlock } from "./subagents/TaskToolBlock";
 import { ToolCard, type ToolStatus } from "./ToolCard";
 import { ThinkingPreview } from "./ThinkingPreview";
-import { RequestStatsLine, TurnTotalsHover } from "./RequestStatsLine";
+import { RequestStatsLine, TurnSummaryRows } from "./RequestStatsLine";
 import type { RequestStat } from "./requestStats";
 import {
 	type ActivityGroupKind,
@@ -49,7 +50,14 @@ export type StepShape =
 			durationMs?: number;
 			running?: boolean;
 	  }
-	| { id: string; kind: "text"; text: string; item?: TranscriptItem }
+	| {
+			id: string;
+			kind: "text";
+			text: string;
+			item?: TranscriptItem;
+			/** Prose still being generated (live row only). */
+			streaming?: boolean;
+	  }
 	| { id: string; kind: "notice"; item: TranscriptItem }
 	| { id: string; kind: "steer"; text: string; item?: TranscriptItem }
 	| {
@@ -158,14 +166,14 @@ function useDisclosure(forceExpanded?: boolean | null) {
 	useEffect(() => {
 		if (forceExpanded != null) setIsOpen(forceExpanded);
 	}, [forceExpanded]);
-	return { open: isOpen, toggle: () => setIsOpen((v) => !v) };
+	return { open: isOpen, setOpen: setIsOpen, toggle: () => setIsOpen((v) => !v) };
 }
 
 /**
- * Reasoning row: "正在思考" shimmer while running, "思考了 N 秒" once done.
- * With 「显示思考内容预览」 on, a 2-line dim peek of the reasoning sits under
- * the header and the row opens a scrollable full-text box instead of the
- * plain markdown body.
+ * Reasoning row: one collapsed line 「思考 · N秒」 once done; click opens the
+ * full text. While streaming it shimmers 「正在思考」 and, with 「思考时显示最新
+ * 两行」 on, rolls the newest two lines underneath. It folds back to the
+ * one-liner as soon as the reasoning ends (the reply starts).
  */
 function ThinkingRow({
 	anchorId,
@@ -180,36 +188,37 @@ function ThinkingRow({
 	running?: boolean;
 	forceExpanded?: boolean | null;
 }) {
-	const { open, toggle } = useDisclosure(forceExpanded);
-	const previewOn = useDisplayPrefs((s) => s.thinkingPreview);
+	const { open, setOpen, toggle } = useDisclosure(forceExpanded);
+	const peekOn = useDisplayPrefs((s) => s.thinkingPreview);
 	const expandable = thinking.trim() !== "";
+	const wasRunning = useRef(Boolean(running));
+	useEffect(() => {
+		if (wasRunning.current && !running && forceExpanded !== true) setOpen(false);
+		wasRunning.current = Boolean(running);
+	}, [running, forceExpanded, setOpen]);
 	const label = running
 		? "正在思考"
 		: durationMs !== undefined
-			? `思考了 ${elapsedLabel(durationMs)}`
-			: "已思考";
+			? `思考 · ${elapsedLabel(durationMs)}`
+			: "思考";
 
 	return (
 		<div id={anchorId}>
 			<ActivityHeader
+				icon={Brain}
 				label={label}
 				running={running}
 				expandable={expandable}
 				open={open}
 				onToggle={toggle}
 			/>
-			{expandable && previewOn && (
+			{expandable && (open || (running && peekOn)) && (
 				<ThinkingPreview
 					thinking={thinking}
 					running={running}
 					open={open}
 					onToggle={toggle}
 				/>
-			)}
-			{expandable && open && !previewOn && (
-				<div className="pb-1 pt-0.5 text-[13px] leading-5 text-[var(--text-40)]">
-					<Markdown text={thinking} />
-				</div>
 			)}
 		</div>
 	);
@@ -453,7 +462,7 @@ export function TurnSteps({
 						id={`msg-${step.id}`}
 						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
 					>
-						<Markdown text={step.text} sessionId={sessionId} />
+						<Markdown text={step.text} sessionId={sessionId} streaming={step.streaming} />
 					</div>
 				);
 			case "notice":
@@ -520,7 +529,7 @@ export function ExecutionDisclosure({
 	highlightedStepId,
 	/** Per-request stats lines for the expanded steps. */
 	statsPlan,
-	/** Whole-turn totals revealed on hover of the 「已处理」 divider. */
+	/** Whole-turn totals shown as the first rows once expanded. */
 	turnStats,
 }: {
 	sessionId: string;
@@ -550,7 +559,7 @@ export function ExecutionDisclosure({
 
 	return (
 		<div className="my-1 flex flex-col">
-			<TurnTotalsHover stats={turnStats ?? []}>
+			<div className="w-fit">
 				<button
 					type="button"
 					onClick={toggle}
@@ -576,10 +585,11 @@ export function ExecutionDisclosure({
 						)}
 					/>
 				</button>
-			</TurnTotalsHover>
+			</div>
 
 			{expanded && (
 				<div className="pt-1.5 pb-1">
+					<TurnSummaryRows stats={turnStats ?? []} durationMs={isStreaming ? undefined : durationMs} />
 					<TurnSteps
 						sessionId={sessionId}
 						steps={steps}

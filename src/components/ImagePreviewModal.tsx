@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Z_LAYER } from "./FloatingLayer";
+import { claimEscape } from "../lib/escapeClaim";
 
 export interface PreviewImageItem {
 	path: string;
@@ -43,7 +44,7 @@ export function ImagePreviewModal({
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
-				e.preventDefault();
+				claimEscape(e);
 				onClose();
 			} else if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
 				if (count > 1) {

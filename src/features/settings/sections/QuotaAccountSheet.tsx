@@ -1,7 +1,8 @@
 /**
  * Slide-over sheet listing every bound account of a multi-account quota provider.
  */
-import { CheckCircle2, Clock, X } from "lucide-react";
+import { CheckCircle2, Clock, LogIn, RefreshCw, Settings2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
 	OmpUsageAccountWithoutUsage,
@@ -9,6 +10,11 @@ import type {
 	OmpUsageProviderReport,
 } from "../../../lib/contracts";
 import { useEscapeKey } from "../../../lib/hooks";
+import { oauthLoginProviders } from "../../../lib/ipc";
+import { OauthLoginDialog } from "../../providers/OauthLoginDialog";
+import { ProviderDialog, type ProviderDialogTarget } from "../../providers/ProviderDialog";
+import { useProviders } from "../../providers/store";
+import { openSettingsTarget } from "../settingsTargets";
 import { ProviderBrandLogo } from "./ProviderBrandLogo";
 import {
 	type ProviderBrandConfig,
@@ -29,6 +35,9 @@ export interface QuotaAccountSheetProps {
 	onClose: () => void;
 	provider: AccountSheetProvider | null;
 	now: number;
+	refreshing: boolean;
+	/** Re-fetches the usage report (same call as the dashboard header 刷新). */
+	onRefresh: () => Promise<void> | void;
 }
 
 /** Used percentage (0–100) of a single limit, for percent and absolute units. */
@@ -128,16 +137,78 @@ export function QuotaAccountSheet({
 	onClose,
 	provider,
 	now,
+	refreshing,
+	onRefresh,
 }: QuotaAccountSheetProps) {
-	useEscapeKey(onClose, isOpen);
+	const [loginOpen, setLoginOpen] = useState(false);
+	const [manageTarget, setManageTarget] = useState<ProviderDialogTarget | null>(null);
+	const [oauthIds, setOauthIds] = useState<Set<string>>(new Set());
+	const workbenchProviders = useProviders((s) => s.providers);
+	const workbenchLoaded = useProviders((s) => s.loaded);
+	const ompProviders = useProviders((s) => s.ompProviders);
+	const ompLoaded = useProviders((s) => s.ompLoaded);
+	const loadWorkbench = useProviders((s) => s.load);
+	const loadOmp = useProviders((s) => s.loadOmp);
+
+	const childOpen = loginOpen || manageTarget !== null;
+	useEscapeKey(onClose, isOpen && !childOpen);
+
+	useEffect(() => {
+		if (!isOpen) return;
+		if (!workbenchLoaded) void loadWorkbench();
+		if (!ompLoaded) void loadOmp();
+		let cancelled = false;
+		oauthLoginProviders()
+			.then((list) => {
+				if (!cancelled) setOauthIds(new Set(list.filter((p) => p.available).map((p) => p.id)));
+			})
+			.catch(() => {
+				if (!cancelled) setOauthIds(new Set());
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [isOpen, workbenchLoaded, ompLoaded, loadWorkbench, loadOmp]);
+
 	if (!isOpen || !provider) return null;
 
 	const { brand } = provider;
 	const totalAccounts = provider.reports.length + provider.unmetered.length;
+	const latestFetchedAt = provider.reports.reduce<number | null>(
+		(acc, r) => (acc == null || r.fetchedAt > acc ? r.fetchedAt : acc),
+		null,
+	);
+	const canRelogin = oauthIds.has(provider.providerId);
+	const workbench = workbenchProviders.find((c) => c.slug === provider.providerId) ?? null;
+	const canManage = workbench != null || ompProviders.some((p) => p.id === provider.providerId);
+
+	const handleManage = () => {
+		if (workbench) {
+			setManageTarget({ mode: "edit", provider: workbench });
+			return;
+		}
+		onClose();
+		openSettingsTarget("providers");
+	};
+
+	if (loginOpen) {
+		return (
+			<OauthLoginDialog
+				initialProviderId={provider.providerId}
+				onClose={() => {
+					setLoginOpen(false);
+					void onRefresh();
+				}}
+			/>
+		);
+	}
+	if (manageTarget) {
+		return <ProviderDialog target={manageTarget} onClose={() => setManageTarget(null)} />;
+	}
 
 	return createPortal(
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6 backdrop-blur-xs"
+			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-black/50 p-6 backdrop-blur-xs"
 			onClick={onClose}
 			role="presentation"
 		>
@@ -261,6 +332,46 @@ export function QuotaAccountSheet({
 							</span>
 						</div>
 					))}
+				</div>
+
+				<div className="space-y-2 border-t border-[var(--border-divider)] px-4 py-3">
+					<div className="flex items-center gap-1 text-[11px] text-neutral-500">
+						<Clock className="h-3 w-3" />
+						{latestFetchedAt != null
+							? `用量更新于 ${formatRelativeTime(latestFetchedAt, now)}`
+							: "暂无用量数据"}
+					</div>
+					<div className="flex flex-wrap items-center gap-2">
+						<button
+							type="button"
+							disabled={refreshing}
+							onClick={() => void onRefresh()}
+							className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/15 px-3 py-1.5 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/25 disabled:opacity-50"
+						>
+							<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+							{refreshing ? "刷新中" : "刷新用量"}
+						</button>
+						{canRelogin && (
+							<button
+								type="button"
+								onClick={() => setLoginOpen(true)}
+								className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-3 py-1.5 text-xs font-medium text-neutral-200 transition-colors hover:bg-[var(--bg-hover)]"
+							>
+								<LogIn className="h-3.5 w-3.5" />
+								重新登录
+							</button>
+						)}
+						{canManage && (
+							<button
+								type="button"
+								onClick={handleManage}
+								className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-3 py-1.5 text-xs font-medium text-neutral-200 transition-colors hover:bg-[var(--bg-hover)]"
+							>
+								<Settings2 className="h-3.5 w-3.5" />
+								管理该供应商
+							</button>
+						)}
+					</div>
 				</div>
 			</div>
 		</div>,

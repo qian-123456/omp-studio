@@ -1,5 +1,6 @@
 import { homeDir } from "@tauri-apps/api/path";
 import { useCallback, useEffect, useState } from "react";
+import { claimEscape } from "./escapeClaim";
 import { shortPath } from "./paths";
 
 /** Call `onEscape` when the Escape key is pressed. Attach once per open modal/popover. */
@@ -10,6 +11,7 @@ export function useEscapeKey(onEscape: () => void, active = true): void {
 			if (e.key === "Escape") {
 				if (isComposing({ nativeEvent: e, key: e.key })) return;
 				e.stopPropagation();
+				claimEscape(e);
 				onEscape();
 			}
 		};
@@ -18,22 +20,38 @@ export function useEscapeKey(onEscape: () => void, active = true): void {
 	}, [onEscape, active]);
 }
 
-let composingDepth = 0;
+let composingTarget: EventTarget | null = null;
 let lastCompositionEnd = 0;
 
 if (typeof document !== "undefined") {
 	document.addEventListener(
 		"compositionstart",
-		() => {
-			composingDepth++;
+		(e) => {
+			composingTarget = e.target;
 		},
 		true,
 	);
 	document.addEventListener(
 		"compositionend",
 		() => {
-			composingDepth = Math.max(0, composingDepth - 1);
+			composingTarget = null;
 			lastCompositionEnd = Date.now();
+		},
+		true,
+	);
+	// A composition can be orphaned (editor re-rendered or blurred mid-IME, so compositionend never
+	// fires). Drop the stale state on focus loss, and on any real key (not the IME's keyCode 229).
+	document.addEventListener(
+		"focusout",
+		(e) => {
+			if (e.target === composingTarget) composingTarget = null;
+		},
+		true,
+	);
+	document.addEventListener(
+		"keydown",
+		(e) => {
+			if (composingTarget && !e.isComposing && e.keyCode !== 229) composingTarget = null;
 		},
 		true,
 	);
@@ -46,7 +64,10 @@ if (typeof document !== "undefined") {
  */
 export function isComposing(e: { nativeEvent?: unknown; key?: string }): boolean {
 	if (Boolean((e.nativeEvent as { isComposing?: boolean } | undefined)?.isComposing)) return true;
-	if (composingDepth > 0) return true;
+	if (composingTarget) {
+		if ((composingTarget as Node).isConnected === false) composingTarget = null;
+		else return true;
+	}
 	// Enter that committed the last candidate can arrive just after compositionend
 	if (e.key === "Enter" && Date.now() - lastCompositionEnd < 60) return true;
 	return false;

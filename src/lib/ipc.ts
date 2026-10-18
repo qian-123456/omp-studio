@@ -36,6 +36,7 @@ import type {
 	OauthLoginStatus,
 	OmpConfigListResult,
 	OmpProjectConfigFile,
+	PromptComposition,
 	ModelRoleSnapshot,
 	OmpProviderInfo,
 	OmpImportResult,
@@ -198,16 +199,34 @@ export const rpcListLive = () => invoke<LiveSessionInfo[]>("rpc_list_live");
 export const takeoverExternal = (sessionId: string) =>
 	invoke<LiveSessionInfo>("takeover_external", { sessionId });
 
-export const createSideChat = (
-	parentSessionId: string,
-	question: string,
-	selection?: string,
-	model?: string,
-) =>
+/** Fork the parent into a side chat. Never sends a prompt. */
+export const createSideChat = (parentSessionId: string, model?: string) =>
 	invoke<LiveSessionInfo>("create_side_chat", {
 		parentSessionId,
+		model: model ?? null,
+	});
+
+/** First message of a side chat: sends the rendered context+selection+question prompt. */
+export const sideChatAsk = (
+	sessionId: string,
+	question: string,
+	selection?: string,
+) =>
+	invoke<void>("side_chat_ask", {
+		sessionId,
 		question,
 		selection: selection ?? null,
+	});
+
+/**
+ * Full-session fork of the parent (cut at the last complete turn, or exactly
+ * after `entryId`). Never sends a prompt; send the user's first message
+ * with `sendPrompt` afterwards.
+ */
+export const forkSession = (parentId: string, entryId?: string, model?: string) =>
+	invoke<LiveSessionInfo>("fork_session", {
+		parentId,
+		entryId: entryId ?? null,
 		model: model ?? null,
 	});
 
@@ -458,8 +477,8 @@ export const backlogUpdate = (id: string, patch: BacklogPatch) =>
 export const backlogDelete = (id: string) =>
 	invoke<void>("backlog_delete", { id });
 
-export const backlogBuildPrompt = (id: string) =>
-	invoke<string>("backlog_build_prompt", { id });
+export const backlogBuildPrompt = (ids: string[]) =>
+	invoke<string>("backlog_build_prompt", { ids });
 
 // ---- D — notify ----
 
@@ -519,6 +538,10 @@ export const modelProbe = (model: string, kind: ModelProbeKind) =>
 
 /** Every catalog model of every kind (`omp models --kind all --json`); slow (~8s). */
 export const modelKindCatalog = () => invoke<ModelKindEntry[]>("model_kind_catalog");
+
+/** Spawns a throwaway no-session omp in `cwd` and returns what an empty new session would carry in context (no model call). */
+export const promptCompositionProbe = (cwd: string) =>
+	invoke<PromptComposition>("prompt_composition_probe", { cwd });
 
 // ---- providers ----
 
@@ -731,6 +754,10 @@ export const pluginSetEnabled = (
 	enabled: boolean,
 	cwd?: string | null,
 ) => invoke<void>("plugin_set_enabled", { cwd: cwd ?? null, name, enabled });
+
+/** Permanently delete one discovered extension module (file or index dir). */
+export const extensionDelete = (path: string, cwd?: string | null) =>
+	invoke<void>("extension_delete", { cwd: cwd ?? null, path });
 
 /** Resolve the configured omp binary, probe `omp --version`, and report agent-dir paths. */
 export const ompInfo = () => invoke<import("./contracts").OmpInfo>("omp_info");

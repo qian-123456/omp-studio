@@ -13,6 +13,8 @@ export interface Annotation {
 	file?: string;
 	lines?: string;
 	comment?: string;
+	/** Free-form origin shown instead of the source kind (e.g. 「来自辅助对话：标题」). */
+	label?: string;
 }
 
 export interface ComposerImage {
@@ -43,11 +45,11 @@ export interface ComposerState {
 	removeAnnotation(sessionId: string, id: string): void;
 	clearAnnotations(sessionId: string): void;
 	/**
-	 * Move one annotation between lists (e.g. main composer ⇄ side-chat
-	 * composer via `sideChatAnnKey`); preserves fields, assigns a fresh id.
+	 * Move one annotation between lists (main composer ⇄ side-chat composer);
+	 * preserves fields, assigns a fresh id.
 	 */
 	moveAnnotation(fromKey: string, toKey: string, id: string): void;
-	/** Last-picked destination for new stream annotations (persisted). */
+	/** Last-picked destination for new annotations selected in the main chat (persisted). */
 	annotationTarget: AnnotationTarget;
 	setAnnotationTarget(target: AnnotationTarget): void;
 	/** Image attachments per session with ordered index (1, 2, 3...). */
@@ -59,6 +61,12 @@ export interface ComposerState {
 		dimensions?: { width?: number; height?: number },
 	): ComposerImage;
 	setImages(sessionId: string, images: ComposerImage[]): void;
+	/**
+	 * Attach several image paths in one step, reusing images already attached with the
+	 * same path. Returns each path's 1-based index into the session's image list (the N of
+	 * its `🖼️#N` token), in input order.
+	 */
+	attachImages(sessionId: string, paths: readonly string[]): number[];
 	removeImage(sessionId: string, idOrPath: string): void;
 	clearImages(sessionId: string): void;
 	/** Non-image file attachments per session (📎#N tokens). */
@@ -123,15 +131,13 @@ const STORAGE_KEY_DRAFTS = "omp_composer_drafts";
 const STORAGE_KEY_SIDECHAT_DRAFTS = "omp_sidechat_drafts";
 const STORAGE_KEY_ANNOTATION_TARGET = "ompws:annotation-target";
 
-/** Destination segmented control in the selection comment box. */
+/** Destination of an annotation selected in the main chat. */
 export type AnnotationTarget = "main" | "sidechat";
 
 function loadAnnotationTarget(): AnnotationTarget {
 	try {
 		if (typeof localStorage === "undefined") return "main";
-		return localStorage.getItem(STORAGE_KEY_ANNOTATION_TARGET) === "sidechat"
-			? "sidechat"
-			: "main";
+		return localStorage.getItem(STORAGE_KEY_ANNOTATION_TARGET) === "sidechat" ? "sidechat" : "main";
 	} catch {
 		return "main";
 	}
@@ -173,7 +179,7 @@ function saveMap(key: string, map: Record<string, string>): void {
 
 let nextId = 1;
 
-export const useComposer = create<ComposerState>((set) => ({
+export const useComposer = create<ComposerState>((set, get) => ({
 	annotations: {},
 	addAnnotation: (sessionId, a) =>
 		set((s) => ({
@@ -220,10 +226,7 @@ export const useComposer = create<ComposerState>((set) => ({
 				annotations: {
 					...s.annotations,
 					[fromKey]: from.filter((a) => a.id !== id),
-					[toKey]: [
-						...(s.annotations[toKey] ?? []),
-						{ ...moved, id: `ann-${nextId++}` },
-					],
+					[toKey]: [...(s.annotations[toKey] ?? []), { ...moved, id: `ann-${nextId++}` }],
 				},
 			};
 		}),
@@ -258,6 +261,19 @@ export const useComposer = create<ComposerState>((set) => ({
 		set((s) => ({
 			images: { ...s.images, [sessionId]: images },
 		})),
+	attachImages: (sessionId, paths) => {
+		const list = [...(get().images[sessionId] ?? [])];
+		const numbers = paths.map((path) => {
+			let at = list.findIndex((i) => i.path === path);
+			if (at < 0) {
+				list.push({ id: `cimg-${nextId++}`, path });
+				at = list.length - 1;
+			}
+			return at + 1;
+		});
+		set((s) => ({ images: { ...s.images, [sessionId]: list } }));
+		return numbers;
+	},
 	removeImage: (sessionId, idOrPath) =>
 		set((s) => ({
 			images: {
@@ -388,10 +404,12 @@ export function formatWithAnnotations(
 			const where = a.lines ? ` 第 ${a.lines} 行` : "";
 			lines.push(`[${n}] 文件 ${a.file}${where}：${a.comment ?? ""}`.trimEnd());
 		} else {
-			const where = a.file
+			const loc = a.file
 				? ` (${a.file}${a.lines ? ` ${a.lines}` : ""})`
-				: "";
-			lines.push(`[${n}]${where}`.trimEnd());
+				: a.label
+					? ` (${a.label})`
+					: "";
+			lines.push(`[${n}]${loc}`.trimEnd());
 		}
 		if (a.text) {
 			for (const line of a.text.split("\n")) {

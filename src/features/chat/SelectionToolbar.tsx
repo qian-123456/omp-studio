@@ -1,19 +1,26 @@
 /** [B] Floating bubble on text selection inside the message stream:
- * 批注 (quote annotation: a multi-line comment box whose segmented control
- * targets the main composer or the side-chat composer; dismissing it with a
+ * 批注 (quote annotation: a multi-line comment box; in the main chat a segmented
+ * control picks the main or side-chat composer, inside a side chat it always
+ * stages into that side chat's own composer; dismissing it with a
  * non-empty comment silently stages that comment as an annotation — Esc is
  * the only explicit discard) / 记到收集箱 (quick capture). */
 
-import { ArrowUp, BookmarkPlus, MessageSquareQuote } from "lucide-react";
+import { ArrowUp, BookmarkPlus, CornerUpLeft, MessageSquareQuote } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { SelectionBubble } from "../../components/SelectionBubble";
-import { Segmented } from "../../components/Segmented";
 import { isComposing } from "../../lib/hooks";
-import { type AnnotationTarget, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { Segmented } from "../../components/Segmented";
+import { type AnnotationTarget, useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { resolveAnnotationKey, revealSideChatFor } from "../sidechat/annotationRoute";
 import { MAX_SIDE_CHAT_DEPTH } from "../sidechat/depth";
+import { useSideChatView } from "../sidechat/viewStore";
 import { decideEnterKey } from "./sendKeys";
+import { showSendToMainBubbleAction } from "../sidechat/handbackLogic";
+import { stageInParent } from "../sidechat/sideChatActions";
+import { useDisplayPrefs } from "../../stores/displayPrefs";
+import { claimEscape } from "../../lib/escapeClaim";
 
 /** Custom Highlight API name painting the quoted text while its comment is typed. */
 const PENDING_HIGHLIGHT = "annotation-pending";
@@ -55,9 +62,12 @@ function BubbleAction({
 export function SelectionToolbar({
 	sessionId,
 	containerRef,
+	compact = false,
 }: {
 	sessionId: string;
 	containerRef: React.RefObject<HTMLElement | null>;
+	/** Rendered inside the right-hand side-chat panel: no target choice, annotations stay in this chat. */
+	compact?: boolean;
 }) {
 	const [sel, setSel] = useState<Sel | null>(null);
 	const [commenting, setCommenting] = useState(false);
@@ -66,11 +76,16 @@ export function SelectionToolbar({
 	const focusComposer = useComposer((s) => s.focusComposer);
 	const annotationTarget = useComposer((s) => s.annotationTarget);
 	const setAnnotationTarget = useComposer((s) => s.setAnnotationTarget);
+	// Where the text was selected decides the target: the right-panel side chat has no choice;
+	// the main area (even when it shows a side-chat session) offers 主对话/辅助对话.
+	const inSideChat = compact;
+	const isSideKind = useSessions((s) => s.sessions[sessionId]?.kind === "side");
 	const tooDeep = useSessions(
 		(s) => (s.sessions[sessionId]?.forkDepth ?? 0) >= MAX_SIDE_CHAT_DEPTH,
 	);
-	const setRightTab = useUi((s) => s.setRightTab);
 	const openModal = useUi((s) => s.openModal);
+	const handbackMode = useDisplayPrefs((s) => s.sideChatHandback);
+	const showSendToMain = showSendToMainBubbleAction(handbackMode, isSideKind);
 	const boxRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const selRef = useRef<Sel | null>(null);
@@ -95,10 +110,19 @@ export function SelectionToolbar({
 
 	// A depth-capped parent cannot fork another side chat: fall back to main.
 	const target: AnnotationTarget = tooDeep ? "main" : annotationTarget;
-	const targetRef = useRef(target);
-	targetRef.current = target;
+	const destKey = useCallback(
+		() =>
+			resolveAnnotationKey({
+				sessionId,
+				inSideChat,
+				target: tooDeep ? "main" : useComposer.getState().annotationTarget,
+				view: useSideChatView.getState(),
+			}),
+		[sessionId, inSideChat, tooDeep],
+	);
 
-	/** Quote + typed comment staged into the chosen annotation list (no focus side-effects). */
+
+	/** Quote + typed comment staged into the composer (no focus side-effects). */
 	const stageDraft = useCallback(() => {
 		const sel = selRef.current;
 		const comment = draftRef.current.trim();
@@ -109,9 +133,10 @@ export function SelectionToolbar({
 			itemId: sel.itemId,
 			comment,
 		};
-		const dest = targetRef.current === "sidechat" ? sideChatAnnKey(sessionId) : sessionId;
+		const dest = destKey();
 		useComposer.getState().addAnnotation(dest, body);
-	}, [sessionId]);
+		if (dest !== sessionId) revealSideChatFor(sessionId);
+	}, [destKey, sessionId]);
 
 	/**
 	 * Close the bubble. `mode` = "discard" never stages (Esc, send, capture);
@@ -144,20 +169,14 @@ export function SelectionToolbar({
 			itemId: sel.itemId,
 			comment: comment || undefined,
 		};
-		// Quote + typed comment stay staged above the composer; the user sends from there.
-		if (target === "sidechat") {
-			// Stage into the side-chat composer of this parent session; the panel
-			// chip shows it and send creates/appends to a side-chat thread.
-			const key = sideChatAnnKey(sessionId);
-			addAnnotation(key, body);
-			setRightTab("sidechat");
-			focusComposer(key);
-			dismiss("discard");
-			return;
-		}
-		addAnnotation(sessionId, body);
-		focusComposer(sessionId);
+		// Main chat: the remembered target; inside a side chat: always its own composer.
+		const dest = destKey();
+		addAnnotation(dest, body);
+		if (dest !== sessionId) revealSideChatFor(sessionId);
+		focusComposer(dest);
 		dismiss("discard");
+		// Staged into another chat's composer: that panel focuses itself via focusNonce.
+		if (dest !== sessionId) return;
 		setTimeout(() => {
 			const ta =
 				document.querySelector<HTMLTextAreaElement>(
@@ -292,7 +311,7 @@ export function SelectionToolbar({
 		const onKey = (e: globalThis.KeyboardEvent) => {
 			if (e.key !== "Escape" || isComposing({ nativeEvent: e, key: e.key })) return;
 			// Claim the key so it does not also abort a running turn.
-			e.preventDefault();
+			claimEscape(e);
 			// Esc is an explicit discard: a typed comment is dropped, not staged.
 			dismiss("discard");
 		};
@@ -305,7 +324,7 @@ export function SelectionToolbar({
 	return (
 		<SelectionBubble anchor={sel.rect} ref={boxRef}>
 			{commenting ? (
-				<div className="flex flex-col gap-1.5 px-1.5 py-1">
+				<div className={inSideChat ? "flex items-end gap-1.5 px-1.5 py-1" : "flex flex-col gap-1.5 px-1.5 py-1"}>
 					<textarea
 						ref={inputRef}
 						rows={1}
@@ -333,27 +352,29 @@ export function SelectionToolbar({
 						}}
 						placeholder="添加批注（Enter 发送，Shift+Enter 换行）…"
 						aria-label="添加批注"
-						className="w-72 min-w-0 resize-none rounded-xl bg-transparent px-2.5 py-1.5 text-[12px] leading-[1.4] text-[var(--text)] outline-none placeholder:text-[var(--text-30)]"
+						className={`min-w-0 resize-none rounded-xl bg-transparent px-2.5 py-1.5 text-[12px] leading-[1.4] text-[var(--text)] outline-none placeholder:text-[var(--text-30)] ${inSideChat ? "w-60" : "w-72"}`}
 					/>
-					<div className="flex items-center justify-between gap-3 px-1 pb-0.5">
-						<Segmented<AnnotationTarget>
-							size="sm"
-							pill
-							aria-label="批注目标"
-							value={target}
-							onChange={setAnnotationTarget}
-							options={[
-								{ value: "main", label: "主对话", title: "批注进入主会话输入框" },
-								{
-									value: "sidechat",
-									label: "辅助对话",
-									title: tooDeep
-										? `已达侧聊嵌套上限（${MAX_SIDE_CHAT_DEPTH} 层）`
-										: "批注暂存到右侧辅助对话输入框",
-									disabled: tooDeep,
-								},
-							]}
-						/>
+					<div className={inSideChat ? "flex shrink-0 items-center pb-1" : "flex items-center justify-between gap-3 px-1 pb-0.5"}>
+						{!inSideChat && (
+							<Segmented<AnnotationTarget>
+								size="sm"
+								pill
+								aria-label="批注目标"
+								value={target}
+								onChange={setAnnotationTarget}
+								options={[
+									{ value: "main", label: "主对话", title: "批注进入主会话输入框" },
+									{
+										value: "sidechat",
+										label: "辅助对话",
+										title: tooDeep
+											? `已达侧聊嵌套上限（${MAX_SIDE_CHAT_DEPTH} 层）`
+											: "批注暂存到右侧辅助对话输入框",
+										disabled: tooDeep,
+									},
+								]}
+							/>
+						)}
 						<button
 							type="button"
 							aria-label="确认批注"
@@ -376,6 +397,16 @@ export function SelectionToolbar({
 							dismiss("discard");
 						}}
 					/>
+					{showSendToMain && (
+						<BubbleAction
+							icon={<CornerUpLeft size={12} />}
+							label="发到主对话"
+							onClick={() => {
+								stageInParent(sessionId, sel.text);
+								dismiss("discard");
+							}}
+						/>
+					)}
 				</>
 			)}
 		</SelectionBubble>

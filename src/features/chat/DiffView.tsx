@@ -6,6 +6,7 @@ import { Columns2, MessageSquarePlus, Rows } from "lucide-react";
 import React, { useState } from "react";
 import { isComposing } from "../../lib/hooks";
 import { useComposer } from "../../stores/composer";
+import { claimEscape } from "../../lib/escapeClaim";
 
 export interface DiffLine {
 	kind: "ctx" | "add" | "del";
@@ -493,7 +494,7 @@ export function DiffView({
 						onKeyDown={(e) => {
 							if (isComposing(e)) return;
 							if (e.key === "Escape") {
-								e.preventDefault();
+								claimEscape(e);
 								setCommenting(false);
 								setAnchor(null);
 								setEnd(null);

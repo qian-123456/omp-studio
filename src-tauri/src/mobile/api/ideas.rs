@@ -19,8 +19,8 @@
 //! - `POST /ideas/{id}/dispatch` `{sessionId?, cwd?}` and
 //!   `POST /ideas/dispatch` `{ids: string[], sessionId?, cwd?}`
 //!   → `{sessionId, items: BacklogItem[]}`. Mirrors `DispatchDialog.run`:
-//!   `backlog_build_prompt` per item (multi → one combined
-//!   "请依次处理以下 N 项任务" prompt), `rpc::send_prompt` into the target
+//!   `prompt::build_batch` (multi → one preamble + compact item list + one
+//!   closing), `rpc::send_prompt` into the target
 //!   (existing non-archived session, or a spawned session at
 //!   item.projectDir → body.cwd → global dir; `chat` mode for the global dir,
 //!   `code` otherwise), then `dispatched` + `targetSessionId` on every item.
@@ -301,22 +301,6 @@ struct DispatchBody {
     ids: Vec<String>,
 }
 
-/// Combined prompt for a batch: one item dispatches its own prompt; several are
-/// wrapped exactly like `DispatchDialog.run` ("请依次处理以下 N 项任务").
-fn combine_prompts(prompts: &[String]) -> String {
-    if prompts.len() == 1 {
-        prompts[0].clone()
-    } else {
-        let tasks = prompts
-            .iter()
-            .enumerate()
-            .map(|(i, p)| format!("## 任务 {}\n{p}", i + 1))
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        format!("请依次处理以下 {} 项任务：\n\n{tasks}", prompts.len())
-    }
-}
-
 /// New-session cwd: item project_dir → request cwd → global dir (desktop uses
 /// `item.projectDir ?? currentProject ?? globalPath`; mobile has no current
 /// project, so the request's `cwd` stands in for it).
@@ -352,9 +336,8 @@ async fn dispatch<B: Backend>(
     for id in ids {
         check_id(id)?;
     }
-    // 1) backlog_build_prompt for every item (DispatchDialog: Promise.all).
+    // 1) backlog prompt for the whole batch (one preamble/closing).
     let mut items = Vec::with_capacity(ids.len());
-    let mut prompts = Vec::with_capacity(ids.len());
     {
         let db = st.db.lock();
         for id in ids {
@@ -364,10 +347,7 @@ async fn dispatch<B: Backend>(
             items.push(item);
         }
     }
-    for item in &items {
-        prompts.push(backlog::prompt::build(st, item).await);
-    }
-    let prompt = combine_prompts(&prompts);
+    let prompt = backlog::prompt::build_batch(st, &items).await;
 
     // 2) Resolve the target: existing session, or spawn at the desktop cwd rule.
     let target_id = match body.session_id.as_deref().map(str::trim) {
@@ -487,14 +467,6 @@ mod tests {
             assert!(build_refs(&[], &[bad.into()], clip).is_err(), "{bad}");
         }
         assert!(build_refs(&["../x".into()], &[], clip).is_err());
-    }
-
-    #[test]
-    fn combined_prompt_wraps_only_batches() {
-        assert_eq!(combine_prompts(&["do it".into()]), "do it");
-        let out = combine_prompts(&["a".into(), "b".into(), "c".into()]);
-        assert!(out.starts_with("请依次处理以下 3 项任务：\n\n## 任务 1\na"));
-        assert!(out.contains("## 任务 3\nc"));
     }
 
     #[test]

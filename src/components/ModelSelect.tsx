@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Brain, Check, ChevronDown, ChevronRight, CornerDownLeft, Loader2, Search, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CornerDownLeft, Loader2, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { asRecord } from "../features/settings/modelRoles";
 import { useOmpConfigStore } from "../features/settings/ompConfigStore";
@@ -7,14 +7,19 @@ import { openSettingsTarget } from "../features/settings/settingsTargets";
 import { type ModelOption, toModelKey } from "../lib/models";
 import { useModelCatalog } from "../stores/modelCatalog";
 import { FloatingLayer } from "./FloatingLayer";
+import { ThinkingLevelPicker } from "./ThinkingLevelPicker";
 import {
+	FOLLOW_LEVEL,
 	RESOLVABLE_ROLES,
-	composeSelection,
+	applyThinkingLevel,
+	carryLevel,
 	describeResolution,
 	isRecordableModelKey,
 	parseSelection,
 	resolveRole,
 	roleIdOf,
+	thinkingLevelsFor,
+	thinkingModelFor,
 } from "./modelSelectLogic";
 import { useModelSelectPrefs } from "./modelSelectPrefs";
 export interface ModelExtraOption {
@@ -28,14 +33,11 @@ interface MenuProps {
 	models: ModelOption[] | null;
 	/** Stored value; may carry a `:<level>` thinking suffix (e.g. "smol:high"). */
 	currentValue?: string;
-	/** `keepOpen` is set for thinking-level picks so the menu stays open. */
-	onSelect: (modelKey: string, opts?: { keepOpen?: boolean }) => void;
+	onSelect: (modelKey: string) => void;
 	/** Extra rows rendered as a footer section (e.g. "默认", "自定义模型…"). */
 	extras?: ModelExtraOption[];
 	/** Header caption above the picker. */
 	caption?: string;
-	/** Show the thinking-level strip for the selected model/role. */
-	thinking?: boolean;
 	/**
 	 * Let the typed search text be used verbatim as a selector (e.g. a model
 	 * missing from the catalog, `@smol`, `web/duckduckgo`). Replaces the old
@@ -90,7 +92,6 @@ export function ModelMenuContent({
 	onSelect,
 	extras,
 	caption,
-	thinking = false,
 	allowCustom = false,
 	roles: rolesOverride,
 	closeOnSelect = false,
@@ -103,7 +104,7 @@ export function ModelMenuContent({
 	const current = parseSelection(effectiveValue);
 	const selectedKey = current.selector;
 	const { roles, loaded: rolesLoaded } = useOmpModelRoles(
-		hasRoleExtras || (thinking && roleIdOf(selectedKey) !== null),
+		hasRoleExtras,
 		rolesOverride,
 	);
 	const recent = useModelSelectPrefs((s) => s.recent);
@@ -130,14 +131,7 @@ export function ModelMenuContent({
 	const pickModel = (key: string) => {
 		if (isRecordableModelKey(key)) recordRecent(key);
 		if (!closeOnSelect) setLocalSelection(key);
-		const targetModel = findCatalogModel(models, key);
-		const supportsThinking =
-			!closeOnSelect && thinking && targetModel && (targetModel.thinking?.length ?? 0) > 0;
-		if (supportsThinking) {
-			onSelect(key, { keepOpen: true });
-		} else {
-			onSelect(key);
-		}
+		onSelect(key);
 	};
 	const listRef = useRef<HTMLDivElement>(null);
 
@@ -454,90 +448,6 @@ export function ModelMenuContent({
 				</div>
 			)}
 
-			{thinking && (
-				<ThinkingStrip
-					selector={selectedKey}
-					level={current.level}
-					models={models}
-					roles={roles}
-					rolesLoaded={rolesLoaded}
-					onPick={(level) => {
-						const next = composeSelection(selectedKey, level);
-						if (!closeOnSelect) setLocalSelection(next);
-						onSelect(next);
-					}}
-				/>
-			)}
-		</div>
-	);
-}
-
-/** Bottom strip: `默认` + the thinking levels the selected (or role-resolved) model supports. */
-function ThinkingStrip({
-	selector,
-	level,
-	models,
-	roles,
-	rolesLoaded,
-	onPick,
-}: {
-	selector: string;
-	level: string | null;
-	models: ModelOption[] | null;
-	roles: Record<string, unknown>;
-	rolesLoaded: boolean;
-	onPick: (level: string | null) => void;
-}) {
-	if (!selector || selector.startsWith("__")) return null;
-	const roleId = roleIdOf(selector);
-	let model: ModelOption | null;
-	if (roleId) {
-		const r = rolesLoaded ? resolveRole(roles, roleId, models) : null;
-		model = r && r.kind !== "auto" ? r.model : null;
-	} else {
-		model = findCatalogModel(models, selector);
-		if (!model) return null;
-	}
-	const levels = model?.thinking ?? [];
-	if (model && levels.length === 0) return null;
-	const options: { value: string | null; label: string }[] = [
-		{ value: null, label: roleId ? (model ? "跟随角色（默认）" : "跟随角色") : "默认" },
-		...["off", "auto", ...levels.filter((l) => l !== "off" && l !== "auto")].map((l) => ({
-			value: l,
-			label: l,
-		})),
-	];
-	return (
-		<div className="mt-1 flex shrink-0 items-center gap-1.5 border-t border-[var(--border-divider)] px-2.5 pb-0.5 pt-1.5">
-			<span className="flex shrink-0 select-none items-center text-neutral-500" title="思考强度">
-				<Brain size={13} aria-hidden />
-			</span>
-			<div
-				role="radiogroup"
-				aria-label="思考强度"
-				className="flex min-w-0 flex-1 items-center justify-between gap-0.5 rounded-lg hairline bg-[var(--well-bg,var(--bg))] p-0.5"
-			>
-				{options.map((o) => {
-					const active = (level ?? null) === o.value;
-					return (
-						<button
-							key={o.value ?? "__default"}
-							type="button"
-							role="radio"
-							aria-checked={active}
-							onClick={() => onPick(o.value)}
-							className={clsx(
-								"cursor-pointer whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] transition-colors",
-								active
-									? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)] shadow-sm"
-									: "text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
-							)}
-						>
-							{o.label}
-						</button>
-					);
-				})}
-			</div>
 		</div>
 	);
 }
@@ -554,6 +464,12 @@ interface SelectProps extends MenuProps {
 	widthClass?: string;
 	/** Real disabled trigger; also closes an open menu. */
 	disabled?: boolean;
+	/**
+	 * Render a separate thinking-level chip beside the model button (like the
+	 * composer). Levels come from the selected model's capabilities; the stored
+	 * value keeps the `selector:level` format.
+	 */
+	thinking?: boolean;
 }
 
 /** Trigger button + two-pane grouped popover menu. */
@@ -565,34 +481,51 @@ export function ModelSelect({
 	align = "end",
 	widthClass = "w-[380px]",
 	disabled = false,
+	thinking = false,
 	...menu
 }: SelectProps) {
 	const [open, setOpen] = useState(false);
+	const [levelOpen, setLevelOpen] = useState(false);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const placement = `${direction === "up" ? "top" : "bottom"}-${align}` as const;
 	const current = parseSelection(menu.currentValue);
 	const currentRole = menu.extras?.some((x) => x.value === current.selector)
 		? roleIdOf(current.selector)
 		: null;
-	const { roles, loaded } = useOmpModelRoles(currentRole !== null, menu.roles);
+	const selectorIsRole = roleIdOf(current.selector) !== null;
+	const { roles, loaded } = useOmpModelRoles(
+		currentRole !== null || (thinking && selectorIsRole),
+		menu.roles,
+	);
+	// With the chip the level is shown there, not appended to the model label.
+	const labelLevel = thinking ? null : current.level;
 	let displayLabel = label;
 	if (currentRole && loaded) {
 		displayLabel = `${RESOLVABLE_ROLES[currentRole]} → ${describeResolution(
 			resolveRole(roles, currentRole, menu.models),
-			current.level,
+			labelLevel,
 		)}`;
-	} else if (currentRole && current.level) {
-		displayLabel = `${RESOLVABLE_ROLES[currentRole]} · ${current.level}`;
-	} else if (current.level) {
+	} else if (currentRole && labelLevel) {
+		displayLabel = `${RESOLVABLE_ROLES[currentRole]} · ${labelLevel}`;
+	} else if (labelLevel) {
 		const name = findCatalogModel(menu.models, current.selector)?.id ?? current.selector;
-		displayLabel = `${name} · ${current.level}`;
+		displayLabel = `${name} · ${labelLevel}`;
 	}
+	const levels = thinking
+		? thinkingLevelsFor(current.selector, menu.models, roles, current.level)
+		: [];
+	const thinkingModel = thinking ? thinkingModelFor(current.selector, menu.models, roles) : null;
+	// Hidden only while the model is unresolved (unknown selector / role still loading).
+	const showLevel = thinkingModel !== null && (!selectorIsRole || loaded);
 	const isOpen = open && !disabled;
 	useEffect(() => {
-		if (disabled) setOpen(false);
+		if (disabled) {
+			setOpen(false);
+			setLevelOpen(false);
+		}
 	}, [disabled]);
 
-	return (
+	const select = (
 		<div className="relative">
 			<button
 				ref={buttonRef}
@@ -624,15 +557,38 @@ export function ModelSelect({
 			>
 				<ModelMenuContent
 					{...menu}
-					onSelect={(v, opts) => {
+					onSelect={(v) => {
 						if (disabled) return;
-						menu.onSelect(v, opts);
-						if (opts?.keepOpen) return;
+						menu.onSelect(
+							thinking && menu.models
+								? carryLevel(v, current.level, menu.models, roles)
+								: v,
+						);
 						setOpen(false);
 						buttonRef.current?.focus();
 					}}
 				/>
 			</FloatingLayer>
+		</div>
+	);
+	if (!thinking) return select;
+	return (
+		<div className="flex min-w-0 items-center gap-1">
+			{select}
+			{showLevel && (
+				<ThinkingLevelPicker
+					levels={levels}
+					reasoning={thinkingModel?.reasoning}
+					value={current.level ?? FOLLOW_LEVEL}
+					open={levelOpen && !disabled}
+					onOpenChange={setLevelOpen}
+					onSelect={(level) => {
+						setLevelOpen(false);
+						if (disabled) return;
+						menu.onSelect(applyThinkingLevel(current.selector, level));
+					}}
+				/>
+			)}
 		</div>
 	);
 }

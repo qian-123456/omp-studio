@@ -17,6 +17,7 @@ import { ModelPickerModal } from "./ModelPickerModal";
 import type { DiscoveredModel } from "../../lib/contracts";
 import { providerFetchModels } from "../../lib/ipc";
 import { applyContextWindowsOnSave } from "./contextWindowOnSave";
+import { insecureHttpWarning } from "./httpWarning";
 
 export type ProviderDialogTarget =
 	| { mode: "add" }
@@ -464,7 +465,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
+			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
 			onMouseDown={(e) => {
 				if (e.target === e.currentTarget) void handleDismiss();
 			}}
@@ -619,6 +620,11 @@ export function ProviderDialog({ target, onClose }: Props) {
 									className={`${inputCls} font-mono`}
 									placeholder="https://api.example.com/v1"
 								/>
+								{insecureHttpWarning(baseUrl) && (
+									<p role="status" className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-300">
+										{insecureHttpWarning(baseUrl)}
+									</p>
+								)}
 							</div>
 						</div>
 

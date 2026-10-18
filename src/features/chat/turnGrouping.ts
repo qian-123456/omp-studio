@@ -1,9 +1,11 @@
+import { splitThinkTags } from "../../lib/thinkTags";
 import type {
 	ToolCall,
 	ToolResultInfo,
 	TranscriptItem,
 	TranscriptKind,
 } from "../../lib/contracts";
+import { flowNoticeText, isFlowItem, persistedCompactionText } from "./flowNotice";
 
 export type TurnStep =
 	| {
@@ -201,7 +203,7 @@ export function noticeLabel(item: TranscriptItem): string {
 				(item.model ?? item.text ?? "?")
 			}`;
 		case "compaction":
-			return "上下文压缩已完成";
+			return isFlowItem(item) ? flowNoticeText(item.flow) : persistedCompactionText(item);
 		case "branch_summary":
 			return "分支总结";
 		case "thinking_level_change":
@@ -236,6 +238,21 @@ export function noticeSummary(item: TranscriptItem): string {
 }
 
 /**
+ * Reasoning a provider put inside the reply text (`<think>…</think>`) moves
+ * into the item's thinking, so it groups as a thinking step instead of prose.
+ * Items without tags are returned as-is.
+ */
+function splitItemThinkTags(item: TranscriptItem): TranscriptItem {
+	if (item.kind !== "assistant" || !item.text) return item;
+	const split = splitThinkTags(item.text);
+	if (split.thinking === "" && split.text === item.text) return item;
+	const thinking = [item.thinking, split.thinking]
+		.filter((t): t is string => !!t?.trim())
+		.join("\n\n");
+	return { ...item, text: split.text || null, thinking: thinking || null };
+}
+
+/**
  * Groups a linear list of transcript items into DisplayBlocks (TurnBlocks and ProtocolBlocks).
  *
  * Rules:
@@ -258,7 +275,8 @@ export function noticeSummary(item: TranscriptItem): string {
  * 4. Protocol items outside a running turn (or with no agent activity after them), and any
  *    other kind with no active turn, form standalone ProtocolBlocks.
  */
-export function groupTurnBlocks(items: TranscriptItem[]): DisplayBlock[] {
+export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
+	const items = rawItems.map(splitItemThinkTags);
 	const blocks: DisplayBlock[] = [];
 
 	let currentTurn: {
@@ -789,3 +807,22 @@ export function turnRequestItems(
 	return out;
 }
 
+
+/**
+ * Splits a finished turn's steps into the part folded behind the 「已处理」
+ * disclosure and the interim assistant prose that must stay visible. Prose
+ * the assistant wrote between tool calls was readable while it streamed; it
+ * must not vanish into the fold once the turn commits. Tool-result fallbacks
+ * (`orphan-result-*`, not assistant prose) stay folded.
+ */
+export function splitInterimProse<
+	T extends { kind: string; item?: TranscriptItem },
+>(steps: T[]): { folded: T[]; prose: T[] } {
+	const folded: T[] = [];
+	const prose: T[] = [];
+	for (const step of steps) {
+		if (step.kind === "text" && step.item?.kind === "assistant") prose.push(step);
+		else folded.push(step);
+	}
+	return { folded, prose };
+}

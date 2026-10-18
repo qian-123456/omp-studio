@@ -27,6 +27,8 @@ import { MarkdownSecretChip } from "../privacy/SecretChip";
 import { SECRET_CHIP_TAG, rehypeSecretChips } from "../privacy/render";
 import { VisualizeBlock } from "./visualize/VisualizeBlock";
 import { isFenceClosed, parseVisualizeInfo } from "./visualize/frame";
+import { healStreamingMarkdown, splitStableBlocks } from "./streamingMarkdown";
+import { useRevealText } from "./useRevealText";
 
 /** Per-render context for component overrides (kept stable per Markdown). */
 interface MarkdownContextValue {
@@ -362,14 +364,54 @@ const MARKDOWN_COMPONENTS = {
 	[SECRET_CHIP_TAG]: MarkdownSecretChip,
 };
 
-export const Markdown = React.memo(function Markdown({
+/** One parsed run of markdown. Memoized so finished streaming blocks (the
+ * `head`) are never re-parsed while only the live tail changes. Renders no
+ * wrapper element: its blocks are direct children of the Markdown root. */
+const MarkdownSegment = React.memo(function MarkdownSegment({
 	text,
 	sessionId,
+	visualizeEnabled,
+}: {
+	text: string;
+	sessionId?: string;
+	visualizeEnabled: boolean;
+}) {
+	const ctx = useMemo(
+		(): MarkdownContextValue => ({ sessionId, sourceText: text, visualizeEnabled }),
+		[sessionId, text, visualizeEnabled],
+	);
+	const mathText = useMemo(() => normalizeMath(text), [text]);
+	return (
+		<MarkdownContext.Provider value={ctx}>
+			<ReactMarkdown
+				remarkPlugins={REMARK_PLUGINS}
+				rehypePlugins={REHYPE_PLUGINS}
+				components={MARKDOWN_COMPONENTS}
+			>
+				{mathText}
+			</ReactMarkdown>
+		</MarkdownContext.Provider>
+	);
+});
+
+export const Markdown = React.memo(function Markdown({
+	text: rawText,
+	sessionId,
+	streaming = false,
 }: {
 	text: string;
 	/** Session for visualize follow-up sends; optional outside chat views. */
 	sessionId?: string;
+	/** The text is still being generated: reveal it frame by frame and repair
+	 * the unfinished tail so it renders like its finished form. */
+	streaming?: boolean;
 }) {
+	const revealed = useRevealText(rawText, streaming);
+	const { head, tail } = useMemo(() => {
+		if (!streaming) return { head: "", tail: revealed };
+		const split = splitStableBlocks(revealed);
+		return { head: split.head, tail: healStreamingMarkdown(split.tail) };
+	}, [streaming, revealed]);
 	// Slice B adds Settings.visualizeEnabled; default ON when absent/not loaded.
 	const visualizeEnabled = useSettings(
 		(s) =>
@@ -377,20 +419,13 @@ export const Markdown = React.memo(function Markdown({
 			(s.settings as unknown as Record<string, unknown>).visualizeEnabled !==
 				false,
 	);
-	const ctx = useMemo(
-		(): MarkdownContextValue => ({
-			sessionId,
-			sourceText: text,
-			visualizeEnabled,
-		}),
-		[sessionId, text, visualizeEnabled],
-	);
-	const mathText = useMemo(() => normalizeMath(text), [text]);
 	return (
-		<MarkdownContext.Provider value={ctx}>
 		<div
 			className={clsx(
 				"prose-sm max-w-none text-[var(--text)] text-[length:var(--chat-font-size)] [line-height:var(--chat-line-height)]",
+				// Long URLs / inline code wrap instead of widening the message column;
+				// code blocks and tables keep their own horizontal scroll boxes.
+				"min-w-0 [overflow-wrap:anywhere]",
 				"[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
 				// Headings
 				"[&_h1]:text-lg [&_h1]:font-semibold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-[var(--text)]",
@@ -424,14 +459,20 @@ export const Markdown = React.memo(function Markdown({
 				"[&_.katex-display]:max-w-full [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden",
 			)}
 		>
-			<ReactMarkdown
-				remarkPlugins={REMARK_PLUGINS}
-				rehypePlugins={REHYPE_PLUGINS}
-				components={MARKDOWN_COMPONENTS}
-			>
-				{mathText}
-			</ReactMarkdown>
+			{head && (
+				<MarkdownSegment
+					key="head"
+					text={head}
+					sessionId={sessionId}
+					visualizeEnabled={visualizeEnabled}
+				/>
+			)}
+			<MarkdownSegment
+				key="tail"
+				text={tail}
+				sessionId={sessionId}
+				visualizeEnabled={visualizeEnabled}
+			/>
 		</div>
-		</MarkdownContext.Provider>
 	);
 });

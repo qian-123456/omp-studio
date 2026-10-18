@@ -15,6 +15,7 @@ import { McpSettingsSection } from "./McpSettingsSection";
 import { MobileSettingsSection } from "./MobileSettingsSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { PluginsSettingsSection } from "./PluginsSettingsSection";
+import { PromptCompositionSection } from "./PromptCompositionSection";
 import { PrivacySection } from "./PrivacySection";
 import { ProvidersSection } from "./ProvidersSection";
 import { RolesSection } from "./RolesSection";
@@ -33,6 +34,7 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	inbox: InboxSection,
 	doctor: DoctorSection,
 	"agents-md": AgentsMdSection,
+	"prompt-composition": PromptCompositionSection,
 	mobile: MobileSettingsSection,
 	mcp: McpSettingsSection,
 	plugins: PluginsSettingsSection,

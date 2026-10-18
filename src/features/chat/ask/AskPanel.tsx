@@ -25,6 +25,7 @@ import {
 	resolveRequest,
 	unansweredQuestions,
 } from "./askDriver";
+import { claimEscape } from "../../../lib/escapeClaim";
 
 /** Driver progress keyed `${sessionId}:${toolCallId}:${qIndex}`; module-level
  * so it survives SessionView remounts (session switch). */
@@ -260,7 +261,7 @@ export function AskPanel({
 		const inInput = e.target === inputRef.current;
 		const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
 		if (e.key === "Escape") {
-			e.preventDefault();
+			claimEscape(e);
 			if (inInput) panelRef.current?.focus();
 			else onCancel();
 			return;

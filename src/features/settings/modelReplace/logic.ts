@@ -192,6 +192,79 @@ export function isModelSelector(candidate: string): boolean {
 	return value.includes("/") && !value.startsWith("@") && !/[*?[]/.test(value);
 }
 
+// ── scope ────────────────────────────────────────────────────────────
+
+/**
+ * Where a replacement may touch: everything (`all`), only what is not tied to a project
+ * (`global`: global role/agent config, fallback chains, app settings, schedules), or one
+ * project's own configs (`project:<path>`).
+ */
+export type ReplaceScope = "all" | "global" | `project:${string}`;
+
+export const SCOPE_ALL: ReplaceScope = "all";
+
+export function projectScope(path: string): ReplaceScope {
+	return `project:${path}`;
+}
+
+/** Project path of a `project:<path>` scope, else null. */
+export function scopeProjectPath(scope: ReplaceScope): string | null {
+	return scope.startsWith("project:") ? scope.slice("project:".length) : null;
+}
+
+/** Whether one scanned location lies inside `scope`. */
+export function locationInScope(location: ModelRefLocation, scope: ReplaceScope): boolean {
+	if (scope === "all") return true;
+	const projectScoped =
+		(location.kind === "role" || location.kind === "agentOverride") && location.scope !== "global";
+	if (scope === "global") return !projectScoped;
+	return projectScoped && location.projectPath === scopeProjectPath(scope);
+}
+
+/** Whether fallback chains (never project-scoped) lie inside `scope`. */
+export function chainsInScope(scope: ReplaceScope): boolean {
+	return scope === "all" || scope === "global";
+}
+
+export interface ScopeOption {
+	value: ReplaceScope;
+	label: string;
+	/** Full path for project options (tooltip). */
+	title?: string;
+}
+
+/** 全部 / 全局 / every project that holds at least one model reference. */
+export function scopeOptions(scan: ModelUsageScan | null): ScopeOption[] {
+	const options: ScopeOption[] = [
+		{ value: "all", label: "全部" },
+		{ value: "global", label: "全局（含回退链、应用设置、定时任务）" },
+	];
+	if (scan === null) return options;
+	const names = projectNameMap(scan.projects);
+	const seen = new Set<string>();
+	for (const ref of scan.refs) {
+		const location = ref.location;
+		if (location.kind !== "role" && location.kind !== "agentOverride") continue;
+		if (location.scope === "global" || location.projectPath === null || seen.has(location.projectPath)) continue;
+		if (!listCandidates(ref.value).some((c) => isModelSelector(splitRoleValue(c).selector))) continue;
+		seen.add(location.projectPath);
+		options.push({
+			value: projectScope(location.projectPath),
+			label: `项目：${projectLabel(location.projectPath, names)}`,
+			title: location.projectPath,
+		});
+	}
+	return options;
+}
+
+/** Display name of a scope (`全部`, `全局`, `项目：<name>`). */
+export function scopeLabel(scope: ReplaceScope, names: Record<string, string>): string {
+	if (scope === "all") return "全部";
+	if (scope === "global") return "全局";
+	const path = scopeProjectPath(scope) ?? "";
+	return `项目：${names[path] ?? basename(path)}`;
+}
+
 // ── overview ─────────────────────────────────────────────────────────
 
 /** One place a model is referenced. */
@@ -229,6 +302,7 @@ export interface OverviewRow {
 export function buildOverview(
 	scan: ModelUsageScan | null,
 	kindBySelector: ReadonlyMap<string, string> | null,
+	scope: ReplaceScope = "all",
 ): OverviewRow[] {
 	if (scan === null) return [];
 	const names = projectNameMap(scan.projects);
@@ -255,11 +329,12 @@ export function buildOverview(
 	};
 
 	for (const ref of scan.refs) {
+		if (!locationInScope(ref.location, scope)) continue;
 		const info = locationInfo(ref.location, names);
 		const source = { scope: info.context, title: info.title };
 		for (const candidate of listCandidates(ref.value)) add(candidate, source);
 	}
-	const chains = scan.fallbackChains?.chains ?? {};
+	const chains = chainsInScope(scope) ? (scan.fallbackChains?.chains ?? {}) : {};
 	for (const [key, items] of Object.entries(chains)) {
 		add(key, { scope: "回退链", title: `链键 ${key}` });
 		for (const item of items) add(item, { scope: "回退链", title: `链 ${key}` });
@@ -274,6 +349,73 @@ export function buildOverview(
 			group: kindBySelector === null ? "chat" : kindGroup(kindBySelector.get(acc.selector)),
 			sources: [...acc.sources.values()],
 		}));
+}
+
+/** Lower-cased whitespace-separated search terms; empty when the query is blank. */
+export function searchTerms(query: string): string[] {
+	return query.toLowerCase().split(/\s+/).filter((t) => t !== "");
+}
+
+const sourceText = (source: OverviewSource): string => `${source.title} ${source.scope}`.toLowerCase();
+
+/** Whether one location (「title · scope」) contains any search term. */
+export function sourceMatches(source: OverviewSource, terms: readonly string[]): boolean {
+	const text = sourceText(source);
+	return terms.some((t) => text.includes(t));
+}
+
+/**
+ * Rows whose model id (which carries the provider) and locations together contain every
+ * term, case-insensitively. Row order and group membership are preserved, so the caller's
+ * grouping keeps working; a blank query keeps everything.
+ */
+export function filterOverviewRows(rows: OverviewRow[], query: string): OverviewRow[] {
+	const terms = searchTerms(query);
+	if (terms.length === 0) return rows;
+	return rows.filter((row) => {
+		const haystack = `${row.selector.toLowerCase()} ${row.sources.map(sourceText).join(" ")}`;
+		return terms.every((t) => haystack.includes(t));
+	});
+}
+
+/** `text` cut into pieces, `match` true for the parts that contain a search term. */
+export function highlightParts(text: string, terms: readonly string[]): { text: string; match: boolean }[] {
+	if (terms.length === 0) return [{ text, match: false }];
+	const lower = text.toLowerCase();
+	const marked = new Array<boolean>(text.length).fill(false);
+	for (const term of terms) {
+		for (let at = lower.indexOf(term); at !== -1; at = lower.indexOf(term, at + term.length)) {
+			marked.fill(true, at, at + term.length);
+		}
+	}
+	const parts: { text: string; match: boolean }[] = [];
+	for (let i = 0; i < text.length; i++) {
+		const last = parts[parts.length - 1];
+		if (last && last.match === marked[i]) last.text += text[i];
+		else parts.push({ text: text[i] ?? "", match: marked[i] ?? false });
+	}
+	return parts;
+}
+
+/**
+ * Scope a recorded replacement actually touched, derived from its edits (history stores
+ * the edits, whose locations carry the project paths): 全局, 项目：<name>, N 个项目, or both.
+ */
+export function editsScopeLabel(edits: readonly ModelReplaceEdit[], names: Record<string, string>): string {
+	const projects = new Set<string>();
+	let hasNonProject = false;
+	for (const edit of edits) {
+		const location = edit.kind === "value" ? edit.location : null;
+		if (location && (location.kind === "role" || location.kind === "agentOverride") && location.scope !== "global" && location.projectPath) {
+			projects.add(location.projectPath);
+		} else {
+			hasNonProject = true;
+		}
+	}
+	const projectText =
+		projects.size === 1 ? scopeLabel(projectScope([...projects][0] ?? ""), names) : `${projects.size} 个项目`;
+	if (projects.size === 0) return "全局";
+	return hasNonProject ? `全局 + ${projectText}` : projectText;
 }
 
 // ── plan ─────────────────────────────────────────────────────────────
@@ -331,6 +473,8 @@ export interface PlanInput {
 	overrides?: Record<string, RowOverride>;
 	/** Row checkboxes; absent = the row's default. */
 	checked?: Record<string, boolean>;
+	/** Only locations inside this scope are planned; default all. */
+	scope?: ReplaceScope;
 }
 
 const chainItemsText = (items: string[] | null): string =>
@@ -365,6 +509,7 @@ export function buildPlan({
 	level,
 	overrides = {},
 	checked = {},
+	scope = "all",
 }: PlanInput): Plan {
 	const names = projectNameMap(scan.projects);
 	const rows: PlanRow[] = [];
@@ -378,6 +523,7 @@ export function buildPlan({
 	};
 
 	for (const ref of scan.refs) {
+		if (!locationInScope(ref.location, scope)) continue;
 		const info = locationInfo(ref.location, names);
 		const target = targetOf(info.id);
 		const newValue = withLevel(target.model, target.level);
@@ -434,7 +580,7 @@ export function buildPlan({
 		});
 	}
 
-	const chains = scan.fallbackChains?.chains ?? {};
+	const chains = chainsInScope(scope) ? (scan.fallbackChains?.chains ?? {}) : {};
 	for (const [key, rawItems] of Object.entries(chains)) {
 		const items = rawItems.filter((i): i is string => typeof i === "string");
 		const id = `chain:${key}`;

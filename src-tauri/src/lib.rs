@@ -12,6 +12,7 @@ mod notify;
 mod paths;
 mod privacy;
 mod prompts;
+mod prompt_composition;
 mod providers;
 mod rpc;
 mod schedules;
@@ -28,7 +29,45 @@ mod visualize;
 
 use contracts::{AppPaths, Settings};
 use state::AppState;
-use tauri::Manager as _;
+use tauri::{Emitter as _, Manager as _};
+
+/// Menu id of the custom Cmd+W item; the webview decides what it closes (src/lib/nativeShortcuts.ts).
+const CLOSE_TAB_MENU_ID: &str = "close-tab";
+
+/// Default app menu with every native "Close Window" item (Cmd+W → `performClose:`,
+/// which closes the only window and quits the app) swapped for a custom item that
+/// just notifies the webview. The Window submenu copy is dropped to avoid a duplicate accelerator.
+fn build_app_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{MenuItem, MenuItemKind};
+    let menu = tauri::menu::Menu::default(handle)?;
+    let mut replaced = false;
+    for top in menu.items()? {
+        let MenuItemKind::Submenu(sub) = top else {
+            continue;
+        };
+        for (pos, item) in sub.items()?.into_iter().enumerate() {
+            let MenuItemKind::Predefined(p) = &item else {
+                continue;
+            };
+            if p.text()? != "Close Window" && p.text()? != "Close" {
+                continue;
+            }
+            sub.remove(&item)?;
+            if !replaced {
+                let close = MenuItem::with_id(
+                    handle,
+                    CLOSE_TAB_MENU_ID,
+                    "关闭标签页",
+                    true,
+                    Some("CmdOrCtrl+W"),
+                )?;
+                sub.insert(&close, pos)?;
+                replaced = true;
+            }
+        }
+    }
+    Ok(menu)
+}
 
 // ---- LEAD commands (§7) — fully implemented ----
 
@@ -111,6 +150,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .menu(build_app_menu)
+        .on_menu_event(|app, event| {
+            if event.id() == CLOSE_TAB_MENU_ID {
+                let _ = app.emit("native:close-tab", ());
+            }
+        })
         .setup(|app| {
             let conn = db::open().expect("open app.db");
             db::ensure_global_workspace(&conn).expect("ensure global workspace");
@@ -178,6 +223,8 @@ pub fn run() {
             rpc::commands::rpc_omp_staleness,
             rpc::commands::takeover_external,
             rpc::commands::create_side_chat,
+            rpc::commands::side_chat_ask,
+            rpc::commands::fork_session,
             rpc::commands::subagent_list,
             rpc::commands::subagent_transcript,
             // C — git + time machine
@@ -254,6 +301,7 @@ pub fn run() {
             model_replace::model_replace_undo,
             model_replace::model_probe,
             model_replace::model_kind_catalog,
+            prompt_composition::prompt_composition_probe,
             settings::omp_info,
             settings::omp_update_check,
             settings::omp_update_run,
@@ -319,6 +367,7 @@ pub fn run() {
             settings_mcp::mcp_server_set_enabled,
             settings_plugins::plugins_list,
             settings_plugins::plugin_set_enabled,
+            settings_plugins::extension_delete,
             // P — privacy placeholders
             privacy::commands::privacy_list,
             privacy::commands::privacy_classify,
@@ -329,7 +378,17 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
+        .run(|app, event| {
+            // Cmd+W with nothing left to close hides the window; a Dock click brings it back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = app;
             if let tauri::RunEvent::Exit = event {
                 terminal::pty::close_all();
                 mobile::tunnel::stop();

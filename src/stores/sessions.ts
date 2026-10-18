@@ -17,6 +17,9 @@ export interface SessionsState {
 	/** True once the first `load()` settled — used to render skeleton rows
 	 * instead of flashing the empty state on cold start. */
 	hasLoaded: boolean;
+	/** Message of the last failed `load()`; null after a success. With
+	 * `hasLoaded` it drives `deriveLoadState` (skeleton vs. error + retry). */
+	loadError: string | null;
 	load(): Promise<void>;
 	/** Re-fetch just the workspace list (workspace adds/removes emit no event,
 	 *  so `sessions:updated` with an unknown workspaceId triggers this). */
@@ -258,6 +261,7 @@ export const useSessions = create<SessionsState>((set) => ({
 	sessions: {},
 	workspaces: [],
 	hasLoaded: false,
+	loadError: null,
 	load: async () => {
 		const loadCtx: InFlightLoad = {
 			id: ++nextLoadId,
@@ -265,6 +269,7 @@ export const useSessions = create<SessionsState>((set) => ({
 			removedIds: new Set(),
 		};
 		activeLoads.add(loadCtx);
+		let failed = false;
 
 		try {
 			await startSessionEvents();
@@ -319,10 +324,16 @@ export const useSessions = create<SessionsState>((set) => ({
 					workspaces: nextWorkspaces,
 				};
 			});
+			set({ loadError: null });
 			checkAndMarkSelectedSession();
+		} catch (err) {
+			failed = true;
+			set({ loadError: err instanceof Error ? err.message : String(err) });
+			throw err;
 		} finally {
 			activeLoads.delete(loadCtx);
-			set({ hasLoaded: true });
+			// A failed first load stays "not loaded" so regions show an error, not an empty list.
+			if (!failed) set({ hasLoaded: true });
 		}
 	},
 	refreshWorkspaces: async () => {

@@ -7,12 +7,11 @@ import { Copy, FileDiff, GitCommitHorizontal, RotateCcw, Share } from "lucide-re
 import { useMemo, useState } from "react";
 import type { TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
-import { createSideChat, gitUndoTurn } from "../../lib/ipc";
-import { sideChatDefaultModelArg } from "../sidechat/modelDefault";
+import { gitUndoTurn } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
-import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
 import { useUi } from "../../stores/ui";
+import { startFork } from "../sessions/forkDraft";
 import { canUndoTurn, undoCascade } from "./turnChips";
 
 /** Tiny status letters in the changed-files list; color only on the letter. */
@@ -251,29 +250,10 @@ export function AnswerFooter({
 
 					<button
 						type="button"
-						onClick={async () => {
-							try {
-								const snippet = answerText ? answerText.slice(0, 60) : "";
-								const prompt = snippet
-									? `基于回复继续：${snippet}…`
-									: "分叉侧聊";
-								const info = await createSideChat(
-									sessionId,
-									prompt,
-									answerText || undefined,
-									sideChatDefaultModelArg() ?? undefined,
-								);
-								void useSessions.getState().load().catch(() => {});
-								useUi.getState().setRightTab("sidechat");
-								useUi.getState().selectSession(info.sessionId);
-								toast.success("已分叉到侧聊");
-							} catch (e) {
-								toast.error(`分叉失败: ${errMsg(e)}`);
-							}
-						}}
+						onClick={() => void startFork(sessionId, answerItemId)}
 						className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-						title="分叉此回复到侧聊"
-						aria-label="分叉此回复到侧聊"
+						title="从此回复分支出新会话"
+						aria-label="从此回复分支出新会话"
 					>
 						<BranchIcon />
 					</button>

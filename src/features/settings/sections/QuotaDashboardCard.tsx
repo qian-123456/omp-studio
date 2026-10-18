@@ -41,7 +41,7 @@ export function QuotaDashboardCard() {
 	const [refreshing, setRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [now, setNow] = useState(() => Date.now());
-	const [sheetProvider, setSheetProvider] = useState<ProviderGroup | null>(null);
+	const [sheetProviderId, setSheetProviderId] = useState<string | null>(null);
 
 	const fetchReport = useCallback(async (refresh = false) => {
 		if (refresh) setRefreshing(true);
@@ -103,6 +103,12 @@ export function QuotaDashboardCard() {
 			stats: { totalProviders: list.length, totalAccounts },
 		};
 	}, [data]);
+
+	// Resolve live so the open sheet reflects refreshed data.
+	const sheetProvider = useMemo(
+		() => providers.find((p) => p.providerId === sheetProviderId) ?? null,
+		[providers, sheetProviderId],
+	);
 
 	return (
 		<SettingsCard fieldId="quotaDashboard">
@@ -175,7 +181,7 @@ export function QuotaDashboardCard() {
 								key={p.providerId}
 								p={p}
 								now={now}
-								onOpen={() => setSheetProvider(p)}
+								onOpen={() => setSheetProviderId(p.providerId)}
 							/>
 						))}
 					</div>
@@ -183,9 +189,11 @@ export function QuotaDashboardCard() {
 			</div>
 			<QuotaAccountSheet
 				isOpen={sheetProvider !== null}
-				onClose={() => setSheetProvider(null)}
+				onClose={() => setSheetProviderId(null)}
 				provider={sheetProvider}
 				now={now}
+				refreshing={refreshing}
+				onRefresh={() => fetchReport(true)}
 			/>
 		</SettingsCard>
 	);
@@ -260,27 +268,23 @@ function ProviderQuotaCard({
 		overage.length > 0
 			? `超额余额 ${overageTotal < 0 ? "-" : ""}$${Math.abs(overageTotal).toFixed(2)}`
 			: null,
-		multi ? `共 ${p.totalAccounts} 个账号 · 点击卡片查看各账号详情` : null,
+		multi
+			? `共 ${p.totalAccounts} 个账号 · 点击卡片查看各账号详情`
+			: "点击卡片查看账号详情",
 	].filter(Boolean);
 
 	return (
 		<div
-			className={`flex flex-col justify-between space-y-3 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-4 shadow-xs ${
-				multi ? "cursor-pointer transition-colors hover:border-[var(--border)]" : ""
-			}`}
-			onClick={multi ? onOpen : undefined}
-			onKeyDown={
-				multi
-					? (e) => {
-							if (e.key === "Enter" || e.key === " ") {
-								e.preventDefault();
-								onOpen();
-							}
-						}
-					: undefined
-			}
-			role={multi ? "button" : undefined}
-			tabIndex={multi ? 0 : undefined}
+			className="flex cursor-pointer flex-col justify-between space-y-3 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-4 shadow-xs transition-colors hover:border-[var(--border)]"
+			onClick={onOpen}
+			onKeyDown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					onOpen();
+				}
+			}}
+			role="button"
+			tabIndex={0}
 		>
 			<div className="flex items-start justify-between gap-3">
 				<div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -312,19 +316,17 @@ function ProviderQuotaCard({
 							✦ {p.totalCredits} 次重置券
 						</span>
 					)}
-					{multi && (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								onOpen();
-							}}
-							className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-100"
-						>
-							查看明细
-							<ChevronRight className="h-3 w-3" />
-						</button>
-					)}
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onOpen();
+						}}
+						className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-100"
+					>
+						查看明细
+						<ChevronRight className="h-3 w-3" />
+					</button>
 				</div>
 			</div>
 

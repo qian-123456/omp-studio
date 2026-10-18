@@ -37,7 +37,9 @@ import {
 	type OverviewSource,
 	projectNameMap,
 	type RowOverride,
+	type ReplaceScope,
 	sanitizeOverrides,
+	scopeLabel,
 	supportedLevel,
 } from "./logic";
 import { ModelReplaceHistory, type UndoOutcome } from "./ModelReplaceHistory";
@@ -46,6 +48,7 @@ import { ModelReplacePlanPreview } from "./ModelReplacePlanPreview";
 import { ModelReplaceResults } from "./ModelReplaceResults";
 import { invalidateAfterModelReplace } from "./store";
 import { BTN_GHOST, BTN_PRIMARY, LevelSelect, TargetPicker, tabOfGroup } from "./parts";
+import { claimEscape } from "../../../lib/escapeClaim";
 
 type Step = "overview" | "configure" | "preview" | "results" | "history";
 
@@ -86,6 +89,8 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 	const [undoOutcome, setUndoOutcome] = useState<UndoOutcome | null>(null);
 	const [applied, setApplied] = useState(false);
 	const [historyReturn, setHistoryReturn] = useState<Step>("overview");
+	const [scope, setScope] = useState<ReplaceScope>("all");
+	const [query, setQuery] = useState("");
 	const dialogRef = useRef<HTMLDivElement>(null);
 
 	const rescan = useCallback(async () => {
@@ -139,9 +144,9 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 	const plan = useMemo(
 		() =>
 			scan && fromModel && toModel
-				? buildPlan({ scan, fromModel, toModel, level: effectiveLevel, overrides: effectiveOverrides, checked })
+				? buildPlan({ scan, fromModel, toModel, level: effectiveLevel, overrides: effectiveOverrides, checked, scope })
 				: null,
-		[scan, fromModel, toModel, effectiveLevel, effectiveOverrides, checked],
+		[scan, fromModel, toModel, effectiveLevel, effectiveOverrides, checked, scope],
 	);
 
 	const pickSource = (row: OverviewRow) => {
@@ -250,7 +255,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 					e.stopPropagation();
 					if (isComposing(e)) return;
 					if (e.key === "Escape") {
-						e.preventDefault();
+						claimEscape(e);
 						if (!busy) onClose();
 						return;
 					}
@@ -339,6 +344,10 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 							scan={scan}
 							loading={scanLoading}
 							error={scanError}
+							scope={scope}
+							query={query}
+							onScopeChange={setScope}
+							onQueryChange={setQuery}
 							onRescan={() => void rescan()}
 							onReplace={pickSource}
 						/>
@@ -401,6 +410,10 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 								)}
 							</div>
 							<p className="px-1 pt-3 text-[11px] leading-5 text-neutral-500">
+								替换范围：{scopeLabel(scope, projectNames)}
+								{scope === "all" ? "（所有位置）" : "；只改这个范围内的位置，返回第一步可更改"}。
+							</p>
+							<p className="px-1 pt-2 text-[11px] leading-5 text-neutral-500">
 								匹配规则：只看模型选择器本身（忽略结尾的思考等级后缀，如 :off、:high），同名但不同供应商的模型不会被替换；
 								「@角色」别名不会被改写。
 							</p>
@@ -409,6 +422,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 
 					{step === "preview" && plan && (
 						<ModelReplacePlanPreview
+							scopeLabel={scopeLabel(scope, projectNames)}
 							plan={plan}
 							fromModel={fromModel}
 							entries={kinds.entries}

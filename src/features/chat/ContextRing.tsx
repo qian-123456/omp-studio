@@ -1,7 +1,10 @@
 import clsx from "clsx";
-import { ArchiveRestore, Loader2, PieChart, X } from "lucide-react";
+import { ArchiveRestore, Layers, Loader2, PieChart, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { openPromptComposition } from "../../stores/promptComposition";
+import { useSessions } from "../../stores/sessions";
+import { useUi } from "../../stores/ui";
 import { formatTokens } from "./sessionStats";
 
 interface ContextRingProps {
@@ -14,6 +17,8 @@ interface ContextRingProps {
 	onCompact?: () => Promise<void>;
 	/** Disables the compact button (e.g. while a turn is streaming). */
 	compactDisabled?: boolean;
+	/** A compaction is running for this session (shared state, survives popover close). */
+	compacting?: boolean;
 	/** Controlled open state; falls back to internal state when undefined. */
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
@@ -26,6 +31,7 @@ export function ContextRing({
 	totalTokensStr,
 	onCompact,
 	compactDisabled,
+	compacting = false,
 	open: openProp,
 	onOpenChange,
 	className,
@@ -34,8 +40,9 @@ export function ContextRing({
 	const open = openProp ?? openInner;
 	const setOpen = (v: boolean | ((p: boolean) => boolean)) =>
 		onOpenChange ? onOpenChange(typeof v === "function" ? v(open) : v) : setOpenInner(v);
-	const [compacting, setCompacting] = useState(false);
 	const btnRef = useRef<HTMLButtonElement>(null);
+	const selectedSessionId = useUi((s) => s.selectedSessionId);
+	const sessionCwd = useSessions((s) => (selectedSessionId ? (s.sessions[selectedSessionId]?.cwd ?? null) : null));
 
 
 	// Determine normalized fraction (0.0 to 1.0) and display percentage (0 to 100)
@@ -154,14 +161,7 @@ export function ContextRing({
 										type="button"
 										disabled={compacting || compactDisabled}
 										title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
-										onClick={async () => {
-											setCompacting(true);
-											try {
-												await onCompact();
-											} finally {
-												setCompacting(false);
-											}
-										}}
+										onClick={() => void onCompact()}
 										className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										{compacting ? (
@@ -169,7 +169,7 @@ export function ContextRing({
 										) : (
 											<ArchiveRestore size={12} />
 										)}
-										<span>{compacting ? "压缩中…" : "压缩"}</span>
+										<span>{compacting ? "压缩中" : "压缩"}</span>
 									</button>
 								)}
 								<button
@@ -245,6 +245,18 @@ export function ContextRing({
 									</span>
 								</div>
 							)}
+
+							<button
+								type="button"
+								onClick={() => {
+									setOpen(false);
+									openPromptComposition(sessionCwd);
+								}}
+								className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--line)] px-2 py-1.5 text-[11px] font-medium text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							>
+								<Layers size={12} />
+								<span>查看系统提示词构成</span>
+							</button>
 						</div>
 					</FloatingLayer>
 			)}

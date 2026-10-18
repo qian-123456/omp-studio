@@ -11,7 +11,13 @@ globalThis.localStorage = {
 } as Storage;
 
 import { describe, expect, it } from "vitest";
-import { chipLabel, isSkillChip, loadChip, saveChip, serializeChip } from "./chip";
+import {
+	chipLabel,
+	isSkillChip,
+	loadChip,
+	saveChip,
+	serializeChip,
+} from "./chip";
 
 describe("serializeChip — chip ↔ wire text", () => {
 	it("serializes chip + args to the literal /name args form", () => {
@@ -158,5 +164,36 @@ describe("parseLeadingCommand", () => {
 		expect(parseLeadingCommand("hello /skill:x")).toBeNull();
 		expect(parseLeadingCommand("/definitely-not-a-command a")).toBeNull();
 		expect(parseLeadingCommand("/skill:")).toBeNull();
+	});
+});
+
+describe("chip with merged subcommand", () => {
+	const base = { name: "mcp", title: "MCP 服务器", sub: "enable" };
+	it("serializes with and without args", () => {
+		expect(serializeChip(base, "foo")).toBe("/mcp enable foo");
+		expect(serializeChip(base, "  ")).toBe("/mcp enable");
+	});
+	it("labels with the subcommand", () => {
+		expect(chipLabel(base)).toBe("MCP 服务器 enable");
+	});
+	it("round-trips sub through persistence and drops invalid values", () => {
+		saveChip("sub1", base);
+		expect(loadChip("sub1")).toEqual(base);
+		localStorage.setItem(
+			"ompws:command-chips",
+			JSON.stringify({ bad: { name: "mcp", title: "x", sub: "a b" } }),
+		);
+		expect(loadChip("bad")).toEqual({ name: "mcp", title: "x" });
+	});
+	it("parseLeadingCommand merges a known subcommand", () => {
+		const r = parseLeadingCommand("/mcp enable foo");
+		expect(r?.chip.sub).toBe("enable");
+		expect(r?.chip.name).toBe("mcp");
+		expect(r?.rest).toBe("foo");
+		expect(parseLeadingCommand("/mcp list")?.rest).toBe("");
+		const plain = parseLeadingCommand("/mcp whatever x");
+		expect(plain?.chip.sub).toBeUndefined();
+		expect(plain?.rest).toBe("whatever x");
+		expect(parseLeadingCommand("/fork enable")?.chip.sub).toBeUndefined();
 	});
 });

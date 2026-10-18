@@ -497,8 +497,8 @@ const CURATED: &[Cmd] = &[
     cmd(
         "fork",
         "分叉",
-        "带着问题分叉出一个侧聊",
-        Some("<问题>"),
+        "复制当前对话为新会话，并发送这条消息",
+        Some("<消息>"),
         "会话",
         true,
         true,
@@ -1009,20 +1009,28 @@ async fn slash<B: Backend>(
             .map_err(bad_gateway)?;
             ok(json!({"sessionId": info.session_id}))
         }
-        "fork" | "btw" => {
+        "fork" => {
             if args.is_empty() {
-                return Err(bad_request(format!("用法: /{name} <问题>")));
+                return Err(bad_request("用法: /fork <消息>（分支后发送的第一条消息）"));
             }
             let st = state.app.state::<AppState>();
-            let info = crate::rpc::commands::create_side_chat(
-                st,
-                id.clone(),
-                None,
-                args.to_string(),
-                None,
-            )
-            .await
-            .map_err(bad_gateway)?;
+            let info = crate::rpc::fork::create(&st, &id, None, None)
+                .await
+                .map_err(bad_gateway)?;
+            send_prompt_ex(state, &info.session_id, args, Vec::new(), None).await?;
+            ok(json!({"sessionId": info.session_id}))
+        }
+        "btw" => {
+            if args.is_empty() {
+                return Err(bad_request("用法: /btw <问题>"));
+            }
+            let st = state.app.state::<AppState>();
+            let info = crate::rpc::sidechat::create(&st, &id, None)
+                .await
+                .map_err(bad_gateway)?;
+            crate::rpc::sidechat::ask(&st, &info.session_id, args.to_string(), None)
+                .await
+                .map_err(bad_gateway)?;
             ok(json!({"sessionId": info.session_id}))
         }
         "rename" => {

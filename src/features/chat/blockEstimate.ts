@@ -7,7 +7,7 @@
  * guess keeps the corrections small. Constants assume the ~700px reading
  * column at 15px text; they only need to be roughly right.
  */
-import type { DisplayBlock } from "./turnGrouping";
+import { type DisplayBlock, splitInterimProse } from "./turnGrouping";
 
 const PROTOCOL_ROW = 36;
 const ROW_PADDING = 8;
@@ -74,7 +74,12 @@ export function estimateBlockHeight(block: DisplayBlock | undefined): number {
 			.reduce((n, l) => n + wrappedLines(l.trim() === "" ? "x" : l), 0);
 		h += USER_BUBBLE_BASE + lines * USER_LINE;
 	}
-	if (block.intermediateSteps.length > 0) h += DISCLOSURE_ROW;
+	const { folded, prose } = splitInterimProse(block.intermediateSteps);
+	if (folded.length > 0) h += DISCLOSURE_ROW;
+	for (const step of prose) {
+		// Long interim prose is clamped (ClampedProse) to ~320px plus its pill.
+		if (step.kind === "text") h += Math.min(estimateTextHeight(step.text), 360);
+	}
 	if (block.answerItem) {
 		h += estimateTextHeight(block.answerItem.text) + FOOTER_ROW;
 	}

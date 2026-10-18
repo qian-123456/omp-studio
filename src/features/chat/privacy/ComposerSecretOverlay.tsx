@@ -16,7 +16,7 @@ import type { ComposerPrivacy } from "./useComposerPrivacy";
 
 /** Must mirror the textarea's box/typography classes exactly. */
 const MIRROR_CLASS =
-	"pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.5] text-transparent select-none";
+	"pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] text-transparent select-none";
 
 const KIND_CLASS: Record<HighlightKind, string> = {
 	marked: "rounded-[3px] bg-amber-400/35",
