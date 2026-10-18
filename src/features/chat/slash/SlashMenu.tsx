@@ -120,7 +120,7 @@ function SlashRow({
 			<div className="min-w-0 flex-1">
 				<div className="flex items-baseline gap-1.5 text-[13px] leading-5">
 					<span className="shrink-0 font-mono text-[var(--text)]">
-						/{item.subOf ? `${item.subOf} ${item.name}` : item.name}
+						{item.plain ? item.name : `/${item.subOf ? `${item.subOf} ${item.name}` : item.name}`}
 					</span>
 					{item.title && (
 						<span className="truncate text-[var(--text-60,var(--text-muted))]">

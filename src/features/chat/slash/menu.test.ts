@@ -3,6 +3,7 @@ import type { SlashCommand } from "../../../stores/live";
 import {
 	buildSlashSections,
 	buildSubcommandItems,
+	chipArgHint,
 	findCommandItemExact,
 	findSubcommandExact,
 	flattenSections,
@@ -214,5 +215,50 @@ describe("slash menu — subcommands", () => {
 		if (!mcp) throw new Error("mcp item missing");
 		expect(findSubcommandExact(mcp, "enable")?.name).toBe("enable");
 		expect(findSubcommandExact(mcp, "enab")).toBeNull();
+	});
+});
+
+describe("slash menu — merged subcommand source", () => {
+	const fastSubs = [{ name: "on" }, { name: "ultra" }, { name: "off" }, { name: "status" }];
+
+	it("a registry command without a static list takes omp's dynamic subcommands", () => {
+		const cmds = [dynamic("fast", "builtin", { subcommands: fastSubs })];
+		expect(subcommandsFor("fast", cmds)).toEqual(fastSubs);
+		expect(subcommandsFor("fast", [])).toEqual([]);
+	});
+
+	it("the registry's static list wins when present", () => {
+		const cmds = [dynamic("mcp", "builtin", { subcommands: [{ name: "zzz" }] })];
+		expect(subcommandsFor("mcp", cmds).some((s) => s.name === "zzz")).toBe(false);
+	});
+
+	it("resolves dynamic subs through registry aliases (both directions)", () => {
+		const viaName = [dynamic("plugins", "builtin", { subcommands: [{ name: "list" }] })];
+		expect(subcommandsFor("plugin", viaName)).toEqual([{ name: "list" }]);
+		const viaDynAlias = [dynamic("zz", "builtin", { aliases: ["marketplace"], subcommands: [{ name: "add" }] })];
+		expect(subcommandsFor("plugins", viaDynAlias)).toEqual([{ name: "add" }]);
+	});
+
+	it("registry menu items carry the merged subcommands but stay without argHint", () => {
+		const cmds = [dynamic("fast", "builtin", { subcommands: fastSubs })];
+		const item = flattenSections(buildSlashSections("fast", cmds, false)).find((i) => i.name === "fast");
+		expect(item).toMatchObject({ registry: true, subcommands: fastSubs });
+		expect(item?.argHint).toBeUndefined();
+	});
+
+	it("findCommandItemExact allows registry commands whose merged subs are non-empty", () => {
+		expect(findCommandItemExact("fast", [])).toBeNull();
+		const cmds = [dynamic("fast", "builtin", { subcommands: fastSubs })];
+		const item = findCommandItemExact("fast", cmds);
+		expect(item).toMatchObject({ name: "fast", registry: true, subcommands: fastSubs });
+		expect(item && chipArgHint(item)).toBe("<子命令>");
+		expect(findCommandItemExact("fast", cmds)?.title).toBe("快速模式");
+	});
+
+	it("chipArgHint prefers the item's own hint", () => {
+		const mcp = findCommandItemExact("mcp", []);
+		expect(mcp && chipArgHint(mcp)).toBe("<子命令>");
+		const goal = findCommandItemExact("goal", [dynamic("goal", "builtin", { subcommands: [{ name: "show" }] })]);
+		expect(goal && chipArgHint(goal)).toContain("目标描述");
 	});
 });

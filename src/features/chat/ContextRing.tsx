@@ -23,6 +23,8 @@ interface ContextRingProps {
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 	className?: string;
+	/** Show the 「53%」 text beside the ring (default); false = ring only, % stays in the tooltip. */
+	showPercent?: boolean;
 }
 
 export function ContextRing({
@@ -35,6 +37,7 @@ export function ContextRing({
 	open: openProp,
 	onOpenChange,
 	className,
+	showPercent = true,
 }: ContextRingProps) {
 	const [openInner, setOpenInner] = useState(false);
 	const open = openProp ?? openInner;
@@ -129,9 +132,11 @@ export function ContextRing({
 						/>
 					</svg>
 				</div>
-				<span className="font-mono text-[11px] text-[var(--text-40)] group-hover:text-[var(--text)]">
-					{pctInt}%
-				</span>
+				{showPercent && (
+					<span className="font-mono text-[11px] text-[var(--text-40)] group-hover:text-[var(--text)]">
+						{pctInt}%
+					</span>
+				)}
 			</button>
 
 			{/* Detail Popover */}

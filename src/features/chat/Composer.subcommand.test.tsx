@@ -18,6 +18,8 @@ const SESSION = "s1";
 
 const h = vi.hoisted(() => ({
 	rpcSend: vi.fn(async (_sessionId: string, _command: unknown) => ({}) as Record<string, unknown>),
+	mcpConfigList: vi.fn(async (_cwd?: string | null) => ({ servers: [] }) as unknown),
+	pluginsList: vi.fn(async (_cwd?: string | null) => ({ roots: [], plugins: [] }) as unknown),
 }));
 
 vi.mock("../../lib/ipc", async (importOriginal) => {
@@ -35,6 +37,8 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 		getSettings: vi.fn(async () => null),
 		privacyList: vi.fn(async () => ({ entries: [], nativeStatus: "missing", nativeError: null })),
 		privacySessionEntryIds: vi.fn(async () => []),
+		mcpConfigList: h.mcpConfigList,
+		pluginsList: h.pluginsList,
 	};
 });
 
@@ -75,6 +79,10 @@ function mount(): void {
 beforeEach(() => {
 	localStorage.clear();
 	h.rpcSend.mockClear();
+	h.mcpConfigList.mockReset();
+	h.mcpConfigList.mockResolvedValue({ servers: [] });
+	h.pluginsList.mockReset();
+	h.pluginsList.mockResolvedValue({ roots: [], plugins: [] });
 	useComposer.setState({ drafts: {}, annotations: {}, images: {}, files: {}, history: [] });
 	useLive.setState({
 		sessions: { [SESSION]: { ...emptySessionLive(), alive: true, state: {} } },
@@ -236,5 +244,156 @@ describe("Composer subcommand chips", () => {
 		expect(chips()[0]?.getAttribute("data-command-chip")).toBe("mcp");
 		expect(chipText()).toBe("MCP 服务器 enable");
 		expect(ta().placeholder).toBe("<name>");
+	});
+});
+
+describe("Composer MCP server-name completion", () => {
+	const server = (name: string, enabled: boolean, transport = "stdio") => ({
+		name,
+		transport,
+		command: transport === "stdio" ? "npx" : null,
+		args: [],
+		url: transport === "stdio" ? null : "https://x.test/mcp",
+		enabled,
+		scope: "user",
+	});
+
+	function openMcpEnable(): void {
+		openMcpSubmenu();
+		typeText("enable ");
+		expect(chipText()).toBe("MCP 服务器 enable");
+	}
+
+	it("lists servers (disabled first for enable); picking writes `<name> ` and submit sends it", async () => {
+		h.mcpConfigList.mockResolvedValue({
+			servers: [server("alpha", true), server("beta", false, "http")],
+		});
+		openMcpEnable();
+
+		await waitFor(() => expect(screen.getByText("MCP 服务器")).toBeTruthy());
+		const rows = menuRows();
+		expect(rows).toHaveLength(2);
+		expect(rows[0]).toContain("beta");
+		expect(rows[0]).toContain("已禁用 · http");
+		expect(rows[0]).not.toContain("/beta");
+		expect(rows[1]).toContain("已启用 · stdio");
+
+		fireEvent.keyDown(ta(), { key: "Tab" });
+		expect(ta().value).toBe("beta ");
+		expect(chipText()).toBe("MCP 服务器 enable");
+		expect(menuRows()).toHaveLength(0);
+
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		await waitFor(() => expect(promptSends()).toEqual(["/mcp enable beta"]));
+	});
+
+	it("filters by the typed first word and shows nothing when none match", async () => {
+		h.mcpConfigList.mockResolvedValue({
+			servers: [server("alpha", true), server("beta", false)],
+		});
+		openMcpEnable();
+		await waitFor(() => expect(menuRows()).toHaveLength(2));
+
+		typeText("al");
+		await waitFor(() => expect(menuRows()).toHaveLength(1));
+		expect(menuRows()[0]).toContain("alpha");
+
+		fireEvent.change(ta(), { target: { value: "zzz" } });
+		expect(menuRows()).toHaveLength(0);
+	});
+
+	it("an mcpConfigList rejection leaves typing unaffected", async () => {
+		h.mcpConfigList.mockRejectedValue(new Error("boom"));
+		openMcpEnable();
+		await waitFor(() => expect(h.mcpConfigList).toHaveBeenCalled());
+
+		typeText("foo");
+		expect(menuRows()).toHaveLength(0);
+		expect(ta().value).toBe("foo");
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		await waitFor(() => expect(promptSends()).toEqual(["/mcp enable foo"]));
+	});
+});
+
+describe("Composer generic subcommands (registry command + omp dynamic list)", () => {
+	const withCommands = (commands: unknown[]) =>
+		act(() => {
+			useLive.setState({
+				sessions: {
+					[SESSION]: {
+						...emptySessionLive(),
+						alive: true,
+						state: {},
+						commands: commands as never,
+					},
+				},
+			});
+		});
+
+	it("/fast + space → chip + sub popup; picking `on` submits `/fast on`", async () => {
+		withCommands([
+			{
+				name: "fast",
+				source: "builtin",
+				subcommands: [{ name: "on" }, { name: "ultra" }, { name: "off" }, { name: "status" }],
+			},
+		]);
+		typeText("/fast ");
+		expect(chips()).toHaveLength(1);
+		expect(chips()[0]?.getAttribute("data-command-chip")).toBe("fast");
+		expect(chipText()).toBe("快速模式");
+		expect(ta().value).toBe("");
+		expect(menuRows().some((r) => r.includes("/fast on"))).toBe(true);
+		expect(menuRows().some((r) => r.includes("/fast ultra"))).toBe(true);
+
+		const row = screen.getAllByRole("option").find((el) => (el.textContent ?? "").includes("/fast on"));
+		if (!row) throw new Error("on row missing");
+		fireEvent.mouseDown(row);
+		fireEvent.click(row);
+		expect(chipText()).toBe("快速模式 on");
+
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		await waitFor(() => expect(promptSends()).toEqual(["/fast on"]));
+		expect(h.rpcSend.mock.calls.some(([, c]) => (c as { type?: string }).type === "set_fast_mode")).toBe(false);
+	});
+
+	it("selecting /fast from the menu (no argHint) still runs natively, without a chip", async () => {
+		withCommands([{ name: "fast", source: "builtin", subcommands: [{ name: "on" }] }]);
+		typeText("/fast");
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		await waitFor(() =>
+			expect(h.rpcSend.mock.calls.some(([, c]) => (c as { type?: string }).type === "set_fast_mode")).toBe(true),
+		);
+		expect(chips()).toHaveLength(0);
+	});
+
+	it("/plugins enable completes installed plugins (disabled first) and submits the name", async () => {
+		withCommands([
+			{ name: "plugins", source: "builtin", subcommands: [{ name: "list" }, { name: "enable" }, { name: "disable" }] },
+		]);
+		h.pluginsList.mockResolvedValue({
+			roots: [],
+			plugins: [
+				{ name: "alpha", enabled: true, kind: "npm", version: "1.0.0", description: null, scope: "user" },
+				{ name: "beta", enabled: false, kind: "link", version: null, description: "Beta plugin", scope: "project" },
+			],
+		});
+		typeText("/plugins ");
+		expect(chips()[0]?.getAttribute("data-command-chip")).toBe("plugins");
+		typeText("enable ");
+		expect(chipText()).toBe("插件 enable");
+
+		await waitFor(() => expect(screen.getByText("插件", { selector: "*" })).toBeTruthy());
+		await waitFor(() => expect(menuRows()).toHaveLength(2));
+		const rows = menuRows();
+		expect(rows[0]).toContain("beta");
+		expect(rows[0]).toContain("已禁用 · link");
+		expect(rows[1]).toContain("alpha");
+		expect(rows[1]).toContain("已启用 · npm · v1.0.0");
+
+		fireEvent.keyDown(ta(), { key: "Tab" });
+		expect(ta().value).toBe("beta ");
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		await waitFor(() => expect(promptSends()).toEqual(["/plugins enable beta"]));
 	});
 });

@@ -34,6 +34,7 @@ export function ThinkingLevelPicker({
 	onOpenChange,
 	onSelect,
 	onConfigure = () => openSettingsTarget("providers"),
+	tight = false,
 }: {
 	/** Resolved levels (`resolveThinkingLevels`); empty = no levels for this model. */
 	levels: string[];
@@ -45,6 +46,8 @@ export function ThinkingLevelPicker({
 	onSelect: (level: string) => void;
 	/** Opens model settings from the 「未配置思考等级」 chip; defaults to Settings ▸ API 供应商. */
 	onConfigure?: () => void;
+	/** Tighter horizontal padding for a crowded toolbar. */
+	tight?: boolean;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const cur = thinkingLabel(value);
@@ -77,7 +80,10 @@ export function ThinkingLevelPicker({
 				type="button"
 				onClick={() => onOpenChange(!open)}
 				title={`思考等级: ${cur.label}${cur.desc ? ` (${cur.desc})` : ""}`}
-				className="flex select-none items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]"
+				className={clsx(
+					"flex select-none items-center gap-1 rounded-md py-1 text-[12px] text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
+					tight ? "px-1.5" : "px-2",
+				)}
 			>
 				<span>{cur.label}</span>
 				<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
@@ -125,6 +131,65 @@ export function ThinkingLevelPicker({
 						})}
 					</div>
 				</FloatingLayer>
+			)}
+		</div>
+	);
+}
+
+/** Inline thinking-level choice (pill row) for popovers where the separate chip
+ * has been merged into the model chip. Same states as the chip: levels from the
+ * catalog, 「不支持思考」, or 「未配置思考等级」 (opens settings). */
+export function ThinkingLevelStrip({
+	levels,
+	reasoning,
+	value,
+	onSelect,
+	onConfigure = () => openSettingsTarget("providers"),
+}: {
+	levels: string[];
+	reasoning?: boolean | null;
+	value: string;
+	onSelect: (level: string) => void;
+	onConfigure?: () => void;
+}) {
+	const chip = thinkingChipState(levels, reasoning);
+	return (
+		<div className="border-t border-[var(--line,var(--border-divider))] px-2.5 py-2">
+			<div className="pb-1 text-[11px] text-[var(--text-40,var(--text-dim))]">思考等级</div>
+			{chip.kind === "unsupported" && (
+				<span className="inline-block rounded-full bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-30,var(--text-dim))]">
+					不支持思考
+				</span>
+			)}
+			{chip.kind === "unconfigured" && (
+				<button
+					type="button"
+					onClick={onConfigure}
+					title="这个模型能思考，但没有配置思考等级。点击去供应商设置里补上"
+					className="rounded-full border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-40,var(--text-dim))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]"
+				>
+					未配置思考等级
+				</button>
+			)}
+			{chip.kind === "levels" && (
+				<div className="flex flex-wrap gap-1">
+					{chip.levels.map((level) => (
+						<button
+							key={level}
+							type="button"
+							title={thinkingLabel(level).desc}
+							onClick={() => onSelect(level)}
+							className={clsx(
+								"rounded-full border px-2.5 py-0.5 text-[12px] transition-colors",
+								value === level
+									? "border-[var(--text-40,var(--text-dim))] bg-[var(--bg-active-fill)] text-[var(--text)]"
+									: "border-[var(--line,var(--border-divider))] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
+							)}
+						>
+							{level}
+						</button>
+					))}
+				</div>
 			)}
 		</div>
 	);

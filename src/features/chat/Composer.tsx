@@ -18,6 +18,8 @@ import { clipboardFilePaths, listWorkspaceFiles, readTextFile, rpcSend, saveClip
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment, SessionSnapshot } from "../../lib/contracts";
+import { applyArgName, buildArgItems, type ArgCandidate } from "./slash/argComplete";
+import { findArgProvider } from "./slash/argProviders";
 import { AttachmentThumb, FileChip } from "./ImageChips";
 
 import {
@@ -136,7 +138,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ContextRing } from "./ContextRing";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { FloatingLayer } from "../../components/FloatingLayer";
-import { ThinkingLevelPicker } from "../../components/ThinkingLevelPicker";
+import { ThinkingLevelPicker, ThinkingLevelStrip } from "../../components/ThinkingLevelPicker";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
@@ -168,12 +170,15 @@ import {
 	parseModels,
 	resolveCurrentModel,
 	resolveThinkingLevels,
+	thinkingChipState,
 	toModelKey,
 } from "../../lib/models";
 import { ModelMenuContent } from "../../components/ModelSelect";
+import { mergedSuffix, pickToolbarTier, TIER_FULL, TIER_MERGED, TIER_BADGE, TIER_TIGHT } from "./composerToolbar";
 import {
 	buildSlashSections,
 	buildSubcommandItems,
+	chipArgHint,
 	findCommandItemExact,
 	findSubcommandExact,
 	flattenSections,
@@ -185,6 +190,7 @@ import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executor
 import { runCompaction, useCompaction } from "./slash/compaction";
 import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
+import { useTypeToFocus } from "./useTypeToFocus";
 import {
 	chipLiteral,
 	findChipRange,
@@ -633,6 +639,8 @@ export function Composer({
 		// not leave the caret at position 0.
 		if (!wasFocused) ta.setSelectionRange(ta.value.length, ta.value.length);
 	}, [focusNonce]);
+	// Keys typed while nothing editable is focused go to the composer.
+	useTypeToFocus(taRef, compact);
 
 	// Slash token at cursor position (opens the command menu)
 	const slashToken = useMemo(() => {
@@ -690,6 +698,43 @@ export function Composer({
 		[subItems],
 	);
 	useEffect(() => setMenuIndex(0), [subQuery]);
+
+	// Argument menu: `/<cmd> <sub> <name>` completes from the provider table
+	// (MCP servers, plugins, …) while the caret sits in the draft's first word.
+	const argKey = legacyChip && chip?.sub ? `${chip.name} ${chip.sub}` : null;
+	const argProvider = legacyChip && chip ? findArgProvider(chip.name, chip.sub) : null;
+	const argWanted = argProvider !== null && subQuery !== null && !menuDismissed;
+	const [argCandidates, setArgCandidates] = useState<{ key: string; list: ArgCandidate[] } | null>(null);
+	useEffect(() => {
+		if (!argProvider || !argKey || !argWanted || argCandidates?.key === argKey) return;
+		let cancelled = false;
+		argProvider
+			.load(sessionMeta?.cwd)
+			.then((list) => {
+				if (!cancelled) setArgCandidates({ key: argKey, list });
+			})
+			.catch(() => {
+				if (!cancelled) setArgCandidates({ key: argKey, list: [] });
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [argProvider, argKey, argWanted, argCandidates?.key, sessionMeta?.cwd]);
+	const argItems = useMemo(
+		() =>
+			argWanted && argProvider && chip?.sub && argCandidates?.key === argKey
+				? buildArgItems(argProvider, argCandidates.list, chip.sub, /^\S*/.exec(text)?.[0].slice(0, cursorPos) ?? "")
+				: [],
+		[argWanted, argProvider, argCandidates, argKey, chip?.sub, text, cursorPos],
+	);
+	const argSections = useMemo(
+		() =>
+			argProvider && argItems.length > 0
+				? [{ label: argProvider.groupLabel, items: argItems }]
+				: [],
+		[argProvider, argItems],
+	);
+	useEffect(() => setMenuIndex(0), [argKey, subQuery]);
 
 	const state = live?.state ?? {};
 	const stateThinkingLevel =
@@ -754,6 +799,28 @@ export function Composer({
 			else toast.error(`切换思考等级失败: ${errMsg(err)}`);
 		}
 	};
+
+	// The toolbar never wraps: its own width picks how much collapses (composerToolbar.ts).
+	const toolbarRef = useRef<HTMLDivElement>(null);
+	const [toolbarWidth, setToolbarWidth] = useState(0);
+	useLayoutEffect(() => {
+		const el = toolbarRef.current;
+		if (!el) return;
+		const measure = () => setToolbarWidth(el.clientWidth);
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
+	const modelLabel = current.label || sessionMeta?.model || (models === null ? "加载中…" : "选择模型…");
+	const thinkingKind = thinkingChipState(thinkingLevels, currentModelOption?.reasoning).kind;
+	const toolbarTier = pickToolbarTier({
+		width: toolbarWidth,
+		modelLabel,
+		thinkingKind,
+		thinkingLevel: currentThinking,
+		extra: (planMode ? 24 : 0) + (held.length > 0 && !streaming ? 64 : 0),
+	});
 	const compacting = useCompaction((s) => s.active[sessionId] === true);
 	const compactContext = async () => {
 		await runCompaction({
@@ -854,13 +921,16 @@ export function Composer({
 			}, 0);
 			return;
 		}
-		if (item.argHint || item.subcommands?.length) {
+		// Picking from the menu chips only commands that take args (`argHint`);
+		// commands with subcommands alone run on select. A typed space after the
+		// exact token (`ctx` set) chips either kind.
+		if (item.argHint || (ctx && item.subcommands?.length)) {
 			const before = src.slice(0, tok.start);
 			const after = src.slice(tok.end);
 			// Any text around the token becomes the command's arguments.
 			const nextText = `${before}${after}`;
 			setText(nextText);
-			setChip({ name: item.name, title: item.title || item.name, argHint: item.argHint });
+			setChip({ name: item.name, title: item.title || item.name, argHint: chipArgHint(item) });
 			setCursorPos(before.length);
 			// Commands with subcommands open the subcommand menu right away.
 			setMenuDismissed(!item.subcommands?.length);
@@ -899,12 +969,25 @@ export function Composer({
 		setChip({ ...base, sub: item.name, ...(item.argHint ? { argHint: item.argHint } : {}) });
 		setText(rest ?? splitFirstWord(text).rest);
 		setCursorPos(0);
-		setMenuDismissed(true);
+		// Subcommands with an argument provider open its completion menu right away.
+		setMenuDismissed(!findArgProvider(chip.name, item.name));
 		setArgHintLine(null);
 		setTimeout(() => {
 			if (taRef.current) {
 				taRef.current.focus();
 				taRef.current.setSelectionRange(0, 0);
+			}
+		}, 0);
+	};
+	/** Write a picked completion in as the argument (not merged into the chip). */
+	const selectArgItem = (item: SlashMenuItem) => {
+		const next = applyArgName(text, item.name);
+		setText(next.text);
+		setCursorPos(next.caret);
+		setTimeout(() => {
+			if (taRef.current) {
+				taRef.current.focus();
+				taRef.current.setSelectionRange(next.caret, next.caret);
 			}
 		}, 0);
 	};
@@ -1494,9 +1577,9 @@ export function Composer({
 				if (chip?.sub) {
 					// Only the merged subcommand goes; the chip stays.
 					const { sub: _s, argHint: _a, ...base } = chip;
+					const exact = findCommandItemExact(chip.name, commands);
 					const hint =
-						findCommandItemExact(chip.name, commands)?.argHint ??
-						findSlashCommand(chip.name)?.argHint;
+						(exact ? chipArgHint(exact) : undefined) ?? findSlashCommand(chip.name)?.argHint;
 					setChip({ ...base, ...(hint ? { argHint: hint } : {}) });
 					setMenuDismissed(false);
 				} else {
@@ -1603,6 +1686,28 @@ export function Composer({
 				e.preventDefault();
 				const item = subItems[Math.min(menuIndex, subItems.length - 1)];
 				if (item) selectSubcommand(item);
+				return;
+			}
+			if (e.key === "Escape") {
+				claimEscape(e);
+				setMenuDismissed(true);
+				return;
+			}
+		}
+
+		// Argument-completion menu (`/mcp enable <name>`, `/plugins enable <name>`, …)
+		if (argItems.length > 0) {
+			if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+				e.preventDefault();
+				setMenuIndex(
+					(i) => (i + (e.key === "ArrowDown" ? 1 : -1) + argItems.length) % argItems.length,
+				);
+				return;
+			}
+			if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+				e.preventDefault();
+				const item = argItems[Math.min(menuIndex, argItems.length - 1)];
+				if (item) selectArgItem(item);
 				return;
 			}
 			if (e.key === "Escape") {
@@ -2078,8 +2183,14 @@ export function Composer({
 				{/* Bottom toolbar: attach / model / thinking (left); held pill,
 				 * context ring and send/stop (right). */}
 				<div className="@container">
-				<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-2.5 pb-2 text-[12px]">
-					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+				<div
+					ref={toolbarRef}
+					className={clsx(
+						"flex flex-nowrap items-center justify-between px-2.5 pb-2 text-[12px]",
+						toolbarTier >= TIER_TIGHT ? "gap-x-1" : "gap-x-2",
+					)}
+				>
+					<div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5">
 						<button
 							ref={addBtnRef}
 							type="button"
@@ -2121,16 +2232,25 @@ export function Composer({
 									setModelOpen((v) => !v);
 									if (!models || models.length === 0) void loadModels();
 								}}
-								title={current.label || sessionMeta?.model || "选择模型"}
-								className="flex max-w-full min-w-0 items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
-							>
-								<span className={clsx("min-w-0 truncate", compact ? "max-w-24" : "max-w-36")}>
-									{current.label ||
-										sessionMeta?.model ||
-										(models === null ? "加载中…" : "选择模型…")}
+							title={
+								toolbarTier >= TIER_MERGED && thinkingKind !== "unsupported"
+									? `${modelLabel}，思考等级: ${currentThinking}`
+									: modelLabel
+							}
+							className={clsx(
+								"flex min-w-0 items-center gap-1 rounded-md py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors",
+								toolbarTier >= TIER_TIGHT ? "px-1.5" : "px-2",
+							"max-w-full",
+							)}
+						>
+							<span className={clsx("min-w-0 truncate", !compact && "max-w-36")}>{modelLabel}</span>
+							{toolbarTier >= TIER_MERGED && (
+								<span className="shrink-0 whitespace-pre">
+									{mergedSuffix(thinkingKind, currentThinking, toolbarTier === TIER_BADGE)}
 								</span>
-								<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
-							</button>
+							)}
+							<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
+						</button>
 
 							{modelOpen && (
 								<FloatingLayer
@@ -2163,19 +2283,33 @@ export function Composer({
 											setModelOpen(false);
 										}}
 									/>
+									{toolbarTier >= TIER_MERGED && (
+										<ThinkingLevelStrip
+											levels={thinkingLevels}
+											reasoning={currentModelOption?.reasoning}
+											value={currentThinking}
+											onSelect={(level) => {
+												void selectThinkingLevel(level);
+												setModelOpen(false);
+											}}
+										/>
+									)}
 								</FloatingLayer>
 							)}
 						</div>
 
 						{/* Thinking chip: levels from the catalog, or a grey 未配置/不支持 chip; never hidden */}
-						<ThinkingLevelPicker
-							levels={thinkingLevels}
-							reasoning={currentModelOption?.reasoning}
-							value={currentThinking}
-							open={thinkingOpen}
-							onOpenChange={setThinkingOpen}
-							onSelect={(level) => void selectThinkingLevel(level)}
-						/>
+						{toolbarTier < TIER_MERGED && (
+							<ThinkingLevelPicker
+								levels={thinkingLevels}
+								reasoning={currentModelOption?.reasoning}
+								value={currentThinking}
+								open={thinkingOpen}
+								onOpenChange={setThinkingOpen}
+								onSelect={(level) => void selectThinkingLevel(level)}
+								tight={toolbarTier >= TIER_TIGHT}
+							/>
+						)}
 					</div>
 
 					{/* Right side actions */}
@@ -2205,6 +2339,7 @@ export function Composer({
 							compacting={compacting}
 							open={contextOpen}
 							onOpenChange={setContextOpen}
+							showPercent={toolbarTier === TIER_FULL}
 							className="shrink-0"
 						/>
 
@@ -2323,6 +2458,16 @@ export function Composer({
 					empty={false}
 					footer="↑↓ 选择 · ↵ 选择 · Esc 关闭"
 					onSelect={selectSubcommand}
+					onDismiss={() => setMenuDismissed(true)}
+				/>
+			) : argItems.length > 0 ? (
+				<SlashMenu
+					anchor={composerCardRef.current}
+					sections={argSections}
+					activeIndex={Math.min(menuIndex, Math.max(0, argItems.length - 1))}
+					empty={false}
+					footer="↑↓ 选择 · ↵ 选择 · Esc 关闭"
+					onSelect={selectArgItem}
 					onDismiss={() => setMenuDismissed(true)}
 				/>
 			) : (

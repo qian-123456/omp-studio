@@ -27,6 +27,8 @@ export interface SlashMenuItem {
 	subOf?: string;
 	/** Present when the command takes subcommands. */
 	subcommands?: SlashSubcommand[];
+	/** Argument-completion row: render the name as-is (no leading `/`). */
+	plain?: boolean;
 }
 
 export interface SlashMenuSection {
@@ -88,7 +90,8 @@ function matchScore(query: string, c: {
 	return i === query.length ? 6 : -1;
 }
 
-function toItem(def: SlashCommandDef): SlashMenuItem {
+function toItem(def: SlashCommandDef, commands: SlashCommand[]): SlashMenuItem {
+	const subcommands = subcommandsFor(def.name, commands);
 	return {
 		name: def.name,
 		title: def.title,
@@ -98,7 +101,7 @@ function toItem(def: SlashCommandDef): SlashMenuItem {
 		argHint: def.argHint,
 		settingsTarget: def.settingsTarget,
 		registry: true,
-		...(def.subcommands?.length ? { subcommands: def.subcommands } : {}),
+		...(subcommands.length ? { subcommands } : {}),
 	};
 }
 
@@ -140,7 +143,7 @@ export function buildSlashSections(
 		if (composerHasOtherText && def.requiresEmptyComposer) continue;
 		if (def.feature === "visualize" && opts?.visualizeEnabled === false) continue;
 		const score = matchScore(q, def);
-		if (score >= 0) scored.push({ item: toItem(def), score });
+		if (score >= 0) scored.push({ item: toItem(def, commands), score });
 	}
 
 	// Names/aliases already covered by the registry.
@@ -183,12 +186,34 @@ export function flattenSections(sections: SlashMenuSection[]): SlashMenuItem[] {
 	return sections.flatMap((s) => s.items);
 }
 
-/** Subcommands of a command: registry (name/alias) first, else the dynamic one. */
+/** omp's dynamic entry for a registry command (by its name, then aliases),
+ * looked up independently of the registry shadowing in buildSlashSections. */
+function dynamicFor(def: SlashCommandDef, commands: SlashCommand[]): SlashCommand | undefined {
+	const names = [def.name, ...(def.aliases ?? [])];
+	for (const n of names) {
+		const hit = commands.find((c) => c.name === n && c.subcommands?.length);
+		if (hit) return hit;
+	}
+	return commands.find(
+		(c) => c.subcommands?.length && c.aliases?.some((a) => names.includes(a)),
+	);
+}
+
+/** Subcommands of a command: the registry's static list wins; otherwise the
+ * omp-reported list for that name/alias (registry or dynamic command). */
 export function subcommandsFor(name: string, commands: SlashCommand[]): SlashSubcommand[] {
 	const def = findSlashCommand(name);
-	if (def) return def.subcommands ?? [];
-	const dyn = commands.find((c) => c.name === name);
+	if (def) {
+		if (def.subcommands?.length) return def.subcommands;
+		return dynamicFor(def, commands)?.subcommands ?? [];
+	}
+	const dyn = commands.find((c) => c.name === name || c.aliases?.includes(name));
 	return dyn?.subcommands ?? [];
+}
+
+/** Ghost hint for a chip made from `item` (subcommand-only commands get `<子命令>`). */
+export function chipArgHint(item: SlashMenuItem): string | undefined {
+	return item.argHint ?? (item.subcommands?.length ? "<子命令>" : undefined);
 }
 
 /** One menu item per subcommand, filtered by `query` (prefix matches first). */
@@ -218,7 +243,7 @@ export function buildSubcommandItems(parent: SlashMenuItem, query: string): Slas
 export function findCommandItemExact(token: string, commands: SlashCommand[]): SlashMenuItem | null {
 	let item: SlashMenuItem | null = null;
 	const def = SLASH_COMMANDS.find((d) => d.name === token || d.aliases?.includes(token));
-	if (def) item = toItem(def);
+	if (def) item = toItem(def, commands);
 	else {
 		const taken = new Set<string>();
 		for (const d of SLASH_COMMANDS) {

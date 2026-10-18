@@ -70,6 +70,13 @@ const sendAsPrompt = async (ctx: SlashContext): Promise<void> => {
 	await ctx.sendPromptText(ctx.rawText);
 };
 
+/** Native handler only for the bare command; any args (`/fast on`, `/plugins
+ * enable x`, …) are omp subcommands and go to omp unchanged. */
+const nativeOrForward =
+	(native: (ctx: SlashContext) => void | Promise<void>) =>
+	(ctx: SlashContext): void | Promise<void> =>
+		ctx.args.trim() ? sendAsPrompt(ctx) : native(ctx);
+
 /** Goal mode state mirrored into get_state/goal_updated payloads. */
 interface GoalModeLike {
 	enabled?: boolean;
@@ -311,7 +318,13 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		group: "会话",
 		argHint: "<目标描述 | pause | resume | off>",
 		run: async (ctx) => {
-			const arg = ctx.args.trim();
+			let arg = ctx.args.trim();
+			// omp subcommands: `show` = bare `/goal`; `set <text>` = `<text>`;
+			// `budget …` has no native path and goes to omp. pause/resume/drop
+			// are handled below like their aliases.
+			if (/^budget(?:\s|$)/i.test(arg)) return sendAsPrompt(ctx);
+			if (/^show$/i.test(arg)) arg = "";
+			else arg = arg.replace(/^set\s+(?=\S)/i, "");
 			if (!arg) {
 				const g = goalModeOf(ctx)?.goal;
 				ctx.pushOutput("goal", g?.objective ? `当前目标：${g.objective}` : "当前没有目标");
@@ -376,13 +389,13 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		icon: Zap,
 		group: "模型",
 		settingsTarget: "fastMode",
-		run: async (ctx) => {
+		run: nativeOrForward(async (ctx) => {
 			const enabled = ctx.live?.state?.fastModeEnabled === true;
 			ctx.track("fast", "正在切换快速模式", async () => {
 				await ctx.rpcSend({ type: "set_fast_mode", enabled: !enabled });
 				return enabled ? "已关闭快速模式" : "已开启快速模式";
 			});
-		},
+		}),
 	},
 	{
 		name: "slow",
@@ -390,14 +403,14 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "切换低优先级/经济服务档位",
 		icon: Gauge,
 		group: "模型",
-		run: async (ctx) => {
+		run: nativeOrForward(async (ctx) => {
 			const enabled = ctx.live?.state?.slowModeEnabled === true;
 			ctx.track("slow", "正在切换慢速模式", async () => {
 				if (!ctx.live?.alive) await ensureLive(ctx.sessionId);
 				await ctx.rpcSend({ type: "set_slow_mode", enabled: !enabled });
 				return enabled ? "已关闭慢速模式" : "已开启慢速模式";
 			});
-		},
+		}),
 	},
 	{
 		name: "advisor",
@@ -405,7 +418,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "切换顾问模型介入",
 		icon: Eye,
 		group: "模型",
-		run: (ctx) => ctx.openSettingsTarget("advisor"),
+		run: nativeOrForward((ctx) => ctx.openSettingsTarget("advisor")),
 	},
 
 	// ---- 状态 ----
@@ -434,7 +447,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "查看供应商订阅与配额",
 		icon: ChartPie,
 		group: "状态",
-		run: (ctx) => ctx.openSettingsTarget("quota"),
+		run: nativeOrForward((ctx) => ctx.openSettingsTarget("quota")),
 	},
 	{
 		name: "tools",
@@ -501,7 +514,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "管理插件与扩展市场",
 		icon: Puzzle,
 		group: "集成",
-		run: (ctx) => ctx.openSettingsTarget("plugins"),
+		run: nativeOrForward((ctx) => ctx.openSettingsTarget("plugins")),
 	},
 	{
 		name: "memory",
@@ -509,7 +522,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "维护记忆后端",
 		icon: Database,
 		group: "集成",
-		run: (ctx) => ctx.openSettingsTarget("memory"),
+		run: nativeOrForward((ctx) => ctx.openSettingsTarget("memory")),
 	},
 	{
 		name: "browser",
@@ -517,7 +530,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "切换浏览器可见模式",
 		icon: Globe,
 		group: "集成",
-		run: (ctx) => ctx.openSettingsTarget("browser"),
+		run: nativeOrForward((ctx) => ctx.openSettingsTarget("browser")),
 	},
 	{
 		name: "computer",
@@ -525,7 +538,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "切换计算机操作能力",
 		icon: Monitor,
 		group: "集成",
-		run: (ctx) => ctx.openSettingsTarget("computerUse"),
+		run: nativeOrForward((ctx) => ctx.openSettingsTarget("computerUse")),
 	},
 	{
 		name: "extended-context",
@@ -533,7 +546,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		description: "切换扩展上下文窗口",
 		icon: Expand,
 		group: "集成",
-		run: (ctx) => ctx.openSettingsTarget("extendedContext"),
+		run: nativeOrForward((ctx) => ctx.openSettingsTarget("extendedContext")),
 	},
 
 	// ---- 设置 ----
@@ -620,7 +633,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		group: "更多 OMP 命令",
 		// omp's changelog text has no transcript-less GUI surface; the About
 		// section is the app's version/update surface.
-		run: (ctx) => ctx.openSettingsTarget("about"),
+		run: nativeOrForward((ctx) => ctx.openSettingsTarget("about")),
 	},
 	{
 		name: "security",

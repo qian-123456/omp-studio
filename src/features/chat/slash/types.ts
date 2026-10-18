@@ -20,7 +20,9 @@ export type SlashGroup =
 	| "自定义命令"
 	| "扩展"
 	| "更多 OMP 命令"
-	| "子命令";
+	| "子命令"
+	| "MCP 服务器"
+	| "插件";
 
 /** Commands the user typed as `/name args`. Executors may throw `SlashAbort`
  * to keep the composer text (usage hints) — any other error is toasted and
