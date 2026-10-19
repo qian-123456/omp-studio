@@ -122,8 +122,9 @@ describe("auto-expand", () => {
 
 describe("row text", () => {
 	it("formats elapsed", () => {
-		expect(formatElapsed(72_000)).toBe("1:12");
-		expect(formatElapsed(3_725_000)).toBe("1:02:05");
+		expect(formatElapsed(72_000)).toBe("1分12秒");
+		expect(formatElapsed(21_000)).toBe("21秒");
+		expect(formatElapsed(3_725_000)).toBe("1小时2分5秒");
 		expect(formatElapsed(undefined)).toBe("—");
 	});
 
@@ -162,7 +163,7 @@ describe("titles and summary", () => {
 	});
 	it("summarises without redundancy", () => {
 		expect(statusSummary({ running: 3, done: 4, failed: 0 })).toEqual({ mode: "running", running: 3, progress: "4/7" });
-		expect(statusSummary({ running: 0, done: 7, failed: 0 })).toEqual({ mode: "done", label: "7 个已完成" });
+		expect(statusSummary({ running: 0, done: 7, failed: 0 })).toEqual({ mode: "done", count: 7 });
 		expect(statusSummary({ running: 0, done: 5, failed: 2 })).toEqual({ mode: "mixed", done: 5, failed: 2 });
 	});
 });

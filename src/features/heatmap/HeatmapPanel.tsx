@@ -194,7 +194,7 @@ export function HeatmapPanel() {
 					options={[
 						{ value: "session", label: "本对话" },
 						{ value: "global", label: "全局洞察" },
-						{ value: "doctor", label: "🩺 AI会诊" },
+						{ value: "doctor", label: "🩺 会话体检" },
 					]}
 					value={mainTab}
 					onChange={setMainTab}
@@ -740,7 +740,7 @@ export function HeatmapPanel() {
 			) : (
 				<div className="flex-1 min-w-0 p-3 space-y-3">
 					{!selectedId ? (
-						<div className="p-6 text-center text-xs text-neutral-500">先在左侧选择一个对话，再开始 AI 会诊</div>
+						<div className="p-6 text-center text-xs text-neutral-500">先在左侧选择一个对话，再开始会话体检</div>
 					) : (
 						<DoctorView key={selectedId} sessionId={selectedId} meta={sessionMeta} items={items} />
 					)}

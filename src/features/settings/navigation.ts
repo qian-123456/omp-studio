@@ -92,7 +92,7 @@ export const NAV_GROUPS: NavGroup[] = [
 		items: [
 			{ id: "sessions", label: "会话", icon: Bot },
 			{ id: "inbox", label: "收件箱", icon: Sparkles },
-			{ id: "doctor", label: "AI 会诊", icon: Stethoscope },
+			{ id: "doctor", label: "会话体检", icon: Stethoscope },
 			{ id: "omp-context", label: "记忆与对话", icon: Library },
 			{ id: "agents-md", label: "规则文件 AGENTS.md", icon: FileText },
 			{ id: "prompt-composition", label: "系统提示词构成", icon: Layers },

@@ -35,6 +35,7 @@ export function ThinkingLevelPicker({
 	onSelect,
 	onConfigure = () => openSettingsTarget("providers"),
 	tight = false,
+	variant = "ghost",
 }: {
 	/** Resolved levels (`resolveThinkingLevels`); empty = no levels for this model. */
 	levels: string[];
@@ -48,6 +49,8 @@ export function ThinkingLevelPicker({
 	onConfigure?: () => void;
 	/** Tighter horizontal padding for a crowded toolbar. */
 	tight?: boolean;
+	/** Visual style: "ghost" for flat toolbars (Composer), "pill" for forms & settings. */
+	variant?: "ghost" | "pill";
 }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const cur = thinkingLabel(value);
@@ -56,7 +59,12 @@ export function ThinkingLevelPicker({
 		return (
 			<span
 				title="这个模型不支持思考，没有可调的思考等级"
-				className="shrink-0 select-none rounded-full bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-30,var(--text-dim))]"
+				className={clsx(
+					"shrink-0 select-none",
+					variant === "pill"
+						? "flex h-8 items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 text-xs text-neutral-500 opacity-60"
+						: "rounded-full bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-30,var(--text-dim))]",
+				)}
 			>
 				不支持思考
 			</span>
@@ -68,7 +76,12 @@ export function ThinkingLevelPicker({
 				type="button"
 				onClick={onConfigure}
 				title="这个模型能思考，但没有配置思考等级。点击去供应商设置里补上"
-				className="shrink-0 select-none rounded-full border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-40,var(--text-dim))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]"
+				className={clsx(
+					"shrink-0 select-none transition-colors",
+					variant === "pill"
+						? "flex h-8 items-center gap-1 rounded-lg border border-dashed border-[var(--border-divider)] bg-[var(--bg-active-fill)] px-2.5 text-xs text-amber-400/90 hover:border-amber-400 hover:text-amber-300"
+						: "rounded-full border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-40,var(--text-dim))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
+				)}
 			>
 				未配置思考等级
 			</button>
@@ -81,12 +94,27 @@ export function ThinkingLevelPicker({
 				onClick={() => onOpenChange(!open)}
 				title={`思考等级: ${cur.label}${cur.desc ? ` (${cur.desc})` : ""}`}
 				className={clsx(
-					"flex select-none items-center gap-1 rounded-md py-1 text-[12px] text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
-					tight ? "px-1.5" : "px-2",
+					"flex select-none items-center transition-colors",
+					variant === "pill"
+						? "h-8 gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 text-xs text-[var(--text)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] active:scale-[0.98]"
+						: clsx(
+								"gap-1 rounded-md py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",
+								tight ? "px-1.5" : "px-2",
+						  ),
 				)}
 			>
-				<span>{cur.label}</span>
-				<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
+				{variant === "pill" ? (
+					<>
+						<span className="text-neutral-400">思考</span>
+						<span className="font-mono text-neutral-200">{cur.label}</span>
+						<ChevronDown size={11} className="shrink-0 text-neutral-500" />
+					</>
+				) : (
+					<>
+						<span>{cur.label}</span>
+						<ChevronDown size={10} className="shrink-0 text-[var(--text-30,var(--text-dim))]" />
+					</>
+				)}
 			</button>
 			{open && (
 				<FloatingLayer

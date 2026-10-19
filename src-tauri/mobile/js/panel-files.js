@@ -55,16 +55,20 @@
 			const id = sid(params);
 			let wrap = true;
 			let curDir = null;
+			let seq = 0; // drops responses of superseded browse/openFile requests
 
 			async function browse(path) {
+				const mine = ++seq;
 				root.replaceChildren(el("div", { class: "empty" }, "加载中…"));
 				let data;
 				try {
 					data = await M.api("GET", `/sessions/${q(id)}/files` + (path ? `?path=${q(path)}` : ""));
 				} catch (e) {
+					if (mine !== seq) return;
 					root.replaceChildren(errBox(e.message), el("div", { class: "pf-pad" }, el("button", { class: "pf-btn", onclick: () => browse(curDir) }, "重试")));
 					return;
 				}
+				if (mine !== seq) return;
 				curDir = data.path;
 				root.replaceChildren(crumbs(data), list(data));
 			}
@@ -110,6 +114,7 @@
 			}
 
 			async function openFile(e) {
+				const mine = ++seq;
 				const body = el("div", { class: "pf-fbody" }, el("div", { class: "empty" }, "加载中…"));
 				const wrapBtn = el("button", { class: "pf-btn sm", onclick: () => { wrap = !wrap; paint(); } }, "");
 				let file = null;
@@ -129,9 +134,12 @@
 				}
 				paint();
 				try {
-					file = await M.api("GET", `/sessions/${q(id)}/file?path=${q(e.path)}`);
+					const f = await M.api("GET", `/sessions/${q(id)}/file?path=${q(e.path)}`);
+					if (mine !== seq) return;
+					file = f;
 					paint();
 				} catch (err) {
+					if (mine !== seq) return;
 					body.replaceChildren(errBox(err.message));
 				}
 			}
@@ -188,8 +196,9 @@
 				}
 			}
 
-			async function loadStatus() {
-				content.replaceChildren(el("div", { class: "empty" }, "加载中…"));
+			async function loadStatus(keepView) {
+				const keep = content.scrollTop;
+				if (keepView !== true) content.replaceChildren(el("div", { class: "empty" }, "加载中…"));
 				let st;
 				try {
 					st = await M.api("GET", base + "/status");
@@ -199,6 +208,7 @@
 				}
 				if (tab !== "status") return;
 				content.replaceChildren(statusView(st));
+				if (keepView === true) content.scrollTop = keep;
 			}
 
 			function fileRow(f, staged) {
@@ -262,7 +272,7 @@
 			function stage(kind, paths) {
 				return act(async () => {
 					await M.api("POST", `${base}/${kind}`, { paths });
-					await loadStatus();
+					await loadStatus(true);
 				});
 			}
 
@@ -277,7 +287,7 @@
 					} finally {
 						btn.disabled = false;
 					}
-					await loadStatus();
+					await loadStatus(true);
 				});
 			}
 

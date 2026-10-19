@@ -16,7 +16,9 @@
 import {
 	AlertTriangle,
 	ExternalLink,
+	FolderInput,
 	FolderOpen,
+	Globe,
 	Loader2,
 	Pencil,
 	Plus,
@@ -30,12 +32,15 @@ import type { McpConfigSnapshot, McpKv, McpServerItem } from "../../lib/contract
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import {
 	mcpConfigList,
+	mcpServerMove,
 	mcpServerRemove,
 	mcpServerSetEnabled,
 	mcpServerUpsert,
 } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
+import { useSessions } from "../../stores/sessions";
 import {
 	buildPatch,
 	draftFrom,
@@ -75,12 +80,16 @@ function ServerRow({
 	onToggle,
 	onEdit,
 	onRemove,
+	onMoveToProject,
+	onMoveToGlobal,
 }: {
 	server: McpServerItem;
 	busy: boolean;
 	onToggle: () => void;
 	onEdit: () => void;
 	onRemove: () => void;
+	onMoveToProject?: () => void;
+	onMoveToGlobal?: () => void;
 }) {
 	const endpoint = server.command ?? server.url ?? "（未填写命令或地址）";
 	const keys = (list: McpKv[]) => list.map((kv) => kv.key).join("、");
@@ -145,7 +154,33 @@ function ServerRow({
 						</div>
 					)}
 				</div>
-				<div className="flex shrink-0 items-center gap-1">
+				<div className="flex shrink-0 items-center gap-1.5">
+					{onMoveToProject && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={onMoveToProject}
+							title="将此服务器移入当前所选项目，其他项目将不再加载"
+							aria-label={`移入项目 ${server.name}`}
+							className="inline-flex items-center gap-1 rounded-lg hairline bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-300 transition-all hover:bg-sky-500/20 active:scale-95 disabled:opacity-50"
+						>
+							<FolderInput className="h-3 w-3" />
+							<span>移入当前项目</span>
+						</button>
+					)}
+					{onMoveToGlobal && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={onMoveToGlobal}
+							title="将此服务器移至全局配置，所有项目都可以使用"
+							aria-label={`移至全局 ${server.name}`}
+							className="inline-flex items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] font-medium text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50"
+						>
+							<Globe className="h-3 w-3" />
+							<span>移至全局</span>
+						</button>
+					)}
 					<button
 						type="button"
 						disabled={busy}
@@ -297,6 +332,10 @@ export function McpSection({
 	query?: string;
 	onNavigateSection: (id: string) => void;
 }) {
+	const workspaces = useSessions((s) => s.workspaces);
+	const [selectedCwd, setSelectedCwd] = useState<string | null>(() => cwd);
+	const activeCwd = selectedCwd;
+
 	const [snap, setSnap] = useState<McpConfigSnapshot | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -309,14 +348,14 @@ export function McpSection({
 	const reload = useCallback(async () => {
 		setLoading(true);
 		try {
-			setSnap(await mcpConfigList(cwd));
+			setSnap(await mcpConfigList(activeCwd));
 			setLoadError(null);
 		} catch (e) {
 			setLoadError(errMsg(e));
 		} finally {
 			setLoading(false);
 		}
-	}, [cwd]);
+	}, [activeCwd]);
 
 	useEffect(() => {
 		void reload();
@@ -379,9 +418,9 @@ export function McpSection({
 		const patch = buildPatch(draft);
 		const original = draft.original;
 		const ok = await run(async () => {
-			await mcpServerUpsert(draft.path, name, patch, cwd);
+			await mcpServerUpsert(draft.path, name, patch, activeCwd);
 			if (original && original.name !== name) {
-				await mcpServerRemove(original.sourceFile, original.name, cwd);
+				await mcpServerRemove(original.sourceFile, original.name, activeCwd);
 			}
 		}, `已保存「${name}」，新开的会话会使用它`);
 		// Keep the form open on failure so nothing typed is lost.
@@ -394,7 +433,7 @@ export function McpSection({
 			{ title: "删除 MCP 服务器", danger: true, okLabel: "删除" },
 		);
 		if (!confirmed) return;
-		await run(() => mcpServerRemove(s.sourceFile, s.name, cwd), `已删除「${s.name}」`);
+		await run(() => mcpServerRemove(s.sourceFile, s.name, activeCwd), `已删除「${s.name}」`);
 	};
 
 	const openFile = (path: string) => {
@@ -411,8 +450,43 @@ export function McpSection({
 		return [...m.entries()];
 	}, [servers]);
 
-	const startAdd = () => openDraft(draftFrom(null, snap?.defaultWritePath ?? ""));
+	const projectWritePath = useMemo(() => {
+		if (!activeCwd) return null;
+		const match = snap?.files.find((f) => f.scope === "project" && f.path.includes(".omp"));
+		return match?.path ?? `${activeCwd}/.omp/mcp.json`;
+	}, [snap, activeCwd]);
 
+	const moveToProject = async (s: McpServerItem) => {
+		if (!projectWritePath || !activeCwd) return;
+		const pName = projectName(activeCwd);
+		const confirmed = await confirmDialog(
+			`将 MCP 服务器「${s.name}」移入项目「${pName}」？\n移入后该服务器仅在该项目中加载，其他项目新会话不再加载此工具，立即可节省上下文。`,
+			{ title: "移入项目", okLabel: "移入项目" },
+		);
+		if (!confirmed) return;
+		await run(
+			() => mcpServerMove(s.sourceFile, projectWritePath, s.name, activeCwd),
+			`已将「${s.name}」移入项目「${pName}」`,
+		);
+	};
+
+	const moveToGlobal = async (s: McpServerItem) => {
+		if (!snap?.defaultWritePath) return;
+		const confirmed = await confirmDialog(
+			`将 MCP 服务器「${s.name}」移至全局配置？\n移入后所有项目的新会话都会加载此工具。`,
+			{ title: "移至全局", okLabel: "移至全局" },
+		);
+		if (!confirmed) return;
+		await run(
+			() => mcpServerMove(s.sourceFile, snap.defaultWritePath, s.name, activeCwd),
+			`已将「${s.name}」移至全局配置`,
+		);
+	};
+
+	const startAdd = () => {
+		const targetPath = activeCwd && projectWritePath ? projectWritePath : (snap?.defaultWritePath ?? "");
+		openDraft(draftFrom(null, targetPath));
+	};
 	const form = draft && (
 		<div
 			ref={formRef}
@@ -474,9 +548,14 @@ export function McpSection({
 						onChange={(e) => setDraft({ ...draft, path: e.target.value })}
 						className={FIELD_CLASS}
 					>
-						<option value={snap.defaultWritePath}>全局（所有项目可用）— {snap.defaultWritePath}</option>
+						{activeCwd && projectWritePath && (
+							<option value={projectWritePath}>
+								仅当前项目（{projectName(activeCwd)}）— {projectWritePath}
+							</option>
+						)}
+						<option value={snap.defaultWritePath}>全局（所有项目通用）— {snap.defaultWritePath}</option>
 						{snap.files
-							.filter((f) => f.path !== snap.defaultWritePath)
+							.filter((f) => f.path !== snap.defaultWritePath && f.path !== projectWritePath)
 							.map((f) => (
 								<option key={f.path} value={f.path}>
 									{f.scope === "project" ? "仅当前项目" : "全局"} — {f.path}
@@ -617,17 +696,40 @@ export function McpSection({
 					title="MCP 服务器"
 					description="MCP 服务器为 AI 提供额外的工具（如读写文件、查数据库、访问网页）。改动只对之后新开的会话生效。"
 				/>
-				<div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
-					<FolderOpen className="h-3 w-3 shrink-0" />
-					{cwd ? (
-						<span className="truncate" title={cwd}>
-							当前项目：<span className="text-neutral-200">{projectName(cwd)}</span>
-							<span className="ml-1 text-neutral-500">（也会显示该项目自己的 .omp/mcp.json）</span>
-						</span>
-					) : (
-						<span className="text-neutral-500">
-							未选择项目：只显示全局服务器。在侧栏选中一个会话后，可查看和编辑该项目自己的服务器。
-						</span>
+				<div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+					<div className="flex items-center gap-2 text-[11px] text-neutral-400">
+						<FolderOpen className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+						<span className="shrink-0">配置目标项目：</span>
+						{workspaces.length > 0 ? (
+							<NativeSelect
+								aria-label="选择要配置的项目"
+								value={activeCwd ?? ""}
+								onChange={(e) => {
+									const val = e.target.value;
+									setSelectedCwd(val === "" ? null : val);
+								}}
+								className="text-[11px]"
+								containerClassName="w-[230px]"
+							>
+								<option value="">全部项目（仅全局视图）</option>
+								{workspaces.map((w) => (
+									<option key={w.id} value={w.path}>
+										项目：{w.name}
+									</option>
+								))}
+							</NativeSelect>
+						) : activeCwd ? (
+							<span className="font-medium text-neutral-200" title={activeCwd}>
+								{projectName(activeCwd)}
+							</span>
+						) : (
+							<span className="text-neutral-500">未选择项目（仅全局）</span>
+						)}
+					</div>
+					{activeCwd && (
+						<div className="text-[10px] text-neutral-500">
+							项目专属文件：<span className="font-mono text-neutral-400">{projectName(activeCwd)}/.omp/mcp.json</span>
+						</div>
 					)}
 				</div>
 			</div>
@@ -712,43 +814,82 @@ export function McpSection({
 					</div>
 				)}
 
-				{groupedByFile.map(([file, list]) => (
-					<div key={file} className="space-y-1">
-						<div className="flex items-center gap-1.5 px-1">
-							<span className="min-w-0 flex-1 truncate font-mono text-[10px] text-neutral-500" title={file}>
-								{file}
-							</span>
-							<button
-								type="button"
-								onClick={() => openFile(file)}
-								title="用默认程序打开配置文件"
-								aria-label="打开配置文件"
-								className="shrink-0 rounded p-0.5 text-neutral-500 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-300 active:scale-95"
-							>
-								<ExternalLink className="h-3 w-3" />
-							</button>
+				{activeCwd && !groupedByFile.some(([file]) => file.startsWith(activeCwd)) && (
+					<div className="rounded-xl hairline bg-sky-500/5 border-dashed border-sky-500/20 p-3.5 text-xs text-neutral-400">
+						<div className="flex items-center gap-2 text-sky-300 font-medium mb-1">
+							<FolderOpen className="h-3.5 w-3.5" />
+							<span>项目「{projectName(activeCwd)}」尚未配置专属 MCP 服务器</span>
 						</div>
-						<div className="divide-y divide-[var(--border-divider)] overflow-hidden rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card">
-							{list.map((s) => (
-								<ServerRow
-									key={s.name}
-									server={s}
-									busy={busy}
-									onToggle={() =>
-										void run(
-											() => mcpServerSetEnabled(s.name, !s.enabled, cwd),
-											s.enabled
-												? `已停用「${s.name}」（新会话生效）`
-												: `已启用「${s.name}」（新会话生效）`,
-										)
-									}
-									onEdit={() => openDraft(draftFrom(s, ""))}
-									onRemove={() => void removeServer(s)}
-								/>
-							))}
-						</div>
+						<p className="text-[11px] text-neutral-400">
+							当前项目会继承下方全局服务器。若希望把特定的工具（如逆向分析、特定数据库）隔离在此项目内，可点击下方服务器的「移入当前项目」，或点上方「添加服务器」选择保存到此项目。
+						</p>
 					</div>
-				))}
+				)}
+
+				{groupedByFile.map(([file, list]) => {
+					const isProject = activeCwd && file.startsWith(activeCwd);
+					return (
+						<div key={file} className="space-y-1">
+							<div className="flex items-center justify-between gap-1.5 px-1">
+								<div className="flex min-w-0 items-center gap-2">
+									<span
+										className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium ${
+											isProject ? "bg-sky-500/15 text-sky-300" : "bg-[var(--well-bg)] text-neutral-400"
+										}`}
+									>
+										{isProject ? `项目专属（${projectName(activeCwd)}）` : "全局配置（所有项目）"}
+									</span>
+									<span
+										className="truncate font-mono text-[10px] text-neutral-500"
+										title={file}
+									>
+										{file}
+									</span>
+								</div>
+								<button
+									type="button"
+									onClick={() => openFile(file)}
+									title="用默认程序打开配置文件"
+									aria-label="打开配置文件"
+									className="shrink-0 rounded p-0.5 text-neutral-500 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-300 active:scale-95"
+								>
+									<ExternalLink className="h-3 w-3" />
+								</button>
+							</div>
+							<div className="divide-y divide-[var(--border-divider)] overflow-hidden rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card">
+								{list.map((s) => (
+									<ServerRow
+										key={s.name}
+										server={s}
+										busy={busy}
+										onToggle={() =>
+											void run(
+												() => mcpServerSetEnabled(s.name, !s.enabled, activeCwd),
+												s.enabled
+													? `已停用「${s.name}」（新会话生效）`
+													: `已启用「${s.name}」（新会话生效）`,
+											)
+										}
+										onEdit={() => openDraft(draftFrom(s, ""))}
+										onRemove={() => void removeServer(s)}
+										onMoveToProject={
+											s.scope === "user" && projectWritePath
+												? () => void moveToProject(s)
+												: undefined
+										}
+										onMoveToGlobal={
+											s.scope === "project" &&
+											snap?.defaultWritePath &&
+											s.sourceFile !== snap.defaultWritePath
+												? () => void moveToGlobal(s)
+												: undefined
+										}
+									/>
+								))}
+							</div>
+						</div>
+					);
+				})}
 			</div>
 
 			{/* Config files overview */}

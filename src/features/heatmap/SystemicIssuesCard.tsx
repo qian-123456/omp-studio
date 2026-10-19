@@ -19,7 +19,7 @@ export function SystemicIssuesCard({
 			<div className="mb-2 text-[11.5px] font-medium text-neutral-200">🩺 长期共性问题 Top 3</div>
 			{issues.length === 0 ? (
 				<div className="text-[10.5px] leading-relaxed text-neutral-500">
-					暂无共性问题。至少完成 2 次 AI 会诊、且同一问题在多个对话中反复出现后，这里才会列出。
+					暂无共性问题。至少完成 2 次会话体检、且同一问题在多个对话中反复出现后，这里才会列出。
 				</div>
 			) : (
 				<div className="space-y-2">

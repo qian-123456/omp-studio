@@ -23,6 +23,7 @@
 	const h = M.el;
 
 	function closeSheet(sheet) {
+		if (sheet._cleanup) sheet._cleanup();
 		sheet.remove();
 	}
 	/** Bottom sheet; returns {sheet, body}. */
@@ -261,6 +262,8 @@
 				okBtn,
 			],
 		);
+		// Any close path (cancel, mask tap, save) releases the preview object URLs.
+		sheet._cleanup = () => st.files.forEach((f) => URL.revokeObjectURL(f.url));
 		okBtn.onclick = async () => {
 			const text = ta.value.trim();
 			if (!text && !st.files.length) return M.toast("请输入内容或添加图片");
@@ -273,7 +276,7 @@
 				if (st.link && cs && cs.id) body.sessionIds = [cs.id];
 				const it = await M.api("POST", "/ideas", body);
 				items.unshift(it);
-				st.files.forEach((f) => URL.revokeObjectURL(f.url));
+				// object URLs are revoked by closeSheet's cleanup
 				closeSheet(sheet);
 				tab = "active";
 				render();

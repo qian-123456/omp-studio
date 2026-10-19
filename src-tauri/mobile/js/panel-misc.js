@@ -321,11 +321,12 @@
 			const msgs = wrap.querySelector(".mc-msgs");
 			if (!msgs) return;
 			const stick = nearBottom(msgs);
+			const keep = msgs.scrollTop;
 			msgs.innerHTML = "";
 			for (const it of items.slice(-80)) for (const n of renderItem(it)) msgs.appendChild(n);
 			for (const o of optimistic) msgs.appendChild(h("div", { class: "msg-user pending" }, o));
 			if (working()) msgs.appendChild(h("div", { class: "typing" }, h("i"), h("i"), h("i")));
-			if (stick) msgs.scrollTop = msgs.scrollHeight;
+			msgs.scrollTop = stick ? msgs.scrollHeight : keep;
 		}
 
 		async function fetchThread() {
@@ -444,30 +445,30 @@
 
 		function buildDiagnosePrompt() {
 			const rows = agents.map((a, i) => `${i + 1}. [${a.status}] model=${a.model || "?"} requests=${a.requestCount} tools=${a.toolCallCount} tokens=${a.tokens} cost=$${(a.cost || 0).toFixed(3)} 任务: ${a.prompt || ""}`);
-			return "你是 AI 会诊医生。下面是一个会话中各子代理的运行统计，请用简体中文指出效率问题（高 token/成本、失败、重复工具调用等）并给出改进建议，控制在 300 字以内。\n\n" + rows.join("\n");
+			return "你是会话体检助手。下面是一个会话中各子代理的运行统计，请用简体中文指出效率问题（高 token/成本、失败、重复工具调用等）并给出改进建议，控制在 300 字以内。\n\n" + rows.join("\n");
 		}
 
 		function renderList() {
 			stopDetail();
 			wrap.innerHTML = "";
 			const out = h("div", { class: "mc-pad hidden" });
-			const diag = h("button", { class: "btn primary" }, "AI 会诊");
+			const diag = h("button", { class: "btn primary" }, "会话体检");
 			diag.onclick = async () => {
-				if (!agents.length) return M.toast("没有子代理可诊断");
+				if (!agents.length) return M.toast("没有子代理可体检");
 				diag.disabled = true;
-				diag.textContent = "诊断中…";
+				diag.textContent = "体检中…";
 				out.classList.remove("hidden");
-				out.innerHTML = '<div class="meta">正在诊断，最多约 2 分钟…</div>';
+				out.innerHTML = '<div class="meta">正在体检，最多约 2 分钟…</div>';
 				try {
 					const r = await M.api("POST", "/heatmap/diagnose", { prompt: buildDiagnosePrompt() });
 					out.innerHTML = "";
 					out.appendChild(mdBox(r.text || "（无输出）"));
 				} catch (e) {
 					out.innerHTML = "";
-					out.appendChild(empty("诊断失败：" + e.message));
+					out.appendChild(empty("体检失败：" + e.message));
 				}
 				diag.disabled = false;
-				diag.textContent = "AI 会诊";
+				diag.textContent = "会话体检";
 			};
 			const total = agents.reduce((s, a) => s + (a.tokens || 0), 0);
 			const cost = agents.reduce((s, a) => s + (a.cost || 0), 0);
@@ -510,6 +511,7 @@
 			};
 			function draw() {
 				const stick = nearBottom(msgs);
+				const keep = msgs.scrollTop;
 				const s = info.summary;
 				head.innerHTML = "";
 				head.append(h("button", { class: "btn", onclick: back }, "‹ 列表"), h("span", { class: "meta mc-grow" }, `${id} · ${SA_STATUS[s.status] || s.status} · ${fmtTok(s.tokens)} tok`));
@@ -517,7 +519,7 @@
 				if (info.prompt) msgs.appendChild(h("div", { class: "msg-user" }, info.prompt));
 				for (const it of items) for (const n of renderItem(it)) msgs.appendChild(n);
 				if (s.status !== "running" && info.output) msgs.appendChild(h("div", { class: "mc-out" }, h("div", { class: "meta" }, "输出"), mdBox(info.output)));
-				if (stick) msgs.scrollTop = msgs.scrollHeight;
+				msgs.scrollTop = stick ? msgs.scrollHeight : keep;
 			}
 			async function pull() {
 				if (fetching || detailId !== id) return;
@@ -837,6 +839,10 @@
 		const wrap = h("div", { class: "mc-wrap" }, h("div", { class: "mc-bar" }, status, reBtn, newBtn), log, keybar, h("div", { class: "mc-compose" }, input), probe);
 		el.appendChild(wrap);
 
+		// Pinned-to-bottom flag tracked from scroll events: a keyboard/viewport resize shrinks
+		// the log before any nearBottom() check could run, which would otherwise unpin it.
+		let stuck = true;
+		log.addEventListener("scroll", () => (stuck = nearBottom(log)));
 		let raf = 0;
 		const rows = []; // dom per line
 		const screen = new Screen(() => {
@@ -848,7 +854,7 @@
 		});
 
 		function paint() {
-			const stick = nearBottom(log);
+			const stick = stuck;
 			const d = screen.dirty;
 			screen.dirty = new Set();
 			if (d.has(-1)) {
@@ -975,8 +981,16 @@
 			if (id) await M.api("DELETE", "/terminal/" + id).catch(() => {});
 		}
 
-		reBtn.onclick = () => {
+		reBtn.onclick = async () => {
 			if (!termId || exited) return open_new();
+			// The server reaps a detached PTY after 60 s (e.g. iOS suspended the tab):
+			// re-attaching would 404 forever, so probe it and start a fresh terminal instead.
+			const { cols, rows: r } = size();
+			try {
+				await M.api("POST", "/terminal/" + termId + "/resize", { cols, rows: r });
+			} catch (e) {
+				if (/不存在|已关闭/.test(e.message)) return open_new();
+			}
 			retries = 0;
 			attach();
 		};
@@ -1003,7 +1017,10 @@
 		});
 		log.addEventListener("click", () => input.focus());
 
-		const onResize = () => doResize();
+		const onResize = () => {
+			if (stuck) log.scrollTop = log.scrollHeight;
+			doResize();
+		};
 		window.addEventListener("resize", onResize);
 		const off = sub({ viewport: onResize });
 		// The page may be hidden (another page stacked on top) then shown again: re-attach if dropped.

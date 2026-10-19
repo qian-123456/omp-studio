@@ -125,7 +125,7 @@ fn candidates(agent_dir: &Path, cwd: Option<&Path>) -> Vec<Candidate> {
         out.push(Candidate {
             path: omp_dir.join("mcp.json"),
             scope: "project",
-            primary: false,
+            primary: true,
         });
         out.push(Candidate {
             path: omp_dir.join(".mcp.json"),
@@ -199,7 +199,17 @@ fn write_json_map(path: &Path, map: &Map<String, Value>) -> Result<(), String> {
 
 /// Canonical comparison tolerant of missing files.
 fn normalize_path(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    if let Ok(p) = std::fs::canonicalize(path) {
+        return p;
+    }
+    if let Some(parent) = path.parent() {
+        if let Ok(parent_canon) = std::fs::canonicalize(parent) {
+            if let Some(file_name) = path.file_name() {
+                return parent_canon.join(file_name);
+            }
+        }
+    }
+    path.to_path_buf()
 }
 
 fn is_allowed_path(path: &Path, agent_dir: &Path, cwd: Option<&Path>) -> bool {
@@ -529,6 +539,52 @@ fn remove_impl(path: &Path, name: &str) -> Result<bool, String> {
     Ok(changed)
 }
 
+fn move_impl(
+    agent_dir: &Path,
+    cwd: Option<&Path>,
+    from_path: &Path,
+    to_path: &Path,
+    name: &str,
+) -> Result<(), String> {
+    if !is_allowed_path(from_path, agent_dir, cwd) {
+        return Err(format!("不允许读取该路径: {}", from_path.display()));
+    }
+    if !is_allowed_path(to_path, agent_dir, cwd) {
+        return Err(format!("不允许写入该路径: {}", to_path.display()));
+    }
+    if normalize_path(from_path) == normalize_path(to_path) {
+        return Err("源路径与目标路径相同".to_string());
+    }
+    validate_server_name(name)?;
+
+    let mut from_map = read_json_map(from_path)?
+        .ok_or_else(|| format!("源文件 {} 不存在", from_path.display()))?;
+    let entry = {
+        let servers = servers_map_mut(&mut from_map)?;
+        servers
+            .remove(name)
+            .ok_or_else(|| format!("源文件中未找到服务器 \"{name}\""))?
+    };
+
+    let mut to_map = read_json_map(to_path)?.unwrap_or_else(|| {
+        let mut m = Map::new();
+        m.insert(
+            "$schema".to_string(),
+            Value::String(MCP_SCHEMA_URL.to_string()),
+        );
+        m
+    });
+    servers_map_mut(&mut to_map)?.insert(name.to_string(), entry);
+
+    // Write target first, then clean source
+    write_json_map(to_path, &to_map)?;
+    remove_from_list(&mut from_map, "disabledServers", name);
+    remove_from_list(&mut from_map, "enabledServers", name);
+    write_json_map(from_path, &from_map)?;
+
+    Ok(())
+}
+
 /// Toggle the `enabled` flag on the file that defines `name`; enabling also
 /// clears it from the user file's `disabledServers`, disabling clears
 /// `enabledServers` (stale user overrides would otherwise re-flip the switch).
@@ -653,6 +709,26 @@ pub async fn mcp_server_set_enabled(
     set_enabled_impl(&agent_dir, cwd_path, &name, enabled)
 }
 
+/// `mcp_server_move` (§7 D): move a server definition from one mcp.json file to another
+/// atomically without losing masked secrets or raw fields.
+#[tauri::command]
+pub async fn mcp_server_move(
+    cwd: Option<String>,
+    from_path: String,
+    to_path: String,
+    name: String,
+) -> Result<(), String> {
+    let agent_dir = agent_dir();
+    let cwd_path = cwd.map(PathBuf::from);
+    let from = PathBuf::from(from_path);
+    let to = PathBuf::from(to_path);
+    tokio::task::spawn_blocking(move || {
+        move_impl(&agent_dir, cwd_path.as_deref(), &from, &to, &name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -677,6 +753,49 @@ mod tests {
             Value::Object(m) => m,
             _ => panic!("patch must be an object"),
         }
+    }
+
+    #[test]
+    fn move_server_transfers_entry_without_loss_and_cleans_source() {
+        let dir = temp_dir("move");
+        let agent = dir.join("agent");
+        let proj = dir.join("proj");
+        std::fs::create_dir_all(&agent).unwrap();
+        std::fs::create_dir_all(proj.join(".omp")).unwrap();
+
+        let src_file = agent.join("mcp.json");
+        let dst_file = proj.join(".omp").join("mcp.json");
+
+        upsert_impl(
+            &src_file,
+            "rea",
+            &patch_json(serde_json::json!({
+                "type": "stdio",
+                "command": "npx",
+                "args": ["-y", "rea-agents@6.5.0", "mcp"],
+                "env": {
+                    "SECRET_TOKEN": "my-secret"
+                }
+            })),
+        )
+        .unwrap();
+
+        move_impl(&agent, Some(&proj), &src_file, &dst_file, "rea").unwrap();
+
+        // Source no longer contains "rea"
+        let src_map = read_json_map(&src_file).unwrap().unwrap();
+        assert!(!src_map["mcpServers"]
+            .as_object()
+            .unwrap()
+            .contains_key("rea"));
+
+        // Destination contains "rea" with full secrets preserved
+        let dst_map = read_json_map(&dst_file).unwrap().unwrap();
+        let rea_entry = &dst_map["mcpServers"]["rea"];
+        assert_eq!(rea_entry["command"], "npx");
+        assert_eq!(rea_entry["env"]["SECRET_TOKEN"], "my-secret");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

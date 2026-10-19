@@ -105,19 +105,30 @@
 
 	// ---------- api ----------
 
+	let dead = false; // set once pairing is revoked: no more reconnects or polling
 	function fatal(msg) {
 		const f = $("fatal");
 		f.textContent = msg;
 		f.style.display = "block";
+		dead = true;
 		if (es) {
 			es.close();
 			es = null;
+		}
+		if (pollTimer) {
+			clearInterval(pollTimer);
+			pollTimer = null;
 		}
 	}
 	M.fatal = fatal;
 
 	async function request(method, path, init) {
-		const res = await fetch("/api" + path, { method, credentials: "same-origin", ...init });
+		let res;
+		try {
+			res = await fetch("/api" + path, { method, credentials: "same-origin", ...init });
+		} catch (e) {
+			throw new Error("网络不可用，请检查与电脑的连接");
+		}
 		if (res.status === 401) {
 			fatal("配对已失效或被撤销，请在电脑上重新生成二维码配对。");
 			throw new Error("unauthorized");
@@ -165,6 +176,10 @@
 		if (es) es.close();
 		es = new EventSource("/api/events");
 		es.onopen = () => {
+			if (pollTimer) {
+				clearInterval(pollTimer);
+				pollTimer = null;
+			}
 			setConn(true);
 			M.emit("connected", null);
 		};
@@ -190,13 +205,16 @@
 	function startPolling() {
 		if (pollTimer) return;
 		pollTimer = setInterval(() => {
+			if (!dead && es && es.readyState === 2) connect();
 			M.refreshSessions().catch(() => {});
 			M.emit("poll", null);
 		}, 15000);
 	}
 
 	document.addEventListener("visibilitychange", () => {
-		if (!document.hidden) {
+		if (!document.hidden && !dead) {
+			// iOS kills the EventSource while the page is backgrounded.
+			if (!es || es.readyState === 2) connect();
 			M.refreshSessions().catch(() => {});
 			M.emit("visible", null);
 		}
@@ -266,9 +284,11 @@
 			root.appendChild(el);
 		}
 		container().appendChild(root);
-		const entry = { id, params, def, root, el };
+		// Each mounted page gets its own `this` so defs may keep per-instance state
+		// (`this.cleanup`) even when the same page id is stacked twice.
+		const entry = { id, params, def, root, el, inst: Object.create(def) };
 		try {
-			def.mount(el, params || {});
+			def.mount.call(entry.inst, el, params || {});
 		} catch (e) {
 			console.error("mount", id, e);
 			el.appendChild(M.el("div", { class: "empty" }, "页面加载失败：" + e.message));
@@ -284,7 +304,7 @@
 	function pop() {
 		const top = stack.pop();
 		try {
-			top.def.unmount?.();
+			top.def.unmount?.call(top.inst);
 		} catch (e) {
 			console.error("unmount", top.id, e);
 		}
@@ -319,6 +339,13 @@
 	window.addEventListener("popstate", (e) => {
 		closeDrawers();
 		const d = e.state && typeof e.state.d === "number" ? e.state.d : 0;
+		// Bottom sheets live on <body>, outside the page stack: drop them on any history move.
+		for (const s of document.querySelectorAll(".lf-sheet-back")) s.remove();
+		// Forward swipe to an entry whose page was already popped: there is nothing to show, undo it.
+		if (d > stack.length - 1) {
+			history.go(stack.length - 1 - d);
+			return;
+		}
 		while (stack.length - 1 > d && stack.length > 1) pop();
 	});
 
@@ -401,9 +428,14 @@
 	// ---------- viewport (iOS keyboard) ----------
 
 	if (window.visualViewport) {
+		// iOS pans the layout viewport when the keyboard is open. Fighting that with
+		// scrollTo(0,0) on every visualViewport scroll made the page shake while
+		// scrolling; instead pin <body> (position: fixed) and ride along with the
+		// visual viewport's offset.
 		const fit = () => {
-			document.documentElement.style.setProperty("--vh", visualViewport.height + "px");
-			window.scrollTo(0, 0);
+			const vv = visualViewport;
+			document.documentElement.style.setProperty("--vh", vv.height + "px");
+			document.body.style.transform = vv.offsetTop > 0.5 ? "translateY(" + vv.offsetTop + "px)" : "";
 			M.emit("viewport", null);
 		};
 		visualViewport.addEventListener("resize", fit);

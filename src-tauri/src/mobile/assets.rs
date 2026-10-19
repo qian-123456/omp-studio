@@ -13,6 +13,11 @@ pub const ASSETS: &[(&str, &str, &str)] = &[
         include_str!("../../mobile/js/core.js"),
     ),
     (
+        "js/settings-local.js",
+        "text/javascript; charset=utf-8",
+        include_str!("../../mobile/js/settings-local.js"),
+    ),
+    (
         "js/chat.js",
         "text/javascript; charset=utf-8",
         include_str!("../../mobile/js/chat.js"),

@@ -72,9 +72,9 @@ function SummaryBadge({
 	}
 	if (s.mode === "done") {
 		return (
-			<span className={clsx(seg, TINT.done)}>
+			<span className={clsx(seg, TINT.done)} title={`${s.count} 个子代理已全部完成`}>
 				<Check className="h-3 w-3" strokeWidth={3} />
-				{s.label}
+				{s.count}
 			</span>
 		);
 	}
@@ -332,15 +332,13 @@ export function TopCapsule() {
 					onClick={() => setOpen(true)}
 					aria-expanded={false}
 					style={{ "--glass-radius": "999px" } as CSSProperties}
-					className="liquid-glass pointer-events-auto relative inline-flex h-8 items-center gap-1.5 py-0 pl-2.5 pr-1.5 text-[12px] text-[var(--text)]"
+					className="liquid-glass pointer-events-auto relative inline-flex h-8 items-center gap-1.5 py-0 pl-2.5 pr-2 text-[12px] text-[var(--text)]"
 					title="展开子代理（Subagents）状态面板"
 				>
 					<Bot className="h-[15px] w-[15px] shrink-0 text-[var(--accent)]" />
 					<span className="text-[12.5px] font-semibold">子代理</span>
 					<SummaryBadge counts={counts} />
-					<span className="grid h-[22px] w-[22px] place-items-center rounded-full text-[var(--text-60)]">
-						<ChevronDown className="h-3.5 w-3.5" />
-					</span>
+					<ChevronDown className="-ml-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-60)]" />
 				</button>
 			)}
 			{open && (
@@ -372,21 +370,21 @@ export function TopCapsule() {
 						</div>
 					)}
 
-					<ul className="sa-tree sa-tree-root">
-						<TreeRows nodes={capped.roots} ctx={ctx} />
-						{(capped.hidden > 0 || (showAll && tree.length > 0 && flattenTree(tree).length > MAX_VISIBLE_ROWS)) && (
-							<li>
-								<button
-									type="button"
-									onClick={() => setShowAll(!showAll)}
-									className="flex h-[26px] w-full items-center gap-1 rounded-[10px] px-2 text-left text-[12px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-								>
-									{showAll ? "收起多余的行" : moreLabel(capped.hidden, capped.hiddenAllDone)}
-									{showAll ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-								</button>
-							</li>
-						)}
-					</ul>
+					<div className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain" data-subagent-scroll>
+						<ul className="sa-tree sa-tree-root">
+							<TreeRows nodes={capped.roots} ctx={ctx} />
+						</ul>
+					</div>
+					{(capped.hidden > 0 || (showAll && flattenTree(tree).length > MAX_VISIBLE_ROWS)) && (
+						<button
+							type="button"
+							onClick={() => setShowAll(!showAll)}
+							className="mt-1 ml-[15px] flex h-[26px] w-[calc(100%-15px)] items-center gap-1 rounded-[10px] px-2 text-left text-[12px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+						>
+							{showAll ? "收起多余的行" : moreLabel(capped.hidden, capped.hiddenAllDone)}
+							{showAll ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+						</button>
+					)}
 					</div>
 				</div>
 			)}

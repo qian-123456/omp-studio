@@ -105,6 +105,9 @@
 					M.toast("画布是空的");
 					return;
 				}
+				// toBlob is async: a second tap before it lands would attach the sketch twice.
+				if (b.disabled) return;
+				b.disabled = true;
 				cv.toBlob((blob) => {
 					close();
 					if (blob) onDone(blob);

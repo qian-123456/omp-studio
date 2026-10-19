@@ -11,8 +11,8 @@ mod model_replace;
 mod notify;
 mod paths;
 mod privacy;
-mod prompts;
 mod prompt_composition;
+mod prompts;
 mod providers;
 mod rpc;
 mod schedules;
@@ -365,6 +365,7 @@ pub fn run() {
             settings_mcp::mcp_server_upsert,
             settings_mcp::mcp_server_remove,
             settings_mcp::mcp_server_set_enabled,
+            settings_mcp::mcp_server_move,
             settings_plugins::plugins_list,
             settings_plugins::plugin_set_enabled,
             settings_plugins::extension_delete,

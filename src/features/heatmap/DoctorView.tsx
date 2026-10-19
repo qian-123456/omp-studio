@@ -29,9 +29,9 @@ function formatTok(n: number): string {
 }
 
 function autoModeLabel(mode: string | undefined, idle: number | undefined, time: string | undefined): string {
-	if (mode === "idle") return `闲置 ${idle ?? 30} 分钟后自动会诊`;
-	if (mode === "scheduled") return `每日 ${time ?? "23:00"} 自动会诊`;
-	return "手动（仅在你点击时会诊）";
+	if (mode === "idle") return `闲置 ${idle ?? 30} 分钟后自动体检`;
+	if (mode === "scheduled") return `每日 ${time ?? "23:00"} 自动体检`;
+	return "手动（仅在你点击时体检）";
 }
 
 export function DoctorView({
@@ -82,7 +82,7 @@ export function DoctorView({
 		<div className="min-w-0 space-y-3 break-words [overflow-wrap:anywhere]">
 			{/* Lens selector */}
 			<div className={CARD}>
-				<div className="mb-2 text-[11.5px] font-medium text-neutral-200">选择会诊方向</div>
+				<div className="mb-2 text-[11.5px] font-medium text-neutral-200">选择体检方向</div>
 				<div className="grid grid-cols-2 gap-1.5">
 					{LENSES.map((l) => (
 						<button
@@ -133,10 +133,10 @@ export function DoctorView({
 					)}
 				>
 					{running ? <Loader2 size={12} className="animate-spin" /> : null}
-					{running ? "会诊中…" : result ? "🩺 重新会诊" : "🩺 开始会诊"}
+					{running ? "体检中…" : result ? "🩺 重新体检" : "🩺 开始体检"}
 				</button>
 				<div className="mt-1 text-center text-[10px] text-neutral-500">
-					使用模型 <span className="font-mono text-neutral-400">{doctorModel}</span>，每次会诊会消耗少量 token
+					使用模型 <span className="font-mono text-neutral-400">{doctorModel}</span>，每次体检会消耗少量 token
 				</div>
 			</div>
 
@@ -144,7 +144,7 @@ export function DoctorView({
 			{state?.status === "error" && (
 				<div className="rounded-xl border border-red-500/30 bg-red-500/5 p-3">
 					<div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-medium text-red-400">
-						<AlertCircle size={12} /> 会诊失败
+						<AlertCircle size={12} /> 体检失败
 					</div>
 					<pre className="whitespace-pre-wrap break-words font-mono text-[10.5px] text-red-300/90">
 						{state.error ?? "未知错误"}
@@ -250,7 +250,7 @@ export function DoctorView({
 									}
 								}}
 								disabled={running}
-								placeholder={running ? "会诊中…" : "继续追问，回车发送"}
+								placeholder={running ? "体检中…" : "继续追问，回车发送"}
 								className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-1 text-[11px] text-neutral-200 outline-none focus:border-[var(--accent)] disabled:opacity-50"
 							/>
 							<button
@@ -270,14 +270,14 @@ export function DoctorView({
 			{/* Settings hint */}
 			<div className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--border)] px-3 py-2 text-[10.5px] text-neutral-500">
 				<span>
-					会诊模式：{autoModeLabel(settings?.doctorAutoMode, settings?.doctorIdleMinutes, settings?.doctorScheduleTime)}
+					体检模式：{autoModeLabel(settings?.doctorAutoMode, settings?.doctorIdleMinutes, settings?.doctorScheduleTime)}
 					· 模型 <span className="font-mono">{doctorModel}</span>
 				</span>
 				<button
 					type="button"
 					onClick={() => useUi.getState().openSettings("doctor")}
 					className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-neutral-400 hover:bg-[var(--bg-hover)]"
-					title="设置 → AI 会诊"
+					title="设置 → 会话体检"
 				>
 					<SettingsIcon size={11} /> 设置
 				</button>

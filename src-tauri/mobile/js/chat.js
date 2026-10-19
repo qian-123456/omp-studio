@@ -18,6 +18,8 @@
 	let fetching = false;
 	let fetchAgain = false;
 	let fetchTimer = null;
+	let nearBottom = true; // last known "following the tail" state, immune to keyboard resizes
+	let lastCH = 0; // scroller clientHeight at the last scroll sample
 
 	// ---------- markdown (small, escape-first) ----------
 
@@ -89,7 +91,9 @@
 				const tag = ordered ? "ol" : "ul";
 				out.push("<" + tag + ">" + buf.map((b) => "<li>" + inline(b) + "</li>").join("") + "</" + tag + ">");
 			} else {
-				const buf = [];
+				// First line always consumed: an indented "  # x" matches the stop regex but no block
+				// branch, which would otherwise loop forever and freeze the page.
+				const buf = [lines[i++]];
 				while (
 					i < lines.length &&
 					!/^\s*$/.test(lines[i]) &&
@@ -329,6 +333,7 @@
 		const last = t.asst.length ? t.asst[t.asst.length - 1] : null;
 		for (const it of t.asst) {
 			const isAnswer = it === last && it.text && it.text.trim();
+			if (isAnswer) t.answer = it;
 			if (it.thinking) t.steps.push({ kind: "thinking", key: "th-" + it.id, text: it.thinking });
 			if (it.text && it.text.trim() && !isAnswer) t.steps.push({ kind: "text", key: "tx-" + it.id, text: it.text });
 			for (const c of it.toolCalls || []) {
@@ -423,7 +428,7 @@
 	}
 
 	function foldOpen(t) {
-		return foldOverride.has(t.id) ? foldOverride.get(t.id) : t.running;
+		return foldOverride.has(t.id) ? foldOverride.get(t.id) : t.running || M.prefs.get("foldOpen");
 	}
 
 	function foldLabel(t) {
@@ -456,6 +461,8 @@
 		if (a) h += '<div class="msg-asst">' + a + "</div>";
 		return h;
 	}
+
+	let lastHtml = "";
 
 	function renderMessages() {
 		const box = $("msgs");
@@ -521,9 +528,16 @@
 		if (parts.length === 0) parts.push('<div class="empty">还没有消息，发一条开始吧</div>');
 
 		const sc = $("chat-scroll");
+		const html = parts.join("");
+		// Identical markup (SSE ticks, polls): leave the DOM alone so a finger/momentum
+		// scroll is not interrupted by a pointless innerHTML swap.
+		if (html === lastHtml) return;
+		lastHtml = html;
 		const stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
-		box.innerHTML = parts.join("");
-		if (stick) sc.scrollTop = sc.scrollHeight;
+		const prevTop = sc.scrollTop;
+		box.innerHTML = html;
+		sc.scrollTop = stick ? sc.scrollHeight : prevTop;
+		nearBottom = stick;
 		$("jump").classList.toggle("hidden", stick);
 		// Re-renders wipe the card; keep it open for the same request while its data survives.
 		if (statCardId && statByItem.has(statCardId) && !$("st-ov").classList.contains("hidden")) openStatCard(statCardId);
@@ -586,7 +600,9 @@
 			const newUsers = (page.items || []).filter((x) => x.kind === "user" && x.text).map((x) => x.text.trim());
 			if (newUsers.length)
 				optimistic = optimistic.filter((o) => {
-					const k = newUsers.indexOf(o.text.trim());
+					// The server may prepend the plan-mode prefix, so match on the tail too.
+					const want = o.text.trim();
+					const k = newUsers.findIndex((u) => u === want || u.endsWith(want));
 					if (k >= 0) {
 						newUsers.splice(k, 1);
 						return false;
@@ -763,7 +779,7 @@
 				<div id="ch-slash" class="ch-slash hidden"></div>
 				<div class="box" id="ch-box">
 					<button id="plus" class="ch-plus" aria-label="更多">+</button>
-					<textarea id="input" rows="1" placeholder="发消息…" enterkeyhint="send"></textarea>
+					<textarea id="input" rows="1" placeholder="发消息…" enterkeyhint="enter"></textarea>
 					<button id="send" class="send" disabled aria-label="发送">↑</button>
 				</div>
 			</div>
@@ -878,7 +894,7 @@
 			M.toast("停止失败：" + e.message);
 		}
 		setTimeout(loadState, 600);
-		updateSendBtn();
+		if (root) updateSendBtn();
 	}
 
 	function buildPrompt(text) {
@@ -934,7 +950,11 @@
 		const ta = $("input");
 		const text = ta.value.trim();
 		if (!cur) return;
-		if (working && !text && atts.length === 0) return stop();
+		if (working && !text && atts.length === 0) {
+			// A double-tap on ↑ must not land on the ■ it just turned into.
+			if (Date.now() - lastSend < 1200) return;
+			return stop();
+		}
 		if (!text && atts.length === 0) return;
 		if (atts.some((a) => a.status === "up")) return M.toast("附件上传中，请稍候");
 		if (atts.some((a) => a.status === "err")) return M.toast("有附件上传失败，请移除后再发送");
@@ -957,20 +977,24 @@
 		renderMessages();
 		updateSendBtn();
 		$("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
+		nearBottom = true;
 		try {
 			await M.api("POST", "/sessions/" + id + "/prompt-ex", { text: prompt, images: [] });
 			for (const a of savedAtts) if (a.url) URL.revokeObjectURL(a.url);
 			scheduleFetch(300);
 		} catch (e) {
-			optimistic = optimistic.filter((o) => o.text !== prompt);
+			const oi = optimistic.findIndex((o) => o.text === prompt);
+			if (oi >= 0) optimistic.splice(oi, 1);
 			working = false;
 			if (id === cur) {
-				ta.value = text;
+				ta.value = ta.value ? text + "\n" + ta.value : text;
 				atts = savedAtts;
 				renderAtts();
 				autosize();
 				renderChatHeader();
 				renderMessages();
+			} else {
+				for (const a of savedAtts) if (a.url) URL.revokeObjectURL(a.url);
 			}
 			M.toast("发送失败：" + e.message);
 		}
@@ -1373,10 +1397,20 @@
 
 	// ---------- lifecycle + bus wiring ----------
 
+	/** SSE frames can be lost (iOS suspends the tab, server lag): a half-built stream message would
+	    otherwise linger next to the persisted answer, so rebuild from the transcript + composer state. */
+	function resyncLive() {
+		if (!cur) return;
+		streamMsg = null;
+		scheduleFetch(0);
+		loadState();
+		renderMessages();
+	}
+
 	function onSessionsChanged() {
 		if (!cur) return;
 		const s = sessionById(cur);
-		if (s && s.status !== "working" && !streamMsg) working = false;
+		if (s && s.status !== "working" && !streamMsg && Date.now() - lastSend > 4000) working = false;
 		else if (s && s.status === "working") working = true;
 		renderChatHeader();
 		loadPendings();
@@ -1391,20 +1425,26 @@
 				loadPendings();
 			}
 		},
-		"sse:resync": () => cur && scheduleFetch(0),
-		connected: () => cur && scheduleFetch(0),
+		"sse:resync": () => resyncLive(),
+		connected: () => resyncLive(),
 		poll: () => cur && fetchTranscript(),
-		visible: () => cur && scheduleFetch(0),
+		visible: () => resyncLive(),
 		viewport: () => {
 			if (!cur) return;
+			// The keyboard shrinks the scroller, so distance-to-bottom can no longer
+			// tell whether the user was following the tail: use the last sample.
 			const sc = $("chat-scroll");
-			if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 200) sc.scrollTop = sc.scrollHeight;
+			lastCH = sc.clientHeight;
+			if (nearBottom) sc.scrollTop = sc.scrollHeight;
 		},
 	};
 
 	function mount(el, params) {
 		root = el;
 		el.innerHTML = TEMPLATE;
+		lastHtml = "";
+		nearBottom = true;
+		lastCH = 0;
 		cur = params.id;
 		items = [];
 		offset = 0;
@@ -1497,7 +1537,7 @@
 		);
 		$("input").addEventListener("keydown", (e) => {
 			// Hardware keyboards: Enter sends, Shift+Enter newline. Soft keyboards keep newline behaviour.
-			if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(hover: hover)").matches) {
+			if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229 && matchMedia("(hover: hover)").matches) {
 				e.preventDefault();
 				send();
 			}
@@ -1505,7 +1545,11 @@
 		$("resume-btn").onclick = resume;
 		$("chat-scroll").addEventListener("scroll", () => {
 			const sc = $("chat-scroll");
-			$("jump").classList.toggle("hidden", sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120);
+			const dist = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+			// Ignore scrolls caused by a resize (keyboard): they are not user intent.
+			if (sc.clientHeight === lastCH) nearBottom = dist < 120;
+			lastCH = sc.clientHeight;
+			$("jump").classList.toggle("hidden", dist < 120);
 		});
 		$("jump").onclick = () => {
 			const sc = $("chat-scroll");
@@ -1517,7 +1561,10 @@
 		renderChatHeader();
 		renderMessages();
 		fetchTranscript().then(() => {
-			if (root === el) $("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
+			if (root === el) {
+				$("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
+				nearBottom = true;
+			}
 		});
 		loadPendings();
 		loadState();

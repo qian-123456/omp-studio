@@ -744,6 +744,20 @@ export const mcpServerSetEnabled = (
 	cwd?: string | null,
 ) => invoke<void>("mcp_server_set_enabled", { cwd: cwd ?? null, name, enabled });
 
+/** Atomically move an MCP server definition from one mcp.json file to another. */
+export const mcpServerMove = (
+	fromPath: string,
+	toPath: string,
+	name: string,
+	cwd?: string | null,
+) =>
+	invoke<void>("mcp_server_move", {
+		cwd: cwd ?? null,
+		fromPath,
+		toPath,
+		name,
+	});
+
 /** Installed npm/link/marketplace plugins across user + project roots. */
 export const pluginsList = (cwd?: string | null) =>
 	invoke<PluginCatalog>("plugins_list", { cwd: cwd ?? null });

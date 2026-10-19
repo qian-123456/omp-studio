@@ -306,7 +306,7 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 	if ("doctorAutoMode" in raw) {
 		const val = raw.doctorAutoMode;
 		if (val !== "manual" && val !== "idle" && val !== "scheduled") {
-			return { ok: false, error: "自动会诊模式必须为 manual、idle 或 scheduled" };
+			return { ok: false, error: "自动体检模式必须为 manual、idle 或 scheduled" };
 		}
 		out.doctorAutoMode = val;
 	}
@@ -314,7 +314,7 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 	if ("doctorIdleMinutes" in raw) {
 		const val = raw.doctorIdleMinutes;
 		if (typeof val !== "number" || !Number.isInteger(val) || val < 1 || val > 10080) {
-			return { ok: false, error: "会诊闲置分钟必须是 1–10080 的整数" };
+			return { ok: false, error: "体检闲置分钟必须是 1–10080 的整数" };
 		}
 		out.doctorIdleMinutes = val;
 	}
@@ -322,7 +322,7 @@ export function validateSettingsShape(input: unknown): ValidationResult {
 	if ("doctorScheduleTime" in raw) {
 		const val = raw.doctorScheduleTime;
 		if (typeof val !== "string" || !isValidHhmm(val)) {
-			return { ok: false, error: "每日会诊时间需要 HH:MM 格式" };
+			return { ok: false, error: "每日体检时间需要 HH:MM 格式" };
 		}
 		out.doctorScheduleTime = val;
 	}

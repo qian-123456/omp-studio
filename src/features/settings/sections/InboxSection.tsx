@@ -80,15 +80,15 @@ export function DoctorSection() {
 	const doctorMode = settings?.doctorAutoMode ?? "manual";
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="AI 会诊" description="在 Token 用量面板里诊断会话：找出绕路、返工和上下文浪费，并给出可编辑的提示词草稿" />
+			<SectionHeader title="会话体检" description="在 Token 用量面板里体检会话：找出绕路、返工和上下文浪费，并给出可编辑的提示词草稿" />
 			<SettingsCard
-				title="AI 会诊"
-				footer="自动会诊（闲置后 / 每日定时）会消耗所选模型的 Token；默认手动按需，不点不花钱。会诊只给出诊断和提示词草稿，不会修改任何文件。"
+				title="会话体检"
+				footer="自动体检（闲置后 / 每日定时）会消耗所选模型的 Token；默认手动按需，不点不花钱。体检只给出诊断和提示词草稿，不会修改任何文件。"
 			>
 				<SettingRow
 					fieldId="doctorModel"
-					label="诊断模型"
-					description="Token 用量面板「AI会诊」使用的模型；建议选择速度快、价格低的模型"
+					label="使用模型"
+					description="Token 用量面板「会话体检」使用的模型；建议选择速度快、价格低的模型"
 					status={doctorSave.status}
 					statusError={doctorSave.error}
 					control={
@@ -111,8 +111,8 @@ export function DoctorSection() {
 				/>
 				<SettingRow
 					fieldId="doctorAutoMode"
-					label="自动会诊"
-					description="手动按需：只在你点击时诊断；闲置后：会话闲置一段时间后自动诊断；每日定时：每天固定时间诊断"
+					label="自动体检"
+					description="手动按需：只在你点击时体检；闲置后：会话闲置一段时间后自动体检；每日定时：每天固定时间体检"
 					control={
 						<Segmented
 							value={doctorMode}
@@ -129,7 +129,7 @@ export function DoctorSection() {
 					<SettingRow
 						fieldId="doctorIdleMinutes"
 						label="闲置时长（分钟）"
-						description="会话停止活动超过这么久后自动会诊一次"
+						description="会话停止活动超过这么久后自动体检一次"
 						control={
 							<Segmented
 								value={String(settings?.doctorIdleMinutes ?? 30)}
@@ -147,11 +147,11 @@ export function DoctorSection() {
 					<SettingRow
 						fieldId="doctorScheduleTime"
 						label="定时时间"
-						description="每天到这个时间自动会诊（24 小时制 HH:MM）"
+						description="每天到这个时间自动体检（24 小时制 HH:MM）"
 						control={
 							<CommitInput
 								className="w-24"
-								aria-label="每日会诊时间"
+								aria-label="每日体检时间"
 								placeholder="23:00"
 								value={settings?.doctorScheduleTime ?? "23:00"}
 								validate={(v) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : "请输入 HH:MM，例如 23:00")}

@@ -303,16 +303,16 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "doctorModel",
 		sectionId: "doctor",
-		label: "诊断模型（AI 会诊）",
-		description: "Token 用量面板「AI会诊」调用 omp -p 时使用的模型",
-		keywords: ["doctor", "diagnose", "会诊", "诊断", "诊断模型", "token", "用量"],
+		label: "使用模型（会话体检）",
+		description: "Token 用量面板「会话体检」调用 omp -p 时使用的模型",
+		keywords: ["doctor", "diagnose", "会话体检", "使用模型", "体检", "会诊", "诊断", "token", "用量"],
 	},
 	{
 		id: "doctorAutoMode",
 		sectionId: "doctor",
-		label: "自动会诊",
+		label: "自动体检",
 		description: "手动按需 / 会话闲置后 / 每日定时；自动模式会消耗所选模型的 Token",
-		keywords: ["doctor", "auto", "自动会诊", "闲置", "定时", "每日", "会诊"],
+		keywords: ["doctor", "auto", "自动体检", "会话体检", "体检", "闲置", "定时", "每日", "会诊"],
 	},
 
 	// 手机访问

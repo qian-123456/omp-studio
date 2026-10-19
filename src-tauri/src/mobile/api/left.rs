@@ -58,16 +58,25 @@
 //!   writes `disabledExtensions` `skill:<name>` like desktop; effective for new sessions).
 //! - `POST /left/extensions/toggle` `{path, enabled, cwd?}` → `{ok: true}` (404 unknown extension).
 //!
-//! Settings (read-only)
+//! Settings (editable subset of the global OMP config + read-only status)
 //! - `GET /left/settings` → `{appVersion, mobile: {running, port, lanUrl, tunnelUrl,
 //!   ipv6Running, ipv6Url}, defaultModel: string|null, defaultModelSource:
-//!   "modelRoles.default"|"newSessionModel"|null}`.
+//!   "modelRoles.default"|"newSessionModel"|null, omp: {<key>: value|null}, ompError: string|null}`.
+//!   `omp` holds current values of the allowlisted keys (`MOBILE_SETTINGS`: defaultThinkingLevel,
+//!   hideThinkingBlock, steeringMode, followUpMode, interruptMode, ask.enabled, ask.timeout,
+//!   ask.notify, bash.autoBackground.enabled, tools.maxTimeout, compaction.enabled,
+//!   compaction.autoContinue, retry.enabled, retry.maxRetries, retry.maxDelayMs,
+//!   retry.waitForUsageReset); `ompError` is set (and `omp` empty) when omp config is unreadable.
+//! - `POST /left/settings/set` `{key, value}` → `{ok, key, value}` (value = fresh value). Strict
+//!   allowlist + type/enum/range validation; anything else → 400. Writes via `omp config set`
+//!   (global config), behind the normal mobile auth. Mobile service enable/disable stays
+//!   desktop-only (turning it off from the phone would cut the session).
 //!
 //! ## Intentionally not mirrored from desktop
 //! Session delete/fork/takeover, workspace add/remove/reorder, chat session-group CRUD (groups
 //! are returned read-only), drag ordering/frozen order, archive "clean worktree" flow and the busy-
 //! archive confirmation (UI must confirm), skill trash/read/usage stats and per-source
-//! toggles, schedule run-detail/transcripts, settings editing.
+//! toggles, schedule run-detail/transcripts.
 
 use std::collections::HashMap;
 use std::path::{Path as FsPath, PathBuf};
@@ -121,6 +130,16 @@ pub fn routes<B: Backend>() -> Router<Arc<Ctx<B>>> {
         .route("/left/skills/toggle", post(skill_toggle::<B>))
         .route("/left/extensions/toggle", post(extension_toggle::<B>))
         .route("/left/settings", get(settings_summary::<B>))
+        .route("/left/settings/set", post(setting_set::<B>))
+        .route("/left/roles", get(roles_get::<B>))
+        .route("/left/roles/set", post(roles_set::<B>))
+        .route("/left/providers", get(providers_get::<B>))
+        .route("/left/providers/save", post(providers_save::<B>))
+        .route("/left/providers/test", post(providers_test::<B>))
+        .route("/left/fallbacks", get(fallbacks_get::<B>))
+        .route("/left/fallbacks/set", post(fallbacks_set::<B>))
+        .route("/left/context-windows", get(context_windows_get::<B>))
+        .route("/left/context-windows/set", post(context_windows_set::<B>))
         .route("/left/workspaces", post(add_workspace::<B>))
 }
 
@@ -1595,6 +1614,10 @@ async fn settings_summary<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResu
             None => (None, None),
         },
     };
+    let (omp, omp_error) = match read_mobile_settings(st).await {
+        Ok(m) => (Value::Object(m), None),
+        Err(e) => (json!({}), Some(e)),
+    };
     Ok(Json(json!({
         "appVersion": st.app.package_info().version.to_string(),
         "mobile": {
@@ -1607,13 +1630,325 @@ async fn settings_summary<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResu
         },
         "defaultModel": model,
         "defaultModelSource": source,
+        "omp": omp,
+        "ompError": omp_error,
     })))
+}
+
+/// Value shape of one phone-editable OMP key.
+enum SettingKind {
+    Bool,
+    Enum(&'static [&'static str]),
+    /// Whole number within `min..=max`.
+    Int(i64, i64),
+}
+
+/// Strict allowlist of OMP config keys writable from the phone. Every key was verified
+/// against `omp config list` (type + enum values). Anything else is rejected with 400.
+const MOBILE_SETTINGS: &[(&str, SettingKind)] = &[
+    ("tools.approvalMode", SettingKind::Enum(&["always-ask", "write", "yolo"])),
+    ("hideThinkingBlock", SettingKind::Bool),
+    ("steeringMode", SettingKind::Enum(&["all", "one-at-a-time"])),
+    ("followUpMode", SettingKind::Enum(&["all", "one-at-a-time"])),
+    ("interruptMode", SettingKind::Enum(&["immediate", "wait"])),
+    ("ask.enabled", SettingKind::Bool),
+    ("ask.timeout", SettingKind::Int(0, 3600)),
+    ("ask.notify", SettingKind::Enum(&["on", "off"])),
+    ("bash.autoBackground.enabled", SettingKind::Bool),
+    ("tools.maxTimeout", SettingKind::Int(0, 86_400)),
+    ("compaction.enabled", SettingKind::Bool),
+    ("compaction.autoContinue", SettingKind::Bool),
+    ("retry.enabled", SettingKind::Bool),
+    ("retry.maxRetries", SettingKind::Int(0, 100)),
+    ("retry.maxDelayMs", SettingKind::Int(0, 3_600_000)),
+    ("retry.waitForUsageReset", SettingKind::Bool),
+];
+
+/// Validates `value` against the allowlist and returns the string handed to
+/// `omp config set`. Unknown keys and mistyped / out-of-range values are errors.
+fn validate_mobile_setting(key: &str, value: &Value) -> Result<String, String> {
+    let (_, kind) = MOBILE_SETTINGS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .ok_or_else(|| format!("不允许在手机端修改该设置：{key}"))?;
+    match kind {
+        SettingKind::Bool => value
+            .as_bool()
+            .map(|b| b.to_string())
+            .ok_or_else(|| format!("{key} 需要开关值（true/false）")),
+        SettingKind::Enum(options) => match value.as_str() {
+            Some(s) if options.contains(&s) => Ok(s.to_string()),
+            _ => Err(format!("{key} 的取值必须是：{}", options.join(" / "))),
+        },
+        SettingKind::Int(min, max) => match value.as_i64() {
+            Some(n) if (*min..=*max).contains(&n) => Ok(n.to_string()),
+            _ => Err(format!("{key} 需要 {min} 到 {max} 之间的整数")),
+        },
+    }
+}
+
+/// Current values of the allowlisted keys (`None` for unset keys).
+async fn read_mobile_settings(st: &AppState) -> Result<serde_json::Map<String, Value>, String> {
+    let list = crate::settings::omp_config_list(st.app.state::<AppState>()).await?;
+    if !list.found {
+        return Err(list.error.unwrap_or_else(|| "无法读取 OMP 配置".into()));
+    }
+    let mut out = serde_json::Map::new();
+    for (key, _) in MOBILE_SETTINGS {
+        if let Some(e) = list.entries.iter().find(|e| e.key == *key) {
+            out.insert((*key).to_string(), e.value.clone().unwrap_or(Value::Null));
+        }
+    }
+    Ok(out)
+}
+
+#[derive(Deserialize)]
+struct SettingSetBody {
+    key: String,
+    value: Value,
+}
+
+async fn setting_set<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Json(body): Json<SettingSetBody>,
+) -> ApiResult<Value> {
+    let st = app(&ctx)?;
+    let value = validate_mobile_setting(&body.key, &body.value).map_err(bad_request)?;
+    crate::settings::omp_config_set(st.app.state::<AppState>(), body.key.clone(), value)
+        .await
+        .map_err(bad_gateway)?;
+    let fresh = read_mobile_settings(st)
+        .await
+        .ok()
+        .and_then(|m| m.get(&body.key).cloned())
+        .unwrap_or(body.value);
+    Ok(Json(json!({ "ok": true, "key": body.key, "value": fresh })))
+}
+
+// ---------- mobile settings: roles / providers / fallbacks / context-windows ----------
+
+async fn roles_get<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Query(q): Query<CwdQuery>,
+) -> ApiResult<Value> {
+    let st = app(&ctx)?;
+    let snapshot = crate::settings_model_roles::omp_model_roles_read(q.cwd.clone(), None)
+        .await
+        .map_err(bad_gateway)?;
+    let models = crate::catalog::commands::list_models(st.app.state::<AppState>())
+        .await
+        .unwrap_or_default();
+    Ok(Json(json!({
+        "snapshot": snapshot,
+        "models": models,
+    })))
+}
+
+#[derive(Deserialize)]
+struct RoleSetBody {
+    cwd: Option<String>,
+    scope: String,
+    table: String,
+    name: String,
+    value: Option<String>,
+}
+
+async fn roles_set<B: Backend>(
+    State(_ctx): State<Arc<Ctx<B>>>,
+    Json(body): Json<RoleSetBody>,
+) -> ApiResult<Value> {
+    let next = crate::settings_model_roles::omp_model_roles_set(
+        body.cwd,
+        body.scope,
+        body.table,
+        body.name,
+        body.value,
+        None,
+    )
+    .await
+    .map_err(bad_request)?;
+    Ok(Json(json!({ "ok": true, "snapshot": next })))
+}
+
+async fn providers_get<B: Backend>(
+    State(_ctx): State<Arc<Ctx<B>>>,
+) -> ApiResult<Value> {
+    let list = crate::providers::commands::omp_providers_list()
+        .await
+        .map_err(bad_gateway)?;
+    Ok(Json(json!({ "providers": list })))
+}
+
+#[derive(Deserialize)]
+struct ProviderSaveBody {
+    config: crate::contracts::ProviderConfig,
+    #[serde(default)]
+    api_key: Option<String>,
+}
+
+async fn providers_save<B: Backend>(
+    State(_ctx): State<Arc<Ctx<B>>>,
+    Json(body): Json<ProviderSaveBody>,
+) -> ApiResult<Value> {
+    let saved = crate::providers::commands::provider_save(body.config, body.api_key)
+        .await
+        .map_err(bad_request)?;
+    Ok(Json(json!({ "ok": true, "config": saved })))
+}
+
+#[derive(Deserialize)]
+struct ProviderTestBody {
+    id: String,
+    #[serde(default)]
+    model_id: Option<String>,
+}
+
+async fn providers_test<B: Backend>(
+    State(_ctx): State<Arc<Ctx<B>>>,
+    Json(body): Json<ProviderTestBody>,
+) -> ApiResult<Value> {
+    let res = if let Some(m) = body.model_id {
+        crate::providers::commands::provider_test_model(body.id, m).await
+    } else {
+        crate::providers::commands::provider_test(body.id).await
+    }
+    .map_err(bad_request)?;
+    Ok(Json(json!({ "ok": true, "result": res })))
+}
+
+async fn fallbacks_get<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Query(q): Query<CwdQuery>,
+) -> ApiResult<Value> {
+    let st = app(&ctx)?;
+    let list = crate::settings::omp_config_list(st.app.state::<AppState>())
+        .await
+        .map_err(bad_gateway)?;
+    let global_chains = list
+        .entries
+        .iter()
+        .find(|e| e.key == "retry.fallbackChains")
+        .and_then(|e| e.value.clone())
+        .unwrap_or_else(|| json!({}));
+
+    let project_chains = if let Some(cwd) = q.cwd {
+        if let Ok(p_cfg) = crate::settings::omp_project_config_read(cwd).await {
+            if p_cfg.exists {
+                serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&p_cfg.content)
+                    .ok()
+                    .and_then(|v| v.get("retry").and_then(|r| r.get("fallbackChains")).cloned())
+                    .and_then(|c| serde_json::to_value(c).ok())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    Ok(Json(json!({
+        "global": global_chains,
+        "project": project_chains,
+    })))
+}
+
+#[derive(Deserialize)]
+struct FallbackSetBody {
+    chains: Value,
+}
+
+async fn fallbacks_set<B: Backend>(
+    State(ctx): State<Arc<Ctx<B>>>,
+    Json(body): Json<FallbackSetBody>,
+) -> ApiResult<Value> {
+    let st = app(&ctx)?;
+    let str_val = serde_json::to_string(&body.chains).map_err(|e| bad_request(e.to_string()))?;
+    crate::settings::omp_config_set(
+        st.app.state::<AppState>(),
+        "retry.fallbackChains".to_string(),
+        str_val,
+    )
+    .await
+    .map_err(bad_gateway)?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn context_windows_get<B: Backend>(
+    State(_ctx): State<Arc<Ctx<B>>>,
+) -> ApiResult<Value> {
+    let overrides = crate::providers::models_yml_write::omp_models_context_window_overrides()
+        .await
+        .map_err(bad_gateway)?;
+    Ok(Json(json!({ "overrides": overrides })))
+}
+
+#[derive(Deserialize)]
+struct ContextWindowsSetBody {
+    entries: Vec<crate::contracts::ModelContextWindowEdit>,
+}
+
+async fn context_windows_set<B: Backend>(
+    State(_ctx): State<Arc<Ctx<B>>>,
+    Json(body): Json<ContextWindowsSetBody>,
+) -> ApiResult<Value> {
+    crate::providers::models_yml_write::omp_models_set_context_windows(body.entries)
+        .await
+        .map_err(bad_request)?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::contracts::GitBadge;
+
+    #[test]
+    fn mobile_setting_allowlist_rejects_unknown_keys() {
+        for key in [
+            "modelRoles",
+            "extensions",
+            "shellPath",
+            "ask.enabled ",
+            "",
+            "-x",
+        ] {
+            assert!(validate_mobile_setting(key, &json!(true)).is_err(), "{key}");
+        }
+    }
+
+    #[test]
+    fn mobile_setting_validates_types_and_ranges() {
+        assert_eq!(
+            validate_mobile_setting("hideThinkingBlock", &json!(true)).unwrap(),
+            "true"
+        );
+        assert!(validate_mobile_setting("hideThinkingBlock", &json!("true")).is_err());
+        assert_eq!(
+            validate_mobile_setting("steeringMode", &json!("all")).unwrap(),
+            "all"
+        );
+        assert!(validate_mobile_setting("steeringMode", &json!("both")).is_err());
+        assert!(validate_mobile_setting("steeringMode", &json!(1)).is_err());
+        assert_eq!(
+            validate_mobile_setting("retry.maxRetries", &json!(0)).unwrap(),
+            "0"
+        );
+        assert!(validate_mobile_setting("retry.maxRetries", &json!(-1)).is_err());
+        assert!(validate_mobile_setting("retry.maxRetries", &json!(101)).is_err());
+        assert!(validate_mobile_setting("retry.maxRetries", &json!(1.5)).is_err());
+        assert!(validate_mobile_setting("ask.timeout", &json!("5")).is_err());
+    }
+
+    #[test]
+    fn mobile_setting_allowlist_has_no_duplicates() {
+        let mut keys: Vec<_> = MOBILE_SETTINGS.iter().map(|(k, _)| *k).collect();
+        keys.sort_unstable();
+        let n = keys.len();
+        keys.dedup();
+        assert_eq!(n, keys.len());
+    }
 
     fn meta(id: &str, cwd: &str, ts: &str) -> SessionMeta {
         SessionMeta {

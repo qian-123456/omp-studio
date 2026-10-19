@@ -537,8 +537,8 @@ export function ModelSelect({
 				title={displayLabel || "选择模型"}
 				className={buttonClass}
 			>
-				{icon && <ChevronDown size={11} className="shrink-0 text-neutral-500" />}
 				<span className="truncate">{displayLabel}</span>
+				{icon && <ChevronDown size={11} className="shrink-0 text-neutral-500" />}
 			</button>
 			<FloatingLayer
 				anchor={isOpen ? buttonRef.current : null}
@@ -573,10 +573,11 @@ export function ModelSelect({
 	);
 	if (!thinking) return select;
 	return (
-		<div className="flex min-w-0 items-center gap-1">
+		<div className="flex min-w-0 items-center gap-1.5">
 			{select}
 			{showLevel && (
 				<ThinkingLevelPicker
+					variant="pill"
 					levels={levels}
 					reasoning={thinkingModel?.reasoning}
 					value={current.level ?? FOLLOW_LEVEL}

@@ -315,7 +315,7 @@ pub struct Settings {
   pub omp_check_interval_hours: u32, // default 24; 1..=720; hours between automatic omp update checks while the app runs
   // … (later fields: see contracts.rs)
   pub turn_checkpoints: Option<bool>, // default None = never asked; Some(true) loads the checkpoints extension (§8.1)
-  pub doctor_model: String,          // default "smol"; AI 会诊 model; empty → "smol"
+  pub doctor_model: String,          // default "smol"; 会话体检 model; empty → "smol"
   pub doctor_auto_mode: String,      // "manual" | "idle" | "scheduled"; default "manual" (no tokens spent without user action)
   pub doctor_idle_minutes: u32,      // default 30; 1..=10080; used in "idle" mode
   pub doctor_schedule_time: String,  // "HH:MM"; default "23:00"; used in "scheduled" mode
@@ -542,7 +542,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 **A — catalog (added):**
 - `session_export_html(session_id) -> String` — runs `omp --export <file>`, returns the produced HTML path
 - `session_share(session_id) -> String` — runs `omp share <file>` (same as `/share`: E2E-encrypted snapshot uploaded to the configured share store), returns the share link
-- `heatmap_diagnose(prompt: String, model: Option<String>) -> String` — AI 会诊: one-shot `omp -p` (120s) on the distilled session skeleton prompt (never raw transcripts); model = `model` → `doctor_model` → "smol"; returns raw model text (frontend parses JSON); never writes files
+  `heatmap_diagnose(prompt: String, model: Option<String>) -> String` — 会话体检: one-shot `omp -p` (120s) on the distilled session skeleton prompt (never raw transcripts); model = `model` → `doctor_model` → "smol"; returns raw model text (frontend parses JSON); never writes files
 
 
 **B — rpc:**
@@ -642,6 +642,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `mcp_config_list(cwd: Option<String>) -> McpConfigSnapshot` — servers across project `.omp/mcp.json`/`.mcp.json` and user mcp files
 - `mcp_server_upsert(cwd, path, name, patch: Value)` — merge patch (null deletes; env/headers merge per key; masked values preserved)
 - `mcp_server_remove(cwd, path, name)`, `mcp_server_set_enabled(cwd, name, enabled: bool)`
+- `mcp_server_move(cwd, from_path: String, to_path: String, name: String)` — moves one server definition atomically between allowed mcp.json files without losing masked secrets or raw fields
 - `plugins_list(cwd: Option<String>) -> PluginCatalog`, `plugin_set_enabled(cwd, name, enabled: bool)` — writes `plugins.<name>.enabled` in the scope lockfile
 - `extension_delete(cwd: Option<String>, path: String)` — permanently deletes one extension module; `path` must match an entry of `skills_list(cwd).extensions` (else rejected)
 - `omp_config_list() -> OmpConfigListResult`, `omp_config_set(key, value)`, `omp_config_reset(key)` — shell out to `omp config` in a neutral empty cwd (`$TMPDIR/ompws-omp-config-cwd`, no `.omp/`) so they reflect global settings only

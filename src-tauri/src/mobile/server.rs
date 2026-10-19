@@ -219,7 +219,11 @@ async fn require_auth<B: Backend>(
         Some(t) if auth::verify(&ctx.db.lock(), &t, chrono::Utc::now()) => t,
         _ => return ApiError(StatusCode::UNAUTHORIZED, "未配对或已被撤销".into()).into_response(),
     };
-    if req.method() == axum::http::Method::POST {
+    // Every state-changing verb (the web app also uses PUT/PATCH/DELETE), not just POST.
+    if !matches!(
+        *req.method(),
+        axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
+    ) {
         let is_tls = req.extensions().get::<TlsConnection>().is_some();
         if let Err(err) = verify_csrf(req.headers(), is_tls) {
             return err.into_response();

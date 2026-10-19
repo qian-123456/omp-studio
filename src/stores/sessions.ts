@@ -479,9 +479,12 @@ export async function startSessionEvents(): Promise<void> {
 			throw err;
 		}
 
-		const unlistenForked = await onSessionForked(() => {
+		const unlistenForked = await onSessionForked(({ sessionId }) => {
+			const title = useSessions.getState().sessions[sessionId]?.title?.trim();
+			const name = title ? `「${title}」` : "这个会话";
 			toast.error(
-				"该会话已在终端中被另一个 omp 打开并另存为新的会话文件，应用端已暂停原会话以避免内容分叉；请在列表中打开终端里的新会话继续。",
+				`${name}在终端里被另一个 omp 打开了。终端没有接着原会话写，而是把这段对话复制了一份当作新会话往下聊，所以终端里新说的话不会出现在这个会话里。App 已先停掉这个会话，免得两边各写各的。想接着终端里的内容聊，请在会话列表里打开那个新会话。`,
+				20_000,
 			);
 		});
 		activeUnlisteners = [r1.value, r2.value, unlistenForked];

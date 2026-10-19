@@ -33,7 +33,7 @@ export const SAVE_BTN =
 	"shrink-0 whitespace-nowrap rounded-lg bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-sm disabled:opacity-50";
 
 export const PICKER_BUTTON_CLASS =
-	"flex h-8 w-full flex-row-reverse items-center justify-between gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 text-left text-xs text-neutral-400 transition-all hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] active:scale-[0.98] disabled:opacity-50";
+	"flex h-8 w-full items-center justify-between gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 text-left text-xs text-neutral-400 transition-all hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] active:scale-[0.98] disabled:opacity-50";
 
 const SMALL_INPUT =
 	"rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-[11px] text-neutral-200 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all";
@@ -98,6 +98,28 @@ function EntryRow({
 		[kind, model, level],
 	);
 
+	const handleSelectorChange = (raw: string) => {
+		const trimmed = raw.trim();
+		if (!trimmed) {
+			onChange("");
+			return;
+		}
+		const parsed = splitChainEntry(raw);
+		if (parsed.level) {
+			onChange(formatChainEntry(parsed.selector, parsed.level));
+			return;
+		}
+		if (raw.startsWith("@") || raw.includes("*")) {
+			onChange(raw);
+			return;
+		}
+		if (raw.includes(":")) {
+			onChange(raw);
+			return;
+		}
+		onChange(formatChainEntry(raw, level));
+	};
+
 	return (
 		<div className="space-y-1">
 			<div className="flex items-center gap-1.5">
@@ -107,9 +129,9 @@ function EntryRow({
 				)}
 				<input
 					type="text"
-					value={value}
+					value={selector}
 					disabled={busy}
-					onChange={(e) => onChange(e.target.value)}
+					onChange={(e) => handleSelectorChange(e.target.value)}
 					onKeyDown={(e) => {
 						if (isComposing(e)) return;
 						if (e.key === "Enter") {
@@ -121,6 +143,25 @@ function EntryRow({
 					placeholder="供应商/模型，或 @角色"
 					className={`min-w-0 flex-1 font-mono ${SMALL_INPUT}`}
 				/>
+				{!error && levels.length > 0 && (
+					<label className="flex shrink-0 items-center gap-1 text-[11px] text-neutral-500">
+						<span className="whitespace-nowrap">思考强度</span>
+						<NativeSelect
+							value={level ?? ""}
+							disabled={busy}
+							containerClassName="w-28"
+							className="!py-1 !text-[11px]"
+							onChange={(e) => onChange(formatChainEntry(selector, e.target.value || null))}
+						>
+							<option value="">沿用出错那一轮</option>
+							{levels.map((l) => (
+								<option key={l} value={l}>
+									{l}
+								</option>
+							))}
+						</NativeSelect>
+					</label>
+				)}
 				<button type="button" disabled={busy || index === 0} onClick={() => onMove(-1)} title="上移" className={ICON_BTN}>
 					<ChevronUp className="h-3 w-3" />
 				</button>
@@ -137,30 +178,11 @@ function EntryRow({
 					<Trash2 className="h-3 w-3" />
 				</button>
 			</div>
-			{(error || kind === "wildcard" || levels.length > 0) && (
+			{(error || kind === "wildcard") && (
 				<div className="flex flex-wrap items-center gap-2 pl-5 text-[10.5px]">
 					{error && <span className="break-words text-rose-300">{error}</span>}
 					{!error && kind === "wildcard" && (
 						<span className="text-neutral-500">保持出错模型的名字，只换供应商；思考强度沿用出错那一轮</span>
-					)}
-					{!error && levels.length > 0 && (
-						<label className="flex items-center gap-1.5 text-neutral-500">
-							思考强度
-							<NativeSelect
-								value={level ?? ""}
-								disabled={busy}
-								containerClassName="w-28"
-								className="!py-1 !text-[11px]"
-								onChange={(e) => onChange(formatChainEntry(selector, e.target.value || null))}
-							>
-								<option value="">沿用出错那一轮</option>
-								{levels.map((l) => (
-									<option key={l} value={l}>
-										{l}
-									</option>
-								))}
-							</NativeSelect>
-						</label>
 					)}
 				</div>
 			)}

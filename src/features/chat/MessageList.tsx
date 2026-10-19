@@ -1642,8 +1642,10 @@ export function MessageList({
 				</div>
 			)}
 
-			{/* Empty state hero — the parent centers the composer right under it. */}
-			{isEmptyState && <StartHero />}
+			{/* Empty state hero — the parent centers the composer right under it.
+			    Side chats never show it: their stream stays empty while the first
+			    prompt is in flight, and a "good evening" headline there is noise. */}
+			{isEmptyState && !isSideChat && <StartHero />}
 
 			{/* Stream list */}
 			<div className="relative min-h-0 flex-1">

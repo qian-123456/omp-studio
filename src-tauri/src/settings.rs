@@ -128,10 +128,10 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
         settings.doctor_auto_mode.as_str(),
         "manual" | "idle" | "scheduled"
     ) {
-        return Err("自动会诊模式必须为 manual、idle 或 scheduled".to_string());
+        return Err("自动体检模式必须为 manual、idle 或 scheduled".to_string());
     }
     if !(1..=10080).contains(&settings.doctor_idle_minutes) {
-        return Err("会诊闲置分钟必须在 1–10080 之间".to_string());
+        return Err("体检闲置分钟必须在 1–10080 之间".to_string());
     }
     let valid_hhmm = settings
         .doctor_schedule_time
@@ -143,7 +143,7 @@ pub fn validate(settings: &Settings) -> Result<(), String> {
                 && m.parse::<u8>().is_ok_and(|m| m < 60)
         });
     if !valid_hhmm {
-        return Err("每日会诊时间需要 HH:MM 格式".to_string());
+        return Err("每日体检时间需要 HH:MM 格式".to_string());
     }
 
     // 5. Process arguments validation (tunnel_name)

@@ -152,15 +152,16 @@ export function shouldAutoExpand(
 	);
 }
 
-/** m:ss (h:mm:ss past an hour); "—" when unknown. */
+/** "9分15秒" / "21秒" / "1小时2分5秒"; "—" when unknown. */
 export function formatElapsed(ms: number | undefined): string {
 	if (ms === undefined || !Number.isFinite(ms) || ms < 0) return "—";
 	const total = Math.floor(ms / 1000);
 	const h = Math.floor(total / 3600);
 	const m = Math.floor((total % 3600) / 60);
 	const s = total % 60;
-	const ss = String(s).padStart(2, "0");
-	return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+	if (h > 0) return `${h}小时${m}分${s}秒`;
+	if (m > 0) return `${m}分${s}秒`;
+	return `${s}秒`;
 }
 
 /** Elapsed ms: finished rows use their recorded duration, running rows tick from the start time. */
@@ -261,13 +262,13 @@ export function roleTone(agent: string | undefined): RoleTone {
 
 export type StatusSummary =
 	| { mode: "running"; running: number; progress: string }
-	| { mode: "done"; label: string }
+	| { mode: "done"; count: number }
 	| { mode: "mixed"; done: number; failed: number };
 
 /** One non-redundant status summary for the capsule / panel header. */
 export function statusSummary(c: { running: number; done: number; failed: number }): StatusSummary {
 	const total = c.running + c.done + c.failed;
 	if (c.running > 0) return { mode: "running", running: c.running, progress: `${c.done + c.failed}/${total}` };
-	if (c.failed === 0) return { mode: "done", label: `${c.done} 个已完成` };
+	if (c.failed === 0) return { mode: "done", count: c.done };
 	return { mode: "mixed", done: c.done, failed: c.failed };
 }

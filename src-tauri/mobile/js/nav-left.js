@@ -584,6 +584,16 @@
 		function render() {
 			if (!alive) return;
 			renderModeBtn();
+			// Rebuilding the tree momentarily empties the scroller; restore the reading position.
+			const scroller = body.closest(".pbody");
+			const keep = scroller ? scroller.scrollTop : 0;
+			try {
+				paint();
+			} finally {
+				if (scroller) scroller.scrollTop = keep;
+			}
+		}
+		function paint() {
 			body.textContent = "";
 			if (err) return void body.appendChild(h("div", { class: "empty" }, "加载失败：" + err));
 			if (!data) return void body.appendChild(h("div", { class: "empty" }, "加载中…"));
@@ -979,7 +989,10 @@
 			const name = h("input", { class: "lf-input", name: "name", value: s ? s.name : "", placeholder: "例如：每日晨报" });
 			const prompt = h("textarea", { class: "lf-input", name: "prompt", rows: 4, placeholder: "定时发送给 agent 的提示词" });
 			prompt.value = s ? s.prompt : "";
-			const cwd = select(dirs.map((d) => [d.path, d.label || d.path]), (s && s.cwd) || (dirs[0] && dirs[0].path) || "");
+			const cwdOpts = dirs.map((d) => [d.path, d.label || d.path]);
+			// A stored cwd that is no longer listed must stay selectable, or saving would silently change it.
+			if (s && s.cwd && !cwdOpts.some(([v]) => v === s.cwd)) cwdOpts.unshift([s.cwd, s.cwd]);
+			const cwd = select(cwdOpts, (s && s.cwd) || (dirs[0] && dirs[0].path) || "");
 			const runMode = select([["local", "在目录中直接运行"], ["worktree", "每次新建工作树"]], (s && s.runMode) || "local");
 			const kind = select([["interval", "间隔"], ["daily", "每天 / 每周"], ["once", "仅一次"], ["monthly", "每月"]], c.kind);
 			// cadence sub-fields
@@ -1198,7 +1211,107 @@
 		},
 	});
 
-	/* ---------------------------------------------------------------- settings (read-only) */
+	/* ---------------------------------------------------------------- settings */
+
+	const ON_OFF = [[true, "开"], [false, "关"]];
+	const MODE_ALL = [["one-at-a-time", "逐条"], ["all", "一次全部"]];
+	// Every omp key here is in the server allowlist (MOBILE_SETTINGS in left.rs).
+	const APPROVAL_OPTIONS = [["always-ask", "每步都问"], ["write", "改动前问"], ["yolo", "全自动"]];
+	const SETTING_GROUPS = [
+		{
+			title: "执行与审批",
+			items: [
+				{ key: "tools.approvalMode", type: "enum", name: "审批模式 (Approval Mode)", hint: "AI 修改文件或执行命令前是否征得确认。", options: APPROVAL_OPTIONS },
+				{ key: "ask.enabled", type: "bool", name: "允许智能体向我提问", hint: "关闭后智能体不会再弹出选择题或确认框。" },
+				{ key: "ask.notify", type: "enum", name: "等待回答时提醒", hint: "智能体在等你回答时是否发出通知。", options: ON_OFF.map(([v, l]) => [v ? "on" : "off", l]) },
+				{ key: "ask.timeout", type: "int", name: "提问自动选择等待", hint: "超时后自动选推荐项；0 表示一直等待。未响应的审批会被拒绝。", min: 0, max: 3600, step: 10, unit: "秒" },
+				{ key: "bash.autoBackground.enabled", type: "bool", name: "长命令自动转后台", hint: "耗时很长的命令自动放到后台，完成后再通知智能体。" },
+				{ key: "tools.maxTimeout", type: "int", name: "工具最长超时", hint: "智能体可给单个工具设置的最长超时；0 表示不限制。", min: 0, max: 86400, step: 60, unit: "秒" },
+			],
+		},
+		{
+			title: "对话与上下文",
+			items: [
+				{ key: "hideThinkingBlock", type: "bool", name: "隐藏思考内容", hint: "开启后回复里不再显示模型的思考过程。" },
+				{ key: "compaction.enabled", type: "bool", name: "自动压缩上下文", hint: "上下文过长时自动压缩，避免超出模型窗口。" },
+				{ key: "compaction.autoContinue", type: "bool", name: "压缩后自动继续", hint: "压缩完成后智能体自动接着干活，无需你再发消息。" },
+				{ key: "steeringMode", type: "enum", name: "运行中追加消息", hint: "智能体工作时你发的消息怎么处理：逐条依次，或一次全部送入。", options: MODE_ALL },
+				{ key: "followUpMode", type: "enum", name: "完成后追问", hint: "一轮结束后排队的追问是逐条处理还是一次全部处理。", options: MODE_ALL },
+				{ key: "interruptMode", type: "enum", name: "打断工具执行", hint: "追加的消息何时打断正在执行的工具：立即，或等它执行完。", options: [["immediate", "立即"], ["wait", "等待完成"]] },
+			],
+		},
+		{
+			title: "出错重试",
+			items: [
+				{ key: "retry.enabled", type: "bool", name: "出错自动重试", hint: "接口报错（限流、网络波动）时自动重试。" },
+				{ key: "retry.maxRetries", type: "int", name: "最多重试次数", hint: "超过次数后才算失败。", min: 0, max: 100, step: 1, unit: "次" },
+				{ key: "retry.maxDelayMs", type: "int", name: "单次最长等待", hint: "服务端要求等待更久时直接失败；0 表示不设上限。", min: 0, max: 3600000, step: 30000, unit: "毫秒" },
+				{ key: "retry.waitForUsageReset", type: "bool", name: "额度用尽时等待重置", hint: "额度耗尽且知道重置时间时一直等到重置，期间子代理也会被占用。" },
+			],
+		},
+	];
+
+	const LOCAL_ITEMS = [
+		{ key: "foldOpen", type: "bool", name: "默认展开步骤", hint: "对话里「已处理 N 个步骤」默认展开（仅影响这台手机）。" },
+		{ key: "msgSize", type: "enum", name: "消息字号", hint: "调整对话文字大小（仅影响这台手机）。", options: [["s", "小"], ["m", "标准"], ["l", "大"], ["xl", "特大"]] },
+	];
+
+	/** One setting row. `get()` reads the current value, `save(v)` persists and resolves to the stored value. */
+	function settingRow(def, get, save) {
+		const info = h("div", { class: "st-main" }, h("div", { class: "st-name" }, def.name), h("div", { class: "st-hint" }, def.hint));
+		const row = h("div", { class: "st-item" + (def.type === "enum" ? " col" : "") }, info);
+		let busy = false;
+		const commit = async (next) => {
+			if (busy || next === get()) return;
+			const prev = get();
+			busy = true;
+			paint(next); // optimistic
+			try {
+				paint(await save(next));
+			} catch (e) {
+				paint(prev); // rollback
+				M.toast("保存失败：" + (e && e.message ? e.message : e));
+			}
+			busy = false;
+			paint(get());
+		};
+		let ctl = null;
+		let paint = () => {};
+		if (def.type === "bool") {
+			ctl = h("button", { class: "lf-switch", role: "switch", "aria-label": def.name, onclick: () => commit(!get()) });
+			paint = (v) => {
+				ctl.classList.toggle("on", !!v);
+				ctl.setAttribute("aria-checked", String(!!v));
+			};
+			row.append(ctl);
+		} else if (def.type === "enum") {
+			const btns = def.options.map(([v, label]) => h("button", { type: "button", onclick: () => commit(v) }, label));
+			ctl = h("div", { class: "st-seg", role: "group", "aria-label": def.name }, btns);
+			paint = (v) => def.options.forEach(([ov], i) => btns[i].classList.toggle("on", ov === v));
+			row.append(ctl);
+		} else {
+			const clamp = (n) => Math.min(def.max, Math.max(def.min, Math.round(n)));
+			const num = h("input", { class: "st-num", type: "number", inputmode: "numeric", min: String(def.min), max: String(def.max), "aria-label": def.name });
+			const minus = h("button", { type: "button", "aria-label": "减少", onclick: () => commit(clamp((get() || 0) - def.step)) }, "−");
+			const plus = h("button", { type: "button", "aria-label": "增加", onclick: () => commit(clamp((get() || 0) + def.step)) }, "+");
+			num.addEventListener("change", () => {
+				const n = Number(num.value);
+				if (num.value === "" || !Number.isFinite(n)) return paint(get());
+				commit(clamp(n));
+				if (clamp(n) === get()) paint(get()); // normalise out-of-range input
+			});
+			ctl = h("div", { class: "st-step" }, minus, num, plus);
+			paint = (v) => {
+				num.value = v == null ? "" : String(v);
+				minus.disabled = v != null && v <= def.min;
+				plus.disabled = v != null && v >= def.max;
+			};
+			info.firstChild.append(h("span", { class: "st-val" }, " （" + def.unit + "）"));
+			row.append(ctl);
+		}
+		paint(get());
+		return row;
+	}
 
 	M.registerPage("left:settings", {
 		title: "设置",
@@ -1207,24 +1320,492 @@
 			try {
 				const d = await M.api("GET", "/left/settings");
 				const m = d.mobile || {};
+				const omp = d.omp || {};
 				const kv = (k, v) => h("div", { class: "row lf-kv" }, h("span", { class: "lf-k" }, k), h("span", { class: "lf-v" }, v == null || v === "" ? "—" : String(v)));
-				el.append(...[
-					kv("应用版本", d.appVersion),
-					kv("默认模型", d.defaultModel),
-					d.defaultModelSource ? kv("模型来源", d.defaultModelSource) : null,
-					h("div", { class: "lf-sec-h static" }, h("span", { class: "lf-sec-t" }, "手机远程服务")),
+				const head = (t) => h("div", { class: "lf-sec-h static" }, h("span", { class: "lf-sec-t" }, t));
+				const out = [];
+				if (d.ompError) out.push(h("div", { class: "st-banner" }, "无法读取 OMP 配置，下列 OMP 设置暂不可改：" + d.ompError));
+
+				// 1. Scope Selector Bar (Global vs Project)
+				let currentCwd = M.currentSettingsCwd || null;
+				let dirs = [];
+				try {
+					const dirRes = await M.api("GET", "/left/dirs");
+					dirs = dirRes.dirs || [];
+				} catch (_) {}
+
+				const scopeSel = h("select", { class: "st-scope-sel" },
+					h("option", { value: "" }, "全局配置（对所有项目生效）"),
+					dirs.map((di) => h("option", { value: di.path, selected: currentCwd === di.path }, "项目：" + (di.label || di.path.split("/").pop())))
+				);
+				scopeSel.addEventListener("change", () => {
+					M.currentSettingsCwd = scopeSel.value || null;
+					M.toast(M.currentSettingsCwd ? "已切换至项目配置模式" : "已切换至全局配置模式");
+				});
+				const scopeBar = h("div", { class: "st-scope" },
+					h("span", { class: "st-scope-lbl" }, "配置目标"),
+					scopeSel
+				);
+				out.push(scopeBar);
+
+				// 2. Navigation Cards to Sub-pages
+				const navCard = h("div", { class: "st-card-group" },
+					h("button", {
+						class: "st-nav-item",
+						onclick: () => M.nav.open("left:settings:roles", { cwd: M.currentSettingsCwd })
+					},
+						h("span", { class: "st-nav-icon" }, "🤖"),
+						h("div", { class: "st-nav-main" },
+							h("div", { class: "st-nav-title" }, "模型角色与思考深度"),
+							h("div", { class: "st-nav-desc" }, "分模型配置主力模型与思考深度")
+						),
+						h("span", { class: "st-nav-arrow" }, "›")
+					),
+					h("button", {
+						class: "st-nav-item",
+						onclick: () => M.nav.open("left:settings:providers")
+					},
+						h("span", { class: "st-nav-icon" }, "🌐"),
+						h("div", { class: "st-nav-main" },
+							h("div", { class: "st-nav-title" }, "模型与供应商管理"),
+							h("div", { class: "st-nav-desc" }, "配置 API Key、BaseUrl 并即时测试连通性")
+						),
+						h("span", { class: "st-nav-arrow" }, "›")
+					),
+					h("button", {
+						class: "st-nav-item",
+						onclick: () => M.nav.open("left:settings:fallbacks", { cwd: M.currentSettingsCwd })
+					},
+						h("span", { class: "st-nav-icon" }, "🔄"),
+						h("div", { class: "st-nav-main" },
+							h("div", { class: "st-nav-title" }, "模型故障回退链"),
+							h("div", { class: "st-nav-desc" }, "主模型失败时按顺位自动尝试的备用梯队")
+						),
+						h("span", { class: "st-nav-arrow" }, "›")
+					),
+					h("button", {
+						class: "st-nav-item",
+						onclick: () => M.nav.open("left:settings:context")
+					},
+						h("span", { class: "st-nav-icon" }, "📏"),
+						h("div", { class: "st-nav-main" },
+							h("div", { class: "st-nav-title" }, "上下文窗口大小"),
+							h("div", { class: "st-nav-desc" }, "直接调整各模型的上下文 token 上限")
+						),
+						h("span", { class: "st-nav-arrow" }, "›")
+					)
+				);
+				out.push(head("模型与高级管理"), navCard);
+
+				// 3. General & Behavior settings
+				for (const g of SETTING_GROUPS) {
+					const items = g.items.filter((it) => it.key in omp);
+					if (!items.length) continue;
+					out.push(head(g.title));
+					for (const it of items) {
+						out.push(
+							settingRow(it, () => omp[it.key], async (v) => {
+								const r = await M.api("POST", "/left/settings/set", { key: it.key, value: v });
+								omp[it.key] = r.value;
+								return r.value;
+							}),
+						);
+					}
+				}
+				out.push(head("本机显示"));
+				for (const it of LOCAL_ITEMS) {
+					out.push(settingRow(it, () => M.prefs.get(it.key), async (v) => (M.prefs.set(it.key, v), M.prefs.get(it.key))));
+				}
+				out.push(
+					head("手机远程服务"),
 					kv("状态", m.running ? "运行中" : "未运行"),
 					kv("端口", m.port),
 					kv("局域网地址", m.lanUrl),
 					m.tunnelUrl ? kv("隧道地址", m.tunnelUrl) : null,
 					m.ipv6Running ? kv("IPv6 地址", m.ipv6Url) : null,
-					h("div", { class: "lf-meta pad" }, "移动端设置为只读，请在电脑上修改。"),
-				].filter(Boolean));
+					h("div", { class: "lf-meta pad" }, "开关手机服务与 IPv6 需在电脑上操作：在手机上关闭会立刻断开当前连接，且无法再从手机重新打开。"),
+					head("关于"),
+					kv("应用版本", d.appVersion),
+					kv("默认模型", d.defaultModel),
+					d.defaultModelSource ? kv("模型来源", d.defaultModelSource) : null,
+					h("div", { class: "lf-meta pad" }, "可在「模型角色与思考深度」中修改主力模型与思考档位。"),
+				);
+				el.append(...out.filter(Boolean));
 			} catch (e) {
 				el.appendChild(h("div", { class: "empty" }, "加载失败：" + e.message));
 			}
 		},
 	});
+
+	/* ---------------------------------------------------------------- sub-page: roles */
+	M.registerPage("left:settings:roles", {
+		title(p) {
+			return p && p.cwd ? "项目角色 · " + p.cwd.split("/").pop() : "模型角色与思考深度";
+		},
+		async mount(el, p) {
+			el.classList.add("lf-page");
+			const host = h("div", {});
+			el.appendChild(host);
+			const cwd = (p && p.cwd) || M.currentSettingsCwd || null;
+
+			async function load() {
+				host.textContent = "";
+				try {
+					const res = await M.api("GET", "/left/roles" + (cwd ? "?cwd=" + encodeURIComponent(cwd) : ""));
+					const snap = res.snapshot || {};
+					const models = res.models || [];
+					const gRoles = (snap.global && snap.global.modelRoles) || {};
+					const pRoles = (snap.project && snap.project.modelRoles) || {};
+					const isProject = !!cwd;
+
+					host.appendChild(h("div", { class: "lf-sec-h static" },
+						h("span", { class: "lf-sec-t" }, isProject ? "项目配置 (" + cwd.split("/").pop() + ")" : "全局配置"),
+						h("span", { class: "lf-cnt" }, isProject ? "项目优先" : "所有项目生效")
+					));
+
+					const ROLE_KEYS = [
+						{ id: "default", label: "全局默认 (主力模型)" },
+						{ id: "reviewer", label: "代码审查 (Reviewer)" },
+						{ id: "editor", label: "文件编辑 (Editor)" },
+						{ id: "bash", label: "终端分析 (Bash)" },
+						{ id: "commit", label: "提交生成 (Commit)" },
+						{ id: "task", label: "任务代理 (Task)" },
+						{ id: "scout", label: "快速侦察 (Scout)" },
+					];
+
+					for (const rk of ROLE_KEYS) {
+						const hasProj = isProject && rk.id in pRoles;
+						const curVal = hasProj ? pRoles[rk.id] : gRoles[rk.id] || "未配置";
+						const [mName, thinkLvl] = curVal.includes(":") ? curVal.split(":") : [curVal, null];
+
+						const badge = isProject
+							? (hasProj ? h("span", { class: "st-badge project" }, "项目专属") : h("span", { class: "st-badge inherit" }, "继承全局"))
+							: null;
+						const thinkBadge = thinkLvl ? h("span", { class: "st-badge thinking" }, "思考: " + thinkLvl) : null;
+
+						const card = h("div", {
+							class: "st-role-card",
+							onclick: () => pickModelAndThinking(rk.id, curVal, models, isProject ? "project" : "global", cwd, load)
+						},
+							h("div", { class: "st-main" },
+								h("div", { class: "flex items-center gap-2" },
+									h("span", { class: "st-name font-semibold" }, rk.label),
+									badge
+								),
+								h("div", { class: "st-hint flex items-center gap-2 mt-1" },
+									h("span", { class: "font-mono text-neutral-300" }, mName),
+									thinkBadge
+								)
+							),
+							h("div", { class: "flex items-center gap-2" },
+								hasProj ? h("button", {
+									class: "btn sm danger",
+									onclick: async (e) => {
+										e.stopPropagation();
+										if (await M.confirm("恢复继承全局配置？将删除该项目的专有角色设定。")) {
+											await M.api("POST", "/left/roles/set", { cwd, scope: "project", table: "roles", name: rk.id, value: null });
+											M.toast("已恢复继承全局");
+											load();
+										}
+									}
+								}, "恢复继承") : null,
+								h("span", { class: "st-nav-arrow" }, "›")
+							)
+						);
+						host.appendChild(card);
+					}
+				} catch (e) {
+					host.appendChild(h("div", { class: "empty" }, "读取角色失败：" + e.message));
+				}
+			}
+			load();
+		}
+	});
+
+	function pickModelAndThinking(roleName, currentVal, models, scope, cwd, onDone) {
+		sheet("选择模型 (" + roleName + ")", [
+			...models.map((m) => ({
+				label: m.name || m.id,
+				run: () => {
+					const thinkSup = m.thinking || [];
+					if (!thinkSup.length) {
+						saveRole(roleName, m.id, null, scope, cwd, onDone);
+					} else {
+						const levels = ["auto", ...thinkSup.filter((x) => x !== "auto"), "off"];
+						setTimeout(() => {
+							sheet("选择思考深度 (" + (m.name || m.id) + ")", levels.map((lvl) => ({
+								label: lvl === "auto" ? "自动 (auto)" : lvl === "off" ? "关闭思考 (off)" : "深度: " + lvl,
+								run: () => saveRole(roleName, m.id, lvl === "auto" ? null : lvl, scope, cwd, onDone)
+							})));
+						}, 250);
+					}
+				}
+			}))
+		]);
+	}
+
+	async function saveRole(roleName, modelId, thinkLvl, scope, cwd, onDone) {
+		const fullVal = thinkLvl ? modelId + ":" + thinkLvl : modelId;
+		try {
+			await M.api("POST", "/left/roles/set", { cwd, scope, table: "roles", name: roleName, value: fullVal });
+			M.toast("角色「" + roleName + "」已更新");
+			onDone && onDone();
+		} catch (e) {
+			M.toast("保存失败：" + e.message);
+		}
+	}
+
+	/* ---------------------------------------------------------------- sub-page: providers */
+	M.registerPage("left:settings:providers", {
+		title: "模型与供应商管理",
+		async mount(el) {
+			el.classList.add("lf-page");
+			const host = h("div", {});
+			el.appendChild(host);
+
+			async function load() {
+				host.textContent = "";
+				try {
+					const res = await M.api("GET", "/left/providers");
+					const list = res.providers || [];
+					if (!list.length) host.appendChild(h("div", { class: "empty" }, "未配置任何供应商"));
+					for (const p of list) {
+						const card = h("div", { class: "st-provider-card" });
+						const head = h("div", { class: "st-provider-head" },
+							h("div", { class: "min-w-0" },
+								h("div", { class: "font-semibold text-[15px]" }, p.name || p.id),
+								h("div", { class: "text-xs text-muted mt-0.5" }, p.api + " · " + (p.models ? p.models.length : 0) + " 个模型")
+							),
+							h("span", { class: "st-badge project" }, p.hasKey ? "已配密钥" : "未设密钥")
+						);
+
+						const body = h("div", { class: "st-provider-body hidden" });
+						const urlIn = h("input", { value: p.baseUrl || "", placeholder: "https://api.example.com/v1" });
+						const keyIn = h("input", { type: "password", placeholder: p.hasKey ? "已配置（输入新密钥以覆盖）" : "请输入 API Key" });
+
+						const testRes = h("div", { class: "text-xs text-muted" });
+						const testBtn = h("button", {
+							class: "btn sm",
+							onclick: async () => {
+								testRes.textContent = "正在测试连接...";
+								try {
+									const r = await M.api("POST", "/left/providers/test", { id: p.id });
+									testRes.textContent = "✓ 连通成功 (延迟 " + (r.result && r.result.latencyMs ? r.result.latencyMs + "ms" : "正常") + ")";
+									testRes.style.color = "var(--ok)";
+								} catch (err) {
+									testRes.textContent = "✕ 失败: " + err.message;
+									testRes.style.color = "var(--err)";
+								}
+							}
+						}, "测试连接");
+
+						const saveBtn = h("button", {
+							class: "btn sm primary",
+							onclick: async () => {
+								const nextCfg = Object.assign({}, p, { baseUrl: urlIn.value.trim() });
+								const newKey = keyIn.value.trim() || undefined;
+								try {
+									await M.api("POST", "/left/providers/save", { config: nextCfg, api_key: newKey });
+									M.toast("供应商「" + (p.name || p.id) + "」已更新");
+									load();
+								} catch (err) {
+									M.toast("保存失败：" + err.message);
+								}
+							}
+						}, "保存更改");
+
+						body.append(
+							h("div", { class: "st-input-row" }, h("label", {}, "Base URL 接口地址"), h("div", { class: "st-input-box" }, urlIn)),
+							h("div", { class: "st-input-row" }, h("label", {}, "API Key 密钥"), h("div", { class: "st-input-box" }, keyIn)),
+							testRes,
+							h("div", { class: "flex items-center gap-2 mt-2" }, testBtn, saveBtn)
+						);
+
+						head.addEventListener("click", () => body.classList.toggle("hidden"));
+						card.append(head, body);
+						host.appendChild(card);
+					}
+				} catch (e) {
+					host.appendChild(h("div", { class: "empty" }, "读取供应商失败：" + e.message));
+				}
+			}
+			load();
+		}
+	});
+
+	/* ---------------------------------------------------------------- sub-page: fallbacks */
+	M.registerPage("left:settings:fallbacks", {
+		title: "模型故障回退链",
+		async mount(el, p) {
+			el.classList.add("lf-page");
+			const host = h("div", {});
+			el.appendChild(host);
+			const cwd = (p && p.cwd) || M.currentSettingsCwd || null;
+
+			async function load() {
+				host.textContent = "";
+				try {
+					const [fbRes, roleRes] = await Promise.all([
+						M.api("GET", "/left/fallbacks" + (cwd ? "?cwd=" + encodeURIComponent(cwd) : "")),
+						M.api("GET", "/left/roles" + (cwd ? "?cwd=" + encodeURIComponent(cwd) : ""))
+					]);
+					const chains = fbRes.project || fbRes.global || {};
+					const models = roleRes.models || [];
+					const defaultChain = Array.isArray(chains.default) ? [...chains.default] : [];
+
+					host.appendChild(h("div", { class: "lf-sec-h static" },
+						h("span", { class: "lf-sec-t" }, "主力模型 (default) 故障降级顺位"),
+						h("span", { class: "lf-cnt" }, String(defaultChain.length) + " 个备选")
+					));
+
+					if (!defaultChain.length) {
+						host.appendChild(h("div", { class: "empty" }, "当前尚未配置备选模型（失败后直接报错）"));
+					} else {
+						defaultChain.forEach((mId, idx) => {
+							const item = h("div", { class: "st-fb-item" },
+								h("div", { class: "st-fb-drag" },
+									h("button", {
+										disabled: idx === 0,
+										onclick: () => moveIdx(idx, -1)
+									}, "▲"),
+									h("button", {
+										disabled: idx === defaultChain.length - 1,
+										onclick: () => moveIdx(idx, 1)
+									}, "▼")
+								),
+								h("div", { class: "flex-1 min-w-0" },
+									h("div", { class: "text-xs text-muted" }, "第 " + (idx + 1) + " 顺位备选"),
+									h("div", { class: "font-mono text-sm font-semibold text-neutral-200 truncate" }, mId)
+								),
+								h("button", {
+									class: "iconbtn text-muted hover:text-err",
+									"aria-label": "移除",
+									onclick: () => removeItem(idx)
+								}, "✕")
+							);
+							host.appendChild(item);
+						});
+					}
+
+					const addBtn = h("button", {
+						class: "btn sm",
+						style: { margin: "14px", width: "calc(100% - 28px)" },
+						onclick: () => {
+							sheet("添加备选模型", models.map((m) => ({
+								label: m.name || m.id,
+								run: () => {
+									defaultChain.push(m.id);
+									saveChains(defaultChain);
+								}
+							})));
+						}
+					}, "+ 添加备用模型");
+					host.appendChild(addBtn);
+
+					function moveIdx(i, dir) {
+						const t = defaultChain[i];
+						defaultChain[i] = defaultChain[i + dir];
+						defaultChain[i + dir] = t;
+						saveChains(defaultChain);
+					}
+					function removeItem(i) {
+						defaultChain.splice(i, 1);
+						saveChains(defaultChain);
+					}
+					async function saveChains(nextChain) {
+						const nextMap = Object.assign({}, chains, { default: nextChain });
+						try {
+							await M.api("POST", "/left/fallbacks/set", { chains: nextMap });
+							M.toast("回退链已更新");
+							load();
+						} catch (e) {
+							M.toast("保存失败：" + e.message);
+						}
+					}
+				} catch (e) {
+					host.appendChild(h("div", { class: "empty" }, "读取回退链失败：" + e.message));
+				}
+			}
+			load();
+		}
+	});
+
+	/* ---------------------------------------------------------------- sub-page: context */
+	M.registerPage("left:settings:context", {
+		title: "上下文窗口大小",
+		async mount(el) {
+			el.classList.add("lf-page");
+			const host = h("div", {});
+			el.appendChild(host);
+
+			async function load() {
+				host.textContent = "";
+				try {
+					const [cwRes, rRes] = await Promise.all([
+						M.api("GET", "/left/context-windows"),
+						M.api("GET", "/left/roles")
+					]);
+					const overrides = cwRes.overrides || [];
+					const models = rRes.models || [];
+
+					host.appendChild(h("div", { class: "lf-sec-h static" },
+						h("span", { class: "lf-sec-t" }, "模型上下文上限 (tokens)"),
+						h("span", { class: "lf-cnt" }, String(models.length) + " 个模型")
+					));
+
+					for (const m of models) {
+						const ov = overrides.find((o) => o.modelId === m.id);
+						const currentTokens = (ov && ov.contextWindow) || m.contextWindow || 128000;
+						const isCustom = !!(ov && ov.contextWindow);
+
+						const row = h("div", {
+							class: "st-role-card",
+							onclick: () => editContextLimit(m, currentTokens, load)
+						},
+							h("div", { class: "st-main" },
+								h("div", { class: "font-semibold text-sm" }, m.name || m.id),
+								h("div", { class: "text-xs font-mono text-muted mt-0.5" },
+									String(currentTokens.toLocaleString()) + " tokens" + (isCustom ? " (自定义覆盖)" : " (默认)")
+								)
+							),
+							h("span", { class: isCustom ? "st-badge project" : "st-badge inherit" }, isCustom ? "已覆盖" : "默认")
+						);
+						host.appendChild(row);
+					}
+				} catch (e) {
+					host.appendChild(h("div", { class: "empty" }, "读取上下文设置失败：" + e.message));
+				}
+			}
+			load();
+		}
+	});
+
+	function editContextLimit(model, currentVal, onDone) {
+		const presets = [32000, 64000, 128000, 200000, 1000000, 2000000];
+		sheet("调整上下文窗口 (" + (model.name || model.id) + ")", [
+			...presets.map((tokens) => ({
+				label: (tokens >= 1000000 ? (tokens / 1000000) + "M" : (tokens / 1000) + "K") + " tokens (" + tokens.toLocaleString() + ")",
+				run: () => saveContextLimit(model, tokens, onDone)
+			})),
+			{
+				label: "重置为模型默认值",
+				danger: true,
+				run: () => saveContextLimit(model, null, onDone)
+			}
+		]);
+	}
+
+	async function saveContextLimit(model, tokens, onDone) {
+		try {
+			await M.api("POST", "/left/context-windows/set", {
+				entries: [{ providerId: model.provider || "default", modelId: model.id, contextWindow: tokens }]
+			});
+			M.toast("上下文窗口已更新");
+			onDone && onDone();
+		} catch (e) {
+			M.toast("保存失败：" + e.message);
+		}
+	}
 
 	/* ---------------------------------------------------------------- home */
 	let root = null;
