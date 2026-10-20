@@ -142,7 +142,7 @@ function OverviewRowView({
 							onClick={() => setExpanded((v) => !v)}
 							aria-expanded={expanded}
 							title={expanded ? "收起位置列表" : "展开查看全部出现位置"}
-							className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-sky-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
+							className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-[var(--accent)] transition-all hover:bg-[var(--bg-hover)] active:scale-95"
 						>
 							{expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
 							全部 {total} 处
@@ -342,7 +342,7 @@ export function ModelReplaceOverview({
 			)}
 
 			{kindError !== null && (
-				<div role="alert" className="mx-3 mb-2 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-300">
+				<div role="alert" className="mx-3 mb-2 flex items-start gap-2 rounded-lg bg-[color-mix(in_srgb,var(--status-warning)_12%,transparent)] px-3 py-2 text-[11px] leading-5 text-[var(--status-warning)]">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="min-w-0 flex-1 break-all">
 						无法加载模型目录，暂不分组，也无法判断哪些模型已失效：{kindError}
@@ -389,7 +389,7 @@ export function ModelReplaceOverview({
 								<header className="flex items-center gap-2 bg-[var(--well-bg)] px-4 py-2.5 text-xs font-semibold text-neutral-200">
 									<span
 										aria-hidden
-										className={`h-1.5 w-1.5 shrink-0 rounded-full ${section.group === "missing" ? "bg-amber-400" : "bg-[var(--accent)]"}`}
+										className={`h-1.5 w-1.5 shrink-0 rounded-full ${section.group === "missing" ? "bg-[var(--status-warning)]" : "bg-[var(--accent)]"}`}
 									/>
 									{KIND_GROUP_TITLES[section.group]}
 									<span className="rounded-full bg-[var(--bg-active-fill)] px-1.5 py-px text-[10px] font-normal text-neutral-400">

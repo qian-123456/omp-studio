@@ -1,12 +1,13 @@
 /** Settings ▸ 通知 (`notifications`): when to notify, how, and quiet hours. */
-import { Bell, CheckCircle2, Volume2, VolumeX, XCircle } from "lucide-react";
+import { Bell } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { errMsg } from "../../../lib/dialogs";
 import { notifyTest } from "../../../lib/ipc";
 import { saveAppSettings, useAppSettings } from "../useAppSettings";
 import {
+	Button,
 	INPUT_CLASS,
-	SETTINGS_BUTTON_CLASS,
+	Notice,
 	SectionHeader,
 	SettingRow,
 	SettingsCard,
@@ -36,7 +37,7 @@ export function NotificationsSection() {
 
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="通知提醒" description="Agent 需要你时，用系统通知、提示音和 Dock 角标提醒你" />
+			<SectionHeader title="通知" description="什么时候提醒你、怎么提醒，以及免打扰时段" />
 
 			<SettingsCard title="什么时候提醒">
 				<ToggleRow
@@ -67,7 +68,6 @@ export function NotificationsSection() {
 					fieldId="notifySound"
 					label="提示音"
 					description="弹出通知时同时播放系统默认提示音"
-					icon={settings?.notifySound ? Volume2 : VolumeX}
 					checked={settings?.notifySound ?? true}
 					onChange={(v) => save({ notifySound: v })}
 				/>
@@ -80,33 +80,21 @@ export function NotificationsSection() {
 				/>
 				<SettingRow
 					fieldId="notifyTest"
-					label="发送一条测试通知"
+					label="发送测试通知"
 					description="用来确认系统通知和提示音是否正常"
 					control={
-						<button type="button" disabled={testing} onClick={handleNotifyTest} className={SETTINGS_BUTTON_CLASS}>
-							<Bell className="h-3.5 w-3.5" />
-							<span>{testing ? "正在发送…" : "发送测试通知"}</span>
-						</button>
+						<Button icon={Bell} loading={testing} onClick={handleNotifyTest}>
+							{testing ? "正在发送" : "发送测试通知"}
+						</Button>
 					}
 				>
 					{testResult?.ok && (
-						<div className="mt-2 rounded-lg hairline bg-[var(--well-bg)] p-2.5 text-[11px] leading-relaxed text-neutral-400">
-							<div className="flex items-center gap-1.5 text-emerald-400">
-								<CheckCircle2 className="h-3.5 w-3.5" />
-								已在 {testResult.at} 发出测试通知
-							</div>
-							<p className="mt-1">
-								如果屏幕右上角没有弹出通知：打开「系统设置 → 通知」，找到 omp-workspace，打开「允许通知」，提醒样式选「横幅」或「提醒」；
-								同时确认没有开启系统的「专注模式 / 勿扰模式」。
-							</p>
-						</div>
+						<Notice tone="success" title={`已在 ${testResult.at} 发出测试通知`}>
+							如果屏幕右上角没有弹出通知：打开「系统设置 → 通知」，找到 omp-workspace，打开「允许通知」，提醒样式选「横幅」或「提醒」；
+							同时确认没有开启系统的「专注模式 / 勿扰模式」。
+						</Notice>
 					)}
-					{testResult && !testResult.ok && (
-						<div className="mt-2 flex items-start gap-1.5 rounded-lg border border-red-900/60 bg-red-950/30 p-2.5 text-[11px] text-red-300">
-							<XCircle className="mt-px h-3.5 w-3.5 shrink-0" />
-							<span>发送失败：{testResult.error}</span>
-						</div>
-					)}
+					{testResult && !testResult.ok && <Notice tone="danger" title={`发送失败：${testResult.error}`} />}
 				</SettingRow>
 			</SettingsCard>
 
@@ -190,16 +178,22 @@ function QuietHoursRow() {
 				<div className="space-y-2">
 					<div className="flex flex-wrap items-center gap-2">
 						<input
-							type="time"
+							type="text"
+							inputMode="numeric"
+							maxLength={5}
+							placeholder="22:00"
 							aria-label="免打扰开始时间"
 							value={from}
 							onChange={(e) => setFrom(e.target.value)}
 							onBlur={() => commit(from, to)}
 							className={timeClass}
 						/>
-						<span className="text-xs text-neutral-500">到</span>
+						<span className="text-xs text-[var(--text-dim)]">到</span>
 						<input
-							type="time"
+							type="text"
+							inputMode="numeric"
+							maxLength={5}
+							placeholder="22:00"
 							aria-label="免打扰结束时间"
 							value={to}
 							onChange={(e) => setTo(e.target.value)}
@@ -207,36 +201,36 @@ function QuietHoursRow() {
 							className={timeClass}
 						/>
 						{!enabled && !from && !to && (
-							<button
-								type="button"
+							<Button
+								size="sm"
+								variant="ghost"
 								onClick={() => {
 									setFrom("22:00");
 									setTo("08:00");
 									commit("22:00", "08:00");
 								}}
-								className="rounded-lg px-2.5 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 							>
-								使用 22:00–08:00
-							</button>
+								填入 22:00–08:00
+							</Button>
 						)}
 						{(enabled || from || to) && (
-							<button
-								type="button"
+							<Button
+								size="sm"
+								variant="ghost"
 								onClick={() => {
 									setFrom("");
 									setTo("");
 									commit("", "");
 								}}
-								className="rounded-lg px-2.5 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 							>
 								关闭免打扰
-							</button>
+							</Button>
 						)}
 					</div>
 					{error ? (
-						<div className="text-[11px] text-red-400">{error}</div>
+						<div className="text-[11px] text-[var(--status-error)]">{error}</div>
 					) : (
-						<div className={`text-[11px] ${enabled ? "text-amber-300/90" : "text-neutral-500"}`}>
+						<div className={`text-[11px] ${enabled ? "text-[var(--accent)]" : "text-[var(--text-dim)]"}`}>
 							{quietHoursSummary(savedFrom, savedTo)}
 						</div>
 					)}

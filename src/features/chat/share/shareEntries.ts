@@ -1,5 +1,5 @@
 import type { TranscriptItem } from "../../../lib/contracts";
-import { stripImageMarkers } from "../MessageList";
+import { stripImageMarkers } from "../userTextChips";
 import { filterVisibleItems } from "../messageTrace";
 import { groupTurnBlocks } from "../turnGrouping";
 

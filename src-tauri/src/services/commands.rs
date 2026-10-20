@@ -141,6 +141,47 @@ pub fn save_clipboard_image_internal(
     Ok(file_path.to_string_lossy().into_owned())
 }
 
+/// Copy an existing image file into the clip cache (`ompws-clip`, inside the
+/// asset-protocol scope) so its thumbnail loads and the file outlives the
+/// source (Finder temp screenshots, files outside the asset scope). Returns
+/// the copy's path; an image already inside `clip_dir` is returned as is.
+pub fn import_image_file_internal(
+    cache_dir: &std::path::Path,
+    src: &str,
+) -> Result<String, String> {
+    let src_path = std::path::Path::new(src);
+    let meta = std::fs::metadata(src_path).map_err(|e| format!("读取图片失败：{e}"))?;
+    if !meta.is_file() {
+        return Err(format!("不是文件：{src}"));
+    }
+    let clip_dir = cache_dir.join("ompws-clip");
+    if src_path.parent() == Some(clip_dir.as_path()) {
+        return Ok(src.to_string());
+    }
+    std::fs::create_dir_all(&clip_dir).map_err(|e| format!("创建剪贴板图片缓存目录失败：{e}"))?;
+    let ext = src_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| "png".to_string());
+    let ts = chrono::Utc::now().timestamp_millis();
+    let mut n = 0u32;
+    let dest = loop {
+        let name = if n == 0 {
+            format!("{ts}.{ext}")
+        } else {
+            format!("{ts}-{n}.{ext}")
+        };
+        let candidate = clip_dir.join(name);
+        if !candidate.exists() {
+            break candidate;
+        }
+        n += 1;
+    };
+    std::fs::copy(src_path, &dest).map_err(|e| format!("复制图片失败：{e}"))?;
+    Ok(dest.to_string_lossy().into_owned())
+}
+
 /// Decode a base64 (optionally `data:`-prefixed) PNG and write it to a
 /// caller-chosen absolute `.png` path. Parent dirs are never created.
 pub fn save_share_image_internal(base64_png: &str, path: &str) -> Result<(), String> {
@@ -185,6 +226,18 @@ pub async fn save_clipboard_image(
             .unwrap_or_else(std::env::temp_dir)
     });
     save_clipboard_image_internal(&cache_dir, &base64_png)
+}
+
+#[tauri::command]
+pub async fn import_image_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let cache_dir = app.path().app_cache_dir().unwrap_or_else(|_| {
+        dirs::cache_dir()
+            .map(|d| d.join("omp-workspace"))
+            .unwrap_or_else(std::env::temp_dir)
+    });
+    tokio::task::spawn_blocking(move || import_image_file_internal(&cache_dir, &path))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Chat share-as-image export: write the rendered PNG to the path the user
@@ -576,6 +629,24 @@ pub async fn perf_breakdown() -> Result<PerfBreakdown, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_image_file_copies_into_clip_dir() {
+        let base = std::env::temp_dir().join(format!("ompws-import-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let src = base.join("Shot.PNG");
+        std::fs::write(&src, b"img").unwrap();
+        let cache = base.join("cache");
+        let copied = import_image_file_internal(&cache, src.to_str().unwrap()).unwrap();
+        assert!(copied.contains("ompws-clip"));
+        assert!(copied.ends_with(".png"));
+        assert_eq!(std::fs::read(&copied).unwrap(), b"img");
+        // Already inside the clip dir: returned unchanged.
+        assert_eq!(import_image_file_internal(&cache, &copied).unwrap(), copied);
+        assert!(import_image_file_internal(&cache, base.to_str().unwrap()).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn test_validate_path() {

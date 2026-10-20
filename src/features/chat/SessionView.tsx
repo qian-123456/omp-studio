@@ -125,7 +125,6 @@ export function SessionView({
 		let cancelled = false;
 		setIsLoadingTranscript(true);
 		setTranscriptError(null);
-		setItems(sessionId, [], 0);
 
 		getTranscript(sessionId)
 			.then((page) => {
@@ -315,6 +314,7 @@ export function SessionView({
 						) : (
 							<div className={askActive ? "hidden" : centered ? "start-rise" : undefined}>
 								<Composer
+									key={sessionId}
 									sessionId={sessionId}
 									readonly={external}
 									compact={compact}

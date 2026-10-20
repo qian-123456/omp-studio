@@ -247,6 +247,37 @@ describe("Composer subcommand chips", () => {
 	});
 });
 
+describe("Composer history arrow navigation", () => {
+	beforeEach(() => {
+		act(() => useComposer.setState({ history: ["older", "a\nb\nc"] }));
+		// Recall the newest (multi-line) entry from an empty composer.
+		fireEvent.keyDown(ta(), { key: "ArrowUp" });
+		expect(ta().value).toBe("a\nb\nc");
+	});
+
+	const key = (k: string, pos: number): boolean => {
+		ta().setSelectionRange(pos, pos);
+		return fireEvent.keyDown(ta(), { key: k });
+	};
+
+	it("ArrowUp mid-text leaves the caret to the browser", () => {
+		expect(key("ArrowUp", 3)).toBe(true);
+		expect(ta().value).toBe("a\nb\nc");
+	});
+
+	it("ArrowUp on the first line goes to the previous history entry", () => {
+		expect(key("ArrowUp", 1)).toBe(false);
+		expect(ta().value).toBe("older");
+	});
+
+	it("ArrowDown mid-text does not navigate; on the last line it does", () => {
+		expect(key("ArrowDown", 1)).toBe(true);
+		expect(ta().value).toBe("a\nb\nc");
+		expect(key("ArrowDown", 5)).toBe(false);
+		expect(ta().value).toBe("");
+	});
+});
+
 describe("Composer MCP server-name completion", () => {
 	const server = (name: string, enabled: boolean, transport = "stdio") => ({
 		name,

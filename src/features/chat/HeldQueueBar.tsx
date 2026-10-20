@@ -6,9 +6,8 @@ import { useState } from "react";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
-import { type HeldItem, mergeHeldItems, useHeldQueue } from "./heldQueue";
+import { mergeHeldItems, useHeldItems, useHeldQueue } from "./heldQueue";
 import { sendPrompt } from "./send";
-const EMPTY_LIST: HeldItem[] = [];
 export function HeldQueueBar({
 	sessionId,
 	streaming,
@@ -16,7 +15,7 @@ export function HeldQueueBar({
 	sessionId: string;
 	streaming: boolean;
 }) {
-	const items = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
+	const items = useHeldItems(sessionId);
 	const dismissed = useHeldQueue((s) => s.dismissed[sessionId] === true);
 	const { update, remove, move, clear, setDismissed } = useHeldQueue();
 	const [expanded, setExpanded] = useState(false);

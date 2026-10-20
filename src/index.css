@@ -1352,8 +1352,8 @@ html[data-wallpaper="true"] .fixed.inset-0.bg-\[var\(--overlay\)\] {
 }
 
 /* Codex-style text shimmer for in-flight activity labels (正在思考, 正在运行…).
- * A left-to-right highlight sweep over --text-60; reduced-motion keeps the
- * static dimmed label. */
+ * A left-to-right highlight sweep over --text-60 every 1.4s (the ChatGPT app's
+ * .loading-shimmer is 2s); reduced-motion keeps the static dimmed label. */
 @keyframes shimmer-sweep {
 	0% {
 		background-position: 140% 0;
@@ -1373,7 +1373,7 @@ html[data-wallpaper="true"] .fixed.inset-0.bg-\[var\(--overlay\)\] {
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
-	animation: shimmer-sweep 2.4s linear infinite;
+	animation: shimmer-sweep 1.4s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
 	.shimmer-text {
@@ -1582,4 +1582,9 @@ html[data-theme="lavender"] {
  * selection / pending colour. */
 ::highlight(annotation-saved) {
 	background-color: rgba(251, 191, 36, 0.3);
+}
+
+/* Transient "定位到原消息" flash over the exact annotated text. */
+::highlight(annotation-locate) {
+	background-color: rgba(249, 115, 22, 0.45);
 }

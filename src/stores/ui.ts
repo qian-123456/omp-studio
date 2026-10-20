@@ -19,7 +19,8 @@ export type RightTab =
 	| "git"
 	| "services"
 	| "terminal"
-	| "plan";
+	| "plan"
+	| "files";
 
 export const MIN_SIDEBAR_WIDTH = 260;
 export const MAX_SIDEBAR_WIDTH = 600;
@@ -47,6 +48,7 @@ const RIGHT_TABS: readonly RightTab[] = [
 	"services",
 	"terminal",
 	"plan",
+	"files",
 ];
 
 /** Restore open panel tabs. No tab is active at launch: the panel opens on the tab picker. */
@@ -55,7 +57,9 @@ function readRightTabs(): { open: RightTab[]; active: RightTab | null } {
 	try {
 		const raw: unknown = JSON.parse(readString(STORAGE_KEYS.rightTabs) ?? "null");
 		if (Array.isArray(raw)) {
-			open = RIGHT_TABS.filter((t) => raw.includes(t)).sort((a, b) => raw.indexOf(a) - raw.indexOf(b));
+			open = RIGHT_TABS.filter((t) => raw.includes(t) && !INSTANCE_TABS[t]).sort(
+				(a, b) => raw.indexOf(a) - raw.indexOf(b),
+			);
 		}
 	} catch {
 		/* corrupt value: start with no open tabs */
@@ -63,9 +67,17 @@ function readRightTabs(): { open: RightTab[]; active: RightTab | null } {
 	return { open, active: null };
 }
 
+/**
+ * Groups whose strip tabs come from per-instance state that is not restored
+ * at launch (file previews, per-session side chats): restoring the group
+ * would leave a ghost tab with nothing behind it.
+ */
+const INSTANCE_TABS: Partial<Record<RightTab, true>> = { files: true, sidechat: true };
+
 function persistRightTabs(open: RightTab[], active: RightTab | null): void {
-	writeStorage(STORAGE_KEYS.rightTabs, JSON.stringify(open));
-	writeStorage(STORAGE_KEYS.rightTab, active ?? "");
+	const persisted = open.filter((t) => !INSTANCE_TABS[t]);
+	writeStorage(STORAGE_KEYS.rightTabs, JSON.stringify(persisted));
+	writeStorage(STORAGE_KEYS.rightTab, active && INSTANCE_TABS[active] ? "" : (active ?? ""));
 }
 
 const initialRightTabs = readRightTabs();

@@ -76,6 +76,7 @@ src/
   stores/live.ts             per-session live RPC state (streaming, pending UI, subagents, state) [B]
   stores/displayPrefs.ts    local display prefs: request-stats line + fields, thinking preview (localStorage, not the Rust Settings contract) [LEAD]
   stores/explorer.ts         pinned explorer workspace (Git worktree map → explorer)    [C]
+  stores/filePreview.ts      right-panel file preview tabs (one per file; open/close/mode) [B]
   stores/turnNav.ts          chat turn ⇄ git commit jump requests (§8.1)                [C]
   stores/worktrees.ts        live git worktrees per workspace id (git_list_worktrees)   [A]
   features/home/             composer-first start screen (StartPage)                    [A]
@@ -85,7 +86,8 @@ src/
   features/heatmap/          right tab: minimap                                         [B]
   features/git/              right tab: changes + time machine; worktree dialogs        [C]
   features/services/         right tab: services                                        [C]
-  features/editor/           center "文档" view: md preview/annotate/edit               [C]
+  features/editor/           center "文档" view: md preview/annotate/edit (useFileBuffer.ts = shared load/save/dirty buffer) [C]
+  features/files/            right tab "files": per-file preview/edit pane + lazy CodeMirror editor [B]
   features/todos/            todo queue store (`useTodos`, feeds the inbox 定时任务 rows)  [D]
   features/inbox/            session-status hub center page (tabs), attention helper, useInboxBadge (§11 D) [D]
   features/backlog/          backlog store, quick capture modal, top-bar 想法 capsule + dropdown [D]
@@ -94,8 +96,11 @@ src/
   features/diagnose/         diagnose dialog                                            [D]
   features/settings/         settings page & overlay (categorized IA, §11 D)            [D]
     SettingsPage.tsx         shell only: nav sidebar/search (⌘F/⌘K), deep-link flash, routing
-    navigation.ts            NAV_GROUPS + per-section search terms, ompCategoryOf/ompSectionId
+    navigation.ts            NAV_GROUPS (`{id,label,icon,lead}` per item), `navItem`, ranked per-page search index (`buildSearchIndex`/`searchSection`), per-page modified counts (`modifiedCountsByPage`)
+    ompPlacement.ts          omp key → desktop page/section placement (`ompSectionFor`), visibility (`isDesktopRelevant`), TUI conditions/hints, TUI location + search terms
+    OmpSettingsList.tsx      generic omp key rows (`OmpSections`, `OmpSettingsPage`, `OmpSettingRow`; rows carry `data-omp-key`)
     sections/                one component per nav id; sections/index.ts = id → component map
+      OmpPages.tsx           thin pages for omp-key-only nav ids (thinking, helper-models, tools, files, shell, subagents, memory, skills, web, …)
       AgentsMdSection.tsx    `agents-md`: edit global ~/.omp/agent/AGENTS.md or project <cwd>/AGENTS.md | <cwd>/.omp/AGENTS.md (agentsMd.ts = target/conflict helpers)
       PromptCompositionSection.tsx `prompt-composition`: 系统提示词构成 — project picker (opened from the 「上下文占用明细」 popover button, preselected via `stores/promptComposition.openPromptComposition(cwd)`; else last used / Universal), category totals + per-item raw text, optimization hints, and 「让 AI 帮我优化」 (new session in a chosen workspace, default Universal; the prompt from `promptComposition.ts#buildOptimizePrompt` is prefilled via `composer.setDraft`, never sent, and instructs the AI to get user consent before changing any file)
       ShortcutRecorder.tsx   key-combo recorder → Tauri accelerator string (used by 通用 「快速记录快捷键」)
@@ -596,6 +601,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `services_list(all: bool) -> Vec<ServiceInfo>`, `services_stop(pid)`
 - `read_text_file(path) -> String`, `write_text_file(path, content)` (for the md editor; reject paths > 5 MB)
 - `save_clipboard_image(base64_png) -> String` — writes pasted image PNG bytes to `$APPCACHE/ompws-clip/<ts>.png` (asset-protocol scoped); `save_clipboard_file(base64_data, file_name?) -> String` — the non-image analogue for pasted/dropped File bytes with no filesystem path (`$APPCACHE/ompws-clip-files/<ts>-<name>`)
+- `import_image_file(path: String) -> String` — copies an existing image file (Finder drop/paste, temp screenshots, files outside the asset scope) into `$APPCACHE/ompws-clip/<ts>.<ext>` so its thumbnail loads and it outlives the source; returns the copy's path (an image already inside `ompws-clip` is returned unchanged; non-files error). Frontend wrapper: `importImageFile` in `src/lib/ipc.ts`
 - `clipboard_file_paths() -> Vec<String>` — macOS-only JXA/NSPasteboard read resolving real POSIX paths of files on the pasteboard (`NSFilenamesPboardType` then per-item `public.file-url`); `[]` elsewhere or when no file URLs exist. Composer paste/drop uses it so Finder-copied files attach by real path
 - `save_share_image(base64_png, path)` — chat share-as-image export: decodes a (optionally `data:`-prefixed) PNG and writes it to the absolute `.png` path chosen in the save dialog; never creates parent dirs. Clipboard copy of the image goes through `plugin-clipboard-manager` `writeImage` (needs the tauri `image-png` feature)
 - `app_memory_usage() -> ProcessMemoryInfo` — footprint attributed to this app (macOS responsibility API / Linux self RSS); ~2.5 s cache, powers the bottom-bar 性能 indicator
@@ -791,6 +797,7 @@ and `sessions:updated`. **D** turns status changes + RPC frames into todos. **D/
 | `features/home/StartPage` | center when `ui.centerView === "home"` (default composer-first screen) |
 | `features/chat/SessionView` (props `{ sessionId }`) | center when `ui.centerView === "session"` (or `StartPage` if none selected) |
 | `features/editor/DocView` (props `{ path }`) | center when `centerView === "doc"` (or `StartPage` if none selected) |
+| `features/files/FilePreviewPanel` | right tab `files` (one Chrome-style tab per open file in `RightPanelHeader`; text starts in 预览, 编辑 = lazy CodeMirror, ⌘S saves; images render inline) |
 | `features/inbox/InboxPage` | center when `centerView === "inbox"` (session status hub) |
 | `features/schedules/SchedulesPage` | center when `centerView === "schedules"` |
 | `features/skills/SkillsPage` | center when `centerView === "skills"` |
@@ -826,7 +833,7 @@ type CenterView =
   | "schedules"
   | "skills"
   | "settings";
-type RightTab = "explorer" | "sidechat" | "heatmap" | "git" | "services" | "terminal";
+type RightTab = "explorer" | "sidechat" | "heatmap" | "git" | "services" | "terminal" | "plan" | "files";
 interface UiState {
   centerView: CenterView; selectedSessionId: string | null; docPath: string | null;
   rightTab: RightTab | null; openRightTabs: RightTab[]; rightOpen: boolean;  // Chrome-style open tabs, persisted (ompws:right-tabs / ompws:right-tab)
@@ -980,6 +987,14 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Execution disclosure (`ExecutionDisclosure.tsx`): `TurnSteps` renders activity rows for finished turns and live streaming
   (ThinkingRow, ToolCard rows, ExplorationGroupRow, NoticeStep); finished turns collapse under a "已处理 2分3秒" ghost divider.
   `task`/`agent` tool calls render `subagents/TaskToolBlock` and are never folded into groups.
+- Live → committed handoff (`MessageList.tsx` `StreamingRow`, `ExecutionDisclosure.tsx` `LiveDisclosure`): the in-flight turn
+  renders the committed turn's shape. While working: shimmering "正在处理 5秒…" title (open) over the flat live steps. When the
+  final answer starts (`liveAnswerCandidate` trailing text that survives `useAnswerStarted`'s 500 ms debounce; a later tool/thinking
+  step un-folds it) `splitLiveTurn` folds activity into the title (height animation, hairline = boundary), interim prose moves to the
+  thread column and the answer renders with `ANSWER_WRAP_CLASS`/`ANSWER_TEXT_CLASS`, the same boxes `TurnBlockRow` uses. The
+  transcript is fetched only after the stream ends, so `MessageList` keeps the live row mounted (`holding`, last snapshot, ≤ 2.5 s)
+  until a new block arrives and swaps both in one render. Commit never re-anchors the viewport (follow-bottom only; the old
+  "user message to top" final-answer landing was removed). `.shimmer-text` sweep is 1.4 s (ChatGPT app: 2 s).
 - Subagents (`features/chat/subagents/`): `TaskToolBlock {sessionId, toolCallId, args, status, details, resultText?, startedAt?, endedAt?}`
   merges task args < `details.progress/results` < `subagent_list` summaries < live `subagents` (by `parentToolCallId`), renders an
   omp-TUI-style tree (├─/└─, status icon, id, agent badge, current tool, model·thinking·tools·tokens·duration·cost).
@@ -1064,6 +1079,13 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `DocView`: tabs 预览 / 编辑. Preview renders markdown; selecting text → "批注" → comment → annotation `{source:"doc", file, text, comment}` added
   to the selected session (or ask which session). Edit uses CodeMirror, Cmd+S saves via `write_text_file`, dirty indicator, reload-on-change prompt.
   Open docs from GitPanel file clicks (md) and from `ui.openDoc(path)` anywhere (chat tool cards call it for .md paths).
+- File links in agent answers: `features/chat/rehypeFilePathLinks.ts` (after sanitize/highlight) turns paths into `file-link`
+  elements — absolute/home paths in prose, plus inline-code tokens (relative or bare names allowed). Matching rules live in
+  `lib/fileLinks.ts` (`looksLikeFilePath`, `findFilePaths`, `previewKind`, `resolveFilePath`); fenced code and existing links are
+  never rewritten. Clicking resolves the path against the session cwd, its ancestors (repo-name prefixes), the home dir and open
+  workspaces, then a `list_workspace_files` search; text/images open as a `files` right-panel tab (`stores/filePreview.ts`,
+  preview by default), everything else goes to the system opener. Preview markdown resolves its own relative links against the
+  file's directory.
 - `NewSessionDialog`: pick workspace/cwd (default from props; global workspace allowed), model (optional), approval mode, "在独立 worktree 中运行"
   checkbox + name (default slug) → `git_create_worktree` then `rpc_start({cwd: worktree.path, ...})`, optional first prompt → send `prompt`
   via `rpc_send`, then select the session. Warn "同仓库已有 N 个会话在跑，建议开 worktree" when applicable.
@@ -1108,14 +1130,16 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   linked session's status and a done checkbox, collapsed 已完成 section.
 - `useInboxBadge()`: sidebar 收件箱 badge from `useSessions` via the same attention + window rule as the Dock badge, plus open `schedule_run` todos.
 - `TopCapsule`: subagent capsule; shows the selected session's subagents from `stores/live.ts` (运行中/完成/失败 counts, click → details list).
-- `SettingsPage`: navigation organized into 5 top-level groups:
-  - 常规: `general` (通用), `appearance` (外观), `notifications` (通知)
-  - 模型: `providers` (API 供应商), `omp-roles` (模型角色: effective agents, global/project roles, named overrides), `model-fallback` (回退链与切换), `omp-model` (模型与目录), `omp-thinking` (思考与采样), `omp-retry` (重试与回退)
-  - Agent: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `omp-context` (记忆与对话; context-window keys live on 模型 ▸ `context-window` 上下文窗口), `agents-md` (规则文件 AGENTS.md), `omp-tools` (工具与审批), `omp-tasks` (任务与子代理)
-  - 连接: `mobile` (手机访问; renders `MobilePanel`), `omp-providers` (网络与扩展), `mcp` (MCP 服务器), `plugins` (插件)
-  - 高级: `advanced` (高级), `omp-advanced` (其他 OMP 配置)
+- `SettingsPage`: navigation organized into 6 groups (`NAV_GROUPS` in `navigation.ts`):
+  - 常规: `general` (通用), `appearance` (外观), `notifications` (通知), `privacy` (隐私), `about` (版本与更新)
+  - 模型: `providers` (模型与供应商), `omp-roles` (模型角色: effective agents, global/project roles, named overrides), `thinking` (思考与采样), `helper-models` (辅助模型), `model-fallback` (备用模型与重试), `context-window` (上下文窗口)
+  - 会话: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `doctor` (会话体检), `agents-md` (规则文件 AGENTS.md), `prompt-composition` (系统提示词构成)
+  - Agent 能力: `tools` (工具), `files` (文件读写), `shell` (命令行), `subagents` (子代理), `memory` (记忆), `skills` (技能与命令)
+  - 连接: `mobile` (手机访问; renders `MobilePanel`), `mcp` (MCP 服务器), `plugins` (插件), `web` (联网搜索)
+  - 高级: `advanced` (高级)
 - Deep links: `ui.openSettings(section?, opts?: { focusKey?: string })` scrolls to and briefly highlights `[data-field-id]` (native)
-  or `[data-omp-key]` (omp config rows; clears search/group filter). `settingsTargets.ts` maps `SettingsTarget`
+  or `[data-omp-key]` (omp config rows; clears search/group filter). omp keys route to the page of `ompSectionFor(key).page`
+  (`ompPlacement.ts`). `settingsTargets.ts` maps `SettingsTarget`
 (models, thinking, fastMode, advisor, extendedContext, browser, computerUse, memory, mcp, plugins, subagents, approvals,
   providers, compaction, modelContext) to section + focus key via `openSettingsTarget(target)`.
 

@@ -10,6 +10,7 @@
 import { createSideChat, sideChatAsk } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { type Annotation, formatWithAnnotations, sideChatAnnKey, useComposer } from "../../stores/composer";
+import { QUOTE_ONLY_QUESTION, sideChatEchoText } from "../chat/sideChatView";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -17,9 +18,6 @@ import { sideChatDefaultModelArg } from "./modelDefault";
 import { HANDBACK_ACTION_KEY, appendToDraft, handbackAnnotation } from "./handbackLogic";
 import { isSideChatBusy, startHandback, useHandback } from "./handbackRun";
 import { openNewSideChat, useSideChatView } from "./viewStore";
-
-/** Question text used when the user only staged quotes. */
-export const QUOTE_ONLY_QUESTION = "请结合引用内容回答";
 
 export interface FirstMessageInput {
 	parentId: string;
@@ -53,13 +51,14 @@ export async function sendFirstMessage(input: FirstMessageInput): Promise<void> 
 	const { parentId, tabId, annotations } = input;
 	const { question, selection } = firstMessageParts(input.text, annotations);
 	const view = useSideChatView.getState();
-	view.setPending(tabId, question);
+	const shown = sideChatEchoText(question, selection);
+	view.setPending(tabId, shown);
 	let sessionId: string;
 	try {
 		const info = await createSideChat(parentId, input.model ?? undefined);
 		sessionId = info.sessionId;
 		// Echo first so the bubble is there the moment the thread view mounts.
-		useLive.getState().addUserEcho(sessionId, question);
+		useLive.getState().addUserEcho(sessionId, shown);
 		await useSessions.getState().load().catch(() => {});
 		view.bindTab(parentId, tabId, sessionId);
 		// The quotes were consumed into the first prompt.

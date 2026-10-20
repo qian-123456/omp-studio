@@ -13,7 +13,12 @@ import {
 	Terminal,
 } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import type { ToolResultInfo, TranscriptItem } from "../../lib/contracts";
+import type { ImageAttachment, ToolResultInfo, TranscriptItem } from "../../lib/contracts";
+import { ImagePreviewModal } from "../../components/ImagePreviewModal";
+import { AttachmentThumb } from "./ImageChips";
+import { toast } from "../../lib/toast";
+import { collectUserImages } from "../../stores/live";
+import { renderUserTextWithChips, stripImageMarkers } from "./userTextChips";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { useLive } from "../../stores/live";
 import { ActivityHeader } from "./ActivityHeader";
@@ -49,6 +54,8 @@ export type StepShape =
 			item?: TranscriptItem;
 			durationMs?: number;
 			running?: boolean;
+			/** Live rows: the completed request that produced this reasoning. */
+			requestId?: string;
 	  }
 	| {
 			id: string;
@@ -57,6 +64,8 @@ export type StepShape =
 			item?: TranscriptItem;
 			/** Prose still being generated (live row only). */
 			streaming?: boolean;
+			/** Live rows: the completed request that produced this prose. */
+			requestId?: string;
 	  }
 	| { id: string; kind: "notice"; item: TranscriptItem }
 	| { id: string; kind: "steer"; text: string; item?: TranscriptItem }
@@ -67,6 +76,14 @@ export type StepShape =
 			result?: ToolResultInfo;
 			item?: TranscriptItem;
 			/** Live rows: the completed request that issued this call. */
+			requestId?: string;
+	  }
+	/** A failed (retried) model request: renders only its failure stats line. */
+	| {
+			id: string;
+			kind: "request-failed";
+			item?: TranscriptItem;
+			/** Live rows: the failed request's id. */
 			requestId?: string;
 	  };
 
@@ -127,6 +144,78 @@ function resolveStatsRows(
 export const USER_BUBBLE_CLASS =
 	"min-w-0 max-w-[70%] rounded-[22px] bg-[var(--chat-user-bg)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text)]";
 
+/**
+ * User message outside a normal turn row (in-turn steer, queued message):
+ * image thumbnails above, bubble text with inline `🖼️#N` tokens — the same
+ * look as an ordinary sent bubble. Images come from the item plus any path
+ * that only appears as an inline `[Image #N: path]` marker.
+ */
+export function UserMessageBubble({
+	text,
+	images: given,
+	bubbleClass = USER_BUBBLE_CLASS,
+	emptyText,
+}: {
+	text: string;
+	images?: ImageAttachment[];
+	bubbleClass?: string;
+	/** Shown when the text is only markers. */
+	emptyText?: string;
+}) {
+	const [preview, setPreview] = useState<number | null>(null);
+	const images = useMemo(
+		() =>
+			collectUserImages(text, given).filter(
+				(img): img is ImageAttachment & { path: string } => Boolean(img.path),
+			),
+		[text, given],
+	);
+	const hasBody = stripImageMarkers(text).length > 0 || /\[(?:File|文件)\s*#|📎\s*#/u.test(text);
+	return (
+		<>
+			{images.length > 0 && (
+				<div className="flex max-w-[70%] flex-wrap items-start justify-end gap-1.5">
+					{images.map((img, i) => (
+						<AttachmentThumb
+							key={img.id}
+							path={img.path}
+							index={i + 1}
+							showIndex={images.length > 1}
+							variant="bubble"
+							onOpen={() => setPreview(i)}
+						/>
+					))}
+				</div>
+			)}
+			{preview !== null && images.length > 0 && (
+				<ImagePreviewModal
+					images={images.map((img, idx) => ({
+						path: img.path,
+						marker: img.marker ?? `图片 #${idx + 1}`,
+					}))}
+					initialIndex={preview}
+					onClose={() => setPreview(null)}
+				/>
+			)}
+			{hasBody ? (
+				<div className={bubbleClass}>
+					<div className="whitespace-pre-wrap break-words">
+						{renderUserTextWithChips(text, (num) => {
+							if (images.length === 0) {
+								toast.info("找不到这张图片的文件（可能已被清理）");
+								return;
+							}
+							setPreview(Math.min(Math.max(num - 1, 0), images.length - 1));
+						})}
+					</div>
+				</div>
+			) : emptyText ? (
+				<div className={bubbleClass}>{emptyText}</div>
+			) : null}
+		</>
+	);
+}
+
 /** Milliseconds since `startedAt`, re-rendering every second while `active`. */
 export function useElapsedMs(startedAt: number | undefined, active: boolean): number {
 	const [now, setNow] = useState(() => Date.now());
@@ -143,16 +232,6 @@ function processingLabel(elapsedMs: number): string {
 	return elapsedMs >= 1000
 		? `正在处理 ${formatDurationCompact(elapsedMs)}…`
 		: "正在处理…";
-}
-
-/** Live "正在处理 1分12秒…" line for the in-flight turn. */
-export function ProcessingTimer({ startedAt }: { startedAt: number }) {
-	const elapsed = useElapsedMs(startedAt, true);
-	return (
-		<div className="py-0.5 text-[length:var(--chat-font-size)] leading-6">
-			<span className="shimmer-text">{processingLabel(elapsed)}</span>
-		</div>
-	);
 }
 
 /** Seconds label for reasoning rows ("5秒"). */
@@ -432,9 +511,16 @@ export function TurnSteps({
 
 	// Requests with no tool row of their own (pure thinking / prose) render
 	// after the list, in arrival order.
+	const failedRowRequests = new Set<string | undefined>();
+	for (const s of unitSteps.flat()) {
+		if (s.kind === "request-failed") failedRowRequests.add(s.requestId ?? s.item?.id);
+	}
+	const anchoredStats = new Set<RequestStat>();
+	for (const list of statsRows.values()) for (const stat of list) anchoredStats.add(stat);
 	const trailingStats = (statsPlan?.requests ?? [])
 		.filter((r) => r.id !== statsPlan?.answerRequestId)
 		.filter((r) => !r.toolCallIds.length)
+		.filter((r) => !failedRowRequests.has(r.id) && !anchoredStats.has(r.stat))
 		.map((r) => r.stat);
 
 	const renderStep = (step: StepShape) => {
@@ -471,12 +557,20 @@ export function TurnSteps({
 				);
 			case "steer":
 				return (
-					<div key={step.id} id={`msg-${step.id}`} className="flex justify-end py-1">
-						<div className={USER_BUBBLE_CLASS}>
-							<div className="whitespace-pre-wrap break-words">{step.text}</div>
-						</div>
+					<div key={step.id} id={`msg-${step.id}`} className="flex flex-col items-end gap-1.5 py-1">
+						<UserMessageBubble text={step.item?.text ?? step.text} images={step.item?.images} />
 					</div>
 				);
+			case "request-failed": {
+				const id = step.requestId ?? step.item?.id;
+				const stat = statsPlan?.requests.find((r) => r.id === id)?.stat;
+				if (!stat) return null;
+				return (
+					<div key={step.id} id={`msg-${step.id}`}>
+						<RequestStatsLine stat={stat} className="ms-5" />
+					</div>
+				);
+			}
 			case "tool":
 				return renderTool(step, parallel.get(step.id));
 		}
@@ -559,33 +653,12 @@ export function ExecutionDisclosure({
 
 	return (
 		<div className="my-1 flex flex-col">
-			<div className="w-fit">
-				<button
-					type="button"
-					onClick={toggle}
-					className="group/act inline-flex w-fit items-center gap-1 rounded py-0.5 text-left select-none"
-					title={expanded ? "收起执行步骤" : "展开查看执行步骤"}
-					aria-expanded={expanded}
-				>
-					<span
-						className={clsx(
-							"text-[length:var(--chat-font-size)] leading-6",
-							isStreaming
-								? "shimmer-text"
-								: "text-[var(--text-30)] transition-colors group-hover/act:text-[var(--text-60)]",
-						)}
-					>
-						{titleText}
-					</span>
-					<ChevronRight
-						size={12}
-						className={clsx(
-							"shrink-0 text-[var(--text-30)] transition-transform duration-150",
-							expanded && "rotate-90",
-						)}
-					/>
-				</button>
-			</div>
+			<DisclosureHeader
+				title={titleText}
+				shimmer={Boolean(isStreaming)}
+				expanded={expanded}
+				onToggle={toggle}
+			/>
 
 			{expanded && (
 				<div className="pt-1.5 pb-1">
@@ -602,6 +675,162 @@ export function ExecutionDisclosure({
 			)}
 
 			<div className="mt-1 h-px w-full bg-[var(--line)]" />
+		</div>
+	);
+}
+
+/** Answer block markup shared by the committed turn and the live turn, so the
+ * streamed answer and the committed one occupy identical boxes. */
+export const ANSWER_WRAP_CLASS = "group/answer relative flex flex-col items-start py-1";
+export const ANSWER_TEXT_CLASS = "max-w-full text-[length:var(--chat-font-size)] text-[var(--text)]";
+
+/** Ghost title button of a turn's activity fold: 「已处理 2分3秒 >」 / 「正在处理 5秒… >」. */
+function DisclosureHeader({
+	title,
+	shimmer,
+	expanded,
+	onToggle,
+}: {
+	title: string;
+	shimmer: boolean;
+	expanded: boolean;
+	onToggle: () => void;
+}) {
+	return (
+		<div className="w-fit">
+			<button
+				type="button"
+				onClick={onToggle}
+				className="group/act inline-flex w-fit items-center gap-1 rounded py-0.5 text-left select-none"
+				title={expanded ? "收起执行步骤" : "展开查看执行步骤"}
+				aria-expanded={expanded}
+			>
+				<span
+					className={clsx(
+						"text-[length:var(--chat-font-size)] leading-6",
+						shimmer
+							? "shimmer-text"
+							: "text-[var(--text-30)] transition-colors group-hover/act:text-[var(--text-60)]",
+					)}
+				>
+					{title}
+				</span>
+				<ChevronRight
+					size={12}
+					className={clsx(
+						"shrink-0 text-[var(--text-30)] transition-transform duration-150",
+						expanded && "rotate-90",
+					)}
+				/>
+			</button>
+		</div>
+	);
+}
+
+/** Closing animation length; the body unmounts once it has finished. */
+const FOLD_MS = 240;
+
+/**
+ * Height-animated body of a disclosure. Opening is instant; closing eases the
+ * height to zero (grid-rows 1fr → 0fr) and unmounts the children afterwards.
+ * Reduced motion collapses without the transition.
+ */
+function CollapsingRegion({ open, children }: { open: boolean; children: ReactNode }) {
+	const [mounted, setMounted] = useState(open);
+	// Overflow is clipped only while the height animates, so focus rings and
+	// popovers of an open body are never cut off.
+	const [clip, setClip] = useState(false);
+	const wasOpen = useRef(open);
+	useEffect(() => {
+		if (open) {
+			setMounted(true);
+			setClip(false);
+			wasOpen.current = true;
+			return;
+		}
+		if (wasOpen.current) setClip(true);
+		wasOpen.current = false;
+		const timer = window.setTimeout(() => {
+			setMounted(false);
+			setClip(false);
+		}, FOLD_MS);
+		return () => window.clearTimeout(timer);
+	}, [open]);
+	if (!open && !mounted) return null;
+	return (
+		<div
+			className={clsx(
+				"grid transition-[grid-template-rows,opacity] ease-out motion-reduce:transition-none",
+				open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+			)}
+			style={{ transitionDuration: `${FOLD_MS}ms` }}
+		>
+			<div className={clsx("min-h-0", clip && "overflow-hidden")}>{children}</div>
+		</div>
+	);
+}
+
+/**
+ * The in-flight turn's activity fold. While the agent works it is open: a
+ * shimmering 「正在处理 5秒…」 title over the live steps. When the final answer
+ * starts (`folded`) the steps fold away into the title and a hairline marks
+ * the boundary — the exact shape the committed turn renders, so commit only
+ * turns the title into 「已处理 …」.
+ */
+export function LiveDisclosure({
+	sessionId,
+	steps,
+	folded,
+	live,
+	startedAt,
+	durationMs,
+	forceExpanded,
+	toolResultsByCallId,
+	statsPlan,
+}: {
+	sessionId: string;
+	/** Steps the body shows: every live step while working, activity once folded. */
+	steps: StepShape[];
+	folded: boolean;
+	/** The timer is running; false once the stream ended and the title is final. */
+	live: boolean;
+	startedAt: number;
+	durationMs?: number;
+	forceExpanded?: boolean | null;
+	toolResultsByCallId?: Map<string, ToolResultInfo>;
+	statsPlan?: TurnStatsPlan;
+}) {
+	// null = follow the phase (open while working, folded after); a click pins it.
+	const [override, setOverride] = useState<boolean | null>(null);
+	useEffect(() => setOverride(null), [folded]);
+	const open = override ?? !folded;
+	const elapsed = useElapsedMs(startedAt, live);
+	const title = live
+		? processingLabel(elapsed)
+		: durationMs
+			? `已处理 ${formatDurationCompact(durationMs)}`
+			: `已处理 ${steps.length} 个步骤`;
+
+	return (
+		<div className="my-1 flex flex-col">
+			<DisclosureHeader
+				title={title}
+				shimmer={live}
+				expanded={open}
+				onToggle={() => setOverride(!open)}
+			/>
+			<CollapsingRegion open={open && steps.length > 0}>
+				<div className={folded ? "pt-1.5 pb-1" : "pt-0.5"}>
+					<TurnSteps
+						sessionId={sessionId}
+						steps={steps}
+						forceExpanded={forceExpanded}
+						toolResultsByCallId={toolResultsByCallId}
+						statsPlan={statsPlan}
+					/>
+				</div>
+			</CollapsingRegion>
+			{folded && <div className="mt-1 h-px w-full bg-[var(--line)]" />}
 		</div>
 	);
 }

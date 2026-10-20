@@ -15,12 +15,14 @@ import { OauthLoginDialog } from "../../providers/OauthLoginDialog";
 import { ProviderDialog, type ProviderDialogTarget } from "../../providers/ProviderDialog";
 import { useProviders } from "../../providers/store";
 import { openSettingsTarget } from "../settingsTargets";
+import { Button, Chip, IconButton } from "../ui";
 import { ProviderBrandLogo } from "./ProviderBrandLogo";
 import {
 	type ProviderBrandConfig,
 	dedupeLimits,
 	formatLimitStatus,
 	formatRelativeTime,
+	localizeQuotaLabel,
 } from "./quotaHelpers";
 
 export interface AccountSheetProvider {
@@ -55,9 +57,9 @@ export function limitUsedPct(lim: OmpUsageLimit): number {
 }
 
 const STATUS_TEXT_CLASS = {
-	rose: "text-rose-400 font-semibold",
-	amber: "text-amber-400 font-semibold",
-	neutral: "text-neutral-400",
+	rose: "text-[var(--status-error)] font-semibold",
+	amber: "text-[var(--status-warning)] font-semibold",
+	neutral: "text-[var(--text-muted)]",
 } as const;
 
 /** Label + status row with a 4px capsule track. */
@@ -81,11 +83,11 @@ export function QuotaBar({
 	title?: string;
 }) {
 	const fill =
-		tone === "rose" ? "#f43f5e" : tone === "amber" ? "#f59e0b" : brandColor;
+		tone === "rose" ? "var(--status-error)" : tone === "amber" ? "var(--status-warning)" : brandColor;
 	return (
 		<div className="space-y-1.5" title={title}>
 			<div className="flex items-baseline justify-between gap-3 text-xs">
-				<span className="min-w-0 break-words font-medium text-neutral-200">{label}</span>
+				<span className="min-w-0 break-words font-medium text-[var(--text)]">{label}</span>
 				<span
 					className={`shrink-0 whitespace-nowrap font-mono text-[11px] ${STATUS_TEXT_CLASS[tone]}`}
 				>
@@ -99,7 +101,7 @@ export function QuotaBar({
 				/>
 			</div>
 			{caption ? (
-				<div className="text-right text-[10px] text-neutral-500">{caption}</div>
+				<div className="text-right text-[11px] text-[var(--text-dim)]">{caption}</div>
 			) : null}
 		</div>
 	);
@@ -121,7 +123,7 @@ export function LimitBar({
 	}`;
 	return (
 		<QuotaBar
-			label={lim.label}
+			label={localizeQuotaLabel(lim.label)}
 			usedPct={usedPct}
 			statusText={status.usedText}
 			caption={status.resetText}
@@ -231,28 +233,21 @@ export function QuotaAccountSheet({
 						</div>
 						<div className="min-w-0">
 							<div className="flex items-center gap-2">
-								<span className="truncate text-sm font-semibold text-neutral-100">
+								<span className="truncate text-sm font-semibold text-[var(--text)]">
 									{brand.name}
 								</span>
 								<span
-									className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${brand.badgeClass}`}
+									className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${brand.badgeClass}`}
 								>
 									{brand.badge}
 								</span>
 							</div>
-							<div className="mt-0.5 text-[11px] text-neutral-400">
+							<div className="mt-0.5 text-xs text-[var(--text-muted)]">
 								{totalAccounts} 个已绑定账号明细
 							</div>
 						</div>
 					</div>
-					<button
-						type="button"
-						aria-label="关闭"
-						onClick={onClose}
-						className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-100"
-					>
-						<X className="h-4 w-4" />
-					</button>
+					<IconButton icon={X} label="关闭" onClick={onClose} />
 				</div>
 
 				<div className="flex-1 space-y-2.5 overflow-y-auto p-4">
@@ -267,34 +262,33 @@ export function QuotaAccountSheet({
 							>
 								<div className="flex items-start justify-between gap-2">
 									<div className="min-w-0">
-										<div className="flex items-center gap-2">
-											<span className="truncate text-xs font-semibold text-neutral-100">
+										<div className="flex flex-wrap items-center gap-2">
+											<span
+												className="break-all text-xs font-semibold text-[var(--text)]"
+												title={meta?.email || meta?.accountId || undefined}
+											>
 												{meta?.email || meta?.accountId || "主账号"}
 											</span>
-											{meta?.planType && (
-												<span className="shrink-0 rounded border border-[var(--border-divider)] px-1.5 text-[10px] text-neutral-300">
-													{meta.planType}
-												</span>
-											)}
+											{meta?.planType && <Chip>{meta.planType}</Chip>}
 										</div>
 										{meta?.orgName && (
-											<div className="mt-0.5 truncate text-[11px] text-neutral-500">
+											<div className="mt-0.5 break-words text-xs text-[var(--text-dim)]">
 												{meta.orgName}
 											</div>
 										)}
 									</div>
-									<div className="flex shrink-0 flex-col items-end gap-0.5 text-[10px] text-neutral-500">
+									<div className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] text-[var(--text-dim)]">
 										<span className="flex items-center gap-1 font-mono">
 											<Clock className="h-2.5 w-2.5" />
 											{formatRelativeTime(report.fetchedAt, now)}
 										</span>
 										{credits > 0 && (
-											<span className="font-semibold text-amber-400">
-												✦ {credits} 次重置券
+											<span className="font-semibold text-[var(--accent)]">
+												{credits} 次重置券
 											</span>
 										)}
 										{meta?.overageBalanceUsd != null && (
-											<span className="text-neutral-400">
+											<span className="text-[var(--text-muted)]">
 												超额余额 ${meta.overageBalanceUsd.toFixed(2)}
 											</span>
 										)}
@@ -312,7 +306,7 @@ export function QuotaAccountSheet({
 										))}
 									</div>
 								) : (
-									<div className="text-[11px] text-neutral-500">暂无时间窗口限额</div>
+									<div className="text-xs text-[var(--text-dim)]">暂无时间窗口限额</div>
 								)}
 							</div>
 						);
@@ -323,10 +317,10 @@ export function QuotaAccountSheet({
 							key={`unmetered-${u.enterpriseUrl || idx}`}
 							className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--border-divider)] bg-[var(--well-bg)] p-3.5 text-xs"
 						>
-							<span className="truncate font-medium text-neutral-200">
+							<span className="min-w-0 break-all font-medium text-[var(--text)]" title={u.enterpriseUrl}>
 								{u.enterpriseUrl || `${brand.name} 关联账号`}
 							</span>
-							<span className="flex shrink-0 items-center gap-1 text-[11px] text-neutral-500">
+							<span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-dim)]">
 								<CheckCircle2 className="h-3 w-3" />
 								已连接 · 无独立配额
 							</span>
@@ -335,41 +329,32 @@ export function QuotaAccountSheet({
 				</div>
 
 				<div className="space-y-2 border-t border-[var(--border-divider)] px-4 py-3">
-					<div className="flex items-center gap-1 text-[11px] text-neutral-500">
+					<div className="flex items-center gap-1 text-xs text-[var(--text-dim)]">
 						<Clock className="h-3 w-3" />
 						{latestFetchedAt != null
 							? `用量更新于 ${formatRelativeTime(latestFetchedAt, now)}`
 							: "暂无用量数据"}
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
-						<button
-							type="button"
+						<Button
+							variant="primary"
+							size="sm"
+							icon={RefreshCw}
+							loading={refreshing}
 							disabled={refreshing}
 							onClick={() => void onRefresh()}
-							className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/15 px-3 py-1.5 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/25 disabled:opacity-50"
 						>
-							<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
 							{refreshing ? "刷新中" : "刷新用量"}
-						</button>
+						</Button>
 						{canRelogin && (
-							<button
-								type="button"
-								onClick={() => setLoginOpen(true)}
-								className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-3 py-1.5 text-xs font-medium text-neutral-200 transition-colors hover:bg-[var(--bg-hover)]"
-							>
-								<LogIn className="h-3.5 w-3.5" />
+							<Button size="sm" icon={LogIn} onClick={() => setLoginOpen(true)}>
 								重新登录
-							</button>
+							</Button>
 						)}
 						{canManage && (
-							<button
-								type="button"
-								onClick={handleManage}
-								className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-divider)] bg-[var(--well-bg)] px-3 py-1.5 text-xs font-medium text-neutral-200 transition-colors hover:bg-[var(--bg-hover)]"
-							>
-								<Settings2 className="h-3.5 w-3.5" />
+							<Button size="sm" icon={Settings2} onClick={handleManage}>
 								管理该供应商
-							</button>
+							</Button>
 						)}
 					</div>
 				</div>

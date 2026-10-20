@@ -40,9 +40,9 @@ import {
 	takenOverCount,
 } from "../contextWindow/core";
 import { applyContextUpdates, matchKey, parseContextInput, ruleMatches } from "../modelNormalization";
-import { ConfigRow } from "../OmpConfigSection";
+import { OmpSections, OmpSettingRow } from "../OmpSettingsList";
 import { useOmpConfigStore } from "../ompConfigStore";
-import { INPUT_CLASS, SETTINGS_BUTTON_CLASS, SectionHeader, SettingsCard } from "../ui";
+import { Button, Chip, INPUT_CLASS, IconButton, Notice, SectionHeader, SettingsCard } from "../ui";
 import { useCatalogModels } from "../useAppSettings";
 
 /** `to` is the value written (null deletes); `shown` is the window to display afterwards when it differs (catalog undo). */
@@ -53,17 +53,15 @@ type FlatItem = { kind: "head"; section: Section } | { kind: "row"; row: CwRow }
 const fmt = (n: number) => formatTokens(n).toUpperCase();
 
 const GROW_WARNING =
-	"新值大于该模型的上游原始窗口：超过模型真实上限会导致自动压缩来不及触发、请求报错（如 prompt is too long / context_length_exceeded / maximum context length）。若出现此类错误，请回到本页调小。";
+	"新值大于该模型的上游原始窗口：超过模型真实上限会导致自动压缩来不及触发、请求报错（提示上下文过长）。若出现此类错误，请回到本页调小。";
+
+/** Rows shown while the table is collapsed and no model has been modified yet. */
+const PREVIEW_ROWS = 6;
 
 const CARD_KEYS = new Set(["compaction.enabled", "compaction.thresholdTokens", "compaction.thresholdPercent"]);
 
 function GrowWarning() {
-	return (
-		<div className="flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-950/30 px-2.5 py-1.5 text-[11px] leading-4 text-amber-300">
-			<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-			<span>{GROW_WARNING}</span>
-		</div>
-	);
+	return <Notice tone="warning">{GROW_WARNING}</Notice>;
 }
 
 /** Writes edits to both targets; workbench via providers.json, catalog via models.yml. */
@@ -107,7 +105,7 @@ export function ContextWindowSection() {
 				setOverrides(map);
 				setLoadedOverrideKeys(new Set(map.keys()));
 			})
-			.catch((e) => toast.error(`读取 models.yml 覆盖失败：${errMsg(e)}`));
+			.catch((e) => toast.error(`读取模型窗口覆盖失败：${errMsg(e)}`));
 	}, []);
 
 	// models.yml writes are reflected locally; the catalog cache only refreshes on remount.
@@ -171,6 +169,7 @@ export function ContextWindowSection() {
 	const [status, setStatus] = useState<StatusFilter>("all");
 	const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 	const [selected, setSelected] = useState<Set<string>>(new Set());
+	const [showAll, setShowAll] = useState(false);
 
 	const deferredQuery = useDeferredValue(query);
 	const keywords = keywordsOf(deferredQuery);
@@ -196,23 +195,40 @@ export function ContextWindowSection() {
 		return m;
 	}, [rows]);
 
-	const sections = useMemo(() => {
-		const map = new Map<string, { key: string; name: string; rows: CwRow[] }>();
+	// Collapsed (default) view: only models overridden in models.yml, or the first few when none are.
+	const focusOnly = !showAll && keywords.length === 0 && providerFilter === "all" && status === "all";
+	const { sections, matchedTotal, preview } = useMemo(() => {
+		let matched: CwRow[] = [];
 		for (const r of rows) {
 			if (family !== "all" && modelFamily(r.modelId) !== family) continue;
 			if (providerFilter !== "all" && r.providerId !== providerFilter) continue;
 			if (keywords.length > 0 && !ruleMatches({ keywords }, r.modelId)) continue;
-			const { key, name } = matchKey(r.modelId);
-			const mixed = (windowsByType.get(key)?.size ?? 0) > 1;
+			const mixed = (windowsByType.get(matchKey(r.modelId).key)?.size ?? 0) > 1;
 			if (status === "unset" && r.contextWindow != null) continue;
 			if (status === "set" && r.contextWindow == null) continue;
 			if (status === "mixed" && !mixed) continue;
+			matched.push(r);
+		}
+		const total = matched.length;
+		let preview = false;
+		if (focusOnly) {
+			const changed = matched.filter((r) => r.kind === "catalog" && overrides.has(rowKey(r)));
+			preview = changed.length === 0;
+			matched = preview ? matched.slice(0, PREVIEW_ROWS) : changed;
+		}
+		const map = new Map<string, { key: string; name: string; rows: CwRow[] }>();
+		for (const r of matched) {
+			const { key, name } = matchKey(r.modelId);
 			let s = map.get(key);
 			if (!s) map.set(key, (s = { key, name, rows: [] }));
 			s.rows.push(r);
 		}
-		return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-	}, [rows, family, providerFilter, keywords.join(" "), status, windowsByType]);
+		return {
+			sections: [...map.values()].sort((a, b) => a.name.localeCompare(b.name)),
+			matchedTotal: total,
+			preview,
+		};
+	}, [rows, family, providerFilter, keywords.join(" "), status, windowsByType, focusOnly, overrides]);
 
 	const rowsByKey = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
 
@@ -323,7 +339,7 @@ export function ContextWindowSection() {
 			});
 			const message = [
 				conflicts.length > 0 ? `规则将覆盖 ${conflicts.length} 个已有值：\n${lines.join("\n")}` : "",
-				grows ? `\n⚠ ${GROW_WARNING}` : "",
+				grows ? `\n注意：${GROW_WARNING}` : "",
 				takeovers.length > 0 ? `\n${takeovers.join("\n")}` : "",
 			]
 				.filter(Boolean)
@@ -396,42 +412,47 @@ export function ContextWindowSection() {
 	const moreKeys = entries.filter((e) => e.key.startsWith("compaction.") && !CARD_KEYS.has(e.key));
 	const promotionEntries = entries.filter((e) => e.key.startsWith("contextPromotion."));
 	const extendedEntry = entries.find((e) => e.key === "extendedContext");
-	const promotionOn = valueOf("contextPromotion.enabled") !== false;
 	const reloadConfig = () => void useOmpConfigStore.getState().load(true);
 
 	return (
 		<div className="space-y-6">
-			<SectionHeader
-				title="上下文窗口"
-				description="为每个模型设置上下文窗口，并配置自动压缩。窗口决定压缩何时触发；设得比模型真实上限大会导致请求报错。"
-			/>
+			<SectionHeader title="上下文窗口" description="每个模型的上下文大小，以及什么时候自动压缩对话" />
+
+			<Notice tone="warning">窗口设得比模型真实上限大，会导致自动压缩来不及触发、请求报错。</Notice>
 
 			<SettingsCard title="自动压缩" fieldId="compaction">
 				<AutoCompactionCard />
 				{extendedEntry && (
 					<div data-field-id="extendedContext">
-						<ConfigRow entry={extendedEntry} override={null} onChanged={reloadConfig} />
+						<OmpSettingRow entry={extendedEntry} onChanged={reloadConfig} />
 					</div>
 				)}
 				{promotionEntries.map((e) => (
-					<ConfigRow
-						key={e.key}
-						entry={e}
-						override={null}
-						onChanged={reloadConfig}
-						hierarchyDisabled={e.key !== "contextPromotion.enabled" && !promotionOn}
-						hierarchyReason="开启「上下文提升」后生效"
-					/>
+					<OmpSettingRow key={e.key} entry={e} onChanged={reloadConfig} />
 				))}
 			</SettingsCard>
 
 			<SettingsCard
-				title="模型窗口"
-				footer="订阅 / OMP 托管模型的窗口写入 ~/.omp/agent/models.yml，新开会话生效。工作台供应商的模型写入各自的模型配置，不修改供应商默认窗口。"
+				title="每个模型的上下文大小"
+				description={
+					focusOnly
+						? preview
+							? `尚未修改任何模型，先显示前 ${PREVIEW_ROWS} 个，共 ${rows.length} 个模型`
+							: `仅显示已修改的模型，共 ${rows.length} 个模型`
+						: `当前显示 ${matchedTotal} 个，共 ${rows.length} 个模型`
+				}
+				aside={
+					(showAll || focusOnly) && (
+						<Button variant="ghost" size="sm" onClick={() => setShowAll((v) => !v)}>
+							{showAll ? "收起" : `展开全部 ${rows.length} 个模型`}
+						</Button>
+					)
+				}
+				footer="订阅与 OMP 托管模型的窗口写入 OMP 模型配置，新开会话生效。工作台供应商的模型写入各自的模型配置，不修改供应商默认窗口。"
 			>
 				<div className="flex min-h-[320px]">
 					{/* Family rail */}
-					<div className="w-24 shrink-0 space-y-0.5 self-start p-2">
+					<div className="w-40 shrink-0 space-y-0.5 self-start p-2">
 						{(["all", ...FAMILIES.filter((f) => f === family || (familyCounts.get(f) ?? 0) > 0)] as const).map((f) => {
 							const count = f === "all" ? rows.length : (familyCounts.get(f) ?? 0);
 							return (
@@ -440,14 +461,14 @@ export function ContextWindowSection() {
 									type="button"
 									onClick={() => setFamily(f)}
 									className={clsx(
-										"flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px]",
+										"flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[11px]",
 										family === f
-											? "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-neutral-100"
-											: "text-neutral-400 hover:bg-[var(--bg-active-fill)]",
+											? "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--text)]"
+											: "text-[var(--text-muted)] hover:bg-[var(--bg-active-fill)]",
 									)}
 								>
-									<span>{f === "all" ? "全部" : f}</span>
-									<span className="text-neutral-500">{count}</span>
+									<span className="min-w-0 flex-1 truncate">{f === "all" ? "全部" : f}</span>
+									<Chip tone={family === f ? "accent" : "neutral"}>{count}</Chip>
 								</button>
 							);
 						})}
@@ -456,7 +477,7 @@ export function ContextWindowSection() {
 					<div className="flex min-w-0 flex-1 flex-col gap-2 border-l border-[var(--border-divider)] p-3">
 						<div className="flex flex-wrap items-center gap-2">
 							<div className={clsx(INPUT_CLASS, "flex min-w-[160px] flex-1 items-center gap-1.5 py-1")}>
-								<Search className="h-3 w-3 shrink-0 text-neutral-500" />
+								<Search className="h-3 w-3 shrink-0 text-[var(--text-dim)]" />
 								<input
 									value={query}
 									onChange={(e) => setQuery(e.target.value)}
@@ -466,7 +487,7 @@ export function ContextWindowSection() {
 								/>
 								{query && (
 									<button type="button" aria-label="清除搜索" onClick={() => setQuery("")}>
-										<X className="h-3 w-3 text-neutral-500" />
+										<X className="h-3 w-3 text-[var(--text-dim)]" />
 									</button>
 								)}
 							</div>
@@ -493,7 +514,7 @@ export function ContextWindowSection() {
 						</div>
 
 						{sections.length > 0 && (
-							<div className="flex items-center gap-2 bg-[var(--bg-panel)] px-2 py-1 text-[10px] text-neutral-500">
+							<div className="flex items-center gap-2 bg-[var(--bg-panel)] px-2 py-1 text-[10px] text-[var(--text-dim)]">
 								<input
 									type="checkbox"
 									aria-label="全选当前筛选"
@@ -508,25 +529,25 @@ export function ContextWindowSection() {
 									className="shrink-0 text-[var(--accent)]"
 									onClick={() => toggle(filteredKeys, filterState !== "all")}
 								>
-									{filterState === "all" ? "取消全选" : "全选当前筛选"} ({filteredKeys.length})
+									{filterState === "all" ? "取消全选" : "全选"} {filteredKeys.length}
 								</button>
-								<span className="min-w-0 flex-1" title="模型的原始 ID（供应商接口里的名字）">
+								<span className="min-w-0 flex-1 whitespace-nowrap" title="模型的原始 ID（供应商接口里的名字）">
 									模型 ID
 								</span>
-								<span className="w-28" title="提供该模型的供应商；「订阅」表示 OMP 托管的订阅模型">
+								<span className="w-28 shrink-0 whitespace-nowrap" title="提供该模型的供应商；「订阅」表示 OMP 托管的订阅模型">
 									供应商
 								</span>
-								<span className="w-24 text-right" title="窗口 = 模型一次能读入的最大长度（tokens）">
+								<span className="w-20 shrink-0 whitespace-nowrap text-right" title="窗口 = 模型一次能读入的最大长度（tokens）">
 									上下文窗口
 								</span>
-								<span className="w-24 text-right" title="触发点 = 对话达到多长时自动压缩">
+								<span className="w-24 shrink-0 whitespace-nowrap text-right" title="触发点 = 对话达到多长时自动压缩">
 									压缩触发点
 								</span>
 							</div>
 						)}
 
 						{sections.length === 0 && (
-							<div className="py-10 text-center text-[11px] text-neutral-500">没有符合条件的模型</div>
+							<div className="py-10 text-center text-[11px] text-[var(--text-dim)]">没有符合条件的模型</div>
 						)}
 						{/* Settings dialog is min(80vh, 820px) tall; reserve room for the card's title, search row, column header and selection footer so the whole card fits one view.
 						    Rows are virtualized: the unfiltered list is ~1800 models. */}
@@ -553,7 +574,7 @@ export function ContextWindowSection() {
 													/>
 													<button
 														type="button"
-														className="flex min-w-0 flex-1 items-center gap-1 text-left font-medium text-neutral-200"
+														className="flex min-w-0 flex-1 items-center gap-1 text-left font-medium text-[var(--text)]"
 														onClick={() =>
 															setCollapsed((prev) => {
 																const next = new Set(prev);
@@ -565,8 +586,14 @@ export function ContextWindowSection() {
 														{isCollapsed ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
 														<HoverScrollText text={s.name} className="min-w-0 flex-1" title={s.name} />
 													</button>
-													<span className="shrink-0 text-neutral-500">{new Set(s.rows.map((r) => r.providerId)).size} 个供应商</span>
-													{windows > 1 && <span className="text-amber-400">{windows} 种窗口⚠</span>}
+													<span className="shrink-0 text-[var(--text-dim)]">{new Set(s.rows.map((r) => r.providerId)).size} 个供应商</span>
+													{windows > 1 && (
+														<span className="shrink-0" title={`${new Set(s.rows.map((r) => r.providerId)).size} 个供应商给出了不同的上下文窗口`}>
+															<Chip tone="warning" icon={AlertTriangle}>
+																窗口不一致
+															</Chip>
+														</span>
+													)}
 												</div>
 											</div>
 										);
@@ -580,6 +607,7 @@ export function ContextWindowSection() {
 												onCheck={(on) => toggle([rowKey(r)], on)}
 												trigger={compactionOn && r.contextWindow != null ? triggerOf(r.contextWindow) : null}
 												compactionOn={compactionOn}
+												modified={r.kind === "catalog" && overrides.has(rowKey(r))}
 												onEdit={(to) => applyWithUndo([{ row: r, to }], r.modelId)}
 											/>
 										</div>
@@ -593,7 +621,7 @@ export function ContextWindowSection() {
 				{selectedRows.length > 0 && (
 					<div className="space-y-2 border-t border-[var(--border-divider)] bg-[var(--bg-panel)] px-3 py-2">
 						<div className="flex flex-wrap items-center gap-2 text-[11px]">
-							<span className="font-medium text-neutral-200">已选 {selectedRows.length} 个</span>
+							<span className="font-medium text-[var(--text)]">已选 {selectedRows.length} 个</span>
 							<input
 								value={bulkInput}
 								onChange={(e) => setBulkInput(e.target.value)}
@@ -605,18 +633,13 @@ export function ContextWindowSection() {
 								className={clsx(INPUT_CLASS, "w-36 py-1 font-mono")}
 							/>
 							{bulkInput.trim() && (
-								<span className={bulkValue == null ? "text-amber-400" : "text-neutral-400"}>
-									{bulkValue == null ? "无法识别" : `${bulkValue.toLocaleString("en-US")} tokens`}
+								<span className={bulkValue == null ? "text-[var(--status-warning)]" : "text-[var(--text-muted)]"}>
+									{bulkValue == null ? "无法识别" : `${bulkValue.toLocaleString("en-US")} Token`}
 								</span>
 							)}
-							<button
-								type="button"
-								disabled={bulkValue == null || busy}
-								onClick={() => void applySelected()}
-								className={SETTINGS_BUTTON_CLASS}
-							>
+							<Button size="sm" disabled={bulkValue == null || busy} onClick={() => void applySelected()}>
 								应用
-							</button>
+							</Button>
 							<label
 								className={clsx("flex items-center gap-1", ruleKeywords.length === 0 && "opacity-50")}
 								title={ruleKeywords.length === 0 ? "所选模型没有共同名称，无法记为规则" : undefined}
@@ -632,13 +655,9 @@ export function ContextWindowSection() {
 									? `（${wholeBrand ? `整个 ${family} 品牌：` : ""}${ruleKeywords.join(" ")}）`
 									: "：所选模型没有共同名称，无法记为规则"}
 							</label>
-							<button
-								type="button"
-								onClick={() => setSelected(new Set())}
-								className="ml-auto text-neutral-500 hover:text-neutral-300"
-							>
+							<Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelected(new Set())}>
 								取消选择
-							</button>
+							</Button>
 						</div>
 						{bulkGrows && <GrowWarning />}
 					</div>
@@ -650,7 +669,7 @@ export function ContextWindowSection() {
 				footer="规则 = 关键词 + 窗口值。新建或修改规则会立即应用到所有匹配模型；供应商保存时只对新增模型生效。多条规则命中时，关键词更多者优先，相同则后建者优先。"
 			>
 				{rules.length === 0 && (
-					<div className="px-4 py-3 text-[11px] text-neutral-500">
+					<div className="px-4 py-3 text-[11px] text-[var(--text-dim)]">
 						暂无规则。勾选模型后，勾选「记住为规则」即可按所选模型的共同名称创建。
 					</div>
 				)}
@@ -674,12 +693,12 @@ export function ContextWindowSection() {
 										aria-label="规则窗口值"
 										className={clsx(INPUT_CLASS, "w-24 py-1 font-mono")}
 									/>
-									<button type="button" disabled={busy} className={SETTINGS_BUTTON_CLASS} onClick={() => void saveRuleEdit()}>
+									<Button size="sm" disabled={busy} onClick={() => void saveRuleEdit()}>
 										保存
-									</button>
-									<button type="button" className="text-neutral-500" onClick={() => setEditingRule(null)}>
+									</Button>
+									<Button variant="ghost" size="sm" onClick={() => setEditingRule(null)}>
 										取消
-									</button>
+									</Button>
 									{(() => {
 										const v = parseContextInput(editing.value);
 										const kws = keywordsOf(editing.keywords);
@@ -694,31 +713,27 @@ export function ContextWindowSection() {
 								<>
 									<span className="flex flex-wrap gap-1">
 										{r.keywords.map((k) => (
-											<span key={k} className="rounded bg-[var(--bg-active-fill)] px-1.5 py-0.5 font-mono text-neutral-200">
-												{k}
-											</span>
+											<Chip key={k}>
+												<span className="font-mono">{k}</span>
+											</Chip>
 										))}
 									</span>
-									<span className="font-mono text-neutral-200">= {fmt(r.contextWindow)}</span>
-									<span className="text-neutral-500">命中 {matched} 个</span>
-									{taken > 0 && <span className="text-amber-400">有 {taken} 个模型被更具体的规则接管</span>}
+									<span className="font-mono text-[var(--text)]">= {fmt(r.contextWindow)}</span>
+									<span className="text-[var(--text-dim)]">命中 {matched} 个</span>
+									{taken > 0 && <Chip tone="warning">有 {taken} 个模型被更具体的规则接管</Chip>}
 									<span className="ml-auto flex gap-1">
-										<button
-											type="button"
-											aria-label="编辑规则"
+										<IconButton
+											icon={Pencil}
+											label="编辑规则"
+											size="sm"
 											onClick={() => setEditingRule({ id: r.id, keywords: r.keywords.join(" "), value: fmt(r.contextWindow) })}
-											className="rounded p-1 text-neutral-500 hover:text-neutral-200"
-										>
-											<Pencil className="h-3 w-3" />
-										</button>
-										<button
-											type="button"
-											aria-label="删除规则"
+										/>
+										<IconButton
+											icon={Trash2}
+											label="删除规则"
+											size="sm"
 											onClick={() => setRules(rules.filter((x) => x.id !== r.id))}
-											className="rounded p-1 text-neutral-500 hover:text-rose-300"
-										>
-											<Trash2 className="h-3 w-3" />
-										</button>
+										/>
 									</span>
 								</>
 							)}
@@ -729,37 +744,30 @@ export function ContextWindowSection() {
 
 			{moreKeys.length > 0 && (
 				<details className="group">
-					<summary className="cursor-pointer px-1 text-[11px] font-semibold text-neutral-400">
+					<summary className="cursor-pointer px-1 text-[11px] font-semibold text-[var(--text-muted)]">
 						更多压缩选项（{moreKeys.length}）
 					</summary>
 					<div className="mt-1.5 divide-y divide-[var(--border-divider)] rounded-xl hairline bg-[var(--bg-panel)]">
 						{moreKeys.map((e) => (
-							<ConfigRow
-								key={e.key}
-								entry={e}
-								override={null}
-								onChanged={reloadConfig}
-								hierarchyDisabled={!compactionOn}
-								hierarchyReason="「自动压缩」总开关已关闭，此设置暂不生效"
-							/>
+							<OmpSettingRow key={e.key} entry={e} onChanged={reloadConfig} />
 						))}
 					</div>
 				</details>
 			)}
 
 			{undo && (
-				<div className="fixed bottom-6 left-1/2 z-(--z-toast) flex -translate-x-1/2 items-center gap-3 rounded-xl hairline bg-[var(--bg-panel)] px-4 py-2 text-xs text-neutral-200 shadow-apple-card">
+				<div className="fixed bottom-6 left-1/2 z-(--z-toast) flex -translate-x-1/2 items-center gap-3 rounded-xl hairline bg-[var(--bg-panel)] px-4 py-2 text-xs text-[var(--text)] shadow-apple-card">
 					<span>
 						已更新 {undo.edits.length} 个模型的窗口（{undo.label}）
 					</span>
-					<button type="button" className="font-medium text-[var(--accent)]" onClick={() => void runUndo()}>
+					<Button variant="ghost" size="sm" onClick={() => void runUndo()}>
 						撤销
-					</button>
-					<button type="button" aria-label="关闭" onClick={() => setUndo(null)}>
-						<X className="h-3 w-3 text-neutral-500" />
-					</button>
+					</Button>
+					<IconButton icon={X} label="关闭" size="sm" onClick={() => setUndo(null)} />
 				</div>
 			)}
+
+			<OmpSections page="context-window" />
 		</div>
 	);
 }
@@ -770,6 +778,7 @@ function ModelRowView({
 	onCheck,
 	trigger,
 	compactionOn,
+	modified,
 	onEdit,
 }: {
 	row: CwRow;
@@ -777,6 +786,7 @@ function ModelRowView({
 	onCheck: (on: boolean) => void;
 	trigger: { tokens: number; unreachable: boolean } | null;
 	compactionOn: boolean;
+	modified: boolean;
 	onEdit: (to: number) => Promise<void>;
 }) {
 	const [draft, setDraft] = useState<string | null>(null);
@@ -793,16 +803,19 @@ function ModelRowView({
 		>
 			<div className="flex items-center gap-2">
 				<input type="checkbox" aria-label={`选择 ${row.modelId}`} checked={checked} onChange={(e) => onCheck(e.target.checked)} />
-				<HoverScrollText text={row.modelId} className="min-w-0 flex-1" innerClassName="font-mono" title={row.modelId} />
-				<span className="flex w-28 min-w-0 items-center gap-1 text-neutral-500" title={row.providerName}>
-					<span className="min-w-0 truncate">{row.providerName}</span>
-					{row.kind === "catalog" && (
-						<span className="shrink-0 rounded-full bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] px-1.5 py-px text-[10px] leading-4 text-[var(--accent)]">
-							订阅
+				<span className="min-w-0 flex-1 break-all font-mono" title={row.modelId}>
+					{row.modelId}
+					{modified && (
+						<span className="ml-1.5 align-middle font-sans">
+							<Chip tone="accent">已修改</Chip>
 						</span>
 					)}
 				</span>
-				<span className="w-24 text-right">
+				<span className="flex w-28 shrink-0 items-center gap-1 text-[var(--text-dim)]" title={row.providerName}>
+					<span className="min-w-0 break-words">{row.providerName}</span>
+					{row.kind === "catalog" && <Chip tone="accent">订阅</Chip>}
+				</span>
+				<span className="w-20 shrink-0 text-right">
 					{draft != null ? (
 						<input
 							// biome-ignore lint/a11y/noAutofocus: inline cell editor opened by click
@@ -818,21 +831,21 @@ function ModelRowView({
 								}
 							}}
 							onBlur={() => setDraft(null)}
-							className={clsx(INPUT_CLASS, "w-full px-1.5 py-0.5 text-right font-mono", draft && parsed == null && "text-amber-400")}
+							className={clsx(INPUT_CLASS, "w-full px-1.5 py-0.5 text-right font-mono", draft && parsed == null && "text-[var(--status-warning)]")}
 						/>
 					) : (
 						<button
 							type="button"
 							title="点击编辑"
 							onClick={() => setDraft(row.contextWindow != null ? fmt(row.contextWindow) : "")}
-							className={clsx("font-mono hover:underline", row.contextWindow == null ? "text-rose-400" : "text-neutral-200")}
+							className={clsx("font-mono hover:underline", row.contextWindow == null ? "text-[var(--status-error)]" : "text-[var(--text)]")}
 						>
 							{row.contextWindow != null ? fmt(row.contextWindow) : "未知"}
 						</button>
 					)}
 				</span>
 				<span
-					className={clsx("w-24 text-right font-mono", trigger?.unreachable ? "text-rose-400" : "text-neutral-500")}
+					className={clsx("w-24 shrink-0 whitespace-nowrap text-right font-mono", trigger?.unreachable ? "text-[var(--status-error)]" : "text-[var(--text-dim)]")}
 					title="压缩触发点"
 				>
 					{!compactionOn ? "压缩已关闭" : trigger == null ? "—" : trigger.unreachable ? "永远触发不到" : fmt(trigger.tokens)}
@@ -874,7 +887,7 @@ function FilterMenu<T extends string>({
 				className={clsx(INPUT_CLASS, "flex items-center gap-1.5 py-1 text-left")}
 			>
 				<span className="max-w-[10rem] truncate">{current?.label}</span>
-				<ChevronDown className="h-3 w-3 shrink-0 text-neutral-500" />
+				<ChevronDown className="h-3 w-3 shrink-0 text-[var(--text-dim)]" />
 			</button>
 			<FloatingLayer
 				anchor={open ? btnRef.current : null}
@@ -898,7 +911,7 @@ function FilterMenu<T extends string>({
 						}}
 						className={clsx(
 							"flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)]",
-							o.value === value ? "text-neutral-100" : "text-neutral-400",
+							o.value === value ? "text-[var(--text)]" : "text-[var(--text-muted)]",
 						)}
 					>
 						<span className="min-w-0 flex-1 truncate">{o.label}</span>

@@ -131,7 +131,7 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 				const role = info.agent || row?.agent;
 				const model = formatShortModel(row?.model ?? info.progress?.resolvedModel);
 				const sub =
-					n.state === "running" ? act.text : n.state === "failed" ? act.text : "";
+					n.state === "failed" ? act.text : "";
 				return (
 					<li key={n.id}>
 						<div

@@ -7,7 +7,7 @@
  * as part of the table instead of a card of its own. Reloading and the
  * 「批量替换模型」 flow are page-level actions and live in the header.
  */
-import { AlertTriangle, ArrowLeftRight, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeftRight, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
@@ -22,13 +22,10 @@ import { ModelReplaceDialog } from "./modelReplace/ModelReplaceDialog";
 import { useModelReplaceStore } from "./modelReplace/store";
 import { type AssignmentContext, RoleAssignmentTable } from "./ModelRoleTables";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { SectionHeader, SETTINGS_BUTTON_CLASS, SettingRow, SettingsCard } from "./ui";
+import { Button, IconButton, Notice, SectionHeader, SettingRow, SettingsCard } from "./ui";
 import { useSettingsScopeSessionId, useSettingsSessionModel } from "./useAppSettings";
 
 const EMPTY_LAYER: Record<string, string> = {};
-
-const REFRESH_BTN =
-	"rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-50";
 
 function basename(dir: string): string {
 	return dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || dir;
@@ -146,7 +143,7 @@ function ScopeRow({ scope, onScope, pick, onPick, sessionCwd, workspaces, busy }
 			description={
 				scope === "project" && pick !== null ? (
 					<span title={pick}>
-						只写入「<span className="font-medium text-neutral-200">{projectName}</span>」，未设置的角色继承全局。
+						只写入「<span className="font-medium text-[var(--text)]">{projectName}</span>」，未设置的角色继承全局。
 					</span>
 				) : scope === "project" ? (
 					"先在侧栏添加一个项目或打开一个会话。"
@@ -274,28 +271,18 @@ export function AgentModelAssignmentsPanel({ query = "" }: { query?: string }) {
 		<div className="space-y-6" data-testid="model-roles-panel">
 			<SectionHeader
 				title="模型角色"
-				description="为每个角色与子代理指定模型，可全局设置或按项目覆盖"
+				description="不同用途（主力、轻量、子代理…）分别用哪个模型，可全局设置或按项目覆盖"
 				actions={
 					<>
-						<button
-							type="button"
-							onClick={() => setReplaceOpen(true)}
-							title="批量替换模型"
-							className={SETTINGS_BUTTON_CLASS}
-						>
-							<ArrowLeftRight className="h-3.5 w-3.5" />
-							批量替换模型
-						</button>
-						<button
-							type="button"
+						<Button icon={ArrowLeftRight} onClick={() => setReplaceOpen(true)} title="把某个模型一次性替换成另一个">
+							批量替换
+						</Button>
+						<IconButton
+							icon={RefreshCw}
+							label="重新读取模型角色"
 							onClick={reload}
 							disabled={writing || loading}
-							title="重新读取模型角色"
-							aria-label="重新读取模型角色"
-							className={REFRESH_BTN}
-						>
-							<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-						</button>
+						/>
 					</>
 				}
 			/>
@@ -312,25 +299,26 @@ export function AgentModelAssignmentsPanel({ query = "" }: { query?: string }) {
 				/>
 
 				{error && (
-					<div role="alert" className="flex items-start gap-2 px-4 py-3 text-[11px] leading-5 text-rose-300">
-						<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-						<span className="min-w-0 flex-1 break-all">
-							{snapshot ? `读取失败，保留上次结果：${error}` : `无法读取模型角色：${error}`}
-						</span>
-						<button
-							type="button"
-							onClick={reload}
-							className="shrink-0 whitespace-nowrap rounded-md bg-rose-500/20 px-1.5 py-0.5 font-medium text-rose-100 hover:bg-rose-500/30 active:scale-95 transition-all"
+					<div className="p-3">
+						<Notice
+							tone="danger"
+							action={
+								<Button size="sm" onClick={reload}>
+									重新读取
+								</Button>
+							}
 						>
-							重新读取
-						</button>
+							<span className="break-all">
+								{snapshot ? `读取失败，保留上次结果：${error}` : `无法读取模型角色：${error}`}
+							</span>
+						</Notice>
 					</div>
 				)}
 
 				{snapshot === null && !error && (
-					<div className="flex items-center gap-2 px-4 py-3 text-xs text-neutral-500">
+					<div className="flex items-center gap-2 px-4 py-3 text-xs text-[var(--text-dim)]">
 						<Loader2 className="h-3.5 w-3.5 animate-spin" />
-						正在读取模型角色…
+						正在读取模型角色
 					</div>
 				)}
 

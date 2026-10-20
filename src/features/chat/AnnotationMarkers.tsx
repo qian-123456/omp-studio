@@ -8,7 +8,6 @@ import {
 	useComposer,
 	type Annotation,
 } from "../../stores/composer";
-import { useLive } from "../../stores/live";
 import { textAnnotationsOf } from "./annotations";
 import {
 	collectTextSegments,
@@ -264,7 +263,11 @@ function MarkerLayer({
 					type="button"
 					title={m.title}
 					aria-label={m.title}
-					onClick={() => useLive.getState().scrollToItem(sessionId, m.itemId)}
+					onClick={() =>
+						useComposer
+							.getState()
+							.requestAnnotationEdit(m.kind === "main" ? sessionId : sideChatAnnKey(sessionId), m.id)
+					}
 					style={{ top: m.top, left: m.left }}
 					className={`pointer-events-auto absolute z-10 flex h-5 w-5 items-center justify-center rounded-full ${KIND_CLASS[m.kind]} text-[11px] leading-none text-white shadow-sm transition-transform hover:scale-110`}
 				>

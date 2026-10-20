@@ -26,19 +26,19 @@ export const BUILTIN_ROLES: BuiltinRole[] = [
 	{
 		id: "default",
 		zhLabel: "主力模型",
-		description: "会话默认模型，承担主要对话与工具调用（--model）",
+		description: "会话默认使用的模型，承担主要对话与工具调用",
 		kind: "chat",
 	},
 	{
 		id: "smol",
 		zhLabel: "快速模型",
-		description: "轻量任务与快速响应使用的小模型（--smol / PI_SMOL_MODEL）",
+		description: "轻量任务与快速响应使用的小模型",
 		kind: "chat",
 	},
 	{
 		id: "slow",
 		zhLabel: "深度模型",
-		description: "需要深入推理时使用的慢速模型（--slow / PI_SLOW_MODEL）",
+		description: "需要深入推理时使用的模型，速度较慢但更仔细",
 		kind: "chat",
 	},
 	{
@@ -50,7 +50,7 @@ export const BUILTIN_ROLES: BuiltinRole[] = [
 	{
 		id: "plan",
 		zhLabel: "规划模型",
-		description: "计划模式与架构规划使用的模型（--plan / PI_PLAN_MODEL）",
+		description: "计划模式与方案设计使用的模型",
 		kind: "chat",
 	},
 	{
@@ -62,56 +62,56 @@ export const BUILTIN_ROLES: BuiltinRole[] = [
 	{
 		id: "tiny",
 		zhLabel: "轻量后台",
-		description: "后台轻量工作的本地小模型（接受 tiny 目录模型与普通聊天模型）",
+		description: "后台轻量工作用的本地小模型，也可以选普通聊天模型",
 		kind: "chat",
 	},
 	{
 		id: "memory",
 		zhLabel: "记忆",
-		description: "记忆系统提炼与召回所用的模型（接受 tiny 目录模型与普通聊天模型）",
+		description: "提炼和召回记忆所用的模型，可选本地小模型或普通聊天模型",
 		kind: "chat",
 	},
 	{
 		id: "task",
 		zhLabel: "子代理",
-		description: "task 子代理与子任务默认使用的模型",
+		description: "子代理和子任务默认使用的模型",
 		kind: "chat",
 	},
 	{
 		id: "advisor",
 		zhLabel: "顾问",
-		description: "每轮结束后审查会话并可注入建议的第二模型（需 advisor.enabled）",
+		description: "每轮结束后审查会话并给出建议的第二模型，需先在「辅助模型」中开启顾问",
 		kind: "chat",
 	},
 	// ---- model-kind roles (service runners) ----
 	{
 		id: "image",
 		zhLabel: "图像生成",
-		description: "generate_image 工具生成图片所用的模型",
+		description: "生成图片时使用的模型",
 		kind: "modelKind",
 	},
 	{
 		id: "web",
 		zhLabel: "网络搜索",
-		description: "web_search 工具与 omp search 使用的搜索/落地模型",
+		description: "联网搜索时使用的搜索模型",
 		kind: "modelKind",
 	},
 	{
 		id: "speech",
 		zhLabel: "语音合成",
-		description: "TTS 语音合成所用的模型",
+		description: "语音合成（文字转语音）所用的模型",
 		kind: "modelKind",
 	},
 	{
 		id: "dictation",
 		zhLabel: "语音识别",
-		description: "STT 语音听写所用的模型",
+		description: "语音识别（语音转文字）所用的模型",
 		kind: "modelKind",
 	},
 	{
 		id: "judge",
 		zhLabel: "判断",
-		description: "TypeSafe Jev 语义判断所用的模型（接受 tiny 与聊天模型）",
+		description: "语义判断所用的模型，可选本地小模型或普通聊天模型",
 		kind: "modelKind",
 	},
 ];

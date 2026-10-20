@@ -25,24 +25,19 @@ import {
 	withChain,
 	type ChainEntryKind,
 } from "./modelRoles";
-
-export const ICON_BTN =
-	"rounded-md p-1 text-neutral-500 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none";
-
-export const SAVE_BTN =
-	"shrink-0 whitespace-nowrap rounded-lg bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-sm disabled:opacity-50";
+import { Button, Chip, IconButton, type ChipTone } from "./ui";
 
 export const PICKER_BUTTON_CLASS =
-	"flex h-8 w-full items-center justify-between gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 text-left text-xs text-neutral-400 transition-all hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] active:scale-[0.98] disabled:opacity-50";
+	"flex h-8 w-full items-center justify-between gap-2 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 text-left text-xs text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] active:scale-[0.98] disabled:opacity-50";
 
 const SMALL_INPUT =
-	"rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-[11px] text-neutral-200 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all";
+	"rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-[11px] text-[var(--text)] focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all";
 
-const ENTRY_KIND_CHIP: Record<ChainEntryKind, { label: string; cls: string }> = {
-	model: { label: "模型", cls: "bg-sky-500/15 text-sky-300" },
-	role: { label: "角色", cls: "bg-violet-500/15 text-violet-300" },
-	wildcard: { label: "通配符", cls: "bg-amber-500/15 text-amber-300" },
-	invalid: { label: "格式有误", cls: "bg-rose-500/15 text-rose-300" },
+const ENTRY_KIND_CHIP: Record<ChainEntryKind, { label: string; tone: ChipTone }> = {
+	model: { label: "模型", tone: "neutral" },
+	role: { label: "角色", tone: "accent" },
+	wildcard: { label: "通配符", tone: "warning" },
+	invalid: { label: "格式有误", tone: "danger" },
 };
 
 function flashSaved(setter: (v: boolean) => void) {
@@ -123,9 +118,9 @@ function EntryRow({
 	return (
 		<div className="space-y-1">
 			<div className="flex items-center gap-1.5">
-				<span className="w-4 shrink-0 text-center font-mono text-[10px] text-neutral-600">{index + 1}</span>
+				<span className="w-4 shrink-0 text-center font-mono text-[10px] text-[var(--text-dim)]">{index + 1}</span>
 				{value.trim() !== "" && (
-					<span className={`shrink-0 whitespace-nowrap rounded px-1.5 py-px text-[10px] ${chip.cls}`}>{chip.label}</span>
+					<Chip tone={chip.tone}>{chip.label}</Chip>
 				)}
 				<input
 					type="text"
@@ -144,7 +139,7 @@ function EntryRow({
 					className={`min-w-0 flex-1 font-mono ${SMALL_INPUT}`}
 				/>
 				{!error && levels.length > 0 && (
-					<label className="flex shrink-0 items-center gap-1 text-[11px] text-neutral-500">
+					<label className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--text-dim)]">
 						<span className="whitespace-nowrap">思考强度</span>
 						<NativeSelect
 							value={level ?? ""}
@@ -162,27 +157,21 @@ function EntryRow({
 						</NativeSelect>
 					</label>
 				)}
-				<button type="button" disabled={busy || index === 0} onClick={() => onMove(-1)} title="上移" className={ICON_BTN}>
-					<ChevronUp className="h-3 w-3" />
-				</button>
-				<button
-					type="button"
+				<IconButton icon={ChevronUp} size="sm" label="上移" disabled={busy || index === 0} onClick={() => onMove(-1)} />
+				<IconButton
+					icon={ChevronDown}
+					size="sm"
+					label="下移"
 					disabled={busy || index === count - 1}
 					onClick={() => onMove(1)}
-					title="下移"
-					className={ICON_BTN}
-				>
-					<ChevronDown className="h-3 w-3" />
-				</button>
-				<button type="button" disabled={busy} onClick={onRemove} title="移除" className={ICON_BTN}>
-					<Trash2 className="h-3 w-3" />
-				</button>
+				/>
+				<IconButton icon={Trash2} size="sm" label="移除" disabled={busy} onClick={onRemove} />
 			</div>
 			{(error || kind === "wildcard") && (
-				<div className="flex flex-wrap items-center gap-2 pl-5 text-[10.5px]">
-					{error && <span className="break-words text-rose-300">{error}</span>}
+				<div className="flex flex-wrap items-center gap-2 pl-5 text-[11px]">
+					{error && <span className="min-w-0 break-words text-[var(--status-error)]">{error}</span>}
 					{!error && kind === "wildcard" && (
-						<span className="text-neutral-500">保持出错模型的名字，只换供应商；思考强度沿用出错那一轮</span>
+						<span className="text-[var(--text-dim)]">保持出错模型的名字，只换供应商；思考强度沿用出错那一轮</span>
 					)}
 				</div>
 			)}
@@ -271,8 +260,8 @@ export function FallbackChainEditor({
 					]}
 				/>
 				{savedTick && (
-					<span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400">
-						<Check className="h-2.5 w-2.5" />
+					<span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--status-success)]">
+						<Check className="h-3 w-3" />
 						已保存
 					</span>
 				)}
@@ -312,15 +301,13 @@ export function FallbackChainEditor({
 							}}
 						/>
 					</div>
-					<button
-						type="button"
+					<IconButton
+						icon={Plus}
+						size="sm"
+						label="添加一行手动输入"
 						disabled={busy}
 						onClick={() => setItems([...items, ""])}
-						title="添加一行手动输入"
-						className={ICON_BTN}
-					>
-						<Plus className="h-3 w-3" />
-					</button>
+					/>
 				</div>
 				<div className="flex items-center gap-1.5 pl-5">
 					<NativeSelect
@@ -362,35 +349,30 @@ export function FallbackChainEditor({
 						title="例如在 openrouter 下填 google，只匹配 openrouter/google/ 开头的模型"
 						className={`w-40 font-mono ${SMALL_INPUT}`}
 					/>
-					<button
-						type="button"
+					<Button
+						variant="secondary"
+						size="sm"
 						disabled={busy || !wildProvider}
 						onClick={() => {
 							setItems([...items, buildWildcard(wildProvider, wildPrefix)]);
 							setWildPrefix("");
 						}}
-						className="whitespace-nowrap rounded-full hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
 					>
 						添加通配符
-					</button>
+					</Button>
 				</div>
 			</div>
 
-			<div className="flex items-center gap-2 pl-5">
-				<button type="button" disabled={busy || !dirty || hasError} onClick={() => void apply()} className={SAVE_BTN}>
-					{busy ? "保存中..." : "应用"}
-				</button>
+			<div className="flex flex-wrap items-center gap-2 pl-5">
+				<Button variant="primary" size="sm" loading={busy} disabled={!dirty || hasError} onClick={() => void apply()}>
+					{busy ? "保存中" : "应用"}
+				</Button>
 				{dirty && (
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => setItems(committed.items)}
-						className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-50"
-					>
+					<Button variant="ghost" size="sm" disabled={busy} onClick={() => setItems(committed.items)}>
 						放弃
-					</button>
+					</Button>
 				)}
-				{hasError && <span className="text-[10.5px] text-rose-300">有条目格式不对，修正后才能应用</span>}
+				{hasError && <span className="text-[11px] text-[var(--status-error)]">有条目格式不对，修正后才能应用</span>}
 			</div>
 		</div>
 	);

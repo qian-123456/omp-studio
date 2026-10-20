@@ -21,8 +21,12 @@ import { MATH_BLOCK_TAG, rehypeMathBlocks } from "./rehypeMathBlocks";
 import { normalizeMath } from "./mathNormalize";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
-import { useUi } from "../../stores/ui";
+import { useSessions } from "../../stores/sessions";
+import { useHomeDir } from "../../lib/hooks";
+import { looksLikeFilePath } from "../../lib/fileLinks";
+import { openFileLink } from "../../stores/filePreview";
 import { useSettings } from "../settings/store";
+import { FILE_LINK_TAG, rehypeFilePathLinks } from "./rehypeFilePathLinks";
 import { MarkdownSecretChip } from "../privacy/SecretChip";
 import { SECRET_CHIP_TAG, rehypeSecretChips } from "../privacy/render";
 import { VisualizeBlock } from "./visualize/VisualizeBlock";
@@ -34,6 +38,8 @@ import { useRevealText } from "./useRevealText";
 interface MarkdownContextValue {
 	/** Session used by visualize follow-up messages; absent in side surfaces. */
 	sessionId?: string;
+	/** Directory relative file links resolve against; defaults to the session cwd. */
+	cwd?: string | null;
 	/** Raw markdown text, needed to decide whether a trailing fence is closed. */
 	sourceText: string;
 	visualizeEnabled: boolean;
@@ -185,6 +191,15 @@ function PreBlock({
 	);
 }
 
+function useLinkBase(): { cwd: string | null; home: string | null } {
+	const ctx = React.useContext(MarkdownContext);
+	const sessionCwd = useSessions((s) =>
+		ctx.sessionId ? (s.sessions[ctx.sessionId]?.cwd ?? null) : null,
+	);
+	const home = useHomeDir();
+	return { cwd: ctx.cwd ?? sessionCwd, home };
+}
+
 function MarkdownLink({
 	href,
 	children,
@@ -194,19 +209,25 @@ function MarkdownLink({
 	children?: React.ReactNode;
 	title?: string;
 }) {
+	const { cwd, home } = useLinkBase();
+
 	const handleClick = async (e: React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
 		if (!href) return;
 		try {
-			if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) {
+			if (href.startsWith("#")) {
+				document.getElementById(decodeURIComponent(href.slice(1)))?.scrollIntoView({
+					block: "center",
+				});
+			} else if (/^file:\/\//i.test(href)) {
+				await openFileLink(href, { cwd, home });
+			} else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) {
 				await openUrl(href);
+			} else if (looksLikeFilePath(href, { allowRelative: true, allowBare: true })) {
+				await openFileLink(href, { cwd, home });
 			} else {
-				if (href.endsWith(".md")) {
-					useUi.getState().openDoc(href);
-				} else {
-					await openPath(href);
-				}
+				await openPath(href);
 			}
 		} catch (err) {
 			toast.error(`打开链接失败: ${errMsg(err)}`);
@@ -221,6 +242,40 @@ function MarkdownLink({
 			className="cursor-pointer text-[var(--accent)] underline decoration-[var(--accent)]/50 underline-offset-2 hover:decoration-[var(--accent)]"
 		>
 			{children}
+		</a>
+	);
+}
+
+/** A file path the agent wrote (inline code or prose): opens the right-panel preview. */
+function MarkdownFileLink(props: {
+	"data-file-link-text"?: string;
+	"data-file-link-code"?: string;
+	children?: React.ReactNode;
+}) {
+	const raw = props["data-file-link-text"] ?? extractText(props.children).trim();
+	const fromCode = props["data-file-link-code"] === "true";
+	const { cwd, home } = useLinkBase();
+	const handleClick = async (e: React.MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		try {
+			await openFileLink(raw, { cwd, home });
+		} catch (err) {
+			toast.error(`打开文件失败: ${errMsg(err)}`);
+		}
+	};
+	return (
+		<a
+			href={raw}
+			onClick={handleClick}
+			title={`在右侧预览：${raw}`}
+			className={clsx(
+				"cursor-pointer text-[var(--accent)] underline decoration-[var(--accent)]/50 underline-offset-2 hover:decoration-[var(--accent)]",
+				fromCode &&
+					"rounded bg-[var(--well-bg)] px-1 py-0.5 font-mono text-[length:var(--chat-code-font-size)] no-underline hover:underline",
+			)}
+		>
+			{props.children ?? raw}
 		</a>
 	);
 }
@@ -299,6 +354,7 @@ const REHYPE_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["re
 	rehypeMathBlocks,
 	[rehypeHighlight, { detect: false }],
 	rehypeSecretChips,
+	rehypeFilePathLinks,
 ];
 
 function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
@@ -359,6 +415,7 @@ const MARKDOWN_COMPONENTS = {
 	pre: PreBlock,
 	a: MarkdownLink,
 	table: TableBlock,
+	[FILE_LINK_TAG]: MarkdownFileLink,
 	img: MarkdownImage,
 	[MATH_BLOCK_TAG]: MathBlock,
 	[SECRET_CHIP_TAG]: MarkdownSecretChip,
@@ -370,15 +427,17 @@ const MARKDOWN_COMPONENTS = {
 const MarkdownSegment = React.memo(function MarkdownSegment({
 	text,
 	sessionId,
+	cwd,
 	visualizeEnabled,
 }: {
 	text: string;
 	sessionId?: string;
+	cwd?: string | null;
 	visualizeEnabled: boolean;
 }) {
 	const ctx = useMemo(
-		(): MarkdownContextValue => ({ sessionId, sourceText: text, visualizeEnabled }),
-		[sessionId, text, visualizeEnabled],
+		(): MarkdownContextValue => ({ sessionId, cwd, sourceText: text, visualizeEnabled }),
+		[sessionId, cwd, text, visualizeEnabled],
 	);
 	const mathText = useMemo(() => normalizeMath(text), [text]);
 	return (
@@ -397,11 +456,14 @@ const MarkdownSegment = React.memo(function MarkdownSegment({
 export const Markdown = React.memo(function Markdown({
 	text: rawText,
 	sessionId,
+	cwd,
 	streaming = false,
 }: {
 	text: string;
 	/** Session for visualize follow-up sends; optional outside chat views. */
 	sessionId?: string;
+	/** Base directory for relative file links; defaults to the session cwd. */
+	cwd?: string | null;
 	/** The text is still being generated: reveal it frame by frame and repair
 	 * the unfinished tail so it renders like its finished form. */
 	streaming?: boolean;
@@ -464,6 +526,7 @@ export const Markdown = React.memo(function Markdown({
 					key="head"
 					text={head}
 					sessionId={sessionId}
+					cwd={cwd}
 					visualizeEnabled={visualizeEnabled}
 				/>
 			)}
@@ -471,6 +534,7 @@ export const Markdown = React.memo(function Markdown({
 				key="tail"
 				text={tail}
 				sessionId={sessionId}
+				cwd={cwd}
 				visualizeEnabled={visualizeEnabled}
 			/>
 		</div>

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useLive } from "./live";
-import { retryNoticeFromFrame } from "./retryNotice";
+import { retryNoticeFromFrame, retrySummary } from "./retryNotice";
 
 const SID = "s1";
 const frame = (f: Record<string, unknown>) =>
@@ -24,12 +24,38 @@ describe("retryNoticeFromFrame", () => {
 });
 
 describe("live reducer retry notices", () => {
-	it("accumulates and clears on next user message", () => {
+	it("keeps rows after a retry/fallback success", () => {
 		frame({ type: "auto_retry_start", attempt: 1 });
-		frame({ type: "retry_fallback_applied", from: "a", to: "b" });
-		frame({ type: "retry_fallback_succeeded", model: "b" });
+		frame({ type: "retry_fallback_applied", from: "a/x", to: "b/y" });
+		frame({ type: "retry_fallback_succeeded", model: "b/y" });
 		expect(notices()).toHaveLength(3);
-		useLive.getState().addUserEcho(SID, "hi");
+		expect(notices()[2].tone).toBe("ok");
+	});
+
+	it("collapses the turn's rows into one history episode at turn end", () => {
+		frame({ type: "auto_retry_start", attempt: 1, errorMessage: "x".repeat(300) });
+		frame({ type: "retry_fallback_applied", from: "a/x", to: "b/y" });
+		frame({ type: "retry_fallback_succeeded", model: "b/y" });
+		frame({ type: "agent_end", timestamp: 1000 });
 		expect(notices()).toHaveLength(0);
+		const hist = useLive.getState().sessions[SID].retryHistory ?? [];
+		expect(hist).toHaveLength(1);
+		expect(hist[0].notices).toHaveLength(3);
+		expect(hist[0].notices[0].text).toContain("x".repeat(300));
+		expect(hist[0].fallback).toMatchObject({ from: "a/x", to: "b/y" });
+		expect(retrySummary(hist[0].notices, hist[0].fallback)).toBe("本轮重试 1 次 · 已切换备用模型");
+		// A following turn adds its own entry; the old one stays.
+		frame({ type: "auto_retry_end", success: false, attempt: 3, finalError: "boom" });
+		useLive.getState().addUserEcho(SID, "hi");
+		expect(useLive.getState().sessions[SID].retryHistory).toHaveLength(2);
+		expect(notices()).toHaveLength(0);
+	});
+
+	it("records the original model from session state when the event omits it", () => {
+		useLive.setState({
+			sessions: { [SID]: { ...useLive.getState().sessions[SID], state: { model: "g/gem", thinkingLevel: "high" } } as never },
+		});
+		frame({ type: "retry_fallback_applied", to: "b/y" });
+		expect(useLive.getState().sessions[SID].retryFallback).toMatchObject({ from: "g/gem", to: "b/y", thinking: "high" });
 	});
 });

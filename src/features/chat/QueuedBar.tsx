@@ -7,7 +7,8 @@ import { errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useSettings } from "../settings/store";
-import { type HeldItem, useHeldQueue } from "./heldQueue";
+import { isFlowBusy, useLive } from "../../stores/live";
+import { type HeldItem, heldQueueItems, useHeldQueue } from "./heldQueue";
 import { sendPrompt } from "./send";
 
 const EMPTY_LIST: HeldItem[] = [];
@@ -17,6 +18,8 @@ const draining = new Set<string>();
 /** Send the first queued item for `sid`. Returns false when nothing was sent. */
 export async function drainNext(sid: string): Promise<boolean> {
 	if (draining.has(sid)) return false;
+	const live = useLive.getState().sessions[sid];
+	if (live && isFlowBusy(live)) return false;
 	const item = useHeldQueue.getState().shift(sid);
 	if (!item) return false;
 	draining.add(sid);
@@ -32,16 +35,34 @@ export async function drainNext(sid: string): Promise<boolean> {
 	}
 }
 
-/** On streaming true→false, auto-send the next queued item when `queueAutoSend`
- * is enabled (undefined = enabled). Returns the effective setting. */
+const autoSendEnabled = (): boolean => useSettings.getState().settings?.queueAutoSend !== false;
+
+/** Drain on every session's turn end (streaming true→false), mounted or not.
+ * Installed once at module load. */
+useLive.subscribe((state, prev) => {
+	if (state.sessions === prev.sessions) return;
+	for (const sid of Object.keys(state.sessions)) {
+		const cur = state.sessions[sid];
+		const was = prev.sessions[sid];
+		if (!cur || !was || !autoSendEnabled()) continue;
+		const turnEnded = was.streaming && cur.streaming === false;
+		// A compaction/handoff that ended while idle releases held items too.
+		const flowCleared = isFlowBusy(was) && !isFlowBusy(cur) && !cur.streaming && cur.alive === true;
+		if (turnEnded || flowCleared) void drainNext(sid);
+	}
+});
+
+/** Returns the effective `queueAutoSend` setting (undefined = enabled). Turn-end
+ * draining is global (above); on mount, an idle session that still has queued
+ * items (e.g. after a reload or a switch) is drained too. */
 export function useQueueAutoSend(sid: string, streaming: boolean): boolean {
 	const autoSend = useSettings((s) => s.settings?.queueAutoSend) !== false;
-	const prev = useRef(streaming);
+	const streamingRef = useRef(streaming);
+	streamingRef.current = streaming;
 	useEffect(() => {
-		const was = prev.current;
-		prev.current = streaming;
-		if (was && !streaming && autoSend) void drainNext(sid);
-	}, [sid, streaming, autoSend]);
+		if (!autoSend || streamingRef.current || useLive.getState().sessions[sid]?.alive !== true) return;
+		if (heldQueueItems(sid).length > 0) void drainNext(sid);
+	}, [sid, autoSend]);
 	return autoSend;
 }
 

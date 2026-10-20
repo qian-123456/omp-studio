@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Settings ▸ 插件 ▸ 扩展模块: every row has a 删除 button that asks first and
+ * Settings ▸ 插件 ▸ 扩展模块: every row has a 删除 icon button that asks first and
  * only then deletes that exact path; cancelling must not touch the disk.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -30,7 +30,9 @@ vi.mock("../../lib/ipc", () => ({
 	ompConfigList: vi.fn(),
 	ompConfigSet: vi.fn(),
 }));
-vi.mock("./OmpConfigSection", () => ({ OmpConfigSection: () => null }));
+vi.mock("./OmpSettingsList", () => ({
+	OmpSections: ({ page }: { page: string }) => <div data-testid="omp-sections" data-page={page} />,
+}));
 
 import { PluginsSection } from "./PluginsSection";
 
@@ -41,9 +43,15 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("PluginsSection extension delete", () => {
+	it("renders the plugins omp sections and the current project line", async () => {
+		render(<PluginsSection cwd="/p" />);
+		expect((await screen.findByTestId("omp-sections")).getAttribute("data-page")).toBe("plugins");
+		expect(screen.getByText("当前项目：")).toBeDefined();
+	});
+
 	it("deletes the clicked extension's path after confirmation", async () => {
 		confirm.mockResolvedValue(true);
-		render(<PluginsSection cwd="/p" onNavigateSection={() => {}} />);
+		render(<PluginsSection cwd="/p" />);
 		fireEvent.click(await screen.findByLabelText("删除扩展 beta"));
 		await waitFor(() =>
 			expect(extensionDelete).toHaveBeenCalledWith("/h/.omp/agent/extensions/beta.ts.disabled", "/p"),
@@ -53,7 +61,7 @@ describe("PluginsSection extension delete", () => {
 
 	it("does nothing when the confirmation is cancelled", async () => {
 		confirm.mockResolvedValue(false);
-		render(<PluginsSection cwd={null} onNavigateSection={() => {}} />);
+		render(<PluginsSection cwd={null} />);
 		fireEvent.click(await screen.findByLabelText("删除扩展 alpha"));
 		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
 		expect(extensionDelete).not.toHaveBeenCalled();

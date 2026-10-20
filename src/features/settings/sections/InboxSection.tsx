@@ -16,23 +16,34 @@ import {
 } from "../ui";
 
 const MODEL_ROLE_EXTRAS: ModelExtraOption[] = [
-	{ value: "smol", label: "快速模型 (smol)", hint: "内置默认" },
-	{ value: "default", label: "主力模型 (default)", hint: "主力角色" },
-	{ value: "slow", label: "深度模型 (slow)", hint: "深度角色" },
+	{ value: "smol", label: "快速模型", hint: "内置默认" },
+	{ value: "default", label: "主力模型", hint: "主力角色" },
+	{ value: "slow", label: "深度模型", hint: "深度角色" },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
-	smol: "快速模型 (smol)",
-	default: "主力模型 (default)",
-	slow: "深度模型 (slow)",
+	smol: "快速模型",
+	default: "主力模型",
+	slow: "深度模型",
+};
+
+const THINKING_ZH: Record<string, string> = {
+	off: "off",
+	minimal: "minimal",
+	low: "low",
+	medium: "medium",
+	high: "high",
+	xhigh: "xhigh",
+	max: "max",
+	auto: "auto",
 };
 
 export function InboxSection() {
 	const { settings, save } = useAppSettings();
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="收件箱" description="把需要你处理的事情（审批、提问、报错等）集中到侧边栏收件箱" />
-			<SettingsCard title="待办">
+			<SectionHeader title="收件箱" description="哪些会话进入收件箱、保留多久" />
+			<SettingsCard title="收集规则">
 				<ToggleRow
 					fieldId="systemDetection"
 					label="自动收集待办"
@@ -57,7 +68,7 @@ export function InboxSection() {
 								normalize={normalizeHours}
 								onCommit={(v) => save({ inboxWindowHours: Number(v) })}
 							/>
-							<span className="text-xs text-neutral-500">小时</span>
+							<span className="text-xs text-[var(--text-muted)]">小时</span>
 						</div>
 					}
 				/>
@@ -66,7 +77,7 @@ export function InboxSection() {
 	);
 }
 
-/** Settings ▸ AI 会诊 (`doctor`): heatmap AI doctor model and auto mode. */
+/** Settings ▸ 会话体检 (`doctor`): heatmap AI doctor model and auto mode. */
 export function DoctorSection() {
 	const { settings, save } = useAppSettings();
 	const { models, catalogKeys } = useCatalogModels();
@@ -74,15 +85,17 @@ export function DoctorSection() {
 	const doctorCurrent = settings?.doctorModel ?? "smol";
 	const doctorSelector = parseSelection(doctorCurrent).selector;
 	const doctorIsRole = Object.prototype.hasOwnProperty.call(ROLE_LABELS, doctorSelector);
-	const doctorLabel = doctorIsRole
+	const doctorBase = doctorIsRole
 		? ROLE_LABELS[doctorSelector]
-		: (models.find((m) => toModelKey(m.provider, m.id) === doctorSelector)?.id ?? (doctorCurrent || "选择模型"));
+		: (models.find((m) => toModelKey(m.provider, m.id) === doctorSelector)?.id ?? (doctorSelector || "选择模型"));
+	const doctorLevel = parseSelection(doctorCurrent).level;
+	const doctorLabel = doctorLevel ? `${doctorBase} · 思考${THINKING_ZH[doctorLevel] ?? doctorLevel}` : doctorBase;
 	const doctorMode = settings?.doctorAutoMode ?? "manual";
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="会话体检" description="在 Token 用量面板里体检会话：找出绕路、返工和上下文浪费，并给出可编辑的提示词草稿" />
+			<SectionHeader title="会话体检" description="在 Token 用量面板里体检会话，找出绕路、返工和上下文浪费" />
 			<SettingsCard
-				title="会话体检"
+				title="体检设置"
 				footer="自动体检（闲置后 / 每日定时）会消耗所选模型的 Token；默认手动按需，不点不花钱。体检只给出诊断和提示词草稿，不会修改任何文件。"
 			>
 				<SettingRow

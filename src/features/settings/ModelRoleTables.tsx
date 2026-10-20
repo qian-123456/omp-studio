@@ -28,7 +28,7 @@ import {
 	resolveRoleValue,
 } from "./agentModelAssignments";
 import { splitRoleValue } from "./modelRoles";
-import { MODEL_PICKER_BUTTON_CLASS } from "./ui";
+import { Button, Chip, MODEL_PICKER_BUTTON_CLASS } from "./ui";
 
 /** Shared state and actions for the table (owned by AgentModelAssignmentsPanel). */
 export interface AssignmentContext {
@@ -50,8 +50,16 @@ export interface AssignmentContext {
 	roles: Record<string, string>;
 }
 
-const TEXT_BTN =
-	"shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[11px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none";
+const THINKING_ZH: Record<string, string> = {
+	off: "off",
+	minimal: "minimal",
+	low: "low",
+	medium: "medium",
+	high: "high",
+	xhigh: "xhigh",
+	max: "max",
+	auto: "auto",
+};
 
 const isLiteral = (v: string | null): boolean => v !== null && !v.startsWith("@");
 
@@ -64,15 +72,15 @@ type SaveState = { status: "idle" } | { status: "pending" } | { status: "saved";
 function StatusLine({ state }: { state: SaveState }) {
 	if (state.status === "pending") {
 		return (
-			<span role="status" className="flex items-center gap-1 text-[10.5px] text-neutral-400">
+			<span role="status" className="flex items-center gap-1 text-[11px] text-[var(--text-muted)]">
 				<Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-				保存中…
+				保存中
 			</span>
 		);
 	}
 	if (state.status === "saved") {
 		return (
-			<span role="status" className="flex items-center gap-1 text-[10.5px] text-emerald-400">
+			<span role="status" className="flex items-center gap-1 text-[11px] text-[var(--status-success)]">
 				<Check className="h-3 w-3" aria-hidden />
 				{state.text}
 			</span>
@@ -80,7 +88,7 @@ function StatusLine({ state }: { state: SaveState }) {
 	}
 	if (state.status === "error") {
 		return (
-			<span role="alert" className="break-all text-[10.5px] text-rose-300">
+			<span role="alert" className="break-all text-[11px] text-[var(--status-error)]">
 				{state.text}
 			</span>
 		);
@@ -128,12 +136,12 @@ function Step({ win, label, children }: { win: boolean; label: string; children:
 		<div
 			data-in-use={win ? "true" : undefined}
 			className={`flex flex-wrap items-center gap-2.5 rounded-lg px-3 py-2 ${
-				win ? "bg-emerald-500/[0.07]" : "bg-[var(--well-bg)]/50"
+				win ? "bg-[color-mix(in_srgb,var(--status-success)_8%,transparent)]" : "bg-[var(--well-bg)]/50"
 			}`}
 		>
-			<span className={`w-24 shrink-0 text-[11.5px] font-medium ${win ? "text-neutral-100" : "text-neutral-400"}`}>{label}</span>
+			<span className={`w-24 shrink-0 text-xs font-medium ${win ? "text-[var(--text)]" : "text-[var(--text-muted)]"}`}>{label}</span>
 			{children}
-			{win && <span className="rounded-full bg-emerald-500/15 px-2 py-px text-[10.5px] font-semibold text-emerald-400">正在使用</span>}
+			{win && <Chip tone="success">正在使用</Chip>}
 		</div>
 	);
 }
@@ -155,17 +163,17 @@ function InfoPanel({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext })
 		];
 		if (ctx.scope === "project") layers.push({ layer: "project", value: row.projectValue, path: ctx.projectPath });
 		return (
-			<div className="mt-2 space-y-1.5 rounded-lg hairline bg-[var(--well-bg)] p-3 text-[11.5px] text-neutral-300">
+			<div className="mt-2 space-y-1.5 rounded-lg hairline bg-[var(--well-bg)] p-3 text-xs text-[var(--text)]">
 				<div className="font-medium">读写字段：{code(roleField)}</div>
 				{layers.map((l) => (
-					<div key={l.layer} className="text-neutral-400">
+					<div key={l.layer} className="text-[var(--text-muted)]">
 						{where(l.path, l.layer)}　当前值：
-						{l.value ? code(l.value) : <span className="text-neutral-500">未设置</span>}
+						{l.value ? code(l.value) : <span className="text-[var(--text-dim)]">未设置</span>}
 					</div>
 				))}
-				<div className="text-neutral-500">
+				<div className="text-[var(--text-dim)]">
 					「专属模型」和「复用角色模型」都写这个字段，二选一：选模型写入模型名，选角色写入 {code("@角色名")}。
-					{row.name === "task" && "没有专属设置也没有定义里 model: 的子智能体，会使用这里的模型（优先级第 3 层）。"}
+					{row.name === "task" && "没有专属设置也没有定义里 model: 的子代理，会使用这里的模型（优先级第 3 层）。"}
 				</div>
 			</div>
 		);
@@ -184,7 +192,7 @@ function InfoPanel({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext })
 	const stepValue = (s: PriorityStep): ReactNode => {
 		if (s.error) {
 			return (
-				<span className="text-rose-300">
+				<span className="text-[var(--status-error)]">
 					{s.value}（{s.error}）
 				</span>
 			);
@@ -194,22 +202,22 @@ function InfoPanel({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext })
 		return s.value;
 	};
 	return (
-		<div className="mt-2 space-y-1.5 rounded-lg hairline bg-[var(--well-bg)] p-3 text-[11.5px] text-neutral-300">
+		<div className="mt-2 space-y-1.5 rounded-lg hairline bg-[var(--well-bg)] p-3 text-xs text-[var(--text)]">
 			<div className="font-medium">{row.name} 用哪个模型：从上往下找，第一个有值的生效</div>
-			<ol className="list-decimal space-y-1 pl-5 text-neutral-400">
+			<ol className="list-decimal space-y-1 pl-5 text-[var(--text-muted)]">
 				{row.steps.map((s) => (
-					<li key={s.level} className={row.effective.level === s.level ? "text-neutral-100" : ""}>
-						{code(s.field)} = {stepValue(s)} <span className="text-neutral-500">（{stepWhere(s)}）</span>
+					<li key={s.level} className={row.effective.level === s.level ? "text-[var(--text)]" : ""}>
+						{code(s.field)} = {stepValue(s)} <span className="text-[var(--text-dim)]">（{stepWhere(s)}）</span>
 						{s.level === 1 && row.projectShadowed && (
-							<div className="text-amber-300">
+							<div className="text-[var(--status-warning)]">
 								项目值 {code(row.projectOverride ?? "")} 不生效：全局已设置，全局优先（{where(ctx.projectPath, "project")}）
 							</div>
 						)}
-						{row.effective.level === s.level && <span className="ml-2 font-semibold text-emerald-400">✓ 正在使用</span>}
+						{row.effective.level === s.level && <span className="ml-2 font-semibold text-[var(--status-success)]">✓ 正在使用</span>}
 					</li>
 				))}
 			</ol>
-			<div className="text-neutral-500">
+			<div className="text-[var(--text-dim)]">
 				本页只写第 1 层 {code(`task.agentModelOverrides.${row.name}`)}：「专属模型」写入模型名，「复用角色模型」写入{" "}
 				{code("@角色名")}；选回默认项会删除这一项，交给下面几层。
 			</div>
@@ -294,7 +302,7 @@ function RowEditor({
 						align="start"
 						widthClass="w-[360px]"
 						label={pinned ? parseSelection(shown ?? "").selector : "选择模型"}
-						buttonClass={`${MODEL_PICKER_BUTTON_CLASS} ${pinned ? "" : "italic text-neutral-400"}`}
+						buttonClass={`${MODEL_PICKER_BUTTON_CLASS} ${pinned ? "" : "italic text-[var(--text-muted)]"}`}
 						models={ctx.models}
 						currentValue={pinned ? (shown ?? "") : ""}
 						thinking
@@ -302,15 +310,15 @@ function RowEditor({
 						onSelect={pickModel}
 					/>
 					{isLiteral(committed) && (
-						<button
-							type="button"
+						<Button
+							variant="ghost"
+							size="sm"
 							disabled={literal.locked}
 							onClick={() => void literal.run(null, "已清除")}
 							aria-label={`清除专属模型：${subject}（${scopeLabel}）`}
-							className={TEXT_BTN}
 						>
 							清除
-						</button>
+						</Button>
 					)}
 					<StatusLine state={literal.state} />
 				</div>
@@ -351,7 +359,9 @@ function RowEditor({
 					aria-label={`查看读写的字段和优先级：${subject}`}
 					title="查看读写的字段和优先级"
 					className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border font-serif text-[11px] font-semibold ${
-						infoOpen ? "border-neutral-200 bg-neutral-200 text-neutral-900" : "border-neutral-600 text-neutral-400 hover:bg-[var(--bg-hover)]"
+						infoOpen
+							? "border-[var(--text)] bg-[var(--text)] text-[var(--bg-panel)]"
+							: "border-[var(--border-divider)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
 					}`}
 				>
 					i
@@ -367,10 +377,10 @@ function Summary({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext }) {
 	const e = row.effective;
 	let final: ReactNode;
 	if (e.error) {
-		final = <span className="text-rose-300">{e.error}</span>;
+		final = <span className="text-[var(--status-error)]">{e.error}</span>;
 	} else if (e.level === 4) {
 		final = (
-			<span className="text-neutral-500">
+			<span className="text-[var(--text-dim)]">
 				{e.model ? `跟随当前会话 → ${e.model}` : ctx.sessionSelected ? "跟随当前会话（会话未设置模型）" : "跟随当前会话（未选择会话）"}
 			</span>
 		);
@@ -378,23 +388,25 @@ function Summary({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext }) {
 		final = (
 			<>
 				{row.thinking ? splitRoleValue(e.model).selector : e.model}
-				{e.via && <small className="ml-1.5 text-neutral-500">{e.via}</small>}
+				{e.via && <small className="ml-1.5 text-[var(--text-dim)]">{e.via}</small>}
 			</>
 		);
 	} else {
-		final = <span className="text-neutral-500">未设置</span>;
+		final = <span className="text-[var(--text-dim)]">未设置</span>;
 	}
 	return (
 		<>
-			<span className="min-w-0 w-72 max-w-full shrink break-all font-mono text-[12px] text-neutral-200">{final}</span>
-			<span className="w-12 shrink-0 text-[11px] text-neutral-500">{row.thinking ?? ""}</span>
+			<span className="min-w-0 w-72 max-w-full shrink break-all font-mono text-[12px] text-[var(--text)]">{final}</span>
+			<span className="w-12 shrink-0 text-[11px] text-[var(--text-dim)]" title={row.thinking ?? undefined}>
+				{row.thinking ? (THINKING_ZH[row.thinking] ?? row.thinking) : ""}
+			</span>
 			{row.kind === "agent" && row.projectShadowed && (
-				<span className="shrink-0 text-[10.5px] text-amber-300" title="全局点名优先于项目点名">
+				<span className="shrink-0 text-[11px] text-[var(--status-warning)]" title="全局点名优先于项目点名">
 					全局点名覆盖了项目点名
 				</span>
 			)}
 			{ctx.scope === "project" && e.inherited && (
-				<span className="shrink-0 rounded bg-neutral-700/50 px-1 py-px text-[9.5px] text-neutral-400">继承全局</span>
+				<Chip>继承全局</Chip>
 			)}
 		</>
 	);
@@ -434,7 +446,7 @@ export function RoleAssignmentTable({ rows, query, ctx }: { rows: AssignmentRow[
 		]),
 	);
 	if (visible.length === 0) {
-		return <p className="px-4 py-6 text-center text-xs text-neutral-500">没有与「{query}」匹配的角色或代理。</p>;
+		return <p className="px-4 py-6 text-center text-xs text-[var(--text-dim)]">没有与「{query}」匹配的角色或代理。</p>;
 	}
 
 	return (
@@ -462,13 +474,13 @@ export function RoleAssignmentTable({ rows, query, ctx }: { rows: AssignmentRow[
 							}`}
 						>
 							{isOpen ? (
-								<ChevronDown className="h-3 w-3 shrink-0 text-neutral-500" />
+								<ChevronDown className="h-3 w-3 shrink-0 text-[var(--text-dim)]" />
 							) : (
-								<ChevronRight className="h-3 w-3 shrink-0 text-neutral-500" />
+								<ChevronRight className="h-3 w-3 shrink-0 text-[var(--text-dim)]" />
 							)}
 							<span className="w-40 shrink-0">
-								<span className="block truncate font-mono text-[12px] font-semibold text-neutral-100">{r.name}</span>
-								{r.label && isOpen && <span className="block truncate text-[10.5px] text-neutral-500">{r.label}</span>}
+								<span className="block truncate font-mono text-[12px] font-semibold text-[var(--text)]">{r.name}</span>
+								{r.label && isOpen && <span className="block truncate text-[11px] text-[var(--text-dim)]">{r.label}</span>}
 							</span>
 							<Summary row={r} ctx={ctx} />
 						</div>

@@ -107,10 +107,10 @@ describe("compact quota status helpers", () => {
 	it("formatCountdownCompact formats each magnitude", () => {
 		expect(formatCountdownCompact(0)).toBe("已到期");
 		expect(formatCountdownCompact(-5)).toBe("已到期");
-		expect(formatCountdownCompact(2 * 24 * H + 8 * H + 5 * M)).toBe("2d 8h");
-		expect(formatCountdownCompact(4 * H + 49 * M)).toBe("4h 49m");
-		expect(formatCountdownCompact(45 * M)).toBe("45m");
-		expect(formatCountdownCompact(12000)).toBe("12s");
+		expect(formatCountdownCompact(2 * 24 * H + 8 * H + 5 * M)).toBe("2 天 8 小时");
+		expect(formatCountdownCompact(4 * H + 49 * M)).toBe("4 小时 49 分");
+		expect(formatCountdownCompact(45 * M)).toBe("45 分钟");
+		expect(formatCountdownCompact(12000)).toBe("12 秒");
 	});
 
 	it("findWindowResetsAt resolves 5h and 7d windows independently", () => {
@@ -131,9 +131,9 @@ describe("compact quota status helpers", () => {
 	it("formatLimitStatus reports exhausted, warning, and normal", () => {
 		const now = 1_000_000;
 		expect(formatLimitStatus(100, now + 4 * H + 49 * M, now)).toEqual({
-			text: "100% 耗尽 · 4h 49m后恢复",
+			text: "100% 耗尽 · 4 小时 49 分后恢复",
 			usedText: "100% 耗尽",
-			resetText: "4h 49m 后恢复",
+			resetText: "4 小时 49 分后恢复",
 			badge: "已耗尽",
 			isExhausted: true,
 			isWarning: false,
@@ -141,9 +141,9 @@ describe("compact quota status helpers", () => {
 		});
 		expect(formatLimitStatus(100, null, now).text).toBe("100% 耗尽 · 恢复中");
 		const warn = formatLimitStatus(85, now + 45 * M, now);
-		expect(warn).toMatchObject({ text: "已用 85.0% · 45m 后重置", badge: "高用量", isWarning: true, color: "amber" });
+		expect(warn).toMatchObject({ text: "已用 85.0% · 45 分钟后重置", badge: "高用量", isWarning: true, color: "amber" });
 		const normal = formatLimitStatus(32, now + 2 * 24 * H + 8 * H, now);
-		expect(normal).toMatchObject({ text: "已用 32.0% · 2d 8h 后重置", badge: "正常", isExhausted: false, color: "neutral" });
+		expect(normal).toMatchObject({ text: "已用 32.0% · 2 天 8 小时后重置", badge: "正常", isExhausted: false, color: "neutral" });
 		expect(formatLimitStatus(32, now - 1, now).text).toBe("已用 32.0%");
 	});
 

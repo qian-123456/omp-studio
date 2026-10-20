@@ -4,7 +4,7 @@
  * across Tools, Skills, System Prompt, MCP servers, and Prose/Thinking.
  * Detects:
  * - Repeated skill injections (waste)
- * - Runaway/giant tool outputs (>10k tok)
+ * - Runaway/giant tool outputs (>10k token)
  * - Consecutive tool error loops
  * - Context window gauge & limits
  */
@@ -339,7 +339,7 @@ export function analyzeMainDistribution(
 				calls: data.calls,
 				status: isRepeated ? ("waste" as const) : ("ok" as const),
 				note: isRepeated
-					? `⚠️ 重复读取 ${data.calls} 次！前后无变更，空耗约 ${wasteTok} tok`
+					? `⚠️ 重复读取 ${data.calls} 次！前后无变更，空耗约 ${wasteTok} token`
 					: "正常载入规约与指令",
 				targetItemId: data.itemIds[0],
 				callDetails: data.callsList,

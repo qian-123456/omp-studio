@@ -34,12 +34,12 @@ describe("buildQuotaRows", () => {
 		expect(rows.map((r) => r.label)).toEqual([
 			"Gemini · 7 天周期限额",
 			"Gemini · 5 小时滚动限额",
-			"Claude & GPT (shared)",
+			"Claude & GPT（共享）",
 		]);
 		const gemini5h = rows[1];
 		expect(gemini5h.usedPct).toBeCloseTo(20); // mean of 10 and 30
 		expect(gemini5h.statusText).toBe("已用 20.0%");
-		expect(gemini5h.caption).toBe("2h 0m 后重置 · 2 个账号平均"); // earliest reset wins
+		expect(gemini5h.caption).toBe("2 小时后重置 · 2 个账号平均"); // earliest reset wins
 	});
 
 	it("shows non-percent credits as used / limit, summed across accounts", () => {
@@ -57,6 +57,6 @@ describe("buildQuotaRows", () => {
 
 	it("marks exhausted rows", () => {
 		const [row] = buildQuotaRows([report("anthropic", [pct("a:5h", "Claude 5 Hour", "5h", 100, NOW + H)])], NOW);
-		expect(row).toMatchObject({ statusText: "100% 耗尽", tone: "rose", caption: "1h 0m 后恢复" });
+		expect(row).toMatchObject({ statusText: "100% 耗尽", tone: "rose", caption: "1 小时后恢复" });
 	});
 });

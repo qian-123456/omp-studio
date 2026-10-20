@@ -9,14 +9,13 @@
  *  - the app-side held queue (messages typed while a turn streams), which
  *    keeps its send-now / remove actions here.
  */
-import { ImageIcon } from "lucide-react";
 import { useMemo } from "react";
-import { type HeldItem, useHeldQueue } from "./heldQueue";
+import type { ImageAttachment } from "../../lib/contracts";
+import { useHeldItems, useHeldQueue } from "./heldQueue";
 import { sendQueuedNow } from "./QueuedBar";
 import { queuedEchoIds, type UserEcho, useLive } from "../../stores/live";
-import { stripImageMarkers } from "./MessageList";
+import { UserMessageBubble } from "./ExecutionDisclosure";
 
-const EMPTY_LIST: HeldItem[] = [];
 const EMPTY_ECHOES: UserEcho[] = [];
 
 const BUBBLE_CLASS =
@@ -26,23 +25,22 @@ const ACTION_CLASS =
 
 function QueuedBubble({
 	text,
-	imageCount,
+	images,
 	actions,
 }: {
 	text: string;
-	imageCount: number;
+	images?: ImageAttachment[];
 	actions?: React.ReactNode;
 }) {
-	const shown = stripImageMarkers(text).trim() || "（附件）";
 	return (
 		<div className="flex w-full flex-col items-end gap-1 py-1" data-queued-message>
-			<div className={BUBBLE_CLASS}>{shown}</div>
+			<UserMessageBubble
+				text={text}
+				images={images}
+				bubbleClass={BUBBLE_CLASS}
+				emptyText="（附件）"
+			/>
 			<div className="flex items-center gap-2 text-[11px] text-[var(--text-40)]">
-				{imageCount > 0 && (
-					<span className="flex items-center gap-0.5">
-						<ImageIcon size={10} />#{imageCount}
-					</span>
-				)}
 				<span>⏳ 排队中</span>
 				{actions}
 			</div>
@@ -61,7 +59,7 @@ export function QueuedBubbles({
 	const echoes = useLive((s) => s.sessions[sessionId]?.pendingUserEchoes ?? EMPTY_ECHOES);
 	const ompQueue = useLive((s) => s.sessions[sessionId]?.ompQueue);
 	const streaming = useLive((s) => s.sessions[sessionId]?.streaming === true);
-	const held = useHeldQueue((s) => s.queues[sessionId] ?? EMPTY_LIST);
+	const held = useHeldItems(sessionId);
 	const remove = useHeldQueue((s) => s.remove);
 	const queuedEchoes = useMemo(() => {
 		if (!ompQueue) return EMPTY_ECHOES;
@@ -72,13 +70,13 @@ export function QueuedBubbles({
 	return (
 		<div className={className}>
 			{queuedEchoes.map((e) => (
-				<QueuedBubble key={e.id} text={e.text ?? ""} imageCount={e.images?.length ?? 0} />
+				<QueuedBubble key={e.id} text={e.text ?? ""} images={e.images} />
 			))}
 			{held.map((item, i) => (
 				<QueuedBubble
 					key={item.id}
 					text={item.text}
-					imageCount={item.images?.length ?? 0}
+					images={item.images}
 					actions={
 						<>
 							<button

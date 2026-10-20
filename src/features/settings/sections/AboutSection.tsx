@@ -8,18 +8,18 @@ import { ompVersionLabel, useOmpUpdate } from "../../../stores/ompUpdate";
 import { switchPendingNow, syncStaleness, useOmpUpdateSessions } from "../../../stores/ompUpdateSessions";
 import { useSessions } from "../../../stores/sessions";
 import { useAppSettings } from "../useAppSettings";
+import { OmpSections } from "../OmpSettingsList";
 import {
+	Button,
+	Chip,
 	CommitInput,
-	SETTINGS_BUTTON_CLASS,
+	IconButton,
 	SectionHeader,
 	SettingRow,
 	SettingsCard,
 	ToggleRow,
 	normalizeHours,
 } from "../ui";
-
-const PRIMARY_BUTTON_CLASS =
-	"inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-50";
 
 function nameOf(id: string): string {
 	const meta = useSessions.getState().sessions[id];
@@ -85,113 +85,95 @@ export function AboutSection() {
 	let latestHint: React.ReactNode;
 	let latestControl: React.ReactNode = null;
 	if (updating) {
-		latestHint = (
-			<span className="inline-flex items-center gap-1 text-neutral-400">
-				<Loader2 className="h-3 w-3 animate-spin" /> 正在更新…
-			</span>
-		);
+		latestHint = <Chip tone="accent" icon={Loader2}>正在更新</Chip>;
 		latestControl = (
-			<button type="button" disabled className={PRIMARY_BUTTON_CLASS}>
-				<Loader2 className="h-3.5 w-3.5 animate-spin" />
-				<span>正在更新…</span>
-			</button>
+			<Button variant="primary" loading disabled>
+				正在更新
+			</Button>
 		);
 	} else if (checking) {
-		latestHint = (
-			<span className="inline-flex items-center gap-1 text-neutral-400">
-				<Loader2 className="h-3 w-3 animate-spin" /> 正在检查…
-			</span>
-		);
+		latestHint = <Chip tone="neutral" icon={Loader2}>正在检查</Chip>;
 	} else if (error) {
-		latestHint = <span className="text-amber-400">{status?.updateAvailable ? "更新失败" : "检查更新失败"}</span>;
+		latestHint = <Chip tone="danger">{status?.updateAvailable ? "更新失败" : "检查更新失败"}</Chip>;
 		latestControl = (
 			<div className="flex flex-wrap items-center gap-2">
-				<button
-					type="button"
+				<Button
+					size="sm"
+					variant="ghost"
+					icon={detailsOpen ? ChevronDown : ChevronRight}
 					onClick={() => setDetailsOpen((v) => !v)}
-					className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200"
 				>
-					{detailsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-					<span>查看详情</span>
-				</button>
-				<button
-					type="button"
+					查看详情
+				</Button>
+				<Button
+					icon={RotateCw}
 					disabled={!info?.found && status?.updateAvailable}
 					onClick={() => void (status?.updateAvailable ? handleUpdate() : check())}
-					className={SETTINGS_BUTTON_CLASS}
 				>
-					<RotateCw className="h-3.5 w-3.5" />
-					<span>重试</span>
-				</button>
+					重试
+				</Button>
 			</div>
 		);
 	} else if (status?.updateAvailable) {
-		latestHint = (
-			<span className="inline-flex items-center gap-1 text-indigo-300">
-				<ArrowUpCircle className="h-3 w-3" /> 有新版本 {status.latest}
-			</span>
-		);
+		latestHint = <Chip tone="accent" icon={ArrowUpCircle}>有新版本 {status.latest}</Chip>;
 		latestControl = (
-			<button
-				type="button"
-				disabled={!info?.found}
-				onClick={() => void handleUpdate()}
-				className={PRIMARY_BUTTON_CLASS}
-			>
-				<ArrowUpCircle className="h-3.5 w-3.5" />
-				<span>更新到 {status.latest}</span>
-			</button>
+			<Button variant="primary" icon={ArrowUpCircle} disabled={!info?.found} onClick={() => void handleUpdate()}>
+				更新到 {status.latest}
+			</Button>
 		);
 	} else if (status) {
 		latestHint = (
-			<span className="inline-flex items-center gap-1 text-emerald-400">
-				<CheckCircle2 className="h-3 w-3" /> 已是最新版本
-				{lastCheckedAt ? <span className="text-neutral-500"> · 上次检查 {formatChecked(lastCheckedAt)}</span> : null}
+			<span className="inline-flex items-center gap-2">
+				<Chip tone="success" icon={CheckCircle2}>已是最新版本</Chip>
+				{lastCheckedAt ? <span className="text-[11px] text-[var(--text-dim)]">上次检查 {formatChecked(lastCheckedAt)}</span> : null}
 			</span>
 		);
 		latestControl = (
-			<button type="button" onClick={() => void check()} className="text-xs text-neutral-500 hover:text-neutral-300">
+			<Button icon={RefreshCw} onClick={() => void check()}>
 				重新检查
-			</button>
+			</Button>
 		);
 	} else {
-		latestHint = <span className="text-neutral-500">尚未检查</span>;
+		latestHint = <Chip tone="neutral">尚未检查</Chip>;
 		latestControl = (
-			<button type="button" onClick={() => void check()} className={SETTINGS_BUTTON_CLASS}>
-				<RefreshCw className="h-3.5 w-3.5" />
-				<span>检查更新</span>
-			</button>
+			<Button variant="primary" icon={RefreshCw} onClick={() => void check()}>
+				检查更新
+			</Button>
 		);
 	}
 
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="版本与更新" description="查看本产品与 omp 的版本，检查并安装 omp 更新。" />
+			<SectionHeader title="版本与更新" description="本应用和 omp 的版本，检查与安装更新" />
 
 			<SettingsCard title="版本">
 				<SettingRow
 					label="本产品"
 					description="OMP 工作台桌面应用"
-					control={<span className="font-mono text-xs text-neutral-300">omp-workspace v{appVersion ?? "…"}</span>}
+					control={<span className="font-mono text-xs text-[var(--text-muted)]">omp-workspace v{appVersion ?? "未知"}</span>}
 				/>
 				<SettingRow
 					label="omp 版本"
 					description={info?.found ? <span className="font-mono">{info.resolvedPath}</span> : "未找到 omp，可在「高级」中设置 omp 程序位置"}
-					control={<span className="font-mono text-xs text-neutral-300">{ompVersion ?? "未知"}</span>}
+					control={<span className="font-mono text-xs text-[var(--text-muted)]">{ompVersion ?? "未知"}</span>}
 				/>
-				<SettingRow label={status?.updateAvailable ? "更新" : "最新版本"} hint={latestHint} control={latestControl}>
+				<SettingRow
+					label="omp 更新"
+					description={latestHint}
+					control={latestControl}
+				>
 					{error && !checking && !updating && detailsOpen ? (
 						<div className="relative mt-2">
-							<pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2 pr-16 font-mono text-[11px] text-neutral-300">
+							<pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--well-bg)] p-2 pr-16 font-mono text-[11px] text-[var(--text-muted)]">
 								{lastOutput ?? error}
 							</pre>
-							<button
-								type="button"
+							<IconButton
+								size="sm"
+								icon={Copy}
+								label="复制详情"
+								className="absolute right-2 top-2"
 								onClick={() => void copyOutput()}
-								className="absolute right-2 top-2 inline-flex items-center gap-1 text-[11px] text-neutral-400 hover:text-neutral-200"
-							>
-								<Copy className="h-3 w-3" /> 复制
-							</button>
+							/>
 						</div>
 					) : null}
 				</SettingRow>
@@ -200,15 +182,9 @@ export function AboutSection() {
 						label="会话切换"
 						description={`${pendingIds.length} 个会话仍在使用旧版本 omp，将在本轮结束后自动切换：${pendingIds.map(nameOf).join("、")}`}
 						control={
-							<button
-								type="button"
-								disabled={switching}
-								onClick={() => void handleSwitchNow()}
-								className={SETTINGS_BUTTON_CLASS}
-							>
-								{switching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-								<span>立即切换</span>
-							</button>
+							<Button icon={RotateCw} loading={switching} onClick={() => void handleSwitchNow()}>
+								立即切换
+							</Button>
 						}
 					/>
 				) : null}
@@ -236,11 +212,13 @@ export function AboutSection() {
 								normalize={normalizeHours}
 								onCommit={(v) => save({ ompCheckIntervalHours: Number(v) })}
 							/>
-							<span className="text-xs text-neutral-500">小时</span>
+							<span className="text-xs text-[var(--text-dim)]">小时</span>
 						</div>
 					}
 				/>
 			</SettingsCard>
+
+			<OmpSections page="about" />
 		</div>
 	);
 }

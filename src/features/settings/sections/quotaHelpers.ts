@@ -256,22 +256,7 @@ export function formatHumanWindowName(id: string): string {
 }
 
 export function formatCountdown(ms: number): string {
-	if (ms <= 0) return "即将重置";
-	const totalSec = Math.floor(ms / 1000);
-	const days = Math.floor(totalSec / 86400);
-	const hours = Math.floor((totalSec % 86400) / 3600);
-	const minutes = Math.floor((totalSec % 3600) / 60);
-
-	if (days >= 1) {
-		return `${days} 天 ${hours} 小时后重置`;
-	}
-	if (hours >= 1) {
-		return `${hours} 小时 ${minutes} 分后重置`;
-	}
-	if (minutes >= 1) {
-		return `${minutes} 分钟后重置`;
-	}
-	return `${totalSec} 秒后重置`;
+	return ms <= 0 ? "即将重置" : `${formatCountdownCompact(ms)}后重置`;
 }
 
 export function formatRelativeTime(timestamp: number, now: number): string {
@@ -284,16 +269,44 @@ export function formatRelativeTime(timestamp: number, now: number): string {
 	return `${Math.floor(diffHour / 24)} 天前同步`;
 }
 
+/** "2 天 8 小时" / "4 小时 49 分" / "45 分钟" / "12 秒"; a zero trailing unit is dropped ("1 小时"). */
 export function formatCountdownCompact(ms: number): string {
 	if (ms <= 0) return "已到期";
 	const totalSec = Math.floor(ms / 1000);
 	const days = Math.floor(totalSec / 86400);
 	const hours = Math.floor((totalSec % 86400) / 3600);
 	const minutes = Math.floor((totalSec % 3600) / 60);
-	if (days >= 1) return `${days}d ${hours}h`;
-	if (hours >= 1) return `${hours}h ${minutes}m`;
-	if (minutes >= 1) return `${minutes}m`;
-	return `${totalSec}s`;
+	if (days >= 1) return hours > 0 ? `${days} 天 ${hours} 小时` : `${days} 天`;
+	if (hours >= 1) return minutes > 0 ? `${hours} 小时 ${minutes} 分` : `${hours} 小时`;
+	if (minutes >= 1) return `${minutes} 分钟`;
+	return `${totalSec} 秒`;
+}
+
+const QUOTA_LABEL_ZH: Record<string, string> = {
+	"prompt credits": "提示词额度",
+	"flow credits": "工作流额度",
+	"daily quota": "每日额度",
+	"weekly quota": "每周额度",
+	"monthly quota": "每月额度",
+	"claude 5 hour": "Claude 5 小时",
+	"claude 7 day": "Claude 7 天",
+	"claude 7 day (opus)": "Claude 7 天（Opus）",
+	"claude 7 day (sonnet)": "Claude 7 天（Sonnet）",
+};
+
+/** Chinese display name for an English quota label reported by `omp usage`. */
+export function localizeQuotaLabel(label: string): string {
+	const known = QUOTA_LABEL_ZH[label.trim().toLowerCase()];
+	if (known) return known;
+	return label
+		.replace(/\s*\(shared\)/gi, "（共享）")
+		.replace(/\b(\d+)[\s-]*hours?\b/gi, "$1 小时")
+		.replace(/\b(\d+)[\s-]*days?\b/gi, "$1 天")
+		.replace(/\bcredits?\b/gi, "额度")
+		.replace(/\bquota\b/gi, "额度")
+		.replace(/\bdaily\b/gi, "每日")
+		.replace(/\bweekly\b/gi, "每周")
+		.replace(/\bmonthly\b/gi, "每月");
 }
 
 const WINDOW_KEY_ALIASES: Record<string, string> = {
@@ -329,7 +342,7 @@ export interface LimitStatus {
 	text: string;
 	/** Short used-share label ("已用 49.0%" / "100% 耗尽"), no countdown. */
 	usedText: string;
-	/** Countdown caption ("2h 58m 后重置"), null when no future reset is known. */
+	/** Countdown caption ("2 小时 58 分后重置"), null when no future reset is known. */
 	resetText: string | null;
 	badge: string;
 	isExhausted: boolean;
@@ -344,7 +357,7 @@ export function formatLimitStatus(usedPct: number, resetsAt: number | null, now:
 		return {
 			text: hasCountdown ? `100% 耗尽 · ${formatCountdownCompact(remainingMs)}后恢复` : "100% 耗尽 · 恢复中",
 			usedText: "100% 耗尽",
-			resetText: hasCountdown ? `${formatCountdownCompact(remainingMs)} 后恢复` : "恢复中",
+			resetText: hasCountdown ? `${formatCountdownCompact(remainingMs)}后恢复` : "恢复中",
 			badge: "已耗尽",
 			isExhausted: true,
 			isWarning: false,
@@ -352,7 +365,7 @@ export function formatLimitStatus(usedPct: number, resetsAt: number | null, now:
 		};
 	}
 	const usedText = `已用 ${usedPct.toFixed(1)}%`;
-	const resetText = hasCountdown ? `${formatCountdownCompact(remainingMs)} 后重置` : null;
+	const resetText = hasCountdown ? `${formatCountdownCompact(remainingMs)}后重置` : null;
 	const text = resetText ? `${usedText} · ${resetText}` : usedText;
 	if (usedPct >= 80) {
 		return { text, usedText, resetText, badge: "高用量", isExhausted: false, isWarning: true, color: "amber" };

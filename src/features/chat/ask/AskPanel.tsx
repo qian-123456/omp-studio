@@ -30,8 +30,10 @@ import { claimEscape } from "../../../lib/escapeClaim";
 /** Driver progress keyed `${sessionId}:${toolCallId}:${qIndex}`; module-level
  * so it survives SessionView remounts (session switch). */
 const driverStates = new Map<string, AskDriverState>();
-/** Request ids already answered by the driver (guards double responses). */
+/** Request ids already answered by the driver, keyed `sessionId:id` (ids may be
+ * reused across sessions; guards double responses). */
 const respondedIds = new Set<string>();
+export const respondedKey = (sessionId: string, id: string): string => `${sessionId}:${id}`;
 
 export interface AskRoute {
 	req: PendingUiRequest;
@@ -74,8 +76,9 @@ export function useAskRouting(sessionId: string, pendingUi: PendingUiRequest[]) 
 		if (!route || route.resolution.kind !== "auto") return;
 		const { match, spec, resolution } = route;
 		const id = match.requestId;
-		if (respondedIds.has(id)) return;
-		respondedIds.add(id);
+		const rkey = respondedKey(sessionId, id);
+		if (respondedIds.has(rkey)) return;
+		respondedIds.add(rkey);
 		const key = `${sessionId}:${spec.toolCallId}:${match.qIndex}`;
 		const state = driverStates.get(key);
 		const final =
@@ -128,12 +131,12 @@ export function useAskRouting(sessionId: string, pendingUi: PendingUiRequest[]) 
 	const cancel = useCallback(async () => {
 		if (!route) return;
 		const id = route.match.requestId;
-		respondedIds.add(id);
+		respondedIds.add(respondedKey(sessionId, id));
 		try {
 			await rpcUiRespond(sessionId, { id, cancelled: true });
 			dismissUi(sessionId, id);
 		} catch (err) {
-			respondedIds.delete(id);
+			respondedIds.delete(respondedKey(sessionId, id));
 			toast.error(`取消失败: ${errMsg(err)}`);
 		}
 	}, [route, sessionId, dismissUi]);

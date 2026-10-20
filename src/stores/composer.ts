@@ -52,6 +52,9 @@ export interface ComposerState {
 	/** Last-picked destination for new annotations selected in the main chat (persisted). */
 	annotationTarget: AnnotationTarget;
 	setAnnotationTarget(target: AnnotationTarget): void;
+	/** One-shot request (marker badge click) for the chip list to open `id` in edit mode. */
+	annotationEditRequest: { key: string; id: string; nonce: number } | null;
+	requestAnnotationEdit(key: string, id: string): void;
 	/** Image attachments per session with ordered index (1, 2, 3...). */
 	images: Record<string, ComposerImage[]>;
 	addImage(
@@ -240,6 +243,11 @@ export const useComposer = create<ComposerState>((set, get) => ({
 			}
 			return { annotationTarget: target };
 		}),
+	annotationEditRequest: null,
+	requestAnnotationEdit: (key, id) =>
+		set((s) => ({
+			annotationEditRequest: { key, id, nonce: (s.annotationEditRequest?.nonce ?? 0) + 1 },
+		})),
 	images: {},
 	addImage: (sessionId, path, name, dimensions) => {
 		const img: ComposerImage = {

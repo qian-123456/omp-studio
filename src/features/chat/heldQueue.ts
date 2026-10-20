@@ -1,6 +1,7 @@
 /** [B] Held queue: messages typed while a turn streams, persisted to
  * localStorage per session. Sent (merged or one-by-one) after the turn ends. */
 
+import { useEffect } from "react";
 import { create } from "zustand";
 import type { ImageAttachment } from "../../lib/contracts";
 
@@ -144,7 +145,26 @@ export function heldItems(sid: string): string[] {
 
 /** Read the queue items with stable IDs. */
 export function heldQueueItems(sid: string): HeldItem[] {
-	return useHeldQueue.getState().queues[sid] ?? storage.load(sid);
+	return useHeldQueue.getState().queues[sid] ?? hydrate(sid);
+}
+
+const EMPTY_ITEMS: HeldItem[] = [];
+
+/** Load `sid`'s persisted queue into the store on first access (no-op if loaded). */
+export function hydrate(sid: string): HeldItem[] {
+	const cur = useHeldQueue.getState().queues[sid];
+	if (cur) return cur;
+	const loaded = storage.load(sid);
+	if (loaded.length > 0) useHeldQueue.setState((s) => ({ queues: { ...s.queues, [sid]: s.queues[sid] ?? loaded } }));
+	return loaded;
+}
+
+/** Reactive queue for a session; hydrates persisted items on first use. */
+export function useHeldItems(sid: string): HeldItem[] {
+	useEffect(() => {
+		hydrate(sid);
+	}, [sid]);
+	return useHeldQueue((s) => s.queues[sid]) ?? EMPTY_ITEMS;
 }
 
 /** Merge held items into one prompt. Each item numbers its images from #1,

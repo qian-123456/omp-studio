@@ -487,6 +487,18 @@ describe("live reducer — pending user echoes", () => {
 		expect(live().pendingUserEchoes).toHaveLength(1);
 	});
 
+	it("an older user item containing the echo text does not consume the echo on reload", () => {
+		useLive.getState().appendItems(SID, [userItem("u0", "请继续完成这个任务")], 10);
+		useLive.getState().addUserEcho(SID, "继续", undefined, true);
+		// Full reload mid-turn: the new message is not persisted yet.
+		useLive.getState().setItems(SID, [userItem("u0", "请继续完成这个任务")], 10);
+		expect(live().pendingUserEchoes).toHaveLength(1);
+		useLive.getState().appendItems(SID, [userItem("u0", "请继续完成这个任务")], 10);
+		expect(live().pendingUserEchoes).toHaveLength(1);
+		useLive.getState().appendItems(SID, [userItem("u1", "继续")], 20);
+		expect(live().pendingUserEchoes).toHaveLength(0);
+	});
+
 	it("message_update for a user role never lands in streamingMessage", () => {
 		frame({
 			type: "message_update",

@@ -170,7 +170,7 @@ export function BottomBar() {
 						{stats.tps != null && (
 							<>
 								<span className="text-neutral-600">·</span>
-								<span className="tabular-nums font-mono">{stats.tps.toFixed(1)} tok/s</span>
+								<span className="tabular-nums font-mono">{stats.tps.toFixed(1)} token/s</span>
 							</>
 						)}
 						<span className="text-neutral-600">·</span>

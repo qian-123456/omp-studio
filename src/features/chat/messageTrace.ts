@@ -1,5 +1,5 @@
 import type { ToolResultInfo, TranscriptItem } from "../../lib/contracts";
-import { stripImageMarkers } from "./MessageList";
+import { stripImageMarkers } from "./userTextChips";
 import type { ToolStatus } from "./ToolCard";
 
 /**

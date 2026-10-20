@@ -59,9 +59,12 @@ export function tabRowCapacity(
  * hidden is swapped into the last slot so it stays on screen.
  */
 export function visibleTabs<T extends { active: boolean }>(items: T[], capacity: number): T[] {
-	if (items.length <= capacity) return items;
-	let shown = items.slice(0, capacity);
+	// A strip always keeps at least one slot; slice(0, 0 / negative) would drop
+	// or wrongly keep tabs and the active-swap below would index slot -1.
+	const slots = Math.max(1, Math.floor(capacity) || 1);
+	if (items.length <= slots) return items;
+	let shown = items.slice(0, slots);
 	const active = items.find((t) => t.active);
-	if (active && !shown.includes(active)) shown = [...shown.slice(0, capacity - 1), active];
+	if (active && !shown.includes(active)) shown = [...shown.slice(0, slots - 1), active];
 	return shown;
 }

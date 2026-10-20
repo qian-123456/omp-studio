@@ -218,23 +218,31 @@ export function resolveSkillEnablement(
 	return { enabled: true, reason: null };
 }
 
+let configWriteChain: Promise<unknown> = Promise.resolve();
+
 /**
  * Read-modify-write helper for OMP config keys holding string lists.
  * `mutate` returns the next array; returning the same array skips the write.
+ * Serialized: concurrent toggles must not lose each other's writes.
  */
-export async function updateOmpListSetting(
+export function updateOmpListSetting(
 	key: string,
 	mutate: (current: string[]) => string[],
 ): Promise<void> {
-	const list = await ompConfigList();
-	const entry = list.entries.find((e) => e.key === key);
-	const current =
-		entry && Array.isArray(entry.value)
-			? entry.value.filter((v): v is string => typeof v === "string")
-			: [];
-	const next = mutate(current);
-	if (next === current) return;
-	await ompConfigSet(key, JSON.stringify(next));
+	const run = async () => {
+		const list = await ompConfigList();
+		const entry = list.entries.find((e) => e.key === key);
+		const current =
+			entry && Array.isArray(entry.value)
+				? entry.value.filter((v): v is string => typeof v === "string")
+				: [];
+		const next = mutate(current);
+		if (next === current) return;
+		await ompConfigSet(key, JSON.stringify(next));
+	};
+	const result = configWriteChain.then(run, run);
+	configWriteChain = result.catch(() => undefined);
+	return result;
 }
 /** Pure stats used by the stat cards + budget meter; exported for tests. */
 export function computeSkillStats(
@@ -344,6 +352,8 @@ export function selectVisibleSkills(
 
 /** Guards `loadUsage` against concurrent invocations (single-flight). */
 let usageInflight: Promise<void> | null = null;
+/** Latest catalog request id; stale responses are dropped. */
+let catalogSeq = 0;
 
 export const useSkillsStore = create<SkillsState>((set, get) => ({
 	catalog: null,
@@ -371,6 +381,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 			return;
 		}
 
+		const seq = ++catalogSeq;
 		set({ loading: true, error: null });
 		try {
 			const [catalog, configList] = await Promise.all([
@@ -384,6 +395,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 			const skillConfig = configList
 				? parseSkillConfig(configList)
 				: DEFAULT_SKILL_CONFIG;
+			if (seq !== catalogSeq) return;
 			set((s) => ({
 				skillConfig,
 				catalog,
@@ -402,6 +414,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 						: null,
 			}));
 		} catch (err) {
+			if (seq !== catalogSeq) return;
 			set({
 				loading: false,
 				error: err instanceof Error ? err.message : String(err),

@@ -16,7 +16,9 @@ export function sessionDisplayName(
 	const label = (session.label ?? "").trim();
 	if (!title) return "新建的草稿";
 
-	let rest = title;
+	// Legacy forks stored a "分支：" / "分支 " prefix; the fork chip replaces it.
+	let rest = title.replace(/^分支[：:\s]\s*(?=\S)/, "");
+	if (!rest) rest = title;
 
 	// 1. Strip leading `#<n>` (optionally `-`/` ` separated) when it is the
 	//    session's own number — or when the session has no label at all.

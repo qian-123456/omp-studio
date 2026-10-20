@@ -4,8 +4,17 @@
  * through these so layout and save semantics stay consistent.
  */
 import clsx from "clsx";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { AlertTriangle, Check, Info, Loader2, type LucideIcon } from "lucide-react";
+import {
+	forwardRef,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	type ButtonHTMLAttributes,
+	type ComponentType,
+	type ReactNode,
+} from "react";
 import { errMsg } from "../../lib/dialogs";
 import { isComposing } from "../../lib/hooks";
 import { Switch } from "./Switch";
@@ -16,31 +25,45 @@ export function SectionHeader({
 	title,
 	description,
 	actions,
+	aside,
 }: {
 	title: ReactNode;
 	description?: ReactNode;
 	actions?: ReactNode;
+	/** Small muted text after the title (counts, scope). */
+	aside?: ReactNode;
 }) {
 	return (
 		<div className="flex items-start justify-between gap-4">
 			<div className="min-w-0">
-				<h2 className="text-sm font-semibold tracking-[-0.018em] text-neutral-100">{title}</h2>
-				{description && <p className="text-xs text-neutral-400">{description}</p>}
+				<div className="flex items-baseline gap-2">
+					<h2 className="text-[18px] font-semibold leading-7 tracking-[-0.02em] text-[var(--text)]">{title}</h2>
+					{aside && <span className="text-xs text-[var(--text-dim)]">{aside}</span>}
+				</div>
+				{description && (
+					<p className="mt-0.5 text-[13px] leading-5 text-[var(--text-muted)]">{description}</p>
+				)}
 			</div>
 			{actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
 		</div>
 	);
 }
 
-/** Grouped macOS-style card; direct children (rows) are separated by hairlines. */
+/** Settings section: heading outside a grouped card; direct children (rows) are separated by hairlines. */
 export function SettingsCard({
 	title,
+	description,
+	aside,
 	footer,
 	fieldId,
 	clip,
 	children,
 }: {
 	title?: ReactNode;
+	/** One-line muted lead under the heading. */
+	description?: ReactNode;
+	/** Muted text after the heading (e.g. the omp TUI group name). */
+	aside?: ReactNode;
 	footer?: ReactNode;
 	/** Renders `data-field-id` on the card (deep links to a whole card). */
 	fieldId?: string;
@@ -48,10 +71,21 @@ export function SettingsCard({
 	clip?: boolean;
 	children: ReactNode;
 }) {
+	const hasHeading = title !== undefined && title !== null && title !== false && title !== "";
 	return (
-		<section className="space-y-1.5" data-field-id={fieldId}>
-			{title && (
-				<h3 className="px-1 text-[11px] font-semibold text-neutral-400">{title}</h3>
+		<section className="space-y-2" data-field-id={fieldId}>
+			{(hasHeading || description) && (
+				<div className="px-1">
+					{hasHeading && (
+						<div className="flex items-baseline gap-2">
+							<h3 className="text-[13px] font-semibold text-[var(--text)]">{title}</h3>
+							{aside && <span className="text-[11px] text-[var(--text-dim)]">{aside}</span>}
+						</div>
+					)}
+					{description && (
+						<p className="mt-0.5 text-xs leading-4 text-[var(--text-muted)]">{description}</p>
+					)}
+				</div>
 			)}
 			<div
 				className={clsx(
@@ -61,7 +95,7 @@ export function SettingsCard({
 			>
 				{children}
 			</div>
-			{footer && <div className="px-1 text-[11px] leading-4 text-neutral-500">{footer}</div>}
+			{footer && <div className="px-1 text-[11px] leading-4 text-[var(--text-dim)]">{footer}</div>}
 		</section>
 	);
 }
@@ -127,25 +161,23 @@ export function SettingRow({
 			)}
 		>
 			<div className={clsx("flex gap-4", stacked ? "flex-col gap-2" : "items-center justify-between")}>
-				<div className="flex min-w-0 items-start gap-2.5">
-					{Icon && <Icon className="mt-0.5 h-4 w-4 shrink-0 text-neutral-400" />}
-					<div className="min-w-0">
-						<div className="flex items-center gap-2">
-							<span
-								className={clsx(
-									"text-xs font-medium",
-									danger ? "text-rose-300" : "text-neutral-200",
-								)}
-							>
-								{label}
-							</span>
-							<SaveIndicator status={status} error={statusError} />
-						</div>
-						{description && (
-							<div className="mt-0.5 text-[11px] leading-4 text-neutral-400">{description}</div>
-						)}
-						{hint && <div className="mt-0.5 text-[11px] leading-4 text-neutral-500">{hint}</div>}
+				<div className="min-w-0">
+					<div className="flex items-center gap-2">
+						{Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />}
+						<span
+							className={clsx(
+								"text-[13px] font-medium leading-5",
+								danger ? "text-[var(--status-error)]" : "text-[var(--text)]",
+							)}
+						>
+							{label}
+						</span>
+						<SaveIndicator status={status} error={statusError} />
 					</div>
+					{description && (
+						<div className="mt-0.5 text-xs leading-[18px] text-[var(--text-muted)]">{description}</div>
+					)}
+					{hint && <div className="mt-0.5 text-[11px] leading-4 text-[var(--text-dim)]">{hint}</div>}
 				</div>
 				{control && (
 					<div className={clsx("flex items-center gap-2", !stacked && "shrink-0")}>{control}</div>
@@ -389,10 +421,205 @@ export function normalizeHours(raw: string): string {
 	if (!Number.isFinite(n)) return "24";
 	return String(Math.min(720, Math.max(1, n)));
 }
+/** Shared button chrome; `Button` and the legacy class constants compose from these. */
+const BUTTON_BASE =
+	"inline-flex items-center justify-center gap-1.5 rounded-lg transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_45%,transparent)] disabled:opacity-50 disabled:pointer-events-none";
 
-/** Secondary action button used in settings rows. */
-export const SETTINGS_BUTTON_CLASS =
-	"inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-50";
+const BUTTON_VARIANT: Record<ButtonVariant, string> = {
+	primary:
+		"bg-[var(--accent)] font-medium text-[var(--bg)] shadow-sm hover:bg-[var(--accent-hover)]",
+	secondary:
+		"hairline bg-[var(--bg-active-fill)] font-medium text-neutral-200 hover:bg-[var(--bg-hover)]",
+	danger:
+		"border border-[color-mix(in_srgb,var(--status-error)_45%,transparent)] bg-transparent font-medium text-[var(--status-error)] hover:bg-[color-mix(in_srgb,var(--status-error)_12%,transparent)]",
+	ghost:
+		"font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
+};
+
+const BUTTON_SIZE: Record<"sm" | "md", string> = {
+	sm: "px-2 py-1 text-[11px]",
+	md: "px-3 py-1.5 text-xs",
+};
+
+/** Secondary action button used in settings rows (same look as `<Button variant="secondary">`). */
+export const SETTINGS_BUTTON_CLASS = `${BUTTON_BASE} ${BUTTON_VARIANT.secondary} ${BUTTON_SIZE.md}`;
+
+export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+
+export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+	variant?: ButtonVariant;
+	size?: "sm" | "md";
+	icon?: LucideIcon;
+	/** Shows a spinner in place of the icon and disables the button. */
+	loading?: boolean;
+};
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+	{ variant = "secondary", size = "md", icon: Icon, loading, disabled, className, type = "button", children, ...rest },
+	ref,
+) {
+	const iconCls = size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5";
+	return (
+		<button
+			ref={ref}
+			type={type}
+			disabled={disabled || loading}
+			aria-busy={loading || undefined}
+			className={clsx(BUTTON_BASE, BUTTON_VARIANT[variant], BUTTON_SIZE[size], "whitespace-nowrap", className)}
+			{...rest}
+		>
+			{loading ? <Loader2 className={clsx(iconCls, "animate-spin")} /> : Icon && <Icon className={iconCls} />}
+			{children}
+		</button>
+	);
+});
+
+export type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "aria-label"> & {
+	icon: LucideIcon;
+	/** Required: becomes aria-label and the hover tooltip. */
+	label: string;
+	variant?: "ghost" | "danger";
+	size?: "sm" | "md";
+};
+
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+	{ icon: Icon, label, variant = "ghost", size = "md", className, type = "button", title, ...rest },
+	ref,
+) {
+	return (
+		<button
+			ref={ref}
+			type={type}
+			aria-label={label}
+			title={title ?? label}
+			className={clsx(
+				BUTTON_BASE,
+				"shrink-0",
+				size === "sm" ? "h-6 w-6" : "h-7 w-7",
+				variant === "danger"
+					? "text-[var(--status-error)] hover:bg-[color-mix(in_srgb,var(--status-error)_12%,transparent)]"
+					: "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
+				className,
+			)}
+			{...rest}
+		>
+			<Icon className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"} />
+		</button>
+	);
+});
+
+// ── Chip / Notice / EmptyState ───────────────────────────────────────
+
+export type ChipTone = "neutral" | "accent" | "success" | "warning" | "danger";
+
+const CHIP_TONE: Record<ChipTone, string> = {
+	neutral: "bg-[var(--bg-active-fill)] text-[var(--text-muted)]",
+	accent: "bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--accent)]",
+	success: "bg-[color-mix(in_srgb,var(--status-success)_16%,transparent)] text-[var(--status-success)]",
+	warning: "bg-[color-mix(in_srgb,var(--status-warning)_16%,transparent)] text-[var(--status-warning)]",
+	danger: "bg-[color-mix(in_srgb,var(--status-error)_16%,transparent)] text-[var(--status-error)]",
+};
+
+export function Chip({
+	tone = "neutral",
+	icon: Icon,
+	title,
+	children,
+}: {
+	tone?: ChipTone;
+	icon?: ComponentType<{ className?: string }>;
+	title?: string;
+	children: ReactNode;
+}) {
+	return (
+		<span
+			title={title}
+			className={clsx(
+				"inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4",
+				CHIP_TONE[tone],
+			)}
+		>
+			{Icon && <Icon className="h-3 w-3" />}
+			{children}
+		</span>
+	);
+}
+
+export type NoticeTone = "info" | "success" | "warning" | "danger";
+
+const NOTICE_TONE: Record<NoticeTone, { box: string; icon: string; Icon: ComponentType<{ className?: string }> }> = {
+	info: {
+		box: "border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]",
+		icon: "text-[var(--accent)]",
+		Icon: Info,
+	},
+	success: {
+		box: "border-[color-mix(in_srgb,var(--status-success)_30%,transparent)] bg-[color-mix(in_srgb,var(--status-success)_8%,transparent)]",
+		icon: "text-[var(--status-success)]",
+		Icon: Check,
+	},
+	warning: {
+		box: "border-[color-mix(in_srgb,var(--status-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--status-warning)_9%,transparent)]",
+		icon: "text-[var(--status-warning)]",
+		Icon: AlertTriangle,
+	},
+	danger: {
+		box: "border-[color-mix(in_srgb,var(--status-error)_35%,transparent)] bg-[color-mix(in_srgb,var(--status-error)_9%,transparent)]",
+		icon: "text-[var(--status-error)]",
+		Icon: AlertTriangle,
+	},
+};
+
+/** Inline callout. `action` renders on the right (usually a small Button). */
+export function Notice({
+	tone,
+	title,
+	children,
+	action,
+}: {
+	tone: NoticeTone;
+	title?: ReactNode;
+	children?: ReactNode;
+	action?: ReactNode;
+}) {
+	const t = NOTICE_TONE[tone];
+	return (
+		<div
+			role={tone === "danger" || tone === "warning" ? "alert" : "status"}
+			className={clsx("flex items-start gap-2.5 rounded-lg border px-3 py-2.5", t.box)}
+		>
+			<t.Icon className={clsx("mt-0.5 h-3.5 w-3.5 shrink-0", t.icon)} />
+			<div className="min-w-0 flex-1">
+				{title && <div className="text-[13px] font-medium leading-5 text-[var(--text)]">{title}</div>}
+				{children && (
+					<div className="text-xs leading-[18px] text-[var(--text-muted)]">{children}</div>
+				)}
+			</div>
+			{action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+		</div>
+	);
+}
+
+export function EmptyState({
+	icon: Icon,
+	title,
+	description,
+	action,
+}: {
+	icon?: ComponentType<{ className?: string }>;
+	title: ReactNode;
+	description?: ReactNode;
+	action?: ReactNode;
+}) {
+	return (
+		<div className="flex flex-col items-center gap-1.5 px-4 py-8 text-center">
+			{Icon && <Icon className="mb-1 h-6 w-6 text-[var(--text-dim)]" />}
+			<div className="text-[13px] font-medium text-[var(--text)]">{title}</div>
+			{description && <div className="max-w-sm text-xs leading-[18px] text-[var(--text-muted)]">{description}</div>}
+			{action && <div className="mt-2">{action}</div>}
+		</div>
+	);
+}
 
 /** Trigger button for ModelSelect pickers in settings rows. */
 export const MODEL_PICKER_BUTTON_CLASS =

@@ -6,7 +6,7 @@
 import clsx from "clsx";
 import { Keyboard, RotateCcw, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { SETTINGS_BUTTON_CLASS } from "../ui";
+import { IconButton } from "../ui";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
 
@@ -182,7 +182,7 @@ export function ShortcutRecorder({
 					: [e.ctrlKey && "Ctrl", e.metaKey && "Win", e.altKey && "Alt", e.shiftKey && "Shift"]
 							.filter(Boolean)
 							.join("+");
-				setHint(held ? `${held} + …` : null);
+				setHint(held ? `${held} + 再按一个键` : null);
 				return;
 			}
 			const acc = eventToAccelerator(e);
@@ -218,39 +218,26 @@ export function ShortcutRecorder({
 					"inline-flex h-7 min-w-[140px] items-center justify-center gap-1.5 rounded-lg px-3 text-xs transition-all",
 					recording
 						? "bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--accent)] ring-1 ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] font-medium"
-						: "hairline bg-[var(--well-bg)] text-neutral-200 hover:bg-[var(--bg-hover)]",
+						: "hairline bg-[var(--well-bg)] text-[var(--text)] hover:bg-[var(--bg-hover)]",
 				)}
 			>
 				<Keyboard className="h-3.5 w-3.5 opacity-70" />
 				{recording ? (
-					<span>{hint ?? "请按下组合键…（Esc 取消）"}</span>
+					<span>{hint ?? "请按下组合键，Esc 取消"}</span>
 				) : display ? (
 					<span className="font-mono tracking-wide">{display}</span>
 				) : (
-					<span className="text-neutral-500">未设置，点击录制</span>
+					<span className="text-[var(--text-dim)]">未设置，点击录制</span>
 				)}
 			</button>
-			{value && !recording && (
-				<button
-					type="button"
-					title="清除（停用快捷键）"
-					aria-label="清除快捷键"
-					onClick={() => onCommit("")}
-					className={SETTINGS_BUTTON_CLASS}
-				>
-					<X className="h-3.5 w-3.5" />
-				</button>
-			)}
+			{value && !recording && <IconButton icon={X} label="清除快捷键" title="清除快捷键（停用）" onClick={() => onCommit("")} />}
 			{value !== defaultValue && !recording && (
-				<button
-					type="button"
-					title={`恢复默认（${formatAccelerator(defaultValue)}）`}
-					aria-label="恢复默认快捷键"
+				<IconButton
+					icon={RotateCcw}
+					label="恢复默认快捷键"
+					title={`恢复默认快捷键（${formatAccelerator(defaultValue)}）`}
 					onClick={() => onCommit(defaultValue)}
-					className={SETTINGS_BUTTON_CLASS}
-				>
-					<RotateCcw className="h-3.5 w-3.5" />
-				</button>
+				/>
 			)}
 		</div>
 	);

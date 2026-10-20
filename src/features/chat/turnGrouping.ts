@@ -44,6 +44,16 @@ export type TurnStep =
 			kind: "steer";
 			item: TranscriptItem;
 			text: string;
+	  }
+	/**
+	 * A model request that failed (stopReason "error") and was retried: it has no
+	 * tool rows or prose of its own, only its failure line, rendered in place.
+	 * id = `failed-${item.id}`.
+	 */
+	| {
+			id: string;
+			kind: "request-failed";
+			item: TranscriptItem;
 	  };
 
 export interface TurnBlock {
@@ -547,6 +557,14 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 						call,
 					});
 				}
+			} else if (isIntermediate && item.stopReason === "error") {
+				// Failed request (retried by omp): its text is the error message,
+				// not prose. Render only the failure line, in order.
+				currentTurn.intermediateSteps.push({
+					id: `failed-${item.id}`,
+					kind: "request-failed",
+					item,
+				});
 			} else if (isIntermediate) {
 				// Intermediate assistant message with text (no tool calls, but followed by more assistant messages)
 				if (item.text && item.text.trim().length > 0) {
@@ -724,8 +742,10 @@ export type PlacedStep = {
 /**
  * The row each request's stats line hangs under: the LAST of that request's
  * tool rows, so parallel tool calls (one request, several rows) collapse into
- * a single line under the last one. Requests with no tool row of their own
- * map to null — the caller renders their lines after the whole list.
+ * a single line under the last one. A request without tool calls hangs under
+ * its last own thinking/prose row, so it keeps its chronological place. A
+ * request with no row at all maps to null — the caller renders its line after
+ * the whole list. A failed-request row renders its own line and is no anchor.
  */
 export function requestAnchors(
 	rows: PlacedStep[],
@@ -737,6 +757,12 @@ export function requestAnchors(
 		let anchor: string | null = null;
 		for (const row of rows) {
 			if (row.kind === "tool" && row.call && ids.has(row.call.id)) anchor = row.id;
+		}
+		if (!anchor && ids.size === 0) {
+			for (const row of rows) {
+				if (row.kind === "tool" || row.kind === "request-failed") continue;
+				if ((row.requestId ?? row.item?.id) === req.id) anchor = row.id;
+			}
 		}
 		out.set(req.id, anchor);
 	}
@@ -825,4 +851,73 @@ export function splitInterimProse<
 		else folded.push(step);
 	}
 	return { folded, prose };
+}
+
+/**
+ * Splits a turn's folded steps around in-turn user messages (steers) so each
+ * steer renders at the transcript's top level in chronological position while
+ * the surrounding activity stays in its own collapsed group(s).
+ */
+export function splitAroundSteers<T extends { kind: string }>(
+	steps: T[],
+): Array<{ type: "steps"; steps: T[] } | { type: "steer"; step: T }> {
+	const out: Array<{ type: "steps"; steps: T[] } | { type: "steer"; step: T }> = [];
+	let run: T[] = [];
+	for (const step of steps) {
+		if (step.kind === "steer") {
+			if (run.length > 0) out.push({ type: "steps", steps: run });
+			run = [];
+			out.push({ type: "steer", step });
+		} else {
+			run.push(step);
+		}
+	}
+	if (run.length > 0) out.push({ type: "steps", steps: run });
+	return out;
+}
+
+/**
+ * Layout of an in-flight turn once its final answer has started streaming —
+ * the same shape a committed turn renders: activity folded behind the
+ * disclosure, interim prose on the thread column, then the answer.
+ */
+export interface LiveTurnLayout<T> {
+	/** Everything except assistant prose: thinking, tools, notices, steers. */
+	activity: T[];
+	/** Assistant prose written before the answer. */
+	prose: T[];
+	/** The answer being written; null while the turn is still working. */
+	answer: T | null;
+}
+
+/**
+ * The step the model is writing as its (possible) final answer: the turn's
+ * trailing step when it is non-empty assistant prose. A tool call or reasoning
+ * arriving after it proves it was interim prose, so it stops being a candidate.
+ */
+export function liveAnswerCandidate<T extends { kind: string; text?: string }>(
+	steps: T[],
+): T | null {
+	const last = steps[steps.length - 1];
+	return last && last.kind === "text" && (last.text ?? "").trim() !== "" ? last : null;
+}
+
+/**
+ * Splits live steps into the committed-turn layout. Before the answer starts
+ * (`answerStarted` false) everything stays in `activity` in arrival order.
+ */
+export function splitLiveTurn<T extends { kind: string; text?: string }>(
+	steps: T[],
+	answerStarted: boolean,
+): LiveTurnLayout<T> {
+	const answer = answerStarted ? liveAnswerCandidate(steps) : null;
+	if (!answer) return { activity: steps, prose: [], answer: null };
+	const activity: T[] = [];
+	const prose: T[] = [];
+	for (const step of steps) {
+		if (step === answer) continue;
+		if (step.kind === "text") prose.push(step);
+		else activity.push(step);
+	}
+	return { activity, prose, answer };
 }

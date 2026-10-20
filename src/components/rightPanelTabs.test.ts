@@ -92,4 +92,11 @@ describe("visibleTabs", () => {
 		const items = [tab("a", true), tab("b"), tab("c")];
 		expect(visibleTabs(items, 2)).toEqual([tab("a", true), tab("b")]);
 	});
+
+	it("never drops below one slot for a zero, negative or NaN capacity", () => {
+		const items = [tab("a"), tab("b", true), tab("c")];
+		for (const cap of [0, -3, Number.NaN]) {
+			expect(visibleTabs(items, cap)).toEqual([tab("b", true)]);
+		}
+	});
 });

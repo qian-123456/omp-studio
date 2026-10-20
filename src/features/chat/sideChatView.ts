@@ -18,6 +18,19 @@ const SIDE_CHAT_MARKERS = [
 const SELECTION_HEADER = "## Selected text the user is asking about\n";
 const QUESTION_HEADER = "## User question\n";
 
+/** Question text sent to the model when the user only staged quotes; never shown. */
+export const QUOTE_ONLY_QUESTION = "请结合引用内容回答";
+
+function composeDisplay(selection: string, question: string): string {
+	if (!selection) return question;
+	return question === QUOTE_ONLY_QUESTION ? selection : `${selection}\n\n${question}`;
+}
+
+/** The bubble text for a side chat's first message, identical to what `sideChatPromptToDisplay` yields once the prompt lands. */
+export function sideChatEchoText(question: string, selection: string | undefined): string {
+	return composeDisplay(selection ? `> ${selection}`.trim() : "", question.trim());
+}
+
 export function isSideChatPrompt(text: string | null | undefined): boolean {
 	return !!text && SIDE_CHAT_MARKERS.some((m) => text.startsWith(m));
 }
@@ -30,7 +43,7 @@ export function sideChatPromptToDisplay(text: string): string {
 	const sAt = text.indexOf(SELECTION_HEADER);
 	if (sAt < 0 || sAt > qAt) return question;
 	const selection = text.slice(sAt + SELECTION_HEADER.length, qAt).trim();
-	return selection ? `${selection}\n\n${question}` : question;
+	return composeDisplay(selection, question);
 }
 
 /**

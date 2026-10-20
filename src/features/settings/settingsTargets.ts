@@ -4,7 +4,7 @@
  * Slash commands and other features that need configuration call
  * `openSettingsTarget(...)` instead of hand-picking a section id. Each target
  * names a section (nav id) plus an optional focusKey: a native row
- * (`data-field-id`) or an OMP config key (`data-omp-key` on ConfigRow) that
+ * (`data-field-id`) or an OMP config key (`data-omp-key` on OmpSettingRow) that
  * SettingsPage scrolls to and highlights.
  */
 
@@ -35,25 +35,25 @@ export const SETTINGS_TARGETS: Record<
 	{ section: string; focusKey?: string; label: string }
 > = {
 	// Native sections anchor on a data-field-id; OMP sections anchor on the
-	// config key rendered as data-omp-key inside OmpConfigSection.
+	// config key rendered as data-omp-key inside OmpSettingRow.
 	models: {
 		section: "omp-roles",
 		focusKey: "modelRolesPanel",
 		label: "模型角色",
 	},
 	thinking: {
-		section: "omp-thinking",
+		section: "thinking",
 		focusKey: "defaultThinkingLevel",
 		label: "思考级别",
 	},
 	fastMode: {
 		// Service tiers (`tier.*` / omp `/fast`) live in the Thinking tab.
-		section: "omp-thinking",
+		section: "thinking",
 		focusKey: "tier.openai",
 		label: "快速模式（服务层级）",
 	},
 	advisor: {
-		section: "omp-tasks",
+		section: "helper-models",
 		focusKey: "advisor.enabled",
 		label: "顾问（Advisor）",
 	},
@@ -63,17 +63,17 @@ export const SETTINGS_TARGETS: Record<
 		label: "扩展上下文",
 	},
 	browser: {
-		section: "omp-tools",
+		section: "tools",
 		focusKey: "browser.enabled",
 		label: "浏览器工具",
 	},
 	computerUse: {
-		section: "omp-tools",
+		section: "tools",
 		focusKey: "computer.enabled",
 		label: "电脑操控",
 	},
 	memory: {
-		section: "omp-context",
+		section: "memory",
 		focusKey: "memory.backend",
 		label: "记忆后端",
 	},
@@ -88,7 +88,7 @@ export const SETTINGS_TARGETS: Record<
 		label: "插件",
 	},
 	subagents: {
-		section: "omp-tasks",
+		section: "subagents",
 		focusKey: "task.maxConcurrency",
 		label: "任务与子代理",
 	},
@@ -96,7 +96,7 @@ export const SETTINGS_TARGETS: Record<
 	// so it is the real control for approvals (omp's tools.approvalMode key is
 	// superseded by the spawn flag).
 	approvals: {
-		section: "sessions",
+		section: "general",
 		focusKey: "defaultApprovalMode",
 		label: "默认审批模式",
 	},
@@ -114,10 +114,9 @@ export const SETTINGS_TARGETS: Record<
 		section: "context-window",
 		label: "上下文窗口",
 	},
-	// `quota` is the legacy nav alias for providers; ProvidersSection flips to
-	// the 订阅与配额 tab on that request.
+	// ProvidersSection flips to the 订阅与配额 tab when it holds the focus key.
 	quota: {
-		section: "quota",
+		section: "providers",
 		focusKey: "quotaDashboard",
 		label: "订阅与配额",
 	},

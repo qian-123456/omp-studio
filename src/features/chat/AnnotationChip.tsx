@@ -76,6 +76,14 @@ function AnnotationEntry({
 		onEdit(null);
 	};
 
+	// Edit opened from outside (marker badge): seed the draft once the entry is mounted.
+	useEffect(() => {
+		if (editing && settledRef.current) {
+			setDraft(a.comment ?? "");
+			settledRef.current = false;
+		}
+	}, [editing, a.comment]);
+
 	return (
 		<li className="flex gap-2 px-3 py-2">
 			<div className="min-w-0 flex-1 text-[12px]">
@@ -123,7 +131,7 @@ function AnnotationEntry({
 						type="button"
 						aria-label="定位到原消息"
 						title="定位到原消息"
-						onClick={() => scrollToItem(anchorSessionId, a.itemId!)}
+						onClick={() => scrollToItem(anchorSessionId, a.itemId!, a.text)}
 						className={iconBtn}
 					>
 						<LocateFixed size={12} />
@@ -191,6 +199,17 @@ export function AnnotationChip({
 	const hoverTimer = useRef<number | undefined>(undefined);
 
 	useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
+
+	// Marker badge click: open the list with that annotation in edit mode.
+	const editRequest = useComposer((s) => s.annotationEditRequest);
+	const handledNonce = useRef(editRequest?.nonce ?? 0);
+	useEffect(() => {
+		if (!editRequest || editRequest.nonce === handledNonce.current) return;
+		handledNonce.current = editRequest.nonce;
+		if (editRequest.key === sessionId && annotations.some((a) => a.id === editRequest.id)) {
+			setEditingId(editRequest.id);
+		}
+	}, [editRequest, sessionId, annotations]);
 
 	const enterHover = () => {
 		window.clearTimeout(hoverTimer.current);

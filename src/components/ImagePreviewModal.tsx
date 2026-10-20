@@ -28,6 +28,7 @@ export function ImagePreviewModal({
 	const touchStartX = useRef<number | null>(null);
 	const touchDeltaX = useRef<number>(0);
 	const wheelCooldown = useRef<number>(0);
+	const [failedPath, setFailedPath] = useState<string | null>(null);
 
 	const count = images.length;
 	const current = images[index];
@@ -162,12 +163,22 @@ export function ImagePreviewModal({
 				className="relative max-h-[85vh] max-w-[85vw] flex items-center justify-center overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--bg-panel)] p-2 shadow-apple-modal transition-transform duration-200"
 				onClick={(e) => e.stopPropagation()}
 			>
-				<img
-					key={current.path}
-					src={convertFileSrc(current.path)}
-					alt={`图片 ${index + 1}`}
-					className="max-h-[78vh] max-w-full rounded-xl object-contain animate-in fade-in zoom-in-95 duration-150"
-				/>
+				{failedPath === current.path ? (
+					<div className="flex min-h-32 min-w-64 max-w-full flex-col items-center justify-center gap-1 px-6 py-8 text-center text-[13px] text-[var(--text-60)]">
+						<span>无法加载这张图片</span>
+						<span className="select-text break-all text-[12px] text-[var(--text-40)]">
+							{current.path}
+						</span>
+					</div>
+				) : (
+					<img
+						key={current.path}
+						src={convertFileSrc(current.path)}
+						alt={`图片 ${index + 1}`}
+						onError={() => setFailedPath(current.path)}
+						className="max-h-[78vh] max-w-full rounded-xl object-contain animate-in fade-in zoom-in-95 duration-150"
+					/>
+				)}
 			</div>
 
 			{/* Right Arrow Button */}

@@ -7,7 +7,18 @@
  */
 
 import { normalizeThinkContent } from "../lib/thinkTags";
-import { type RetryNotice, retryNoticeFromFrame } from "./retryNotice";
+import { isSideChatPrompt, sideChatPromptToDisplay } from "../features/chat/sideChatView";
+import { resolveCurrentModel } from "../lib/models";
+import {
+	type FallbackInfo,
+	loadRetryHistory,
+	MAX_RETRY_EPISODES,
+	modelLabel,
+	type RetryEpisode,
+	type RetryNotice,
+	retryNoticeFromFrame,
+	saveRetryHistory,
+} from "./retryNotice";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type {
@@ -160,9 +171,13 @@ export interface SessionLive {
 	commands: SlashCommand[];
 	/** Ephemeral slash-command outputs shown at the end of the thread. */
 	commandOutputs: CommandOutputEntry[];
-	/** Retry / model-fallback status rows shown at the end of the thread;
-	 * cleared when the user sends the next message. */
+	/** Retry / model-fallback rows of the turn in progress (live rows). */
 	retryNotices?: RetryNotice[];
+	/** Fallback switch of the turn in progress, undoable from its row. */
+	retryFallback?: FallbackInfo;
+	/** Finished turns' collapsed retry entries, oldest first (persisted). */
+	retryHistory?: RetryEpisode[];
+	retryHistoryLoaded?: boolean;
 	/** Slash command last sent as a prompt; annotates command_output frames. */
 	pendingCommand?: string | null;
 	/** Live tool executions keyed by toolCallId (reset each turn). */
@@ -174,7 +189,7 @@ export interface SessionLive {
 	/** rpc:process liveness. */
 	alive: boolean;
 	/** Message scroll request queued for virtual list scrollToItem + highlight. */
-	scrollRequest?: { itemId: string; timestamp: number } | null;
+	scrollRequest?: { itemId: string; timestamp: number; quote?: string } | null;
 	/** Thinking timing for live turn: start/end epoch ms */
 	thinkingStartedAt?: number | null;
 	thinkingEndedAt?: number | null;
@@ -306,11 +321,12 @@ let nextEchoId = 1;
 
 const ECHO_IMAGE_RE =
 	/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*([^\]]+))?\]|\[图片:\s*([^\]]+)\]|!\[[^\]]*\]\(([^)\s]+)\)/g;
-/** Build the optimistic user bubble for a just-accepted prompt. */
-export function makeUserEcho(
+/** Attachments of a user message: the given ones plus any image whose path only
+ * appears as an inline marker in the text (deduped by path). */
+export function collectUserImages(
 	text: string,
 	images?: ImageAttachment[],
-): TranscriptItem {
+): ImageAttachment[] {
 	const all: ImageAttachment[] = [...(images ?? [])];
 	const known = new Set(all.map((img) => img.path).filter(Boolean));
 	let i = all.length;
@@ -320,6 +336,14 @@ export function makeUserEcho(
 		if (path) known.add(path);
 		all.push({ id: `pending-img-${i++}`, path, marker: m[0] });
 	}
+	return all;
+}
+/** Build the optimistic user bubble for a just-accepted prompt. */
+export function makeUserEcho(
+	text: string,
+	images?: ImageAttachment[],
+): TranscriptItem {
+	const all = collectUserImages(text, images);
 	return {
 		id: `pending-echo-${nextEchoId++}`,
 		parentId: null,
@@ -361,6 +385,16 @@ export const echoMatches = (echoText: string, itemText: string): boolean => {
 	return false;
 };
 
+/** Items of `next` whose ids were not already in `prev`. An echo can only be
+ * confirmed by a user item that arrived after it was sent; an older item whose
+ * text merely contains the echo text (e.g. a short "继续") must not consume it,
+ * or the message vanishes before its own transcript item exists. */
+function newItemsOnly(prev: TranscriptItem[], next: TranscriptItem[]): TranscriptItem[] {
+	if (!prev.length) return next;
+	const known = new Set(prev.map((i) => i.id));
+	return next.filter((i) => !known.has(i.id));
+}
+
 /** Consume one pending echo per confirmed user transcript item (FIFO). */
 function reconcileEchoes(
 	pending: TranscriptItem[],
@@ -370,7 +404,11 @@ function reconcileEchoes(
 	let rest = pending;
 	for (const it of items) {
 		if (it.kind !== "user") continue;
-		const i = rest.findIndex((e) => echoMatches(e.text ?? "", it.text ?? ""));
+		const raw = it.text ?? "";
+		const shown = isSideChatPrompt(raw) ? sideChatPromptToDisplay(raw) : raw;
+		const i = rest.findIndex(
+			(e) => echoMatches(e.text ?? "", raw) || echoMatches(e.text ?? "", shown),
+		);
 		if (i < 0) continue;
 		rest = [...rest.slice(0, i), ...rest.slice(i + 1)];
 	}
@@ -430,6 +468,23 @@ function markEchoDelivered(echoes: UserEcho[], text: string): UserEcho[] {
 	const i = echoes.findIndex((e) => e.held && !e.delivered && echoMatches(e.text ?? "", text));
 	if (i < 0) return echoes;
 	return echoes.map((e, j) => (j === i ? { ...e, delivered: true } : e));
+}
+
+/** Move the turn's retry rows into the persisted history (one entry per turn). */
+export function archiveRetry(live: SessionLive, now: number): Partial<SessionLive> {
+	const notices = live.retryNotices;
+	if (!notices || notices.length === 0) return {};
+	const episode: RetryEpisode = {
+		id: `rt-${now}-${nextOutputId++}`,
+		endedAt: now,
+		notices,
+		...(live.retryFallback ? { fallback: live.retryFallback } : {}),
+	};
+	return {
+		retryNotices: [],
+		retryFallback: undefined,
+		retryHistory: [...(live.retryHistory ?? []), episode].slice(-MAX_RETRY_EPISODES),
+	};
 }
 
 /** Add a running compaction/handoff divider anchored after the last transcript item. */
@@ -725,7 +780,15 @@ function reduce(
 		}
 		case "agent_end": {
 			if (frame.isTerminal === false) return live;
-			return { ...live, streaming: false, streamingMessage: null, tools: {}, liveRequests: [] };
+			return {
+				...live,
+				streaming: false,
+				streamingMessage: null,
+				tools: {},
+				liveRequests: [],
+				// Turn finished: collapse its retry rows into a history entry.
+				...archiveRetry(live, typeof frame.timestamp === "number" ? frame.timestamp : Date.now()),
+			};
 		}
 		case "auto_compaction_start": {
 			if (live.flowNotices.some((n) => n.status === "running")) return live;
@@ -800,12 +863,26 @@ function reduce(
 		case "retry_fallback_succeeded": {
 			const n = retryNoticeFromFrame(frame);
 			if (!n) return live;
-			return {
+			// History is kept: rows stay until the turn ends, then collapse into
+			// one thread entry (see archiveRetry).
+			const next: SessionLive = {
 				...live,
-				retryNotices: [
-					...(live.retryNotices ?? []),
-					{ ...n, id: nextOutputId++ },
-				].slice(-20),
+				retryNotices: [...(live.retryNotices ?? []), { ...n, id: nextOutputId++ }].slice(-20),
+			};
+			if (frame.type !== "retry_fallback_applied") return next;
+			const to = modelLabel(frame.to);
+			// Original model: from the event, else the session state at fallback time.
+			const from = modelLabel(frame.from) || resolveCurrentModel(live.state?.model).value;
+			if (!from || !to) return next;
+			const thinking = typeof live.state?.thinkingLevel === "string" ? live.state.thinkingLevel : undefined;
+			return {
+				...next,
+				retryFallback: {
+					id: `fb-${Date.now()}-${nextOutputId++}`,
+					from,
+					to,
+					...(thinking ? { thinking } : {}),
+				},
 			};
 		}
 		case "command_output": {
@@ -1096,9 +1173,12 @@ export interface LiveState {
 		images?: ImageAttachment[],
 		/** Sent with streamingBehavior "steer" (lands inside the running turn). */
 		steer?: boolean,
-	): void;
-	/** Scroll the message stream to a transcript item (used by HeatmapPanel). */
-	scrollToItem(sessionId: string, itemId: string): void;
+	): string | null;
+	/** Drop a pending echo by id (its send failed or was cancelled). */
+	removeUserEcho(sessionId: string, echoId: string): void;
+	/** Scroll the message stream to a transcript item (used by HeatmapPanel). With
+	 * `quote`, only that text is highlighted (whole item if it can't be found). */
+	scrollToItem(sessionId: string, itemId: string, quote?: string): void;
 	/** Consume/clear the scroll request for a session. */
 	clearScrollRequest(sessionId: string): void;
 	/** Remember the slash command just sent as a prompt so the following
@@ -1128,6 +1208,10 @@ export interface LiveState {
 	): void;
 	/** Remove a divider (cancelled before anything happened). */
 	dismissFlowNotice(sessionId: string, id: number): void;
+	/** Load this session's persisted retry history (once). */
+	hydrateRetryHistory(sessionId: string): void;
+	/** Mark a fallback as undone everywhere it is shown. */
+	markFallbackUndone(sessionId: string, fallbackId: string): void;
 }
 
 export const useLive = create<LiveState>((set) => ({
@@ -1217,7 +1301,7 @@ export const useLive = create<LiveState>((set) => ({
 						nextOffset,
 						pendingUserEchoes: reconcileEchoes(
 							live.pendingUserEchoes,
-							items,
+							newItemsOnly(live.items, items),
 						),
 					},
 				},
@@ -1239,18 +1323,18 @@ export const useLive = create<LiveState>((set) => ({
 						nextOffset,
 						pendingUserEchoes: reconcileEchoes(
 							live.pendingUserEchoes,
-							items,
+							items.filter((i) => !known.has(i.id)),
 						),
 					},
 				},
 			};
 		}),
-	addUserEcho: (sessionId, text, images, steer) =>
+	addUserEcho: (sessionId, text, images, steer) => {
+		const trimmed = text.trim();
+		if (!trimmed) return null;
+		const echo: UserEcho = makeUserEcho(trimmed, images);
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
-			const trimmed = text.trim();
-			if (!trimmed) return s;
-			const echo: UserEcho = makeUserEcho(trimmed, images);
 			// Only a steer into an in-flight turn is in-turn; anything else is a
 			// next-turn bubble.
 			if (steer && live.streaming) echo.steer = true;
@@ -1263,12 +1347,28 @@ export const useLive = create<LiveState>((set) => ({
 					[sessionId]: {
 						...live,
 						pendingUserEchoes: [...live.pendingUserEchoes, echo],
-						retryNotices: steer ? live.retryNotices : [],
+						...(steer ? {} : archiveRetry(live, Date.now())),
+					},
+				},
+			};
+		});
+		return echo.id;
+	},
+	removeUserEcho: (sessionId, echoId) =>
+		set((s) => {
+			const live = s.sessions[sessionId];
+			if (!live || !live.pendingUserEchoes.some((e) => e.id === echoId)) return s;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						pendingUserEchoes: live.pendingUserEchoes.filter((e) => e.id !== echoId),
 					},
 				},
 			};
 		}),
-	scrollToItem: (sessionId, itemId) => {
+	scrollToItem: (sessionId, itemId, quote) => {
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			return {
@@ -1276,7 +1376,7 @@ export const useLive = create<LiveState>((set) => ({
 					...s.sessions,
 					[sessionId]: {
 						...live,
-						scrollRequest: { itemId, timestamp: Date.now() },
+						scrollRequest: { itemId, timestamp: Date.now(), quote },
 					},
 				},
 			};
@@ -1427,7 +1527,51 @@ export const useLive = create<LiveState>((set) => ({
 				},
 			};
 		}),
+	hydrateRetryHistory: (sessionId) =>
+		set((s) => {
+			const live = s.sessions[sessionId] ?? emptySessionLive();
+			if (live.retryHistoryLoaded) return s;
+			const stored = loadRetryHistory(sessionId);
+			const have = new Set((live.retryHistory ?? []).map((e) => e.id));
+			const merged = [...stored.filter((e) => !have.has(e.id)), ...(live.retryHistory ?? [])];
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						retryHistoryLoaded: true,
+						retryHistory: merged.slice(-MAX_RETRY_EPISODES),
+					},
+				},
+			};
+		}),
+	markFallbackUndone: (sessionId, fallbackId) =>
+		set((s) => {
+			const live = s.sessions[sessionId];
+			if (!live) return s;
+			const mark = (f: FallbackInfo | undefined): FallbackInfo | undefined =>
+				f && f.id === fallbackId ? { ...f, undone: true } : f;
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: {
+						...live,
+						retryFallback: mark(live.retryFallback),
+						retryHistory: live.retryHistory?.map((e) => ({ ...e, fallback: mark(e.fallback) })),
+					},
+				},
+			};
+		}),
 }));
+
+// Persist each session's retry history whenever it changes.
+useLive.subscribe((s, prev) => {
+	for (const [sid, live] of Object.entries(s.sessions)) {
+		if (live.retryHistory && live.retryHistory !== prev.sessions[sid]?.retryHistory) {
+			saveRetryHistory(sid, live.retryHistory);
+		}
+	}
+});
 
 let ipcMod: Promise<typeof IpcModule> | null = null;
 

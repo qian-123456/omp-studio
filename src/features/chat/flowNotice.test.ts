@@ -33,7 +33,7 @@ describe("flowNoticeText", () => {
 		const done = flowNoticeText(
 			notice({ status: "done", endedAt: Date.now(), tokensBefore: 200_000, tokensAfter: 40_000 }),
 		);
-		expect(done).toMatch(/^已压缩 · \d{2}:\d{2} · 200\.0k tok → 40\.0k tok$/);
+		expect(done).toMatch(/^已压缩 · \d{2}:\d{2} · 200\.0k token → 40\.0k token$/);
 		expect(flowNoticeText(notice({ status: "error", detail: "boom" }))).toBe("压缩失败：boom");
 		expect(flowNoticeText(notice({ kind: "handoff" }))).toBe("正在生成交接文档");
 		expect(flowNoticeText(notice({ kind: "handoff", status: "done", endedAt: Date.now() }))).toMatch(

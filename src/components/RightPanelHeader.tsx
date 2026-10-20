@@ -11,6 +11,7 @@ import {
 	Check,
 	ChevronDown,
 	Coins,
+	FileText,
 	Cpu,
 	Folder,
 	GitBranch,
@@ -23,7 +24,7 @@ import {
 	X,
 } from "lucide-react";
 import type React from "react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDrawerStore } from "../features/terminal/drawerStore";
 import {
 	STATUS_DOT,
@@ -35,11 +36,13 @@ import {
 import { type RightTab, useUi } from "../stores/ui";
 import { FloatingLayer } from "./FloatingLayer";
 import { sessionDisplayName } from "../lib/sessionName";
+import { basename } from "../lib/paths";
 import { openNewSideChat, isBlankTab, resolveActiveTab, useSideChatView } from "../features/sidechat/viewStore";
 import { NEW_SIDE_CHAT_TITLE, sideChatTitle } from "../features/sidechat/sideChatTitle";
 import { SIDE_CHAT_TAB_ACTIONS } from "../features/sidechat/sideChatActions";
 import { visibleSideChatActions } from "../features/sidechat/handbackLogic";
 import { useDisplayPrefs } from "../stores/displayPrefs";
+import { useFilePreview } from "../stores/filePreview";
 import { useComposer } from "../stores/composer";
 import { useSessions } from "../stores/sessions";
 import {
@@ -67,6 +70,7 @@ const PRIMARY_TABS: { id: RightTab; label: string; icon: IconType; iconColor: st
 	{ id: "heatmap", label: "Token 用量", icon: Coins, iconColor: "text-amber-400" },
 	{ id: "terminal", label: "终端", icon: SquareTerminal, iconColor: "text-emerald-400" },
 	{ id: "plan", label: "计划", icon: NotebookPen, iconColor: "text-amber-400" },
+	{ id: "files", label: "文件预览", icon: FileText, iconColor: "text-sky-400" },
 ];
 
 /** One rendered Chrome tab: a panel tab, or a terminal instance of the active terminal panel tab. */
@@ -122,9 +126,22 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 	const activeSideTab = resolveActiveTab(parentTabs, storedSideTab);
 	const handbackMode = useDisplayPrefs((s) => s.sideChatHandback);
 	const visibleTerminals = drawerTabs.filter((t) => !t.detached);
-	// The side-chat group is shown whenever the selected session has side-chat tabs.
-	const groupIds: RightTab[] =
-		parentTabs?.length && !openRightTabs.includes("sidechat") ? [...openRightTabs, "sidechat"] : openRightTabs;
+	const fileTabs = useFilePreview((s) => s.tabs);
+	// A group whose instances are gone (session switched to one without side
+	// chats, files closed elsewhere) must not linger as an empty ghost tab.
+	const hasSideChats = !!parentTabs?.length;
+	const hasFiles = fileTabs.length > 0;
+	const sidechatOpen = openRightTabs.includes("sidechat");
+	const filesOpen = openRightTabs.includes("files");
+	useEffect(() => {
+		if (sidechatOpen && !hasSideChats) closeRightTab("sidechat");
+		if (filesOpen && !hasFiles) closeRightTab("files");
+	}, [sidechatOpen, hasSideChats, filesOpen, hasFiles, closeRightTab]);
+	const activeFilePath = useFilePreview((s) => s.activePath);
+	// Groups with per-instance tabs stay in the strip whenever they have instances.
+	const groupIds: RightTab[] = [...openRightTabs];
+	if (parentTabs?.length && !groupIds.includes("sidechat")) groupIds.push("sidechat");
+	if (fileTabs.length > 0 && !groupIds.includes("files")) groupIds.push("files");
 	const items: HeaderTab[] = groupIds.flatMap((id): HeaderTab[] => {
 		const info = PRIMARY_TABS.find((t) => t.id === id);
 		if (!info) return [];
@@ -142,6 +159,22 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 			}));
 		}
 		const Icon = info.icon;
+		if (id === "files") {
+			// One tab per opened file; closing the last one closes the group.
+			return fileTabs.map((t) => ({
+				key: `files:${t.path}`,
+				label: basename(t.path),
+				title: t.path,
+				lead: <Icon size={13} className={clsx(info.iconColor, "shrink-0")} />,
+				badge: 0,
+				active: id === activeTab && activeFilePath === t.path,
+				activate: () => {
+					useFilePreview.getState().setActive(t.path);
+					setRightTab("files");
+				},
+				close: () => useFilePreview.getState().closeFile(t.path),
+			}));
+		}
 		if (id === "sidechat") {
 			// One tab per open side chat of the selected session; no base tab.
 			if (!selectedId) return [];
@@ -249,7 +282,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 				    collapse to its content width and clip its own label. */}
 				<div
 					role="tablist"
-					className="flex h-10 min-w-0 shrink items-stretch self-start overflow-hidden"
+					className="-ml-1.5 flex h-10 min-w-0 shrink items-stretch self-start overflow-hidden pl-1.5 pr-1.5 -mr-1.5"
 					style={{
 						gap: TAB_GAP,
 						flexBasis: shown.length * MAX_TAB_WIDTH + Math.max(0, shown.length - 1) * TAB_GAP,
@@ -283,10 +316,10 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 								}}
 								style={{ flexBasis: MAX_TAB_WIDTH, minWidth: MIN_TAB_WIDTH }}
 								className={clsx(
-									"group relative flex h-full shrink cursor-pointer items-center rounded-t-lg border-x border-t px-2 text-xs transition-colors",
+									"group relative flex h-full shrink cursor-pointer items-center rounded-t-lg px-2 text-xs transition-colors",
 									tab.active
-										? "border-[var(--hairline)] bg-[var(--bg-panel)] font-medium text-neutral-100"
-										: "border-transparent text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
+										? "bg-[var(--bg-panel)] font-medium text-neutral-100 before:pointer-events-none before:absolute before:bottom-0 before:-left-1.5 before:h-1.5 before:w-1.5 before:bg-[radial-gradient(circle_at_0_0,transparent_6px,var(--bg-panel)_6.5px)] after:pointer-events-none after:absolute after:bottom-0 after:-right-1.5 after:h-1.5 after:w-1.5 after:bg-[radial-gradient(circle_at_100%_0,transparent_6px,var(--bg-panel)_6.5px)]"
+										: "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
 								)}
 							>
 								{prev && (
@@ -428,7 +461,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 						)}
 					>
 						{tab.lead}
-						<span className="min-w-0 flex-1 truncate">{tab.label}</span>
+						<span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap">{tab.label}</span>
 						{tab.badge > 0 && (
 							<span className="shrink-0 text-[10px] text-neutral-500">{tab.badge}</span>
 						)}
@@ -454,8 +487,11 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 					<button
 						type="button"
 						onClick={() => {
-							setRightTab("terminal");
+							// Add the tab BEFORE activating the panel: CommandTerminalPanel's mount
+							// effect spawns a shell when no visible tab exists, so activating first
+							// let it race this click and create two terminals.
 							addTerminalTab();
+							setRightTab("terminal");
 							setMenuOpen(false);
 						}}
 						className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-neutral-300 transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
@@ -466,7 +502,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 					<div className="my-1 border-t border-[var(--border-divider)]" />
 					{/* 计划 is not a manual option: plan mode auto-opens it
 					    (see Composer / /plan). */}
-					{PRIMARY_TABS.filter((tab) => tab.id !== "plan").map((tab) => {
+					{PRIMARY_TABS.filter((tab) => tab.id !== "plan" && tab.id !== "files").map((tab) => {
 						const Icon = tab.icon;
 						const badge = tabBadges[tab.id] ?? 0;
 						const isOpen = openRightTabs.includes(tab.id) && tab.id !== "sidechat";
@@ -475,8 +511,11 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 								key={tab.id}
 								type="button"
 								onClick={() => {
-									if (tab.id === "sidechat" && selectedId) openNewSideChat(selectedId);
-									else setRightTab(tab.id);
+									if (tab.id === "sidechat") {
+										// Side chats hang off the selected session; without one there is nothing to open.
+										if (!selectedId) return;
+										openNewSideChat(selectedId);
+									} else setRightTab(tab.id);
 									setMenuOpen(false);
 								}}
 								className={clsx(

@@ -33,16 +33,9 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "newSessionModel",
 		sectionId: "general",
-		label: "全局默认模型 (主力模型)",
+		label: "全局默认模型",
 		description: "新对话与常规问答默认使用的主力模型（对应 OMP 全局角色 default）",
 		keywords: ["model", "默认模型", "全局模型", "主力模型", "模型选择", "default"],
-	},
-	{
-		id: "newSessionThinkingLevel",
-		sectionId: "general",
-		label: "思考深度 (Thinking Level)",
-		description: "支持思考的模型在回答前推理多久（omp defaultThinkingLevel）",
-		keywords: ["thinking", "思考", "推理", "深度", "defaultThinkingLevel"],
 	},
 	{
 		id: "sideChatModel",
@@ -54,14 +47,14 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "defaultApprovalMode",
 		sectionId: "general",
-		label: "默认审批模式 (Approval Mode)",
+		label: "审批模式",
 		description: "AI 改文件或执行命令前是否先征得你同意（每步都问 / 改动前问 / 全自动）",
 		keywords: ["approval", "always-ask", "write", "yolo", "审批模式", "权限", "模式"],
 	},
 	{
 		id: "gitDeliveryMode",
 		sectionId: "general",
-		label: "主干交付模式 (Git Delivery Mode)",
+		label: "主干交付模式",
 		description: "从功能分支交付到 main 主干时的默认行为方式（GitHub Pull Request / 本地直接合并并推送到 main）",
 		keywords: ["git", "delivery", "pr", "pull request", "merge", "main", "主干", "交付", "推送"],
 	},
@@ -140,9 +133,7 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	...REQUEST_STAT_FIELD_IDS.map<FieldDefinition>((f) => ({
 		id: REQUEST_STAT_FIELD_ROW_IDS[f],
 		sectionId: "appearance",
-		label: REQUEST_STAT_FIELDS[f].glyph
-			? `${REQUEST_STAT_FIELDS[f].glyph} ${REQUEST_STAT_FIELDS[f].label}`
-			: REQUEST_STAT_FIELDS[f].label,
+		label: REQUEST_STAT_FIELDS[f].label,
 		description: REQUEST_STAT_FIELDS[f].description,
 		keywords: [
 			"请求统计",
@@ -272,7 +263,7 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "visualizeEnabled",
 		sectionId: "sessions",
-		label: "启用可视化（Visualize）",
+		label: "启用可视化",
 		description: "让 Agent 在回答里生成可交互的图表、示意图和模拟，渲染在沙箱中。",
 		keywords: ["visualize", "可视化", "图表", "chart", "diagram", "示意图", "模拟", "simulation", "sandbox", "沙箱"],
 	},
@@ -450,15 +441,6 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["系统提示词", "system prompt", "prompt", "token", "占用", "上下文", "规则文件", "skills", "工具说明", "mcp", "精简", "优化", "让 AI 帮我优化"],
 	},
 ];
-
-/** Extract all searchable keywords for a native section. */
-export function registryKeywordsForSection(sectionId: string): string[] {
-	return FIELD_REGISTRY.filter((f) => f.sectionId === sectionId).flatMap((f) => [
-		f.label,
-		f.description,
-		...f.keywords,
-	]);
-}
 
 /** Find the first field matching the search query within a section. */
 export function findMatchingField(

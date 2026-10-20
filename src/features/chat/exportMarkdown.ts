@@ -1,5 +1,5 @@
 import type { TranscriptItem } from "../../lib/contracts";
-import { stripImageMarkers } from "./MessageList";
+import { stripImageMarkers } from "./userTextChips";
 
 /**
  * Format session transcript items into readable Markdown.

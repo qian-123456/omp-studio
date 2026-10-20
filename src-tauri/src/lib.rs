@@ -267,6 +267,7 @@ pub fn run() {
             services::commands::fs_read_dir,
             services::commands::validate_path,
             services::commands::save_clipboard_image,
+            services::commands::import_image_file,
             services::clipboard::clipboard_file_paths,
             services::clipboard::save_clipboard_file,
             services::commands::save_share_image,

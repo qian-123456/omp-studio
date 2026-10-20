@@ -5,7 +5,7 @@
  */
 import type { OmpUsageLimit, OmpUsageProviderReport } from "../../../lib/contracts";
 import { limitUsedPct } from "./QuotaAccountSheet";
-import { dedupeLimits, formatHumanWindowName, formatLimitStatus } from "./quotaHelpers";
+import { dedupeLimits, formatHumanWindowName, formatLimitStatus, localizeQuotaLabel } from "./quotaHelpers";
 
 export interface QuotaRow {
 	key: string;
@@ -72,8 +72,8 @@ export function buildQuotaRows(reports: OmpUsageProviderReport[], now: number): 
 		const windowId = first.scope?.windowId ?? first.window?.id;
 		const label =
 			(labelCount.get(first.label) ?? 0) > 1 && windowId
-				? `${first.label} · ${formatHumanWindowName(windowId)}`
-				: first.label;
+				? `${localizeQuotaLabel(first.label)} · ${formatHumanWindowName(windowId)}`
+				: localizeQuotaLabel(first.label);
 
 		const caption = [status.resetText, n > 1 ? `${n} 个账号平均` : null]
 			.filter(Boolean)

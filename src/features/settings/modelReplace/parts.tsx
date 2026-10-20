@@ -233,7 +233,7 @@ export function Chip({
 			title={title}
 			className={clsx(
 				"max-w-full shrink-0 break-all rounded-full px-1.5 py-px text-[10px] leading-4",
-				tone === "warn" && "bg-amber-500/15 text-amber-300",
+				tone === "warn" && "bg-[color-mix(in_srgb,var(--status-warning)_15%,transparent)] text-[var(--status-warning)]",
 				tone === "good" && "bg-emerald-500/15 text-emerald-300",
 				tone === "info" && "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-[var(--accent)]",
 				tone === "neutral" && "bg-[var(--bg-active-fill)] text-neutral-400",

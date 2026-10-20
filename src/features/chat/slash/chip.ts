@@ -28,6 +28,12 @@ export interface CommandChip {
 
 const SKILL_PREFIX = "skill:";
 
+/** Invisible separator (U+2063) written into the wire text where a
+ * mid-text inline chip sat. omp only expands a command at the very start, so
+ * the token is lifted to the front; this marker records the original spot so
+ * the bubble (live and from the persisted transcript) can put the chip back. */
+export const CHIP_POSITION_MARK = "\u2063";
+
 export function isSkillChip(chip: CommandChip): boolean {
 	return chip.name.startsWith(SKILL_PREFIX) && chip.name.length > SKILL_PREFIX.length;
 }
@@ -128,15 +134,6 @@ export function insertChipAt(
 	};
 }
 
-/** Join the text around a removed token without gluing words together. */
-function joinAround(before: string, after: string): string {
-	const b = before.trimEnd();
-	const a = after.trimStart();
-	if (!b || !a) return b || a;
-	const nl = /\n\s*$/.test(before) || /^\s*\n/.test(after);
-	return `${b}${nl ? "\n" : " "}${a}`;
-}
-
 /** `chip + draft` → the literal text omp expects (contract). Inline chips
  * lift their token to the front only here; `locate: "fuzzy"` tolerates
  * shifted offsets (masked text). */
@@ -151,8 +148,14 @@ export function serializeChip(
 			inlineChipRange(chip, argsText) ??
 			(locate === "fuzzy" ? findChipRange(chip, argsText, chip.offset) : null);
 		if (range) {
-			const rest = joinAround(argsText.slice(0, range.start), argsText.slice(range.end)).trim();
-			return rest ? `/${chip.name} ${rest}` : `/${chip.name}`;
+			const before = argsText.slice(0, range.start).trim();
+			const after = argsText.slice(range.end).trim();
+			if (before) {
+				const nl = /\n\s*$/.test(argsText.slice(0, range.start));
+				const sep = nl ? "\n" : " ";
+				return `/${chip.name} ${before}${sep}${CHIP_POSITION_MARK}${after ? `${sep}${after}` : ""}`;
+			}
+			return after ? `/${chip.name} ${after}` : `/${chip.name}`;
 		}
 	}
 	const args = argsText.trim();
@@ -241,7 +244,7 @@ export function saveChip(sessionId: string, chip: CommandChip | null): void {
 
 export function parseLeadingCommand(
 	text: string,
-): { chip: CommandChip; rest: string } | null {
+): { chip: CommandChip; rest: string; tail?: string } | null {
 	const m = /^\/([^\s/]+)(?=\s|$)/.exec(text);
 	if (!m) return null;
 	const name = m[1] as string;
@@ -253,6 +256,14 @@ export function parseLeadingCommand(
 	if (sm && def?.subcommands?.some((s) => s.name === sm[1])) {
 		chip.sub = sm[1];
 		rest = rest.slice(sm[0].length).replace(/^[ \t]+/, "");
+	}
+	const at = rest.indexOf(CHIP_POSITION_MARK);
+	if (at !== -1) {
+		return {
+			chip,
+			rest: rest.slice(0, at).trimEnd(),
+			tail: rest.slice(at + CHIP_POSITION_MARK.length).replace(/^[ \t]*\n?[ \t]*/, ""),
+		};
 	}
 	return { chip, rest };
 }

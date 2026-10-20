@@ -286,7 +286,7 @@ export function HeatmapPanel() {
 										</span>
 									</div>
 									<span className="font-mono text-[11.5px] text-neutral-200 font-medium shrink-0">
-										{formatTokens(activeAnalysis.totalTokens)} tok
+										{formatTokens(activeAnalysis.totalTokens)} token
 									</span>
 								</div>
 
@@ -495,7 +495,7 @@ export function HeatmapPanel() {
 																	: "text-neutral-300",
 															)}
 														>
-															{formatTokens(item.tokens)} tok
+															{formatTokens(item.tokens)} token
 														</div>
 													</div>
 													<div
@@ -568,7 +568,7 @@ export function HeatmapPanel() {
 																		</div>
 																		<div className="flex items-center gap-1.5 shrink-0">
 																			<span className="font-mono text-neutral-400">
-																				{formatTokens(call.tokens)} tok
+																				{formatTokens(call.tokens)} token
 																			</span>
 																			{call.isError && (
 																				<span className="text-red-400 font-medium text-[9px]">
@@ -707,7 +707,7 @@ export function HeatmapPanel() {
 										</div>
 										<div className="flex items-center justify-between text-[10px]">
 											<div className="flex items-center gap-1.5 font-mono text-neutral-400">
-												<span>{formatTokens(tokens)} tok</span>
+												<span>{formatTokens(tokens)} token</span>
 												<span className="text-neutral-600">·</span>
 												<span>{formatCost(cost)}</span>
 												{meta.git?.branch && (

@@ -27,7 +27,9 @@ vi.mock("../../lib/ipc", () => ({
 	mcpServerSetEnabled,
 	mcpServerUpsert: vi.fn(),
 }));
-vi.mock("./OmpConfigSection", () => ({ OmpConfigSection: () => null }));
+vi.mock("./OmpSettingsList", () => ({
+	OmpSections: ({ page }: { page: string }) => <div data-testid="omp-sections" data-page={page} />,
+}));
 
 import { useSessions } from "../../stores/sessions";
 import { McpSection } from "./McpSection";
@@ -77,17 +79,23 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("McpSection project management", () => {
+	it("renders the mcp omp sections and the current project line", async () => {
+		render(<McpSection cwd="/home/user/projects/demo" />);
+		expect((await screen.findByTestId("omp-sections")).getAttribute("data-page")).toBe("mcp");
+		expect(screen.getByText("当前项目：")).toBeDefined();
+	});
+
 	it("renders global server and shows move-to-project button when project is active", async () => {
-		render(<McpSection cwd="/home/user/projects/demo" onNavigateSection={() => {}} />);
+		render(<McpSection cwd="/home/user/projects/demo" />);
 		expect(await screen.findByText("rea")).toBeDefined();
 		const moveBtn = screen.getByLabelText("移入项目 rea");
 		expect(moveBtn).toBeDefined();
-		expect(moveBtn.textContent).toContain("移入当前项目");
+		expect(moveBtn.getAttribute("title")).toContain("移入当前项目");
 	});
 
 	it("calls mcpServerMove when move-to-project is confirmed", async () => {
 		confirm.mockResolvedValue(true);
-		render(<McpSection cwd="/home/user/projects/demo" onNavigateSection={() => {}} />);
+		render(<McpSection cwd="/home/user/projects/demo" />);
 		const moveBtn = await screen.findByLabelText("移入项目 rea");
 		fireEvent.click(moveBtn);
 
@@ -102,7 +110,7 @@ describe("McpSection project management", () => {
 
 	it("does not call mcpServerMove when confirm is cancelled", async () => {
 		confirm.mockResolvedValue(false);
-		render(<McpSection cwd="/home/user/projects/demo" onNavigateSection={() => {}} />);
+		render(<McpSection cwd="/home/user/projects/demo" />);
 		const moveBtn = await screen.findByLabelText("移入项目 rea");
 		fireEvent.click(moveBtn);
 
@@ -111,7 +119,7 @@ describe("McpSection project management", () => {
 	});
 
 	it("reloads snapshot when user switches project via dropdown", async () => {
-		render(<McpSection cwd={null} onNavigateSection={() => {}} />);
+		render(<McpSection cwd={null} />);
 		await screen.findByText("rea");
 		expect(mcpConfigList).toHaveBeenCalledWith(null);
 

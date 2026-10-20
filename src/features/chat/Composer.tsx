@@ -2,6 +2,7 @@
  * steer/stop, model + thinking pickers, /fork interception. */
 
 import clsx from "clsx";
+import { caretVisualLines } from "./caretLine";
 import {
 	ArrowUp,
 	ChevronDown,
@@ -14,7 +15,7 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { clipboardFilePaths, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, validatePath } from "../../lib/ipc";
+import { clipboardFilePaths, importImageFile, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, validatePath } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment, SessionSnapshot } from "../../lib/contracts";
@@ -191,6 +192,7 @@ import { runCompaction, useCompaction } from "./slash/compaction";
 import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
 import { useTypeToFocus } from "./useTypeToFocus";
+import { remainingDraft } from "./composerRelease";
 import {
 	chipLiteral,
 	findChipRange,
@@ -471,7 +473,7 @@ export function Composer({
 		sessionUsage(sessionId)
 			.then((u) => {
 				if (!cancelled && u.available) {
-					setTotalTokensStr(`${(u.tokens / 1000).toFixed(1)}k tok`);
+					setTotalTokensStr(`${(u.tokens / 1000).toFixed(1)}k token`);
 				}
 			})
 			.catch((err) => console.warn("[composer] session usage fetch failed", err));
@@ -532,13 +534,7 @@ export function Composer({
 			return;
 		}
 		if (IMAGE_EXT_RE.test(filePath)) {
-			try {
-				const res = await fetch(convertFileSrc(filePath));
-				if (!res.ok) throw new Error(`HTTP ${res.status}`);
-				await processImageFile(await res.blob());
-			} catch (imgErr) {
-				toast.error(`读取图片失败: ${errMsg(imgErr)}`);
-			}
+			await insertImageToken(filePath);
 			return;
 		}
 		// Known-binary formats never get inlined — even if a file happens to
@@ -1122,10 +1118,35 @@ export function Composer({
 		let released = false;
 		const releaseComposer = () => {
 			released = true;
-			clearDraft(sessionId);
-			clearAnnotations(sessionId);
-			clearImages(sessionId);
-			clearFiles(sessionId);
+			const store = useComposer.getState();
+			const cur = store.drafts[sessionId] ?? "";
+			if (cur === raw) {
+				clearDraft(sessionId);
+				clearAnnotations(sessionId);
+				clearImages(sessionId);
+				clearFiles(sessionId);
+				return;
+			}
+			// Typed while the send was in flight: keep the new input and drop
+			// only what this send consumed (sent attachments + their tokens).
+			const nImg = currentSessionImages.length;
+			const nFile = currentSessionFiles.length;
+			setDraft(sessionId, remainingDraft(cur, raw, nImg, nFile));
+			if (nImg > 0) {
+				const sentIds = new Set(currentSessionImages);
+				store.setImages(
+					sessionId,
+					(store.images[sessionId] ?? []).filter((i) => !sentIds.has(i)),
+				);
+			}
+			if (nFile > 0) {
+				const sentIds = new Set(currentSessionFiles);
+				store.setFiles(
+					sessionId,
+					(store.files[sessionId] ?? []).filter((f) => !sentIds.has(f)),
+				);
+			}
+			for (const a of prevAnnotations) store.removeAnnotation(sessionId, a.id);
 		};
 		const restoreComposer = () => {
 			if (!released) return;
@@ -1291,9 +1312,13 @@ export function Composer({
 	 * images and real paths alike). */
 	const insertImageToken = async (imagePath: string, name?: string) => {
 		try {
-			const dims = await getImageDimensions(convertFileSrc(imagePath));
+			// Copy into the app clip cache: the asset protocol can only serve that
+			// directory, and temp sources (Finder screenshots) get deleted. Fall
+			// back to the original path if the copy fails.
+			const stored = await importImageFile(imagePath).catch(() => imagePath);
+			const dims = await getImageDimensions(convertFileSrc(stored));
 			const dimensions = dims.width > 0 && dims.height > 0 ? dims : undefined;
-			addImage(sessionId, imagePath, name, dimensions);
+			addImage(sessionId, stored, name, dimensions);
 			const nextNum = (useComposer.getState().images[sessionId] ?? []).length;
 			insertMarkerAtCursor(`🖼️#${nextNum}`);
 			toast.success(`已插入图片 #${nextNum}`);
@@ -1776,8 +1801,17 @@ export function Composer({
 			}
 		}
 
-		// Prompt history navigation on empty text
-		if (e.key === "ArrowUp") {
+		// Prompt history navigation: only when the caret can't move further vertically.
+		const plainArrow = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !isComposing(e);
+		const caretEl = e.currentTarget as HTMLTextAreaElement;
+		const caretCollapsed = caretEl.selectionStart === caretEl.selectionEnd;
+		const vis =
+			(e.key === "ArrowUp" || e.key === "ArrowDown") && plainArrow && caretCollapsed
+				? caretVisualLines(caretEl)
+				: { first: false, last: false };
+		const onFirstLine = vis.first;
+		const onLastLine = vis.last;
+		if (e.key === "ArrowUp" && plainArrow && caretCollapsed && onFirstLine) {
 			if (text === "" && history.length > 0) {
 				e.preventDefault();
 				if (chip) setChip(null);
@@ -1797,7 +1831,7 @@ export function Composer({
 				return;
 			}
 		}
-		if (e.key === "ArrowDown") {
+		if (e.key === "ArrowDown" && plainArrow && caretCollapsed && onLastLine) {
 			if (historyIdx !== -1) {
 				e.preventDefault();
 				if (historyIdx < history.length - 1) {

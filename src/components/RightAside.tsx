@@ -10,6 +10,7 @@ import { GitPanel } from "../features/git/GitPanel";
 import { ServicesPanel } from "../features/services/ServicesPanel";
 import { CommandTerminalPanel } from "../features/terminal/CommandTerminalPanel";
 import { PlanPanel } from "../features/chat/PlanPanel";
+import { FilePreviewPanel } from "../features/files/FilePreviewPanel";
 
 class ErrorBoundary extends React.Component<
 	{ children: ReactNode; label: string },
@@ -55,6 +56,8 @@ function RightPanelBody({ tab }: { tab: RightTab }) {
 			return <CommandTerminalPanel />;
 		case "plan":
 			return <PlanPanel />;
+		case "files":
+			return <FilePreviewPanel />;
 	}
 }
 

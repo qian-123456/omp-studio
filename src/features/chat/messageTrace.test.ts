@@ -1,4 +1,4 @@
-import { stripImageMarkers } from "./MessageList";
+import { stripImageMarkers } from "./userTextChips";
 import { describe, expect, it } from "vitest";
 import type { TranscriptItem } from "../../lib/contracts";
 import {

@@ -288,16 +288,18 @@ pub(crate) fn scan_skills_in_dir(
     skills: &mut Vec<SkillItem>,
     root_display: &str,
 ) {
-    let entries = match std::fs::read_dir(root) {
-        Ok(e) => e,
+    let mut entries: Vec<_> = match std::fs::read_dir(root) {
+        Ok(e) => e.flatten().collect(),
         Err(_) => return,
     };
+    // read_dir order is arbitrary; sort so duplicate-name winners are stable.
+    entries.sort_by_key(|e| e.file_name());
 
     // Names already attributed to this root, so a duplicate inside the same
     // root does not inflate `copies` (copies counts roots, not entries).
     let mut counted: HashSet<String> = HashSet::new();
 
-    for entry in entries.flatten() {
+    for entry in entries {
         let entry_path = entry.path();
         let dir_name = entry.file_name().to_string_lossy().to_string();
         if dir_name.starts_with('.') {

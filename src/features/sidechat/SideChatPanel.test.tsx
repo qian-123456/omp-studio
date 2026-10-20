@@ -151,7 +151,7 @@ describe("SideChatPanel blank new chat", () => {
 		typeAndSend("解释一下");
 
 		// The message is visible before the backend answers; the input is empty.
-		expect(screen.getByText("解释一下")).toBeTruthy();
+		expect(screen.getByText(/解释一下/)).toBeTruthy();
 		expect((input() as HTMLTextAreaElement).value).toBe("");
 		expect(h.createSideChat).toHaveBeenCalledWith("p1", undefined);
 		expect(h.sideChatAsk).not.toHaveBeenCalled();
@@ -165,7 +165,8 @@ describe("SideChatPanel blank new chat", () => {
 		expect(selection).toContain("[1]");
 		expect(selection).toContain("> hello quote");
 		expect(selection).toContain("批注：批注内容");
-		expect(h.addUserEcho).toHaveBeenCalledWith("child-new", "解释一下");
+		expect(h.addUserEcho).toHaveBeenCalledWith("child-new", expect.stringContaining("> [1]"));
+		expect(h.addUserEcho.mock.calls[0]![1]).toContain("解释一下");
 		const view = useSideChatView.getState();
 		expect(view.openTabs["p1"]).toEqual(["child-new"]);
 		expect(view.openChild["p1"]).toBe("child-new");

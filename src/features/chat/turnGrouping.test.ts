@@ -12,9 +12,12 @@ import {
 	noticeBody,
 	noticeSummary,
 	parallelToolRuns,
+	splitAroundSteers,
 	type PlacedStep,
 	requestAnchors,
 	splitInterimProse,
+	liveAnswerCandidate,
+	splitLiveTurn,
 	turnRequestItems,
 	type TurnBlock,
 	type TurnStep,
@@ -156,6 +159,30 @@ describe("turnGrouping", () => {
 		}
 	});
 
+	it("turns a retried failed request into an in-order failure step, not prose", () => {
+		const call: ToolCall = { id: "c-1", name: "bash", args: {}, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "go" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "Request was aborted", stopReason: "error" }),
+			makeItem({ id: "a-2", kind: "assistant", text: null, toolCalls: [call] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: { toolCallId: "c-1", toolName: "bash", text: "ok", isError: false, details: null },
+			}),
+			makeItem({ id: "a-3", kind: "assistant", text: "done", stopReason: "stop" }),
+		]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["request-failed", "tool"]);
+		expect(turn.intermediateSteps[0].id).toBe("failed-a-1");
+		expect(turnRequestItems(turn.intermediateSteps, turn.answerItem).map((i) => i.id)).toEqual([
+			"a-1",
+			"a-2",
+			"a-3",
+		]);
+	});
+
 	it("surfaces text accompanying a final ask call as the answer, call in steps", () => {
 		const ask: ToolCall = { id: "ask-1", name: "ask", args: { question: "继续吗？" }, intent: null };
 		const blocks = groupTurnBlocks([
@@ -204,6 +231,19 @@ describe("turnGrouping", () => {
 		if (turn.type !== "turn") throw new Error("expected turn");
 		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["text", "tool", "steer"]);
 		expect(turn.answerItem?.id).toBe("a-2");
+	});
+
+	it("splitAroundSteers pulls steers out of the folded group, keeping order", () => {
+		const segs = splitAroundSteers([
+			{ kind: "tool", id: "t1" },
+			{ kind: "steer", id: "s1" },
+			{ kind: "text", id: "x" },
+			{ kind: "tool", id: "t2" },
+			{ kind: "steer", id: "s2" },
+		]);
+		expect(
+			segs.map((s) => (s.type === "steer" ? `steer:${s.step.id}` : s.steps.map((x) => x.id).join(","))),
+		).toEqual(["t1", "steer:s1", "x,t2", "steer:s2"]);
 	});
 
 	it("handles consecutive turns and standalone protocol items", () => {
@@ -551,9 +591,18 @@ describe("per-request stats placement", () => {
 		expect(anchors.get("a2")).toBe("r3");
 	});
 
-	it("maps a request with no tool row to null (trailing line)", () => {
+	it("hangs a request with no tool call under its own thinking row", () => {
 		const anchors = requestAnchors(rows, [{ id: "a3", toolCallIds: [] }]);
-		expect(anchors.get("a3")).toBeNull();
+		expect(anchors.get("a3")).toBe("th");
+	});
+
+	it("maps a request with no row at all to null (trailing line)", () => {
+		expect(requestAnchors(rows, [{ id: "zz", toolCallIds: [] }]).get("zz")).toBeNull();
+	});
+
+	it("never anchors a request under a failed-request row", () => {
+		const failedRow = { id: "failed-a0", kind: "request-failed", item: makeItem({ id: "a0", kind: "assistant" }) };
+		expect(requestAnchors([failedRow], [{ id: "a0", toolCallIds: [] }]).get("a0")).toBeNull();
 	});
 
 	it("orders request items by first appearance, answer last", () => {
@@ -628,5 +677,43 @@ describe("think tags inside assistant text", () => {
 		]);
 		const step = (blocks[0] as TurnBlock).intermediateSteps[0];
 		expect(step.kind === "thinking" && step.thinking).toBe("A\n\nB");
+	});
+});
+
+describe("splitLiveTurn", () => {
+	const think = { id: "t", kind: "thinking" };
+	const tool = { id: "c", kind: "tool" };
+	const steer = { id: "s", kind: "steer", text: "also" };
+	const interim = { id: "p", kind: "text", text: "Looking at the files." };
+	const answer = { id: "a", kind: "text", text: "Done: it works." };
+
+	it("treats the trailing non-empty text step as the answer candidate", () => {
+		expect(liveAnswerCandidate([think, tool, answer])).toBe(answer);
+		expect(liveAnswerCandidate([answer, tool])).toBeNull();
+		expect(liveAnswerCandidate([think])).toBeNull();
+		expect(liveAnswerCandidate([{ id: "e", kind: "text", text: "  \n" }])).toBeNull();
+		expect(liveAnswerCandidate([])).toBeNull();
+	});
+
+	it("keeps every step in arrival order until the answer starts", () => {
+		const steps = [think, interim, tool, answer];
+		const out = splitLiveTurn(steps, false);
+		expect(out.activity).toBe(steps);
+		expect(out.prose).toEqual([]);
+		expect(out.answer).toBeNull();
+	});
+
+	it("folds activity and lifts interim prose once the answer starts", () => {
+		const out = splitLiveTurn([think, interim, tool, steer, answer], true);
+		expect(out.activity).toEqual([think, tool, steer]);
+		expect(out.prose).toEqual([interim]);
+		expect(out.answer).toBe(answer);
+	});
+
+	it("stays unfolded when the turn does not end in prose", () => {
+		const steps = [answer, tool];
+		const out = splitLiveTurn(steps, true);
+		expect(out.answer).toBeNull();
+		expect(out.activity).toBe(steps);
 	});
 });

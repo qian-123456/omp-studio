@@ -148,6 +148,7 @@ export function useTabBadges(
 			services: servicesCount,
 			terminal: terminalCount,
 			plan: 0,
+			files: 0,
 		}),
 		[gitDirtyCount, servicesCount, sidechatCount, heatmapCount, terminalCount],
 	);

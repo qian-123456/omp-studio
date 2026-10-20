@@ -407,6 +407,11 @@ export const validatePath = (path: string) =>
 export const saveClipboardImage = (base64Png: string) =>
 	invoke<string>("save_clipboard_image", { base64Png });
 
+/** Copy an image file into the app clip cache (asset-protocol readable,
+ * outlives temp sources); returns the copy's path. */
+export const importImageFile = (path: string) =>
+	invoke<string>("import_image_file", { path });
+
 /** Real filesystem paths of files on the macOS pasteboard (Finder copy).
  * Empty when the clipboard holds no file URLs or reading is unsupported. */
 export const clipboardFilePaths = () =>

@@ -50,10 +50,6 @@ vi.mock("./ompConfigStore", () => ({
 	})),
 }));
 
-vi.mock("./OmpConfigSection", () => ({
-	OmpConfigSection: () => <div data-testid="omp-section" />,
-}));
-
 vi.mock("./sections/index", () => ({
 	SECTION_COMPONENTS: new Proxy(
 		{},
@@ -150,14 +146,14 @@ describe("settings deep link", () => {
 		await waitFor(() => expect(activeNavId()).toBe("appearance"));
 	});
 
-	it("openSettings with omp-* focusKey lands on omp section", async () => {
+	it("openSettings with omp-* focusKey lands on the page of that key", async () => {
 		render(<Harness />);
 		act(() => {
-			useUi.getState().openSettings("omp-tools", { focusKey: "tools.approvalMode" });
+			useUi.getState().openSettings("tools", { focusKey: "browser.enabled" });
 		});
 		await waitFor(() => expect(document.querySelector("[data-nav-id]")).toBeTruthy(), {
 			timeout: 3000,
 		});
-		await waitFor(() => expect(activeNavId()).toBe("omp-tools"));
+		await waitFor(() => expect(activeNavId()).toBe("tools"));
 	});
 });

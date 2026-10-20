@@ -11,6 +11,7 @@ import {
 	REQUEST_STAT_FIELDS,
 	aggregateRequestStats,
 	formatRequestStat,
+	formatFailedRequest,
 	formatStatTokens,
 	type RequestStat,
 } from "./requestStats";
@@ -146,6 +147,36 @@ function TimeSplit({ stat }: { stat: RequestStat }) {
 	);
 }
 
+/** Card body for a failed request: what happened, no meaningless zero fields. */
+function FailedRequestCard({ stat }: { stat: RequestStat }) {
+	const when = stat.startedAt ?? stat.completedAt;
+	return (
+		<div className="flex w-[290px] select-text flex-col gap-1.5 p-3">
+			<div className="text-[12px] text-[var(--text-60)]">
+				模型请求失败
+				{when != null && (
+					<span className="ms-1.5 font-mono text-[11px] tabular-nums text-[var(--text-40)]">
+						{statDateTime(when)}
+					</span>
+				)}
+			</div>
+			<div className="text-[11px] leading-relaxed text-[var(--text-40)]">
+				这次请求没有得到模型的回复（例如在时限内没有响应），omp 已自动重试，不影响后续结果。
+			</div>
+			{stat.durationMs != null && (
+				<FieldRow
+					label="等待时长"
+					value={seconds(stat.durationMs)}
+					description="从发出请求到判定失败的时间"
+				/>
+			)}
+			<div className="break-words rounded-md bg-rose-500/10 px-2 py-1 font-mono text-[11px] leading-relaxed text-rose-400">
+				{stat.error}
+			</div>
+		</div>
+	);
+}
+
 /** The explanation card body for one model request. */
 function RequestCard({ stat }: { stat: RequestStat }) {
 	const fields = useDisplayPrefs((s) => s.requestStatFields);
@@ -213,7 +244,9 @@ export function RequestStatsLine({
 		[enabled, stat, fields, omitTime],
 	);
 	const { open, anchor, enterProps, clickProps, cardProps } = useHoverCard();
-	if (parts.length === 0) return null;
+	const failedText = formatFailedRequest(stat);
+	if (!failedText && parts.length === 0) return null;
+	if (failedText && !enabled) return null;
 
 	return (
 		<>
@@ -229,17 +262,28 @@ export function RequestStatsLine({
 				tabIndex={0}
 				aria-label="查看这次模型请求的统计说明"
 			>
-				{parts.map((p) => (
-					<span
-						key={p.field}
-						className={
-							p.field === "time" ? "text-[var(--text-30)]" : "text-[var(--text-40)]"
-						}
-					>
-						{p.glyph}
-						{p.text}
-					</span>
-				))}
+				{failedText ? (
+					<>
+						{!omitTime && failedText.time && (
+							<span className="text-[var(--text-30)]">{failedText.time}</span>
+						)}
+						<span className="rounded-full bg-rose-500/10 px-1.5 text-rose-400">{failedText.label}</span>
+						{failedText.wait && <span className="text-[var(--text-40)]">{failedText.wait}</span>}
+						<span className="select-text break-words text-rose-400">{failedText.reason}</span>
+					</>
+				) : (
+					parts.map((p) => (
+						<span
+							key={p.field}
+							className={
+								p.field === "time" ? "text-[var(--text-30)]" : "text-[var(--text-40)]"
+							}
+						>
+							{p.glyph}
+							{p.text}
+						</span>
+					))
+				)}
 			</div>
 			{open && anchor && (
 				<FloatingLayer
@@ -249,7 +293,7 @@ export function RequestStatsLine({
 					layer="hovercard"
 					{...cardProps}
 				>
-					<RequestCard stat={stat} />
+					{stat.error ? <FailedRequestCard stat={stat} /> : <RequestCard stat={stat} />}
 				</FloatingLayer>
 			)}
 		</>
@@ -273,7 +317,10 @@ export function TurnSummaryRows({
 	const rows: { label: string; value: string }[] = [];
 	if (durationMs) rows.push({ label: "总用时", value: formatDurationCompact(durationMs) });
 	if (totals.count > 0) {
-		rows.push({ label: "请求次数", value: `${totals.count} 次` });
+		rows.push({
+			label: "请求次数",
+			value: totals.failed > 0 ? `${totals.count} 次（失败 ${totals.failed}）` : `${totals.count} 次`,
+		});
 		rows.push({
 			label: "总输入",
 			value: `${REQUEST_STAT_FIELDS.input.glyph}${formatStatTokens(totals.input)}`,

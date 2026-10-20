@@ -69,7 +69,16 @@ export function buildSubagentTree(
 		const parent = parentOf.get(id);
 		(parent ? nodes.get(parent)!.children : roots).push(node);
 	}
-	return roots;
+	return sortRunningFirst(roots);
+}
+
+/** Stable sort, running siblings first; recurses into children. */
+export function sortRunningFirst(nodes: TreeNode[]): TreeNode[] {
+	for (const n of nodes) n.children = sortRunningFirst(n.children);
+	const running = nodes.filter((n) => n.state === "running");
+	return running.length === 0 || running.length === nodes.length
+		? nodes
+		: [...running, ...nodes.filter((n) => n.state !== "running")];
 }
 
 /** DFS order of every node id in the forest. */

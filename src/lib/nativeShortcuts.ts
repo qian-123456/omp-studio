@@ -14,6 +14,8 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CENTER_WITHOUT_RIGHT_PANEL } from "../components/CenterHeader";
+import { useFilePreview } from "../stores/filePreview";
+import { resolveActiveTab, useSideChatView } from "../features/sidechat/viewStore";
 import { useUi } from "../stores/ui";
 
 export type CloseTarget = "layer" | "tab" | "hide";
@@ -59,7 +61,22 @@ function closeActive(): void {
 		const host = document.activeElement ?? document.body;
 		host.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
 	} else if (target === "tab" && rightTab) {
-		closeRightTab(rightTab);
+		// Instance groups close one instance (the group goes with the last one);
+		// closing the whole group would leave its instances to resurrect the tab.
+		if (rightTab === "files") {
+			const { activePath, tabs, closeFile } = useFilePreview.getState();
+			const path = activePath ?? tabs[0]?.path;
+			if (path) closeFile(path);
+			else closeRightTab("files");
+		} else if (rightTab === "sidechat" && ui.selectedSessionId) {
+			const view = useSideChatView.getState();
+			const tabs = view.openTabs[ui.selectedSessionId];
+			const id = resolveActiveTab(tabs, view.openChild[ui.selectedSessionId]);
+			if (id) view.closeTab(ui.selectedSessionId, id);
+			else closeRightTab("sidechat");
+		} else {
+			closeRightTab(rightTab);
+		}
 	} else {
 		void getCurrentWindow().hide();
 	}

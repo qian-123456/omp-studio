@@ -14,7 +14,8 @@ import { useHomeDir, useShortPath } from "../../../lib/hooks";
 import { readTextFile, validatePath, writeTextFile } from "../../../lib/ipc";
 import { themeById, useResolvedThemeId } from "../../../lib/theme";
 import { toast } from "../../../lib/toast";
-import { SETTINGS_BUTTON_CLASS, SectionHeader, SettingRow, SettingsCard } from "../ui";
+import { Button, Notice, SectionHeader, SettingRow, SettingsCard } from "../ui";
+import { OmpSections } from "../OmpSettingsList";
 import { useSettingsProjectCwd } from "../useAppSettings";
 import {
 	type AgentsMdScope,
@@ -290,7 +291,7 @@ export function AgentsMdSection() {
 
 	const exists = ready && loaded !== null;
 	const statusText = !ready
-		? "读取中…"
+		? "读取中"
 		: loadError
 			? "读取失败"
 			: loaded === null
@@ -305,15 +306,13 @@ export function AgentsMdSection() {
 		<div className="space-y-5">
 			<SectionHeader
 				title="规则文件 AGENTS.md"
-				description={
-					<>
-						AGENTS.md 是写给 agent 的长期说明（项目约定、常用命令、注意事项），omp 在会话开始时自动读入。
-						修改只对<strong className="font-medium text-neutral-300">之后新开的会话</strong>
-						生效，正在运行的会话不会重新读取。内容按原样保存，不会被重新排版；<code>@路径</code>
-						引用行会在 omp 读取时展开为被引用文件的内容。
-					</>
-				}
+				description="omp 每次对话都会带上的长期规则，以及输出时实时检查的规则"
 			/>
+
+			<Notice tone="info">
+				AGENTS.md 写给 AI 的长期说明（项目约定、常用命令、注意事项）。修改只对之后新开的会话生效；内容按原样保存，
+				<code>@路径</code> 引用行会在 omp 读取时展开。
+			</Notice>
 
 			<SettingsCard
 				fieldId="agentsMdScope"
@@ -374,7 +373,7 @@ export function AgentsMdSection() {
 						}
 					>
 						{effective !== null && (
-							<p className="px-4 pb-3 text-[11px] text-neutral-500">
+							<p className="px-4 pb-3 text-[11px] text-[var(--text-muted)]">
 								omp 实际读取：
 								<code className="font-mono text-neutral-300">
 									{short(projectAgentsMdPath(cwd, effective))}
@@ -389,47 +388,50 @@ export function AgentsMdSection() {
 				<div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
 					<div className="min-w-0 flex-1">
 						<div className="flex items-center gap-1.5">
-							{dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" title="有未保存的修改" />}
-							<code className="truncate font-mono text-xs text-neutral-200" title={path ?? undefined}>
-								{path ? short(path) : "…"}
+							{dirty && (
+								<span
+									className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]"
+									title="有未保存的修改"
+								/>
+							)}
+							<code className="truncate font-mono text-xs text-[var(--text)]" title={path ?? undefined}>
+								{path ? short(path) : "未选择"}
 							</code>
 						</div>
 						<div className="text-[11px] text-neutral-500">{statusText}</div>
 					</div>
-					<button type="button" className={SETTINGS_BUTTON_CLASS} onClick={reveal} disabled={!path}>
-						<FolderOpen size={13} />
+					<Button icon={FolderOpen} onClick={reveal} disabled={!path}>
 						在访达中显示
-					</button>
-					<button
-						type="button"
-						className={SETTINGS_BUTTON_CLASS}
+					</Button>
+					<Button
+						icon={RefreshCw}
 						onClick={() => void reload()}
 						disabled={!path || loading}
 						title="从磁盘重新读取"
+						aria-label="从磁盘重新读取"
 					>
-						<RefreshCw size={13} className={clsx(loading && "animate-spin")} />
-					</button>
+						<span className={clsx(loading && "animate-pulse")}>重新读取</span>
+					</Button>
 				</div>
 
-				{ready && loadError && <div className="px-4 py-3 text-xs text-red-400">{loadError}</div>}
+				{ready && loadError && <div className="px-4 py-3 text-xs text-[var(--status-error)]">{loadError}</div>}
 
 				{ready && !loadError && loaded === null && (
 					<div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
 						<p className="text-xs text-neutral-400">这个位置还没有 AGENTS.md。</p>
-						<button type="button" className={SETTINGS_BUTTON_CLASS} onClick={() => void create()}>
-							<FilePlus2 size={13} />
+						<Button icon={FilePlus2} onClick={() => void create()}>
 							创建文件
-						</button>
+						</Button>
 					</div>
 				)}
 
 				{exists && (
 					<div>
 						{restored && (
-							<div className="px-4 py-2 text-[11px] text-amber-300">已恢复你上次离开时未保存的修改。</div>
+							<div className="px-4 py-2 text-[11px] text-[var(--status-warning)]">已恢复你上次离开时未保存的修改。</div>
 						)}
 						{readOnly && (
-							<div className="px-4 py-2 text-[11px] text-amber-300">
+							<div className="px-4 py-2 text-[11px] text-[var(--status-warning)]">
 								文件超过 1 MB，为避免卡顿只能查看。请用外部编辑器修改。
 							</div>
 						)}
@@ -445,28 +447,19 @@ export function AgentsMdSection() {
 								]}
 							/>
 							<div className="flex items-center gap-2">
-								<button
-									type="button"
-									className={SETTINGS_BUTTON_CLASS}
-									onClick={() => void discard()}
-									disabled={!dirty || saving}
-								>
-									<RotateCcw size={13} />
+								<Button icon={RotateCcw} onClick={() => void discard()} disabled={!dirty || saving}>
 									放弃修改
-								</button>
-								<button
-									type="button"
-									className={clsx(
-										SETTINGS_BUTTON_CLASS,
-										dirty && "bg-[var(--accent)] text-white hover:bg-[var(--accent)]",
-									)}
+								</Button>
+								<Button
+									variant="primary"
+									icon={Save}
 									onClick={() => void save()}
 									disabled={!dirty || saving}
+									loading={saving}
 									title="保存 (⌘S)"
 								>
-									<Save size={13} />
-									{saving ? "保存中…" : "保存"}
-								</button>
+									{saving ? "保存中" : "保存"}
+								</Button>
 							</div>
 						</div>
 						{tab === "edit" ? (
@@ -483,17 +476,19 @@ export function AgentsMdSection() {
 								/>
 							</div>
 						) : (
-							<div className="max-h-[60vh] min-h-[240px] overflow-auto px-5 py-3 text-xs leading-6 text-neutral-300 [&_a]:text-sky-400 [&_code]:rounded [&_code]:bg-[var(--well-bg)] [&_code]:px-1 [&_code]:font-mono [&_h1]:mt-3 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-neutral-100 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-neutral-100 [&_h3]:mt-2 [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-[var(--well-bg)] [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5">
+							<div className="max-h-[60vh] min-h-[240px] overflow-auto px-5 py-3 text-xs leading-6 text-[var(--text-muted)] [&_a]:text-[var(--accent)] [&_code]:rounded [&_code]:bg-[var(--well-bg)] [&_code]:px-1 [&_code]:font-mono [&_h1]:mt-3 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-[var(--text)] [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-[var(--text)] [&_h3]:mt-2 [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-[var(--well-bg)] [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5">
 								{draft.trim() ? (
 									<ReactMarkdown remarkPlugins={[remarkGfm]}>{draft}</ReactMarkdown>
 								) : (
-									<p className="text-neutral-500">（空文件）</p>
+									<p className="text-[var(--text-dim)]">空文件</p>
 								)}
 							</div>
 						)}
 					</div>
 				)}
 			</SettingsCard>
+
+			<OmpSections page="agents-md" />
 		</div>
 	);
 }

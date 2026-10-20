@@ -29,12 +29,12 @@ describe("rowState", () => {
 });
 
 describe("buildSubagentTree", () => {
-	it("is flat without parent info and sorted by index", () => {
+	it("is flat without parent info; sorted by index within running/finished groups", () => {
 		const roots = buildSubagentTree({
 			b: sub("running", { index: 1 }),
 			a: sub("completed", { index: 0 }),
 		});
-		expect(roots.map((n) => n.id)).toEqual(["a", "b"]);
+		expect(roots.map((n) => n.id)).toEqual(["b", "a"]);
 		expect(roots.every((n) => n.children.length === 0)).toBe(true);
 	});
 
@@ -63,6 +63,18 @@ describe("buildSubagentTree", () => {
 		expect(roots.map((n) => n.id)).toEqual(["a"]);
 		expect(roots[0].children.map((n) => n.id)).toEqual(["b"]);
 		expect(roots[0].children[0].children).toEqual([]);
+	});
+});
+
+describe("running-first order", () => {
+	it("puts running first, stable within groups", () => {
+		const roots = buildSubagentTree({
+			a: sub("completed", { index: 0 }),
+			b: sub("running", { index: 1 }),
+			c: sub("failed", { index: 2 }),
+			d: sub("running", { index: 3 }),
+		});
+		expect(roots.map((n) => n.id)).toEqual(["b", "d", "a", "c"]);
 	});
 });
 

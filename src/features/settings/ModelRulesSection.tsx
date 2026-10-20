@@ -15,12 +15,13 @@ import type { ModelOption } from "../../lib/models";
 import { toast } from "../../lib/toast";
 import { FallbackChainEditor, PICKER_BUTTON_CLASS } from "./FallbackChainEditor";
 import { buildWildcard, classifyChainKey, parseChain, ruleKeys, validateChainKey, withChain } from "./modelRoles";
+import { Button, Chip, SettingsCard, type ChipTone } from "./ui";
 
-const KEY_CHIP: Record<string, { label: string; cls: string }> = {
-	model: { label: "模型", cls: "bg-sky-500/15 text-sky-300" },
-	provider: { label: "供应商", cls: "bg-teal-500/15 text-teal-300" },
-	prefix: { label: "前缀通配符", cls: "bg-indigo-500/15 text-indigo-300" },
-	invalid: { label: "格式有误", cls: "bg-rose-500/15 text-rose-300" },
+const KEY_CHIP: Record<string, { label: string; tone: ChipTone }> = {
+	model: { label: "模型", tone: "neutral" },
+	provider: { label: "供应商", tone: "accent" },
+	prefix: { label: "前缀通配符", tone: "warning" },
+	invalid: { label: "格式有误", tone: "danger" },
 };
 
 /** Whether a rule key matches a search needle (key text or its Chinese kind label). */
@@ -68,29 +69,22 @@ function RuleRow({
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen((v) => !v)}
+				title={preview ? `${ruleKey}\n${preview}` : ruleKey}
 				className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
 			>
 				<span className="min-w-0 flex-1">
 					<span className="flex flex-wrap items-center gap-1.5">
-						<span className={`shrink-0 whitespace-nowrap rounded px-1.5 py-px text-[10px] ${kind.cls}`}>{kind.label}</span>
-						<span className="min-w-0 break-all font-mono text-[12px] font-semibold text-neutral-100">{ruleKey}</span>
+						<Chip tone={kind.tone}>{kind.label}</Chip>
+						<span className="min-w-0 break-all font-mono text-xs font-semibold text-[var(--text)]">{ruleKey}</span>
 					</span>
 					{preview && (
-						<span className="mt-1 block break-all font-mono text-[11px] leading-[1.45] text-neutral-500">{preview}</span>
+						<span className="mt-1 block break-all font-mono text-[11px] leading-[1.45] text-[var(--text-dim)]">{preview}</span>
 					)}
 				</span>
-				<span
-					className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full hairline px-2.5 py-0.5 text-[11px] ${
-						isDraft || chain.state === "unset"
-							? "bg-[var(--well-bg)] text-neutral-400"
-							: chain.state === "empty"
-								? "bg-amber-500/10 text-amber-300"
-								: "bg-emerald-500/10 text-emerald-300"
-					}`}
-				>
+				<Chip tone={isDraft ? "neutral" : chain.state === "empty" ? "warning" : chain.state === "list" ? "success" : "neutral"}>
 					{isDraft ? "未保存" : chain.state === "empty" ? "不回退" : `${chain.items.length} 项`}
-				</span>
-				<ChevronDown className={`mt-1 h-3 w-3 shrink-0 text-neutral-500 transition-transform ${open ? "rotate-180" : ""}`} />
+				</Chip>
+				<ChevronDown className={`mt-1 h-3 w-3 shrink-0 text-[var(--text-dim)] transition-transform ${open ? "rotate-180" : ""}`} />
 			</button>
 			{open && (
 				<div className="space-y-2 px-4 pb-3">
@@ -104,15 +98,9 @@ function RuleRow({
 						unsetTitle="删除这条规则：不再单独处理这个对象"
 						emptyTitle="显式空链 []：这个对象失败时不回退"
 					/>
-					<button
-						type="button"
-						disabled={busy}
-						onClick={onDelete}
-						className="inline-flex items-center gap-1 rounded-full hairline bg-rose-500/10 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-500/20 active:scale-95 transition-all disabled:opacity-50"
-					>
-						<Trash2 className="h-3 w-3" />
+					<Button variant="danger" size="sm" icon={Trash2} disabled={busy} onClick={onDelete}>
 						删除这条规则
-					</button>
+					</Button>
 				</div>
 			)}
 		</div>
@@ -187,103 +175,99 @@ export function ModelRulesSection({
 	};
 
 	return (
-		<div>
-			<h3 className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-semibold text-neutral-400">
-				模型规则 · 按出错的模型单独设置
-				<span className="rounded-full bg-[var(--well-bg)] px-1.5 py-px text-[10px] font-normal tabular-nums text-neutral-500">
-					{visible.length}
-				</span>
-			</h3>
-			<div className="overflow-hidden rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card divide-y divide-[var(--border-divider)]">
-				{visible.length === 0 ? (
-					<p className="px-4 py-3 text-[11px] leading-[1.5] text-neutral-500">
-						还没有规则。规则让某一个模型（或某个供应商）出错时走专属的备用名单，不管它当时扮演什么角色；它的优先级高于角色回退链。
-					</p>
-				) : (
-					visible.map((k) => (
-						<RuleRow
-							key={k}
-							ruleKey={k}
-							isDraft={!(k in chains)}
-							defaultOpen={k === justAdded}
-							chains={chains}
-							models={models}
-							roleIds={roleIds}
-							busy={busy}
-							onSaved={onSaved}
-							onDelete={() => void removeRule(k)}
+		<SettingsCard
+			title="模型规则"
+			aside={`${visible.length} 条`}
+			description="按出错的模型单独设置备用模型，优先级高于角色回退链"
+			clip
+		>
+			{visible.length === 0 ? (
+				<p className="px-4 py-3 text-xs leading-5 text-[var(--text-dim)]">
+					还没有规则。规则让某一个模型（或某个供应商）出错时走专属的备用名单，不管它当时扮演什么角色。
+				</p>
+			) : (
+				visible.map((k) => (
+					<RuleRow
+						key={k}
+						ruleKey={k}
+						isDraft={!(k in chains)}
+						defaultOpen={k === justAdded}
+						chains={chains}
+						models={models}
+						roleIds={roleIds}
+						busy={busy}
+						onSaved={onSaved}
+						onDelete={() => void removeRule(k)}
+					/>
+				))
+			)}
+			{!searching && (
+				<div className="space-y-2 px-4 py-3">
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="text-xs font-semibold text-[var(--text)]">新增规则</span>
+						<Segmented
+							size="sm"
+							value={addMode}
+							onChange={(m) => setAddMode(m === "provider" ? "provider" : "model")}
+							options={[
+								{ value: "model", label: "指定一个模型" },
+								{ value: "provider", label: "指定整个供应商" },
+							]}
 						/>
-					))
-				)}
-				{!searching && (
-					<div className="space-y-2 px-4 py-3">
-						<div className="flex items-center gap-2">
-							<span className="text-[11px] font-semibold text-neutral-300">新增规则</span>
-							<Segmented
-								size="sm"
-								value={addMode}
-								onChange={(m) => setAddMode(m === "provider" ? "provider" : "model")}
-								options={[
-									{ value: "model", label: "指定一个模型" },
-									{ value: "provider", label: "指定整个供应商" },
-								]}
-							/>
-						</div>
-						{addMode === "model" ? (
-							<ModelSelect
-								closeOnSelect
-								allowCustom
-								direction="down"
-								align="start"
-								widthClass="w-[380px]"
-								label="选择要设规则的模型"
-								buttonClass={PICKER_BUTTON_CLASS}
-								models={models}
-								currentValue=""
-								onSelect={(v) => {
-									if (v) addRule(v);
-								}}
-							/>
-						) : (
-							<div className="flex flex-wrap items-center gap-1.5">
-								<NativeSelect
-									value={provider}
-									disabled={providers.length === 0}
-									containerClassName="w-40"
-									onChange={(e) => setProvider(e.target.value)}
-								>
-									<option value="">选择供应商</option>
-									{providers.map((p) => (
-										<option key={p} value={p}>
-											{p}
-										</option>
-									))}
-								</NativeSelect>
-								<input
-									type="text"
-									value={prefix}
-									onChange={(e) => setPrefix(e.target.value)}
-									spellCheck={false}
-									placeholder="模型名前缀（可不填）"
-									title="例如在 openrouter 下填 google，只管 openrouter/google/ 开头的模型"
-									className="w-40 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-neutral-200 focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all"
-								/>
-								<button
-									type="button"
-									disabled={!provider}
-									onClick={() => {
-										addRule(buildWildcard(provider, prefix));
-										setPrefix("");
-									}}
-									className="whitespace-nowrap rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-								>
-									添加规则
-								</button>
-							</div>
-						)}
 					</div>
-				)}
-			</div>
-		</div>
+					{addMode === "model" ? (
+						<ModelSelect
+							closeOnSelect
+							allowCustom
+							direction="down"
+							align="start"
+							widthClass="w-[380px]"
+							label="选择要设规则的模型"
+							buttonClass={PICKER_BUTTON_CLASS}
+							models={models}
+							currentValue=""
+							onSelect={(v) => {
+								if (v) addRule(v);
+							}}
+						/>
+					) : (
+						<div className="flex flex-wrap items-center gap-1.5">
+							<NativeSelect
+								value={provider}
+								disabled={providers.length === 0}
+								containerClassName="w-40"
+								onChange={(e) => setProvider(e.target.value)}
+							>
+								<option value="">选择供应商</option>
+								{providers.map((p) => (
+									<option key={p} value={p}>
+										{p}
+									</option>
+								))}
+							</NativeSelect>
+							<input
+								type="text"
+								value={prefix}
+								onChange={(e) => setPrefix(e.target.value)}
+								spellCheck={false}
+								placeholder="模型名前缀（可不填）"
+								title="例如在 openrouter 下填 google，只管 openrouter/google/ 开头的模型"
+								className="w-40 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--text)] focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all"
+							/>
+							<Button
+								variant="primary"
+								disabled={!provider}
+								onClick={() => {
+									addRule(buildWildcard(provider, prefix));
+									setPrefix("");
+								}}
+							>
+								添加规则
+							</Button>
+						</div>
+					)}
+				</div>
+			)}
+		</SettingsCard>
 	);
 }

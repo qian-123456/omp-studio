@@ -51,10 +51,22 @@ export function AttachmentThumb({
 	);
 
 	if (failed) {
+		// The webview can't load it (outside the asset scope, or the file is
+		// gone): clicking still does something — hand it to the system viewer.
 		return (
 			<div
-				className="group/thumb relative flex h-8 shrink-0 select-none items-center gap-1.5 rounded-lg border border-[var(--line)] px-2 pr-5 text-[12px] text-[var(--text-40)]"
-				title={`无法加载图片：${path}`}
+				role="button"
+				tabIndex={0}
+				onClick={() => {
+					void openPath(path).catch((e: unknown) =>
+						toast.error(`无法打开图片 ${path}：${errMsg(e)}`),
+					);
+				}}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") e.currentTarget.click();
+				}}
+				className="group/thumb relative flex h-8 shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-lg border border-[var(--line)] px-2 pr-5 text-[12px] text-[var(--text-40)] hover:bg-[var(--ghost-hover)]"
+				title={`无法预览，点击用系统应用打开：${path}`}
 			>
 				<ImageOff size={13} className="shrink-0" />
 				<span>{label}</span>

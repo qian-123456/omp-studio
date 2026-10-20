@@ -16,6 +16,9 @@ export interface RequestStat {
 	/** Time to first token in ms. */
 	ttftMs: number | null;
 	usage: Usage | null;
+	/** Failure reason when the request ended with stopReason "error"; null otherwise
+	 * (a user abort is not a failure). Failed requests carry no usable speed/ttft. */
+	error: string | null;
 }
 
 /** Field metadata: TUI glyph plus the Chinese explanation shown in the hover/tap card. */
@@ -38,19 +41,23 @@ const MISSING = "—";
 const finiteOrNull = (v: unknown): number | null =>
 	typeof v === "number" && Number.isFinite(v) ? v : null;
 
+const FALLBACK_ERROR = "请求失败，未返回原因";
+
 function buildStat(
 	completedAt: number | null,
 	durationMs: number | null,
 	ttftMs: number | null,
 	usage: Usage | null,
+	error: string | null,
 ): RequestStat {
 	return {
 		startedAt:
 			completedAt != null && durationMs != null ? completedAt - durationMs : completedAt,
 		completedAt,
 		durationMs,
-		ttftMs,
+		ttftMs: error ? null : ttftMs,
 		usage,
+		error,
 	};
 }
 
@@ -63,6 +70,7 @@ export function requestStatFromItem(item: TranscriptItem): RequestStat | null {
 		item.duration ?? null,
 		item.ttft ?? null,
 		item.usage,
+		item.stopReason === "error" ? item.text?.trim() || FALLBACK_ERROR : null,
 	);
 }
 
@@ -87,17 +95,19 @@ export function requestStatFromMessage(
 						: 0),
 			}
 		: null;
+	const errText = typeof msg.errorMessage === "string" ? msg.errorMessage.trim() : "";
 	return buildStat(
 		finiteOrNull(msg.completedAt) ?? finiteOrNull(msg.timestamp) ?? fallbackTs,
 		finiteOrNull(msg.duration),
 		finiteOrNull(msg.ttft),
 		usage,
+		msg.stopReason === "error" ? errText || FALLBACK_ERROR : null,
 	);
 }
 
 /** Output tokens per second over the whole request (TUI ⚡); null without duration. */
 export function tokensPerSecond(stat: RequestStat): number | null {
-	if (!stat.usage || !stat.durationMs || stat.durationMs <= 0) return null;
+	if (stat.error || !stat.usage || !stat.durationMs || stat.durationMs <= 0) return null;
 	return stat.usage.output / (stat.durationMs / 1000);
 }
 
@@ -160,9 +170,32 @@ export function formatRequestStat(
 	}));
 }
 
+/** Text pieces of a failed request's line: no token / speed fields, full reason. */
+export interface FailedRequestText {
+	/** Local HH:MM:SS the request started, or null when unknown. */
+	time: string | null;
+	label: string;
+	/** 「等待 61.2s」, or null when no duration was recorded. */
+	wait: string | null;
+	/** The complete failure reason, never shortened. */
+	reason: string;
+}
+
+export function formatFailedRequest(stat: RequestStat): FailedRequestText | null {
+	if (!stat.error) return null;
+	return {
+		time: stat.startedAt == null ? null : formatStatClock(stat.startedAt),
+		label: "请求失败",
+		wait: stat.durationMs == null ? null : `等待 ${(stat.durationMs / 1000).toFixed(1)}s`,
+		reason: stat.error,
+	};
+}
+
 export interface TurnStatTotals {
 	/** Number of requests in the turn. */
 	count: number;
+	/** How many of them failed (stopReason "error"); excluded from avgTps. */
+	failed: number;
 	/** Σ (input + cacheWrite). */
 	input: number;
 	output: number;
@@ -180,20 +213,23 @@ export function aggregateRequestStats(stats: RequestStat[]): TurnStatTotals {
 	let cost = 0;
 	let timedOutput = 0;
 	let timedMs = 0;
+	let failed = 0;
 	for (const s of stats) {
+		if (s.error) failed++;
 		const u = s.usage;
 		if (!u) continue;
 		input += u.input + u.cacheWrite;
 		output += u.output;
 		cacheRead += u.cacheRead;
 		cost += u.cost;
-		if (s.durationMs && s.durationMs > 0) {
+		if (!s.error && s.durationMs && s.durationMs > 0) {
 			timedOutput += u.output;
 			timedMs += s.durationMs;
 		}
 	}
 	return {
 		count: stats.length,
+		failed,
 		input,
 		output,
 		cacheRead,

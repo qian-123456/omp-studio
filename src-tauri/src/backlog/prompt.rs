@@ -67,8 +67,40 @@ pub fn format_annotation(text: &str, path: Option<&str>, lines: Option<&str>) ->
     format!("- Quote{src}:\n{}", quoted.join("\n"))
 }
 
-pub fn format_image(path: &str) -> String {
-    format!("- Attached Image: [图片: {path}]")
+pub fn format_image(n: usize, path: &str) -> String {
+    format!("- Attached Image: [Image #{n}: {path}]")
+}
+
+/// Running `[Image #N]` numbering across every item of one dispatched message.
+/// The same path always maps to the same N (first-seen order = attachment order).
+#[derive(Default)]
+struct ImageNumbering {
+    paths: Vec<String>,
+}
+
+impl ImageNumbering {
+    fn number(&mut self, path: &str) -> usize {
+        match self.paths.iter().position(|p| p == path) {
+            Some(i) => i + 1,
+            None => {
+                self.paths.push(path.to_string());
+                self.paths.len()
+            }
+        }
+    }
+
+    /// Rewrite stored `[图片: path]` / `[Image #k(, WxH): path]` tags into the composer's
+    /// `[Image #N: path]` form with the global number.
+    fn rewrite(&mut self, text: &str) -> String {
+        static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            regex::Regex::new(r"\[(?:Image\s*#\d+(?:,\s*\d+x\d+)?|图片):\s*([^\]]+?)\s*\]").unwrap()
+        });
+        let re = &*RE;
+        re.replace_all(text, |c: &regex::Captures| {
+            format!("[Image #{}: {}]", self.number(&c[1]), &c[1])
+        })
+        .into_owned()
+    }
 }
 
 /// Prompt for one or more items. A single item uses the full `backlog_dispatch.md`
@@ -77,13 +109,12 @@ pub async fn build_batch(state: &AppState, items: &[BacklogItem]) -> String {
     if let [item] = items {
         return build(state, item).await;
     }
+    let mut nums = ImageNumbering::default();
     let mut entries = Vec::with_capacity(items.len());
     for item in items {
-        entries.push((
-            item.kind,
-            item.text.as_str(),
-            render_refs(state, item).await,
-        ));
+        let text = nums.rewrite(&item.text);
+        let refs = render_refs(state, item, &mut nums).await;
+        entries.push((item.kind, text, refs));
     }
     compose_batch(&entries)
 }
@@ -97,7 +128,7 @@ fn kind_tag(kind: BacklogKind) -> &'static str {
 }
 
 /// Pure assembly of a multi-item prompt from `(kind, text, rendered refs)`.
-fn compose_batch(entries: &[(BacklogKind, &str, String)]) -> String {
+fn compose_batch(entries: &[(BacklogKind, String, String)]) -> String {
     let mut out = format!(
         "Please handle the following {} backlog items in order.",
         entries.len()
@@ -114,14 +145,15 @@ fn compose_batch(entries: &[(BacklogKind, &str, String)]) -> String {
 }
 
 pub async fn build(state: &AppState, item: &BacklogItem) -> String {
+    let mut nums = ImageNumbering::default();
     let mut vars = HashMap::new();
     vars.insert("kind", kind_label(item.kind).to_string());
-    vars.insert("text", item.text.clone());
-    vars.insert("refs", render_refs(state, item).await);
+    vars.insert("text", nums.rewrite(&item.text));
+    vars.insert("refs", render_refs(state, item, &mut nums).await);
     prompts::render(prompts::BACKLOG_DISPATCH, &vars)
 }
 
-async fn render_refs(state: &AppState, item: &BacklogItem) -> String {
+async fn render_refs(state: &AppState, item: &BacklogItem, nums: &mut ImageNumbering) -> String {
     let mut parts = Vec::new();
     for r in &item.refs {
         match r.kind.as_str() {
@@ -146,8 +178,9 @@ async fn render_refs(state: &AppState, item: &BacklogItem) -> String {
                 }
             }
             "image" => {
-                if let Some(p) = r.path.as_deref() {
-                    parts.push(format_image(p));
+                // Inline tags in the text already carry their number.
+                if let Some(p) = r.path.as_deref().filter(|p| !item.text.contains(p)) {
+                    parts.push(format_image(nums.number(p), p));
                 }
             }
             _ => {
@@ -166,14 +199,14 @@ mod tests {
 
     #[test]
     fn batch_prompt_has_single_preamble_and_closing() {
-        let entries: Vec<(BacklogKind, &str, String)> = (1..=23)
+        let entries: Vec<(BacklogKind, String, String)> = (1..=23)
             .map(|i| {
                 let kind = if i % 2 == 0 {
                     BacklogKind::Bug
                 } else {
                     BacklogKind::Todo
                 };
-                (kind, "body", "- Attached Image: [图片: /a.png]".to_string())
+                (kind, "body".to_string(), "- Attached Image: [Image #1: /a.png]".to_string())
             })
             .collect();
         let out = compose_batch(&entries);
@@ -201,9 +234,24 @@ mod tests {
         assert!(s.starts_with("- Session #3 \"登录\""));
         assert!(s.ends_with("  a\n  b"));
         assert_eq!(
-            format_image("/tmp/a.png"),
-            "- Attached Image: [图片: /tmp/a.png]"
+            format_image(2, "/tmp/a.png"),
+            "- Attached Image: [Image #2: /tmp/a.png]"
         );
+    }
+
+    #[test]
+    fn numbers_images_globally_and_rewrites_tags() {
+        let mut n = ImageNumbering::default();
+        assert_eq!(
+            n.rewrite("看 [图片: /a.png] 和 [Image #7, 10x20: /b.png] 再 [图片: /a.png]"),
+            "看 [Image #1: /a.png] 和 [Image #2: /b.png] 再 [Image #1: /a.png]"
+        );
+        assert_eq!(n.rewrite("[图片: /c.png]"), "[Image #3: /c.png]");
+        assert!(!n.rewrite("[图片: /d.png]").contains("图片"));
+    }
+
+    #[test]
+    fn formats_annotation() {
         let a = format_annotation("x\ny", Some("src/a.ts"), Some("3-4"));
         assert_eq!(a, "- Quote (from `src/a.ts` lines 3-4):\n  > x\n  > y");
     }

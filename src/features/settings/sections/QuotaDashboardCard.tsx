@@ -4,7 +4,7 @@
  * Single-account providers render flat limit bars; multi-account providers show
  * pooled capacity and open `QuotaAccountSheet` for per-account detail.
  */
-import { AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
 	OmpUsageCapacityWindow,
@@ -12,7 +12,7 @@ import type {
 	OmpUsageReportData,
 } from "../../../lib/contracts";
 import { ompUsageReport } from "../../../lib/ipc";
-import { SettingsCard } from "../ui";
+import { Button, Chip, EmptyState, Notice } from "../ui";
 import {
 	type AccountSheetProvider,
 	QuotaAccountSheet,
@@ -111,82 +111,66 @@ export function QuotaDashboardCard() {
 	);
 
 	return (
-		<SettingsCard fieldId="quotaDashboard">
-			<div className="space-y-4 p-4">
-				<div className="flex items-center justify-between gap-3">
-					<div className="min-w-0">
-						<div className="text-sm font-semibold text-neutral-100">配额与用量概览</div>
-						<div className="mt-0.5 text-[11px] text-neutral-400">
-							{stats.totalProviders} 个供应商 · {stats.totalAccounts} 个已授权账号
-						</div>
-					</div>
-					<div className="flex shrink-0 items-center gap-2">
-						{data && (
-							<span className="text-[11px] text-neutral-500">
-								{formatRelativeTime(data.generatedAt, now)}
-							</span>
-						)}
-						<button
-							type="button"
-							disabled={loading || refreshing}
-							onClick={() => void fetchReport(true)}
-							className="flex items-center gap-1.5 rounded-md border border-[var(--border-divider)] bg-[var(--well-bg)] px-2.5 py-1 text-xs text-neutral-300 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-100 disabled:opacity-50"
-						>
-							<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-							{refreshing ? "刷新中…" : "刷新"}
-						</button>
-					</div>
+		<div className="space-y-3" data-field-id="quotaDashboard">
+			<div className="flex items-center justify-between gap-3 px-1">
+				<div className="min-w-0">
+					<h3 className="text-[13px] font-semibold text-[var(--text)]">配额与用量概览</h3>
+					<p className="mt-0.5 text-xs text-[var(--text-muted)]">
+						{stats.totalProviders} 个供应商 · {stats.totalAccounts} 个已授权账号
+					</p>
 				</div>
-
-				{loading ? (
-					<div className="flex flex-col items-center justify-center gap-2.5 py-12 text-xs text-neutral-400">
-						<RefreshCw className="h-5 w-5 animate-spin text-[var(--accent)]" />
-						<span>正在从 OMP 获取官方订阅与额度快照…</span>
-					</div>
-				) : error ? (
-					<div className="space-y-2 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-4 text-xs">
-						<div className="flex items-center gap-2 font-medium text-rose-300">
-							<AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
-							<span>无法获取 OMP 配额快照</span>
-						</div>
-						<div className="text-[11px] text-neutral-400">{error}</div>
-						<button
-							type="button"
-							className="text-[11px] font-medium text-[var(--accent)] hover:opacity-80"
-							onClick={() => void fetchReport(true)}
-						>
-							重试
-						</button>
-					</div>
-				) : providers.length === 0 ? (
-					<div className="space-y-2.5 py-10 text-center text-xs text-neutral-400">
-						<div className="text-sm font-semibold text-neutral-100">
-							暂无已激活的官方订阅或 Coding Plan
-						</div>
-						<div className="mx-auto max-w-md text-[11px] leading-relaxed">
-							可在终端执行{" "}
-							<code className="rounded border border-[var(--border-divider)] bg-[var(--well-bg)] px-1.5 py-0.5 font-mono text-neutral-200">
-								omp login
-							</code>{" "}
-							登录账号，登录后即可在此实时查看官方配额与重置时间。
-						</div>
-						<div className="text-[10px] text-neutral-500">
-							普通 API Key 按量计费，可在「接口与密钥」中配置。
-						</div>
-					</div>
-				) : (
-					<div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-						{providers.map((p) => (
-							<ProviderQuotaCard
-								key={p.providerId}
-								p={p}
-								now={now}
-								onOpen={() => setSheetProviderId(p.providerId)}
-							/>
-						))}
-					</div>
-				)}
+				<div className="flex shrink-0 items-center gap-2">
+					{data && (
+						<span className="text-xs text-[var(--text-dim)]">{formatRelativeTime(data.generatedAt, now)}</span>
+					)}
+					<Button
+						size="sm"
+						icon={RefreshCw}
+						loading={refreshing}
+						disabled={loading || refreshing}
+						onClick={() => void fetchReport(true)}
+					>
+						{refreshing ? "刷新中" : "刷新"}
+					</Button>
+				</div>
 			</div>
+
+			{loading ? (
+				<EmptyState icon={RefreshCw} title="正在获取官方订阅与额度快照" description="数据来自 omp，通常几秒内完成" />
+			) : error ? (
+				<Notice
+					tone="danger"
+					title="无法获取 omp 配额快照"
+					action={
+						<Button size="sm" onClick={() => void fetchReport(true)}>
+							重试
+						</Button>
+					}
+				>
+					<span className="break-words">{error}</span>
+				</Notice>
+			) : providers.length === 0 ? (
+				<EmptyState
+					title="暂无已激活的官方订阅或 Coding Plan"
+					description={
+						<>
+							可在终端执行 <code className="rounded border border-[var(--border-divider)] bg-[var(--well-bg)] px-1.5 py-0.5 font-mono text-[var(--text)]">omp login</code>{" "}
+							登录账号，登录后即可在此实时查看官方配额与重置时间。普通 API 密钥按量计费，可在「接口与密钥」中配置。
+						</>
+					}
+				/>
+			) : (
+				<div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
+					{providers.map((p) => (
+						<ProviderQuotaCard
+							key={p.providerId}
+							p={p}
+							now={now}
+							onOpen={() => setSheetProviderId(p.providerId)}
+						/>
+					))}
+				</div>
+			)}
 			<QuotaAccountSheet
 				isOpen={sheetProvider !== null}
 				onClose={() => setSheetProviderId(null)}
@@ -195,7 +179,7 @@ export function QuotaDashboardCard() {
 				refreshing={refreshing}
 				onRefresh={() => fetchReport(true)}
 			/>
-		</SettingsCard>
+		</div>
 	);
 }
 
@@ -258,7 +242,7 @@ function ProviderQuotaCard({
 				);
 			})
 		) : (
-			<div className="text-xs text-neutral-500">已连接 · 暂无时间窗口限额</div>
+			<div className="text-xs text-[var(--text-dim)]">已连接，暂无时间窗口限额</div>
 		);
 
 	const footnotes = [
@@ -268,73 +252,51 @@ function ProviderQuotaCard({
 		overage.length > 0
 			? `超额余额 ${overageTotal < 0 ? "-" : ""}$${Math.abs(overageTotal).toFixed(2)}`
 			: null,
-		multi
-			? `共 ${p.totalAccounts} 个账号 · 点击卡片查看各账号详情`
-			: "点击卡片查看账号详情",
+		multi ? `共 ${p.totalAccounts} 个账号` : null,
 	].filter(Boolean);
 
 	return (
-		<div
-			className="flex cursor-pointer flex-col justify-between space-y-3 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-4 shadow-xs transition-colors hover:border-[var(--border)]"
-			onClick={onOpen}
-			onKeyDown={(e) => {
-				if (e.key === "Enter" || e.key === " ") {
-					e.preventDefault();
-					onOpen();
-				}
-			}}
-			role="button"
-			tabIndex={0}
-		>
-			<div className="flex items-start justify-between gap-3">
-				<div className="flex min-w-0 flex-1 items-center gap-2.5">
-					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border-divider)] bg-[var(--bg-panel)]">
-						<ProviderBrandLogo
-							providerId={p.providerId}
-							iconType={p.brand.iconType}
-							color={p.brand.color}
-							className="h-4.5 w-4.5"
-						/>
-					</div>
-					<div className="min-w-0">
-						<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-							<span className="break-words text-sm font-semibold text-neutral-100">
-								{p.brand.name}
-							</span>
-							<span
-								className={`max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${p.brand.badgeClass}`}
-							>
-								{p.brand.badge}
-							</span>
+		<div className="flex h-full flex-col gap-3 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-4">
+			<div className="space-y-2">
+				<div className="flex items-center justify-between gap-3">
+					<div className="flex min-w-0 flex-1 items-center gap-2.5">
+						<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border-divider)] bg-[var(--bg-panel)]">
+							<ProviderBrandLogo
+								providerId={p.providerId}
+								iconType={p.brand.iconType}
+								color={p.brand.color}
+								className="h-4.5 w-4.5"
+							/>
 						</div>
-						<div className="mt-0.5 truncate text-[11px] text-neutral-400">{subtitle}</div>
-					</div>
-				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					{p.totalCredits > 0 && (
-						<span className="rounded-full border border-amber-500/25 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
-							✦ {p.totalCredits} 次重置券
+						<span className="min-w-0 break-words text-sm font-semibold text-[var(--text)]">
+							{p.brand.name}
 						</span>
-					)}
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							onOpen();
-						}}
-						className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-100"
-					>
+					</div>
+					<Button size="sm" className="shrink-0 whitespace-nowrap" onClick={onOpen}>
 						查看明细
-						<ChevronRight className="h-3 w-3" />
-					</button>
+						<ChevronRight className="h-3.5 w-3.5" />
+					</Button>
+				</div>
+				<div className="flex flex-wrap items-center gap-1.5">
+					<span
+						className={`max-w-full break-words rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${p.brand.badgeClass}`}
+					>
+						{p.brand.badge}
+					</span>
+					{p.totalCredits > 0 && <Chip tone="accent">{p.totalCredits} 次重置券</Chip>}
+				</div>
+				<div className="w-full break-all text-xs text-[var(--text-muted)]" title={subtitle}>
+					{subtitle}
 				</div>
 			</div>
 
-			<div className="space-y-2.5">{body}</div>
+			<div className="flex-1 space-y-2.5">{body}</div>
 
 			{footnotes.length > 0 && (
-				<div className="border-t border-[var(--border-divider)] pt-2.5 text-[10px] text-neutral-500">
-					{footnotes.join(" · ")}
+				<div className="mt-auto flex flex-wrap items-center gap-1.5 border-t border-[var(--border-divider)] pt-2.5">
+					{footnotes.map((f) => (
+						<Chip key={f as string}>{f}</Chip>
+					))}
 				</div>
 			)}
 		</div>

@@ -1,5 +1,5 @@
 import type { TranscriptItem } from "../../lib/contracts";
-import type { SessionLive } from "../../stores/live";
+import type { LiveRequest, SessionLive } from "../../stores/live";
 import { type RequestStat, requestStatFromItem } from "./requestStats";
 
 export interface ComputedSessionStats {
@@ -11,14 +11,15 @@ export interface ComputedSessionStats {
 	cacheRead: number;
 	cacheWrite: number;
 	cacheHitRate: number; // 0 - 100
-	/** Σ request durations reported by the model; 0 when nothing recorded one. */
+	/** Σ request durations reported by the model, failed requests included
+	 * (their wait was real wall time); 0 when nothing recorded one. */
 	modelDurationMs: number;
 	toolDurationMs: number;
-	/** Mean of the real per-request `ttft` values; null when none were recorded. */
+	/** Mean of the real per-request `ttft` values of successful requests; null when none were recorded. */
 	avgTtftMs: number | null;
-	/** Σ output ÷ Σ duration over requests that recorded a duration; null when none did. */
+	/** Σ output ÷ Σ duration over successful requests that recorded a duration; null when none did. */
 	tps: number | null;
-	/** Number of model requests that recorded a duration. */
+	/** Number of successful model requests that recorded a duration. */
 	timedRequests: number;
 	hasData: boolean;
 }
@@ -48,8 +49,26 @@ export function sessionRequestStats(
 		if (stat) push(stat);
 	}
 	// Live requests of the current turn, not yet persisted to the transcript.
-	for (const req of live?.liveRequests ?? []) push(req.stat);
+	for (const req of newLiveRequests(items, live)) push(req.stat);
 	return stats;
+}
+
+/** Live requests whose stat the transcript does not carry yet. */
+function newLiveRequests(items: TranscriptItem[], live?: SessionLive): LiveRequest[] {
+	if (!live?.liveRequests?.length) return [];
+	const persisted = new Set<string>();
+	for (const item of items) {
+		const stat = requestStatFromItem(item);
+		if (stat) persisted.add(requestKey(stat));
+	}
+	const out: LiveRequest[] = [];
+	for (const req of live.liveRequests) {
+		const key = requestKey(req.stat);
+		if (persisted.has(key)) continue;
+		persisted.add(key);
+		out.push(req);
+	}
+	return out;
 }
 
 export function computeSessionStats(
@@ -77,34 +96,52 @@ export function computeSessionStats(
 	for (const item of items) {
 		if (item.kind === "user") {
 			rounds++;
-		} else if (item.kind === "assistant") {
+		} else if (item.kind === "assistant" && item.stopReason !== "error") {
+			// Failed requests (auto-retried provider errors) produced nothing.
 			assistantCount++;
 		}
 
 		if (item.toolCalls && item.toolCalls.length > 0) {
 			toolCallCount += item.toolCalls.length;
 		}
+	}
 
-		// Token usage accumulation
-		if (item.usage) {
-			inputTokens += item.usage.input || 0;
-			outputTokens += item.usage.output || 0;
-			cacheRead += item.usage.cacheRead || 0;
-			cacheWrite += item.usage.cacheWrite || 0;
-			totalTokens += item.usage.totalTokens || (item.usage.input + item.usage.output);
-		}
+	// The running turn is not in the transcript page yet: its user message is
+	// still a pending echo (reconciled away once the jsonl carries it, so no
+	// double count), and each finished live request is a step plus its tools.
+	// Failed requests produced nothing and are not steps.
+	rounds += live?.pendingUserEchoes?.length ?? 0;
+	for (const req of newLiveRequests(items, live)) {
+		if (req.stat.error) continue;
+		assistantCount++;
+		toolCallCount += req.toolCallIds.length;
+	}
+
+	// Token usage: transcript items plus the live requests of the current turn
+	// the transcript has not caught up with yet (same de-duplication as timing).
+	const requestStats = sessionRequestStats(items, live);
+	for (const stat of requestStats) {
+		const u = stat.usage;
+		if (!u) continue;
+		inputTokens += u.input || 0;
+		outputTokens += u.output || 0;
+		cacheRead += u.cacheRead || 0;
+		cacheWrite += u.cacheWrite || 0;
+		totalTokens += u.totalTokens || u.input + u.output + u.cacheRead + u.cacheWrite;
 	}
 
 	// Real per-request timing comes from the messages themselves; live requests
 	// of the current turn are folded in until the transcript catches up.
-	for (const stat of sessionRequestStats(items, live)) {
+	for (const stat of requestStats) {
 		if (stat.durationMs != null && stat.durationMs > 0) {
 			modelDurationMs += stat.durationMs;
-			timedMs += stat.durationMs;
-			timedOutput += stat.usage?.output ?? 0;
-			timedRequests++;
+			if (!stat.error) {
+				timedMs += stat.durationMs;
+				timedOutput += stat.usage?.output ?? 0;
+				timedRequests++;
+			}
 		}
-		if (stat.ttftMs != null) {
+		if (stat.ttftMs != null && !stat.error) {
 			ttftSum += stat.ttftMs;
 			ttftCount++;
 		}
@@ -163,15 +200,15 @@ export function formatDuration(ms: number): string {
 }
 
 export function formatTokens(tokens: number): string {
-	if (!tokens || tokens <= 0) return "0 tok";
+	if (!tokens || tokens <= 0) return "0 token";
 	if (tokens >= 1_000_000_000) {
-		return `${(tokens / 1_000_000_000).toFixed(1)}B tok`;
+		return `${(tokens / 1_000_000_000).toFixed(1)}B token`;
 	}
 	if (tokens >= 1_000_000) {
-		return `${(tokens / 1_000_000).toFixed(1)}M tok`;
+		return `${(tokens / 1_000_000).toFixed(1)}M token`;
 	}
 	if (tokens >= 1_000) {
-		return `${(tokens / 1_000).toFixed(1)}k tok`;
+		return `${(tokens / 1_000).toFixed(1)}k token`;
 	}
-	return `${tokens} tok`;
+	return `${tokens} token`;
 }

@@ -1267,7 +1267,7 @@ export function SkillsPage() {
 												openDrawer({ kind: "skill", path: skill.path })
 											}
 											onKeyDown={(e) => {
-												if (e.key === "Enter")
+												if (e.key === "Enter" && e.target === e.currentTarget)
 													openDrawer({ kind: "skill", path: skill.path });
 											}}
 											style={{
@@ -1489,7 +1489,7 @@ export function SkillsPage() {
 										openDrawer({ kind: "extension", path: ext.path })
 									}
 									onKeyDown={(e) => {
-										if (e.key === "Enter")
+										if (e.key === "Enter" && e.target === e.currentTarget)
 											openDrawer({ kind: "extension", path: ext.path });
 									}}
 									style={{

@@ -180,7 +180,7 @@ export function ModelReplacePlanPreview({
 			</div>
 
 			{plan.chainError !== null && (
-				<div role="alert" className="mx-3 mb-2 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-300">
+				<div role="alert" className="mx-3 mb-2 flex items-start gap-2 rounded-lg bg-[color-mix(in_srgb,var(--status-warning)_12%,transparent)] px-3 py-2 text-[11px] leading-5 text-[var(--status-warning)]">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="min-w-0 flex-1 break-all">
 						无法读取回退链，本次不会改动回退链：{plan.chainError}
@@ -223,7 +223,7 @@ export function ModelReplacePlanPreview({
 							<div key={project.path} className="flex items-start gap-2 border-t border-[var(--border-divider)] px-3 py-1.5 text-[11px]">
 								<span className="shrink-0 text-neutral-300">{project.name}</span>
 								<span className="min-w-0 flex-1 break-all font-mono text-[10px] text-neutral-600">{project.path}</span>
-								<span className="max-w-[40%] shrink-0 break-all text-amber-300">{project.reason}</span>
+								<span className="max-w-[40%] shrink-0 break-all text-[var(--status-warning)]">{project.reason}</span>
 							</div>
 						))}
 					</div>

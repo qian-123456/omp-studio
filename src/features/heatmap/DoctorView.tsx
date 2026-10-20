@@ -114,7 +114,7 @@ export function DoctorView({
 
 				<div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[10px]">
 					<span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-emerald-400">
-						⚡ 已脱水为 ~{formatTok(skeletonTokens)} tok 骨架
+						⚡ 已脱水为 ~{formatTok(skeletonTokens)} token 骨架
 					</span>
 				</div>
 				<div className="mt-1 text-[10px] text-neutral-500">

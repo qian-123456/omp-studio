@@ -35,4 +35,29 @@ describe("Markdown inline HTML", () => {
 	it("keeps math", () => {
 		expect(html("$$x^2$$")).toContain("katex");
 	});
+
+	it("turns prose and inline-code file paths into preview links", () => {
+		const out = html(
+			"读取 /Users/qianhairui/.omp/agent/AGENTS.md 与 `~/CodingWiki/wiki/rules.md`，目录 /Users/qianhairui 不链接。",
+		);
+		expect(out).toContain('href="/Users/qianhairui/.omp/agent/AGENTS.md"');
+		expect(out).toContain('href="~/CodingWiki/wiki/rules.md"');
+		expect(out).toContain("在右侧预览");
+		// A directory is not a file link.
+		expect(out).not.toContain('href="/Users/qianhairui"');
+	});
+
+	it("keeps a leading @ outside the file link", () => {
+		const out = html("见 `@~/CodingWiki/wiki/rules.md` 与 @/Users/me/a.md。");
+		expect(out).toContain('href="~/CodingWiki/wiki/rules.md"');
+		expect(out).toContain('href="/Users/me/a.md"');
+		expect(out).not.toContain('href="@');
+		expect(out).not.toContain('>@~/CodingWiki/wiki/rules.md</a>');
+	});
+
+	it("does not relink text inside existing links or fenced code", () => {
+		const out = html("[见 /a/b.md](/c/d.md)\n\n```\n/a/b.md\n```");
+		expect(out).toContain('href="/c/d.md"');
+		expect(out).not.toContain('href="/a/b.md"');
+	});
 });

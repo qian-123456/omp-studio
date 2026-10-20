@@ -36,7 +36,18 @@ export function shouldRedirectKey(e: KeyboardEvent, ta: HTMLTextAreaElement, com
 	// anywhere else belongs to the main (non-compact) composer.
 	const targetView = target?.closest(`[${SESSION_VIEW_ATTR}]`) ?? null;
 	if (targetView) return targetView === ta.closest(`[${SESSION_VIEW_ATTR}]`);
-	return !compact;
+	const lastView = lastReadView?.isConnected ? lastReadView : null;
+	return lastView ? lastView === ta.closest(`[${SESSION_VIEW_ATTR}]`) : !compact;
+}
+
+/** Session view the user last clicked/scrolled in (null = outside any, e.g. sidebar).
+ * Keys typed with no focus target belong to it, so reading the side chat then typing
+ * lands in the side composer rather than the main one. */
+let lastReadView: Element | null = null;
+
+function trackReading(e: Event): void {
+	const t = e.target instanceof Element ? e.target : null;
+	lastReadView = t?.closest(`[${SESSION_VIEW_ATTR}]`) ?? null;
 }
 
 export function useTypeToFocus(taRef: RefObject<HTMLTextAreaElement | null>, compact: boolean | undefined): void {
@@ -49,7 +60,13 @@ export function useTypeToFocus(taRef: RefObject<HTMLTextAreaElement | null>, com
 			ta.focus();
 			ta.setSelectionRange(ta.value.length, ta.value.length);
 		};
+		const opts = { capture: true, passive: true } as const;
+		const reading = ["pointerdown", "wheel", "touchstart", "touchmove"] as const;
+		for (const n of reading) window.addEventListener(n, trackReading, opts);
 		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		return () => {
+			for (const n of reading) window.removeEventListener(n, trackReading, opts);
+			window.removeEventListener("keydown", onKey);
+		};
 	}, [taRef, compact]);
 }

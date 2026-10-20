@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { confirmDialog } from "../../lib/dialogs";
-import { ensureLive } from "../../lib/ensureLive";
+import { ensureLive, ResumeCancelledError } from "../../lib/ensureLive";
 import { privacyClassify, privacyMark, rpcSend, takeoverExternal } from "../../lib/ipc";
 import { useSessions } from "../../stores/sessions";
 import { toast } from "../../lib/toast";
@@ -68,28 +68,34 @@ export async function sendPrompt(
 			"当前会话正在外部终端运行，发送消息将接管该会话，确认接管？",
 			{ danger: true, okLabel: "接管" },
 		);
-		if (!ok) return;
+		if (!ok) throw new ResumeCancelledError();
 	}
 	// Optimistic echo: add before network calls so the user bubble appears
 	// immediately and never arrives after the assistant stream.
 	const steerEcho =
 		opts?.steer === true &&
 		useLive.getState().sessions[sessionId]?.streaming === true;
-	useLive.getState().addUserEcho(sessionId, trimmed, opts?.images, steerEcho);
+	const echoId = useLive.getState().addUserEcho(sessionId, trimmed, opts?.images, steerEcho);
 	// The message is now visible in the thread: let the caller release its input
 	// instead of holding the text until slow resume/RPC calls below finish.
 	opts?.onEchoed?.();
-	if (external) {
-		await takeoverExternal(sessionId);
-	} else if (!useLive.getState().sessions[sessionId]?.alive) {
-		await ensureLive(sessionId);
+	try {
+		if (external) {
+			await takeoverExternal(sessionId);
+		} else if (!useLive.getState().sessions[sessionId]?.alive) {
+			await ensureLive(sessionId);
+		}
+		const streaming = useLive.getState().sessions[sessionId]?.streaming === true;
+		const command: Record<string, unknown> = { type: "prompt", message: trimmed };
+		if (streaming) {
+			command.streamingBehavior = opts?.steer ? "steer" : "followUp";
+		}
+		await rpcSend(sessionId, command);
+	} catch (err) {
+		// Not sent: drop the bubble so a retry doesn't duplicate it.
+		if (echoId) useLive.getState().removeUserEcho(sessionId, echoId);
+		throw err;
 	}
-	const streaming = useLive.getState().sessions[sessionId]?.streaming === true;
-	const command: Record<string, unknown> = { type: "prompt", message: trimmed };
-	if (streaming) {
-		command.streamingBehavior = opts?.steer ? "steer" : "followUp";
-	}
-	await rpcSend(sessionId, command);
 }
 
 /**

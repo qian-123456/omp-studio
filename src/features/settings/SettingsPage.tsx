@@ -1,5 +1,5 @@
 /**
- * Settings shell: nav sidebar + search, deep-link focus flash and routing of
+ * Settings shell: nav sidebar + ranked search, deep-link focus flash and routing of
  * the active nav id to its section component (see `sections/index.ts`).
  */
 import { Search, X } from "lucide-react";
@@ -7,13 +7,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isComposing, useEscapeKey } from "../../lib/hooks";
 import { useUi } from "../../stores/ui";
 import { FIELD_REGISTRY, findMatchingField } from "./fieldRegistry";
-import { NAV_GROUPS, ompCategoryOf, ompSectionId, sectionSearchTerms } from "./navigation";
-import { OmpConfigSection } from "./OmpConfigSection";
+import {
+	NAV_GROUPS,
+	buildSearchIndex,
+	navItem,
+	searchSection,
+	type NavItem,
+} from "./navigation";
+import { OMP_CONFIG_META, ompConfigTitle } from "./ompConfigMeta";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { ompDesktopCategoryFor } from "./ompDesktopCategories";
+import { isDesktopRelevant, ompSearchTerms, ompSectionFor } from "./ompPlacement";
 import { SECTION_COMPONENTS } from "./sections";
 import { SettingsNavContext, type SettingsNavValue } from "./settingsNav";
 import { useSettings } from "./store";
+import { Notice } from "./ui";
 
 interface SettingsPageProps {
 	onClose?: () => void;
@@ -22,6 +29,15 @@ interface SettingsPageProps {
 
 /** Elements that run their own Cmd+F (editors, terminals). */
 const OWN_FIND_SELECTOR = ".cm-editor, .monaco-editor, .xterm, [data-own-find]";
+
+const FLASH_CLASSES = ["ring-2", "ring-[var(--accent)]", "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]"];
+
+/** Unknown nav ids fall back to the general page. */
+function resolveSection(id: string | null | undefined): string {
+	return id && navItem(id) ? id : "general";
+}
+
+type NavEntry = NavItem & { hint: string | null };
 
 export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}) {
 	const loadSettings = useSettings((s) => s.load);
@@ -33,10 +49,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 	const loadOmpConfig = useOmpConfigStore((s) => s.load);
 	const ompEntries = useOmpConfigStore((s) => s.entries);
 
-	const [activeSection, setActiveSection] = useState<string>(initialSection ?? "general");
-	// OMP category's schema sub-group filter (controlled into OmpConfigSection
-	// so deep links can force it back to "all").
-	const [ompGroupName, setOmpGroupName] = useState<string | null>(null);
+	const [activeSection, setActiveSection] = useState<string>(resolveSection(initialSection));
 	// Pending deep-link focus: scrolls the row into view and briefly flashes it.
 	const [focusFlash, setFocusFlash] = useState<{ key: string; n: number } | null>(null);
 	const [navQuery, setNavQuery] = useState("");
@@ -44,23 +57,27 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 	const navRef = useRef<HTMLElement>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 
-	const ompCategory = ompCategoryOf(activeSection);
-
 	useEffect(() => {
 		void loadSettings();
 	}, [loadSettings]);
+
+	// Eager omp load: nav counts, search index and the omp pages all read this store.
+	useEffect(() => {
+		void loadOmpConfig();
+	}, [loadOmpConfig]);
 
 	// Switching sections always lands at the top of the new section.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: activeSection is the trigger
 	useEffect(() => {
 		contentRef.current?.scrollTo({ top: 0 });
-		setOmpGroupName(null);
 	}, [activeSection]);
 
-	// Load OMP entries eagerly while searching so the nav index covers them.
+	// Keep the active nav item visible (deep links, search jumps, arrow keys).
 	useEffect(() => {
-		if (activeSection.startsWith("omp-") || navQuery.trim()) void loadOmpConfig();
-	}, [activeSection, navQuery, loadOmpConfig]);
+		navRef.current
+			?.querySelector<HTMLElement>(`[data-nav-id="${CSS.escape(activeSection)}"]`)
+			?.scrollIntoView({ block: "nearest" });
+	}, [activeSection]);
 
 	const handleBack = useCallback(() => (onClose ? onClose() : closeSettings()), [onClose, closeSettings]);
 	useEscapeKey(handleBack);
@@ -91,16 +108,17 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 		setAppliedRequest(pendingRequest);
 		let target = pendingSection;
 		const isOmpKey =
-			pendingFocus && target?.startsWith("omp-") && !FIELD_REGISTRY.some((f) => f.id === pendingFocus);
+			pendingFocus &&
+			!FIELD_REGISTRY.some((f) => f.id === pendingFocus) &&
+			OMP_CONFIG_META[pendingFocus] !== undefined &&
+			isDesktopRelevant(pendingFocus);
 		if (pendingFocus && isOmpKey) {
-			// OMP config rows carry data-omp-key; if the key belongs to another
-			// desktop category, switch there and clear nav search/group filter so
-			// the row is actually rendered.
-			target = `omp-${ompDesktopCategoryFor(pendingFocus).id}`;
+			// OMP config rows carry data-omp-key; the key's placement decides the page,
+			// and any nav search is cleared so the row is actually rendered.
+			target = ompSectionFor(pendingFocus).page;
 			setNavQuery("");
-			setOmpGroupName(null);
 		}
-		if (target) setActiveSection(target);
+		if (target) setActiveSection(resolveSection(target));
 		if (pendingFocus) setFocusFlash({ key: pendingFocus, n: pendingRequest });
 	}
 
@@ -115,7 +133,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 	}, [pendingRequest]);
 
 	// Scroll the focused row into view and briefly highlight it. Retries for
-	// ~3s because OmpConfigSection rows render after `omp config list` returns.
+	// ~3s because omp rows render after `omp config list` returns.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-run when the section mounts
 	useEffect(() => {
 		if (!focusFlash || !contentRef.current) return;
@@ -145,48 +163,79 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 		};
 	}, [focusFlash, activeSection]);
 
-	// Nav search index: section label + keywords + OMP keys/roles/custom terms.
+	// Ranked nav search: label hit > title/name > keyword/English label/key > description.
 	const navQueryL = navQuery.trim().toLowerCase();
-	const navGroupsMatched = useMemo(
-		() =>
-			NAV_GROUPS.map((group) => ({
-				...group,
-				items: group.items
-					.map((sec) => {
-						const hits = navQueryL
-							? sectionSearchTerms(sec.id, ompEntries).filter((t) => t.toLowerCase().includes(navQueryL))
-							: [];
-						const hit = !navQueryL || sec.label.toLowerCase().includes(navQueryL) || hits.length > 0;
-						return { ...sec, hit, hits: [...new Set(hits)] };
-					})
-					.filter((s) => s.hit),
-			})).filter((g) => g.items.length > 0),
-		[navQueryL, ompEntries],
-	);
+	const searchIndex = useMemo(() => buildSearchIndex(ompEntries), [ompEntries]);
+	const navGroupsMatched = useMemo<{ title: string; items: NavEntry[] }[]>(() => {
+		if (!navQueryL) {
+			return NAV_GROUPS.map((g) => ({ title: g.title, items: g.items.map((i) => ({ ...i, hint: null })) }));
+		}
+		const ranked = NAV_GROUPS.flatMap((g) => g.items)
+			.map((item, order) => ({ item, order, ...searchSection(searchIndex, item, navQueryL) }))
+			.filter((r) => r.score > 0)
+			.sort((a, b) => b.score - a.score || a.order - b.order)
+			.map<NavEntry>((r) => ({ ...r.item, hint: r.names.length > 0 ? r.names.join(" · ") : null }));
+		return ranked.length > 0 ? [{ title: "搜索结果", items: ranked }] : [];
+	}, [navQueryL, searchIndex]);
 	const allMatchedItems = useMemo(() => navGroupsMatched.flatMap((g) => g.items), [navGroupsMatched]);
 
-	// Keep active section inside the filtered set while searching
+	// Jump to the best match when the query changes; keep the active page inside the result set.
+	const jumpedQuery = useRef("");
 	useEffect(() => {
-		if (!navQueryL) return;
-		if (!allMatchedItems.some((s) => s.id === activeSection)) {
-			setActiveSection(allMatchedItems[0]?.id ?? activeSection);
+		if (!navQueryL) {
+			jumpedQuery.current = "";
+			return;
+		}
+		const first = allMatchedItems[0];
+		if (!first) return;
+		if (jumpedQuery.current !== navQueryL || !allMatchedItems.some((s) => s.id === activeSection)) {
+			jumpedQuery.current = navQueryL;
+			if (first.id !== activeSection) setActiveSection(first.id);
 		}
 	}, [allMatchedItems, navQueryL, activeSection]);
 
-	// In-page scroll to and briefly highlight matched field
+	// In-page scroll to and briefly highlight the first matching row (native field or omp key).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: ompEntries re-runs once omp rows exist
 	useEffect(() => {
-		if (!navQueryL || !contentRef.current) return;
-		const match = findMatchingField(activeSection, navQueryL);
-		if (!match) return;
-		const el = contentRef.current.querySelector<HTMLElement>(`[data-field-id="${match.id}"]`);
-		if (!el) return;
-		el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-		el.classList.add("ring-2", "ring-[var(--accent)]", "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]");
-		const t = setTimeout(() => {
-			el.classList.remove("ring-2", "ring-[var(--accent)]", "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]");
-		}, 1800);
-		return () => clearTimeout(t);
-	}, [activeSection, navQueryL]);
+		const root = contentRef.current;
+		if (!navQueryL || !root) return;
+		const find = (): HTMLElement | null => {
+			const field = findMatchingField(activeSection, navQueryL);
+			const native = field ? root.querySelector<HTMLElement>(`[data-field-id="${CSS.escape(field.id)}"]`) : null;
+			if (native) return native;
+			const rows = [...root.querySelectorAll<HTMLElement>("[data-omp-key]")];
+			const byTitle = rows.find((el) => ompConfigTitle(el.dataset.ompKey ?? "").toLowerCase().includes(navQueryL));
+			if (byTitle) return byTitle;
+			return (
+				rows.find((el) => ompSearchTerms(el.dataset.ompKey ?? "").some((t) => t.toLowerCase().includes(navQueryL))) ??
+				null
+			);
+		};
+		let flashed: HTMLElement | null = null;
+		let flashTimer = 0;
+		const tryFlash = () => {
+			const el = find();
+			if (!el) return false;
+			el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+			el.classList.add(...FLASH_CLASSES);
+			flashed = el;
+			flashTimer = window.setTimeout(() => el.classList.remove(...FLASH_CLASSES), 1800);
+			return true;
+		};
+		const found = tryFlash();
+		const poll = found
+			? 0
+			: window.setInterval(() => {
+					if (tryFlash()) clearInterval(poll);
+				}, 160);
+		const stop = window.setTimeout(() => clearInterval(poll), 3000);
+		return () => {
+			clearInterval(poll);
+			clearTimeout(stop);
+			clearTimeout(flashTimer);
+			flashed?.classList.remove(...FLASH_CLASSES);
+		};
+	}, [activeSection, navQueryL, ompEntries.length]);
 
 	/** Arrow keys move between visible nav items (and activate them). */
 	const moveNav = (fromId: string, delta: number) => {
@@ -197,9 +246,10 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 		navRef.current?.querySelector<HTMLButtonElement>(`[data-nav-id="${CSS.escape(next.id)}"]`)?.focus();
 	};
 
+	const focusKey = focusFlash?.key ?? null;
 	const navValue = useMemo<SettingsNavValue>(
-		() => ({ query: navQuery.trim(), navigate: setActiveSection }),
-		[navQuery],
+		() => ({ query: navQuery.trim(), navigate: (id) => setActiveSection(resolveSection(id)), focusKey }),
+		[navQuery, focusKey],
 	);
 
 	const ActiveSection = SECTION_COMPONENTS[activeSection];
@@ -234,7 +284,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 							}
 						}}
 						placeholder="搜索设置（⌘F）"
-						className="w-full bg-transparent text-[11px] text-neutral-200 outline-none placeholder:text-neutral-500"
+						className="w-full bg-transparent text-xs text-neutral-200 outline-none placeholder:text-neutral-500"
 					/>
 					{navQuery && (
 						<button
@@ -253,7 +303,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 				</div>
 				<nav ref={navRef} aria-label="设置分类" className="-mr-2.5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-2.5">
 					{noMatches ? (
-						<div className="px-2 py-3 text-center text-[11px] leading-4 text-neutral-500">
+						<div className="px-2 py-3 text-center text-xs leading-4 text-neutral-500">
 							没有匹配「{navQuery.trim()}」的设置项
 						</div>
 					) : (
@@ -265,7 +315,6 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 								{group.items.map((sec) => {
 									const Icon = sec.icon;
 									const isActive = activeSection === sec.id;
-									const hint = sec.hits.length > 0 ? sec.hits.slice(0, 2).join(" · ") : null;
 									return (
 										<button
 											key={sec.id}
@@ -288,9 +337,9 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 											<Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? "text-[var(--accent)]" : ""}`} />
 											<span className="min-w-0 flex-1 text-left">
 												<span className="block truncate">{sec.label}</span>
-												{hint && (
-													<span className="block truncate text-[10px] font-normal text-neutral-500">
-														{hint}
+												{sec.hint && (
+													<span className="block truncate text-[11px] font-normal text-neutral-500">
+														{sec.hint}
 													</span>
 												)}
 											</span>
@@ -307,9 +356,9 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 			<div ref={contentRef} className="flex-1 overflow-y-auto p-6 lg:p-7">
 				<div className="mx-auto max-w-3xl space-y-8">
 					{storeError && (
-						<div className="rounded-xl border border-rose-800/50 bg-rose-950/20 p-3 text-xs text-rose-300">
-							保存失败: {storeError}
-						</div>
+						<Notice tone="danger" title="保存失败">
+							<span className="select-text break-all">{storeError}</span>
+						</Notice>
 					)}
 					{noMatches ? (
 						<div className="py-16 text-center text-xs text-neutral-500">
@@ -318,15 +367,6 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 					) : (
 						<SettingsNavContext.Provider value={navValue}>
 							{ActiveSection && <ActiveSection />}
-							{ompCategory !== null && (
-								<OmpConfigSection
-									activeTab={ompCategory}
-									onTabChange={(tab) => setActiveSection(ompSectionId(tab))}
-									query={navValue.query}
-									activeGroupName={ompGroupName}
-									onGroupChange={setOmpGroupName}
-								/>
-							)}
 						</SettingsNavContext.Provider>
 					)}
 				</div>

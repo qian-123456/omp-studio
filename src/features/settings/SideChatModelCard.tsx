@@ -11,9 +11,9 @@ import { useAppSettings, useCatalogModels } from "./useAppSettings";
 import { MODEL_PICKER_BUTTON_CLASS, SettingRow, SettingsCard, ToggleRow, useSaveStatus } from "./ui";
 
 const ROLE_EXTRAS: ModelExtraOption[] = [
-	{ value: "smol", label: "快速模型 (smol)", hint: "内置默认" },
-	{ value: "default", label: "主力模型 (default)", hint: "主力角色" },
-	{ value: "slow", label: "深度模型 (slow)", hint: "深度角色" },
+	{ value: "smol", label: "快速模型", hint: "内置默认" },
+	{ value: "default", label: "主力模型", hint: "主力角色" },
+	{ value: "slow", label: "深度模型", hint: "深度角色" },
 ];
 
 export function SideChatModelCard() {
@@ -33,7 +33,7 @@ export function SideChatModelCard() {
 		<SettingsCard title="侧边对话" fieldId="sideChatModel">
 			<ToggleRow
 				label="侧边对话专用模型"
-				description="关闭时，侧边对话继承主对话的模型与 thinking level；开启后新建的侧边对话使用下方选择的模型。侧边对话面板里仍可临时更改。"
+				description="关闭时，侧边对话继承主对话的模型与思考级别；开启后新建的侧边对话使用下方选择的模型。侧边对话面板里仍可临时更改。"
 				checked={enabled}
 				onChange={async (next) => {
 					if (next) {

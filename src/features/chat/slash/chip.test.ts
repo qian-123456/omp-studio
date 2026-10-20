@@ -90,7 +90,7 @@ describe("skill chip", () => {
 	});
 });
 
-import { findChipRange, inlineChipRange, insertChipAt, parseLeadingCommand, shiftChipOffset } from "./chip";
+import { CHIP_POSITION_MARK as M, findChipRange, inlineChipRange, insertChipAt, parseLeadingCommand, shiftChipOffset } from "./chip";
 
 describe("inline skill chip (offset model)", () => {
 	const base = { name: "skill:grill-me", title: "grill-me", argHint: "arguments" };
@@ -112,18 +112,18 @@ describe("inline skill chip (offset model)", () => {
 
 	it("serializes token to the front, joining the remaining text", () => {
 		const c = { ...base, offset: 6 };
-		expect(serializeChip(c, `hello ${lit} world`)).toBe("/skill:grill-me hello world");
+		expect(serializeChip(c, `hello ${lit} world`)).toBe(`/skill:grill-me hello ${M} world`);
 		expect(serializeChip({ ...base, offset: 6 }, `hello\n${lit} world`)).toBe(
-			"/skill:grill-me hello\nworld",
+			`/skill:grill-me hello\n${M}\nworld`,
 		);
 		expect(serializeChip({ ...base, offset: 0 }, `${lit} `)).toBe("/skill:grill-me");
-		expect(serializeChip({ ...base, offset: 4 }, `abc ${lit}`)).toBe("/skill:grill-me abc");
+		expect(serializeChip({ ...base, offset: 4 }, `abc ${lit}`)).toBe(`/skill:grill-me abc ${M}`);
 	});
 
 	it("fuzzy locate tolerates shifted offsets (masked text)", () => {
 		const c = { ...base, offset: 20 };
 		expect(serializeChip(c, `[X] ${lit} y`)).toBe(`/skill:grill-me [X] ${lit} y`);
-		expect(serializeChip(c, `[X] ${lit} y`, "fuzzy")).toBe("/skill:grill-me [X] y");
+		expect(serializeChip(c, `[X] ${lit} y`, "fuzzy")).toBe(`/skill:grill-me [X] ${M} y`);
 		expect(findChipRange(c, `a ${lit} ${lit}`, 100)?.start).toBe(`a ${lit} `.length);
 	});
 
@@ -195,5 +195,27 @@ describe("chip with merged subcommand", () => {
 		expect(plain?.chip.sub).toBeUndefined();
 		expect(plain?.rest).toBe("whatever x");
 		expect(parseLeadingCommand("/fork enable")?.chip.sub).toBeUndefined();
+	});
+});
+
+describe("mid-text chip position survives the wire format", () => {
+	const lit = "/skill:grill-me";
+	const c = { name: "skill:grill-me", title: "grill-me", offset: 3 };
+	it("round-trips serialize → parseLeadingCommand", () => {
+		const wire = serializeChip(c, `前文 ${lit} 后文`);
+		const p = parseLeadingCommand(wire);
+		expect(p?.chip.name).toBe("skill:grill-me");
+		expect(p?.rest).toBe("前文");
+		expect(p?.tail).toBe("后文");
+	});
+	it("leading chip has no marker / tail", () => {
+		const wire = serializeChip({ ...c, offset: 0 }, `${lit} 后文`);
+		expect(wire).toBe("/skill:grill-me 后文");
+		expect(parseLeadingCommand(wire)?.tail).toBeUndefined();
+	});
+	it("trailing chip keeps an empty tail", () => {
+		const p = parseLeadingCommand(serializeChip({ ...c, offset: 3 }, `前文 ${lit}`));
+		expect(p?.rest).toBe("前文");
+		expect(p?.tail).toBe("");
 	});
 });

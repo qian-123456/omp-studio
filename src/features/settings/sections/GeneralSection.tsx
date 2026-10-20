@@ -1,6 +1,6 @@
 /**
- * Settings ▸ 通用 (`general`): the handful of things most users change —
- * global default model, approval mode, UI/shortcut, AGENTS.md entry.
+ * Settings ▸ 通用 (`general`): new-session defaults, UI switches, shortcut, Git delivery,
+ * plus the omp 系统 section (sleep prevention).
  */
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -14,8 +14,9 @@ import { useSettingsNav } from "../settingsNav";
 import { openSettingsTarget } from "../settingsTargets";
 import { DEFAULT_SETTINGS } from "../store";
 import { useAppSettings, useCatalogModels } from "../useAppSettings";
+import { OmpSections } from "../OmpSettingsList";
 import {
-	SETTINGS_BUTTON_CLASS,
+	Button,
 	SectionHeader,
 	SettingRow,
 	SettingsCard,
@@ -31,6 +32,7 @@ const APPROVAL_OPTIONS: { value: ApprovalMode; label: string; desc: string }[] =
 	{ value: "write", label: "改动前问", desc: "只读与搜索自动进行；改文件或跑命令前先询问确认（推荐）。" },
 	{ value: "yolo", label: "全自动", desc: "AI 直接修改文件与执行命令，无需确认（速度快，误操作不被拦截）。" },
 ];
+const APPROVAL_SUMMARY = APPROVAL_OPTIONS.map((o) => `${o.label}：${o.desc}`).join("");
 
 export function GeneralSection() {
 	const { settings, save } = useAppSettings();
@@ -77,36 +79,38 @@ export function GeneralSection() {
 	// ModelSelect appends " · <level>" itself when currentValue carries a suffix.
 	const modelLabel = defaultRole
 		? (matchedModel?.id ?? (fallbackShortName || defaultRole))
-		: (ompLoaded ? "OMP 内置默认" : "加载中…");
+		: (ompLoaded ? "OMP 内置默认" : "加载中");
 
 	const approval = (settings?.defaultApprovalMode ?? "write") as ApprovalMode;
 	const currentApprovalOption = APPROVAL_OPTIONS.find((o) => o.value === approval) ?? APPROVAL_OPTIONS[1];
 
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="通用" description="最常改的几项：全局主力模型、工具审批模式、界面与快捷键" />
+			<SectionHeader title="通用" description="新会话的默认设置、界面开关与快捷键" />
 
-			<SettingsCard title="模型与审批">
+			<SettingsCard title="新会话默认设置">
 				<SettingRow
 					fieldId="newSessionModel"
-					label="全局默认模型 (主力模型)"
-					description="新对话与常规问答默认使用的主力模型（对应 OMP 全局角色 default）。在「模型角色」中修改。"
+					label="全局默认模型"
+					description="新对话与常规问答默认使用的主力模型，在「模型角色」中修改。"
 					control={
 						<div className="flex min-w-0 items-center gap-2">
-							<span className="min-w-0 truncate text-xs text-neutral-300" title={defaultRole ?? undefined}>
+							<span className="min-w-0 truncate text-xs text-[var(--text-muted)]" title={defaultRole ?? undefined}>
 								{modelLabel}
 							</span>
-							<button type="button" onClick={() => openSettingsTarget("models")} className={SETTINGS_BUTTON_CLASS}>
-								在模型角色中修改
-							</button>
+							<Button size="sm" variant="ghost" onClick={() => openSettingsTarget("models")}>
+								去模型角色修改
+								<ChevronRight className="h-3 w-3" />
+							</Button>
 						</div>
 					}
 				/>
 
 				<SettingRow
 					fieldId="defaultApprovalMode"
-					label="审批模式 (Approval Mode)"
-					description={currentApprovalOption.desc}
+					label="审批模式"
+					description={APPROVAL_SUMMARY}
+					hint={`当前：${currentApprovalOption.label}`}
 					status={approvalSave.status}
 					statusError={approvalSave.error}
 					control={
@@ -128,7 +132,7 @@ export function GeneralSection() {
 								title: o.desc,
 								label:
 									o.value === "yolo" ? (
-										<span className="inline-flex items-center gap-1 text-amber-400">
+										<span className="inline-flex items-center gap-1 text-[var(--status-warning)]">
 											<AlertTriangle className="h-3 w-3" />
 											{o.label}
 										</span>
@@ -139,20 +143,32 @@ export function GeneralSection() {
 						/>
 					}
 				/>
+
+				<SettingRow
+					fieldId="agentsMdShortcut"
+					label="长期规则"
+					description="希望 AI 每次都遵守的习惯与约定（代码风格、回复语言等）写在 AGENTS.md 里。"
+					control={
+						<Button size="sm" variant="ghost" onClick={() => navigate("agents-md")}>
+							去规则文件编辑
+							<ChevronRight className="h-3 w-3" />
+						</Button>
+					}
+				/>
 			</SettingsCard>
 
-			<SettingsCard title="界面与快捷键">
+			<SettingsCard title="界面">
 				<ToggleRow
 					fieldId="capsuleVisible"
 					label="顶部子代理胶囊"
-					description="当前会话派生并发子代理（Subagents）时，在窗口顶部栏显示胶囊指示器，点击可展开查看各子代理的进度与详情。"
+					description="会话派生并发子代理时，在窗口顶部栏显示胶囊，点击可查看各子代理的进度与详情。"
 					checked={settings?.capsuleVisible ?? true}
 					onChange={(v) => save({ capsuleVisible: v })}
 				/>
 				<ToggleRow
 					fieldId="windowWorktreeTitle"
 					label="窗口标题显示分支名"
-					description="在系统窗口标题中附加当前工作树的 Git 分支（omp-workspace · 分支名），同时打开多个实例时便于区分；修改立即生效。"
+					description="在系统窗口标题中附加当前工作树的 Git 分支，同时打开多个实例时便于区分；立即生效。"
 					checked={settings?.windowWorktreeTitle ?? true}
 					onChange={(v) => save({ windowWorktreeTitle: v })}
 				/>
@@ -163,6 +179,9 @@ export function GeneralSection() {
 					checked={settings?.smartContextRouting ?? true}
 					onChange={(v) => save({ smartContextRouting: v })}
 				/>
+			</SettingsCard>
+
+			<SettingsCard title="快捷键">
 				<SettingRow
 					fieldId="quickCaptureShortcut"
 					label="快速记录快捷键"
@@ -180,12 +199,12 @@ export function GeneralSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard title="Git 与代码交付">
+			<SettingsCard title="Git">
 				<SettingRow
 					fieldId="gitDeliveryMode"
 					label="主干交付模式"
-					description="从功能分支交付到 main 主干时的默认行为方式。"
-					hint="默认推荐使用 Pull Request，经网页审查后再合流"
+					description="把功能分支交付到主干时的默认方式。"
+					hint="推荐发起 Pull Request，经网页审查后再合并"
 					control={
 						<Segmented
 							value={(settings?.gitDeliveryMode as "pr" | "direct") ?? "pr"}
@@ -193,13 +212,13 @@ export function GeneralSection() {
 							options={[
 								{
 									value: "pr",
-									label: "GitHub Pull Request (推荐)",
+									label: "发起 Pull Request（推荐）",
 									title: "推送到云端同名分支并自动打开 GitHub 网页发起 PR 评审",
 								},
 								{
 									value: "direct",
-									label: "本地直接合并入 main 并直推",
-									title: "本地合并入 main 后直接推送到云端 origin/main（适合个人单人极速开发）",
+									label: "本地合并并直接推送",
+									title: "本地合并入主干后直接推送到云端 origin/main（适合个人单人快速开发）",
 								},
 							]}
 						/>
@@ -207,19 +226,7 @@ export function GeneralSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard title="长期规则">
-				<SettingRow
-					fieldId="agentsMdShortcut"
-					label="AGENTS.md（给 AI 的长期指令）"
-					description="写下希望 AI 每次都遵守的习惯与约定，例如代码风格、回复语言。"
-					control={
-						<button type="button" onClick={() => navigate("agents-md")} className={SETTINGS_BUTTON_CLASS}>
-							<span>编辑</span>
-							<ChevronRight className="h-3.5 w-3.5" />
-						</button>
-					}
-				/>
-			</SettingsCard>
+			<OmpSections page="general" />
 		</div>
 	);
 }

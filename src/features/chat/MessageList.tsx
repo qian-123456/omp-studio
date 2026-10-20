@@ -1,3 +1,4 @@
+import { renderUserTextWithChips, stripImageMarkers } from "./userTextChips";
 import { trimSideChatItems } from "./sideChatView";
 /** [B] Virtualized message stream: turns + in-flight assistant
  * message + live tool cards. Every turn and step carries `id="msg-<itemId>"` so the
@@ -7,11 +8,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
 	Check,
-	ChevronsDownUp,
-	ChevronsUpDown,
 	Copy,
-	Eye,
-	EyeOff,
 	Loader2,
 	Pencil,
 	RotateCcw,
@@ -34,7 +31,7 @@ import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { isFlowItem, withFlowNotices } from "./flowNotice";
 import { QueuedBubbles } from "./QueuedBubbles";
-import { queuedEchoIds, useLive, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
+import { collectUserImages, queuedEchoIds, useLive, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
 import { currentLocateId, useLocate } from "../../stores/locate";
@@ -42,7 +39,6 @@ import { LocatePill } from "./LocatePill";
 import { useUi } from "../../stores/ui";
 import { StartHero } from "../../components/StartHero";
 import { openContextWindowForModel } from "../settings/settingsTargets";
-import { PrivacyText } from "../privacy/SecretChip";
 import { AnswerFooter } from "./AnswerFooter";
 import { isForkDraftId } from "../sessions/forkDraft";
 import { ClampedProse } from "./ClampedProse";
@@ -54,16 +50,17 @@ import { AttachmentThumb, FileChip } from "./ImageChips";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import {
+	ANSWER_TEXT_CLASS,
+	ANSWER_WRAP_CLASS,
 	ExecutionDisclosure,
-	ProcessingTimer,
+	LiveDisclosure,
 	TurnSteps,
 	type StepShape,
 	type TurnStatsPlan,
 	USER_BUBBLE_CLASS,
+	UserMessageBubble,
 } from "./ExecutionDisclosure";
 import type { ImageAttachment } from "../../lib/contracts";
-import { getImageTokenPalette } from "./Composer";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { parseInlineFiles } from "./fileAttach";
 import { Markdown } from "./markdown";
 import { isContextOverflowError, splitModelRef } from "./contextOverflow";
@@ -73,18 +70,20 @@ import {
 } from "./messageTrace";
 import { abortTurn, sendPrompt } from "./send";
 import { CommandOutputList } from "./slash/CommandOutputList";
-import { parseLeadingCommand } from "./slash/chip";
-import { CommandChipBadge } from "./slash/CommandChip";
-import { RetryNoticeList } from "./RetryNoticeList";
+import { RetryEpisodeRow, RetryNoticeList } from "./RetryNoticeList";
+import { isRetryItem, withRetryEpisodes } from "./retryEpisodes";
 import { RequestStatsLine } from "./RequestStatsLine";
 import { type RequestStat, requestStatFromItem } from "./requestStats";
 import {
 	formatDurationCompact,
 	formatMessageTimestamp,
 	groupTurnBlocks,
+	liveAnswerCandidate,
 	noticeLabel,
 	noticeSummary,
+	splitAroundSteers,
 	splitInterimProse,
+	splitLiveTurn,
 	turnRequestItems,
 	type TurnBlock,
 } from "./turnGrouping";
@@ -94,15 +93,18 @@ import {
 	onScrollPosition,
 	USER_INPUT_WINDOW_MS,
 	onWroteBottom,
-	shouldAnchorTurnTop,
 	shouldFollow,
 	shouldCompensateResize,
 	type FollowScrollState,
 } from "./followScroll";
 import { estimateBlockHeight } from "./blockEstimate";
 import { claimEscape } from "../../lib/escapeClaim";
+import { flashQuote } from "./annotationLocate";
+import { useAnswerStarted } from "./useAnswerStarted";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
+/** Longest the live row outlives its stream while waiting for the committed turn. */
+const LIVE_HOLD_MS = 2500;
 const EMPTY_ECHOES: UserEcho[] = [];
 
 /** In-flight steer echo as an activity step (same shape as persisted). */
@@ -119,123 +121,6 @@ const EMPTY_TOOLS: Record<string, LiveTool> = {};
 
 const asObj = (v: unknown): Record<string, unknown> =>
 	typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
-
-export function stripImageMarkers(text: string): string {
-	return text
-		.replace(
-			/\[\d+\]\s*\([^)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^)]*\)\s*\n?>?\s*(?:\[图片:[^\]]+\])?/gi,
-			"",
-		)
-		.replace(
-			/\[(?:Image|图片)\s*#\d+(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|\[图片(?::\s*[^\]]+)?\]|🖼️\s*#\d+|\[(?:File|文件)\s*#\d+(?::\s*[^\]]+)?\]|📎\s*#\d+/gu,
-			"",
-		)
-		.trim();
-}
-
-const USER_MARKER_RE =
-	/\[(?:Image|图片)\s*#(\d+)(?:,\s*\d+x\d+)?(?::\s*[^\]]+)?\]|🖼️\s*#(\d+)/gu;
-
-/** File-attachment marker `[文件 #N: path]` / `[File #N: path]` / `📎#N`;
- * groups: 1=num 2=path, 3=num (emoji form). */
-const USER_FILE_MARKER_RE =
-	/\[(?:File|文件)\s*#(\d+)(?::\s*([^\]]+))?\]|📎\s*#(\d+)/gu;
-
-/** User bubble text with image markers kept in place as clickable `#n`
- *  chips (Composer palette). Annotation-header noise is still stripped. */
-function renderUserTextWithChips(
-	text: string,
-	onOpen: (markerNum: number) => void,
-): React.ReactNode[] {
-	const cleaned = text
-		.replace(
-			/\[\d+\]\s*\([^)]*?\.(?:png|jpe?g|gif|webp|svg|bmp)[^)]*\)\s*\n?>?\s*(?:\[图片:[^\]]+\])?/gi,
-			"",
-		)
-		.trim();
-	const parts: React.ReactNode[] = [];
-	// Leading `/skill:x` (or known command) → same token the composer shows.
-	const lead = parseLeadingCommand(cleaned);
-	if (lead) {
-		parts.push(
-			<span key="lead-cmd" className="mr-1.5 inline-block align-baseline">
-				<CommandChipBadge chip={lead.chip} />
-			</span>,
-		);
-		return [...parts, ...renderUserTextWithChipsBody(lead.rest, onOpen)];
-	}
-	return renderUserTextWithChipsBody(cleaned, onOpen);
-}
-
-function renderUserTextWithChipsBody(
-	cleaned: string,
-	onOpen: (markerNum: number) => void,
-): React.ReactNode[] {
-	const parts: React.ReactNode[] = [];
-	// Merge image + file markers, ordered by position.
-	const markers: Array<{ at: number; len: number; kind: "img" | "file"; m: RegExpMatchArray }> = [];
-	for (const m of cleaned.matchAll(USER_MARKER_RE)) {
-		markers.push({ at: m.index ?? 0, len: m[0].length, kind: "img", m });
-	}
-	for (const m of cleaned.matchAll(USER_FILE_MARKER_RE)) {
-		markers.push({ at: m.index ?? 0, len: m[0].length, kind: "file", m });
-	}
-	markers.sort((a, b) => a.at - b.at);
-	let last = 0;
-	for (const { at, len, kind, m } of markers) {
-		if (at < last) continue; // overlapping alternative — keep the earlier one
-		if (at > last) parts.push(<PrivacyText key={`t-${last}`} text={cleaned.slice(last, at)} />);
-		const num = Number.parseInt(m[1] ?? m[2] ?? m[3] ?? "1", 10) || 1;
-		const palette = getImageTokenPalette(num);
-		if (kind === "file") {
-			const path = m[2]?.trim();
-			parts.push(
-				<button
-					key={`file-${at}`}
-					type="button"
-					onClick={() => {
-						if (path) {
-							void openPath(path).catch((e: unknown) =>
-								toast.error(`打开文件失败: ${errMsg(e)}`),
-							);
-						}
-					}}
-					title={path ? `打开文件 #${num}：${path}` : `文件 #${num}`}
-					className="mx-0.5 inline cursor-pointer align-baseline hover:opacity-80"
-					style={{ color: palette.hex }}
-				>
-					<span
-						className="underline decoration-2 underline-offset-[3px]"
-						style={{ color: palette.hex, textDecorationColor: palette.hex }}
-					>
-						{`📎#${num}`}
-					</span>
-				</button>,
-			);
-		} else {
-			parts.push(
-				<button
-					key={`img-${at}`}
-					type="button"
-					onClick={() => onOpen(num)}
-					title={`查看图片 #${num}`}
-					className="mx-0.5 inline cursor-pointer align-baseline hover:opacity-80"
-					style={{ color: palette.hex }}
-				>
-					<span
-						className="underline decoration-2 underline-offset-[3px]"
-						style={{ color: palette.hex, textDecorationColor: palette.hex }}
-					>
-						{`🖼️#${num}`}
-					</span>
-				</button>,
-			);
-		}
-		last = at + len;
-	}
-	if (last < cleaned.length) parts.push(<PrivacyText key={`t-${last}`} text={cleaned.slice(last)} />);
-	return parts;
-}
 
 /**
  * Row padding that clears the ChatTrace gutter. The dash strip sits at the
@@ -293,10 +178,10 @@ const UserRow = React.memo(function UserRow({
 
 	const validImages = useMemo(
 		() =>
-			(item.images ?? []).filter(
+			collectUserImages(rawText, item.images).filter(
 				(img): img is ImageAttachment & { path: string } => Boolean(img.path),
 			),
-		[item.images],
+		[rawText, item.images],
 	);
 
 	const collapsible = useLineClampOverflow(textRef, "line-clamp-4", 4, [userText, editing]);
@@ -396,7 +281,10 @@ const UserRow = React.memo(function UserRow({
 						)}
 					>
 						{renderUserTextWithChips(rawText, (num) => {
-							if (validImages.length === 0) return;
+							if (validImages.length === 0) {
+								toast.info("找不到这张图片的文件（可能已被清理）");
+								return;
+							}
 							setPreviewIndex(
 								Math.min(Math.max(num - 1, 0), validImages.length - 1),
 							);
@@ -501,10 +389,13 @@ function waitForIdle(sessionId: string, timeoutMs = 5000): Promise<void> {
  * small tertiary text between hairlines — no pill, no icon tile.
  */
 const ProtocolRow = React.memo(function ProtocolRow({
+	sessionId,
 	item,
 }: {
+	sessionId: string;
 	item: TranscriptItem;
 }) {
+	if (isRetryItem(item)) return <RetryEpisodeRow sessionId={sessionId} episode={item.retry} />;
 	const label = noticeLabel(item);
 	const summary = noticeSummary(item);
 	const text = summary ? `${label} · ${summary}` : label;
@@ -589,7 +480,6 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionId,
 	block,
 	isLatestTurn,
-	toolsExpanded,
 	toolResultsByCallId,
 	sessionCwd,
 	sessionFile,
@@ -602,7 +492,6 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionId: string;
 	block: TurnBlock;
 	isLatestTurn?: boolean;
-	toolsExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 	sessionCwd: string;
 	sessionFile: string;
@@ -645,6 +534,9 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		() => splitInterimProse(block.intermediateSteps),
 		[block.intermediateSteps],
 	);
+	const foldedSegments = useMemo(() => splitAroundSteers(folded), [folded]);
+	const firstStepsSeg = foldedSegments.findIndex((s) => s.type === "steps");
+	const lastStepsSeg = foldedSegments.reduce((acc, s, i) => (s.type === "steps" ? i : acc), -1);
 
 	// One model request per assistant message in the turn; the answer's own
 	// request renders under the answer body instead of inside the steps.
@@ -691,21 +583,41 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 				</ShareSelectable>
 			)}
 
-			{/* Collapsed intermediate steps under the worked-for divider */}
-			{folded.length > 0 && (
-				<ExecutionDisclosure
-					sessionId={sessionId}
-					steps={folded}
-					durationMs={block.durationMs}
-					isStreaming={streamingThisTurn && !block.answerItem}
-					startedAt={turnStartedAt}
-					forceExpanded={hasHighlightedStep || toolsExpanded}
-					toolResultsByCallId={toolResultsByCallId}
-					highlightedStepId={hasHighlightedStep ? highlightedId : null}
-					statsPlan={statsPlan}
-					turnStats={turnStats}
-				/>
-			)}
+			{/* Collapsed intermediate steps under the worked-for divider; user
+			    messages delivered mid-turn stay visible between the groups. */}
+			{foldedSegments.map((seg, si) => {
+				if (seg.type === "steer") {
+					return (
+						<div
+							key={seg.step.id}
+							id={`msg-${seg.step.id}`}
+							className="flex flex-col items-end gap-1.5 py-1"
+						>
+							<UserMessageBubble
+								text={seg.step.kind === "steer" ? (seg.step.item.text ?? seg.step.text) : ""}
+								images={seg.step.kind === "steer" ? seg.step.item.images : undefined}
+							/>
+						</div>
+					);
+				}
+				const isFirst = si === firstStepsSeg;
+				const isLast = si === lastStepsSeg;
+				return (
+					<ExecutionDisclosure
+						key={`fold-${seg.steps[0]?.id ?? si}`}
+						sessionId={sessionId}
+						steps={seg.steps}
+						durationMs={isFirst ? block.durationMs : undefined}
+						isStreaming={isLast && streamingThisTurn && !block.answerItem}
+						startedAt={turnStartedAt}
+						forceExpanded={hasHighlightedStep}
+						toolResultsByCallId={toolResultsByCallId}
+						highlightedStepId={hasHighlightedStep ? highlightedId : null}
+						statsPlan={statsPlan}
+						turnStats={isFirst ? turnStats : undefined}
+					/>
+				);
+			})}
 			{/* Interim assistant prose stays on the thread column: it was readable
 			    while streaming and must not vanish into the fold. */}
 			{prose.map((step) =>
@@ -743,9 +655,9 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 				>
 				<div
 					id={`msg-${block.answerItem.id}`}
-					className="group/answer relative flex flex-col items-start py-1"
+					className={ANSWER_WRAP_CLASS}
 				>
-					<div className="max-w-full text-[length:var(--chat-font-size)] text-[var(--text)]">
+					<div className={ANSWER_TEXT_CLASS}>
 						{answerText ? (
 							<Markdown text={answerText} sessionId={sessionId} />
 						) : (
@@ -761,7 +673,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 
 					{/* The answer request's stats line sits above the footer and is
 					    always visible, even when the steps above stay collapsed. */}
-					{answerStat && (
+					{answerStat && !answerStat.error && (
 						<RequestStatsLine stat={answerStat} className="mt-0.5" omitTime />
 					)}
 					{/* Hover-only ghost footer */}
@@ -817,17 +729,19 @@ type LivePseudoStep = StepShape;
 
 const StreamingRow = React.memo(function StreamingRow({
 	sessionId,
-	toolsExpanded,
 	toolResultsByCallId,
 	onScrollRequest,
 	showTimer,
+	holding,
 }: {
 	sessionId: string;
-	toolsExpanded?: boolean | null;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
 	onScrollRequest?: () => void;
 	/** False when the latest turn's disclosure already shows the live timer. */
 	showTimer: boolean;
+	/** The stream ended; the row paints its last snapshot until the committed
+	 * turn replaces it. */
+	holding: boolean;
 }) {
 	const streamingMessage = useLive(
 		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
@@ -906,6 +820,15 @@ const StreamingRow = React.memo(function StreamingRow({
 		// Finished requests first, in arrival order: their thinking / prose /
 		// tool rows stay where they happened instead of collapsing to the top.
 		liveRequests.forEach((req, reqIdx) => {
+			// A failed request (retried by omp) produced nothing: show its
+			// failure line right here, before the later requests' rows.
+			if (req.stat.error && req.parts.length === 0 && req.toolCallIds.length === 0) {
+				out.push({
+					id: `live-failed-${req.id}`,
+					kind: "request-failed",
+					requestId: req.id,
+				});
+			}
 			req.parts.forEach((part, partIdx) => {
 				if (part.kind === "thinking") {
 					out.push({
@@ -913,12 +836,14 @@ const StreamingRow = React.memo(function StreamingRow({
 						kind: "thinking",
 						thinking: part.text,
 						durationMs: part.durationMs,
+						requestId: req.id,
 					});
 				} else if (part.kind === "text") {
 					out.push({
 						id: `live-text-r${reqIdx}-${partIdx}`,
 						kind: "text",
 						text: part.text,
+						requestId: req.id,
 					});
 				} else if (!seen.has(part.id)) {
 					pushTool(part.id, undefined, undefined);
@@ -1022,29 +947,165 @@ const StreamingRow = React.memo(function StreamingRow({
 		thinkingEndedAt,
 	]);
 
+	// While `holding` (the stream ended, the transcript has not caught up) the
+	// store is already cleared: keep painting the last live snapshot so the turn
+	// does not blank out before the committed block replaces it.
+	const liveSnapshot = {
+		steps,
+		statsPlan: liveRequests.length > 0 ? statsPlan : undefined,
+	};
+	const frozenRef = useRef(liveSnapshot);
+	if (!holding) frozenRef.current = liveSnapshot;
+	const shown = holding ? frozenRef.current : liveSnapshot;
+	const endedAtRef = useRef<number | null>(null);
+	if (!holding) endedAtRef.current = null;
+	else if (endedAtRef.current === null) endedAtRef.current = Date.now();
+
+	// Final answer start: the activity folds into the disclosure and the turn
+	// takes the committed layout (disclosure, interim prose, answer), so the
+	// commit itself changes nothing but the title and the footer.
+	const foldEnabled = showTimer;
+	const candidate = foldEnabled ? liveAnswerCandidate(shown.steps) : null;
+	const answerStarted = useAnswerStarted(candidate !== null, holding);
+	const { activity, prose, answer } = useMemo(
+		() => splitLiveTurn(shown.steps, answerStarted),
+		[shown.steps, answerStarted],
+	);
+	const answerRequestId = answer?.kind === "text" ? answer.requestId : undefined;
+	const stepsPlan = useMemo<TurnStatsPlan | undefined>(
+		() =>
+			shown.statsPlan && answerRequestId
+				? { ...shown.statsPlan, answerRequestId }
+				: shown.statsPlan,
+		[shown.statsPlan, answerRequestId],
+	);
+	const answerStat = answerRequestId
+		? shown.statsPlan?.requests.find((r) => r.id === answerRequestId)?.stat
+		: undefined;
+	const heldDurationMs =
+		holding && endedAtRef.current !== null
+			? Math.max(0, endedAtRef.current - streamStartedAt)
+			: undefined;
+
 	// Throttle scroll request to rAF
 	useEffect(() => {
 		onScrollRequest?.();
-	}, [steps.length, onScrollRequest]);
+	}, [shown.steps.length, answerStarted, onScrollRequest]);
 
-	return (
-		<div className="flex flex-col py-1">
-			{showTimer && <ProcessingTimer startedAt={streamStartedAt} />}
-			<TurnSteps
-				sessionId={sessionId}
-				steps={steps}
-				forceExpanded={toolsExpanded}
-				toolResultsByCallId={toolResultsByCallId}
-				statsPlan={liveRequests.length > 0 ? statsPlan : undefined}
-			/>
-			{/* Idle streaming state: session is working but nothing emitted yet */}
-			{steps.length === 0 && (
-				<div className="px-1 py-0.5 text-[length:var(--chat-font-size)] leading-6">
+	const nodes: React.ReactNode[] = [];
+	if (!answer) {
+		if (showTimer) {
+			nodes.push(
+				<LiveDisclosure
+					key="live-disclosure"
+					sessionId={sessionId}
+					steps={activity}
+					folded={false}
+					live={!holding}
+					startedAt={streamStartedAt}
+					durationMs={heldDurationMs}
+					toolResultsByCallId={toolResultsByCallId}
+					statsPlan={stepsPlan}
+				/>,
+			);
+		} else {
+			nodes.push(
+				<TurnSteps
+					key="live-steps"
+					sessionId={sessionId}
+					steps={activity}
+					toolResultsByCallId={toolResultsByCallId}
+					statsPlan={stepsPlan}
+				/>,
+			);
+		}
+		// Idle streaming state: session is working but nothing emitted yet
+		if (activity.length === 0) {
+			nodes.push(
+				<div
+					key="live-idle"
+					className="px-1 py-0.5 text-[length:var(--chat-font-size)] leading-6"
+				>
 					<span className="shimmer-text">正在思考</span>
-				</div>
-			)}
-		</div>
-	);
+				</div>,
+			);
+		}
+	} else {
+		const segments = splitAroundSteers(activity);
+		const firstSteps = segments.findIndex((s) => s.type === "steps");
+		segments.forEach((seg, si) => {
+			if (seg.type === "steer") {
+				nodes.push(
+					<div
+						key={seg.step.id}
+						id={`msg-${seg.step.id}`}
+						className="flex flex-col items-end gap-1.5 py-1"
+					>
+						<UserMessageBubble
+							text={seg.step.kind === "steer" ? (seg.step.item?.text ?? seg.step.text) : ""}
+							images={seg.step.kind === "steer" ? seg.step.item?.images : undefined}
+						/>
+					</div>,
+				);
+			} else if (si === firstSteps) {
+				nodes.push(
+					<LiveDisclosure
+						key="live-disclosure"
+						sessionId={sessionId}
+						steps={seg.steps}
+						folded
+						live={!holding}
+						startedAt={streamStartedAt}
+						durationMs={heldDurationMs}
+						toolResultsByCallId={toolResultsByCallId}
+						statsPlan={stepsPlan}
+					/>,
+				);
+			} else {
+				nodes.push(
+					<ExecutionDisclosure
+						key={`fold-${seg.steps[0]?.id ?? si}`}
+						sessionId={sessionId}
+						steps={seg.steps}
+						toolResultsByCallId={toolResultsByCallId}
+						statsPlan={stepsPlan}
+					/>,
+				);
+			}
+		});
+		for (const step of prose) {
+			if (step.kind !== "text") continue;
+			nodes.push(
+				<div
+					key={step.id}
+					id={`msg-${step.id}`}
+					className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
+				>
+					<ClampedProse>
+						<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
+					</ClampedProse>
+				</div>,
+			);
+		}
+		if (answer.kind === "text") {
+			nodes.push(
+				<div key="live-answer" id="msg-live-answer" className={ANSWER_WRAP_CLASS}>
+					<div className={ANSWER_TEXT_CLASS}>
+						<Markdown
+							text={stripImageMarkers(answer.text)}
+							sessionId={sessionId}
+							streaming={!holding && answer.streaming}
+						/>
+					</div>
+					{answerStat && !answerStat.error && (
+						<RequestStatsLine stat={answerStat} className="mt-0.5" omitTime />
+					)}
+				</div>,
+			);
+		}
+	}
+
+	return <div className="flex flex-col py-1">{nodes}</div>;
 });
 
 export function MessageList({
@@ -1108,8 +1169,6 @@ export function MessageList({
 	}, [pendingEchoes, ompQueue, isStreamingActive]);
 	const scrollRequest = useLive((s) => s.sessions[sessionId]?.scrollRequest);
 
-	const [showHidden, setShowHidden] = useState(false);
-	const [toolsExpanded, setToolsExpanded] = useState<boolean | null>(null);
 	const [highlightedId, setHighlightedId] = useState<string | null>(null);
 	// The clear timer must outlive effect re-runs: the jump effects consume their
 	// own request (re-triggering themselves), and a cleanup-bound timer would be
@@ -1178,14 +1237,14 @@ export function MessageList({
 
 	// Compaction / handoff dividers sit in the flow right after the item that
 	// was last when they started.
+	const retryHistory = useLive((s) => s.sessions[sessionId]?.retryHistory);
+	const hydrateRetryHistory = useLive((s) => s.hydrateRetryHistory);
+	useEffect(() => hydrateRetryHistory(sessionId), [hydrateRetryHistory, sessionId]);
 	const withNotices = useMemo(
-		() => withFlowNotices(items, flowNotices ?? []),
-		[items, flowNotices],
+		() => withRetryEpisodes(withFlowNotices(items, flowNotices ?? []), retryHistory ?? []),
+		[items, flowNotices, retryHistory],
 	);
-	const visible = useMemo(
-		() => filterVisibleItems(withNotices, showHidden),
-		[withNotices, showHidden],
-	);
+	const visible = useMemo(() => filterVisibleItems(withNotices, false), [withNotices]);
 
 	// Group visible items into TurnBlocks and ProtocolBlocks
 	const blocks = useMemo(() => groupTurnBlocks(visible), [visible]);
@@ -1201,7 +1260,6 @@ export function MessageList({
 		return m;
 	}, [turns]);
 
-	const hiddenCount = withNotices.length - visible.length;
 	const hasContent =
 		blocks.length > 0 || pendingEchoes.length > 0 || isStreamingActive;
 	const isEmptyState = !isLoadingTranscript && !transcriptError && !hasContent;
@@ -1378,10 +1436,35 @@ export function MessageList({
 		emitScrollState({ nearBottom: true, hasNewMessages: false });
 	}, [sessionId]);
 
+	// Hand-off from the live row to the committed block. The transcript is
+	// fetched only after the stream ends, so for a moment neither the streamed
+	// turn nor its committed twin exists: the live row stays mounted (painting
+	// its last snapshot) until the transcript delivers a new block, then both
+	// swap in one render. The timeout covers turns that commit nothing.
+	const blocksKey = `${blocks.length}:${blocks[blocks.length - 1]?.id ?? ""}`;
+	const [hold, setHold] = useState<{ key: string } | null>(null);
+	const [wasStreaming, setWasStreaming] = useState(isStreamingActive);
+	if (wasStreaming !== isStreamingActive) {
+		setWasStreaming(isStreamingActive);
+		setHold(isStreamingActive ? null : { key: blocksKey });
+	}
+	const holding = !isStreamingActive && hold !== null && hold.key === blocksKey;
+	useEffect(() => {
+		if (!hold) return;
+		if (hold.key !== blocksKey) {
+			setHold(null);
+			return;
+		}
+		const timer = window.setTimeout(() => setHold(null), LIVE_HOLD_MS);
+		return () => window.clearTimeout(timer);
+	}, [hold, blocksKey]);
+	const liveVisible = isStreamingActive || holding;
+
 	// Pin to the bottom whenever content appears or grows while following.
 	// Runs synchronously post-commit (before paint), covering first mount,
 	// the sessionId switch commit, the clear→load commits, pending echoes,
-	// and the streaming row mounting/unmounting — without timers.
+	// and the streaming row mounting/unmounting — without timers. The commit
+	// of a streamed turn does not re-anchor: the viewport keeps its position.
 	const totalSize = virtualizer.getTotalSize();
 	useLayoutEffect(() => {
 		const el = scrollRef.current;
@@ -1389,66 +1472,10 @@ export function MessageList({
 			el.scrollTop = el.scrollHeight;
 			followRef.current = onWroteBottom(followRef.current, Date.now());
 		}
-	}, [sessionId, blocks.length, pendingEchoes.length, isStreamingActive, showHidden, totalSize, scrollRef]);
-
-	// Final-answer landing: when a streamed turn commits, keep the user's
-	// message as high as possible so the answer body is readable without
-	// scrolling (see shouldAnchorTurnTop). Declared after the pin above so it
-	// overrides the bottom pin in the same pre-paint pass.
-	const lastTurnIndex = useMemo(() => {
-		for (let i = blocks.length - 1; i >= 0; i--) {
-			if (blocks[i].type === "turn") return i;
-		}
-		return -1;
-	}, [blocks]);
-	const lastTurnKey = useMemo(() => {
-		const b = lastTurnIndex >= 0 ? blocks[lastTurnIndex] : null;
-		if (!b || b.type !== "turn") return null;
-		return `${b.id}:${b.answerItem?.id ?? ""}:${b.intermediateSteps.length}`;
-	}, [blocks, lastTurnIndex]);
-	const anchorArmRef = useRef<{ startKey: string | null } | null>(null);
-	useLayoutEffect(() => {
-		anchorArmRef.current = null;
-	}, [sessionId]);
-	useLayoutEffect(() => {
-		if (isStreamingActive && !anchorArmRef.current) {
-			anchorArmRef.current = { startKey: lastTurnKey };
-		}
-		const arm = anchorArmRef.current;
-		if (!arm || isStreamingActive) return;
-		const el = scrollRef.current;
-		if (!el) return;
-		const following = shouldFollow(followRef.current);
-		if (!following) {
-			anchorArmRef.current = null;
-			return;
-		}
-		const targetTop =
-			lastTurnIndex >= 0
-				? (virtualizer.getOffsetForIndex(lastTurnIndex, "start")?.[0] ?? null)
-				: null;
-		if (
-			!shouldAnchorTurnTop({
-				armed: true,
-				streaming: false,
-				following,
-				startKey: arm.startKey,
-				nowKey: lastTurnKey,
-				targetTop,
-				maxTop: el.scrollHeight - el.clientHeight,
-			})
-		) {
-			// Committed but already fully visible at the bottom: nothing to move.
-			if (lastTurnKey !== arm.startKey) anchorArmRef.current = null;
-			return;
-		}
-		anchorArmRef.current = null;
-		followRef.current = detach(followRef.current);
-		virtualizer.scrollToIndex(lastTurnIndex, { align: "start" });
-	}, [sessionId, isStreamingActive, lastTurnKey, lastTurnIndex, scrollRef, virtualizer]);
+	}, [sessionId, blocks.length, pendingEchoes.length, liveVisible, totalSize, scrollRef]);
 
 	// Sending a message re-arms follow-bottom even after the viewport was left
-	// above the stream (final-answer anchor, or the user scrolling away).
+	// above the stream (the user scrolling away).
 	const echoCountRef = useRef(0);
 	useLayoutEffect(() => {
 		const n = pendingEchoes.length;
@@ -1500,15 +1527,27 @@ export function MessageList({
 				align: "center",
 				behavior: "smooth",
 			});
-			flashHighlight(targetId, 3000);
-			const scrollTimer = setTimeout(() => {
+			const quote = scrollRequest.quote;
+			const scrollToMessage = () => {
 				const el =
 					document.getElementById(`msg-${targetId}`) ||
 					document.querySelector(`[data-tool-id="${targetId}"]`);
 				if (el) {
 					el.scrollIntoView({ behavior: "smooth", block: "center" });
 				}
-			}, 120);
+			};
+			let scrollTimer: number | undefined;
+			if (quote) {
+				// Highlight only the quoted text; whole-message flash is the fallback.
+				void flashQuote(targetId, quote, 3000).then((found) => {
+					if (found) return;
+					flashHighlight(targetId, 3000);
+					scrollToMessage();
+				});
+			} else {
+				flashHighlight(targetId, 3000);
+				scrollTimer = window.setTimeout(scrollToMessage, 120);
+			}
 			useLive.getState().clearScrollRequest(sessionId);
 			return () => clearTimeout(scrollTimer);
 		}
@@ -1573,45 +1612,6 @@ export function MessageList({
 	return (
 		<div ref={setLocateHost} className="relative flex h-full flex-col">
 			<LocatePill sessionId={sessionId} host={locateHost} />
-			{/* Top toolbar */}
-			<div
-				className={clsx(
-					"mx-auto flex w-full shrink-0 items-center justify-between py-1 text-[11px] text-[var(--text-30)] @min-[864px]:w-[calc(100%-6rem)] @min-[864px]:max-w-3xl",
-					traceGutter ? TRACE_GUTTER_PAD : "px-3",
-				)}
-			>
-				{hiddenCount > 0 ? (
-					<button
-						type="button"
-						onClick={() => setShowHidden((v) => !v)}
-						className="flex h-5 items-center gap-1 rounded px-1 text-[11px] tabular-nums text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
-						title={showHidden ? "隐藏系统消息" : `显示 ${hiddenCount} 条隐藏消息`}
-						aria-label={showHidden ? "隐藏系统消息" : `显示 ${hiddenCount} 条隐藏消息`}
-					>
-						{showHidden ? <EyeOff size={12} /> : <Eye size={12} />}
-						{hiddenCount}
-					</button>
-				) : (
-					<div />
-				)}
-				{hasContent ? (
-					<button
-						type="button"
-						onClick={() => setToolsExpanded((v) => !v)}
-						className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text-60)]"
-						title={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
-						aria-label={toolsExpanded ? "折叠所有工具步骤" : "展开所有工具步骤"}
-					>
-						{toolsExpanded ? (
-							<ChevronsDownUp size={12} />
-						) : (
-							<ChevronsUpDown size={12} />
-						)}
-					</button>
-				) : (
-					<div />
-				)}
-			</div>
 
 			{/* Loading transcript affordance */}
 			{isLoadingTranscript && !hasContent && (
@@ -1689,7 +1689,6 @@ export function MessageList({
 												sessionId={sessionId}
 												block={block}
 												isLatestTurn={block.id === lastTurnId}
-												toolsExpanded={toolsExpanded}
 												toolResultsByCallId={toolResultsByCallId}
 												sessionCwd={sessionCwd}
 												sessionFile={sessionFile}
@@ -1700,7 +1699,7 @@ export function MessageList({
 												highlightedId={highlightedId}
 											/>
 										) : (
-											<ProtocolRow item={block.item} />
+											<ProtocolRow sessionId={sessionId} item={block.item} />
 										)}
 									</div>
 								);
@@ -1727,7 +1726,7 @@ export function MessageList({
 					)}
 
 					{/* In-flight assistant streaming row */}
-					{isStreamingActive && (
+					{liveVisible && (
 						<div
 							id="msg-live"
 							className={clsx(
@@ -1737,10 +1736,10 @@ export function MessageList({
 						>
 							<StreamingRow
 								sessionId={sessionId}
-								toolsExpanded={toolsExpanded}
 								toolResultsByCallId={toolResultsByCallId}
 								onScrollRequest={scrollToBottomThrottled}
 								showTimer={!latestDisclosureLive}
+								holding={holding}
 							/>
 						</div>
 					)}

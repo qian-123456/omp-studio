@@ -1,5 +1,4 @@
 /** Settings ▸ 系统提示词构成: what a brand-new empty session carries in context, with optimization hints. */
-import clsx from "clsx";
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NativeSelect } from "../../../components/NativeSelect";
@@ -12,7 +11,8 @@ import { useComposer } from "../../../stores/composer";
 import { usePromptComposition } from "../../../stores/promptComposition";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
-import { SETTINGS_BUTTON_CLASS, SectionHeader, SettingsCard } from "../ui";
+import { Button, Chip, Notice, SectionHeader, SettingsCard } from "../ui";
+import { OmpSections } from "../OmpSettingsList";
 import {
 	buildOptimizePrompt,
 	fmtTokens,
@@ -22,30 +22,15 @@ import {
 	sharePct,
 } from "./promptComposition";
 
-const PRIMARY_BUTTON_CLASS =
-	"inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-50";
-
+/** Token-based category palette (no hard-coded hues; follows the active theme). */
 const CATEGORY_COLOR: Record<PromptCategoryId, string> = {
-	system: "bg-indigo-500",
-	rules: "bg-amber-500",
-	skills: "bg-emerald-500",
-	tools: "bg-sky-500",
-	mcp: "bg-fuchsia-500",
-	other: "bg-neutral-500",
+	system: "var(--accent)",
+	rules: "var(--status-warning)",
+	skills: "var(--status-success)",
+	tools: "var(--accent-strong)",
+	mcp: "color-mix(in srgb, var(--accent) 45%, var(--text-dim))",
+	other: "var(--text-dim)",
 };
-
-function Chip({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "warn" }) {
-	return (
-		<span
-			className={clsx(
-				"inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-				tone === "warn" ? "bg-amber-500/15 text-amber-300" : "bg-[var(--bg-active-fill)] text-neutral-300",
-			)}
-		>
-			{children}
-		</span>
-	);
-}
 
 function ItemRow({
 	item,
@@ -108,7 +93,7 @@ function CategoryCard({
 				className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-[var(--bg-hover)]"
 			>
 				{open ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
-				<span className={clsx("size-2.5 shrink-0 rounded-full", CATEGORY_COLOR[category.id])} />
+				<span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: CATEGORY_COLOR[category.id] }} />
 				<span className="min-w-0 flex-1 text-xs font-medium text-neutral-100">{category.label}</span>
 				<Chip>{category.items.length} 项</Chip>
 				<span className="shrink-0 font-mono text-[11px] text-neutral-300">
@@ -137,20 +122,20 @@ function HintRow({ hint, onLocate }: { hint: PromptHint; onLocate: (ids: string[
 	return (
 		<div className="space-y-1.5 px-3 py-2.5">
 			<div className="flex items-start gap-2">
-				<Chip tone={hint.severity === "warn" ? "warn" : "neutral"}>{hint.severity === "warn" ? "建议处理" : "参考"}</Chip>
+				<Chip tone={hint.severity === "warn" ? "warning" : "neutral"}>{hint.severity === "warn" ? "建议处理" : "参考"}</Chip>
 				<div className="min-w-0 flex-1">
 					<div className="break-words text-xs font-medium text-neutral-100">{hint.title}</div>
 					<div className="break-words text-[11px] leading-4 text-neutral-400">{hint.detail}</div>
 				</div>
 				{hint.itemIds.length > 0 && (
-					<button type="button" onClick={() => onLocate(hint.itemIds)} className={clsx(SETTINGS_BUTTON_CLASS, "shrink-0 !px-2 !py-1")}>
+					<Button size="sm" onClick={() => onLocate(hint.itemIds)} className="shrink-0">
 						查看相关项
-					</button>
+					</Button>
 				)}
 			</div>
 			{hint.quote && (
 				<div>
-					<button type="button" onClick={() => setQuoteOpen((v) => !v)} className="text-[11px] text-indigo-300 hover:underline">
+					<button type="button" onClick={() => setQuoteOpen((v) => !v)} className="text-[11px] text-[var(--accent)] hover:underline">
 						{quoteOpen ? "收起重复内容" : "查看重复内容"}
 					</button>
 					{quoteOpen && (
@@ -290,23 +275,22 @@ export function PromptCompositionSection() {
 							</option>
 						))}
 					</NativeSelect>
-					<button type="button" onClick={() => cwd && load(cwd)} disabled={!cwd || loading} className={SETTINGS_BUTTON_CLASS}>
-						<RefreshCw size={13} className={loading ? "animate-spin" : undefined} />
+					<Button icon={RefreshCw} loading={loading} onClick={() => cwd && load(cwd)} disabled={!cwd}>
 						重新读取
-					</button>
+					</Button>
 				</div>
 			</SettingsCard>
 
 			{loading && (
 				<div className="flex items-center gap-2 px-1 text-xs text-neutral-400">
 					<Loader2 size={14} className="animate-spin" />
-					正在读取（需要启动一次 omp，通常几秒）
+					正在读取，需要启动一次 omp，通常几秒
 				</div>
 			)}
 			{error && (
-				<div className="whitespace-pre-wrap break-words rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 select-text">
-					读取失败：{error}
-				</div>
+				<Notice tone="danger" title="读取失败">
+					<span className="whitespace-pre-wrap break-words select-text">{error}</span>
+				</Notice>
 			)}
 
 			{comp && (
@@ -334,15 +318,14 @@ export function PromptCompositionSection() {
 									<div
 										key={c.id}
 										title={`${c.label} ${sharePct(c.tokens, total).toFixed(1)}%`}
-										style={{ width: `${sharePct(c.tokens, total)}%` }}
-										className={CATEGORY_COLOR[c.id]}
+										style={{ width: `${sharePct(c.tokens, total)}%`, backgroundColor: CATEGORY_COLOR[c.id] }}
 									/>
 								))}
 							</div>
 							<div className="flex flex-wrap gap-x-4 gap-y-1">
 								{visible.map((c) => (
 									<span key={c.id} className="inline-flex items-center gap-1.5 text-[11px] text-neutral-400">
-										<span className={clsx("size-2 rounded-full", CATEGORY_COLOR[c.id])} />
+										<span className="size-2 rounded-full" style={{ backgroundColor: CATEGORY_COLOR[c.id] }} />
 										{c.label} {sharePct(c.tokens, total).toFixed(0)}%
 									</span>
 								))}
@@ -394,14 +377,21 @@ export function PromptCompositionSection() {
 									</option>
 								))}
 							</NativeSelect>
-							<button type="button" onClick={() => void optimize()} disabled={creating || !targetWs} className={PRIMARY_BUTTON_CLASS}>
-								{creating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+							<Button
+								variant="primary"
+								icon={Sparkles}
+								loading={creating}
+								onClick={() => void optimize()}
+								disabled={!targetWs}
+							>
 								让 AI 帮我优化
-							</button>
+							</Button>
 						</div>
 					</SettingsCard>
 				</>
 			)}
+
+			<OmpSections page="prompt-composition" />
 		</div>
 	);
 }

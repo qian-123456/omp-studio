@@ -1,7 +1,7 @@
 /** Settings ▸ 高级 (`advanced`): status extension, data backup / import / reset. */
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { AlertTriangle, CheckCircle2, Download, FileDown, FileText, FileUp, FolderOpen, Loader2, RefreshCw, RotateCcw } from "lucide-react";
+import { CheckCircle2, Download, FileDown, FileText, FileUp, FolderOpen, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
 import type { OmpInfo } from "../../../lib/contracts";
@@ -11,7 +11,9 @@ import { useOmpConfigStore } from "../ompConfigStore";
 import { DEFAULT_SETTINGS } from "../store";
 import { useAppSettings } from "../useAppSettings";
 import { validateSettingsShape } from "../validation";
-import { CommitInput, SETTINGS_BUTTON_CLASS, SectionHeader, SettingRow, SettingsCard } from "../ui";
+import { OmpSections } from "../OmpSettingsList";
+import { Button, Chip, CommitInput, Notice, SectionHeader, SettingRow, SettingsCard } from "../ui";
+
 export function AdvancedSection() {
 	const { settings, save } = useAppSettings();
 	const [installing, setInstalling] = useState(false);
@@ -29,7 +31,7 @@ export function AdvancedSection() {
 		try {
 			setInfo(await ompInfo());
 		} catch (e) {
-			toast.error(`检测 omp 失败: ${errMsg(e)}`);
+			toast.error(`检测 omp 失败：${errMsg(e)}`);
 		} finally {
 			setInfoLoading(false);
 		}
@@ -48,32 +50,28 @@ export function AdvancedSection() {
 		try {
 			await revealItemInDir(path);
 		} catch (e) {
-			toast.error(`在访达中显示${what}失败: ${errMsg(e)}`);
+			toast.error(`在访达中显示${what}失败：${errMsg(e)}`);
 		}
 	};
 
 	const reloadOmp = async () => {
 		await Promise.all([loadOmp(true), refreshInfo()]);
 		const err = useOmpConfigStore.getState().error;
-		if (err) toast.error(`读取 OMP 配置失败: ${err}`);
-		else toast.success("已重新读取 OMP 配置");
+		if (err) toast.error(`读取 omp 配置失败：${err}`);
+		else toast.success("已重新读取 omp 配置");
 	};
 
 	const ompStatus = infoLoading && !info ? (
-		<span className="inline-flex items-center gap-1 text-neutral-400">
-			<Loader2 className="h-3 w-3 animate-spin" /> 正在检测…
-		</span>
+		<Chip tone="neutral" icon={Loader2}>正在检测</Chip>
 	) : info?.found ? (
-		<span className="inline-flex items-center gap-1 text-emerald-400">
-			<CheckCircle2 className="h-3 w-3" />
-			已找到 {info.version ?? "（版本未知）"}
-			<span className="font-mono text-neutral-500">· {info.resolvedPath}</span>
+		<span className="inline-flex flex-wrap items-center gap-2">
+			<Chip tone="success" icon={CheckCircle2}>已找到 {info.version ?? "（版本未知）"}</Chip>
+			<span className="font-mono">{info.resolvedPath}</span>
 		</span>
 	) : info ? (
-		<span className="inline-flex items-center gap-1 text-amber-400">
-			<AlertTriangle className="h-3 w-3" />
+		<Notice tone="warning">
 			找不到这个程序，会话将无法启动。请填写 omp 的完整路径（终端运行 <code>which omp</code> 可查看）。
-		</span>
+		</Notice>
 	) : null;
 	const handleInstallExtension = async () => {
 		setInstalling(true);
@@ -96,7 +94,7 @@ export function AdvancedSection() {
 			const paths = await appPaths();
 			await revealItemInDir(paths.dataDir);
 		} catch (err) {
-			toast.error(`打开数据目录失败: ${errMsg(err)}`);
+			toast.error(`打开数据目录失败：${errMsg(err)}`);
 		}
 	};
 
@@ -111,7 +109,7 @@ export function AdvancedSection() {
 			await writeTextFile(path, JSON.stringify(settings, null, "\t"));
 			toast.success("设置已导出");
 		} catch (err) {
-			toast.error(`导出失败: ${errMsg(err)}`);
+			toast.error(`导出失败：${errMsg(err)}`);
 		}
 	};
 
@@ -133,7 +131,7 @@ export function AdvancedSection() {
 			}
 			const validation = validateSettingsShape(parsed);
 			if (!validation.ok) {
-				toast.error(`设置验证失败: ${validation.error}`);
+				toast.error(`设置验证失败：${validation.error}`);
 				return;
 			}
 			const ok = await confirmDialog("导入会用文件里的内容覆盖当前全部设置，确定继续吗？", {
@@ -148,7 +146,7 @@ export function AdvancedSection() {
 			}
 			toast.success("设置已导入");
 		} catch (err) {
-			toast.error(`导入失败: ${errMsg(err)}`);
+			toast.error(`导入失败：${errMsg(err)}`);
 		}
 	};
 
@@ -173,9 +171,9 @@ export function AdvancedSection() {
 
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="高级" description="数据备份、OMP 运行时路径与外部终端联动等高级选项。" />
+			<SectionHeader title="高级" description="omp 程序位置、数据备份与恢复、问题自动上报" />
 
-			<SettingsCard title="OMP 环境与路径">
+			<SettingsCard title="omp 环境与路径">
 				<SettingRow
 					fieldId="ompBinary"
 					stacked
@@ -202,38 +200,20 @@ export function AdvancedSection() {
 						<>
 							{info ? <span className="font-mono">{info.configPath}</span> : null}
 							{info && !info.configExists ? "（尚未创建，改过任意 omp 设置后生成）" : null}
-							{ompError ? <span className="text-amber-400"> 读取失败：{ompError}</span> : null}
+							{ompError ? <span className="text-[var(--status-error)]"> 读取失败：{ompError}</span> : null}
 						</>
 					}
 					control={
 						<div className="flex flex-wrap items-center gap-2">
-							<button
-								type="button"
-								disabled={!info?.configExists}
-								onClick={() => info && void reveal(info.configPath, "配置文件")}
-								className={SETTINGS_BUTTON_CLASS}
-							>
-								<FileText className="h-3.5 w-3.5" />
-								<span>在访达中显示 config.yml</span>
-							</button>
-							<button
-								type="button"
-								disabled={!info}
-								onClick={() => info && void reveal(info.agentDir, "目录")}
-								className={SETTINGS_BUTTON_CLASS}
-							>
-								<FolderOpen className="h-3.5 w-3.5" />
-								<span>打开 omp 数据目录</span>
-							</button>
-							<button
-								type="button"
-								disabled={ompLoading || infoLoading}
+							<Button icon={FileText} disabled={!info?.configExists} onClick={() => info && void reveal(info.configPath, "配置文件")}>在访达中显示 config.yml</Button>
+							<Button icon={FolderOpen} disabled={!info} onClick={() => info && void reveal(info.agentDir, "目录")}>打开 omp 数据目录</Button>
+							<Button
+								icon={RefreshCw}
+								loading={ompLoading || infoLoading}
 								onClick={() => void reloadOmp()}
-								className={SETTINGS_BUTTON_CLASS}
 							>
-								<RefreshCw className={ompLoading || infoLoading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-								<span>重新读取 OMP 配置</span>
-							</button>
+								重新读取 omp 配置
+							</Button>
 						</div>
 					}
 				/>
@@ -244,19 +224,11 @@ export function AdvancedSection() {
 					label="让终端里的 omp 也显示在这里"
 					description="安装一个小扩展到 ~/.omp/agent/extensions/，之后你在终端直接运行的 omp 对话也会出现在本应用的列表中。"
 					control={
-						<button
-							type="button"
-							disabled={installing}
-							onClick={handleInstallExtension}
-							className={SETTINGS_BUTTON_CLASS}
-						>
-							<Download className="h-3.5 w-3.5" />
-							<span>{installing ? "正在安装…" : "安装扩展"}</span>
-						</button>
+						<Button icon={Download} loading={installing} onClick={handleInstallExtension}>{installing ? "正在安装" : "安装扩展"}</Button>
 					}
 				>
 					{installResult && (
-						<div className="rounded-lg bg-[var(--well-bg)] hairline p-2 text-[11px] font-mono text-neutral-300">
+						<div className="rounded-lg bg-[var(--well-bg)] hairline p-2 text-[11px] font-mono text-[var(--text-muted)]">
 							{installResult}
 						</div>
 					)}
@@ -271,18 +243,9 @@ export function AdvancedSection() {
 					description="打开数据所在文件夹，或把设置导出成文件备份、换电脑时再导入。不包含 omp 自己的配置。"
 					control={
 						<div className="flex flex-wrap items-center gap-2">
-							<button type="button" onClick={handleOpenDataDir} className={SETTINGS_BUTTON_CLASS}>
-								<FolderOpen className="h-3.5 w-3.5" />
-								<span>打开数据目录</span>
-							</button>
-							<button type="button" onClick={handleExportSettings} className={SETTINGS_BUTTON_CLASS}>
-								<FileDown className="h-3.5 w-3.5" />
-								<span>导出设置</span>
-							</button>
-							<button type="button" onClick={handleImportSettings} className={SETTINGS_BUTTON_CLASS}>
-								<FileUp className="h-3.5 w-3.5" />
-								<span>导入设置</span>
-							</button>
+							<Button icon={FolderOpen} onClick={handleOpenDataDir}>打开数据目录</Button>
+							<Button icon={FileDown} onClick={handleExportSettings}>导出设置</Button>
+							<Button icon={FileUp} onClick={handleImportSettings}>导入设置</Button>
 						</div>
 					}
 				/>
@@ -292,17 +255,14 @@ export function AdvancedSection() {
 					label="恢复默认设置"
 					description="把本应用的所有设置（通知、远程访问等）恢复成刚安装时的样子，无法撤销。建议先导出备份。"
 					control={
-						<button
-							type="button"
-							onClick={handleResetSettings}
-							className="inline-flex items-center gap-1.5 rounded-lg border border-rose-800/40 bg-rose-950/20 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-950/40 active:scale-95 transition-all"
-						>
-							<RotateCcw className="h-3.5 w-3.5" />
-							<span>恢复默认</span>
-						</button>
+						<Button variant="danger" icon={RotateCcw} onClick={handleResetSettings}>
+							恢复默认
+						</Button>
 					}
 				/>
 			</SettingsCard>
+
+			<OmpSections page="advanced" />
 		</div>
 	);
 }

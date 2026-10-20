@@ -8,9 +8,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import { confirmDialog, errMsg } from "../../lib/dialogs";
+import { confirmDialog } from "../../lib/dialogs";
 import { isComposing, useEscapeKey, useShortPath } from "../../lib/hooks";
-import { readTextFile, writeTextFile } from "../../lib/ipc";
 import { basename } from "../../lib/paths";
 import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
@@ -18,6 +17,7 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { NativeSelect } from "../../components/NativeSelect";
 import { claimEscape } from "../../lib/escapeClaim";
+import { useFileBuffer } from "./useFileBuffer";
 
 type Tab = "preview" | "split" | "edit";
 
@@ -64,17 +64,14 @@ interface Selection {
 }
 
 export function DocView({ path }: { path: string }) {
-	const [saved, setSaved] = useState<string | null>(null);
-	const [draft, setDraft] = useState("");
+	const buffer = useFileBuffer(path);
+	const { saved, draft, setDraft, error, external, saving, dirty } = buffer;
 	const [tab, setTab] = useState<Tab>("preview");
-	const [error, setError] = useState<string | null>(null);
 	const [note, setNote] = useState<string | null>(null);
-	const [external, setExternal] = useState(false);
 	const [sel, setSel] = useState<Selection | null>(null);
 	const [comment, setComment] = useState("");
 	const [pickSession, setPickSession] = useState("");
 	const [lastAnnotatedSessionId, setLastAnnotatedSessionId] = useState<string | null>(null);
-	const [saving, setSaving] = useState(false);
 	const previewRef = useRef<HTMLDivElement>(null);
 
 	const sessions = useSessions((s) => s.sessions);
@@ -84,65 +81,17 @@ export function DocView({ path }: { path: string }) {
 	const addAnnotation = useComposer((s) => s.addAnnotation);
 	const short = useShortPath();
 
-	const dirty = saved !== null && draft !== saved;
-
-	const load = useCallback(async () => {
-		try {
-			const text = await readTextFile(path);
-			setSaved(text);
-			setDraft(text);
-			setError(null);
-			setExternal(false);
-		} catch (e) {
-			setError(errMsg(e));
-			setSaved(null);
-		}
-	}, [path]);
-
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reload on path change
 	useEffect(() => {
 		setSel(null);
 		setNote(null);
-		load();
 	}, [path]);
 
-	// Reload-on-change: re-read on window focus. Clean buffers update silently;
-	// dirty buffers get a banner instead of losing edits.
-	useEffect(() => {
-		const onFocus = async () => {
-			if (saved === null) return;
-			try {
-				const text = await readTextFile(path);
-				if (text === saved) return;
-				if (dirty) {
-					setExternal(true);
-				} else {
-					setSaved(text);
-					setDraft(text);
-				}
-			} catch {
-				// File may be gone; leave the buffer alone.
-			}
-		};
-		window.addEventListener("focus", onFocus);
-		return () => window.removeEventListener("focus", onFocus);
-	}, [path, saved, dirty]);
-
 	const save = useCallback(async () => {
-		if (saved === null || !dirty || saving) return;
-		setSaving(true);
-		try {
-			await writeTextFile(path, draft);
-			setSaved(draft);
-			setExternal(false);
-			setNote("已保存");
-			setTimeout(() => setNote((n) => (n === "已保存" ? null : n)), 1500);
-		} catch (e) {
-			setError(errMsg(e));
-		} finally {
-			setSaving(false);
-		}
-	}, [path, draft, saved, dirty, saving]);
+		if (!(await buffer.save())) return;
+		setNote("已保存");
+		setTimeout(() => setNote((n) => (n === "已保存" ? null : n)), 1500);
+	}, [buffer]);
 
 	// Cmd+S / Ctrl+S saves while editing.
 	useEffect(() => {
@@ -177,7 +126,7 @@ export function DocView({ path }: { path: string }) {
 
 	const reload = async () => {
 		if (dirty && !(await confirmDialog("放弃未保存的修改并重新加载？", { danger: true }))) return;
-		await load();
+		await buffer.reload();
 	};
 
 	const captureSelection = () => {
@@ -327,7 +276,7 @@ export function DocView({ path }: { path: string }) {
 					<button type="button" onClick={reload} className="rounded bg-amber-800/60 px-2 py-0.5 hover:bg-amber-700/60">
 						重新加载
 					</button>
-					<button type="button" onClick={() => setExternal(false)} className="px-1.5 text-amber-300/80">
+					<button type="button" onClick={buffer.dismissExternal} className="px-1.5 text-amber-300/80">
 						保留我的修改
 					</button>
 				</div>

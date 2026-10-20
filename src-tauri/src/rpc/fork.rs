@@ -62,11 +62,7 @@ pub async fn create(
 
     // Autotitle skips sessions with a parentSession header, so name it here.
     let base: String = parent.title.trim().chars().take(30).collect();
-    let name = if base.is_empty() {
-        "分支".to_string()
-    } else {
-        format!("分支：{base}")
-    };
+    let name: Option<String> = if base.is_empty() { None } else { Some(base) };
     {
         let db = state.db.lock();
         let _ = db.execute(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TranscriptItem } from "../../lib/contracts";
-import { trimSideChatItems } from "./sideChatView";
+import { QUOTE_ONLY_QUESTION, sideChatEchoText, trimSideChatItems } from "./sideChatView";
 
 const u = (id: string, text: string) => ({ id, kind: "user", text }) as TranscriptItem;
 const legacy = (sel: string, q: string) =>
@@ -26,6 +26,12 @@ describe("trimSideChatItems", () => {
 	it("includes the quoted selection", () => {
 		const out = trimSideChatItems([u("2", tpl("引用", "问题"))]);
 		expect(out[0].text).toBe("> 引用\n\n问题");
+	});
+	it("hides the quote-only placeholder question", () => {
+		const out = trimSideChatItems([u("2", tpl("引用", QUOTE_ONLY_QUESTION))]);
+		expect(out[0].text).toBe("> 引用");
+		expect(sideChatEchoText(QUOTE_ONLY_QUESTION, "引用")).toBe("> 引用");
+		expect(sideChatEchoText("问题", "引用")).toBe("> 引用\n\n问题");
 	});
 	it("known side chat without a prompt yet shows no inherited history", () => {
 		expect(trimSideChatItems([u("1", "parent msg")], true)).toEqual([]);

@@ -1,6 +1,6 @@
-/** [P] Settings ▸ 隐私库 (`privacy`): default reveal, native secrets status and
- * the library of marked values (placeholders sent upstream instead of values). */
-import { AlertTriangle, Edit2, Eye, EyeOff, Plus, Trash2, X } from "lucide-react";
+/** [P] Settings ▸ 隐私 (`privacy`): default reveal, native secrets status, the library of marked
+ * values (placeholders sent upstream instead of values) and the omp privacy keys. */
+import { Edit2, Eye, EyeOff, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "../../../lib/hooks";
 import type { SecretEntry, SecretEntryPatch } from "../../../lib/contracts";
@@ -9,10 +9,16 @@ import { privacyDelete, privacyMark, privacyUpdate } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
 import { usePrivacy } from "../../../stores/privacy";
 import { useAppSettings } from "../useAppSettings";
+import { OmpSections } from "../OmpSettingsList";
 import {
+	Button,
+	Chip,
+	EmptyState,
 	INPUT_CLASS,
-	SETTINGS_BUTTON_CLASS,
+	IconButton,
+	Notice,
 	SectionHeader,
+	SettingRow,
 	SettingsCard,
 	ToggleRow,
 } from "../ui";
@@ -28,15 +34,12 @@ function privacyErr(err: unknown): string {
 	return ERROR_TEXT[msg] ?? msg;
 }
 
-const ICON_BTN =
-	"flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200";
-
 async function patchEntry(id: string, patch: SecretEntryPatch): Promise<void> {
 	try {
 		await privacyUpdate(id, patch);
 		await usePrivacy.getState().load();
 	} catch (err) {
-		toast.error(`保存失败: ${privacyErr(err)}`);
+		toast.error(`保存失败：${privacyErr(err)}`);
 		throw err;
 	}
 }
@@ -76,52 +79,44 @@ function EntryRow({
 			await privacyDelete(entry.id);
 			await usePrivacy.getState().load();
 		} catch (err) {
-			toast.error(`删除失败: ${privacyErr(err)}`);
+			toast.error(`删除失败：${privacyErr(err)}`);
 		}
 	};
 	return (
 		<div className="flex flex-col gap-1 px-3 py-2.5">
 			<div className="flex items-center gap-2">
-				<span
-					className={`h-2 w-2 shrink-0 rounded-full ${risky ? "bg-amber-400" : "bg-emerald-500"}`}
-					title={risky ? "较短或常见，可能误伤普通文字" : "可安全自动替换"}
-				/>
-				<span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-[var(--text)]">
+				<span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text)]">
 					{entry.label || "未命名"}
 				</span>
-				<button
-					type="button"
-					className={ICON_BTN}
-					onClick={() => onEdit(entry)}
-					title="编辑备注"
-					aria-label="编辑备注"
-				>
-					<Edit2 size={13} />
-				</button>
-				<button
-					type="button"
-					className={ICON_BTN}
+				{risky ? (
+					<Chip tone="warning" title="较短或常见，可能误伤普通文字">
+						易误伤
+					</Chip>
+				) : (
+					<Chip tone="success" title="可安全自动替换">
+						可自动替换
+					</Chip>
+				)}
+				<IconButton size="sm" icon={Edit2} label="编辑备注" onClick={() => onEdit(entry)} />
+				<IconButton
+					size="sm"
+					icon={revealed ? EyeOff : Eye}
+					label={revealed ? "隐藏" : "显示真实值"}
 					onClick={() => setRevealed((v) => !v)}
-					title={revealed ? "隐藏" : "显示真实值"}
-					aria-label={revealed ? "隐藏" : "显示真实值"}
-				>
-					{revealed ? <EyeOff size={13} /> : <Eye size={13} />}
-				</button>
-				<button type="button" className={ICON_BTN} onClick={() => void remove()} title="彻底删除" aria-label="彻底删除">
-					<Trash2 size={13} />
-				</button>
+				/>
+				<IconButton size="sm" variant="danger" icon={Trash2} label="彻底删除" onClick={() => void remove()} />
 			</div>
 			<div className="flex items-center gap-2 ps-4">
-				<span className="min-w-0 truncate font-mono text-[11px] text-neutral-400 px-1.5">
+				<span className="min-w-0 truncate px-1.5 font-mono text-xs text-[var(--text-muted)]">
 					{revealed ? entry.value : "•".repeat(Math.min(entry.value.length, 12))}
 				</span>
-				<span className="shrink-0 truncate font-mono text-[11px] text-neutral-500" title="AI 看到的占位符，创建后固定不变">
-					→ 占位符: {entry.placeholder}
+				<span className="shrink-0 truncate font-mono text-xs text-[var(--text-dim)]" title="AI 看到的占位符，创建后固定不变">
+					→ 占位符：{entry.placeholder}
 				</span>
 			</div>
 			<div className="flex flex-wrap items-center gap-2 ps-4">
 				{risky && (
-					<label className="flex items-center gap-1 text-[11px] text-neutral-400">
+					<label className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
 						<input
 							type="checkbox"
 							checked={!entry.track}
@@ -136,13 +131,13 @@ function EntryRow({
 						不追踪（只还原已标记处）
 					</label>
 				)}
-				<button
-					type="button"
-					className="text-[11px] text-neutral-400 hover:text-neutral-200"
+				<Button
+					size="sm"
+					variant="ghost"
 					onClick={() => void patchEntry(entry.id, { inLibrary: !entry.inLibrary })}
 				>
 					{entry.inLibrary ? "移出隐私库" : "加入隐私库"}
-				</button>
+				</Button>
 			</div>
 		</div>
 	);
@@ -184,7 +179,7 @@ function AddSecretDialog({
 			toast.success("已添加到隐私库");
 			onClose();
 		} catch (err) {
-			toast.error(`添加失败: ${privacyErr(err)}`);
+			toast.error(`添加失败：${privacyErr(err)}`);
 		} finally {
 			setBusy(false);
 		}
@@ -208,19 +203,12 @@ function AddSecretDialog({
 			>
 				<div className="flex items-center justify-between pb-3 border-b border-[var(--border-divider)]">
 					<h3 className="text-sm font-semibold text-[var(--text)]">添加保护内容</h3>
-					<button
-						type="button"
-						disabled={busy}
-						onClick={onClose}
-						className="rounded-lg p-1 text-[var(--text-40,var(--text-dim))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
-					>
-						<X size={15} />
-					</button>
+					<IconButton icon={X} label="关闭" disabled={busy} onClick={onClose} />
 				</div>
 
 				<div className="space-y-3.5 py-4">
 					<div className="space-y-1.5">
-						<label className="text-[11.5px] font-medium text-[var(--text-60,var(--text-muted))]">
+						<label className="text-[11.5px] font-medium text-[var(--text-muted)]">
 							隐私内容（密码、Token、私钥等）
 						</label>
 						<input
@@ -231,13 +219,13 @@ function AddSecretDialog({
 							placeholder="输入需要脱敏的敏感信息"
 							aria-label="隐私内容"
 						/>
-						<p className="text-[11px] text-[var(--text-40,var(--text-dim))]">
+						<p className="text-[11px] text-[var(--text-dim)]">
 							发给 AI 时会自动替换为安全占位符，仅在本地终端执行工具前还原。
 						</p>
 					</div>
 
 					<div className="space-y-1.5">
-						<label className="text-[11.5px] font-medium text-[var(--text-60,var(--text-muted))]">
+						<label className="text-[11.5px] font-medium text-[var(--text-muted)]">
 							备注名称（选填）
 						</label>
 						<input
@@ -247,29 +235,19 @@ function AddSecretDialog({
 							placeholder="如：知返_ssh_密码"
 							aria-label="备注名称"
 						/>
-						<p className="text-[11px] text-[var(--text-40,var(--text-dim))]">
+						<p className="text-[11px] text-[var(--text-dim)]">
 							给自己看的别名；不填会自动生成代号。
 						</p>
 					</div>
 				</div>
 
 				<div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-divider)]">
-					<button
-						type="button"
-						disabled={busy}
-						onClick={onClose}
-						className="rounded-lg px-3.5 py-1.5 text-xs font-medium text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
-					>
+					<Button variant="ghost" disabled={busy} onClick={onClose}>
 						取消
-					</button>
-					<button
-						type="button"
-						disabled={busy || !value.trim()}
-						onClick={() => void add()}
-						className={SETTINGS_BUTTON_CLASS}
-					>
-						{busy ? "添加中…" : "添加"}
-					</button>
+					</Button>
+					<Button variant="primary" disabled={!value.trim()} loading={busy} onClick={() => void add()}>
+						{busy ? "正在添加" : "添加"}
+					</Button>
 				</div>
 			</div>
 		</div>
@@ -331,19 +309,12 @@ function EditSecretDialog({
 			>
 				<div className="flex items-center justify-between pb-3 border-b border-[var(--border-divider)]">
 					<h3 className="text-sm font-semibold text-[var(--text)]">编辑保护信息</h3>
-					<button
-						type="button"
-						disabled={busy}
-						onClick={onClose}
-						className="rounded-lg p-1 text-[var(--text-40,var(--text-dim))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
-					>
-						<X size={15} />
-					</button>
+					<IconButton icon={X} label="关闭" disabled={busy} onClick={onClose} />
 				</div>
 
 				<div className="space-y-3.5 py-4">
 					<div className="space-y-1.5">
-						<label className="text-[11.5px] font-medium text-[var(--text-60,var(--text-muted))]">
+						<label className="text-[11.5px] font-medium text-[var(--text-muted)]">
 							备注名称
 						</label>
 						<input
@@ -354,13 +325,13 @@ function EditSecretDialog({
 							placeholder="如：知返_ssh_密码"
 							aria-label="备注名称"
 						/>
-						<p className="text-[11px] text-[var(--text-40,var(--text-dim))]">
+						<p className="text-[11px] text-[var(--text-dim)]">
 							用于在界面上标识该项；修改后立即生效。
 						</p>
 					</div>
 
 					<div className="space-y-1.5">
-						<label className="text-[11.5px] font-medium text-[var(--text-60,var(--text-muted))]">
+						<label className="text-[11.5px] font-medium text-[var(--text-muted)]">
 							占位符（系统分配）
 						</label>
 						<input
@@ -370,29 +341,19 @@ function EditSecretDialog({
 							disabled
 							aria-label="占位符"
 						/>
-						<p className="text-[11px] text-[var(--text-40,var(--text-dim))]">
+						<p className="text-[11px] text-[var(--text-dim)]">
 							占位符在首次创建时已固定，发给 AI 时始终使用此代号。
 						</p>
 					</div>
 				</div>
 
 				<div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-divider)]">
-					<button
-						type="button"
-						disabled={busy}
-						onClick={onClose}
-						className="rounded-lg px-3.5 py-1.5 text-xs font-medium text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
-					>
+					<Button variant="ghost" disabled={busy} onClick={onClose}>
 						取消
-					</button>
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => void save()}
-						className={SETTINGS_BUTTON_CLASS}
-					>
-						{busy ? "保存中…" : "保存修改"}
-					</button>
+					</Button>
+					<Button variant="primary" loading={busy} onClick={() => void save()}>
+						{busy ? "正在保存" : "保存修改"}
+					</Button>
 				</div>
 			</div>
 		</div>
@@ -414,20 +375,14 @@ export function PrivacySection() {
 
 	return (
 		<div className="space-y-6">
-			<SectionHeader
-				title="隐私库"
-				description="标记过的内容发给 AI 时会替换成占位符，只在本机执行工具前还原。占位符文本创建后固定不变，修改名称只影响界面显示"
-			/>
+			<SectionHeader title="隐私" description="隐私库里的敏感信息如何替换，以及 omp 的密钥脱敏和数据上报" />
 
 			{nativeStatus !== "ok" && (
-				<div className="flex items-start gap-2 rounded-xl hairline bg-[var(--bg-panel)] px-3 py-2.5 text-xs text-neutral-300">
-					<AlertTriangle size={14} className="mt-0.5 shrink-0 text-[var(--status-warning)]" />
-					<span>
-						{nativeStatus === "conflict"
-							? "OMP 的 secrets.yml 不是列表格式，无法自动合并。为防泄露，压缩上下文会被暂停，请检查该文件。"
-							: `隐私设置未写入 OMP secrets.yml，为防泄露，压缩上下文会被暂停${nativeError ? `：${nativeError}` : ""}`}
-					</span>
-				</div>
+				<Notice tone="warning">
+					{nativeStatus === "conflict"
+						? "omp 的 secrets.yml 不是列表格式，无法自动合并。为防泄露，压缩上下文会被暂停，请检查该文件。"
+						: `隐私设置未写入 omp 的 secrets.yml，为防泄露，压缩上下文会被暂停${nativeError ? `：${nativeError}` : ""}`}
+				</Notice>
 			)}
 
 			<SettingsCard title="显示">
@@ -441,25 +396,22 @@ export function PrivacySection() {
 			</SettingsCard>
 
 			<SettingsCard
-				title={
-					<div className="flex items-center justify-between">
-						<span>隐私库</span>
-						<button
-							type="button"
-							onClick={() => setAddModalOpen(true)}
-							className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors active:scale-95"
-						>
-							<Plus size={12} strokeWidth={2.2} />
-							<span>添加</span>
-						</button>
-					</div>
-				}
-				footer="隐私库中的内容在所有会话里都会被自动识别并替换"
+				title="隐私库"
+				description="标记过的内容发给 AI 时会替换成占位符，只在本机执行工具前还原；占位符创建后固定不变，修改名称只影响界面显示。"
+				footer="隐私库中的内容在所有会话里都会被自动识别并替换。"
 			>
+				<SettingRow
+					label={`已保护 ${library.length} 项`}
+					control={
+						<Button variant="primary" icon={Plus} onClick={() => setAddModalOpen(true)}>
+							添加
+						</Button>
+					}
+				/>
 				{library.map((e) => (
 					<EntryRow key={e.id} entry={e} onEdit={setEditingEntry} />
 				))}
-				{library.length === 0 && <div className="px-3 py-2.5 text-xs text-neutral-500">暂无保护内容</div>}
+				{library.length === 0 && <EmptyState icon={ShieldCheck} title="暂无保护内容" description="点击「添加」把密码、Token 等敏感信息放进隐私库。" />}
 			</SettingsCard>
 
 			<AddSecretDialog open={addModalOpen} onClose={() => setAddModalOpen(false)} />
@@ -472,6 +424,13 @@ export function PrivacySection() {
 					))}
 				</SettingsCard>
 			)}
+
+			{library.length > 0 && (
+				<Notice tone="info">
+					隐私库里有内容时，omp 的「密钥脱敏」会在会话启动时自动开启，不需要在下面手动打开。
+				</Notice>
+			)}
+			<OmpSections page="privacy" />
 		</div>
 	);
 }

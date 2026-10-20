@@ -63,11 +63,14 @@ export function SelectionToolbar({
 	sessionId,
 	containerRef,
 	compact = false,
+	docFile,
 }: {
 	sessionId: string;
 	containerRef: React.RefObject<HTMLElement | null>;
 	/** Rendered inside the right-hand side-chat panel: no target choice, annotations stay in this chat. */
 	compact?: boolean;
+	/** Selection is inside a file preview: annotations quote that file (source "doc") instead of a message. */
+	docFile?: string;
 }) {
 	const [sel, setSel] = useState<Sel | null>(null);
 	const [commenting, setCommenting] = useState(false);
@@ -122,21 +125,27 @@ export function SelectionToolbar({
 	);
 
 
+	const quoteSource = useCallback(
+		(s: Sel) =>
+			docFile
+				? { source: "doc" as const, file: docFile, text: s.text }
+				: { source: "message" as const, text: s.text, itemId: s.itemId },
+		[docFile],
+	);
+
 	/** Quote + typed comment staged into the composer (no focus side-effects). */
 	const stageDraft = useCallback(() => {
 		const sel = selRef.current;
 		const comment = draftRef.current.trim();
 		if (!sel || !commentingRef.current || !comment) return;
 		const body = {
-			source: "message" as const,
-			text: sel.text,
-			itemId: sel.itemId,
+			...quoteSource(sel),
 			comment,
 		};
 		const dest = destKey();
 		useComposer.getState().addAnnotation(dest, body);
 		if (dest !== sessionId) revealSideChatFor(sessionId);
-	}, [destKey, sessionId]);
+	}, [destKey, sessionId, quoteSource]);
 
 	/**
 	 * Close the bubble. `mode` = "discard" never stages (Esc, send, capture);
@@ -164,9 +173,7 @@ export function SelectionToolbar({
 		if (!sel) return;
 		const comment = draft.trim();
 		const body = {
-			source: "message" as const,
-			text: sel.text,
-			itemId: sel.itemId,
+			...quoteSource(sel),
 			comment: comment || undefined,
 		};
 		// Main chat: the remembered target; inside a side chat: always its own composer.
@@ -389,14 +396,16 @@ export function SelectionToolbar({
 			) : (
 				<>
 					<BubbleAction icon={<MessageSquareQuote size={12} />} label="批注" onClick={startComment} />
-					<BubbleAction
-						icon={<BookmarkPlus size={12} />}
-						label="记到收集箱"
-						onClick={() => {
-							openModal("quick-capture", { text: sel.text, sessionId });
-							dismiss("discard");
-						}}
-					/>
+					{!docFile && (
+						<BubbleAction
+							icon={<BookmarkPlus size={12} />}
+							label="记到收集箱"
+							onClick={() => {
+								openModal("quick-capture", { text: sel.text, sessionId });
+								dismiss("discard");
+							}}
+						/>
+					)}
 					{showSendToMain && (
 						<BubbleAction
 							icon={<CornerUpLeft size={12} />}

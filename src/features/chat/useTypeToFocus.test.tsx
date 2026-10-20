@@ -27,6 +27,22 @@ describe("useTypeToFocus", () => {
 		expect((document.activeElement as HTMLTextAreaElement).selectionStart).toBe(5);
 	});
 
+	it("routes keys with no focus target to the view last clicked or scrolled in", () => {
+		const { getByTestId } = render(
+			<>
+				<Harness id="main" />
+				<Harness id="side" compact />
+			</>,
+		);
+		fireEvent.wheel(getByTestId("stream-side"));
+		fireEvent.keyDown(document.body, { key: "h" });
+		expect(document.activeElement).toBe(getByTestId("ta-side"));
+		(document.activeElement as HTMLElement).blur();
+		fireEvent.pointerDown(document.body);
+		fireEvent.keyDown(document.body, { key: "h" });
+		expect(document.activeElement).toBe(getByTestId("ta-main"));
+	});
+
 	it("ignores shortcuts, space, navigation keys and prevented events", () => {
 		const { getByTestId } = render(<Harness id="a" />);
 		fireEvent.keyDown(document.body, { key: "c", metaKey: true });

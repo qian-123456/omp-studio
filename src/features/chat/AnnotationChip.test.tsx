@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Annotation } from "../../stores/composer";
 import { useComposer } from "../../stores/composer";
@@ -71,7 +71,19 @@ describe("AnnotationChip locate", () => {
 		);
 		openPopover();
 		fireEvent.click(screen.getByRole("button", { name: "定位到原消息" }));
-		expect(scrollToItem).toHaveBeenCalledWith("parent-1", "item-1");
+		expect(scrollToItem).toHaveBeenCalledWith("parent-1", "item-1", "quoted text");
+	});
+});
+
+describe("AnnotationChip external edit request", () => {
+	it("opens the requested annotation in edit mode and saves the new comment", () => {
+		useComposer.setState({ annotations: { s1: [ann("a1")] } });
+		render(<AnnotationChip sessionId="s1" annotations={[ann("a1")]} />);
+		act(() => useComposer.getState().requestAnnotationEdit("s1", "a1"));
+		const box = screen.getByRole("textbox");
+		fireEvent.change(box, { target: { value: "新批注" } });
+		fireEvent.keyDown(box, { key: "Enter" });
+		expect(useComposer.getState().annotations.s1[0].comment).toBe("新批注");
 	});
 });
 
