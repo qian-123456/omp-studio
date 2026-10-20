@@ -4,9 +4,10 @@
  *  - inline (skills, `offset` set): the literal `/skill:name` stays in the
  *    draft at `offset` (so caret/selection/privacy ranges stay trivially
  *    aligned) and the mirror layer paints it as an icon + label token.
- * On send both serialize to the exact `/name args` string omp expects (omp
- * only recognises a command at the very start), so transport/history/queue
- * behavior is unchanged. */
+ * On send legacy chips serialize to `/name args`; inline skill chips keep the
+ * user's word order — omp expands the first `/skill:name` token anywhere in
+ * the prompt (`(^|\s)/skill:name(?=\s|$)`) unless the prompt starts with
+ * another `/` token. */
 
 import { Sparkles } from "lucide-react";
 import { DYNAMIC_COMMAND_ICON, findSlashCommand } from "./registry";
@@ -27,12 +28,6 @@ export interface CommandChip {
 }
 
 const SKILL_PREFIX = "skill:";
-
-/** Invisible separator (U+2063) written into the wire text where a
- * mid-text inline chip sat. omp only expands a command at the very start, so
- * the token is lifted to the front; this marker records the original spot so
- * the bubble (live and from the persisted transcript) can put the chip back. */
-export const CHIP_POSITION_MARK = "\u2063";
 
 export function isSkillChip(chip: CommandChip): boolean {
 	return chip.name.startsWith(SKILL_PREFIX) && chip.name.length > SKILL_PREFIX.length;
@@ -134,9 +129,11 @@ export function insertChipAt(
 	};
 }
 
-/** `chip + draft` → the literal text omp expects (contract). Inline chips
- * lift their token to the front only here; `locate: "fuzzy"` tolerates
- * shifted offsets (masked text). */
+/** `chip + draft` → the literal text omp expects (contract). Inline skill
+ * chips send the draft as written: omp finds a mid-text `/skill:name` itself.
+ * Only when the text before the chip starts with another `/` token (omp then
+ * skips its mid-text scan) is the skill lifted to the front. `locate: "fuzzy"`
+ * tolerates shifted offsets (masked text). */
 export function serializeChip(
 	chip: CommandChip | null | undefined,
 	argsText: string,
@@ -150,12 +147,11 @@ export function serializeChip(
 		if (range) {
 			const before = argsText.slice(0, range.start).trim();
 			const after = argsText.slice(range.end).trim();
-			if (before) {
-				const nl = /\n\s*$/.test(argsText.slice(0, range.start));
-				const sep = nl ? "\n" : " ";
-				return `/${chip.name} ${before}${sep}${CHIP_POSITION_MARK}${after ? `${sep}${after}` : ""}`;
+			if (!before) return after ? `/${chip.name} ${after}` : `/${chip.name}`;
+			if (before.startsWith("/")) {
+				return [`/${chip.name}`, before, after].filter(Boolean).join(" ");
 			}
-			return after ? `/${chip.name} ${after}` : `/${chip.name}`;
+			return argsText.trim();
 		}
 	}
 	const args = argsText.trim();
@@ -238,15 +234,31 @@ export function saveChip(sessionId: string, chip: CommandChip | null): void {
 }
 
 // ---------------------------------------------------------------------------
-// Sent-message display: a leading `/skill:x` (or known registry command) in a
-// user bubble renders as the same token the composer shows.
+// Sent-message display: a leading `/skill:x` (or known registry command), or
+// the mid-text `/skill:x` omp expands, renders as the same token the composer
+// shows at the spot the user wrote it.
 // ---------------------------------------------------------------------------
 
-export function parseLeadingCommand(
+/** omp's skill-token pattern (packages/tui/src/prompt/skill-tokens.ts). */
+const MID_SKILL_RE = /(^|\s)\/skill:([^\s/]+(?:\/[^\s/]+)?)(?=\s|$)/;
+
+export function parseCommandToken(
 	text: string,
 ): { chip: CommandChip; rest: string; tail?: string } | null {
 	const m = /^\/([^\s/]+)(?=\s|$)/.exec(text);
-	if (!m) return null;
+	if (!m) {
+		// omp skips the mid-text scan when the prompt starts with a `/` token.
+		if (text.trimStart().startsWith("/")) return null;
+		const s = MID_SKILL_RE.exec(text);
+		if (!s) return null;
+		const start = s.index + (s[1]?.length ?? 0);
+		const name = `${SKILL_PREFIX}${s[2]}`;
+		return {
+			chip: { name, title: name },
+			rest: text.slice(0, start).trimEnd(),
+			tail: text.slice(start + name.length + 1).replace(/^[ \t]*\n?[ \t]*/, ""),
+		};
+	}
 	const name = m[1] as string;
 	const chip: CommandChip = { name, title: name };
 	const def = findSlashCommand(name);
@@ -256,14 +268,6 @@ export function parseLeadingCommand(
 	if (sm && def?.subcommands?.some((s) => s.name === sm[1])) {
 		chip.sub = sm[1];
 		rest = rest.slice(sm[0].length).replace(/^[ \t]+/, "");
-	}
-	const at = rest.indexOf(CHIP_POSITION_MARK);
-	if (at !== -1) {
-		return {
-			chip,
-			rest: rest.slice(0, at).trimEnd(),
-			tail: rest.slice(at + CHIP_POSITION_MARK.length).replace(/^[ \t]*\n?[ \t]*/, ""),
-		};
 	}
 	return { chip, rest };
 }

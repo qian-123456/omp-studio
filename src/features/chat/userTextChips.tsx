@@ -6,7 +6,7 @@ import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { PrivacyText } from "../privacy/SecretChip";
 import { getImageTokenPalette } from "./Composer";
-import { parseLeadingCommand } from "./slash/chip";
+import { parseCommandToken } from "./slash/chip";
 import { CommandChipBadge } from "./slash/CommandChip";
 
 /** Image/file markers and annotation-header noise removed; plain prose left. */
@@ -44,15 +44,16 @@ export function renderUserTextWithChips(
 			"",
 		)
 		.trim();
-	// Leading `/skill:x` (or known command) → same token the composer shows.
-	const lead = parseLeadingCommand(cleaned);
+	// `/skill:x` (or known leading command) → same token the composer shows,
+	// at the spot the user wrote it.
+	const lead = parseCommandToken(cleaned);
 	if (lead) {
 		const badge = (
 			<span key="lead-cmd" className="mx-1.5 inline-block align-baseline first:ml-0">
 				<CommandChipBadge chip={lead.chip} />
 			</span>
 		);
-		// Mid-text chip: wire text carries a position marker (see chip.ts).
+		// Mid-text skill: text before, token, text after.
 		if (lead.tail !== undefined) {
 			return [
 				...renderUserTextWithChipsBody(lead.rest, onOpen),

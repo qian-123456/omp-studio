@@ -90,7 +90,7 @@ describe("skill chip", () => {
 	});
 });
 
-import { CHIP_POSITION_MARK as M, findChipRange, inlineChipRange, insertChipAt, parseLeadingCommand, shiftChipOffset } from "./chip";
+import { findChipRange, inlineChipRange, insertChipAt, parseCommandToken, shiftChipOffset } from "./chip";
 
 describe("inline skill chip (offset model)", () => {
 	const base = { name: "skill:grill-me", title: "grill-me", argHint: "arguments" };
@@ -110,20 +110,27 @@ describe("inline skill chip (offset model)", () => {
 		expect(r.text).toBe(`a ${lit} b`);
 	});
 
-	it("serializes token to the front, joining the remaining text", () => {
+	it("sends a mid-text token where it was written (omp expands it there)", () => {
 		const c = { ...base, offset: 6 };
-		expect(serializeChip(c, `hello ${lit} world`)).toBe(`/skill:grill-me hello ${M} world`);
+		expect(serializeChip(c, `hello ${lit} world `)).toBe(`hello ${lit} world`);
 		expect(serializeChip({ ...base, offset: 6 }, `hello\n${lit} world`)).toBe(
-			`/skill:grill-me hello\n${M}\nworld`,
+			`hello\n${lit} world`,
 		);
 		expect(serializeChip({ ...base, offset: 0 }, `${lit} `)).toBe("/skill:grill-me");
-		expect(serializeChip({ ...base, offset: 4 }, `abc ${lit}`)).toBe(`/skill:grill-me abc ${M}`);
+		expect(serializeChip({ ...base, offset: 4 }, `abc ${lit}`)).toBe(`abc ${lit}`);
+	});
+
+	it("lifts the token when the text starts with another slash token", () => {
+		// omp skips its mid-text skill scan for prompts starting with `/`.
+		expect(serializeChip({ ...base, offset: 10 }, `/tmp/a.md ${lit} go`)).toBe(
+			`/skill:grill-me /tmp/a.md go`,
+		);
 	});
 
 	it("fuzzy locate tolerates shifted offsets (masked text)", () => {
 		const c = { ...base, offset: 20 };
 		expect(serializeChip(c, `[X] ${lit} y`)).toBe(`/skill:grill-me [X] ${lit} y`);
-		expect(serializeChip(c, `[X] ${lit} y`, "fuzzy")).toBe(`/skill:grill-me [X] ${M} y`);
+		expect(serializeChip(c, `[X] ${lit} y`, "fuzzy")).toBe(`[X] ${lit} y`);
 		expect(findChipRange(c, `a ${lit} ${lit}`, 100)?.start).toBe(`a ${lit} `.length);
 	});
 
@@ -153,17 +160,31 @@ describe("inline skill chip (offset model)", () => {
 	});
 });
 
-describe("parseLeadingCommand", () => {
+describe("parseCommandToken", () => {
 	it("splits a leading skill command from its text", () => {
-		const r = parseLeadingCommand("/skill:grill-me 那你先给我做个计划");
+		const r = parseCommandToken("/skill:grill-me 那你先给我做个计划");
 		expect(r?.chip.name).toBe("skill:grill-me");
 		expect(r?.rest).toBe("那你先给我做个计划");
+		expect(r?.tail).toBeUndefined();
 	});
 	it("handles bare skill and ignores plain text / unknown commands", () => {
-		expect(parseLeadingCommand("/skill:x")?.rest).toBe("");
-		expect(parseLeadingCommand("hello /skill:x")).toBeNull();
-		expect(parseLeadingCommand("/definitely-not-a-command a")).toBeNull();
-		expect(parseLeadingCommand("/skill:")).toBeNull();
+		expect(parseCommandToken("/skill:x")?.rest).toBe("");
+		expect(parseCommandToken("hello world")).toBeNull();
+		expect(parseCommandToken("/definitely-not-a-command a")).toBeNull();
+		expect(parseCommandToken("/skill:")).toBeNull();
+	});
+	it("finds the first mid-text skill token like omp does", () => {
+		const r = parseCommandToken("前文 /skill:grill-me 后文 /skill:other");
+		expect(r?.chip.name).toBe("skill:grill-me");
+		expect(r?.rest).toBe("前文");
+		expect(r?.tail).toBe("后文 /skill:other");
+		expect(parseCommandToken("前文 /skill:grill-me")?.tail).toBe("");
+		expect(parseCommandToken("前文\n/skill:a/b\n后文")?.chip.name).toBe("skill:a/b");
+	});
+	it("ignores tokens omp would not expand", () => {
+		expect(parseCommandToken("a/skill:x b")).toBeNull();
+		expect(parseCommandToken("a /skill:x/y/z b")).toBeNull();
+		expect(parseCommandToken("/tmp/a.md /skill:x")).toBeNull();
 	});
 });
 
@@ -185,37 +206,15 @@ describe("chip with merged subcommand", () => {
 		);
 		expect(loadChip("bad")).toEqual({ name: "mcp", title: "x" });
 	});
-	it("parseLeadingCommand merges a known subcommand", () => {
-		const r = parseLeadingCommand("/mcp enable foo");
+	it("parseCommandToken merges a known subcommand", () => {
+		const r = parseCommandToken("/mcp enable foo");
 		expect(r?.chip.sub).toBe("enable");
 		expect(r?.chip.name).toBe("mcp");
 		expect(r?.rest).toBe("foo");
-		expect(parseLeadingCommand("/mcp list")?.rest).toBe("");
-		const plain = parseLeadingCommand("/mcp whatever x");
+		expect(parseCommandToken("/mcp list")?.rest).toBe("");
+		const plain = parseCommandToken("/mcp whatever x");
 		expect(plain?.chip.sub).toBeUndefined();
 		expect(plain?.rest).toBe("whatever x");
-		expect(parseLeadingCommand("/fork enable")?.chip.sub).toBeUndefined();
-	});
-});
-
-describe("mid-text chip position survives the wire format", () => {
-	const lit = "/skill:grill-me";
-	const c = { name: "skill:grill-me", title: "grill-me", offset: 3 };
-	it("round-trips serialize → parseLeadingCommand", () => {
-		const wire = serializeChip(c, `前文 ${lit} 后文`);
-		const p = parseLeadingCommand(wire);
-		expect(p?.chip.name).toBe("skill:grill-me");
-		expect(p?.rest).toBe("前文");
-		expect(p?.tail).toBe("后文");
-	});
-	it("leading chip has no marker / tail", () => {
-		const wire = serializeChip({ ...c, offset: 0 }, `${lit} 后文`);
-		expect(wire).toBe("/skill:grill-me 后文");
-		expect(parseLeadingCommand(wire)?.tail).toBeUndefined();
-	});
-	it("trailing chip keeps an empty tail", () => {
-		const p = parseLeadingCommand(serializeChip({ ...c, offset: 3 }, `前文 ${lit}`));
-		expect(p?.rest).toBe("前文");
-		expect(p?.tail).toBe("");
+		expect(parseCommandToken("/fork enable")?.chip.sub).toBeUndefined();
 	});
 });
