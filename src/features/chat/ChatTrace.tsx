@@ -24,7 +24,11 @@ import { collectChatTraceEntries, type ChatTraceEntry } from "./messageTrace";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
 const EMPTY_ECHOES: TranscriptItem[] = [];
-const ROW_PITCH_PX = 8;
+const ROW_PITCH_PX = 10;
+const BAR_MIN_PX = 6;
+const BAR_MAX_PX = 26;
+// ChatGPT-style dock falloff: hovered bar is full length, neighbours ease off.
+const NEIGHBOR_PROGRESS = [1, 0.7, 0.4, 0.2];
 const TOOLTIP_CLOSE_DELAY_MS = 80;
 
 export function ChatTrace({
@@ -196,7 +200,7 @@ export function ChatTrace({
 			<div
 				ref={railRef}
 				onPointerLeave={clearHover}
-				className="pointer-events-auto absolute left-3 top-1/2 flex max-h-[calc(100%-6rem)] w-4 -translate-y-1/2 flex-col"
+				className="pointer-events-auto absolute left-3 top-1/2 flex max-h-[calc(100%-6rem)] w-[26px] -translate-y-1/2 flex-col"
 			>
 				<div
 					ref={stripRef}
@@ -221,10 +225,12 @@ export function ChatTrace({
 							const isActive = entry.id === activeId;
 							const focused = focusIndex === i;
 							const colored = focused || (focusIndex === null && isActive);
+							const progress =
+								focusIndex === null ? 0 : (NEIGHBOR_PROGRESS[Math.abs(focusIndex - i)] ?? 0);
 							return (
 								<div
 									key={entry.id}
-									className="absolute left-0 top-0 h-2 w-full"
+									className="absolute left-0 top-0 h-2.5 w-full"
 									style={{ transform: `translateY(${i * ROW_PITCH_PX}px)` }}
 								>
 									<button
@@ -240,15 +246,15 @@ export function ChatTrace({
 										onPointerEnter={() => hoverIndex(i)}
 										onFocus={() => hoverIndex(i)}
 										onBlur={clearHover}
-										className="flex h-2 w-full items-center justify-start rounded-sm"
+										className="flex h-2.5 w-full items-center justify-start rounded-sm"
 									>
 										<span
 											className={clsx(
-												"block h-[3px] rounded-full transition-[width,opacity,background-color] duration-150 ease-out motion-reduce:transition-none",
-												focused ? "w-4" : "w-2",
+												"block h-0.5 rounded-full transition-[width,opacity,background-color] duration-150 ease-out motion-reduce:transition-none",
 												colored ? "bg-[var(--text)]" : "bg-[var(--text-30)]",
 											)}
 											style={{
+												width: BAR_MIN_PX + (BAR_MAX_PX - BAR_MIN_PX) * progress,
 												opacity: focusIndex === null && isActive ? 0.95 : 1,
 											}}
 										/>
