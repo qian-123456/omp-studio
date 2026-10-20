@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { Settings2 } from "lucide-react";
 import { FloatingLayer } from "../../../components/FloatingLayer";
 import { openSettingsTarget } from "../../settings/settingsTargets";
+import { argHintLabel } from "./chip";
 import type { SlashMenuItem, SlashMenuSection } from "./menu";
 
 export interface SlashMenuProps {
@@ -134,9 +135,9 @@ function SlashRow({
 					</div>
 				)}
 			</div>
-			{item.argHint && (
+			{argHintLabel(item.name, item.argHint) && (
 				<span className="shrink-0 font-mono text-[11px] text-[var(--text-30,var(--text-dim))]">
-					{item.argHint}
+					{argHintLabel(item.name, item.argHint)}
 				</span>
 			)}
 			{item.settingsTarget && (

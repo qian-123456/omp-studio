@@ -33,6 +33,19 @@ export function isSkillChip(chip: CommandChip): boolean {
 	return chip.name.startsWith(SKILL_PREFIX) && chip.name.length > SKILL_PREFIX.length;
 }
 
+/** omp's catch-all `input.hint` for skills, extension, custom and MCP prompt
+ * commands — a placeholder, not real usage. */
+const GENERIC_ARG_HINT = "arguments";
+
+/** Display text for a command's argument hint (menu row, chip ghost). omp's
+ * generic placeholder says nothing: a skill reads the text around its token,
+ * so it gets no hint; other commands get a plain optional-input label. */
+export function argHintLabel(name: string, hint: string | undefined): string {
+	if (!hint) return "";
+	if (hint !== GENERIC_ARG_HINT) return hint;
+	return isSkillChip({ name, title: name }) ? "" : "[补充说明]";
+}
+
 export interface ChipRange {
 	start: number;
 	end: number;

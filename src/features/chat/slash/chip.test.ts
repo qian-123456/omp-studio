@@ -90,7 +90,16 @@ describe("skill chip", () => {
 	});
 });
 
-import { findChipRange, inlineChipRange, insertChipAt, parseCommandToken, shiftChipOffset } from "./chip";
+import { argHintLabel, findChipRange, inlineChipRange, insertChipAt, parseCommandToken, shiftChipOffset } from "./chip";
+
+describe("argHintLabel", () => {
+	it("hides omp's generic placeholder for skills, plain label otherwise", () => {
+		expect(argHintLabel("skill:grill-me", "arguments")).toBe("");
+		expect(argHintLabel("deploy", "arguments")).toBe("[补充说明]");
+		expect(argHintLabel("skill:visualize", "<要可视化的内容>")).toBe("<要可视化的内容>");
+		expect(argHintLabel("fork", undefined)).toBe("");
+	});
+});
 
 describe("inline skill chip (offset model)", () => {
 	const base = { name: "skill:grill-me", title: "grill-me", argHint: "arguments" };

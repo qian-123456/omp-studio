@@ -194,6 +194,7 @@ import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from ".
 import { useTypeToFocus } from "./useTypeToFocus";
 import { remainingDraft } from "./composerRelease";
 import {
+	argHintLabel,
 	chipLiteral,
 	findChipRange,
 	inlineChipRange,
@@ -250,7 +251,8 @@ function getSlashToken(fullText: string, cursor: number): SlashToken | null {
  * its own usage (none when it takes no arguments). */
 function chipHintText(chip: CommandChip): string {
 	if (chip.sub) return chip.argHint ?? "";
-	return chip.argHint ?? findSlashCommand(chip.name)?.argHint ?? "<参数>";
+	const hint = chip.argHint ?? findSlashCommand(chip.name)?.argHint;
+	return hint === undefined ? "<参数>" : argHintLabel(chip.name, hint);
 }
 
 export function Composer({
@@ -2050,7 +2052,7 @@ export function Composer({
 										</span>
 									</span>
 									{renderHighlightedText(text.slice(inlineRange.end))}
-									{text.slice(inlineRange.end).trim() === "" && (
+									{text.slice(inlineRange.end).trim() === "" && chipHintText(chip) && (
 										<span className="text-[var(--text-30,var(--text-dim))]">
 											{chipHintText(chip)}
 										</span>
