@@ -57,7 +57,7 @@ export function SubagentHoverCard({
 	const ctxWindow = row?.contextWindow ?? p?.contextWindow;
 	const progress = [
 		toolCount ? `${toolCount} 次工具` : null,
-		tokens ? `${formatTokens(tokens)} tok` : null,
+		tokens ? formatTokens(tokens) : null,
 		ctxTokens && ctxWindow ? `上下文 ${Math.round((ctxTokens / ctxWindow) * 100)}%` : null,
 	]
 		.filter(Boolean)
