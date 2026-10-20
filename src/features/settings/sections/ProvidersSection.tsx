@@ -1,66 +1,67 @@
-/** Settings ▸ 模型与供应商 (`providers`, legacy deep-link `quota`). */
+/** Settings ▸ 模型与供应商 (`providers`): API keys / provider catalog and subscription quota tabs. */
+import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Segmented } from "../../../components/Segmented";
-import { useUi } from "../../../stores/ui";
 import { ProviderPanel } from "../../providers/ProviderPanel";
+import { OmpSections } from "../OmpSettingsList";
+import { ompSectionFor } from "../ompPlacement";
+import { useSettingsNav } from "../settingsNav";
+import { Button, SectionHeader } from "../ui";
 import { QuotaDashboardCard } from "./QuotaDashboardCard";
+import { RawFilesDialog } from "./RawFilesDialog";
 
 type Tab = "config" | "quota";
 
-const TAB_STORAGE_KEY = "ompws:providers-tab";
+/** Tab that hosts a deep-link target (omp key placed on the quota slot, or the quota dashboard itself). */
+function tabForFocus(focusKey: string | null): Tab | null {
+	if (!focusKey) return null;
+	if (focusKey === "quotaDashboard") return "quota";
+	if (focusKey === "providerList") return "config";
+	const slot = ompSectionFor(focusKey).slot;
+	if (slot === "quota") return "quota";
+	if (slot === "keys") return "config";
+	return null;
+}
 
 export function ProvidersSection() {
-	const requested = useUi((s) => (s.settingsPending ? s.settingsSection : null));
-	const [tab, setTab] = useState<Tab>(() => {
-		const s = useUi.getState();
-		if (s.settingsPending && s.settingsSection === "quota") return "quota";
-		try {
-			return localStorage.getItem(TAB_STORAGE_KEY) === "quota" ? "quota" : "config";
-		} catch {
-			return "config";
-		}
-	});
+	const { focusKey } = useSettingsNav();
+	const [tab, setTab] = useState<Tab>(() => tabForFocus(focusKey) ?? "config");
+	const [rawOpen, setRawOpen] = useState(false);
 
 	useEffect(() => {
-		if (requested === "quota") {
-			setTab("quota");
-			try {
-				localStorage.setItem(TAB_STORAGE_KEY, "quota");
-			} catch {
-				/* storage unavailable */
-			}
-		}
-	}, [requested]);
-
-	const handleTab = (v: Tab) => {
-		setTab(v);
-		try {
-			localStorage.setItem(TAB_STORAGE_KEY, v);
-		} catch {
-			/* storage unavailable */
-		}
-	};
+		const wanted = tabForFocus(focusKey);
+		if (wanted) setTab(wanted);
+	}, [focusKey]);
 
 	return (
-		<div className="space-y-4">
-			<div className="flex items-center justify-between pb-3 border-b border-[var(--border-divider)]">
+		<div className="space-y-5">
+			<SectionHeader title="模型与供应商" description="API 密钥、订阅额度，以及启用哪些模型和供应商" />
+			<div className="flex items-center justify-between gap-3">
 				<Segmented
 					options={[
 						{ value: "config", label: "接口与密钥" },
 						{ value: "quota", label: "订阅与配额" },
 					]}
 					value={tab}
-					onChange={handleTab}
+					onChange={setTab}
 					size="md"
 				/>
+				<Button icon={FileText} onClick={() => setRawOpen(true)}>编辑原始配置文件</Button>
 			</div>
 			{tab === "config" ? (
-				<div data-field-id="providerList">
-					<ProviderPanel />
+				<div className="space-y-6">
+					<div data-field-id="providerList">
+						<ProviderPanel />
+					</div>
+					<OmpSections page="providers" slot="keys" />
 				</div>
 			) : (
-				<QuotaDashboardCard />
+				<div className="space-y-6">
+					<QuotaDashboardCard />
+					<OmpSections page="providers" slot="quota" />
+				</div>
 			)}
+			{rawOpen ? <RawFilesDialog onClose={() => setRawOpen(false)} /> : null}
 		</div>
 	);
 }
