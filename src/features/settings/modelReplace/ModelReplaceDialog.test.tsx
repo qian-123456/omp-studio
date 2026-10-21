@@ -328,14 +328,54 @@ describe("back navigation", () => {
 		expect(screen.queryByTitle("回到「选择来源」")).toBeNull();
 	});
 
-	it("locks steps 1-3 after apply and 返回总览 rescans and starts over", async () => {
+	it("keeps steps 1-3 reachable from the results page and re-plans against a fresh scan", async () => {
 		await openPreview();
 		await applyAll();
 
-		expect(screen.queryByTitle("回到「选择来源」")).toBeNull();
-		expect(screen.queryByTitle("回到「选择目标」")).toBeNull();
-		expect(screen.queryByTitle("回到「预览改动」")).toBeNull();
-		expect(screen.queryByRole("button", { name: "上一步" })).toBeNull();
+		// The outcome is still on screen, and every earlier step is one click away.
+		expect(screen.getByText("成功 2")).toBeTruthy();
+		fireEvent.click(screen.getByTitle("回到「选择目标」"));
+		await screen.findByRole("button", { name: "预览改动" });
+		expect(screen.getByTitle(GPT)).toBeTruthy();
+		// Leaving the results page re-scans instead of reusing the rows it just rewrote.
+		expect(scanMock).toHaveBeenCalledTimes(2);
+		// Leaving the results page ended that run, so applying again opens a new record.
+		expect(screen.queryByRole("button", { name: "返回总览" })).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "预览改动" }));
+		await screen.findByRole("button", { name: /^应用 \d+ 项$/ });
+		applyMock.mockResolvedValueOnce({ recordId: "rec-3", results: [{ edit: ROLE_EDIT, ok: true, error: null }] });
+		fireEvent.click(screen.getByRole("button", { name: /^应用 \d+ 项$/ }));
+		await screen.findByText("成功 1");
+		// A new run never appends to the finished record.
+		expect(applyMock).toHaveBeenLastCalledWith(OPUS, GPT, expect.any(Array), null);
+	});
+
+	it("returns from the results page with 上一步 and keeps target and row checks", async () => {
+		await openPreview();
+		fireEvent.click(screen.getByLabelText("替换 default"));
+		await screen.findByRole("button", { name: "应用 1 项" });
+		applyMock.mockResolvedValueOnce({ recordId: "rec-2", results: [{ edit: ROLE_EDIT, ok: true, error: null }] });
+		fireEvent.click(screen.getByRole("button", { name: "应用 1 项" }));
+		await screen.findByText("成功 1");
+
+		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+		await screen.findByText("回退链条目");
+		// The unchecked row stayed unchecked, so the plan is still the same size.
+		expect(screen.getByRole("button", { name: "应用 1 项" })).toBeTruthy();
+		// The finished run is not offered again: its rows must never be re-sent, and it
+		// is in 历史记录 instead.
+		expect(screen.queryByTitle("回到「执行结果」")).toBeNull();
+		expect(screen.queryByRole("button", { name: /重试失败项/ })).toBeNull();
+
+		// The chosen target survived too.
+		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+		await screen.findByRole("button", { name: "预览改动" });
+		expect(screen.getByTitle(GPT)).toBeTruthy();
+	});
+
+	it("goes back from the results page with 返回总览, rescans and starts over", async () => {
+		await openPreview();
+		await applyAll();
 
 		fireEvent.click(screen.getByRole("button", { name: "返回总览" }));
 		await screen.findByText(/模型目录中找不到/);
@@ -345,6 +385,140 @@ describe("back navigation", () => {
 		fireEvent.click((await screen.findAllByTitle(REPLACE_BUTTON_TITLE))[0]);
 		await screen.findByRole("button", { name: "预览改动" });
 		expect(screen.getByTitle("选择目标模型")).toBeTruthy();
+	});
+
+	it("keeps a failed rescan from trapping the user on the overview", async () => {
+		const onClose = vi.fn();
+		render(<ModelReplaceDialog onClose={onClose} />);
+		await screen.findByText(/模型目录中找不到/);
+		fireEvent.click((await screen.findAllByTitle(REPLACE_BUTTON_TITLE))[0]);
+		await pickTarget(GPT);
+		fireEvent.click(screen.getByRole("button", { name: "预览改动" }));
+		applyMock.mockResolvedValueOnce({ recordId: "rec-2", results: [{ edit: ROLE_EDIT, ok: true, error: null }] });
+		fireEvent.click(await screen.findByRole("button", { name: /^应用 \d+ 项$/ }));
+		await screen.findByText("成功 1");
+
+		// The rescan that 返回总览 starts fails: the old rows stay, with the full error.
+		scanMock.mockRejectedValueOnce(new Error("scan exploded: permission denied on /repo/alpha"));
+		fireEvent.click(screen.getByRole("button", { name: "返回总览" }));
+		await screen.findByText(/scan exploded: permission denied on \/repo\/alpha/);
+		// Still an overview the user can work from.
+		fireEvent.click((await screen.findAllByTitle(REPLACE_BUTTON_TITLE))[0]);
+		await screen.findByRole("button", { name: "预览改动" });
+		await pickTarget(GPT);
+		fireEvent.click(screen.getByRole("button", { name: "预览改动" }));
+
+		// The stale rows are never applied again, and the reason is spelled out in full.
+		const apply = await screen.findByRole("button", { name: /^应用 \d+ 项$/ }) as HTMLButtonElement;
+		expect(apply.disabled).toBe(true);
+		expect(screen.getByRole("status").textContent).toContain("permission denied on /repo/alpha");
+
+		// Retrying the scan unblocks applying; the dialog was closable the whole time.
+		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+		await screen.findByRole("button", { name: "预览改动" });
+		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+		fireEvent.click(await screen.findByRole("button", { name: /重新扫描/ }));
+		await screen.findByText(/模型目录中找不到/);
+		expect(screen.queryByText(/scan exploded/)).toBeNull();
+		fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("returns from the history view to the results page it was opened from", async () => {
+		await openPreview();
+		await applyAll();
+
+		fireEvent.click(screen.getByRole("button", { name: /历史记录/ }));
+		await screen.findByText(/最近 10 次批量替换/);
+		// The history view is not a dead end: it names where it goes back to.
+		fireEvent.click(screen.getByRole("button", { name: /返回结果/ }));
+		await screen.findByText("成功 2");
+		expect(screen.getByRole("button", { name: "返回总览" })).toBeTruthy();
+	});
+
+	it("opens the history view from the overview and returns there", async () => {
+		render(<ModelReplaceDialog onClose={() => undefined} />);
+		await screen.findByText(/模型目录中找不到/);
+		fireEvent.click(await screen.findByRole("button", { name: /历史记录/ }));
+		await screen.findByText(/最近 10 次批量替换/);
+		fireEvent.click(screen.getByRole("button", { name: /返回选择来源/ }));
+		await screen.findByText(/模型目录中找不到/);
+	});
+
+	it("keeps the results reachable after leaving it through the history view", async () => {
+		await openPreview();
+		applyMock.mockResolvedValueOnce({
+			recordId: "rec-2",
+			results: [
+				{ edit: ROLE_EDIT, ok: true, error: null },
+				{ edit: CHAIN_EDIT, ok: false, error: "回退链写入失败" },
+			],
+		});
+		fireEvent.click(screen.getByRole("button", { name: /^应用 \d+ 项$/ }));
+		await screen.findByText("失败 1");
+
+		// A detour through the history view comes back to the same outcome.
+		fireEvent.click(screen.getByRole("button", { name: /历史记录/ }));
+		await screen.findByText(/最近 10 次批量替换/);
+		fireEvent.click(screen.getByRole("button", { name: /返回结果/ }));
+		await screen.findByText("失败 1");
+
+		// A failed retry leaves the results page and its exits in place.
+		applyMock.mockRejectedValueOnce(new Error("retry exploded"));
+		fireEvent.click(screen.getByRole("button", { name: /重试失败项/ }));
+		await screen.findByText(/retry exploded/);
+		expect((screen.getByRole("button", { name: "返回总览" }) as HTMLButtonElement).disabled).toBe(false);
+		fireEvent.click(screen.getByRole("button", { name: "返回总览" }));
+		await screen.findByText(/模型目录中找不到/);
+	});
+
+	it("stays closable while an apply is in flight", async () => {
+		const onClose = vi.fn();
+		render(<ModelReplaceDialog onClose={onClose} />);
+		await screen.findByText(/模型目录中找不到/);
+		fireEvent.click((await screen.findAllByTitle(REPLACE_BUTTON_TITLE))[0]);
+		await pickTarget(GPT);
+		fireEvent.click(screen.getByRole("button", { name: "预览改动" }));
+		await screen.findByText("回退链条目");
+
+		// The apply never settles during the test: the dialog must still be closable.
+		applyMock.mockReturnValueOnce(new Promise<ModelReplaceResult>(() => undefined));
+		fireEvent.click(screen.getByRole("button", { name: /^应用 \d+ 项$/ }));
+		// Escape is not swallowed while the write is in flight.
+		fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("keeps every exit usable while a retry is still running", async () => {
+		await openPreview();
+		applyMock.mockResolvedValueOnce({
+			recordId: "rec-2",
+			results: [{ edit: ROLE_EDIT, ok: false, error: "写入失败" }],
+		});
+		fireEvent.click(screen.getByRole("button", { name: /^应用 \d+ 项$/ }));
+		await screen.findByText("失败 1");
+		expect(screen.getByText("成功 0")).toBeTruthy();
+
+		// A retry that hangs must not trap the user on the results page.
+		applyMock.mockReturnValueOnce(new Promise<ModelReplaceResult>(() => undefined));
+		fireEvent.click(screen.getByRole("button", { name: /重试失败项/ }));
+		const back = screen.getByRole("button", { name: "返回总览" }) as HTMLButtonElement;
+		expect(back.disabled).toBe(false);
+		fireEvent.click(back);
+		await screen.findByText(/模型目录中找不到/);
+	});
+
+	it("keeps the preview page reachable when the apply itself fails", async () => {
+		await openPreview();
+		applyMock.mockRejectedValueOnce(new Error("写入 /etc/omp/config.yml 失败：只读文件系统"));
+		fireEvent.click(screen.getByRole("button", { name: /^应用 \d+ 项$/ }));
+
+		// The full error is shown and the user is still on the preview with a way back.
+		await screen.findByText(/只读文件系统/);
+		expect(screen.getByRole("button", { name: "上一步" })).toBeTruthy();
+		expect((screen.getByRole("button", { name: /^应用 \d+ 项$/ }) as HTMLButtonElement).disabled).toBe(false);
+		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+		await screen.findByRole("button", { name: "预览改动" });
 	});
 });
 

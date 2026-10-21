@@ -2,11 +2,14 @@
  * [D] 批量替换模型 dialog (Settings ▸ 模型角色 header):
  * scan overview → pick source X, target Y (per kind) and — for chat models —
  * a thinking level → preview → apply → results (per-item retry + switching
- * live sessions) with a history view for undo. Steps 2–3 can go back without
- * losing the target, level, row overrides or checks; those only reset when the
- * source changes. After apply steps 1–3 stay locked until 返回总览, which is also the
- * results page's primary action: finishing returns to the overview with a fresh
- * scan instead of closing the dialog. Nested
+ * live sessions) with a history view for undo. Every step after the first can
+ * go back: 「上一步」, the header step pills and the history view's return
+ * button all keep the source, target, level, row overrides and checks; those
+ * only reset when the source changes. Leaving the results page ends that run
+ * (its record is in the history), drops the per-item outcome and re-scans, so
+ * the next apply plans against what is on disk now and can never re-send the
+ * rows the last run already rewrote; 「返回总览」 additionally starts over
+ * (fresh source, no target) instead of closing the dialog. Nested
  * modal: `createPortal` to `document.body` at `Z_LAYER.modal` so it stays
  * above the settings modal (§12).
  */
@@ -87,21 +90,51 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 	const [historyError, setHistoryError] = useState<string | null>(null);
 	const [undoingId, setUndoingId] = useState<string | null>(null);
 	const [undoOutcome, setUndoOutcome] = useState<UndoOutcome | null>(null);
-	const [applied, setApplied] = useState(false);
 	const [historyReturn, setHistoryReturn] = useState<Step>("overview");
 	const [scope, setScope] = useState<ReplaceScope>("all");
 	const [query, setQuery] = useState("");
+	/**
+	 * The cached scan predates the last apply: its rows still hold the values the
+	 * run rewrote. Cleared only by a successful rescan, so a plan built from it can
+	 * never be applied (the backend rejects stale edits anyway, but the user must
+	 * not be sent there in the first place).
+	 */
+	const [scanStale, setScanStale] = useState(false);
 	const dialogRef = useRef<HTMLDivElement>(null);
+	/** Identifies the current apply/retry run; a response for an abandoned run is dropped. */
+	const runRef = useRef(0);
+	/** Writes started so far; a scan that spans one of them is stale. */
+	const writeGenRef = useRef(0);
+	/** Writes currently on their way to the backend. */
+	const writesInFlightRef = useRef(0);
+	/** A rescan was asked for while a write was running; it runs as soon as the write lands. */
+	const rescanPendingRef = useRef(false);
+	/** Identifies the newest scan request; an older response must not replace it. */
+	const scanRef = useRef(0);
 
 	const rescan = useCallback(async () => {
+		// Never scan across a write: the config file may be mid-splice, so the result
+		// would describe neither the old nor the new state. The write re-runs it.
+		if (writesInFlightRef.current > 0) {
+			rescanPendingRef.current = true;
+			return;
+		}
+		const request = ++scanRef.current;
+		const genAtStart = writeGenRef.current;
 		setScanLoading(true);
 		setScanError(null);
 		try {
-			setScan(await modelUsageScan());
+			const next = await modelUsageScan();
+			// Only the newest request may install a scan (返回总览 can start one while
+			// an abandoned run's rescan is still in flight).
+			if (request !== scanRef.current) return;
+			setScan(next);
+			// A write landed while this scan ran: its rows may already be old.
+			setScanStale(writeGenRef.current !== genAtStart);
 		} catch (e) {
-			setScanError(errMsg(e));
+			if (request === scanRef.current) setScanError(errMsg(e));
 		} finally {
-			setScanLoading(false);
+			if (request === scanRef.current) setScanLoading(false);
 		}
 	}, []);
 
@@ -156,6 +189,10 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 			setOverrides({});
 			setChecked({});
 		}
+		// Choosing a source starts a new replacement; the previous run's outcome stays
+		// in 历史记录, but it is no longer this flow's results page.
+		setResults([]);
+		setRecordId(null);
 		setFromModel(row.selector);
 		setFromGroup(row.group);
 		setFromSources(row.sources);
@@ -171,59 +208,74 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 		setToModel(selector);
 	};
 
-	const startOver = () => {
-		setFromModel("");
-		setFromSources([]);
-		setToModel("");
-		setLevel(null);
-		setOverrides({});
-		setChecked({});
-		setResults([]);
-		setRecordId(null);
-		setApplied(false);
-		setError(null);
-		setStep("overview");
-		void rescan();
-	};
-
 	const applyEdits = useCallback(
 		async (edits: ModelReplaceEdit[], record: string | null) => {
 			if (edits.length === 0) return;
+			const run = ++runRef.current;
+			writeGenRef.current += 1;
+			writesInFlightRef.current += 1;
 			setBusy(true);
 			setError(null);
 			try {
 				const response = await modelReplaceApply(fromModel, toModel, edits, record);
-				setResults((previous) => mergeResults(previous, response.results));
-				setRecordId(response.recordId ?? record);
-				// Config, app settings and schedules changed behind the settings pages.
+				// The write landed either way: every reader must re-read, and the cached
+				// scan no longer describes what is on disk.
 				invalidateAfterModelReplace();
-				setApplied(true);
-				setStep("results");
+				setScanStale(true);
+				if (run !== runRef.current) {
+					// The user already left this run (返回总览 / 上一步 / 历史记录). Its outcome
+					// belongs to a page that is gone; refresh what the write changed.
+					void rescan();
+					return;
+				}
+				setResults((previous) => (record === null ? response.results : mergeResults(previous, response.results)));
+				setRecordId(response.recordId ?? record);
+				// Advance only from the page the apply was launched from. If the user went
+				// back to an earlier step (or into 历史记录) while the write was running,
+				// leave them there — the results pill now leads to the outcome.
+				setStep((current) => (current === "preview" || current === "results" ? "results" : current));
 			} catch (e) {
+				// A write that failed must not disappear just because the user moved on.
 				setError(errMsg(e));
 			} finally {
+				writesInFlightRef.current -= 1;
 				setBusy(false);
+				// Whatever asked for a scan while this write was running gets it now.
+				if (writesInFlightRef.current === 0 && rescanPendingRef.current) {
+					rescanPendingRef.current = false;
+					void rescan();
+				}
 			}
 		},
-		[fromModel, toModel],
+		[fromModel, toModel, rescan],
 	);
 
 	const undo = useCallback(
 		async (id: string) => {
 			setUndoingId(id);
+			writeGenRef.current += 1;
+			writesInFlightRef.current += 1;
 			setError(null);
 			try {
 				const response = await modelReplaceUndo(id);
 				setUndoOutcome({ recordId: id, results: response.results });
 				invalidateAfterModelReplace();
+				// Undo rewrites the same files: the cached scan is stale again, so a later
+				// plan must wait for a fresh one instead of offering values already restored.
+				setScanStale(true);
 				await loadHistory();
 			} catch (e) {
 				setError(errMsg(e));
 			} finally {
 				setUndoingId(null);
+				writesInFlightRef.current -= 1;
+				if (writesInFlightRef.current === 0 && rescanPendingRef.current) {
+					rescanPendingRef.current = false;
+					void rescan();
+				}
 			}
 		},
-		[loadHistory],
+		[loadHistory, rescan],
 	);
 
 	const openHistory = () => {
@@ -232,14 +284,88 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 		void loadHistory();
 	};
 
-	const stepIndex = STEP_ORDER.indexOf(step);
+	/**
+	 * Leaving the results page ends that run. Its record is already in 历史记录, and
+	 * keeping the per-item outcome would let 重试失败项 / 应用 re-send rows the run
+	 * already rewrote against a scan that still shows the old values. So the outcome
+	 * is dropped, the next apply opens a new record, and the scan is re-read before
+	 * anything can be planned again (`scanStale` blocks applying until it lands).
+	 */
+	const endRun = () => {
+		runRef.current += 1;
+		setResults([]);
+		setRecordId(null);
+		// A write still in flight defers this scan to its own completion (`rescan`), so
+		// the new rows never describe a half-written config.
+		void rescan();
+	};
+
+	const startOver = () => {
+		endRun();
+		setError(null);
+		setFromModel("");
+		setFromSources([]);
+		setToModel("");
+		setLevel(null);
+		setOverrides({});
+		setChecked({});
+		setResults([]);
+		setRecordId(null);
+		setStep("overview");
+	};
+
+	/** Move between steps, keeping source, target, level, overrides and checks. */
+	const goToStep = (target: Step) => {
+		if (target === step) return;
+		// 历史记录 is an overlay: the step it was opened from is still the one being left.
+		const from = step === "history" ? historyReturn : step;
+		// Leaving the results page ends that run: its rows must never be re-sent, and
+		// the plan has to be rebuilt from a fresh scan.
+		if (from === "results" && target !== "results") endRun();
+		// A pill clicked from 历史记录 becomes the step that view returns to.
+		if (step === "history") setHistoryReturn(target);
+		setStep(target);
+	};
+
+	/**
+	 * Which steps the header pills may open. Earlier steps are always a way back and
+	 * the results page stays reachable while its outcome does; a forward jump from
+	 * the overview would open the target step with no source, so it stays
+	 * unavailable. From 历史记录 the pills behave as if the user were still on the
+	 * step they opened it from.
+	 */
+	const canOpenStep = (target: Step): boolean => {
+		if (target === step) return false;
+		if (target === "results") return results.length > 0;
+		const current = step === "history" ? historyReturn : step;
+		return STEP_ORDER.indexOf(target) < STEP_ORDER.indexOf(current);
+	};
+
+	/**
+	 * Where 历史记录 goes back to. A run that has been left (返回总览) no longer has
+	 * a results page, so the return target degrades to the overview instead of a
+	 * blank step.
+	 */
+	const historyBack: Step =
+		historyReturn === "results" && results.length === 0 ? "overview" : historyReturn;
+	const historyBackLabel =
+		historyBack === "results" ? "返回结果" : `返回${STEP_LABELS[historyBack]}`;
+	/** Why 应用 is unavailable although a plan exists (stale scan after an apply). */
+	const applyBlocked =
+		scanStale && step === "preview"
+			? scanError !== null
+				? `上次替换已经写入，重新扫描失败，暂时不能再次应用：${scanError}。回到第一步可以重试扫描。`
+				: "上次替换已经写入，正在重新扫描模型引用；扫描完成前不能再次应用。"
+			: null;
 
 	return createPortal(
 		<div
 			style={{ zIndex: Z_LAYER.modal }}
 			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-6 backdrop-blur-sm"
 			onMouseDown={(e) => {
-				if (e.target === e.currentTarget && !busy) onClose();
+				// Same exit as ✕: a write already sent to the backend is not cancelled by
+				// closing the dialog, so nothing is gained by trapping the user here.
+				if (e.target === e.currentTarget) onClose();
 			}}
 		>
 			<div
@@ -256,7 +382,9 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 					if (isComposing(e)) return;
 					if (e.key === "Escape") {
 						claimEscape(e);
-						if (!busy) onClose();
+						// Closing never cancels a write that was already sent; trapping the
+						// user inside a dialog whose action is in flight only looks stuck.
+						onClose();
 						return;
 					}
 					if (e.key === "Tab") {
@@ -290,8 +418,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 					<div className="flex shrink-0 items-center gap-2">
 						<div className="flex items-center gap-1">
 							{STEP_ORDER.map((s, i) => {
-								// Earlier steps are reachable until the edits are applied.
-								const reachable = !applied && !busy && step !== "history" && i < stepIndex;
+								const reachable = canOpenStep(s);
 								const chipClass = `rounded-full px-2 py-0.5 text-[10px] ${
 									step === s
 										? "bg-[color-mix(in_oklab,var(--accent)_18%,transparent)] text-[var(--accent)]"
@@ -300,7 +427,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 											: "bg-[var(--well-bg)] text-neutral-500"
 								}`;
 								return reachable ? (
-									<button key={s} type="button" onClick={() => setStep(s)} className={chipClass} title={`回到「${STEP_LABELS[s]}」`}>
+									<button key={s} type="button" onClick={() => goToStep(s)} className={chipClass} title={`回到「${STEP_LABELS[s]}」`}>
 										{i + 1} {STEP_LABELS[s]}
 									</button>
 								) : (
@@ -472,29 +599,48 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 				<div className="mt-3 flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-divider)] pt-3">
 					<div className="flex items-center gap-2">
 						{step === "configure" && (
-							<button type="button" onClick={() => setStep("overview")} className={BTN_GHOST}>
+							<button type="button" onClick={() => goToStep("overview")} className={BTN_GHOST}>
 								<ArrowLeft className="mr-1 inline h-3 w-3" />
 								上一步
 							</button>
 						)}
 						{step === "preview" && (
-							<button type="button" onClick={() => setStep("configure")} className={BTN_GHOST} disabled={busy}>
+							// Navigation never waits for a write: only the actions that would
+							// send another one (应用 / 重试失败项) are disabled meanwhile.
+							<button type="button" onClick={() => goToStep("configure")} className={BTN_GHOST}>
+								<ArrowLeft className="mr-1 inline h-3 w-3" />
+								上一步
+							</button>
+						)}
+						{step === "results" && (
+							<button
+								type="button"
+								onClick={() => goToStep("preview")}
+								className={BTN_GHOST}
+								title="回到「预览改动」，保留这次的目标和勾选；再次应用会记成新的一次替换"
+							>
 								<ArrowLeft className="mr-1 inline h-3 w-3" />
 								上一步
 							</button>
 						)}
 						{step === "history" && (
-							<button type="button" onClick={() => setStep(historyReturn)} className={BTN_GHOST}>
+							<button type="button" onClick={() => goToStep(historyBack)} className={BTN_GHOST}>
 								<ArrowLeft className="mr-1 inline h-3 w-3" />
-								{applied ? "返回结果" : "返回替换"}
+								{historyBackLabel}
 							</button>
 						)}
 					</div>
 					<div className="flex items-center gap-2">
+						{applyBlocked !== null && (
+							<span role="status" className="flex min-w-0 items-start gap-1.5 text-[11px] leading-4 text-[var(--status-warning)]">
+								<AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+								<span className="min-w-0 break-all">{applyBlocked}</span>
+							</span>
+						)}
 						{step === "configure" && (
 							<button
 								type="button"
-								onClick={() => setStep("preview")}
+								onClick={() => goToStep("preview")}
 								disabled={toModel.trim() === ""}
 								className={BTN_PRIMARY}
 							>
@@ -505,7 +651,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 							<button
 								type="button"
 								onClick={() => void applyEdits(plan.edits, null)}
-								disabled={busy || plan.edits.length === 0}
+								disabled={busy || scanStale || plan.edits.length === 0}
 								className={BTN_PRIMARY}
 							>
 								{busy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
@@ -513,7 +659,7 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 							</button>
 						)}
 						{step === "results" && (
-							<button type="button" onClick={startOver} className={BTN_PRIMARY} disabled={busy}>
+							<button type="button" onClick={startOver} className={BTN_PRIMARY}>
 								返回总览
 							</button>
 						)}
