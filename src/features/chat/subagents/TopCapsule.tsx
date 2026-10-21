@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Bot, Check, ChevronDown, ChevronUp, Pause, X } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronUp, Clock, X } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { claimEscape } from "../../../lib/escapeClaim";
 import type { SubagentInfo } from "../../../stores/live";
@@ -31,6 +31,7 @@ const TINT = {
 	running: "bg-[color-mix(in_oklab,var(--status-info)_16%,transparent)] text-[var(--status-info)]",
 	done: "bg-[color-mix(in_oklab,var(--status-success)_16%,transparent)] text-[var(--status-success)]",
 	failed: "bg-[color-mix(in_oklab,var(--status-error)_16%,transparent)] text-[var(--status-error)]",
+	queued: "bg-[var(--ghost-hover)] text-[var(--text-60)]",
 } as const;
 
 function Spinner() {
@@ -51,7 +52,7 @@ function SummaryBadge({
 	counts,
 	small,
 }: {
-	counts: { running: number; done: number; failed: number };
+	counts: { running: number; done: number; failed: number; queued?: number };
 	small?: boolean;
 }) {
 	const s = statusSummary(counts);
@@ -59,13 +60,22 @@ function SummaryBadge({
 		"inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
 		small ? "h-[18px] px-1.5 text-[11px]" : "h-5 px-[7px] text-[12px]",
 	);
-	if (s.mode === "running") {
+	if (s.mode === "running" || s.mode === "queued") {
+		const queued = s.queued;
 		return (
 			<>
-				<span className={clsx(seg, TINT.running)}>
-					<Spinner />
-					{s.running} 运行中
-				</span>
+				{s.mode === "running" && (
+					<span className={clsx(seg, TINT.running)}>
+						<Spinner />
+						{s.running} 运行中
+					</span>
+				)}
+				{queued > 0 && (
+					<span className={clsx(seg, TINT.queued)} title={`${queued} 个子代理排队中，尚未开始`}>
+						<Clock className="h-3 w-3" />
+						{queued} 排队中
+					</span>
+				)}
 				<span className="text-[11px] tabular-nums text-[var(--text-40)]">{s.progress}</span>
 			</>
 		);
@@ -94,7 +104,7 @@ function StatusGlyph({ state }: { state: RowState }) {
 				state === "running" && "text-[var(--status-info)]",
 				state === "done" && "text-[var(--status-success)]",
 				state === "failed" && "text-[var(--status-error)]",
-				state === "waiting" && "text-[var(--status-warning)]",
+				state === "waiting" && "text-[var(--text-40)]",
 			)}
 		>
 			{state === "running" ? (
@@ -104,7 +114,7 @@ function StatusGlyph({ state }: { state: RowState }) {
 			) : state === "failed" ? (
 				<X className="h-3 w-3" strokeWidth={3} />
 			) : (
-				<Pause className="h-3 w-3" />
+				<Clock className="h-3 w-3" />
 			)}
 		</span>
 	);
@@ -156,7 +166,7 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 								className={clsx(
 									"min-w-0 flex-1 truncate",
 									n.state === "done" && "text-[var(--text-60)]",
-									n.state === "waiting" && "font-semibold text-[var(--status-warning)]",
+									n.state === "waiting" && "text-[var(--text-40)]",
 									(n.state === "running" || n.state === "failed") && "font-semibold",
 								)}
 							>
@@ -235,7 +245,7 @@ export function TopCapsule() {
 	}, [subagents]);
 
 	const counts = subagentCounts(subagents);
-	const total = counts.running + counts.done + counts.failed;
+	const total = counts.running + counts.queued + counts.done + counts.failed;
 
 	// Tick running elapsed times while the panel is open.
 	useEffect(() => {

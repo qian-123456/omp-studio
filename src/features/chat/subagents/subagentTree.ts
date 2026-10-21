@@ -17,6 +17,7 @@ export function rowState(status: string | undefined): RowState {
 	const s = String(status ?? "").toLowerCase();
 	if (s === "pending") return "waiting";
 	const b = subagentBucket(s);
+	if (b === "queued") return "waiting";
 	return b === "done" ? "done" : b === "failed" ? "failed" : "running";
 }
 
@@ -270,14 +271,18 @@ export function roleTone(agent: string | undefined): RoleTone {
 }
 
 export type StatusSummary =
-	| { mode: "running"; running: number; progress: string }
+	| { mode: "running"; running: number; queued: number; progress: string }
+	| { mode: "queued"; queued: number; progress: string }
 	| { mode: "done"; count: number }
 	| { mode: "mixed"; done: number; failed: number };
 
 /** One non-redundant status summary for the capsule / panel header. */
-export function statusSummary(c: { running: number; done: number; failed: number }): StatusSummary {
-	const total = c.running + c.done + c.failed;
-	if (c.running > 0) return { mode: "running", running: c.running, progress: `${c.done + c.failed}/${total}` };
+export function statusSummary(c: { running: number; done: number; failed: number; queued?: number }): StatusSummary {
+	const queued = c.queued ?? 0;
+	const total = c.running + queued + c.done + c.failed;
+	const progress = `${c.done + c.failed}/${total}`;
+	if (c.running > 0) return { mode: "running", running: c.running, queued, progress };
+	if (queued > 0) return { mode: "queued", queued, progress };
 	if (c.failed === 0) return { mode: "done", count: c.done };
 	return { mode: "mixed", done: c.done, failed: c.failed };
 }

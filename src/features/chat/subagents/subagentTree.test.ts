@@ -174,7 +174,9 @@ describe("titles and summary", () => {
 		expect(roleTone("x")).toBe("other");
 	});
 	it("summarises without redundancy", () => {
-		expect(statusSummary({ running: 3, done: 4, failed: 0 })).toEqual({ mode: "running", running: 3, progress: "4/7" });
+		expect(statusSummary({ running: 3, done: 4, failed: 0 })).toEqual({ mode: "running", running: 3, queued: 0, progress: "4/7" });
+		expect(statusSummary({ running: 1, queued: 1, done: 14, failed: 0 })).toEqual({ mode: "running", running: 1, queued: 1, progress: "14/16" });
+		expect(statusSummary({ running: 0, queued: 2, done: 3, failed: 0 })).toEqual({ mode: "queued", queued: 2, progress: "3/5" });
 		expect(statusSummary({ running: 0, done: 7, failed: 0 })).toEqual({ mode: "done", count: 7 });
 		expect(statusSummary({ running: 0, done: 5, failed: 2 })).toEqual({ mode: "mixed", done: 5, failed: 2 });
 	});

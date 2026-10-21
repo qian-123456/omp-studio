@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SubagentSummary } from "../../../lib/contracts";
+import { subagentCounts } from "./counts";
 import { mergeDiskAndLive } from "./useSessionSubagents";
 
 const disk = (over: Partial<SubagentSummary>): SubagentSummary => ({
@@ -37,5 +38,30 @@ describe("mergeDiskAndLive", () => {
 		expect(rows["0-Explore"].status).toBe("running");
 		expect(rows["0-Explore"].agent).toBe("explore");
 		expect(rows["0-Explore"].filePath).toBe("/s/p/parent/0-Explore.jsonl");
+	});
+
+	it("adds queued agents of a running task call and counts them", () => {
+		const { subagents } = mergeDiskAndLive(
+			[disk({ status: "completed" })],
+			{},
+			{
+				t1: {
+					toolCallId: "t1",
+					toolName: "task",
+					args: {
+						tasks: [
+							{ id: "Explore", task: "Scan the repo" },
+							{ id: "Later", task: "Not started yet" },
+						],
+					},
+					intent: null,
+					status: "running",
+					text: "",
+					details: null,
+				},
+			},
+		);
+		expect(subagentCounts(subagents)).toEqual({ running: 0, queued: 1, done: 1, failed: 0 });
+		expect(subagents.Later?.status).toBe("pending");
 	});
 });

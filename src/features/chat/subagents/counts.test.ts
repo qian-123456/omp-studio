@@ -17,6 +17,13 @@ describe("subagent counts", () => {
 			s2: { label: "Subagent 2", status: "completed" },
 			s3: { label: "Subagent 3", status: "failed" },
 		});
-		expect(counts).toEqual({ running: 1, done: 1, failed: 1 });
+		expect(counts).toEqual({ running: 1, queued: 0, done: 1, failed: 1 });
+		expect(subagentBucket("pending")).toBe("queued");
+		expect(
+			subagentCounts({
+				a: { label: "a", status: "pending" },
+				b: { label: "b", status: "completed" },
+			}),
+		).toEqual({ running: 0, queued: 1, done: 1, failed: 0 });
 	});
 });

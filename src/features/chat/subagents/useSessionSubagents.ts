@@ -10,9 +10,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SubagentSummary } from "../../../lib/contracts";
 import { subagentList } from "../../../lib/ipc";
-import { type SubagentInfo, useLive } from "../../../stores/live";
+import { type LiveTool, type SubagentInfo, useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
-import type { AgentRow } from "./merge";
+import { type AgentRow, asTaskDetails, mergeAgents } from "./merge";
 
 export const DISK_POLL_MS = 3000;
 
@@ -28,6 +28,7 @@ function firstLine(t: string | null | undefined): string | undefined {
 export function mergeDiskAndLive(
 	disk: SubagentSummary[],
 	live: Record<string, SubagentInfo>,
+	tools?: Record<string, LiveTool>,
 ): { subagents: Record<string, SubagentInfo>; rows: Record<string, AgentRow> } {
 	const subagents: Record<string, SubagentInfo> = {};
 	const rows: Record<string, AgentRow> = {};
@@ -77,6 +78,30 @@ export function mergeDiskAndLive(
 			filePath: rows[id]?.filePath ?? info.sessionFile,
 		};
 	});
+	// Queued agents exist only in the dispatching task call's args/progress
+	// until omp starts them: surface those not yet tracked as pending.
+	for (const tool of Object.values(tools ?? {})) {
+		if (tool.status !== "running" || (tool.toolName !== "task" && tool.toolName !== "agent")) continue;
+		const merged = mergeAgents({
+			args: tool.args,
+			details: asTaskDetails(tool.details),
+			fileList: disk,
+			liveSubagents: live,
+			toolCallId: tool.toolCallId,
+		});
+		for (const r of merged.rows) {
+			if (r.status !== "pending" || subagents[r.id]) continue;
+			const key = rows[r.id] ? `${tool.toolCallId}:${r.id}` : r.id;
+			subagents[key] = {
+				status: "pending",
+				agent: r.agent,
+				label: r.line ?? r.id,
+				index: r.index,
+				task: r.task,
+			};
+			rows[key] = { ...r, id: key };
+		}
+	}
 	return { subagents, rows };
 }
 
@@ -114,9 +139,10 @@ export function useSessionSubagents(sessionId: string | null): {
 	}, [parentFile, poll]);
 
 	const liveSubagents = live?.subagents;
+	const liveTools = live?.tools;
 	const merged = useMemo(
-		() => mergeDiskAndLive(disk, liveSubagents ?? {}),
-		[disk, liveSubagents],
+		() => mergeDiskAndLive(disk, liveSubagents ?? {}, liveTools),
+		[disk, liveSubagents, liveTools],
 	);
 	return { parentFile, ...merged };
 }
