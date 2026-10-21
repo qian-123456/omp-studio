@@ -205,6 +205,23 @@ function applySummary(row: AgentRow, s: SubagentSummary) {
 	}
 }
 
+const normPrompt = (t?: string | null): string =>
+	(t ?? "")
+		.replace(/^Complete assignment thoroughly:\s*/, "")
+		.replace(/\s+/g, " ")
+		.trim();
+
+/** True when a file summary's prompt is the same task text as this row's. */
+function promptMatches(row: AgentRow, prompt: string | null): boolean {
+	const p = normPrompt(prompt);
+	if (!p) return false;
+	for (const t of [row.task, row.assignment]) {
+		const n = normPrompt(t);
+		if (n && (n === p || p.startsWith(n) || n.startsWith(p))) return true;
+	}
+	return false;
+}
+
 function applyLive(row: AgentRow, s: SubagentInfo) {
 	row.status = normStatus(s.status) ?? row.status;
 	row.agent ??= s.agent;
@@ -286,8 +303,14 @@ export function mergeAgents(input: {
 			applyProgress(r, res);
 		}
 	}
+	// The file list holds every subagent of the whole session; it only enriches
+	// rows that already belong to this tool call, never adds rows.
+	const unmatched = [...rows.values()];
 	for (const s of input.fileList ?? []) {
-		applySummary(get(s.id), s);
+		const target =
+			rows.get(s.id) ??
+			unmatched.find((r) => !r.filePath && promptMatches(r, s.prompt));
+		if (target) applySummary(target, s);
 	}
 	for (const [id, s] of Object.entries(input.liveSubagents ?? {})) {
 		if (s.parentToolCallId !== input.toolCallId) continue;
