@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PromptComposition } from "../../lib/contracts";
-import {
-	allocateCells,
-	buildContextSegments,
-	compactionBuffer,
-	gridShape,
-	type ContextSegment,
-} from "./contextBreakdown";
+import { buildContextSegments, compactionBuffer, type ContextSegment } from "./contextBreakdown";
 
 const comp = (cats: Array<[PromptComposition["categories"][number]["id"], number]>): PromptComposition => ({
 	cwd: "/a",
@@ -44,50 +38,6 @@ describe("buildContextSegments", () => {
 		const segs = buildContextSegments(90_000, 100_000, null, buffer);
 		expect(tok(segs, "buffer")).toBe(10_000);
 		expect(tok(segs, "free")).toBe(0);
-	});
-});
-
-describe("gridShape", () => {
-	it("is a 10×10 block, as in Claude's /context panel", () => {
-		expect(gridShape()).toEqual({ cols: 10, rows: 10 });
-	});
-});
-
-describe("allocateCells", () => {
-	const shape = { cols: 10, rows: 10 };
-
-	it("keeps tiny categories visible and pads the middle with free space", () => {
-		const cells = allocateCells(buildContextSegments(1010, 100_000, comp([["system", 10]])), 100_000, shape);
-		expect(cells).toHaveLength(100);
-		expect(cells.filter((c) => c.id === "system")).toHaveLength(1);
-		expect(cells.filter((c) => c.id === "messages")).toHaveLength(1);
-		expect(cells.filter((c) => c.id === "free")).toHaveLength(98);
-	});
-
-	it("puts the compaction buffer at the end of the block", () => {
-		const segs = buildContextSegments(10_000, 100_000, null, { tokens: 20_000, label: "自动压缩缓冲" });
-		const cells = allocateCells(segs, 100_000, shape);
-		expect(cells.slice(-20).every((c) => c.id === "buffer")).toBe(true);
-		expect(cells.filter((c) => c.id === "free")).toHaveLength(70);
-	});
-
-	it("marks a rounded-up trailing cell as partly filled", () => {
-		// 1% of the window = exactly one cell; 0.4% must still show as a thinner block.
-		const cells = allocateCells(buildContextSegments(400, 100_000, comp([["system", 400]])), 100_000, shape);
-		const system = cells.filter((c) => c.id === "system");
-		expect(system).toHaveLength(1);
-		expect(system[0].fullness).toBeLessThan(0.7);
-	});
-
-	it("never overflows when many small categories round up", () => {
-		const segs = buildContextSegments(
-			100_000,
-			100_000,
-			comp([["system", 500], ["tools", 500], ["mcp", 500], ["rules", 500]]),
-		);
-		const cells = allocateCells(segs, 100_000, shape);
-		expect(cells).toHaveLength(100);
-		expect(cells.every((c) => c.id !== "free")).toBe(true);
 	});
 });
 

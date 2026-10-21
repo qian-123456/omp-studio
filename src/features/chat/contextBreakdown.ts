@@ -1,16 +1,14 @@
 /**
- * Port of Claude Code 2.1.300's `/context` panel (`mHn` + the `G` renderer in its bundle):
- * category order, grid allocation, and labels. Claude renders the grid with terminal glyphs
- * (⛀ partly filled, ⛁ filled, ⛶ free, ⛝ autocompact buffer); here each glyph is a cell with a
- * fullness value instead, so the GUI can draw the same block.
+ * Category split for the context-window popover, mirroring the Claude app's "Context window"
+ * panel: a segmented bar plus one row per category (tokens and share of the window).
  */
 import type { PromptComposition } from "../../lib/contracts";
 import { DEFAULT_RESERVE_TOKENS, readThreshold, resolveMode } from "../settings/autoCompactionLogic";
 import { compactionTriggerPoint } from "../settings/contextWindow/core";
 
 export type ContextSegmentId =
-	| "system"
 	| "tools"
+	| "system"
 	| "mcp"
 	| "rules"
 	| "skills"
@@ -27,22 +25,22 @@ export interface ContextSegment {
 	color: string;
 }
 
-/** Claude's hues: prompt=blue, tools/buffer=grey, MCP=cyan, memory=orange, skills=green, messages=purple. */
+/** Claude app palette: tools blue, prompt orange, MCP green, skills yellow-green, free grey. */
 const COLOR: Record<ContextSegmentId, string> = {
-	system: "var(--accent)",
 	tools: "var(--status-renamed)",
-	mcp: "color-mix(in srgb, var(--status-renamed) 55%, var(--status-success))",
-	rules: "var(--status-warning)",
-	skills: "var(--status-success)",
+	system: "var(--status-warning)",
+	mcp: "var(--status-success)",
+	rules: "color-mix(in srgb, var(--status-renamed) 55%, var(--status-success))",
+	skills: "color-mix(in srgb, var(--status-warning) 55%, var(--status-success))",
 	other: "var(--text-dim)",
-	messages: "color-mix(in srgb, var(--accent) 55%, var(--status-renamed))",
+	messages: "var(--accent-strong)",
 	free: "var(--bg-selected)",
-	buffer: "color-mix(in srgb, var(--text-dim) 45%, var(--bg-selected))",
+	buffer: "color-mix(in srgb, var(--text-dim) 55%, var(--bg-selected))",
 };
 
 const LABEL: Record<ContextSegmentId, string> = {
-	system: "系统提示词",
 	tools: "系统工具",
+	system: "系统提示词",
 	mcp: "MCP 工具",
 	rules: "规则文件",
 	skills: "Skills",
@@ -52,16 +50,11 @@ const LABEL: Record<ContextSegmentId, string> = {
 	buffer: "自动压缩缓冲",
 };
 
-/** Same order as Claude: fixed prompt parts, messages, free space, then the compaction buffer. */
-const ORDER: ContextSegmentId[] = ["system", "tools", "mcp", "rules", "skills", "other", "messages", "free", "buffer"];
+/** Same order as the Claude app: fixed parts, messages, free space, then the compaction buffer. */
+const ORDER: ContextSegmentId[] = ["tools", "system", "mcp", "rules", "skills", "other", "messages", "free", "buffer"];
 
 /** Claude keeps this much free when autocompaction is off ("Compact buffer"). */
 const COMPACT_BUFFER_TOKENS = 3000;
-
-/** Claude's /context block: 10 columns × 10 rows of glyph cells. */
-export function gridShape(): { cols: number; rows: number } {
-	return { cols: 10, rows: 10 };
-}
 
 export interface CompactionBuffer {
 	tokens: number;
@@ -69,9 +62,8 @@ export interface CompactionBuffer {
 }
 
 /**
- * Tokens between the auto-compaction trigger and the end of the window: the headroom the agent
- * keeps so a turn can finish before compaction runs. Falls back to Claude's fixed 3k "compact
- * buffer" when auto-compaction is off, and to omp's default reserve when no threshold is set.
+ * Headroom between the auto-compaction trigger and the end of the window. Falls back to Claude's
+ * fixed 3k compact buffer when auto-compaction is off, and to omp's default reserve otherwise.
  */
 export function compactionBuffer(
 	windowSize: number,
@@ -107,8 +99,8 @@ export function buildContextSegments(
 	const scale = estTotal > usedClamped && estTotal > 0 ? usedClamped / estTotal : 1;
 
 	const tokens: Record<ContextSegmentId, number> = {
-		system: 0,
 		tools: 0,
+		system: 0,
 		mcp: 0,
 		rules: 0,
 		skills: 0,
@@ -130,39 +122,4 @@ export function buildContextSegments(
 		tokens: tokens[id],
 		color: COLOR[id],
 	}));
-}
-
-export interface GridCell {
-	id: ContextSegmentId;
-	/** 0–1; Claude picks ⛀ below 0.7 and ⛁ at or above it. */
-	fullness: number;
-}
-
-/**
- * Port of Claude's grid filler: every non-empty category gets at least one cell, free space fills
- * the middle, and the compaction buffer closes the block. A partially filled trailing cell keeps
- * its fraction so rounded-up categories still read as smaller than full ones.
- */
-export function allocateCells(
-	segments: ContextSegment[],
-	windowSize: number,
-	shape: { cols: number; rows: number },
-): GridCell[] {
-	const total = shape.cols * shape.rows;
-	if (windowSize <= 0) return Array.from({ length: total }, () => ({ id: "free", fullness: 1 }));
-	const buffer = segments.find((s) => s.id === "buffer")?.tokens ?? 0;
-	const bufferCells = buffer > 0 ? Math.min(total, Math.max(1, Math.round((buffer / windowSize) * total))) : 0;
-	const cells: GridCell[] = [];
-	for (const s of segments) {
-		if (s.id === "free" || s.id === "buffer" || s.tokens <= 0) continue;
-		const raw = (s.tokens / windowSize) * total;
-		const whole = Math.floor(raw);
-		const count = Math.max(1, Math.round(raw));
-		for (let i = 0; i < count && cells.length < total - bufferCells; i++) {
-			cells.push({ id: s.id, fullness: i === whole && raw - whole > 0 ? raw - whole : 1 });
-		}
-	}
-	while (cells.length < total - bufferCells) cells.push({ id: "free", fullness: 1 });
-	while (cells.length < total) cells.push({ id: "buffer", fullness: 1 });
-	return cells;
 }
