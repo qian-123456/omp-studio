@@ -7,14 +7,14 @@
  * subagents stay observable while they run.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SubagentSummary } from "../../../lib/contracts";
-import { subagentList } from "../../../lib/ipc";
 import { type LiveTool, type SubagentInfo, useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
+import { type DiskSubscription, DISK_POLL_MS, subscribeDiskSubagents } from "./diskPoller";
 import { type AgentRow, asTaskDetails, mergeAgents } from "./merge";
 
-export const DISK_POLL_MS = 3000;
+export { DISK_POLL_MS };
 
 function firstLine(t: string | null | undefined): string | undefined {
 	return t
@@ -115,28 +115,26 @@ export function useSessionSubagents(sessionId: string | null): {
 	const parentFile = meta?.file;
 	const poll = meta?.status === "external" || meta?.status === "working";
 	const [disk, setDisk] = useState<SubagentSummary[]>([]);
+	const sub = useRef<DiskSubscription | null>(null);
+	// Latest turn-activity flag for the subscription effect (which only re-runs
+	// per parent file) and for pushing changes into the shared poller.
+	const pollRef = useRef(poll);
+	pollRef.current = poll;
 
+	// One shared poll per parent file, however many hooks watch it.
 	useEffect(() => {
 		setDisk([]);
 		if (!parentFile) return;
-		let cancelled = false;
-		let timer: number | undefined;
-		const tick = () => {
-			subagentList(parentFile)
-				.then((list) => {
-					if (!cancelled) setDisk(list);
-				})
-				.catch(() => {})
-				.finally(() => {
-					if (!cancelled && poll) timer = window.setTimeout(tick, DISK_POLL_MS);
-				});
-		};
-		tick();
+		sub.current = subscribeDiskSubagents(parentFile, setDisk, pollRef.current);
 		return () => {
-			cancelled = true;
-			clearTimeout(timer);
+			sub.current?.unsubscribe();
+			sub.current = null;
 		};
-	}, [parentFile, poll]);
+	}, [parentFile]);
+
+	useEffect(() => {
+		sub.current?.setParentActive(poll);
+	}, [poll]);
 
 	const liveSubagents = live?.subagents;
 	const liveTools = live?.tools;

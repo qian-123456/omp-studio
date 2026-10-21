@@ -4,8 +4,11 @@
 //! directory named after the parent session file (`<parentFile without .jsonl>/`),
 //! plus `<AgentId>.md|.json` final outputs and `.<AgentId>.jsonl.lock.os` locks.
 
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use serde_json::Value;
@@ -291,13 +294,134 @@ fn read_output(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok()
 }
 
-pub fn list_in(parent_file: &str, root: &Path) -> Result<Vec<SubagentSummary>, String> {
+/// What the cache remembers per subagent transcript: the summary scan (items
+/// are never kept) plus the file identity it was computed from.
+struct CachedScan {
+    size: u64,
+    mtime: Option<SystemTime>,
+    scan: AgentScan,
+}
+
+/// Per-transcript scan summaries keyed by path, so listing does not re-read
+/// and re-parse unchanged files. Transcripts are append-only: when a file only
+/// grew, just the bytes after the last parsed newline are read and folded in.
+#[derive(Default)]
+struct ScanCache {
+    map: HashMap<PathBuf, CachedScan>,
+    /// Total transcript bytes read from disk (observability / tests).
+    bytes_read: u64,
+}
+
+impl ScanCache {
+    /// Summary scan of `path`, reading from disk only what changed.
+    fn scan(&mut self, path: &Path) -> std::io::Result<&AgentScan> {
+        let md = fs::metadata(path)?;
+        let (size, modified) = (md.len(), md.modified().ok());
+        let fresh = match self.map.get(path) {
+            Some(c) if c.size == size && c.mtime == modified => false,
+            // Grew: continue after the last complete line already parsed.
+            Some(c) if size > c.size && c.scan.next_byte <= size => {
+                self.append(path, size, modified)?;
+                false
+            }
+            _ => true,
+        };
+        if fresh {
+            let mut f = fs::File::open(path)?;
+            let mut bytes = Vec::with_capacity(size as usize);
+            f.read_to_end(&mut bytes)?;
+            self.bytes_read += bytes.len() as u64;
+            let mut scan = AgentScan {
+                meta: AgentMeta::default(),
+                items: Vec::new(),
+                started_at: None,
+                ended_at: None,
+                next_byte: 0,
+                reset: false,
+            };
+            fold_lines(&mut scan, &bytes);
+            self.map.insert(
+                path.to_path_buf(),
+                CachedScan {
+                    size: bytes.len() as u64,
+                    mtime: modified,
+                    scan,
+                },
+            );
+        }
+        Ok(&self.map[path].scan)
+    }
+
+    fn append(
+        &mut self,
+        path: &Path,
+        size: u64,
+        modified: Option<SystemTime>,
+    ) -> std::io::Result<()> {
+        let Some(c) = self.map.get_mut(path) else {
+            return Ok(());
+        };
+        let mut f = fs::File::open(path)?;
+        f.seek(SeekFrom::Start(c.scan.next_byte))?;
+        let mut tail = Vec::new();
+        f.read_to_end(&mut tail)?;
+        self.bytes_read += tail.len() as u64;
+        fold_lines(&mut c.scan, &tail);
+        c.size = size;
+        c.mtime = modified;
+        Ok(())
+    }
+
+    /// Drop entries under `dir` that were not seen in the latest listing.
+    fn retain_seen(&mut self, dir: &Path, seen: &HashSet<PathBuf>) {
+        self.map
+            .retain(|p, _| p.parent() != Some(dir) || seen.contains(p));
+    }
+}
+
+/// Parse the complete lines of `bytes` (which start at `scan.next_byte`) into
+/// the running summary; a trailing partial line is left for the next pass.
+fn fold_lines(scan: &mut AgentScan, bytes: &[u8]) {
+    let complete = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+    for line in bytes[..complete].split(|b| *b == b'\n') {
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_slice::<Value>(line) else {
+            continue;
+        };
+        if let Some(ts) = v.get("timestamp").and_then(Value::as_str) {
+            if scan.started_at.is_none() {
+                scan.started_at = Some(ts.to_string());
+            }
+            scan.ended_at = Some(ts.to_string());
+        }
+        accumulate(&mut scan.meta, &v);
+    }
+    // The list never shows the system prompt; do not keep it resident.
+    scan.meta.system_prompt = None;
+    scan.next_byte += complete as u64;
+}
+
+// `LazyLock` needs Rust 1.80; the crate's MSRV is 1.77.
+fn scan_cache() -> &'static Mutex<ScanCache> {
+    static CACHE: OnceLock<Mutex<ScanCache>> = OnceLock::new();
+    CACHE.get_or_init(Mutex::default)
+}
+
+fn list_with(
+    parent_file: &str,
+    root: &Path,
+    cache: &mut ScanCache,
+) -> Result<Vec<SubagentSummary>, String> {
     let parent = validate_parent(parent_file, root)?;
     let dir = subagent_dir(&parent);
     let mut out = Vec::new();
     let Ok(entries) = fs::read_dir(&dir) else {
+        cache.retain_seen(&dir, &HashSet::new());
         return Ok(out);
     };
+    let mut seen = HashSet::new();
     for e in entries.flatten() {
         let path = e.path();
         let name = e.file_name();
@@ -320,18 +444,26 @@ pub fn list_in(parent_file: &str, root: &Path) -> Result<Vec<SubagentSummary>, S
         if validate_agent_id(&id).is_err() {
             continue;
         }
-        let Ok(scan) = scan_agent(&path, 0) else {
+        let Ok(scan) = cache.scan(&path) else {
             continue;
         };
         let (status, output) = infer_status(&dir, &id, &scan.meta, mtime(&path));
-        out.push(summary_from(&id, &path, &scan, status, output));
+        out.push(summary_from(&id, &path, scan, status, output));
+        seen.insert(path);
     }
+    cache.retain_seen(&dir, &seen);
     out.sort_by(|a, b| a.started_at.cmp(&b.started_at));
     Ok(out)
 }
 
+#[cfg(test)]
+fn list_in(parent_file: &str, root: &Path) -> Result<Vec<SubagentSummary>, String> {
+    list_with(parent_file, root, &mut ScanCache::default())
+}
+
 pub fn list(parent_file: &str) -> Result<Vec<SubagentSummary>, String> {
-    list_in(parent_file, &allowed_root())
+    let mut cache = scan_cache().lock().unwrap_or_else(|e| e.into_inner());
+    list_with(parent_file, &allowed_root(), &mut cache)
 }
 
 pub fn transcript_in(
@@ -544,6 +676,49 @@ mod tests {
         let scan_ab = scan_agent(&subdir.join("Ab.jsonl"), 0).unwrap();
         let (status, _) = infer_status(&subdir, "Ab", &scan_ab.meta, Some(SystemTime::UNIX_EPOCH));
         assert_eq!(status, SubagentStatus::Aborted);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    fn json(list: &[SubagentSummary]) -> String {
+        serde_json::to_string(list).unwrap()
+    }
+
+    #[test]
+    fn cache_skips_unchanged_and_reads_only_appended_bytes() {
+        let (root, parent, subdir) = setup();
+        let p = parent.to_str().unwrap();
+        let file = subdir.join("A.jsonl");
+        fs::write(&file, AGENT).unwrap();
+        let mut cache = ScanCache::default();
+
+        let first = list_with(p, &root, &mut cache).unwrap();
+        assert_eq!(cache.bytes_read, AGENT.len() as u64);
+        assert_eq!(json(&first), json(&list_in(p, &root).unwrap()));
+
+        // Unchanged file: identical result, zero bytes re-read.
+        let again = list_with(p, &root, &mut cache).unwrap();
+        assert_eq!(cache.bytes_read, AGENT.len() as u64);
+        assert_eq!(json(&first), json(&again));
+
+        // Append one complete line plus a partial one: only the tail is read,
+        // and the result equals a from-scratch scan.
+        let extra = concat!(
+            r#"{"type":"message","id":"y","timestamp":"T8","message":{"role":"assistant","content":[{"type":"text","text":"more"}],"stopReason":"stop"}}"#,
+            "\n",
+            r#"{"type":"mess"#,
+        );
+        let mut f = fs::OpenOptions::new().append(true).open(&file).unwrap();
+        std::io::Write::write_all(&mut f, extra.as_bytes()).unwrap();
+        drop(f);
+        let grown = list_with(p, &root, &mut cache).unwrap();
+        assert_eq!(cache.bytes_read, (AGENT.len() + extra.len()) as u64);
+        assert_eq!(json(&grown), json(&list_in(p, &root).unwrap()));
+        assert_eq!(grown[0].message_count, first[0].message_count + 1);
+
+        // Removed files leave the cache.
+        fs::remove_file(&file).unwrap();
+        assert!(list_with(p, &root, &mut cache).unwrap().is_empty());
+        assert!(cache.map.is_empty());
         fs::remove_dir_all(&root).ok();
     }
 }
