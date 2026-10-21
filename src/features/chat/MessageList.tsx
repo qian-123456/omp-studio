@@ -60,7 +60,7 @@ import {
 	type TurnStatsPlan,
 	USER_BUBBLE_CLASS,
 	UserMessageBubble,
-	LiveStatusRow,
+	LiveWaitingRow,
 } from "./ExecutionDisclosure";
 import type { ImageAttachment } from "../../lib/contracts";
 import { parseInlineFiles } from "./fileAttach";
@@ -1097,21 +1097,16 @@ const StreamingRow = React.memo(function StreamingRow({
 					statsPlan={stepsPlan}
 				/>,
 			);
-			if (!holding) {
-				nodes.push(<LiveStatusRow key="live-status" startedAt={streamStartedAt} />);
-			}
 		}
-		// Idle streaming state: session is working but nothing emitted yet
-		if (!activity.some((s) => s.kind !== "retry") && (showTimer || holding)) {
-			nodes.push(
-				<div
-					key="live-idle"
-					className="px-1 py-0.5 text-[length:var(--chat-font-size)] leading-6"
-				>
-					<span className="shimmer-text">正在思考</span>
-				</div>,
-			);
-		}
+		// Between model moves nothing is running: keep a 「正在思考」 row at the
+		// bottom, like Codex, so the turn never looks stalled.
+		const busy = activity.some(
+			(s) =>
+				(s.kind === "thinking" && s.running) ||
+				(s.kind === "text" && s.streaming) ||
+				(s.kind === "tool" && !s.result && liveTools[s.call.id]?.status === "running"),
+		);
+		if (!busy && !holding) nodes.push(<LiveWaitingRow key="live-waiting" />);
 	} else {
 		const segments = splitAroundSteers(activity);
 		const firstSteps = segments.findIndex((s) => s.type === "steps");
