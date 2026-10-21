@@ -1,11 +1,35 @@
 import clsx from "clsx";
 import { ArchiveRestore, Layers, Loader2, PieChart, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import type { PromptComposition } from "../../lib/contracts";
+import { promptCompositionProbe } from "../../lib/ipc";
 import { openPromptComposition } from "../../stores/promptComposition";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { formatTokens } from "./sessionStats";
+import { allocateCells, buildContextSegments } from "./contextBreakdown";
+
+const GRID_COLS = 20;
+const GRID_ROWS = 5;
+
+/** One probe per project for the app's lifetime; concurrent opens share the in-flight request. */
+const compositionCache = new Map<string, Promise<PromptComposition>>();
+function loadComposition(cwd: string): Promise<PromptComposition> {
+	let p = compositionCache.get(cwd);
+	if (!p) {
+		p = promptCompositionProbe(cwd);
+		compositionCache.set(cwd, p);
+		p.catch(() => compositionCache.delete(cwd));
+	}
+	return p;
+}
+
+/** 78012 -> "78.0k", 1_000_000 -> "1.0M". */
+function compactTokens(n: number): string {
+	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+	return String(n);
+}
 
 interface ContextRingProps {
 	/** Context percentage, typically 0.0 to 1.0 (can exceed 1.0 if overloaded). */
@@ -90,6 +114,32 @@ export function ContextRing({
 	const center = size / 2;
 	const radius = center - strokeWidth;
 	const circumference = 2 * Math.PI * radius;
+
+	// Claude Code style breakdown: probe the fixed prompt parts once per project, the rest is messages.
+	const [probe, setProbe] = useState<PromptComposition | null>(null);
+	const [probeState, setProbeState] = useState<"idle" | "loading" | "error">("idle");
+	useEffect(() => {
+		if (!open || !sessionCwd) return;
+		let alive = true;
+		setProbeState("loading");
+		loadComposition(sessionCwd)
+			.then((c) => {
+				if (!alive) return;
+				setProbe(c);
+				setProbeState("idle");
+			})
+			.catch(() => {
+				if (!alive) return;
+				setProbe(null);
+				setProbeState("error");
+			});
+		return () => {
+			alive = false;
+		};
+	}, [open, sessionCwd]);
+	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe);
+	const segmentColor = new Map(segments.map((s) => [s.id, s.color]));
+	const cells = allocateCells(segments, rawWindow ?? 0, GRID_COLS * GRID_ROWS);
 	const strokeDashoffset = circumference * (1 - Math.min(1, fraction));
 
 	return (
@@ -153,7 +203,7 @@ export function ContextRing({
 							backgroundColor: "var(--bg)",
 							backgroundImage: "linear-gradient(var(--bg-panel), var(--bg-panel))",
 						}}
-						className="w-64 !border-[var(--line)] p-3 !shadow-apple-card"
+						className="w-72 !border-[var(--line)] p-3 !shadow-apple-card"
 					>
 						<div className="mb-2.5 flex items-center justify-between border-b border-[var(--line)] pb-2">
 							<div className="flex items-center gap-1.5 text-xs font-medium text-[var(--text)]">
@@ -188,59 +238,85 @@ export function ContextRing({
 						</div>
 
 						<div className="space-y-2.5 text-xs">
-							<div>
-								<div className="mb-1 flex justify-between text-[11px] text-[var(--text-40)]">
-									<span>窗口容量占比</span>
-									<span className="font-mono font-medium text-[var(--text)]">
-										{percentage.toFixed(1)}%
-									</span>
-								</div>
-								<div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-selected)]">
-									<div
-										style={{ width: `${Math.min(100, percentage)}%` }}
-										className={clsx(
-											"h-full rounded-full transition-all duration-300",
-											barColor,
-										)}
-									/>
-								</div>
-							</div>
-
-							{typeof rawTokens === "number" && typeof rawWindow === "number" ? (
-								<div className="space-y-1.5 border-t border-[var(--line)] pt-2 text-[11px]">
-									<div className="flex justify-between">
-										<span className="text-[var(--text-40)]">已使用 Token:</span>
+							{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 ? (
+								<>
+									<div className="flex items-baseline justify-between text-[11px]">
 										<span className="font-mono text-[var(--text)]">
-											{formatTokens(rawTokens)}
+											{compactTokens(rawTokens)} / {compactTokens(rawWindow)} token
+										</span>
+										<span className="font-mono font-medium text-[var(--text)]">
+											{percentage.toFixed(1)}%
 										</span>
 									</div>
-									<div className="flex justify-between">
-										<span className="text-[var(--text-40)]">窗口总量上限:</span>
-										<span className="font-mono text-[var(--text-60)]">
-											{formatTokens(rawWindow)}
-										</span>
-									</div>
-									<div className="flex justify-between">
-										<span className="text-[var(--text-40)]">剩余可用容量:</span>
-										<span className="font-mono text-[var(--text-60)]">
-											{formatTokens(Math.max(0, rawWindow - rawTokens))}
-										</span>
-									</div>
-								</div>
-							) : usageObj ? (
-								<div className="space-y-1 border-t border-[var(--line)] pt-2 text-[11px]">
-									{Object.entries(usageObj)
-										.filter(([k]) => k !== "percent")
-										.map(([k, v]) => (
-											<div key={k} className="flex justify-between">
-												<span className="text-[var(--text-40)]">{k}</span>
-												<span className="font-mono text-[var(--text-60)]">
-													{String(v)}
-												</span>
-											</div>
+									<div
+										className="grid gap-[2px]"
+										style={{ gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))` }}
+										aria-hidden
+									>
+										{cells.map((id, i) => (
+											<span
+												key={i}
+												className="aspect-square rounded-[2px]"
+												style={{ background: segmentColor.get(id) }}
+											/>
 										))}
-								</div>
-							) : null}
+									</div>
+									<div className="space-y-1 text-[11px]">
+										{segments
+											.filter((s) => s.tokens > 0 || s.id === "messages" || s.id === "free")
+											.map((s) => (
+												<div key={s.id} className="flex items-center gap-2">
+													<span
+														className="h-2 w-2 shrink-0 rounded-[2px]"
+														style={{ background: s.color }}
+													/>
+													<span className="flex-1 text-[var(--text-60)]">{s.label}</span>
+													<span className="font-mono text-[var(--text)]">{compactTokens(s.tokens)}</span>
+													<span className="w-12 text-right font-mono text-[var(--text-40)]">
+														{((s.tokens / rawWindow) * 100).toFixed(1)}%
+													</span>
+												</div>
+											))}
+									</div>
+									{probeState === "loading" && (
+										<div className="text-[10px] text-[var(--text-40)]">正在统计系统提示词、工具等固定部分…</div>
+									)}
+									{probeState === "error" && (
+										<div className="text-[10px] text-[var(--text-40)]">
+											固定部分统计失败，已用量全部算作对话消息
+										</div>
+									)}
+								</>
+							) : (
+								<>
+									<div>
+										<div className="mb-1 flex justify-between text-[11px] text-[var(--text-40)]">
+											<span>窗口容量占比</span>
+											<span className="font-mono font-medium text-[var(--text)]">
+												{percentage.toFixed(1)}%
+											</span>
+										</div>
+										<div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-selected)]">
+											<div
+												style={{ width: `${Math.min(100, percentage)}%` }}
+												className={clsx("h-full rounded-full transition-all duration-300", barColor)}
+											/>
+										</div>
+									</div>
+									{usageObj && (
+										<div className="space-y-1 border-t border-[var(--line)] pt-2 text-[11px]">
+											{Object.entries(usageObj)
+												.filter(([k]) => k !== "percent")
+												.map(([k, v]) => (
+													<div key={k} className="flex justify-between">
+														<span className="text-[var(--text-40)]">{k}</span>
+														<span className="font-mono text-[var(--text-60)]">{String(v)}</span>
+													</div>
+												))}
+										</div>
+									)}
+								</>
+							)}
 
 							{totalTokensStr && (
 								<div className="flex justify-between border-t border-[var(--line)] pt-2 text-[11px]">
