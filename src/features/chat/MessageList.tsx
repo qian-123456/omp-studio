@@ -72,6 +72,7 @@ import {
 import { abortTurn, sendPrompt } from "./send";
 import { CommandOutputRow } from "./slash/CommandOutputRow";
 import { RetryEpisodeRow, RetryNoticeList } from "./RetryNoticeList";
+import type { RetryNotice } from "../../stores/retryNotice";
 import { isRetryItem, withRetryEpisodes } from "./retryEpisodes";
 import { isLocalRowItem, withLocalRows } from "./localRows";
 import { RequestStatsLine } from "./RequestStatsLine";
@@ -784,6 +785,8 @@ const StreamingRow = React.memo(function StreamingRow({
 	const liveRequests = useLive(
 		(s) => s.sessions[sessionId]?.liveRequests ?? EMPTY_REQUESTS,
 	);
+	const retryNotices = useLive((s) => s.sessions[sessionId]?.retryNotices);
+	const retryFallback = useLive((s) => s.sessions[sessionId]?.retryFallback);
 	/** Which completed request each rendered tool call belongs to. */
 	const requestOfCall = useMemo(() => {
 		const byCall = new Map<string, string>();
@@ -833,8 +836,31 @@ const StreamingRow = React.memo(function StreamingRow({
 				requestId: requestOfCall.get(id),
 			});
 		};
+		// Retry rows sit where they were raised: after the requests finished
+		// by then, before whatever the retried request produces.
+		const finished = liveRequests.length;
+		const noticeGroups = new Map<number, RetryNotice[]>();
+		for (const n of retryNotices ?? []) {
+			const at = Math.min(n.anchor ?? finished, finished);
+			noticeGroups.set(at, [...(noticeGroups.get(at) ?? []), n]);
+		}
+		const lastFallbackAt = [...noticeGroups.entries()]
+			.filter(([, g]) => g.some((n) => n.kind === "fallback"))
+			.map(([at]) => at)
+			.pop();
+		const pushRetry = (at: number) => {
+			const group = noticeGroups.get(at);
+			if (!group) return;
+			out.push({
+				id: `live-retry-${group[0].id}`,
+				kind: "retry",
+				notices: group,
+				...(at === lastFallbackAt && retryFallback ? { fallback: retryFallback } : {}),
+			});
+		};
 		// Finished requests first, in arrival order: their thinking / prose /
 		// tool rows stay where they happened instead of collapsing to the top.
+		pushRetry(0);
 		liveRequests.forEach((req, reqIdx) => {
 			// A failed request (retried by omp) produced nothing: show its
 			// failure line right here, before the later requests' rows.
@@ -865,6 +891,7 @@ const StreamingRow = React.memo(function StreamingRow({
 					pushTool(part.id, undefined, undefined);
 				}
 			});
+			pushRetry(reqIdx + 1);
 		});
 		// The in-flight message comes last; only its newest thinking part can
 		// still be running, and it is the final row of the block.
@@ -957,6 +984,8 @@ const StreamingRow = React.memo(function StreamingRow({
 		ompQueue,
 		liveTools,
 		liveRequests,
+		retryNotices,
+		retryFallback,
 		toolResultsByCallId,
 		requestOfCall,
 		thinkingStartedAt,
@@ -1036,7 +1065,7 @@ const StreamingRow = React.memo(function StreamingRow({
 			);
 		}
 		// Idle streaming state: session is working but nothing emitted yet
-		if (activity.length === 0) {
+		if (!activity.some((s) => s.kind !== "retry")) {
 			nodes.push(
 				<div
 					key="live-idle"
@@ -1789,7 +1818,7 @@ export function MessageList({
 							traceGutter ? TRACE_GUTTER_PAD : "px-3",
 						)}
 					>
-						<RetryNoticeList sessionId={sessionId} />
+						{!liveVisible && <RetryNoticeList sessionId={sessionId} />}
 					</div>
 				</div>
 			</div>

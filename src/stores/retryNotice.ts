@@ -12,6 +12,9 @@ export interface RetryNotice {
 	/** Simplified Chinese status line (error text in full). */
 	text: string;
 	ts: number;
+	/** Live turn: how many model requests had finished when the row was raised,
+	 * so the row renders at that point of the step flow instead of the tail. */
+	anchor?: number;
 }
 
 /** A model switch made by omp's fallback chain, kept so the user can undo it. */

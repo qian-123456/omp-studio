@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useLive } from "./live";
+import { emptySessionLive, useLive } from "./live";
 import { retryNoticeFromFrame, retrySummary } from "./retryNotice";
 
 const SID = "s1";
@@ -53,9 +53,37 @@ describe("live reducer retry notices", () => {
 
 	it("records the original model from session state when the event omits it", () => {
 		useLive.setState({
-			sessions: { [SID]: { ...useLive.getState().sessions[SID], state: { model: "g/gem", thinkingLevel: "high" } } as never },
+			sessions: { [SID]: { ...emptySessionLive(), state: { model: "g/gem", thinkingLevel: "high" } } as never },
 		});
 		frame({ type: "retry_fallback_applied", to: "b/y" });
 		expect(useLive.getState().sessions[SID].retryFallback).toMatchObject({ from: "g/gem", to: "b/y", thinking: "high" });
+	});
+
+	it("anchors each row to the requests finished when it was raised", () => {
+		const done = (n: number) => ({ id: `r${n}`, toolCallIds: [], parts: [], stat: {} }) as never;
+		frame({ type: "auto_retry_start", attempt: 1 });
+		useLive.setState({
+			sessions: { [SID]: { ...useLive.getState().sessions[SID], liveRequests: [done(1), done(2)] } },
+		});
+		frame({ type: "auto_retry_end", success: true, attempt: 1 });
+		expect(notices().map((n) => n.anchor)).toEqual([0, 2]);
+	});
+
+	it.each([
+		["a transport error", { type: "error", message: "socket closed" }],
+		["a failed prompt response", { type: "response", command: "prompt", success: false, error: "boom" }],
+		["a prompt_result", { type: "prompt_result", status: "ok" }],
+	])("settles live rows when %s ends the turn", (_name, f) => {
+		frame({ type: "auto_retry_start", attempt: 1 });
+		frame(f);
+		expect(notices()).toHaveLength(0);
+		expect(useLive.getState().sessions[SID].retryHistory).toHaveLength(1);
+	});
+
+	it("settles live rows when the process exits", () => {
+		frame({ type: "auto_retry_start", attempt: 1 });
+		useLive.getState().reduceProcess({ sessionId: SID, running: false, exitCode: 1 });
+		expect(notices()).toHaveLength(0);
+		expect(useLive.getState().sessions[SID].retryHistory).toHaveLength(1);
 	});
 });

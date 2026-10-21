@@ -75,7 +75,27 @@ function UndoFallbackButton({
 	);
 }
 
-/** Live rows of the turn in progress. */
+/** Retry rows of one point in a turn's step flow (+ the undo pill for a fallback). */
+export function RetryNoticeRows({
+	sessionId,
+	notices,
+	fallback,
+}: {
+	sessionId: string;
+	notices: readonly RetryNotice[];
+	fallback?: FallbackInfo;
+}): JSX.Element {
+	return (
+		<div className="my-0.5 flex flex-col gap-0.5" data-retry-notices>
+			<RetryLines notices={notices} />
+			<div className="pl-3.5">
+				<UndoFallbackButton sessionId={sessionId} fallback={fallback} />
+			</div>
+		</div>
+	);
+}
+
+/** Live rows not carried by a streaming row (no turn on screen to place them in). */
 export function RetryNoticeList({
 	sessionId,
 }: {

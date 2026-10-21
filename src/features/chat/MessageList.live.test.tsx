@@ -133,4 +133,44 @@ describe("MessageList live turn", () => {
 		expect(container.querySelector("#msg-live")).toBeNull();
 		expect(screen.queryByText(/已处理|正在处理/)).toBeNull();
 	});
+
+	it("keeps retry rows at the point they happened, not pinned under newer steps", () => {
+		const stat = (error: string | null) => ({ error, startedAt: 1, completedAt: 2, durationMs: 1000 });
+		const req = (id: string, error: string | null, toolCallIds: string[] = []) => ({
+			id,
+			toolCallIds,
+			parts: toolCallIds.map((tid) => ({ kind: "tool", id: tid })),
+			stat: stat(error),
+		});
+		useLive.setState({
+			sessions: {
+				s1: {
+					...emptySessionLive(),
+					alive: true,
+					streaming: true,
+					items: [item({ id: "u1", kind: "user", text: "go" })],
+					streamingMessage: streamingMessage("later work"),
+					liveRequests: [req("q1", "socket closed"), req("q2", null, ["c9"])] as never,
+					tools: {
+						c9: { toolCallId: "c9", toolName: "bash", args: { command: "echo hi" }, intent: "Later step", status: "done", text: "", details: null, startedAt: 1 },
+					} as never,
+					// Raised after q1 failed; the turn then kept working (q2).
+					retryNotices: [
+						{ id: 1, kind: "retry", tone: "warn", text: "RETRY-ROW", ts: 1, anchor: 1 },
+					],
+				},
+			},
+		});
+		const { container } = mount("s1");
+		const retry = container.querySelector("[data-retry-notices]");
+		const later = screen.getByText(/Later step/);
+		expect(retry).not.toBeNull();
+		// The retry row precedes the step that ran after the retry succeeded.
+		expect(
+			retry!.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		// ...and is rendered once, inside the live row (no tail copy).
+		expect(container.querySelectorAll("[data-retry-notices]")).toHaveLength(1);
+		expect(container.querySelector("#msg-live")?.contains(retry)).toBe(true);
+	});
 });

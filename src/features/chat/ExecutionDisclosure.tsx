@@ -27,6 +27,8 @@ import { isTaskTool, TaskToolBlock } from "./subagents/TaskToolBlock";
 import { ToolCard, type ToolStatus } from "./ToolCard";
 import { ThinkingPreview } from "./ThinkingPreview";
 import { RequestStatsLine, TurnSummaryRows } from "./RequestStatsLine";
+import { RetryNoticeRows } from "./RetryNoticeList";
+import type { FallbackInfo, RetryNotice } from "../../stores/retryNotice";
 import type { RequestStat } from "./requestStats";
 import {
 	type ActivityGroupKind,
@@ -68,6 +70,8 @@ export type StepShape =
 			requestId?: string;
 	  }
 	| { id: string; kind: "notice"; item: TranscriptItem }
+	/** Live retry / fallback rows, placed where they happened in the step flow. */
+	| { id: string; kind: "retry"; notices: RetryNotice[]; fallback?: FallbackInfo }
 	| { id: string; kind: "steer"; text: string; item?: TranscriptItem }
 	| {
 			id: string;
@@ -560,6 +564,15 @@ export function TurnSteps({
 					<div key={step.id} id={`msg-${step.id}`} className="flex flex-col items-end gap-1.5 py-1">
 						<UserMessageBubble text={step.item?.text ?? step.text} images={step.item?.images} />
 					</div>
+				);
+			case "retry":
+				return (
+					<RetryNoticeRows
+						key={step.id}
+						sessionId={sessionId}
+						notices={step.notices}
+						fallback={step.fallback}
+					/>
 				);
 			case "request-failed": {
 				const id = step.requestId ?? step.item?.id;

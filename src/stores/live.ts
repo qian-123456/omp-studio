@@ -929,7 +929,10 @@ function reduce(
 			// one thread entry (see archiveRetry).
 			const next: SessionLive = {
 				...live,
-				retryNotices: [...(live.retryNotices ?? []), { ...n, id: nextOutputId++ }].slice(-20),
+				retryNotices: [
+					...(live.retryNotices ?? []),
+					{ ...n, id: nextOutputId++, anchor: live.liveRequests.length },
+				].slice(-20),
 			};
 			if (frame.type !== "retry_fallback_applied") return next;
 			const to = modelLabel(frame.to);
@@ -1013,6 +1016,7 @@ function reduce(
 						streamingMessage: null,
 						tools: {},
 						liveRequests: [],
+						...archiveRetry(live, Date.now()),
 						pendingCommand: null,
 						commandOutputs: [
 							...live.commandOutputs,
@@ -1035,12 +1039,20 @@ function reduce(
 				streamingMessage: null,
 				tools: {},
 				liveRequests: [],
+				...archiveRetry(live, Date.now()),
 				pendingCommand: null,
 			};
 		}
 		case "error": {
 			// Transport/process errors (e.g. socket closed) must not leave a turn stuck.
-			return { ...live, streaming: false, streamingMessage: null, tools: {}, liveRequests: [] };
+			return {
+				...live,
+				streaming: false,
+				streamingMessage: null,
+				tools: {},
+				liveRequests: [],
+				...archiveRetry(live, Date.now()),
+			};
 		}
 		case "subagent_lifecycle": {
 			// Frame: {type, payload:{id, agent, agentSource, description?, status,
@@ -1131,6 +1143,7 @@ function reduce(
 						streamingMessage: null,
 						tools: {},
 						liveRequests: [],
+						...archiveRetry(live, Date.now()),
 						pendingCommand: null,
 					};
 					if (!pendingCommand || !str(frame.error).trim()) return failed;
@@ -1344,6 +1357,7 @@ export const useLive = create<LiveState>((set) => ({
 						pendingUi: [],
 						tools: {},
 						liveRequests: [],
+						...archiveRetry(live, Date.now()),
 					};
 			void exitCode;
 			return { sessions: { ...s.sessions, [sessionId]: next } };
