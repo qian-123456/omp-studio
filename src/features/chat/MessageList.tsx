@@ -1100,14 +1100,17 @@ const StreamingRow = React.memo(function StreamingRow({
 		}
 		// Between model moves nothing is running: keep a 「正在思考」 row at the
 		// bottom, like Codex, so the turn never looks stalled.
+		// A tool counts as running when omp says so, or when it is the trailing
+		// call still being written (no live entry, no result yet). Older
+		// result-less rows are finished history and must not hide the wait row.
 		const busy = activity.some(
-			(s) =>
+			(s, i) =>
 				(s.kind === "thinking" && s.running) ||
 				(s.kind === "text" && s.streaming) ||
 				(s.kind === "tool" &&
 					!s.result &&
-					liveTools[s.call.id]?.status !== "done" &&
-					liveTools[s.call.id]?.status !== "error"),
+					(liveTools[s.call.id]?.status === "running" ||
+						(i === activity.length - 1 && !liveTools[s.call.id]))),
 		);
 		if (!busy && !holding) nodes.push(<LiveWaitingRow key="live-waiting" />);
 	} else {
