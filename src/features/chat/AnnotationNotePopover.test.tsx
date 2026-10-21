@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Annotation, useComposer } from "../../stores/composer";
 import { AnnotationHoverCard, AnnotationNotePopover } from "./AnnotationNotePopover";
@@ -50,10 +51,10 @@ describe("AnnotationNotePopover", () => {
 		expect(screen.getByText("删除")).toBeTruthy();
 	});
 
-	it("saves on outside mousedown", () => {
+	it("saves on outside pointerdown", () => {
 		const onClose = mount();
 		fireEvent.change(screen.getByRole("textbox"), { target: { value: "新的" } });
-		fireEvent.mouseDown(document.body);
+		fireEvent.pointerDown(document.body);
 		expect(useComposer.getState().annotations.s1[0].comment).toBe("新的");
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
@@ -75,6 +76,50 @@ describe("AnnotationNotePopover", () => {
 		});
 		expect(useComposer.getState().annotations.s1[0].comment).toBe("滚动");
 		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
+	it("still closes on outside pointerdown after the scroll target appears (re-run of effects)", () => {
+		const onClose = vi.fn();
+		const el = (t?: HTMLElement) => (
+			<AnnotationNotePopover
+				anchor={anchor}
+				storeKey="s1"
+				annotation={ann("a1", "old")}
+				n={1}
+				scrollTarget={t}
+				onClose={onClose}
+			/>
+		);
+		const { rerender } = render(el(undefined));
+		rerender(el(document.createElement("div")));
+		fireEvent.change(screen.getByRole("textbox"), { target: { value: "保留" } });
+		fireEvent.pointerDown(document.body);
+		expect(useComposer.getState().annotations.s1[0].comment).toBe("保留");
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
+	it("closes on outside pointerdown under StrictMode", () => {
+		const onClose = vi.fn();
+		render(
+			<StrictMode>
+				<AnnotationNotePopover
+					anchor={anchor}
+					storeKey="s1"
+					annotation={ann("a1", "old")}
+					n={1}
+					onClose={onClose}
+				/>
+			</StrictMode>,
+		);
+		fireEvent.pointerDown(document.body);
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not close on pointerdown inside the (portaled) popover", () => {
+		const onClose = mount();
+		fireEvent.pointerDown(screen.getByRole("textbox"));
+		fireEvent.pointerDown(screen.getByTestId("annotation-note-popover"));
+		expect(onClose).not.toHaveBeenCalled();
 	});
 
 	it("deletes only that annotation", () => {

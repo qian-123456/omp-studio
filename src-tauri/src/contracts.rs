@@ -149,6 +149,11 @@ pub struct SessionMeta {
     /// SessionGroup inside this mode's 无项目 area; only sessions whose
     /// resolved workspace is the mode's global workspace can be grouped.
     pub group_id: Option<String>,
+    /// True when this app created or has opened/continued the session (it
+    /// spawned an RPC process for it); false = plain-CLI session. CLI-only
+    /// sessions are excluded from the inbox and its unread badges.
+    #[serde(default)]
+    pub created_by_app: bool,
 }
 
 /// Per-session inbox attention kind (sidebar status marker hub).

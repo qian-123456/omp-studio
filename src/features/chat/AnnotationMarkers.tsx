@@ -211,6 +211,14 @@ function MarkerLayer({
 	const side = useComposer((s) => s.annotations[sideChatAnnKey(sessionId)] ?? EMPTY_ANNOTATIONS);
 	const storeKeyOf = (kind: MarkerKind) => (kind === "main" ? sessionId : sideChatAnnKey(sessionId));
 	const [active, setActive] = useState<{ id: string; anchor: Anchor } | null>(null);
+	// The popover closes on pointerdown; the click that follows on the same
+	// marker/text must not reopen it (re-click = toggle closed).
+	const closedAt = useRef<{ id: string; at: number } | null>(null);
+	const pressClosed = useCallback((id: string) => {
+		const c = closedAt.current;
+		closedAt.current = null;
+		return !!c && c.id === id && performance.now() - c.at < 600;
+	}, []);
 	const [hover, setHover] = useState<{ id: string; anchor: Anchor } | null>(null);
 	const hoverTimer = useRef<number | undefined>(undefined);
 	const pendingHover = useRef<string | null>(null);
@@ -321,6 +329,7 @@ function MarkerLayer({
 			const h = hit(e.clientX, e.clientY);
 			if (!h) return;
 			aim(null);
+			if (pressClosed(h.m.id)) return;
 			setActive({ id: h.m.id, anchor: h.rect });
 		};
 		container.addEventListener("mousemove", onMove);
@@ -332,7 +341,7 @@ function MarkerLayer({
 			container.removeEventListener("mouseleave", onLeave);
 			container.removeEventListener("click", onClick);
 		};
-	}, [containerRef, aim]);
+	}, [containerRef, aim, pressClosed]);
 
 	// Session switch: drop any open popover / pending hover.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset keyed on the session
@@ -364,6 +373,7 @@ function MarkerLayer({
 						aria-label={m.title}
 						onClick={(e) => {
 							aim(null);
+							if (pressClosed(m.id)) return;
 							setActive({ id: m.id, anchor: e.currentTarget });
 						}}
 						onMouseEnter={(e) => aim(m.id, e.currentTarget)}
@@ -383,7 +393,10 @@ function MarkerLayer({
 					annotation={activeAnn}
 					n={activeMarker.n}
 					scrollTarget={containerRef.current}
-					onClose={() => setActive(null)}
+					onClose={() => {
+						closedAt.current = { id: active.id, at: performance.now() };
+						setActive(null);
+					}}
 				/>
 			)}
 			{hover && hoverMarker && hoverAnn && (

@@ -6,12 +6,8 @@
  * selected (copy workflows). */
 
 import { useEffect, type RefObject } from "react";
-import { MODAL_SELECTOR } from "../../components/FloatingLayer";
-import { ownsTarget, SESSION_VIEW_ATTR } from "./useTypeToFocus";
+import { otherSurfaceOwnsFocus, ownsTarget, SESSION_VIEW_ATTR } from "./useTypeToFocus";
 
-/** Open floating surfaces that own focus; toasts and pills never do. */
-const BLOCKING =
-	`${MODAL_SELECTOR}, [data-layer]:not([data-layer="toast"]):not([data-layer="pill"]), [role="dialog"], [role="menu"], [role="listbox"]`;
 /** Closing any of these hands focus back. */
 const LAYER = '[data-layer], [role="dialog"], [role="menu"], [role="listbox"]';
 /** Clicks on these keep their own focus behaviour. */
@@ -29,7 +25,7 @@ export function restoreComposerFocus(
 	if (typeof ta.checkVisibility === "function" && !ta.checkVisibility()) return false;
 	const active = document.activeElement;
 	if (active && active !== document.body && active !== document.documentElement) return false;
-	if (document.querySelector(BLOCKING)) return false;
+	if (otherSurfaceOwnsFocus(ta)) return false;
 	if (window.getSelection()?.isCollapsed === false) return false;
 	if (clickTarget) {
 		const view = clickTarget.closest(`[${SESSION_VIEW_ATTR}]`);

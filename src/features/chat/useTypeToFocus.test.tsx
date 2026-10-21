@@ -98,6 +98,22 @@ describe("useTypeToFocus", () => {
 		fireEvent.keyDown(document.body, { key: "q" });
 		expect(document.activeElement).toBe(getByTestId("ta-main"));
 	});
+
+	it("does not redirect keys while an ideas-style popover is open, even if its field blurred", () => {
+		const { getByTestId } = render(<Harness id="a" />);
+		const pop = document.createElement("div");
+		pop.setAttribute("data-layer", "popover");
+		const idea = document.createElement("textarea");
+		pop.append(idea);
+		document.body.append(pop);
+		idea.focus();
+		fireEvent.keyDown(idea, { key: "h" });
+		expect(document.activeElement).toBe(idea);
+		idea.blur();
+		fireEvent.keyDown(document.body, { key: "h" });
+		expect(document.activeElement).not.toBe(getByTestId("ta-a"));
+		pop.remove();
+	});
 });
 
 describe("useTypeToFocus with an active IME", () => {

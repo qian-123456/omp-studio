@@ -96,6 +96,18 @@ function StatusLine({ state }: { state: SaveState }) {
 	return null;
 }
 
+/**
+ * Always-mounted status slot under a control. Reserving a fixed-height line keeps the row
+ * (and the dialog scroll height) identical whether the save status is shown or not.
+ */
+function StatusSlot({ state }: { state: SaveState }) {
+	return (
+		<div className="flex min-h-4 items-center">
+			<StatusLine state={state} />
+		</div>
+	);
+}
+
 /** Pending / saved / error feedback for one control; `run` performs one write in ctx.scope. */
 function useSave(ctx: AssignmentContext, table: AssignmentTable, name: string) {
 	const [state, setState] = useState<SaveState>({ status: "idle" });
@@ -293,64 +305,68 @@ function RowEditor({
 	return (
 		<div className="space-y-1.5">
 			<Step win={mode === "pinned"} label="专属模型">
-				<div className="flex min-w-0 flex-wrap items-center gap-1.5">
-					<ModelSelect
-						roles={ctx.roles}
-						disabled={literal.locked}
-						closeOnSelect
-						direction="down"
-						align="start"
-						widthClass="w-[360px]"
-						label={pinned ? parseSelection(shown ?? "").selector : "选择模型"}
-						buttonClass={`${MODEL_PICKER_BUTTON_CLASS} ${pinned ? "" : "italic text-[var(--text-muted)]"}`}
-						models={ctx.models}
-						currentValue={pinned ? (shown ?? "") : ""}
-						thinking
-						allowCustom
-						onSelect={pickModel}
-					/>
-					{isLiteral(committed) && (
-						<Button
-							variant="ghost"
-							size="sm"
+				<div className="min-w-0">
+					<div className="flex min-w-0 flex-wrap items-center gap-1.5">
+						<ModelSelect
+							roles={ctx.roles}
 							disabled={literal.locked}
-							onClick={() => void literal.run(null, "已清除")}
-							aria-label={`清除专属模型：${subject}（${scopeLabel}）`}
-						>
-							清除
-						</Button>
-					)}
-					<StatusLine state={literal.state} />
+							closeOnSelect
+							direction="down"
+							align="start"
+							widthClass="w-[360px]"
+							label={pinned ? parseSelection(shown ?? "").selector : "选择模型"}
+							buttonClass={`${MODEL_PICKER_BUTTON_CLASS} ${pinned ? "" : "italic text-[var(--text-muted)]"}`}
+							models={ctx.models}
+							currentValue={pinned ? (shown ?? "") : ""}
+							thinking
+							allowCustom
+							onSelect={pickModel}
+						/>
+						{isLiteral(committed) && (
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={literal.locked}
+								onClick={() => void literal.run(null, "已清除")}
+								aria-label={`清除专属模型：${subject}（${scopeLabel}）`}
+							>
+								清除
+							</Button>
+						)}
+					</div>
+					<StatusSlot state={literal.state} />
 				</div>
 			</Step>
 			<Step win={mode === "reuse"} label="复用角色模型">
-				<div className="flex min-w-0 flex-wrap items-center gap-1.5">
-					<NativeSelect
-						aria-label={`复用角色模型：${subject}（${scopeLabel}）`}
-						value={reuseValue}
-						disabled={reuse.locked}
-						onChange={(e) => pickRole(e.target.value)}
-						className="text-[11px]"
-						containerClassName="w-[340px] max-w-full"
-					>
-						{(!isAgent || pinned) && <option value="">{noneLabel}</option>}
-						{roleChoices.map((c) => {
-							const v = `@${c.name}`;
-							return (
-								<option key={c.name} value={v}>
-									{v}
-									{tagOf(v)} → {c.model ?? "未设置"}
+				<div className="min-w-0">
+					<div className="flex min-w-0 flex-wrap items-center gap-1.5">
+						<NativeSelect
+							aria-label={`复用角色模型：${subject}（${scopeLabel}）`}
+							value={reuseValue}
+							disabled={reuse.locked}
+							onChange={(e) => pickRole(e.target.value)}
+							className="text-[11px]"
+							containerClassName="w-[340px] max-w-full"
+						>
+							{(!isAgent || pinned) && <option value="">{noneLabel}</option>}
+							{roleChoices.map((c) => {
+								const v = `@${c.name}`;
+								return (
+									<option key={c.name} value={v}>
+										{v}
+										{tagOf(v)} → {c.model ?? "未设置"}
+									</option>
+								);
+							})}
+							{verbatim && shown !== null && (
+								<option value={shown}>
+									{shown}
+									{row.effective.model ? ` → ${row.effective.model}` : ""}
 								</option>
-							);
-						})}
-						{verbatim && shown !== null && (
-							<option value={shown}>
-								{shown}
-								{row.effective.model ? ` → ${row.effective.model}` : ""}
-							</option>
-						)}
-					</NativeSelect>
-					<StatusLine state={reuse.state} />
+							)}
+						</NativeSelect>
+					</div>
+					<StatusSlot state={reuse.state} />
 				</div>
 				<button
 					type="button"

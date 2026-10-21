@@ -36,6 +36,8 @@ pub struct MetaRow {
     /// "side" | "fork" | None; legacy side chats (fork_depth > 0 created by
     /// the app, kind NULL) are projected as "side".
     pub kind: Option<String>,
+    /// App created or took over the session (`session_meta.created_by_app`).
+    pub created_by_app: bool,
 }
 
 pub fn pending_to_str(p: PendingKind) -> &'static str {
@@ -79,7 +81,8 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
         "SELECT session_id, custom_name, label, pinned, archived, parent_session_id, fork_depth,
                 workspace_id, unread, pending_kind, pending_since, accepted_at, suspended, seq,
                 cwd_override, last_seen_at, mode, group_id,
-                COALESCE(kind, CASE WHEN fork_depth > 0 AND created_by_app = 1 THEN 'side' END)
+                COALESCE(kind, CASE WHEN fork_depth > 0 AND created_by_app = 1 THEN 'side' END),
+                created_by_app
          FROM session_meta WHERE ?1 IS NULL OR session_id = ?1",
     )?;
     let rows = stmt.query_map(params![id], |r| {
@@ -105,6 +108,7 @@ fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<S
                 mode: SpaceMode::from_str_lossy(&r.get::<_, String>(16)?),
                 group_id: r.get(17)?,
                 kind: r.get(18)?,
+                created_by_app: r.get::<_, i64>(19)? != 0,
             },
         ))
     })?;
@@ -247,6 +251,17 @@ pub fn apply_patch(conn: &Connection, id: &str, patch: &SessionMetaPatch) -> rus
 pub fn delete_row(conn: &Connection, id: &str) -> rusqlite::Result<()> {
     conn.execute(
         "DELETE FROM session_meta WHERE session_id = ?1",
+        params![id],
+    )?;
+    Ok(())
+}
+
+/// Mark a session app-owned (created, opened or continued by this app).
+/// Idempotent; never touches other columns of an existing row.
+pub fn mark_created_by_app(conn: &Connection, id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO session_meta(session_id, created_by_app) VALUES(?1, 1)
+         ON CONFLICT(session_id) DO UPDATE SET created_by_app = 1",
         params![id],
     )?;
     Ok(())

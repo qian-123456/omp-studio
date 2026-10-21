@@ -221,6 +221,19 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         )?;
         conn.pragma_update(None, "user_version", 15)?;
     }
+    // v16: `session_meta.created_by_app` (column exists since v1) now marks every
+    // app-owned session, not only forks/side chats. Backfill rows that show app
+    // involvement (space/group/kind set, or viewed/accepted in the app); other
+    // legacy rows are treated as plain-CLI until the app opens/continues them.
+    if version < 16 {
+        conn.execute_batch(
+            "UPDATE session_meta SET created_by_app = 1
+             WHERE created_by_app = 0
+               AND (mode <> 'code' OR group_id IS NOT NULL OR kind IS NOT NULL
+                    OR last_seen_at IS NOT NULL OR accepted_at IS NOT NULL);",
+        )?;
+        conn.pragma_update(None, "user_version", 16)?;
+    }
     Ok(())
 }
 
@@ -300,7 +313,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -323,7 +336,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 15);
+        assert_eq!(v3, 16);
     }
 
     #[test]
@@ -333,7 +346,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 15);
+        assert_eq!(v, 16);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -360,7 +373,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 15);
+        assert_eq!(v, 16);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(schedules)")
             .unwrap()
@@ -435,7 +448,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 15);
+        assert_eq!(v, 16);
         // Pre-existing row inherits the documented defaults.
         let (notify, new_chat): (String, i64) = conn
             .query_row(
@@ -530,7 +543,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 15);
+        assert_eq!(v, 16);
         // Pre-existing row: NULL cap, zero runs.
         let (max_runs, runs_done): (Option<i64>, i64) = conn
             .query_row(
@@ -590,7 +603,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 15);
+        assert_eq!(v, 16);
         // Pre-existing rows default to code.
         let mode: String = conn
             .query_row(
@@ -735,7 +748,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 15);
+        assert_eq!(v, 16);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(model_replace_log)")
             .unwrap()

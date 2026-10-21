@@ -133,6 +133,14 @@ pub async fn start(state: &AppState, opts: &StartOpts) -> Result<LiveSessionInfo
         let _ = process::stop_handle(&handle).await;
         return Err("omp did not report a sessionId".into());
     }
+    // Spawning an RPC process for the session (new or resumed) makes it
+    // app-owned: CLI sessions the user continues here join the inbox.
+    {
+        let db = state.db.lock();
+        if let Err(e) = catalog::store::mark_created_by_app(&db, &session_id) {
+            tracing::warn!("mark session app-owned {session_id}: {e}");
+        }
+    }
     {
         let db = state.db.lock();
         if let Err(e) =

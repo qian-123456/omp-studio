@@ -506,13 +506,15 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 						const Icon = tab.icon;
 						const badge = tabBadges[tab.id] ?? 0;
 						const isOpen = openRightTabs.includes(tab.id) && tab.id !== "sidechat";
+						const sideChatBlocked = tab.id === "sidechat" && !selectedId;
 						return (
 							<button
 								key={tab.id}
 								type="button"
+								disabled={sideChatBlocked}
+								title={sideChatBlocked ? "请先选择一个会话，辅助对话依附于当前会话" : undefined}
 								onClick={() => {
 									if (tab.id === "sidechat") {
-										// Side chats hang off the selected session; without one there is nothing to open.
 										if (!selectedId) return;
 										openNewSideChat(selectedId);
 									} else setRightTab(tab.id);
@@ -520,9 +522,11 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 								}}
 								className={clsx(
 									"flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors",
-									activeTab === tab.id
-										? "bg-neutral-800 font-medium text-neutral-100"
-										: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
+									sideChatBlocked
+										? "cursor-not-allowed text-neutral-600"
+										: activeTab === tab.id
+											? "bg-neutral-800 font-medium text-neutral-100"
+											: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
 								)}
 							>
 								<div className="flex items-center gap-2.5">

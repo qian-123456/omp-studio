@@ -76,7 +76,7 @@ pub fn inbox_badge_count(
     };
     metas
         .iter()
-        .filter(|m| !m.archived)
+        .filter(|m| !m.archived && m.created_by_app)
         .filter(|m| match m.attention {
             Some(Attention::Awaiting) => true,
             Some(Attention::Error | Attention::Unread) => in_window(m),
@@ -196,6 +196,7 @@ mod tests {
             attention: a,
             updated_at: updated.into(),
             archived,
+            created_by_app: true,
             ..Default::default()
         };
         let recent = "2026-01-01T12:00:00Z";
@@ -209,6 +210,11 @@ mod tests {
             mk(Some(Attention::Running), recent, false), // not counted
             mk(None, recent, false),
             mk(Some(Attention::Awaiting), recent, true), // archived
+            SessionMeta {
+                // plain-CLI session: not counted
+                created_by_app: false,
+                ..mk(Some(Attention::Awaiting), recent, false)
+            },
         ];
         assert_eq!(inbox_badge_count(&metas, now, 24), 3);
         assert_eq!(inbox_badge_count(&metas, now, 48), 4);

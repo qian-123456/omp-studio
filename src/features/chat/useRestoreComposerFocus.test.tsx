@@ -98,4 +98,28 @@ describe("useRestoreComposerFocus", () => {
 		await flush();
 		expect(document.activeElement).not.toBe(getByTestId("ta"));
 	});
+
+	it("never pulls focus from a portaled popover textarea (ideas capture) on layer churn", async () => {
+		const { getByTestId } = render(<Harness />);
+		await flush();
+		const ta = getByTestId("ta");
+		const pop = document.createElement("div");
+		pop.setAttribute("data-layer", "popover");
+		const idea = document.createElement("textarea");
+		pop.append(idea);
+		document.body.append(pop);
+		idea.focus();
+		// A toast mounting/unmounting (streaming state change) triggers the restore path.
+		const toast = document.createElement("div");
+		toast.setAttribute("data-layer", "toast");
+		document.body.append(toast);
+		toast.remove();
+		await flush();
+		expect(document.activeElement).toBe(idea);
+		// Transient blur of the idea field while the popover stays open: still no restore.
+		idea.blur();
+		click(document.body);
+		await flush();
+		expect(document.activeElement).not.toBe(ta);
+	});
 });

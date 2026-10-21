@@ -12,6 +12,23 @@ export const SESSION_VIEW_ATTR = "data-session-view";
 const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 /** Floating menus/popovers/dialogs own their keystrokes (type-ahead, shortcuts). */
 const OWNS_KEYS = '[data-layer], [role="dialog"], [role="menu"], [role="listbox"], [role="tree"], [role="grid"]';
+/** Open surfaces that own the keyboard; toasts and pills never do. */
+const OPEN_SURFACE = `${MODAL_SELECTOR}, [data-layer]:not([data-layer="toast"], [data-layer="pill"], [data-layer="hovercard"], [role="status"]), [role="dialog"], [role="menu"], [role="listbox"], [role="tree"], [role="grid"]`;
+
+/** True while another editable element holds focus or any floating surface (popover,
+ * menu, dialog, possibly portaled outside the composer tree) is open. The composer
+ * must then neither steal focus nor redirect keystrokes: a transient blur of the
+ * surface's own field (re-render, streaming update) would otherwise let the next
+ * key land in the composer. `ta` itself holding focus does not count. */
+export function otherSurfaceOwnsFocus(ta: HTMLTextAreaElement | null): boolean {
+	const active = document.activeElement;
+	if (active && active !== ta && active !== document.body && active !== document.documentElement) {
+		if (active.closest(EDITABLE) || (active as HTMLElement).isContentEditable || active.closest(OWNS_KEYS)) {
+			return true;
+		}
+	}
+	return document.querySelector(OPEN_SURFACE) !== null;
+}
 
 /** True for keys that would have inserted text (or pasted it) had a field been focused. */
 function isTextKey(e: KeyboardEvent): boolean {
@@ -37,7 +54,7 @@ export function shouldRedirectKey(e: KeyboardEvent, ta: HTMLTextAreaElement, com
 	const target = e.target instanceof Element ? e.target : null;
 	if (target === ta) return false;
 	if (target?.closest(EDITABLE) || (target as HTMLElement | null)?.isContentEditable) return false;
-	if (target?.closest(OWNS_KEYS) || document.querySelector(MODAL_SELECTOR)) return false;
+	if (target?.closest(OWNS_KEYS) || otherSurfaceOwnsFocus(ta)) return false;
 	return ownsTarget(target, ta, compact);
 }
 

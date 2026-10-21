@@ -12,6 +12,7 @@ import React from "react";
 import { deriveLoadState } from "../lib/loadState";
 import { useSessions } from "../stores/sessions";
 import { type RightTab, useUi } from "../stores/ui";
+import { openNewSideChat } from "../features/sidechat/viewStore";
 
 interface RightPanelEmptyStateProps {
 	tabBadges: Record<RightTab, number>;
@@ -19,6 +20,7 @@ interface RightPanelEmptyStateProps {
 
 export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 	const setRightTab = useUi((s) => s.setRightTab);
+	const selectedId = useUi((s) => s.selectedSessionId);
 	const toggleRight = useUi((s) => s.toggleRight);
 	// Tab badges are derived from the session index; show a placeholder until it arrives.
 	const badgesLoading =
@@ -104,12 +106,25 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 						{PRIMARY_OPTIONS.map((opt) => {
 							const Icon = opt.icon;
 							const badge = tabBadges[opt.id] ?? 0;
+							const blocked = opt.id === "sidechat" && !selectedId;
 							return (
 								<button
 									key={opt.id}
 									type="button"
-									onClick={() => setRightTab(opt.id)}
-									className="group flex w-full items-center justify-between rounded-xl border border-neutral-800/80 bg-neutral-800/40 p-3 text-left transition-all hover:border-neutral-700/80 hover:bg-neutral-800 hover:shadow-lg hover:shadow-neutral-950/20 active:scale-[0.99]"
+									disabled={blocked}
+									title={blocked ? "请先选择一个会话，辅助对话依附于当前会话" : undefined}
+									onClick={() => {
+										// A side-chat group only exists while it has chats: open a blank one.
+										if (opt.id === "sidechat") {
+											if (selectedId) openNewSideChat(selectedId);
+										} else setRightTab(opt.id);
+									}}
+									className={clsx(
+										"group flex w-full items-center justify-between rounded-xl border border-neutral-800/80 bg-neutral-800/40 p-3 text-left transition-all",
+										blocked
+											? "cursor-not-allowed opacity-40"
+											: "hover:border-neutral-700/80 hover:bg-neutral-800 hover:shadow-lg hover:shadow-neutral-950/20 active:scale-[0.99]",
+									)}
 								>
 									<div className="flex items-center gap-3">
 										<Icon

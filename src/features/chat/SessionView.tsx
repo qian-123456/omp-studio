@@ -15,7 +15,7 @@ import {
 	rpcPendingUi,
 	rpcSend,
 } from "../../lib/ipc";
-import { useLive } from "../../stores/live";
+import { holdTranscript, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { toast } from "../../lib/toast";
@@ -99,6 +99,10 @@ export function SessionView({
 			.catch(() => setTurns([]));
 	}, [sessionFile]);
 	useEffect(loadTurns, [loadTurns]);
+
+	// Let the live store drop this transcript once the view is gone (compact
+	// side chats are read by hand-back after they close, so they stay).
+	useEffect(() => (compact ? undefined : holdTranscript(sessionId)), [sessionId, compact]);
 
 	const [isLoadingTranscript, setIsLoadingTranscript] = useState(true);
 	const [emptyState, setEmptyState] = useState(false);

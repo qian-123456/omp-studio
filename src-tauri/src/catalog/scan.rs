@@ -310,6 +310,7 @@ pub fn build_meta(
         model: s.tail.model.clone(),
         mode,
         group_id,
+        created_by_app: row.created_by_app,
         ..Default::default()
     }
 }

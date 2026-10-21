@@ -82,6 +82,8 @@ export interface SessionMeta {
 	mode: SpaceMode;
 	/** SessionGroup id inside the mode's 无项目 area; only global-workspace sessions. */
 	groupId: string | null;
+	/** True when this app created or opened/continued the session; false = plain-CLI session (excluded from inbox + badge). Absent = app-owned. */
+	createdByApp?: boolean;
 }
 
 /** Inbox / sidebar attention kind, one per session (precedence top→bottom). */

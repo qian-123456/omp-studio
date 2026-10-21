@@ -975,7 +975,7 @@ struct InboxGroups {
 fn group_inbox(metas: &[SessionMeta], now: DateTime<Utc>, window_hours: u32) -> InboxGroups {
     let cutoff = now.timestamp_millis() - i64::from(window_hours.clamp(1, 720)) * 3_600_000;
     let mut g = InboxGroups::default();
-    for s in metas.iter().filter(|s| !s.archived) {
+    for s in metas.iter().filter(|s| !s.archived && s.created_by_app) {
         let Some(kind) = s.attention else { continue };
         let expired = !matches!(kind, Attention::Awaiting | Attention::Running)
             && DateTime::parse_from_rfc3339(&s.updated_at)
@@ -2076,6 +2076,7 @@ mod tests {
         let mk = |id: &str, k: Attention, ts: &str| {
             let mut s = meta(id, "/x", ts);
             s.attention = Some(k);
+            s.created_by_app = true;
             s
         };
         let metas = [
@@ -2086,6 +2087,12 @@ mod tests {
             {
                 let mut s = mk("arch", Attention::Error, "2026-01-09T23:00:00Z");
                 s.archived = true;
+                s
+            },
+            {
+                // Plain-CLI session: never part of the app inbox.
+                let mut s = mk("cli", Attention::Awaiting, "2026-01-09T23:00:00Z");
+                s.created_by_app = false;
                 s
             },
         ];

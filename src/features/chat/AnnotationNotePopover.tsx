@@ -14,7 +14,7 @@ const QUOTE_CLASS =
 	"max-h-40 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed text-[var(--text-60,var(--text-muted))]";
 
 /**
- * Edits one annotation in place. Outside mousedown or a scroll of `scrollTarget`
+ * Edits one annotation in place. Outside pointerdown or a scroll of `scrollTarget`
  * saves the note and closes; Escape discards and closes; unmounting (session
  * switch) saves what was typed.
  */
@@ -54,7 +54,10 @@ export function AnnotationNotePopover({
 	};
 
 	useEffect(() => {
-		const onDown = (e: MouseEvent) => {
+		// `popRef` is the actual (portaled) popover element, so containment holds
+		// even though it lives outside the anchor's DOM subtree. Pointerdown (not
+		// click) on window capture: it fires first and nothing can swallow it.
+		const onDown = (e: Event) => {
 			if (popRef.current?.contains(e.target as Node)) return;
 			finish.current(true);
 		};
@@ -65,22 +68,28 @@ export function AnnotationNotePopover({
 			finish.current(false);
 		};
 		const onScroll = () => finish.current(true);
-		document.addEventListener("mousedown", onDown, true);
+		window.addEventListener("pointerdown", onDown, true);
 		document.addEventListener("keydown", onKey, true);
 		scrollTarget?.addEventListener("scroll", onScroll, { passive: true });
 		return () => {
-			document.removeEventListener("mousedown", onDown, true);
+			window.removeEventListener("pointerdown", onDown, true);
 			document.removeEventListener("keydown", onKey, true);
 			scrollTarget?.removeEventListener("scroll", onScroll);
-			// Unmount without an explicit close (session switch): keep the typed note.
-			if (!settled.current) {
-				settled.current = true;
-				useComposer.getState().updateAnnotation(storeKey, id, {
-					comment: draftRef.current.trim() || undefined,
-				});
-			}
 		};
-	}, [scrollTarget, storeKey, id]);
+	}, [scrollTarget]);
+
+	// Unmount without an explicit close (session switch): keep the typed note.
+	// Must not touch `settled`: this cleanup also runs on StrictMode's simulated
+	// unmount, and a latched flag would turn every later close path into a no-op.
+	useEffect(
+		() => () => {
+			if (settled.current) return;
+			useComposer.getState().updateAnnotation(storeKey, id, {
+				comment: draftRef.current.trim() || undefined,
+			});
+		},
+		[storeKey, id],
+	);
 
 	return (
 		<FloatingLayer anchor={anchor} placement="bottom-start" className={CARD_CLASS}>

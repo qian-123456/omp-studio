@@ -52,7 +52,7 @@ export function sessionKind(s: SessionMeta, attention: Attention): InboxSessionK
 
 /**
  * Applies the inbox time window to the backend-derived `attention` kinds.
- * Archived sessions never show; approval/question and running never expire;
+ * Archived and plain-CLI (`createdByApp === false`) sessions never show; approval/question and running never expire;
  * other kinds drop out once `updatedAt` is older than `now - windowHours`.
  * Open `schedule_run` todos are not windowed and ignore session attention.
  * Mirrors `inbox_badge_count` on the Rust side for the session part.
@@ -74,7 +74,7 @@ export function groupInbox(
 	};
 	for (const s of sessions) {
 		const attention = s.attention;
-		if (!attention || s.archived) continue;
+		if (!attention || s.archived || s.createdByApp === false) continue;
 		if (attention !== "awaiting" && attention !== "running") {
 			const t = Date.parse(s.updatedAt);
 			if (Number.isFinite(t) && t < cutoff) continue;

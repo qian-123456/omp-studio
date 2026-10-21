@@ -59,6 +59,15 @@ function todo(id: string, kind: Todo["kind"] = "schedule_run", status: Todo["sta
 }
 
 describe("groupInbox", () => {
+	it("excludes plain-CLI sessions from list and badge", () => {
+		const cli = { ...meta("cli", "unread", 1), createdByApp: false };
+		const app = { ...meta("app", "unread", 1), createdByApp: true };
+		const g = groupInbox([cli, app, meta("legacy", "awaiting", 1)], NOW, 24);
+		expect(g.byKind.unread.map((s) => s.id)).toEqual(["app"]);
+		expect(g.byKind.question.map((s) => s.id)).toEqual(["legacy"]);
+		expect(g.badge).toBe(2);
+	});
+
 	it("drops error/unread older than the window but keeps the boundary", () => {
 		const g = groupInbox(
 			[meta("inside", "unread", 24), meta("outside", "unread", 24.01), meta("oldErr", "error", 30)],

@@ -19,6 +19,7 @@ import {
 	retryNoticeFromFrame,
 	saveRetryHistory,
 } from "./retryNotice";
+import { createFrameBatcher, scheduleFlush } from "./frameBatch";
 import {
 	type PersistedRow,
 	parseLocalRows,
@@ -1643,6 +1644,59 @@ useLive.subscribe((s, prev) => {
 	}
 });
 
+// ---- Transcript retention ----
+//
+// `items` holds a session's whole transcript (every tool result and its
+// details). Without a bound each session the user ever opened keeps it for
+// the lifetime of the app. SessionView always re-reads the transcript on
+// mount, so a session that is no longer shown can drop its items; the few
+// most recently left ones stay so switching back is instant.
+
+const RETAINED_IDLE_TRANSCRIPTS = 3;
+const shownTranscripts = new Map<string, number>();
+/** Least recently left first. */
+let leftTranscripts: string[] = [];
+
+/**
+ * Mark a session's transcript as on screen; call the returned function when the
+ * view goes away. Only sessions with an on-disk transcript that are not
+ * running are ever evicted (drafts/echoes have no file to reload from).
+ */
+export function holdTranscript(sessionId: string): () => void {
+	shownTranscripts.set(sessionId, (shownTranscripts.get(sessionId) ?? 0) + 1);
+	leftTranscripts = leftTranscripts.filter((id) => id !== sessionId);
+	return () => {
+		const n = (shownTranscripts.get(sessionId) ?? 1) - 1;
+		if (n > 0) {
+			shownTranscripts.set(sessionId, n);
+			return;
+		}
+		shownTranscripts.delete(sessionId);
+		leftTranscripts.push(sessionId);
+		void evictLeftTranscripts();
+	};
+}
+
+async function evictLeftTranscripts(): Promise<void> {
+	if (leftTranscripts.length <= RETAINED_IDLE_TRANSCRIPTS) return;
+	// Dynamic: ./sessions imports this module (cycle), as in reduceFrame above.
+	const { useSessions } = await import("./sessions");
+	const stale = leftTranscripts.slice(0, -RETAINED_IDLE_TRANSCRIPTS);
+	leftTranscripts = leftTranscripts.slice(-RETAINED_IDLE_TRANSCRIPTS);
+	useLive.setState((s) => {
+		let sessions = s.sessions;
+		for (const id of stale) {
+			const live = sessions[id];
+			if (!live || live.items.length === 0) continue;
+			if (shownTranscripts.has(id) || live.alive || live.streaming) continue;
+			if (!useSessions.getState().sessions[id]?.file) continue;
+			if (sessions === s.sessions) sessions = { ...sessions };
+			sessions[id] = { ...live, items: [], nextOffset: 0 };
+		}
+		return sessions === s.sessions ? s : { sessions };
+	});
+}
+
 // ---- Local rows persistence (docs/ARCHITECTURE.md §6 `local_rows`) ----
 
 const localRowsLoading = new Set<string>();
@@ -1778,25 +1832,30 @@ export function startLiveEvents(): void {
 	if (unlisteners) return;
 	const { reduceFrame, reduceProcess } = useLive.getState();
 	unlisteners = [
-		onRpcFrame((payload) => {
-			reduceFrame(payload);
-			const frame = payload.frame;
-			const ty =
-				frame && typeof frame === "object" && "type" in frame && typeof frame.type === "string"
-					? frame.type
-					: undefined;
-			if (
-				ty === "model_changed" ||
-				ty === "thinking_level_changed" ||
-				ty === "turn_end" ||
-				ty === "auto_compaction_end"
-			) {
-				ipcMod ??= import("../lib/ipc");
-				void ipcMod
-					.then((m) => m.rpcSend(payload.sessionId, { type: "get_state" }))
-					.catch(() => {});
-			}
-		}),
+		onRpcFrame(
+			(() => {
+				const batcher = createFrameBatcher((payload) => {
+					reduceFrame(payload);
+					const frame = payload.frame;
+					const ty =
+						frame && typeof frame === "object" && "type" in frame && typeof frame.type === "string"
+							? frame.type
+							: undefined;
+					if (
+						ty === "model_changed" ||
+						ty === "thinking_level_changed" ||
+						ty === "turn_end" ||
+						ty === "auto_compaction_end"
+					) {
+						ipcMod ??= import("../lib/ipc");
+						void ipcMod
+							.then((m) => m.rpcSend(payload.sessionId, { type: "get_state" }))
+							.catch(() => {});
+					}
+				}, scheduleFlush);
+				return batcher.push;
+			})(),
+		),
 		onRpcProcess((payload) => {
 			reduceProcess(payload);
 			// On (re)attach, seed the subagent map: lifecycle frames before our

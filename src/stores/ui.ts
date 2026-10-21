@@ -3,6 +3,9 @@
  */
 
 import { create } from "zustand";
+import type { SpaceMode } from "../lib/contracts";
+import { isSpaceMode } from "../features/sessions/modes";
+import { readActiveMode, useSidebarStore } from "../features/sessions/sidebarStore";
 
 export type CenterView =
 	| "home"
@@ -33,8 +36,8 @@ const STORAGE_KEYS = {
 	sidebarOpen: "ompws:sidebar-open",
 	rightOpen: "ompws:right-open",
 	lastSession: "ompws:last-session",
-	rightTab: "ompws:right-tab",
-	rightTabs: "ompws:right-tabs",
+	rightByMode: "ompws:right-by-mode",
+	rightTabs: "ompws:right-tabs", // legacy global value, migrated into the Code area
 	gitListHeight: "ompws:git-list-height",
 	diffViewMode: "ompws:diff-view-mode",
 	diffWrap: "ompws:diff-wrap",
@@ -51,20 +54,11 @@ const RIGHT_TABS: readonly RightTab[] = [
 	"files",
 ];
 
-/** Restore open panel tabs. No tab is active at launch: the panel opens on the tab picker. */
-function readRightTabs(): { open: RightTab[]; active: RightTab | null } {
-	let open: RightTab[] = [];
-	try {
-		const raw: unknown = JSON.parse(readString(STORAGE_KEYS.rightTabs) ?? "null");
-		if (Array.isArray(raw)) {
-			open = RIGHT_TABS.filter((t) => raw.includes(t) && !INSTANCE_TABS[t]).sort(
-				(a, b) => raw.indexOf(a) - raw.indexOf(b),
-			);
-		}
-	} catch {
-		/* corrupt value: start with no open tabs */
-	}
-	return { open, active: null };
+/** Right-panel memory of one area (space mode). */
+interface RightPanelMemo {
+	open: boolean;
+	tabs: RightTab[];
+	active: RightTab | null;
 }
 
 /**
@@ -74,13 +68,70 @@ function readRightTabs(): { open: RightTab[]; active: RightTab | null } {
  */
 const INSTANCE_TABS: Partial<Record<RightTab, true>> = { files: true, sidechat: true };
 
-function persistRightTabs(open: RightTab[], active: RightTab | null): void {
-	const persisted = open.filter((t) => !INSTANCE_TABS[t]);
-	writeStorage(STORAGE_KEYS.rightTabs, JSON.stringify(persisted));
-	writeStorage(STORAGE_KEYS.rightTab, active && INSTANCE_TABS[active] ? "" : (active ?? ""));
+/** A never-visited area: panel closed, nothing open (the tab picker shows once opened). */
+function defaultRightMemo(): RightPanelMemo {
+	return { open: false, tabs: [], active: null };
 }
 
-const initialRightTabs = readRightTabs();
+function sanitizeTabs(raw: unknown): RightTab[] {
+	if (!Array.isArray(raw)) return [];
+	return RIGHT_TABS.filter((t) => raw.includes(t) && !INSTANCE_TABS[t]).sort(
+		(a, b) => raw.indexOf(a) - raw.indexOf(b),
+	);
+}
+
+/**
+ * Persisted per-area memory. No tab is active at launch: the panel opens on
+ * the tab picker. The pre-per-area global keys (`right-open`/`right-tabs`)
+ * seed the Code area when the per-area key does not exist yet.
+ */
+function readRightByMode(): Partial<Record<SpaceMode, RightPanelMemo>> {
+	const out: Partial<Record<SpaceMode, RightPanelMemo>> = {};
+	try {
+		const raw: unknown = JSON.parse(readString(STORAGE_KEYS.rightByMode) ?? "null");
+		if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+			for (const [mode, v] of Object.entries(raw)) {
+				if (!isSpaceMode(mode) || !v || typeof v !== "object") continue;
+				const m = v as { open?: unknown; tabs?: unknown };
+				out[mode] = { open: m.open === true, tabs: sanitizeTabs(m.tabs), active: null };
+			}
+			return out;
+		}
+	} catch {
+		/* corrupt value: fall through to legacy seed */
+	}
+	let legacyTabs: RightTab[] = [];
+	try {
+		legacyTabs = sanitizeTabs(JSON.parse(readString(STORAGE_KEYS.rightTabs) ?? "null"));
+	} catch {
+		/* corrupt legacy value */
+	}
+	out.code = {
+		open: readBool(STORAGE_KEYS.rightOpen, true),
+		tabs: legacyTabs,
+		active: null,
+	};
+	return out;
+}
+
+let currentMode: SpaceMode = readActiveMode();
+let rightByMode = readRightByMode();
+
+function persistRightByMode(): void {
+	const persisted: Record<string, { open: boolean; tabs: RightTab[] }> = {};
+	for (const [mode, m] of Object.entries(rightByMode)) {
+		persisted[mode] = { open: m.open, tabs: m.tabs.filter((t) => !INSTANCE_TABS[t]) };
+	}
+	writeStorage(STORAGE_KEYS.rightByMode, JSON.stringify(persisted));
+}
+
+/** Record the live panel state as the current area's memory and persist all areas. */
+function persistRight(open: boolean, tabs: RightTab[], active: RightTab | null): void {
+	rightByMode[currentMode] = { open, tabs, active };
+	persistRightByMode();
+}
+
+const initialRight = rightByMode[currentMode] ?? defaultRightMemo();
 
 function readNumber(
 	key: string,
@@ -203,9 +254,9 @@ export const useUi = create<UiState>((set) => ({
 	highlightId: null,
 	lastSessionId: readString(STORAGE_KEYS.lastSession),
 	docPath: null,
-	rightTab: initialRightTabs.active,
-	openRightTabs: initialRightTabs.open,
-	rightOpen: readBool(STORAGE_KEYS.rightOpen, true),
+	rightTab: initialRight.active,
+	openRightTabs: initialRight.tabs,
+	rightOpen: initialRight.open,
 	rightWidth: readNumber(STORAGE_KEYS.rightWidth, 360, 260, 720),
 	gitListHeight: readNumber(STORAGE_KEYS.gitListHeight, 220, 80, 2000),
 	diffViewMode: readDiffViewMode(),
@@ -301,12 +352,11 @@ export const useUi = create<UiState>((set) => ({
 	setRightTab: (t) =>
 		set((s) => {
 			if (!t) {
-				persistRightTabs(s.openRightTabs, null);
+				persistRight(s.rightOpen, s.openRightTabs, null);
 				return { rightTab: null };
 			}
 			const openRightTabs = s.openRightTabs.includes(t) ? s.openRightTabs : [...s.openRightTabs, t];
-			persistRightTabs(openRightTabs, t);
-			writeStorage(STORAGE_KEYS.rightOpen, true);
+			persistRight(true, openRightTabs, t);
 			return { rightTab: t, openRightTabs, rightOpen: true };
 		}),
 	closeRightTab: (t) =>
@@ -316,21 +366,22 @@ export const useUi = create<UiState>((set) => ({
 			const openRightTabs = s.openRightTabs.filter((x) => x !== t);
 			const rightTab =
 				s.rightTab === t ? (openRightTabs[idx] ?? openRightTabs[idx - 1] ?? null) : s.rightTab;
-			persistRightTabs(openRightTabs, rightTab);
+			persistRight(s.rightOpen, openRightTabs, rightTab);
 			return { openRightTabs, rightTab };
 		}),
 	toggleRight: () =>
 		set((s) => {
 			const next = !s.rightOpen;
-			writeStorage(STORAGE_KEYS.rightOpen, next);
+			persistRight(next, s.openRightTabs, s.rightTab);
 			// Re-opening restores the last active tab; the "打开标签页" picker
 			// only shows when there is no active tab.
 			return { rightOpen: next };
 		}),
-	setRightOpen: (open) => {
-		writeStorage(STORAGE_KEYS.rightOpen, open);
-		set({ rightOpen: open });
-	},
+	setRightOpen: (open) =>
+		set((s) => {
+			persistRight(open, s.openRightTabs, s.rightTab);
+			return { rightOpen: open };
+		}),
 	setRightWidth: (w) => {
 		const clamped = Math.min(720, Math.max(260, w));
 		writeStorage(STORAGE_KEYS.rightWidth, clamped);
@@ -380,3 +431,14 @@ export const useUi = create<UiState>((set) => ({
 	openModal: (name, props = {}) => set({ modal: { name, props } }),
 	closeModal: () => set({ modal: null }),
 }));
+
+// Switching area swaps the right panel for that area's own remembered state.
+useSidebarStore.subscribe((s, prev) => {
+	if (s.activeMode === prev.activeMode) return;
+	const cur = useUi.getState();
+	rightByMode[currentMode] = { open: cur.rightOpen, tabs: cur.openRightTabs, active: cur.rightTab };
+	currentMode = s.activeMode;
+	const next = rightByMode[currentMode] ?? defaultRightMemo();
+	persistRightByMode();
+	useUi.setState({ rightOpen: next.open, openRightTabs: next.tabs, rightTab: next.active });
+});

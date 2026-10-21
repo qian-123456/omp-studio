@@ -40,10 +40,12 @@ describe("useUi right panel", () => {
 		expect(useUi.getState().rightTab).toBe("sidechat");
 	});
 
-	it("persists the restored active tab for the next launch", () => {
+	it("persists open state and tabs for the next launch", () => {
 		useUi.getState().setRightTab("terminal");
 		useUi.getState().toggleRight(); // collapse
-		useUi.getState().toggleRight(); // expand
-		expect(localStorage.getItem("ompws:right-tab")).toBe("terminal");
+		expect(JSON.parse(localStorage.getItem("ompws:right-by-mode") ?? "{}").code).toEqual({
+			open: false,
+			tabs: ["terminal"],
+		});
 	});
 });
