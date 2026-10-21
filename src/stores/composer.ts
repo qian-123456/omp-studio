@@ -177,7 +177,49 @@ function saveMap(key: string, map: Record<string, string>): void {
 	}
 }
 
-let nextId = 1;
+const STORAGE_KEY_IMAGES = "omp_composer_images";
+
+function loadImages(): Record<string, ComposerImage[]> {
+	try {
+		if (typeof localStorage === "undefined") return {};
+		const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY_IMAGES) ?? "{}");
+		if (!parsed || typeof parsed !== "object") return {};
+		const out: Record<string, ComposerImage[]> = {};
+		for (const [sid, list] of Object.entries(parsed as Record<string, unknown>)) {
+			if (!Array.isArray(list)) continue;
+			const imgs = list.filter(
+				(i): i is ComposerImage =>
+					!!i && typeof i.id === "string" && typeof i.path === "string",
+			);
+			if (imgs.length > 0) out[sid] = imgs;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+function saveImages(images: Record<string, ComposerImage[]>): void {
+	try {
+		if (typeof localStorage === "undefined") return;
+		const compact: Record<string, ComposerImage[]> = {};
+		for (const [sid, list] of Object.entries(images)) if (list.length > 0) compact[sid] = list;
+		localStorage.setItem(STORAGE_KEY_IMAGES, JSON.stringify(compact));
+	} catch {
+		// quota / private mode: attachments stay in memory only
+	}
+}
+
+const initialImages = loadImages();
+// Restored ids are `cimg-N`: continue numbering past them.
+let nextId =
+	1 +
+	Math.max(
+		0,
+		...Object.values(initialImages).flatMap((l) =>
+			l.map((i) => Number(/^cimg-(\d+)$/.exec(i.id)?.[1] ?? 0)),
+		),
+	);
 
 export const useComposer = create<ComposerState>((set, get) => ({
 	annotations: {},
@@ -376,6 +418,14 @@ export const useComposer = create<ComposerState>((set, get) => ({
 			},
 		})),
 }));
+
+/** Persist attachments with the drafts: a restored `🖼️#N` draft must still know its paths. */
+let lastSavedImages = useComposer.getState().images;
+useComposer.subscribe((s) => {
+	if (s.images === lastSavedImages) return;
+	lastSavedImages = s.images;
+	saveImages(s.images);
+});
 
 /**
  * Render the composer text plus annotation pills as markdown quote blocks,

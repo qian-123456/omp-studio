@@ -1,5 +1,6 @@
 /** [B] Slash-input dispatch: `/name args` → registry command or omp prompt. */
 
+import type { ImageAttachment } from "../../../lib/contracts";
 import { isResumeCancelled } from "../../../lib/ensureLive";
 import { errMsg } from "../../../lib/dialogs";
 import { toast } from "../../../lib/toast";
@@ -28,10 +29,11 @@ export interface SlashDeps {
 export async function sendSlashPrompt(
 	sessionId: string,
 	text: string,
+	images?: ImageAttachment[],
 ): Promise<void> {
 	const name = text.trim().match(/^\/([^\s/]+)/)?.[1];
 	if (name) useLive.getState().noteCommandSent(sessionId, name);
-	await sendPrompt(sessionId, text);
+	await sendPrompt(sessionId, text, images?.length ? { images } : undefined);
 }
 
 export function buildSlashContext(

@@ -1,3 +1,4 @@
+import { openImageOrExplain } from "./imageAvailability";
 import { renderUserTextWithChips, stripImageMarkers } from "./userTextChips";
 import { trimSideChatItems } from "./sideChatView";
 /** [B] Virtualized message stream: turns + in-flight assistant
@@ -281,12 +282,10 @@ const UserRow = React.memo(function UserRow({
 						)}
 					>
 						{renderUserTextWithChips(rawText, (num) => {
-							if (validImages.length === 0) {
-								toast.info("找不到这张图片的文件（可能已被清理）");
-								return;
-							}
-							setPreviewIndex(
-								Math.min(Math.max(num - 1, 0), validImages.length - 1),
+							void openImageOrExplain(
+								validImages.map((i) => i.path),
+								num,
+								setPreviewIndex,
 							);
 						})}
 					</div>
