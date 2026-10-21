@@ -86,6 +86,7 @@ import { switchSpaceMode } from "./switchMode";
 import { ArchiveUndoBar } from "./ArchiveUndoBar";
 import { archiveSessions } from "./archiveUndo";
 import { GroupHeader, getGroupStatusCounts } from "./GroupHeader";
+import { chunkSessionsByTime } from "./timeChunking";
 import {
 	type BranchSubgroup,
 	type GroupedSessionsResult,
@@ -1638,24 +1639,35 @@ export function SessionSidebar() {
 						{/* 1. 无项目 area: the active mode's isolated global-workspace
 						    sessions — ungrouped rows + user SessionGroups (§Spaces). */}
 						{showLoose && (() => {
+							const timeChunks = chunkSessionsByTime(noProjectSplit.ungrouped);
 							return (
 							<div className="mt-0.5">
 
 									<div className="pb-1" data-group-key="__global">
-										{/* Ungrouped 无项目 sessions */}
-										{noProjectSplit.ungrouped.length > 0 && (
-											<div className="space-y-1 px-2 my-0.5">
-												<SessionList
-													sessions={noProjectSplit.ungrouped}
-													scopeKey="__global"
-													searching={searching}
-													onSetCount={setSectionCount}
-													expanded={expandedSections}
-													workspaces={workspaces}
-													onRowFocus={focusList}
-													onBatchAction={handleBatchAction}
-													large
-												/>
+										{/* Ungrouped 无项目 sessions (Time-chunked in Universal mode) */}
+										{timeChunks.length > 0 && (
+											<div className="space-y-2 px-2 my-0.5">
+												{timeChunks.map((chunk) => (
+													<div key={chunk.key} className="space-y-0.5">
+														<div className="px-1 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)] select-none">
+															{chunk.label}
+														</div>
+														<div className="space-y-1">
+															<SessionList
+																sessions={chunk.sessions}
+																scopeKey={`__global_${chunk.key}`}
+																searching={searching}
+																onSetCount={setSectionCount}
+																expanded={expandedSections}
+																workspaces={workspaces}
+																onRowFocus={focusList}
+																onBatchAction={handleBatchAction}
+																large
+																recentLimit={Infinity}
+															/>
+														</div>
+													</div>
+												))}
 											</div>
 										)}
 										{noProjectSplit.ungrouped.length === 0 &&
@@ -1666,180 +1678,205 @@ export function SessionSidebar() {
 												</div>
 											)}
 
-										{/* User session groups of this mode */}
-										{modeGroups.map((g) => {
-											const grpSessions = noProjectSplit.byGroup[g.id] ?? [];
-											const grpKey = `grp:${g.id}`;
-											const grpOpen = isGroupOpen(grpKey, true);
-											const grpCreating =
-												globalWs && creatingKey === `${globalWs.id}|${globalWs.path}`;
-											return (
-												<div key={g.id} className="mt-0.5">
-													{renamingGroupId === g.id ? (
-														<div className="mx-1 px-1.5 py-1">
-															<input
-																ref={groupRenameInputRef}
-																autoFocus
-																type="text"
-																value={groupNameDraft}
-																onClick={(e) => e.stopPropagation()}
-																onChange={(e) => setGroupNameDraft(e.target.value)}
-																onBlur={() => {
-																	if (groupEditInFlight.current) return;
-																	void handleRenameGroup(g);
-																}}
-																onKeyDown={(e) => {
-																	if (isComposing(e)) return;
-																	if (e.key === "Enter") {
-																		e.preventDefault();
-																		void handleRenameGroup(g);
-																	} else if (e.key === "Escape") {
-																		claimEscape(e);
-																		// Swallow the blur that follows unmount so
-																		// Escape cancels instead of committing.
-																		groupEditInFlight.current = true;
-																		setRenamingGroupId(null);
-																		window.setTimeout(() => {
-																			groupEditInFlight.current = false;
-																		}, 0);
-																	}
-																}}
-																className="h-6 w-full rounded border border-[var(--primary)] bg-[var(--well-bg)] px-1.5 text-xs font-bold text-[var(--text)] outline-none"
-															/>
-														</div>
-													) : (
-														<GroupHeader
-															groupKey={grpKey}
-															title={g.name}
-															icon={
-																<Tag
-																	size={13}
-																	className="text-[var(--text-dim)] shrink-0"
-																/>
-															}
-															isOpen={grpOpen}
-															onToggle={() => toggleGroup(grpKey, true)}
-															statusCounts={getGroupStatusCounts(grpSessions)}
-															onContextMenu={(e) => handleGroupContextMenu(g, e)}
-															actionButton={
-																<div className="flex items-center shrink-0 ml-1">
-																	<button
-																		type="button"
-																		onClick={(e) => {
-																			e.stopPropagation();
-																			if (globalWs)
-																				void startSessionInDir(globalWs, false, g.id);
-																		}}
-																		title="在分组内新建会话"
-																		disabled={!globalWs || creatingKey !== null}
-																		className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
-																	>
-																		{grpCreating ? (
-																			<Loader2 size={13} className="animate-spin" />
-																		) : (
-																			<Plus size={13} />
-																		)}
-																	</button>
-																	<button
-																		type="button"
-																		onClick={(e) => {
-																			e.stopPropagation();
-																			const el = e.currentTarget as HTMLElement;
-																			grpMenuTriggerRef.current = el;
-																			setGrpMenu((prev) =>
-																				prev?.group.id === g.id
-																					? null
-																					: { group: g, anchor: el },
-																			);
-																		}}
-																		title="分组操作"
-																		className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
-																	>
-																		<MoreHorizontal size={13} />
-																	</button>
-																</div>
-															}
-														/>
-													)}
-													{grpOpen && (
-														<div className="pb-1 ml-[14px]" data-group-key={grpKey}>
-															{grpSessions.length > 0 ? (
-																<div className="ml-[8px] pl-2 my-0.5">
-																	<SessionList
-																		sessions={grpSessions}
-																		scopeKey={grpKey}
-																		searching={searching}
-																		onSetCount={setSectionCount}
-																		expanded={expandedSections}
-																		workspaces={workspaces}
-																		onRowFocus={focusList}
-																		onBatchAction={handleBatchAction}
-																		withSpine
-																	/>
-																</div>
-															) : (
-																!searching && (
-																	<div className="ml-[22px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
-																		暂无会话
-																	</div>
-																)
-															)}
-														</div>
-													)}
-												</div>
-											);
-										})}
-
-										{/* + 新建分组 inline entry */}
-										{newGroupOpen ? (
-											<div className="mx-1 mt-0.5 px-1.5 py-1">
-												<input
-													ref={newGroupInputRef}
-													autoFocus
-													type="text"
-													value={newGroupName}
-													placeholder="分组名称"
-													onClick={(e) => e.stopPropagation()}
-													onChange={(e) => setNewGroupName(e.target.value)}
-													onBlur={() => {
-														if (groupEditInFlight.current) return;
-														if (newGroupName.trim()) void handleCreateGroup();
-														else setNewGroupOpen(false);
+										{/* 2. Structured Session Groups (会话分组) */}
+										<div className="mt-3 pt-2 border-t border-[var(--border-divider)]/40 px-2">
+											<div className="mx-1 mb-1 flex items-center justify-between rounded-md py-1">
+												<span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)]">
+													分组 {modeGroups.length > 0 && `(${modeGroups.length})`}
+												</span>
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														setNewGroupName("");
+														setNewGroupOpen(true);
 													}}
-													onKeyDown={(e) => {
-														if (isComposing(e)) return;
-														if (e.key === "Enter") {
-															e.preventDefault();
-															void handleCreateGroup();
-														} else if (e.key === "Escape") {
-															claimEscape(e);
-															// Swallow the blur that follows unmount so
-															// Escape cancels instead of creating.
-															groupEditInFlight.current = true;
-															setNewGroupOpen(false);
-															setNewGroupName("");
-															window.setTimeout(() => {
-																groupEditInFlight.current = false;
-															}, 0);
-														}
-													}}
-													className="h-6 w-full rounded border border-[var(--primary)] bg-[var(--well-bg)] px-1.5 text-xs text-[var(--text)] outline-none"
-												/>
+													title="新建分组"
+													className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
+												>
+													<Plus size={13} />
+												</button>
 											</div>
-										) : (
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													setNewGroupName("");
-													setNewGroupOpen(true);
-												}}
-												className="mt-0.5 flex w-[calc(100%-8px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
-											>
-												<Plus size={12} className="shrink-0" />
-												<span>新建分组</span>
-											</button>
-										)}
+
+											{/* User session groups of this mode */}
+											{modeGroups.map((g) => {
+												const grpSessions = noProjectSplit.byGroup[g.id] ?? [];
+												const grpKey = `grp:${g.id}`;
+												const grpOpen = isGroupOpen(grpKey, true);
+												const grpCreating =
+													globalWs && creatingKey === `${globalWs.id}|${globalWs.path}`;
+												return (
+													<div key={g.id} className="mt-0.5">
+														{renamingGroupId === g.id ? (
+															<div className="mx-1 px-1.5 py-1">
+																<input
+																	ref={groupRenameInputRef}
+																	autoFocus
+																	type="text"
+																	value={groupNameDraft}
+																	onClick={(e) => e.stopPropagation()}
+																	onChange={(e) => setGroupNameDraft(e.target.value)}
+																	onBlur={() => {
+																		if (groupEditInFlight.current) return;
+																		void handleRenameGroup(g);
+																	}}
+																	onKeyDown={(e) => {
+																		if (isComposing(e)) return;
+																		if (e.key === "Enter") {
+																			e.preventDefault();
+																			void handleRenameGroup(g);
+																		} else if (e.key === "Escape") {
+																			claimEscape(e);
+																			// Swallow the blur that follows unmount so
+																			// Escape cancels instead of committing.
+																			groupEditInFlight.current = true;
+																			setRenamingGroupId(null);
+																			window.setTimeout(() => {
+																				groupEditInFlight.current = false;
+																			}, 0);
+																		}
+																	}}
+																	className="h-6 w-full rounded border border-[var(--primary)] bg-[var(--well-bg)] px-1.5 text-xs font-bold text-[var(--text)] outline-none"
+																/>
+															</div>
+														) : (
+															<GroupHeader
+																groupKey={grpKey}
+																title={g.name}
+																icon={
+																	<Tag
+																		size={13}
+																		className="text-[var(--text-dim)] shrink-0"
+																	/>
+																}
+																isOpen={grpOpen}
+																onToggle={() => toggleGroup(grpKey, true)}
+																statusCounts={getGroupStatusCounts(grpSessions)}
+																onContextMenu={(e) => handleGroupContextMenu(g, e)}
+																actionButton={
+																	<div className="flex items-center shrink-0 ml-1">
+																		<button
+																			type="button"
+																			onClick={(e) => {
+																				e.stopPropagation();
+																				if (globalWs)
+																					void startSessionInDir(globalWs, false, g.id);
+																			}}
+																			title="在分组内新建会话"
+																			disabled={!globalWs || creatingKey !== null}
+																			className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] disabled:opacity-40 shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
+																		>
+																			{grpCreating ? (
+																				<Loader2 size={13} className="animate-spin" />
+																			) : (
+																				<Plus size={13} />
+																			)}
+																		</button>
+																		<button
+																			type="button"
+																			onClick={(e) => {
+																				e.stopPropagation();
+																				const el = e.currentTarget as HTMLElement;
+																				grpMenuTriggerRef.current = el;
+																				setGrpMenu((prev) =>
+																					prev?.group.id === g.id
+																						? null
+																						: { group: g, anchor: el },
+																				);
+																			}}
+																			title="分组操作"
+																			className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
+																		>
+																			<MoreHorizontal size={13} />
+																		</button>
+																	</div>
+																}
+															/>
+														)}
+														{grpOpen && (
+															<div className="pb-1 ml-[14px]" data-group-key={grpKey}>
+																{grpSessions.length > 0 ? (
+																	<div className="ml-[8px] pl-2 my-0.5">
+																		<SessionList
+																			sessions={grpSessions}
+																			scopeKey={grpKey}
+																			searching={searching}
+																			onSetCount={setSectionCount}
+																			expanded={expandedSections}
+																			workspaces={workspaces}
+																			onRowFocus={focusList}
+																			onBatchAction={handleBatchAction}
+																			withSpine
+																			large
+																			recentLimit={Infinity}
+																		/>
+																	</div>
+																) : (
+																	!searching && (
+																		<div className="ml-[22px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
+																			暂无会话
+																		</div>
+																	)
+																)}
+															</div>
+														)}
+													</div>
+												);
+											})}
+
+											{/* + 新建分组 inline entry */}
+											{newGroupOpen ? (
+												<div className="mx-1 mt-0.5 px-1.5 py-1">
+													<input
+														ref={newGroupInputRef}
+														autoFocus
+														type="text"
+														value={newGroupName}
+														placeholder="分组名称"
+														onClick={(e) => e.stopPropagation()}
+														onChange={(e) => setNewGroupName(e.target.value)}
+														onBlur={() => {
+															if (groupEditInFlight.current) return;
+															if (newGroupName.trim()) void handleCreateGroup();
+															else setNewGroupOpen(false);
+														}}
+														onKeyDown={(e) => {
+															if (isComposing(e)) return;
+															if (e.key === "Enter") {
+																e.preventDefault();
+																void handleCreateGroup();
+															} else if (e.key === "Escape") {
+																claimEscape(e);
+																// Swallow the blur that follows unmount so
+																// Escape cancels instead of creating.
+																groupEditInFlight.current = true;
+																setNewGroupOpen(false);
+																setNewGroupName("");
+																window.setTimeout(() => {
+																	groupEditInFlight.current = false;
+																}, 0);
+															}
+														}}
+														className="h-6 w-full rounded border border-[var(--primary)] bg-[var(--well-bg)] px-1.5 text-xs text-[var(--text)] outline-none"
+													/>
+												</div>
+											) : (
+												modeGroups.length === 0 && (
+													<button
+														type="button"
+														onClick={(e) => {
+															e.stopPropagation();
+															setNewGroupName("");
+															setNewGroupOpen(true);
+														}}
+														className="mt-0.5 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+													>
+														<Plus size={12} className="shrink-0" />
+														<span>新建分组</span>
+													</button>
+												)
+											)}
+										</div>
 									</div>
 							</div>
 							);

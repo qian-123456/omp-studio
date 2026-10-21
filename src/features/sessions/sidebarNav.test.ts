@@ -152,4 +152,34 @@ describe("Sidebar Navigation & Filtering logic", () => {
 		expect(wg.subgroups[1].label).toBe("feat-x");
 		expect(wg.subgroups[1].sessions).toHaveLength(0);
 	});
+
+	it("groups Universal sessions into time chunks without project workspace grouping", () => {
+		const chatGlobalWs: Workspace = {
+			id: "global",
+			name: "Universal",
+			path: "/global",
+			kind: "global",
+			sort: 99,
+			mode: "chat",
+		};
+		const sToday = makeSession({
+			id: "u1",
+			workspaceId: "global",
+			mode: "chat",
+			updatedAt: new Date(2026, 9, 21, 10, 0, 0).toISOString(),
+		});
+		const sYesterday = makeSession({
+			id: "u2",
+			workspaceId: "global",
+			mode: "chat",
+			updatedAt: new Date(2026, 9, 20, 15, 0, 0).toISOString(),
+		});
+
+		const chatView = groupSessions([sToday, sYesterday], [chatGlobalWs], {
+			mode: "chat",
+		});
+
+		expect(chatView.workspaceGroups).toHaveLength(0);
+		expect(chatView.globalGroup?.subgroups[0].sessions).toHaveLength(2);
+	});
 });

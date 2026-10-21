@@ -578,32 +578,46 @@ function SessionRowComponent({
 			)}
 
 			{/* Title column: status mark sits directly after title text (U3 / R13) */}
-			<div className="flex min-w-0 flex-1 items-center gap-1.5">
+			<div
+				className={clsx(
+					"flex min-w-0 flex-1 items-center",
+					large ? "gap-2" : "gap-1.5",
+				)}
+			>
 				{session.kind === "side" ? (
 					<span
 						className="shrink-0 text-[var(--text-dim)]"
 						title={`辅助对话（来自：${parentTitle || "已不在列表中的会话"}）`}
 					>
-						<MessageSquare size={11} />
+						<MessageSquare size={large ? 14 : 11} />
 					</span>
 				) : session.kind === "fork" ? (
 					<span
 						className="inline-flex shrink-0 items-center gap-0.5 rounded bg-indigo-500/15 px-1 text-[10px] leading-4 text-indigo-400"
 						title={`分叉自: ${parentTitle || "已不在列表中的会话"}`}
 					>
-						<GitFork size={9} />
+						<GitFork size={large ? 11 : 9} />
 						分叉
 					</span>
-				) : (
-					session.parentId && (
-						<span
-							className="shrink-0 text-[var(--text-dim)]"
-							title={`分叉自: ${parentTitle || "已不在列表中的会话"}`}
-						>
-							<GitFork size={11} />
-						</span>
-					)
-				)}
+				) : session.parentId ? (
+					<span
+						className="shrink-0 text-[var(--text-dim)]"
+						title={`分叉自: ${parentTitle || "已不在列表中的会话"}`}
+					>
+						<GitFork size={large ? 13 : 11} />
+					</span>
+				) : large ? (
+					<span
+						className={clsx(
+							"shrink-0 transition-colors",
+							isSelected
+								? "text-[var(--text)]"
+								: "text-[var(--text-dim)] group-hover:text-[var(--text-muted)]",
+						)}
+					>
+						<MessageSquare size={14} strokeWidth={1.75} />
+					</span>
+				) : null}
 				{isRenaming ? (
 					<input
 						ref={renameInputRef}
