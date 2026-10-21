@@ -54,15 +54,12 @@ export function ActivityHeader({
 			)}
 			<span
 				className={clsx(
-					"flex min-w-0 items-baseline gap-1.5",
+					"min-w-0 truncate text-[length:var(--chat-font-size)] leading-6",
 					running && "shimmer-text",
 				)}
 			>
 				<span
-					className={clsx(
-						"shrink-0 text-[length:var(--chat-font-size)] leading-6 transition-colors",
-						!running && tone,
-					)}
+					className={clsx("transition-colors", !running && tone)}
 					title={labelTitle}
 				>
 					{label}
@@ -70,10 +67,8 @@ export function ActivityHeader({
 				{object && (
 					<span
 						className={clsx(
-							"min-w-0 truncate",
-							objectIsCode
-								? "font-mono text-[12px]"
-								: "text-[length:var(--chat-font-size)] leading-6",
+							"ml-1.5",
+							objectIsCode && "font-mono text-[12px]",
 							!running && "text-[var(--text-40)]",
 						)}
 						title={object}
