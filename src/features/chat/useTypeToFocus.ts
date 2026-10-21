@@ -4,6 +4,7 @@
 
 import { useEffect, type RefObject } from "react";
 import { MODAL_SELECTOR } from "../../components/FloatingLayer";
+import { isImeActive, startImeWatch } from "../../lib/imeState";
 
 /** Marks a SessionView root so each composer only claims keys typed in its own view. */
 export const SESSION_VIEW_ATTR = "data-session-view";
@@ -24,6 +25,11 @@ function isTextKey(e: KeyboardEvent): boolean {
 	return e.key.length === 1 && e.key !== " ";
 }
 
+/** A plain character key (not a shortcut/paste/IME process key). */
+function isPlainChar(e: KeyboardEvent): boolean {
+	return !e.isComposing && e.key !== "Process" && e.keyCode !== 229 && !e.metaKey && !e.ctrlKey && e.key.length === 1;
+}
+
 /** Whether `e` should be redirected into the composer textarea `ta`. */
 export function shouldRedirectKey(e: KeyboardEvent, ta: HTMLTextAreaElement, compact: boolean): boolean {
 	if (!isTextKey(e) || ta.disabled || ta.readOnly || !ta.isConnected) return false;
@@ -32,8 +38,12 @@ export function shouldRedirectKey(e: KeyboardEvent, ta: HTMLTextAreaElement, com
 	if (target === ta) return false;
 	if (target?.closest(EDITABLE) || (target as HTMLElement | null)?.isContentEditable) return false;
 	if (target?.closest(OWNS_KEYS) || document.querySelector(MODAL_SELECTOR)) return false;
-	// A key typed inside some session view belongs to that view's composer;
-	// anywhere else belongs to the main (non-compact) composer.
+	return ownsTarget(target, ta, compact);
+}
+
+/** A key typed inside some session view belongs to that view's composer;
+ * anywhere else belongs to the last-read view's, else the main (non-compact) one. */
+export function ownsTarget(target: Element | null, ta: HTMLTextAreaElement, compact: boolean): boolean {
 	const targetView = target?.closest(`[${SESSION_VIEW_ATTR}]`) ?? null;
 	if (targetView) return targetView === ta.closest(`[${SESSION_VIEW_ATTR}]`);
 	const lastView = lastReadView?.isConnected ? lastReadView : null;
@@ -55,11 +65,16 @@ export function useTypeToFocus(taRef: RefObject<HTMLTextAreaElement | null>, com
 		const onKey = (e: KeyboardEvent) => {
 			const ta = taRef.current;
 			if (!ta || !shouldRedirectKey(e, ta, compact === true)) return;
-			// Not preventDefault: the key's default action then inserts into the
-			// textarea that now has focus.
+			// With an IME active the composer cannot attach to this keystroke any
+			// more (the key is already past the input method), so the raw letter
+			// would land as plain Latin text. Swallow it: focus moves, nothing is
+			// inserted, and the user retypes that one key. Otherwise let the key's
+			// default action insert into the textarea that now has focus.
+			if (isImeActive() && isPlainChar(e)) e.preventDefault();
 			ta.focus();
 			ta.setSelectionRange(ta.value.length, ta.value.length);
 		};
+		startImeWatch();
 		const opts = { capture: true, passive: true } as const;
 		const reading = ["pointerdown", "wheel", "touchstart", "touchmove"] as const;
 		for (const n of reading) window.addEventListener(n, trackReading, opts);

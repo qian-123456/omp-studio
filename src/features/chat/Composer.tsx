@@ -193,6 +193,7 @@ import { runCompaction, useCompaction } from "./slash/compaction";
 import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
 import { useTypeToFocus } from "./useTypeToFocus";
+import { useRestoreComposerFocus } from "./useRestoreComposerFocus";
 import { remainingDraft } from "./composerRelease";
 import {
 	argHintLabel,
@@ -640,6 +641,8 @@ export function Composer({
 	}, [focusNonce]);
 	// Keys typed while nothing editable is focused go to the composer.
 	useTypeToFocus(taRef, compact);
+	// Keep focus in the composer (session entry, closed popovers, blank clicks).
+	useRestoreComposerFocus(taRef, compact, sessionId);
 
 	// Slash token at cursor position (opens the command menu)
 	const slashToken = useMemo(() => {

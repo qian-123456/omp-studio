@@ -99,3 +99,32 @@ describe("useTypeToFocus", () => {
 		expect(document.activeElement).toBe(getByTestId("ta-main"));
 	});
 });
+
+describe("useTypeToFocus with an active IME", () => {
+	it("moves focus but swallows the first plain key", async () => {
+		const { setImeActiveForTest } = await import("../../lib/imeState");
+		setImeActiveForTest(true);
+		try {
+			const { getByTestId } = render(<Harness id="a" />);
+			const e = new KeyboardEvent("keydown", { key: "w", bubbles: true, cancelable: true });
+			document.body.dispatchEvent(e);
+			expect(document.activeElement).toBe(getByTestId("ta-a"));
+			expect(e.defaultPrevented).toBe(true);
+			// Paste is not IME input: it still goes through.
+			(document.activeElement as HTMLElement).blur();
+			const paste = new KeyboardEvent("keydown", { key: "v", metaKey: true, bubbles: true, cancelable: true });
+			document.body.dispatchEvent(paste);
+			expect(paste.defaultPrevented).toBe(false);
+		} finally {
+			setImeActiveForTest(false);
+		}
+	});
+
+	it("leaves the key alone without an IME", () => {
+		const { getByTestId } = render(<Harness id="a" />);
+		const e = new KeyboardEvent("keydown", { key: "w", bubbles: true, cancelable: true });
+		document.body.dispatchEvent(e);
+		expect(document.activeElement).toBe(getByTestId("ta-a"));
+		expect(e.defaultPrevented).toBe(false);
+	});
+});

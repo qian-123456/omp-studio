@@ -6,6 +6,7 @@ mod catalog;
 mod contracts;
 mod db;
 mod git;
+mod ime;
 mod local_rows;
 mod mobile;
 mod model_replace;
@@ -181,6 +182,7 @@ pub fn run() {
             mobile::init(state.clone());
             terminal::init(state.clone());
             schedules::init(state.clone());
+            ime::watch(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -189,6 +191,7 @@ pub fn run() {
             save_settings,
             app_paths,
             allowed_tools_list,
+            ime::ime_active,
             // A — catalog
             catalog::commands::list_sessions,
             catalog::commands::get_transcript,
