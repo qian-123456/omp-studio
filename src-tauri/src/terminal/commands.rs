@@ -177,23 +177,20 @@ pub async fn term_open_session(
         None => {
             let ext = crate::paths::extension_path();
             let _ = extension::install_to(&ext);
-            let binary = state.settings.read().omp_binary.clone();
+            let settings = state.settings.read().clone();
             let mut argv = vec![
-                binary,
+                settings.omp_binary.clone(),
                 "--resume".to_string(),
                 meta.file.clone(),
-                "-e".to_string(),
-                ext.to_string_lossy().to_string(),
             ];
-            let privacy_ext = crate::paths::privacy_extension_path();
-            if privacy_ext.exists() {
-                argv.push("-e".to_string());
-                argv.push(privacy_ext.to_string_lossy().to_string());
-            }
-            if let Some(provider_ext) = crate::providers::try_extension_path() {
-                argv.push("-e".to_string());
-                argv.push(provider_ext.to_string_lossy().to_string());
-            }
+            // Same prompt-shaping args as the RPC process, or the first turn after
+            // switching views cold-misses the provider prompt cache.
+            argv.extend(crate::rpc::prompt_shape_args(
+                Some(&meta.file),
+                None,
+                None,
+                &settings,
+            ));
             argv
         }
     };

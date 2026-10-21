@@ -25,7 +25,7 @@ use crate::contracts::{LiveSessionInfo, PendingUiRequest, SessionMeta, StartOpts
 use crate::state::{AppEvent, AppState};
 use crate::{catalog, paths};
 
-pub use process::{send_command, SessionHandle};
+pub use process::{prompt_shape_args, send_command, SessionHandle};
 
 type ResumeLocks = parking_lot::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
 static REGISTRY: OnceLock<parking_lot::RwLock<HashMap<String, Arc<SessionHandle>>>> =

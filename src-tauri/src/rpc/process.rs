@@ -355,6 +355,87 @@ fn transcript_cache_key(file: &str, fall_back_to_id: bool) -> Option<String> {
     None
 }
 
+/// Prompt-shaping arguments shared by every app launch path for one transcript
+/// (`build_command` here and `term_open_session`'s `omp --resume` terminal).
+///
+/// omp keys its provider prompt cache on the exact system prompt + tool shape
+/// it sends, and it drops a transcript's inherited cache key as soon as a
+/// cache-shape flag (`--model`, `--append-system-prompt`, `--plugin-dir`, …) is
+/// present. Two launch paths for the same session must therefore produce the
+/// *same* prompt-shaping argv or the first turn after switching views cold-misses
+/// the whole prefix (transcript `system-prompt-digest` changes).
+///
+/// `append_system_prompt` is the RPC-only hidden-instruction channel (side chats);
+/// the terminal cannot reproduce it because `StartOpts` is not persisted, so a
+/// side chat's terminal gets the shared shape without it (documented tradeoff).
+pub fn prompt_shape_args(
+    resume_file: Option<&str>,
+    fork_file: Option<&str>,
+    append_system_prompt: Option<&str>,
+    settings: &Settings,
+) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    // omp falls back to the NEW session's id as the provider prompt-cache key
+    // whenever any cache-shape flag is present, which sends a forked/resumed
+    // session to a cold cache. Pin the key the source transcript already used.
+    if let Some(key) = fork_file
+        .and_then(|f| transcript_cache_key(f, true))
+        .or_else(|| resume_file.and_then(|f| transcript_cache_key(f, false)))
+    {
+        args.push("--prompt-cache-key".to_string());
+        args.push(key);
+    }
+    // Visualize skill plugin: loaded for app sessions unless the user opted
+    // out (§settings.visualize_enabled). Registers the `visualize` skill +
+    // `/skill:visualize` command in omp. A short standing hint tells the model
+    // to use it proactively; the skill alone is only used when asked.
+    let viz_dir = crate::visualize::spawn_plugin_dir(settings.visualize_enabled);
+    let mut append_prompt = append_system_prompt
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or_default()
+        .to_string();
+    if viz_dir.is_some() {
+        if !append_prompt.is_empty() {
+            append_prompt.push_str("\n\n");
+        }
+        append_prompt.push_str(crate::prompts::VISUALIZE_HINT.trim());
+    }
+    if !append_prompt.is_empty() {
+        args.push("--append-system-prompt".to_string());
+        args.push(append_prompt);
+    }
+    // Extension list and order are part of the prompt shape: the status extension
+    // reports progress (§8), checkpoints is opt-in (§8), privacy placeholders and
+    // provider routing are always on for app sessions.
+    let status_ext = paths::extension_path();
+    if status_ext.exists() {
+        args.push("-e".to_string());
+        args.push(status_ext.to_string_lossy().into_owned());
+    }
+    if settings.turn_checkpoints == Some(true) {
+        let ext = paths::checkpoints_extension_path();
+        if ext.exists() {
+            args.push("-e".to_string());
+            args.push(ext.to_string_lossy().into_owned());
+        }
+    }
+    let privacy_ext = paths::privacy_extension_path();
+    if privacy_ext.exists() {
+        args.push("-e".to_string());
+        args.push(privacy_ext.to_string_lossy().into_owned());
+    }
+    if let Some(ext) = crate::providers::try_extension_path() {
+        args.push("-e".to_string());
+        args.push(ext.to_string_lossy().into_owned());
+    }
+    if let Some(dir) = viz_dir {
+        args.push("--plugin-dir".to_string());
+        args.push(dir.to_string_lossy().into_owned());
+    }
+    args
+}
+
 fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process::Command, String> {
     let approval_mode = opts
         .approval_mode
@@ -387,71 +468,16 @@ fn build_command(opts: &StartOpts, settings: &Settings) -> Result<tokio::process
     if let Some(file) = &opts.fork_file {
         cmd.arg("--fork").arg(file);
     }
-    // omp falls back to the NEW session's id as the provider prompt-cache key
-    // whenever any cache-shape flag (--model, --append-system-prompt, ...) is
-    // present, which sends a forked/resumed session to a cold cache. Pin the
-    // key the source transcript already used instead.
-    if let Some(key) = opts
-        .fork_file
-        .as_deref()
-        .and_then(|f| transcript_cache_key(f, true))
-        .or_else(|| {
-            opts.resume_file
-                .as_deref()
-                .and_then(|f| transcript_cache_key(f, false))
-        })
-    {
-        cmd.arg("--prompt-cache-key").arg(key);
-    }
-    // Visualize skill plugin: loaded for app sessions unless the user opted
-    // out (§settings.visualize_enabled). Registers the `visualize` skill +
-    // `/skill:visualize` command in omp. A short standing hint tells the model
-    // to use it proactively; the skill alone is only used when asked.
-    let viz_dir = crate::visualize::spawn_plugin_dir(settings.visualize_enabled);
-    let mut append_prompt = opts
-        .append_system_prompt
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .unwrap_or_default()
-        .to_string();
-    if viz_dir.is_some() {
-        if !append_prompt.is_empty() {
-            append_prompt.push_str("\n\n");
-        }
-        append_prompt.push_str(crate::prompts::VISUALIZE_HINT.trim());
-    }
-    if !append_prompt.is_empty() {
-        cmd.arg("--append-system-prompt").arg(append_prompt);
-    }
+    cmd.args(prompt_shape_args(
+        opts.resume_file.as_deref(),
+        opts.fork_file.as_deref(),
+        opts.append_system_prompt.as_deref(),
+        settings,
+    ));
     if let Some(file) = &opts.resume_file {
         cmd.arg("--resume").arg(file);
     } else if opts.plan_yolo == Some(true) {
         cmd.arg("--plan-yolo");
-    }
-    // App-launched sessions get the status extension for precise reporting (§8).
-    let ext = paths::extension_path();
-    if ext.exists() {
-        cmd.arg("-e").arg::<PathBuf>(ext);
-    }
-    // Turn checkpoints extension: only when the user opted in (§8 contract).
-    if settings.turn_checkpoints == Some(true) {
-        let ext = paths::checkpoints_extension_path();
-        if ext.exists() {
-            cmd.arg("-e").arg::<PathBuf>(ext);
-        }
-    }
-    // Privacy placeholders extension: always loaded for app sessions.
-    let ext = paths::privacy_extension_path();
-    if ext.exists() {
-        cmd.arg("-e").arg::<PathBuf>(ext);
-    }
-    if let Some(ext) = crate::providers::try_extension_path() {
-        cmd.arg("-e").arg(ext);
-    }
-    // (plugin dir is added here; its system-prompt hint is merged above.)
-    if let Some(dir) = viz_dir {
-        cmd.arg("--plugin-dir").arg(dir);
     }
     Ok(cmd)
 }
@@ -1112,6 +1138,44 @@ mod tests {
         });
         assert!(!off.iter().any(|a| a == "--plugin-dir"));
         assert!(!off.iter().any(|a| a == "--append-system-prompt"));
+
+        // The terminal's `omp --resume` must get the identical prompt-shaping argv
+        // as the RPC spawn, or the first turn after switching views cold-misses
+        // the provider prompt cache.
+        let file = dir.join("s.jsonl");
+        std::fs::write(
+            &file,
+            "{\"type\":\"session\",\"id\":\"sid\",\"providerPromptCacheKey\":\"pinned\"}\n",
+        )
+        .unwrap();
+        let file = file.to_string_lossy().to_string();
+        let resume_opts = StartOpts {
+            cwd: "/tmp".into(),
+            resume_file: Some(file.clone()),
+            ..Default::default()
+        };
+        for visualize_enabled in [true, false] {
+            let s = Settings {
+                visualize_enabled,
+                ..Settings::default()
+            };
+            let shape = prompt_shape_args(Some(&file), None, None, &s);
+            let pos = shape
+                .iter()
+                .position(|a| a == "--prompt-cache-key")
+                .unwrap();
+            assert_eq!(shape[pos + 1], "pinned");
+            let rpc: Vec<String> = build_command(&resume_opts, &s)
+                .unwrap()
+                .as_std()
+                .get_args()
+                .map(|a| a.to_string_lossy().to_string())
+                .collect();
+            assert!(
+                rpc.windows(shape.len()).any(|w| w == shape.as_slice()),
+                "rpc argv {rpc:?} lacks shared shape {shape:?}"
+            );
+        }
 
         std::env::remove_var("OMPWS_DATA_DIR");
         std::fs::remove_dir_all(&dir).ok();

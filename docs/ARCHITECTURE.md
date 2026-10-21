@@ -988,7 +988,8 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   needed, no file/state changes unless asked — is rendered into the FIRST user prompt of `side_chat.md`, never `--append-system-prompt`: any
   system-prompt/cache-shape change makes omp drop the inherited cache key and cold-misses the whole forked prefix. `build_command` also
   pins `--prompt-cache-key` to the fork source's header `providerPromptCacheKey` (fallback: its session `id`) for every `--fork` spawn,
-  and to the header key on `--resume`)
+  and to the header key on `--resume`; those cache-shape args come from `rpc::prompt_shape_args`, which the `omp --resume` session terminal
+  (`term_open_session`) also uses so both views send omp an identical system prompt and the cache survives switching between them)
   and stores `session_meta` (parent, depth, label, created_by_app, `kind='side'`). The forked
   file is a copy cut at the END OF THE LAST COMPLETE TURN (last assistant message without a tool call; the in-flight turn — trailing
   unanswered user message, dangling tool call, pending tool results — is dropped; the copy is also made when the parent is idle if its tail is
