@@ -1,34 +1,24 @@
-/** [B] Ephemeral slash-command output blocks (contract C3).
- * Rendered at the end of the thread by MessageList. omp `command_output`
- * frames and app-local results (e.g. the /status card) both land here. */
+/** [B] Slash-command output card (contract C3). Rendered inline in the thread
+ * by MessageList at the row's anchor (withLocalRows); omp `command_output`
+ * frames and app-local results (e.g. the /status card) both use it. */
 
 import clsx from "clsx";
-import { type JSX, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, X } from "lucide-react";
 import { useLive, type CommandOutputEntry } from "../../../stores/live";
 import { Markdown } from "../markdown";
 
 const COLLAPSED_MAX_H = 132;
 
-export function CommandOutputList({
+export function CommandOutputRow({
 	sessionId,
+	entry,
 }: {
 	sessionId: string;
-}): JSX.Element | null {
-	const outputs = useLive((s) => s.sessions[sessionId]?.commandOutputs);
+	entry: CommandOutputEntry;
+}) {
 	const dismiss = useLive((s) => s.dismissCommandOutput);
-	if (!outputs || outputs.length === 0) return null;
-	return (
-		<div className="mt-1 flex flex-col gap-1.5" data-command-outputs>
-			{outputs.map((o) => (
-				<OutputBlock
-					key={o.id}
-					entry={o}
-					onDismiss={() => dismiss(sessionId, o.id)}
-				/>
-			))}
-		</div>
-	);
+	return <OutputBlock entry={entry} onDismiss={() => dismiss(sessionId, entry.id)} />;
 }
 
 function OutputBlock({

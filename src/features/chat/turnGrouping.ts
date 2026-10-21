@@ -6,6 +6,7 @@ import type {
 	TranscriptKind,
 } from "../../lib/contracts";
 import { flowNoticeText, isFlowItem, persistedCompactionText } from "./flowNotice";
+import { isLocalRowItem } from "./localRows";
 
 export type TurnStep =
 	| {
@@ -398,6 +399,19 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 
 		// Hidden items are skipped
 		if (item.hidden) {
+			continue;
+		}
+
+		// App-local row (slash echo / result card): a standalone row that splits
+		// the turn, so output written after it groups below instead of above.
+		if (isLocalRowItem(item)) {
+			finalizeCurrentTurn();
+			blocks.push({
+				type: "protocol",
+				id: `protocol-${item.id}`,
+				item,
+				allItemIds: [item.id],
+			});
 			continue;
 		}
 

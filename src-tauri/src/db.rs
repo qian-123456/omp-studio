@@ -209,6 +209,18 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         }
         conn.pragma_update(None, "user_version", 14)?;
     }
+    // v15: persisted app-local thread rows (slash-command echoes / result cards,
+    // retry and compaction notices), one JSON array per session.
+    if version < 15 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS local_rows(
+               session_id TEXT PRIMARY KEY,
+               rows TEXT NOT NULL,
+               updated_at TEXT NOT NULL
+             );",
+        )?;
+        conn.pragma_update(None, "user_version", 15)?;
+    }
     Ok(())
 }
 

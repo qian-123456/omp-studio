@@ -32,7 +32,7 @@ import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { isFlowItem, withFlowNotices } from "./flowNotice";
 import { QueuedBubbles } from "./QueuedBubbles";
-import { collectUserImages, queuedEchoIds, useLive, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
+import { collectUserImages, queuedEchoIds, useLive, type CommandOutputEntry, type LiveRequest, type LiveTool, type UserEcho } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useTurnNav } from "../../stores/turnNav";
 import { currentLocateId, useLocate } from "../../stores/locate";
@@ -70,9 +70,10 @@ import {
 	filterVisibleItems,
 } from "./messageTrace";
 import { abortTurn, sendPrompt } from "./send";
-import { CommandOutputList } from "./slash/CommandOutputList";
+import { CommandOutputRow } from "./slash/CommandOutputRow";
 import { RetryEpisodeRow, RetryNoticeList } from "./RetryNoticeList";
 import { isRetryItem, withRetryEpisodes } from "./retryEpisodes";
+import { isLocalRowItem, withLocalRows } from "./localRows";
 import { RequestStatsLine } from "./RequestStatsLine";
 import { type RequestStat, requestStatFromItem } from "./requestStats";
 import {
@@ -107,6 +108,7 @@ const EMPTY_ITEMS: TranscriptItem[] = [];
 /** Longest the live row outlives its stream while waiting for the committed turn. */
 const LIVE_HOLD_MS = 2500;
 const EMPTY_ECHOES: UserEcho[] = [];
+const EMPTY_OUTPUTS: CommandOutputEntry[] = [];
 
 /** In-flight steer echo as an activity step (same shape as persisted). */
 function steerStep(echo: UserEcho): StepShape {
@@ -394,6 +396,18 @@ const ProtocolRow = React.memo(function ProtocolRow({
 	sessionId: string;
 	item: TranscriptItem;
 }) {
+	if (isLocalRowItem(item)) {
+		const row = item.localRow;
+		return row.type === "echo" ? (
+			<div id={`msg-${row.echo.id}`} className="opacity-90">
+				<UserRow sessionId={sessionId} item={row.echo} />
+			</div>
+		) : (
+			<div id={`msg-${item.id}`}>
+				<CommandOutputRow sessionId={sessionId} entry={row.entry} />
+			</div>
+		);
+	}
 	if (isRetryItem(item)) return <RetryEpisodeRow sessionId={sessionId} episode={item.retry} />;
 	const label = noticeLabel(item);
 	const summary = noticeSummary(item);
@@ -1242,9 +1256,18 @@ export function MessageList({
 	const retryHistory = useLive((s) => s.sessions[sessionId]?.retryHistory);
 	const hydrateRetryHistory = useLive((s) => s.hydrateRetryHistory);
 	useEffect(() => hydrateRetryHistory(sessionId), [hydrateRetryHistory, sessionId]);
+	const localEchoes = useLive((s) => s.sessions[sessionId]?.localEchoes);
+	const commandOutputs = useLive((s) => s.sessions[sessionId]?.commandOutputs);
+	const hydrateLocalRows = useLive((s) => s.hydrateLocalRows);
+	useEffect(() => hydrateLocalRows(sessionId), [hydrateLocalRows, sessionId]);
 	const withNotices = useMemo(
-		() => withRetryEpisodes(withFlowNotices(items, flowNotices ?? []), retryHistory ?? []),
-		[items, flowNotices, retryHistory],
+		() =>
+			withLocalRows(
+				withRetryEpisodes(withFlowNotices(items, flowNotices ?? []), retryHistory ?? []),
+				localEchoes ?? EMPTY_ECHOES,
+				commandOutputs ?? EMPTY_OUTPUTS,
+			),
+		[items, flowNotices, retryHistory, localEchoes, commandOutputs],
 	);
 	const visible = useMemo(() => filterVisibleItems(withNotices, false), [withNotices]);
 
@@ -1766,7 +1789,6 @@ export function MessageList({
 							traceGutter ? TRACE_GUTTER_PAD : "px-3",
 						)}
 					>
-						<CommandOutputList sessionId={sessionId} />
 						<RetryNoticeList sessionId={sessionId} />
 					</div>
 				</div>

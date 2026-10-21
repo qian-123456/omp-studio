@@ -521,8 +521,10 @@ CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, s
 -- v13: bulk model replace log (newest 10 kept); edits = JSON ModelReplaceEdit[] of successful edits only
 CREATE TABLE model_replace_log(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, from_model TEXT NOT NULL, to_model TEXT NOT NULL,
   edits TEXT NOT NULL, undone_at TEXT);
+-- v15: persisted app-local thread rows (slash echoes / result cards / settled compaction+handoff dividers), one JSON array per session
+CREATE TABLE local_rows(session_id TEXT PRIMARY KEY, rows TEXT NOT NULL, updated_at TEXT NOT NULL);
 ```
-Use a `user_version` pragma for migrations (current: v14; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`). `db.rs` also provides `load_settings`/`save_settings` and
+Use a `user_version` pragma for migrations (current: v15; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`). `db.rs` also provides `load_settings`/`save_settings` and
 `ensure_global_workspace(conn)` (creates the single global workspace row `global`/`~/.omp-workspace/global`, owned by
 the `chat` space). v11 moves the global row and every session group (and grouped sessions) to `chat` and drops the
 v10 per-mode `global:<mode>` rows (their dirs stay on disk).
@@ -616,6 +618,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 **D — todos / backlog / notify:**
 - `todos_list(include_closed: bool) -> Vec<Todo>`, `todos_act(id, action: "done"|"ignore"|"reopen")`, `todos_counts() -> TodoCounts`
 - `summary_get(session_id, ensure: bool) -> Option<String>`
+- `local_rows_get(session_id) -> JSON array` (opaque to Rust; `[]` when none), `local_rows_set(session_id, rows: JSON array)` (empty array deletes the row; > 2 MiB rejected)
 - `diagnose_build_prompt(target_session_id) -> String`
 - `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(ids: Vec<String>) -> String` (one item → full template; several → one preamble + compact numbered list + one closing)
 - `notify_test()`
@@ -1021,8 +1024,16 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   /browser /computer /extended-context; 设置 /agents /approvals /login /settings), each with optional `settingsTarget`. `menu.ts`
   merges them with omp `available_commands_update` entries (`{name, aliases?, description?, input?:{hint?}, subcommands?, source}`;
   skill → 技能, custom/file → 自定义命令, extension/mcp_prompt → 扩展, other builtins → 更多 OMP 命令). `SlashMenu` is the Codex-style
-  popup (gear "去设置" → `openSettingsTarget`). Unknown `/x` is sent to omp as a prompt; `command_output` frames render in
-  `CommandOutputList` at the end of the thread.
+  popup (gear "去设置" → `openSettingsTarget`). Unknown `/x` is sent to omp as a prompt; `command_output` frames render as result cards
+  inline in the thread (see "Local rows" below), not pinned to the tail.
+- Local rows (`features/chat/localRows.ts`, table `local_rows`): echoes + result cards of slash commands omp handles without writing a
+  transcript item (`/shake`, `/tools`, `/jobs`, … — detected by `command_output` / `agentInvoked:false` / error on the prompt response;
+  agent-invoked commands such as `/review` keep their normal pending echo), app-local result cards (`pushOutput`, `track`) and settled
+  compaction/handoff dividers. Each row stores its send time and `anchorId` (last transcript item id when created); `withLocalRows`
+  splices it right after the anchor (unknown anchor → after the last item written at/before its time), `groupTurnBlocks` renders it as a
+  standalone row that splits the turn, so later replies appear below it. An echo whose exact text the transcript carries within
+  [-5 s, +120 s] is dropped (no duplicates). Rows are saved per session (debounced) via `local_rows_set` and merged back via
+  `local_rows_get` on first view; if either command is unavailable the rows stay in memory only and stored rows are never overwritten.
 - Side chats: `/btw [问题]` opens a blank side-chat tab in the right panel (revealing it) via `openSideChatTab`; with a question the same first-message flow as the panel runs at once (echo → `createSideChat` → `sideChatAsk`). The main view never changes. Mobile maps `/btw` to create + ask. 终端面板 「发送到侧聊」 stages the selection as a `sidechat:<parentId>` annotation and opens a blank tab without sending. Sidebar rows: `kind === "side"` → chat-bubble icon, indented under the parent (`grouping.nestSideChats`), title + running dot only; `kind === "fork"` → normal row with a 分叉 badge (not nested, not hidden by the empty-stub or parent-archive rules).
 - Full-session fork (`features/sessions/forkDraft.ts`, `ForkDraftView.tsx`): entry points are the answer-footer fork icon (pins that answer's entry id) and `/fork`. Decided at click time by `startFork`: parent idle (not streaming, status not working/awaiting_approval/awaiting_answer) → `forkSession` runs IMMEDIATELY (no prompt), the new real session opens in the main area with an empty focused composer; parent running → lazy DRAFT (`useForkDraft`, synthetic id `fork-draft:<uuid>`, `selectedSessionId` stays null like the pending-session placeholder): shows the parent transcript read-only (cut client-side at the pinned entry), notice outside the composer, no backend row/file/process, not in the sidebar. The regular Composer runs against the draft id; `sendPrompt` routes that id to `sendFromForkDraft`: local echo → `forkSession(parent, pinnedEntry)` (cut computed at send time; in-flight turn dropped) → swap to the real session → `sendPrompt(newId, text)`; fork failure removes the echo and restores the composer. `/fork <text>` (`forkAndSend`) forks now in either state and sends that text. The composer/sent message only ever contain what the user typed; the inherited conversation travels in the forked session file. Leaving the pane discards a draft.
 - Composer: Codex-style single container; one "N 条批注" chip above the input (hover/focus opens a popover listing every quote with its comment, edit ✎ / delete 🗑 / locate), textarea, bottom

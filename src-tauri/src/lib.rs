@@ -6,6 +6,7 @@ mod catalog;
 mod contracts;
 mod db;
 mod git;
+mod local_rows;
 mod mobile;
 mod model_replace;
 mod notify;
@@ -285,6 +286,8 @@ pub fn run() {
             omp_files::omp_rule_read,
             omp_files::omp_rule_write,
             todos::commands::todos_counts,
+            local_rows::local_rows_get,
+            local_rows::local_rows_set,
             todos::commands::summary_get,
             todos::commands::diagnose_build_prompt,
             todos::commands::dispatch_prompt,

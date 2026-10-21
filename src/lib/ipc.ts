@@ -475,6 +475,13 @@ export const summaryGet = (sessionId: string, ensure: boolean) =>
 export const diagnoseBuildPrompt = (targetSessionId: string) =>
 	invoke<string>("diagnose_build_prompt", { targetSessionId });
 
+/** Persisted app-local thread rows of a session (opaque JSON array; §6 `local_rows`). */
+export const localRowsGet = (sessionId: string) =>
+	invoke<unknown>("local_rows_get", { sessionId });
+
+export const localRowsSet = (sessionId: string, rows: unknown[]) =>
+	invoke<void>("local_rows_set", { sessionId, rows });
+
 /** Send through the backend so busy sessions receive follow-up prompts.
  * Echoes the prompt optimistically so the sender sees it immediately —
  * the transcript page only refreshes on mount or turn end. */

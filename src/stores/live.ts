@@ -19,6 +19,11 @@ import {
 	retryNoticeFromFrame,
 	saveRetryHistory,
 } from "./retryNotice";
+import {
+	type PersistedRow,
+	parseLocalRows,
+	serializeLocalRows,
+} from "../features/chat/localRows";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type {
@@ -58,9 +63,10 @@ export interface SlashCommand {
 	source?: string;
 }
 
-/** Ephemeral output block produced by a slash command — omp `command_output`
- * frames or app-local results (e.g. the /status card). Rendered inline by
- * CommandOutputList, not persisted to the transcript. */
+/** Slash-command output block — omp `command_output` frames or app-local
+ * results (e.g. the /status card). Placed in the thread at its anchor by
+ * withLocalRows and persisted per session (§6 `local_rows`); never part of
+ * the transcript file. */
 export interface CommandOutputEntry {
 	id: number;
 	/** Slash command name that produced it, when known. */
@@ -70,6 +76,8 @@ export interface CommandOutputEntry {
 	kind: "omp" | "app";
 	/** App-local command run state: a running row becomes its result in place. */
 	status?: "running" | "done" | "error";
+	/** Id of the last transcript item when the row was created (thread position). */
+	anchorId?: string | null;
 }
 
 // Re-exported for existing consumers (TopCapsule).
@@ -131,6 +139,8 @@ export type UserEcho = TranscriptItem & {
 	steer?: boolean;
 	held?: boolean;
 	delivered?: boolean;
+	/** Id of the last transcript item when the echo was sent (thread position). */
+	anchorId?: string | null;
 };
 
 /** Compaction / handoff progress shown as a one-row divider in the thread. */
@@ -171,6 +181,11 @@ export interface SessionLive {
 	commands: SlashCommand[];
 	/** Ephemeral slash-command outputs shown at the end of the thread. */
 	commandOutputs: CommandOutputEntry[];
+	/** Echoes of commands omp handled without writing a transcript item; they
+	 * leave `pendingUserEchoes` and sit in the thread at their anchor (persisted). */
+	localEchoes?: UserEcho[];
+	/** Persisted local rows were merged into this session's state. */
+	localRowsLoaded?: boolean;
 	/** Retry / model-fallback rows of the turn in progress (live rows). */
 	retryNotices?: RetryNotice[];
 	/** Fallback switch of the turn in progress, undoable from its row. */
@@ -468,6 +483,33 @@ function markEchoDelivered(echoes: UserEcho[], text: string): UserEcho[] {
 	const i = echoes.findIndex((e) => e.held && !e.delivered && echoMatches(e.text ?? "", text));
 	if (i < 0) return echoes;
 	return echoes.map((e, j) => (j === i ? { ...e, delivered: true } : e));
+}
+
+/** Id of the last transcript item: where a new local row is anchored. */
+export const lastItemId = (live: Pick<SessionLive, "items">): string | null =>
+	live.items[live.items.length - 1]?.id ?? null;
+
+/**
+ * omp handled `/command` itself (command_output / not agent-invoked / error)
+ * and never writes it to the transcript, so its echo would wait for a user
+ * item forever. Move the latest matching echo out of `pendingUserEchoes` into
+ * `localEchoes`: it stays in the thread at its anchor and is persisted.
+ */
+export function moveLocalEcho(live: SessionLive, command: string | null | undefined): SessionLive {
+	if (!command) return live;
+	const prefix = `/${command}`;
+	let idx = -1;
+	live.pendingUserEchoes.forEach((e, i) => {
+		const t = (e.text ?? "").trimStart();
+		if (t === prefix || t.startsWith(`${prefix} `)) idx = i;
+	});
+	if (idx < 0) return live;
+	const { held: _held, delivered: _delivered, steer: _steer, ...echo } = live.pendingUserEchoes[idx];
+	return {
+		...live,
+		pendingUserEchoes: live.pendingUserEchoes.filter((_, i) => i !== idx),
+		localEchoes: [...(live.localEchoes ?? []), echo].slice(-50),
+	};
 }
 
 /** Move the turn's retry rows into the persisted history (one entry per turn). */
@@ -890,19 +932,23 @@ function reduce(
 			// normal message. Surface it as an ephemeral block in the thread.
 			const text = str(frame.text);
 			if (!text.trim()) return live;
-			return {
-				...live,
-				commandOutputs: [
-					...live.commandOutputs,
-					{
-						id: nextOutputId++,
-						command: live.pendingCommand ?? undefined,
-						text,
-						ts: Date.now(),
-						kind: "omp",
-					} satisfies CommandOutputEntry,
-				].slice(-50),
-			};
+			return moveLocalEcho(
+				{
+					...live,
+					commandOutputs: [
+						...live.commandOutputs,
+						{
+							id: nextOutputId++,
+							command: live.pendingCommand ?? undefined,
+							text,
+							ts: Date.now(),
+							kind: "omp",
+							anchorId: lastItemId(live),
+						} satisfies CommandOutputEntry,
+					].slice(-50),
+				},
+				live.pendingCommand,
+			);
 		}
 		case "config_update": {
 			// `{model?, thinkingLevel?}` — refresh the cached get_state fields.
@@ -937,24 +983,28 @@ function reduce(
 				frame.status === "error" &&
 				str(frame.error).trim()
 			) {
-				return {
-					...live,
-					streaming: false,
-					streamingMessage: null,
-					tools: {},
-					liveRequests: [],
-					pendingCommand: null,
-					commandOutputs: [
-						...live.commandOutputs,
-						{
-							id: nextOutputId++,
-							command: pendingCommand,
-							text: str(frame.error),
-							ts: Date.now(),
-							kind: "omp",
-						} satisfies CommandOutputEntry,
-					].slice(-50),
-				};
+				return moveLocalEcho(
+					{
+						...live,
+						streaming: false,
+						streamingMessage: null,
+						tools: {},
+						liveRequests: [],
+						pendingCommand: null,
+						commandOutputs: [
+							...live.commandOutputs,
+							{
+								id: nextOutputId++,
+								command: pendingCommand,
+								text: str(frame.error),
+								ts: Date.now(),
+								kind: "omp",
+								anchorId: lastItemId(live),
+							} satisfies CommandOutputEntry,
+						].slice(-50),
+					},
+					pendingCommand,
+				);
 			}
 			return {
 				...live,
@@ -1047,31 +1097,36 @@ function reduce(
 			if (frame.command === "prompt") {
 				const pendingCommand = live.pendingCommand ?? null;
 				if (frame.success !== true) {
-					return {
+					const failed: SessionLive = {
 						...live,
 						streaming: false,
 						streamingMessage: null,
 						tools: {},
 						liveRequests: [],
 						pendingCommand: null,
-						commandOutputs:
-							pendingCommand && str(frame.error).trim()
-								? [
-										...live.commandOutputs,
-										{
-											id: nextOutputId++,
-											command: pendingCommand,
-											text: str(frame.error),
-											ts: Date.now(),
-											kind: "omp",
-										} satisfies CommandOutputEntry,
-									].slice(-50)
-								: live.commandOutputs,
 					};
+					if (!pendingCommand || !str(frame.error).trim()) return failed;
+					return moveLocalEcho(
+						{
+							...failed,
+							commandOutputs: [
+								...live.commandOutputs,
+								{
+									id: nextOutputId++,
+									command: pendingCommand,
+									text: str(frame.error),
+									ts: Date.now(),
+									kind: "omp",
+									anchorId: lastItemId(live),
+								} satisfies CommandOutputEntry,
+							].slice(-50),
+						},
+						pendingCommand,
+					);
 				}
 				const data = asFrame(frame.data);
 				if (data.agentInvoked === false && pendingCommand) {
-					return { ...live, pendingCommand: null };
+					return moveLocalEcho({ ...live, pendingCommand: null }, pendingCommand);
 				}
 				return live;
 			}
@@ -1210,6 +1265,8 @@ export interface LiveState {
 	dismissFlowNotice(sessionId: string, id: number): void;
 	/** Load this session's persisted retry history (once). */
 	hydrateRetryHistory(sessionId: string): void;
+	/** Load this session's persisted local rows (once). */
+	hydrateLocalRows(sessionId: string): void;
 	/** Mark a fallback as undone everywhere it is shown. */
 	markFallbackUndone(sessionId: string, fallbackId: string): void;
 }
@@ -1335,6 +1392,7 @@ export const useLive = create<LiveState>((set) => ({
 		const echo: UserEcho = makeUserEcho(trimmed, images);
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
+			echo.anchorId = lastItemId(live);
 			// Only a steer into an in-flight turn is in-turn; anything else is a
 			// next-turn bubble.
 			if (steer && live.streaming) echo.steer = true;
@@ -1424,6 +1482,7 @@ export const useLive = create<LiveState>((set) => ({
 								text,
 								ts: Date.now(),
 								kind: "app",
+								anchorId: lastItemId(live),
 						} satisfies CommandOutputEntry,
 						].slice(-50),
 					},
@@ -1447,6 +1506,7 @@ export const useLive = create<LiveState>((set) => ({
 								text,
 								ts: Date.now(),
 								kind: "app",
+								anchorId: lastItemId(live),
 								status: "running",
 							} satisfies CommandOutputEntry,
 						].slice(-50),
@@ -1467,7 +1527,14 @@ export const useLive = create<LiveState>((set) => ({
 					)
 				: [
 						...live.commandOutputs,
-						{ id, text, ts: Date.now(), kind: "app", status } satisfies CommandOutputEntry,
+						{
+							id,
+							text,
+							ts: Date.now(),
+							kind: "app",
+							status,
+							anchorId: lastItemId(live),
+						} satisfies CommandOutputEntry,
 					].slice(-50);
 			return {
 				sessions: { ...s.sessions, [sessionId]: { ...live, commandOutputs: outputs } },
@@ -1527,6 +1594,9 @@ export const useLive = create<LiveState>((set) => ({
 				},
 			};
 		}),
+	hydrateLocalRows: (sessionId) => {
+		if (!useLive.getState().sessions[sessionId]?.localRowsLoaded) loadLocalRows(sessionId);
+	},
 	hydrateRetryHistory: (sessionId) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
@@ -1570,6 +1640,132 @@ useLive.subscribe((s, prev) => {
 		if (live.retryHistory && live.retryHistory !== prev.sessions[sid]?.retryHistory) {
 			saveRetryHistory(sid, live.retryHistory);
 		}
+	}
+});
+
+// ---- Local rows persistence (docs/ARCHITECTURE.md §6 `local_rows`) ----
+
+const localRowsLoading = new Set<string>();
+/** Sessions whose stored rows could not be read: never overwrite them. */
+const localRowsReadOnly = new Set<string>();
+const localRowsSavedJson = new Map<string, string>();
+const localRowsTimers = new Map<string, Parameters<typeof clearTimeout>[0]>();
+
+function mergeLocalRows(sessionId: string, stored: PersistedRow[], readable: boolean): void {
+	localRowsLoading.delete(sessionId);
+	if (readable) localRowsReadOnly.delete(sessionId);
+	else localRowsReadOnly.add(sessionId);
+	localRowsSavedJson.set(sessionId, JSON.stringify(stored));
+	const echoes: UserEcho[] = [];
+	const outputs: CommandOutputEntry[] = [];
+	const flows: FlowNotice[] = [];
+	for (const r of stored) {
+		if (r.t === "echo") {
+			echoes.push({
+				...makeUserEcho(r.text, r.images),
+				id: `local-echo-h${nextEchoId++}`,
+				ts: r.ts,
+				anchorId: r.anchorId,
+			});
+		} else if (r.t === "output") {
+			outputs.push({
+				id: nextOutputId++,
+				ts: r.ts,
+				anchorId: r.anchorId,
+				text: r.text,
+				kind: r.kind,
+				...(r.command ? { command: r.command } : {}),
+				...(r.status ? { status: r.status } : {}),
+			});
+		} else {
+			flows.push({
+				id: nextOutputId++,
+				kind: r.kind,
+				status: r.status,
+				startedAt: r.startedAt,
+				anchorId: r.anchorId,
+				...(r.endedAt !== undefined ? { endedAt: r.endedAt } : {}),
+				...(r.tokensBefore !== undefined ? { tokensBefore: r.tokensBefore } : {}),
+				...(r.tokensAfter !== undefined ? { tokensAfter: r.tokensAfter } : {}),
+				...(r.detail ? { detail: r.detail } : {}),
+			});
+		}
+	}
+	useLive.setState((s) => {
+		const live = s.sessions[sessionId] ?? emptySessionLive();
+		return {
+			sessions: {
+				...s.sessions,
+				[sessionId]: {
+					...live,
+					localRowsLoaded: true,
+					localEchoes: [...echoes, ...(live.localEchoes ?? [])].slice(-50),
+					commandOutputs: [...outputs, ...live.commandOutputs].slice(-50),
+					flowNotices: [...flows, ...live.flowNotices].slice(-20),
+				},
+			},
+		};
+	});
+}
+
+/** Read a session's stored local rows once and merge them into its live state. */
+function loadLocalRows(sessionId: string): void {
+	if (localRowsLoading.has(sessionId)) return;
+	localRowsLoading.add(sessionId);
+	ipcMod ??= import("../lib/ipc");
+	void ipcMod
+		.then((m) => m.localRowsGet(sessionId))
+		.then(
+			(raw) => mergeLocalRows(sessionId, parseLocalRows(raw), true),
+			// Command missing (app not restarted since the update) or DB error:
+			// keep working in memory, leave the stored rows untouched.
+			() => mergeLocalRows(sessionId, [], false),
+		);
+}
+
+function saveLocalRows(sessionId: string): void {
+	const live = useLive.getState().sessions[sessionId];
+	if (!live || localRowsReadOnly.has(sessionId)) return;
+	const rows = serializeLocalRows(
+		live.localEchoes ?? [],
+		live.commandOutputs ?? [],
+		live.flowNotices ?? [],
+	);
+	const json = JSON.stringify(rows);
+	if (json === localRowsSavedJson.get(sessionId)) return;
+	localRowsSavedJson.set(sessionId, json);
+	ipcMod ??= import("../lib/ipc");
+	void ipcMod.then((m) => m.localRowsSet(sessionId, rows)).catch(() => {});
+}
+
+// Persist each session's local rows whenever they change (debounced); a
+// session with settled rows but no stored copy read yet is hydrated first.
+useLive.subscribe((s, prev) => {
+	for (const [sid, live] of Object.entries(s.sessions)) {
+		const before = prev.sessions[sid];
+		if (
+			live.localEchoes === before?.localEchoes &&
+			live.commandOutputs === before?.commandOutputs &&
+			live.flowNotices === before?.flowNotices
+		) {
+			continue;
+		}
+		if (!live.localRowsLoaded) {
+			const settled = serializeLocalRows(
+				live.localEchoes ?? [],
+				live.commandOutputs ?? [],
+				live.flowNotices ?? [],
+			);
+			if (settled.length > 0) {
+				loadLocalRows(sid);
+			}
+			continue;
+		}
+		clearTimeout(localRowsTimers.get(sid));
+		localRowsTimers.set(
+			sid,
+			setTimeout(() => saveLocalRows(sid), 300),
+		);
 	}
 });
 
