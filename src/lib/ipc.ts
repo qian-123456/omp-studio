@@ -836,3 +836,27 @@ export const privacyDelete = (id: string) =>
 	invoke<void>("privacy_delete", { id });
 export const privacySessionEntryIds = (sessionId: string) =>
 	invoke<string[]>("privacy_session_entry_ids", { sessionId });
+
+// --- storage (设置 ▸ 存储空间) ---
+export const storageOverview = () =>
+	invoke<import("./contracts").StorageOverview>("storage_overview");
+/** `drafts`: unsent composer draft texts (they live in localStorage, so the UI passes them in). */
+export const storageImagesPreview = (drafts: string[]) =>
+	invoke<import("./contracts").StorageGcSummary>("storage_images_preview", { drafts });
+export const storageImagesClean = (drafts: string[]) =>
+	invoke<import("./contracts").StorageGcSummary>("storage_images_clean", { drafts });
+/** Startup GC; resolves null when the 24h throttle skipped the run. */
+export const storageImageGcAuto = (drafts: string[]) =>
+	invoke<import("./contracts").StorageGcSummary | null>("storage_image_gc_auto", { drafts });
+export const storageClearWebCache = () => invoke<number>("storage_clear_web_cache");
+export const storageCleanStatusRecords = () =>
+	invoke<import("./contracts").StorageGcSummary>("storage_clean_status_records");
+export const storageCompactDb = () =>
+	invoke<import("./contracts").StorageCompactResult>("storage_compact_db");
+export const storageSessionsOverview = () =>
+	invoke<import("./contracts").StorageSessionsOverview>("storage_sessions_overview");
+export const storageStaleSessionsPreview = (days: number) =>
+	invoke<import("./contracts").StorageStalePreview>("storage_stale_sessions_preview", { days });
+/** Move sessions (transcript + lock + artifacts dir) to the macOS Trash. */
+export const storageTrashSessions = (ids: string[]) =>
+	invoke<import("./contracts").StorageTrashReport>("storage_trash_sessions", { ids });

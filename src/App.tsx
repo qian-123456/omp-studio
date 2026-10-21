@@ -25,6 +25,7 @@ import { installNativeShortcuts } from "./lib/nativeShortcuts";
 import { suspendScrollPills } from "./lib/scrollPills";
 import { useSessions } from "./stores/sessions";
 import { useOmpUpdate, watchOmpStaleness, watchOmpUpdateChecks } from "./stores/ompUpdate";
+import { useStartupImageGc } from "./features/settings/useStartupImageGc";
 import {
 	MAX_SIDEBAR_WIDTH,
 	MIN_SIDEBAR_WIDTH,
@@ -142,6 +143,7 @@ function MainCenterView({ activeView }: { activeView: CenterView }) {
 }
 
 export default function App() {
+	useStartupImageGc();
 	const rightOpen = useUi((s) => s.rightOpen);
 	const toggleRight = useUi((s) => s.toggleRight);
 	const setRightWidth = useUi((s) => s.setRightWidth);

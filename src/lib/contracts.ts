@@ -1474,3 +1474,58 @@ export interface OmpUpdateResult {
 	/** First line of `omp --version` after the update. */
 	versionAfter: string | null;
 }
+
+// --- storage (设置 ▸ 存储空间) ---
+export interface StorageGcSummary {
+	count: number;
+	bytes: number;
+}
+export interface StorageStatusUsage {
+	count: number;
+	bytes: number;
+	expiredCount: number;
+	expiredBytes: number;
+}
+export interface StorageOverview {
+	images: StorageGcSummary;
+	webCacheBytes: number;
+	status: StorageStatusUsage;
+	dbBytes: number;
+	imageDirs: string[];
+}
+export interface StorageCompactResult {
+	beforeBytes: number;
+	afterBytes: number;
+}
+export interface StorageSessionRow {
+	id: string;
+	title: string;
+	updatedAt: string;
+	bytes: number;
+	pinned: boolean;
+	/** Non-null ⇒ cannot be deleted from the storage page. */
+	skipReason: string | null;
+}
+export interface StorageProjectRow {
+	dir: string;
+	name: string;
+	cwd: string | null;
+	bytes: number;
+	sessions: StorageSessionRow[];
+}
+export interface StorageSessionsOverview {
+	root: string;
+	totalBytes: number;
+	sessionCount: number;
+	projects: StorageProjectRow[];
+}
+export interface StorageStalePreview {
+	count: number;
+	bytes: number;
+	ids: string[];
+}
+export interface StorageTrashReport {
+	trashed: number;
+	freedBytes: number;
+	skipped: { id: string; reason: string }[];
+}

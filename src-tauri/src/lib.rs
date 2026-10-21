@@ -26,6 +26,7 @@ mod settings_plugins;
 mod skills;
 mod state;
 mod terminal;
+mod storage;
 mod todos;
 mod visualize;
 
@@ -216,6 +217,16 @@ pub fn run() {
             // B — rpc
             rpc::commands::rpc_start,
             rpc::commands::rpc_ensure_live,
+            storage::storage_overview,
+            storage::storage_images_preview,
+            storage::storage_images_clean,
+            storage::storage_image_gc_auto,
+            storage::storage_clear_web_cache,
+            storage::storage_clean_status_records,
+            storage::storage_compact_db,
+            storage::storage_sessions_overview,
+            storage::storage_stale_sessions_preview,
+            storage::storage_trash_sessions,
             rpc::commands::rpc_send,
             rpc::commands::rpc_ui_respond,
             rpc::commands::rpc_pending_ui,
