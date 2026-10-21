@@ -47,6 +47,8 @@ export interface FileEditorProps {
 	/** Called after a successful save / create / reload so lists can refresh. */
 	onChanged?: () => void;
 	savedToast?: string;
+	/** Skip the outer SettingsCard chrome (inline expansion inside another card). */
+	bare?: boolean;
 }
 
 export function FileEditor({
@@ -60,6 +62,7 @@ export function FileEditor({
 	extraActions,
 	onChanged,
 	savedToast = "已保存，新开的会话会使用新内容",
+	bare = false,
 }: FileEditorProps) {
 	const short = useShortPath();
 	const dark = themeById(useResolvedThemeId())?.dark ?? true;
@@ -245,16 +248,15 @@ export function FileEditor({
 				: loaded === null
 					? "文件不存在"
 					: "已存在";
-
-	return (
-		<SettingsCard>
+	const body = (
+		<>
 			<div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-1.5">
 						{dirty && (
 							<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]" title="有未保存的修改" />
 						)}
-						<code className="truncate font-mono text-xs text-[var(--text)]" title={path}>
+						<code className="break-all font-mono text-xs text-[var(--text)]" title={path}>
 							{short(path)}
 						</code>
 					</div>
@@ -356,6 +358,8 @@ export function FileEditor({
 					)}
 				</div>
 			)}
-		</SettingsCard>
+		</>
 	);
+
+	return bare ? body : <SettingsCard>{body}</SettingsCard>;
 }

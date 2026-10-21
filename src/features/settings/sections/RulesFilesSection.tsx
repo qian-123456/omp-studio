@@ -1,8 +1,8 @@
 /** Settings → 规则文件: every omp rule file (AGENTS.md, RULES.md, rules/*.md, APPEND_SYSTEM.md), global or per project. */
 
 import clsx from "clsx";
-import { ArrowUpRight, FilePlus2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, ChevronDown, ChevronRight, FilePlus2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Segmented } from "../../../components/Segmented";
 import { useHomeDir, useShortPath } from "../../../lib/hooks";
 import { fsReadDir, ompRuleRead, ompRuleWrite } from "../../../lib/ipc";
@@ -40,14 +40,16 @@ export function RulesFilesSection() {
 	const effectiveScope: RuleScope = cwd ? scope : "global";
 	const [contents, setContents] = useState<RuleContents>({});
 	const [ruleNames, setRuleNames] = useState<string[]>([]);
-	const [selectedId, setSelectedId] = useState<string | null>(null);
+	/** Row whose editor is expanded below it (only one at a time). */
+	const [expandedId, setExpandedId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const editorRef = useRef<HTMLDivElement | null>(null);
 
 	const fixed = useMemo(() => buildRuleEntries(effectiveScope, home, cwd), [effectiveScope, home, cwd]);
 	const dir = rulesDirPath(effectiveScope, home, cwd);
 	const ruleFiles = useMemo(() => (dir ? buildRuleFileEntries(dir, ruleNames) : []), [dir, ruleNames]);
 	const entries = useMemo(() => [...fixed, ...ruleFiles], [fixed, ruleFiles]);
-	const selected = entries.find((e) => e.id === selectedId) ?? null;
+	const expanded = entries.find((e) => e.id === expandedId) ?? null;
 
 	const refresh = useCallback(async () => {
 		try {
@@ -74,62 +76,117 @@ export function RulesFilesSection() {
 
 	useEffect(() => {
 		setContents({});
-		setSelectedId(null);
+		setExpandedId(null);
 		void refresh();
 	}, [refresh]);
+
+	// Expanding a row mounts the editor under it; bring that editor into view.
+	useEffect(() => {
+		if (!expandedId) return;
+		const frame = requestAnimationFrame(() => {
+			editorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [expandedId]);
 
 	const create = async (entry: RuleEntry) => {
 		try {
 			await ompRuleWrite(entry.path, entry.starter, null);
 			await refresh();
-			setSelectedId(entry.id);
+			setExpandedId(entry.id);
 		} catch (e) {
 			toast.error(`创建失败：${describeFileCommandError(e)}`);
 		}
 	};
 
-	const load = useCallback(() => ompRuleRead(selected?.path ?? ""), [selected?.path]);
+	const load = useCallback(() => ompRuleRead(expanded?.path ?? ""), [expanded?.path]);
 	const save = useCallback(
-		(content: string, stamp: string | null) => ompRuleWrite(selected?.path ?? "", content, stamp),
-		[selected?.path],
+		(content: string, stamp: string | null) => ompRuleWrite(expanded?.path ?? "", content, stamp),
+		[expanded?.path],
 	);
 
 	const renderRow = (e: RuleEntry) => {
 		const st = ruleStatus(e, contents);
 		const isRuleFile = e.kind === "rule-file";
 		const loading = st.label === "读取中";
+		const open = e.id === expandedId;
+		const text = contents[e.path];
+		// A file that is not on disk yet has nothing to open: its action is 「创建」.
+		// While the status is unknown (读取中) the row stays plain too.
+		const expandable = isRuleFile || st.exists || open;
+		const canCreate = !isRuleFile && !loading && !st.exists;
+		const summary = (
+			<span className="min-w-0 flex-1">
+				<span className="flex flex-wrap items-center gap-2">
+					<code className="font-mono text-xs text-[var(--text)]">{e.label}</code>
+					{!loading && (
+						<Chip tone={st.exists || isRuleFile ? "success" : "neutral"}>{isRuleFile ? "已存在" : st.label}</Chip>
+					)}
+					{typeof text === "string" && text.trim() !== "" && <Chip>{formatTokenEstimate(text)}</Chip>}
+					{st.note && <span className="text-[11px] text-[var(--status-warning)]">{st.note}</span>}
+				</span>
+				<span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">{e.description}</span>
+			</span>
+		);
 		return (
-			<div
-				key={e.id}
-				className={clsx(
-					"flex items-start gap-3 px-4 py-2.5",
-					e.id === selectedId && "bg-[var(--bg-active-fill)]",
-				)}
-			>
-				<button
-					type="button"
-					onClick={() => setSelectedId(e.id)}
-					className="min-w-0 flex-1 text-left"
-					title={e.path}
-				>
-					<div className="flex flex-wrap items-center gap-2">
-						<code className="font-mono text-xs text-[var(--text)]">{e.label}</code>
-						{!loading && (
-							<Chip tone={st.exists || isRuleFile ? "success" : "neutral"}>
-								{isRuleFile ? "已存在" : st.label}
-							</Chip>
-						)}
-						{typeof contents[e.path] === "string" && (contents[e.path] as string).trim() !== "" && (
-							<Chip>{formatTokenEstimate(contents[e.path] as string)}</Chip>
-						)}
-						{st.note && <span className="text-[11px] text-[var(--status-warning)]">{st.note}</span>}
+			<div key={e.id} data-rule-row={e.id}>
+				<div className="flex items-start">
+					{expandable ? (
+						<button
+							type="button"
+							onClick={() => setExpandedId(open ? null : e.id)}
+							aria-expanded={open}
+							aria-controls={open ? `rule-editor-${e.id}` : undefined}
+							aria-label={open ? `收起 ${e.label}` : `查看并编辑 ${e.label}`}
+							title={open ? `收起 ${e.label}` : `查看并编辑 ${e.label}（${e.path}）`}
+							className={clsx(
+								"flex min-w-0 flex-1 items-start gap-2 px-4 py-2.5 text-left transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]",
+								open && "bg-[var(--bg-active-fill)] hover:bg-[var(--bg-active-fill)]",
+							)}
+						>
+							{open ? (
+								<ChevronDown size={13} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+							) : (
+								<ChevronRight size={13} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+							)}
+							{summary}
+							<span className="hairline shrink-0 whitespace-nowrap rounded-lg bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
+								{open ? "收起" : "查看并编辑"}
+							</span>
+						</button>
+					) : (
+						<div className="flex min-w-0 flex-1 items-start gap-2 px-4 py-2.5">{summary}</div>
+					)}
+					{canCreate && (
+						<div className="py-2.5 pr-4">
+							<Button icon={FilePlus2} onClick={() => void create(e)}>
+								创建
+							</Button>
+						</div>
+					)}
+				</div>
+				{open && (
+					<div
+						id={`rule-editor-${e.id}`}
+						ref={editorRef}
+						data-field-id="agentsMdEditor"
+						className="border-t border-[var(--border-divider)] bg-[var(--bg-panel)] pb-3 pt-3"
+					>
+						<FileEditor
+							key={`rule:${e.path}`}
+							fileKey={`rule:${e.path}`}
+							path={e.path}
+							load={load}
+							save={save}
+							bare
+							createContent={isRuleFile ? undefined : e.starter}
+							statusText={(loaded) => {
+								const s = ruleStatus(e, { [e.path]: loaded });
+								return s.note ? `${s.label}；${s.note}` : s.label;
+							}}
+							onChanged={() => void refresh()}
+						/>
 					</div>
-					<div className="mt-0.5 text-[11px] text-[var(--text-muted)]">{e.description}</div>
-				</button>
-				{!isRuleFile && !loading && !st.exists && (
-					<Button icon={FilePlus2} onClick={() => void create(e)}>
-						创建
-					</Button>
 				)}
 			</div>
 		);
@@ -179,7 +236,7 @@ export function RulesFilesSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard fieldId="agentsMdProjectFile">
+			<SettingsCard fieldId="agentsMdProjectFile" clip>
 				<div className="divide-y divide-[var(--border-divider)]">
 					{fixed.map(renderRow)}
 					{ruleFiles.map(renderRow)}
@@ -208,25 +265,11 @@ export function RulesFilesSection() {
 				</div>
 			</SettingsCard>
 
-			<div data-field-id="agentsMdEditor">
-				{selected ? (
-					<FileEditor
-						key={`rule:${selected.path}`}
-						fileKey={`rule:${selected.path}`}
-						path={selected.path}
-						load={load}
-						save={save}
-						createContent={selected.kind === "rule-file" ? undefined : selected.starter}
-						statusText={(loaded) => {
-							const st = ruleStatus(selected, { [selected.path]: loaded });
-							return st.note ? `${st.label}；${st.note}` : st.label;
-						}}
-						onChanged={() => void refresh()}
-					/>
-				) : (
-					<p className="px-1 text-xs text-[var(--text-muted)]">选择上面的一个文件来查看或编辑。</p>
-				)}
-			</div>
+			{!expanded && (
+				<p data-field-id="agentsMdEditor" className="px-1 text-xs text-[var(--text-muted)]">
+					点开带「查看并编辑」的一行，就能在那一行下面查看和修改文件内容。
+				</p>
+			)}
 
 			<OmpSections page="agents-md" />
 		</div>

@@ -422,14 +422,14 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		id: "agentsMdProjectFile",
 		sectionId: "agents-md",
 		label: "规则文件列表",
-		description: "AGENTS.md、RULES.md、rules/*.md、APPEND_SYSTEM.md 的存在状态与一键创建；项目里 AGENTS.md 两个位置都有内容时 omp 只读 .omp/AGENTS.md",
+		description: "AGENTS.md、RULES.md、rules/*.md、APPEND_SYSTEM.md 的存在状态；点开一行就在该行下面查看和编辑，未创建的有一键创建；项目里 AGENTS.md 两个位置都有内容时 omp 只读 .omp/AGENTS.md",
 		keywords: [".omp", "native", "位置", "覆盖"],
 	},
 	{
 		id: "agentsMdEditor",
 		sectionId: "agents-md",
 		label: "编辑规则文件",
-		description: "查看、编辑并保存选中的规则文件，新会话生效",
+		description: "点开规则文件那一行，就在该行下面查看、编辑并保存内容，新会话生效",
 		keywords: ["编辑", "保存", "预览", "markdown", "instructions", "长期说明", "约定"],
 	},
 	// 系统提示词构成
