@@ -567,7 +567,7 @@ function useConfigGate(): ReactNode | null {
 			</Notice>
 		);
 	}
-	if (loading) return <EmptyState icon={RefreshCw} title="正在读取 omp 配置" />;
+	if (loading) return <EmptyState icon={RefreshCw} spin title="正在读取 omp 配置" />;
 	return null;
 }
 

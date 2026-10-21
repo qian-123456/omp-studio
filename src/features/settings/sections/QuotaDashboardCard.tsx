@@ -126,7 +126,7 @@ export function QuotaDashboardCard() {
 					<Button
 						size="sm"
 						icon={RefreshCw}
-						loading={refreshing}
+						loading={loading || refreshing}
 						disabled={loading || refreshing}
 						onClick={() => void fetchReport(true)}
 					>
@@ -136,7 +136,7 @@ export function QuotaDashboardCard() {
 			</div>
 
 			{loading ? (
-				<EmptyState icon={RefreshCw} title="正在获取官方订阅与额度快照" description="数据来自 omp，通常几秒内完成" />
+				<EmptyState icon={RefreshCw} spin title="正在获取官方订阅与额度快照" description="数据来自 omp，通常几秒内完成" />
 			) : error ? (
 				<Notice
 					tone="danger"
