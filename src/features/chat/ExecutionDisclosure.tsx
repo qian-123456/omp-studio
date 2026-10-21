@@ -239,13 +239,11 @@ function processingLabel(elapsedMs: number): string {
 }
 
 /** Shimmering 「正在思考」 row shown while the live turn waits for the model's
- * next move (no tool or reasoning row is running right now). */
-export function LiveWaitingRow() {
-	return (
-		<div className="px-1 py-0.5 text-[length:var(--chat-font-size)] leading-6">
-			<span className="shimmer-text">正在思考</span>
-		</div>
-	);
+ * next move (no tool or reasoning row is running right now). Carries the
+ * newest reasoning text so the usual two-line rolling preview shows what the
+ * model was just thinking about. */
+export function LiveWaitingRow({ thinking }: { thinking: string }) {
+	return <ThinkingRow anchorId="live-waiting" thinking={thinking} running />;
 }
 
 /** Seconds label for reasoning rows ("5秒"). */

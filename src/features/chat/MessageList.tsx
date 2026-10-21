@@ -1106,7 +1106,16 @@ const StreamingRow = React.memo(function StreamingRow({
 				(s.kind === "text" && s.streaming) ||
 				(s.kind === "tool" && !s.result && liveTools[s.call.id]?.status === "running"),
 		);
-		if (!busy && !holding) nodes.push(<LiveWaitingRow key="live-waiting" />);
+		if (!busy && !holding) {
+			const lastThinking =
+				[...activity].reverse().find((s) => s.kind === "thinking" && s.thinking.trim() !== "");
+			nodes.push(
+				<LiveWaitingRow
+					key="live-waiting"
+					thinking={lastThinking?.kind === "thinking" ? lastThinking.thinking : ""}
+				/>,
+			);
+		}
 	} else {
 		const segments = splitAroundSteers(activity);
 		const firstSteps = segments.findIndex((s) => s.type === "steps");
