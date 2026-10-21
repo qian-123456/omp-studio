@@ -19,6 +19,7 @@ import {
 	Boxes,
 	Check,
 	ChevronDown,
+	ChevronRight,
 	Clock,
 	Folder,
 	FolderGit2,
@@ -540,6 +541,9 @@ export function SessionSidebar() {
 		// 无项目 area + its user groups
 		keys.push("__global");
 		for (const g of modeGroups) keys.push(`grp:${g.id}`);
+		if (showLoose) {
+			keys.push("__chunk:today", "__chunk:yesterday", "__chunk:last7Days", "__chunk:earlier");
+		}
 		for (const wg of grouped.workspaceGroups) {
 			keys.push(wg.workspace.id);
 			if (wg.subgroups.some((s) => !s.deleted && s.sessions.length === 0))
@@ -1644,42 +1648,8 @@ export function SessionSidebar() {
 							<div className="mt-0.5">
 
 									<div className="pb-1" data-group-key="__global">
-										{/* Ungrouped 无项目 sessions (Time-chunked in Universal mode) */}
-										{timeChunks.length > 0 && (
-											<div className="space-y-2 px-2 my-0.5">
-												{timeChunks.map((chunk) => (
-													<div key={chunk.key} className="space-y-0.5">
-														<div className="px-1 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)] select-none">
-															{chunk.label}
-														</div>
-														<div className="space-y-0.5">
-															<SessionList
-																sessions={chunk.sessions}
-																scopeKey={`__global_${chunk.key}`}
-																searching={searching}
-																onSetCount={setSectionCount}
-																expanded={expandedSections}
-																workspaces={workspaces}
-																onRowFocus={focusList}
-																onBatchAction={handleBatchAction}
-																large
-																recentLimit={Infinity}
-															/>
-														</div>
-													</div>
-												))}
-											</div>
-										)}
-										{noProjectSplit.ungrouped.length === 0 &&
-											modeGroups.length === 0 &&
-											!searching && (
-												<div className="ml-[8px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
-													暂无会话
-												</div>
-											)}
-
-										{/* 2. Structured Session Groups (会话分组) */}
-										<div className="mt-3 pt-2 border-t border-[var(--border-divider)]/40 px-2">
+										{/* 1. Structured Session Groups (分组与新建分组放在所有会话上方) */}
+										<div className="px-2 mb-2">
 											<div className="mx-1 mb-1 flex items-center justify-between rounded-md py-1">
 												<span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)]">
 													分组 {modeGroups.length > 0 && `(${modeGroups.length})`}
@@ -1877,6 +1847,69 @@ export function SessionSidebar() {
 												)
 											)}
 										</div>
+
+										{/* 2. Ungrouped 无项目 sessions (Time-chunked in Universal mode with collapsible headers) */}
+										{timeChunks.length > 0 && (
+											<div className="space-y-2 px-2 my-0.5 pt-2 border-t border-[var(--border-divider)]/40">
+												{timeChunks.map((chunk) => {
+													const chunkKey = `__chunk:${chunk.key}`;
+													const isChunkOpen = isGroupOpen(chunkKey, true);
+													return (
+														<div key={chunk.key} className="space-y-0.5">
+															<button
+																type="button"
+																onClick={() => toggleGroup(chunkKey, true)}
+																aria-expanded={isChunkOpen}
+																className="group/chunk flex w-full items-center justify-between rounded-md px-1 py-1 text-left text-[11px] font-semibold text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+															>
+																<span className="flex items-center gap-1.5 min-w-0">
+																	{isChunkOpen ? (
+																		<ChevronDown
+																			size={12}
+																			className="text-[var(--text-dim)] group-hover/chunk:text-[var(--text)] shrink-0 transition-transform"
+																		/>
+																	) : (
+																		<ChevronRight
+																			size={12}
+																			className="text-[var(--text-dim)] group-hover/chunk:text-[var(--text)] shrink-0 transition-transform"
+																		/>
+																	)}
+																	<span className="truncate uppercase tracking-wider text-[10px]">
+																		{chunk.label}
+																	</span>
+																</span>
+																<span className="font-mono text-[9px] tabular-nums text-[var(--text-dim)]/70 pl-1 shrink-0">
+																	{chunk.sessions.length}
+																</span>
+															</button>
+															{isChunkOpen && (
+																<div className="space-y-0.5">
+																	<SessionList
+																		sessions={chunk.sessions}
+																		scopeKey={`__global_${chunk.key}`}
+																		searching={searching}
+																		onSetCount={setSectionCount}
+																		expanded={expandedSections}
+																		workspaces={workspaces}
+																		onRowFocus={focusList}
+																		onBatchAction={handleBatchAction}
+																		large
+																		recentLimit={Infinity}
+																	/>
+																</div>
+															)}
+														</div>
+													);
+												})}
+											</div>
+										)}
+										{noProjectSplit.ungrouped.length === 0 &&
+											modeGroups.length === 0 &&
+											!searching && (
+												<div className="ml-[8px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
+													暂无会话
+												</div>
+											)}
 									</div>
 							</div>
 							);
