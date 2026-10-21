@@ -5,7 +5,7 @@
 //! - `GET /ideas` → `BacklogItem[]` (createdAt desc, same as `backlog_list`).
 //! - `POST /ideas` `{text, kind, projectDir?, sessionIds?: string[], imagePaths?: string[]}`
 //!   → `BacklogItem`. `sessionIds` become `session` refs; `imagePaths` must point
-//!   inside the `ompws-clip` cache dir (i.e. results of `POST /ideas/images`) and
+//!   inside the `images` dir (i.e. results of `POST /ideas/images`) and
 //!   become `image` refs — no `file`/`annotation` refs on mobile. Empty text with
 //!   images falls back to "（图片）", mirroring `QuickCapture`.
 //! - `PATCH /ideas/{id}` `{text?, kind?, status?, targetSessionId?}` (= the
@@ -13,7 +13,7 @@
 //!   `targetSessionId: ""` clears the link.
 //! - `DELETE /ideas/{id}` → `{ok: true}`; 404 unknown id.
 //! - `POST /ideas/images` — raw image bytes (≤20 MiB, no multipart) → `{path}`.
-//!   Stored under `<app-cache>/ompws-clip/<ts>-<rand>.<ext>`, the same directory
+//!   Stored under `~/.omp-workspace/images/<ts>-<rand>.<ext>` (`paths::images_dir()`), the same directory
 //!   the desktop `save_clipboard_image` (used by `IdeaImages.tsx`) writes to;
 //!   extension is sniffed from magic bytes (png/jpg/gif/webp/heic), others 415.
 //! - `POST /ideas/{id}/dispatch` `{sessionId?, cwd?}` and
@@ -35,7 +35,6 @@ use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tauri::Manager as _;
 
 use crate::backlog::{self, store};
 use crate::contracts::{
@@ -107,19 +106,10 @@ fn check_id(id: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// App cache dir, resolved exactly like `services::commands::save_clipboard_image`.
-fn cache_dir(state: &AppState) -> PathBuf {
-    state.app.path().app_cache_dir().unwrap_or_else(|_| {
-        dirs::cache_dir()
-            .map(|d| d.join("omp-workspace"))
-            .unwrap_or_else(std::env::temp_dir)
-    })
-}
-
-/// Where idea images live (`<cache>/ompws-clip`), shared with the desktop
-/// clipboard-image storage.
-fn clip_dir(state: &AppState) -> PathBuf {
-    cache_dir(state).join("ompws-clip")
+/// Idea images live in `paths::images_dir()` (`~/.omp-workspace/images`), shared
+/// with the desktop clipboard-image storage.
+fn clip_dir() -> PathBuf {
+    crate::paths::images_dir()
 }
 
 /// Image extension from magic bytes; `None` when the payload isn't a known
@@ -210,7 +200,7 @@ async fn add_idea<B: Backend>(
     Json(body): Json<AddBody>,
 ) -> ApiResult<BacklogItem> {
     let st = state(&ctx)?;
-    let refs = build_refs(&body.session_ids, &body.image_paths, &clip_dir(st))?;
+    let refs = build_refs(&body.session_ids, &body.image_paths, &clip_dir())?;
     // QuickCapture saves `trimmed || "（图片）"` so image-only captures work.
     let text = if body.text.trim().is_empty() && !body.image_paths.is_empty() {
         "（图片）".to_string()
@@ -269,7 +259,7 @@ async fn delete_idea<B: Backend>(
 }
 
 async fn upload_image<B: Backend>(State(ctx): State<Arc<Ctx<B>>>, body: Bytes) -> ApiResult<Value> {
-    let st = state(&ctx)?;
+    state(&ctx)?;
     if body.is_empty() {
         return Err(bad_request("内容为空"));
     }
@@ -279,7 +269,7 @@ async fn upload_image<B: Backend>(State(ctx): State<Arc<Ctx<B>>>, body: Bytes) -
             "仅支持 png/jpg/gif/webp/heic 图片".into(),
         ));
     };
-    let dir = clip_dir(st);
+    let dir = clip_dir();
     let path = tokio::task::spawn_blocking(move || save_upload(&dir, &body, ext))
         .await
         .map_err(internal)?
