@@ -20,6 +20,7 @@ import {
 	Ruler,
 	Server,
 	Shield,
+	HardDrive,
 	Sliders,
 	Smartphone,
 	Sparkles,
@@ -54,6 +55,7 @@ export const NAV_GROUPS: NavGroup[] = [
 		title: "常规",
 		items: [
 			{ id: "general", label: "通用", icon: Sliders, lead: "新会话的默认设置、界面开关与快捷键" },
+			{ id: "storage", label: "存储空间", icon: HardDrive, lead: "本应用和 omp 占用的磁盘空间，以及可以安全清理的内容" },
 			{ id: "appearance", label: "外观", icon: Palette, lead: "主题、字号、界面密度和对话里显示哪些信息" },
 			{ id: "notifications", label: "通知", icon: Bell, lead: "什么时候提醒你、怎么提醒，以及免打扰时段" },
 			{ id: "privacy", label: "隐私", icon: Shield, lead: "隐私库里的敏感信息如何替换，以及 omp 的密钥脱敏和数据上报" },
