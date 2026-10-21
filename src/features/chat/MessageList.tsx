@@ -550,6 +550,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 				stat,
 				toolCallIds: (item.toolCalls ?? []).map((c) => c.id),
 			});
+	const inProgress = streamingThisTurn && !block.answerItem && block.intermediateSteps.length > 0;
 		};
 		for (const item of turnRequestItems(block.intermediateSteps)) push(item);
 		push(block.answerItem);
@@ -608,7 +609,9 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						sessionId={sessionId}
 						steps={seg.steps}
 						durationMs={isFirst ? block.durationMs : undefined}
-						isStreaming={isLast && streamingThisTurn && !block.answerItem}
+						isStreaming={inProgress ? isFirst : isLast && streamingThisTurn && !block.answerItem}
+						liveOpen={inProgress}
+						hideHeader={inProgress && !isFirst}
 						startedAt={turnStartedAt}
 						forceExpanded={hasHighlightedStep}
 						toolResultsByCallId={toolResultsByCallId}

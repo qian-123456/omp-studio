@@ -16,8 +16,8 @@ import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "
 import type { ImageAttachment, ToolResultInfo, TranscriptItem } from "../../lib/contracts";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { AttachmentThumb } from "./ImageChips";
-import { toast } from "../../lib/toast";
 import { collectUserImages } from "../../stores/live";
+import { openImageOrExplain } from "./imageAvailability";
 import { renderUserTextWithChips, stripImageMarkers } from "./userTextChips";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { useLive } from "../../stores/live";
@@ -201,11 +201,11 @@ export function UserMessageBubble({
 				<div className={bubbleClass}>
 					<div className="whitespace-pre-wrap break-words">
 						{renderUserTextWithChips(text, (num) => {
-							if (images.length === 0) {
-								toast.info("找不到这张图片的文件（可能已被清理）");
-								return;
-							}
-							setPreview(Math.min(Math.max(num - 1, 0), images.length - 1));
+							void openImageOrExplain(
+								images.map((i) => i.path),
+								num,
+								setPreview,
+							);
 						})}
 					</div>
 				</div>
@@ -625,6 +625,8 @@ export function ExecutionDisclosure({
 	statsPlan,
 	/** Whole-turn totals shown as the first rows once expanded. */
 	turnStats,
+	liveOpen,
+	hideHeader,
 }: {
 	sessionId: string;
 	steps: StepShape[];
@@ -636,8 +638,14 @@ export function ExecutionDisclosure({
 	highlightedStepId?: string | null;
 	statsPlan?: TurnStatsPlan;
 	turnStats?: RequestStat[];
+	/** The turn is still in progress: the body stays open and no divider is drawn. */
+	liveOpen?: boolean;
+	/** Continuation segment of an in-progress turn: body only, no title. */
+	hideHeader?: boolean;
 }) {
-	const { open: expanded, toggle } = useDisclosure(forceExpanded);
+	const { open: expanded, toggle } = useDisclosure(
+		forceExpanded || liveOpen ? true : forceExpanded,
+	);
 	const elapsed = useElapsedMs(startedAt, Boolean(isStreaming));
 
 	if (steps.length === 0) {
@@ -653,12 +661,14 @@ export function ExecutionDisclosure({
 
 	return (
 		<div className="my-1 flex flex-col">
-			<DisclosureHeader
-				title={titleText}
-				shimmer={Boolean(isStreaming)}
-				expanded={expanded}
-				onToggle={toggle}
-			/>
+			{!hideHeader && (
+				<DisclosureHeader
+					title={titleText}
+					shimmer={Boolean(isStreaming)}
+					expanded={expanded}
+					onToggle={toggle}
+				/>
+			)}
 
 			{expanded && (
 				<div className="pt-1.5 pb-1">
@@ -674,7 +684,7 @@ export function ExecutionDisclosure({
 				</div>
 			)}
 
-			<div className="mt-1 h-px w-full bg-[var(--line)]" />
+			{!liveOpen && <div className="mt-1 h-px w-full bg-[var(--line)]" />}
 		</div>
 	);
 }
