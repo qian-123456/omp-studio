@@ -2,13 +2,15 @@
  * annotation, sitting just above the first character of the quoted text. Numbers
  * come from `textAnnotationsOf`, the same numbering as the outgoing `[n]` blocks. */
 
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	sideChatAnnKey,
 	useComposer,
 	type Annotation,
 } from "../../stores/composer";
 import { textAnnotationsOf } from "./annotations";
+import { type Anchor } from "../../components/FloatingLayer";
+import { AnnotationHoverCard, AnnotationNotePopover } from "./AnnotationNotePopover";
 import {
 	collectTextSegments,
 	locateQuote,
@@ -23,6 +25,8 @@ const LINE_OVERLAP_PX = 4;
 /** Keeps the marker off the scrollbar / container edge. */
 const EDGE_PX = 4;
 const TITLE_SNIPPET_CHARS = 60;
+/** Dwell before a hover card appears. */
+const HOVER_DELAY_MS = 300;
 
 /** Which annotation list a marker belongs to: main composer or the side chat. */
 type MarkerKind = "main" | "sidechat";
@@ -201,6 +205,25 @@ function MarkerLayer({
 }) {
 	const layerRef = useRef<HTMLDivElement>(null);
 	const [markers, setMarkers] = useState<MarkerPos[]>([]);
+	const rangesRef = useRef<Range[]>([]);
+	const markersRef = useRef<MarkerPos[]>([]);
+	const main = useComposer((s) => s.annotations[sessionId] ?? EMPTY_ANNOTATIONS);
+	const side = useComposer((s) => s.annotations[sideChatAnnKey(sessionId)] ?? EMPTY_ANNOTATIONS);
+	const storeKeyOf = (kind: MarkerKind) => (kind === "main" ? sessionId : sideChatAnnKey(sessionId));
+	const [active, setActive] = useState<{ id: string; anchor: Anchor } | null>(null);
+	const [hover, setHover] = useState<{ id: string; anchor: Anchor } | null>(null);
+	const hoverTimer = useRef<number | undefined>(undefined);
+	const pendingHover = useRef<string | null>(null);
+	/** Targets a hover card at `id` (null = none); it shows after a short dwell. */
+	const aim = useCallback((id: string | null, anchor?: Anchor) => {
+		if (pendingHover.current === id) return;
+		pendingHover.current = id;
+		window.clearTimeout(hoverTimer.current);
+		setHover(null);
+		if (id && anchor) {
+			hoverTimer.current = window.setTimeout(() => setHover({ id, anchor }), HOVER_DELAY_MS);
+		}
+	}, []);
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -215,6 +238,8 @@ function MarkerLayer({
 			const ranges: Range[] = [];
 			const next = measureMarkers(container, sources, ranges);
 			paintSaved(ranges);
+			rangesRef.current = ranges;
+			markersRef.current = next;
 			setMarkers((prev) => (sameMarkers(prev, next) ? prev : next));
 		};
 		// Coalesce bursts of DOM/resize events into one measurement per frame.
@@ -252,29 +277,119 @@ function MarkerLayer({
 		};
 	}, [containerRef, sources]);
 
-	return (
-		<div
-			ref={layerRef}
-			className="pointer-events-none absolute left-0 top-0 h-0 w-full"
-		>
-			{markers.map((m) => (
-				<button
-					key={m.id}
-					type="button"
-					title={m.title}
-					aria-label={m.title}
-					onClick={() =>
-						useComposer
-							.getState()
-							.requestAnnotationEdit(m.kind === "main" ? sessionId : sideChatAnnKey(sessionId), m.id)
+	// Highlights have no DOM, so hover/click on annotated text hit-tests the
+	// painted ranges against the pointer position.
+	useEffect(() => {
+		const container = containerRef.current;
+		if (!container) return;
+		let frame = 0;
+		let point = { x: 0, y: 0 };
+		const hit = (x: number, y: number) => {
+			for (let i = 0; i < rangesRef.current.length; i++) {
+				for (const r of rangesRef.current[i].getClientRects()) {
+					if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+						const m = markersRef.current[i];
+						if (m) return { m, rect: r };
 					}
-					style={{ top: m.top, left: m.left }}
-					className={`pointer-events-auto absolute z-10 flex h-5 w-5 items-center justify-center rounded-full ${KIND_CLASS[m.kind]} text-[11px] leading-none text-white shadow-sm transition-transform hover:scale-110`}
-				>
-					{m.n}
-				</button>
-			))}
-		</div>
+				}
+			}
+			return null;
+		};
+		const selecting = () => {
+			const sel = window.getSelection();
+			return !!sel && !sel.isCollapsed;
+		};
+		const onMove = (e: MouseEvent) => {
+			if (layerRef.current?.contains(e.target as Node)) return;
+			if (e.buttons !== 0 || selecting()) {
+				aim(null);
+				return;
+			}
+			point = { x: e.clientX, y: e.clientY };
+			if (frame !== 0) return;
+			frame = requestAnimationFrame(() => {
+				frame = 0;
+				const h = hit(point.x, point.y);
+				aim(h?.m.id ?? null, h?.rect);
+			});
+		};
+		const onLeave = () => aim(null);
+		const onClick = (e: MouseEvent) => {
+			const t = e.target as Element;
+			if (layerRef.current?.contains(t) || t.closest("a,button,input,textarea")) return;
+			if (selecting()) return;
+			const h = hit(e.clientX, e.clientY);
+			if (!h) return;
+			aim(null);
+			setActive({ id: h.m.id, anchor: h.rect });
+		};
+		container.addEventListener("mousemove", onMove);
+		container.addEventListener("mouseleave", onLeave);
+		container.addEventListener("click", onClick);
+		return () => {
+			if (frame !== 0) cancelAnimationFrame(frame);
+			container.removeEventListener("mousemove", onMove);
+			container.removeEventListener("mouseleave", onLeave);
+			container.removeEventListener("click", onClick);
+		};
+	}, [containerRef, aim]);
+
+	// Session switch: drop any open popover / pending hover.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset keyed on the session
+	useEffect(() => {
+		setActive(null);
+		aim(null);
+	}, [sessionId, aim]);
+	useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
+
+	const lookup = (id: string, kind: MarkerKind) => {
+		const list = kind === "main" ? main : side;
+		return list.find((a) => a.id === id);
+	};
+	const activeMarker = active ? markers.find((m) => m.id === active.id) : undefined;
+	const activeAnn = activeMarker ? lookup(activeMarker.id, activeMarker.kind) : undefined;
+	const hoverMarker = hover && !active ? markers.find((m) => m.id === hover.id) : undefined;
+	const hoverAnn = hoverMarker ? lookup(hoverMarker.id, hoverMarker.kind) : undefined;
+
+	return (
+		<>
+			<div
+				ref={layerRef}
+				className="pointer-events-none absolute left-0 top-0 h-0 w-full"
+			>
+				{markers.map((m) => (
+					<button
+						key={m.id}
+						type="button"
+						aria-label={m.title}
+						onClick={(e) => {
+							aim(null);
+							setActive({ id: m.id, anchor: e.currentTarget });
+						}}
+						onMouseEnter={(e) => aim(m.id, e.currentTarget)}
+						onMouseLeave={() => aim(null)}
+						style={{ top: m.top, left: m.left }}
+						className={`pointer-events-auto absolute z-10 flex h-5 w-5 items-center justify-center rounded-full ${KIND_CLASS[m.kind]} text-[11px] leading-none text-white shadow-sm transition-transform hover:scale-110`}
+					>
+						{m.n}
+					</button>
+				))}
+			</div>
+			{active && activeMarker && activeAnn && (
+				<AnnotationNotePopover
+					key={active.id}
+					anchor={active.anchor}
+					storeKey={storeKeyOf(activeMarker.kind)}
+					annotation={activeAnn}
+					n={activeMarker.n}
+					scrollTarget={containerRef.current}
+					onClose={() => setActive(null)}
+				/>
+			)}
+			{hover && hoverMarker && hoverAnn && (
+				<AnnotationHoverCard anchor={hover.anchor} annotation={hoverAnn} n={hoverMarker.n} />
+			)}
+		</>
 	);
 }
 

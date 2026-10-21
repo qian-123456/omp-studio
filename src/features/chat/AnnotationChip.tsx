@@ -3,7 +3,7 @@
  * delete and (for message quotes) locate-in-transcript actions. */
 
 import { ArrowLeftRight, LocateFixed, MessageSquareQuote, Pencil, Trash2, X } from "lucide-react";
-import { type FocusEvent, useEffect, useRef, useState } from "react";
+import { type FocusEvent, useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { isComposing } from "../../lib/hooks";
 import { type Annotation, useComposer } from "../../stores/composer";
@@ -200,16 +200,9 @@ export function AnnotationChip({
 
 	useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
 
-	// Marker badge click: open the list with that annotation in edit mode.
-	const editRequest = useComposer((s) => s.annotationEditRequest);
-	const handledNonce = useRef(editRequest?.nonce ?? 0);
-	useEffect(() => {
-		if (!editRequest || editRequest.nonce === handledNonce.current) return;
-		handledNonce.current = editRequest.nonce;
-		if (editRequest.key === sessionId && annotations.some((a) => a.id === editRequest.id)) {
-			setEditingId(editRequest.id);
-		}
-	}, [editRequest, sessionId, annotations]);
+	const anchorRef = useRef<HTMLElement | null>(null);
+	anchorRef.current = anchor;
+	const anchorRefs = useMemo(() => [anchorRef], []);
 
 	const enterHover = () => {
 		window.clearTimeout(hoverTimer.current);
@@ -267,6 +260,12 @@ export function AnnotationChip({
 				anchor={open ? anchor : null}
 				placement="top-start"
 				offset={0}
+				onDismiss={() => {
+					setHovered(false);
+					setFocused(false);
+					setEditingId(null);
+				}}
+				ignoreRefs={anchorRefs}
 				onMouseEnter={enterHover}
 				onMouseLeave={leaveHover}
 				className="w-[min(420px,calc(100vw-2rem))] !bg-[var(--bg-panel)] text-[12px]"

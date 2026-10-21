@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Annotation } from "../../stores/composer";
 import { useComposer } from "../../stores/composer";
@@ -75,15 +75,20 @@ describe("AnnotationChip locate", () => {
 	});
 });
 
-describe("AnnotationChip external edit request", () => {
-	it("opens the requested annotation in edit mode and saves the new comment", () => {
-		useComposer.setState({ annotations: { s1: [ann("a1")] } });
+describe("AnnotationChip dismiss", () => {
+	it("closes the list on outside mousedown", () => {
 		render(<AnnotationChip sessionId="s1" annotations={[ann("a1")]} />);
-		act(() => useComposer.getState().requestAnnotationEdit("s1", "a1"));
-		const box = screen.getByRole("textbox");
-		fireEvent.change(box, { target: { value: "新批注" } });
-		fireEvent.keyDown(box, { key: "Enter" });
-		expect(useComposer.getState().annotations.s1[0].comment).toBe("新批注");
+		openPopover();
+		expect(screen.queryByLabelText("编辑批注")).not.toBeNull();
+		fireEvent.mouseDown(document.body);
+		expect(screen.queryByLabelText("编辑批注")).toBeNull();
+	});
+
+	it("closes the list on Escape", () => {
+		render(<AnnotationChip sessionId="s1" annotations={[ann("a1")]} />);
+		openPopover();
+		fireEvent.keyDown(document, { key: "Escape" });
+		expect(screen.queryByLabelText("编辑批注")).toBeNull();
 	});
 });
 
