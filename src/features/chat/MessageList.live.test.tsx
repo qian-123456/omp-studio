@@ -134,6 +134,40 @@ describe("MessageList live turn", () => {
 		expect(screen.queryByText(/已处理|正在处理/)).toBeNull();
 	});
 
+	it("drops the held live row when the answer lands in an already-committed turn", () => {
+		useLive.setState({
+			sessions: {
+				s1: {
+					...emptySessionLive(),
+					alive: true,
+					streaming: true,
+					items: persisted(),
+					streamingMessage: {
+						role: "assistant",
+						content: [{ type: "text", text: "最终答案" }],
+					} as never,
+				},
+			},
+		});
+		const { container } = mount("s1");
+		expect(container.querySelector("#msg-live")).not.toBeNull();
+		// Stream ends: the live row is held until the transcript catches up.
+		act(() => {
+			useLive.setState((s) => ({
+				sessions: { s1: { ...s.sessions.s1, streaming: false, streamingMessage: null } },
+			}));
+		});
+		expect(container.querySelector("#msg-live")).not.toBeNull();
+		// The answer joins the same turn block (same block count and first id).
+		act(() => {
+			useLive
+				.getState()
+				.appendItems("s1", [item({ id: "a2", kind: "assistant", text: "最终答案" })], 20);
+		});
+		expect(container.querySelector("#msg-live")).toBeNull();
+		expect(screen.getAllByText("最终答案")).toHaveLength(1);
+	});
+
 	it("keeps retry rows at the point they happened, not pinned under newer steps", () => {
 		const stat = (error: string | null) => ({ error, startedAt: 1, completedAt: 2, durationMs: 1000 });
 		const req = (id: string, error: string | null, toolCallIds: string[] = []) => ({

@@ -1555,7 +1555,11 @@ export function MessageList({
 	// turn nor its committed twin exists: the live row stays mounted (painting
 	// its last snapshot) until the transcript delivers a new block, then both
 	// swap in one render. The timeout covers turns that commit nothing.
-	const blocksKey = `${blocks.length}:${blocks[blocks.length - 1]?.id ?? ""}`;
+	// Keyed on the raw transcript, not the blocks: a turn whose first item was
+	// already committed before the stream ended keeps the same block count and
+	// id when the answer lands, which left the held live row painted next to
+	// the committed answer (the reply showing twice) until the timeout.
+	const blocksKey = `${items.length}:${items[items.length - 1]?.id ?? ""}`;
 	const [hold, setHold] = useState<{ key: string } | null>(null);
 	const [wasStreaming, setWasStreaming] = useState(isStreamingActive);
 	const [holdSessionId, setHoldSessionId] = useState(sessionId);
