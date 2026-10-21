@@ -550,6 +550,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	const foldedSegments = useMemo(() => splitAroundSteers(folded), [folded]);
 	const firstStepsSeg = foldedSegments.findIndex((s) => s.type === "steps");
 	const lastStepsSeg = foldedSegments.reduce((acc, s, i) => (s.type === "steps" ? i : acc), -1);
+	const inProgress = streamingThisTurn && !block.answerItem && block.intermediateSteps.length > 0;
 
 	// One model request per assistant message in the turn; the answer's own
 	// request renders under the answer body instead of inside the steps.
@@ -563,7 +564,6 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 				stat,
 				toolCallIds: (item.toolCalls ?? []).map((c) => c.id),
 			});
-	const inProgress = streamingThisTurn && !block.answerItem && block.intermediateSteps.length > 0;
 		};
 		for (const item of turnRequestItems(block.intermediateSteps)) push(item);
 		push(block.answerItem);
