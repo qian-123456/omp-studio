@@ -31,7 +31,6 @@ function mkCtx(args: string, name: string) {
 /** Commands whose subcommands (from omp) must reach omp unchanged. */
 const FORWARDING: [string, string][] = [
 	["fast", "on"],
-	["shake", "images"],
 	["fast", "ultra"],
 	["slow", "off"],
 	["advisor", "status"],
@@ -69,6 +68,15 @@ describe("registry commands forward omp subcommands", () => {
 			expect(m.openSettingsTarget.mock.calls.length + m.track.mock.calls.length).toBe(1);
 		},
 	);
+});
+
+describe("/shake", () => {
+	it("forwards to omp, then resyncs state so the context ring updates", async () => {
+		const m = mkCtx("images", "shake");
+		await findSlashCommand("shake")?.run(m.ctx);
+		expect(m.sendPromptText).toHaveBeenCalledWith("/shake images");
+		expect(m.rpcSend).toHaveBeenCalledWith({ type: "get_state" });
+	});
 });
 
 describe("/goal native subcommand handling", () => {

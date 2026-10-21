@@ -238,7 +238,12 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 			{ name: "images", description: "清除图片块" },
 			{ name: "thinking", description: "清除所有思考块" },
 		],
-		run: sendAsPrompt,
+		run: async (ctx) => {
+			await sendAsPrompt(ctx);
+			// omp frees tokens but pushes no state frame; resync so the context
+			// ring and usage popover show the post-shake size.
+			await ctx.rpcSend({ type: "get_state" }).catch(() => {});
+		},
 	},
 	{
 		name: "export",
