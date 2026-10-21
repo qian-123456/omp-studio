@@ -60,6 +60,7 @@ import {
 	type TurnStatsPlan,
 	USER_BUBBLE_CLASS,
 	UserMessageBubble,
+	LiveStatusRow,
 } from "./ExecutionDisclosure";
 import type { ImageAttachment } from "../../lib/contracts";
 import { parseInlineFiles } from "./fileAttach";
@@ -1096,9 +1097,12 @@ const StreamingRow = React.memo(function StreamingRow({
 					statsPlan={stepsPlan}
 				/>,
 			);
+			if (!holding) {
+				nodes.push(<LiveStatusRow key="live-status" startedAt={streamStartedAt} />);
+			}
 		}
 		// Idle streaming state: session is working but nothing emitted yet
-		if (!activity.some((s) => s.kind !== "retry")) {
+		if (!activity.some((s) => s.kind !== "retry") && (showTimer || holding)) {
 			nodes.push(
 				<div
 					key="live-idle"

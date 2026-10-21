@@ -238,6 +238,17 @@ function processingLabel(elapsedMs: number): string {
 		: "正在处理…";
 }
 
+/** Shimmering 「正在处理 5秒…」 line pinned under the live steps of a turn whose
+ * disclosure title (with the same timer) has scrolled above them. */
+export function LiveStatusRow({ startedAt }: { startedAt: number }) {
+	const elapsed = useElapsedMs(startedAt, true);
+	return (
+		<div className="px-1 py-0.5 text-[length:var(--chat-font-size)] leading-6">
+			<span className="shimmer-text">{processingLabel(elapsed)}</span>
+		</div>
+	);
+}
+
 /** Seconds label for reasoning rows ("5秒"). */
 function elapsedLabel(ms: number): string {
 	return `${Math.max(1, Math.round(ms / 1000))}秒`;
