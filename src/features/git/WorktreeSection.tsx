@@ -646,14 +646,6 @@ export function WorktreeSection({
 		const label = wt.branch ?? wt.path;
 		const isBase = wt.branch === baseBranch;
 		const showSync = !idle && !isBase && (wt.ahead > 0 || wt.behind > 0);
-		const syncTitle = [
-			wt.ahead > 0 &&
-				`领先 ${baseBranch} ${wt.ahead} 个提交：这些提交还没进入 ${baseBranch}，可「${deliveryMode === "direct" ? "交付" : "交付/提PR"}」或「同步并合入 ${baseBranch}」`,
-			wt.behind > 0 &&
-				`落后 ${baseBranch} ${wt.behind} 个提交：${baseBranch} 有新提交而此分支没有，建议「从 ${baseBranch} 同步」`,
-		]
-			.filter(Boolean)
-			.join("\n");
 		const hasMeta =
 			idle ||
 			wt.dirty > 0 ||
@@ -818,7 +810,7 @@ export function WorktreeSection({
 						</button>
 					)}
 					{showSync && (
-						<span title={syncTitle} className="cursor-help text-[10px] text-neutral-500">
+						<span className="text-[10px] text-neutral-500">
 							{[wt.ahead > 0 && `领先 ${wt.ahead}`, wt.behind > 0 && `落后 ${wt.behind}`]
 								.filter(Boolean)
 								.join(" · ")}
