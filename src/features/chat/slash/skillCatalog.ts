@@ -1,0 +1,18 @@
+/** Slash-menu entries for skills on disk, used while omp has not told us its
+ * command list yet (the session has no running process: omp is spawned lazily
+ * on the first send, and only a live process advertises `skill:*` commands). */
+
+import type { SkillItem } from "../../../lib/contracts";
+import type { SlashCommand } from "../../../stores/live";
+
+export function skillCommandsFromCatalog(skills: SkillItem[]): SlashCommand[] {
+	const seen = new Set<string>();
+	const out: SlashCommand[] = [];
+	for (const s of skills) {
+		const name = `skill:${s.name}`;
+		if (!s.name || seen.has(name)) continue;
+		seen.add(name);
+		out.push({ name, description: s.description || undefined, source: "skill" });
+	}
+	return out;
+}

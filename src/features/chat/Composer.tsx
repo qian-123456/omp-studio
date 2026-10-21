@@ -15,7 +15,7 @@ import {
 	X,
 } from "lucide-react";
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { clipboardFilePaths, importImageFile, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, validatePath } from "../../lib/ipc";
+import { clipboardFilePaths, importImageFile, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, skillsList, validatePath } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment, SessionSnapshot } from "../../lib/contracts";
@@ -147,7 +147,8 @@ import { formatWithAnnotations, useComposer } from "../../stores/composer";
 import { moveToMain, moveToSideChat } from "../sidechat/annotationRoute";
 import { MAX_SIDE_CHAT_DEPTH } from "../sidechat/depth";
 import { useUi } from "../../stores/ui";
-import { hasLiveUserActivity, useLive } from "../../stores/live";
+import { hasLiveUserActivity, useLive, type SlashCommand } from "../../stores/live";
+import { skillCommandsFromCatalog } from "./slash/skillCatalog";
 import { useSessions } from "../../stores/sessions";
 import { useHeldQueue } from "./heldQueue";
 import { abortTurn, interruptAndWait, linkSentSecrets, sendPrompt, useAbortState } from "./send";
@@ -234,6 +235,7 @@ const FINDER_SELECTION_SCRIPT =
 
 
 const EMPTY_LIST: string[] = [];
+const EMPTY_COMMANDS: SlashCommand[] = [];
 
 interface SlashToken {
 	query: string;
@@ -379,7 +381,15 @@ export function Composer({
 		}
 		return false;
 	}, [live?.items, streaming]);
-	const commands = live?.commands ?? [];
+	// omp advertises `skill:*` commands only from a running process, and app
+	// sessions spawn it lazily on the first send — until then (or while the
+	// list is still in flight) the menu falls back to the skills found on disk.
+	const [diskSkills, setDiskSkills] = useState<SlashCommand[] | null>(null);
+	const liveCommands = live?.commands;
+	const commands = useMemo(
+		() => (liveCommands?.length ? liveCommands : (diskSkills ?? EMPTY_COMMANDS)),
+		[liveCommands, diskSkills],
+	);
 	const annotations = useComposer(
 		(s) => s.annotations[sessionId] ?? EMPTY_LIST,
 	);
@@ -653,6 +663,21 @@ export function Composer({
 		if (inlineRange && cursorPos > inlineRange.start && cursorPos <= inlineRange.end) return null;
 		return getSlashToken(text, cursorPos);
 	}, [text, cursorPos, menuDismissed, inlineRange]);
+	// Opening the slash menu before omp has advertised commands: list skills from disk.
+	const wantsDiskSkills = slashToken !== null && !liveCommands?.length;
+	const skillsCwd = sessionMeta?.cwd ?? null;
+	useEffect(() => {
+		if (!wantsDiskSkills) return;
+		let cancelled = false;
+		void skillsList(skillsCwd)
+			.then((cat) => {
+				if (!cancelled) setDiskSkills(skillCommandsFromCatalog(cat.skills));
+			})
+			.catch((err) => console.warn("[composer] skills list failed", err));
+		return () => {
+			cancelled = true;
+		};
+	}, [wantsDiskSkills, skillsCwd]);
 
 	/** True when the composer holds text outside the `/query` token —
 	 * hides `requiresEmptyComposer` commands. */

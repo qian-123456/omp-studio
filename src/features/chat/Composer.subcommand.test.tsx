@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
 	rpcSend: vi.fn(async (_sessionId: string, _command: unknown) => ({}) as Record<string, unknown>),
 	mcpConfigList: vi.fn(async (_cwd?: string | null) => ({ servers: [] }) as unknown),
 	pluginsList: vi.fn(async (_cwd?: string | null) => ({ roots: [], plugins: [] }) as unknown),
+	skillsList: vi.fn(async (_cwd?: string | null) => ({ skills: [], extensions: [] }) as unknown),
 }));
 
 vi.mock("../../lib/ipc", async (importOriginal) => {
@@ -33,6 +34,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => {
 		listWorkspaceFiles: vi.fn(async () => []),
 		listModels: vi.fn(async () => []),
 		listSessions: vi.fn(async () => []),
+		skillsList: h.skillsList,
 		listWorkspaces: vi.fn(async () => []),
 		getSettings: vi.fn(async () => null),
 		privacyList: vi.fn(async () => ({ entries: [], nativeStatus: "missing", nativeError: null })),
@@ -516,5 +518,24 @@ describe("Composer inline skill chip overlay", () => {
 		}
 		const literal = [...document.querySelectorAll("[aria-hidden] .invisible")].find((n) => n.textContent === "/skill:grill-me");
 		expect(literal).toBeDefined();
+	});
+});
+
+describe("Composer slash menu before omp is running", () => {
+	it("finds user skills from disk when the session has no live process", async () => {
+		// A stored session: omp is spawned lazily on the first send, so there is
+		// no process to advertise `skill:*` commands yet.
+		h.skillsList.mockResolvedValue({
+			skills: [{ name: "grill-me", description: "Interview me about the plan" }],
+			extensions: [],
+		});
+		cleanup();
+		act(() => {
+			useLive.setState({ sessions: { [SESSION]: { ...emptySessionLive(), alive: false } } });
+		});
+		mount();
+		typeText("我们要核对一下事实信息: 通过 /gril");
+		await waitFor(() => expect(menuRows().some((r) => r.includes("skill:grill-me"))).toBe(true));
+		expect(screen.queryByText("无匹配命令")).toBeNull();
 	});
 });
