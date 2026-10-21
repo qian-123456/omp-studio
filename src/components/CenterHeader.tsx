@@ -380,10 +380,10 @@ export const CenterHeader = React.memo(function CenterHeader({
 						</button>
 					</div>
 				)}
-				<div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3.5">
+				<div data-tauri-drag-region className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3.5">
 					{/* Current view info */}
 					{isViewingSession ? (
-						<div className="flex min-w-0 items-center gap-2">
+						<div data-tauri-drag-region className="flex min-w-0 items-center gap-2">
 							{/* Side-chat parent breadcrumb: ← #N 父标题 / */}
 							{parentId && (
 								<>
@@ -404,6 +404,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 
 							{/* Status dot */}
 							<span
+								data-tauri-drag-region
 								className={clsx("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[sessionStatus])}
 								title={STATUS_LABEL[sessionStatus]}
 							/>
@@ -450,7 +451,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 							{sessionsLoadState === "error" ? "会话信息加载失败" : "正在加载中"}
 						</div>
 					) : (
-						<div className="flex min-w-0 items-center gap-2">
+						<div data-tauri-drag-region className="flex min-w-0 items-center gap-2">
 							{backTarget && (
 								<>
 									<button

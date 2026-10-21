@@ -114,6 +114,22 @@ describe("useTypeToFocus", () => {
 		expect(document.activeElement).not.toBe(getByTestId("ta-a"));
 		pop.remove();
 	});
+
+	it("still redirects while an always-mounted, unfocused list widget is on the page", () => {
+		// The session sidebar is a permanent role="listbox"; it only owns keys while focused.
+		const { getByTestId } = render(<Harness id="a" />);
+		const sidebar = document.createElement("div");
+		sidebar.setAttribute("role", "listbox");
+		sidebar.tabIndex = 0;
+		document.body.append(sidebar);
+		fireEvent.keyDown(document.body, { key: "h" });
+		expect(document.activeElement).toBe(getByTestId("ta-a"));
+		getByTestId("ta-a").blur();
+		sidebar.focus();
+		fireEvent.keyDown(sidebar, { key: "h" });
+		expect(document.activeElement).toBe(sidebar);
+		sidebar.remove();
+	});
 });
 
 describe("useTypeToFocus with an active IME", () => {

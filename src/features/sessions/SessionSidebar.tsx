@@ -1219,7 +1219,7 @@ export function SessionSidebar() {
 						className="flex h-10 shrink-0 items-center border-b border-[var(--border-divider)] px-2.5 select-none"
 					>
 						{/* Reserves room for the overlay traffic lights on the left. */}
-						<div className="w-[64px] shrink-0" />
+						<div data-tauri-drag-region className="w-[64px] shrink-0" />
 						<div className="ml-auto flex shrink-0 items-center" data-tauri-drag-region>
 							{collapseButton}
 						</div>

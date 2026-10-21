@@ -12,8 +12,11 @@ export const SESSION_VIEW_ATTR = "data-session-view";
 const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 /** Floating menus/popovers/dialogs own their keystrokes (type-ahead, shortcuts). */
 const OWNS_KEYS = '[data-layer], [role="dialog"], [role="menu"], [role="listbox"], [role="tree"], [role="grid"]';
-/** Open surfaces that own the keyboard; toasts and pills never do. */
-const OPEN_SURFACE = `${MODAL_SELECTOR}, [data-layer]:not([data-layer="toast"], [data-layer="pill"], [data-layer="hovercard"], [role="status"]), [role="dialog"], [role="menu"], [role="listbox"], [role="tree"], [role="grid"]`;
+/** Open surfaces that own the keyboard; toasts and pills never do. Inline list widgets
+ * (listbox/tree/grid, e.g. the always-mounted session sidebar) are not surfaces: they
+ * own keys only while focused or as the key target (OWNS_KEYS); floating ones sit in
+ * a `[data-layer]`. */
+const OPEN_SURFACE = `${MODAL_SELECTOR}, [data-layer]:not([data-layer="toast"], [data-layer="pill"], [data-layer="hovercard"], [role="status"]), [role="dialog"], [role="menu"]`;
 
 /** True while another editable element holds focus or any floating surface (popover,
  * menu, dialog, possibly portaled outside the composer tree) is open. The composer
