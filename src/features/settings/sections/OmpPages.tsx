@@ -1,3 +1,4 @@
+import { MemoryFilesPanel } from "./MemoryFilesPanel";
 import { OmpSettingsPage } from "../OmpSettingsList";
 
 export function ThinkingSection() {
@@ -25,7 +26,12 @@ export function SubagentsSection() {
 }
 
 export function MemorySection() {
-	return <OmpSettingsPage page="memory" title="记忆" description="AI 跨会话记住什么、存在哪里" />;
+	return (
+		<div className="space-y-6">
+			<OmpSettingsPage page="memory" title="记忆" description="AI 跨会话记住什么、存在哪里" />
+			<MemoryFilesPanel />
+		</div>
+	);
 }
 
 export function SkillsSection() {

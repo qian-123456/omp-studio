@@ -10,6 +10,7 @@ mod mobile;
 mod model_replace;
 mod notify;
 mod paths;
+mod omp_files;
 mod privacy;
 mod prompt_composition;
 mod prompts;
@@ -276,6 +277,13 @@ pub fn run() {
             // D — todos / summaries / diagnose
             todos::commands::todos_list,
             todos::commands::todos_act,
+            omp_files::omp_memory_projects,
+            omp_files::omp_memory_files,
+            omp_files::omp_memory_read,
+            omp_files::omp_memory_write,
+            omp_files::omp_memory_delete_skill,
+            omp_files::omp_rule_read,
+            omp_files::omp_rule_write,
             todos::commands::todos_counts,
             todos::commands::summary_get,
             todos::commands::diagnose_build_prompt,

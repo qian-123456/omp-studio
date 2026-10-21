@@ -398,6 +398,30 @@ export const readTextFile = (path: string) =>
 export const writeTextFile = (path: string, content: string) =>
 	invoke<void>("write_text_file", { path, content });
 
+/** Text plus the on-disk stamp used for conflict detection; null content = file missing. */
+export interface StampedText {
+	content: string | null;
+	stamp: string | null;
+}
+
+export interface MemoryFileInfo {
+	rel: string;
+	editable: boolean;
+}
+
+export const ompMemoryProjects = () => invoke<string[]>("omp_memory_projects");
+export const ompMemoryFiles = (slug: string) =>
+	invoke<MemoryFileInfo[]>("omp_memory_files", { slug });
+export const ompMemoryRead = (slug: string, rel: string) =>
+	invoke<StampedText>("omp_memory_read", { slug, rel });
+export const ompMemoryWrite = (slug: string, rel: string, content: string, expectedStamp: string | null) =>
+	invoke<string | null>("omp_memory_write", { slug, rel, content, expectedStamp });
+export const ompMemoryDeleteSkill = (slug: string, name: string) =>
+	invoke<void>("omp_memory_delete_skill", { slug, name });
+export const ompRuleRead = (path: string) => invoke<StampedText>("omp_rule_read", { path });
+export const ompRuleWrite = (path: string, content: string, expectedStamp: string | null) =>
+	invoke<string | null>("omp_rule_write", { path, content, expectedStamp });
+
 export const fsReadDir = (path: string) =>
 	invoke<DirEntry[]>("fs_read_dir", { path });
 
