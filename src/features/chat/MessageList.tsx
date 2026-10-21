@@ -1447,11 +1447,18 @@ export function MessageList({
 	const blocksKey = `${blocks.length}:${blocks[blocks.length - 1]?.id ?? ""}`;
 	const [hold, setHold] = useState<{ key: string } | null>(null);
 	const [wasStreaming, setWasStreaming] = useState(isStreamingActive);
-	if (wasStreaming !== isStreamingActive) {
+	const [holdSessionId, setHoldSessionId] = useState(sessionId);
+	if (holdSessionId !== sessionId) {
+		// A session switch is not a stream ending: never hold another session's frame.
+		setHoldSessionId(sessionId);
+		setWasStreaming(isStreamingActive);
+		setHold(null);
+	} else if (wasStreaming !== isStreamingActive) {
 		setWasStreaming(isStreamingActive);
 		setHold(isStreamingActive ? null : { key: blocksKey });
 	}
-	const holding = !isStreamingActive && hold !== null && hold.key === blocksKey;
+	const holding =
+		holdSessionId === sessionId && !isStreamingActive && hold !== null && hold.key === blocksKey;
 	useEffect(() => {
 		if (!hold) return;
 		if (hold.key !== blocksKey) {
