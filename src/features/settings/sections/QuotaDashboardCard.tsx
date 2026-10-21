@@ -21,6 +21,7 @@ import {
 import { ProviderBrandLogo } from "./ProviderBrandLogo";
 import {
 	findWindowResetsAt,
+	formatAccountSubtitle,
 	formatHumanWindowName,
 	formatLimitStatus,
 	formatRelativeTime,
@@ -197,9 +198,10 @@ function ProviderQuotaCard({
 	const subtitle = multi
 		? `${p.totalAccounts} 个已授权账号`
 		: single
-			? [single.metadata?.email || single.metadata?.accountId, single.metadata?.orgName]
-					.filter(Boolean)
-					.join(" · ") || "已授权账号"
+			? formatAccountSubtitle(
+					single.metadata?.email || single.metadata?.accountId,
+					single.metadata?.orgName,
+				) || "已授权账号"
 			: p.unmetered[0]?.enterpriseUrl || "已连接账号";
 	const shortName = p.brand.name.split(" ").pop() ?? p.brand.name;
 	const rows = buildQuotaRows(p.reports, now);

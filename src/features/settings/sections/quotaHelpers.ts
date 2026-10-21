@@ -372,3 +372,43 @@ export function formatLimitStatus(usedPct: number, resetsAt: number | null, now:
 	}
 	return { text, usedText, resetText, badge: "正常", isExhausted: false, isWarning: false, color: "neutral" };
 }
+
+/**
+ * Format account subtitle combining email/accountId and orgName.
+ * Deduplicates if orgName is derived from email/accountId (e.g. "email's Organization" or equals email).
+ */
+export function formatAccountSubtitle(
+	account: string | undefined | null,
+	orgName: string | undefined | null,
+): string {
+	const acc = account?.trim() || "";
+	const org = orgName?.trim() || "";
+
+	if (!acc && !org) return "";
+	if (!acc) return org;
+	if (!org) return acc;
+
+	// If orgName is identical to account/email, don't repeat
+	if (acc.toLowerCase() === org.toLowerCase()) return acc;
+
+	// If orgName is derived from account/email (e.g. "foo@bar.com's Organization" or "foo's Organization")
+	const accPrefix = acc.includes("@") ? acc.split("@")[0] : acc;
+	const pattern = new RegExp(`^(${escapeRegExp(acc)}|${escapeRegExp(accPrefix)})('s|’s)?\\s*organization$`, "i");
+	if (pattern.test(org)) {
+		return acc;
+	}
+
+	// If orgName contains the full email/account name surrounded by noise or already starts with it
+	if (org.toLowerCase().startsWith(acc.toLowerCase())) {
+		const suffix = org.slice(acc.length).replace(/^['’]s?\s*/i, "").trim();
+		if (!suffix || /^organization$/i.test(suffix)) {
+			return acc;
+		}
+	}
+
+	return `${acc} · ${org}`;
+}
+
+function escapeRegExp(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

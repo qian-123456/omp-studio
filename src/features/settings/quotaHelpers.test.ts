@@ -3,6 +3,7 @@ import type { OmpUsageLimit } from "../../lib/contracts";
 import {
 	dedupeLimits,
 	findWindowResetsAt,
+	formatAccountSubtitle,
 	formatCountdown,
 	formatCountdownCompact,
 	formatLimitStatus,
@@ -176,5 +177,60 @@ describe("compact quota status helpers", () => {
 				amount: { unit: "percent", used: 150 },
 			}),
 		).toBe(100);
+	});
+});
+
+describe("formatAccountSubtitle", () => {
+	it("deduplicates when orgName is email's Organization", () => {
+		expect(
+			formatAccountSubtitle(
+				"qianhairui90@gmail.com",
+				"qianhairui90@gmail.com's Organization",
+			),
+		).toBe("qianhairui90@gmail.com");
+	});
+
+	it("deduplicates when orgName uses curly apostrophe", () => {
+		expect(
+			formatAccountSubtitle(
+				"qianhairui90@gmail.com",
+				"qianhairui90@gmail.com’s Organization",
+			),
+		).toBe("qianhairui90@gmail.com");
+	});
+
+	it("deduplicates when orgName equals email or account", () => {
+		expect(
+			formatAccountSubtitle(
+				"user@example.com",
+				"user@example.com",
+			),
+		).toBe("user@example.com");
+	});
+
+	it("deduplicates when orgName is prefix username's Organization", () => {
+		expect(
+			formatAccountSubtitle(
+				"alice@company.com",
+				"alice's Organization",
+			),
+		).toBe("alice@company.com");
+	});
+
+	it("keeps genuine company or team org names intact", () => {
+		expect(
+			formatAccountSubtitle(
+				"qianhairui90@gmail.com",
+				"Acme Corp",
+			),
+		).toBe("qianhairui90@gmail.com · Acme Corp");
+	});
+
+	it("handles missing email or missing orgName gracefully", () => {
+		expect(formatAccountSubtitle("qianhairui90@gmail.com", undefined)).toBe(
+			"qianhairui90@gmail.com",
+		);
+		expect(formatAccountSubtitle(undefined, "Acme Corp")).toBe("Acme Corp");
+		expect(formatAccountSubtitle(null, null)).toBe("");
 	});
 });
