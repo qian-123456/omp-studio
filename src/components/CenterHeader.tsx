@@ -43,6 +43,7 @@ import {
 } from "../lib/ipc";
 import { toast } from "../lib/toast";
 import { claimEscape, isEscapeClaimed } from "../lib/escapeClaim";
+import { useTrafficLightsVisible } from "../lib/trafficLights";
 
 
 
@@ -359,6 +360,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 		return () => window.removeEventListener("keydown", onKey);
 	}, [hasBackTarget, centerView]);
 
+	const trafficLightsVisible = useTrafficLightsVisible();
 	return (
 		<>
 			<header
@@ -367,7 +369,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 			>
 				{/* Expand sidebar button — only rendered when the sidebar is closed */}
 				{!sidebarOpen && (
-					<div className="flex shrink-0 items-center pl-2.5 pr-1">
+					<div className={clsx("flex shrink-0 items-center pr-1", trafficLightsVisible ? "pl-[78px]" : "pl-2.5")}>
 						<button
 							type="button"
 							onClick={toggleSidebar}
