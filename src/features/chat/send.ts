@@ -93,7 +93,17 @@ export async function sendPrompt(
 		if (streaming) {
 			command.streamingBehavior = opts?.steer ? "steer" : "followUp";
 		}
-		await rpcSend(sessionId, command);
+		try {
+			await rpcSend(sessionId, command);
+		} catch (err) {
+			// Live state said idle but omp is mid-turn (e.g. waiting on subagents,
+			// or a stale `streaming` flag): resend as steer/followUp instead of failing.
+			if (streaming || !/already processing/i.test(errMsg(err))) throw err;
+			await rpcSend(sessionId, {
+				...command,
+				streamingBehavior: opts?.steer ? "steer" : "followUp",
+			});
+		}
 	} catch (err) {
 		// Not sent: drop the bubble so a retry doesn't duplicate it.
 		if (echoId) useLive.getState().removeUserEcho(sessionId, echoId);

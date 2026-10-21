@@ -998,6 +998,9 @@ function reduce(
 		}
 		case "prompt_result": {
 			const pendingCommand = live.pendingCommand ?? null;
+			if (/already processing/i.test(str(frame.error))) {
+				return { ...live, streaming: true, pendingCommand: null };
+			}
 			if (
 				pendingCommand &&
 				frame.status === "error" &&
@@ -1117,6 +1120,11 @@ function reduce(
 			if (frame.command === "prompt") {
 				const pendingCommand = live.pendingCommand ?? null;
 				if (frame.success !== true) {
+					// omp rejected the prompt because a turn is running: the turn is still
+					// live, so mark it streaming instead of wiping the live turn state.
+					if (/already processing/i.test(str(frame.error))) {
+						return { ...live, streaming: true, pendingCommand: null };
+					}
 					const failed: SessionLive = {
 						...live,
 						streaming: false,
