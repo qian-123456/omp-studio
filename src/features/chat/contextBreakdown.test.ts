@@ -48,9 +48,8 @@ describe("buildContextSegments", () => {
 });
 
 describe("gridShape", () => {
-	it("is 10×10 below 1M tokens and 20×10 at 1M or more, as in Claude", () => {
-		expect(gridShape(200_000)).toEqual({ cols: 10, rows: 10 });
-		expect(gridShape(1_000_000)).toEqual({ cols: 20, rows: 10 });
+	it("is a 10×10 block, as in Claude's /context panel", () => {
+		expect(gridShape()).toEqual({ cols: 10, rows: 10 });
 	});
 });
 

@@ -11,8 +11,8 @@ import { useOmpConfigStore } from "../settings/ompConfigStore";
 import { readThreshold, resolveMode } from "../settings/autoCompactionLogic";
 import { allocateCells, buildContextSegments, compactionBuffer, gridShape } from "./contextBreakdown";
 
-const GRID_CELL = 9;
-const GRID_GAP = 2;
+const GRID_CELL = 16;
+const GRID_GAP = 3;
 
 /** One probe per project for the app's lifetime; concurrent opens share the in-flight request. */
 const compositionCache = new Map<string, Promise<PromptComposition>>();
@@ -57,20 +57,22 @@ function DetailSections({ comp }: { comp: PromptComposition | null }) {
 					<div key={s.id}>
 						<div className="flex items-center justify-between">
 							<span className="font-medium text-[var(--text-60)]">{s.title}</span>
-							<button
-								type="button"
-								onClick={() =>
-									setExpanded((prev) => {
-										const next = new Set(prev);
-										if (next.has(s.id)) next.delete(s.id);
-										else next.add(s.id);
-										return next;
-									})
-								}
-								className="rounded-full border border-[var(--line)] px-1.5 py-px text-[10px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-							>
-								{all ? "收起" : `全部 ${s.items.length} 项`}
-							</button>
+							{s.items.length > 1 && (
+								<button
+									type="button"
+									onClick={() =>
+										setExpanded((prev) => {
+											const next = new Set(prev);
+											if (next.has(s.id)) next.delete(s.id);
+											else next.add(s.id);
+											return next;
+										})
+									}
+									className="rounded-full border border-[var(--line)] px-1.5 py-px text-[10px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+								>
+									{all ? "收起" : `全部 ${s.items.length} 项`}
+								</button>
+							)}
 						</div>
 						{all ? (
 							<div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto pl-2">
@@ -222,7 +224,7 @@ export function ContextRing({
 	});
 	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe, buffer);
 	const colorOf = new Map(segments.map((s) => [s.id, s.color]));
-	const shape = gridShape(rawWindow ?? 0);
+	const shape = gridShape();
 	const cells = allocateCells(segments, rawWindow ?? 0, shape);
 	const usedNow = rawTokens ?? 0;
 	const windowNow = rawWindow ?? 0;
@@ -290,7 +292,7 @@ export function ContextRing({
 							// --bg-panel is translucent in glass themes; layer it over solid --bg so nothing behind shows through.
 							backgroundColor: "var(--bg)",
 							backgroundImage: "linear-gradient(var(--bg-panel), var(--bg-panel))",
-							width: shape.cols === 20 ? 460 : 380,
+							width: 460,
 						}}
 						className="!border-[var(--line)] p-3 !shadow-apple-card"
 					>
@@ -358,7 +360,7 @@ export function ContextRing({
 													className="aspect-square rounded-[1px]"
 													style={{
 														background: colorOf.get(cell.id),
-														opacity: cell.id === "free" ? 0.5 : cell.fullness >= 0.7 ? 1 : 0.45,
+														opacity: cell.id === "free" ? 0.9 : cell.fullness >= 0.7 ? 1 : 0.45,
 													}}
 												/>
 											))}
@@ -377,14 +379,14 @@ export function ContextRing({
 												.map((s) => (
 													<div key={s.id} className="flex items-start gap-1.5 leading-4">
 														<span
-															className="mt-[5px] h-[7px] w-[7px] shrink-0 rounded-[1px]"
+															className="mt-1 h-2 w-2 shrink-0 rounded-[1px]"
 															style={{ background: s.color }}
 														/>
 														<span className="min-w-0 flex-1 break-all text-[var(--text-60)]">
 															{s.label}:
 														</span>
 														<span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--text-40)]">
-															{compactTokens(s.tokens)} ({((s.tokens / rawWindow) * 100).toFixed(1)}%)
+															{compactTokens(s.tokens)} token ({((s.tokens / rawWindow) * 100).toFixed(1)}%)
 														</span>
 													</div>
 												))}
@@ -394,7 +396,7 @@ export function ContextRing({
 													<div key={s.id} className="flex items-start gap-1.5 leading-4">
 														<span
 															className={clsx(
-																"mt-[5px] h-[7px] w-[7px] shrink-0 rounded-[1px]",
+																"mt-1 h-2 w-2 shrink-0 rounded-[1px]",
 																s.id === "free" && "border border-[var(--line)]",
 															)}
 															style={s.id === "buffer" ? { background: s.color } : undefined}
@@ -403,7 +405,8 @@ export function ContextRing({
 															{s.label}:
 														</span>
 														<span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--text-40)]">
-															{compactTokens(s.tokens)} ({((s.tokens / rawWindow) * 100).toFixed(1)}%)
+															{compactTokens(s.tokens)}
+															{s.id === "buffer" ? " token" : ""} ({((s.tokens / rawWindow) * 100).toFixed(1)}%)
 														</span>
 													</div>
 												))}

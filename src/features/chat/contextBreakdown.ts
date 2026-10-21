@@ -30,12 +30,12 @@ export interface ContextSegment {
 /** Claude's hues: prompt=blue, tools/buffer=grey, MCP=cyan, memory=orange, skills=green, messages=purple. */
 const COLOR: Record<ContextSegmentId, string> = {
 	system: "var(--accent)",
-	tools: "var(--text-dim)",
-	mcp: "var(--status-renamed)",
+	tools: "var(--status-renamed)",
+	mcp: "color-mix(in srgb, var(--status-renamed) 55%, var(--status-success))",
 	rules: "var(--status-warning)",
 	skills: "var(--status-success)",
-	other: "color-mix(in srgb, var(--text-dim) 55%, var(--bg))",
-	messages: "var(--accent-strong)",
+	other: "var(--text-dim)",
+	messages: "color-mix(in srgb, var(--accent) 55%, var(--status-renamed))",
 	free: "var(--bg-selected)",
 	buffer: "color-mix(in srgb, var(--text-dim) 45%, var(--bg-selected))",
 };
@@ -58,9 +58,9 @@ const ORDER: ContextSegmentId[] = ["system", "tools", "mcp", "rules", "skills", 
 /** Claude keeps this much free when autocompaction is off ("Compact buffer"). */
 const COMPACT_BUFFER_TOKENS = 3000;
 
-/** Claude's grid: 10×10 cells, or 20×10 once the window reaches 1M tokens. */
-export function gridShape(windowSize: number): { cols: number; rows: number } {
-	return { cols: windowSize >= 1_000_000 ? 20 : 10, rows: 10 };
+/** Claude's /context block: 10 columns × 10 rows of glyph cells. */
+export function gridShape(): { cols: number; rows: number } {
+	return { cols: 10, rows: 10 };
 }
 
 export interface CompactionBuffer {
