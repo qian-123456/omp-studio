@@ -13,11 +13,12 @@ import {
 	MoreHorizontal,
 	QrCode,
 	RefreshCw,
+	Terminal,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import clsx from "clsx";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { rpcRestart, sessionExportHtml } from "../lib/ipc";
+import { rpcRestart, sessionExportHtml, sessionResumeCommand } from "../lib/ipc";
 import { toast } from "../lib/toast";
 
 import { FloatingLayer } from "./FloatingLayer";
@@ -83,6 +84,21 @@ export function SessionOverflowMenu({
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			toast.error(`导出 HTML 失败: ${msg}`);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const handleCopyResumeCommand = async () => {
+		if (busy) return;
+		setBusy(true);
+		try {
+			await navigator.clipboard.writeText(await sessionResumeCommand(sessionId));
+			toast.success("已复制终端续接命令");
+			setOpen(false);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			toast.error(`复制续接命令失败: ${msg}`);
 		} finally {
 			setBusy(false);
 		}
@@ -209,6 +225,19 @@ export function SessionOverflowMenu({
 					>
 						<FileDown size={13} className="shrink-0 text-neutral-400" />
 						<span className="flex-1 truncate">导出 HTML</span>
+					</button>
+
+					{/* 复制终端续接命令 */}
+					<button
+						type="button"
+						role="menuitem"
+						disabled={busy}
+						onClick={handleCopyResumeCommand}
+						className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40 transition-all active:scale-[0.98]"
+						title="在其他终端接着聊时用这条命令：带上本应用的提示词参数，避免提示缓存失效"
+					>
+						<Terminal size={13} className="shrink-0 text-neutral-400" />
+						<span className="flex-1 truncate">复制终端续接命令</span>
 					</button>
 
 					{/* 手机扫码查看 */}

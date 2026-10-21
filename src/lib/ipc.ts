@@ -773,6 +773,11 @@ export const termOpenSession = (
 	rows: number = 24,
 ) => invoke<string>("term_open_session", { sessionId, agent, cols, rows });
 
+/** Shell command that resumes the session in an external terminal with the app's
+ * prompt-shaping flags (keeps the provider prompt cache warm). No API keys. */
+export const sessionResumeCommand = (sessionId: string) =>
+	invoke<string>("session_resume_command", { sessionId });
+
 /** Records/clears the transcript the drawer's bare `omp` should resume. */
 export const terminalSetCurrentSession = (path: string | null) =>
 	invoke<void>("terminal_set_current_session", { path });

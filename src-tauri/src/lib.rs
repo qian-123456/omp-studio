@@ -374,6 +374,7 @@ pub fn run() {
             terminal::commands::term_resize,
             terminal::commands::term_close,
             terminal::commands::term_open_session,
+            terminal::commands::session_resume_command,
             terminal::commands::terminal_set_current_session,
             terminal::commands::install_status_extension_globally,
             // E — schedules (定时任务)

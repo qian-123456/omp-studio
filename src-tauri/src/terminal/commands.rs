@@ -213,6 +213,99 @@ pub async fn term_open_session(
     Ok(term_id)
 }
 
+/// POSIX single-quote `s` unless it is made only of shell-safe characters.
+fn sh_quote(s: &str) -> String {
+    let safe = !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c));
+    if safe {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', r"'\''"))
+    }
+}
+
+/// One-line shell command that resumes `file` in an external terminal with the
+/// same prompt-shaping argv (`shape`) and non-secret env as the app's own omp
+/// processes. A bare `omp --resume` there drops the app's `--append-system-prompt`
+/// / `--plugin-dir` / `-e` flags, which changes the system prompt and cold-misses
+/// the provider prompt cache for the whole transcript.
+fn resume_command_line(
+    cwd: &str,
+    binary: &str,
+    file: &str,
+    shape: &[String],
+    env: &[(String, String)],
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (k, v) in env {
+        parts.push(format!("{k}={}", sh_quote(v)));
+    }
+    parts.push(sh_quote(binary));
+    parts.push("--resume".to_string());
+    parts.push(sh_quote(file));
+    parts.extend(shape.iter().map(|a| sh_quote(a)));
+    format!("cd {} && {}", sh_quote(cwd), parts.join(" "))
+}
+
+/// Shell command for resuming the session from an external terminal while
+/// keeping the app's prompt shape (so the prompt cache stays warm). Never
+/// includes provider API keys: only the secret-free routing metadata and
+/// privacy file pointers ride along.
+#[tauri::command]
+pub async fn session_resume_command(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    let meta = crate::catalog::get(&state, &session_id)
+        .await
+        .ok_or_else(|| format!("找不到会话 {session_id}"))?;
+    let _ = extension::install_to(&crate::paths::extension_path());
+    let settings = state.settings.read().clone();
+    let shape = crate::rpc::prompt_shape_args(Some(&meta.file), None, None, &settings);
+    let mut env: Vec<(String, String)> =
+        crate::providers::terminal_extra_env().into_iter().collect();
+    env.extend(crate::privacy::spawn_env());
+    Ok(resume_command_line(
+        &meta.cwd,
+        &settings.omp_binary,
+        &meta.file,
+        &shape,
+        &env,
+    ))
+}
+
+#[cfg(test)]
+mod resume_command_tests {
+    use super::*;
+
+    #[test]
+    fn quotes_only_when_needed() {
+        assert_eq!(sh_quote("omp"), "omp");
+        assert_eq!(sh_quote("/a/b-c_d.jsonl"), "/a/b-c_d.jsonl");
+        assert_eq!(sh_quote("a b"), "'a b'");
+        assert_eq!(sh_quote("it's"), r"'it'\''s'");
+        assert_eq!(sh_quote(""), "''");
+    }
+
+    #[test]
+    fn resume_line_carries_prompt_shape_and_env() {
+        let shape = vec![
+            "--append-system-prompt".to_string(),
+            "line one\nline 'two'".to_string(),
+            "-e".to_string(),
+            "/x/ext.ts".to_string(),
+        ];
+        let env = vec![("OMPWS_PRIVACY_FILE".to_string(), "/d/s.json".to_string())];
+        let line = resume_command_line("/my proj", "omp", "/s/a b.jsonl", &shape, &env);
+        assert_eq!(
+            line,
+            "cd '/my proj' && OMPWS_PRIVACY_FILE=/d/s.json omp --resume '/s/a b.jsonl' \
+             --append-system-prompt 'line one\nline '\\''two'\\''' -e /x/ext.ts"
+        );
+    }
+}
+
 #[cfg(test)]
 mod agent_tests {
     use super::TerminalAgent;
