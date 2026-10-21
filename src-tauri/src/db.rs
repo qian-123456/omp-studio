@@ -234,6 +234,44 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         )?;
         conn.pragma_update(None, "user_version", 16)?;
     }
+    // v17: role templates, quota switch rules and their switch log.
+    if version < 17 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS model_templates(
+               id TEXT PRIMARY KEY, name TEXT NOT NULL, roles TEXT NOT NULL,
+               is_bottom_line INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS model_switch_rules(
+               id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+               provider TEXT NOT NULL, window_key TEXT NOT NULL, threshold_pct REAL NOT NULL,
+               template_id TEXT NOT NULL, auto_revert INTEGER NOT NULL DEFAULT 0,
+               revert_threshold_pct REAL, sort INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS model_switch_log(
+               id TEXT PRIMARY KEY, created_at TEXT NOT NULL,
+               rule_id TEXT, rule_name TEXT, template_id TEXT NOT NULL, template_name TEXT NOT NULL,
+               status TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', edits TEXT NOT NULL,
+               previous_template_id TEXT, session_results TEXT NOT NULL DEFAULT '[]', undone_at TEXT);",
+        )?;
+        conn.pragma_update(None, "user_version", 17)?;
+    }
+    // v18: templates, rules and log rows belong to one scope: `global` or a project directory.
+    if version < 18 {
+        // Idempotent: a database whose `user_version` was rewound already has the column.
+        for table in ["model_templates", "model_switch_rules", "model_switch_log"] {
+            let has_scope: bool = conn.query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info(?1) WHERE name = 'scope'",
+                [table],
+                |row| row.get(0),
+            )?;
+            if !has_scope {
+                conn.execute_batch(&format!(
+                    "ALTER TABLE {table} ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';"
+                ))?;
+            }
+        }
+        conn.pragma_update(None, "user_version", 18)?;
+    }
     Ok(())
 }
 
@@ -313,7 +351,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 16);
+        assert_eq!(version, 18);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -336,7 +374,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 16);
+        assert_eq!(v3, 18);
     }
 
     #[test]
@@ -346,7 +384,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 16);
+        assert_eq!(v, 18);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -373,7 +411,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 16);
+        assert_eq!(v, 18);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(schedules)")
             .unwrap()
@@ -448,7 +486,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 16);
+        assert_eq!(v, 18);
         // Pre-existing row inherits the documented defaults.
         let (notify, new_chat): (String, i64) = conn
             .query_row(
@@ -543,7 +581,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 16);
+        assert_eq!(v, 18);
         // Pre-existing row: NULL cap, zero runs.
         let (max_runs, runs_done): (Option<i64>, i64) = conn
             .query_row(
@@ -603,7 +641,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 16);
+        assert_eq!(v, 18);
         // Pre-existing rows default to code.
         let mode: String = conn
             .query_row(
@@ -748,7 +786,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 16);
+        assert_eq!(v, 18);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(model_replace_log)")
             .unwrap()
@@ -781,5 +819,109 @@ mod tests {
             )
             .unwrap();
         assert_eq!(undone, None);
+    }
+
+    /// v17 adds role templates, quota switch rules and the switch log; v18 adds `scope` to each.
+    #[test]
+    fn migrate_creates_scoped_model_switch_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 18);
+        let columns = |table: &str| -> Vec<String> {
+            conn.prepare(&format!("PRAGMA table_info({table})"))
+                .unwrap()
+                .query_map([], |r| r.get::<_, String>(1))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        assert_eq!(
+            columns("model_templates"),
+            [
+                "id",
+                "name",
+                "roles",
+                "is_bottom_line",
+                "created_at",
+                "updated_at",
+                "scope"
+            ]
+        );
+        assert_eq!(
+            columns("model_switch_rules"),
+            [
+                "id",
+                "name",
+                "enabled",
+                "provider",
+                "window_key",
+                "threshold_pct",
+                "template_id",
+                "auto_revert",
+                "revert_threshold_pct",
+                "sort",
+                "created_at",
+                "updated_at",
+                "scope"
+            ]
+        );
+        assert_eq!(
+            columns("model_switch_log"),
+            [
+                "id",
+                "created_at",
+                "rule_id",
+                "rule_name",
+                "template_id",
+                "template_name",
+                "status",
+                "reason",
+                "edits",
+                "previous_template_id",
+                "session_results",
+                "undone_at",
+                "scope"
+            ]
+        );
+        // Re-running the migration on a v18 database is a no-op.
+        migrate(&conn).unwrap();
+    }
+
+    /// Rows written under v17 land in the `global` scope.
+    #[test]
+    fn migrate_v18_puts_existing_rows_in_the_global_scope() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE model_templates(
+               id TEXT PRIMARY KEY, name TEXT NOT NULL, roles TEXT NOT NULL,
+               is_bottom_line INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+             CREATE TABLE model_switch_rules(
+               id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+               provider TEXT NOT NULL, window_key TEXT NOT NULL, threshold_pct REAL NOT NULL,
+               template_id TEXT NOT NULL, auto_revert INTEGER NOT NULL DEFAULT 0,
+               revert_threshold_pct REAL, sort INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+             CREATE TABLE model_switch_log(
+               id TEXT PRIMARY KEY, created_at TEXT NOT NULL,
+               rule_id TEXT, rule_name TEXT, template_id TEXT NOT NULL, template_name TEXT NOT NULL,
+               status TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', edits TEXT NOT NULL,
+               previous_template_id TEXT, session_results TEXT NOT NULL DEFAULT '[]', undone_at TEXT);
+             INSERT INTO model_templates VALUES('t', 'T', '{}', 0, 'c', 'u');
+             INSERT INTO model_switch_rules VALUES('r', 'R', 1, 'anthropic', '5h', 90, 't', 0, NULL, 0, 'c', 'u');
+             INSERT INTO model_switch_log VALUES('l', 'c', NULL, NULL, 't', 'T', 'applied', '', '[]', NULL, '[]', NULL);",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 17).unwrap();
+        migrate(&conn).unwrap();
+        for table in ["model_templates", "model_switch_rules", "model_switch_log"] {
+            let scope: String = conn
+                .query_row(&format!("SELECT scope FROM {table}"), [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(scope, "global", "{table}");
+        }
     }
 }

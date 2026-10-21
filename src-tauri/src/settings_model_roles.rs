@@ -201,9 +201,7 @@ fn global_config_path(ctx: &Ctx) -> PathBuf {
 }
 
 fn project_config_path(ctx: &Ctx) -> Option<PathBuf> {
-    ctx.project_dir
-        .as_ref()
-        .map(|dir| dir.join(OMP_DIR).join(PROJECT_CONFIG_NAME))
+    ctx.project_dir.as_deref().map(project_config_file)
 }
 
 fn is_file(path: &Path) -> bool {
@@ -1600,6 +1598,92 @@ pub(crate) fn replace_value(
     Ok(ReplaceOutcome::Written)
 }
 
+/// Project config file (`<project>/.omp/config.yml`); it may not exist yet.
+pub(crate) fn project_config_file(project: &Path) -> PathBuf {
+    project.join(OMP_DIR).join(PROJECT_CONFIG_NAME)
+}
+
+/// Guarded multi-entry edit for the model-template apply flow.
+///
+/// One read-modify-write of several `modelRoles` entries under [`WRITE_LOCK`]: the target
+/// layer's config (global when `project` is `None`, else `<project>/.omp/config.yml`) is read
+/// once, every op is planned in memory with [`plan_edit`] against the previous plan's output, and
+/// the final document is written once with [`write_guarded`] using the bytes that were read as
+/// the guard (`None` for a missing file). Any op that fails to plan aborts the whole batch
+/// before anything is written, so a template is applied completely or not at all.
+///
+/// A missing project file is created (with its `.omp/` directory) only when at least one op sets
+/// a value; a failed write removes the directory it just created, so no half-made project
+/// config is ever left behind.
+pub(crate) fn write_role_batch(
+    project: Option<&Path>,
+    ops: &[(String, Option<String>)],
+) -> Result<(), String> {
+    if ops.is_empty() {
+        return Ok(());
+    }
+    let project_text = project.map(path_text);
+    let ctx = Ctx::resolve(project_text.as_deref())?;
+    let _guard = WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (path, label) = match project_config_path(&ctx) {
+        Some(path) => (path, PROJECT_LABEL),
+        None => (global_config_path(&ctx), GLOBAL_LABEL),
+    };
+    // Fresh read under the lock: never edit a cached copy.
+    let current = read_config(&path, label)?;
+    if project.is_none() && !current.exists && is_file(&ctx.agent_dir.join(LEGACY_SETTINGS_NAME)) {
+        return Err(
+            "检测到旧版 settings.json；请先让 omp 迁移为 config.yml 后再设置模型角色，文件未修改"
+                .to_string(),
+        );
+    }
+    // `None` = nothing planned yet, so the read document is still the source.
+    let mut planned: Option<String> = None;
+    for (name, value) in ops {
+        let name = validate_name(name)?;
+        // A captured template may hold omp's comma-joined selector list, so list values are
+        // accepted here even though a single role edit only ever writes one selector.
+        let op = match value {
+            Some(raw) => EditOp::Set {
+                table: Table::ModelRoles,
+                name,
+                value: validate_value_list(raw)?,
+            },
+            None => EditOp::Remove {
+                table: Table::ModelRoles,
+                name,
+            },
+        };
+        let source = planned.as_deref().unwrap_or(&current.text);
+        if let Some(next) = plan_edit(source, &op, label)? {
+            planned = Some(next);
+        }
+    }
+    // Every op was already satisfied, or no op had anything to change.
+    let Some(next) = planned else {
+        return Ok(());
+    };
+    let created_dir = if current.exists {
+        None
+    } else {
+        path.parent().filter(|dir| !dir.exists())
+    };
+    let written = write_guarded(
+        &path,
+        current.exists.then_some(current.bytes.as_slice()),
+        &next,
+    );
+    if written.is_err() {
+        if let Some(dir) = created_dir {
+            // Only removes an empty directory, so anything else in there is left alone.
+            let _ = fs::remove_dir(dir);
+        }
+    }
+    written
+}
+
 fn normalize_session(raw: Option<String>) -> Option<String> {
     raw.map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
@@ -2232,5 +2316,104 @@ mod tests {
             .find(|agent| agent["name"] == "scout")
             .expect("bundled scout discovered");
         assert_eq!(scout["source"], "builtin");
+    }
+
+    fn batch_project_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("ompws-roles-batch-{tag}-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("project dir");
+        dir
+    }
+
+    fn ops(items: &[(&str, Option<&str>)]) -> Vec<(String, Option<String>)> {
+        items
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.map(str::to_string)))
+            .collect()
+    }
+
+    #[test]
+    fn project_batch_creates_missing_file_with_only_model_roles() {
+        let project = batch_project_dir("create");
+        write_role_batch(
+            Some(&project),
+            &ops(&[("default", Some("a/b")), ("smol", Some("c/d:high"))]),
+        )
+        .expect("batch");
+        let file = project_config_file(&project);
+        let text = fs::read_to_string(&file).expect("created file");
+        assert!(text.starts_with("modelRoles:"), "{text}");
+        let refs = layer_refs(&file, PROJECT_LABEL).expect("refs");
+        assert_eq!(
+            refs.model_roles.get("default").map(String::as_str),
+            Some("a/b")
+        );
+        assert_eq!(
+            refs.model_roles.get("smol").map(String::as_str),
+            Some("c/d:high")
+        );
+        assert_eq!(refs.model_roles.len(), 2);
+        let _ = fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn project_batch_updates_existing_file_losslessly() {
+        let project = batch_project_dir("lossless");
+        let file = project_config_file(&project);
+        fs::create_dir_all(file.parent().expect("parent")).expect(".omp dir");
+        fs::write(
+            &file,
+            "# top note\ntheme: dark\nmodelRoles:\n  smol: \"g/fast\" # keep me\n  slow: \"g/slow\"\n",
+        )
+        .expect("fixture");
+        write_role_batch(
+            Some(&project),
+            &ops(&[("default", Some("a/b")), ("slow", None)]),
+        )
+        .expect("batch");
+        let text = fs::read_to_string(&file).expect("file");
+        assert!(text.starts_with("# top note\ntheme: dark\n"), "{text}");
+        assert!(text.contains("# keep me"), "{text}");
+        let refs = layer_refs(&file, PROJECT_LABEL).expect("refs");
+        assert_eq!(
+            refs.model_roles.get("default").map(String::as_str),
+            Some("a/b")
+        );
+        assert_eq!(
+            refs.model_roles.get("smol").map(String::as_str),
+            Some("g/fast")
+        );
+        assert!(!refs.model_roles.contains_key("slow"));
+        let _ = fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn failed_project_batch_leaves_no_file_or_directory() {
+        let project = batch_project_dir("atomic");
+        // The second op is invalid, so planning aborts before anything is written.
+        let error = write_role_batch(
+            Some(&project),
+            &ops(&[("default", Some("a/b")), ("bad name", Some("c/d"))]),
+        )
+        .expect_err("invalid op");
+        assert!(!error.is_empty());
+        assert!(!project.join(OMP_DIR).exists());
+        // Removing keys from a project that has no file is a no-op and creates nothing.
+        write_role_batch(Some(&project), &ops(&[("default", None)])).expect("noop");
+        assert!(!project.join(OMP_DIR).exists());
+        let _ = fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn project_batch_rejects_missing_or_relative_directories() {
+        let project = batch_project_dir("gone");
+        let _ = fs::remove_dir_all(&project);
+        assert!(write_role_batch(Some(&project), &ops(&[("default", Some("a/b"))])).is_err());
+        assert!(!project.exists());
+        assert!(write_role_batch(
+            Some(Path::new("relative/dir")),
+            &ops(&[("default", Some("a/b"))])
+        )
+        .is_err());
     }
 }

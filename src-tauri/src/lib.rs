@@ -10,6 +10,7 @@ mod ime;
 mod local_rows;
 mod mobile;
 mod model_replace;
+mod model_templates;
 mod notify;
 mod omp_files;
 mod paths;
@@ -182,6 +183,7 @@ pub fn run() {
             mobile::init(state.clone());
             terminal::init(state.clone());
             schedules::init(state.clone());
+            model_templates::rules::init(state.clone());
             ime::watch(app.handle());
             Ok(())
         })
@@ -395,6 +397,20 @@ pub fn run() {
             settings_plugins::plugins_list,
             settings_plugins::plugin_set_enabled,
             settings_plugins::extension_delete,
+            // D — model templates + quota switching
+            model_templates::model_templates_snapshot,
+            model_templates::model_template_capture,
+            model_templates::model_template_save,
+            model_templates::model_template_delete,
+            model_templates::model_template_preview,
+            model_templates::model_template_apply,
+            model_templates::model_switch_rule_save,
+            model_templates::model_switch_rule_delete,
+            model_templates::model_switch_rules_reorder,
+            model_templates::model_switch_settings_set,
+            model_templates::model_switch_status,
+            model_templates::model_switch_run_now,
+            model_templates::model_switch_undo,
             // P — privacy placeholders
             privacy::commands::privacy_list,
             privacy::commands::privacy_classify,

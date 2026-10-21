@@ -38,6 +38,8 @@ import type {
 	OmpProjectConfigFile,
 	PromptComposition,
 	ModelRoleSnapshot,
+	ModelSwitchRuleInput,
+	ModelTemplateInput,
 	OmpProviderInfo,
 	OmpImportResult,
 	OmpUsageReportData,
@@ -71,6 +73,10 @@ import type {
 	SpaceMode,
 	SubagentSummary,
 	SubagentTranscript,
+	SwitchResult,
+	SwitchStatus,
+	TemplatePreview,
+	TemplateStoreSnapshot,
 	TmRun,
 	Todo,
 	TodoCounts,
@@ -655,6 +661,63 @@ export const oauthLoginStatus = () =>
 
 export const ompUsageReport = (refresh?: boolean) =>
 	invoke<OmpUsageReportData>("omp_usage_report", { refresh: refresh ?? false });
+
+// ---- D — model templates + quota switching (角色模板与额度自动切换) ----
+
+/** Templates, rules, switch log, settings, per-scope current templates and rule conflicts. */
+export const modelTemplatesSnapshot = () =>
+	invoke<TemplateStoreSnapshot>("model_templates_snapshot");
+
+/**
+ * New-template draft seeded from the `modelRoles` written in one scope's own config layer
+ * (`scope`: `"global"` or a project directory; nothing is stored). A project scope reads only
+ * the project file, never values inherited from the global config.
+ */
+export const modelTemplateCapture = (name: string, scope: string) =>
+	invoke<ModelTemplateInput>("model_template_capture", { name, scope });
+
+/** Create (`input.id === null`) or update one template; returns the fresh snapshot. */
+export const modelTemplateSave = (input: ModelTemplateInput) =>
+	invoke<TemplateStoreSnapshot>("model_template_save", { input });
+
+/** Delete one template (and its rules); returns the fresh snapshot. */
+export const modelTemplateDelete = (id: string) =>
+	invoke<TemplateStoreSnapshot>("model_template_delete", { id });
+
+/** Read-only diff against the template's own scope, with the quota preflight verdict. */
+export const modelTemplatePreview = (templateId: string) =>
+	invoke<TemplatePreview>("model_template_preview", { templateId });
+
+/** Apply one template to its scope's config and push it to that scope's live sessions. */
+export const modelTemplateApply = (templateId: string, force = false) =>
+	invoke<SwitchResult>("model_template_apply", { templateId, force });
+
+/** Validate then create/update one rule; returns the fresh snapshot. */
+export const modelSwitchRuleSave = (input: ModelSwitchRuleInput) =>
+	invoke<TemplateStoreSnapshot>("model_switch_rule_save", { input });
+
+export const modelSwitchRuleDelete = (id: string) =>
+	invoke<TemplateStoreSnapshot>("model_switch_rule_delete", { id });
+
+/** Rewrite the order of one scope's rules (only that scope's ids); returns the fresh snapshot. */
+export const modelSwitchRulesReorder = (scope: string, ids: string[]) =>
+	invoke<TemplateStoreSnapshot>("model_switch_rules_reorder", { scope, ids });
+
+/** Store the poll interval (60..=86400 s); returns the fresh snapshot. */
+export const modelSwitchSettingsSet = (pollIntervalSecs: number) =>
+	invoke<TemplateStoreSnapshot>("model_switch_settings_set", { pollIntervalSecs });
+
+/** Live poller status: last check, last error, providers, blocked notice. */
+export const modelSwitchStatus = (refresh?: boolean) =>
+	invoke<SwitchStatus>("model_switch_status", { refresh: refresh ?? false });
+
+/** Run one evaluation now; `null` = no rule hit and nothing was applied. */
+export const modelSwitchRunNow = () =>
+	invoke<SwitchResult | null>("model_switch_run_now");
+
+/** Revert one switch log row. */
+export const modelSwitchUndo = (logId: string) =>
+	invoke<SwitchResult>("model_switch_undo", { logId });
 
 // ---- E — mobile / tunnel ----
 

@@ -1209,6 +1209,209 @@ export interface OmpUsageReportData {
 	capacity?: Record<string, OmpUsageCapacityWindow[]>;
 }
 
+// ---- D: model templates + quota switching (角色模板与额度自动切换) ----
+
+/** `"global"` or the absolute path of a project directory (`<project>/.omp/config.yml`). */
+export type ModelTemplateScope = string;
+
+/** Role -> selector; `null` = delete that role on apply (restore inheritance). */
+export type ModelTemplateRoles = Record<string, string | null>;
+
+export interface ModelTemplate {
+	id: string;
+	name: string;
+	/** `"global"` or an absolute project directory. */
+	scope: ModelTemplateScope;
+	roles: ModelTemplateRoles;
+	isBottomLine: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ModelTemplateInput {
+	/** `null` = create. */
+	id: string | null;
+	name: string;
+	/** Required on create; ignored on update (a template never changes scope). */
+	scope: ModelTemplateScope;
+	roles: ModelTemplateRoles;
+	isBottomLine: boolean;
+}
+
+export interface ModelSwitchRule {
+	id: string;
+	name: string;
+	enabled: boolean;
+	/** `"global"` or an absolute project directory; the target template has the same scope. */
+	scope: ModelTemplateScope;
+	/** Usage-side slug, e.g. `anthropic`. */
+	provider: string;
+	/** Window key as reported, e.g. `5h`. */
+	windowKey: string;
+	/** 0..=100. */
+	thresholdPct: number;
+	templateId: string;
+	autoRevert: boolean;
+	revertThresholdPct: number | null;
+	sort: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ModelSwitchRuleInput {
+	id: string | null;
+	name: string;
+	enabled: boolean;
+	scope: ModelTemplateScope;
+	provider: string;
+	windowKey: string;
+	thresholdPct: number;
+	templateId: string;
+	autoRevert: boolean;
+	revertThresholdPct: number | null;
+}
+
+export interface TemplateRoleEdit {
+	role: string;
+	before: string | null;
+	after: string | null;
+}
+
+export interface SessionSwitchResult {
+	sessionId: string;
+	title: string;
+	ok: boolean;
+	reason: string;
+}
+
+export interface ModelSwitchLogEntry {
+	id: string;
+	createdAt: string;
+	ruleId: string | null;
+	ruleName: string | null;
+	templateId: string;
+	templateName: string;
+	/** Scope the switch wrote to. */
+	scope: ModelTemplateScope;
+	/** applied | partial | refused | skipped | reverted | undone | failed */
+	status: string;
+	reason: string;
+	edits: TemplateRoleEdit[];
+	previousTemplateId: string | null;
+	sessionResults: SessionSwitchResult[];
+	undoneAt: string | null;
+}
+
+export interface ProjectOverride {
+	path: string;
+	name: string;
+	roles: string[];
+}
+
+export interface PreflightVerdict {
+	/** ok | partial | blocked */
+	level: string;
+	defaultProvider: string | null;
+	/** available | exhausted | unmapped | unknown */
+	providerState: string;
+	degradedRoles: string[];
+	message: string;
+}
+
+export interface TemplatePreview {
+	scope: ModelTemplateScope;
+	/** Absolute path of the config file that would be written. */
+	configPath: string;
+	/** The file (and its `.omp/` directory) does not exist yet and apply creates it. */
+	willCreateFile: boolean;
+	edits: TemplateRoleEdit[];
+	unchanged: string[];
+	/** Roles present in the layer but not declared by the template (kept as-is on apply). */
+	notInTemplate: string[];
+	/** Project configs that shadow the template; only filled for the global scope. */
+	projectOverrides: ProjectOverride[];
+	preflight: PreflightVerdict;
+}
+
+export interface SwitchResult {
+	logId: string;
+	status: string;
+	reason: string;
+	edits: TemplateRoleEdit[];
+	sessionResults: SessionSwitchResult[];
+}
+
+export interface RuleValidation {
+	errors: string[];
+	warnings: string[];
+}
+
+/** Poll interval in seconds; 600 by default, clamped to 60..=86400. */
+export interface SwitchSettings {
+	pollIntervalSecs: number;
+}
+
+export interface CurrentTemplateState {
+	scope: ModelTemplateScope;
+	templateId: string | null;
+	templateName: string | null;
+	/** Roles whose current config value differs from what the template wrote. */
+	driftedRoles: string[];
+	logId: string | null;
+}
+
+export interface WindowStatus {
+	key: string;
+	label: string;
+	usedPct: number;
+	resetsAt: number | null;
+}
+
+export interface ProviderStatus {
+	usageSlug: string;
+	modelProvider: string | null;
+	/** available | exhausted | unmapped */
+	state: string;
+	windows: WindowStatus[];
+	accounts: number;
+	exhaustedAccounts: number;
+}
+
+export interface BlockedNotice {
+	scope: ModelTemplateScope;
+	at: number;
+	message: string;
+	providers: string[];
+}
+
+export interface SwitchStatus {
+	lastCheckAt: number | null;
+	lastError: string | null;
+	checking: boolean;
+	pollIntervalSecs: number;
+	nextCheckAt: number | null;
+	providers: ProviderStatus[];
+	blocked: BlockedNotice | null;
+}
+
+export interface TemplateStoreSnapshot {
+	templates: ModelTemplate[];
+	rules: ModelSwitchRule[];
+	log: ModelSwitchLogEntry[];
+	settings: SwitchSettings;
+	/** One entry per scope that has a template, rule or log row, plus `global`. */
+	currents: CurrentTemplateState[];
+	conflicts: RuleConflict[];
+}
+
+export interface RuleConflict {
+	scope: ModelTemplateScope;
+	/** self-eating | mutual-escape | no-bottom-line */
+	kind: string;
+	message: string;
+	ruleIds: string[];
+}
+
 // ---- E: Schedules (定时任务) ----
 
 export type ScheduleRunMode = "local" | "worktree";

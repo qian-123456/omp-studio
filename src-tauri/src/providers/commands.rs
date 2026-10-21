@@ -902,6 +902,15 @@ pub async fn omp_usage_report(
     state: tauri::State<'_, crate::state::AppState>,
     refresh: Option<bool>,
 ) -> Result<serde_json::Value, String> {
+    run_usage_report(state.inner(), refresh.unwrap_or(false)).await
+}
+
+/// Core of [`omp_usage_report`], shared with the quota switch poller
+/// (`model_templates::usage::fetch_usage`), which always reads the CLI cache (`refresh=false`).
+pub(crate) async fn run_usage_report(
+    state: &crate::state::AppState,
+    refresh: bool,
+) -> Result<serde_json::Value, String> {
     let path = crate::terminal::env::augmented_path();
     let bin_setting = state.settings.read().omp_binary.clone();
     let bin = if !bin_setting.trim().is_empty() {
@@ -912,7 +921,7 @@ pub async fn omp_usage_report(
             .unwrap_or_else(|| "omp".to_string())
     };
 
-    if refresh.unwrap_or(false) {
+    if refresh {
         let _ = tokio::time::timeout(
             Duration::from_secs(5),
             tokio::process::Command::new(&bin)

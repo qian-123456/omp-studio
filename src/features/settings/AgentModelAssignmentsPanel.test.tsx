@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Settings ▸ 模型角色: the scope row is the table card's first row and the only
- * place that explains the scope, so switching scope must re-read the layer it
- * writes, and 项目 must be unreachable when there is no project to configure.
+ * Settings ▸ 模型角色: the page-level scope row decides which config layer the table
+ * reads and writes, so switching scope must re-read that layer, and 项目 must be
+ * unreachable when there is no project to configure.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +20,13 @@ vi.mock("../../lib/ipc", () => ({
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { AgentModelAssignmentsPanel } from "./AgentModelAssignmentsPanel";
+import { RoleScopeBar, useRoleScope } from "./modelRoleScope";
+
+/** The panel as `RolesSection` mounts it: scope state owned above, bar passed in. */
+function Harness() {
+	const roleScope = useRoleScope();
+	return <AgentModelAssignmentsPanel roleScope={roleScope} scopeBar={<RoleScopeBar roleScope={roleScope} />} />;
+}
 
 const SNAPSHOT = {
 	global: {
@@ -45,7 +52,7 @@ afterEach(cleanup);
 
 describe("模型角色 scope row", () => {
 	it("disables the project scope and explains it once when there is no project", async () => {
-		render(<AgentModelAssignmentsPanel />);
+		render(<Harness />);
 		await waitFor(() => expect(screen.getByTestId("role-table")).toBeTruthy());
 
 		const project = screen.getByRole("radio", { name: "项目" }) as HTMLButtonElement;
@@ -55,19 +62,13 @@ describe("模型角色 scope row", () => {
 		expect(screen.queryByText(NO_PROJECT_GUIDE)).toBeNull();
 		expect(screen.getByText("对所有项目生效，不受当前会话所在项目影响。")).toBeTruthy();
 		expect(rolesRead).toHaveBeenCalledWith(null, null);
-
-		// One card holds both the scope row and the table.
-		const card = screen.getByTestId("role-table").closest("section");
-		expect(card).not.toBeNull();
-		expect(card!.contains(screen.getByText("配置范围"))).toBe(true);
-		expect(card!.parentElement).toBe(screen.getByTestId("model-roles-panel"));
 	});
 
 	it("reveals the project picker and reads the project layer once 项目 is chosen", async () => {
 		useSessions.setState({
 			workspaces: [{ id: "w1", name: "alpha", path: "/repo/alpha", kind: "project", sort: 0, mode: "code" }],
 		});
-		render(<AgentModelAssignmentsPanel />);
+		render(<Harness />);
 		await waitFor(() => expect(rolesRead).toHaveBeenCalledWith(null, null));
 
 		fireEvent.click(screen.getByRole("radio", { name: "项目" }));
@@ -78,7 +79,7 @@ describe("模型角色 scope row", () => {
 	});
 
 	it("re-reads the current scope from the header action", async () => {
-		render(<AgentModelAssignmentsPanel />);
+		render(<Harness />);
 		await waitFor(() => expect(screen.getByTestId("role-table")).toBeTruthy());
 		const before = rolesRead.mock.calls.length;
 

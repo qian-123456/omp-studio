@@ -113,3 +113,7 @@ export const onProvidersOauth = (
 
 export const onSchedulesChanged = (cb: () => void): Promise<UnlistenFn> =>
 	listen<null>("schedules:changed", () => cb());
+
+/** A template was applied, reverted or undone (payload is `null`; re-read the snapshot). */
+export const onModelSwitchChanged = (cb: () => void): Promise<UnlistenFn> =>
+	listen<null>("model_switch:changed", () => cb());
