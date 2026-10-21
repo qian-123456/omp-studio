@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { ArchiveRestore, ChevronDown, ChevronRight, Loader2, X } from "lucide-react";
+import { ArchiveRestore, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { PromptCategoryId, PromptComposition } from "../../lib/contracts";
@@ -7,8 +7,7 @@ import { promptCompositionProbe } from "../../lib/ipc";
 import { openPromptComposition } from "../../stores/promptComposition";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { useOmpConfigStore } from "../settings/ompConfigStore";
-import { buildContextSegments, compactionBuffer } from "./contextBreakdown";
+import { buildContextSegments } from "./contextBreakdown";
 
 /** One probe per project for the app's lifetime; concurrent opens share the in-flight request. */
 const compositionCache = new Map<string, Promise<PromptComposition>>();
@@ -22,18 +21,24 @@ function loadComposition(cwd: string): Promise<PromptComposition> {
 	return p;
 }
 
-/** 78012 -> "78.0k", 1_000_000 -> "1.0M". */
+/** Formats tokens to match Claude App's concise style (e.g. "2k", "12.7k", "200k", "1.0M"). */
 function compactTokens(n: number): string {
-	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+	if (n >= 1_000_000) {
+		const v = (n / 1_000_000).toFixed(1);
+		return v.endsWith(".0") ? `${Math.round(n / 1_000_000)}M` : `${v}M`;
+	}
+	if (n >= 1000) {
+		const v = (n / 1000).toFixed(1);
+		return v.endsWith(".0") ? `${Math.round(n / 1000)}k` : `${v}k`;
+	}
 	return String(n);
 }
 
-/** Claude app lists MCP tools, memory files and skills as collapsible rows with a count. */
+/** Claude app lists MCP tools, Skills and rules as collapsible rows with token count and item count. */
 const DETAIL_SECTIONS: { id: PromptCategoryId; title: string }[] = [
 	{ id: "mcp", title: "MCP 工具" },
-	{ id: "rules", title: "规则文件" },
 	{ id: "skills", title: "Skills" },
+	{ id: "rules", title: "规则文件" },
 ];
 
 function CategoryRows({ comp }: { comp: PromptComposition | null }) {
@@ -44,16 +49,17 @@ function CategoryRows({ comp }: { comp: PromptComposition | null }) {
 		items: [...(comp.categories.find((c) => c.id === d.id)?.items ?? [])].sort((a, b) => b.tokens - a.tokens),
 	})).filter((s) => s.items.length > 0);
 	if (sections.length === 0) return null;
+
 	return (
-		<div className="mt-2 border-t border-[var(--line)] pt-1">
+		<div className="mt-2.5 pt-1 space-y-1">
 			{sections.map((s) => {
-				const all = expanded.has(s.id);
-				const total = s.items.reduce((a, i) => a + i.tokens, 0);
+				const isExpanded = expanded.has(s.id);
+				const totalTokens = s.items.reduce((acc, it) => acc + it.tokens, 0);
 				return (
 					<div key={s.id}>
 						<button
 							type="button"
-							aria-expanded={all}
+							aria-expanded={isExpanded}
 							onClick={() =>
 								setExpanded((prev) => {
 									const next = new Set(prev);
@@ -62,30 +68,30 @@ function CategoryRows({ comp }: { comp: PromptComposition | null }) {
 									return next;
 								})
 							}
-							className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-xs hover:bg-[var(--ghost-hover)]"
+							className="flex w-full items-center justify-between text-[13px] py-0.5 hover:text-white transition-colors"
 						>
-							{all ? (
-								<ChevronDown size={12} className="shrink-0 text-[var(--text-40)]" />
-							) : (
-								<ChevronRight size={12} className="shrink-0 text-[var(--text-40)]" />
-							)}
-							<span className="min-w-0 flex-1 break-all text-left text-[var(--text)]">{s.title}</span>
-							<span className="w-14 shrink-0 text-right font-mono tabular-nums text-[var(--text-60)]">
-								{compactTokens(total)}
-							</span>
-							<span className="w-12 shrink-0 text-right font-mono tabular-nums text-[var(--text-40)]">
-								{s.items.length}
-							</span>
+							<div className="flex items-center gap-1.5 min-w-0">
+								{isExpanded ? (
+									<ChevronDown size={13} className="text-[#8a8985] shrink-0" />
+								) : (
+									<ChevronRight size={13} className="text-[#8a8985] shrink-0" />
+								)}
+								<span className="text-[#e2e1df] truncate">{s.title}</span>
+							</div>
+							<div className="flex items-center font-mono tabular-nums text-[13px]">
+								<span className="w-16 text-right text-[#8a8985]">{compactTokens(totalTokens)}</span>
+								<span className="w-14 text-right text-[#8a8985]">{s.items.length}</span>
+							</div>
 						</button>
-						{all && (
-							<div className="mb-1 max-h-40 space-y-1 overflow-y-auto pl-6 pr-1">
+						{isExpanded && (
+							<div className="mt-1 mb-2 max-h-36 space-y-1 overflow-y-auto pl-5 pr-1">
 								{s.items.map((it) => (
-									<div key={it.id} className="flex items-start gap-2 text-[11px]">
-										<span className="min-w-0 flex-1 break-all text-[var(--text-40)]">
+									<div key={it.id} className="flex items-center justify-between text-[11px] text-[#8a8985]">
+										<span className="truncate pr-2">
 											{it.title}
 											{it.detail ? ` (${it.detail})` : ""}
 										</span>
-										<span className="shrink-0 font-mono text-[var(--text-40)]">{compactTokens(it.tokens)}</span>
+										<span className="shrink-0 font-mono">{compactTokens(it.tokens)}</span>
 									</div>
 								))}
 							</div>
@@ -137,7 +143,6 @@ export function ContextRing({
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const sessionCwd = useSessions((s) => (selectedSessionId ? (s.sessions[selectedSessionId]?.cwd ?? null) : null));
 
-
 	// Determine normalized fraction (0.0 to 1.0) and display percentage (0 to 100)
 	let fraction = 0;
 	let percentage = 0;
@@ -153,14 +158,13 @@ export function ContextRing({
 		fraction = Math.max(0, rawTokens / rawWindow);
 		percentage = fraction * 100;
 	} else if (typeof percent === "number" && !Number.isNaN(percent)) {
-		// OMP reports percent as 0..100 (e.g. 8.55 for 8.55%).
 		percentage = Math.max(0, percent);
 		fraction = percentage / 100;
 	}
 
 	const pctInt = Math.round(percentage);
 
-	// Ring colour: neutral --text-60 normally; status hues only near limits.
+	// Ring colour
 	const ringColor =
 		percentage >= 85
 			? "stroke-[var(--status-error)]"
@@ -181,43 +185,25 @@ export function ContextRing({
 	const radius = center - strokeWidth;
 	const circumference = 2 * Math.PI * radius;
 
-	// Claude Code style breakdown: probe the fixed prompt parts once per project, the rest is messages.
 	const [probe, setProbe] = useState<PromptComposition | null>(null);
-	const [probeState, setProbeState] = useState<"idle" | "loading" | "error">("idle");
 	useEffect(() => {
 		if (!open || !sessionCwd) return;
 		let alive = true;
-		setProbeState("loading");
 		loadComposition(sessionCwd)
 			.then((c) => {
 				if (!alive) return;
 				setProbe(c);
-				setProbeState("idle");
 			})
 			.catch(() => {
 				if (!alive) return;
 				setProbe(null);
-				setProbeState("error");
 			});
 		return () => {
 			alive = false;
 		};
 	}, [open, sessionCwd]);
-	const ompEntries = useOmpConfigStore((s) => s.entries);
-	useEffect(() => {
-		if (open) void useOmpConfigStore.getState().load();
-	}, [open]);
-	const cfgValue = (key: string) => ompEntries.find((e) => e.key === key)?.value;
-	const buffer = compactionBuffer(rawWindow ?? 0, {
-		enabled: cfgValue("compaction.enabled") !== false,
-		thresholdTokens: cfgValue("compaction.thresholdTokens"),
-		thresholdPercent: cfgValue("compaction.thresholdPercent"),
-	});
-	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe, buffer);
-	const usedNow = rawTokens ?? 0;
-	const windowNow = rawWindow ?? 0;
-	const overLimit = Math.max(0, usedNow - windowNow);
-	const pastTrigger = Math.max(0, usedNow - Math.max(0, windowNow - buffer.tokens));
+
+	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe);
 	const strokeDashoffset = circumference * (1 - Math.min(1, fraction));
 
 	return (
@@ -267,165 +253,143 @@ export function ContextRing({
 				)}
 			</button>
 
-			{/* Detail Popover */}
+			{/* Claude App Style Popover */}
 			{open && (
-					<FloatingLayer
-						anchor={btnRef.current}
-						placement="top-start"
-						offset={8}
-						layer="popover"
-						ignoreRefs={[btnRef]}
-						onDismiss={() => setOpen(false)}
-						style={{
-							// --bg-panel is translucent in glass themes; layer it over solid --bg so nothing behind shows through.
-							backgroundColor: "var(--bg)",
-							backgroundImage: "linear-gradient(var(--bg-panel), var(--bg-panel))",
-							width: 372,
-						}}
-						className="!border-[var(--line)] p-3 !shadow-apple-card"
-					>
-						<div className="mb-2 flex items-center justify-between gap-2">
-							<span className="shrink-0 text-xs text-[var(--text-60)]">上下文窗口</span>
-							<div className="flex items-center gap-1">
-								{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 && (
-									<span className="whitespace-nowrap font-mono text-xs text-[var(--text-60)]">
-										{compactTokens(rawTokens)} / {compactTokens(rawWindow)} ({pctInt}%)
-									</span>
-								)}
-								{onCompact && (
-									<button
-										type="button"
-										disabled={compacting || compactDisabled}
-										title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
-										onClick={() => void onCompact()}
-										className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
-									>
-										{compacting ? (
-											<Loader2 size={12} className="animate-spin" />
-										) : (
-											<ArchiveRestore size={12} />
-										)}
-										<span>{compacting ? "压缩中" : "压缩"}</span>
-									</button>
-								)}
-								<button
-									type="button"
-									onClick={() => setOpen(false)}
-									className="rounded-md p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-								>
-									<X size={12} />
-								</button>
-							</div>
-						</div>
-
-						{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 ? (
-							<>
-								<div className="flex h-1.5 gap-[2px] overflow-hidden rounded-full" aria-hidden>
-									{segments
-										.filter((s) => s.tokens > 0)
-										.map((s) => (
-											<span
-												key={s.id}
-												style={{ width: `${(s.tokens / rawWindow) * 100}%`, background: s.color }}
-											/>
-										))}
-								</div>
-								{(overLimit > 0 || pastTrigger > 0) && (
-									<div
-										className={clsx(
-											"mt-2 text-[11px]",
-											overLimit > 0 ? "text-[var(--status-error)]" : "text-[var(--status-warning)]",
-										)}
-									>
-										{overLimit > 0
-											? `已超出上下文窗口 ${compactTokens(overLimit)} token，请先压缩`
-											: `已越过压缩触发点 ${compactTokens(pastTrigger)} token`}
-									</div>
-								)}
-								<div className="mt-3 space-y-1.5">
-									{segments
-										.filter((s) => s.tokens > 0)
-										.map((s) => (
-											<div
-												key={s.id}
-												className="flex items-center gap-2"
-												title={
-													s.id === "buffer"
-														? `自动压缩窗口 ${compactTokens(Math.max(0, rawWindow - buffer.tokens))} token`
-														: undefined
-												}
-											>
-												<span
-													className="h-3 w-3 shrink-0 rounded-[3px]"
-													style={{ background: s.color }}
-												/>
-												<span className="min-w-0 flex-1 break-all text-xs text-[var(--text)]">
-													{s.label}
-												</span>
-												<span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-60)]">
-													{compactTokens(s.tokens)}
-												</span>
-												<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-40)]">
-													{((s.tokens / rawWindow) * 100).toFixed(1)}%
-												</span>
-											</div>
-										))}
-								</div>
-								{probeState === "loading" && (
-									<div className="mt-1 text-[10px] text-[var(--text-40)]">
-										正在统计系统提示词、工具等固定部分…
-									</div>
-								)}
-								{probeState === "error" && (
-									<div className="mt-1 text-[10px] text-[var(--text-40)]">
-										固定部分统计失败，已用量全部算作对话消息
-									</div>
-								)}
-							</>
-						) : (
-							<>
-								<div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--bg-selected)]">
-									<div
-										style={{ width: `${Math.min(100, percentage)}%` }}
-										className={clsx("h-full transition-all duration-300", barColor)}
-									/>
-								</div>
-								{usageObj && (
-									<div className="mt-2 space-y-1 text-[11px]">
-										{Object.entries(usageObj)
-											.filter(([k]) => k !== "percent")
-											.map(([k, v]) => (
-												<div key={k} className="flex justify-between">
-													<span className="text-[var(--text-40)]">{k}</span>
-													<span className="font-mono text-[var(--text-60)]">{String(v)}</span>
-												</div>
-											))}
-									</div>
-								)}
-							</>
-						)}
-
-						<CategoryRows comp={probe} />
-
-						<div className="mt-3 border-t border-[var(--line)] pt-2">
-							{totalTokensStr && (
-								<div className="flex items-center justify-between text-[11px]">
-									<span className="text-[var(--text-40)]">累计 Token</span>
-									<span className="font-mono text-[var(--text-60)]">{totalTokensStr}</span>
-								</div>
+				<FloatingLayer
+					anchor={btnRef.current}
+					placement="top-start"
+					offset={8}
+					layer="popover"
+					ignoreRefs={[btnRef]}
+					onDismiss={() => setOpen(false)}
+					style={{
+						backgroundColor: "#20201f",
+						width: 358,
+					}}
+					className="!border-[#373736] rounded-2xl p-4 !shadow-2xl text-[#e2e1df]"
+				>
+					{/* Header */}
+					<div className="flex items-center justify-between">
+						<span className="text-[13.5px] font-medium text-[#8a8985]">上下文窗口</span>
+						<div className="flex items-center gap-1.5 text-[13.5px]">
+							{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 && (
+								<span className="font-mono text-[#e2e1df]">
+									{compactTokens(rawTokens)} / {compactTokens(rawWindow)} ({pctInt}%)
+								</span>
 							)}
 							<button
 								type="button"
-								onClick={() => {
-									setOpen(false);
-									openPromptComposition(sessionCwd);
-								}}
-								className="mt-2 block w-full text-left text-xs text-[var(--text-60)] hover:text-[var(--text)]"
+								onClick={() => setOpen(false)}
+								className="text-[#8a8985] hover:text-[#e2e1df] p-0.5 rounded transition-colors ml-0.5"
+								title="关闭"
 							>
-								查看系统提示词构成
+								<ChevronDown size={14} />
 							</button>
 						</div>
-					</FloatingLayer>
+					</div>
+
+					{/* Progress Bar & Categories */}
+					{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 ? (
+						<>
+							{/* Slim 4px segmented progress bar */}
+							<div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-[#32312f] flex gap-[2px]">
+								{segments
+									.filter((s) => s.id !== "free" && s.tokens > 0)
+									.map((s) => (
+										<span
+											key={s.id}
+											style={{ width: `${(s.tokens / rawWindow) * 100}%`, background: s.color }}
+											className="h-full first:rounded-l-full"
+										/>
+									))}
+							</div>
+
+							{/* Category Rows */}
+							<div className="mt-3.5 space-y-2 text-[13px]">
+								{segments
+									.filter((s) => s.tokens > 0 || s.id === "free")
+									.map((s) => (
+										<div key={s.id} className="flex items-center justify-between">
+											<div className="flex items-center gap-2.5 min-w-0">
+												<span
+													className="h-2.5 w-2.5 shrink-0 rounded-[2.5px]"
+													style={{ background: s.color }}
+												/>
+												<span className="truncate text-[#e2e1df]">{s.label}</span>
+											</div>
+											<div className="flex items-center font-mono tabular-nums text-[13px]">
+												<span className="w-16 text-right text-[#8a8985]">
+													{compactTokens(s.tokens)}
+												</span>
+												<span className="w-14 text-right text-[#8a8985]">
+													{((s.tokens / rawWindow) * 100).toFixed(1)}%
+												</span>
+											</div>
+										</div>
+									))}
+							</div>
+						</>
+					) : (
+						<>
+							<div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-[#32312f]">
+								<div
+									style={{ width: `${Math.min(100, percentage)}%` }}
+									className={clsx("h-full transition-all duration-300", barColor)}
+								/>
+							</div>
+							{usageObj && (
+								<div className="mt-3 space-y-1.5 text-xs text-[#8a8985]">
+									{Object.entries(usageObj)
+										.filter(([k]) => k !== "percent")
+										.map(([k, v]) => (
+											<div key={k} className="flex justify-between">
+												<span>{k}</span>
+												<span className="font-mono text-[#e2e1df]">{String(v)}</span>
+											</div>
+										))}
+								</div>
+							)}
+						</>
+					)}
+
+					{/* Expandable sub-items tree (e.g. MCP tools, Skills, Rules) */}
+					<CategoryRows comp={probe} />
+
+					{/* Footer Divider & Actions */}
+					<div className="mt-3.5 pt-3 border-t border-[#373736] flex items-center justify-between text-xs">
+						<button
+							type="button"
+							onClick={() => {
+								setOpen(false);
+								openPromptComposition(sessionCwd);
+							}}
+							className="text-[#8a8985] hover:text-[#e2e1df] transition-colors"
+						>
+							查看系统提示词构成
+						</button>
+						<div className="flex items-center gap-2.5 text-[#8a8985]">
+							{totalTokensStr && (
+								<span className="font-mono">累计 {totalTokensStr}</span>
+							)}
+							{onCompact && (
+								<button
+									type="button"
+									disabled={compacting || compactDisabled}
+									onClick={() => void onCompact()}
+									title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
+									className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#373736] text-[#8a8985] hover:text-[#e2e1df] hover:border-[#52524e] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								>
+									{compacting ? (
+										<Loader2 size={11} className="animate-spin" />
+									) : (
+										<ArchiveRestore size={11} />
+									)}
+									<span>{compacting ? "压缩中" : "压缩"}</span>
+								</button>
+							)}
+						</div>
+					</div>
+				</FloatingLayer>
 			)}
 		</div>
 	);
