@@ -26,6 +26,8 @@ use tauri::Emitter as _;
 use crate::contracts::{PendingKind, SessionMeta, SessionStatus};
 use crate::paths;
 use crate::state::{AppEvent, AppState};
+use crate::storage::sessions;
+use crate::storage::sessions::Disposal;
 use scan::{FileMap, GitInfo, Scanned};
 use status::{DeriveInput, Phase, Runtime};
 use store::MetaRow;
@@ -492,6 +494,17 @@ pub(crate) fn file_of(session_id: &str) -> Option<PathBuf> {
 /// deletable while live — the handle's destined `session_file` is removed too
 /// (NotFound tolerated).
 pub(crate) async fn delete(state: &AppState, session_id: &str) -> Result<(), String> {
+    delete_with(state, session_id, Disposal::Permanent).await
+}
+
+/// [`delete`] with a choice of disposal. Besides the transcript it removes the
+/// session's lock file and artifacts dir (`<stem>/`: subagent logs, tool
+/// output); `Disposal::Trash` moves them to the macOS Trash instead.
+pub(crate) async fn delete_with(
+    state: &AppState,
+    session_id: &str,
+    disposal: Disposal,
+) -> Result<(), String> {
     if !cat().lock().ready {
         rebuild(state).await;
     }
@@ -535,23 +548,16 @@ pub(crate) async fn delete(state: &AppState, session_id: &str) -> Result<(), Str
     if paths.is_empty() && meta_file.is_none() && !was_live {
         return Err(format!("session not found: {session_id}"));
     }
+    let sessions_dir = paths::omp_sessions_dir();
     let mut gone = std::collections::HashSet::new();
     for path in paths
         .iter()
         .chain(meta_file.iter())
         .chain(handle_file.iter())
     {
-        match std::fs::remove_file(path) {
-            Ok(()) => {
-                gone.insert(path.to_string_lossy().to_string());
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                gone.insert(path.to_string_lossy().to_string());
-            }
-            Err(e) => {
-                return Err(format!("删除会话文件失败 {}: {e}", path.display()));
-            }
-        }
+        // Missing files are fine (NotFound tolerated by the remover).
+        sessions::remove_files(path, &sessions_dir, disposal)?;
+        gone.insert(path.to_string_lossy().to_string());
     }
     {
         let db = state.db.lock();
