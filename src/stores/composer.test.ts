@@ -34,6 +34,8 @@ describe("formatWithAnnotations", () => {
 		expect(out).toContain("[2]");
 		expect(out).toContain("> cmd output");
 		expect(out.indexOf("[1]")).toBeLessThan(out.indexOf("[2]"));
+		expect(out.indexOf("[2]")).toBeLessThan(out.indexOf("看看这个"));
+		expect(out.endsWith("看看这个")).toBe(true);
 	});
 
 	it("formats diff comments as 文件 path 第 lines 行：comment", () => {

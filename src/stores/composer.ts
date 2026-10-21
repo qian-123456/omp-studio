@@ -430,5 +430,5 @@ export function formatWithAnnotations(
 		return lines.join("\n");
 	});
 	const body = text.trimEnd();
-	return body ? `${body}\n\n${blocks.join("\n\n")}` : blocks.join("\n\n");
+	return body ? `${blocks.join("\n\n")}\n\n${body}` : blocks.join("\n\n");
 }

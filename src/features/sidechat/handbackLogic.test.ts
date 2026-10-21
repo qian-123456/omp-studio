@@ -115,7 +115,7 @@ describe("annotation", () => {
 		const a = handbackAnnotation("  定下来：用 A  ", "方案讨论");
 		expect(a).toEqual({ source: "message", text: "定下来：用 A", label: "来自辅助对话：方案讨论" });
 		const out = formatWithAnnotations("请继续", [{ id: "1", ...a }]);
-		expect(out).toBe("请继续\n\n[1] (来自辅助对话：方案讨论)\n> 定下来：用 A");
+		expect(out).toBe("[1] (来自辅助对话：方案讨论)\n> 定下来：用 A\n\n请继续");
 	});
 
 	it("falls back when the title is empty", () => {
