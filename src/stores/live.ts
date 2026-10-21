@@ -210,6 +210,11 @@ export interface SessionLive {
 	/** Thinking timing for live turn: start/end epoch ms */
 	thinkingStartedAt?: number | null;
 	thinkingEndedAt?: number | null;
+	/** Epoch ms the latest turn started (start frame seen while idle); null
+	 * when that start was missed (turn already running when this app attached).
+	 * One clock for every live 「正在处理」 header, so remounts and the
+	 * live→committed handoff never restart or shift it. */
+	turnStartedAt?: number | null;
 	/** Completed thinking durations by message/item id */
 	thinkingDurations?: Record<string, { startedAt: number; endedAt: number }>;
 	/** Completed model requests of the current turn, in arrival order
@@ -1312,20 +1317,31 @@ export interface LiveState {
 	markFallbackUndone(sessionId: string, fallbackId: string): void;
 }
 
+/** `turnStartedAt` follows idle→running transitions: a start frame seen while
+ * idle stamps it; running announced any other way (get_state on reattach,
+ * "already processing") means the start was missed, so it is unknown (null).
+ * It survives the turn's end: the committed header keeps ticking on it while
+ * subagents the turn dispatched are still running. */
+function stampTurnStart(prev: SessionLive, next: SessionLive, frame: Frame): SessionLive {
+	if (prev.streaming || !next.streaming) return next;
+	const started = frame.type === "agent_start" || frame.type === "turn_start";
+	const turnStartedAt = started ? Date.now() : null;
+	return next.turnStartedAt === turnStartedAt ? next : { ...next, turnStartedAt };
+}
+
 export const useLive = create<LiveState>((set) => ({
 	sessions: {},
 	reduceFrame: ({ sessionId, frame }) => {
 		const f = asFrame(frame);
-		set((s) => ({
-			sessions: {
-				...s.sessions,
-				[sessionId]: reduce(
-					s.sessions[sessionId] ?? { ...emptySessionLive(), alive: true },
-					f,
-					sessionId,
-				),
-			},
-		}));
+		set((s) => {
+			const prev = s.sessions[sessionId] ?? { ...emptySessionLive(), alive: true };
+			return {
+				sessions: {
+					...s.sessions,
+					[sessionId]: stampTurnStart(prev, reduce(prev, f, sessionId), f),
+				},
+			};
+		});
 		// `session_info_update` carries a new title from /rename —
 		// patch the session list optimistically; the file watcher follows.
 		if (f.type === "session_info_update") {
@@ -1353,6 +1369,7 @@ export const useLive = create<LiveState>((set) => ({
 						...live,
 						alive: false,
 						streaming: false,
+						turnStartedAt: null,
 						streamingMessage: null,
 						pendingUi: [],
 						tools: {},

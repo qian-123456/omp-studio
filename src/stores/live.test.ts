@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isFlowBusy, makeUserEcho, pruneRemovedSessions, queuedEchoIds, useLive } from "./live";
 
 const SID = "s1";
@@ -28,6 +28,38 @@ describe("live reducer — streaming lifecycle", () => {
 		expect(live().streaming).toBe(true);
 		frame({ type: "agent_end", isTerminal: true });
 		expect(live().streaming).toBe(false);
+	});
+
+	it("turnStartedAt: one clock per turn, kept across requests and the turn's end", () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(1_000);
+			frame({ type: "agent_start" });
+			expect(live().turnStartedAt).toBe(1_000);
+			// Later requests and tool rounds of the same turn keep the start.
+			vi.setSystemTime(6_000);
+			frame({ type: "turn_start" });
+			frame({ type: "tool_execution_start", toolCallId: "c1", toolName: "read", args: {} });
+			frame({ type: "turn_end", isTerminal: false });
+			expect(live().turnStartedAt).toBe(1_000);
+			// Kept after the end: subagents the turn dispatched still tick on it.
+			frame({ type: "agent_end", isTerminal: true });
+			expect(live().turnStartedAt).toBe(1_000);
+			// The next turn restarts the clock.
+			vi.setSystemTime(9_000);
+			frame({ type: "agent_start" });
+			expect(live().turnStartedAt).toBe(9_000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("turnStartedAt is unknown when the turn was already running on attach", () => {
+		frame({ type: "agent_start" });
+		frame({ type: "agent_end", isTerminal: true });
+		frame({ type: "response", command: "get_state", success: true, data: { isStreaming: true } });
+		expect(live().streaming).toBe(true);
+		expect(live().turnStartedAt).toBeNull();
 	});
 
 	it("message_update stores the in-flight snapshot; message_end clears it", () => {

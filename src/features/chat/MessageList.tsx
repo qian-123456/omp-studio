@@ -538,13 +538,21 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		(s) => !!block.answerItem && s.selectedIds.includes(block.answerItem.id),
 	);
 	const toggleShare = useShareSelection((s) => s.toggle);
-	const turnStartedAt = useMemo(() => {
+	const userStartedAt = useMemo(() => {
 		const ts = block.userItem?.ts ? Date.parse(block.userItem.ts) : Number.NaN;
 		return Number.isNaN(ts) ? undefined : ts;
 	}, [block.userItem?.ts]);
 	// The parent's turn can end while its subagents keep going; then the title
 	// stays live and the final duration covers the subagents' span.
 	const awaitingSubagents = subagentsRunning === true && !streamingThisTurn;
+	// The in-flight turn ticks on the live store's clock, the same one the
+	// streaming row used before this header took over.
+	const liveTurnStartedAt = useLive((s) =>
+		streamingThisTurn || (isLatestTurn === true && awaitingSubagents)
+			? (s.sessions[sessionId]?.turnStartedAt ?? null)
+			: null,
+	);
+	const turnStartedAt = liveTurnStartedAt ?? userStartedAt;
 	const turnDurationMs = durationWithSubagents(
 		block.durationMs,
 		block.endedAtMs,
@@ -826,8 +834,12 @@ const StreamingRow = React.memo(function StreamingRow({
 		}),
 		[liveRequests],
 	);
-	// The row mounts when the turn starts streaming; tick from that moment.
-	const [streamStartedAt] = useState(() => Date.now());
+	// One clock per turn (live store), so leaving and reopening the session or
+	// the hand-off to the committed turn's header never restarts the timer.
+	// Mount time only when the turn began before this app saw it start.
+	const [mountedAt] = useState(() => Date.now());
+	const liveTurnStartedAt = useLive((s) => s.sessions[sessionId]?.turnStartedAt ?? null);
+	const streamStartedAt = liveTurnStartedAt ?? mountedAt;
 
 	// Build interleaved pseudo-steps from the streaming message content:
 	// thinking parts → thinking steps, tool_use parts → tool steps, text parts
