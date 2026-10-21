@@ -67,6 +67,8 @@ export interface TurnBlock {
 	answerItem?: TranscriptItem;
 	allItemIds: string[];
 	durationMs?: number;
+	/** Epoch ms of the turn's last transcript item (the parent's own end). */
+	endedAtMs?: number;
 	stepCount: number;
 }
 
@@ -340,6 +342,7 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 			intermediateSteps: currentTurn.intermediateSteps,
 			answerItem: currentTurn.answerItem,
 			allItemIds: currentTurn.allItemIds,
+			endedAtMs: currentTurn.endTime ? Date.parse(currentTurn.endTime) || undefined : undefined,
 			durationMs,
 			stepCount,
 		});

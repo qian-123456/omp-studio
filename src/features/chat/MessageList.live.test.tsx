@@ -173,4 +173,60 @@ describe("MessageList live turn", () => {
 		expect(container.querySelectorAll("[data-retry-notices]")).toHaveLength(1);
 		expect(container.querySelector("#msg-live")?.contains(retry)).toBe(true);
 	});
+
+	describe("turn with still-running subagents", () => {
+		const subTurn = (): TranscriptItem[] => [
+			item({ id: "u1", kind: "user", text: "scout it", ts: "2026-10-21T23:04:00.000Z" }),
+			item({
+				id: "a1",
+				kind: "assistant",
+				toolCalls: [{ id: "task1", name: "task", args: {}, intent: null }],
+				stopReason: "toolUse",
+				ts: "2026-10-21T23:04:30.000Z",
+			}),
+			item({
+				id: "r1",
+				kind: "tool_result",
+				toolResult: { toolCallId: "task1", toolName: "task", text: "ok", isError: false, details: null },
+				ts: "2026-10-21T23:04:46.000Z",
+			}),
+			item({ id: "a2", kind: "assistant", text: "waiting", stopReason: "stop", ts: "2026-10-21T23:04:46.000Z" }),
+		];
+
+		const setSubagents = (subagents: Record<string, unknown>) =>
+			useLive.setState({
+				sessions: {
+					s1: { ...emptySessionLive(), alive: true, items: subTurn(), subagents: subagents as never },
+				},
+			});
+
+		it("stays 正在处理 while a dispatched subagent runs, never a short 已处理", () => {
+			setSubagents({ sa1: { status: "running", label: "scout", parentToolCallId: "task1" } });
+			mount("s1");
+			const header = screen.getByRole("button", { name: /正在处理|已处理/ });
+			expect(header.textContent).toMatch(/正在处理/);
+			expect(header.textContent).not.toMatch(/已处理/);
+		});
+
+		it("settles on a duration covering the subagents once they finish", () => {
+			setSubagents({
+				sa1: {
+					status: "completed",
+					label: "scout",
+					parentToolCallId: "task1",
+					lastUpdate: Date.parse("2026-10-21T23:16:46.000Z"),
+				},
+			});
+			mount("s1");
+			const header = screen.getByRole("button", { name: /正在处理|已处理/ });
+			// 46s of parent work + 12min of subagent tail = 12分46秒.
+			expect(header.textContent).toMatch(/已处理 12分46秒/);
+		});
+
+		it("keeps the parent-only duration for a turn without subagents", () => {
+			setSubagents({});
+			mount("s1");
+			expect(screen.getByRole("button", { name: /已处理/ }).textContent).toMatch(/已处理 46秒/);
+		});
+	});
 });

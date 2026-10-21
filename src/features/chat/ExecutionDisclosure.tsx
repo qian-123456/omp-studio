@@ -640,6 +640,7 @@ export function ExecutionDisclosure({
 	turnStats,
 	liveOpen,
 	hideHeader,
+	awaitingSubagents,
 }: {
 	sessionId: string;
 	steps: StepShape[];
@@ -655,18 +656,22 @@ export function ExecutionDisclosure({
 	liveOpen?: boolean;
 	/** Continuation segment of an in-progress turn: body only, no title. */
 	hideHeader?: boolean;
+	/** The parent's turn ended but subagents it dispatched still run: the title
+	 * stays live (counting from the turn start) instead of claiming a short run. */
+	awaitingSubagents?: boolean;
 }) {
 	const { open: expanded, toggle } = useDisclosure(
 		forceExpanded || liveOpen ? true : forceExpanded,
 	);
-	const elapsed = useElapsedMs(startedAt, Boolean(isStreaming));
+	const live = Boolean(isStreaming) || Boolean(awaitingSubagents);
+	const elapsed = useElapsedMs(startedAt, live);
 
 	if (steps.length === 0) {
 		return null;
 	}
 
 	const durationLabel = durationMs ? formatDurationCompact(durationMs) : "";
-	const titleText = isStreaming
+	const titleText = live
 		? processingLabel(elapsed)
 		: durationLabel
 			? `已处理 ${durationLabel}`
@@ -677,7 +682,7 @@ export function ExecutionDisclosure({
 			{!hideHeader && (
 				<DisclosureHeader
 					title={titleText}
-					shimmer={Boolean(isStreaming)}
+					shimmer={live}
 					expanded={expanded}
 					onToggle={toggle}
 				/>
@@ -685,7 +690,7 @@ export function ExecutionDisclosure({
 
 			{expanded && (
 				<div className="pt-1.5 pb-1">
-					<TurnSummaryRows stats={turnStats ?? []} durationMs={isStreaming ? undefined : durationMs} />
+					<TurnSummaryRows stats={turnStats ?? []} durationMs={live ? undefined : durationMs} />
 					<TurnSteps
 						sessionId={sessionId}
 						steps={steps}

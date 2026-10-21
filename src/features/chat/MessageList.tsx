@@ -103,6 +103,12 @@ import {
 import { estimateBlockHeight } from "./blockEstimate";
 import { claimEscape } from "../../lib/escapeClaim";
 import { flashQuote } from "./annotationLocate";
+import { useSessionSubagents } from "./subagents/useSessionSubagents";
+import {
+	collectSubagentFacts,
+	durationWithSubagents,
+	turnSubagentSpan,
+} from "./turnSubagents";
 import { useAnswerStarted } from "./useAnswerStarted";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
@@ -497,6 +503,8 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	toolResultsByCallId,
 	sessionCwd,
 	sessionFile,
+	subagentsRunning,
+	subagentEndedAt,
 	turnCheckpoint,
 	turns,
 	sessionWorking,
@@ -514,6 +522,10 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 	sessionWorking?: boolean;
 	onTurnsChange?: () => void;
 	highlightedId?: string | null;
+	/** A subagent this turn dispatched is still running after the parent finished. */
+	subagentsRunning?: boolean;
+	/** Latest end among the turn's finished subagents (epoch ms). */
+	subagentEndedAt?: number;
 }) {
 	const streamingThisTurn = useLive(
 		(s) => isLatestTurn === true && s.sessions[sessionId]?.streaming === true,
@@ -530,6 +542,14 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 		const ts = block.userItem?.ts ? Date.parse(block.userItem.ts) : Number.NaN;
 		return Number.isNaN(ts) ? undefined : ts;
 	}, [block.userItem?.ts]);
+	// The parent's turn can end while its subagents keep going; then the title
+	// stays live and the final duration covers the subagents' span.
+	const awaitingSubagents = subagentsRunning === true && !streamingThisTurn;
+	const turnDurationMs = durationWithSubagents(
+		block.durationMs,
+		block.endedAtMs,
+		subagentEndedAt,
+	);
 	const answerText = useMemo(() => {
 		if (!block.answerItem?.text) return "";
 		return stripImageMarkers(block.answerItem.text);
@@ -622,8 +642,9 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 						key={`fold-${seg.steps[0]?.id ?? si}`}
 						sessionId={sessionId}
 						steps={seg.steps}
-						durationMs={isFirst ? block.durationMs : undefined}
+						durationMs={isFirst ? turnDurationMs : undefined}
 						isStreaming={inProgress ? isFirst : isLast && streamingThisTurn && !block.answerItem}
+						awaitingSubagents={isFirst && awaitingSubagents}
 						liveOpen={inProgress}
 						hideHeader={inProgress && !isFirst}
 						startedAt={turnStartedAt}
@@ -1303,6 +1324,31 @@ export function MessageList({
 	// Group visible items into TurnBlocks and ProtocolBlocks
 	const blocks = useMemo(() => groupTurnBlocks(visible), [visible]);
 
+	// Subagents outlive the parent prompt turn: extend each turn's span to the
+	// subagents it dispatched (running ones keep its title live).
+	const { subagents: sessionSubagents, rows: subagentRows } = useSessionSubagents(sessionId);
+	const subagentSpans = useMemo(() => {
+		const facts = collectSubagentFacts(sessionSubagents, subagentRows);
+		const spans = new Map<string, { running: boolean; endedAt?: number }>();
+		if (facts.length === 0) return spans;
+		const turns = blocks.filter((b): b is TurnBlock => b.type === "turn");
+		turns.forEach((b, i) => {
+			const start = b.userItem?.ts ? Date.parse(b.userItem.ts) : Number.NaN;
+			if (Number.isNaN(start)) return;
+			const next = turns[i + 1]?.userItem?.ts ? Date.parse(turns[i + 1].userItem?.ts ?? "") : Number.NaN;
+			const toolCallIds = new Set<string>();
+			for (const s of b.intermediateSteps) if (s.kind === "tool") toolCallIds.add(s.call.id);
+			const span = turnSubagentSpan({
+				turnStart: start,
+				nextTurnStart: Number.isNaN(next) ? undefined : next,
+				toolCallIds,
+				subagents: facts,
+			});
+			if (span.running || span.endedAt !== undefined) spans.set(b.id, span);
+		});
+		return spans;
+	}, [blocks, sessionSubagents, subagentRows]);
+
 	// Map checkpoints by userItemId
 	const checkpointByUserItem = useMemo(() => {
 		const m = new Map<string, TurnCheckpoint>();
@@ -1756,6 +1802,8 @@ export function MessageList({
 												turnCheckpoint={cp}
 												turns={turns}
 												sessionWorking={sessionWorking}
+												subagentsRunning={subagentSpans.get(block.id)?.running}
+												subagentEndedAt={subagentSpans.get(block.id)?.endedAt}
 												onTurnsChange={onTurnsChange}
 												highlightedId={highlightedId}
 											/>
