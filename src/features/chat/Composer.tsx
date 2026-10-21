@@ -197,6 +197,7 @@ import { canStartOnType, useStartOnType } from "./useStartOnType";
 import { useTypeToFocus } from "./useTypeToFocus";
 import { useRestoreComposerFocus } from "./useRestoreComposerFocus";
 import { remainingDraft } from "./composerRelease";
+import { formatTokens } from "./sessionStats";
 import {
 	argHintLabel,
 	chipLiteral,
@@ -498,7 +499,7 @@ export function Composer({
 		sessionUsage(sessionId)
 			.then((u) => {
 				if (!cancelled && u.available) {
-					setTotalTokensStr(`${(u.tokens / 1000).toFixed(1)}k token`);
+					setTotalTokensStr(formatTokens(u.tokens));
 				}
 			})
 			.catch((err) => console.warn("[composer] session usage fetch failed", err));
