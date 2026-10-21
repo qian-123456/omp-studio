@@ -129,7 +129,15 @@ function AgentRowView({
 			<button
 				type="button"
 				onClick={() => onOpen(row)}
-				className="group/row flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-[var(--ghost-hover)]"
+				title={[
+					formatTaskId(row.id),
+					showBadge ? `⟦${row.agent}⟧` : "",
+					row.line ?? "",
+					meta.join(" · "),
+				]
+					.filter(Boolean)
+					.join(" ")}
+				className="group/row flex w-full min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-left hover:bg-[var(--ghost-hover)]"
 			>
 				<span className="w-4 shrink-0 select-none text-center font-mono text-[11px] text-[var(--text-30)]">
 					{last ? "└─" : "├─"}
@@ -152,7 +160,7 @@ function AgentRowView({
 					{row.line ?? ""}
 				</span>
 				{meta.length > 0 && (
-					<span className="shrink-0 tabular-nums text-[11px] text-[var(--text-30)]">
+					<span className="min-w-0 truncate tabular-nums text-[11px] text-[var(--text-30)]">
 						{meta.join(" · ")}
 					</span>
 				)}

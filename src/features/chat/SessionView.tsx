@@ -217,7 +217,7 @@ export function SessionView({
 						)}
 						<div
 							ref={scrollRef}
-							className="thread-fade-mask relative h-full overflow-y-auto"
+							className="thread-fade-mask relative h-full overflow-y-auto overflow-x-clip"
 						>
 							<MessageList
 								sessionId={sessionId}
