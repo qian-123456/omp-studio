@@ -2078,7 +2078,11 @@ export function Composer({
 							{inlineRange && chip ? (
 								<>
 									{renderHighlightedText(text.slice(0, inlineRange.start))}
-									<span className="relative inline-block whitespace-pre align-top">
+									{/* The literal is plain, breakable text exactly like the
+									 * textarea's own (so both wrap identically, including at the
+									 * hyphen of `/skill:grill-me`); the badge is painted over its
+									 * first fragment instead of replacing it with an atomic box. */}
+									<span className="relative">
 										<span className="invisible">{chipLiteral(chip)}</span>
 										<span className="absolute inset-y-0 left-0 flex items-center overflow-hidden">
 											<CommandChipBadge chip={chip} />
