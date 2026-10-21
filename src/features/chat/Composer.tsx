@@ -193,6 +193,7 @@ import { runSlashInput, sendSlashPrompt, type SlashDeps } from "./slash/executor
 import { runCompaction, useCompaction } from "./slash/compaction";
 import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
+import { canStartOnType, useStartOnType } from "./useStartOnType";
 import { useTypeToFocus } from "./useTypeToFocus";
 import { useRestoreComposerFocus } from "./useRestoreComposerFocus";
 import { remainingDraft } from "./composerRelease";
@@ -427,6 +428,14 @@ export function Composer({
 
 	// @ file-completion state
 	const sessionMeta = useSessions((s) => s.sessions[sessionId]);
+	// Typing into a stopped session starts its omp process in the background so
+	// the slash menu lists omp's own commands (incl. skills); the disk-skill
+	// fallback below covers the spawn window and failed starts.
+	const startOnType = useStartOnType(
+		sessionId,
+		live?.alive === true,
+		canStartOnType(sessionMeta, sessionId, readonly),
+	);
 	// Annotation move ⇄: main composer → side chat; a side chat's own composer (embedded
 	// in the right panel) → its parent's main composer. Depth-capped parents cannot fork.
 	const annotationMove = useMemo(() => {
@@ -663,7 +672,9 @@ export function Composer({
 		if (inlineRange && cursorPos > inlineRange.start && cursorPos <= inlineRange.end) return null;
 		return getSlashToken(text, cursorPos);
 	}, [text, cursorPos, menuDismissed, inlineRange]);
-	// Opening the slash menu before omp has advertised commands: list skills from disk.
+	// Opening the slash menu before omp has advertised commands (stopped session,
+	// or the process still spawning after the first keystroke — see
+	// useStartOnType — or its start failed): list skills from disk.
 	const wantsDiskSkills = slashToken !== null && !liveCommands?.length;
 	const skillsCwd = sessionMeta?.cwd ?? null;
 	useEffect(() => {
@@ -2129,6 +2140,7 @@ export function Composer({
 						onChange={(e) => {
 							const next = e.target.value;
 							const caret = e.target.selectionStart ?? next.length;
+							startOnType(next);
 							// Space right after an exact arg-taking `/command` makes it a chip.
 							if (!legacyChip) {
 								const tok = detectSpaceToken(text, next, caret);
