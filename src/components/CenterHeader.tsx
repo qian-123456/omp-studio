@@ -454,12 +454,12 @@ export const CenterHeader = React.memo(function CenterHeader({
 									<button
 										type="button"
 										onClick={goBack}
-										className="flex min-w-0 max-w-[240px] items-center gap-1.5 rounded-md py-0.5 pl-1 pr-2 text-left text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-100 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
+										className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md py-0.5 pl-1 pr-2 text-left text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-100 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 										title={`返回${backTarget.kind === "session" ? "会话" : ""}：${backText}（Esc）`}
 									>
 										<ArrowLeft size={14} strokeWidth={1.75} className="shrink-0" />
-										<span className="line-clamp-2 break-words text-xs leading-[14px]">
-											{backText}
+										<span className="text-xs leading-[14px]">
+											{backTarget.kind === "session" ? "返回会话" : "返回首页"}
 										</span>
 									</button>
 									<span className="shrink-0 text-neutral-600">/</span>
