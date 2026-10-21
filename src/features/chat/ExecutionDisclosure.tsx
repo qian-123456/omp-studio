@@ -689,7 +689,7 @@ export function ExecutionDisclosure({
 			: `已处理 ${steps.length} 个步骤`;
 
 	return (
-		<div className="my-1 flex flex-col">
+		<div className={clsx("mt-1 flex flex-col", !liveOpen && "mb-1")}>
 			{!hideHeader && (
 				<DisclosureHeader
 					title={titleText}
@@ -700,7 +700,7 @@ export function ExecutionDisclosure({
 			)}
 
 			{expanded && (
-				<div className="pt-1.5 pb-1">
+				<div className={clsx("pt-1.5", !liveOpen && "pb-1")}>
 					<TurnSummaryRows stats={turnStats ?? []} durationMs={live ? undefined : durationMs} />
 					<TurnSteps
 						sessionId={sessionId}

@@ -1901,7 +1901,7 @@ export function MessageList({
 						<div
 							id="msg-live"
 							className={clsx(
-								"w-full py-1",
+								latestDisclosureLive ? "w-full pb-1" : "w-full py-1",
 								traceGutter ? TRACE_GUTTER_PAD : "px-3",
 							)}
 						>
