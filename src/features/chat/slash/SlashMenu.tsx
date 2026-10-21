@@ -105,6 +105,7 @@ function SlashRow({
 			aria-selected={active}
 			className={clsx(
 				"group/slashrow flex h-10 w-full cursor-pointer items-center gap-2 rounded-[10px] px-2 text-left",
+				item.nested && "pl-8",
 				active
 					? "bg-[var(--ghost-hover,var(--bg-hover))]"
 					: "hover:bg-[var(--ghost-hover,var(--bg-hover))]",
@@ -121,7 +122,7 @@ function SlashRow({
 			<div className="min-w-0 flex-1">
 				<div className="flex items-baseline gap-1.5 text-[13px] leading-5">
 					<span className="shrink-0 font-mono text-[var(--text)]">
-						{item.plain ? item.name : `/${item.subOf ? `${item.subOf} ${item.name}` : item.name}`}
+						{item.plain ? item.name : `/${item.subOf ? `${item.subOf}${item.name ? ` ${item.name}` : ""}` : item.name}`}
 					</span>
 					{item.title && (
 						<span className="truncate text-[var(--text-60,var(--text-muted))]">

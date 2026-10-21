@@ -276,11 +276,6 @@ export function parseCommandToken(
 	const chip: CommandChip = { name, title: name };
 	const def = findSlashCommand(name);
 	if (!isSkillChip(chip) && !def) return null;
-	let rest = text.slice(m[0].length).replace(/^[ \t]+/, "");
-	const sm = /^([^\s/]+)(?=\s|$)/.exec(rest);
-	if (sm && def?.subcommands?.some((s) => s.name === sm[1])) {
-		chip.sub = sm[1];
-		rest = rest.slice(sm[0].length).replace(/^[ \t]+/, "");
-	}
+	const rest = text.slice(m[0].length).replace(/^[ \t]+/, "");
 	return { chip, rest };
 }

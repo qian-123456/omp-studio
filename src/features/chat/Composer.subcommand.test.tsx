@@ -76,6 +76,33 @@ function mount(): void {
 	render(<Composer sessionId={SESSION} />);
 }
 
+/** omp's live catalog entry for /mcp (subcommands only ever come from here). */
+const MCP_CATALOG = {
+	name: "mcp",
+	description: "Manage MCP servers",
+	hint: "<subcommand>",
+	source: "builtin",
+	subcommands: [
+		"add",
+		"list",
+		"remove",
+		"test",
+		"reauth",
+		"unauth",
+		"enable",
+		"disable",
+		"smithery-search",
+		"smithery-login",
+		"smithery-logout",
+		"reconnect",
+		"reload",
+		"resources",
+		"prompts",
+		"notifications",
+		"help",
+	].map((name) => ({ name, ...(name === "enable" || name === "disable" ? { usage: "<name>" } : {}) })),
+};
+
 beforeEach(() => {
 	localStorage.clear();
 	h.rpcSend.mockClear();
@@ -85,7 +112,7 @@ beforeEach(() => {
 	h.pluginsList.mockResolvedValue({ roots: [], plugins: [] });
 	useComposer.setState({ drafts: {}, annotations: {}, images: {}, files: {}, history: [] });
 	useLive.setState({
-		sessions: { [SESSION]: { ...emptySessionLive(), alive: true, state: {} } },
+		sessions: { [SESSION]: { ...emptySessionLive(), alive: true, state: {}, commands: [MCP_CATALOG] } },
 	});
 	mount();
 });
@@ -388,14 +415,49 @@ describe("Composer generic subcommands (registry command + omp dynamic list)", (
 		expect(h.rpcSend.mock.calls.some(([, c]) => (c as { type?: string }).type === "set_fast_mode")).toBe(false);
 	});
 
-	it("selecting /fast from the menu (no argHint) still runs natively, without a chip", async () => {
+	it("selecting /fast opens its subcommand list; the first entry runs the native action", async () => {
 		withCommands([{ name: "fast", source: "builtin", subcommands: [{ name: "on" }] }]);
 		typeText("/fast");
+		fireEvent.keyDown(ta(), { key: "Enter" });
+		expect(chips()).toHaveLength(1);
+		expect(menuRows()[0]).toContain("直接运行");
+		expect(menuRows()[1]).toContain("/fast on");
+		expect(h.rpcSend.mock.calls.some(([, c]) => (c as { type?: string }).type === "set_fast_mode")).toBe(false);
 		fireEvent.keyDown(ta(), { key: "Enter" });
 		await waitFor(() =>
 			expect(h.rpcSend.mock.calls.some(([, c]) => (c as { type?: string }).type === "set_fast_mode")).toBe(true),
 		);
 		expect(chips()).toHaveLength(0);
+	});
+
+	it("top-level search lists subcommands as indented rows; picking one chips `/parent sub`", () => {
+		withCommands([
+			{
+				name: "memory",
+				source: "builtin",
+				subcommands: [{ name: "view" }, { name: "stats" }, { name: "mm list", description: "List models" }],
+			},
+		]);
+		typeText("/mem");
+		const rows = menuRows();
+		expect(rows[0]).toContain("/memory");
+		expect(rows.some((r) => r.includes("/memory view"))).toBe(true);
+		const mm = screen.getAllByRole("option").find((el) => el.textContent?.includes("/memory mm list"));
+		expect(mm?.className).toContain("pl-8");
+		fireEvent.mouseDown(mm as Element);
+		expect(chipText()).toContain("mm list");
+		expect(ta().value).toBe("");
+	});
+
+	it("TUI-only subcommands (e.g. /todo edit) are not listed", () => {
+		withCommands([
+			{ name: "todo", source: "builtin", subcommands: [{ name: "edit" }, { name: "copy" }, { name: "expand" }] },
+		]);
+		typeText("/todo");
+		const rows = menuRows().join("|");
+		expect(rows).toContain("/todo copy");
+		expect(rows).not.toContain("/todo edit");
+		expect(rows).not.toContain("/todo expand");
 	});
 
 	it("/plugins enable completes installed plugins (disabled first) and submits the name", async () => {

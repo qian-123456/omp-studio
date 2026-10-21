@@ -233,11 +233,6 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		group: "会话",
 		argHint: "[elide|images|thinking]",
 		settingsTarget: "compaction",
-		subcommands: [
-			{ name: "elide", description: "清除工具结果与大块内容（默认）" },
-			{ name: "images", description: "清除图片块" },
-			{ name: "thinking", description: "清除所有思考块" },
-		],
 		run: async (ctx) => {
 			await sendAsPrompt(ctx);
 			// omp frees tokens but pushes no state frame; resync so the context
@@ -341,9 +336,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		run: async (ctx) => {
 			let arg = ctx.args.trim();
 			// omp subcommands: `show` = bare `/goal`; `set <text>` = `<text>`;
-			// `budget …` has no native path and goes to omp. pause/resume/drop
-			// are handled below like their aliases.
-			if (/^budget(?:\s|$)/i.test(arg)) return sendAsPrompt(ctx);
+			// pause/resume/drop are handled below like their aliases.
 			if (/^show$/i.test(arg)) arg = "";
 			else arg = arg.replace(/^set\s+(?=\S)/i, "");
 			if (!arg) {
@@ -503,25 +496,6 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		icon: Cable,
 		group: "集成",
 		argHint: "<子命令>",
-		subcommands: [
-			{ name: "add", description: "添加服务器", usage: "<name> [--scope project|user] [--url <url>] [-- <command...>]" },
-			{ name: "list", description: "列出服务器" },
-			{ name: "remove", description: "移除服务器", usage: "<name> [--scope project|user]" },
-			{ name: "test", description: "测试连接", usage: "<name>" },
-			{ name: "reauth", description: "重新授权", usage: "<name>" },
-			{ name: "unauth", description: "清除授权", usage: "<name>" },
-			{ name: "enable", description: "启用服务器", usage: "<name>" },
-			{ name: "disable", description: "停用服务器", usage: "<name>" },
-			{ name: "smithery-search", description: "搜索 Smithery 服务器", usage: "<keyword> [--scope project|user] [--limit <1-100>] [--semantic]" },
-			{ name: "smithery-login", description: "登录 Smithery" },
-			{ name: "smithery-logout", description: "退出 Smithery" },
-			{ name: "reconnect", description: "重新连接服务器", usage: "<name>" },
-			{ name: "reload", description: "重新加载配置" },
-			{ name: "resources", description: "查看资源" },
-			{ name: "prompts", description: "查看提示词" },
-			{ name: "notifications", description: "查看通知" },
-			{ name: "help", description: "查看帮助" },
-		],
 		run: (ctx) => {
 			if (ctx.args.trim()) return sendAsPrompt(ctx);
 			ctx.openSettingsTarget("mcp");

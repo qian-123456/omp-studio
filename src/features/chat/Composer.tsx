@@ -919,10 +919,29 @@ export function Composer({
 			}, 0);
 			return;
 		}
-		// Picking from the menu chips only commands that take args (`argHint`);
-		// commands with subcommands alone run on select. A typed space after the
-		// exact token (`ctx` set) chips either kind.
-		if (item.argHint || (ctx && item.subcommands?.length)) {
+		// A subcommand row picked from the top-level list becomes `/parent sub`.
+		if (item.subOf) {
+			const before = src.slice(0, tok.start);
+			setText(`${before}${src.slice(tok.end)}`);
+			setChip({
+				name: item.subOf,
+				title: item.parentTitle || item.subOf,
+				sub: item.name,
+				...(item.argHint ? { argHint: item.argHint } : {}),
+			});
+			setCursorPos(before.length);
+			setMenuDismissed(!findArgProvider(item.subOf, item.name));
+			setTimeout(() => {
+				if (taRef.current) {
+					taRef.current.focus();
+					taRef.current.setSelectionRange(before.length, before.length);
+				}
+			}, 0);
+			return;
+		}
+		// Commands that take args or subcommands become a chip; the subcommand
+		// list opens right away (its first entry runs the command itself).
+		if (item.argHint || item.subcommands?.length) {
 			const before = src.slice(0, tok.start);
 			const after = src.slice(tok.end);
 			// Any text around the token becomes the command's arguments.
@@ -964,6 +983,20 @@ export function Composer({
 	const selectSubcommand = (item: SlashMenuItem, rest?: string) => {
 		if (!chip || chip.offset !== undefined || chip.sub) return;
 		const { argHint: _drop, ...base } = chip;
+		if (item.bare) {
+			// The parent command's own (native) action, e.g. `/memory` → settings.
+			const name = chip.name;
+			setChip(null);
+			setText(splitFirstWord(text).rest);
+			setCursorPos(0);
+			setMenuDismissed(true);
+			setArgHintLine(null);
+			void runSlashInput(sessionId, `/${name}`, makeSlashDeps()).catch((err) => {
+				if (!isResumeCancelled(err)) toast.error(`/${name} 失败: ${errMsg(err)}`);
+			});
+			setTimeout(() => taRef.current?.focus(), 0);
+			return;
+		}
 		setChip({ ...base, sub: item.name, ...(item.argHint ? { argHint: item.argHint } : {}) });
 		setText(rest ?? splitFirstWord(text).rest);
 		setCursorPos(0);

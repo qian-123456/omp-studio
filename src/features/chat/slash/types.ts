@@ -80,8 +80,6 @@ export interface SlashCommandDef {
 	/** Placeholder for the argument, e.g. "<名称>". Its presence means the
 	 * command takes args: selecting it fills `/name ` instead of running. */
 	argHint?: string;
-	/** Static subcommands; picking one merges it into the command chip. */
-	subcommands?: SlashSubcommand[];
 	/** Codex semantics: hidden unless the composer is empty apart from the
 	 * slash token (or the command is being typed alone). */
 	requiresEmptyComposer?: boolean;

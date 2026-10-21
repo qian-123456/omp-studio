@@ -25,6 +25,12 @@ export interface SlashMenuItem {
 	registry: boolean;
 	/** Parent command name when this item is a subcommand entry. */
 	subOf?: string;
+	/** Parent's display title (chip label when a subcommand row is picked). */
+	parentTitle?: string;
+	/** Subcommand row listed under its parent in the top-level menu (indented). */
+	nested?: boolean;
+	/** Second-level entry that runs the parent command itself (no subcommand). */
+	bare?: boolean;
 	/** Present when the command takes subcommands. */
 	subcommands?: SlashSubcommand[];
 	/** Argument-completion row: render the name as-is (no leading `/`). */
@@ -69,6 +75,33 @@ interface ScoredItem {
 	score: number;
 }
 
+const subMatches = (q: string, sub: SlashSubcommand) => sub.name.toLowerCase().includes(q);
+
+/** Keep a parent in the results when only one of its subcommands matches. */
+function withSubMatch(q: string, score: number, item: SlashMenuItem): number {
+	if (score >= 0 || !q) return score;
+	return item.subcommands?.some((s) => subMatches(q, s)) ? 7 : -1;
+}
+
+/** Subcommand rows listed (indented) under a parent in the top-level menu:
+ * all of them when the parent matched by name, else only the matching ones. */
+function nestedSubRows(q: string, parentScore: number, parent: SlashMenuItem): SlashMenuItem[] {
+	if (!q || !parent.subcommands?.length) return [];
+	const subs = parentScore <= 2 ? parent.subcommands : parent.subcommands.filter((s) => subMatches(q, s));
+	return subs.map((sub) => ({
+		name: sub.name,
+		subOf: parent.name,
+		parentTitle: parent.title,
+		nested: true,
+		title: "",
+		description: sub.description ?? "",
+		argHint: sub.usage,
+		group: parent.group,
+		icon: parent.icon,
+		registry: parent.registry,
+	}));
+}
+
 /** Lower score = better. -1 rejects. Subsequence name matches rank last. */
 function matchScore(query: string, c: {
 	name: string;
@@ -90,6 +123,20 @@ function matchScore(query: string, c: {
 	return i === query.length ? 6 : -1;
 }
 
+/** Subcommands omp's RPC handler rejects (they need the TUI: editor, HUD,
+ * OAuth/browser flows). The catalog carries no per-subcommand flag, so they
+ * are filtered by name; everything else comes from the live catalog. */
+const TUI_ONLY_SUBCOMMANDS: Record<string, readonly string[]> = {
+	todo: ["edit", "expand", "collapse"],
+	advisor: ["configure"],
+	mcp: ["reauth", "unauth", "smithery-login", "smithery-logout", "reconnect", "notifications"],
+};
+
+function runnableSubs(parent: string, subs: SlashSubcommand[] | undefined): SlashSubcommand[] {
+	const banned = TUI_ONLY_SUBCOMMANDS[parent];
+	return (subs ?? []).filter((s) => s.name && !banned?.includes(s.name));
+}
+
 function toItem(def: SlashCommandDef, commands: SlashCommand[]): SlashMenuItem {
 	const subcommands = subcommandsFor(def.name, commands);
 	return {
@@ -107,15 +154,16 @@ function toItem(def: SlashCommandDef, commands: SlashCommand[]): SlashMenuItem {
 
 function toDynamicItem(c: SlashCommand): SlashMenuItem {
 	const group = SOURCE_GROUP[c.source ?? ""] ?? "更多 OMP 命令";
+	const subs = runnableSubs(c.name, c.subcommands);
 	return {
 		name: c.name,
 		title: "",
 		description: c.description ?? "",
 		icon: GROUP_ICON[group],
 		group,
-		argHint: c.hint ?? c.input?.hint ?? (c.subcommands?.length ? "<子命令>" : undefined),
+		argHint: c.hint ?? c.input?.hint ?? (subs.length ? "<子命令>" : undefined),
 		registry: false,
-		...(c.subcommands?.length ? { subcommands: c.subcommands } : {}),
+		...(subs.length ? { subcommands: subs } : {}),
 	};
 }
 
@@ -142,8 +190,9 @@ export function buildSlashSections(
 	for (const def of SLASH_COMMANDS) {
 		if (composerHasOtherText && def.requiresEmptyComposer) continue;
 		if (def.feature === "visualize" && opts?.visualizeEnabled === false) continue;
-		const score = matchScore(q, def);
-		if (score >= 0) scored.push({ item: toItem(def, commands), score });
+		const item = toItem(def, commands);
+		const score = withSubMatch(q, matchScore(q, def), item);
+		if (score >= 0) scored.push({ item, score });
 	}
 
 	// Names/aliases already covered by the registry.
@@ -157,13 +206,14 @@ export function buildSlashSections(
 		if (taken.has(c.name) || seen.has(c.name)) continue;
 		if (c.aliases?.some((a) => taken.has(a))) continue;
 		seen.add(c.name);
-		const score = matchScore(q, {
+		const item = toDynamicItem(c);
+		const score = withSubMatch(q, matchScore(q, {
 			name: c.name,
 			aliases: c.aliases,
 			title: "",
 			description: c.description ?? "",
-		});
-		if (score >= 0) scored.push({ item: toDynamicItem(c), score });
+		}), item);
+		if (score >= 0) scored.push({ item, score });
 	}
 
 	scored.sort(
@@ -174,10 +224,14 @@ export function buildSlashSections(
 	);
 
 	const sections: SlashMenuSection[] = [];
-	for (const { item } of scored) {
+	const push = (item: SlashMenuItem) => {
 		const last = sections[sections.length - 1];
 		if (last && last.label === item.group) last.items.push(item);
 		else sections.push({ label: item.group, items: [item] });
+	};
+	for (const { item, score } of scored) {
+		push(item);
+		for (const row of nestedSubRows(q, score, item)) push(row);
 	}
 	return sections;
 }
@@ -199,16 +253,12 @@ function dynamicFor(def: SlashCommandDef, commands: SlashCommand[]): SlashComman
 	);
 }
 
-/** Subcommands of a command: the registry's static list wins; otherwise the
- * omp-reported list for that name/alias (registry or dynamic command). */
+/** Subcommands of a command, from omp's live catalog only (registry command
+ * by name/alias, or a dynamic command), minus TUI-only ones. */
 export function subcommandsFor(name: string, commands: SlashCommand[]): SlashSubcommand[] {
 	const def = findSlashCommand(name);
-	if (def) {
-		if (def.subcommands?.length) return def.subcommands;
-		return dynamicFor(def, commands)?.subcommands ?? [];
-	}
-	const dyn = commands.find((c) => c.name === name || c.aliases?.includes(name));
-	return dyn?.subcommands ?? [];
+	const subs = def ? dynamicFor(def, commands)?.subcommands : commands.find((c) => c.name === name || c.aliases?.includes(name))?.subcommands;
+	return runnableSubs(def?.name ?? name, subs);
 }
 
 /** Ghost hint for a chip made from `item` (subcommand-only commands get `<子命令>`). */
@@ -221,6 +271,22 @@ export function buildSubcommandItems(parent: SlashMenuItem, query: string): Slas
 	const q = query.toLowerCase();
 	const prefix: SlashMenuItem[] = [];
 	const inner: SlashMenuItem[] = [];
+	// A registry command keeps its native action as the list's first entry.
+	const bare: SlashMenuItem[] =
+		parent.registry && !q
+			? [
+					{
+						name: "",
+						subOf: parent.name,
+						bare: true,
+						title: parent.title,
+						description: parent.description ? `直接运行：${parent.description}` : "直接运行",
+						group: "子命令",
+						icon: parent.icon,
+						registry: true,
+					},
+				]
+			: [];
 	for (const sub of parent.subcommands ?? []) {
 		const n = sub.name.toLowerCase();
 		const item: SlashMenuItem = {
@@ -236,7 +302,7 @@ export function buildSubcommandItems(parent: SlashMenuItem, query: string): Slas
 		if (n.startsWith(q)) prefix.push(item);
 		else if (n.includes(q)) inner.push(item);
 	}
-	return [...prefix, ...inner];
+	return [...bare, ...prefix, ...inner];
 }
 
 /** Item whose name/alias equals `token` exactly, only if it takes arguments. */

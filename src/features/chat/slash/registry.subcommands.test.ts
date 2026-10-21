@@ -44,7 +44,6 @@ const FORWARDING: [string, string][] = [
 	["extended-context", "status"],
 	["security", "scan"],
 	["mcp", "enable foo"],
-	["goal", "budget 5"],
 ];
 
 describe("registry commands forward omp subcommands", () => {

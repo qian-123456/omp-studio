@@ -215,15 +215,10 @@ describe("chip with merged subcommand", () => {
 		);
 		expect(loadChip("bad")).toEqual({ name: "mcp", title: "x" });
 	});
-	it("parseCommandToken merges a known subcommand", () => {
+	it("parseCommandToken leaves subcommand words in the args", () => {
 		const r = parseCommandToken("/mcp enable foo");
-		expect(r?.chip.sub).toBe("enable");
+		expect(r?.chip.sub).toBeUndefined();
 		expect(r?.chip.name).toBe("mcp");
-		expect(r?.rest).toBe("foo");
-		expect(parseCommandToken("/mcp list")?.rest).toBe("");
-		const plain = parseCommandToken("/mcp whatever x");
-		expect(plain?.chip.sub).toBeUndefined();
-		expect(plain?.rest).toBe("whatever x");
-		expect(parseCommandToken("/fork enable")?.chip.sub).toBeUndefined();
+		expect(r?.rest).toBe("enable foo");
 	});
 });
