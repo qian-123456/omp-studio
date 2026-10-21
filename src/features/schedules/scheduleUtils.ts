@@ -494,7 +494,12 @@ export function validateForm(
 
 /** Derive a display name from the first line of the instructions. */
 export function deriveName(prompt: string): string {
-	const first = prompt.trim().split("\n")[0]?.trim() ?? "";
+	const first =
+		prompt
+			.replace(/\[(?:Image|图片)\s*#?\d*(?:,\s*\d+x\d+)?:\s*[^\]]+\]/gu, "")
+			.trim()
+			.split("\n")[0]
+			?.trim() ?? "";
 	const clipped = first.length > 24 ? `${first.slice(0, 24)}…` : first;
 	return clipped || "未命名定时任务";
 }

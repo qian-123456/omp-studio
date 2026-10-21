@@ -67,6 +67,9 @@ import {
 	validateForm,
 } from "./scheduleUtils";
 import type { CadencePreset, EditorForm } from "./scheduleUtils";
+import { insertImages, removeImage } from "../backlog/ideaTokens";
+import { ImageThumbs, useImageAttach } from "../backlog/IdeaImages";
+import { docToPrompt, promptToDoc } from "./promptImages";
 import { type EditorTab, useSchedulesStore } from "./schedulesStore";
 
 /** Stable empty list so the zustand selector never returns a fresh array. */
@@ -410,6 +413,13 @@ export function ScheduleEditorPage({
 	// attempt (empty new forms stay quiet); cadence/end errors show when the
 	// relevant input actually holds an invalid value.
 	const promptErr = submitAttempted ? errors.prompt : undefined;
+	const promptDoc = useMemo(() => promptToDoc(form.prompt), [form.prompt]);
+	const imageAttach = useImageAttach((paths) => {
+		const el = promptRef.current;
+		const cur = promptToDoc(form.prompt);
+		const r = insertImages(cur, el?.selectionStart ?? cur.text.length, paths);
+		set("prompt", docToPrompt(r.doc));
+	});
 	const cwdErr = submitAttempted ? errors.cwd : undefined;
 	const cadenceErr =
 		submitAttempted ||
@@ -1093,21 +1103,39 @@ export function ScheduleEditorPage({
 							)}
 						</section>
 
+						{/* images: stored inline as `[Image #N: path]` in the prompt text */}
 						{/* 指令 — chat-composer card: textarea + attached toolbar strip */}
 						<section className="mt-6">
 							<FieldLabel>指令</FieldLabel>
-							<div className="rounded-3xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm">
+							<div
+								className={clsx(
+									"rounded-3xl border bg-[var(--bg-panel)] shadow-sm",
+									imageAttach.dragging ? "border-[var(--accent)]" : "border-[var(--line)]",
+								)}
+								{...imageAttach.dropProps}
+							>
+								<div className="px-4 pt-3">
+									<ImageThumbs
+										paths={promptDoc.images}
+										onRemove={(p) => {
+											const r = removeImage(promptDoc, promptDoc.images.indexOf(p) + 1);
+											set("prompt", docToPrompt(r));
+										}}
+									/>
+								</div>
 								<textarea
 									ref={promptRef}
 									rows={2}
-									placeholder="例如：Review 最近 24 小时的提交，总结可能引入的 bug 和修复建议"
-									value={form.prompt}
+									placeholder="例如：Review 最近 24 小时的提交，总结可能引入的 bug 和修复建议（可粘贴或拖入图片）"
+									value={promptDoc.text}
 									onChange={(e) => {
-										set("prompt", e.target.value);
+										set("prompt", docToPrompt({ text: e.target.value, images: promptDoc.images }));
 										resizePrompt();
 									}}
+									onPaste={imageAttach.onPaste}
 									className="w-full min-h-[64px] resize-none bg-transparent px-4 pt-3.5 pb-2 text-[13px] leading-relaxed text-[var(--text)] placeholder:text-[var(--text-30,var(--text-dim))] outline-none focus:outline-none focus:ring-0"
 								/>
+								{imageAttach.fileInput}
 
 								{/* Toolbar strip: workspace + permission (left); model +
 								 * thinking (right), mirroring the chat Composer. */}
