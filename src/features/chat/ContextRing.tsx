@@ -2,12 +2,13 @@ import clsx from "clsx";
 import { ArchiveRestore, Layers, Loader2, PieChart, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
-import type { PromptComposition } from "../../lib/contracts";
+import type { PromptCategoryId, PromptComposition } from "../../lib/contracts";
 import { promptCompositionProbe } from "../../lib/ipc";
 import { openPromptComposition } from "../../stores/promptComposition";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { allocateCells, buildContextSegments } from "./contextBreakdown";
+import { useOmpConfigStore } from "../settings/ompConfigStore";
+import { allocateCells, autocompactBuffer, buildContextSegments } from "./contextBreakdown";
 
 const GRID_COLS = 20;
 const GRID_ROWS = 5;
@@ -29,6 +30,69 @@ function compactTokens(n: number): string {
 	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
 	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
 	return String(n);
+}
+
+/** Per-category item lists (Claude Code lists MCP tools, memory files and skills under the grid). */
+const DETAIL_CATEGORIES: { id: PromptCategoryId; title: string; note?: string }[] = [
+	{ id: "rules", title: "规则文件" },
+	{ id: "skills", title: "Skills", note: "只有名称和描述常驻上下文，正文用到时才加载" },
+	{ id: "mcp", title: "MCP 工具" },
+];
+const DETAIL_PREVIEW = 3;
+
+function DetailSections({ comp }: { comp: PromptComposition | null }) {
+	const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+	if (!comp) return null;
+	const sections = DETAIL_CATEGORIES.map((d) => ({
+		...d,
+		items: [...(comp.categories.find((c) => c.id === d.id)?.items ?? [])].sort((a, b) => b.tokens - a.tokens),
+	})).filter((s) => s.items.length > 0);
+	if (sections.length === 0) return null;
+	return (
+		<div className="space-y-2 border-t border-[var(--line)] pt-2 text-[11px]">
+			{sections.map((s) => {
+				const all = expanded.has(s.id);
+				const shown = all ? s.items : s.items.slice(0, DETAIL_PREVIEW);
+				return (
+					<div key={s.id} className="space-y-1">
+						<div className="flex items-center justify-between text-[var(--text-60)]">
+							<span className="font-medium">
+								{s.title} · {s.items.length} 项
+							</span>
+							{s.items.length > DETAIL_PREVIEW && (
+								<button
+									type="button"
+									onClick={() =>
+										setExpanded((prev) => {
+											const next = new Set(prev);
+											if (next.has(s.id)) next.delete(s.id);
+											else next.add(s.id);
+											return next;
+										})
+									}
+									className="rounded-full border border-[var(--line)] px-1.5 py-px text-[10px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+								>
+									{all ? "收起" : `全部 ${s.items.length} 项`}
+								</button>
+							)}
+						</div>
+						{s.note && <div className="text-[10px] text-[var(--text-40)]">{s.note}</div>}
+						<div className="max-h-40 space-y-0.5 overflow-y-auto pl-2">
+							{shown.map((it) => (
+								<div key={it.id} className="flex items-start gap-2">
+									<span className="min-w-0 flex-1 break-all text-[var(--text-40)]">
+										{it.title}
+										{it.detail ? ` (${it.detail})` : ""}
+									</span>
+									<span className="shrink-0 font-mono text-[var(--text-60)]">{compactTokens(it.tokens)}</span>
+								</div>
+							))}
+						</div>
+					</div>
+				);
+			})}
+		</div>
+	);
 }
 
 interface ContextRingProps {
@@ -137,7 +201,17 @@ export function ContextRing({
 			alive = false;
 		};
 	}, [open, sessionCwd]);
-	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe);
+	const ompEntries = useOmpConfigStore((s) => s.entries);
+	useEffect(() => {
+		if (open) void useOmpConfigStore.getState().load();
+	}, [open]);
+	const cfgValue = (key: string) => ompEntries.find((e) => e.key === key)?.value;
+	const buffer = autocompactBuffer(rawWindow ?? 0, {
+		enabled: cfgValue("compaction.enabled") !== false,
+		thresholdTokens: cfgValue("compaction.thresholdTokens"),
+		thresholdPercent: cfgValue("compaction.thresholdPercent"),
+	});
+	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe, buffer);
 	const segmentColor = new Map(segments.map((s) => [s.id, s.color]));
 	const cells = allocateCells(segments, rawWindow ?? 0, GRID_COLS * GRID_ROWS);
 	const strokeDashoffset = circumference * (1 - Math.min(1, fraction));
@@ -286,6 +360,7 @@ export function ContextRing({
 											固定部分统计失败，已用量全部算作对话消息
 										</div>
 									)}
+									<DetailSections comp={probe} />
 								</>
 							) : (
 								<>
