@@ -105,8 +105,13 @@ export function healStreamingMarkdown(text: string): string {
 	let body = text;
 	// An unfinished `$$ … ` display formula renders as raw source: hold it back
 	// until its closer arrives.
-	const dollars = body.match(/\$\$/g)?.length ?? 0;
-	if (dollars % 2 === 1) body = body.slice(0, body.lastIndexOf("$$"));
+	// Code spans and closed fences may legitimately contain `$$` (shell PID):
+	// mask them (same length) before counting.
+	const masked = body
+		.replace(/(^|\n)[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n[ \t]*\2[^\n]*(?=\n|$)/g, (m) => " ".repeat(m.length))
+		.replace(/(`+)[^`\n]*?\1/g, (m) => " ".repeat(m.length));
+	const dollars = masked.match(/\$\$/g)?.length ?? 0;
+	if (dollars % 2 === 1) body = body.slice(0, masked.lastIndexOf("$$"));
 
 	let split = 0;
 	const blank = /\n[ \t]*\n/g;

@@ -97,6 +97,33 @@ export function isFenceClosed(
 	return close[1][0] === open[1][0] && close[1].length >= open[1].length;
 }
 
+const FENCE_LINE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const VISUALIZE_FENCE_RE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*visualize(?=[\s]|$)/;
+
+/**
+ * Offset of the first top-level ```visualize fence in `text`, or -1. Fences
+ * nested inside another code fence are ignored. Used to keep a visualize block
+ * (and its iframe) in one render tree instead of moving between segments.
+ */
+export function findVisualizeFence(text: string): number {
+	if (!text.includes("visualize")) return -1;
+	let offset = 0;
+	let open: { char: string; len: number } | null = null;
+	for (const line of text.split("\n")) {
+		const fence = FENCE_LINE_RE.exec(line);
+		if (open) {
+			if (fence && fence[1][0] === open.char && fence[1].length >= open.len && !line.slice(fence[0].length).trim()) {
+				open = null;
+			}
+		} else if (fence) {
+			if (VISUALIZE_FENCE_RE.test(line)) return offset;
+			open = { char: fence[1][0], len: fence[1].length };
+		}
+		offset += line.length + 1;
+	}
+	return -1;
+}
+
 /** Clamp a reported iframe content height to a sane pixel range. */
 export function clampVizHeight(height: unknown): number {
 	const n = typeof height === "number" ? height : Number(height);
@@ -119,6 +146,20 @@ export function escapeScriptJson(value: unknown): string {
 		.replace(/</g, "\\u003c")
 		.replace(/\u2028/g, "\\u2028")
 		.replace(/\u2029/g, "\\u2029");
+}
+
+/**
+ * Stored widget state is kept as the serialized JSON string the frame wrote.
+ * `buildSrcDoc` JSON-encodes its `widgetState` option, so decode first or the
+ * frame would receive a string instead of the object (double encoding).
+ */
+export function parseStoredWidgetState(serialized: string | null): unknown {
+	if (serialized === null) return undefined;
+	try {
+		return JSON.parse(serialized);
+	} catch {
+		return undefined;
+	}
 }
 
 export interface SrcDocOptions {

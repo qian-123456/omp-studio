@@ -60,3 +60,40 @@ describe("FloatingLayer dismissal with a modal stacked above", () => {
 		expect(onDismiss).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("FloatingLayer Escape handling for editors and IME", () => {
+	it("ignores Escape while an IME composition is active", () => {
+		const onDismiss = vi.fn();
+		render(
+			<FloatingLayer anchor={{ x: 10, y: 10 }} onDismiss={onDismiss}>
+				<textarea aria-label="note" />
+			</FloatingLayer>,
+		);
+		const ta = document.querySelector("textarea")!;
+		fireEvent.keyDown(ta, { key: "Escape", isComposing: true });
+		expect(onDismiss).not.toHaveBeenCalled();
+		fireEvent.keyDown(ta, { key: "Escape" });
+		expect(onDismiss).toHaveBeenCalledTimes(1);
+	});
+
+	it("defers Escape inside a text field only when opted in", () => {
+		const onDismiss = vi.fn();
+		const { rerender } = render(
+			<FloatingLayer anchor={{ x: 10, y: 10 }} onDismiss={onDismiss} deferEscapeToEditors>
+				<textarea aria-label="note" />
+			</FloatingLayer>,
+		);
+		const ta = document.querySelector("textarea")!;
+		fireEvent.keyDown(ta, { key: "Escape" });
+		expect(onDismiss).not.toHaveBeenCalled();
+		fireEvent.keyDown(document.body, { key: "Escape" });
+		expect(onDismiss).toHaveBeenCalledTimes(1);
+		rerender(
+			<FloatingLayer anchor={{ x: 10, y: 10 }} onDismiss={onDismiss}>
+				<textarea aria-label="note" />
+			</FloatingLayer>,
+		);
+		fireEvent.keyDown(document.querySelector("textarea")!, { key: "Escape" });
+		expect(onDismiss).toHaveBeenCalledTimes(2);
+	});
+});

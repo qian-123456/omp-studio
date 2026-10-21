@@ -90,7 +90,7 @@ export function AddMenuPopover({
 			className="w-[280px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] p-1"
 		>
 			<div className="px-2 pt-1 pb-1.5 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">添加</div>
-			<Item icon={<Paperclip size={14} />} color={TONE.files} title="文件和文件夹" desc="从电脑选择并附加" onClick={run(onAddFiles)} />
+			<Item icon={<Paperclip size={14} />} color={TONE.files} title="文件" desc="从电脑选择并附加" onClick={run(onAddFiles)} />
 			<Item icon={<Monitor size={14} />} color={TONE.finder} title="Finder 选中项" desc="附加当前在 Finder 中选中的文件" onClick={run(onAttachFinder)} />
 			<div className="my-1 border-t border-[var(--line,var(--border-divider))]" />
 			<Item icon={<FolderOpen size={14} />} color={TONE.project} title="在项目中工作" desc="为新聊天选择项目" onClick={run(onPickProject)} />

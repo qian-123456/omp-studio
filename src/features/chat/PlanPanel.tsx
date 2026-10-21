@@ -10,21 +10,55 @@ import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useUi } from "../../stores/ui";
+import type { TranscriptItem } from "../../lib/contracts";
 import { Markdown } from "./markdown";
 import { sendPrompt } from "./send";
 
-/** Latest assistant text in the transcript — the plan while plan mode is on. */
-function useLatestAssistantText(sessionId: string | null): string | null {
-	return useLive((s) => {
-		const items = sessionId ? s.sessions[sessionId]?.items : undefined;
-		if (!items) return null;
-		for (let i = items.length - 1; i >= 0; i--) {
-			const it = items[i];
-			if (it.kind === "assistant" && typeof it.text === "string" && it.text.trim()) {
-				return it.text;
-			}
+/** Last transcript item id at the moment plan mode was switched on, per
+ * session. Only assistant text after it can be "the plan". */
+const planBaseline = new Map<string, string | null>();
+
+function recordBaseline(sessionId: string): void {
+	const items = useLive.getState().sessions[sessionId]?.items;
+	planBaseline.set(sessionId, items?.length ? items[items.length - 1].id : null);
+}
+
+useComposer.subscribe((state, prev) => {
+	for (const [sid, on] of Object.entries(state.planModes)) {
+		if (on && prev.planModes[sid] !== true) recordBaseline(sid);
+		else if (!on) planBaseline.delete(sid);
+	}
+});
+
+/** Latest assistant text strictly after `baselineId` (all items when null or
+ * unknown) — the plan while plan mode is on. */
+export function latestAssistantTextAfter(
+	items: readonly TranscriptItem[] | undefined,
+	baselineId: string | null | undefined,
+): string | null {
+	if (!items) return null;
+	let start = 0;
+	if (baselineId) {
+		const at = items.findIndex((it) => it.id === baselineId);
+		if (at >= 0) start = at + 1;
+	}
+	for (let i = items.length - 1; i >= start; i--) {
+		const it = items[i];
+		if (it.kind === "assistant" && typeof it.text === "string" && it.text.trim()) {
+			return it.text;
 		}
-		return null;
+	}
+	return null;
+}
+
+function usePlanText(sessionId: string | null, planMode: boolean): string | null {
+	return useLive((s) => {
+		if (!sessionId || !planMode) return null;
+		if (!planBaseline.has(sessionId)) recordBaseline(sessionId);
+		return latestAssistantTextAfter(
+			s.sessions[sessionId]?.items,
+			planBaseline.get(sessionId),
+		);
 	});
 }
 
@@ -36,7 +70,7 @@ export function PlanPanel() {
 	const streaming = useLive((s) =>
 		sessionId ? s.sessions[sessionId]?.streaming === true : false,
 	);
-	const planText = useLatestAssistantText(sessionId);
+	const planText = usePlanText(sessionId, planMode);
 	const generating = planMode && streaming;
 
 	const execute = async () => {

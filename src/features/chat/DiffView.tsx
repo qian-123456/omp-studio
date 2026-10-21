@@ -3,7 +3,7 @@
 
 import clsx from "clsx";
 import { Columns2, MessageSquarePlus, Rows } from "lucide-react";
-import React, { useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { isComposing } from "../../lib/hooks";
 import { useComposer } from "../../stores/composer";
 import { claimEscape } from "../../lib/escapeClaim";
@@ -224,6 +224,20 @@ export function buildSplitRows(lines: DiffLine[]): SplitRow[] {
 	return rows;
 }
 
+/** Rows rendered before the 「展开剩余 N 行」 control; keeps huge diffs cheap. */
+const DIFF_ROW_CAP = 200;
+
+/** Added / removed line counts (context lines excluded). */
+export function diffCounts(lines: DiffLine[]): { adds: number; dels: number } {
+	let adds = 0;
+	let dels = 0;
+	for (const l of lines) {
+		if (l.kind === "add") adds += 1;
+		else if (l.kind === "del") dels += 1;
+	}
+	return { adds, dels };
+}
+
 export function DiffView({
 	diff,
 	file,
@@ -233,7 +247,14 @@ export function DiffView({
 	file?: string;
 	sessionId: string;
 }) {
-	const lines = parseDiff(diff);
+	const lines = useMemo(() => parseDiff(diff), [diff]);
+	const counts = useMemo(() => diffCounts(lines), [lines]);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const [showAll, setShowAll] = useState(false);
+	const visibleLines = useMemo(
+		() => (showAll ? lines : lines.slice(0, DIFF_ROW_CAP)),
+		[lines, showAll],
+	);
 	const addAnnotation = useComposer((s) => s.addAnnotation);
 	const [viewMode, setViewMode] = useState<"unified" | "split">("unified");
 
@@ -272,7 +293,7 @@ export function DiffView({
 		if (lo === null || hi === null) return;
 		const text = lines
 			.slice(lo, hi + 1)
-			.map((l) => l.text)
+			.map((l) => `${l.kind === "add" ? "+" : l.kind === "del" ? "-" : " "}${l.text}`)
 			.join("\n");
 		addAnnotation(sessionId, {
 			source: "diff",
@@ -287,14 +308,47 @@ export function DiffView({
 		setCommenting(false);
 	};
 
-	const splitRows = viewMode === "split" ? buildSplitRows(lines) : [];
+	const splitRows = useMemo(
+		() => (viewMode === "split" ? buildSplitRows(visibleLines) : []),
+		[viewMode, visibleLines],
+	);
+
+	// Roving tabindex: the gutter is one Tab stop, arrows move between lines.
+	const [focusIdx, setFocusIdx] = useState(0);
+	const gutterProps = (i: number, line: number | null) => ({
+		role: "button" as const,
+		tabIndex: i === focusIdx ? 0 : -1,
+		"data-diff-idx": i,
+		onFocus: () => setFocusIdx(i),
+		onClick: () => toggleSelect(i),
+		onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				toggleSelect(i);
+			} else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+				const next = rootRef.current?.querySelector<HTMLElement>(
+					`[data-diff-idx="${i + (e.key === "ArrowDown" ? 1 : -1)}"]`,
+				);
+				if (next) {
+					e.preventDefault();
+					next.focus();
+				}
+			}
+		},
+		className:
+			"flex w-12 shrink-0 cursor-pointer select-none items-center justify-end pr-2 text-right text-[var(--text-30)] font-mono tabular-nums hover:text-[var(--accent)]",
+		title: "点击选中行添加批注",
+		"aria-label": `选中第 ${line ?? i + 1} 行添加批注`,
+	});
 
 	return (
-		<div className="text-[12px]">
+		<div ref={rootRef} className="text-[12px]">
 			{/* View mode toggle — quiet ghost buttons */}
 			<div className="mb-1 flex items-center justify-between text-[11px] text-[var(--text-30)]">
 				<span className="text-[10px] text-[var(--text-30)]">
-					{lines.length} 行改动（点击行号添加批注，拖选代码可复制）
+					<span className="text-[var(--status-success)]">+{counts.adds}</span>{" "}
+					<span className="text-[var(--status-error)]">−{counts.dels}</span>
+					（点击行号添加批注，拖选代码可复制）
 				</span>
 				<div className="flex items-center gap-0.5 text-[10px]">
 					<button
@@ -306,9 +360,9 @@ export function DiffView({
 								? "bg-[var(--ghost-hover)] text-[var(--text-60)]"
 								: "text-[var(--text-30)] hover:text-[var(--text-60)]",
 						)}
-						title="单栏视图 (Unified)"
+						title="单栏视图"
 					>
-						<Rows size={11} /> Unified
+						<Rows size={11} /> 单栏
 					</button>
 					<button
 						type="button"
@@ -319,16 +373,16 @@ export function DiffView({
 								? "bg-[var(--ghost-hover)] text-[var(--text-60)]"
 								: "text-[var(--text-30)] hover:text-[var(--text-60)]",
 						)}
-						title="左右双栏分栏对比 (Split)"
+						title="左右双栏分栏对比"
 					>
-						<Columns2 size={11} /> Split
+						<Columns2 size={11} /> 分栏
 					</button>
 				</div>
 			</div>
 
 			{viewMode === "unified" ? (
 				<div className="overflow-x-auto rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] font-mono text-[12px] leading-5">
-					{lines.map((l, i) => (
+					{visibleLines.map((l, i) => (
 						<div
 							key={i}
 							className={clsx(
@@ -343,18 +397,7 @@ export function DiffView({
 							)}
 						>
 							<div
-								role="button"
-								tabIndex={0}
-								onClick={() => toggleSelect(i)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" || e.key === " ") {
-										e.preventDefault();
-										toggleSelect(i);
-									}
-								}}
-								className="flex w-12 shrink-0 cursor-pointer select-none items-center justify-end pr-2 text-right text-[var(--text-30)] font-mono tabular-nums hover:text-[var(--accent)]"
-								title="点击选中行添加批注"
-								aria-label={`选中第 ${l.line ?? i + 1} 行添加批注`}
+								{...gutterProps(i, l.line)}
 							>
 								<span className="w-7">{l.line ?? ""}</span>
 								<span className="w-3 text-center">
@@ -388,18 +431,8 @@ export function DiffView({
 									{row.left ? (
 										<>
 											<div
-												role="button"
-												tabIndex={0}
-												onClick={() => toggleSelect(row.left!.origIdx)}
-												onKeyDown={(e) => {
-													if (e.key === "Enter" || e.key === " ") {
-														e.preventDefault();
-														toggleSelect(row.left!.origIdx);
-													}
-												}}
+												{...gutterProps(row.left.origIdx, row.left.line)}
 												className="flex w-10 shrink-0 cursor-pointer select-none items-center justify-end pr-1 text-right text-[var(--text-30)] font-mono tabular-nums hover:text-[var(--accent)]"
-												title="点击选中行"
-												aria-label={`选中第 ${row.left.line ?? row.left.origIdx + 1} 行`}
 											>
 												<span className="w-6">
 													{row.left.line ?? ""}
@@ -436,20 +469,8 @@ export function DiffView({
 									{row.right ? (
 										<>
 											<div
-												role="button"
-												tabIndex={0}
-												onClick={() =>
-													toggleSelect(row.right!.origIdx)
-												}
-												onKeyDown={(e) => {
-													if (e.key === "Enter" || e.key === " ") {
-														e.preventDefault();
-														toggleSelect(row.right!.origIdx);
-													}
-												}}
+												{...gutterProps(row.right.origIdx, row.right.line)}
 												className="flex w-10 shrink-0 cursor-pointer select-none items-center justify-end pr-1 text-right text-[var(--text-30)] font-mono tabular-nums hover:text-[var(--accent)]"
-												title="点击选中行"
-												aria-label={`选中第 ${row.right.line ?? row.right.origIdx + 1} 行`}
 											>
 												<span className="w-6">
 													{row.right.line ?? ""}
@@ -473,6 +494,16 @@ export function DiffView({
 						))}
 					</div>
 				</div>
+			)}
+
+			{!showAll && lines.length > visibleLines.length && (
+				<button
+					type="button"
+					onClick={() => setShowAll(true)}
+					className="mt-1 rounded-md border border-[var(--line)] px-2 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+				>
+					展开剩余 {lines.length - visibleLines.length} 行
+				</button>
 			)}
 
 			{lo !== null && !commenting && (

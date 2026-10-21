@@ -16,11 +16,13 @@ import {
 	type PlacedStep,
 	requestAnchors,
 	splitInterimProse,
+	splitInterimProseBySteer,
 	liveAnswerCandidate,
 	splitLiveTurn,
 	turnRequestItems,
 	type TurnBlock,
 	type TurnStep,
+	toolFilePaths,
 } from "./turnGrouping";
 
 function makeItem(partial: Partial<TranscriptItem> & { id: string; kind: TranscriptItem["kind"] }): TranscriptItem {
@@ -571,6 +573,67 @@ describe("activity grouping", () => {
 			]);
 		}
 	});
+
+	it("keeps thinking that leads into a different tool, absorbs it inside a run", () => {
+		const thinking: TurnStep = {
+			id: "th-1",
+			kind: "thinking",
+			item: makeItem({ id: "th-item", kind: "assistant" }),
+			thinking: "why bash",
+		};
+		const units = groupActivityUnits([tool("c1", "read"), thinking, tool("r1", "bash")]);
+		expect(units.map((u) => (u.kind === "step" ? u.step.id : u.group))).toEqual([
+			"c1",
+			"th-1",
+			"r1",
+		]);
+		const inRun = groupActivityUnits([tool("c1", "read"), thinking, tool("c2", "grep")]);
+		expect(inRun).toHaveLength(1);
+	});
+
+	it("never absorbs a running thinking row", () => {
+		const running = {
+			id: "th-live",
+			kind: "thinking" as const,
+			thinking: "…",
+			running: true,
+		};
+		const units = groupActivityUnits([tool("c1", "read"), tool("c2", "grep"), running]);
+		expect(units.map((u) => (u.kind === "step" ? u.step.id : u.group))).toEqual([
+			"exploration",
+			"th-live",
+		]);
+		// Even when more same-kind tools would follow, a running row stays visible.
+		const mid = groupActivityUnits([tool("c1", "read"), running, tool("c2", "grep")]);
+		expect(mid.some((u) => u.kind === "step" && u.step.id === "th-live")).toBe(true);
+	});
+});
+
+describe("toolFilePaths", () => {
+	it("reads plain path args", () => {
+		expect(toolFilePaths({ path: "src/a.ts" })).toEqual(["src/a.ts"]);
+	});
+
+	it("parses hashline edit headers from input, one per file", () => {
+		const input = "[src/a.ts#AB12]\n@@ 3\n+x\n[/Users/me/My Dir/b.ts#CD34]\n-y\n";
+		expect(toolFilePaths({ input, i: "edit" })).toEqual([
+			"src/a.ts",
+			"/Users/me/My Dir/b.ts",
+		]);
+		expect(toolFilePaths({ input: "no header here" })).toEqual([]);
+		expect(toolFilePaths(undefined)).toEqual([]);
+	});
+
+	it("makes edit summaries count distinct hashline files", () => {
+		const mk = (_id: string, input: string) => ({ call: { name: "edit", args: { input } } });
+		expect(
+			activityGroupSummary(
+				"edits",
+				[mk("e1", "[a.ts#AAAA]\n+1"), mk("e2", "[b.ts#BBBB]\n+1"), mk("e3", "[a.ts#CCCC]\n+1")],
+				false,
+			),
+		).toBe("已编辑 2 个文件");
+	});
 });
 
 describe("per-request stats placement", () => {
@@ -715,5 +778,33 @@ describe("splitLiveTurn", () => {
 		const out = splitLiveTurn(steps, true);
 		expect(out.answer).toBeNull();
 		expect(out.activity).toBe(steps);
+	});
+});
+
+describe("splitInterimProseBySteer", () => {
+	const asst = (id: string) => makeItem({ id, kind: "assistant" });
+	it("keeps each segment's prose before the steer that followed it", () => {
+		const steps = [
+			{ id: "t1", kind: "tool", item: asst("a1") },
+			{ id: "p1", kind: "text", text: "before", item: asst("a1") },
+			{ id: "s1", kind: "steer", item: makeItem({ id: "u2", kind: "user" }) },
+			{ id: "t2", kind: "tool", item: asst("a2") },
+			{ id: "p2", kind: "text", text: "after", item: asst("a2") },
+		];
+		const segs = splitInterimProseBySteer(steps);
+		expect(segs.map((s) => (s.type === "steer" ? "steer" : `${s.folded.length}/${s.prose.map((p) => p.id)}`))).toEqual([
+			"1/p1",
+			"steer",
+			"1/p2",
+		]);
+	});
+
+	it("drops segments with neither fold nor prose and allows prose-only segments", () => {
+		const segs = splitInterimProseBySteer([
+			{ id: "s1", kind: "steer", item: makeItem({ id: "u2", kind: "user" }) },
+			{ id: "p1", kind: "text", text: "x", item: asst("a1") },
+		]);
+		expect(segs).toHaveLength(2);
+		expect(segs[1]).toMatchObject({ type: "steps", folded: [], prose: [{ id: "p1" }] });
 	});
 });

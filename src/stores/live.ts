@@ -19,6 +19,7 @@ import {
 	retryNoticeFromFrame,
 	saveRetryHistory,
 } from "./retryNotice";
+import { useComposer } from "./composer";
 import { createFrameBatcher, scheduleFlush } from "./frameBatch";
 import {
 	type PersistedRow,
@@ -435,6 +436,20 @@ function newItemsOnly(prev: TranscriptItem[], next: TranscriptItem[]): Transcrip
 	return next.filter((i) => !known.has(i.id));
 }
 
+/** Index of the echo that `texts` confirm: an exact (flattened) text match
+ * wins over a substring match, so a stale prefix echo never steals the slot
+ * of the full message it is contained in. */
+function findEchoIndex(
+	echoes: readonly TranscriptItem[],
+	texts: readonly string[],
+	eligible: (e: TranscriptItem) => boolean = () => true,
+): number {
+	const flats = texts.map(flat);
+	const exact = echoes.findIndex((e) => eligible(e) && flats.some((t) => t !== "" && t === flat(e.text ?? "")));
+	if (exact >= 0) return exact;
+	return echoes.findIndex((e) => eligible(e) && texts.some((t) => echoMatches(e.text ?? "", t)));
+}
+
 /** Consume one pending echo per confirmed user transcript item (FIFO). */
 function reconcileEchoes(
 	pending: TranscriptItem[],
@@ -446,9 +461,7 @@ function reconcileEchoes(
 		if (it.kind !== "user") continue;
 		const raw = it.text ?? "";
 		const shown = isSideChatPrompt(raw) ? sideChatPromptToDisplay(raw) : raw;
-		const i = rest.findIndex(
-			(e) => echoMatches(e.text ?? "", raw) || echoMatches(e.text ?? "", shown),
-		);
+		const i = findEchoIndex(rest, [raw, shown]);
 		if (i < 0) continue;
 		rest = [...rest.slice(0, i), ...rest.slice(i + 1)];
 	}
@@ -482,7 +495,10 @@ export function queuedEchoIds(
 	const remaining = [...live.ompQueue.steering, ...live.ompQueue.followUp];
 	const ids = new Set<string>();
 	for (const echo of live.pendingUserEchoes) {
-		const i = remaining.findIndex((t) => echoMatches(echo.text ?? "", t));
+		const i = findEchoIndex(
+			remaining.map((t) => ({ text: t }) as TranscriptItem),
+			[echo.text ?? ""],
+		);
 		if (i >= 0) {
 			remaining.splice(i, 1);
 			ids.add(echo.id);
@@ -503,11 +519,53 @@ function userMessageText(msg: Frame): string {
 		.join("\n");
 }
 
+/** Text a delivered user input is matched on: the user message text, or the
+ * typed `/skill:x args` prompt of a custom skill-prompt message (whose
+ * content is the skill body, not what the user typed). `null` = not a user
+ * input frame. */
+function deliveredInputText(msg: Frame): string | null {
+	if (msg.role === "user") return userMessageText(msg);
+	if (msg.role === "custom") {
+		const prompt = asFrame(msg.details).prompt;
+		if (typeof prompt === "string" && prompt !== "") return prompt;
+	}
+	return null;
+}
+
 /** Mark the first undelivered held echo matching `text` as delivered. */
 function markEchoDelivered(echoes: UserEcho[], text: string): UserEcho[] {
-	const i = echoes.findIndex((e) => e.held && !e.delivered && echoMatches(e.text ?? "", text));
+	const i = findEchoIndex(echoes, [text], (e) => !!(e as UserEcho).held && !(e as UserEcho).delivered);
 	if (i < 0) return echoes;
 	return echoes.map((e, j) => (j === i ? { ...e, delivered: true } : e));
+}
+
+/** The terminal `agent_end` ended because the user stopped the turn. */
+function agentEndAborted(frame: Frame): boolean {
+	if (frame.aborted === true) return true;
+	if (!Array.isArray(frame.messages)) return false;
+	for (let i = frame.messages.length - 1; i >= 0; i--) {
+		const m = asFrame(frame.messages[i]);
+		if (m.role === "assistant") return m.stopReason === "aborted";
+	}
+	return false;
+}
+
+/** Held, undelivered echoes omp no longer lists in its queue. */
+function unlistedHeldEchoes(echoes: UserEcho[], queue: OmpQueue): UserEcho[] {
+	const remaining = [...queue.steering, ...queue.followUp].map((t) => ({ text: t }) as TranscriptItem);
+	return echoes.filter((echo) => {
+		const i = findEchoIndex(remaining, [echo.text ?? ""]);
+		if (i >= 0) {
+			remaining.splice(i, 1);
+			return false;
+		}
+		return !!echo.held && !echo.delivered;
+	});
+}
+
+function dropUnlistedHeldEchoes(echoes: UserEcho[], queue: OmpQueue): UserEcho[] {
+	const drop = new Set(unlistedHeldEchoes(echoes, queue).map((e) => e.id));
+	return drop.size ? echoes.filter((e) => !drop.has(e.id)) : echoes;
 }
 
 /** Id of the last transcript item: where a new local row is anchored. */
@@ -719,14 +777,12 @@ function reduce(
 			// (duration / ttft / usage / completedAt).
 			const ended = asFrame(frame.message) as AgentMessage;
 			const isAssistant = !ended.role || ended.role === "assistant";
-			if (ended.role === "user") {
+			const deliveredText = deliveredInputText(ended as Frame);
+			if (deliveredText !== null) {
 				return live.pendingUserEchoes.length
 					? {
 							...live,
-							pendingUserEchoes: markEchoDelivered(
-								live.pendingUserEchoes,
-								userMessageText(ended as Frame),
-							),
+							pendingUserEchoes: markEchoDelivered(live.pendingUserEchoes, deliveredText),
 						}
 					: live;
 			}
@@ -847,8 +903,14 @@ function reduce(
 		}
 		case "agent_end": {
 			if (frame.isTerminal === false) return live;
+			// An aborted turn never delivers the held inputs omp no longer
+			// lists (it withdrew them): their bubbles would read "queued" forever.
+			const pendingUserEchoes = agentEndAborted(frame)
+				? dropUnlistedHeldEchoes(live.pendingUserEchoes, live.ompQueue)
+				: live.pendingUserEchoes;
 			return {
 				...live,
+				pendingUserEchoes,
 				streaming: false,
 				streamingMessage: null,
 				tools: {},
@@ -889,12 +951,13 @@ function reduce(
 		case "queue_update":
 			return { ...live, ompQueue: ompQueueFrom(frame) };
 		case "message_start": {
-			// A user message entering the conversation = a held echo got delivered.
+			// A user input entering the conversation = a held echo got delivered.
 			const msg = asFrame(frame.message);
-			if (msg.role !== "user" || !live.pendingUserEchoes.length) return live;
+			const text = deliveredInputText(msg);
+			if (text === null || !live.pendingUserEchoes.length) return live;
 			return {
 				...live,
-				pendingUserEchoes: markEchoDelivered(live.pendingUserEchoes, userMessageText(msg)),
+				pendingUserEchoes: markEchoDelivered(live.pendingUserEchoes, text),
 			};
 		}
 		case "extension_ui_request": {
@@ -1329,19 +1392,56 @@ function stampTurnStart(prev: SessionLive, next: SessionLive, frame: Frame): Ses
 	return next.turnStartedAt === turnStartedAt ? next : { ...next, turnStartedAt };
 }
 
+/** Put unsent user texts back into the composer draft (after any text already
+ * typed there), so a withdrawn queued message is never lost. */
+export function restoreTextsToDraft(sessionId: string, texts: readonly string[]): void {
+	const restored = texts.map((t) => t.trim()).filter(Boolean);
+	if (!restored.length) return;
+	const { drafts, setDraft, focusComposer } = useComposer.getState();
+	const current = drafts[sessionId] ?? "";
+	setDraft(sessionId, [...(current.trim() ? [current] : []), ...restored].join("\n\n"));
+	focusComposer(sessionId);
+}
+
+/** Which omp queue still lists `text` (exact match first), or null. */
+export function ompQueueSlot(queue: OmpQueue, text: string): "steering" | "followUp" | null {
+	const asItems = (l: string[]) => l.map((t) => ({ text: t }) as TranscriptItem);
+	if (findEchoIndex(asItems(queue.steering), [text]) >= 0) return "steering";
+	if (findEchoIndex(asItems(queue.followUp), [text]) >= 0) return "followUp";
+	return null;
+}
+
+/** Drop the pending echoes whose text omp handed back (withdrawn queue). */
+export function dropEchoesForTexts(sessionId: string, texts: readonly string[]): void {
+	useLive.setState((s) => {
+		const live = s.sessions[sessionId];
+		if (!live || !live.pendingUserEchoes.length) return s;
+		let rest = live.pendingUserEchoes;
+		for (const t of texts) {
+			const i = findEchoIndex(rest, [t]);
+			if (i >= 0) rest = [...rest.slice(0, i), ...rest.slice(i + 1)];
+		}
+		if (rest === live.pendingUserEchoes) return s;
+		return { sessions: { ...s.sessions, [sessionId]: { ...live, pendingUserEchoes: rest } } };
+	});
+}
+
 export const useLive = create<LiveState>((set) => ({
 	sessions: {},
 	reduceFrame: ({ sessionId, frame }) => {
 		const f = asFrame(frame);
+		let dropped: UserEcho[] = [];
 		set((s) => {
 			const prev = s.sessions[sessionId] ?? { ...emptySessionLive(), alive: true };
-			return {
-				sessions: {
-					...s.sessions,
-					[sessionId]: stampTurnStart(prev, reduce(prev, f, sessionId), f),
-				},
-			};
+			const next = stampTurnStart(prev, reduce(prev, f, sessionId), f);
+			if (f.type === "agent_end" && next.pendingUserEchoes !== prev.pendingUserEchoes) {
+				const kept = new Set(next.pendingUserEchoes.map((e) => e.id));
+				dropped = prev.pendingUserEchoes.filter((e) => !kept.has(e.id));
+			}
+			return { sessions: { ...s.sessions, [sessionId]: next } };
 		});
+		// Inputs the aborted turn dropped go back to the composer, never lost.
+		if (dropped.length) restoreTextsToDraft(sessionId, dropped.map((e) => e.text ?? ""));
 		// `session_info_update` carries a new title from /rename —
 		// patch the session list optimistically; the file watcher follows.
 		if (f.type === "session_info_update") {

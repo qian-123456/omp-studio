@@ -27,7 +27,7 @@ import {
 	baseName,
 	getFileTokenRanges,
 	isProbablyBinaryPath,
-	parseInlineFiles,
+	expandFilesForSend,
 } from "./fileAttach";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 export interface InlineImageToken {
@@ -196,7 +196,7 @@ import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from ".
 import { canStartOnType, useStartOnType } from "./useStartOnType";
 import { useTypeToFocus } from "./useTypeToFocus";
 import { useRestoreComposerFocus } from "./useRestoreComposerFocus";
-import { remainingDraft } from "./composerRelease";
+import { mergeFailedDraft, remainingDraft, syncAttachmentTokens } from "./composerRelease";
 import { formatTokens } from "./sessionStats";
 import {
 	argHintLabel,
@@ -454,13 +454,19 @@ export function Composer({
 		if (!m) return null;
 		return { query: m[1], start: beforeCursor.length - m[1].length - 1 };
 	}, [text, cursorPos]);
+	// Esc / outside click dismisses the @ menu for the token it was opened on;
+	// it stays closed until that token is gone (a new `@` reopens it).
+	const [atDismissedStart, setAtDismissedStart] = useState<number | null>(null);
+	useEffect(() => {
+		if (!atToken && atDismissedStart !== null) setAtDismissedStart(null);
+	}, [atToken, atDismissedStart]);
 	const atMenu = useMemo(() => {
-		if (!atToken || !atFiles) return [];
+		if (!atToken || !atFiles || atDismissedStart === atToken.start) return [];
 		const q = atToken.query.toLowerCase();
 		return atFiles
 			.filter((p) => !q || p.toLowerCase().includes(q))
 			.slice(0, 10);
-	}, [atToken, atFiles]);
+	}, [atToken, atFiles, atDismissedStart]);
 	useEffect(() => {
 		if (atToken && atFiles === null) {
 			const cwd = sessionMeta?.cwd;
@@ -543,13 +549,11 @@ export function Composer({
 
 	// When a plan-mode turn yields, surface the produced plan in the
 	// right-side 计划 tab (once per streaming round).
-	const planPanelOpenedForTurn = useRef(false);
+	const prevStreamingRef = useRef(streaming);
 	useEffect(() => {
-		if (streaming) planPanelOpenedForTurn.current = false;
-		else if (planMode && !planPanelOpenedForTurn.current) {
-			planPanelOpenedForTurn.current = true;
-			useUi.getState().setRightTab("plan");
-		}
+		const wasStreaming = prevStreamingRef.current;
+		prevStreamingRef.current = streaming;
+		if (wasStreaming && !streaming && planMode) useUi.getState().setRightTab("plan");
 	}, [streaming, planMode]);
 
 	/** Attach one filesystem path: images go to the gallery, text files are
@@ -853,7 +857,7 @@ export function Composer({
 		ro.observe(el);
 		return () => ro.disconnect();
 	}, []);
-	const modelLabel = current.label || sessionMeta?.model || (models === null ? "加载中…" : "选择模型…");
+	const modelLabel = current.label || sessionMeta?.model || (models === null ? "加载中" : "选择模型");
 	const thinkingKind = thinkingChipState(thinkingLevels, currentModelOption?.reasoning).kind;
 	const toolbarTier = pickToolbarTier({
 		width: toolbarWidth,
@@ -906,17 +910,29 @@ export function Composer({
 	useEffect(() => {
 		const ta = taRef.current;
 		if (!ta) return;
-		ta.style.height = "auto";
-		const minH = compact ? 22 : 26;
-		const maxH = 220;
-		const nextH = Math.min(Math.max(ta.scrollHeight, minH), maxH);
-		ta.style.height = `${nextH}px`;
-		ta.style.overflowY = ta.scrollHeight > maxH ? "auto" : "hidden";
-		if (backdropRef.current) {
-			backdropRef.current.style.height = `${nextH}px`;
-			backdropRef.current.scrollTop = ta.scrollTop;
-		}
-	}, [text, compact]);
+		const fit = () => {
+			ta.style.height = "auto";
+			const minH = compact ? 22 : 26;
+			const maxH = 220;
+			const nextH = Math.min(Math.max(ta.scrollHeight, minH), maxH);
+			ta.style.height = `${nextH}px`;
+			ta.style.overflowY = ta.scrollHeight > maxH ? "auto" : "hidden";
+			if (backdropRef.current) {
+				backdropRef.current.style.height = `${nextH}px`;
+				backdropRef.current.scrollTop = ta.scrollTop;
+			}
+		};
+		fit();
+		// Width changes (window resize, side panel) re-wrap the text without touching it.
+		let lastWidth = ta.clientWidth;
+		const ro = new ResizeObserver(() => {
+			if (ta.clientWidth === lastWidth) return;
+			lastWidth = ta.clientWidth;
+			fit();
+		});
+		ro.observe(ta);
+		return () => ro.disconnect();
+	}, [text, compact, chipIndent]);
 	/** Registry-facing hooks: pickers, text insertion. Fresh closure per call
 	 * so executors always see current state. */
 	const makeSlashDeps = (): SlashDeps => ({
@@ -941,10 +957,10 @@ export function Composer({
 		const src = ctx?.text ?? text;
 		if (!tok) return;
 		setArgHintLine(null);
-		if (item.argHint && isSkillChip({ name: item.name, title: "" })) {
+		if (isSkillChip({ name: item.name, title: "" })) {
 			// Skill: the token lives right where `/query` was typed.
 			const next = insertChipAt(
-				{ name: item.name, title: item.title || item.name, argHint: item.argHint },
+				{ name: item.name, title: item.title || item.name, ...(item.argHint ? { argHint: item.argHint } : {}) },
 				src,
 				tok.start,
 				tok.end,
@@ -1065,6 +1081,18 @@ export function Composer({
 			}
 		}, 0);
 	};
+	/** ▶ resume: guarded by `busy` so a double click cannot send two Continues. */
+	const resumeTurn = async () => {
+		if (busy) return;
+		setBusy(true);
+		try {
+			await sendPrompt(sessionId, "Continue");
+		} catch (err) {
+			if (!isResumeCancelled(err)) toast.error(`恢复失败: ${errMsg(err)}`);
+		} finally {
+			setBusy(false);
+		}
+	};
 	const submit = async (action: FollowUpAction) => {
 		const raw = text;
 		if (!hasPayload || busy) return;
@@ -1105,20 +1133,34 @@ export function Composer({
 				);
 				if (outcome === "keep") return;
 				if (outcome === null) {
-					// Unknown `/x`: send to omp so its own builtins still run.
+					// Unknown `/x`: send to omp so its own builtins still run. The
+					// command stays first; file markers and quote blocks follow it.
 					pushHistory(trimmedRaw);
+					const slashFiles = useComposer.getState().files[sessionId] ?? [];
+					const command = expandFilesForSend(
+						expandImagesForSend(trimmedMasked, slashImages, "suffix"),
+						slashFiles,
+						"suffix",
+					);
+					const quoteBlocks = formatWithAnnotations("", textAnnotations);
 					await sendSlashPrompt(
 						sessionId,
-						expandImagesForSend(trimmedMasked, slashImages, "suffix"),
+						quoteBlocks ? `${command.trimEnd()}\n\n${quoteBlocks}` : command,
 						slashAttachments,
 					);
+					finishPrivacySend();
+					setChip(null);
+					clearDraft(sessionId);
+					clearAnnotations(sessionId);
+					clearImages(sessionId);
+					clearFiles(sessionId);
+				} else {
+					// A native command ran: nothing was sent, so attachments and
+					// quotes stay for the next real message.
+					finishPrivacySend();
+					setChip(null);
+					clearDraft(sessionId);
 				}
-				finishPrivacySend();
-				setChip(null);
-				clearDraft(sessionId);
-				clearAnnotations(sessionId);
-				clearImages(sessionId);
-				clearFiles(sessionId);
 			} catch (err) {
 				if (!isResumeCancelled(err))
 					toast.error(`发送失败: ${errMsg(err)}`);
@@ -1129,27 +1171,10 @@ export function Composer({
 		}
 		let outgoingRaw = expandImagesForSend(maskedRaw, currentSessionImages);
 
-		// Convert `📎#N` to `[文件 #N: <real path>]` — omp reads the file itself.
+		// Convert `📎#N` to `[文件 #N: <real path>]` — omp reads the file itself;
+		// deleted tokens still ship their path so nothing silently drops out.
 		const currentSessionFiles = useComposer.getState().files[sessionId] ?? [];
-		outgoingRaw = outgoingRaw.replace(/📎\s*#(\d+)/gu, (_match, numStr) => {
-			const n = parseInt(numStr, 10);
-			const f = currentSessionFiles[n - 1];
-			return f?.path ? `[文件 #${n}: ${f.path}]` : `[文件 #${n}]`;
-		});
-		// Same missing-token safety as images: deleted 📎#N tokens still ship
-		// their path so nothing silently drops out of the prompt.
-		const missingFiles = currentSessionFiles.filter((_f, i) => {
-			const n = i + 1;
-			return !outgoingRaw.includes(`[文件 #${n}`);
-		});
-		if (missingFiles.length > 0) {
-			const missingMarkers = missingFiles
-				.map((f) => `[文件 #${currentSessionFiles.indexOf(f) + 1}: ${f.path}]`)
-				.join(" ");
-			outgoingRaw = outgoingRaw.trim()
-				? `${missingMarkers} ${outgoingRaw}`
-				: missingMarkers;
-		}
+		outgoingRaw = expandFilesForSend(outgoingRaw, currentSessionFiles);
 
 		const imageAttachments: ImageAttachment[] = currentSessionImages.map((img, i) => ({
 			id: img.id || `img-${i + 1}`,
@@ -1212,9 +1237,24 @@ export function Composer({
 		};
 		const restoreComposer = () => {
 			if (!released) return;
-			if (!useComposer.getState().drafts[sessionId]) setDraft(sessionId, raw);
-			useComposer.getState().setImages(sessionId, currentSessionImages);
-			useComposer.getState().setFiles(sessionId, currentSessionFiles);
+			const store = useComposer.getState();
+			const cur = store.drafts[sessionId] ?? "";
+			// Typed while the send was in flight: the original goes first, the
+			// newer draft follows with its attachment tokens shifted past ours.
+			setDraft(
+				sessionId,
+				cur === raw
+					? raw
+					: mergeFailedDraft(raw, cur, currentSessionImages.length, currentSessionFiles.length),
+			);
+			store.setImages(sessionId, [
+				...currentSessionImages,
+				...(store.images[sessionId] ?? []).filter((i) => !currentSessionImages.includes(i)),
+			]);
+			store.setFiles(sessionId, [
+				...currentSessionFiles,
+				...(store.files[sessionId] ?? []).filter((f) => !currentSessionFiles.includes(f)),
+			]);
 			for (const { id: _id, ...a } of prevAnnotations) addAnnotation(sessionId, a);
 		};
 		try {
@@ -1302,7 +1342,7 @@ export function Composer({
 
 		// Remove token for this image from text: `🖼️ #1` or `[Image #1]`
 		const tokenRe = new RegExp(
-			`\\s*(?:🖼️\\s*#${num}|\\[(?:Image|图片)\\s*#${num}(?:,[^\\]]*)?(?::[^\\]]*)?\\])\\s*`,
+			`\\s*(?:🖼️\\s*#${num}(?!\\d)|\\[(?:Image|图片)\\s*#${num}(?:,[^\\]]*)?(?::[^\\]]*)?\\])\\s*`,
 			"gu",
 		);
 		let nextText = textToUse.replace(tokenRe, " ").trim();
@@ -1326,7 +1366,7 @@ export function Composer({
 
 		// Remove token for this file from text: `📎 #1` or `[文件 #1: ...]`
 		const tokenRe = new RegExp(
-			`\\s*(?:📎\\s*#${num}|\\[(?:File|文件)\\s*#${num}(?::[^\\]]*)?\\])\\s*`,
+			`\\s*(?:📎\\s*#${num}(?!\\d)|\\[(?:File|文件)\\s*#${num}(?::[^\\]]*)?\\])\\s*`,
 			"gu",
 		);
 		let nextText = textToUse.replace(tokenRe, " ").trim();
@@ -1435,7 +1475,11 @@ export function Composer({
 		}
 	};
 
+	const hasDraggedFiles = (e: React.DragEvent) =>
+		Array.from(e.dataTransfer?.types ?? []).includes("Files");
+
 	const onDragOver = (e: React.DragEvent<HTMLTextAreaElement>) => {
+		if (!hasDraggedFiles(e)) return;
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(true);
@@ -1452,6 +1496,7 @@ export function Composer({
 	 * that carry File objects. Bytes go through processPastedFile — a docx is
 	 * never inlined as text. */
 	const onDrop = async (e: React.DragEvent<HTMLTextAreaElement>) => {
+		if (!hasDraggedFiles(e)) return;
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
@@ -1533,7 +1578,7 @@ export function Composer({
 	});
 	useEffect(() => {
 		const hitTest = (pos: { x: number; y: number }) => {
-			const ta = taRef.current;
+			const ta = composerCardRef.current;
 			if (!ta) return false;
 			// Drag-drop positions are physical pixels.
 			const scale = window.devicePixelRatio || 1;
@@ -1682,7 +1727,7 @@ export function Composer({
 			if (ta && ta.selectionStart === ta.selectionEnd) {
 				const pos = ta.selectionStart;
 				const before = text.slice(0, pos);
-				const match = /(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])\s*$/.exec(before);
+				const match = /(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])[ \t]?$/.exec(before);
 				if (match) {
 					e.preventDefault();
 					const tokenStr = match[0];
@@ -1713,7 +1758,7 @@ export function Composer({
 			if (ta && ta.selectionStart === ta.selectionEnd) {
 				const pos = ta.selectionStart;
 				const after = text.slice(pos);
-				const match = /^\s*(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])/.exec(after);
+				const match = /^[ \t]?(?:🖼️\s*#\d+|📎\s*#\d+|\[(?:Image|图片|File|文件)\s*#\d+(?:,[^\]]*)?\])/.exec(after);
 				if (match) {
 					e.preventDefault();
 					const tokenStr = match[0];
@@ -1755,7 +1800,7 @@ export function Composer({
 			}
 			if (e.key === "Escape") {
 				claimEscape(e);
-				setAtFiles(null);
+				setAtDismissedStart(atToken.start);
 				return;
 			}
 		}
@@ -2176,27 +2221,26 @@ export function Composer({
 							setMenuDismissed(false);
 							setArgHintLine(null);
 							if (historyIdx !== -1) setHistoryIdx(-1);
-							// Sync composerImages/composerFiles if tokens were deleted from text
+							// Tokens deleted by selection/cut: drop their attachments and
+							// renumber the survivors so #N keeps pointing at the same one.
 							const curImages = useComposer.getState().images[sessionId] ?? [];
-							if (curImages.length > 0) {
-								const remainingTokens = parseInlineImages(next);
-								const presentIndices = new Set(remainingTokens.map((t) => t.index));
-								if (curImages.some((_, idx) => !presentIndices.has(idx + 1))) {
-									const filtered = curImages.filter((_, idx) =>
-										presentIndices.has(idx + 1),
-									);
-									useComposer.getState().setImages(sessionId, filtered);
-								}
-							}
 							const curFiles = useComposer.getState().files[sessionId] ?? [];
-							if (curFiles.length > 0) {
-								const remainingTokens = parseInlineFiles(next);
-								const presentIndices = new Set(remainingTokens.map((t) => t.index));
-								if (curFiles.some((_, idx) => !presentIndices.has(idx + 1))) {
-									const filtered = curFiles.filter((_, idx) =>
-										presentIndices.has(idx + 1),
-									);
-									useComposer.getState().setFiles(sessionId, filtered);
+							if (curImages.length > 0 || curFiles.length > 0) {
+								const sync = syncAttachmentTokens(next, curImages.length, curFiles.length);
+								const store = useComposer.getState();
+								if (sync.images) {
+									store.setImages(sessionId, sync.images.map((i) => curImages[i]));
+								}
+								if (sync.files) {
+									store.setFiles(sessionId, sync.files.map((i) => curFiles[i]));
+								}
+								if (sync.text !== next) {
+									const ta = e.target;
+									const caret = Math.min(ta.selectionStart ?? sync.text.length, sync.text.length);
+									setText(sync.text);
+									setDraft(sessionId, sync.text);
+									setCursorPos(caret);
+									setTimeout(() => ta.setSelectionRange(caret, caret), 0);
 								}
 							}
 						}}
@@ -2489,7 +2533,7 @@ export function Composer({
 									type="button"
 									onClick={() => {
 										if (resumeMode) {
-											void sendPrompt(sessionId, "Continue");
+											void resumeTurn();
 										} else {
 											void submit("send");
 										}
@@ -2528,7 +2572,7 @@ export function Composer({
 					placement="top-start"
 					offset={6}
 					layer="popover"
-					onDismiss={() => setMenuDismissed(true)}
+					onDismiss={() => atToken && setAtDismissedStart(atToken.start)}
 					className="max-h-64 overflow-y-auto overflow-x-hidden rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)] p-1 w-[min(calc(100vw-32px),600px)]"
 				>
 					{atMenu.map((p, i) => (
@@ -2546,7 +2590,7 @@ export function Composer({
 									: "text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))]",
 							)}
 						>
-							<span className="truncate font-mono">{p}</span>
+							<span className="min-w-0 break-all font-mono" title={p}>{p}</span>
 						</button>
 					))}
 				</FloatingLayer>

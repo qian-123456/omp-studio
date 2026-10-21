@@ -57,27 +57,80 @@ export function quoteNeedles(quote: string): string[] {
 	return needles;
 }
 
+/** Normalised-text start index of every non-overlapping `needle` match. */
+function needleMatches(hayText: string, needle: string): number[] {
+	const out: number[] = [];
+	for (let i = hayText.indexOf(needle); i >= 0; i = hayText.indexOf(needle, i + needle.length)) {
+		out.push(i);
+	}
+	return out;
+}
+
 /**
  * Finds `quote` inside `haystack` ignoring whitespace differences (newlines vs
  * spaces, runs of spaces, leading/trailing space). Tries the full first line
  * first, then shorter prefixes. Returns raw `[start, end)` offsets into
- * `haystack`, or null when nothing matches.
+ * `haystack`, or null when nothing matches. `occurrence` (0-based, recorded
+ * when the quote was captured) picks among repeated matches; annotations saved
+ * without it, or whose message no longer has that many matches, use the first.
  */
 export function locateQuote(
 	haystack: string,
 	quote: string,
+	occurrence?: number,
 ): { start: number; end: number } | null {
 	const needles = quoteNeedles(quote);
 	if (needles.length === 0) return null;
 	const hay = normalizeWithMap(haystack);
 	for (const needle of needles) {
-		const idx = hay.text.indexOf(needle);
-		if (idx < 0) continue;
+		const matches = needleMatches(hay.text, needle);
+		if (matches.length === 0) continue;
+		const idx = matches[occurrence !== undefined && occurrence < matches.length ? occurrence : 0];
 		return {
 			start: hay.map[idx],
 			// The last matched char is non-whitespace, so +1 is its exact raw end.
 			end: hay.map[idx + needle.length - 1] + 1,
 		};
+	}
+	return null;
+}
+
+/**
+ * Which repeated match of `quote` the user selected: the number of earlier
+ * matches before raw offset `rawStart` of `text`. Undefined when the quote
+ * occurs at most once (nothing to disambiguate).
+ */
+export function quoteOccurrence(text: string, quote: string, rawStart: number): number | undefined {
+	const needle = quoteNeedles(quote)[0];
+	if (!needle) return undefined;
+	const hay = normalizeWithMap(text);
+	const matches = needleMatches(hay.text, needle);
+	if (matches.length < 2) return undefined;
+	// A selection may begin on whitespace before the first quoted character.
+	let start = rawStart;
+	while (start < text.length && SPACE_RE.test(text[start])) start++;
+	let before = 0;
+	for (const idx of matches) {
+		if (hay.map[idx] < start) before++;
+	}
+	return Math.min(before, matches.length - 1);
+}
+
+/** Raw offset of a DOM boundary inside the concatenated segment text, or null. */
+export function segmentOffset(
+	segments: readonly TextSegment<Text>[],
+	node: Node,
+	offset: number,
+): number | null {
+	const seg = segments.find((s) => s.node === node);
+	if (seg) return seg.start + offset;
+	if (node.nodeType === Node.ELEMENT_NODE) {
+		// Boundary between children: use the first text segment at/after it.
+		const child = node.childNodes[offset];
+		const next = segments.find(
+			(s) => child && (child === s.node || child.contains(s.node)),
+		);
+		if (next) return next.start;
 	}
 	return null;
 }

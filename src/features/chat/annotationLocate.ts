@@ -11,12 +11,25 @@ const MAX_WAIT_MS = 1500;
 
 let clearTimer = 0;
 
+/**
+ * Occurrence hints for 「定位到原消息」: the locate request travels through the
+ * live store as (itemId, quote) only, so the annotation's recorded occurrence
+ * is parked here, keyed the same way, until the quote is located.
+ */
+const occurrenceHints = new Map<string, number>();
+const hintKey = (itemId: string, quote: string) => `${itemId}\u0000${quote}`;
+
+export function setQuoteOccurrenceHint(itemId: string, quote: string, occurrence?: number): void {
+	if (occurrence === undefined) occurrenceHints.delete(hintKey(itemId, quote));
+	else occurrenceHints.set(hintKey(itemId, quote), occurrence);
+}
+
 /** Range of `quote` inside the rendered message `msg-<itemId>`, or null. */
 export function findQuoteRange(itemId: string, quote: string): Range | null {
 	const el = document.getElementById(`msg-${itemId}`);
 	if (!el) return null;
 	const { text, segments } = collectTextSegments(el);
-	const hit = locateQuote(text, quote);
+	const hit = locateQuote(text, quote, occurrenceHints.get(hintKey(itemId, quote)));
 	return hit ? segmentRange(segments, hit.start, hit.end) : null;
 }
 

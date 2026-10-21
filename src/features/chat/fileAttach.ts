@@ -33,6 +33,33 @@ export function parseInlineFiles(text: string): InlineFileToken[] {
 	return tokens;
 }
 
+/**
+ * Convert `📎#N` into `[文件 #N: <real path>]` (omp reads the file itself), then
+ * add markers for attached files whose token was deleted so nothing silently
+ * drops out of the prompt. `position` keeps a leading `/command` intact when
+ * markers go to the end.
+ */
+export function expandFilesForSend(
+	text: string,
+	files: ReadonlyArray<{ path?: string }>,
+	position: "prefix" | "suffix" = "prefix",
+): string {
+	let out = text.replace(/📎\s*#(\d+)/gu, (_match, numStr: string) => {
+		const n = parseInt(numStr, 10);
+		const path = files[n - 1]?.path;
+		return path ? `[文件 #${n}: ${path}]` : `[文件 #${n}]`;
+	});
+	const missing = files
+		.map((f, i) => ({ f, n: i + 1 }))
+		.filter(({ n }) => !out.includes(`[文件 #${n}`))
+		.map(({ f, n }) => `[文件 #${n}: ${f.path}]`)
+		.join(" ");
+	if (!missing) return out;
+	if (!out.trim()) return missing;
+	out = position === "prefix" ? `${missing} ${out}` : `${out.trimEnd()} ${missing}`;
+	return out;
+}
+
 /** Byte ranges of every inline file token (caret snapping / atomic delete). */
 export function getFileTokenRanges(content: string): Array<{
 	start: number;

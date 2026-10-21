@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { claimEscape } from "../lib/escapeClaim";
+import { isComposing } from "../lib/hooks";
 
 /**
  * Page-local stacking inside one component (sticky headers, a badge above a
@@ -246,6 +247,9 @@ export interface FloatingLayerProps {
 	onDismiss?: () => void;
 	/** Elements whose clicks must NOT dismiss (typically the trigger button). */
 	ignoreRefs?: RefObject<HTMLElement | null>[];
+	/** Esc pressed inside a text field within this layer is left to that field
+	 * (it cancels its own edit) instead of dismissing the layer. Default: dismiss. */
+	deferEscapeToEditors?: boolean;
 	className?: string;
 	style?: CSSProperties;
 	role?: string;
@@ -256,6 +260,16 @@ export interface FloatingLayerProps {
 }
 
 const LIGHTBOX_SELECTOR = '[data-layer="lightbox"]';
+
+/** True when `target` is a text field / contenteditable inside `root`. */
+function isEditableWithin(target: EventTarget | null, root: HTMLElement | null): boolean {
+	if (!root || !(target instanceof HTMLElement) || !root.contains(target)) return false;
+	return (
+		target instanceof HTMLInputElement ||
+		target instanceof HTMLTextAreaElement ||
+		target.isContentEditable
+	);
+}
 
 /** Modal surfaces: FloatingLayer modal tier plus any ARIA modal dialog. */
 export const MODAL_SELECTOR = '[data-layer="modal"], [aria-modal="true"]';
@@ -283,6 +297,7 @@ export function FloatingLayer({
 	layer = "popover",
 	onDismiss,
 	ignoreRefs,
+	deferEscapeToEditors = false,
 	className,
 	style,
 	children,
@@ -323,6 +338,10 @@ export function FloatingLayer({
 		};
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
+				// Esc that cancels an IME candidate belongs to the IME, not to the layer.
+				if (isComposing({ nativeEvent: e, key: e.key })) return;
+				// An editor inside the layer owns Esc (cancels its own edit) when opted in.
+				if (deferEscapeToEditors && isEditableWithin(e.target, ref.current)) return;
 				// Escape closes the topmost lightbox first; it handles the key itself.
 				if (document.querySelector(LIGHTBOX_SELECTOR)) return;
 				// A modal stacked above this layer owns Escape (its own cancel handler must receive it).
@@ -338,7 +357,7 @@ export function FloatingLayer({
 			document.removeEventListener("mousedown", onDown, true);
 			document.removeEventListener("keydown", onKey, true);
 		};
-	}, [anchor, onDismiss, ignoreRefs]);
+	}, [anchor, onDismiss, ignoreRefs, deferEscapeToEditors]);
 
 	if (!anchor || (isHovercard && modalOpen)) return null;
 	return createPortal(

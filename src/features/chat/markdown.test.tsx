@@ -63,3 +63,32 @@ describe("Markdown inline HTML", () => {
 		expect(out).not.toContain('href="/a/b.md"');
 	});
 });
+
+describe("Markdown links and finished visualize fences", () => {
+	it("keeps file:// hrefs so the file-preview branch can run", () => {
+		const out = html("[a.md](file:///Users/me/a.md)");
+		expect(out).toContain('href="file:///Users/me/a.md"');
+	});
+	it("still strips javascript: and data: hrefs", () => {
+		const out = html("[x](javascript:alert(1)) [y](data:text/html;base64,AAAA)");
+		expect(out).not.toContain("javascript:");
+		expect(out).not.toContain("data:text");
+		expect(out).not.toContain("<a");
+	});
+	it("keeps data:image sources", () => {
+		const out = html("![p](data:image/png;base64,AAAA)");
+		expect(out).toContain('src="data:image/png;base64,AAAA"');
+	});
+	it("shows an unclosed visualize fence of a finished message as code", () => {
+		const out = html("```visualize\n<div>half");
+		expect(out).not.toContain("正在生成可视化");
+		expect(out).toContain("&lt;div&gt;half");
+	});
+	it("export mode expands long code without controls", () => {
+		const code = Array.from({ length: 30 }, (_, i) => `line${i}`).join("\n");
+		const out = renderToStaticMarkup(<Markdown text={"```ts\n" + code + "\n```"} exportMode />);
+		expect(out).toContain("line29");
+		expect(out).not.toContain("展开剩余");
+		expect(out).not.toContain("<button");
+	});
+});

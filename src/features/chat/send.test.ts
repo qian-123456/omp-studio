@@ -35,7 +35,8 @@ import type * as EnsureLiveModule from "../../lib/ensureLive";
 import { ResumeCancelledError, isResumeCancelled } from "../../lib/ensureLive";
 import { emptySessionLive, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
-import { sendPrompt } from "./send";
+import { useComposer } from "../../stores/composer";
+import { abortTurn, sendPrompt, useAbortState } from "./send";
 
 const SID = "s1";
 const echoes = () => useLive.getState().sessions[SID]?.pendingUserEchoes ?? [];
@@ -78,5 +79,25 @@ describe("sendPrompt rollback", () => {
 		expect(isResumeCancelled(err)).toBe(true);
 		expect(echoes()).toHaveLength(0);
 		expect(rpcSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("abortTurn", () => {
+	it("hands queued steer text back to the composer draft and drops its echo", async () => {
+		vi.stubGlobal("window", globalThis);
+		useLive.setState({ sessions: { [SID]: { ...emptySessionLive(), alive: true, streaming: true } } });
+		useLive.getState().addUserEcho(SID, "steer me", undefined, true);
+		useComposer.setState({ drafts: {} });
+		rpcSend.mockResolvedValueOnce({
+			type: "response",
+			command: "abort_and_restore_queue",
+			success: true,
+			data: { steering: [{ text: "steer me" }], followUp: [] },
+		});
+		await abortTurn(SID);
+		expect(rpcSend).toHaveBeenCalledWith(SID, { type: "abort_and_restore_queue" });
+		expect(echoes()).toHaveLength(0);
+		expect(useComposer.getState().drafts[SID]).toBe("steer me");
+		useAbortState.getState().setAborting(SID, false);
 	});
 });

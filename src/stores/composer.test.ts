@@ -241,3 +241,14 @@ describe("pruneSessions", () => {
 		expect(c().focusNonce).toEqual({ keep: 2 });
 	});
 });
+
+describe("file attachment persistence", () => {
+	it("writes files to localStorage like images", () => {
+		useComposer.getState().addFile("sess-p", "/tmp/a.txt", "a.txt");
+		const saved = JSON.parse(mem.get("omp_composer_files") ?? "{}");
+		expect(saved["sess-p"]).toHaveLength(1);
+		expect(saved["sess-p"][0].path).toBe("/tmp/a.txt");
+		useComposer.getState().clearFiles("sess-p");
+		expect(JSON.parse(mem.get("omp_composer_files") ?? "{}")["sess-p"]).toBeUndefined();
+	});
+});

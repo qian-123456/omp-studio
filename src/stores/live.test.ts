@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isFlowBusy, makeUserEcho, pruneRemovedSessions, queuedEchoIds, useLive } from "./live";
+import { useComposer } from "./composer";
 
 const SID = "s1";
 
@@ -873,5 +874,76 @@ describe("live retention", () => {
 		useLive.getState().reduceFrame({ sessionId: "c", frame: { type: "agent_start" } });
 		pruneRemovedSessions(["a", "c", "unknown"]);
 		expect(Object.keys(useLive.getState().sessions)).toEqual(["b"]);
+	});
+});
+
+describe("live reducer — echo reconcile, stop and skill prompts", () => {
+	const userItem = (id: string, text: string) =>
+		({
+			id,
+			parentId: null,
+			ts: "t",
+			kind: "user",
+			text,
+			thinking: null,
+			toolCalls: [],
+			toolResult: null,
+			usage: null,
+			model: null,
+			stopReason: null,
+			hidden: false,
+		}) as never;
+
+	it("reconcile prefers the exact echo over an earlier substring echo", () => {
+		frame({ type: "agent_start" });
+		useLive.getState().addUserEcho(SID, "通过", undefined, true);
+		useLive.getState().addUserEcho(SID, "我们要核对一下事实信息: 通过", undefined, true);
+		const [stale, full] = live().pendingUserEchoes.map((e) => e.id);
+		useLive.getState().appendItems(SID, [userItem("u1", "我们要核对一下事实信息: 通过")], 1);
+		expect(live().pendingUserEchoes.map((e) => e.id)).toEqual([stale]);
+		expect(live().pendingUserEchoes.map((e) => e.id)).not.toContain(full);
+	});
+
+	it("a held echo omp no longer lists is dropped and restored to the draft on aborted agent_end", () => {
+		useComposer.setState({ drafts: {} });
+		frame({ type: "agent_start" });
+		useLive.getState().addUserEcho(SID, "steer me", undefined, true);
+		useLive.getState().addUserEcho(SID, "still queued", undefined, true);
+		frame({ type: "queue_update", steering: ["still queued"], followUp: [], liveSteered: 0 });
+		frame({
+			type: "agent_end",
+			isTerminal: true,
+			messages: [{ role: "assistant", stopReason: "aborted" }],
+		});
+		expect(live().pendingUserEchoes.map((e) => e.text)).toEqual(["still queued"]);
+		expect(useComposer.getState().drafts[SID]).toBe("steer me");
+	});
+
+	it("a normal agent_end keeps held echoes", () => {
+		frame({ type: "agent_start" });
+		useLive.getState().addUserEcho(SID, "later", undefined, true);
+		frame({
+			type: "agent_end",
+			isTerminal: true,
+			messages: [{ role: "assistant", stopReason: "stop" }],
+		});
+		expect(live().pendingUserEchoes).toHaveLength(1);
+	});
+
+	it("a custom skill-prompt message marks the held echo delivered", () => {
+		frame({ type: "agent_start" });
+		useLive.getState().addUserEcho(SID, "/skill:grill-me check facts", undefined, true);
+		const id = live().pendingUserEchoes[0].id;
+		expect(queuedEchoIds(live()).has(id)).toBe(true);
+		frame({
+			type: "message_start",
+			message: {
+				role: "custom",
+				customType: "skill-prompt",
+				content: "skill body",
+				details: { prompt: "/skill:grill-me check facts" },
+			},
+		});
+		expect(queuedEchoIds(live()).has(id)).toBe(false);
 	});
 });

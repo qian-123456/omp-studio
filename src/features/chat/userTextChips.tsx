@@ -56,9 +56,9 @@ export function renderUserTextWithChips(
 		// Mid-text skill: text before, token, text after.
 		if (lead.tail !== undefined) {
 			return [
-				...renderUserTextWithChipsBody(lead.rest, onOpen),
+				...renderUserTextWithChipsBody(lead.rest, onOpen, "pre-"),
 				badge,
-				...renderUserTextWithChipsBody(lead.tail, onOpen),
+				...renderUserTextWithChipsBody(lead.tail, onOpen, "post-"),
 			];
 		}
 		return [badge, ...renderUserTextWithChipsBody(lead.rest, onOpen)];
@@ -69,6 +69,7 @@ export function renderUserTextWithChips(
 function renderUserTextWithChipsBody(
 	cleaned: string,
 	onOpen: (markerNum: number) => void,
+	keyPrefix = "",
 ): React.ReactNode[] {
 	const parts: React.ReactNode[] = [];
 	// Merge image + file markers, ordered by position.
@@ -83,21 +84,34 @@ function renderUserTextWithChipsBody(
 	let last = 0;
 	for (const { at, len, kind, m } of markers) {
 		if (at < last) continue; // overlapping alternative — keep the earlier one
-		if (at > last) parts.push(<PrivacyText key={`t-${last}`} text={cleaned.slice(last, at)} />);
+		if (at > last) parts.push(<PrivacyText key={`${keyPrefix}t-${last}`} text={cleaned.slice(last, at)} />);
 		const num = Number.parseInt(m[1] ?? m[2] ?? m[3] ?? "1", 10) || 1;
 		const palette = getImageTokenPalette(num);
 		if (kind === "file") {
 			const path = m[2]?.trim();
+			if (!path) {
+				// No path to open: a button would be dead, so show a plain token.
+				parts.push(
+					<span
+						key={`${keyPrefix}file-${at}`}
+						title={`文件 #${num}`}
+						className="mx-0.5 inline align-baseline"
+						style={{ color: palette.hex }}
+					>
+						{`📎#${num}`}
+					</span>,
+				);
+				last = at + len;
+				continue;
+			}
 			parts.push(
 				<button
-					key={`file-${at}`}
+					key={`${keyPrefix}file-${at}`}
 					type="button"
 					onClick={() => {
-						if (path) {
-							void openPath(path).catch((e: unknown) =>
-								toast.error(`打开文件失败: ${errMsg(e)}`),
-							);
-						}
+						void openPath(path).catch((e: unknown) =>
+							toast.error(`打开文件失败: ${errMsg(e)}`),
+						);
 					}}
 					title={path ? `打开文件 #${num}：${path}` : `文件 #${num}`}
 					className="mx-0.5 inline cursor-pointer align-baseline hover:opacity-80"
@@ -114,7 +128,7 @@ function renderUserTextWithChipsBody(
 		} else {
 			parts.push(
 				<button
-					key={`img-${at}`}
+					key={`${keyPrefix}img-${at}`}
 					type="button"
 					onClick={() => onOpen(num)}
 					title={`查看图片 #${num}`}
@@ -132,6 +146,6 @@ function renderUserTextWithChipsBody(
 		}
 		last = at + len;
 	}
-	if (last < cleaned.length) parts.push(<PrivacyText key={`t-${last}`} text={cleaned.slice(last)} />);
+	if (last < cleaned.length) parts.push(<PrivacyText key={`${keyPrefix}t-${last}`} text={cleaned.slice(last)} />);
 	return parts;
 }

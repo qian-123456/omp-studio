@@ -34,7 +34,7 @@ function renderMenu(planMode = false) {
 describe("AddMenuPopover", () => {
 	it("renders every title in Chinese", () => {
 		renderMenu();
-		for (const title of ["添加", "文件和文件夹", "Finder 选中项", "在项目中工作", "目标", "规划模式", "草图"]) {
+		for (const title of ["添加", "文件", "Finder 选中项", "在项目中工作", "目标", "规划模式", "草图"]) {
 			expect(screen.getByText(title)).toBeTruthy();
 		}
 		// No leftover English labels from the Codex menu this was modeled on.

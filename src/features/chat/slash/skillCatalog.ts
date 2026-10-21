@@ -12,7 +12,9 @@ export function skillCommandsFromCatalog(skills: SkillItem[]): SlashCommand[] {
 		const name = `skill:${s.name}`;
 		if (!s.name || seen.has(name)) continue;
 		seen.add(name);
-		out.push({ name, description: s.description || undefined, source: "skill" });
+		// Same hint omp advertises for skills: choosing one starts a skill chip that
+		// waits for the user's arguments instead of sending a bare `/skill:x`.
+		out.push({ name, description: s.description || undefined, hint: "arguments", source: "skill" });
 	}
 	return out;
 }

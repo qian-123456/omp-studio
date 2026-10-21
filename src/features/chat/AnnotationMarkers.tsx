@@ -47,6 +47,7 @@ interface MarkerSource {
 	n: number;
 	itemId: string;
 	quote: string;
+	occurrence?: number;
 	title: string;
 	kind: MarkerKind;
 }
@@ -80,6 +81,7 @@ function messageMarkerSources(
 			n,
 			itemId: a.itemId,
 			quote: a.text,
+			occurrence: a.occurrence,
 			title: `${KIND_TITLE[kind]} ${n}：${label}`,
 			kind,
 		});
@@ -120,6 +122,22 @@ interface ItemText {
 	segments: TextSegment<Text>[];
 }
 
+/** True when `rect` lies entirely outside a scroll/clip ancestor of the range, up to `stop`. */
+function isClippedWithin(range: Range, rect: DOMRect, stop: HTMLElement): boolean {
+	const start = range.startContainer;
+	let el: Element | null = start instanceof Element ? start : start.parentElement;
+	for (; el && el !== stop; el = el.parentElement) {
+		const style = getComputedStyle(el);
+		const clipsY = style.overflowY !== "visible";
+		const clipsX = style.overflowX !== "visible";
+		if (!clipsY && !clipsX) continue;
+		const box = el.getBoundingClientRect();
+		if (clipsY && (rect.top >= box.bottom || rect.bottom <= box.top)) return true;
+		if (clipsX && (rect.left >= box.right || rect.right <= box.left)) return true;
+	}
+	return false;
+}
+
 /**
  * Lays out every marker against the current DOM. Items not rendered (virtualized
  * out), quotes not found, and quotes whose text is hidden (collapsed content)
@@ -148,7 +166,7 @@ function measureMarkers(
 		}
 		if (!item) continue;
 
-		const hit = locateQuote(item.text, src.quote);
+		const hit = locateQuote(item.text, src.quote, src.occurrence);
 		if (!hit) continue;
 		const range = segmentRange(item.segments, hit.start, hit.end);
 		if (!range) continue;
@@ -158,6 +176,9 @@ function measureMarkers(
 			Array.from(range.getClientRects()).find((r) => r.width > 0) ??
 			range.getBoundingClientRect();
 		if (first.width === 0 && first.height === 0) continue;
+		// Text clipped by a collapsed code block (overflow-hidden) still has
+		// client rects; the badge would float over whatever sits below the clip.
+		if (isClippedWithin(range, first, item.el)) continue;
 		ranges.push(range);
 
 		// Centered over the quote's first character, just above its line, and

@@ -85,7 +85,7 @@ function useHoverCard() {
 	);
 
 	const enterProps = (e: React.MouseEvent<HTMLElement>) => enter(e.currentTarget);
-	const clickProps = (e: React.MouseEvent<HTMLElement>) => toggle(e.currentTarget);
+	const clickProps = (e: { currentTarget: HTMLElement }) => toggle(e.currentTarget);
 
 	const cardProps = {
 		onMouseEnter: () => clearTimeout(closeTimer.current),
@@ -258,6 +258,12 @@ export function RequestStatsLine({
 				onMouseEnter={enterProps}
 				onMouseLeave={cardProps.onMouseLeave}
 				onClick={clickProps}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						clickProps(e);
+					}
+				}}
 				role="button"
 				tabIndex={0}
 				aria-label="查看这次模型请求的统计说明"

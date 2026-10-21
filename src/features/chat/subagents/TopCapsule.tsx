@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { Bot, Check, ChevronDown, ChevronUp, Clock, X } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { claimEscape } from "../../../lib/escapeClaim";
+import { claimEscape, isEscapeClaimed } from "../../../lib/escapeClaim";
 import type { SubagentInfo } from "../../../stores/live";
 import { useUi } from "../../../stores/ui";
 import { useSettings } from "../../settings/store";
@@ -295,18 +295,28 @@ export function TopCapsule() {
 			if (t instanceof Element && t.closest('[data-layer]')) return;
 			setOpen(false);
 		};
+		// Bubble phase: surfaces that own Esc (ask panel, approval card,
+		// composer menus) claim it first; only act on unclaimed Esc pressed
+		// from the panel itself or from nowhere in particular.
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
+			if (e.key !== "Escape" || isEscapeClaimed(e)) return;
 			if (document.querySelector('[data-layer="lightbox"], [data-layer="modal"], [aria-modal="true"]')) return;
-			e.stopPropagation();
+			const active = document.activeElement;
+			if (
+				active &&
+				active !== document.body &&
+				!anchorRef.current?.contains(active)
+			) {
+				return;
+			}
 			claimEscape(e);
 			setOpen(false);
 		};
 		document.addEventListener("mousedown", onDown, true);
-		document.addEventListener("keydown", onKey, true);
+		document.addEventListener("keydown", onKey);
 		return () => {
 			document.removeEventListener("mousedown", onDown, true);
-			document.removeEventListener("keydown", onKey, true);
+			document.removeEventListener("keydown", onKey);
 		};
 	}, [open, sheetId]);
 
@@ -353,7 +363,7 @@ export function TopCapsule() {
 			)}
 			{open && (
 				<div
-					role="dialog"
+					role="region"
 					aria-label="子代理状态"
 					className="liquid-glass pointer-events-auto w-[400px] max-w-full p-2 text-[12.5px] text-[var(--text)]"
 				>
@@ -413,6 +423,7 @@ export function TopCapsule() {
 
 			{sheetId && rows[sheetId] && (
 				<SubagentSheet
+					key={sheetId}
 					parentFile={parentFile}
 					row={rows[sheetId]}
 					onClose={() => setSheetId(null)}

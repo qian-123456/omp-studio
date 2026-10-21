@@ -12,8 +12,8 @@
 import { useMemo } from "react";
 import type { ImageAttachment } from "../../lib/contracts";
 import { useHeldItems, useHeldQueue } from "./heldQueue";
-import { sendQueuedNow } from "./QueuedBar";
-import { queuedEchoIds, type UserEcho, useLive } from "../../stores/live";
+import { promoteOmpQueued, removeOmpQueued, sendQueuedNow, useQueuedBusy } from "./QueuedBar";
+import { ompQueueSlot, queuedEchoIds, type UserEcho, useLive } from "../../stores/live";
 import { UserMessageBubble } from "./ExecutionDisclosure";
 
 const EMPTY_ECHOES: UserEcho[] = [];
@@ -21,7 +21,7 @@ const EMPTY_ECHOES: UserEcho[] = [];
 const BUBBLE_CLASS =
 	"min-w-0 max-w-[70%] whitespace-pre-wrap break-words rounded-[22px] bg-[var(--ghost-hover)] px-4 py-2.5 text-[length:var(--chat-user-font-size)] leading-6 text-[var(--text-60)]";
 const ACTION_CLASS =
-	"rounded px-1.5 py-0.5 text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
+	"rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent";
 
 function QueuedBubble({
 	text,
@@ -60,6 +60,7 @@ export function QueuedBubbles({
 	const ompQueue = useLive((s) => s.sessions[sessionId]?.ompQueue);
 	const streaming = useLive((s) => s.sessions[sessionId]?.streaming === true);
 	const held = useHeldItems(sessionId);
+	const busy = useQueuedBusy((s) => s.busy);
 	const remove = useHeldQueue((s) => s.remove);
 	const queuedEchoes = useMemo(() => {
 		if (!ompQueue) return EMPTY_ECHOES;
@@ -69,9 +70,43 @@ export function QueuedBubbles({
 	if (queuedEchoes.length === 0 && held.length === 0) return null;
 	return (
 		<div className={className}>
-			{queuedEchoes.map((e) => (
-				<QueuedBubble key={e.id} text={e.text ?? ""} images={e.images} />
-			))}
+			{queuedEchoes.map((e) => {
+				const slot = ompQueue ? ompQueueSlot(ompQueue, e.text ?? "") : null;
+				const disabled = e.id in busy;
+				return (
+					<QueuedBubble
+						key={e.id}
+						text={e.text ?? ""}
+						images={e.images}
+						actions={
+							slot ? (
+								<>
+									{slot === "followUp" && streaming ? (
+										<button
+											type="button"
+											className={ACTION_CLASS}
+											disabled={disabled}
+											title="移到当前回复之前处理（打断）"
+											onClick={() => void promoteOmpQueued(sessionId, e)}
+										>
+											插队
+										</button>
+									) : null}
+									<button
+										type="button"
+										className={ACTION_CLASS}
+										disabled={disabled}
+										title="从队列移出这条消息，放回输入框"
+										onClick={() => void removeOmpQueued(sessionId, e, slot)}
+									>
+										移出队列
+									</button>
+								</>
+							) : undefined
+						}
+					/>
+				);
+			})}
 			{held.map((item, i) => (
 				<QueuedBubble
 					key={item.id}
@@ -82,6 +117,7 @@ export function QueuedBubbles({
 							<button
 								type="button"
 								className={ACTION_CLASS}
+								disabled={item.id in busy}
 								title={streaming ? "打断当前回复，立即发送这条" : "立即发送这条"}
 								onClick={() => void sendQueuedNow(sessionId, item, streaming)}
 							>
@@ -90,6 +126,7 @@ export function QueuedBubbles({
 							<button
 								type="button"
 								className={ACTION_CLASS}
+								disabled={item.id in busy}
 								title="从队列移除这条消息"
 								onClick={() => remove(sessionId, i)}
 							>

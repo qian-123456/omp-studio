@@ -108,6 +108,7 @@ export function AnswerFooter({
 	answerText,
 	answerTime,
 	answerItemId,
+	compact,
 }: {
 	sessionId: string;
 	cwd: string;
@@ -128,6 +129,9 @@ export function AnswerFooter({
 	answerTime?: string;
 	/** Id of the answer transcript item; enables the share-as-image button. */
 	answerItemId?: string;
+	/** Only the undo / changed-files / commit / fork controls (no copy or share);
+	 * used under a stopped turn that has no answer text. */
+	compact?: boolean;
 }) {
 	const [filesOpen, setFilesOpen] = useState(false);
 	const [undoBusy, setUndoBusy] = useState(false);
@@ -158,12 +162,14 @@ export function AnswerFooter({
 						{answerTime}
 					</span>
 				)}
+				{turnCheckpoint?.undone && (
+					<span className="mr-1.5 shrink-0 self-center px-1 leading-5" title="这一轮的改动已撤回">
+						已撤回
+					</span>
+				)}
 				<div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/answer:opacity-100 focus-within:opacity-100">
 				{turnCheckpoint && (
 					<>
-						{turnCheckpoint.undone && (
-							<span className="px-1 leading-none">已撤回</span>
-						)}
 
 						{!turnCheckpoint.undone && turnCheckpoint.files.length > 0 && (
 							<button
@@ -229,7 +235,7 @@ export function AnswerFooter({
 				)}
 
 				{/* Copy / fork ghost icon buttons */}
-					{answerText && (
+					{!compact && answerText && (
 						<button
 							type="button"
 							onClick={async () => {
@@ -258,7 +264,7 @@ export function AnswerFooter({
 						<BranchIcon />
 					</button>
 
-					{answerItemId && answerText && (
+					{!compact && answerItemId && answerText && (
 						<button
 							type="button"
 							onClick={() =>
@@ -294,7 +300,7 @@ export function AnswerFooter({
 									{f.status}
 								</span>
 								<span
-									className="truncate font-mono text-[var(--text-40)]"
+									className="min-w-0 break-all font-mono text-[var(--text-40)]"
 									title={f.path}
 								>
 									{f.path}

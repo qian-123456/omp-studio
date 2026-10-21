@@ -1,17 +1,45 @@
 import { describe, expect, it } from "vitest";
+import { normalizeMath } from "../mathNormalize";
 import { VIZ_BRIDGE_SOURCE, vizBridgeSource } from "./bridge";
 import {
 	buildSrcDoc,
 	clampVizHeight,
 	escapeScriptJson,
+	findVisualizeFence,
 	isFenceClosed,
 	MAX_VIZ_HEIGHT,
 	MAX_WIDGET_STATE_BYTES,
+	parseStoredWidgetState,
 	parseVisualizeInfo,
 	utf8Length,
 	VISUALIZE_CSP,
 	widgetStateKey,
 } from "./frame";
+
+describe("isFenceClosed with math in the tail", () => {
+	it("detects the unclosed fence when offsets index the normalized text", () => {
+		const raw = "- compute $x^2$ now\n\n```visualize\n<div";
+		const parsed = normalizeMath(raw);
+		expect(parsed.length).toBeGreaterThan(raw.length);
+		const start = parsed.indexOf("```visualize");
+		const position = { start: { offset: start }, end: { offset: parsed.length } };
+		expect(isFenceClosed(parsed, position)).toBe(false);
+		// Raw text with parsed offsets is the old bug: the slice misses the fence and fails open.
+		expect(isFenceClosed(raw, position)).toBe(true);
+	});
+});
+
+describe("findVisualizeFence", () => {
+	it("returns the offset of the first top-level visualize fence", () => {
+		const text = "intro\n\n```visualize wide\n<div/>\n```\n";
+		expect(findVisualizeFence(text)).toBe(text.indexOf("```visualize"));
+		expect(findVisualizeFence("```ts\ncode\n```")).toBe(-1);
+	});
+
+	it("ignores a visualize fence nested inside another fence", () => {
+		expect(findVisualizeFence("````md\n```visualize\n<div/>\n```\n````\n")).toBe(-1);
+	});
+});
 
 describe("parseVisualizeInfo", () => {
 	it("returns standard mode for a plain visualize fence", () => {
@@ -186,6 +214,26 @@ describe("buildSrcDoc", () => {
 		});
 		expect(hostile).not.toContain('{"x":"</script>"}');
 		expect(hostile).toContain("\\u003c");
+	});
+});
+
+describe("parseStoredWidgetState", () => {
+	it("round-trips a stored serialized state to an object in the srcdoc", () => {
+		const stored = JSON.stringify({ count: 1 });
+		const out = buildSrcDoc({
+			html: "<div/>",
+			theme: "dark",
+			themeVars: {},
+			widgetState: parseStoredWidgetState(stored),
+			bridgeSource: "void 0",
+		});
+		expect(out).toContain('>{"count":1}</script>');
+		expect(out).not.toContain('\\"count\\"');
+	});
+
+	it("returns undefined for missing or corrupt state", () => {
+		expect(parseStoredWidgetState(null)).toBeUndefined();
+		expect(parseStoredWidgetState("{oops")).toBeUndefined();
 	});
 });
 

@@ -9,6 +9,7 @@ import { isComposing } from "../../lib/hooks";
 import { type Annotation, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { claimEscape } from "../../lib/escapeClaim";
+import { setQuoteOccurrenceHint } from "./annotationLocate";
 
 /** Grace period so the pointer can cross the (zero-gap) seam between chip and popover. */
 const HOVER_CLOSE_DELAY_MS = 120;
@@ -91,7 +92,7 @@ function AnnotationEntry({
 					<span className="tabular-nums">{index}.</span> {entryLabel(a)}
 				</div>
 				<div
-					className={`mt-0.5 whitespace-pre-wrap break-words leading-relaxed text-[var(--text-60,var(--text-muted))] ${a.label ? "max-h-64 overflow-y-auto" : "line-clamp-4"}`}
+					className="mt-0.5 max-h-64 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed text-[var(--text-60,var(--text-muted))]"
 				>
 					{a.text}
 				</div>
@@ -131,7 +132,10 @@ function AnnotationEntry({
 						type="button"
 						aria-label="定位到原消息"
 						title="定位到原消息"
-						onClick={() => scrollToItem(anchorSessionId, a.itemId!, a.text)}
+						onClick={() => {
+							setQuoteOccurrenceHint(a.itemId!, a.text, a.occurrence);
+							scrollToItem(anchorSessionId, a.itemId!, a.text);
+						}}
 						className={iconBtn}
 					>
 						<LocateFixed size={12} />
@@ -266,6 +270,7 @@ export function AnnotationChip({
 					setEditingId(null);
 				}}
 				ignoreRefs={anchorRefs}
+				deferEscapeToEditors
 				onMouseEnter={enterHover}
 				onMouseLeave={leaveHover}
 				className="w-[min(420px,calc(100vw-2rem))] !bg-[var(--bg-panel)] text-[12px]"

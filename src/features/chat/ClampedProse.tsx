@@ -3,7 +3,7 @@
  * is not dominated by narration. The final answer is never clamped. */
 
 import clsx from "clsx";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 /** About 14 lines of body text. */
 const CLAMP_PX = 320;
@@ -13,7 +13,9 @@ export function ClampedProse({ children }: { children: ReactNode }) {
 	const [overflows, setOverflows] = useState(false);
 	const [expanded, setExpanded] = useState(false);
 
-	useEffect(() => {
+	// Layout effect: measure before paint so long prose never shows unclamped
+	// for a frame (and the virtualizer measures the clamped height once).
+	useLayoutEffect(() => {
 		const el = bodyRef.current;
 		if (!el) return;
 		const measure = () => setOverflows(el.scrollHeight > CLAMP_PX + 24);

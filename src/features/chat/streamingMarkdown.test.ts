@@ -67,3 +67,16 @@ describe("healStreamingMarkdown", () => {
 		expect(heal("a **b\n\nc **d")).toBe("a **b\n\nc **d**");
 	});
 });
+
+describe("healStreamingMarkdown `$$` inside code", () => {
+	it("does not treat `$$` in inline code as an open display formula", () => {
+		expect(heal("进程号用 `$$` 查看，然后继续")).toBe("进程号用 `$$` 查看，然后继续");
+		expect(heal("- `$$` 当前 PID\n- 下一项")).toBe("- `$$` 当前 PID\n- 下一项");
+	});
+
+	it("ignores `$$` in a closed code fence but still holds back a real open formula", () => {
+		const fenced = "```sh\necho $$\n```\n后面的文字";
+		expect(heal(fenced)).toBe(fenced);
+		expect(heal("`$$` 是 PID，式子 $$x^2")).toBe("`$$` 是 PID，式子 ");
+	});
+});

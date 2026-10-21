@@ -31,6 +31,19 @@ const BAR_MAX_PX = 26;
 const NEIGHBOR_PROGRESS = [1, 0.7, 0.4, 0.2];
 const TOOLTIP_CLOSE_DELAY_MS = 80;
 
+/** The user-query id a virtual row renders: `data-turn-id` when the row marks
+ * itself, else the first `msg-<id>` anchor (on or inside it) that has a dash. */
+export function traceIdOfRow(row: HTMLElement, dashIds: Set<string>): string | null {
+	const marked = row.dataset.turnId;
+	if (marked && dashIds.has(marked)) return marked;
+	const anchors = row.id.startsWith("msg-") ? [row] : [];
+	for (const node of [...anchors, ...row.querySelectorAll<HTMLElement>('[id^="msg-"]')]) {
+		const id = node.id.slice(4);
+		if (dashIds.has(id)) return id;
+	}
+	return null;
+}
+
 export function ChatTrace({
 	sessionId,
 	scrollRef,
@@ -83,8 +96,10 @@ export function ChatTrace({
 		let lastAbove: string | null = null;
 		let firstBelow: string | null = null;
 		for (const node of el.querySelectorAll<HTMLElement>("[data-index]")) {
-			const id = node.id.startsWith("msg-") ? node.id.slice(4) : "";
-			if (!dashIds.has(id)) continue;
+			// Virtual row wrappers carry no id; the user query's `msg-<id>` anchor
+			// lives inside the row (or on it, when a row marks itself).
+			const id = traceIdOfRow(node, dashIds);
+			if (!id) continue;
 			const box = node.getBoundingClientRect();
 			const start = box.top - rect.top;
 			const end = start + box.height;

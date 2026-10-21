@@ -240,12 +240,15 @@ export function SubagentSheet({
 	// open sheet; while the agent is live, keep tailing via nextByte so the
 	// 过程 tab streams. Stops at a terminal status or when the file is gone.
 	useEffect(() => {
+		// Stepping to another subagent must not show the previous one's data.
+		setData(null);
+		setError(null);
+		setItems([]);
 		if (!file) return;
 		let cancelled = false;
 		let timer: number | undefined;
 		nextByteRef.current = 0;
 		itemsRef.current = [];
-		setItems([]);
 		const tick = async () => {
 			try {
 				const t = await subagentTranscript(file, row.id, nextByteRef.current);

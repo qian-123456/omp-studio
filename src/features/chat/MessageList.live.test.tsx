@@ -168,6 +168,50 @@ describe("MessageList live turn", () => {
 		expect(screen.getAllByText("最终答案")).toHaveLength(1);
 	});
 
+	it("held row after agent_end repeats neither committed steps nor delivered steers", () => {
+		const req = {
+			id: "a1",
+			toolCallIds: ["c1"],
+			parts: [{ kind: "tool", id: "c1" }],
+			stat: { error: null, startedAt: 1, completedAt: 2, durationMs: 1000 },
+		};
+		useLive.setState({
+			sessions: {
+				s1: {
+					...emptySessionLive(),
+					alive: true,
+					streaming: true,
+					items: persisted(),
+					streamingMessage: streamingMessage("third plan"),
+					liveRequests: [req] as never,
+					tools: {
+						c1: { toolCallId: "c1", toolName: "bash", args: {}, intent: "DUP-STEP", status: "done", text: "", details: null, startedAt: 1 },
+					} as never,
+					pendingUserEchoes: [
+						{ ...item({ id: "e1", kind: "user", text: "STEER-TXT" }), steer: true, delivered: true },
+					] as never,
+				},
+			},
+		});
+		mount("s1");
+		act(() => {
+			useLive.setState((s) => ({
+				sessions: {
+					s1: {
+						...s.sessions.s1,
+						streaming: false,
+						streamingMessage: null,
+						liveRequests: [],
+						tools: {},
+					},
+				},
+			}));
+		});
+		// Held: still one disclosure header (the committed turn's), one steer copy.
+		expect(screen.getAllByRole("button", { name: /正在处理|已处理/ })).toHaveLength(1);
+		expect(screen.getAllByText("STEER-TXT")).toHaveLength(1);
+	});
+
 	it("keeps retry rows at the point they happened, not pinned under newer steps", () => {
 		const stat = (error: string | null) => ({ error, startedAt: 1, completedAt: 2, durationMs: 1000 });
 		const req = (id: string, error: string | null, toolCallIds: string[] = []) => ({

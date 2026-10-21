@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	baseName,
+	expandFilesForSend,
 	getFileTokenRanges,
 	isBinaryBytes,
 	isProbablyBinaryPath,
@@ -81,5 +82,19 @@ describe("baseName", () => {
 		expect(baseName("/tmp/a/b.docx")).toBe("b.docx");
 		expect(baseName("/tmp/dir/")).toBe("dir");
 		expect(baseName("solo.txt")).toBe("solo.txt");
+	});
+});
+
+describe("expandFilesForSend", () => {
+	const files = [{ path: "/a.txt" }, { path: "/b.txt" }];
+
+	it("expands tokens and appends markers for deleted tokens after a slash command", () => {
+		expect(expandFilesForSend("/skill:x see 📎#2", files, "suffix")).toBe(
+			"/skill:x see [文件 #2: /b.txt] [文件 #1: /a.txt]",
+		);
+	});
+
+	it("prefixes missing markers by default", () => {
+		expect(expandFilesForSend("hi", [{ path: "/a.txt" }])).toBe("[文件 #1: /a.txt] hi");
 	});
 });

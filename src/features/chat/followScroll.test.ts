@@ -7,6 +7,7 @@ import {
 	initialFollowScroll,
 	onScrollPosition,
 	onWroteBottom,
+	canDetachByGesture,
 	shouldCompensateResize,
 	shouldFollow,
 } from "./followScroll";
@@ -174,5 +175,23 @@ describe("resize scroll compensation", () => {
 			expect(shouldCompensateResize(item, VIEWPORT_TOP, true)).toBe(false);
 			expect(shouldCompensateResize(item, VIEWPORT_TOP, false)).toBe(false);
 		}
+	});
+});
+
+describe("canDetachByGesture", () => {
+	const m = { scrollTop: 500, scrollHeight: 2000, clientHeight: 800 };
+
+	it("detaches on a real upward vertical gesture", () => {
+		expect(canDetachByGesture(m, 0, -40)).toBe(true);
+		expect(canDetachByGesture(m)).toBe(true);
+	});
+
+	it("ignores gestures that cannot move the scroller (no scroll event would follow)", () => {
+		expect(canDetachByGesture({ ...m, scrollTop: 0 })).toBe(false);
+		expect(canDetachByGesture({ scrollTop: 10, scrollHeight: 700, clientHeight: 800 })).toBe(false);
+	});
+
+	it("ignores mostly-horizontal swipes", () => {
+		expect(canDetachByGesture(m, 60, -5)).toBe(false);
 	});
 });

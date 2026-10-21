@@ -120,19 +120,19 @@ const CUSTOM_GRADIENT =
 	"conic-gradient(from 210deg, #ff375f 0deg, #ff9f0a 48deg, #ffd60a 92deg, #30d158 142deg, #64d2ff 202deg, #0a84ff 242deg, #5e5ce6 282deg, #bf5af2 324deg, #ff375f 360deg)";
 
 const SWATCHES: readonly { color: string; name: string }[] = [
-	{ color: "#ffffff", name: "white" },
-	{ color: "#6b7280", name: "gray" },
-	{ color: "#92400e", name: "brown" },
-	{ color: "#dc2626", name: "red" },
-	{ color: "#f97316", name: "orange" },
-	{ color: "#f59e0b", name: "yellow" },
-	{ color: "#16a34a", name: "green" },
-	{ color: "#0d9488", name: "teal" },
-	{ color: "#06b6d4", name: "cyan" },
-	{ color: "#2563eb", name: "blue" },
-	{ color: "#4f46e5", name: "indigo" },
-	{ color: "#9333ea", name: "purple" },
-	{ color: "#db2777", name: "pink" },
+	{ color: "#ffffff", name: "白色" },
+	{ color: "#6b7280", name: "灰色" },
+	{ color: "#92400e", name: "棕色" },
+	{ color: "#dc2626", name: "红色" },
+	{ color: "#f97316", name: "橙色" },
+	{ color: "#f59e0b", name: "黄色" },
+	{ color: "#16a34a", name: "绿色" },
+	{ color: "#0d9488", name: "青绿色" },
+	{ color: "#06b6d4", name: "青色" },
+	{ color: "#2563eb", name: "蓝色" },
+	{ color: "#4f46e5", name: "靛蓝" },
+	{ color: "#9333ea", name: "紫色" },
+	{ color: "#db2777", name: "粉色" },
 ];
 
 const TEXT_FONT_PX = 24;
@@ -183,21 +183,21 @@ const SLIDER_KEYS: Record<string, true> = {
 };
 
 const TOOL_LABELS: Record<SketchTool, string> = {
-	select: "Select",
-	pen: "Pen",
-	text: "Text",
-	shapes: "Shapes",
-	eraser: "Eraser",
+	select: "选择",
+	pen: "画笔",
+	text: "文字",
+	shapes: "形状",
+	eraser: "橡皮",
 };
 const SHAPE_LABELS: Record<ShapeKind, string> = {
-	line: "Line",
-	arrow: "Arrow",
-	rectangle: "Rectangle",
-	ellipse: "Ellipse",
-	triangle: "Triangle",
-	diamond: "Diamond",
-	star: "Star",
-	heart: "Heart",
+	line: "直线",
+	arrow: "箭头",
+	rectangle: "矩形",
+	ellipse: "椭圆",
+	triangle: "三角形",
+	diamond: "菱形",
+	star: "星形",
+	heart: "心形",
 };
 const TOOL_ICONS: Record<SketchTool, (props: SketchIconProps) => ReactElement> = {
 	select: IconSelect,
@@ -736,7 +736,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 		() => [
 			{
 				color: dark ? "#ffffff" : "#000000",
-				name: dark ? "white" : "black",
+				name: dark ? "白色" : "黑色",
 			},
 			...SWATCHES.slice(1),
 		],
@@ -1445,12 +1445,22 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 	);
 
 	/* ---------------- close wiring ---------------- */
-	const requestClose = useCallback(() => {
+	const [confirmDiscard, setConfirmDiscard] = useState(false);
+	const discardAndClose = useCallback(() => {
 		editor.discardPendingTextEdit();
 		sessionRef.current = null;
 		setSessionState(null);
+		setConfirmDiscard(false);
 		onCancel();
 	}, [editor, onCancel]);
+	// A non-empty drawing is only discarded after an explicit confirmation.
+	const requestClose = useCallback(() => {
+		if (editor.getSnapshot().effectiveDocument.objects.length > 0) {
+			setConfirmDiscard(true);
+			return;
+		}
+		discardAndClose();
+	}, [editor, discardAndClose]);
 
 	// Esc fallback: first run the same consume hierarchy the surface
 	// keydown uses; only when nothing consumes it does the modal close.
@@ -1459,17 +1469,23 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Escape" || isEscapeClaimed(e)) return;
+			if (confirmDiscard) {
+				claimEscape(e);
+				setConfirmDiscard(false);
+				return;
+			}
 			if (isEditableTarget(e.target)) return;
 			if (sessionRef.current != null) return;
 			if (consumeEscape()) {
 				claimEscape(e);
 				return;
 			}
+			claimEscape(e);
 			requestClose();
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [consumeEscape, requestClose]);
+	}, [consumeEscape, requestClose, confirmDiscard]);
 
 	// Focus the canvas once mounted (keyboard shortcuts live there).
 	useEffect(() => {
@@ -1538,18 +1554,18 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 		if (isEraser) {
 			min = ERASER_MIN;
 			max = ERASER_MAX;
-			label = "Eraser size";
+			label = "橡皮大小";
 			name = "sketch-eraser-size";
 		} else if (isText) {
 			min = Math.min(TEXT_MIN, value);
 			max = Math.max(TEXT_MAX, value);
-			label = "Text size";
+			label = "文字大小";
 			name = "sketch-text-size";
 		} else {
 			// Drawing tool → width range 1–32; selected object → 2–48.
 			min = Math.min(sel == null ? 1 : 2, value);
 			max = Math.max(sel == null ? 32 : 48, value);
-			label = "Stroke width";
+			label = "线宽";
 			name = "sketch-stroke-width";
 		}
 		const apply = (v: number) => {
@@ -1572,7 +1588,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 			name,
 			disabled: isInk,
 			title: isInk
-				? "Width cannot be changed after partial erasing. Use the selection handles to resize."
+				? "局部擦除后无法修改线宽，请使用选框手柄调整大小。"
 				: undefined,
 			apply,
 		};
@@ -1599,7 +1615,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 			}}
 		>
 			<div
-				aria-label="Sketch editor"
+				aria-label="草图编辑器"
 				aria-modal="true"
 				className={`@container/sketch-canvas absolute rounded-2xl border ${chrome.dialog}`}
 				role="dialog"
@@ -1654,7 +1670,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 					/>
 					<canvas
 						aria-keyshortcuts={KEY_HINTS}
-						aria-label="Sketch canvas"
+						aria-label="草图画布"
 						className="absolute inset-0 h-full w-full outline-none"
 						ref={committedRef}
 						role="application"
@@ -1719,9 +1735,9 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 				<div className="pointer-events-none absolute top-3 right-3 left-3 z-30 flex h-9 items-center justify-center">
 					<div className="pointer-events-auto absolute inset-y-0 left-0 flex items-center">
 						<button
-							aria-label="Close sketch editor"
+							aria-label="关闭草图编辑器"
 							className={`flex size-9 cursor-pointer items-center justify-center rounded-full transition-colors ${chrome.idleText} ${chrome.toolHover}`}
-							title="Close sketch editor"
+							title="关闭草图编辑器"
 							type="button"
 							onClick={requestClose}
 							onPointerDown={(e) => e.preventDefault()}
@@ -1730,7 +1746,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 						</button>
 					</div>
 					<fieldset
-						aria-label="Drawing tools"
+						aria-label="绘图工具"
 						className={`pointer-events-auto m-0 flex max-w-full items-center gap-0.5 rounded-full border p-1 shadow-sm select-none ${chrome.pill}`}
 					>
 						{TOOL_ORDER.map((tool) => {
@@ -1742,14 +1758,14 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 										ref={popoverWrapRef}
 									>
 										<button
-											aria-label="Shapes"
+											aria-label="形状"
 											aria-pressed={snap.activeTool === "shapes"}
 											className={`flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors ${chrome.idleText} ${
 												snap.activeTool === "shapes"
 													? chrome.toolActive
 													: chrome.toolHover
 											}`}
-											title="Shapes"
+											title="形状"
 											type="button"
 											onClick={() => selectTool("shapes")}
 											onPointerDown={(e) => e.preventDefault()}
@@ -1758,7 +1774,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 										</button>
 										{shapesOpen && (
 											<div
-												aria-label="Shapes"
+												aria-label="形状"
 												className={`absolute top-full left-1/2 z-40 mt-1 w-max -translate-x-1/2 rounded-xl border p-1 shadow-sm ${chrome.popover}`}
 											>
 												<div className="grid grid-cols-4 grid-rows-2 gap-0.5">
@@ -1820,10 +1836,10 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 					</fieldset>
 					<div className="pointer-events-auto absolute inset-y-0 right-0 flex items-center gap-0.5">
 						<button
-							aria-label="Undo"
+							aria-label="撤销"
 							className={`flex size-9 cursor-pointer items-center justify-center rounded-full transition-colors ${chrome.idleText} ${chrome.toolHover} disabled:cursor-default disabled:opacity-50`}
 							disabled={!snap.canUndo}
-							title="Undo"
+							title="撤销"
 							type="button"
 							onClick={() => {
 								editor.commitPendingTextEdit();
@@ -1834,10 +1850,10 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 							<IconUndo className="size-4" />
 						</button>
 						<button
-							aria-label="Redo"
+							aria-label="重做"
 							className={`flex size-9 cursor-pointer items-center justify-center rounded-full transition-colors ${chrome.idleText} ${chrome.toolHover} disabled:cursor-default disabled:opacity-50`}
 							disabled={!snap.canRedo}
-							title="Redo"
+							title="重做"
 							type="button"
 							onClick={() => {
 								editor.commitPendingTextEdit();
@@ -1877,15 +1893,15 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 				<div className="pointer-events-none absolute right-3 bottom-3 left-3 z-30 flex h-9 items-center gap-2">
 					<div className="pointer-events-auto min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] @[552px]/sketch-canvas:pointer-events-none @[552px]/sketch-canvas:absolute @[552px]/sketch-canvas:inset-x-0 @[552px]/sketch-canvas:flex @[552px]/sketch-canvas:justify-center">
 						<fieldset
-							aria-label="Ink color"
+							aria-label="画笔颜色"
 							className="m-0 mx-auto flex w-max items-center gap-2 border-0 p-0 px-1 py-1 select-none @[552px]/sketch-canvas:pointer-events-auto"
 						>
-							<legend className="sr-only">Ink color</legend>
+							<legend className="sr-only">画笔颜色</legend>
 							{/* Rainbow custom-color swatch wrapping a color input. */}
 							<label className="relative flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full @[552px]/sketch-canvas:size-6">
-								<span className="sr-only">Choose a custom color</span>
+								<span className="sr-only">自定义颜色</span>
 								<input
-									aria-label="Choose a custom color"
+									aria-label="自定义颜色"
 									className="peer absolute inset-0 z-20 m-0 h-full w-full cursor-pointer border-0 bg-transparent p-0 opacity-0"
 									name="sketch-custom-color"
 									type="color"
@@ -1923,7 +1939,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 								const active = snap.style.color === color;
 								return (
 									<button
-										aria-label={`Use ${name}`}
+										aria-label={`使用${name}`}
 										aria-pressed={active}
 										className={`size-5 shrink-0 cursor-pointer rounded-full border shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)] transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2c67c5] motion-reduce:transition-none @[552px]/sketch-canvas:size-6 ${chrome.swatchBorder} ${
 											active
@@ -1942,10 +1958,10 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 						</fieldset>
 					</div>
 					<button
-						aria-label="Attach sketch"
+						aria-label="附加草图"
 						className="pointer-events-auto ms-auto flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[var(--text)] p-0 text-[var(--bg)] transition-opacity focus-visible:outline-2 disabled:cursor-default disabled:opacity-50"
 						disabled={doneDisabled}
-						title="Attach sketch"
+						title="附加草图"
 						type="submit"
 						onClick={handleDone}
 						onPointerDown={(e) => e.preventDefault()}
@@ -1954,6 +1970,42 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 					</button>
 				</div>
 			</div>
+			{confirmDiscard && (
+				<div
+					className="absolute inset-0 z-40 grid place-items-center bg-black/30"
+					onPointerDown={(e) => e.stopPropagation()}
+				>
+					<div
+						aria-label="放弃草图"
+						aria-modal="true"
+						className={`w-[min(360px,calc(100vw-48px))] rounded-2xl border p-4 shadow-lg ${chrome.dialog}`}
+						data-layer="modal"
+						role="alertdialog"
+					>
+						<div className="text-[14px] font-semibold">放弃当前草图？</div>
+						<div className="mt-1 text-[12px] opacity-70">
+							关闭后已绘制的内容将丢失。
+						</div>
+						<div className="mt-4 flex justify-end gap-2">
+							<button
+								autoFocus
+								className="rounded-xl bg-[var(--text)] px-4 py-1.5 text-[12.5px] font-semibold text-[var(--bg)] hover:opacity-90"
+								type="button"
+								onClick={() => setConfirmDiscard(false)}
+							>
+								继续编辑
+							</button>
+							<button
+								className="rounded-xl border border-[var(--line,var(--border-divider))] px-4 py-1.5 text-[12.5px] font-medium hover:bg-[var(--ghost-hover,var(--bg-hover))]"
+								type="button"
+								onClick={discardAndClose}
+							>
+								放弃草图
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>,
 		document.body,
 	);
@@ -2076,7 +2128,7 @@ function TextEditor(props: {
 			}}
 		>
 			<textarea
-				aria-label="Sketch canvas"
+				aria-label="草图文字"
 				aria-multiline="true"
 				autoCapitalize="sentences"
 				autoCorrect="on"

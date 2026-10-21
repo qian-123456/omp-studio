@@ -6,7 +6,7 @@ import { ensureLive, ResumeCancelledError } from "../../lib/ensureLive";
 import { privacyClassify, privacyMark, rpcSend, takeoverExternal } from "../../lib/ipc";
 import { useSessions } from "../../stores/sessions";
 import { toast } from "../../lib/toast";
-import { useLive } from "../../stores/live";
+import { dropEchoesForTexts, restoreTextsToDraft, useLive } from "../../stores/live";
 import { useUi } from "../../stores/ui";
 import { createSession } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
@@ -169,6 +169,20 @@ export async function linkSentSecrets(
 	);
 }
 
+/** Texts of omp's `abort_and_restore_queue` result `{steering, followUp}`
+ * (entries `{text}`), steering first; accepts the bare response frame too. */
+export function restoredQueueTexts(resp: unknown): string[] {
+	const frame = (resp ?? {}) as { data?: unknown };
+	const data = (frame.data ?? frame) as { steering?: unknown; followUp?: unknown };
+	const pick = (v: unknown): string[] =>
+		Array.isArray(v)
+			? v
+					.map((x) => (typeof x === "string" ? x : (x as { text?: unknown } | null)?.text))
+					.filter((t): t is string => typeof t === "string" && t.trim() !== "")
+			: [];
+	return [...pick(data.steering), ...pick(data.followUp)];
+}
+
 /** Abort the running turn with stopping transition state. */
 export async function abortTurn(sessionId: string): Promise<void> {
 	clearAbortTimer(sessionId);
@@ -184,7 +198,14 @@ export async function abortTurn(sessionId: string): Promise<void> {
 	abortTimers.set(sessionId, timer);
 
 	try {
-		await rpcSend(sessionId, { type: "abort" });
+		// Stop like Esc in omp's TUI: queued steer/follow-up inputs are
+		// withdrawn and handed back instead of running after the abort.
+		const resp = (await rpcSend(sessionId, { type: "abort_and_restore_queue" })) as unknown;
+		const texts = restoredQueueTexts(resp);
+		if (texts.length) {
+			dropEchoesForTexts(sessionId, texts);
+			restoreTextsToDraft(sessionId, texts);
+		}
 	} catch (err) {
 		clearAbortTimer(sessionId);
 		useAbortState.getState().setAborting(sessionId, false);

@@ -89,16 +89,29 @@ export function SessionView({
 	// checkpoints extension is disabled; fetch failures are silent).
 	const [turns, setTurns] = useState<TurnCheckpoint[]>([]);
 	const sessionFile = meta?.file ?? "";
+	// Latest request wins: a slow fetch from a previous session file (or an
+	// older call for the same file) must not overwrite newer chips.
+	const turnsReq = useRef(0);
 	const loadTurns = useCallback(() => {
+		const req = ++turnsReq.current;
 		if (!sessionFile) {
 			setTurns([]);
 			return;
 		}
 		gitSessionTurns(sessionFile)
-			.then((list) => setTurns(list))
-			.catch(() => setTurns([]));
+			.then((list) => {
+				if (req === turnsReq.current) setTurns(list);
+			})
+			.catch(() => {
+				if (req === turnsReq.current) setTurns([]);
+			});
 	}, [sessionFile]);
-	useEffect(loadTurns, [loadTurns]);
+	useEffect(() => {
+		loadTurns();
+		return () => {
+			turnsReq.current++;
+		};
+	}, [loadTurns]);
 
 	// Let the live store drop this transcript once the view is gone (compact
 	// side chats are read by hand-back after they close, so they stay).

@@ -103,6 +103,7 @@ function SlashRow({
 			data-active={active}
 			role="option"
 			aria-selected={active}
+			title={[item.title, item.description].filter(Boolean).join("\n") || undefined}
 			className={clsx(
 				"group/slashrow flex h-10 w-full cursor-pointer items-center gap-2 rounded-[10px] px-2 text-left",
 				item.nested && "pl-8",

@@ -33,6 +33,7 @@ import {
 	buildSrcDoc,
 	clampVizHeight,
 	MAX_WIDGET_STATE_BYTES,
+	parseStoredWidgetState,
 	utf8Length,
 	widgetStateKey,
 	type VisualizeMode,
@@ -133,32 +134,32 @@ function VisualizeFrame({
 				html,
 				theme: themeRef.current,
 				themeVars: collectVizThemeVars(),
-				widgetState: readWidgetState(stateKey) ?? undefined,
+				widgetState: parseStoredWidgetState(readWidgetState(stateKey)),
 				bridgeSource: vizBridgeSource(MAX_WIDGET_STATE_BYTES),
 			}),
 		[html, stateKey, reloadSeq],
 	);
 
-	// Track the most recent real gesture. Clicks inside a cross-origin iframe
-	// never reach the parent, but they DO blur the host window — blur is the
-	// host-observable half of the user-activation check (the iframe side also
-	// gates on navigator.userActivation).
+	// A gesture counts only when it belongs to THIS frame: clicks inside a
+	// cross-origin iframe never reach the parent, but they blur the host window
+	// while the iframe is the active element. Host-wide keydown/pointerdown
+	// (typing in the composer, clicking elsewhere) must not count. The gesture
+	// is consumed by one follow-up / open-external.
 	useEffect(() => {
-		const mark = () => {
-			lastActivityRef.current = Date.now();
+		const onBlur = () => {
+			if (document.activeElement === iframeRef.current) {
+				lastActivityRef.current = Date.now();
+			}
 		};
-		window.addEventListener("pointerdown", mark, true);
-		window.addEventListener("keydown", mark, true);
-		window.addEventListener("blur", mark);
-		return () => {
-			window.removeEventListener("pointerdown", mark, true);
-			window.removeEventListener("keydown", mark, true);
-			window.removeEventListener("blur", mark);
-		};
+		window.addEventListener("blur", onBlur);
+		return () => window.removeEventListener("blur", onBlur);
 	}, []);
 
-	const recentGesture = () =>
-		Date.now() - lastActivityRef.current < GESTURE_WINDOW_MS;
+	const consumeGesture = () => {
+		const ok = Date.now() - lastActivityRef.current < GESTURE_WINDOW_MS;
+		lastActivityRef.current = 0;
+		return ok;
+	};
 
 	// Push live theme updates into the frame without reloading it.
 	useEffect(() => {
@@ -189,7 +190,7 @@ function VisualizeFrame({
 			}
 			case "open-external": {
 				const href = typeof msg.href === "string" ? msg.href : "";
-				if (!recentGesture() || !/^(https?:|mailto:)/i.test(href)) return;
+				if (!/^(https?:|mailto:)/i.test(href) || !consumeGesture()) return;
 				try {
 					await openUrl(href);
 				} catch (err) {
@@ -199,7 +200,7 @@ function VisualizeFrame({
 			}
 			case "follow-up": {
 				const prompt = typeof msg.prompt === "string" ? msg.prompt.trim() : "";
-				if (!recentGesture() || !prompt) return;
+				if (!prompt || !consumeGesture()) return;
 				const target = sessionIdRef.current;
 				if (!target) {
 					toast.error("当前上下文不支持发送消息");

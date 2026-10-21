@@ -651,6 +651,31 @@ export function activityGroupKind(name: string): ActivityGroupKind | undefined {
 	return GROUP_KIND[name.toLowerCase()];
 }
 
+const PATH_ARG_KEYS = ["path", "file", "filePath", "target_file"];
+/** Hashline edit header: `[path#HASH]` on its own line. */
+const HASHLINE_HEADER_RE = /^\[(.+)#[0-9A-Za-z]{2,8}\][ \t]*$/;
+
+/**
+ * Files a tool call targets. Plain tools carry `path`/`file`; omp's default
+ * hashline edit mode has only `{input: "[src/x.ts#HASH]\n…"}` with one
+ * `[path#hash]` header per file section, so those are parsed out of `input`.
+ */
+export function toolFilePaths(args: unknown): string[] {
+	if (typeof args !== "object" || args === null) return [];
+	const o = args as Record<string, unknown>;
+	for (const k of PATH_ARG_KEYS) {
+		const v = o[k];
+		if (typeof v === "string" && v) return [v];
+	}
+	if (typeof o.input !== "string") return [];
+	const out: string[] = [];
+	for (const line of o.input.split("\n")) {
+		const m = HASHLINE_HEADER_RE.exec(line);
+		if (m && !out.includes(m[1])) out.push(m[1]);
+	}
+	return out;
+}
+
 /**
  * Chinese summary for a folded run:
  * exploration "已浏览 3 个文件、2 次搜索", commands "已运行 3 条命令",
@@ -667,10 +692,9 @@ export function activityGroupSummary(
 	if (kind === "edits") {
 		if (running) return "正在编辑…";
 		const paths = new Set(
-			steps.map((s) => {
-				const a = s.call.args as Record<string, unknown> | null;
-				const p = a?.path ?? a?.file ?? a?.filePath;
-				return typeof p === "string" ? p : s.call.name;
+			steps.flatMap((s) => {
+				const found = toolFilePaths(s.call.args);
+				return found.length > 0 ? found : [s.call.name];
 			}),
 		);
 		return `已编辑 ${paths.size} 个文件`;
@@ -702,7 +726,7 @@ export type ActivityUnit<T extends { kind: string }> =
  * one stays a row. Works on TurnStep and on live pseudo-steps.
  */
 export function groupActivityUnits<
-	T extends { kind: string; call?: { name: string } },
+	T extends { kind: string; call?: { name: string }; running?: boolean },
 >(steps: T[]): ActivityUnit<T>[] {
 	const units: ActivityUnit<T>[] = [];
 	let pending: T[] = [];
@@ -722,7 +746,8 @@ export function groupActivityUnits<
 		pendingKind = undefined;
 	};
 
-	for (const step of steps) {
+	for (let i = 0; i < steps.length; i++) {
+		const step = steps[i];
 		const group =
 			step.kind === "tool" && step.call
 				? activityGroupKind(step.call.name)
@@ -733,8 +758,16 @@ export function groupActivityUnits<
 			pendingKind = group;
 			continue;
 		}
-		// Reasoning inside a foldable run is absorbed into the group.
-		if (step.kind === "thinking" && pending.length > 0) {
+		// Settled reasoning inside a run is absorbed into the group, but only
+		// when the run continues with the same kind afterwards. Running
+		// reasoning is never absorbed (it is the live row), and reasoning that
+		// leads into a different tool or text stays a visible row.
+		if (
+			step.kind === "thinking" &&
+			pending.length > 0 &&
+			!step.running &&
+			continuesRun(steps, i, pendingKind)
+		) {
 			continue;
 		}
 		flush();
@@ -742,6 +775,22 @@ export function groupActivityUnits<
 	}
 	flush();
 	return units;
+}
+
+/** True when the first non-thinking step after `from` is a tool of `kind`. */
+function continuesRun<T extends { kind: string; call?: { name: string } }>(
+	steps: T[],
+	from: number,
+	kind: ActivityGroupKind | undefined,
+): boolean {
+	for (let j = from + 1; j < steps.length; j++) {
+		const next = steps[j];
+		if (next.kind === "thinking") continue;
+		return (
+			next.kind === "tool" && !!next.call && activityGroupKind(next.call.name) === kind
+		);
+	}
+	return false;
 }
 
 // ---- per-request stats line placement -----------------------------------
@@ -868,6 +917,33 @@ export function splitInterimProse<
 		else folded.push(step);
 	}
 	return { folded, prose };
+}
+
+/** One chronological piece of a turn: activity (folded) with the interim
+ *  prose written in that stretch, or a steer delivered between stretches. */
+export type SteerSegment<T> =
+	| { type: "steps"; folded: T[]; prose: T[] }
+	| { type: "steer"; step: T };
+
+/**
+ * Like `splitInterimProse`, but per steer-delimited segment: each segment's
+ * interim prose renders right after its own fold and before the steer that
+ * followed it, so a steer never appears above the prose that prompted it.
+ * Segments with neither folded steps nor prose are dropped.
+ */
+export function splitInterimProseBySteer<
+	T extends { kind: string; item?: TranscriptItem },
+>(steps: T[]): Array<SteerSegment<T>> {
+	const out: Array<SteerSegment<T>> = [];
+	for (const seg of splitAroundSteers(steps)) {
+		if (seg.type === "steer") {
+			out.push(seg);
+			continue;
+		}
+		const { folded, prose } = splitInterimProse(seg.steps);
+		if (folded.length > 0 || prose.length > 0) out.push({ type: "steps", folded, prose });
+	}
+	return out;
 }
 
 /**

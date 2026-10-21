@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildSplitRows, parseDiff } from "./DiffView";
+import { buildSplitRows, diffCounts, parseDiff } from "./DiffView";
+
+describe("DiffView diffCounts", () => {
+	it("counts only added/removed lines, not context", () => {
+		const parsed = parseDiff([" 7|ctx", "+8|a", "+9|b", "-10|c", " 11|ctx"].join("\n"));
+		expect(parsed).toHaveLength(5);
+		expect(diffCounts(parsed)).toEqual({ adds: 2, dels: 1 });
+	});
+});
 
 describe("DiffView parseDiff", () => {
 	it("parses private format diff lines", () => {

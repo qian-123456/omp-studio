@@ -3,6 +3,7 @@ import {
 	locateQuote,
 	normalizeWithMap,
 	quoteNeedles,
+	quoteOccurrence,
 	segmentEndpoints,
 	type TextSegment,
 } from "./annotationAnchor";
@@ -144,5 +145,30 @@ describe("segmentEndpoints", () => {
 		const segments = [seg("a", 0, 5)];
 		expect(segmentEndpoints(segments, 2, 2)).toBeNull();
 		expect(segmentEndpoints(segments, 7, 9)).toBeNull();
+	});
+});
+
+describe("occurrence-aware locate", () => {
+	const text = "foo bar\nbaz foo bar\nqux foo bar";
+
+	it("picks the recorded occurrence of a repeated phrase", () => {
+		const second = locateQuote(text, "foo bar", 1)!;
+		expect(second.start).toBe(text.indexOf("foo bar", 8));
+		const third = locateQuote(text, "foo bar", 2)!;
+		expect(text.slice(third.start, third.end)).toBe("foo bar");
+		expect(third.start).toBe(text.lastIndexOf("foo bar"));
+	});
+
+	it("falls back to the first match without or beyond the occurrence", () => {
+		expect(locateQuote(text, "foo bar")!.start).toBe(0);
+		expect(locateQuote(text, "foo bar", 9)!.start).toBe(0);
+	});
+
+	it("quoteOccurrence counts earlier matches before the selection start", () => {
+		expect(quoteOccurrence(text, "foo bar", 0)).toBe(0);
+		expect(quoteOccurrence(text, "foo bar", text.indexOf("foo bar", 8))).toBe(1);
+		// Selection beginning on the whitespace before the quote still counts that quote.
+		expect(quoteOccurrence(text, "foo bar", text.lastIndexOf("foo bar") - 1)).toBe(2);
+		expect(quoteOccurrence("only foo bar once", "foo bar", 5)).toBeUndefined();
 	});
 });

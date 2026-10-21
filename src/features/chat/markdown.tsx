@@ -8,7 +8,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import React, { Suspense, use, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema, type Options as Schema } from "rehype-sanitize";
@@ -29,7 +29,7 @@ import { FILE_LINK_TAG, rehypeFilePathLinks } from "./rehypeFilePathLinks";
 import { MarkdownSecretChip } from "../privacy/SecretChip";
 import { SECRET_CHIP_TAG, rehypeSecretChips } from "../privacy/render";
 import { VisualizeBlock } from "./visualize/VisualizeBlock";
-import { isFenceClosed, parseVisualizeInfo } from "./visualize/frame";
+import { findVisualizeFence, isFenceClosed, parseVisualizeInfo } from "./visualize/frame";
 import { healStreamingMarkdown, splitStableBlocks } from "./streamingMarkdown";
 import { useRevealText } from "./useRevealText";
 
@@ -42,11 +42,17 @@ interface MarkdownContextValue {
 	/** Raw markdown text, needed to decide whether a trailing fence is closed. */
 	sourceText: string;
 	visualizeEnabled: boolean;
+	/** The segment's text is still being generated (an unclosed fence is expected). */
+	streaming: boolean;
+	/** Static image export: expanded code, no buttons, visualize placeholder. */
+	exportMode: boolean;
 }
 
 const MarkdownContext = React.createContext<MarkdownContextValue>({
 	sourceText: "",
 	visualizeEnabled: true,
+	streaming: false,
+	exportMode: false,
 });
 
 /** Loose hast-shape fields react-markdown passes via the `node` prop. */
@@ -74,13 +80,42 @@ function extractText(node: React.ReactNode): string {
 
 const COLLAPSED_CODE_LINES = 14;
 
+/**
+ * Expanded state of long code blocks, keyed by content. A block that moves
+ * between streaming segments or whose virtualized row remounts is a fresh
+ * component; this lets it come back as the user left it.
+ */
+const EXPANDED_MEMORY_LIMIT = 500;
+const expandedMemory = new Set<string>();
+
+function codeBlockKey(lang: string, text: string): string {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) {
+		h ^= text.charCodeAt(i);
+		h = Math.imul(h, 0x01000193);
+	}
+	return `${lang}:${text.length}:${(h >>> 0).toString(36)}`;
+}
+
+function rememberExpanded(key: string, expanded: boolean): void {
+	if (!expanded) {
+		expandedMemory.delete(key);
+		return;
+	}
+	expandedMemory.delete(key);
+	expandedMemory.add(key);
+	if (expandedMemory.size > EXPANDED_MEMORY_LIMIT) {
+		const oldest = expandedMemory.values().next().value;
+		if (oldest !== undefined) expandedMemory.delete(oldest);
+	}
+}
+
 function PreBlock({
 	children,
 	node,
 	...props
 }: React.ComponentPropsWithoutRef<"pre"> & { node?: HastNodeLike }) {
 	const [copied, setCopied] = useState(false);
-	const [expanded, setExpanded] = useState(false);
 
 	const codeChild = React.isValidElement<{ className?: string }>(children)
 		? children
@@ -91,6 +126,12 @@ function PreBlock({
 	const lang = langMatch ? langMatch[1] : "";
 
 	const codeText = extractText(children).replace(/\n$/, "");
+	const memoKey = codeBlockKey(lang, codeText);
+	const [expanded, setExpandedState] = useState(() => expandedMemory.has(memoKey));
+	const setExpanded = (next: boolean) => {
+		rememberExpanded(memoKey, next);
+		setExpandedState(next);
+	};
 	const lines = codeText.split("\n");
 	const totalLines = lines.length;
 	const isLong = totalLines > COLLAPSED_CODE_LINES;
@@ -112,7 +153,20 @@ function PreBlock({
 			codeNode?.properties?.dataMeta ??
 			codeNode?.properties?.["data-meta"],
 	);
-	if (vizInfo && mdCtx.visualizeEnabled) {
+	// An unclosed fence in a finished message is the model's partial output:
+	// show it as a plain code block instead of a forever-spinning placeholder.
+	if (
+		vizInfo &&
+		mdCtx.visualizeEnabled &&
+		(mdCtx.streaming || isFenceClosed(mdCtx.sourceText, node?.position ?? null))
+	) {
+		if (mdCtx.exportMode) {
+			return (
+				<div className="my-2 rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-3 py-4 text-center text-[12px] text-[var(--text-40)]">
+					此处为交互式可视化内容，图片中不包含
+				</div>
+			);
+		}
 		return (
 			<VisualizeBlock
 				html={codeText}
@@ -137,6 +191,7 @@ function PreBlock({
 		<div className="group/codeblock my-2 overflow-hidden rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] font-mono text-[12px]">
 			<div className="flex h-7 items-center justify-between border-b border-[var(--line)] px-3 text-[11px] text-[var(--text-40)]">
 				<span className="truncate">{lang || "code"}</span>
+				{!mdCtx.exportMode && (
 				<button
 					type="button"
 					onClick={handleCopy}
@@ -150,21 +205,22 @@ function PreBlock({
 					)}
 					<span>{copied ? "已复制" : "复制"}</span>
 				</button>
+				)}
 			</div>
 			<pre
 				{...props}
 				className={clsx(
 					"overflow-x-auto p-3 text-[12px] leading-5 [&_code]:bg-transparent [&_code]:p-0 [&_code]:rounded-none",
-					isLong && !expanded && "max-h-[320px] overflow-hidden",
+					isLong && !expanded && !mdCtx.exportMode && "max-h-[320px] overflow-hidden",
 				)}
 			>
 				{children}
 			</pre>
-			{isLong && (
+			{isLong && !mdCtx.exportMode && (
 				<div className="flex items-center justify-center border-t border-[var(--line)] px-3 py-1">
 					<button
 						type="button"
-						onClick={() => setExpanded((v) => !v)}
+						onClick={() => setExpanded(!expanded)}
 						className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-[var(--text-30)] transition-colors hover:text-[var(--text-60)]"
 						title={
 							expanded
@@ -199,24 +255,47 @@ function useLinkBase(): { cwd: string | null; home: string | null } {
 	return { cwd: ctx.cwd ?? sessionCwd, home };
 }
 
+/**
+ * Resolve an in-page `#fragment` inside the markdown root that holds the link.
+ * remark-rehype already prefixes footnote ids with `user-content-` and
+ * rehype-sanitize prefixes ids again, so try the doubly-prefixed form too.
+ * Scoping to the root keeps repeated footnote ids in other messages out.
+ */
+function findInPageTarget(from: HTMLElement, fragment: string): HTMLElement | null {
+	let target = fragment;
+	try {
+		target = decodeURIComponent(fragment);
+	} catch {
+		/* keep the raw fragment */
+	}
+	const wanted = new Set([target, `user-content-${target}`]);
+	const root = from.closest("[data-md-root]") ?? document;
+	for (const el of root.querySelectorAll<HTMLElement>("[id]")) {
+		if (wanted.has(el.id)) return el;
+	}
+	return null;
+}
+
 function MarkdownLink({
 	href,
 	children,
 	title,
+	id,
 }: {
 	href?: string;
 	children?: React.ReactNode;
 	title?: string;
+	id?: string;
 }) {
 	const { cwd, home } = useLinkBase();
 
-	const handleClick = async (e: React.MouseEvent) => {
+	const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
 		if (!href) return;
 		try {
 			if (href.startsWith("#")) {
-				document.getElementById(decodeURIComponent(href.slice(1)))?.scrollIntoView({
+				findInPageTarget(e.currentTarget, href.slice(1))?.scrollIntoView({
 					block: "center",
 				});
 			} else if (/^file:\/\//i.test(href)) {
@@ -233,8 +312,12 @@ function MarkdownLink({
 		}
 	};
 
+	// A stripped href (e.g. `javascript:`) must not look clickable.
+	if (!href) return <span id={id}>{children}</span>;
+
 	return (
 		<a
+			id={id}
 			href={href}
 			onClick={handleClick}
 			title={title || href}
@@ -335,6 +418,13 @@ const REMARK_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["re
 const SANITIZE_SCHEMA: Schema = {
 	...defaultSchema,
 	tagNames: [...(defaultSchema.tagNames ?? []), "mark"],
+	// `file:` links open in the file preview (MarkdownLink); `file:`/`data:`
+	// image sources are handled by MarkdownImage. `javascript:` etc. stay blocked.
+	protocols: {
+		...defaultSchema.protocols,
+		href: [...(defaultSchema.protocols?.href ?? []), "file"],
+		src: [...(defaultSchema.protocols?.src ?? []), "file", "data"],
+	},
 	attributes: {
 		...defaultSchema.attributes,
 		code: [
@@ -346,6 +436,15 @@ const SANITIZE_SCHEMA: Schema = {
 		details: ["open"],
 	},
 };
+
+/** react-markdown's default transform drops `file:` hrefs and `data:`/`file:` image sources. */
+export function markdownUrlTransform(url: string, key?: string, node?: { tagName?: string }): string {
+	if (/^file:\/\//i.test(url) && (key === "href" || key === "src")) return url;
+	if (key === "src" && node?.tagName === "img" && /^data:image\/(?:png|jpe?g|gif|webp|bmp|avif);/i.test(url)) {
+		return url;
+	}
+	return defaultUrlTransform(url);
+}
 type RehypePlugins = NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]>;
 const HIGHLIGHT_OPTIONS = { detect: false, languages: HIGHLIGHT_LANGUAGES };
 const REHYPE_PLUGINS_BASE: RehypePlugins = [
@@ -369,14 +468,55 @@ function rehypePlugins(): RehypePlugins {
 	return rehypePluginsWithKatex;
 }
 
+/** Absolute filesystem path for a local image source (`file://`, `~/`, or cwd-relative). */
+function localImagePath(src: string, cwd: string | null, home: string | null): string {
+	if (/^file:\/\//i.test(src)) {
+		try {
+			return decodeURIComponent(new URL(src).pathname);
+		} catch {
+			return src.replace(/^file:\/\//i, "");
+		}
+	}
+	if (src.startsWith("~/") && home) return `${home.replace(/\/$/, "")}/${src.slice(2)}`;
+	if (src.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(src) || !cwd) return src;
+	return `${cwd.replace(/\/$/, "")}/${src.replace(/^\.\//, "")}`;
+}
+
 function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
+	const { cwd, home } = useLinkBase();
+	const [failedSrc, setFailedSrc] = useState<string | null>(null);
 	if (typeof src !== "string" || !src) return null;
-	const resolved = /^(?:https?|data|asset):/i.test(src) ? src : convertFileSrc(src);
+	const remote = /^(?:https?|data):/i.test(src);
+	if (failedSrc === src) {
+		// Unloadable (outside the asset scope, missing, offline): keep the path reachable.
+		const open = async () => {
+			try {
+				if (/^data:/i.test(src)) return;
+				if (remote) await openUrl(src);
+				else await openFileLink(src, { cwd, home });
+			} catch (err) {
+				toast.error(`打开图片失败: ${errMsg(err)}`);
+			}
+		};
+		return (
+			<button
+				type="button"
+				onClick={open}
+				title={/^data:/i.test(src) ? alt : src}
+				className="my-1 inline-flex max-w-full items-start gap-1.5 rounded-full border border-[var(--line)] bg-[var(--well-bg)] px-3 py-1 text-left text-[12px] text-[var(--accent)] transition-colors hover:bg-[var(--ghost-hover)]"
+			>
+				<span className="shrink-0">图片</span>
+				<span className="min-w-0 break-all">{alt || (/^data:/i.test(src) ? "无法显示" : src)}</span>
+			</button>
+		);
+	}
+	const resolved = remote ? src : convertFileSrc(localImagePath(src, cwd, home));
 	return (
 		<img
 			src={resolved}
 			alt={alt ?? ""}
 			loading="lazy"
+			onError={() => setFailedSrc(src)}
 			className="my-2 max-h-80 max-w-full rounded-xl border border-[var(--line)] object-contain"
 		/>
 	);
@@ -441,17 +581,30 @@ const MarkdownSegment = React.memo(function MarkdownSegment({
 	sessionId,
 	cwd,
 	visualizeEnabled,
+	streaming,
+	exportMode,
 }: {
 	text: string;
 	sessionId?: string;
 	cwd?: string | null;
 	visualizeEnabled: boolean;
+	streaming: boolean;
+	exportMode: boolean;
 }) {
-	const ctx = useMemo(
-		(): MarkdownContextValue => ({ sessionId, cwd, sourceText: text, visualizeEnabled }),
-		[sessionId, cwd, text, visualizeEnabled],
-	);
+	// react-markdown parses the normalized text, so node offsets (used to check
+	// whether a trailing fence is closed) index into it, not into the raw text.
 	const mathText = useMemo(() => normalizeMath(text), [text]);
+	const ctx = useMemo(
+		(): MarkdownContextValue => ({
+			sessionId,
+			cwd,
+			sourceText: mathText,
+			visualizeEnabled,
+			streaming,
+			exportMode,
+		}),
+		[sessionId, cwd, mathText, visualizeEnabled, streaming, exportMode],
+	);
 	return (
 		<MarkdownContext.Provider value={ctx}>
 			<Suspense fallback={<p className="whitespace-pre-wrap">{text}</p>}>
@@ -470,6 +623,7 @@ function MarkdownBody({ text }: { text: string }) {
 			remarkPlugins={REMARK_PLUGINS}
 			rehypePlugins={rehypePlugins()}
 			components={MARKDOWN_COMPONENTS}
+			urlTransform={markdownUrlTransform}
 		>
 			{text}
 		</ReactMarkdown>
@@ -481,6 +635,7 @@ export const Markdown = React.memo(function Markdown({
 	sessionId,
 	cwd,
 	streaming = false,
+	exportMode = false,
 }: {
 	text: string;
 	/** Session for visualize follow-up sends; optional outside chat views. */
@@ -490,9 +645,23 @@ export const Markdown = React.memo(function Markdown({
 	/** The text is still being generated: reveal it frame by frame and repair
 	 * the unfinished tail so it renders like its finished form. */
 	streaming?: boolean;
+	/** Static rendering for image export: code fully expanded without buttons,
+	 * visualize blocks replaced by a placeholder. */
+	exportMode?: boolean;
 }) {
 	const revealed = useRevealText(rawText, streaming);
 	const { head, tail } = useMemo(() => {
+		// A visualize block must never move between segments (that would remount
+		// its iframe), so everything before the first one is the head and the
+		// block plus whatever follows stays in one tree, streaming or not.
+		const vizAt = findVisualizeFence(revealed);
+		if (vizAt >= 0) {
+			const rest = revealed.slice(vizAt);
+			return {
+				head: revealed.slice(0, vizAt),
+				tail: streaming ? healStreamingMarkdown(rest) : rest,
+			};
+		}
 		if (!streaming) return { head: "", tail: revealed };
 		const split = splitStableBlocks(revealed);
 		return { head: split.head, tail: healStreamingMarkdown(split.tail) };
@@ -506,11 +675,14 @@ export const Markdown = React.memo(function Markdown({
 	);
 	return (
 		<div
+			data-md-root
 			className={clsx(
 				"prose-sm max-w-none text-[var(--text)] text-[length:var(--chat-font-size)] [line-height:var(--chat-line-height)]",
 				// Long URLs / inline code wrap instead of widening the message column;
 				// code blocks and tables keep their own horizontal scroll boxes.
 				"min-w-0 [overflow-wrap:anywhere]",
+				// `anywhere` would let tables shrink to fit instead of scrolling sideways.
+				"[&_table]:[overflow-wrap:normal]",
 				"[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
 				// Headings
 				"[&_h1]:text-lg [&_h1]:font-semibold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-[var(--text)]",
@@ -551,6 +723,8 @@ export const Markdown = React.memo(function Markdown({
 					sessionId={sessionId}
 					cwd={cwd}
 					visualizeEnabled={visualizeEnabled}
+					streaming={false}
+					exportMode={exportMode}
 				/>
 			)}
 			<MarkdownSegment
@@ -559,6 +733,8 @@ export const Markdown = React.memo(function Markdown({
 				sessionId={sessionId}
 				cwd={cwd}
 				visualizeEnabled={visualizeEnabled}
+				streaming={streaming}
+				exportMode={exportMode}
 			/>
 		</div>
 	);

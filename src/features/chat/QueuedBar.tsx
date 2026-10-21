@@ -3,11 +3,13 @@
  * grey "排队中" bubbles in the thread (QueuedBubbles). */
 
 import { useEffect, useRef } from "react";
+import { create } from "zustand";
 import { errMsg } from "../../lib/dialogs";
+import { rpcSend } from "../../lib/ipc";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useSettings } from "../settings/store";
-import { isFlowBusy, useLive } from "../../stores/live";
+import { dropEchoesForTexts, isFlowBusy, restoreTextsToDraft, useLive } from "../../stores/live";
 import { type HeldItem, heldQueueItems, useHeldQueue } from "./heldQueue";
 import { sendPrompt } from "./send";
 
@@ -20,8 +22,10 @@ export async function drainNext(sid: string): Promise<boolean> {
 	if (draining.has(sid)) return false;
 	const live = useLive.getState().sessions[sid];
 	if (live && isFlowBusy(live)) return false;
-	const item = useHeldQueue.getState().shift(sid);
-	if (!item) return false;
+	const item = heldQueueItems(sid)[0];
+	// Send-now already has this item in flight: it removes it on success.
+	if (!item || item.id in useQueuedBusy.getState().busy) return false;
+	useHeldQueue.getState().shift(sid);
 	draining.add(sid);
 	try {
 		await sendPrompt(sid, item.text, item.images?.length ? { images: item.images } : undefined);
@@ -48,7 +52,10 @@ useLive.subscribe((state, prev) => {
 		const turnEnded = was.streaming && cur.streaming === false;
 		// A compaction/handoff that ended while idle releases held items too.
 		const flowCleared = isFlowBusy(was) && !isFlowBusy(cur) && !cur.streaming && cur.alive === true;
-		if (turnEnded || flowCleared) void drainNext(sid);
+		// A session brought alive while idle (resume, start-on-type) releases
+		// items queued before it was running.
+		const becameAlive = was.alive !== true && cur.alive === true && !cur.streaming && !isFlowBusy(cur);
+		if (turnEnded || flowCleared || becameAlive) void drainNext(sid);
 	}
 });
 
@@ -66,8 +73,24 @@ export function useQueueAutoSend(sid: string, streaming: boolean): boolean {
 	return autoSend;
 }
 
-/** Send queued item `i` now (steer or normal follow-up); removed only on success. */
+/** Per-item in-flight state of the queue actions (send-now / remove / promote). */
+export const useQueuedBusy = create<{ busy: Record<string, true> }>(() => ({ busy: {} }));
+const setBusy = (id: string, on: boolean) =>
+	useQueuedBusy.setState((s) => {
+		if (on === (id in s.busy)) return s;
+		const busy = { ...s.busy };
+		if (on) busy[id] = true;
+		else delete busy[id];
+		return { busy };
+	});
+
+/** Send queued item `i` now (steer or normal follow-up); removed only on success.
+ * A second call while one is in flight, or for an item the turn-end drain
+ * already took, sends nothing. */
 export async function sendQueuedNow(sid: string, item: HeldItem, steer: boolean): Promise<void> {
+	if (item.id in useQueuedBusy.getState().busy) return;
+	if (!(useHeldQueue.getState().queues[sid] ?? EMPTY_LIST).some((x) => x.id === item.id)) return;
+	setBusy(item.id, true);
 	try {
 		await sendPrompt(sid, item.text, { steer, ...(item.images?.length ? { images: item.images } : {}) });
 		const q = useHeldQueue.getState();
@@ -75,5 +98,40 @@ export async function sendQueuedNow(sid: string, item: HeldItem, steer: boolean)
 		if (idx >= 0) q.remove(sid, idx);
 	} catch (err) {
 		if (!isResumeCancelled(err)) toast.error(`排队消息发送失败: ${errMsg(err)}`);
+	} finally {
+		setBusy(item.id, false);
+	}
+}
+
+/** Take an omp-side queued echo back out of omp's queue and into the composer draft. */
+export async function removeOmpQueued(
+	sid: string,
+	echo: { id: string; text?: string | null },
+	queue: "steering" | "followUp",
+): Promise<void> {
+	if (echo.id in useQueuedBusy.getState().busy) return;
+	const text = echo.text ?? "";
+	setBusy(echo.id, true);
+	try {
+		await rpcSend(sid, { type: "remove_queued_message", message: text, queue });
+		dropEchoesForTexts(sid, [text]);
+		restoreTextsToDraft(sid, [text]);
+	} catch (err) {
+		toast.error(`移出队列失败: ${errMsg(err)}`);
+	} finally {
+		setBusy(echo.id, false);
+	}
+}
+
+/** Move an omp-side queued follow-up to the steering queue (插队). */
+export async function promoteOmpQueued(sid: string, echo: { id: string; text?: string | null }): Promise<void> {
+	if (echo.id in useQueuedBusy.getState().busy) return;
+	setBusy(echo.id, true);
+	try {
+		await rpcSend(sid, { type: "promote_queued_message", message: echo.text ?? "" });
+	} catch (err) {
+		toast.error(`插队失败: ${errMsg(err)}`);
+	} finally {
+		setBusy(echo.id, false);
 	}
 }

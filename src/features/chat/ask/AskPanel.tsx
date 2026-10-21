@@ -94,6 +94,7 @@ export function useAskRouting(sessionId: string, pendingUi: PendingUiRequest[]) 
 			})
 			.catch((err) => {
 				driverStates.delete(key);
+				respondedIds.delete(rkey);
 				toast.error(`回答提交失败: ${errMsg(err)}`);
 				setAwaiting(false);
 				bump();
@@ -419,7 +420,9 @@ export function AskPanel({
 				</div>
 			</div>
 			<div className="mt-2 flex items-center gap-2">
-				<span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-40)]">
+				<span
+					className="min-w-0 flex-1 text-[11px] text-[var(--text-40)]"
+				>
 					{isLast && missing.length > 0
 						? `未回答：${missing.map((i) => `问题 ${i + 1}`).join("、")}`
 						: `${multi ? "数字/空格 勾选" : "数字 选择"}${total > 1 ? " · ←→ 切换问题" : ""} · Enter ${isLast ? "提交" : "下一题"} · Esc 取消提问`}

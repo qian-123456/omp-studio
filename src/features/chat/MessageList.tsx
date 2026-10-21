@@ -29,6 +29,7 @@ import type {
 } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
+import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { isFlowItem, withFlowNotices } from "./flowNotice";
 import { QueuedBubbles } from "./QueuedBubbles";
@@ -86,13 +87,15 @@ import {
 	noticeLabel,
 	noticeSummary,
 	splitAroundSteers,
-	splitInterimProse,
+	splitInterimProseBySteer,
 	splitLiveTurn,
 	turnRequestItems,
 	type TurnBlock,
 } from "./turnGrouping";
 import {
+	canDetachByGesture,
 	detach,
+	NEAR_BOTTOM_PX,
 	initialFollowScroll,
 	onScrollPosition,
 	USER_INPUT_WINDOW_MS,
@@ -145,6 +148,9 @@ const TRACE_GUTTER_PAD = "px-8 @min-[864px]:px-3";
 const USER_ACTION_BTN =
 	"flex h-5 w-5 items-center justify-center rounded text-[var(--text-30)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]";
 
+/** Open inline-edit drafts by transcript item id (outlive the virtualized row). */
+const editDrafts = new Map<string, string>();
+
 /**
  * User message: right-aligned Codex bubble (70% max width, 22px radius,
  * --chat-user-bg). Long text collapses to a few lines behind 查看更多.
@@ -163,9 +169,18 @@ const UserRow = React.memo(function UserRow({
 	const [expanded, setExpanded] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const textRef = useRef<HTMLDivElement>(null);
-	const [editing, setEditing] = useState(false);
-	const [draft, setDraft] = useState("");
+	// Edit state survives the row being virtualized away (keyed by item id).
+	const [editing, setEditing] = useState(() => editDrafts.has(item.id));
+	const [draft, setDraft] = useState(() => editDrafts.get(item.id) ?? "");
 	const [resending, setResending] = useState(false);
+	const updateDraft = (v: string) => {
+		setDraft(v);
+		editDrafts.set(item.id, v);
+	};
+	const closeEditor = () => {
+		editDrafts.delete(item.id);
+		setEditing(false);
+	};
 
 	const resendEdited = async () => {
 		const text = draft.trim();
@@ -179,7 +194,7 @@ const UserRow = React.memo(function UserRow({
 				await waitForIdle(sessionId);
 			}
 			await sendPrompt(sessionId, text);
-			setEditing(false);
+			closeEditor();
 		} catch (e) {
 			if (!isResumeCancelled(e)) toast.error(`重新发送失败: ${errMsg(e)}`);
 		} finally {
@@ -247,17 +262,14 @@ const UserRow = React.memo(function UserRow({
 					<AutoGrowTextarea
 						autoFocus
 						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
+						onChange={(e) => updateDraft(e.target.value)}
 						onKeyDown={(e) => {
+							if (isComposing(e)) return;
 							if (e.key === "Escape") {
 								claimEscape(e);
 								e.stopPropagation();
-								setEditing(false);
-							} else if (
-								e.key === "Enter" &&
-								(e.metaKey || e.ctrlKey) &&
-								!e.nativeEvent.isComposing
-							) {
+								closeEditor();
+							} else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
 								e.preventDefault();
 								void resendEdited();
 							}
@@ -267,7 +279,7 @@ const UserRow = React.memo(function UserRow({
 					<div className="flex justify-end gap-1.5 text-[12px]">
 						<button
 							type="button"
-							onClick={() => setEditing(false)}
+							onClick={closeEditor}
 							className="rounded-md px-2.5 py-1 text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						>
 							取消
@@ -303,7 +315,7 @@ const UserRow = React.memo(function UserRow({
 						<button
 							type="button"
 							onClick={() => setExpanded((v) => !v)}
-							className="mt-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:text-[var(--text-60)]"
+							className="mt-1 rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[11px] text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						>
 							{expanded ? "收起" : "查看更多"}
 						</button>
@@ -320,7 +332,7 @@ const UserRow = React.memo(function UserRow({
 					<button
 						type="button"
 						onClick={() => {
-							setDraft(userText);
+							updateDraft(userText);
 							setEditing(true);
 						}}
 						className={USER_ACTION_BTN}
@@ -429,7 +441,7 @@ const ProtocolRow = React.memo(function ProtocolRow({
 		>
 			<div className="h-px flex-1 bg-[var(--line)]" />
 			<span
-				className="flex shrink-0 items-center gap-1 truncate px-1 text-[11px] text-[var(--text-30)]"
+				className="flex min-w-0 max-w-[80%] flex-wrap items-center justify-center gap-1 whitespace-pre-wrap break-words px-1 text-center text-[11px] text-[var(--text-30)]"
 				title={text}
 			>
 				{text}
@@ -573,13 +585,16 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 					(s.call.id === highlightedId || s.result?.toolCallId === highlightedId)),
 		);
 	}, [highlightedId, block.intermediateSteps]);
-	const { folded, prose } = useMemo(
-		() => splitInterimProse(block.intermediateSteps),
+	const segments = useMemo(
+		() => splitInterimProseBySteer(block.intermediateSteps),
 		[block.intermediateSteps],
 	);
-	const foldedSegments = useMemo(() => splitAroundSteers(folded), [folded]);
-	const firstStepsSeg = foldedSegments.findIndex((s) => s.type === "steps");
-	const lastStepsSeg = foldedSegments.reduce((acc, s, i) => (s.type === "steps" ? i : acc), -1);
+	// Segments that carry a fold own the header (first) and the live state (last).
+	const firstStepsSeg = segments.findIndex((s) => s.type === "steps" && s.folded.length > 0);
+	const lastStepsSeg = segments.reduce(
+		(acc, s, i) => (s.type === "steps" && s.folded.length > 0 ? i : acc),
+		-1,
+	);
 	const inProgress = streamingThisTurn && !block.answerItem && block.intermediateSteps.length > 0;
 
 	// One model request per assistant message in the turn; the answer's own
@@ -629,7 +644,7 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 
 			{/* Collapsed intermediate steps under the worked-for divider; user
 			    messages delivered mid-turn stay visible between the groups. */}
-			{foldedSegments.map((seg, si) => {
+			{segments.map((seg, si) => {
 				if (seg.type === "steer") {
 					return (
 						<div
@@ -647,39 +662,43 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 				const isFirst = si === firstStepsSeg;
 				const isLast = si === lastStepsSeg;
 				return (
-					<ExecutionDisclosure
-						key={`fold-${seg.steps[0]?.id ?? si}`}
-						sessionId={sessionId}
-						steps={seg.steps}
-						durationMs={isFirst ? turnDurationMs : undefined}
-						isStreaming={inProgress ? isFirst : isLast && streamingThisTurn && !block.answerItem}
-						awaitingSubagents={isFirst && awaitingSubagents}
-						liveOpen={inProgress}
-						hideHeader={inProgress && !isFirst}
-						startedAt={turnStartedAt}
-						forceExpanded={hasHighlightedStep}
-						toolResultsByCallId={toolResultsByCallId}
-						highlightedStepId={hasHighlightedStep ? highlightedId : null}
-						statsPlan={statsPlan}
-						turnStats={isFirst ? turnStats : undefined}
-					/>
+					<React.Fragment key={`seg-${seg.folded[0]?.id ?? seg.prose[0]?.id ?? si}`}>
+						{seg.folded.length > 0 && (
+							<ExecutionDisclosure
+								sessionId={sessionId}
+								steps={seg.folded}
+								durationMs={isFirst ? turnDurationMs : undefined}
+								isStreaming={inProgress ? isFirst : isLast && streamingThisTurn && !block.answerItem}
+								awaitingSubagents={isFirst && awaitingSubagents}
+								liveOpen={inProgress}
+								hideHeader={inProgress && !isFirst}
+								startedAt={turnStartedAt}
+								forceExpanded={hasHighlightedStep ? true : null}
+								toolResultsByCallId={toolResultsByCallId}
+								highlightedStepId={hasHighlightedStep ? highlightedId : null}
+								statsPlan={statsPlan}
+								turnStats={isFirst ? turnStats : undefined}
+							/>
+						)}
+						{/* Interim assistant prose stays on the thread column right after
+						    its own fold: it was readable while streaming and must not
+						    vanish into the fold, nor land after the steer it preceded. */}
+						{seg.prose.map((step) =>
+							step.kind === "text" ? (
+								<div
+									key={step.id}
+									id={`msg-${step.id}`}
+									className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
+								>
+									<ClampedProse>
+										<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
+									</ClampedProse>
+								</div>
+							) : null,
+						)}
+					</React.Fragment>
 				);
 			})}
-			{/* Interim assistant prose stays on the thread column: it was readable
-			    while streaming and must not vanish into the fold. */}
-			{prose.map((step) =>
-				step.kind === "text" ? (
-					<div
-						key={step.id}
-						id={`msg-${step.id}`}
-						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
-					>
-						<ClampedProse>
-							<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
-						</ClampedProse>
-					</div>
-				) : null,
-			)}
 			{/* Assistant answer — plain prose on the thread column */}
 			{block.answerItem && (
 				block.answerItem.stopReason === "aborted" ? (
@@ -692,6 +711,20 @@ const TurnBlockRow = React.memo(function TurnBlockRow({
 							<span className="ml-2 tabular-nums text-[11px] text-[var(--text-30)]" title="回复时间">
 								{answerTime}
 							</span>
+						)}
+						{/* Stopped turns still need undo / changed files / fork. */}
+						{!selecting && !isForkDraftId(sessionId) && (
+							<AnswerFooter
+								compact
+								sessionId={sessionId}
+								cwd={sessionCwd}
+								sessionFile={sessionFile}
+								turnCheckpoint={turnCheckpoint}
+								turns={turns}
+								sessionWorking={sessionWorking}
+								onDoneUndo={onTurnsChange}
+								answerItemId={block.answerItem.id}
+							/>
 						)}
 					</div>
 				) : (
@@ -804,7 +837,7 @@ const StreamingRow = React.memo(function StreamingRow({
 	// message it interrupted: the steer stays where persisted grouping will
 	// later place it (after the steps already emitted when it was sent).
 	const steerAnchors = useRef(
-		new Map<string, { msgKey: unknown; at: number }>(),
+		new Map<string, { at: number }>(),
 	);
 	const liveTools = useLive(
 		(s) => s.sessions[sessionId]?.tools ?? EMPTY_TOOLS,
@@ -937,18 +970,21 @@ const StreamingRow = React.memo(function StreamingRow({
 			const t = asObj(part).type;
 			if (t === "thinking" || t === "thought") lastThinkingIdx = i;
 		});
-		let partIdx = 0;
-		for (const part of content) {
-			const o = asObj(part);
+		// Same ids the finished request will give these rows (`r<finished>-<n>`,
+		// n counting kept parts only) so message_end does not remount them.
+		let keptIdx = -1;
+		for (let ci = 0; ci < content.length; ci++) {
+			const o = asObj(content[ci]);
 			const t = o.type;
-			partIdx += 1;
+			const partIdx = ci + 1;
 			if (t === "thinking" || t === "thought") {
 				const thinking = String(o.thinking ?? o.text ?? "");
 				if (!thinking) continue;
+				keptIdx += 1;
 				const isLast = partIdx - 1 === lastThinkingIdx;
 				const running = isLast && !thinkingEndedAt;
 				out.push({
-					id: `live-thinking-${partIdx}`,
+					id: `live-thinking-r${finished}-${keptIdx}`,
 					kind: "thinking",
 					thinking,
 					running,
@@ -959,13 +995,16 @@ const StreamingRow = React.memo(function StreamingRow({
 				});
 			} else if (t === "tool_use" || t === "toolCall") {
 				const id = String(o.id ?? "");
-				if (!id || seen.has(id)) continue;
+				if (!id) continue;
+				keptIdx += 1;
+				if (seen.has(id)) continue;
 				pushTool(id, o.input ?? o.arguments, String(o.name ?? ""));
 			} else if (t === "text") {
 				const txt = String(o.text ?? "");
 				if (!txt.trim()) continue;
+				keptIdx += 1;
 				out.push({
-					id: `live-text-${partIdx}`,
+					id: `live-text-r${finished}-${keptIdx}`,
 					kind: "text",
 					text: txt,
 					// Only the part the model is writing right now is unfinished.
@@ -989,7 +1028,6 @@ const StreamingRow = React.memo(function StreamingRow({
 				requestId: requestOfCall.get(id),
 			});
 		}
-		const msgKey = streamingMessage?.timestamp;
 		const anchors = steerAnchors.current;
 		const queued = ompQueue
 			? queuedEchoIds({ pendingUserEchoes: echoes, ompQueue })
@@ -1003,12 +1041,12 @@ const StreamingRow = React.memo(function StreamingRow({
 		const placed = steers.map((echo) => {
 			let anchor = anchors.get(echo.id);
 			if (!anchor) {
-				anchor = { msgKey, at: out.length };
+				anchor = { at: out.length };
 				anchors.set(echo.id, anchor);
 			}
-			// A newer streaming message started after the steer: it sits first.
-			const at = anchor.msgKey === msgKey ? anchor.at : 0;
-			return { at, step: steerStep(echo) };
+			// Rows of finished requests keep their order, so the anchor stays
+			// valid across message boundaries (a delivered steer must not jump).
+			return { at: anchor.at, step: steerStep(echo) };
 		});
 		for (let i = placed.length - 1; i >= 0; i--) {
 			const { at, step } = placed[i];
@@ -1029,43 +1067,36 @@ const StreamingRow = React.memo(function StreamingRow({
 		thinkingEndedAt,
 	]);
 
-	// While `holding` (the stream ended, the transcript has not caught up) the
-	// store is already cleared: keep painting the last live snapshot so the turn
-	// does not blank out before the committed block replaces it.
-	const liveSnapshot = {
-		steps,
-		statsPlan: liveRequests.length > 0 ? statsPlan : undefined,
-	};
-	const frozenRef = useRef(liveSnapshot);
-	if (!holding) frozenRef.current = liveSnapshot;
-	const shown = holding ? frozenRef.current : liveSnapshot;
-	const endedAtRef = useRef<number | null>(null);
-	if (!holding) endedAtRef.current = null;
-	else if (endedAtRef.current === null) endedAtRef.current = Date.now();
-
 	// Requests whose tool calls the committed turn already shows: their live
 	// rows (and stats lines) would repeat those steps, so they are dropped.
-	const { visibleSteps, visiblePlan } = useMemo(() => {
-		if (persistedCallIds.size === 0) {
-			return { visibleSteps: shown.steps, visiblePlan: shown.statsPlan };
-		}
+	const liveVisible = useMemo(() => {
+		const plan = liveRequests.length > 0 ? statsPlan : undefined;
+		if (persistedCallIds.size === 0) return { visibleSteps: steps, visiblePlan: plan };
 		const covered = new Set(
 			liveRequests
 				.filter((r) => r.toolCallIds.some((id) => persistedCallIds.has(id)))
 				.map((r) => r.id),
 		);
-		const visibleSteps = shown.steps.filter((s) => {
+		const visibleSteps = steps.filter((s) => {
 			if (s.kind === "tool" && persistedCallIds.has(s.call.id)) return false;
 			return !("requestId" in s && s.requestId && covered.has(s.requestId));
 		});
-		const visiblePlan = shown.statsPlan
-			? {
-					...shown.statsPlan,
-					requests: shown.statsPlan.requests.filter((r) => !covered.has(r.id)),
-				}
+		const visiblePlan = plan
+			? { ...plan, requests: plan.requests.filter((r) => !covered.has(r.id)) }
 			: undefined;
 		return { visibleSteps, visiblePlan };
-	}, [shown, persistedCallIds, liveRequests]);
+	}, [steps, statsPlan, persistedCallIds, liveRequests]);
+
+	// While `holding` (the stream ended, the transcript has not caught up) the
+	// store is already cleared: keep painting the last live snapshot (already
+	// deduped against the committed turn) so the turn does not blank out nor
+	// repeat committed steps before the committed block replaces it.
+	const frozenRef = useRef(liveVisible);
+	if (!holding) frozenRef.current = liveVisible;
+	const { visibleSteps, visiblePlan } = holding ? frozenRef.current : liveVisible;
+	const endedAtRef = useRef<number | null>(null);
+	if (!holding) endedAtRef.current = null;
+	else if (endedAtRef.current === null) endedAtRef.current = Date.now();
 
 	// Final answer start: the activity folds into the disclosure and the turn
 	// takes the committed layout (disclosure, interim prose, answer), so the
@@ -1073,7 +1104,7 @@ const StreamingRow = React.memo(function StreamingRow({
 	const foldEnabled = showTimer;
 	const candidate = foldEnabled ? liveAnswerCandidate(visibleSteps) : null;
 	const answerStarted = useAnswerStarted(candidate !== null, holding);
-	const { activity, prose, answer } = useMemo(
+	const { activity, answer } = useMemo(
 		() => splitLiveTurn(visibleSteps, answerStarted),
 		[visibleSteps, answerStarted],
 	);
@@ -1141,8 +1172,19 @@ const StreamingRow = React.memo(function StreamingRow({
 		);
 		if (!busy && !holding) nodes.push(<LiveWaitingRow key="live-waiting" />);
 	} else {
-		const segments = splitAroundSteers(activity);
-		const firstSteps = segments.findIndex((s) => s.type === "steps");
+		// Per steer-delimited segment: fold, then that stretch's interim prose,
+		// then the steer (same order the committed turn renders).
+		const rest = visibleSteps.filter((s) => s !== answer);
+		const segments = splitAroundSteers(rest).map((seg) =>
+			seg.type === "steer"
+				? seg
+				: {
+						type: "steps" as const,
+						folded: seg.steps.filter((s) => s.kind !== "text"),
+						prose: seg.steps.filter((s) => s.kind === "text"),
+					},
+		);
+		const firstSteps = segments.findIndex((s) => s.type === "steps" && s.folded.length > 0);
 		segments.forEach((seg, si) => {
 			if (seg.type === "steer") {
 				nodes.push(
@@ -1157,46 +1199,50 @@ const StreamingRow = React.memo(function StreamingRow({
 						/>
 					</div>,
 				);
-			} else if (si === firstSteps) {
+				return;
+			}
+			if (seg.folded.length > 0) {
+				if (si === firstSteps) {
+					nodes.push(
+						<LiveDisclosure
+							key="live-disclosure"
+							sessionId={sessionId}
+							steps={seg.folded}
+							folded
+							live={!holding}
+							startedAt={streamStartedAt}
+							durationMs={heldDurationMs}
+							toolResultsByCallId={toolResultsByCallId}
+							statsPlan={stepsPlan}
+						/>,
+					);
+				} else {
+					nodes.push(
+						<ExecutionDisclosure
+							key={`fold-${seg.folded[0]?.id ?? si}`}
+							sessionId={sessionId}
+							steps={seg.folded}
+							toolResultsByCallId={toolResultsByCallId}
+							statsPlan={stepsPlan}
+						/>,
+					);
+				}
+			}
+			for (const step of seg.prose) {
+				if (step.kind !== "text") continue;
 				nodes.push(
-					<LiveDisclosure
-						key="live-disclosure"
-						sessionId={sessionId}
-						steps={seg.steps}
-						folded
-						live={!holding}
-						startedAt={streamStartedAt}
-						durationMs={heldDurationMs}
-						toolResultsByCallId={toolResultsByCallId}
-						statsPlan={stepsPlan}
-					/>,
-				);
-			} else {
-				nodes.push(
-					<ExecutionDisclosure
-						key={`fold-${seg.steps[0]?.id ?? si}`}
-						sessionId={sessionId}
-						steps={seg.steps}
-						toolResultsByCallId={toolResultsByCallId}
-						statsPlan={stepsPlan}
-					/>,
+					<div
+						key={step.id}
+						id={`msg-${step.id}`}
+						className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
+					>
+						<ClampedProse>
+							<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
+						</ClampedProse>
+					</div>,
 				);
 			}
 		});
-		for (const step of prose) {
-			if (step.kind !== "text") continue;
-			nodes.push(
-				<div
-					key={step.id}
-					id={`msg-${step.id}`}
-					className="py-1 text-[length:var(--chat-font-size)] text-[var(--text)]"
-				>
-					<ClampedProse>
-						<Markdown text={stripImageMarkers(step.text)} sessionId={sessionId} />
-					</ClampedProse>
-				</div>,
-			);
-		}
 		if (answer.kind === "text") {
 			nodes.push(
 				<div key="live-answer" id="msg-live-answer" className={ANSWER_WRAP_CLASS}>
@@ -1267,6 +1313,39 @@ export function MessageList({
 					s.sessions[sessionId]?.streamingMessage,
 			),
 	);
+	// Hand-off from the live row to the committed block. The transcript is
+	// fetched only after the stream ends, so for a moment neither the streamed
+	// turn nor its committed twin exists: the live row stays mounted (painting
+	// its last snapshot) until the transcript delivers a new block, then both
+	// swap in one render. The timeout covers turns that commit nothing.
+	// Keyed on the raw transcript, not the blocks: a turn whose first item was
+	// already committed before the stream ended keeps the same block count and
+	// id when the answer lands, which left the held live row painted next to
+	// the committed answer (the reply showing twice) until the timeout.
+	const blocksKey = `${items.length}:${items[items.length - 1]?.id ?? ""}`;
+	const [hold, setHold] = useState<{ key: string } | null>(null);
+	const [wasStreaming, setWasStreaming] = useState(isStreamingActive);
+	const [holdSessionId, setHoldSessionId] = useState(sessionId);
+	if (holdSessionId !== sessionId) {
+		// A session switch is not a stream ending: never hold another session's frame.
+		setHoldSessionId(sessionId);
+		setWasStreaming(isStreamingActive);
+		setHold(null);
+	} else if (wasStreaming !== isStreamingActive) {
+		setWasStreaming(isStreamingActive);
+		setHold(isStreamingActive ? null : { key: blocksKey });
+	}
+	const holding =
+		holdSessionId === sessionId && !isStreamingActive && hold !== null && hold.key === blocksKey;
+	useEffect(() => {
+		if (!hold) return;
+		if (hold.key !== blocksKey) {
+			setHold(null);
+			return;
+		}
+		const timer = window.setTimeout(() => setHold(null), LIVE_HOLD_MS);
+		return () => window.clearTimeout(timer);
+	}, [hold, blocksKey]);
 	// In-turn steers render inside StreamingRow at their step position; only
 	// next-turn echoes (or steers orphaned after the stream ends) sit here.
 	const bottomEchoes = useMemo(() => {
@@ -1275,8 +1354,9 @@ export function MessageList({
 			? queuedEchoIds({ pendingUserEchoes: pendingEchoes, ompQueue })
 			: new Set<string>();
 		const sent = pendingEchoes.filter((e) => !queued.has(e.id));
-		return isStreamingActive ? sent.filter((e) => !e.steer) : sent;
-	}, [pendingEchoes, ompQueue, isStreamingActive]);
+		// The held live row still paints delivered steers: do not repeat them.
+		return isStreamingActive || holding ? sent.filter((e) => !e.steer) : sent;
+	}, [pendingEchoes, ompQueue, isStreamingActive, holding]);
 	const scrollRequest = useLive((s) => s.sessions[sessionId]?.scrollRequest);
 
 	const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -1411,6 +1491,9 @@ export function MessageList({
 		onEmptyChange?.(isEmptyState);
 	}, [isEmptyState, onEmptyChange]);
 
+	const lastTurnIdRef = useRef<unknown>(null);
+	const liveSeenAtRef = useRef(0);
+	const jumpTimerRef = useRef(0);
 	const virtualizer = useVirtualizer({
 		count: blocks.length,
 		getScrollElement: () => scrollRef.current,
@@ -1426,13 +1509,22 @@ export function MessageList({
 		item,
 		_delta,
 		instance,
-	) =>
-		shouldCompensateResize(
-			item,
-			(instance.scrollOffset ?? 0) + instance.scrollAdjustments,
-			!instance.itemSizeCache.has(item.key),
-			shouldFollow(followRef.current),
-		);
+	) => {
+		const viewportTop = (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+		const firstMeasure = !instance.itemSizeCache.has(item.key);
+		// The committed turn replacing the live row is measured for the first
+		// time here; the text the user may be reading sits inside it, so a
+		// bigger-than-estimated height must not shift scrollTop under them.
+		if (
+			firstMeasure &&
+			item.key === lastTurnIdRef.current &&
+			Date.now() - liveSeenAtRef.current < LIVE_HOLD_MS + 2500 &&
+			item.end > viewportTop
+		) {
+			return false;
+		}
+		return shouldCompensateResize(item, viewportTop, firstMeasure, shouldFollow(followRef.current));
+	};
 
 	// Last turn block — its footer stays visible even without hover.
 	const lastTurnId = useMemo(() => {
@@ -1441,10 +1533,11 @@ export function MessageList({
 		}
 		return null;
 	}, [blocks]);
+	lastTurnIdRef.current = lastTurnId;
 
 	// The latest turn already shows a live "正在处理" disclosure (persisted
 	// steps, no answer yet); StreamingRow must not add a second timer under it.
-	const latestDisclosureLive = useLive((s) => {
+	const latestDisclosureLiveNow = useLive((s) => {
 		if (s.sessions[sessionId]?.streaming !== true) return false;
 		for (let i = blocks.length - 1; i >= 0; i--) {
 			const b = blocks[i];
@@ -1452,6 +1545,16 @@ export function MessageList({
 		}
 		return false;
 	});
+	// While the held row waits for the committed turn the store is already
+	// cleared; keep the pre-hold layout so the held row does not switch to a
+	// second disclosure that repeats the committed steps.
+	// (Updated in a layout effect, not during render: React discards the first
+	// render pass of a hold-start, and a render-time write would survive it.)
+	const frozenDisclosureLive = useRef(latestDisclosureLiveNow);
+	useLayoutEffect(() => {
+		if (!holding) frozenDisclosureLive.current = latestDisclosureLiveNow;
+	});
+	const latestDisclosureLive = holding ? frozenDisclosureLive.current : latestDisclosureLiveNow;
 
 	// Tool-call ids the committed latest turn already renders. While that turn
 	// shows its own live disclosure, StreamingRow drops whatever these cover.
@@ -1505,14 +1608,16 @@ export function MessageList({
 		};
 		const onWheel = (e: WheelEvent) => {
 			markInput();
-			if (e.deltaY < 0) gestureDetach();
+			if (e.deltaY < 0 && canDetachByGesture(el, e.deltaX, e.deltaY)) gestureDetach();
 		};
 		const onKeyDown = (e: KeyboardEvent) => {
 			markInput();
+			// Keys typed into an inline editor move its caret, not the scroller.
+			const t = e.target as HTMLElement | null;
+			if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
 			if (
-				e.key === "ArrowUp" ||
-				e.key === "PageUp" ||
-				e.key === "Home"
+				(e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home") &&
+				canDetachByGesture(el)
 			) {
 				gestureDetach();
 			}
@@ -1525,7 +1630,7 @@ export function MessageList({
 		const onTouchMove = (e: TouchEvent) => {
 			markInput();
 			const y = e.touches[0]?.clientY ?? touchY;
-			if (y - touchY > 2) gestureDetach(); // finger up = scroll toward top
+			if (y - touchY > 2 && canDetachByGesture(el)) gestureDetach(); // finger down = scroll toward top
 			touchY = y;
 		};
 		// Scrollbar-pill drags and text-selection autoscroll hold a pointer down.
@@ -1570,6 +1675,11 @@ export function MessageList({
 			if (el2 && shouldFollow(followRef.current)) {
 				el2.scrollTop = el2.scrollHeight;
 				followRef.current = onWroteBottom(followRef.current, Date.now());
+			} else if (el2) {
+				// Detached: no scroll event follows content growth, so report the
+				// real distance (shows the scroll-to-bottom pill as the answer grows).
+				const dist = el2.scrollHeight - el2.scrollTop - el2.clientHeight;
+				emitScrollState({ nearBottom: dist < NEAR_BOTTOM_PX });
 			}
 		});
 		ro.observe(target);
@@ -1594,40 +1704,8 @@ export function MessageList({
 		emitScrollState({ nearBottom: true, hasNewMessages: false });
 	}, [sessionId]);
 
-	// Hand-off from the live row to the committed block. The transcript is
-	// fetched only after the stream ends, so for a moment neither the streamed
-	// turn nor its committed twin exists: the live row stays mounted (painting
-	// its last snapshot) until the transcript delivers a new block, then both
-	// swap in one render. The timeout covers turns that commit nothing.
-	// Keyed on the raw transcript, not the blocks: a turn whose first item was
-	// already committed before the stream ended keeps the same block count and
-	// id when the answer lands, which left the held live row painted next to
-	// the committed answer (the reply showing twice) until the timeout.
-	const blocksKey = `${items.length}:${items[items.length - 1]?.id ?? ""}`;
-	const [hold, setHold] = useState<{ key: string } | null>(null);
-	const [wasStreaming, setWasStreaming] = useState(isStreamingActive);
-	const [holdSessionId, setHoldSessionId] = useState(sessionId);
-	if (holdSessionId !== sessionId) {
-		// A session switch is not a stream ending: never hold another session's frame.
-		setHoldSessionId(sessionId);
-		setWasStreaming(isStreamingActive);
-		setHold(null);
-	} else if (wasStreaming !== isStreamingActive) {
-		setWasStreaming(isStreamingActive);
-		setHold(isStreamingActive ? null : { key: blocksKey });
-	}
-	const holding =
-		holdSessionId === sessionId && !isStreamingActive && hold !== null && hold.key === blocksKey;
-	useEffect(() => {
-		if (!hold) return;
-		if (hold.key !== blocksKey) {
-			setHold(null);
-			return;
-		}
-		const timer = window.setTimeout(() => setHold(null), LIVE_HOLD_MS);
-		return () => window.clearTimeout(timer);
-	}, [hold, blocksKey]);
 	const liveVisible = isStreamingActive || holding;
+	if (liveVisible) liveSeenAtRef.current = Date.now();
 
 	// Pin to the bottom whenever content appears or grows while following.
 	// Runs synchronously post-commit (before paint), covering first mount,
@@ -1692,8 +1770,10 @@ export function MessageList({
 		if (targetIndex >= 0) {
 			// Jump wins over follow-bottom for the duration of the smooth scroll.
 			followRef.current = detach(followRef.current);
+			// Align the block's top: centering a turn taller than the viewport
+			// would leave its question off-screen. A step target is refined below.
 			virtualizer.scrollToIndex(targetIndex, {
-				align: "center",
+				align: "start",
 				behavior: "smooth",
 			});
 			const quote = scrollRequest.quote;
@@ -1705,7 +1785,6 @@ export function MessageList({
 					el.scrollIntoView({ behavior: "smooth", block: "center" });
 				}
 			};
-			let scrollTimer: number | undefined;
 			if (quote) {
 				// Highlight only the quoted text; whole-message flash is the fallback.
 				void flashQuote(targetId, quote, 3000).then((found) => {
@@ -1715,12 +1794,15 @@ export function MessageList({
 				});
 			} else {
 				flashHighlight(targetId, 3000);
-				scrollTimer = window.setTimeout(scrollToMessage, 120);
+				// Not cleared by this effect's cleanup: it consumes its own request
+				// below, which re-runs the effect and would cancel a bound timer.
+				window.clearTimeout(jumpTimerRef.current);
+				jumpTimerRef.current = window.setTimeout(scrollToMessage, 120);
 			}
 			useLive.getState().clearScrollRequest(sessionId);
-			return () => clearTimeout(scrollTimer);
 		}
 	}, [scrollRequest, blocks, virtualizer, sessionId, flashHighlight]);
+	useEffect(() => () => window.clearTimeout(jumpTimerRef.current), []);
 
 	// Consume cross-feature "jump to chat turn" requests (git timeline → chat)
 	const revealTurn = useTurnNav((s) => s.revealTurn);
@@ -1738,7 +1820,7 @@ export function MessageList({
 		if (idx < 0) return;
 		// Jump wins over follow-bottom for the duration of the smooth scroll.
 		followRef.current = detach(followRef.current);
-		virtualizer.scrollToIndex(idx, { align: "center", behavior: "smooth" });
+		virtualizer.scrollToIndex(idx, { align: "start", behavior: "smooth" });
 		flashHighlight(revealTurn.userItemId, 2500);
 	}, [revealTurn, blocks, virtualizer, sessionId, isLoadingTranscript, flashHighlight]);
 
@@ -1767,7 +1849,7 @@ export function MessageList({
 			return;
 		}
 		followRef.current = detach(followRef.current);
-		virtualizer.scrollToIndex(idx, { align: "center", behavior: "smooth" });
+		virtualizer.scrollToIndex(idx, { align: "start", behavior: "smooth" });
 		flashHighlight(callId, 2000);
 		for (const delay of [150, 450, 900]) {
 			window.setTimeout(() => {
@@ -1777,9 +1859,12 @@ export function MessageList({
 			}, delay);
 		}
 	}, [locateTarget, blocks, virtualizer, isLoadingTranscript, flashHighlight]);
-	const [locateHost, setLocateHost] = useState<HTMLDivElement | null>(null);
+	// Anchor the pill to the (non-scrolling) scroll container, not the list root
+	// that moves with scrollTop.
+	const [locateHost, setLocateHost] = useState<HTMLElement | null>(null);
+	useEffect(() => setLocateHost(scrollRef.current), [scrollRef]);
 	return (
-		<div ref={setLocateHost} className="relative flex h-full flex-col">
+		<div className="relative flex h-full flex-col">
 			<LocatePill sessionId={sessionId} host={locateHost} />
 
 			{/* Loading transcript affordance */}
@@ -1844,6 +1929,7 @@ export function MessageList({
 									<div
 										key={row.key}
 										data-index={row.index}
+										data-turn-id={block.id}
 										ref={virtualizer.measureElement}
 										style={{ transform: `translateY(${row.start}px)` }}
 										className={clsx(

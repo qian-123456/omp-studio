@@ -255,9 +255,10 @@ function elapsedLabel(ms: number): string {
 }
 
 /** Local open state; an "expand/collapse all" value seeds it until toggled. */
-function useDisclosure(forceExpanded?: boolean | null) {
-	const [isOpen, setIsOpen] = useState(Boolean(forceExpanded));
+function useDisclosure(forceExpanded?: boolean | null, defaultOpen = false) {
+	const [isOpen, setIsOpen] = useState(forceExpanded === true || (forceExpanded == null && defaultOpen));
 	useEffect(() => {
+		// null/undefined = no override; a true → null transition keeps the state.
 		if (forceExpanded != null) setIsOpen(forceExpanded);
 	}, [forceExpanded]);
 	return { open: isOpen, setOpen: setIsOpen, toggle: () => setIsOpen((v) => !v) };
@@ -376,10 +377,21 @@ function ToolGroupRow({
 	/** Parallel-run marks for the group's rows. */
 	parallel: Map<string, ParallelRunMark>;
 }) {
-	const { open, toggle } = useDisclosure(forceExpanded);
 	const statuses = steps.map(statusFor);
 	const running = statuses.includes("running");
 	const failed = statuses.filter((s) => s === "error").length;
+	// A group that forms while a call runs starts open (the user may be watching
+	// that call's card) and folds back by itself when it finishes, unless the
+	// user toggled it or a locate forced it open.
+	const { open, setOpen, toggle } = useDisclosure(forceExpanded, running);
+	const touched = useRef(false);
+	const wasRunning = useRef(running);
+	useEffect(() => {
+		if (wasRunning.current && !running && !touched.current && forceExpanded !== true) {
+			setOpen(false);
+		}
+		wasRunning.current = running;
+	}, [running, forceExpanded, setOpen]);
 
 	return (
 		<div id={`msg-${steps[0]?.id ?? group}`}>
@@ -389,7 +401,10 @@ function ToolGroupRow({
 				running={running}
 				expandable
 				open={open}
-				onToggle={toggle}
+				onToggle={() => {
+					touched.current = true;
+					toggle();
+				}}
 				accessory={
 					failed > 0 && (
 						<span className="shrink-0 text-[12px] text-[var(--status-error)]">
@@ -455,15 +470,30 @@ export function TurnSteps({
 	);
 	const liveTools = useLive((s) => s.sessions[sessionId]?.tools);
 
+	// The transcript filter absorbs matched tool_results, so a committed turn's
+	// failure only lives in the by-call-id map.
 	const statusFor = (step: ToolStep): ToolStatus => {
 		const live = liveTools?.[step.call.id];
+		const result = step.result ?? toolResultsByCallId?.get(step.call.id);
 		if (live?.status === "running") return "running";
-		if (live?.status === "error" || step.result?.isError) return "error";
-		if (live?.status === "done" || step.result) return "done";
+		if (live?.status === "error" || result?.isError) return "error";
+		if (live?.status === "done" || result) return "done";
 		// Transcript-backed calls without a result render as done; purely live
 		// pseudo-steps with no result yet are pending ("called").
 		return step.item ? "done" : "called";
 	};
+
+	const isHighlightTarget = (step: StepShape): boolean => {
+		if (!highlightedStepId) return false;
+		if (step.id === highlightedStepId) return true;
+		if (step.kind !== "tool") return false;
+		const res = step.result ?? toolResultsByCallId?.get(step.call.id);
+		return step.call.id === highlightedStepId || res?.toolCallId === highlightedStepId;
+	};
+	// A locate/jump forces open only the path to the target step, not every row.
+	const onlyHighlighted = forceExpanded === true && steps.some(isHighlightTarget);
+	const forceFor = (step: StepShape): boolean | null | undefined =>
+		onlyHighlighted ? (isHighlightTarget(step) ? true : null) : forceExpanded;
 
 	const renderTool = (step: ToolStep, mark?: ParallelRunMark) => {
 		const call = step.call;
@@ -499,7 +529,7 @@ export function TurnSteps({
 						resultText={res?.text}
 						startedAt={live?.startedAt}
 						endedAt={live?.endedAt}
-						expanded={forceExpanded ?? undefined}
+						expanded={forceFor(step) ?? undefined}
 					/>
 				) : (
 					<ToolCard
@@ -510,7 +540,8 @@ export function TurnSteps({
 						status={status}
 						output={res?.text || live?.text || ""}
 						details={res?.details ?? live?.details}
-						expanded={forceExpanded ?? undefined}
+						expanded={forceFor(step) ?? undefined}
+						callId={call.id}
 						startedAt={live?.startedAt}
 						endedAt={live?.endedAt}
 					/>
@@ -552,7 +583,7 @@ export function TurnSteps({
 							(recorded ? recorded.endedAt - recorded.startedAt : undefined)
 						}
 						running={step.running}
-						forceExpanded={forceExpanded}
+						forceExpanded={forceFor(step)}
 					/>
 				);
 			}
@@ -568,7 +599,7 @@ export function TurnSteps({
 				);
 			case "notice":
 				return (
-					<NoticeStep key={step.id} step={step} forceExpanded={forceExpanded} />
+					<NoticeStep key={step.id} step={step} forceExpanded={forceFor(step)} />
 				);
 			case "steer":
 				return (
@@ -610,7 +641,13 @@ export function TurnSteps({
 							group={unit.group}
 							steps={unit.steps}
 							statusFor={statusFor}
-							forceExpanded={forceExpanded}
+							forceExpanded={
+								onlyHighlighted
+									? unit.steps.some(isHighlightTarget)
+										? true
+										: null
+									: forceExpanded
+							}
 							renderTool={renderTool}
 							statsRows={statsRows}
 							parallel={parallel}

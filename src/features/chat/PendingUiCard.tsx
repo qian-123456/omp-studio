@@ -9,6 +9,7 @@ import { allowedToolsList, rpcUiRespond } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
 import { claimEscape } from "../../lib/escapeClaim";
+import { isEditableTarget, resolveApprovalChoices } from "./approvalOptions";
 
 const asObj = (v: unknown): Record<string, unknown> =>
 	typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
@@ -42,11 +43,20 @@ export function PendingUiCard({
 	const prevActiveElement = useRef<HTMLElement | null>(null);
 	const primaryApprovalBtnRef = useRef<HTMLButtonElement | null>(null);
 
-	const isApproval = /allow|approve|权限|允许/i.test(title);
+	const choices = method === "select" ? resolveApprovalChoices(options) : {};
+	// A select card is only an approval card when omp's exact Approve/Deny
+	// labels are present; otherwise it renders as a plain option list.
+	const isApproval =
+		/allow|approve|权限|允许/i.test(title) &&
+		(method !== "select" || (!!choices.once && !!choices.deny));
 
 	useEffect(() => {
 		prevActiveElement.current = document.activeElement as HTMLElement | null;
-		if (isApproval || method === "confirm") {
+		// Never steal focus from something the user is typing into (composer).
+		if (
+			(isApproval || method === "confirm") &&
+			!isEditableTarget(document.activeElement)
+		) {
 			primaryApprovalBtnRef.current?.focus();
 		}
 		return () => {
@@ -68,11 +78,9 @@ export function PendingUiCard({
 	const handleApprovalApprove = () => {
 		if (busy) return;
 		if (method === "select") {
-			const approveOpt =
-				options.find((o) => /approve|允许|yes|allow/i.test(o)) ??
-				options[0] ??
-				"allow";
-			void respond({ value: approveOpt, confirmed: true });
+			if (choices.once) {
+				void respond({ value: choices.once, confirmed: true });
+			}
 		} else {
 			void respond({ confirmed: true });
 		}
@@ -81,15 +89,13 @@ export function PendingUiCard({
 	const handleApprovalReject = () => {
 		if (busy) return;
 		if (method === "select") {
-			const rejectOpt =
-				options.find((o) => /deny|reject|拒绝|no|cancel/i.test(o)) ??
-				options[options.length - 1] ??
-				"deny";
-			void respond({
-				value: rejectOpt,
-				confirmed: false,
-				cancelled: true,
-			});
+			if (choices.deny) {
+				void respond({
+					value: choices.deny,
+					confirmed: false,
+					cancelled: true,
+				});
+			}
 		} else {
 			void respond({ confirmed: false });
 		}
@@ -113,14 +119,14 @@ export function PendingUiCard({
 
 	const onCardKeyDown = (e: React.KeyboardEvent) => {
 		if (isComposing(e)) return;
-		if (isApproval) {
-			if (e.key === "y" || e.key === "Y") {
-				e.preventDefault();
-				handleApprovalApprove();
-			} else if (e.key === "n" || e.key === "N") {
-				e.preventDefault();
-				handleApprovalReject();
-			}
+		if (!isApproval || isEditableTarget(e.target)) return;
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		if (e.key === "y" || e.key === "Y") {
+			e.preventDefault();
+			handleApprovalApprove();
+		} else if (e.key === "n" || e.key === "N") {
+			e.preventDefault();
+			handleApprovalReject();
 		}
 	};
 
@@ -178,56 +184,40 @@ export function PendingUiCard({
 				<div className="mt-2.5 flex flex-wrap items-center gap-2">
 					<button
 						ref={primaryApprovalBtnRef}
-						autoFocus
 						type="button"
 						disabled={busy}
 						onClick={handleApprovalApprove}
 						className={btnPrimary}
-						title="仅允许本次执行 (快捷键: y 或 Enter)"
+						title="仅允许本次执行 (快捷键: y)"
 					>
 						{busy && <Loader2 size={12} className="animate-spin" />}
 						仅本次
 					</button>
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => {
-							if (method === "select") {
-								const approveOpt =
-									options.find((o) => /approve|允许|yes|allow/i.test(o)) ??
-									options[0] ??
-									"allow";
-								void respond({
-									value: approveOpt,
-									confirmed: true,
-									always: true,
-								});
-							} else {
-								void respond({ confirmed: true, always: true });
-							}
-						}}
-						className={btnGhost}
-						title="本会话内不再询问此工具"
-					>
-						{busy && <Loader2 size={12} className="animate-spin" />}
-						本会话始终
-					</button>
-					{hasPermanent && (
+					{(method !== "select" || choices.session) && (
 						<button
 							type="button"
 							disabled={busy}
 							onClick={() => {
 								if (method === "select") {
-									const approveOpt =
-										options.find((o) => /approve|允许|yes|allow/i.test(o)) ??
-										options[0] ??
-										"allow";
-									void respond({
-										value: approveOpt,
-										confirmed: true,
-										always: true,
-										persist: true,
-									});
+									void respond({ value: choices.session, confirmed: true });
+								} else {
+									void respond({ confirmed: true, always: true });
+								}
+							}}
+							className={btnGhost}
+							title={choices.session ?? "本会话内不再询问此工具"}
+						>
+							{busy && <Loader2 size={12} className="animate-spin" />}
+							本会话始终
+						</button>
+					)}
+					{(method === "select" ? choices.always : hasPermanent) && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => {
+								if (method === "select") {
+									void respond({ value: choices.always, confirmed: true });
 								} else {
 									void respond({
 										confirmed: true,
@@ -237,7 +227,7 @@ export function PendingUiCard({
 								}
 							}}
 							className={btnGhost}
-							title="永久加入全局允许名单"
+							title={choices.always ?? "永久加入全局允许名单"}
 						>
 							{busy && <Loader2 size={12} className="animate-spin" />}
 							永久允许
@@ -281,7 +271,6 @@ export function PendingUiCard({
 					<div className="flex gap-2">
 						<button
 							ref={!isApproval ? primaryApprovalBtnRef : undefined}
-							autoFocus={!isApproval}
 							type="button"
 							disabled={busy}
 							onClick={() => respond({ confirmed: true })}

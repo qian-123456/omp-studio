@@ -63,6 +63,23 @@ export function detach(st: FollowScrollState): FollowScrollState {
 	return st.phase === "free" ? st : { phase: "free", suppressUntil: 0 };
 }
 
+/**
+ * Whether an upward wheel/key/touch gesture can really move the scroller, and
+ * so be followed by a scroll event. Detaching without that event leaves the
+ * pin state and the scroll-to-bottom pill out of sync (nothing re-evaluates
+ * them), so gestures on a non-overflowing or already-top container, and
+ * mostly-horizontal wheel swipes, must not detach.
+ */
+export function canDetachByGesture(
+	m: { scrollTop: number; scrollHeight: number; clientHeight: number },
+	deltaX = 0,
+	deltaY = -1,
+): boolean {
+	if (m.scrollTop <= 0) return false;
+	if (m.scrollHeight <= m.clientHeight) return false;
+	return Math.abs(deltaY) >= Math.abs(deltaX);
+}
+
 /** A stick-to-bottom write just ran (`el.scrollTop = el.scrollHeight`). The
  *  first write ends `opening` and arms one settle window covering the stale
  *  events still in flight; steady-state writes while already `following`

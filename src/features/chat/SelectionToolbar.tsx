@@ -21,6 +21,7 @@ import { showSendToMainBubbleAction } from "../sidechat/handbackLogic";
 import { stageInParent } from "../sidechat/sideChatActions";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { claimEscape } from "../../lib/escapeClaim";
+import { collectTextSegments, quoteOccurrence, segmentOffset } from "./annotationAnchor";
 
 /** Custom Highlight API name painting the quoted text while its comment is typed. */
 const PENDING_HIGHLIGHT = "annotation-pending";
@@ -31,6 +32,8 @@ const COMMENT_MAX_HEIGHT = 160;
 interface Sel {
 	text: string;
 	itemId?: string;
+	/** Which repeated match of `text` inside the message was selected (see quoteOccurrence). */
+	occurrence?: number;
 	/** Viewport-space bounding rect of the selection; re-measured on scroll while commenting. */
 	rect: DOMRect;
 	/** Detached copy of the selected range: the browser selection moves into the comment input. */
@@ -129,7 +132,7 @@ export function SelectionToolbar({
 		(s: Sel) =>
 			docFile
 				? { source: "doc" as const, file: docFile, text: s.text }
-				: { source: "message" as const, text: s.text, itemId: s.itemId },
+				: { source: "message" as const, text: s.text, itemId: s.itemId, occurrence: s.occurrence },
 		[docFile],
 	);
 
@@ -267,7 +270,14 @@ export function SelectionToolbar({
 			);
 			const rawItemId = msgEl?.id.startsWith("msg-") ? msgEl.id.slice(4) : undefined;
 			const itemId = rawItemId && rawItemId !== "live" ? rawItemId : undefined;
-			setSel({ text, itemId, rect, range: range.cloneRange() });
+			// Remember which repeated match was selected so the marker/locate land on it.
+			let occurrence: number | undefined;
+			if (msgEl && itemId) {
+				const { text: full, segments } = collectTextSegments(msgEl);
+				const start = segmentOffset(segments, range.startContainer, range.startOffset);
+				if (start !== null) occurrence = quoteOccurrence(full, text, start);
+			}
+			setSel({ text, itemId, occurrence, rect, range: range.cloneRange() });
 		};
 		const onDown = (e: Event) => {
 			if (isInteractiveInput(e.target)) return;
@@ -294,7 +304,11 @@ export function SelectionToolbar({
 			if (!cur) return;
 			// Never close while the comment is being typed: re-anchor to the moved text.
 			if (boxRef.current?.contains(document.activeElement)) {
-				setSel({ ...cur, rect: cur.range.getBoundingClientRect() });
+				// The virtualizer may have unmounted the row: the live range then collapses
+				// into the list and measures as an empty rect. Keep the last good position.
+				const rect = cur.range.getBoundingClientRect();
+				if (cur.range.collapsed || (rect.width === 0 && rect.height === 0)) return;
+				setSel({ ...cur, rect });
 				return;
 			}
 			dismiss("stage");

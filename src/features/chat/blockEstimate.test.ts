@@ -56,4 +56,10 @@ describe("block height estimates", () => {
 		expect(estimateBlockHeight(undefined)).toBeGreaterThan(0);
 		expect(estimateBlockHeight(turn(null))).toBeGreaterThan(0);
 	});
+
+	it("caps a pasted long prompt at the clamped user-bubble height", () => {
+		const long = { ...turn("ok"), userItem: item("u", "line of prompt\n".repeat(300)) } as DisplayBlock;
+		const short = { ...turn("ok"), userItem: item("u", "line\n".repeat(4)) } as DisplayBlock;
+		expect(estimateBlockHeight(long) - estimateBlockHeight(short)).toBeLessThan(60);
+	});
 });

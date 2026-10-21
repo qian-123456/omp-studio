@@ -42,7 +42,7 @@ export const ShareCard = forwardRef<
 							key={entry.id}
 							className="max-w-full text-[length:var(--chat-font-size)] text-[var(--text)]"
 						>
-							<Markdown text={entry.text} />
+							<Markdown text={entry.text} exportMode />
 						</div>
 					),
 				)}

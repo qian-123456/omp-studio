@@ -15,6 +15,8 @@ export interface Annotation {
 	comment?: string;
 	/** Free-form origin shown instead of the source kind (e.g. 「来自辅助对话：标题」). */
 	label?: string;
+	/** 0-based index of this quote among identical matches in its message (anchors repeated phrases). */
+	occurrence?: number;
 }
 
 export interface ComposerImage {
@@ -213,13 +215,51 @@ function saveImages(images: Record<string, ComposerImage[]>): void {
 }
 
 const initialImages = loadImages();
-// Restored ids are `cimg-N`: continue numbering past them.
+
+const STORAGE_KEY_FILES = "omp_composer_files";
+
+function loadFiles(): Record<string, ComposerFile[]> {
+	try {
+		if (typeof localStorage === "undefined") return {};
+		const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) ?? "{}");
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		const out: Record<string, ComposerFile[]> = {};
+		for (const [sid, list] of Object.entries(parsed as Record<string, unknown>)) {
+			if (!Array.isArray(list)) continue;
+			const files = list.filter(
+				(f): f is ComposerFile =>
+					!!f && typeof f.id === "string" && typeof f.path === "string",
+			);
+			if (files.length > 0) out[sid] = files;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+function saveFiles(files: Record<string, ComposerFile[]>): void {
+	try {
+		if (typeof localStorage === "undefined") return;
+		const compact: Record<string, ComposerFile[]> = {};
+		for (const [sid, list] of Object.entries(files)) if (list.length > 0) compact[sid] = list;
+		localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(compact));
+	} catch {
+		// quota / private mode: attachments stay in memory only
+	}
+}
+
+const initialFiles = loadFiles();
+// Restored ids are `cimg-N` / `cfile-N`: continue numbering past them.
 let nextId =
 	1 +
 	Math.max(
 		0,
 		...Object.values(initialImages).flatMap((l) =>
 			l.map((i) => Number(/^cimg-(\d+)$/.exec(i.id)?.[1] ?? 0)),
+		),
+		...Object.values(initialFiles).flatMap((l) =>
+			l.map((f) => Number(/^cfile-(\d+)$/.exec(f.id)?.[1] ?? 0)),
 		),
 	);
 
@@ -331,7 +371,7 @@ export const useComposer = create<ComposerState>((set, get) => ({
 		set((s) => ({
 			images: { ...s.images, [sessionId]: [] },
 		})),
-	files: {},
+	files: initialFiles,
 	addFile: (sessionId, path, name) => {
 		const file: ComposerFile = {
 			id: `cfile-${nextId++}`,
@@ -451,6 +491,13 @@ useComposer.subscribe((s) => {
 	if (s.images === lastSavedImages) return;
 	lastSavedImages = s.images;
 	saveImages(s.images);
+});
+
+let lastSavedFiles = useComposer.getState().files;
+useComposer.subscribe((s) => {
+	if (s.files === lastSavedFiles) return;
+	lastSavedFiles = s.files;
+	saveFiles(s.files);
 });
 
 /**

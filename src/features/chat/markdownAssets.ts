@@ -102,11 +102,23 @@ const FENCE_LANG_RE = /(?:^[ \t]{0,3}(?:`{3,}|~{3,})[ \t]*|class="language-)([^\
 type RehypePlugin = (...args: never[]) => unknown;
 let rehypeKatexPlugin: RehypePlugin | null = null;
 let katexLoad: Promise<void> | null = null;
+/** A failed import must not stay cached as a rejected promise, nor retry in a Suspense loop. */
+const KATEX_RETRY_MS = 30_000;
+let katexFailedAt = 0;
 function loadKatex(): Promise<void> | null {
 	if (rehypeKatexPlugin) return null;
-	katexLoad ??= Promise.all([import("rehype-katex"), import("katex/dist/katex.min.css")]).then(([m]) => {
-		rehypeKatexPlugin = m.default as unknown as RehypePlugin;
-	});
+	if (!katexLoad && katexFailedAt && Date.now() - katexFailedAt < KATEX_RETRY_MS) return null;
+	katexLoad ??= Promise.all([import("rehype-katex"), import("katex/dist/katex.min.css")]).then(
+		([m]) => {
+			rehypeKatexPlugin = m.default as unknown as RehypePlugin;
+			katexFailedAt = 0;
+		},
+		() => {
+			// Formulas render as plain `$$…$$` text until a later retry succeeds.
+			katexLoad = null;
+			katexFailedAt = Date.now();
+		},
+	);
 	return katexLoad;
 }
 

@@ -28,6 +28,8 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { startSessionInDir, startSessionInWorktree } from "../sessions/newSession";
 import { runSessionBash, shellQuote } from "./sessionShell";
+import { claimEscape } from "../../lib/escapeClaim";
+import { isComposing } from "../../lib/hooks";
 
 const PILL =
 	"flex min-w-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium text-[var(--text-80,var(--text))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] select-none";
@@ -164,20 +166,20 @@ export function WorkspacePickerPopover({
 				)}
 			</div>
 			<div className="border-t border-[var(--line,var(--border-divider))] p-1">
-				<ActionRow icon={<FolderPlus size={13} />} label="新建工作区…" onClick={() => void browse()} />
+				<ActionRow icon={<FolderPlus size={13} />} label="新建工作区" onClick={() => void browse()} />
 				<ActionRow icon={<Globe size={13} />} label="全局模式 (不关联项目)" onClick={goGlobal} />
 			</div>
 		</FloatingLayer>
 	);
 }
-function validateBranchName(name: string): string | null {
+export function validateBranchName(name: string): string | null {
 	const trimmed = name.trim();
 	if (!trimmed) return null;
-	if (trimmed.endsWith("/")) return 'Branch name cannot end with "/".';
-	if (trimmed.startsWith("/")) return 'Branch name cannot start with "/".';
-	if (/\s/.test(trimmed)) return "Branch name cannot contain spaces.";
-	if (/[\^~:?*\[\\]/.test(trimmed)) return "Branch name contains invalid characters.";
-	if (trimmed.includes("..")) return 'Branch name cannot contain "..".';
+	if (trimmed.endsWith("/")) return "分支名不能以“/”结尾。";
+	if (trimmed.startsWith("/")) return "分支名不能以“/”开头。";
+	if (/\s/.test(trimmed)) return "分支名不能包含空格。";
+	if (/[\^~:?*\[\\]/.test(trimmed)) return "分支名包含无效字符。";
+	if (trimmed.includes("..")) return "分支名不能包含“..”。";
 	return null;
 }
 
@@ -195,6 +197,14 @@ export function CreateBranchDialog({
 	const [prefix, setPrefix] = useState("omp/");
 	const [branchName, setBranchName] = useState(initialName || prefix);
 	const [busy, setBusy] = useState(false);
+	const [editingPrefix, setEditingPrefix] = useState(false);
+	const applyPrefix = () => {
+		// Replace the untouched prefix-only name with the new prefix.
+		setBranchName((cur) => (!cur || cur === lastPrefix.current ? prefix : cur));
+		lastPrefix.current = prefix;
+		setEditingPrefix(false);
+	};
+	const lastPrefix = useRef("omp/");
 
 	const error = validateBranchName(branchName);
 	const isValid = branchName.trim().length > 0 && !error;
@@ -215,6 +225,10 @@ export function CreateBranchDialog({
 
 	return createPortal(
 		<div
+			data-layer="modal"
+			role="dialog"
+			aria-modal="true"
+			aria-label="创建并检出分支"
 			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
 			onClick={onClose}
 		>
@@ -222,21 +236,25 @@ export function CreateBranchDialog({
 				className="w-[440px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--line,var(--border-divider))] bg-[var(--bg-panel)] p-5 shadow-apple-modal text-[var(--text)] transition-all animate-in fade-in zoom-in-95 duration-150"
 				onClick={(e) => e.stopPropagation()}
 				onKeyDown={(e) => {
+					if (isComposing(e)) return;
 					if (e.key === "Escape") {
 						e.stopPropagation();
+						claimEscape(e);
 						onClose();
 					}
-					if (e.key === "Enter" && isValid && !busy) {
+					if (e.key === "Enter" && isValid && !busy && !editingPrefix) {
 						e.stopPropagation();
 						void handleCreate();
 					}
 				}}
 			>
 				<div className="flex items-center justify-between mb-3.5">
-					<h3 className="text-[15px] font-semibold tracking-tight text-[var(--text)]">Create and checkout branch</h3>
+					<h3 className="text-[15px] font-semibold tracking-tight text-[var(--text)]">创建并检出分支</h3>
 					<button
 						type="button"
 						onClick={onClose}
+						aria-label="关闭"
+						title="关闭"
 						className="rounded-lg p-1 text-[var(--text-40,var(--text-dim))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 					>
 						<X size={15} />
@@ -244,22 +262,41 @@ export function CreateBranchDialog({
 				</div>
 
 				<div className="mb-1.5 flex items-center justify-between text-xs">
-					<label className="text-[12px] font-medium text-[var(--text-60,var(--text-muted))]">Branch name</label>
-					<button
-						type="button"
-						onClick={() => {
-							const next = window.prompt("Set default branch prefix:", prefix);
-							if (next !== null) {
-								setPrefix(next);
-								if (!branchName || branchName === prefix) {
-									setBranchName(next);
-								}
-							}
-						}}
-						className="text-[11.5px] text-[var(--text-40,var(--text-dim))] hover:text-[var(--text)] transition-colors"
-					>
-						Set prefix
-					</button>
+					<label className="text-[12px] font-medium text-[var(--text-60,var(--text-muted))]">分支名称</label>
+					{editingPrefix ? (
+						<span className="flex items-center gap-1.5">
+							<input
+								autoFocus
+								type="text"
+								value={prefix}
+								onChange={(e) => setPrefix(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										e.stopPropagation();
+										applyPrefix();
+									}
+								}}
+								aria-label="默认分支前缀"
+								className="w-28 rounded-md border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,#18181b)] px-2 py-0.5 font-mono text-[11.5px] text-[var(--text)] outline-none"
+							/>
+							<button
+								type="button"
+								onClick={applyPrefix}
+								className="rounded-md border border-[var(--line,var(--border-divider))] px-2 py-0.5 text-[11.5px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
+							>
+								应用
+							</button>
+						</span>
+					) : (
+						<button
+							type="button"
+							onClick={() => setEditingPrefix(true)}
+							className="rounded-md border border-[var(--line,var(--border-divider))] px-2 py-0.5 text-[11.5px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
+						>
+							设置前缀
+						</button>
+					)}
 				</div>
 
 				<div className="relative mb-2">
@@ -288,9 +325,9 @@ export function CreateBranchDialog({
 					<button
 						type="button"
 						onClick={onClose}
-						className="rounded-xl px-4 py-2 text-[12.5px] font-medium text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
+						className="rounded-xl border border-[var(--line,var(--border-divider))] px-4 py-2 text-[12.5px] font-medium text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 					>
-						Close
+						取消
 					</button>
 					<button
 						type="button"
@@ -298,7 +335,7 @@ export function CreateBranchDialog({
 						onClick={() => void handleCreate()}
 						className="rounded-xl bg-[var(--text)] px-4 py-2 text-[12.5px] font-semibold text-[var(--bg)] hover:opacity-90 disabled:opacity-35 transition-opacity"
 					>
-						{busy ? "Creating…" : "Create and checkout"}
+						{busy ? "正在创建" : "创建并检出"}
 					</button>
 				</div>
 			</div>
@@ -438,12 +475,12 @@ function BranchPickerPopover({
 			<div className="border-t border-[var(--line,var(--border-divider))] p-1">
 				<ActionRow
 					icon={<Plus size={13} />}
-					label={query.trim() ? `创建并检出新分支 "${query.trim()}"…` : "创建并检出新分支…"}
+					label={query.trim() ? `创建并检出新分支 "${query.trim()}"` : "创建并检出新分支"}
 					onClick={() => setShowCreateDialog(true)}
 				/>
 				<ActionRow
 					icon={<PanelRight size={13} />}
-					label="打开 Git 面板…"
+					label="打开 Git 面板"
 					onClick={() => {
 						onClose();
 						useUi.getState().setRightTab("git");

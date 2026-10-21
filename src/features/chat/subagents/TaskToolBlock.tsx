@@ -6,9 +6,9 @@
 
 import clsx from "clsx";
 import { Bot, Check, Clock, Loader2, Square, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SubagentSummary } from "../../../lib/contracts";
-import { subagentList } from "../../../lib/ipc";
+import { type DiskSubscription, subscribeDiskSubagents } from "./diskPoller";
 import { useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
 import { ActivityHeader } from "../ActivityHeader";
@@ -199,12 +199,13 @@ export function TaskToolBlock({
 	const [sheetId, setSheetId] = useState<string | null>(null);
 	const [fileList, setFileList] = useState<SubagentSummary[] | null>(null);
 
-	const live = useLive((s) => s.sessions[sessionId]);
+	const liveSubagents = useLive((s) => s.sessions[sessionId]?.subagents);
+	const liveSessionFile = useLive((s) => {
+		const f = s.sessions[sessionId]?.state?.sessionFile;
+		return typeof f === "string" ? f : undefined;
+	});
 	const parentFile =
-		useSessions((s) => s.sessions[sessionId]?.file) ??
-		(typeof live?.state?.sessionFile === "string"
-			? live.state.sessionFile
-			: undefined);
+		useSessions((s) => s.sessions[sessionId]?.file) ?? liveSessionFile;
 
 	const taskDetails = asTaskDetails(details);
 	const finished = status === "done" || status === "error";
@@ -215,31 +216,24 @@ export function TaskToolBlock({
 		const st = s.sessions[sessionId]?.status;
 		return st === "external" || st === "working";
 	});
+	// Shared per-parent-file poll (diskPoller): one timer for every consumer;
+	// it keeps polling while the parent turn is active or a subagent runs.
+	const parentActive = watching && !finished;
+	const subRef = useRef<DiskSubscription | null>(null);
 	useEffect(() => {
 		if (!parentFile) return;
-		let cancelled = false;
-		let timer: number | undefined;
-		const tick = () => {
-			subagentList(parentFile)
-				.then((list) => {
-					if (!cancelled) setFileList(list);
-				})
-				.catch(() => {})
-				.finally(() => {
-					// External CLI sessions have no RPC frames: keep polling the
-					// on-disk subagent files while the tool call is unfinished.
-					if (!cancelled && watching && !finished) {
-						timer = window.setTimeout(tick, 3000);
-					}
-				});
-		};
-		tick();
+		const sub = subscribeDiskSubagents(parentFile, setFileList, parentActive);
+		subRef.current = sub;
 		return () => {
-			cancelled = true;
-			clearTimeout(timer);
+			subRef.current = null;
+			sub.unsubscribe();
 		};
-		// Re-fetch when the tool call finishes so final statuses land.
-	}, [parentFile, finished, watching]);
+		// parentActive changes go through setParentActive below, not a resubscribe.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [parentFile]);
+	useEffect(() => {
+		subRef.current?.setParentActive(parentActive);
+	}, [parentActive]);
 
 	const { context, rows } = useMemo(
 		() =>
@@ -247,10 +241,10 @@ export function TaskToolBlock({
 				args,
 				details: taskDetails,
 				fileList,
-				liveSubagents: live?.subagents ?? {},
+				liveSubagents,
 				toolCallId,
 			}),
-		[args, taskDetails, fileList, live?.subagents, toolCallId],
+		[args, taskDetails, fileList, liveSubagents, toolCallId],
 	);
 
 	const running = rows.filter(

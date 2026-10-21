@@ -2,7 +2,6 @@
  * label, dimmer object, and a trailing chevron that fades in on hover and
  * rotates when open. The body expands below, indented ps-6. */
 
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
 	Bot,
 	Check,
@@ -20,14 +19,18 @@ import {
 	Terminal,
 	Wrench,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
+import { useHomeDir } from "../../lib/hooks";
+import { openFileLink } from "../../stores/filePreview";
+import { useSessions } from "../../stores/sessions";
+import { diffCounts, DiffView, parseDiff } from "./DiffView";
+import { toolFilePaths } from "./turnGrouping";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
-import { useUi } from "../../stores/ui";
 import { PrivacyText } from "../privacy/SecretChip";
 import { askResultSummary } from "./ask/askDriver";
 import { ActivityHeader } from "./ActivityHeader";
-import { DiffView } from "./DiffView";
 
 export type ToolStatus = "running" | "done" | "error" | "called";
 
@@ -183,16 +186,33 @@ function toolDetail(
 	}
 }
 
-/** +/- line counts from the unified diff detail string. */
+/** +/- line counts of a tool diff; same parse (and numbers) as the DiffView body. */
 function diffStat(diff: string | null): { adds: number; dels: number } | null {
 	if (!diff) return null;
-	let adds = 0;
-	let dels = 0;
-	for (const line of diff.split("\n")) {
-		if (line.startsWith("+") && !line.startsWith("+++")) adds += 1;
-		else if (line.startsWith("-") && !line.startsWith("---")) dels += 1;
-	}
+	const { adds, dels } = diffCounts(parseDiff(diff));
 	return adds + dels > 0 ? { adds, dels } : null;
+}
+
+/** Remembered open state of tool cards, keyed by session + call id. */
+const openToolCards = new Set<string>();
+
+/** Only real filesystem paths get an open button; `proc://…` style URIs don't. */
+function openableFile(path: string): boolean {
+	return !/^(?!file:)[a-z][a-z0-9+.-]*:\/\//i.test(path);
+}
+
+/** Multi-line / long string args become their own mono blocks. */
+function splitArgs(args: unknown): {
+	restArgs: Record<string, unknown>;
+	longFields: [string, string][];
+} {
+	const restArgs: Record<string, unknown> = {};
+	const longFields: [string, string][] = [];
+	for (const [k, v] of Object.entries(asObj(args))) {
+		if (typeof v === "string" && (v.includes("\n") || v.length > 120)) longFields.push([k, v]);
+		else restArgs[k] = v;
+	}
+	return { restArgs, longFields };
 }
 
 /** Hover-only ghost copy affordance for quiet blocks. */
@@ -226,35 +246,52 @@ function CopyGhostButton({ text, label }: { text: string; label: string }) {
 /** Quiet bordered mono block used for command lines, output and payloads. */
 function QuietMonoBlock({
 	header,
+	headerCopyText,
+	headerCopyLabel,
 	body,
 	copyText: copyValue,
 	copyLabel,
 }: {
 	header?: string;
+	/** When set, the header has its own copy button for this text. */
+	headerCopyText?: string;
+	headerCopyLabel?: string;
 	body: string;
 	copyText?: string;
 	copyLabel: string;
 }) {
+	const ownHeaderCopy = headerCopyText !== undefined;
+	const bodyCopy = copyValue ?? body;
 	return (
 		<div className="group/copy overflow-hidden rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)]">
 			{header !== undefined && (
-				<div className="flex items-center justify-between gap-2 border-b border-[var(--line)] px-2.5 py-1">
-					<span className="truncate font-mono text-[11px] text-[var(--text-40)]">
+				<div
+					className={clsx(
+						"flex items-start justify-between gap-2 px-2.5 py-1",
+						body !== "" && "border-b border-[var(--line)]",
+					)}
+				>
+					<span className="max-h-32 min-w-0 overflow-y-auto whitespace-pre-wrap break-all font-mono text-[11px] text-[var(--text-40)]">
 						<PrivacyText text={header} matchValues />
 					</span>
-					<CopyGhostButton text={copyValue ?? body} label={copyLabel} />
+					<CopyGhostButton
+						text={ownHeaderCopy ? headerCopyText : bodyCopy}
+						label={ownHeaderCopy ? (headerCopyLabel ?? copyLabel) : copyLabel}
+					/>
 				</div>
 			)}
-			<div className="relative">
-				{header === undefined && (
-					<div className="absolute right-1 top-1">
-						<CopyGhostButton text={copyValue ?? body} label={copyLabel} />
-					</div>
-				)}
-				<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all px-2.5 py-1.5 font-mono text-[11px] leading-5 text-[var(--text-60)]">
-					<PrivacyText text={body} matchValues />
-				</pre>
-			</div>
+			{body !== "" && (
+				<div className="relative">
+					{(header === undefined || ownHeaderCopy) && bodyCopy.trim() !== "" && (
+						<div className="absolute right-1 top-1">
+							<CopyGhostButton text={bodyCopy} label={copyLabel} />
+						</div>
+					)}
+					<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all px-2.5 py-1.5 font-mono text-[11px] leading-5 text-[var(--text-60)]">
+						<PrivacyText text={body} matchValues />
+					</pre>
+				</div>
+			)}
 		</div>
 	);
 }
@@ -311,6 +348,7 @@ function ToolCardBody({
 	output,
 	details,
 	expanded,
+	callId,
 	startedAt: _startedAt,
 	endedAt: _endedAt,
 }: {
@@ -322,13 +360,19 @@ function ToolCardBody({
 	output?: string;
 	details?: unknown;
 	expanded?: boolean;
+	/** Stable call id; keys the remembered open state. */
+	callId?: string;
 	startedAt?: number;
 	endedAt?: number;
 }) {
 	// Codex keeps every tool row collapsed to one line; failures show via the
 	// header's error tone, not by dumping the body open mid-run.
-	const [open, setOpen] = useState(expanded === true);
-	const openDoc = useUi((s) => s.openDoc);
+	const openKey = callId ? `${sessionId}:${callId}` : undefined;
+	const [open, setOpen] = useState(
+		expanded === true || (openKey !== undefined && openToolCards.has(openKey)),
+	);
+	const cwd = useSessions((s) => s.sessions[sessionId]?.cwd ?? null);
+	const home = useHomeDir();
 
 	useEffect(() => {
 		if (expanded !== undefined) {
@@ -336,9 +380,18 @@ function ToolCardBody({
 		}
 	}, [expanded]);
 
+	// Remember the open state per call: a lone card can be remounted when its
+	// neighbours fold into a group, and must come back as the user left it.
+	useEffect(() => {
+		if (openKey === undefined) return;
+		if (open) openToolCards.add(openKey);
+		else openToolCards.delete(openKey);
+	}, [open, openKey]);
+
 	const det = asObj(details);
 	const diff = typeof det.diff === "string" ? det.diff : null;
-	const file = pick(args, FILE_KEYS);
+	const files = toolFilePaths(args);
+	const file = files[0];
 	const command = pick(args, ["command", "cmd"]);
 	const { verb, object, objectIsCode } = toolActivityLabel(
 		name,
@@ -346,7 +399,8 @@ function ToolCardBody({
 		intent ?? null,
 		status,
 	);
-	const stat = diffStat(diff);
+	const stat = useMemo(() => diffStat(diff), [diff]);
+	const { restArgs, longFields } = useMemo(() => splitArgs(args), [args]);
 	// An empty `{}` payload is noise, and a wait call has nothing to show but
 	// its description.
 	const hasArgsBody =
@@ -396,49 +450,42 @@ function ToolCardBody({
 					{command && (
 						<QuietMonoBlock
 							header={`$ ${command}`}
-							body={output?.trim() ? output : "无输出"}
-							copyText={output?.trim() ? output : command}
-							copyLabel={output?.trim() ? "复制输出" : "复制命令"}
+							headerCopyText={command}
+							headerCopyLabel="复制命令"
+							body={output?.trim() ? output : status === "running" ? "" : "无输出"}
+							copyText={output}
+							copyLabel="复制输出"
 						/>
 					)}
 
-					{!command && file && (
-						<div className="group/copy flex items-center justify-between gap-2 rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-1">
-							<span
-								className="truncate font-mono text-[11px] text-[var(--text-60)]"
-								title={file}
+					{!command &&
+						files.map((f) => (
+							<div
+								key={f}
+								className="group/copy flex items-start justify-between gap-2 rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-1"
 							>
-								{file}
-							</span>
-							<button
-								type="button"
-								onClick={async () => {
-									try {
-										if (file.endsWith(".md")) {
-											openDoc(file);
-										} else {
-											await openPath(file);
-										}
-									} catch (e) {
-										toast.error(`打开文件失败: ${errMsg(e)}`);
-									}
-								}}
-								className="flex shrink-0 items-center rounded px-1 py-0.5 text-[var(--text-30)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/copy:opacity-100"
-								title={
-									file.endsWith(".md")
-										? "在工作台打开文档"
-										: "在系统程序中打开"
-								}
-								aria-label={
-									file.endsWith(".md")
-										? "在工作台打开文档"
-										: "在系统程序中打开"
-								}
-							>
-								<ExternalLink size={11} />
-							</button>
-						</div>
-					)}
+								<span className="min-w-0 whitespace-pre-wrap break-all font-mono text-[11px] text-[var(--text-60)]">
+									{f}
+								</span>
+								{openableFile(f) && (
+									<button
+										type="button"
+										onClick={async () => {
+											try {
+												await openFileLink(f, { cwd, home });
+											} catch (e) {
+												toast.error(`打开文件失败: ${errMsg(e)}`);
+											}
+										}}
+										className="flex shrink-0 items-center rounded px-1 py-0.5 text-[var(--text-30)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/copy:opacity-100"
+										title="打开文件"
+										aria-label="打开文件"
+									>
+										<ExternalLink size={11} />
+									</button>
+								)}
+							</div>
+						))}
 
 					{diff && <DiffView diff={diff} file={file} sessionId={sessionId} />}
 
@@ -455,12 +502,28 @@ function ToolCardBody({
 							/>
 						)}
 
-					{hasArgsBody && !command && !file && name !== "write" && (
-						<QuietMonoBlock
-							body={JSON.stringify(args, null, 2)}
-							copyLabel="复制参数"
-						/>
-					)}
+					{hasArgsBody &&
+						!command &&
+						name !== "write" &&
+						!diff &&
+						(files.length === 0 || longFields.length > 0) && (
+							<>
+								{Object.keys(restArgs).length > 0 && (
+									<QuietMonoBlock
+										body={JSON.stringify(restArgs, null, 2)}
+										copyLabel="复制参数"
+									/>
+								)}
+								{longFields.map(([key, value]) => (
+									<QuietMonoBlock
+										key={key}
+										header={key}
+										body={value}
+										copyLabel={`复制 ${key}`}
+									/>
+								))}
+							</>
+						)}
 				</div>
 			)}
 		</div>
