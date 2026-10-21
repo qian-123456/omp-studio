@@ -12,7 +12,7 @@ import { createPortal } from "react-dom";
 import { type Anchor, anchorRect, usableViewport, Z_LAYER } from "./FloatingLayer";
 
 /** Gap between the selection and the bubble: tail height plus breathing room. */
-export const BUBBLE_GAP = 14;
+export const BUBBLE_GAP = 9;
 
 /**
  * Chat-bubble style action pill: floats clear of the selected text and a tail
