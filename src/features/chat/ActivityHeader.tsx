@@ -54,27 +54,34 @@ export function ActivityHeader({
 			)}
 			<span
 				className={clsx(
-					"shrink-0 text-[length:var(--chat-font-size)] leading-6 transition-colors",
-					tone,
+					"flex min-w-0 items-baseline gap-1.5",
+					running && "shimmer-text",
 				)}
-				title={labelTitle}
 			>
-				{label}
-			</span>
-			{object && (
 				<span
 					className={clsx(
-						"min-w-0 truncate",
-						objectIsCode
-							? "font-mono text-[12px]"
-							: "text-[length:var(--chat-font-size)] leading-6",
-						running ? "shimmer-text" : "text-[var(--text-40)]",
+						"shrink-0 text-[length:var(--chat-font-size)] leading-6 transition-colors",
+						!running && tone,
 					)}
-					title={object}
+					title={labelTitle}
 				>
-					{object}
+					{label}
 				</span>
-			)}
+				{object && (
+					<span
+						className={clsx(
+							"min-w-0 truncate",
+							objectIsCode
+								? "font-mono text-[12px]"
+								: "text-[length:var(--chat-font-size)] leading-6",
+							!running && "text-[var(--text-40)]",
+						)}
+						title={object}
+					>
+						{object}
+					</span>
+				)}
+			</span>
 			{accessory}
 			{expandable && (
 				<ChevronRight
