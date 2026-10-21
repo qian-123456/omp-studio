@@ -178,7 +178,7 @@ describe("conditions", () => {
 		expect(ompConditionMet("hindsight.recallBudget", config({ "memory.backend": "hindsight" }))).toBe(true);
 		expect(ompConditionMet("hindsight.apiUrl", config({ "memory.backend": "local" }))).toBe(false);
 		expect(ompConditionMet("hindsight.recallBudget", config({}))).toBe(false);
-		expect(ompConditionHint("hindsight.apiUrl")).toBe("选择 Hindsight 记忆后端后显示");
+		expect(ompConditionHint("hindsight.apiUrl")).toBe("当前记忆后端不是 Hindsight，只在它生效的设置先不显示，共");
 		expect(ompConditionMet("mnemopi.bank", config({ "memory.backend": "mnemopi" }))).toBe(true);
 		expect(ompConditionMet("mnemopi.bank", config({ "memory.backend": "hindsight" }))).toBe(false);
 		expect(ompConditionMet("memories.threadScanLimit", config({ "memory.backend": "local" }))).toBe(true);

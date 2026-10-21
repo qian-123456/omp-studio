@@ -6,7 +6,7 @@
  * up/down buttons like the `cycleOrder` editor. Providers and windows come from
  * the live `modelSwitchStatus().providers` report — never a hard-coded list.
  */
-import { ArrowDown, ArrowUp, ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NativeSelect } from "../../../components/NativeSelect";
 import { Switch } from "../Switch";
@@ -31,7 +31,6 @@ import {
 	Button,
 	Chip,
 	CommitInput,
-	EmptyState,
 	IconButton,
 	INPUT_CLASS,
 	Notice,
@@ -307,7 +306,6 @@ function RuleRow({
 	onMove,
 	onEdit,
 	onToggle,
-	onToggleAutoRevert,
 	onDelete,
 }: {
 	rule: ModelSwitchRule;
@@ -319,16 +317,16 @@ function RuleRow({
 	onMove: (delta: number) => void;
 	onEdit: () => void;
 	onToggle: (next: boolean) => void;
-	onToggleAutoRevert: (next: boolean) => void;
 	onDelete: () => void;
 }) {
 	const template = templates.find((t) => t.id === rule.templateId);
 	// The window is already at or below the revert threshold: the next check switches back.
 	const reverting = canAutoRevert(rule, status?.providers ?? []);
+	const revertPct = rule.revertThresholdPct ?? Math.max(0, rule.thresholdPct - DEFAULT_REVERT_DROP);
 	return (
-		<div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-			<div className="flex min-w-0 flex-1 items-start gap-2">
-				<div className="flex shrink-0 flex-col items-center gap-0.5 pt-0.5">
+		<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2">
+			<div className="flex min-w-0 flex-1 items-center gap-2">
+				<div className="flex shrink-0 items-center">
 					<IconButton
 						icon={ArrowUp}
 						size="sm"
@@ -336,7 +334,7 @@ function RuleRow({
 						disabled={busy || index === 0}
 						onClick={() => onMove(-1)}
 					/>
-					<span className="text-[10px] tabular-nums text-[var(--text-dim)]">{index + 1}</span>
+					<span className="w-4 text-center text-[10px] tabular-nums text-[var(--text-dim)]">{index + 1}</span>
 					<IconButton
 						icon={ArrowDown}
 						size="sm"
@@ -356,30 +354,12 @@ function RuleRow({
 						<span className="break-words text-[13px] font-medium leading-5 text-[var(--text)]">
 							{rule.name}
 						</span>
-						<Chip tone={rule.enabled ? "success" : "neutral"}>{rule.enabled ? "启用" : "停用"}</Chip>
+						{rule.autoRevert && <Chip tone="neutral">自动切回 ≤ {revertPct}%</Chip>}
 						{reverting && <Chip tone="accent">下次检查会切回</Chip>}
 					</div>
-					<div className="mt-0.5 break-words text-[11px] leading-4 text-[var(--text-muted)]">
-						{ruleConditionText(rule, status?.providers ?? [])}
-					</div>
-					<div className="mt-0.5 break-words text-[11px] leading-4 text-[var(--text-dim)]">
-						目标模板：
+					<div className="break-words text-[11px] leading-4 text-[var(--text-muted)]">
+						{ruleConditionText(rule, status?.providers ?? [])} →{" "}
 						{template ? template.name : `（模板已删除：${rule.templateId}）`}
-						{rule.autoRevert &&
-							` · 额度降到 ${
-								rule.revertThresholdPct === null
-									? `${Math.max(0, rule.thresholdPct - DEFAULT_REVERT_DROP)}%`
-									: `${rule.revertThresholdPct}%`
-							} 以下时切回`}
-					</div>
-					<div className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-						<Switch
-							checked={rule.autoRevert}
-							onChange={onToggleAutoRevert}
-							disabled={busy}
-							ariaLabel={`额度恢复后自动切回：${rule.name}`}
-						/>
-						额度恢复后自动切回
 					</div>
 				</div>
 			</div>
@@ -410,7 +390,6 @@ export function RulesCard({
 	const [editing, setEditing] = useState<RuleForm | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [advancedOpen, setAdvancedOpen] = useState(false);
 
 	const allTemplates = useMemo(() => snapshot?.templates ?? [], [snapshot]);
 	const templates = useMemo(() => inScope(allTemplates, scope), [allTemplates, scope]);
@@ -543,15 +522,17 @@ export function RulesCard({
 	return (
 		<SettingsCard
 			title="自动切换规则"
-			description="按顺序检查：额度达到阈值就应用对应模板。顺序即优先级，同一范围内第一条命中的规则生效。"
+			description="额度达到阈值，自动应用对应模板。"
 			aside={rules.length > 0 ? `${rules.length} 条` : undefined}
 			clip
 		>
-			<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-				<span className="text-[11px] text-[var(--text-dim)]">
-					{status?.lastCheckAt
-						? `上次检查：${new Date(status.lastCheckAt).toLocaleString("zh-CN")}`
-						: "还没有检查过额度"}
+			<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+				<span className="text-xs leading-[18px] text-[var(--text-muted)]">
+					{templates.length === 0
+						? "先新建一个模板，再设置自动切换。"
+						: rules.length === 0 && !editing
+							? "还没有规则。例如：某个供应商额度用到 95% 时，自动切到「省钱模式」模板。"
+							: "按从上到下的顺序检查，第一条命中的规则生效。"}
 				</span>
 				<Button
 					variant="primary"
@@ -594,48 +575,36 @@ export function RulesCard({
 				</div>
 			)}
 
-			{rules.length === 0 && !editing ? (
-				<EmptyState
-					title="还没有自动切换规则"
-					description={
-						templates.length === 0
-							? "先新建一个角色模板，再按额度设置自动切换。"
-							: "例如：Anthropic 五小时窗口用到 95% 时，自动切到「省钱模式」模板。"
-					}
+			{rules.map((rule, index) => (
+				<RuleRow
+					key={rule.id}
+					rule={rule}
+					index={index}
+					total={rules.length}
+					status={status}
+					templates={templates}
+					busy={busy}
+					onMove={(delta) => reorder(index, delta)}
+					onEdit={() => {
+						setError(null);
+						setEditing({
+							scope: rule.scope,
+							id: rule.id,
+							name: rule.name,
+							enabled: rule.enabled,
+							provider: rule.provider,
+							windowKey: rule.windowKey,
+							thresholdPct: String(rule.thresholdPct),
+							templateId: rule.templateId,
+							autoRevert: rule.autoRevert,
+							revertThresholdPct:
+								rule.revertThresholdPct === null ? "" : String(rule.revertThresholdPct),
+						});
+					}}
+					onToggle={(next) => patchRule(rule, { enabled: next })}
+					onDelete={() => void remove(rule)}
 				/>
-			) : (
-				rules.map((rule, index) => (
-					<RuleRow
-						key={rule.id}
-						rule={rule}
-						index={index}
-						total={rules.length}
-						status={status}
-						templates={templates}
-						busy={busy}
-						onMove={(delta) => reorder(index, delta)}
-						onEdit={() => {
-							setError(null);
-							setEditing({
-								scope: rule.scope,
-								id: rule.id,
-								name: rule.name,
-								enabled: rule.enabled,
-								provider: rule.provider,
-								windowKey: rule.windowKey,
-								thresholdPct: String(rule.thresholdPct),
-								templateId: rule.templateId,
-								autoRevert: rule.autoRevert,
-								revertThresholdPct:
-									rule.revertThresholdPct === null ? "" : String(rule.revertThresholdPct),
-							});
-						}}
-						onToggle={(next) => patchRule(rule, { enabled: next })}
-						onToggleAutoRevert={(next) => patchRule(rule, { autoRevert: next })}
-						onDelete={() => void remove(rule)}
-					/>
-				))
-			)}
+			))}
 
 			{editing && (
 				<RuleFormView
@@ -650,52 +619,52 @@ export function RulesCard({
 				/>
 			)}
 
-			<SettingRow
-				label="保底模板"
-				description={`${scopeLabel}范围内所有供应商额度都用尽时，仍然应用这个模板。`}
-				control={
-					<NativeSelect
-						aria-label="保底模板"
-						value={bottomLine?.id ?? ""}
-						disabled={busy || templates.length === 0}
-						containerClassName="w-44"
-						className="text-[11px]"
-						onChange={(e) => setBottomLine(e.target.value)}
-					>
-						<option value="">不设置</option>
-						{templates.map((t) => (
-							<option key={t.id} value={t.id}>
-								{t.name}
-							</option>
-						))}
-					</NativeSelect>
-				}
-			/>
-
-			<div>
-				<button
-					type="button"
-					aria-expanded={advancedOpen}
-					onClick={() => setAdvancedOpen((v) => !v)}
-					className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-hover)]"
-				>
-					<span className="flex-1">高级</span>
-					<span className="text-[11px] text-[var(--text-dim)]">轮询间隔 {pollMinutes} 分钟</span>
-					<ChevronDown
-						className={`h-3 w-3 shrink-0 text-[var(--text-dim)] transition-transform ${advancedOpen ? "rotate-180" : ""}`}
-					/>
-				</button>
-				{advancedOpen && (
-					<div className="px-4 pb-3">
-						<div className="flex flex-wrap items-center gap-2">
-							<span className="text-[11px] text-[var(--text-muted)]">每</span>
+			<div className="border-t border-[var(--border-divider)]">
+				<SettingRow
+					label="保底模板"
+					description={`${scopeLabel}范围内所有供应商额度都用尽时，仍然应用这个模板。`}
+					control={
+						<NativeSelect
+							aria-label="保底模板"
+							value={bottomLine?.id ?? ""}
+							disabled={busy || templates.length === 0}
+							containerClassName="w-44"
+							className="text-[11px]"
+							onChange={(e) => setBottomLine(e.target.value)}
+						>
+							<option value="">不设置</option>
+							{templates.map((t) => (
+								<option key={t.id} value={t.id}>
+									{t.name}
+								</option>
+							))}
+						</NativeSelect>
+					}
+				/>
+				<SettingRow
+					label="额度检查频率"
+					description={
+						[
+							status?.lastCheckAt
+								? `上次检查 ${new Date(status.lastCheckAt).toLocaleString("zh-CN")}`
+								: "还没检查过额度",
+							status?.nextCheckAt
+								? `下次检查 ${new Date(status.nextCheckAt).toLocaleString("zh-CN")}`
+								: null,
+						]
+							.filter(Boolean)
+							.join(" · ")
+					}
+					control={
+						<div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+							每
 							<CommitInput
 								value={pollMinutes}
 								type="number"
 								min={MIN_POLL_MINUTES}
 								max={MAX_POLL_MINUTES}
 								aria-label="额度检查间隔（分钟）"
-								className="w-24"
+								className="w-16"
 								normalize={(draft) => {
 									const n = Number.parseInt(draft, 10);
 									if (!Number.isFinite(n)) return String(DEFAULT_POLL_MINUTES);
@@ -709,18 +678,10 @@ export function RulesCard({
 								}}
 								onCommit={setPollMinutes}
 							/>
-							<span className="text-[11px] text-[var(--text-muted)]">
-								分钟检查一次额度（{MIN_POLL_MINUTES}–{MAX_POLL_MINUTES}，默认 {DEFAULT_POLL_MINUTES}）
-							</span>
+							分钟
 						</div>
-						<p className="mt-1.5 text-[11px] leading-4 text-[var(--text-dim)]">
-							只有存在启用的规则时才会检查；检查使用 CLI 缓存，不会额外消耗额度。
-							{status?.nextCheckAt
-								? ` 下次检查：${new Date(status.nextCheckAt).toLocaleString("zh-CN")}`
-								: ""}
-						</p>
-					</div>
-				)}
+					}
+				/>
 			</div>
 		</SettingsCard>
 	);

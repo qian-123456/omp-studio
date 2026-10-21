@@ -8,12 +8,60 @@ export function cwdToMemorySlug(cwd: string): string {
 	return `--${trimmed.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 }
 
-/** Display form of a slug (drops the `--` wrapper; hyphens stay ambiguous). */
-export function memorySlugLabel(slug: string): string {
-	const inner = slug.replace(/^--/, "").replace(/--$/, "");
-	return inner === ".omp-workspace-global" || inner === "Users-.omp-workspace-global"
-		? "全局（无项目）"
-		: inner;
+const GLOBAL_SUFFIX = ".omp-workspace-global";
+
+function slugInner(slug: string): string {
+	return slug.replace(/^--/, "").replace(/--$/, "");
+}
+
+function tildePath(path: string, home: string | null): string {
+	if (!home) return path;
+	const h = home.replace(/\/+$/, "");
+	if (path === h) return "~";
+	return path.startsWith(`${h}/`) ? `~${path.slice(h.length)}` : path;
+}
+
+/** `/a/b/c` → [`/a/b/c`, `/a/b`, `/a`]: a project can be a parent of the session cwd. */
+function withAncestors(path: string): string[] {
+	const out: string[] = [];
+	let cur = path.length > 1 ? path.replace(/\/+$/, "") : path;
+	while (cur.length > 1) {
+		out.push(cur);
+		cur = cur.slice(0, cur.lastIndexOf("/"));
+	}
+	return out;
+}
+
+export interface MemoryProjectLabel {
+	/** Readable path (`~/…`, or 「全局（无项目）」). */
+	label: string;
+	/** True when the path was recovered unambiguously (global, or matched a known path). */
+	exact: boolean;
+}
+
+/**
+ * Readable form of a memory slug. The slug flattens `/` and `-` into `-`, so the
+ * real path is only recoverable by matching known paths (the session cwd and its
+ * ancestors); otherwise the part below the home dir is shown with its hyphens.
+ */
+export function memoryProjectLabel(
+	slug: string,
+	home: string | null,
+	knownPaths: readonly string[] = [],
+): MemoryProjectLabel {
+	const inner = slugInner(slug);
+	if (inner.endsWith(GLOBAL_SUFFIX)) return { label: "全局（无项目）", exact: true };
+	for (const known of knownPaths) {
+		for (const p of withAncestors(known)) {
+			if (cwdToMemorySlug(p) === slug) return { label: tildePath(p, home), exact: true };
+		}
+	}
+	if (home) {
+		const homeInner = slugInner(cwdToMemorySlug(home));
+		if (inner === homeInner) return { label: "~", exact: true };
+		if (inner.startsWith(`${homeInner}-`)) return { label: `~/${inner.slice(homeInner.length + 1)}`, exact: false };
+	}
+	return { label: inner, exact: false };
 }
 
 /** Project to preselect: the session's project when it has memory, else the first one. */
@@ -25,36 +73,12 @@ export function defaultMemorySlug(projects: string[], cwd: string | null): strin
 	return projects[0] ?? null;
 }
 
-export interface MemoryFileGroup {
-	id: "summary" | "skills" | "generated";
-	title: string;
-	hint: string;
-	files: MemoryFileInfo[];
-}
-
-const TITLES: Record<string, { title: string; hint: string }> = {
-	"memory_summary.md": {
-		title: "memory_summary.md",
-		hint: "记忆摘要：新会话开头注入给 AI 的精简版。",
-	},
-	"MEMORY.md": {
-		title: "MEMORY.md",
-		hint: "完整记忆手册：AI 需要细节时才读取。",
-	},
-	"raw_memories.md": {
-		title: "raw_memories.md",
-		hint: "整理前的原始记忆，由 omp 生成，只读。",
-	},
-};
-
-export function describeMemoryFile(rel: string): { title: string; hint: string } {
-	const fixed = TITLES[rel];
-	if (fixed) return fixed;
-	const skill = /^skills\/([^/]+)\/SKILL\.md$/.exec(rel);
-	if (skill) return { title: skill[1], hint: "omp 沉淀出的技能，可编辑或删除。" };
-	const roll = /^rollout_summaries\/(.+)$/.exec(rel);
-	if (roll) return { title: roll[1], hint: "某次会话的摘要，由 omp 生成，只读。" };
-	return { title: rel, hint: "" };
+export function describeMemoryFile(rel: string): { title: string; role: string } {
+	if (rel === "memory_summary.md") return { title: "记忆摘要", role: "每次新会话都会注入" };
+	if (rel === "MEMORY.md") return { title: "完整记忆", role: "完整记忆，agent 按需查阅" };
+	const skill = skillNameOf(rel);
+	if (skill) return { title: skill, role: "omp 沉淀出的技能" };
+	return { title: rel, role: "" };
 }
 
 /** Name of the skill folder for a `skills/<name>/SKILL.md` rel, else null. */
@@ -62,14 +86,57 @@ export function skillNameOf(rel: string): string | null {
 	return /^skills\/([^/]+)\/SKILL\.md$/.exec(rel)?.[1] ?? null;
 }
 
-export function groupMemoryFiles(files: MemoryFileInfo[]): MemoryFileGroup[] {
-	const summary = files.filter((f) => f.rel === "memory_summary.md" || f.rel === "MEMORY.md");
+export interface MemoryFileSplit {
+	/** memory_summary.md then MEMORY.md, whichever exist. */
+	notes: MemoryFileInfo[];
+	skills: MemoryFileInfo[];
+	/** Count of read-only files omp regenerates (raw_memories.md, rollout summaries). */
+	generatedCount: number;
+}
+
+export function splitMemoryFiles(files: MemoryFileInfo[]): MemoryFileSplit {
+	const notes = ["memory_summary.md", "MEMORY.md"].flatMap((rel) => files.filter((f) => f.rel === rel));
 	const skills = files.filter((f) => skillNameOf(f.rel) !== null);
-	const generated = files.filter((f) => !f.editable);
-	const groups: MemoryFileGroup[] = [
-		{ id: "summary", title: "可编辑的记忆", hint: "修改后新开的会话生效。", files: summary },
-		{ id: "skills", title: "沉淀的技能", hint: "每个技能一个文件夹，可编辑或删除。", files: skills },
-		{ id: "generated", title: "omp 自动生成（只读）", hint: "omp 会重新生成这些文件，手改没有意义。", files: generated },
-	];
-	return groups.filter((g) => g.files.length > 0);
+	return { notes, skills, generatedCount: files.filter((f) => !f.editable).length };
+}
+
+/** `description:` of a SKILL.md frontmatter (plain, quoted, or `>`/`|` block scalar), else null. */
+export function parseSkillDescription(text: string): string | null {
+	const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+	if (!fm) return null;
+	const lines = fm[1].split(/\r?\n/);
+	const at = lines.findIndex((l) => /^description\s*:/.test(l));
+	if (at < 0) return null;
+	const first = lines[at].replace(/^description\s*:\s*/, "").trim();
+	let value: string;
+	if (/^[>|][+-]?$/.test(first)) {
+		const block: string[] = [];
+		for (const l of lines.slice(at + 1)) {
+			if (l.trim() !== "" && !/^\s/.test(l)) break;
+			block.push(l.trim());
+		}
+		value = block.join(first.startsWith("|") ? "\n" : " ").trim();
+	} else {
+		value = first.replace(/^(["'])(.*)\1$/, "$2");
+	}
+	return value === "" ? null : value;
+}
+
+export interface TextPreview {
+	text: string;
+	/** Lines not shown in `text`; 0 means the preview is the whole file. */
+	hiddenLines: number;
+}
+
+/** First `maxLines` lines of `text` (trailing blank lines ignored). */
+export function previewText(text: string, maxLines = 6): TextPreview {
+	const lines = text.replace(/\s+$/, "").split(/\r?\n/);
+	if (lines.length <= maxLines) return { text: lines.join("\n"), hiddenLines: 0 };
+	return { text: lines.slice(0, maxLines).join("\n"), hiddenLines: lines.length - maxLines };
+}
+
+/** UTF-8 byte size of `text` in KB/B, e.g. 「2.3 KB」. */
+export function formatTextSize(text: string): string {
+	const bytes = new TextEncoder().encode(text).length;
+	return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 }

@@ -1,15 +1,17 @@
 /** Settings → 规则文件: every omp rule file (AGENTS.md, RULES.md, rules/*.md, APPEND_SYSTEM.md), global or per project. */
 
 import clsx from "clsx";
-import { FilePlus2 } from "lucide-react";
+import { ArrowUpRight, FilePlus2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Segmented } from "../../../components/Segmented";
 import { useHomeDir, useShortPath } from "../../../lib/hooks";
 import { fsReadDir, ompRuleRead, ompRuleWrite } from "../../../lib/ipc";
+import { formatTokenEstimate } from "../../../lib/tokenEstimate";
 import { toast } from "../../../lib/toast";
 import { FileEditor } from "../FileEditor";
 import { describeFileCommandError } from "../fileEditorLogic";
 import { OmpSections } from "../OmpSettingsList";
+import { useSettingsNav } from "../settingsNav";
 import { Button, Chip, Notice, SectionHeader, SettingRow, SettingsCard } from "../ui";
 import { useSettingsProjectCwd } from "../useAppSettings";
 import {
@@ -22,8 +24,15 @@ import {
 	rulesDirPath,
 } from "./rulesFiles";
 
+const RELATED_PAGES = [
+	{ id: "memory", label: "记忆", description: "memory_summary.md、MEMORY.md 和沉淀的技能，omp 从历史会话里自己整理，同样会带进新会话" },
+	{ id: "skills", label: "技能与命令", description: "从哪些目录加载技能和自定义命令" },
+	{ id: "prompt-composition", label: "系统提示词构成", description: "规则文件和记忆最终各占系统提示词多少" },
+] as const;
+
 export function RulesFilesSection() {
 	const cwd = useSettingsProjectCwd();
+	const { navigate } = useSettingsNav();
 	const home = useHomeDir();
 	const short = useShortPath();
 
@@ -48,12 +57,19 @@ export function RulesFilesSection() {
 		} catch (e) {
 			setError(describeFileCommandError(e));
 		}
-		if (dir) {
-			// A missing rules/ folder just means no rule files yet.
-			setRuleNames(await fsReadDir(dir).then((list) => list.filter((d) => !d.isDir).map((d) => d.name), () => []));
-		} else {
+		if (!dir) {
 			setRuleNames([]);
+			return;
 		}
+		// A missing rules/ folder just means no rule files yet.
+		const names = await fsReadDir(dir).then((list) => list.filter((d) => !d.isDir).map((d) => d.name), () => []);
+		setRuleNames(names);
+		const extra = await Promise.all(
+			buildRuleFileEntries(dir, names).map(
+				async (e) => [e.path, await ompRuleRead(e.path).then((r) => r.content, () => null)] as const,
+			),
+		);
+		setContents((prev) => ({ ...prev, ...Object.fromEntries(extra) }));
 	}, [fixed, dir]);
 
 	useEffect(() => {
@@ -102,6 +118,9 @@ export function RulesFilesSection() {
 							<Chip tone={st.exists || isRuleFile ? "success" : "neutral"}>
 								{isRuleFile ? "已存在" : st.label}
 							</Chip>
+						)}
+						{typeof contents[e.path] === "string" && (contents[e.path] as string).trim() !== "" && (
+							<Chip>{formatTokenEstimate(contents[e.path] as string)}</Chip>
 						)}
 						{st.note && <span className="text-[11px] text-[var(--status-warning)]">{st.note}</span>}
 					</div>
@@ -161,7 +180,7 @@ export function RulesFilesSection() {
 			</SettingsCard>
 
 			<SettingsCard fieldId="agentsMdProjectFile">
-				<div className="divide-y divide-[var(--border-subtle)]">
+				<div className="divide-y divide-[var(--border-divider)]">
 					{fixed.map(renderRow)}
 					{ruleFiles.map(renderRow)}
 				</div>
@@ -170,6 +189,23 @@ export function RulesFilesSection() {
 						{dir ? short(dir) : "rules/"} 下还没有规则文件（rules/*.md）。可在访达里把规则文件放进去，这里会列出来。
 					</p>
 				)}
+			</SettingsCard>
+
+			<SettingsCard fieldId="agentsMdRelated">
+				<div className="divide-y divide-[var(--border-divider)]">
+					{RELATED_PAGES.map((p) => (
+						<SettingRow
+							key={p.id}
+							label={p.label}
+							description={p.description}
+							control={
+								<Button icon={ArrowUpRight} onClick={() => navigate(p.id)}>
+									前往{p.label}
+								</Button>
+							}
+						/>
+					))}
+				</div>
 			</SettingsCard>
 
 			<div data-field-id="agentsMdEditor">

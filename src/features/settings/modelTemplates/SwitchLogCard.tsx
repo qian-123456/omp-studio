@@ -6,8 +6,10 @@
  * per-session result. An applied/partial entry that has not been undone keeps
  * an 「撤销」 button that restores the previous role values.
  */
-import { ChevronDown, History, RotateCcw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronDown, History, RotateCcw, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Z_LAYER } from "../../../components/FloatingLayer";
 import type {
 	ModelSwitchLogEntry,
 	SessionSwitchResult,
@@ -15,10 +17,12 @@ import type {
 	TemplateStoreSnapshot,
 } from "../../../lib/contracts";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
+import { claimEscape } from "../../../lib/escapeClaim";
 import { absoluteTime, relativeTime } from "../../../lib/format";
+import { isComposing } from "../../../lib/hooks";
 import { modelSwitchUndo } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
-import { Button, Chip, EmptyState, Notice, SettingsCard, type ChipTone } from "../ui";
+import { Button, Chip, IconButton, Notice, SettingsCard, type ChipTone } from "../ui";
 import { inScope, statusLabel, statusTone } from "./logic";
 import { useModelTemplatesStore } from "./store";
 
@@ -143,6 +147,111 @@ function LogRow({
 	);
 }
 
+const INLINE_LIMIT = 3;
+
+function CompactRow({
+	entry,
+	busy,
+	onUndo,
+}: {
+	entry: ModelSwitchLogEntry;
+	busy: boolean;
+	onUndo: () => void;
+}) {
+	const undoable = UNDOABLE[entry.status] === true && entry.undoneAt === null;
+	const createdAgo = relativeTime(entry.createdAt);
+	return (
+		<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+			<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+				<span className="text-[11px] text-[var(--text-dim)]" title={absoluteTime(entry.createdAt)}>
+					{createdAgo === "刚刚" ? createdAgo : `${createdAgo}前`}
+				</span>
+				<span className="break-words text-[13px] font-medium text-[var(--text)]">{entry.templateName}</span>
+				<Chip tone="neutral">{entry.ruleName ? `规则：${entry.ruleName}` : "手动"}</Chip>
+				<Chip tone={TONE_CHIP[statusTone(entry.status)]}>{statusLabel(entry.status)}</Chip>
+				{entry.undoneAt && <span className="text-[11px] text-[var(--text-dim)]">已撤销</span>}
+			</div>
+			{undoable && (
+				<Button size="sm" icon={RotateCcw} loading={busy} onClick={onUndo}>
+					撤销
+				</Button>
+			)}
+		</div>
+	);
+}
+
+function LogModal({
+	entries,
+	busyId,
+	error,
+	onUndo,
+	onClose,
+}: {
+	entries: ModelSwitchLogEntry[];
+	busyId: string | null;
+	error: string | null;
+	onUndo: (entry: ModelSwitchLogEntry) => void;
+	onClose: () => void;
+}) {
+	const dialogRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		dialogRef.current?.focus();
+	}, []);
+
+	return createPortal(
+		<div
+			style={{ zIndex: Z_LAYER.modal }}
+			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-6 backdrop-blur-sm"
+			onMouseDown={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				ref={dialogRef}
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="switch-log-modal-title"
+				tabIndex={-1}
+				className="flex h-[min(80vh,680px)] w-[720px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-[var(--bg-panel)] p-4 text-[var(--text)] shadow-apple-modal hairline outline-none"
+				onMouseDown={(e) => e.stopPropagation()}
+				onKeyDown={(e) => {
+					e.stopPropagation();
+					if (isComposing(e)) return;
+					if (e.key === "Escape") {
+						claimEscape(e);
+						onClose();
+					}
+				}}
+			>
+				<div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-divider)] pb-3">
+					<div className="min-w-0">
+						<h2 id="switch-log-modal-title" className="text-sm font-semibold text-[var(--text)]">
+							全部切换记录
+						</h2>
+						<p className="mt-0.5 text-[11px] leading-5 text-[var(--text-muted)]">
+							最近 200 次应用、自动切换和撤销，共 {entries.length} 条。
+						</p>
+					</div>
+					<IconButton icon={X} label="关闭" onClick={onClose} />
+				</div>
+				{error && (
+					<div className="shrink-0 pt-3">
+						<Notice tone="danger" title="撤销失败">
+							<span className="select-text break-all">{error}</span>
+						</Notice>
+					</div>
+				)}
+				<div className="mt-3 min-h-0 flex-1 divide-y divide-[var(--border-divider)] overflow-y-auto rounded-xl hairline">
+					{entries.map((entry) => (
+						<LogRow key={entry.id} entry={entry} busy={busyId === entry.id} onUndo={() => onUndo(entry)} />
+					))}
+				</div>
+			</div>
+		</div>,
+		document.body,
+	);
+}
+
 export function SwitchLogCard({
 	snapshot,
 	scope,
@@ -153,6 +262,7 @@ export function SwitchLogCard({
 }) {
 	const [busyId, setBusyId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [showAll, setShowAll] = useState(false);
 	const entries = useMemo(() => inScope(snapshot?.log ?? [], scope), [snapshot, scope]);
 
 	const undo = async (entry: ModelSwitchLogEntry) => {
@@ -174,27 +284,46 @@ export function SwitchLogCard({
 		}
 	};
 
+	if (entries.length === 0) return null;
+
 	return (
-		<SettingsCard
-			title="切换记录"
-			description="最近 200 次应用、自动切换和撤销。未撤销的切换可以一键恢复。"
-			aside={entries.length > 0 ? `${entries.length} 条` : undefined}
-			clip
-		>
-			{error && (
-				<div className="px-4 py-3">
-					<Notice tone="danger" title="撤销失败">
-						<span className="select-text break-all">{error}</span>
-					</Notice>
+		<>
+			<SettingsCard
+				title="最近切换"
+				description="最近的应用、自动切换和撤销记录。"
+				aside={`${entries.length} 条`}
+				clip
+			>
+				{error && !showAll && (
+					<div className="px-4 py-3">
+						<Notice tone="danger" title="撤销失败">
+							<span className="select-text break-all">{error}</span>
+						</Notice>
+					</div>
+				)}
+				{entries.slice(0, INLINE_LIMIT).map((entry) => (
+					<CompactRow
+						key={entry.id}
+						entry={entry}
+						busy={busyId === entry.id}
+						onUndo={() => void undo(entry)}
+					/>
+				))}
+				<div className="flex justify-end px-4 py-2">
+					<Button size="sm" icon={History} onClick={() => setShowAll(true)}>
+						{entries.length > INLINE_LIMIT ? `查看全部 ${entries.length} 条` : "详情"}
+					</Button>
 				</div>
+			</SettingsCard>
+			{showAll && (
+				<LogModal
+					entries={entries}
+					busyId={busyId}
+					error={error}
+					onUndo={(entry) => void undo(entry)}
+					onClose={() => setShowAll(false)}
+				/>
 			)}
-			{entries.length === 0 ? (
-				<EmptyState icon={History} title="还没有切换记录" description="应用模板或规则命中后，这里会留下记录。" />
-			) : (
-				entries.map((entry) => (
-					<LogRow key={entry.id} entry={entry} busy={busyId === entry.id} onUndo={() => void undo(entry)} />
-				))
-			)}
-		</SettingsCard>
+		</>
 	);
 }

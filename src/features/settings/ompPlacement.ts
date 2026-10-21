@@ -431,10 +431,10 @@ function backendIs(backend: string): (v: ValueOf) => boolean {
 /** Conditions by omp `ui.condition` id (omp config/settings-ui.ts CONDITIONS). */
 const CONDITIONS: Readonly<Record<string, Condition>> = {
 	advisorEnabled: { met: (v) => v("advisor.enabled") === true, hint: "开启顾问模型后显示" },
-	hindsightActive: { met: backendIs("hindsight"), hint: "选择 Hindsight 记忆后端后显示" },
-	mnemopiActive: { met: backendIs("mnemopi"), hint: "选择 Mnemopi 记忆后端后显示" },
-	sharpshooterActive: { met: backendIs("sharpshooter"), hint: "选择 Sharpshooter 记忆后端后显示" },
-	localMemoryActive: { met: backendIs("local"), hint: "选择本地记忆后端后显示" },
+	hindsightActive: { met: backendIs("hindsight"), hint: "当前记忆后端不是 Hindsight，只在它生效的设置先不显示，共" },
+	mnemopiActive: { met: backendIs("mnemopi"), hint: "当前记忆后端不是 Mnemopi，只在它生效的设置先不显示，共" },
+	sharpshooterActive: { met: backendIs("sharpshooter"), hint: "当前记忆后端不是 Sharpshooter，只在它生效的设置先不显示，共" },
+	localMemoryActive: { met: backendIs("local"), hint: "当前记忆后端不是本地，只在本地后端生效的设置先不显示，共" },
 	autolearnActive: { met: (v) => v("autolearn.enabled") === true, hint: "开启自主学习后显示" },
 	autoThinkingActive: { met: (v) => v("defaultThinkingLevel") === "auto", hint: "思考级别设为「自动」后显示" },
 	usageAwareFallbackEnabled: { met: (v) => v("retry.usageAwareFallback") === true, hint: "开启按额度切换备用模型后显示" },
