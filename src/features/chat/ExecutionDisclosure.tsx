@@ -239,11 +239,11 @@ function processingLabel(elapsedMs: number): string {
 }
 
 /** Shimmering 「正在思考」 row shown while the live turn waits for the model's
- * next move (no tool or reasoning row is running right now). Carries the
- * newest reasoning text so the usual two-line rolling preview shows what the
- * model was just thinking about. */
-export function LiveWaitingRow({ thinking }: { thinking: string }) {
-	return <ThinkingRow anchorId="live-waiting" thinking={thinking} running />;
+ * next move (no tool or reasoning row is running right now). The rolling
+ * reasoning preview belongs to the real, streaming reasoning row; a finished
+ * thought would only show stale static text here. */
+export function LiveWaitingRow() {
+	return <ThinkingRow anchorId="live-waiting" thinking="" running />;
 }
 
 /** Seconds label for reasoning rows ("5秒"). */
