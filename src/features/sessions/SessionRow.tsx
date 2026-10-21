@@ -61,7 +61,7 @@ export interface SessionRowProps {
 	session: SessionMeta;
 	/** Draw this row's segment of the subgroup guide line at the row's left edge. */
 	withSpine?: boolean;
-	/** Navigation-row sizing (h-9, 14px) — used by the Universal space list. */
+	/** Compact navigation-row sizing (h-[30px], 13px) — used by the Universal space list. */
 	large?: boolean;
 	workspaces: Workspace[];
 	onRowFocus?: () => void;
@@ -554,7 +554,7 @@ function SessionRowComponent({
 			className={clsx(
 				"group relative flex cursor-pointer select-none items-center justify-between gap-1.5 transition-all",
 				large
-					? "mx-0 h-9 rounded-lg px-2.5"
+					? "mx-0 h-[30px] rounded-md px-2"
 					: "mx-1.5 min-h-[28px] rounded-[8px] py-1 pl-2 pr-2",
 				rowBgCls,
 				isSelected
@@ -641,7 +641,7 @@ function SessionRowComponent({
 						title=""
 						className={clsx(
 							"min-w-0 flex-initial max-w-full cursor-pointer transition-colors",
-							large ? "text-[14px]" : "text-xs",
+							large ? "text-[13px] leading-5" : "text-xs",
 							isSelected
 								? "font-semibold text-[var(--text)]"
 								: "font-normal text-[var(--text)]",

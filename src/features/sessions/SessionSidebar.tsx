@@ -1652,7 +1652,7 @@ export function SessionSidebar() {
 														<div className="px-1 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)] select-none">
 															{chunk.label}
 														</div>
-														<div className="space-y-1">
+														<div className="space-y-0.5">
 															<SessionList
 																sessions={chunk.sessions}
 																scopeKey={`__global_${chunk.key}`}
