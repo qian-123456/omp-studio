@@ -116,12 +116,12 @@ pub fn validate_path_internal(path: &str) -> PathCheck {
     }
 }
 
+/// Write a pasted image into `images_dir` (`paths::images_dir()`, durable).
 pub fn save_clipboard_image_internal(
-    cache_dir: &std::path::Path,
+    images_dir: &std::path::Path,
     base64_png: &str,
 ) -> Result<String, String> {
-    let clip_dir = cache_dir.join("ompws-clip");
-    std::fs::create_dir_all(&clip_dir).map_err(|e| format!("创建剪贴板图片缓存目录失败：{e}"))?;
+    std::fs::create_dir_all(images_dir).map_err(|e| format!("创建图片目录失败：{e}"))?;
 
     let clean_b64 = if let Some(idx) = base64_png.find(',') {
         &base64_png[idx + 1..]
@@ -135,18 +135,31 @@ pub fn save_clipboard_image_internal(
         .map_err(|e| format!("Base64 解码失败：{e}"))?;
 
     let ts = chrono::Utc::now().timestamp_millis();
-    let file_path = clip_dir.join(format!("{ts}.png"));
+    let mut n = 0u32;
+    let file_path = loop {
+        let name = if n == 0 {
+            format!("{ts}.png")
+        } else {
+            format!("{ts}-{n}.png")
+        };
+        let candidate = images_dir.join(name);
+        if !candidate.exists() {
+            break candidate;
+        }
+        n += 1;
+    };
     std::fs::write(&file_path, bytes).map_err(|e| format!("保存图片失败：{e}"))?;
 
     Ok(file_path.to_string_lossy().into_owned())
 }
 
-/// Copy an existing image file into the clip cache (`ompws-clip`, inside the
-/// asset-protocol scope) so its thumbnail loads and the file outlives the
-/// source (Finder temp screenshots, files outside the asset scope). Returns
-/// the copy's path; an image already inside `clip_dir` is returned as is.
+/// Copy an existing image file into the durable images dir so its thumbnail
+/// loads and the file outlives the source (Finder temp screenshots, files
+/// outside the asset scope). Returns the copy's path; an image already inside
+/// `images_dir` or the legacy `<cache>/ompws-clip` dir is returned as is.
 pub fn import_image_file_internal(
     cache_dir: &std::path::Path,
+    images_dir: &std::path::Path,
     src: &str,
 ) -> Result<String, String> {
     let src_path = std::path::Path::new(src);
@@ -154,11 +167,12 @@ pub fn import_image_file_internal(
     if !meta.is_file() {
         return Err(format!("不是文件：{src}"));
     }
-    let clip_dir = cache_dir.join("ompws-clip");
-    if src_path.parent() == Some(clip_dir.as_path()) {
+    let legacy_dir = cache_dir.join("ompws-clip");
+    if src_path.parent() == Some(images_dir) || src_path.parent() == Some(legacy_dir.as_path()) {
         return Ok(src.to_string());
     }
-    std::fs::create_dir_all(&clip_dir).map_err(|e| format!("创建剪贴板图片缓存目录失败：{e}"))?;
+    let clip_dir = images_dir;
+    std::fs::create_dir_all(clip_dir).map_err(|e| format!("创建图片目录失败：{e}"))?;
     let ext = src_path
         .extension()
         .and_then(|e| e.to_str())
@@ -216,16 +230,8 @@ pub async fn validate_path(path: String) -> Result<PathCheck, String> {
 }
 
 #[tauri::command]
-pub async fn save_clipboard_image(
-    app: tauri::AppHandle,
-    base64_png: String,
-) -> Result<String, String> {
-    let cache_dir = app.path().app_cache_dir().unwrap_or_else(|_| {
-        dirs::cache_dir()
-            .map(|d| d.join("omp-workspace"))
-            .unwrap_or_else(std::env::temp_dir)
-    });
-    save_clipboard_image_internal(&cache_dir, &base64_png)
+pub async fn save_clipboard_image(base64_png: String) -> Result<String, String> {
+    save_clipboard_image_internal(&crate::paths::images_dir(), &base64_png)
 }
 
 #[tauri::command]
@@ -235,7 +241,8 @@ pub async fn import_image_file(app: tauri::AppHandle, path: String) -> Result<St
             .map(|d| d.join("omp-workspace"))
             .unwrap_or_else(std::env::temp_dir)
     });
-    tokio::task::spawn_blocking(move || import_image_file_internal(&cache_dir, &path))
+    let images_dir = crate::paths::images_dir();
+    tokio::task::spawn_blocking(move || import_image_file_internal(&cache_dir, &images_dir, &path))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -631,20 +638,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn import_image_file_copies_into_clip_dir() {
+    fn import_image_file_copies_into_images_dir() {
         let base = std::env::temp_dir().join(format!("ompws-import-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         let src = base.join("Shot.PNG");
         std::fs::write(&src, b"img").unwrap();
         let cache = base.join("cache");
-        let copied = import_image_file_internal(&cache, src.to_str().unwrap()).unwrap();
-        assert!(copied.contains("ompws-clip"));
+        let images = base.join("images");
+        let copied = import_image_file_internal(&cache, &images, src.to_str().unwrap()).unwrap();
+        assert!(copied.starts_with(images.to_str().unwrap()));
         assert!(copied.ends_with(".png"));
         assert_eq!(std::fs::read(&copied).unwrap(), b"img");
-        // Already inside the clip dir: returned unchanged.
-        assert_eq!(import_image_file_internal(&cache, &copied).unwrap(), copied);
-        assert!(import_image_file_internal(&cache, base.to_str().unwrap()).is_err());
+        // Already inside the images dir: returned unchanged.
+        assert_eq!(
+            import_image_file_internal(&cache, &images, &copied).unwrap(),
+            copied
+        );
+        // A legacy clip-dir file stays where it is.
+        let legacy = cache.join("ompws-clip");
+        std::fs::create_dir_all(&legacy).unwrap();
+        let legacy_file = legacy.join("1.png");
+        std::fs::write(&legacy_file, b"old").unwrap();
+        let legacy_s = legacy_file.to_str().unwrap();
+        assert_eq!(
+            import_image_file_internal(&cache, &images, legacy_s).unwrap(),
+            legacy_s
+        );
+        assert!(import_image_file_internal(&cache, &images, base.to_str().unwrap()).is_err());
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -673,6 +694,7 @@ mod tests {
         let data_url = format!("data:image/png;base64,{raw_b64}");
 
         let path_str = save_clipboard_image_internal(&temp_dir, &data_url).unwrap();
+        assert!(path_str.starts_with(temp_dir.to_str().unwrap()));
         let path = std::path::Path::new(&path_str);
         assert!(path.exists());
         assert!(path.is_file());

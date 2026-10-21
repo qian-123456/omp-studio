@@ -25,6 +25,12 @@ pub fn db_path() -> PathBuf {
     data_dir().join("app.db")
 }
 
+/// `~/.omp-workspace/images/` — durable store for pasted/dropped images.
+/// The legacy cache dir `<app-cache>/ompws-clip` stays readable.
+pub fn images_dir() -> PathBuf {
+    data_dir().join("images")
+}
+
 /// `~/.omp-workspace/global/` — cwd for the 🌐 global workspace.
 pub fn global_dir() -> PathBuf {
     data_dir().join("global")
