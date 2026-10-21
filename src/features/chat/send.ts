@@ -7,6 +7,9 @@ import { privacyClassify, privacyMark, rpcSend, takeoverExternal } from "../../l
 import { useSessions } from "../../stores/sessions";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
+import { useUi } from "../../stores/ui";
+import { createSession } from "../../lib/createSession";
+import { errMsg } from "../../lib/dialogs";
 import type { ImageAttachment, PrivacyMarkScope, SecretEntry } from "../../lib/contracts";
 import { resolveLinkScope } from "./privacy/composerPrivacy";
 import { isForkDraftId, sendFromForkDraft } from "../sessions/forkDraft";
@@ -94,8 +97,39 @@ export async function sendPrompt(
 	} catch (err) {
 		// Not sent: drop the bubble so a retry doesn't duplicate it.
 		if (echoId) useLive.getState().removeUserEcho(sessionId, echoId);
+		const replacement = await replaceStaleDraft(sessionId, err);
+		if (replacement) {
+			const { onEchoed: _echoed, ...rest } = opts ?? {};
+			return sendPrompt(replacement, trimmed, rest);
+		}
 		throw err;
 	}
+}
+
+/**
+ * A never-sent draft is only an RPC process: once it is gone (app restart,
+ * idle reap) no transcript exists to resume, so "cannot locate session file"
+ * can never succeed on retry. Start a fresh session in the same place, swap it
+ * in for the stub, and let the caller send there. Returns the new id, or null
+ * when `err` is something else or the session has real content.
+ */
+async function replaceStaleDraft(sessionId: string, err: unknown): Promise<string | null> {
+	if (!errMsg(err).startsWith("cannot locate session file")) return null;
+	const s = useSessions.getState().sessions[sessionId];
+	if (!s || s.title?.trim() || s.label?.trim() || s.lastAssistant) return null;
+	const { sessionId: newId, stub } = await createSession({
+		cwd: s.cwd,
+		model: s.model,
+		workspaceId: s.workspaceId,
+		mode: s.mode,
+		groupId: s.groupId,
+	});
+	const ui = useUi.getState();
+	const wasSelected = ui.selectedSessionId === sessionId;
+	useSessions.getState().upsert([stub]);
+	useSessions.getState().remove([sessionId]);
+	if (wasSelected) ui.selectSession(newId);
+	return newId;
 }
 
 /**
