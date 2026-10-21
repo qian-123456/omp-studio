@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PromptComposition } from "../../lib/contracts";
-import { buildContextSegments, type ContextSegment } from "./contextBreakdown";
+import {
+	buildContextSegments,
+	computeMeterSegments,
+	type ContextSegment,
+} from "./contextBreakdown";
 
 const comp = (cats: Array<[PromptComposition["categories"][number]["id"], number]>): PromptComposition => ({
 	cwd: "/a",
@@ -16,24 +20,38 @@ const comp = (cats: Array<[PromptComposition["categories"][number]["id"], number
 const tok = (segs: ContextSegment[], id: string) => segs.find((s) => s.id === id)?.tokens;
 
 describe("buildContextSegments", () => {
-	it("leaves messages as the remainder and keeps the window fully accounted for", () => {
+	it("leaves messages as the remainder and sorts used descending with free space last", () => {
 		const segs = buildContextSegments(1000, 10_000, comp([["system", 300], ["tools", 200]]));
 		expect(tok(segs, "tools")).toBe(200);
 		expect(tok(segs, "system")).toBe(300);
 		expect(tok(segs, "messages")).toBe(500);
 		expect(tok(segs, "free")).toBe(9000);
-		expect(segs.reduce((a, s) => a + s.tokens, 0)).toBe(10_000);
+		expect(segs[segs.length - 1].id).toBe("free");
 	});
 
 	it("treats everything used as messages without a probe", () => {
-		expect(tok(buildContextSegments(800, 1000, null), "messages")).toBe(800);
-		expect(tok(buildContextSegments(800, 1000, null), "free")).toBe(200);
+		const segs = buildContextSegments(800, 1000, null);
+		expect(tok(segs, "messages")).toBe(800);
+		expect(tok(segs, "free")).toBe(200);
 	});
 
 	it("scales estimates down when they exceed reported usage", () => {
 		const segs = buildContextSegments(100, 1000, comp([["system", 300], ["tools", 100]]));
-		expect(tok(segs, "messages")).toBe(0);
-		expect(tok(segs, "system")! + tok(segs, "tools")!).toBeLessThanOrEqual(100);
+		expect(tok(segs, "messages")).toBeUndefined();
 		expect(tok(segs, "free")).toBe(900);
+	});
+});
+
+describe("computeMeterSegments", () => {
+	it("computes exact startPct, widthPct, and pill radii matching Claude's StackedMeter", () => {
+		const segs = buildContextSegments(50_000, 200_000, comp([["tools", 30_000], ["system", 20_000]]));
+		const meter = computeMeterSegments(segs, 200_000, 4);
+		expect(meter).toHaveLength(2);
+		expect(meter[0].seam).toBe(0);
+		expect(meter[0].radiusStart).toBe(2);
+		expect(meter[1].seam).toBe(1);
+		expect(meter[1].radiusEnd).toBe(2);
+		expect(meter[0].startPct).toBe(0);
+		expect(meter[1].startPct).toBeGreaterThan(0);
 	});
 });

@@ -7,7 +7,7 @@ import { promptCompositionProbe } from "../../lib/ipc";
 import { openPromptComposition } from "../../stores/promptComposition";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { buildContextSegments } from "./contextBreakdown";
+import { buildContextSegments, computeMeterSegments } from "./contextBreakdown";
 
 /** One probe per project for the app's lifetime; concurrent opens share the in-flight request. */
 const compositionCache = new Map<string, Promise<PromptComposition>>();
@@ -34,74 +34,61 @@ function compactTokens(n: number): string {
 	return String(n);
 }
 
-/** Claude app lists MCP tools, Skills and rules as collapsible rows with token count and item count. */
-const DETAIL_SECTIONS: { id: PromptCategoryId; title: string }[] = [
-	{ id: "mcp", title: "MCP 工具" },
-	{ id: "skills", title: "Skills" },
-	{ id: "rules", title: "规则文件" },
-];
-
-function CategoryRows({ comp }: { comp: PromptComposition | null }) {
-	const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-	if (!comp) return null;
-	const sections = DETAIL_SECTIONS.map((d) => ({
-		...d,
-		items: [...(comp.categories.find((c) => c.id === d.id)?.items ?? [])].sort((a, b) => b.tokens - a.tokens),
-	})).filter((s) => s.items.length > 0);
-	if (sections.length === 0) return null;
+/** Port of Claude App's collapsible sub-item row (`O` in ce96f5751). */
+function SubItemSection({
+	label,
+	rows,
+}: {
+	label: string;
+	rows: Array<{ name: string; tokens: number }>;
+}) {
+	const [expanded, setExpanded] = useState(false);
+	const totalTokens = rows.reduce((acc, r) => acc + r.tokens, 0);
 
 	return (
-		<div className="mt-2.5 pt-1 space-y-1">
-			{sections.map((s) => {
-				const isExpanded = expanded.has(s.id);
-				const totalTokens = s.items.reduce((acc, it) => acc + it.tokens, 0);
-				return (
-					<div key={s.id}>
-						<button
-							type="button"
-							aria-expanded={isExpanded}
-							onClick={() =>
-								setExpanded((prev) => {
-									const next = new Set(prev);
-									if (next.has(s.id)) next.delete(s.id);
-									else next.add(s.id);
-									return next;
-								})
-							}
-							className="flex w-full items-center justify-between text-[13px] py-0.5 hover:text-white transition-colors"
-						>
-							<div className="flex items-center gap-1.5 min-w-0">
-								{isExpanded ? (
-									<ChevronDown size={13} className="text-[#8a8985] shrink-0" />
-								) : (
-									<ChevronRight size={13} className="text-[#8a8985] shrink-0" />
-								)}
-								<span className="text-[#e2e1df] truncate">{s.title}</span>
-							</div>
-							<div className="flex items-center font-mono tabular-nums text-[13px]">
-								<span className="w-16 text-right text-[#8a8985]">{compactTokens(totalTokens)}</span>
-								<span className="w-14 text-right text-[#8a8985]">{s.items.length}</span>
-							</div>
-						</button>
-						{isExpanded && (
-							<div className="mt-1 mb-2 max-h-36 space-y-1 overflow-y-auto pl-5 pr-1">
-								{s.items.map((it) => (
-									<div key={it.id} className="flex items-center justify-between text-[11px] text-[#8a8985]">
-										<span className="truncate pr-2">
-											{it.title}
-											{it.detail ? ` (${it.detail})` : ""}
-										</span>
-										<span className="shrink-0 font-mono">{compactTokens(it.tokens)}</span>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-				);
-			})}
+		<div className="flex flex-col gap-0.5 mt-2">
+			<button
+				type="button"
+				className="flex items-center gap-1 text-[12px] leading-[15px] text-left cursor-pointer hover:text-white transition-colors"
+				onClick={() => setExpanded((v) => !v)}
+				aria-expanded={expanded}
+			>
+				<span className="size-[10px] shrink-0 flex items-center justify-center">
+					<ChevronRight
+						size={10}
+						className={`text-[#8a8985] transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+					/>
+				</span>
+				<span className="text-[#8a8985] flex-1 truncate">{label}</span>
+				<span className="text-[#8a8985] shrink-0 tabular-nums">{compactTokens(totalTokens)}</span>
+				<span className="text-[#8a8985] shrink-0 tabular-nums w-[44px] text-right">
+					{rows.length}
+				</span>
+			</button>
+			{expanded && (
+				<div
+					className={`flex flex-col gap-0.5 mt-0.5 ${rows.length > 12 ? "max-h-[168px] overflow-y-auto overscroll-contain" : ""}`}
+				>
+					{rows.map((row, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: stable list
+						<div key={`${row.name}-${i}`} className="flex items-center gap-1 text-[12px] leading-[15px]">
+							<span className="size-[10px] shrink-0" aria-hidden="true" />
+							<span className="text-[#8a8985] flex-1 truncate">{row.name}</span>
+							<span className="text-[#8a8985] shrink-0 tabular-nums">{compactTokens(row.tokens)}</span>
+							<span className="w-[44px] shrink-0" aria-hidden="true" />
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }
+
+const DETAIL_CATEGORIES: { id: PromptCategoryId; label: string }[] = [
+	{ id: "mcp", label: "MCP tools" },
+	{ id: "skills", label: "Skills" },
+	{ id: "rules", label: "Rules" },
+];
 
 interface ContextRingProps {
 	/** Context percentage, typically 0.0 to 1.0 (can exceed 1.0 if overloaded). */
@@ -204,6 +191,7 @@ export function ContextRing({
 	}, [open, sessionCwd]);
 
 	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe);
+	const meterSegments = computeMeterSegments(segments, rawWindow ?? 0, 4);
 	const strokeDashoffset = circumference * (1 - Math.min(1, fraction));
 
 	return (
@@ -253,7 +241,7 @@ export function ContextRing({
 				)}
 			</button>
 
-			{/* Claude App Style Popover */}
+			{/* Claude App Style Popover (ported from ion-dist PN / P / D / StackedMeter) */}
 			{open && (
 				<FloatingLayer
 					anchor={btnRef.current}
@@ -264,16 +252,16 @@ export function ContextRing({
 					onDismiss={() => setOpen(false)}
 					style={{
 						backgroundColor: "#20201f",
-						width: 358,
+						width: 360,
 					}}
-					className="!border-[#373736] rounded-2xl p-4 !shadow-2xl text-[#e2e1df]"
+					className="!border-[#373736] rounded-2xl py-2 !shadow-2xl text-[#e2e1df] flex flex-col"
 				>
-					{/* Header */}
-					<div className="flex items-center justify-between">
-						<span className="text-[13.5px] font-medium text-[#8a8985]">上下文窗口</span>
-						<div className="flex items-center gap-1.5 text-[13.5px]">
+					{/* Header Button (P in c2d611398) */}
+					<div className="flex items-center justify-between px-3 py-1 min-h-[20px]">
+						<span className="text-[12px] leading-[15px] text-[#8a8985]">上下文窗口</span>
+						<div className="flex items-center gap-1.5">
 							{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 && (
-								<span className="font-mono text-[#e2e1df]">
+								<span className="text-[12px] leading-[15px] text-[#8a8985] tabular-nums">
 									{compactTokens(rawTokens)} / {compactTokens(rawWindow)} ({pctInt}%)
 								</span>
 							)}
@@ -281,64 +269,94 @@ export function ContextRing({
 								type="button"
 								onClick={() => setOpen(false)}
 								className="text-[#8a8985] hover:text-[#e2e1df] p-0.5 rounded transition-colors ml-0.5"
-								title="关闭"
+								title="收起"
 							>
-								<ChevronDown size={14} />
+								<ChevronDown size={12} />
 							</button>
 						</div>
 					</div>
 
-					{/* Progress Bar & Categories */}
+					{/* Stacked Meter & Category Legend (D in ce96f5751) */}
 					{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 ? (
-						<>
-							{/* Slim 4px segmented progress bar */}
-							<div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-[#32312f] flex gap-[2px]">
-								{segments
-									.filter((s) => s.id !== "free" && s.tokens > 0)
-									.map((s) => (
-										<span
-											key={s.id}
-											style={{ width: `${(s.tokens / rawWindow) * 100}%`, background: s.color }}
-											className="h-full first:rounded-l-full"
-										/>
-									))}
+						<div className="mt-1 px-3 pb-1">
+							{/* StackedMeter (O in c91b6e9db): 4px rounded-full with 1px seam */}
+							<div className="relative w-full h-[4px] rounded-full overflow-hidden bg-[#32312f]">
+								{meterSegments.map((seg) => (
+									<div
+										key={seg.id}
+										className="absolute inset-y-0"
+										style={{
+											insetInlineStart: `calc(${seg.startPct.toFixed(3)}% + ${seg.seam}px)`,
+											width: `calc(${seg.widthPct.toFixed(3)}% - ${seg.seam}px)`,
+											backgroundColor: seg.color,
+											borderStartStartRadius: seg.radiusStart,
+											borderEndStartRadius: seg.radiusStart,
+											borderStartEndRadius: seg.radiusEnd,
+											borderEndEndRadius: seg.radiusEnd,
+										}}
+									/>
+								))}
 							</div>
 
-							{/* Category Rows */}
-							<div className="mt-3.5 space-y-2 text-[13px]">
-								{segments
-									.filter((s) => s.tokens > 0 || s.id === "free")
-									.map((s) => (
-										<div key={s.id} className="flex items-center justify-between">
-											<div className="flex items-center gap-2.5 min-w-0">
-												<span
-													className="h-2.5 w-2.5 shrink-0 rounded-[2.5px]"
-													style={{ background: s.color }}
-												/>
-												<span className="truncate text-[#e2e1df]">{s.label}</span>
-											</div>
-											<div className="flex items-center font-mono tabular-nums text-[13px]">
-												<span className="w-16 text-right text-[#8a8985]">
-													{compactTokens(s.tokens)}
-												</span>
-												<span className="w-14 text-right text-[#8a8985]">
-													{((s.tokens / rawWindow) * 100).toFixed(1)}%
-												</span>
-											</div>
+							{/* Category Rows: 10x10 swatch with 2px radius, text-primary, text-muted, w-[44px] pct */}
+							<div className="flex flex-col mt-2">
+								{segments.map((item, idx) => {
+									const pct = (item.tokens / rawWindow) * 100;
+									return (
+										<div
+											key={item.id}
+											className={`flex items-center gap-1.5 text-[12px] leading-[15px] ${idx > 0 ? "mt-1" : ""}`}
+										>
+											<span
+												className="shrink-0"
+												style={{
+													width: 10,
+													height: 10,
+													borderRadius: 2,
+													background: item.color,
+													display: "inline-block",
+												}}
+												aria-hidden="true"
+											/>
+											<span className="text-[#e2e1df] flex-1 truncate">{item.name}</span>
+											<span className="text-[#8a8985] shrink-0 tabular-nums">
+												{compactTokens(item.tokens)}
+											</span>
+											<span className="text-[#e2e1df] shrink-0 tabular-nums w-[44px] text-right">
+												{pct.toFixed(1)}%
+											</span>
 										</div>
-									))}
+									);
+								})}
 							</div>
-						</>
+
+							{/* Collapsible Sub-item Sections (O in ce96f5751) */}
+							{probe &&
+								DETAIL_CATEGORIES.map((cat) => {
+									const items = probe.categories.find((c) => c.id === cat.id)?.items ?? [];
+									if (items.length === 0) return null;
+									return (
+										<SubItemSection
+											key={cat.id}
+											label={cat.label}
+											rows={items.map((it) => ({
+												name: it.detail ? `${it.detail} · ${it.title}` : it.title,
+												tokens: it.tokens,
+											}))}
+										/>
+									);
+								})}
+						</div>
 					) : (
-						<>
-							<div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-[#32312f]">
+						<div className="mt-1 px-3 pb-1">
+							<div className="relative w-full h-[4px] rounded-full overflow-hidden bg-[#32312f]">
 								<div
 									style={{ width: `${Math.min(100, percentage)}%` }}
 									className={clsx("h-full transition-all duration-300", barColor)}
 								/>
 							</div>
 							{usageObj && (
-								<div className="mt-3 space-y-1.5 text-xs text-[#8a8985]">
+								<div className="mt-2 space-y-1 text-[12px] leading-[15px] text-[#8a8985]">
 									{Object.entries(usageObj)
 										.filter(([k]) => k !== "percent")
 										.map(([k, v]) => (
@@ -349,14 +367,14 @@ export function ContextRing({
 										))}
 								</div>
 							)}
-						</>
+						</div>
 					)}
 
-					{/* Expandable sub-items tree (e.g. MCP tools, Skills, Rules) */}
-					<CategoryRows comp={probe} />
+					{/* Divider line (mx-pad-lg my-xs h-px bg-alpha-2 in c2d611398) */}
+					<div className="mx-3 my-1.5 h-px bg-[#373736]" />
 
-					{/* Footer Divider & Actions */}
-					<div className="mt-3.5 pt-3 border-t border-[#373736] flex items-center justify-between text-xs">
+					{/* Footer: See detailed breakdown link + token total + compress button */}
+					<div className="flex items-center justify-between px-3 py-1 min-h-[20px] text-[12px] leading-[15px]">
 						<button
 							type="button"
 							onClick={() => {
@@ -367,22 +385,20 @@ export function ContextRing({
 						>
 							查看系统提示词构成
 						</button>
-						<div className="flex items-center gap-2.5 text-[#8a8985]">
-							{totalTokensStr && (
-								<span className="font-mono">累计 {totalTokensStr}</span>
-							)}
+						<div className="flex items-center gap-2 text-[#8a8985]">
+							{totalTokensStr && <span className="tabular-nums">累计 {totalTokensStr}</span>}
 							{onCompact && (
 								<button
 									type="button"
 									disabled={compacting || compactDisabled}
 									onClick={() => void onCompact()}
 									title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
-									className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#373736] text-[#8a8985] hover:text-[#e2e1df] hover:border-[#52524e] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+									className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#373736] hover:border-[#52524e] hover:text-[#e2e1df] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									{compacting ? (
-										<Loader2 size={11} className="animate-spin" />
+										<Loader2 size={10} className="animate-spin" />
 									) : (
-										<ArchiveRestore size={11} />
+										<ArchiveRestore size={10} />
 									)}
 									<span>{compacting ? "压缩中" : "压缩"}</span>
 								</button>
