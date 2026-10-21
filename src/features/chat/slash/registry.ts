@@ -45,6 +45,7 @@ import {
 	Target,
 	Wrench,
 	Zap,
+	Vibrate,
 } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { copyText, confirmDialog, errMsg } from "../../../lib/dialogs";
@@ -223,6 +224,21 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 				},
 			);
 		},
+	},
+	{
+		name: "shake",
+		title: "精简上下文",
+		description: "丢弃上下文中的大块内容（工具结果、大段代码块），不调用模型",
+		icon: Vibrate,
+		group: "会话",
+		argHint: "[elide|images|thinking]",
+		settingsTarget: "compaction",
+		subcommands: [
+			{ name: "elide", description: "清除工具结果与大块内容（默认）" },
+			{ name: "images", description: "清除图片块" },
+			{ name: "thinking", description: "清除所有思考块" },
+		],
+		run: sendAsPrompt,
 	},
 	{
 		name: "export",

@@ -31,6 +31,7 @@ function mkCtx(args: string, name: string) {
 /** Commands whose subcommands (from omp) must reach omp unchanged. */
 const FORWARDING: [string, string][] = [
 	["fast", "on"],
+	["shake", "images"],
 	["fast", "ultra"],
 	["slow", "off"],
 	["advisor", "status"],
