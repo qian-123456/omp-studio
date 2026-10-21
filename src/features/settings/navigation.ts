@@ -77,7 +77,7 @@ export const NAV_GROUPS: NavGroup[] = [
 			{ id: "sessions", label: "会话", icon: Bot, lead: "会话挂起与摘要、消息排队、计划与目标模式等对话行为" },
 			{ id: "inbox", label: "收件箱", icon: Sparkles, lead: "哪些会话进入收件箱、保留多久" },
 			{ id: "doctor", label: "会话体检", icon: Stethoscope, lead: "在 Token 用量面板里体检会话，找出绕路、返工和上下文浪费" },
-			{ id: "agents-md", label: "规则文件 AGENTS.md", icon: FileText, lead: "omp 每次对话都会带上的长期规则，以及输出时实时检查的规则" },
+			{ id: "agents-md", label: "规则文件", icon: FileText, lead: "omp 每次对话都会带上的长期规则，以及输出时实时检查的规则" },
 			{ id: "prompt-composition", label: "系统提示词构成", icon: Layers, lead: "每次请求的系统提示词由哪些内容组成、各占多少" },
 		],
 	},

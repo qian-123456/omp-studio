@@ -2,7 +2,7 @@
 import type { ComponentType } from "react";
 import { AboutSection } from "./AboutSection";
 import { AdvancedSection } from "./AdvancedSection";
-import { AgentsMdSection } from "./AgentsMdSection";
+import { RulesFilesSection } from "./RulesFilesSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { ContextWindowSection } from "./ContextWindowSection";
 import { FallbackSection } from "./FallbackSection";
@@ -44,7 +44,7 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	sessions: SessionsSection,
 	inbox: InboxSection,
 	doctor: DoctorSection,
-	"agents-md": AgentsMdSection,
+	"agents-md": RulesFilesSection,
 	"prompt-composition": PromptCompositionSection,
 	tools: ToolsSection,
 	files: FilesSection,

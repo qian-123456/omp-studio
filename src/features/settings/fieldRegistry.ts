@@ -410,26 +410,26 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["extensions", "disabledExtensions", "路径", "配置"],
 	},
 
-	// 规则文件 AGENTS.md
+	// 规则文件
 	{
 		id: "agentsMdScope",
 		sectionId: "agents-md",
-		label: "AGENTS.md 范围（全局 / 当前项目）",
-		description: "选择编辑全局 ~/.omp/agent/AGENTS.md 还是当前项目的 AGENTS.md",
-		keywords: ["agents.md", "agents", "规则", "规则文件", "指令", "上下文文件", "context file", "全局", "项目"],
+		label: "规则文件范围（全局 / 当前项目）",
+		description: "选择查看全局还是当前项目的规则文件",
+		keywords: ["rules.md", "append_system", "rules", "agents.md", "agents", "规则", "规则文件", "指令", "上下文文件", "context file", "全局", "项目"],
 	},
 	{
 		id: "agentsMdProjectFile",
 		sectionId: "agents-md",
-		label: "项目文件位置",
-		description: "项目根目录 AGENTS.md 或 .omp/AGENTS.md；两者都有内容时 omp 只读后者",
+		label: "规则文件列表",
+		description: "AGENTS.md、RULES.md、rules/*.md、APPEND_SYSTEM.md 的存在状态与一键创建；项目里 AGENTS.md 两个位置都有内容时 omp 只读 .omp/AGENTS.md",
 		keywords: [".omp", "native", "位置", "覆盖"],
 	},
 	{
 		id: "agentsMdEditor",
 		sectionId: "agents-md",
-		label: "编辑 AGENTS.md",
-		description: "查看、编辑并保存 agent 的长期说明，新会话生效",
+		label: "编辑规则文件",
+		description: "查看、编辑并保存选中的规则文件，新会话生效",
 		keywords: ["编辑", "保存", "预览", "markdown", "instructions", "长期说明", "约定"],
 	},
 	// 系统提示词构成
