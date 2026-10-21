@@ -27,16 +27,17 @@ export interface ContextSegment {
 	color: string;
 }
 
+/** Claude's hues: prompt=blue, tools/buffer=grey, MCP=cyan, memory=orange, skills=green, messages=purple. */
 const COLOR: Record<ContextSegmentId, string> = {
 	system: "var(--accent)",
-	tools: "var(--accent-strong)",
-	mcp: "color-mix(in srgb, var(--accent) 45%, var(--text-dim))",
+	tools: "var(--text-dim)",
+	mcp: "var(--status-renamed)",
 	rules: "var(--status-warning)",
 	skills: "var(--status-success)",
-	other: "var(--text-dim)",
-	messages: "var(--text)",
+	other: "color-mix(in srgb, var(--text-dim) 55%, var(--bg))",
+	messages: "var(--accent-strong)",
 	free: "var(--bg-selected)",
-	buffer: "color-mix(in srgb, var(--status-warning) 28%, var(--bg-selected))",
+	buffer: "color-mix(in srgb, var(--text-dim) 45%, var(--bg-selected))",
 };
 
 const LABEL: Record<ContextSegmentId, string> = {
