@@ -1352,28 +1352,37 @@ html[data-wallpaper="true"] .fixed.inset-0.bg-\[var\(--overlay\)\] {
 }
 
 /* Codex-style text shimmer for in-flight activity labels (正在思考, 正在运行…).
- * A left-to-right highlight sweep over --text-60 every 1.4s (the ChatGPT app's
- * .loading-shimmer is 2s); reduced-motion keeps the static dimmed label. */
+ * A left-to-right highlight sweep over --text-60 every 1.6s; reduced-motion
+ * keeps the static dimmed label.
+ *
+ * Geometry is absolute (em), never a percentage of the label: the label's text
+ * changes under the animation (the 「N秒」 counter ticks every second), and a
+ * percentage background-size/position is re-resolved against the new box width
+ * on every such relayout. WebKit repaints a background-clip:text run from
+ * scratch then, so the highlight jumped or dropped mid-sweep at each tick
+ * (period 1s ≠ animation period). Fixed-em geometry makes the animated value
+ * independent of the text, so a text update only repaints the same frame. The
+ * solid second layer is the base colour outside the highlight band. */
 @keyframes shimmer-sweep {
 	0% {
-		background-position: 140% 0;
+		background-position: -8em 0, 0 0;
 	}
 	100% {
-		background-position: -105% 0;
+		background-position: 16em 0, 0 0;
 	}
 }
 .shimmer-text {
-	background-image: linear-gradient(
-		90deg,
-		var(--text-60) 35%,
-		var(--text) 50%,
-		var(--text-60) 65%
-	);
-	background-size: 200% 100%;
+	background-image:
+		linear-gradient(90deg, var(--text-60) 0%, var(--text) 50%, var(--text-60) 100%),
+		linear-gradient(var(--text-60), var(--text-60));
+	background-size:
+		8em 100%,
+		100% 100%;
+	background-repeat: no-repeat;
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
-	animation: shimmer-sweep 1.4s linear infinite;
+	animation: shimmer-sweep 1.6s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
 	.shimmer-text {
