@@ -780,6 +780,7 @@ const StreamingRow = React.memo(function StreamingRow({
 	onScrollRequest,
 	showTimer,
 	holding,
+	persistedCallIds,
 }: {
 	sessionId: string;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
@@ -789,6 +790,8 @@ const StreamingRow = React.memo(function StreamingRow({
 	/** The stream ended; the row paints its last snapshot until the committed
 	 * turn replaces it. */
 	holding: boolean;
+	/** Tool-call ids the committed latest turn already shows (dedupe). */
+	persistedCallIds: ReadonlySet<string>;
 }) {
 	const streamingMessage = useLive(
 		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
@@ -1040,26 +1043,48 @@ const StreamingRow = React.memo(function StreamingRow({
 	if (!holding) endedAtRef.current = null;
 	else if (endedAtRef.current === null) endedAtRef.current = Date.now();
 
+	// Requests whose tool calls the committed turn already shows: their live
+	// rows (and stats lines) would repeat those steps, so they are dropped.
+	const { visibleSteps, visiblePlan } = useMemo(() => {
+		if (persistedCallIds.size === 0) {
+			return { visibleSteps: shown.steps, visiblePlan: shown.statsPlan };
+		}
+		const covered = new Set(
+			liveRequests
+				.filter((r) => r.toolCallIds.some((id) => persistedCallIds.has(id)))
+				.map((r) => r.id),
+		);
+		const visibleSteps = shown.steps.filter((s) => {
+			if (s.kind === "tool" && persistedCallIds.has(s.call.id)) return false;
+			return !("requestId" in s && s.requestId && covered.has(s.requestId));
+		});
+		const visiblePlan = shown.statsPlan
+			? {
+					...shown.statsPlan,
+					requests: shown.statsPlan.requests.filter((r) => !covered.has(r.id)),
+				}
+			: undefined;
+		return { visibleSteps, visiblePlan };
+	}, [shown, persistedCallIds, liveRequests]);
+
 	// Final answer start: the activity folds into the disclosure and the turn
 	// takes the committed layout (disclosure, interim prose, answer), so the
 	// commit itself changes nothing but the title and the footer.
 	const foldEnabled = showTimer;
-	const candidate = foldEnabled ? liveAnswerCandidate(shown.steps) : null;
+	const candidate = foldEnabled ? liveAnswerCandidate(visibleSteps) : null;
 	const answerStarted = useAnswerStarted(candidate !== null, holding);
 	const { activity, prose, answer } = useMemo(
-		() => splitLiveTurn(shown.steps, answerStarted),
-		[shown.steps, answerStarted],
+		() => splitLiveTurn(visibleSteps, answerStarted),
+		[visibleSteps, answerStarted],
 	);
 	const answerRequestId = answer?.kind === "text" ? answer.requestId : undefined;
 	const stepsPlan = useMemo<TurnStatsPlan | undefined>(
 		() =>
-			shown.statsPlan && answerRequestId
-				? { ...shown.statsPlan, answerRequestId }
-				: shown.statsPlan,
-		[shown.statsPlan, answerRequestId],
+			visiblePlan && answerRequestId ? { ...visiblePlan, answerRequestId } : visiblePlan,
+		[visiblePlan, answerRequestId],
 	);
 	const answerStat = answerRequestId
-		? shown.statsPlan?.requests.find((r) => r.id === answerRequestId)?.stat
+		? visiblePlan?.requests.find((r) => r.id === answerRequestId)?.stat
 		: undefined;
 	const heldDurationMs =
 		holding && endedAtRef.current !== null
@@ -1069,7 +1094,7 @@ const StreamingRow = React.memo(function StreamingRow({
 	// Throttle scroll request to rAF
 	useEffect(() => {
 		onScrollRequest?.();
-	}, [shown.steps.length, answerStarted, onScrollRequest]);
+	}, [visibleSteps.length, answerStarted, onScrollRequest]);
 
 	const nodes: React.ReactNode[] = [];
 	if (!answer) {
@@ -1103,7 +1128,9 @@ const StreamingRow = React.memo(function StreamingRow({
 		// A tool counts as running when omp says so, or when it is the trailing
 		// call still being written (no live entry, no result yet). Older
 		// result-less rows are finished history and must not hide the wait row.
-		const busy = activity.some(
+		const busy =
+			Object.values(liveTools).some((t) => t.status === "running") ||
+			activity.some(
 			(s, i) =>
 				(s.kind === "thinking" && s.running) ||
 				(s.kind === "text" && s.streaming) ||
@@ -1425,6 +1452,20 @@ export function MessageList({
 		}
 		return false;
 	});
+
+	// Tool-call ids the committed latest turn already renders. While that turn
+	// shows its own live disclosure, StreamingRow drops whatever these cover.
+	const persistedCallIds = useMemo(() => {
+		const ids = new Set<string>();
+		if (!latestDisclosureLive) return ids;
+		for (let i = blocks.length - 1; i >= 0; i--) {
+			const b = blocks[i];
+			if (b.type !== "turn") continue;
+			for (const st of b.intermediateSteps) if (st.kind === "tool") ids.add(st.call.id);
+			break;
+		}
+		return ids;
+	}, [blocks, latestDisclosureLive]);
 
 	// Listen to scroll/gesture activity to maintain the follow-bottom state
 	// machine. `scroll` events are only trusted outside the opening/settle
@@ -1870,6 +1911,7 @@ export function MessageList({
 								onScrollRequest={scrollToBottomThrottled}
 								showTimer={!latestDisclosureLive}
 								holding={holding}
+								persistedCallIds={persistedCallIds}
 							/>
 						</div>
 					)}
