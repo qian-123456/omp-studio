@@ -986,7 +986,6 @@ export function Composer({
 	/** Merge a picked subcommand into the legacy chip and drop the typed word. */
 	const selectSubcommand = (item: SlashMenuItem, rest?: string) => {
 		if (!chip || chip.offset !== undefined || chip.sub) return;
-		const { argHint: _drop, ...base } = chip;
 		if (item.bare) {
 			// The parent command's own (native) action, e.g. `/memory` → settings.
 			const name = chip.name;
@@ -1001,6 +1000,7 @@ export function Composer({
 			setTimeout(() => taRef.current?.focus(), 0);
 			return;
 		}
+		const { argHint: _drop, ...base } = chip;
 		setChip({ ...base, sub: item.name, ...(item.argHint ? { argHint: item.argHint } : {}) });
 		setText(rest ?? splitFirstWord(text).rest);
 		setCursorPos(0);
@@ -2072,7 +2072,7 @@ export function Composer({
 									 * first fragment instead of replacing it with an atomic box. */}
 									<span className="relative">
 										<span className="invisible">{chipLiteral(chip)}</span>
-										<span className="absolute inset-y-0 left-0 flex items-center overflow-hidden">
+										<span className="absolute left-0 top-1/2 flex -translate-y-1/2 items-center whitespace-nowrap">
 											<CommandChipBadge chip={chip} />
 										</span>
 									</span>
