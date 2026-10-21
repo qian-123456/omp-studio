@@ -2443,6 +2443,7 @@ export function Composer({
 							open={contextOpen}
 							onOpenChange={setContextOpen}
 							showPercent={toolbarTier === TIER_FULL}
+							modelLabel={modelLabel}
 							className="shrink-0"
 						/>
 

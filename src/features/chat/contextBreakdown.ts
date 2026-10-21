@@ -1,4 +1,9 @@
-/** Pure helpers for the context-usage popover: split used tokens into categories (Claude Code /context style). */
+/**
+ * Port of Claude Code 2.1.300's `/context` panel (`mHn` + the `G` renderer in its bundle):
+ * category order, grid allocation, and labels. Claude renders the grid with terminal glyphs
+ * (⛀ partly filled, ⛁ filled, ⛶ free, ⛝ autocompact buffer); here each glyph is a cell with a
+ * fullness value instead, so the GUI can draw the same block.
+ */
 import type { PromptComposition } from "../../lib/contracts";
 import { DEFAULT_RESERVE_TOKENS, readThreshold, resolveMode } from "../settings/autoCompactionLogic";
 import { compactionTriggerPoint } from "../settings/contextWindow/core";
@@ -46,30 +51,45 @@ const LABEL: Record<ContextSegmentId, string> = {
 	buffer: "自动压缩缓冲",
 };
 
-/** Display order, same as Claude Code: fixed overhead, messages, free space, autocompact buffer. */
+/** Same order as Claude: fixed prompt parts, messages, free space, then the compaction buffer. */
 const ORDER: ContextSegmentId[] = ["system", "tools", "mcp", "rules", "skills", "other", "messages", "free", "buffer"];
 
+/** Claude keeps this much free when autocompaction is off ("Compact buffer"). */
+const COMPACT_BUFFER_TOKENS = 3000;
+
+/** Claude's grid: 10×10 cells, or 20×10 once the window reaches 1M tokens. */
+export function gridShape(windowSize: number): { cols: number; rows: number } {
+	return { cols: windowSize >= 1_000_000 ? 20 : 10, rows: 10 };
+}
+
+export interface CompactionBuffer {
+	tokens: number;
+	label: string;
+}
+
 /**
- * Tokens between the auto-compaction trigger and the window end: the headroom omp keeps so a
- * turn can finish before compaction runs. 0 when auto-compaction is off or the trigger is unreachable.
+ * Tokens between the auto-compaction trigger and the end of the window: the headroom the agent
+ * keeps so a turn can finish before compaction runs. Falls back to Claude's fixed 3k "compact
+ * buffer" when auto-compaction is off, and to omp's default reserve when no threshold is set.
  */
-export function autocompactBuffer(
+export function compactionBuffer(
 	windowSize: number,
 	cfg: { enabled: boolean; thresholdTokens: unknown; thresholdPercent: unknown },
-): number {
-	if (!cfg.enabled || windowSize <= 0) return 0;
+): CompactionBuffer {
+	if (windowSize <= 0) return { tokens: 0, label: LABEL.buffer };
+	if (!cfg.enabled) return { tokens: Math.min(windowSize, COMPACT_BUFFER_TOKENS), label: "压缩缓冲" };
 	const t = readThreshold(cfg.thresholdTokens, cfg.thresholdPercent);
 	const mode = resolveMode(t);
 	const trigger =
 		mode === "default"
 			? Math.max(0, windowSize - DEFAULT_RESERVE_TOKENS)
 			: compactionTriggerPoint(windowSize, { mode, value: mode === "percent" ? t.percent : t.tokens }).tokens;
-	return Math.min(windowSize, Math.max(0, windowSize - trigger));
+	return { tokens: Math.max(0, windowSize - trigger), label: LABEL.buffer };
 }
 
 /**
  * Splits `used` of `windowSize` tokens into the fixed prompt categories (estimated by the probe)
- * plus messages (the remainder), free space and the autocompact buffer. Without a probe everything
+ * plus messages (the remainder), free space and the compaction buffer. Without a probe everything
  * used counts as messages. When the estimate exceeds what omp reports as used, the categories are
  * scaled down to fit. The buffer only occupies what usage has not already eaten into.
  */
@@ -77,7 +97,7 @@ export function buildContextSegments(
 	used: number,
 	windowSize: number,
 	comp: PromptComposition | null,
-	bufferTokens = 0,
+	buffer: CompactionBuffer = { tokens: 0, label: LABEL.buffer },
 ): ContextSegment[] {
 	const usedClamped = Math.min(Math.max(0, used), windowSize);
 	const est = new Map<ContextSegmentId, number>();
@@ -100,38 +120,48 @@ export function buildContextSegments(
 	const fixed = Object.values(tokens).reduce((a, b) => a + b, 0);
 	tokens.messages = Math.max(0, usedClamped - fixed);
 	const remaining = Math.max(0, windowSize - usedClamped);
-	tokens.buffer = Math.min(remaining, Math.max(0, bufferTokens));
+	tokens.buffer = Math.min(remaining, Math.max(0, buffer.tokens));
 	tokens.free = remaining - tokens.buffer;
 
-	return ORDER.map((id) => ({ id, label: LABEL[id], tokens: tokens[id], color: COLOR[id] }));
+	return ORDER.map((id) => ({
+		id,
+		label: id === "buffer" ? buffer.label : LABEL[id],
+		tokens: tokens[id],
+		color: COLOR[id],
+	}));
+}
+
+export interface GridCell {
+	id: ContextSegmentId;
+	/** 0–1; Claude picks ⛀ below 0.7 and ⛁ at or above it. */
+	fullness: number;
 }
 
 /**
- * Allocates `cellCount` grid cells to segments in order. Every non-empty used segment gets at
- * least one cell so small categories stay visible. Free space fills the middle and the autocompact
- * buffer sits at the end, as in Claude Code.
+ * Port of Claude's grid filler: every non-empty category gets at least one cell, free space fills
+ * the middle, and the compaction buffer closes the block. A partially filled trailing cell keeps
+ * its fraction so rounded-up categories still read as smaller than full ones.
  */
-export function allocateCells(segments: ContextSegment[], windowSize: number, cellCount: number): ContextSegmentId[] {
-	if (windowSize <= 0) return Array(cellCount).fill("free");
-	const used = segments.filter((s) => s.id !== "free" && s.id !== "buffer" && s.tokens > 0);
-	const counts = used.map((s) => Math.max(1, Math.round((s.tokens / windowSize) * cellCount)));
+export function allocateCells(
+	segments: ContextSegment[],
+	windowSize: number,
+	shape: { cols: number; rows: number },
+): GridCell[] {
+	const total = shape.cols * shape.rows;
+	if (windowSize <= 0) return Array.from({ length: total }, () => ({ id: "free", fullness: 1 }));
 	const buffer = segments.find((s) => s.id === "buffer")?.tokens ?? 0;
-	let bufferCells = buffer > 0 ? Math.max(1, Math.round((buffer / windowSize) * cellCount)) : 0;
-	// Trim overshoot from the largest used segment so the grid never overflows.
-	let total = counts.reduce((a, b) => a + b, 0) + bufferCells;
-	while (total > cellCount) {
-		let big = 0;
-		for (let i = 1; i < counts.length; i++) if (counts[i] > counts[big]) big = i;
-		if (counts.length > 0 && counts[big] > 1) counts[big]--;
-		else if (bufferCells > 0) bufferCells--;
-		else break;
-		total--;
+	const bufferCells = buffer > 0 ? Math.min(total, Math.max(1, Math.round((buffer / windowSize) * total))) : 0;
+	const cells: GridCell[] = [];
+	for (const s of segments) {
+		if (s.id === "free" || s.id === "buffer" || s.tokens <= 0) continue;
+		const raw = (s.tokens / windowSize) * total;
+		const whole = Math.floor(raw);
+		const count = Math.max(1, Math.round(raw));
+		for (let i = 0; i < count && cells.length < total - bufferCells; i++) {
+			cells.push({ id: s.id, fullness: i === whole && raw - whole > 0 ? raw - whole : 1 });
+		}
 	}
-	const cells: ContextSegmentId[] = [];
-	used.forEach((s, i) => {
-		for (let n = 0; n < counts[i] && cells.length < cellCount; n++) cells.push(s.id);
-	});
-	while (cells.length < cellCount - bufferCells) cells.push("free");
-	while (cells.length < cellCount) cells.push("buffer");
+	while (cells.length < total - bufferCells) cells.push({ id: "free", fullness: 1 });
+	while (cells.length < total) cells.push({ id: "buffer", fullness: 1 });
 	return cells;
 }

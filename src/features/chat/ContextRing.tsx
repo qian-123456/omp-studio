@@ -8,10 +8,8 @@ import { openPromptComposition } from "../../stores/promptComposition";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useOmpConfigStore } from "../settings/ompConfigStore";
-import { allocateCells, autocompactBuffer, buildContextSegments } from "./contextBreakdown";
-
-const GRID_COLS = 20;
-const GRID_ROWS = 5;
+import { readThreshold, resolveMode } from "../settings/autoCompactionLogic";
+import { allocateCells, buildContextSegments, compactionBuffer, gridShape } from "./contextBreakdown";
 
 /** One probe per project for the app's lifetime; concurrent opens share the in-flight request. */
 const compositionCache = new Map<string, Promise<PromptComposition>>();
@@ -32,62 +30,64 @@ function compactTokens(n: number): string {
 	return String(n);
 }
 
-/** Per-category item lists (Claude Code lists MCP tools, memory files and skills under the grid). */
-const DETAIL_CATEGORIES: { id: PromptCategoryId; title: string; note?: string }[] = [
-	{ id: "rules", title: "规则文件" },
-	{ id: "skills", title: "Skills", note: "只有名称和描述常驻上下文，正文用到时才加载" },
+/** Claude lists MCP tools, memory files and skills as trees under the grid. */
+const DETAIL_SECTIONS: { id: PromptCategoryId; title: string }[] = [
 	{ id: "mcp", title: "MCP 工具" },
+	{ id: "rules", title: "规则文件" },
+	{ id: "skills", title: "Skills" },
 ];
-const DETAIL_PREVIEW = 3;
 
 function DetailSections({ comp }: { comp: PromptComposition | null }) {
 	const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 	if (!comp) return null;
-	const sections = DETAIL_CATEGORIES.map((d) => ({
+	const sections = DETAIL_SECTIONS.map((d) => ({
 		...d,
 		items: [...(comp.categories.find((c) => c.id === d.id)?.items ?? [])].sort((a, b) => b.tokens - a.tokens),
 	})).filter((s) => s.items.length > 0);
 	if (sections.length === 0) return null;
 	return (
-		<div className="space-y-2 border-t border-[var(--line)] pt-2 text-[11px]">
+		<div className="space-y-2 border-t border-[var(--line)] pt-2">
 			{sections.map((s) => {
 				const all = expanded.has(s.id);
-				const shown = all ? s.items : s.items.slice(0, DETAIL_PREVIEW);
+				const total = s.items.reduce((a, i) => a + i.tokens, 0);
 				return (
-					<div key={s.id} className="space-y-1">
-						<div className="flex items-center justify-between text-[var(--text-60)]">
-							<span className="font-medium">
-								{s.title} · {s.items.length} 项
-							</span>
-							{s.items.length > DETAIL_PREVIEW && (
-								<button
-									type="button"
-									onClick={() =>
-										setExpanded((prev) => {
-											const next = new Set(prev);
-											if (next.has(s.id)) next.delete(s.id);
-											else next.add(s.id);
-											return next;
-										})
-									}
-									className="rounded-full border border-[var(--line)] px-1.5 py-px text-[10px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-								>
-									{all ? "收起" : `全部 ${s.items.length} 项`}
-								</button>
-							)}
+					<div key={s.id}>
+						<div className="flex items-center justify-between">
+							<span className="font-medium text-[var(--text-60)]">{s.title}</span>
+							<button
+								type="button"
+								onClick={() =>
+									setExpanded((prev) => {
+										const next = new Set(prev);
+										if (next.has(s.id)) next.delete(s.id);
+										else next.add(s.id);
+										return next;
+									})
+								}
+								className="rounded-full border border-[var(--line)] px-1.5 py-px text-[10px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
+							>
+								{all ? "收起" : `全部 ${s.items.length} 项`}
+							</button>
 						</div>
-						{s.note && <div className="text-[10px] text-[var(--text-40)]">{s.note}</div>}
-						<div className="max-h-40 space-y-0.5 overflow-y-auto pl-2">
-							{shown.map((it) => (
-								<div key={it.id} className="flex items-start gap-2">
-									<span className="min-w-0 flex-1 break-all text-[var(--text-40)]">
-										{it.title}
-										{it.detail ? ` (${it.detail})` : ""}
-									</span>
-									<span className="shrink-0 font-mono text-[var(--text-60)]">{compactTokens(it.tokens)}</span>
-								</div>
-							))}
-						</div>
+						{all ? (
+							<div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto pl-2">
+								{s.items.map((it) => (
+									<div key={it.id} className="flex items-start gap-2">
+										<span className="min-w-0 flex-1 break-all text-[var(--text-40)]">
+											{it.title}
+											{it.detail ? ` (${it.detail})` : ""}
+										</span>
+										<span className="shrink-0 font-mono text-[var(--text-40)]">
+											{compactTokens(it.tokens)} token
+										</span>
+									</div>
+								))}
+							</div>
+						) : (
+							<div className="mt-0.5 pl-2 text-[var(--text-40)]">
+								{s.items.length} 项 · {compactTokens(total)} token
+							</div>
+						)}
 					</div>
 				);
 			})}
@@ -113,6 +113,8 @@ interface ContextRingProps {
 	className?: string;
 	/** Show the 「53%」 text beside the ring (default); false = ring only, % stays in the tooltip. */
 	showPercent?: boolean;
+	/** Model name for the popover header (Claude Code prints the active model above the numbers). */
+	modelLabel?: string | null;
 }
 
 export function ContextRing({
@@ -126,6 +128,7 @@ export function ContextRing({
 	onOpenChange,
 	className,
 	showPercent = true,
+	modelLabel,
 }: ContextRingProps) {
 	const [openInner, setOpenInner] = useState(false);
 	const open = openProp ?? openInner;
@@ -206,14 +209,22 @@ export function ContextRing({
 		if (open) void useOmpConfigStore.getState().load();
 	}, [open]);
 	const cfgValue = (key: string) => ompEntries.find((e) => e.key === key)?.value;
-	const buffer = autocompactBuffer(rawWindow ?? 0, {
+	const thresholdMode = resolveMode(
+		readThreshold(cfgValue("compaction.thresholdTokens"), cfgValue("compaction.thresholdPercent")),
+	);
+	const buffer = compactionBuffer(rawWindow ?? 0, {
 		enabled: cfgValue("compaction.enabled") !== false,
 		thresholdTokens: cfgValue("compaction.thresholdTokens"),
 		thresholdPercent: cfgValue("compaction.thresholdPercent"),
 	});
 	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe, buffer);
-	const segmentColor = new Map(segments.map((s) => [s.id, s.color]));
-	const cells = allocateCells(segments, rawWindow ?? 0, GRID_COLS * GRID_ROWS);
+	const colorOf = new Map(segments.map((s) => [s.id, s.color]));
+	const shape = gridShape(rawWindow ?? 0);
+	const cells = allocateCells(segments, rawWindow ?? 0, shape);
+	const usedNow = rawTokens ?? 0;
+	const windowNow = rawWindow ?? 0;
+	const overLimit = Math.max(0, usedNow - windowNow);
+	const pastTrigger = Math.max(0, usedNow - Math.max(0, windowNow - buffer.tokens));
 	const strokeDashoffset = circumference * (1 - Math.min(1, fraction));
 
 	return (
@@ -277,7 +288,7 @@ export function ContextRing({
 							backgroundColor: "var(--bg)",
 							backgroundImage: "linear-gradient(var(--bg-panel), var(--bg-panel))",
 						}}
-						className="w-72 !border-[var(--line)] p-3 !shadow-apple-card"
+						className="w-80 !border-[var(--line)] p-3 !shadow-apple-card"
 					>
 						<div className="mb-2.5 flex items-center justify-between border-b border-[var(--line)] pb-2">
 							<div className="flex items-center gap-1.5 text-xs font-medium text-[var(--text)]">
@@ -311,43 +322,65 @@ export function ContextRing({
 							</div>
 						</div>
 
-						<div className="space-y-2.5 text-xs">
+						<div className="space-y-2 text-[11px]">
 							{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 ? (
 								<>
-									<div className="flex items-baseline justify-between text-[11px]">
-										<span className="font-mono text-[var(--text)]">
-											{compactTokens(rawTokens)} / {compactTokens(rawWindow)} token
-										</span>
-										<span className="font-mono font-medium text-[var(--text)]">
-											{percentage.toFixed(1)}%
-										</span>
+									<div className="leading-tight">
+										{modelLabel && <div className="text-[var(--text-40)]">{modelLabel}</div>}
+										<div className="font-mono text-[var(--text-40)]">
+											{compactTokens(rawTokens)}/{compactTokens(rawWindow)} token (
+											{percentage.toFixed(1)}%)
+										</div>
 									</div>
+									{overLimit > 0 ? (
+										<div className="text-[var(--status-error)]">
+											已超出上下文窗口 {compactTokens(overLimit)} token，请先压缩
+										</div>
+									) : pastTrigger > 0 ? (
+										<div className="text-[var(--status-warning)]">
+											已越过压缩触发点 {compactTokens(pastTrigger)} token
+										</div>
+									) : null}
+									<div className="italic text-[var(--text-40)]">按类别估算</div>
 									<div
 										className="grid gap-[2px]"
-										style={{ gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))` }}
+										style={{ gridTemplateColumns: `repeat(${shape.cols}, minmax(0, 1fr))` }}
 										aria-hidden
 									>
-										{cells.map((id, i) => (
+										{cells.map((cell, i) => (
 											<span
 												key={i}
 												className="aspect-square rounded-[2px]"
-												style={{ background: segmentColor.get(id) }}
+												style={{ background: colorOf.get(cell.id), opacity: cell.fullness >= 0.7 ? 1 : 0.55 }}
 											/>
 										))}
 									</div>
-									<div className="space-y-1 text-[11px]">
+									<div className="space-y-0.5">
 										{segments
-											.filter((s) => s.tokens > 0 || s.id === "messages" || s.id === "free")
+											.filter((s) => s.id !== "free" && s.id !== "buffer" && s.tokens > 0)
+											.map((s) => (
+												<div key={s.id} className="flex items-center gap-2">
+													<span className="h-2 w-2 shrink-0 rounded-[2px]" style={{ background: s.color }} />
+													<span className="flex-1 text-[var(--text-60)]">{s.label}:</span>
+													<span className="font-mono text-[var(--text-40)]">
+														{compactTokens(s.tokens)} token ({((s.tokens / rawWindow) * 100).toFixed(1)}%)
+													</span>
+												</div>
+											))}
+										{segments
+											.filter((s) => (s.id === "free" || s.id === "buffer") && s.tokens > 0)
 											.map((s) => (
 												<div key={s.id} className="flex items-center gap-2">
 													<span
-														className="h-2 w-2 shrink-0 rounded-[2px]"
-														style={{ background: s.color }}
+														className={clsx(
+															"h-2 w-2 shrink-0 rounded-[2px]",
+															s.id === "free" && "border border-[var(--line)]",
+														)}
+														style={s.id === "buffer" ? { background: s.color } : undefined}
 													/>
-													<span className="flex-1 text-[var(--text-60)]">{s.label}</span>
-													<span className="font-mono text-[var(--text)]">{compactTokens(s.tokens)}</span>
-													<span className="w-12 text-right font-mono text-[var(--text-40)]">
-														{((s.tokens / rawWindow) * 100).toFixed(1)}%
+													<span className="flex-1 text-[var(--text-60)]">{s.label}:</span>
+													<span className="font-mono text-[var(--text-40)]">
+														{compactTokens(s.tokens)} token ({((s.tokens / rawWindow) * 100).toFixed(1)}%)
 													</span>
 												</div>
 											))}
@@ -360,7 +393,6 @@ export function ContextRing({
 											固定部分统计失败，已用量全部算作对话消息
 										</div>
 									)}
-									<DetailSections comp={probe} />
 								</>
 							) : (
 								<>
@@ -392,6 +424,14 @@ export function ContextRing({
 									)}
 								</>
 							)}
+
+							{typeof rawWindow === "number" && rawWindow > 0 && thresholdMode !== "default" && (
+								<div className="border-t border-[var(--line)] pt-2 text-[var(--text-40)]">
+									自动压缩窗口: <span className="font-mono">{compactTokens(Math.max(0, rawWindow - buffer.tokens))}</span> token
+								</div>
+							)}
+
+							<DetailSections comp={probe} />
 
 							{totalTokensStr && (
 								<div className="flex justify-between border-t border-[var(--line)] pt-2 text-[11px]">
