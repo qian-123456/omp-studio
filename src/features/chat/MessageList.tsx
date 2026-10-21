@@ -780,6 +780,7 @@ const StreamingRow = React.memo(function StreamingRow({
 	onScrollRequest,
 	showTimer,
 	holding,
+	persistedThinking,
 }: {
 	sessionId: string;
 	toolResultsByCallId?: Map<string, ToolResultInfo>;
@@ -789,6 +790,8 @@ const StreamingRow = React.memo(function StreamingRow({
 	/** The stream ended; the row paints its last snapshot until the committed
 	 * turn replaces it. */
 	holding: boolean;
+	/** Newest reasoning text already persisted in the latest turn (preview fallback). */
+	persistedThinking: string;
 }) {
 	const streamingMessage = useLive(
 		(s) => s.sessions[sessionId]?.streamingMessage ?? null,
@@ -1112,7 +1115,9 @@ const StreamingRow = React.memo(function StreamingRow({
 			nodes.push(
 				<LiveWaitingRow
 					key="live-waiting"
-					thinking={lastThinking?.kind === "thinking" ? lastThinking.thinking : ""}
+					thinking={
+						lastThinking?.kind === "thinking" ? lastThinking.thinking : persistedThinking
+					}
 				/>,
 			);
 		}
@@ -1428,6 +1433,20 @@ export function MessageList({
 		}
 		return false;
 	});
+
+	// Newest reasoning text of the latest turn, so the waiting row can preview it.
+	const persistedThinking = useMemo(() => {
+		for (let i = blocks.length - 1; i >= 0; i--) {
+			const b = blocks[i];
+			if (b.type !== "turn") continue;
+			for (let j = b.intermediateSteps.length - 1; j >= 0; j--) {
+				const st = b.intermediateSteps[j];
+				if (st.kind === "thinking" && st.thinking.trim() !== "") return st.thinking;
+			}
+			return "";
+		}
+		return "";
+	}, [blocks]);
 
 	// Listen to scroll/gesture activity to maintain the follow-bottom state
 	// machine. `scroll` events are only trusted outside the opening/settle
@@ -1869,6 +1888,7 @@ export function MessageList({
 								onScrollRequest={scrollToBottomThrottled}
 								showTimer={!latestDisclosureLive}
 								holding={holding}
+								persistedThinking={persistedThinking}
 							/>
 						</div>
 					)}
