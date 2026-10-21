@@ -112,9 +112,12 @@ async fn run_external_loop(state: AppState) {
     let status_dir = paths::status_dir();
     let own_pid = std::process::id();
 
+    // Idle backoff reaches 60s: the file watcher calls `notify_external_check`
+    // on every session-file change, so a terminal omp opening a session still
+    // wakes this loop immediately.
     const MIN_DELAY: Duration = Duration::from_secs(5);
-    const MAX_DELAY: Duration = Duration::from_secs(30);
-    const STEP: Duration = Duration::from_secs(5);
+    const MAX_DELAY: Duration = Duration::from_secs(60);
+    const STEP: Duration = Duration::from_secs(10);
 
     let mut current_delay = MIN_DELAY;
 

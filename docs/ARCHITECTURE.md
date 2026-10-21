@@ -283,6 +283,7 @@ pub struct TurnFile { pub path: String, pub status: String /* A M D */ }
 pub struct TurnCheckpoint { pub turn_id: String, pub session_id: String, pub user_item_id: Option<String>, pub prompt: String,
   pub before: String, pub after: String, pub head_before: Option<String>, pub head_after: Option<String>,
   pub commits: Vec<String> /* newest first */, pub files: Vec<TurnFile>, pub ended_at: String, pub restorable: bool, pub undone: bool }
+  // `prompt` is a preview capped at 200 chars (ellipsis appended; the extension already writes ≤80); the checkpoint parse cache is bounded (1024 entries / ~2 MB, LRU, mtime+size invalidated).
 pub struct TurnUndoResult { pub restored: Vec<String>, pub deleted: Vec<String>, pub conflicts: Vec<String>, pub head_reset: bool, pub warning: Option<String>, pub turns_undone: usize }
 pub struct TmRun { pub id: String, pub repo: String, pub sha: String, pub worktree: String, pub command: String, pub pid: Option<u32>, pub url: Option<String>, pub log_tail: String }
 
@@ -553,7 +554,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **A — catalog:**
 - `list_sessions() -> Vec<SessionMeta>`
-- `get_transcript(session_id, from_offset: Option<u64>) -> TranscriptPage` — full parse from 0 or incremental from byte offset
+- `get_transcript(session_id, from_offset: Option<u64>) -> TranscriptPage` — full parse from 0 or incremental from byte offset (streamed line by line). `ToolResultInfo.details` is slimmed: `task`/`agent`/`ask` keep it whole; every other tool keeps only `{diff}` (when a string) — the duplicated `displayContent`/`oldText`/`newText`/`perFileResults`/`truncation`/`meta` are dropped (the UI never reads them; −57% tool-result payload on the largest session)
 - `update_session_meta(session_id, patch: {customName?, pinned?, archived?, workspaceId?})  -> SessionMeta`
 - `mark_seen(session_id)` — clears `unread`, stamps `session_meta.last_seen_at`; if pending is Review, also runs the `accept_session(id, false)` logic (view = accept; emits `SessionAccepted`). The frontend calls it after every 2 s dwell on a session
 - `accept_session(session_id, archive: bool)` — clears `pending=Review`, sets Idle, emits `SessionAccepted`

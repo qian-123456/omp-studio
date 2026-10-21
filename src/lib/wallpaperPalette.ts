@@ -1,5 +1,3 @@
-import { PRESET_THUMBNAILS, PRESET_WALLPAPERS_DATA } from "../assets/presetWallpapersData";
-
 export type WallpaperVariant = "mono" | "neutral" | "soft" | "rich";
 export type WallpaperEffect = "clear" | "soft" | "blur" | "overlay";
 export type WallpaperAppearance = "dark" | "light";
@@ -44,52 +42,57 @@ export interface CustomWallpaperItem {
   createdAt: number;
 }
 
+// Preset images live in public/wallpapers (served as static files) instead of being
+// inlined as base64 in the JS bundle; the webview only fetches the ones it renders.
+const presetImage = (id: string) => `/wallpapers/${id}.jpg`;
+const presetThumb = (id: string) => `/wallpapers/${id}.thumb.jpg`;
+
 export const PRESET_WALLPAPERS: PresetWallpaper[] = [
   {
     id: "preset-lakewood",
     name: "雾林深境",
-    imageUrl: PRESET_WALLPAPERS_DATA["preset-lakewood"],
-    thumbnailUrl: PRESET_THUMBNAILS["preset-lakewood"],
+    imageUrl: presetImage("preset-lakewood"),
+    thumbnailUrl: presetThumb("preset-lakewood"),
     palette: { mono: "#6b7270", neutral: "#adb5b3", soft: "#2e5a44", rich: "#146b27" },
     appearance: "dark",
   },
   {
     id: "preset-palm-shore",
     name: "晴空花影",
-    imageUrl: PRESET_WALLPAPERS_DATA["preset-palm-shore"],
-    thumbnailUrl: PRESET_THUMBNAILS["preset-palm-shore"],
+    imageUrl: presetImage("preset-palm-shore"),
+    thumbnailUrl: presetThumb("preset-palm-shore"),
     palette: { mono: "#78828a", neutral: "#b1c7d8", soft: "#5a92ba", rich: "#d96b27" },
     appearance: "light",
   },
   {
     id: "preset-ember-rock",
     name: "月映暖筑",
-    imageUrl: PRESET_WALLPAPERS_DATA["preset-ember-rock"],
-    thumbnailUrl: PRESET_THUMBNAILS["preset-ember-rock"],
+    imageUrl: presetImage("preset-ember-rock"),
+    thumbnailUrl: presetThumb("preset-ember-rock"),
     palette: { mono: "#7c858a", neutral: "#a3bdc4", soft: "#c68867", rich: "#d87e4b" },
     appearance: "light",
   },
   {
     id: "preset-atoll-blue",
     name: "盐原金峰",
-    imageUrl: PRESET_WALLPAPERS_DATA["preset-atoll-blue"],
-    thumbnailUrl: PRESET_THUMBNAILS["preset-atoll-blue"],
+    imageUrl: presetImage("preset-atoll-blue"),
+    thumbnailUrl: presetThumb("preset-atoll-blue"),
     palette: { mono: "#828785", neutral: "#ced3d0", soft: "#a99273", rich: "#d4921e" },
     appearance: "light",
   },
   {
     id: "preset-leaf-shadow",
     name: "玄岩海门",
-    imageUrl: PRESET_WALLPAPERS_DATA["preset-leaf-shadow"],
-    thumbnailUrl: PRESET_THUMBNAILS["preset-leaf-shadow"],
+    imageUrl: presetImage("preset-leaf-shadow"),
+    thumbnailUrl: presetThumb("preset-leaf-shadow"),
     palette: { mono: "#636e6b", neutral: "#8b9c97", soft: "#1b4d3e", rich: "#007a99" },
     appearance: "dark",
   },
   {
     id: "preset-alpenglow",
     name: "黑羽静栖",
-    imageUrl: PRESET_WALLPAPERS_DATA["preset-alpenglow"],
-    thumbnailUrl: PRESET_THUMBNAILS["preset-alpenglow"],
+    imageUrl: presetImage("preset-alpenglow"),
+    thumbnailUrl: presetThumb("preset-alpenglow"),
     palette: { mono: "#727578", neutral: "#9fa2a4", soft: "#5c6b73", rich: "#9e623a" },
     appearance: "dark",
   },

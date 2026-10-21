@@ -97,15 +97,22 @@ export function useServicesBadge(): number {
 	const [count, setCount] = useState<number>(0);
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
+		let cancelled = false;
 		servicesList(false)
-			.then((list) => setCount(list.length))
+			.then((list) => {
+				if (!cancelled) setCount(list.length);
+			})
 			.catch(() => {});
-		onServicesChanged((list) => setCount(list.length))
+		onServicesChanged((list) => {
+			if (!cancelled) setCount(list.length);
+		})
 			.then((u) => {
-				unlisten = u;
+				if (cancelled) u();
+				else unlisten = u;
 			})
 			.catch(() => {});
 		return () => {
+			cancelled = true;
 			unlisten?.();
 		};
 	}, []);

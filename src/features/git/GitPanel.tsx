@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { FolderTree, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { GitCommit, GitSummary, TmRun, WorktreeInfo } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { useShortPath } from "../../lib/hooks";
@@ -14,12 +14,13 @@ import { useUi } from "../../stores/ui";
 import { useTurnNav } from "../../stores/turnNav";
 import { ChangesSection } from "./ChangesSection";
 import { CheckpointsCard } from "./CheckpointsCard";
-import { DiffModal } from "./DiffModal";
+import { keepIfEqual, useAutoRefresh } from "./useAutoRefresh";
 import { countCrossedEmpty, type GitPaneTab, paneTab, toplevelFor } from "./helpers";
 import { TimelineSection } from "./TimelineSection";
 import { BranchAssetSection } from "./BranchAssetSection";
 import { WorktreeSection } from "./WorktreeSection";
 const POLL_MS = 10_000;
+const DiffModal = lazy(() => import("./DiffModal").then((m) => ({ default: m.DiffModal })));
 const LOG_PAGE = 50;
 
 type PaneTab = GitPaneTab;
@@ -49,71 +50,6 @@ export function GitPanel() {
 interface DiffReq {
 	title: string;
 	load: () => Promise<string>;
-}
-
-/** Calls the latest `refresh` every POLL_MS while visible, on un-hide and on window focus.
- * Pauses while document.visibilityState === "hidden" and skips overlapping runs.
- */
-function useAutoRefresh(refresh: () => void | Promise<unknown>) {
-	const latest = useRef(refresh);
-	latest.current = refresh;
-
-	useEffect(() => {
-		let timer: number | null = null;
-		let inFlight = false;
-		let cancelled = false;
-
-		const scheduleNext = () => {
-			if (cancelled || document.visibilityState === "hidden") return;
-			timer = window.setTimeout(() => {
-				void run();
-			}, POLL_MS);
-		};
-
-		const run = async () => {
-			if (cancelled || document.visibilityState === "hidden") return;
-			if (inFlight) return;
-			inFlight = true;
-			try {
-				await latest.current();
-			} finally {
-				inFlight = false;
-				scheduleNext();
-			}
-		};
-
-		const onVisibility = () => {
-			if (document.visibilityState === "visible") {
-				if (timer !== null) {
-					window.clearTimeout(timer);
-					timer = null;
-				}
-				void run();
-			} else {
-				if (timer !== null) {
-					window.clearTimeout(timer);
-					timer = null;
-				}
-			}
-		};
-
-		const onFocus = () => {
-			if (document.visibilityState === "visible") {
-				void run();
-			}
-		};
-
-		document.addEventListener("visibilitychange", onVisibility);
-		window.addEventListener("focus", onFocus);
-		scheduleNext();
-
-		return () => {
-			cancelled = true;
-			if (timer !== null) window.clearTimeout(timer);
-			document.removeEventListener("visibilitychange", onVisibility);
-			window.removeEventListener("focus", onFocus);
-		};
-	}, []);
 }
 
 /** Repo-level state: is-repo check, worktree map, time-machine runs, focus selection. */
@@ -190,8 +126,8 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 					tmList().catch(() => [] as TmRun[]),
 				]);
 				if (seq !== reqSeq.current) return;
-				setWorktrees(wts ?? []);
-				setRuns(tms);
+				setWorktrees((p) => keepIfEqual(p, wts ?? []));
+				setRuns((p) => keepIfEqual(p, tms));
 				// Adaptive default, applied once: a lone checkout has nothing to map, so start on
 				// branches; multiple worktrees start on the map. Failed lists fall back to worktrees.
 				setMode((m) => m ?? (wts?.length === 1 ? "branches" : "worktrees"));
@@ -218,7 +154,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 		reloadAll();
 	}, [reloadAll, tick]);
 
-	useAutoRefresh(() => void load(false));
+	useAutoRefresh(() => void load(false), POLL_MS);
 
 	const top = toplevelFor(
 		cwd,
@@ -460,7 +396,11 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 				</div>
 			)}
 
-			{diff && <DiffModal title={diff.title} load={diff.load} onClose={() => setDiff(null)} />}
+			{diff && (
+				<Suspense fallback={null}>
+					<DiffModal title={diff.title} load={diff.load} onClose={() => setDiff(null)} />
+				</Suspense>
+			)}
 
 			{/* Floating preview card to the LEFT for top repo */}
 			<WorktreeHoverCard
@@ -510,8 +450,8 @@ function FocusPane({
 		try {
 			const [s, log] = await Promise.all([gitSummary(path), gitLog(path, limit.current)]);
 			if (seq !== reqSeq.current) return;
-			setSummary(s);
-			setCommits(log.commits);
+			setSummary((p) => keepIfEqual(p, s));
+			setCommits((p) => keepIfEqual(p, log.commits));
 			setForkPoint(log.forkPoint);
 			setBaseBranch(log.base);
 			setHasMore(log.commits.length >= limit.current);
@@ -526,7 +466,7 @@ function FocusPane({
 		void load();
 	}, [load, nonce]);
 
-	useAutoRefresh(() => void load());
+	useAutoRefresh(() => void load(), POLL_MS);
 
 	const loadMore = async () => {
 		if (loadingMore) return;

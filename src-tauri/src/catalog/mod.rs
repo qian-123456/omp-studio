@@ -73,6 +73,20 @@ pub async fn list(state: &AppState) -> Vec<SessionMeta> {
     list
 }
 
+/// `(session id, cwd)` pairs in `list` order (newest first), skipping empty
+/// cwds. Clones only the two strings instead of every full `SessionMeta`.
+pub(crate) async fn id_cwds(state: &AppState) -> Vec<(String, String)> {
+    if !cat().lock().ready {
+        rebuild(state).await;
+    }
+    let c = cat().lock();
+    let mut refs: Vec<&SessionMeta> = c.metas.values().filter(|m| !m.cwd.is_empty()).collect();
+    refs.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    refs.into_iter()
+        .map(|m| (m.id.clone(), m.cwd.clone()))
+        .collect()
+}
+
 pub async fn get(state: &AppState, session_id: &str) -> Option<SessionMeta> {
     if !cat().lock().ready {
         rebuild(state).await;

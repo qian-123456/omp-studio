@@ -6,6 +6,7 @@
 //! top, and writing `refs/omp/undone/<sid>/<turnId>` last per turn.
 
 use std::collections::{HashMap, HashSet};
+use std::io::BufRead;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use std::time::SystemTime;
@@ -97,7 +98,7 @@ fn parse_checkpoint(v: &Value) -> Option<TurnCheckpoint> {
         turn_id,
         session_id: str_field(d, "sessionId").unwrap_or_default(),
         user_item_id: str_field(d, "userItemId"),
-        prompt: str_field(d, "prompt").unwrap_or_default(),
+        prompt: truncate_prompt(&str_field(d, "prompt").unwrap_or_default()),
         before,
         after,
         head_before: str_field(d, "headBefore"),
@@ -109,19 +110,92 @@ fn parse_checkpoint(v: &Value) -> Option<TurnCheckpoint> {
         undone: false,
     })
 }
-#[derive(Clone)]
+
+/// Longest prompt (in chars) kept per checkpoint; the Timeline row shows one
+/// truncated line plus a tooltip, so full multi-KB prompts are never needed.
+const PROMPT_PREVIEW_CHARS: usize = 200;
+
+fn truncate_prompt(s: &str) -> String {
+    match s.char_indices().nth(PROMPT_PREVIEW_CHARS) {
+        Some((i, _)) => format!("{}…", &s[..i]),
+        None => s.to_string(),
+    }
+}
+
+/// Cache bounds: entry count and approximate retained bytes.
+const CACHE_MAX_ENTRIES: usize = 1024;
+const CACHE_MAX_BYTES: usize = 2 * 1024 * 1024;
+
 struct CacheEntry {
     mtime: SystemTime,
     size: u64,
+    bytes: usize,
+    last_used: u64,
     parsed: Arc<ParsedSession>,
+}
+
+#[derive(Default)]
+struct SessionCache {
+    map: HashMap<PathBuf, CacheEntry>,
+    bytes: usize,
+    tick: u64,
 }
 
 // LazyLock is stable since 1.80 while the declared MSRV is 1.77.2; the pinned
 // toolchain is newer, so keep the declaration-site initializer and scope the
 // lint to this static.
 #[allow(clippy::incompatible_msrv)]
-static SESSION_CACHE: LazyLock<Mutex<HashMap<PathBuf, CacheEntry>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static SESSION_CACHE: LazyLock<Mutex<SessionCache>> =
+    LazyLock::new(|| Mutex::new(SessionCache::default()));
+
+fn approx_bytes(p: &ParsedSession) -> usize {
+    let mut n = 128 + p.id.len() + p.cwd.as_ref().map_or(0, String::len);
+    for t in &p.turns {
+        n += 256
+            + t.turn_id.len()
+            + t.session_id.len()
+            + t.prompt.len()
+            + t.before.len()
+            + t.after.len()
+            + t.commits.iter().map(|c| c.len() + 24).sum::<usize>()
+            + t.files.iter().map(|f| f.path.len() + 40).sum::<usize>();
+    }
+    n
+}
+
+/// Insert, then evict least-recently-used entries until both bounds hold.
+fn cache_insert(path: &Path, mtime: SystemTime, size: u64, parsed: Arc<ParsedSession>) {
+    let bytes = approx_bytes(&parsed);
+    let mut c = SESSION_CACHE.lock();
+    c.tick += 1;
+    let tick = c.tick;
+    if let Some(old) = c.map.insert(
+        path.to_path_buf(),
+        CacheEntry {
+            mtime,
+            size,
+            bytes,
+            last_used: tick,
+            parsed,
+        },
+    ) {
+        c.bytes -= old.bytes;
+    }
+    c.bytes += bytes;
+    while c.map.len() > CACHE_MAX_ENTRIES || c.bytes > CACHE_MAX_BYTES {
+        let Some(victim) = c
+            .map
+            .iter()
+            .min_by_key(|(_, e)| e.last_used)
+            .map(|(k, _)| k.clone())
+        else {
+            break;
+        };
+        if let Some(e) = c.map.remove(&victim) {
+            c.bytes -= e.bytes;
+        }
+    }
+}
 
 struct ParsedSession {
     /// `cwd` from the `type:"session"` header entry.
@@ -141,22 +215,35 @@ fn parse_file(path: &Path) -> Result<Arc<ParsedSession>, String> {
 
     // Check in-memory cache
     {
-        let cache = SESSION_CACHE.lock();
-        if let Some(entry) = cache.get(path) {
+        let mut guard = SESSION_CACHE.lock();
+        let c = &mut *guard;
+        c.tick += 1;
+        let tick = c.tick;
+        if let Some(entry) = c.map.get_mut(path) {
             if entry.mtime == mtime && entry.size == size {
+                entry.last_used = tick;
                 return Ok(entry.parsed.clone());
             }
         }
     }
 
-    let text = std::fs::read_to_string(path).map_err(|e| format!("读取会话记录失败: {e}"))?;
+    let file = std::fs::File::open(path).map_err(|e| format!("读取会话记录失败: {e}"))?;
+    let mut reader = std::io::BufReader::new(file);
     let mut parsed = ParsedSession {
         cwd: None,
         id: String::new(),
         turns: Vec::new(),
     };
-    for line in text.lines() {
-        let line = line.trim();
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(e) => return Err(format!("读取会话记录失败: {e}")),
+        }
+        let text = String::from_utf8_lossy(&buf);
+        let line = text.trim();
         if line.is_empty() {
             continue;
         }
@@ -193,26 +280,15 @@ fn parse_file(path: &Path) -> Result<Arc<ParsedSession>, String> {
     }
 
     let parsed_arc = Arc::new(parsed);
-    {
-        let mut cache = SESSION_CACHE.lock();
-        if cache.len() > 1000 {
-            cache.clear();
-        }
-        cache.insert(
-            path.to_path_buf(),
-            CacheEntry {
-                mtime,
-                size,
-                parsed: parsed_arc.clone(),
-            },
-        );
-    }
+    cache_insert(path, mtime, size, parsed_arc.clone());
     Ok(parsed_arc)
 }
 
 #[cfg(test)]
 pub(crate) fn clear_session_cache_for_test() {
-    SESSION_CACHE.lock().clear();
+    let mut c = SESSION_CACHE.lock();
+    c.map.clear();
+    c.bytes = 0;
 }
 
 /// All `refs/omp/**` refs of the repo containing `dir` (empty on failure).

@@ -218,3 +218,26 @@ describe("attachImages", () => {
 		expect(useComposer.getState().images["att"].map((i) => i.path)).toEqual(["/x.png", "/y.png"]);
 	});
 });
+
+describe("pruneSessions", () => {
+	it("drops every trace of removed sessions and keeps the others", () => {
+		const c = () => useComposer.getState();
+		useComposer.setState({
+			drafts: { gone: "x", keep: "y" },
+			sideChatDrafts: { gone: "q", keep: "r" },
+			annotations: { gone: [], [sideChatAnnKey("gone")]: [], keep: [] },
+			images: { gone: [{ id: "i", path: "/p" }], keep: [] },
+			files: { gone: [], keep: [] },
+			planModes: { gone: true, keep: true },
+			focusNonce: { gone: 1, keep: 2 },
+		});
+		c().pruneSessions(["gone"]);
+		expect(c().drafts).toEqual({ keep: "y" });
+		expect(c().sideChatDrafts).toEqual({ keep: "r" });
+		expect(Object.keys(c().annotations)).toEqual(["keep"]);
+		expect(Object.keys(c().images)).toEqual(["keep"]);
+		expect(Object.keys(c().files)).toEqual(["keep"]);
+		expect(c().planModes).toEqual({ keep: true });
+		expect(c().focusNonce).toEqual({ keep: 2 });
+	});
+});

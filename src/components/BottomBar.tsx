@@ -72,14 +72,16 @@ export function BottomBar() {
 
 	// Shared poller for memory + services:
 	// - Pauses when document is hidden
-	// - Relaxed interval (10s) when PerfPopover is closed, 4s when open
+	// - Relaxed interval (30s) when PerfPopover is closed, 4s when open
 	// - Skips overlapping runs
 	useEffect(() => {
 		let cancelled = false;
 		let timer: number | null = null;
 		let inFlight = false;
 
-		const intervalMs = perfOpen ? 4000 : 10000;
+		// Closed: only the bar label needs refreshing; the backend walks every
+		// system pid for it, so keep that rare.
+		const intervalMs = perfOpen ? 4000 : 30000;
 
 		const poll = async () => {
 			if (cancelled || document.visibilityState === "hidden") return;
@@ -92,7 +94,13 @@ export function BottomBar() {
 				const perfPromise = perfOpen ? perfBreakdown() : null;
 				const [mem, srv, perf] = await Promise.all([memPromise, srvPromise, perfPromise]);
 				if (!cancelled) {
-					if (mem?.formatted) setMemoryInfo(mem);
+					if (mem?.formatted) {
+						setMemoryInfo((prev) =>
+							prev && prev.formatted === mem.formatted && prev.processes === mem.processes
+								? prev
+								: mem,
+						);
+					}
 					if (srv !== null) setServiceRows(srv);
 					if (perf !== null) setPerfData(perf);
 				}

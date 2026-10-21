@@ -14,7 +14,7 @@ import {
 	Square,
 	X,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { clipboardFilePaths, importImageFile, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, validatePath } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -212,7 +212,9 @@ import { CommandChipBadge } from "./slash/CommandChip";
 import { requestTakeover } from "../sessions/sessionActions";
 import { ContextPillBar, WorkspacePickerPopover } from "./ContextPillBar";
 import { AddMenuPopover } from "./AddMenuPopover";
-import { SketchPad } from "./sketch/SketchPad";
+const SketchPad = lazy(() =>
+	import("./sketch/SketchPad").then((m) => ({ default: m.SketchPad })),
+);
 import { ensureSettings, useSettings } from "../settings/store";
 import { runSessionBash } from "./sessionShell";
 import { textAnnotationsOf } from "./annotations";
@@ -2030,11 +2032,13 @@ export function Composer({
 					/>
 				)}
 				{sketchOpen && (
-					<SketchPad
+					<Suspense fallback={null}>
+						<SketchPad
 						composerTop={composerCardRef.current?.getBoundingClientRect().top ?? null}
 						onCancel={() => setSketchOpen(false)}
 						onInsert={(d) => void handleInsertSketch(d)}
 					/>
+					</Suspense>
 				)}
 				{/* Textarea container with mirrored syntax-highlighting backdrop */}
 				<div className="relative w-full">

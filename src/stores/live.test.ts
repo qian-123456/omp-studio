@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { isFlowBusy, makeUserEcho, queuedEchoIds, useLive } from "./live";
+import { isFlowBusy, makeUserEcho, pruneRemovedSessions, queuedEchoIds, useLive } from "./live";
 
 const SID = "s1";
 
@@ -802,5 +802,44 @@ describe("live reducer — compaction / handoff dividers", () => {
 		frame({ type: "auto_compaction_start", reason: "x", action: "context-full" });
 		expect(live().flowNotices).toHaveLength(1);
 		expect(live().flowNotices[0]).toMatchObject({ id, anchorId: "i1" });
+	});
+});
+
+describe("live retention", () => {
+	it("finished subagents shed running-only progress fields", () => {
+		const progress = {
+			index: 0,
+			id: "sa1",
+			agent: "explore",
+			status: "running",
+			task: "t",
+			recentTools: Array.from({ length: 20 }, (_, i) => ({ tool: `t${i}`, args: { big: "x" } })),
+			recentOutput: ["a", "b"],
+			toolCount: 20,
+			requests: 1,
+			tokens: 1,
+			cost: 0,
+			durationMs: 1,
+			currentToolArgs: { big: "y" },
+		};
+		frame({ type: "subagent_progress", payload: { index: 0, agent: "explore", task: "t", progress } });
+		expect(live().subagents.sa1.progress?.recentOutput).toEqual(["a", "b"]);
+		frame({
+			type: "subagent_lifecycle",
+			payload: { id: "sa1", agent: "explore", status: "completed", index: 0 },
+		});
+		const p = live().subagents.sa1.progress;
+		expect(p?.toolCount).toBe(20);
+		expect(p?.recentOutput).toEqual([]);
+		expect(p?.recentTools).toHaveLength(8);
+		expect(p?.currentToolArgs).toBeUndefined();
+	});
+
+	it("pruneRemovedSessions drops only the removed sessions", () => {
+		useLive.getState().reduceFrame({ sessionId: "a", frame: { type: "agent_start" } });
+		useLive.getState().reduceFrame({ sessionId: "b", frame: { type: "agent_start" } });
+		useLive.getState().reduceFrame({ sessionId: "c", frame: { type: "agent_start" } });
+		pruneRemovedSessions(["a", "c", "unknown"]);
+		expect(Object.keys(useLive.getState().sessions)).toEqual(["b"]);
 	});
 });

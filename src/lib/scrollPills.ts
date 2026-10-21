@@ -43,6 +43,8 @@ type Entry = {
 };
 
 const entries = new Map<HTMLElement, Entry>();
+/** Set by `startScrollPills`: (dis)connects the DOM observer as entries come and go. */
+let onEntriesChange: (() => void) | null = null;
 
 function isScrollable(el: Element): boolean {
 	if (!(el instanceof HTMLElement)) return false;
@@ -94,6 +96,7 @@ function entryFor(el: HTMLElement): Entry {
 		ro.observe(el);
 		attachPillHandlers(e);
 		entries.set(el, e);
+		onEntriesChange?.();
 		entry = e;
 	}
 	return entry;
@@ -206,6 +209,7 @@ function layout(el: HTMLElement, entry: Entry): void {
 		entry.pill.remove();
 		entry.ro.disconnect();
 		entries.delete(el);
+		onEntriesChange?.();
 		return;
 	}
 	const { scrollTop, scrollHeight, clientHeight } = el;
@@ -396,6 +400,7 @@ export function prune(): void {
 			entry.pill.remove();
 			entry.ro.disconnect();
 			entries.delete(el);
+			onEntriesChange?.();
 		}
 	}
 }
@@ -494,9 +499,10 @@ export function startScrollPills(): () => void {
 	window.addEventListener("pointerdown", onDown, { capture: true });
 	window.addEventListener("pointermove", onMove, { capture: true, passive: true });
 	window.addEventListener("resize", onResize, { passive: true });
-	const pruneTimer = window.setInterval(prune, 1000);
 
-	// MutationObserver: instantly prune pills when modal/view DOM subtrees are removed
+	// MutationObserver: instantly prune pills when modal/view DOM subtrees are
+	// removed. Only observed while at least one pill entry exists, so an idle
+	// app (no scroll yet) pays nothing for DOM churn such as streaming chat.
 	let moRaf = 0;
 	const observer = new MutationObserver(() => {
 		if (moRaf !== 0) return;
@@ -505,7 +511,17 @@ export function startScrollPills(): () => void {
 			prune();
 		});
 	});
-	observer.observe(document.body, { childList: true, subtree: true });
+	let observing = false;
+	onEntriesChange = () => {
+		if (entries.size > 0 && !observing) {
+			observer.observe(document.body, { childList: true, subtree: true });
+			observing = true;
+		} else if (entries.size === 0 && observing) {
+			observer.disconnect();
+			observing = false;
+		}
+	};
+	onEntriesChange();
 
 	const onBlur = () => hideAllScrollPills();
 	window.addEventListener("blur", onBlur);
@@ -516,7 +532,7 @@ export function startScrollPills(): () => void {
 	window.removeEventListener("pointermove", onMove, { capture: true });
 		document.body.classList.remove(DRAG_BODY_CLASS);
 		window.removeEventListener("resize", onResize);
-		window.clearInterval(pruneTimer);
+		onEntriesChange = null;
 		observer.disconnect();
 		if (moRaf !== 0) window.cancelAnimationFrame(moRaf);
 		if (syncRaf !== 0) {

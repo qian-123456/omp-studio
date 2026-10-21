@@ -1,16 +1,34 @@
-import React, { type ReactNode } from "react";
+import React, { Suspense, lazy, type ReactNode } from "react";
 import { type RightTab, useUi } from "../stores/ui";
 import { useTabBadges } from "../features/sessions/useTabBadges";
 import { RightPanelHeader } from "./RightPanelHeader";
 import { RightPanelEmptyState } from "./RightPanelEmptyState";
-import { FileExplorer } from "../features/explorer/FileExplorer";
-import { SideChatPanel } from "../features/sidechat/SideChatPanel";
-import { HeatmapPanel } from "../features/heatmap/HeatmapPanel";
-import { GitPanel } from "../features/git/GitPanel";
-import { ServicesPanel } from "../features/services/ServicesPanel";
-import { CommandTerminalPanel } from "../features/terminal/CommandTerminalPanel";
-import { PlanPanel } from "../features/chat/PlanPanel";
-import { FilePreviewPanel } from "../features/files/FilePreviewPanel";
+
+// Only the active tab is mounted, so each panel (xterm, git, …) loads on first open.
+const FileExplorer = lazy(() =>
+	import("../features/explorer/FileExplorer").then((m) => ({ default: m.FileExplorer })),
+);
+const SideChatPanel = lazy(() =>
+	import("../features/sidechat/SideChatPanel").then((m) => ({ default: m.SideChatPanel })),
+);
+const HeatmapPanel = lazy(() =>
+	import("../features/heatmap/HeatmapPanel").then((m) => ({ default: m.HeatmapPanel })),
+);
+const GitPanel = lazy(() =>
+	import("../features/git/GitPanel").then((m) => ({ default: m.GitPanel })),
+);
+const ServicesPanel = lazy(() =>
+	import("../features/services/ServicesPanel").then((m) => ({ default: m.ServicesPanel })),
+);
+const CommandTerminalPanel = lazy(() =>
+	import("../features/terminal/CommandTerminalPanel").then((m) => ({ default: m.CommandTerminalPanel })),
+);
+const PlanPanel = lazy(() =>
+	import("../features/chat/PlanPanel").then((m) => ({ default: m.PlanPanel })),
+);
+const FilePreviewPanel = lazy(() =>
+	import("../features/files/FilePreviewPanel").then((m) => ({ default: m.FilePreviewPanel })),
+);
 
 class ErrorBoundary extends React.Component<
 	{ children: ReactNode; label: string },
@@ -77,7 +95,9 @@ export const RightAside = React.memo(function RightAside() {
 					<RightPanelHeader activeTab={rightTab} tabBadges={tabBadges} />
 					<div className="min-h-0 flex-1 overflow-y-auto">
 						<ErrorBoundary label="右侧面板">
-							<RightPanelBody tab={rightTab} />
+							<Suspense fallback={null}>
+								<RightPanelBody tab={rightTab} />
+							</Suspense>
 						</ErrorBoundary>
 					</div>
 				</>

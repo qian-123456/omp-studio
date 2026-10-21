@@ -1,8 +1,7 @@
 import clsx from "clsx";
 import { Activity, AppWindow, Layers, Server, X } from "lucide-react";
-import { type RefObject, useCallback, useEffect, useMemo, useState } from "react";
+import { type RefObject, useMemo } from "react";
 import type { PerfBreakdown, ServiceInfo } from "../../lib/contracts";
-import { perfBreakdown, servicesList } from "../../lib/ipc";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { type Anchor, FloatingLayer } from "../../components/FloatingLayer";
@@ -15,9 +14,10 @@ export interface PerfPopoverProps {
 	processes?: number;
 	open: boolean;
 	onClose: () => void;
-	services?: ServiceInfo[] | null;
+	/** Shared `servicesList(true)` payload polled by the bottom bar while open. */
+	services: ServiceInfo[] | null;
 	/** Shared `perf_breakdown` payload polled by the bottom bar while open. */
-	breakdown?: PerfBreakdown | null;
+	breakdown: PerfBreakdown | null;
 	ignoreRefs?: RefObject<HTMLElement | null>[];
 	className?: string;
 }
@@ -70,46 +70,8 @@ export function PerfPopover({
 		() => Object.values(liveSessions).filter((l) => l.alive).length,
 		[liveSessions],
 	);
-	const [internalRows, setInternalRows] = useState<ServiceInfo[] | null>(null);
-	const [internalBreakdown, setInternalBreakdown] = useState<PerfBreakdown | null>(null);
-
-	// If parent doesn't provide shared services, do a one-off fetch when opened
-	const fetchFallback = useCallback(async () => {
-		try {
-			setInternalRows(await servicesList(true));
-		} catch {
-			/* ignore */
-		}
-	}, []);
-
-	useEffect(() => {
-		if (open && services === undefined) {
-			void fetchFallback();
-		}
-	}, [open, services, fetchFallback]);
-
-	// Same fallback for the breakdown when the parent doesn't poll it.
-	useEffect(() => {
-		if (!open || breakdown !== undefined) return;
-		let cancelled = false;
-		const tick = async () => {
-			try {
-				const bd = await perfBreakdown();
-				if (!cancelled) setInternalBreakdown(bd);
-			} catch {
-				/* ignore */
-			}
-		};
-		void tick();
-		const id = window.setInterval(() => void tick(), 4000);
-		return () => {
-			cancelled = true;
-			window.clearInterval(id);
-		};
-	}, [open, breakdown]);
-
-	const rows = services !== undefined ? services : internalRows;
-	const bd = breakdown !== undefined ? breakdown : internalBreakdown;
+	const rows = services;
+	const bd = breakdown;
 
 	// Processes that belong to this project: spawned by the app, an `omp`
 	// executable, or running in / referencing an exact workspace path.

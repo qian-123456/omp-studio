@@ -137,6 +137,44 @@ export function renderStatusDot(status: SessionMeta["status"]) {
 	return <span className="flex shrink-0 items-center">{mark}</span>;
 }
 
+const EMPTY_ID_SET: ReadonlySet<string> = new Set();
+
+// Store actions are stable; calling them via getState() avoids one zustand
+// subscription per row for each action.
+const selectSession = (id: string | null) => useUi.getState().selectSession(id);
+const setSelectedIds = (ids: Set<string> | string[]) => useUi.getState().setSelectedIds(ids);
+const toggleSelectId = (id: string) => useUi.getState().toggleSelectId(id);
+const setHighlightId = (id: string | null) => useUi.getState().setHighlightId(id);
+
+function hasActiveDialogNow(): boolean {
+	const s = useSessionActions.getState();
+	return (
+		s.archiveWorktreeTarget !== null ||
+		s.assignSessionIds !== null ||
+		s.takeoverSessionId !== null
+	);
+}
+
+/**
+ * Mounts the hover card only while it is open; the dialog subscription lives
+ * here so closed rows carry neither it nor the card's home-dir hook.
+ */
+function HoverCardGate(props: {
+	session: SessionMeta;
+	anchorRect: DOMRect;
+	workspaces: Workspace[];
+	onMouseEnterCard: () => void;
+	onMouseLeaveCard: () => void;
+}) {
+	const hasActiveDialog = useSessionActions(
+		(s) =>
+			s.archiveWorktreeTarget !== null ||
+			s.assignSessionIds !== null ||
+			s.takeoverSessionId !== null,
+	);
+	return <SessionHoverCard {...props} open={!hasActiveDialog} />;
+}
+
 function SessionRowComponent({
 	session,
 	withSpine = false,
@@ -148,22 +186,16 @@ function SessionRowComponent({
 	// Re-evaluate relative time on shared minute ticks (R3)
 	useMinuteTick();
 
-	const selectedIds = useUi((s) => s.selectedIds);
-	const isInSelectedSet = selectedIds.has(session.id);
+	// Narrow boolean selectors: a selection change re-renders only rows whose
+	// own flags flip (selectedIds is a fresh Set on every change).
+	const isInSelectedSet = useUi((s) => s.selectedIds.has(session.id));
+	const hasMultiSelection = useUi((s) => s.selectedIds.size > 1);
 	const isPrimarySelected = useUi((s) => s.selectedSessionId === session.id);
 
 	// Derive selection styling: primary accent only when in set (R24, C4)
-	const isSelected =
-		isPrimarySelected && (selectedIds.size <= 1 || isInSelectedSet);
-	const isMultiSelected =
-		isInSelectedSet && selectedIds.size > 1 && !isSelected;
+	const isSelected = isPrimarySelected && (!hasMultiSelection || isInSelectedSet);
+	const isMultiSelected = isInSelectedSet && hasMultiSelection && !isSelected;
 	const isHighlighted = useUi((s) => s.highlightId === session.id);
-	const selectSession = useUi((s) => s.selectSession);
-	const setSelectedIds = useUi((s) => s.setSelectedIds);
-	const toggleSelectId = useUi((s) => s.toggleSelectId);
-	const setHighlightId = useUi((s) => s.setHighlightId);
-
-	const openModal = useUi((s) => s.openModal);
 
 	const parentTitle = useSessions((s) =>
 		session.parentId
@@ -216,12 +248,6 @@ function SessionRowComponent({
 	const isMenuRequested = useSessionActions(
 		(s) => s.menuSessionId === session.id,
 	);
-	const hasActiveDialog = useSessionActions(
-		(s) =>
-			s.archiveWorktreeTarget !== null ||
-			s.assignSessionIds !== null ||
-			s.takeoverSessionId !== null,
-	);
 
 	useEffect(() => {
 		if (isRenameRequested) {
@@ -267,7 +293,7 @@ function SessionRowComponent({
 
 	const handleRowMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
 		// Empty drafts have nothing worth previewing; the card only covers the composer.
-		if (hasActiveDialog || menuOpen || isRenaming || !session.title?.trim()) return;
+		if (hasActiveDialogNow() || menuOpen || isRenaming || !session.title?.trim()) return;
 		if (closeTimer.current !== null) {
 			window.clearTimeout(closeTimer.current);
 			closeTimer.current = null;
@@ -529,7 +555,10 @@ function SessionRowComponent({
 	// 无项目 (global-workspace) sessions can be filed into SessionGroups.
 	const wsOfSession = workspaces.find((w) => w.id === session.workspaceId);
 	const inGlobalArea = wsOfSession?.kind === "global";
+	// Menu-only data: skipped for the closed rows (the vast majority).
+	const selectedIds = menuOpen ? useUi.getState().selectedIds : EMPTY_ID_SET;
 	const batchAllInGlobalArea =
+		menuOpen &&
 		selectedIds.size > 1 &&
 		isInSelectedSet &&
 		Array.from(selectedIds).every((id) => {
@@ -977,7 +1006,7 @@ function SessionRowComponent({
 									type="button"
 									onClick={() => {
 										closeMenu(true);
-										openModal("diagnose", { sessionId: session.id });
+										useUi.getState().openModal("diagnose", { sessionId: session.id });
 									}}
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 								>
@@ -1120,20 +1149,16 @@ function SessionRowComponent({
 				</FloatingLayer>
 			)}
 
-			{/* Superset HoverCard preview (R10) */}
-			<SessionHoverCard
-				session={session}
-				anchorRect={anchorRect}
-				open={
-					hoverCardOpen &&
-					!menuOpen &&
-					!isRenaming &&
-					!hasActiveDialog
-				}
-				workspaces={workspaces}
-				onMouseEnterCard={handleCardMouseEnter}
-				onMouseLeaveCard={handleCardMouseLeave}
-			/>
+			{/* Superset HoverCard preview (R10): mounted only while open */}
+			{hoverCardOpen && anchorRect && !menuOpen && !isRenaming && (
+				<HoverCardGate
+					session={session}
+					anchorRect={anchorRect}
+					workspaces={workspaces}
+					onMouseEnterCard={handleCardMouseEnter}
+					onMouseLeaveCard={handleCardMouseLeave}
+				/>
+			)}
 		</div>
 	);
 }

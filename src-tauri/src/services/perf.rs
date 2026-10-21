@@ -66,14 +66,9 @@ pub fn parse_ps_rows(text: &str) -> Vec<PsRow> {
 
 /// Executable basename for classification: `/a/b/omp` → `omp`, `omp` → `omp`.
 /// Windows-style `X.exe` suffixes are tolerated.
-pub fn exe_base(comm: &str) -> String {
-    let base = comm
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(comm)
-        .trim()
-        .to_string();
-    base.strip_suffix(".exe").unwrap_or(&base).to_string()
+pub fn exe_base(comm: &str) -> &str {
+    let base = comm.rsplit(['/', '\\']).next().unwrap_or(comm).trim();
+    base.strip_suffix(".exe").unwrap_or(base)
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +198,60 @@ fn instance_label(cwd: &str, pid: u32) -> String {
         .unwrap_or_else(|| format!("pid {pid}"))
 }
 
+/// How long a computed instance label is reused. The label spawns two `git`
+/// processes; the branch rarely changes, so re-resolve at most once a minute.
+const LABEL_TTL: Duration = Duration::from_secs(60);
+
+/// (pid, cwd) → (computed at, label).
+type LabelCache = HashMap<(u32, String), (Instant, String)>;
+
+static LABELS: OnceLock<Mutex<LabelCache>> = OnceLock::new();
+
+/// Build the instance list; `git` labels are cached per (pid, cwd) so the
+/// 4 s popover poll does not respawn `git` ×2 per instance every tick.
+fn instance_labels(
+    instance_pids: &[u32],
+    cwds: &HashMap<u32, String>,
+    self_pid: u32,
+) -> Vec<AppInstance> {
+    let mut cache = LABELS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let now = Instant::now();
+    // Drop entries for instances that are gone (or whose cwd changed).
+    cache.retain(|(pid, cwd), (at, _)| {
+        now.duration_since(*at) < LABEL_TTL && cwds.get(pid).is_some_and(|c| c == cwd)
+    });
+    instance_pids
+        .iter()
+        .map(|&pid| {
+            let cwd = cwds.get(&pid).cloned();
+            let label = match &cwd {
+                Some(c) => {
+                    let key = (pid, c.clone());
+                    match cache.get(&key) {
+                        Some((_, label)) => label.clone(),
+                        None => {
+                            let label = instance_label(c, pid);
+                            cache.insert(key, (now, label.clone()));
+                            label
+                        }
+                    }
+                }
+                None if pid == self_pid => "本窗口".to_string(),
+                None => format!("pid {pid}"),
+            };
+            AppInstance {
+                pid,
+                label,
+                cwd,
+                is_this: pid == self_pid,
+            }
+        })
+        .collect()
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -267,10 +316,12 @@ fn collect() -> PerfBreakdown {
 
     let own_exe = std::env::current_exe()
         .ok()
-        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
-        .map(|s| exe_base(&s))
+        .and_then(|p| {
+            p.file_name()
+                .map(|s| exe_base(&s.to_string_lossy()).to_string())
+        })
         .unwrap_or_else(|| "omp-workspace".to_string());
-    let omp_exe = "omp".to_string();
+    let omp_exe = "omp";
 
     let mut spawned_kb = 0u64;
     let mut spawned_n = 0u32;
@@ -281,7 +332,7 @@ fn collect() -> PerfBreakdown {
 
     for row in &rows {
         let kb = row.rss_kb.unwrap_or(0);
-        match classify(row, self_pid, &app_pids, &own_exe, &omp_exe, &by_pid) {
+        match classify(row, self_pid, &app_pids, &own_exe, omp_exe, &by_pid) {
             PerfClass::OmpSpawned => {
                 spawned_kb += kb;
                 spawned_n += 1;
@@ -333,23 +384,7 @@ fn collect() -> PerfBreakdown {
     instance_pids.sort_unstable();
     instance_pids.dedup();
     let cwds = collect_cwds(&instance_pids);
-    bd.instances = instance_pids
-        .iter()
-        .map(|&pid| {
-            let cwd = cwds.get(&pid).cloned();
-            let label = match &cwd {
-                Some(c) => instance_label(c, pid),
-                None if pid == self_pid => "本窗口".to_string(),
-                None => format!("pid {pid}"),
-            };
-            AppInstance {
-                pid,
-                label,
-                cwd,
-                is_this: pid == self_pid,
-            }
-        })
-        .collect();
+    bd.instances = instance_labels(&instance_pids, &cwds, self_pid);
 
     bd
 }

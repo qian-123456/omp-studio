@@ -27,19 +27,54 @@ pub fn read_page(
         (from_offset, false)
     };
     f.seek(SeekFrom::Start(start))?;
-    let mut buf = Vec::with_capacity((size - start) as usize);
-    f.take(size - start).read_to_end(&mut buf)?;
-    // Only complete lines: stop after the last newline.
-    let complete = buf.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
-    let items = normalize_lines(&buf[..complete]);
+    // Stream line by line instead of buffering the whole (possibly tens of MB)
+    // file next to its parsed form. Only complete lines count; a trailing
+    // fragment without a newline is left for the next incremental read.
+    let mut reader = BufReader::with_capacity(256 * 1024, f.take(size - start));
+    let mut items = Vec::new();
+    let mut consumed = 0u64;
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        let n = reader.read_until(b'\n', &mut line)?;
+        if n == 0 || line.last() != Some(&b'\n') {
+            break;
+        }
+        consumed += n as u64;
+        let body = &line[..n - 1];
+        if body.is_empty() {
+            continue;
+        }
+        if let Some(item) = serde_json::from_slice::<Value>(body)
+            .ok()
+            .and_then(|v| normalize_entry(&v))
+        {
+            items.push(item);
+        }
+    }
     Ok(TranscriptPage {
         session_id: session_id.to_string(),
         items,
-        next_offset: start + complete as u64,
+        next_offset: start + consumed,
         reset,
     })
 }
 
+/// Tool-result `details` the UI never reads dominate a long session's payload
+/// (`read`/`grep` `displayContent` repeats the result text, `edit` repeats its
+/// diff as `oldText`/`newText`/`perFileResults`). The renderers only use
+/// `details.diff` (ToolCard), the `ask` answers and the `task`/`agent`
+/// progress+results, so every other tool keeps just its diff.
+fn slim_details(tool_name: &str, details: Option<&Value>) -> Option<Value> {
+    let details = details?;
+    if matches!(tool_name, "task" | "agent" | "ask") {
+        return Some(details.clone());
+    }
+    let diff = details.get("diff").filter(|d| d.is_string())?;
+    Some(serde_json::json!({ "diff": diff }))
+}
+
+#[cfg(test)]
 pub fn normalize_lines(bytes: &[u8]) -> Vec<TranscriptItem> {
     bytes
         .split(|b| *b == b'\n')
@@ -108,7 +143,7 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                     tool_name: s(msg, "toolName"),
                     text: content_text(msg.get("content")),
                     is_error: msg.get("isError").and_then(Value::as_bool).unwrap_or(false),
-                    details: msg.get("details").cloned(),
+                    details: slim_details(&s(msg, "toolName"), msg.get("details")),
                 });
             } else {
                 item.kind = TranscriptKind::User;
@@ -180,7 +215,7 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                 tool_name: s(msg, "toolName"),
                 text: content_text(msg.get("content")),
                 is_error: msg.get("isError").and_then(Value::as_bool).unwrap_or(false),
-                details: msg.get("details").cloned(),
+                details: slim_details(&s(msg, "toolName"), msg.get("details")),
             });
         }
         "bashExecution" | "pythonExecution" => {
@@ -517,5 +552,38 @@ mod tests {
             (item.duration, item.ttft, item.completed_at),
             (None, None, None)
         );
+    }
+
+    #[test]
+    fn tool_result_details_keep_only_what_the_ui_reads() {
+        let line = |name: &str, details: &str| {
+            format!(
+                r#"{{"type":"message","id":"r","timestamp":"T","message":{{"role":"toolResult","toolCallId":"c","toolName":"{name}","content":[{{"type":"text","text":"out"}}],"details":{details}}}}}"#
+            )
+        };
+        let details = |name: &str, d: &str| {
+            let item = normalize_entry(&serde_json::from_str(&line(name, d)).unwrap()).unwrap();
+            item.tool_result.unwrap().details
+        };
+        // read: the duplicated display copy is dropped, nothing else is used.
+        assert_eq!(
+            details("read", r#"{"displayContent":"out","totalLines":1}"#),
+            None
+        );
+        // edit: only the diff survives.
+        assert_eq!(
+            details(
+                "edit",
+                r#"{"diff":" 1|a","oldText":"a","newText":"b","perFileResults":[1]}"#
+            ),
+            Some(serde_json::json!({"diff":" 1|a"}))
+        );
+        // task / ask results are rendered from details.
+        let task = r#"{"results":[{"id":"A"}],"progress":[]}"#;
+        assert_eq!(
+            details("task", task),
+            Some(serde_json::from_str(task).unwrap())
+        );
+        assert!(details("ask", r#"{"results":[]}"#).is_some());
     }
 }

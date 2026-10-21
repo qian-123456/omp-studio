@@ -77,11 +77,7 @@ pub fn init(state: AppState) {
 
 async fn session_cwds() -> Vec<(String, String)> {
     match STATE.get() {
-        Some(state) => crate::catalog::list(state)
-            .await
-            .into_iter()
-            .map(|s| (s.id, s.cwd))
-            .collect(),
+        Some(state) => crate::catalog::id_cwds(state).await,
         None => Vec::new(),
     }
 }

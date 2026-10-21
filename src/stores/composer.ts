@@ -94,6 +94,8 @@ export interface ComposerState {
 	/** Nonce to trigger composer textarea auto-focus by sessionId. */
 	focusNonce: Record<string, number>;
 	focusComposer(sessionId: string): void;
+	/** Drop every draft / annotation / attachment of sessions that were deleted. */
+	pruneSessions(ids: readonly string[]): void;
 }
 const STORAGE_KEY_HISTORY = "ompws:composer-history";
 const MAX_HISTORY = 20;
@@ -417,6 +419,30 @@ export const useComposer = create<ComposerState>((set, get) => ({
 				[sessionId]: (s.focusNonce[sessionId] ?? 0) + 1,
 			},
 		})),
+	pruneSessions: (ids) =>
+		set((s) => {
+			// A removed session's own keys plus its staged side-chat annotations.
+			const gone = new Set(ids.flatMap((id) => [id, sideChatAnnKey(id)]));
+			const strip = <T>(m: Record<string, T>): Record<string, T> => {
+				if (!Object.keys(m).some((k) => gone.has(k))) return m;
+				return Object.fromEntries(Object.entries(m).filter(([k]) => !gone.has(k)));
+			};
+			const drafts = strip(s.drafts);
+			const sideChatDrafts = strip(s.sideChatDrafts);
+			if (drafts !== s.drafts) saveMap(STORAGE_KEY_DRAFTS, drafts);
+			if (sideChatDrafts !== s.sideChatDrafts) {
+				saveMap(STORAGE_KEY_SIDECHAT_DRAFTS, sideChatDrafts);
+			}
+			return {
+				annotations: strip(s.annotations),
+				images: strip(s.images),
+				files: strip(s.files),
+				drafts,
+				sideChatDrafts,
+				planModes: strip(s.planModes),
+				focusNonce: strip(s.focusNonce),
+			};
+		}),
 }));
 
 /** Persist attachments with the drafts: a restored `🖼️#N` draft must still know its paths. */

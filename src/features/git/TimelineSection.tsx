@@ -16,6 +16,7 @@ import type { GitCommit, GitSummary, TmRun, TurnCheckpoint } from "../../lib/con
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { absoluteTime } from "../../lib/format";
 import { gitResetTo, gitWorktreeTurns, tmRun } from "../../lib/ipc";
+import { keepIfEqual } from "./useAutoRefresh";
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { useTurnNav } from "../../stores/turnNav";
@@ -498,7 +499,7 @@ export function TimelineSection({
 		let stale = false;
 		gitWorktreeTurns(cwd)
 			.then((ts) => {
-				if (!stale) setTurns(ts);
+				if (!stale) setTurns((p) => keepIfEqual(p, ts));
 			})
 			.catch(() => {
 				if (!stale) setTurns([]);

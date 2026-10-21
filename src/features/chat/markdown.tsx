@@ -7,7 +7,7 @@ import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
-import React, { useMemo, useState } from "react";
+import React, { Suspense, use, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
@@ -15,10 +15,9 @@ import rehypeSanitize, { defaultSchema, type Options as Schema } from "rehype-sa
 import remarkGfm from "remark-gfm";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
 import { MATH_BLOCK_TAG, rehypeMathBlocks } from "./rehypeMathBlocks";
 import { normalizeMath } from "./mathNormalize";
+import { HIGHLIGHT_LANGUAGES, getRehypeKatex, pendingMarkdownAssets } from "./markdownAssets";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
@@ -347,15 +346,28 @@ const SANITIZE_SCHEMA: Schema = {
 		details: ["open"],
 	},
 };
-const REHYPE_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]> = [
+type RehypePlugins = NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]>;
+const HIGHLIGHT_OPTIONS = { detect: false, languages: HIGHLIGHT_LANGUAGES };
+const REHYPE_PLUGINS_BASE: RehypePlugins = [
 	rehypeRaw,
 	[rehypeSanitize, SANITIZE_SCHEMA],
-	[rehypeKatex, { throwOnError: false, strict: false }],
 	rehypeMathBlocks,
-	[rehypeHighlight, { detect: false }],
+	[rehypeHighlight, HIGHLIGHT_OPTIONS],
 	rehypeSecretChips,
 	rehypeFilePathLinks,
 ];
+/** Same pipeline with KaTeX in front of rehypeMathBlocks (built once, after KaTeX loads). */
+let rehypePluginsWithKatex: RehypePlugins | null = null;
+function rehypePlugins(): RehypePlugins {
+	const katex = getRehypeKatex();
+	if (!katex) return REHYPE_PLUGINS_BASE;
+	rehypePluginsWithKatex ??= [
+		...REHYPE_PLUGINS_BASE.slice(0, 2),
+		[katex, { throwOnError: false, strict: false }],
+		...REHYPE_PLUGINS_BASE.slice(2),
+	] as RehypePlugins;
+	return rehypePluginsWithKatex;
+}
 
 function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
 	if (typeof src !== "string" || !src) return null;
@@ -442,16 +454,27 @@ const MarkdownSegment = React.memo(function MarkdownSegment({
 	const mathText = useMemo(() => normalizeMath(text), [text]);
 	return (
 		<MarkdownContext.Provider value={ctx}>
-			<ReactMarkdown
-				remarkPlugins={REMARK_PLUGINS}
-				rehypePlugins={REHYPE_PLUGINS}
-				components={MARKDOWN_COMPONENTS}
-			>
-				{mathText}
-			</ReactMarkdown>
+			<Suspense fallback={<p className="whitespace-pre-wrap">{text}</p>}>
+				<MarkdownBody text={mathText} />
+			</Suspense>
 		</MarkdownContext.Provider>
 	);
 });
+
+/** Suspends until KaTeX / extra highlight grammars needed by `text` have loaded. */
+function MarkdownBody({ text }: { text: string }) {
+	const pending = pendingMarkdownAssets(text);
+	if (pending) use(pending);
+	return (
+		<ReactMarkdown
+			remarkPlugins={REMARK_PLUGINS}
+			rehypePlugins={rehypePlugins()}
+			components={MARKDOWN_COMPONENTS}
+		>
+			{text}
+		</ReactMarkdown>
+	);
+}
 
 export const Markdown = React.memo(function Markdown({
 	text: rawText,

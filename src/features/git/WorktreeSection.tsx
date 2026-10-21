@@ -56,6 +56,7 @@ import { defaultSlug } from "./helpers";
 import { OrphanBadge, OrphanInlinePanel, useOrphans } from "./OrphanBadge";
 import { removeWorktreeFlow } from "./removeWorktree";
 import { type MenuEntry, WorktreeActionMenu } from "./WorktreeActionMenu";
+import { keepIfEqual, useAutoRefresh } from "./useAutoRefresh";
 import { WorktreeCommitPopover } from "./WorktreeCommitPopover";
 import { WorktreeHoverCard, useHeadCommit, ago } from "./WorktreeHoverCard";
 import { claimEscape } from "../../lib/escapeClaim";
@@ -150,7 +151,7 @@ export function WorktreeSection({
 	const loadServices = useCallback(async () => {
 		try {
 			const list = await servicesList(false);
-			setServices(list);
+			setServices((p) => keepIfEqual(p, list));
 		} catch {
 			// ignore polling errors
 		}
@@ -158,11 +159,8 @@ export function WorktreeSection({
 
 	useEffect(() => {
 		void loadServices();
-		const timer = window.setInterval(() => {
-			void loadServices();
-		}, 6000);
-		return () => window.clearInterval(timer);
 	}, [loadServices]);
+	useAutoRefresh(loadServices, 6000);
 
 	const dismissHover = () => {
 		if (hoverTimer.current !== null) {

@@ -5,6 +5,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn(
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (s: string) => s }));
 
 import { Markdown } from "./markdown";
+import { pendingMarkdownAssets } from "./markdownAssets";
 
 const html = (text: string) => renderToStaticMarkup(<Markdown text={text} />);
 
@@ -32,7 +33,8 @@ describe("Markdown inline HTML", () => {
 		expect(out).not.toContain("<summary>");
 		expect(out).toContain("&lt;");
 	});
-	it("keeps math", () => {
+	it("keeps math", async () => {
+		await pendingMarkdownAssets("$x^2$");
 		expect(html("$$x^2$$")).toContain("katex");
 	});
 

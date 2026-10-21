@@ -611,7 +611,11 @@ pub(crate) fn app_tree_pids() -> Vec<u32> {
 
 #[tauri::command]
 pub async fn app_memory_usage() -> Result<ProcessMemoryInfo, String> {
-    let snap = app_memory_snapshot();
+    // The macOS snapshot walks every system pid via syscalls; keep it off the
+    // async runtime workers.
+    let snap = tokio::task::spawn_blocking(app_memory_snapshot)
+        .await
+        .map_err(|e| e.to_string())?;
     let mb = (snap.bytes as f64) / (1024.0 * 1024.0);
     let formatted = if mb >= 1024.0 {
         format!("{:.1} GB", mb / 1024.0)

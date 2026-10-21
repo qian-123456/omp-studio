@@ -47,6 +47,7 @@ import {
 import {
 	onRpcFrame,
 	onRpcProcess,
+	onSessionsRemoved,
 	type RpcFramePayload,
 	type RpcProcessPayload,
 } from "../lib/events";
@@ -332,6 +333,24 @@ function subStatus(v: unknown, fallback: SubagentStatus): SubagentStatus {
 	return SUB_STATUSES.has(v as SubagentStatus)
 		? (v as SubagentStatus)
 		: fallback;
+}
+
+/** Finished agents live as long as the session's state (omp's `get_subagents`
+ * drops terminal entries), so they shed what only the running view reads:
+ * `recentOutput`, the nested dispatch tree, raw tool args, old recent tools. */
+function slimSubagent(info: SubagentInfo): SubagentInfo {
+	const p = info.progress;
+	if (!p || info.status === "pending" || info.status === "running") return info;
+	return {
+		...info,
+		progress: {
+			...p,
+			recentOutput: [],
+			recentTools: Array.isArray(p.recentTools) ? p.recentTools.slice(-8) : [],
+			currentToolArgs: undefined,
+			inflightTaskDetails: undefined,
+		},
+	};
 }
 let nextEchoId = 1;
 
@@ -1034,7 +1053,7 @@ function reduce(
 				...live,
 				subagents: {
 					...live.subagents,
-					[id]: {
+					[id]: slimSubagent({
 						...prev,
 						status,
 						index: p.index ?? prev?.index,
@@ -1046,7 +1065,7 @@ function reduce(
 							p.parentToolCallId ?? prev?.parentToolCallId,
 						label: subagentLabel(id, { ...prev, description: p.description ?? prev?.description, agent: p.agent ?? prev?.agent, task: prev?.task }),
 						lastUpdate: Date.now(),
-					},
+					}),
 				},
 			};
 		}
@@ -1069,7 +1088,7 @@ function reduce(
 				...live,
 				subagents: {
 					...live.subagents,
-					[id]: {
+					[id]: slimSubagent({
 						...prev,
 						status,
 						index: p.index ?? prog.index ?? prev?.index,
@@ -1090,7 +1109,7 @@ function reduce(
 							task: p.task ?? prog.task ?? prev?.task,
 						}),
 						lastUpdate: Date.now(),
-					},
+					}),
 				},
 			};
 		}
@@ -1165,7 +1184,7 @@ function reduce(
 							typeof sa.progress === "object" && sa.progress !== null
 								? (sa.progress as AgentProgress)
 								: prev?.progress;
-						subagents[id] = {
+						subagents[id] = slimSubagent({
 							...prev,
 							status: subStatus(sa.status, prev?.status ?? "running"),
 							index:
@@ -1194,7 +1213,7 @@ function reduce(
 								typeof sa.lastUpdate === "number"
 									? sa.lastUpdate
 									: Date.now(),
-						};
+						});
 					}
 					return { ...live, subagents };
 				}
@@ -1691,10 +1710,64 @@ async function evictLeftTranscripts(): Promise<void> {
 			if (shownTranscripts.has(id) || live.alive || live.streaming) continue;
 			if (!useSessions.getState().sessions[id]?.file) continue;
 			if (sessions === s.sessions) sessions = { ...sessions };
-			sessions[id] = { ...live, items: [], nextOffset: 0 };
+			sessions[id] = {
+				...live,
+				items: [],
+				nextOffset: 0,
+				streamingMessage: null,
+				tools: {},
+				liveRequests: [],
+			};
 		}
 		return sessions === s.sessions ? s : { sessions };
 	});
+}
+
+/** Grace before a removed session's composer state is dropped: a catalog
+ * rebuild can report a session gone and bring it back moments later, and a
+ * typed draft must survive that. */
+const COMPOSER_PRUNE_GRACE_MS = 30_000;
+
+/**
+ * A session left the catalog (deleted): drop everything the stores and
+ * module-level caches keep for it. Its transcript is gone with it, nothing
+ * has to be refetched.
+ */
+export function pruneRemovedSessions(ids: readonly string[]): void {
+	if (ids.length === 0) return;
+	const gone = new Set(ids);
+	leftTranscripts = leftTranscripts.filter((id) => !gone.has(id));
+	for (const id of gone) {
+		localRowsLoading.delete(id);
+		localRowsReadOnly.delete(id);
+		localRowsSavedJson.delete(id);
+		clearTimeout(localRowsTimers.get(id));
+		localRowsTimers.delete(id);
+		try {
+			// Same key as retryNotice.saveRetryHistory.
+			globalThis.localStorage?.removeItem(`omp.retryHistory.${id}`);
+		} catch {
+			/* storage unavailable */
+		}
+	}
+	useLive.setState((s) => {
+		let sessions = s.sessions;
+		for (const id of gone) {
+			if (!(id in sessions)) continue;
+			if (sessions === s.sessions) sessions = { ...sessions };
+			delete sessions[id];
+		}
+		return sessions === s.sessions ? s : { sessions };
+	});
+	setTimeout(() => {
+		void Promise.all([import("./sessions"), import("./composer")]).then(
+			([{ useSessions }, { useComposer }]) => {
+				const known = useSessions.getState().sessions;
+				const still = [...gone].filter((id) => !(id in known));
+				if (still.length > 0) useComposer.getState().pruneSessions(still);
+			},
+		);
+	}, COMPOSER_PRUNE_GRACE_MS);
 }
 
 // ---- Local rows persistence (docs/ARCHITECTURE.md §6 `local_rows`) ----
@@ -1702,14 +1775,29 @@ async function evictLeftTranscripts(): Promise<void> {
 const localRowsLoading = new Set<string>();
 /** Sessions whose stored rows could not be read: never overwrite them. */
 const localRowsReadOnly = new Set<string>();
+/** Dedup digest of the last persisted rows per session (the JSON itself is not kept). */
 const localRowsSavedJson = new Map<string, string>();
+
+/** Length + 53-bit cyrb53 hash: enough to tell "unchanged" from "changed". */
+function jsonDigest(json: string): string {
+	let h1 = 0xdeadbeef;
+	let h2 = 0x41c6ce57;
+	for (let i = 0; i < json.length; i++) {
+		const ch = json.charCodeAt(i);
+		h1 = Math.imul(h1 ^ ch, 2654435761);
+		h2 = Math.imul(h2 ^ ch, 1597334677);
+	}
+	h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+	h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+	return `${json.length}:${(h2 >>> 0).toString(36)}${(h1 >>> 0).toString(36)}`;
+}
 const localRowsTimers = new Map<string, Parameters<typeof clearTimeout>[0]>();
 
 function mergeLocalRows(sessionId: string, stored: PersistedRow[], readable: boolean): void {
 	localRowsLoading.delete(sessionId);
 	if (readable) localRowsReadOnly.delete(sessionId);
 	else localRowsReadOnly.add(sessionId);
-	localRowsSavedJson.set(sessionId, JSON.stringify(stored));
+	localRowsSavedJson.set(sessionId, jsonDigest(JSON.stringify(stored)));
 	const echoes: UserEcho[] = [];
 	const outputs: CommandOutputEntry[] = [];
 	const flows: FlowNotice[] = [];
@@ -1785,9 +1873,9 @@ function saveLocalRows(sessionId: string): void {
 		live.commandOutputs ?? [],
 		live.flowNotices ?? [],
 	);
-	const json = JSON.stringify(rows);
-	if (json === localRowsSavedJson.get(sessionId)) return;
-	localRowsSavedJson.set(sessionId, json);
+	const digest = jsonDigest(JSON.stringify(rows));
+	if (digest === localRowsSavedJson.get(sessionId)) return;
+	localRowsSavedJson.set(sessionId, digest);
 	ipcMod ??= import("../lib/ipc");
 	void ipcMod.then((m) => m.localRowsSet(sessionId, rows)).catch(() => {});
 }
@@ -1874,6 +1962,7 @@ export function startLiveEvents(): void {
 					.catch(() => {});
 			}
 		}),
+		onSessionsRemoved(pruneRemovedSessions),
 	];
 }
 
