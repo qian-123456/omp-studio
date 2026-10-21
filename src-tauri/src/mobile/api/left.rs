@@ -1646,7 +1646,10 @@ enum SettingKind {
 /// Strict allowlist of OMP config keys writable from the phone. Every key was verified
 /// against `omp config list` (type + enum values). Anything else is rejected with 400.
 const MOBILE_SETTINGS: &[(&str, SettingKind)] = &[
-    ("tools.approvalMode", SettingKind::Enum(&["always-ask", "write", "yolo"])),
+    (
+        "tools.approvalMode",
+        SettingKind::Enum(&["always-ask", "write", "yolo"]),
+    ),
     ("hideThinkingBlock", SettingKind::Bool),
     ("steeringMode", SettingKind::Enum(&["all", "one-at-a-time"])),
     ("followUpMode", SettingKind::Enum(&["all", "one-at-a-time"])),
@@ -1758,21 +1761,14 @@ async fn roles_set<B: Backend>(
     Json(body): Json<RoleSetBody>,
 ) -> ApiResult<Value> {
     let next = crate::settings_model_roles::omp_model_roles_set(
-        body.cwd,
-        body.scope,
-        body.table,
-        body.name,
-        body.value,
-        None,
+        body.cwd, body.scope, body.table, body.name, body.value, None,
     )
     .await
     .map_err(bad_request)?;
     Ok(Json(json!({ "ok": true, "snapshot": next })))
 }
 
-async fn providers_get<B: Backend>(
-    State(_ctx): State<Arc<Ctx<B>>>,
-) -> ApiResult<Value> {
+async fn providers_get<B: Backend>(State(_ctx): State<Arc<Ctx<B>>>) -> ApiResult<Value> {
     let list = crate::providers::commands::omp_providers_list()
         .await
         .map_err(bad_gateway)?;
@@ -1836,7 +1832,11 @@ async fn fallbacks_get<B: Backend>(
             if p_cfg.exists {
                 serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&p_cfg.content)
                     .ok()
-                    .and_then(|v| v.get("retry").and_then(|r| r.get("fallbackChains")).cloned())
+                    .and_then(|v| {
+                        v.get("retry")
+                            .and_then(|r| r.get("fallbackChains"))
+                            .cloned()
+                    })
                     .and_then(|c| serde_json::to_value(c).ok())
             } else {
                 None
@@ -1875,9 +1875,7 @@ async fn fallbacks_set<B: Backend>(
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn context_windows_get<B: Backend>(
-    State(_ctx): State<Arc<Ctx<B>>>,
-) -> ApiResult<Value> {
+async fn context_windows_get<B: Backend>(State(_ctx): State<Arc<Ctx<B>>>) -> ApiResult<Value> {
     let overrides = crate::providers::models_yml_write::omp_models_context_window_overrides()
         .await
         .map_err(bad_gateway)?;

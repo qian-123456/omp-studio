@@ -11,8 +11,8 @@ mod local_rows;
 mod mobile;
 mod model_replace;
 mod notify;
-mod paths;
 mod omp_files;
+mod paths;
 mod privacy;
 mod prompt_composition;
 mod prompts;
@@ -26,8 +26,8 @@ mod settings_model_roles;
 mod settings_plugins;
 mod skills;
 mod state;
-mod terminal;
 mod storage;
+mod terminal;
 mod todos;
 mod visualize;
 
@@ -217,9 +217,6 @@ pub fn run() {
             catalog::commands::session_export_html,
             catalog::commands::session_share,
             catalog::commands::heatmap_diagnose,
-            // B — rpc
-            rpc::commands::rpc_start,
-            rpc::commands::rpc_ensure_live,
             storage::storage_overview,
             storage::storage_images_preview,
             storage::storage_images_clean,
@@ -230,6 +227,9 @@ pub fn run() {
             storage::storage_sessions_overview,
             storage::storage_stale_sessions_preview,
             storage::storage_trash_sessions,
+            // B — rpc
+            rpc::commands::rpc_start,
+            rpc::commands::rpc_ensure_live,
             rpc::commands::rpc_send,
             rpc::commands::rpc_ui_respond,
             rpc::commands::rpc_pending_ui,
@@ -280,6 +280,13 @@ pub fn run() {
             services::commands::services_stop,
             services::commands::read_text_file,
             services::commands::write_text_file,
+            omp_files::omp_memory_projects,
+            omp_files::omp_memory_files,
+            omp_files::omp_memory_read,
+            omp_files::omp_memory_write,
+            omp_files::omp_memory_delete_skill,
+            omp_files::omp_rule_read,
+            omp_files::omp_rule_write,
             services::commands::fs_read_dir,
             services::commands::validate_path,
             services::commands::save_clipboard_image,
@@ -292,13 +299,6 @@ pub fn run() {
             // D — todos / summaries / diagnose
             todos::commands::todos_list,
             todos::commands::todos_act,
-            omp_files::omp_memory_projects,
-            omp_files::omp_memory_files,
-            omp_files::omp_memory_read,
-            omp_files::omp_memory_write,
-            omp_files::omp_memory_delete_skill,
-            omp_files::omp_rule_read,
-            omp_files::omp_rule_write,
             todos::commands::todos_counts,
             local_rows::local_rows_get,
             local_rows::local_rows_set,

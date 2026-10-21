@@ -206,7 +206,11 @@ mod tests {
                 } else {
                     BacklogKind::Todo
                 };
-                (kind, "body".to_string(), "- Attached Image: [Image #1: /a.png]".to_string())
+                (
+                    kind,
+                    "body".to_string(),
+                    "- Attached Image: [Image #1: /a.png]".to_string(),
+                )
             })
             .collect();
         let out = compose_batch(&entries);
