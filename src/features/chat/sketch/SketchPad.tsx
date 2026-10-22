@@ -79,8 +79,7 @@ export interface SketchPadProps {
 	/** Called with a `data:image/png` URL of the finished sketch. */
 	onInsert(dataUrl: string): void;
 	onCancel(): void;
-	/** Top edge of the composer card (viewport px); the dialog bottom is
-	 *  `composerTop - 8`. Null/undefined falls back to a 16px bottom inset. */
+	/** Optional composer top edge, retained for interface compatibility. */
 	composerTop?: number | null;
 }
 
@@ -114,10 +113,8 @@ const SHAPE_KIND_STORAGE_KEY = "ompws:sketch-shape-kind";
 
 /** Canvas surface colors follow the app theme, mirroring ChatGPT's sketch modal. */
 const CANVAS_BG_DARK = "#212121";
-/** Dialog geometry: top offset and height clamp (px). */
-const SKETCH_TOP = 64;
-const SKETCH_MIN_HEIGHT = 520;
-const SKETCH_MAX_HEIGHT = 720;
+/** Dialog geometry: symmetric padding inset (px) inside overlay. */
+const SKETCH_INSET = 48;
 const CANVAS_BG_LIGHT = "#ffffff";
 const SELECTION_BLUE = "#2563eb";
 const CUSTOM_GRADIENT =
@@ -689,7 +686,7 @@ function SizeSlider(props: SizeSliderProps): ReactElement {
  * ------------------------------------------------------------------ */
 
 export function SketchPad(props: SketchPadProps): ReactElement {
-	const { onInsert, onCancel, composerTop } = props;
+	const { onInsert, onCancel } = props;
 	const dark = themeById(useResolvedThemeId())?.dark ?? true;
 	const canvasBg = dark ? CANVAS_BG_DARK : CANVAS_BG_LIGHT;
 	const chrome = dark
@@ -1600,17 +1597,6 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 
 	/* ---------------- derived view state ---------------- */
 	const cursor = brushTool ? "none" : snap.cursor;
-	// Dialog height: fill the space above the composer, but never shrink below
-	// SKETCH_MIN_HEIGHT (home page composer sits mid-screen) nor grow past
-	// SKETCH_MAX_HEIGHT; always stay inside the viewport.
-	const maxFit = Math.max(window.innerHeight - SKETCH_TOP - 16, 240);
-	const wanted =
-		composerTop != null ? composerTop - 8 - SKETCH_TOP : SKETCH_MAX_HEIGHT;
-	const dialogHeight = Math.min(
-		Math.max(wanted, SKETCH_MIN_HEIGHT),
-		SKETCH_MAX_HEIGHT,
-		maxFit,
-	);
 	const doneDisabled = snap.effectiveDocument.objects.length === 0;
 	const activeShape = snap.shapeKind;
 	const customSwatchActive =
@@ -1631,11 +1617,7 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 				className={`@container/sketch-canvas absolute rounded-2xl border ${chrome.dialog}`}
 				role="dialog"
 				style={{
-					top: SKETCH_TOP,
-					height: dialogHeight,
-					left: "50%",
-					transform: "translateX(-50%)",
-					width: "min(960px, calc(100vw - 48px))",
+					inset: SKETCH_INSET,
 				}}
 				onPointerDown={(e) => e.stopPropagation()}
 			>
