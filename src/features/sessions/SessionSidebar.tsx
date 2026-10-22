@@ -16,6 +16,7 @@ import {
 	Bell,
 	AlertCircle,
 	Archive,
+	BookOpen,
 	Boxes,
 	Check,
 	ChevronDown,
@@ -507,9 +508,12 @@ export function SessionSidebar() {
 		const active = new Set(composerActiveIds ? composerActiveIds.split(",") : []);
 		const lives = useLive.getState().sessions;
 		return Object.values(sessions).filter(
-			(s) => active.has(s.id) || !isBlankDraft(s, lives[s.id]),
+			(s) =>
+				active.has(s.id) ||
+				!isBlankDraft(s, lives[s.id]) ||
+				(selectedSessionId === s.id && s.groupId !== null),
 		);
-	}, [sessions, composerActiveIds]);
+	}, [sessions, composerActiveIds, selectedSessionId]);
 	// Worktree grouping is a code-mode concept; other modes always get a flat list per project.
 	const groupByWorktreeSetting = useSettings((s) => s.settings?.sessionGroupByWorktree ?? true);
 	const groupByWorktree = activeMode === "code" && groupByWorktreeSetting;
@@ -1674,7 +1678,7 @@ export function SessionSidebar() {
 												const grpKey = `grp:${g.id}`;
 												const grpOpen = isGroupOpen(grpKey, true);
 												const grpCreating =
-													globalWs && creatingKey === `${globalWs.id}|${globalWs.path}`;
+													globalWs && creatingKey === `${globalWs.id}|${globalWs.path}|${g.id}`;
 												return (
 													<div key={g.id} className="mt-0.5">
 														{renamingGroupId === g.id ? (
@@ -2415,7 +2419,7 @@ export function SessionSidebar() {
 			<ArchiveUndoBar />
 
 			{/* Settings footer (S18: single accessible button) */}
-			<div className="shrink-0 p-2">
+			<div className="flex shrink-0 items-center gap-1 p-2">
 				<button
 					type="button"
 					onClick={() =>
@@ -2440,6 +2444,20 @@ export function SessionSidebar() {
 						)}
 					/>
 					<span className="truncate">设置</span>
+				</button>
+				<button
+					type="button"
+					onClick={() => setCenter("guide")}
+					aria-label="使用说明"
+					title="使用说明"
+					className={clsx(
+						"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
+						centerView === "guide"
+							? "bg-[var(--bg-active-fill)] text-[var(--text)] shadow-xs hairline"
+							: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
+					)}
+				>
+					<BookOpen size={17} strokeWidth={1.75} />
 				</button>
 			</div>
 

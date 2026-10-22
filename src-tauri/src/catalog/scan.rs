@@ -185,7 +185,7 @@ pub fn resolve_label(s: &Scanned, row: &MetaRow) -> String {
     row.seq.map(|n| format!("#L{n}")).unwrap_or_default()
 }
 
-fn path_within(path: &str, root: &str) -> bool {
+pub(crate) fn path_within(path: &str, root: &str) -> bool {
     let root = root.trim_end_matches('/');
     path == root
         || path

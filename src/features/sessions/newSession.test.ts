@@ -5,13 +5,23 @@ import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { installDraftAutoCleanup } from "./newSession";
+import { installDraftAutoCleanup, startSessionInDir } from "./newSession";
 import { resolveNewSessionTargetWorkspace } from "./modes";
+import { useSidebarStore } from "./sidebarStore";
+import { useSessionGroups } from "./sessionGroups";
+import { toast } from "../../lib/toast";
 
 vi.mock("../../lib/ipc", () => ({
 	deleteSession: vi.fn().mockResolvedValue(undefined),
 	gitSummary: vi.fn().mockResolvedValue({ isRepo: false }),
 	gitCreateWorktree: vi.fn(),
+	setSessionGroup: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../../lib/toast", () => ({
+	toast: {
+		success: vi.fn(),
+		error: vi.fn(),
+	},
 }));
 
 function makeSession(partial: Partial<SessionMeta>): SessionMeta {
@@ -239,5 +249,49 @@ describe("installDraftAutoCleanup", () => {
 
 		expect(useSessions.getState().sessions[regularId]).toBeDefined();
 		expect(ipc.deleteSession).not.toHaveBeenCalled();
+	});
+});
+
+describe("startSessionInDir with groupId", () => {
+	const chatGlobal = makeWs({
+		id: "global",
+		name: "全局",
+		kind: "global",
+		sort: 9,
+		mode: "chat",
+		path: "/global",
+	});
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		useSessions.setState({ sessions: {}, workspaces: [chatGlobal] });
+		useLive.setState({ sessions: {} });
+		useComposer.setState({ drafts: {}, images: {} });
+		useSidebarStore.setState({ groupOpen: {} });
+		useSessionGroups.setState({
+			groups: [{ id: "g_omp", name: "omp相关", mode: "chat", sort: 0 }],
+		});
+	});
+
+	it("adopts an existing empty draft into the target group, expands group and shows toast", async () => {
+		const draft = makeSession({
+			id: "draft-1",
+			cwd: "/global",
+			mode: "chat",
+			status: "idle",
+			live: true,
+			title: "",
+			label: "",
+			groupId: null,
+		});
+		useSessions.setState({ sessions: { [draft.id]: draft } });
+
+		await startSessionInDir(chatGlobal, false, "g_omp");
+
+		expect(ipc.setSessionGroup).toHaveBeenCalledWith("draft-1", "g_omp");
+		expect(useSessions.getState().sessions["draft-1"].groupId).toBe("g_omp");
+		expect(useSidebarStore.getState().groupOpen["grp:g_omp"]).toBe(true);
+		expect(useUi.getState().selectedSessionId).toBe("draft-1");
+		expect(toast.success).toHaveBeenCalledWith("已在分组「omp相关」新建会话");
 	});
 });

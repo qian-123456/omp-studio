@@ -14,6 +14,7 @@ import {
 	PanelRight,
 	Plus,
 	Search,
+	Tag,
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -26,6 +27,8 @@ import { addWorkspace, gitBadge, gitListBranchesDetailed, gitListWorktrees, gitR
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { requestMoveToGroup } from "../sessions/sessionActions";
+import { useSessionGroups } from "../sessions/sessionGroups";
 import { startSessionInDir, startSessionInWorktree } from "../sessions/newSession";
 import { runSessionBash, shellQuote } from "./sessionShell";
 import { claimEscape } from "../../lib/escapeClaim";
@@ -520,6 +523,8 @@ export function ContextPillBar({
 	const workspace = workspaces.find((w) => w.id === meta?.workspaceId) ?? null;
 	const isGlobal = !workspace || workspace.kind === "global";
 	const wsLabel = isGlobal ? "全局" : workspace.name;
+	const groups = useSessionGroups((s) => s.groups);
+	const group = isGlobal && meta?.groupId ? groups.find((g) => g.id === meta.groupId) : null;
 
 	const branchRef = useRef<HTMLButtonElement>(null);
 	const [branchOpen, setBranchOpen] = useState(false);
@@ -553,6 +558,18 @@ export function ContextPillBar({
 				<span className="max-w-56 truncate">{wsLabel}</span>
 				<ChevronDown size={11} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
 			</button>
+
+			{group && (
+				<button
+					type="button"
+					onClick={() => requestMoveToGroup([sessionId])}
+					title={`当前分组: ${group.name}（点击修改）`}
+					className={PILL}
+				>
+					<Tag size={13} className="shrink-0 text-neutral-400" />
+					<span className="max-w-40 truncate">{group.name}</span>
+				</button>
+			)}
 
 			{branch === null ? (
 				<span className="px-2 py-1 text-[12.5px] text-[var(--text-40,var(--text-dim))]">未关联 Git</span>

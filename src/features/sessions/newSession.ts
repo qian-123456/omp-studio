@@ -20,6 +20,7 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
 import { useSidebarStore } from "./sidebarStore";
+import { useSessionGroups } from "./sessionGroups";
 import { useSettings } from "../settings/store";
 import { resolveNewSessionTargetWorkspace } from "./modes";
 import { startSessionOptimistic } from "./pendingSession";
@@ -40,7 +41,8 @@ export async function startSessionInDir(
 	if (creationInFlight) return;
 	creationInFlight = true;
 	const store = useSidebarStore.getState();
-	store.setCreatingKey(`${ws.id}|${ws.path}`);
+	const key = groupId ? `${ws.id}|${ws.path}|${groupId}` : `${ws.id}|${ws.path}`;
+	store.setCreatingKey(key);
 
 	try {
 		let cwd = ws.path;
@@ -63,16 +65,27 @@ export async function startSessionInDir(
 			if (draft) {
 				if (groupId !== undefined && draft.groupId !== groupId) {
 					// Reuse the draft but file it where the user asked.
-					void setSessionGroup(draft.id, groupId ?? null)
-						.then(() => {
-							const cur = useSessions.getState().sessions[draft.id];
-							if (cur) {
-								useSessions
-									.getState()
-									.upsert([{ ...cur, groupId: groupId ?? null }]);
-							}
-						})
-						.catch(() => {});
+					const cur = useSessions.getState().sessions[draft.id];
+					if (cur) {
+						useSessions
+							.getState()
+							.upsert([{ ...cur, groupId: groupId ?? null }]);
+					}
+					await setSessionGroup(draft.id, groupId ?? null).catch((err) => {
+						if (cur) {
+							useSessions
+								.getState()
+								.upsert([{ ...cur, groupId: draft.groupId }]);
+						}
+						throw err;
+					});
+				}
+				if (groupId) {
+					useSidebarStore.getState().setGroupOpen((prev) => ({ ...prev, [`grp:${groupId}`]: true }));
+					const groupName = useSessionGroups.getState().groups.find((g) => g.id === groupId)?.name;
+					if (groupName) {
+						toast.success(`已在分组「${groupName}」新建会话`);
+					}
 				}
 				useUi.getState().selectSession(draft.id);
 				useComposer.getState().focusComposer(draft.id);
@@ -86,6 +99,13 @@ export async function startSessionInDir(
 			mode: ws.mode,
 			groupId: ws.kind === "global" ? (groupId ?? null) : null,
 		});
+		if (groupId) {
+			useSidebarStore.getState().setGroupOpen((prev) => ({ ...prev, [`grp:${groupId}`]: true }));
+			const groupName = useSessionGroups.getState().groups.find((g) => g.id === groupId)?.name;
+			if (groupName) {
+				toast.success(`已在分组「${groupName}」新建会话`);
+			}
+		}
 	} catch (err) {
 		toast.error(`创建会话失败: ${errMsg(err)}`);
 	} finally {

@@ -312,14 +312,28 @@ pub async fn set_session_group(
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "分组不存在".to_string())?
         };
-        // Session mode: the stored row wins (set at creation); sessions with
-        // no row are code. A session missing from the catalog (file not yet
-        // written) has no resolved workspace and cannot be grouped.
+        // Session mode: stored row wins; for sessions not yet written to disk
+        // (e.g. freshly started draft), check the live RPC process cwd or the
+        // stored mode. Chat mode sessions always belong to the global workspace.
         let (session_mode, workspace_id) = match crate::catalog::get(&state, &session_id).await {
             Some(m) => (m.mode, m.workspace_id),
             None => {
                 let db = state.db.lock();
-                (store::load_meta_row(&db, &session_id).mode, None)
+                let row = store::load_meta_row(&db, &session_id);
+                let live_handle = crate::rpc::get_handle(&session_id);
+                let live_cwd = live_handle.as_ref().map(|h| h.cwd.clone());
+                let cwd = live_cwd.as_deref().or(row.cwd_override.as_deref());
+                let global_dir = crate::paths::global_dir().to_string_lossy().to_string();
+                let mode = match cwd {
+                    Some(c) if super::scan::path_within(c, &global_dir) => SpaceMode::Chat,
+                    _ => row.mode,
+                };
+                let workspace_id = if mode == SpaceMode::Chat {
+                    Some(crate::contracts::GLOBAL_WORKSPACE_ID.to_string())
+                } else {
+                    row.workspace_id
+                };
+                (mode, workspace_id)
             }
         };
         validate_group_assignment(&group, session_mode, workspace_id.as_deref())?;
