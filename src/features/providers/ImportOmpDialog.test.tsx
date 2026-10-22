@@ -72,4 +72,28 @@ describe("ImportOmpDialog", () => {
 		});
 		await screen.findByText("导入结果");
 	});
+
+	it("collapses a long update list but still imports every checked row", async () => {
+		const updates: OmpImportPlanItem[] = Array.from({ length: 6 }, (_, i) => ({
+			id: `upd-${i}`,
+			slug: `upd-${i}`,
+			baseUrl: "https://u.example/v1",
+			api: "openai-completions",
+			action: "update",
+			ok: true,
+			issue: null,
+			error: null,
+		}));
+		planMock.mockResolvedValue(updates);
+		render(<ImportOmpDialog ids={updates.map((u) => u.id)} onClose={() => {}} />);
+		await screen.findByText("将更新（6）");
+		expect(screen.getByText("upd-2")).toBeTruthy();
+		expect(screen.queryByText("upd-3")).toBeNull();
+		expect(screen.getByText("导入 6 个")).toBeTruthy();
+
+		fireEvent.click(screen.getByText("展开其余 3 个"));
+		expect(screen.getByText("upd-5")).toBeTruthy();
+		fireEvent.click(screen.getByText("收起"));
+		expect(screen.queryByText("upd-5")).toBeNull();
+	});
 });

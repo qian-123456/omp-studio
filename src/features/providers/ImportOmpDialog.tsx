@@ -1,4 +1,4 @@
-import { Loader2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	OmpImportIssue,
@@ -34,6 +34,8 @@ const btnCls =
 	"inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all disabled:opacity-40";
 const primaryCls =
 	"inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all disabled:opacity-40";
+/** Rows of the long "将更新" group shown before the user expands it. */
+const COLLAPSED_ROWS = 3;
 
 export function ImportOmpDialog({
 	ids,
@@ -52,6 +54,7 @@ export function ImportOmpDialog({
 	const [importing, setImporting] = useState(false);
 	const [results, setResults] = useState<OmpImportResult[] | null>(null);
 	const [retrying, setRetrying] = useState<string | null>(null);
+	const [updatesExpanded, setUpdatesExpanded] = useState(false);
 
 	const check = useCallback(async () => {
 		setLoading(true);
@@ -230,15 +233,36 @@ export function ImportOmpDialog({
 		title: string,
 		list: typeof effective,
 		render: (e: (typeof effective)[number]) => React.ReactNode,
-	) =>
-		list.length > 0 && (
+		collapse?: { expanded: boolean; toggle: () => void },
+	) => {
+		if (list.length === 0) return null;
+		const collapsible = collapse !== undefined && list.length > COLLAPSED_ROWS + 1;
+		const shown =
+			collapsible && !collapse.expanded ? list.slice(0, COLLAPSED_ROWS) : list;
+		return (
 			<div className="space-y-1.5">
 				<div className="text-xs font-medium text-neutral-300">
 					{title}（{list.length}）
 				</div>
-				{list.map(render)}
+				{shown.map(render)}
+				{collapsible && (
+					<button
+						type="button"
+						onClick={collapse.toggle}
+						aria-expanded={collapse.expanded}
+						className="inline-flex items-center gap-1 whitespace-nowrap rounded-full hairline px-3 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)]"
+					>
+						{collapse.expanded ? (
+							<ChevronUp className="h-3 w-3" />
+						) : (
+							<ChevronDown className="h-3 w-3" />
+						)}
+						{collapse.expanded ? "收起" : `展开其余 ${list.length - COLLAPSED_ROWS} 个`}
+					</button>
+				)}
 			</div>
 		);
+	};
 
 	const planById = new Map((plan ?? []).map((p) => [p.id, p]));
 
@@ -291,7 +315,10 @@ export function ImportOmpDialog({
 								将把 OMP 中的供应商和密钥复制到工作台（密钥加密保存），OMP 自身配置不会被修改。
 							</div>
 							{group("将新增", creates, renderOkRow)}
-							{group("将更新", updates, renderOkRow)}
+							{group("将更新", updates, renderOkRow, {
+								expanded: updatesExpanded,
+								toggle: () => setUpdatesExpanded((v) => !v),
+							})}
 							{group("需要处理", problems, renderProblemRow)}
 						</>
 					)}
