@@ -355,14 +355,6 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 							>
 								{selectedName ?? basename(selected)}
 							</span>
-							<Segmented
-								value={tab}
-								onChange={(t) => setManualTab({ path: selected, tab: t })}
-								options={[
-									{ value: "changes", label: `改动 ${count ?? 0}` },
-									{ value: "history", label: "历史" },
-								]}
-							/>
 							{tab === "changes" && (count ?? 0) > 0 && (
 								<button
 									type="button"
@@ -374,6 +366,14 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 									全部 diff
 								</button>
 							)}
+							<Segmented
+								value={tab}
+								onChange={(t) => setManualTab({ path: selected, tab: t })}
+								options={[
+									{ value: "changes", label: `改动 ${count ?? 0}` },
+									{ value: "history", label: "历史" },
+								]}
+							/>
 						</div>
 						<div className="min-h-0 flex-1 overflow-auto">
 							{/* First-use turn-checkpoints consent, top of the selected worktree pane. */}
