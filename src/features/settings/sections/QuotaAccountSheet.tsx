@@ -13,6 +13,7 @@ import { useEscapeKey } from "../../../lib/hooks";
 import { oauthLoginProviders } from "../../../lib/ipc";
 import { OauthLoginDialog } from "../../providers/OauthLoginDialog";
 import { ProviderDialog, type ProviderDialogTarget } from "../../providers/ProviderDialog";
+import { canImportOmpProvider } from "../../providers/ompBadge";
 import { useProviders } from "../../providers/store";
 import { useUi } from "../../../stores/ui";
 import { Button, Chip, IconButton } from "../ui";
@@ -182,7 +183,9 @@ export function QuotaAccountSheet({
 	);
 	const canRelogin = oauthIds.has(provider.providerId);
 	const workbench = workbenchProviders.find((c) => c.slug === provider.providerId) ?? null;
-	const canManage = workbench != null || ompProviders.some((p) => p.id === provider.providerId);
+	// OAuth-only OMP providers have nothing editable here (re-login covers them).
+	const canManage =
+		workbench != null || ompProviders.some((p) => p.id === provider.providerId && canImportOmpProvider(p));
 
 	const handleManage = () => {
 		if (workbench) {
