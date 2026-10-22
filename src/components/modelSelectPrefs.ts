@@ -27,6 +27,8 @@ interface ModelSelectPrefs {
 	dismissedGuides: string[];
 	recordRecent(key: string): void;
 	removeRecent(key: string): void;
+	/** Replace the whole list (used to undo a removal). */
+	setRecent(list: string[]): void;
 	dismissGuide(role: string): void;
 }
 
@@ -40,6 +42,10 @@ export const useModelSelectPrefs = create<ModelSelectPrefs>((set, get) => ({
 	},
 	removeRecent: (key) => {
 		const recent = removeRecent(get().recent, key);
+		writeList(RECENT_KEY, recent);
+		set({ recent });
+	},
+	setRecent: (recent) => {
 		writeList(RECENT_KEY, recent);
 		set({ recent });
 	},

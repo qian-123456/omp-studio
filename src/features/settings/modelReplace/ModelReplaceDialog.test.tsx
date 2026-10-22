@@ -36,6 +36,7 @@ vi.mock("../../../lib/ipc", () => ({
 vi.mock("./store", () => ({ invalidateAfterModelReplace: invalidateMock }));
 
 import type { ModelReplaceEdit, ModelReplaceResult } from "../../../lib/contracts";
+import { useModelSelectPrefs } from "../../../components/modelSelectPrefs";
 import { resolveThinkingLevels } from "../../../lib/models";
 import { useModelCatalog } from "../../../stores/modelCatalog";
 import { useModelKindCatalog } from "./kinds";
@@ -106,6 +107,8 @@ beforeEach(() => {
 	applyMock.mockReset().mockResolvedValue({ recordId: "rec-1", results: [] });
 	invalidateMock.mockReset();
 	localStorage.clear();
+	// Recent models live in a module-global store; start from an empty list.
+	useModelSelectPrefs.setState({ recent: [], dismissedGuides: [] });
 	// Both stores are module-global; start every test from "never loaded".
 	useModelCatalog.setState({ models: null, loading: false });
 	useModelKindCatalog.setState({ entries: null, kindBySelector: new Map(), loading: false, error: null });
@@ -126,7 +129,11 @@ async function openConfigure() {
 async function pickTarget(selector: string, tab?: string) {
 	fireEvent.click(screen.getByTitle(/^选择目标模型$|^[a-z0-9-]+\/.+$/));
 	if (tab) fireEvent.click(await screen.findByRole("tab", { name: tab }));
-	fireEvent.click(await screen.findByRole("button", { name: selector.slice(selector.indexOf("/") + 1) }));
+	// The picker may open on 常用 once a model was picked; select the provider group explicitly.
+	const provider = selector.slice(0, selector.indexOf("/"));
+	fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${provider}\\s*\\d`) }));
+	const id = selector.slice(selector.indexOf("/") + 1);
+	fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`) }));
 }
 
 /** Scan → pick X → pick Y from the catalogue → preview. */

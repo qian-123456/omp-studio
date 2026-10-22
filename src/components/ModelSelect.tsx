@@ -1,6 +1,6 @@
 import clsx from "clsx";
-import { Check, ChevronDown, ChevronRight, CornerDownLeft, Loader2, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronRight, CornerDownLeft, Loader2, Search, X } from "lucide-react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { asRecord } from "../features/settings/modelRoles";
 import { useOmpConfigStore } from "../features/settings/ompConfigStore";
 import { openSettingsTarget } from "../features/settings/settingsTargets";
@@ -11,6 +11,7 @@ import { ThinkingLevelPicker } from "./ThinkingLevelPicker";
 import {
 	FOLLOW_LEVEL,
 	RESOLVABLE_ROLES,
+	type RoleResolution,
 	applyThinkingLevel,
 	carryLevel,
 	describeResolution,
@@ -81,10 +82,28 @@ const ROW_IDLE =
 	"text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]";
 const ROW_SELECTED = "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium";
 
+type GroupId = string;
+const GROUP_COMMON: GroupId = "★";
+const GROUP_ROLES: GroupId = "@roles";
+const providerGroup = (p: string): GroupId => `p:${p}`;
+
+type Entry =
+	| { id: string; kind: "model"; m: ModelOption; showProvider: boolean; removable: boolean }
+	| { id: string; kind: "extra"; x: ModelExtraOption; resolution: RoleResolution | null }
+	| { id: string; kind: "custom" };
+
+interface Section {
+	title?: string;
+	entries: Entry[];
+}
+
+const ROW_HI = "bg-[var(--bg-hover)] text-[var(--text)]";
+
 /**
- * Two-pane model picker like the OMP TUI:
- * left column lists providers, right column lists that provider's models.
- * Typing in the search box switches to a flat filtered list across providers.
+ * Two-pane model picker. Left column: ★ 常用 (plain extras + recent models),
+ * 角色 (role extras, when the caller passes any), then one tab per provider.
+ * Right column lists the active group. Typing switches to a flat search list.
+ * Keyboard: ↑↓ move, ←→ switch group, Enter picks.
  */
 export function ModelMenuContent({
 	models,
@@ -97,19 +116,21 @@ export function ModelMenuContent({
 	closeOnSelect = false,
 }: MenuProps) {
 	const [q, setQ] = useState("");
-	const [confirmRemoveKey, setConfirmRemoveKey] = useState<string | null>(null);
 	const [localSelection, setLocalSelection] = useState<string | null>(null);
-	const hasRoleExtras = Boolean(extras?.some((x) => roleIdOf(x.value)));
+	const [group, setGroup] = useState<GroupId | null>(null);
+	const [hi, setHi] = useState(-1);
+	const [undo, setUndo] = useState<{ key: string; prev: string[] } | null>(null);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const roleExtras = useMemo(() => (extras ?? []).filter((x) => roleIdOf(x.value)), [extras]);
+	const plainExtras = useMemo(() => (extras ?? []).filter((x) => !roleIdOf(x.value)), [extras]);
 	const effectiveValue = localSelection ?? currentValue;
 	const current = parseSelection(effectiveValue);
 	const selectedKey = current.selector;
-	const { roles, loaded: rolesLoaded } = useOmpModelRoles(
-		hasRoleExtras,
-		rolesOverride,
-	);
+	const { roles, loaded: rolesLoaded } = useOmpModelRoles(roleExtras.length > 0, rolesOverride);
 	const recent = useModelSelectPrefs((s) => s.recent);
 	const recordRecent = useModelSelectPrefs((s) => s.recordRecent);
 	const removeRecent = useModelSelectPrefs((s) => s.removeRecent);
+	const setRecent = useModelSelectPrefs((s) => s.setRecent);
 	const dismissedGuides = useModelSelectPrefs((s) => s.dismissedGuides);
 	const dismissGuide = useModelSelectPrefs((s) => s.dismissGuide);
 	const refreshing = useModelCatalog((s) => s.loading);
@@ -131,9 +152,9 @@ export function ModelMenuContent({
 	const pickModel = (key: string) => {
 		if (isRecordableModelKey(key)) recordRecent(key);
 		if (!closeOnSelect) setLocalSelection(key);
+		setUndo(null);
 		onSelect(key);
 	};
-	const listRef = useRef<HTMLDivElement>(null);
 
 	const providers = useMemo(() => {
 		const map = new Map<string, ModelOption[]>();
@@ -145,16 +166,34 @@ export function ModelMenuContent({
 		return [...map.entries()];
 	}, [models]);
 
-	const currentProvider = useMemo(() => {
-		if (!currentValue) return null;
-		const found = providers.find(([, list]) =>
-			list.some((m) => toModelKey(m.provider, m.id) === selectedKey),
-		);
-		return found?.[0] ?? null;
-	}, [providers, selectedKey]);
+	const hasCommon = plainExtras.length > 0 || recentModels.length > 0;
+	const hasRoles = roleExtras.length > 0;
+	const groupIds = useMemo<GroupId[]>(
+		() => [
+			...(hasCommon ? [GROUP_COMMON] : []),
+			...(hasRoles ? [GROUP_ROLES] : []),
+			...providers.map(([p]) => providerGroup(p)),
+		],
+		[hasCommon, hasRoles, providers],
+	);
 
-	const [activeProvider, setActiveProvider] = useState<string | null>(null);
-	const effectiveProvider = activeProvider ?? currentProvider ?? providers[0]?.[0] ?? null;
+	// Open on where the current value lives: a role -> 角色, a model outside
+	// 常用 -> its provider, otherwise the first group.
+	const defaultGroup = useMemo<GroupId | null>(() => {
+		if (hasRoles && roleExtras.some((x) => x.value === selectedKey)) return GROUP_ROLES;
+		if (effectiveValue && !plainExtras.some((x) => x.value === selectedKey)) {
+			const found = providers.find(([, list]) =>
+				list.some((m) => toModelKey(m.provider, m.id) === selectedKey),
+			);
+			if (found && !recentModels.some((m) => toModelKey(m.provider, m.id) === selectedKey)) {
+				return providerGroup(found[0]);
+			}
+		}
+		return groupIds[0] ?? null;
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [groupIds]);
+	const effectiveGroup =
+		group !== null && groupIds.includes(group) ? group : (defaultGroup ?? groupIds[0] ?? null);
 
 	const searching = q.trim().length > 0;
 	const searchHits = useMemo(() => {
@@ -174,10 +213,59 @@ export function ModelMenuContent({
 		!customQuery.startsWith("-") &&
 		!searchHits.some((m) => toModelKey(m.provider, m.id) === customQuery);
 
-	const activeModels = useMemo(
-		() => providers.find(([p]) => p === effectiveProvider)?.[1] ?? [],
-		[providers, effectiveProvider],
-	);
+	const modelEntry = (m: ModelOption, showProvider: boolean, removable = false): Entry => ({
+		id: `${removable ? "recent:" : "m:"}${toModelKey(m.provider, m.id)}`,
+		kind: "model",
+		m,
+		showProvider,
+		removable,
+	});
+	const extraEntry = (x: ModelExtraOption): Entry => {
+		const roleId = roleIdOf(x.value);
+		return {
+			id: `x:${x.value}`,
+			kind: "extra",
+			x,
+			resolution: roleId && rolesLoaded ? resolveRole(roles, roleId, models) : null,
+		};
+	};
+
+	// Roles that resolve to nothing show a "go configure" guide instead of a row.
+	const roleGuides: { x: ModelExtraOption; roleId: string }[] = [];
+	const sections: Section[] = [];
+	if (searching) {
+		const entries: Entry[] = searchHits.map((m) => modelEntry(m, true));
+		if (showCustomRow) entries.push({ id: "custom", kind: "custom" });
+		sections.push({ entries });
+	} else if (effectiveGroup === GROUP_COMMON) {
+		if (plainExtras.length > 0) sections.push({ entries: plainExtras.map(extraEntry) });
+		if (recentModels.length > 0) {
+			sections.push({ title: "最近使用", entries: recentModels.map((m) => modelEntry(m, true, true)) });
+		}
+	} else if (effectiveGroup === GROUP_ROLES) {
+		const entries: Entry[] = [];
+		for (const x of roleExtras) {
+			const e = extraEntry(x) as Extract<Entry, { kind: "extra" }>;
+			const roleId = roleIdOf(x.value);
+			if (roleId && roleId !== "default" && e.resolution && e.resolution.kind !== "model") {
+				if (!dismissedGuides.includes(roleId)) roleGuides.push({ x, roleId });
+			} else entries.push(e);
+		}
+		sections.push({ entries });
+	} else if (effectiveGroup) {
+		const list = providers.find(([p]) => providerGroup(p) === effectiveGroup)?.[1] ?? [];
+		sections.push({ entries: list.map((m) => modelEntry(m, false)) });
+	}
+	const flat = sections.flatMap((s) => s.entries);
+
+	// Reset the keyboard highlight whenever the visible list changes.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset on identity of list
+	useEffect(() => {
+		setHi(searching ? 0 : -1);
+	}, [searching, q, effectiveGroup]);
+	useEffect(() => {
+		rootRef.current?.querySelector('[data-hi="true"]')?.scrollIntoView?.({ block: "nearest" });
+	}, [hi]);
 
 	if (models === null) {
 		return (
@@ -188,111 +276,176 @@ export function ModelMenuContent({
 		);
 	}
 
-	const renderModelRow = (m: ModelOption, showProvider: boolean, keyPrefix = "") => {
-		const key = toModelKey(m.provider, m.id);
-		const isSelected = selectedKey === key;
-		return (
-			<button
-				key={keyPrefix + key}
-				type="button"
-				title={key}
-				onClick={() => pickModel(key)}
-				className={clsx(ROW_CLASS, isSelected ? ROW_SELECTED : ROW_IDLE)}
-			>
-				<div className="min-w-0 pr-2">
-					<div className="truncate font-medium">{m.id}</div>
-					{showProvider && (
-						<div className="truncate text-[10px] text-neutral-500">
-							{m.provider}
+	const activate = (e: Entry) => {
+		if (e.kind === "model") pickModel(toModelKey(e.m.provider, e.m.id));
+		else if (e.kind === "extra") onSelect(e.x.value);
+		else onSelect(customQuery);
+	};
+
+	const stepGroup = (delta: number) => {
+		if (groupIds.length === 0 || effectiveGroup === null) return;
+		const i = groupIds.indexOf(effectiveGroup);
+		setGroup(groupIds[Math.min(groupIds.length - 1, Math.max(0, i + delta))] ?? null);
+	};
+
+	const onKeyDown = (ev: KeyboardEvent<HTMLDivElement>) => {
+		if (ev.nativeEvent.isComposing) return;
+		if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+			ev.preventDefault();
+			const delta = ev.key === "ArrowDown" ? 1 : -1;
+			setHi((h) => Math.min(flat.length - 1, Math.max(0, h + delta)));
+		} else if ((ev.key === "ArrowLeft" || ev.key === "ArrowRight") && !searching) {
+			ev.preventDefault();
+			stepGroup(ev.key === "ArrowLeft" ? -1 : 1);
+		} else if (ev.key === "Enter") {
+			const target = flat[hi >= 0 ? hi : searching ? 0 : -1];
+			if (!target) return;
+			ev.preventDefault();
+			activate(target);
+		}
+	};
+
+	const check = <Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />;
+
+	const renderEntry = (e: Entry, idx: number) => {
+		const highlighted = idx === hi;
+		const hiProps = { "data-hi": highlighted ? "true" : undefined };
+		if (e.kind === "model") {
+			const key = toModelKey(e.m.provider, e.m.id);
+			const isSelected = selectedKey === key;
+			return (
+				<div
+					key={e.id}
+					{...hiProps}
+					className={clsx(
+						"group flex w-full items-center rounded-[8px] transition-colors",
+						isSelected ? ROW_SELECTED : highlighted ? ROW_HI : ROW_IDLE,
+					)}
+				>
+					<button
+						type="button"
+						title={key}
+						onClick={() => pickModel(key)}
+						className="flex min-w-0 flex-1 items-center justify-between px-2.5 py-1.5 text-left text-xs"
+					>
+						<div className="min-w-0 pr-2">
+							<div className="break-all font-medium">{e.m.id}</div>
+							{e.showProvider && (
+								<div className="break-all text-[10px] text-neutral-500">{e.m.provider}</div>
+							)}
 						</div>
+						{isSelected && check}
+					</button>
+					{e.removable && (
+						<button
+							type="button"
+							title="移出最近使用"
+							aria-label="移出最近使用"
+							onClick={() => {
+								setUndo({ key, prev: recent });
+								removeRecent(key);
+							}}
+							className="mr-1 shrink-0 rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:opacity-100 group-hover:opacity-100"
+						>
+							<X size={12} />
+						</button>
 					)}
 				</div>
-				{isSelected && <Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />}
+			);
+		}
+		if (e.kind === "custom") {
+			return (
+				<button
+					key={e.id}
+					type="button"
+					{...hiProps}
+					onClick={() => onSelect(customQuery)}
+					className={clsx(ROW_CLASS, highlighted ? ROW_HI : ROW_IDLE)}
+				>
+					<span className="min-w-0 break-all">
+						使用 <span className="font-mono text-[var(--text)]">{customQuery}</span>
+						<span className="text-neutral-500"> 作为模型标识</span>
+					</span>
+					<CornerDownLeft size={12} className="shrink-0 text-neutral-500" />
+				</button>
+			);
+		}
+		const isSelected = selectedKey === e.x.value;
+		return (
+			<button
+				key={e.id}
+				type="button"
+				{...hiProps}
+				onClick={() => onSelect(e.x.value)}
+				className={clsx(ROW_CLASS, isSelected ? ROW_SELECTED : highlighted ? ROW_HI : ROW_IDLE)}
+			>
+				<span className="min-w-0">
+					{e.x.label}
+					{e.resolution && (
+						<span className="text-neutral-500"> → {describeResolution(e.resolution)}</span>
+					)}
+				</span>
+				{e.x.hint && !e.resolution ? (
+					<span className="ml-1 shrink-0 text-[10px] text-neutral-500">{e.x.hint}</span>
+				) : isSelected ? (
+					check
+				) : null}
 			</button>
 		);
 	};
 
-	const renderRecentModelRow = (m: ModelOption) => {
-		const key = toModelKey(m.provider, m.id);
-		const isSelected = selectedKey === key;
-		const isConfirming = confirmRemoveKey === key;
-
-		if (isConfirming) {
-			return (
-				<div
-					key={"recent:" + key}
-					className="flex w-full items-center justify-between gap-1.5 px-2.5 py-1 text-xs rounded-[8px] bg-red-500/10 border border-red-500/25 my-0.5"
-				>
-					<span className="min-w-0 truncate text-[11px] font-medium text-red-400">
-						确认移出最近记录？
-					</span>
-					<div className="flex shrink-0 items-center gap-1">
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								removeRecent(key);
-								setConfirmRemoveKey(null);
-							}}
-							className="rounded px-2 py-0.5 text-[10px] font-medium bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors cursor-pointer"
-						>
-							确认
-						</button>
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								setConfirmRemoveKey(null);
-							}}
-							className="rounded px-2 py-0.5 text-[10px] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors cursor-pointer"
-						>
-							取消
-						</button>
-					</div>
-				</div>
-			);
-		}
-
+	const groupButton = (id: GroupId, label: string, count: number) => {
+		const active = id === effectiveGroup && !searching;
 		return (
-			<div
-				key={"recent:" + key}
+			<button
+				key={id}
+				type="button"
+				onClick={() => setGroup(id)}
 				className={clsx(
-					"group relative flex w-full items-center justify-between px-2.5 py-1 text-left text-xs transition-colors rounded-[8px]",
-					isSelected ? ROW_SELECTED : ROW_IDLE,
+					"flex w-full items-center justify-between gap-1 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
+					active
+						? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)]"
+						: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 				)}
 			>
-				<button
-					type="button"
-					onClick={() => pickModel(key)}
-					className="flex min-w-0 flex-1 items-center justify-between text-left cursor-pointer"
-				>
-					<div className="min-w-0 pr-2">
-						<div className="truncate font-medium">{m.id}</div>
-						<div className="truncate text-[10px] text-neutral-500">{m.provider}</div>
-					</div>
-					{isSelected && <Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />}
-				</button>
-				<button
-					type="button"
-					title="移出最近记录"
-					aria-label="移出最近记录"
-					onClick={(e) => {
-						e.stopPropagation();
-						setConfirmRemoveKey(key);
-					}}
-					className="ml-1 shrink-0 rounded p-1 text-neutral-500 opacity-0 group-hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-red-400 transition-all cursor-pointer"
-				>
-					<Trash2 size={12} />
-				</button>
-			</div>
+				<span className="min-w-0 break-all" title={label}>
+					{label}
+				</span>
+				<span className="ml-1 flex shrink-0 items-center gap-0.5 text-[10px] text-neutral-600">
+					{count}
+					<ChevronRight size={10} />
+				</span>
+			</button>
 		);
 	};
 
+	let offset = 0;
+	const body =
+		flat.length === 0 && roleGuides.length === 0 ? (
+			<div className="px-3 py-2 text-center text-xs text-neutral-500">
+				{searching ? "无匹配模型" : "这里还没有可选项"}
+			</div>
+		) : (
+			sections.map((s, si) => {
+				const start = offset;
+				offset += s.entries.length;
+				return (
+					<div key={s.title ?? `s${si}`}>
+						{s.title && (
+							<div className="px-2.5 pb-0.5 pt-1.5 text-[10px] font-medium text-neutral-500">{s.title}</div>
+						)}
+						{s.entries.map((e, i) => renderEntry(e, start + i))}
+					</div>
+				);
+			})
+		);
+
 	return (
-		<div className="flex min-h-0 flex-col">
+		// biome-ignore lint/a11y/noStaticElementInteractions: key handling for the whole picker
+		<div ref={rootRef} className="flex min-h-0 flex-col outline-none" onKeyDown={onKeyDown} tabIndex={-1}>
 			{(caption || refreshing) && (
 				<div className="flex shrink-0 items-center justify-between gap-2 px-2.5 pb-1 pt-2 text-[11px] font-medium text-neutral-400">
-					<span className="truncate">{caption}</span>
+					<span className="break-all">{caption}</span>
 					{refreshing && (
 						<Loader2
 							size={11}
@@ -311,13 +464,6 @@ export function ModelMenuContent({
 							autoFocus
 							value={q}
 							onChange={(e) => setQ(e.target.value)}
-							onKeyDown={(e) => {
-								if (e.key !== "Enter" || !searching || e.nativeEvent.isComposing) return;
-								e.preventDefault();
-								const first = searchHits[0];
-								if (first) pickModel(toModelKey(first.provider, first.id));
-								else if (showCustomRow) onSelect(customQuery);
-							}}
 							placeholder={allowCustom ? "搜索模型，或直接输入模型标识…" : "搜索模型或 provider…"}
 							className="w-full bg-transparent outline-none placeholder:text-neutral-500"
 						/>
@@ -325,129 +471,58 @@ export function ModelMenuContent({
 				</div>
 			)}
 
-			{!searching && recentModels.length > 0 && (
-				<div className="shrink-0 border-b border-[var(--border-divider)] pb-1">
-					<div className="px-2.5 pb-0.5 pt-1 text-[10px] font-medium text-neutral-500">最近使用</div>
-					{recentModels.map((m) => renderRecentModelRow(m))}
-				</div>
-			)}
-
-			{searching ? (
-				<div ref={listRef} className="max-h-56 min-h-28 shrink overflow-y-auto py-0.5">
-					{searchHits.length === 0 && !showCustomRow ? (
-						<div className="px-3 py-2 text-center text-xs text-neutral-500">
-							无匹配模型
-						</div>
-					) : (
-						searchHits.map((m) => renderModelRow(m, true))
-					)}
-					{showCustomRow && (
-						<button
-							type="button"
-							onClick={() => onSelect(customQuery)}
-							className={clsx(ROW_CLASS, ROW_IDLE, searchHits.length > 0 && "border-t border-[var(--border-divider)]")}
-						>
-							<span className="min-w-0 truncate">
-								使用 <span className="font-mono text-[var(--text)]">{customQuery}</span>
-								<span className="text-neutral-500"> 作为模型标识</span>
-							</span>
-							{searchHits.length === 0 && <CornerDownLeft size={12} className="shrink-0 text-neutral-500" />}
-						</button>
-					)}
-				</div>
-			) : (
-				<div className="flex max-h-56 min-h-28 shrink">
-					{/* Provider column */}
+			{/* Fixed height so the popover never jumps between groups. */}
+			<div className="flex h-72 min-h-0">
+				{!searching && (
 					<div className="w-36 shrink-0 overflow-y-auto border-r border-[var(--border-divider)] py-0.5">
-						{providers.map(([provider, list]) => {
-							const active = provider === effectiveProvider;
-							return (
-								<button
-									key={provider}
-									type="button"
-									onClick={() => setActiveProvider(provider)}
-									className={clsx(
-										"flex w-full items-center justify-between gap-1 px-2.5 py-1.5 text-left text-xs transition-colors rounded-md",
-										active
-											? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)]"
-											: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
-									)}
-								>
-									<span className="truncate" title={provider}>{provider}</span>
-									<span className="ml-1 flex shrink-0 items-center gap-0.5 text-[10px] text-neutral-600">
-										{list.length}
-										<ChevronRight size={10} />
-									</span>
-								</button>
-							);
-						})}
+						{hasCommon && groupButton(GROUP_COMMON, "★ 常用", plainExtras.length + recentModels.length)}
+						{hasRoles && groupButton(GROUP_ROLES, "角色", roleExtras.length)}
+						{providers.map(([p, list]) => groupButton(providerGroup(p), p, list.length))}
 					</div>
-					{/* Model column */}
-					<div ref={listRef} className="min-w-0 flex-1 overflow-y-auto py-0.5">
-						{activeModels.length === 0 ? (
-							<div className="px-3 py-2 text-center text-xs text-neutral-500">
-								该 provider 下无模型
-							</div>
-						) : (
-							activeModels.map((m) => renderModelRow(m, false))
-						)}
-					</div>
-				</div>
-			)}
-
-			{extras && extras.length > 0 && (
-				<div className="mt-1 max-h-40 min-h-12 shrink overflow-y-auto border-t border-[var(--border-divider)] pt-1">
-					{extras.map((x) => {
-						const roleId = roleIdOf(x.value);
-						const isSelected = selectedKey === x.value;
-						const resolution = roleId && rolesLoaded ? resolveRole(roles, roleId, models) : null;
-						if (roleId && roleId !== "default" && resolution && resolution.kind !== "model") {
-							if (dismissedGuides.includes(roleId)) return null;
-							return (
-								<div key={x.value} className={clsx(ROW_CLASS, "gap-1 text-neutral-500")}>
-									<button
-										type="button"
-										onClick={() => openSettingsTarget("models")}
-										className="min-w-0 flex-1 truncate text-left hover:text-[var(--accent)]"
-									>
-										{x.label} 未配置 · 去配置 →
-									</button>
-									<button
-										type="button"
-										aria-label="不再提示"
-										title="不再提示"
-										onClick={() => dismissGuide(roleId)}
-										className="shrink-0 rounded p-0.5 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
-									>
-										<X size={11} />
-									</button>
-								</div>
-							);
-						}
-						return (
+				)}
+				<div className="min-w-0 flex-1 overflow-y-auto py-0.5">
+					{body}
+					{roleGuides.map(({ x, roleId }) => (
+						<div key={x.value} className={clsx(ROW_CLASS, "gap-1 text-neutral-500")}>
 							<button
-								key={x.value}
 								type="button"
-								onClick={() => onSelect(x.value)}
-								className={clsx(ROW_CLASS, isSelected ? ROW_SELECTED : ROW_IDLE)}
+								onClick={() => openSettingsTarget("models")}
+								className="min-w-0 flex-1 text-left hover:text-[var(--accent)]"
 							>
-								<span className="min-w-0 truncate">
-									{x.label}
-									{resolution && (
-										<span className="text-neutral-500"> → {describeResolution(resolution)}</span>
-									)}
-								</span>
-								{x.hint && !resolution ? (
-									<span className="ml-1 shrink-0 text-[10px] text-neutral-500">{x.hint}</span>
-								) : isSelected ? (
-									<Check size={13} className="shrink-0 text-[var(--text-60,var(--text-muted))]" />
-								) : null}
+								{x.label} 未配置 · 去配置 →
 							</button>
-						);
-					})}
+							<button
+								type="button"
+								aria-label="不再提示"
+								title="不再提示"
+								onClick={() => dismissGuide(roleId)}
+								className="shrink-0 rounded p-0.5 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
+							>
+								<X size={11} />
+							</button>
+						</div>
+					))}
+				</div>
+			</div>
+
+			{undo && (
+				<div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-divider)] px-2.5 pt-1.5 text-[11px] text-neutral-400">
+					<span className="min-w-0 break-all">已移出最近使用：{undo.key}</span>
+					<button
+						type="button"
+						onClick={() => {
+							setRecent(undo.prev);
+							setUndo(null);
+						}}
+						className="shrink-0 rounded-full border border-[var(--border-divider)] px-2 py-0.5 text-[var(--text)] hover:bg-[var(--bg-hover)]"
+					>
+						撤销
+					</button>
 				</div>
 			)}
-
+			<div className="shrink-0 border-t border-[var(--border-divider)] px-2.5 pt-1.5 text-[10px] text-neutral-500">
+				↑↓ 选择 · ←→ 切换分组 · ↵ 确认
+			</div>
 		</div>
 	);
 }
