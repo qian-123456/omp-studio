@@ -1617,7 +1617,12 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 				className={`@container/sketch-canvas absolute rounded-2xl border ${chrome.dialog}`}
 				role="dialog"
 				style={{
-					inset: SKETCH_INSET,
+					top: SKETCH_INSET,
+					bottom: SKETCH_INSET,
+					left: "50%",
+					transform: "translateX(-50%)",
+					// Close to square (aspect-ratio ~1.15 to 1.2), clamped within viewport.
+					width: `min(calc((100vh - ${SKETCH_INSET * 2}px) * 1.18), calc(100vw - ${SKETCH_INSET * 2}px))`,
 				}}
 				onPointerDown={(e) => e.stopPropagation()}
 			>
