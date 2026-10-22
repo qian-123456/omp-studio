@@ -257,6 +257,51 @@ fn test_scan_sessions_window_and_nested_dirs() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+#[test]
+fn test_scan_sessions_incremental_resumes_after_append() {
+    use super::usage::scan_sessions_with_cache_for_test;
+    use std::io::Write;
+
+    let base = fresh_test_dir("usage-incr");
+    let line = |n: &str| {
+        format!(
+            r#"{{"type":"message","timestamp":"2999-01-01T00:00:00.000Z","message":{{"content":[{{"type":"toolCall","name":"read","arguments":{{"path":"skill://{n}"}}}}]}}}}"#
+        )
+    };
+    let file = base.join("a.jsonl");
+    std::fs::write(&file, format!("{}\n", line("one"))).unwrap();
+
+    let mut cache = Default::default();
+    let r1 = scan_sessions_with_cache_for_test(&base, 45, &mut cache);
+    assert_eq!(r1.total_triggers, 1);
+
+    // Append one full line plus a partial (still being written) line.
+    let partial = line("three");
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&file)
+        .unwrap();
+    write!(f, "{}\n{}", line("two"), &partial[..20]).unwrap();
+    drop(f);
+    let r2 = scan_sessions_with_cache_for_test(&base, 45, &mut cache);
+    assert_eq!(
+        r2.total_triggers, 2,
+        "no double count, partial line ignored"
+    );
+
+    // Finish the partial line: it is counted exactly once.
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&file)
+        .unwrap();
+    writeln!(f, "{}", &partial[20..]).unwrap();
+    drop(f);
+    let r3 = scan_sessions_with_cache_for_test(&base, 45, &mut cache);
+    assert_eq!(r3.total_triggers, 3);
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 // ---- skill scanning: copies + issues ----
 
 fn write_skill(root: &Path, dir_name: &str, header: &str) {
