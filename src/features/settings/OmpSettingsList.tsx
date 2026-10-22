@@ -11,11 +11,14 @@ import {
 	type KeyboardEvent,
 	type ReactNode,
 } from "react";
+import { ModelSelect, type ModelExtraOption } from "../../components/ModelSelect";
+import { parseSelection } from "../../components/modelSelectLogic";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
 import type { OmpConfigEntry } from "../../lib/contracts";
 import { confirmDialog } from "../../lib/dialogs";
 import { ompConfigReset, ompConfigSet, ompProjectConfigRead } from "../../lib/ipc";
+import { useModelOptions } from "../../stores/modelCatalog";
 import { Switch } from "./Switch";
 import { defaultState, defaultText, isStringList, lookupDotPath, parseProjectConfig, toStringList } from "./ompConfigEdit";
 import { OMP_CONFIG_META, ompConfigDescription, ompConfigOptionLabel, ompConfigOptions, ompConfigTitle } from "./ompConfigMeta";
@@ -91,6 +94,35 @@ function useProjectLayer(): ProjectLayerContextValue {
 const CUSTOM_VALUE = "__custom__";
 
 const SECRET_KEY = /(?:token|password|apikey|secret)$/i;
+
+/** String settings whose value is a model selector or `@role`; edited with the model picker, not free text. */
+const MODEL_TARGET_KEYS: Record<string, true> = { "prewalk.autoTarget": true };
+
+const ROLE_TARGET_EXTRAS: ModelExtraOption[] = [
+	{ value: "@smol", label: "快速模型", hint: "@smol" },
+	{ value: "@default", label: "主力模型", hint: "@default" },
+	{ value: "@slow", label: "深度模型", hint: "@slow" },
+];
+
+function ModelTargetPicker({ current, disabled, onPick }: { current: string; disabled: boolean; onPick: (value: string) => void }) {
+	const models = useModelOptions();
+	const selector = parseSelection(current).selector;
+	return (
+		<ModelSelect
+			disabled={disabled}
+			closeOnSelect
+			allowCustom
+			widthClass="w-[380px]"
+			label={selector || "选择模型或角色"}
+			models={models}
+			currentValue={current}
+			extras={ROLE_TARGET_EXTRAS}
+			onSelect={(v) => {
+				if (v.trim() && v.trim() !== current) onPick(v.trim());
+			}}
+		/>
+	);
+}
 
 function displayValue(value: unknown): string {
 	if (value === null || value === undefined) return "未设置";
@@ -364,6 +396,14 @@ export function OmpSettingRow({ entry, onChanged }: { entry: OmpConfigEntry; onC
 				onCommit={(v) => (v === "" ? ompConfigReset(entry.key).then(changed) : ompConfigSet(entry.key, v).then(changed))}
 			/>
 		);
+	} else if (MODEL_TARGET_KEYS[entry.key] && !isStructured) {
+		control = (
+			<ModelTargetPicker
+				disabled={busy}
+				current={current}
+				onPick={(v) => void persist(v)}
+			/>
+		);
 	} else if (!isStructured) {
 		control = (
 			<CommitInput
@@ -625,15 +665,18 @@ export function OmpSections({ page, slot, only }: { page: OmpHostPage; slot?: st
 	);
 }
 
-/** Pure omp page: header, section jump chips (≥ 4 sections) and the sections. */
+/** Pure omp page: header, optional lead content, section jump chips (≥ 4 sections) and the sections. */
 export function OmpSettingsPage({
 	page,
 	title,
 	description,
+	lead,
 }: {
 	page: OmpHostPage;
 	title: string;
 	description: string;
+	/** Rendered right under the header, before the config sections. */
+	lead?: ReactNode;
 }) {
 	const groups = usePageGroups(page, undefined, undefined);
 	const rootRef = useRef<HTMLDivElement>(null);
@@ -645,6 +688,7 @@ export function OmpSettingsPage({
 	return (
 		<div ref={rootRef} className="space-y-5">
 			<SectionHeader title={title} description={description} />
+			{lead}
 			{groups.length >= 4 && (
 				<div className="flex flex-wrap gap-1.5">
 					{groups.map((g) => (
