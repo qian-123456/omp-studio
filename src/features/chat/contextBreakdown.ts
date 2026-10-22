@@ -1,8 +1,7 @@
 /**
- * Exact context categories and colors extracted from Claude Desktop App:
- * /Applications/Claude.app/Contents/Resources/ion-dist/assets/v1/c3c678d5f-Oker_KNW.js
- * /Applications/Claude.app/Contents/Resources/ion-dist/assets/v1/ce96f5751-_HRR9gXu.js
- * /Applications/Claude.app/Contents/Resources/ion-dist/assets/v1/c91b6e9db-Bl-Lrczo.js
+ * Exact context categories and colors adapted from Claude Desktop App,
+ * wired to omp-workspace's semantic design system CSS variables so the
+ * popover follows the system theme (dark, light, dracula, nord, etc.).
  */
 import type { PromptComposition } from "../../lib/contracts";
 
@@ -24,35 +23,25 @@ export interface ContextSegment {
 }
 
 /**
- * Exact CSS color tokens from Claude App's design system:
- * - categorical-1 (blue-400): #3987e5
- * - categorical-2 (orange-400): #d95926
- * - categorical-3 (aqua-400): #199e70
- * - categorical-4 (yellow-350): #c98500
- * - categorical-5 (magenta-400): #d55181
- * - categorical-7 (violet-350): #9085e9
- * - reference/tint (track / free): #32312f
+ * Maps Claude's categorical palette to the active theme's semantic CSS tokens:
+ * - categorical-1 (tools, blue): var(--status-renamed)
+ * - categorical-2 (system prompt, orange): var(--status-warning)
+ * - categorical-3 (MCP tools, green): var(--status-success)
+ * - categorical-4 (skills, yellow): warm amber/yellow blend
+ * - categorical-7 (rules, violet): var(--accent-strong)
+ * - categorical-5 (messages, magenta): magenta/purple blend
+ * - other: var(--text-dim)
+ * - reference / free / track: var(--bg-selected)
  */
-export const CLAUDE_COLORS: Record<ContextSegmentId, string> = {
-	tools: "#3987e5",
-	system: "#d95926",
-	mcp: "#199e70",
-	skills: "#c98500",
-	rules: "#9085e9",
-	messages: "#d55181",
-	other: "#6b7280",
-	free: "#32312f",
-};
-
-export const CLAUDE_NAMES: Record<ContextSegmentId, string> = {
-	tools: "System tools",
-	system: "System prompt",
-	mcp: "MCP tools",
-	skills: "Skills",
-	rules: "Rules",
-	messages: "Messages",
-	other: "Other",
-	free: "Free space",
+export const THEME_COLORS: Record<ContextSegmentId, string> = {
+	tools: "var(--status-renamed)",
+	system: "var(--status-warning)",
+	mcp: "var(--status-success)",
+	skills: "color-mix(in srgb, var(--status-warning) 70%, var(--status-success))",
+	rules: "var(--accent-strong)",
+	messages: "color-mix(in srgb, var(--status-error) 40%, var(--accent-strong))",
+	other: "var(--text-dim)",
+	free: "var(--bg-selected)",
 };
 
 export const CLAUDE_NAMES_ZH: Record<ContextSegmentId, string> = {
@@ -67,16 +56,14 @@ export const CLAUDE_NAMES_ZH: Record<ContextSegmentId, string> = {
 };
 
 /**
- * Conversion logic directly adapted from Claude's toContextUsagePayload (`s` in c3c678d5f):
+ * Conversion logic directly adapted from Claude's toContextUsagePayload:
  * filters non-empty categories, sorts by tokens descending, adds Free space as remainder.
  */
 export function buildContextSegments(
 	used: number,
 	windowSize: number,
 	comp: PromptComposition | null,
-	lang: "zh" | "en" = "zh",
 ): ContextSegment[] {
-	const labels = lang === "zh" ? CLAUDE_NAMES_ZH : CLAUDE_NAMES;
 	const usedClamped = Math.min(Math.max(0, used), windowSize);
 
 	const est = new Map<ContextSegmentId, number>();
@@ -93,7 +80,7 @@ export function buildContextSegments(
 		const raw = est.get(id) ?? 0;
 		const tokens = Math.round(raw * scale);
 		if (tokens > 0) {
-			segments.push({ id, name: labels[id], tokens, color: CLAUDE_COLORS[id] });
+			segments.push({ id, name: CLAUDE_NAMES_ZH[id], tokens, color: THEME_COLORS[id] });
 		}
 	}
 
@@ -102,9 +89,9 @@ export function buildContextSegments(
 	if (messagesTokens > 0) {
 		segments.push({
 			id: "messages",
-			name: labels.messages,
+			name: CLAUDE_NAMES_ZH.messages,
 			tokens: messagesTokens,
-			color: CLAUDE_COLORS.messages,
+			color: THEME_COLORS.messages,
 		});
 	}
 
@@ -116,9 +103,9 @@ export function buildContextSegments(
 	if (freeTokens > 0) {
 		segments.push({
 			id: "free",
-			name: labels.free,
+			name: CLAUDE_NAMES_ZH.free,
 			tokens: freeTokens,
-			color: CLAUDE_COLORS.free,
+			color: THEME_COLORS.free,
 		});
 	}
 

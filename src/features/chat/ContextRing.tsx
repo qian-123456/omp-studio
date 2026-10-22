@@ -34,7 +34,7 @@ function compactTokens(n: number): string {
 	return String(n);
 }
 
-/** Port of Claude App's collapsible sub-item row (`O` in ce96f5751). */
+/** Port of Claude App's collapsible sub-item row (`O` in ce96f5751), styled with theme variables. */
 function SubItemSection({
 	label,
 	rows,
@@ -49,19 +49,19 @@ function SubItemSection({
 		<div className="flex flex-col gap-0.5 mt-2">
 			<button
 				type="button"
-				className="flex items-center gap-1 text-[12px] leading-[15px] text-left cursor-pointer hover:text-white transition-colors"
+				className="flex items-center gap-1 text-[12px] leading-[15px] text-left cursor-pointer hover:text-[var(--text)] transition-colors"
 				onClick={() => setExpanded((v) => !v)}
 				aria-expanded={expanded}
 			>
 				<span className="size-[10px] shrink-0 flex items-center justify-center">
 					<ChevronRight
 						size={10}
-						className={`text-[#8a8985] transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+						className={`text-[var(--text-40)] transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
 					/>
 				</span>
-				<span className="text-[#8a8985] flex-1 truncate">{label}</span>
-				<span className="text-[#8a8985] shrink-0 tabular-nums">{compactTokens(totalTokens)}</span>
-				<span className="text-[#8a8985] shrink-0 tabular-nums w-[44px] text-right">
+				<span className="text-[var(--text-60)] flex-1 truncate">{label}</span>
+				<span className="text-[var(--text-40)] shrink-0 tabular-nums">{compactTokens(totalTokens)}</span>
+				<span className="text-[var(--text-40)] shrink-0 tabular-nums w-[44px] text-right">
 					{rows.length}
 				</span>
 			</button>
@@ -73,8 +73,8 @@ function SubItemSection({
 						// biome-ignore lint/suspicious/noArrayIndexKey: stable list
 						<div key={`${row.name}-${i}`} className="flex items-center gap-1 text-[12px] leading-[15px]">
 							<span className="size-[10px] shrink-0" aria-hidden="true" />
-							<span className="text-[#8a8985] flex-1 truncate">{row.name}</span>
-							<span className="text-[#8a8985] shrink-0 tabular-nums">{compactTokens(row.tokens)}</span>
+							<span className="text-[var(--text-40)] flex-1 truncate">{row.name}</span>
+							<span className="text-[var(--text-40)] shrink-0 tabular-nums">{compactTokens(row.tokens)}</span>
 							<span className="w-[44px] shrink-0" aria-hidden="true" />
 						</div>
 					))}
@@ -85,9 +85,9 @@ function SubItemSection({
 }
 
 const DETAIL_CATEGORIES: { id: PromptCategoryId; label: string }[] = [
-	{ id: "mcp", label: "MCP tools" },
+	{ id: "mcp", label: "MCP 工具" },
 	{ id: "skills", label: "Skills" },
-	{ id: "rules", label: "Rules" },
+	{ id: "rules", label: "规则文件" },
 ];
 
 interface ContextRingProps {
@@ -241,7 +241,7 @@ export function ContextRing({
 				)}
 			</button>
 
-			{/* Claude App Style Popover (ported from ion-dist PN / P / D / StackedMeter) */}
+			{/* Claude App Style Popover, styled strictly with system theme CSS variables */}
 			{open && (
 				<FloatingLayer
 					anchor={btnRef.current}
@@ -251,24 +251,26 @@ export function ContextRing({
 					ignoreRefs={[btnRef]}
 					onDismiss={() => setOpen(false)}
 					style={{
-						backgroundColor: "#20201f",
+						// Layers over solid --bg to preserve opacity in glass themes.
+						backgroundColor: "var(--bg)",
+						backgroundImage: "linear-gradient(var(--bg-panel), var(--bg-panel))",
 						width: 360,
 					}}
-					className="!border-[#373736] rounded-2xl py-2 !shadow-2xl text-[#e2e1df] flex flex-col"
+					className="border border-[var(--line)] rounded-2xl py-2 shadow-apple-card text-[var(--text)] flex flex-col"
 				>
 					{/* Header Button (P in c2d611398) */}
 					<div className="flex items-center justify-between px-3 py-1 min-h-[20px]">
-						<span className="text-[12px] leading-[15px] text-[#8a8985]">上下文窗口</span>
+						<span className="text-[12px] leading-[15px] text-[var(--text-40)]">上下文窗口</span>
 						<div className="flex items-center gap-1.5">
 							{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 && (
-								<span className="text-[12px] leading-[15px] text-[#8a8985] tabular-nums">
+								<span className="text-[12px] leading-[15px] text-[var(--text-40)] tabular-nums">
 									{compactTokens(rawTokens)} / {compactTokens(rawWindow)} ({pctInt}%)
 								</span>
 							)}
 							<button
 								type="button"
 								onClick={() => setOpen(false)}
-								className="text-[#8a8985] hover:text-[#e2e1df] p-0.5 rounded transition-colors ml-0.5"
+								className="text-[var(--text-40)] hover:text-[var(--text)] p-0.5 rounded transition-colors ml-0.5"
 								title="收起"
 							>
 								<ChevronDown size={12} />
@@ -279,8 +281,8 @@ export function ContextRing({
 					{/* Stacked Meter & Category Legend (D in ce96f5751) */}
 					{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 ? (
 						<div className="mt-1 px-3 pb-1">
-							{/* StackedMeter (O in c91b6e9db): 4px rounded-full with 1px seam */}
-							<div className="relative w-full h-[4px] rounded-full overflow-hidden bg-[#32312f]">
+							{/* StackedMeter: 4px rounded-full with 1px seam, track colored via var(--bg-selected) */}
+							<div className="relative w-full h-[4px] rounded-full overflow-hidden bg-[var(--bg-selected)]">
 								{meterSegments.map((seg) => (
 									<div
 										key={seg.id}
@@ -298,7 +300,7 @@ export function ContextRing({
 								))}
 							</div>
 
-							{/* Category Rows: 10x10 swatch with 2px radius, text-primary, text-muted, w-[44px] pct */}
+							{/* Category Rows: 10x10 swatch with 2px radius, theme-aware text & muted tokens */}
 							<div className="flex flex-col mt-2">
 								{segments.map((item, idx) => {
 									const pct = (item.tokens / rawWindow) * 100;
@@ -318,11 +320,11 @@ export function ContextRing({
 												}}
 												aria-hidden="true"
 											/>
-											<span className="text-[#e2e1df] flex-1 truncate">{item.name}</span>
-											<span className="text-[#8a8985] shrink-0 tabular-nums">
+											<span className="text-[var(--text)] flex-1 truncate">{item.name}</span>
+											<span className="text-[var(--text-40)] shrink-0 tabular-nums">
 												{compactTokens(item.tokens)}
 											</span>
-											<span className="text-[#e2e1df] shrink-0 tabular-nums w-[44px] text-right">
+											<span className="text-[var(--text)] shrink-0 tabular-nums w-[44px] text-right">
 												{pct.toFixed(1)}%
 											</span>
 										</div>
@@ -330,7 +332,7 @@ export function ContextRing({
 								})}
 							</div>
 
-							{/* Collapsible Sub-item Sections (O in ce96f5751) */}
+							{/* Collapsible Sub-item Sections */}
 							{probe &&
 								DETAIL_CATEGORIES.map((cat) => {
 									const items = probe.categories.find((c) => c.id === cat.id)?.items ?? [];
@@ -349,20 +351,20 @@ export function ContextRing({
 						</div>
 					) : (
 						<div className="mt-1 px-3 pb-1">
-							<div className="relative w-full h-[4px] rounded-full overflow-hidden bg-[#32312f]">
+							<div className="relative w-full h-[4px] rounded-full overflow-hidden bg-[var(--bg-selected)]">
 								<div
 									style={{ width: `${Math.min(100, percentage)}%` }}
 									className={clsx("h-full transition-all duration-300", barColor)}
 								/>
 							</div>
 							{usageObj && (
-								<div className="mt-2 space-y-1 text-[12px] leading-[15px] text-[#8a8985]">
+								<div className="mt-2 space-y-1 text-[12px] leading-[15px] text-[var(--text-40)]">
 									{Object.entries(usageObj)
 										.filter(([k]) => k !== "percent")
 										.map(([k, v]) => (
 											<div key={k} className="flex justify-between">
 												<span>{k}</span>
-												<span className="font-mono text-[#e2e1df]">{String(v)}</span>
+												<span className="font-mono text-[var(--text)]">{String(v)}</span>
 											</div>
 										))}
 								</div>
@@ -370,8 +372,8 @@ export function ContextRing({
 						</div>
 					)}
 
-					{/* Divider line (mx-pad-lg my-xs h-px bg-alpha-2 in c2d611398) */}
-					<div className="mx-3 my-1.5 h-px bg-[#373736]" />
+					{/* Divider line styled via var(--line) */}
+					<div className="mx-3 my-1.5 h-px bg-[var(--line)]" />
 
 					{/* Footer: See detailed breakdown link + token total + compress button */}
 					<div className="flex items-center justify-between px-3 py-1 min-h-[20px] text-[12px] leading-[15px]">
@@ -381,11 +383,11 @@ export function ContextRing({
 								setOpen(false);
 								openPromptComposition(sessionCwd);
 							}}
-							className="text-[#8a8985] hover:text-[#e2e1df] transition-colors"
+							className="text-[var(--text-40)] hover:text-[var(--text)] transition-colors"
 						>
 							查看系统提示词构成
 						</button>
-						<div className="flex items-center gap-2 text-[#8a8985]">
+						<div className="flex items-center gap-2 text-[var(--text-40)]">
 							{totalTokensStr && <span className="tabular-nums">累计 {totalTokensStr}</span>}
 							{onCompact && (
 								<button
@@ -393,7 +395,7 @@ export function ContextRing({
 									disabled={compacting || compactDisabled}
 									onClick={() => void onCompact()}
 									title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
-									className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#373736] hover:border-[#52524e] hover:text-[#e2e1df] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+									className="flex items-center gap-1 px-2 py-0.5 rounded border border-[var(--line)] text-[var(--text-60)] hover:text-[var(--text)] hover:bg-[var(--ghost-hover)] hover:border-[var(--text-30)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									{compacting ? (
 										<Loader2 size={10} className="animate-spin" />
