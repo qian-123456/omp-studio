@@ -314,7 +314,7 @@ export interface TodoCounts {
 	total: number;
 }
 
-export type BacklogKind = "idea" | "bug" | "todo";
+export type BacklogKind = "idea" | "bug";
 
 export type BacklogStatus = "inbox" | "dispatched" | "done" | "closed";
 
@@ -338,6 +338,8 @@ export interface BacklogItem {
 	projectDir: string | null;
 	createdAt: string;
 	updatedAt: string;
+	/** Moved to the trash at this time (soft delete); null = live. Purged 7 days later. */
+	deletedAt: string | null;
 }
 
 /** Patch for `backlog_update`. */
@@ -1515,7 +1517,8 @@ export interface ScheduleRun {
 export type SkillIssue =
 	| "missing_description"
 	| "description_too_long"
-	| "unreadable";
+	| "unreadable"
+	| "missing_skill_md";
 
 
 /** Which agent ecosystem's discovery root the skill was found in. */

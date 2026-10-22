@@ -37,6 +37,18 @@ export function Toaster() {
 					>
 						<Icon size={14} className="mt-0.5 shrink-0" />
 						<span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{t.text}</span>
+						{t.action && (
+							<button
+								type="button"
+								onClick={() => {
+									t.action?.onClick();
+									dismiss(t.id);
+								}}
+								className="shrink-0 rounded-full border border-[var(--border-divider)] px-2.5 py-0.5 font-medium text-[var(--accent)] transition-colors hover:bg-[var(--bg-hover)]"
+							>
+								{t.action.label}
+							</button>
+						)}
 						<button
 							type="button"
 							title="关闭"

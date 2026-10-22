@@ -34,8 +34,31 @@ pub async fn backlog_update(
 }
 
 #[tauri::command]
-pub async fn backlog_delete(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
-    store::delete(&state.db.lock(), &id)?;
+pub async fn backlog_delete(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    store::delete(&state.db.lock(), &ids)?;
+    notify_changed(&state);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn backlog_restore(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    store::restore(&state.db.lock(), &ids)?;
+    notify_changed(&state);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn backlog_purge(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    store::purge(&state.db.lock(), &ids)?;
     notify_changed(&state);
     Ok(())
 }

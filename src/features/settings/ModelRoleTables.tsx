@@ -48,6 +48,8 @@ export interface AssignmentContext {
 	write: (scope: AssignmentScope, table: AssignmentTable, name: string, value: string | null) => Promise<void>;
 	/** Role map for the shown scope (global, or project merged over global). */
 	roles: Record<string, string>;
+	/** Callers of each role in the shown scope (`roleUsers`): agents, other roles, `cycleOrder`. */
+	roleUsers: ReadonlyMap<string, readonly string[]>;
 }
 
 const THINKING_ZH: Record<string, string> = {
@@ -187,6 +189,7 @@ function InfoPanel({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext })
 					「专属模型」和「复用角色模型」都写这个字段，二选一：选模型写入模型名，选角色写入 {code("@角色名")}。
 					{row.name === "task" && "没有专属设置也没有定义里 model: 的子代理，会使用这里的模型（优先级第 3 层）。"}
 				</div>
+				{row.group === "custom" && <CustomRoleUsage name={row.name} users={ctx.roleUsers.get(row.name) ?? []} code={code} />}
 			</div>
 		);
 	}
@@ -232,6 +235,24 @@ function InfoPanel({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext })
 			<div className="text-[var(--text-dim)]">
 				本页只写第 1 层 {code(`task.agentModelOverrides.${row.name}`)}：「专属模型」写入模型名，「复用角色模型」写入{" "}
 				{code("@角色名")}；选回默认项会删除这一项，交给下面几层。
+			</div>
+		</div>
+	);
+}
+
+/** How a custom role gets called: OMP never runs it on its own, only through `@name` references. */
+function CustomRoleUsage({ name, users, code }: { name: string; users: readonly string[]; code: (text: string) => ReactNode }) {
+	return (
+		<div className="space-y-1 border-t border-[var(--border-divider)] pt-1.5">
+			<div className="font-medium">什么时候会用到它</div>
+			{users.length > 0 ? (
+				<div className="text-[var(--text-muted)]">正在使用它的：{users.join("、")}。</div>
+			) : (
+				<div className="text-[var(--status-warning)]">目前没有任何地方引用它，所以不会被调用。</div>
+			)}
+			<div className="text-[var(--text-dim)]">
+				自定义角色不会自己生效，只有被 {code(`@${name}`)} 引用时才会用到：在下方某个子代理的「复用角色模型」里选 {code(`@${name}`)}；
+				让别的角色复用它；在子代理定义文件里写 {code(`model: "@${name}"`)}；或在「备用模型与重试」页把它加入模型切换轮换。
 			</div>
 		</div>
 	);
@@ -424,8 +445,21 @@ function Summary({ row, ctx }: { row: AssignmentRow; ctx: AssignmentContext }) {
 			{ctx.scope === "project" && e.inherited && (
 				<Chip>继承全局</Chip>
 			)}
+			{row.group === "custom" && <UsageChip users={ctx.roleUsers.get(row.name) ?? []} />}
 		</>
 	);
+}
+
+/** Collapsed custom-role badge: who calls it, or a warning that nothing does. */
+function UsageChip({ users }: { users: readonly string[] }) {
+	if (users.length === 0) {
+		return (
+			<Chip tone="warning" title="自定义角色只有被 @角色名 引用时才会用到，展开后点 i 查看怎么引用">
+				未被引用，不会被调用
+			</Chip>
+		);
+	}
+	return <Chip title={users.join("、")}>{`被 ${users.length} 处使用`}</Chip>;
 }
 
 /** One 「角色分配」 table: roles and sub-agents in one list, filtered by `query`. */

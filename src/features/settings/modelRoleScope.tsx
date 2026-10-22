@@ -5,7 +5,7 @@
  * renders the bar at the top of the page; the role table, the templates, the
  * rules and the switch log all read the same scope.
  */
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
 import type { Workspace } from "../../lib/contracts";
@@ -72,7 +72,19 @@ export function useRoleScope(): RoleScope {
  * configure the 项目 option is disabled, so this row is the only place that
  * explains the scope — no second warning elsewhere.
  */
-export function RoleScopeBar({ roleScope }: { roleScope: RoleScope }) {
+export function RoleScopeBar({
+	roleScope,
+	label = "配置范围",
+	description,
+	projectTitle = "只写入所选项目的配置，未设置的角色继承全局",
+}: {
+	roleScope: RoleScope;
+	label?: string;
+	/** Replaces the default role-specific explanation (the no-project hint still wins). */
+	description?: ReactNode;
+	/** Tooltip of the 项目 option when a project is available. */
+	projectTitle?: string;
+}) {
 	const { scope, setScope, pick, setPicked, sessionCwd, workspaces, projects } = roleScope;
 	// A picked path that is no longer registered stays selectable so the select never shows a blank value.
 	const unlisted = pick !== null && pick !== sessionCwd && !workspaces.some((w) => w.path === pick);
@@ -80,14 +92,16 @@ export function RoleScopeBar({ roleScope }: { roleScope: RoleScope }) {
 	return (
 		<SettingsCard clip>
 			<SettingRow
-				label="配置范围"
+				label={label}
 				description={
-					scope === "project" && pick !== null ? (
-						<span title={pick}>
+					scope === "project" && pick === null ? (
+						"先在侧栏添加一个项目或打开一个会话。"
+					) : description !== undefined ? (
+						description
+					) : scope === "project" ? (
+						<span title={pick ?? undefined}>
 							只写入「<span className="font-medium text-[var(--text)]">{pickName}</span>」，未设置的角色继承全局。
 						</span>
-					) : scope === "project" ? (
-						"先在侧栏添加一个项目或打开一个会话。"
 					) : (
 						"对所有项目生效，不受当前会话所在项目影响。"
 					)
@@ -96,7 +110,7 @@ export function RoleScopeBar({ roleScope }: { roleScope: RoleScope }) {
 					<>
 						<Segmented<AssignmentScope>
 							size="sm"
-							aria-label="配置范围"
+							aria-label={label}
 							value={scope}
 							onChange={setScope}
 							options={[
@@ -108,7 +122,7 @@ export function RoleScopeBar({ roleScope }: { roleScope: RoleScope }) {
 									title:
 										pick === null
 											? "先在侧栏添加一个项目或打开一个会话"
-											: "只写入所选项目的配置，未设置的角色继承全局",
+											: projectTitle,
 								},
 							]}
 						/>

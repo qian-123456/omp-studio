@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentModelAssignment } from "../../lib/contracts";
-import { agentFallbackRole, type AssignmentRow, buildAssignmentRows, checkAssignmentValue, checkName, describeAliasValue, referencedRoles, resolveRoleValue } from "./agentModelAssignments";
+import { agentFallbackRole, type AssignmentRow, buildAssignmentRows, checkAssignmentValue, checkName, describeAliasValue, referencedRoles, resolveRoleValue, roleUsers } from "./agentModelAssignments";
 import { BUILTIN_ROLES } from "./modelRoles";
 
 function agent(name: string, declaredModel: string | null): AgentModelAssignment {
@@ -441,6 +441,30 @@ describe("buildAssignmentRows", () => {
 		const row = find(rows({ global: { modelRoles: { default: "g/main" } } }), "default", "role");
 		expect(row.projectValue).toBeNull();
 		expect(row.effective.inherited).toBe(false);
+	});
+});
+
+describe("roleUsers", () => {
+	it("counts only the value an agent actually applies: an override hides its definition's model", () => {
+		const global = {
+			modelRoles: { review: "p/review", fast: "p/fast" },
+			agentModelOverrides: { scout: "@review" },
+		};
+		const list = rows({ global, agents: [agent("scout", "@fast"), agent("reviewer", "@fast")] });
+		const users = roleUsers(list, [global.modelRoles], []);
+		expect(users.get("review")).toEqual(["子代理 scout"]);
+		expect(users.get("fast")).toEqual(["子代理 reviewer"]);
+	});
+
+	it("counts other roles and cycleOrder but never a role as its own user", () => {
+		const global = { modelRoles: { review: "p/review,@review", plan: "@review:high" } };
+		const users = roleUsers(rows({ global }), [global.modelRoles], ["review", "default"]);
+		expect(users.get("review")).toEqual(["角色 plan", "模型切换轮换（cycleOrder）"]);
+	});
+
+	it("leaves a role nobody references without callers", () => {
+		const global = { modelRoles: { lonely: "p/x" } };
+		expect(roleUsers(rows({ global }), [global.modelRoles], []).get("lonely")).toBeUndefined();
 	});
 });
 

@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
 use super::commands::{
-    display_skill_root, is_path_allowed, normalize_path, parse_disabled_extensions_text,
-    parse_skill_frontmatter, scan_skills_in_dir, validate_skill_dir_for_trash,
+    display_skill_root, enabled_extension_target, is_path_allowed, load_disabled_extensions_from,
+    normalize_path, parse_disabled_extensions_text, parse_skill_frontmatter,
+    resolve_disabled_extensions, scan_skills_in_dir, validate_skill_dir_for_trash,
 };
 use super::usage::{classify_line, scan_sessions_for_test};
 use crate::contracts::{SkillIssue, SkillItem, SkillProvider};
@@ -96,22 +97,107 @@ disabledExtensions:
 providers:
   foo: bar
 "#;
-    let disabled = parse_disabled_extensions_text(yaml);
+    let disabled = parse_disabled_extensions_text(yaml).unwrap();
     assert_eq!(disabled, vec!["session-autoname", "otty-integration"]);
 }
 
 #[test]
 fn test_parse_disabled_extensions_inline_yaml() {
     let yaml = r#"disabledExtensions: ["ext1", "ext2"]"#;
-    let disabled = parse_disabled_extensions_text(yaml);
+    let disabled = parse_disabled_extensions_text(yaml).unwrap();
     assert_eq!(disabled, vec!["ext1", "ext2"]);
 }
 
 #[test]
 fn test_parse_disabled_extensions_json() {
     let json = r#"{"disabledExtensions": ["foo-ext", "bar-ext"]}"#;
-    let disabled = parse_disabled_extensions_text(json);
+    let disabled = parse_disabled_extensions_text(json).unwrap();
     assert_eq!(disabled, vec!["foo-ext", "bar-ext"]);
+}
+
+#[test]
+fn test_parse_disabled_extensions_absent_vs_empty() {
+    assert_eq!(
+        parse_disabled_extensions_text("skills:\n  enabled: true\n"),
+        None
+    );
+    assert_eq!(
+        parse_disabled_extensions_text("disabledExtensions: []\n"),
+        Some(vec![])
+    );
+    assert_eq!(
+        parse_disabled_extensions_text("disabledExtensions:\nx: 1\n"),
+        Some(vec![])
+    );
+    assert_eq!(
+        parse_disabled_extensions_text(r#"{"disabledExtensions": []}"#),
+        Some(vec![])
+    );
+}
+
+fn set(items: &[&str]) -> std::collections::HashSet<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn test_disabled_extensions_project_replaces_global() {
+    let global = "disabledExtensions:\n  - a\n  - b\n";
+    let project = "disabledExtensions:\n  - c\n";
+    assert_eq!(
+        resolve_disabled_extensions(Some(global), Some(project)),
+        set(&["c"])
+    );
+}
+
+#[test]
+fn test_disabled_extensions_empty_project_reenables() {
+    let global = "disabledExtensions: [a, b]\n";
+    let project = "disabledExtensions: []\n";
+    assert_eq!(
+        resolve_disabled_extensions(Some(global), Some(project)),
+        set(&[])
+    );
+}
+
+#[test]
+fn test_disabled_extensions_absent_key_inherits_global() {
+    let global = "disabledExtensions: [a, b]\n";
+    let project = "skills:\n  enabled: true\n";
+    assert_eq!(
+        resolve_disabled_extensions(Some(global), Some(project)),
+        set(&["a", "b"])
+    );
+    assert_eq!(
+        resolve_disabled_extensions(Some(global), None),
+        set(&["a", "b"])
+    );
+}
+
+#[test]
+fn test_disabled_extensions_ancestor_project_config_ignored() {
+    let root = std::env::temp_dir().join(format!("ompws-dis-ext-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let agent = root.join("agent");
+    let parent = root.join("proj");
+    let child = parent.join("child");
+    std::fs::create_dir_all(&agent).unwrap();
+    std::fs::create_dir_all(parent.join(".omp")).unwrap();
+    std::fs::create_dir_all(&child).unwrap();
+    std::fs::write(agent.join("config.yml"), "disabledExtensions: [g]\n").unwrap();
+    std::fs::write(
+        parent.join(".omp/config.yml"),
+        "disabledExtensions: [anc]\n",
+    )
+    .unwrap();
+    assert_eq!(
+        load_disabled_extensions_from(&agent, Some(&child)),
+        set(&["g"])
+    );
+    assert_eq!(
+        load_disabled_extensions_from(&agent, Some(&parent)),
+        set(&["anc"])
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -561,4 +647,133 @@ fn test_trash_validation_resolves_symlink_to_itself() {
     assert!(outside_target.join("keep.txt").is_file());
 
     let _ = std::fs::remove_dir_all(&base);
+}
+
+// ---- hardening regressions ----
+
+fn scan_dir(root: &Path) -> Vec<SkillItem> {
+    let mut index = HashMap::new();
+    let mut skills = Vec::new();
+    scan_skills_in_dir(
+        root,
+        "project",
+        SkillProvider::Native,
+        &mut index,
+        &mut skills,
+        "./x",
+    );
+    skills
+}
+
+#[cfg(unix)]
+#[test]
+fn test_is_path_allowed_rejects_symlink_escape() {
+    let base = fresh_test_dir("symlink-escape");
+    let skill = base.join("proj").join(".omp").join("skills").join("foo");
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::write(skill.join("SKILL.md"), "---\nname: foo\n---\n").unwrap();
+    let outside = base.join("secret");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("leak.md"), "secret").unwrap();
+    std::os::unix::fs::symlink(outside.join("leak.md"), skill.join("leak.md")).unwrap();
+
+    let ok = skill.join("SKILL.md");
+    assert!(is_path_allowed(&ok, &ok.canonicalize().unwrap()));
+    let bad = skill.join("leak.md");
+    assert!(!is_path_allowed(&bad, &bad.canonicalize().unwrap()));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn test_is_path_allowed_rejects_non_markdown() {
+    let base = fresh_test_dir("non-md");
+    let skill = base.join(".omp").join("skills").join("foo");
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::write(skill.join("script.sh"), "echo").unwrap();
+    let p = skill.join("script.sh");
+    assert!(!is_path_allowed(&p, &p.canonicalize().unwrap()));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn test_parse_frontmatter_blank_line_in_block_description() {
+    let header = "---\nname: x\ndescription: >\n  first part.\n\n  second part.\nother: 1\n---\n";
+    let (name, desc) = parse_skill_frontmatter(header, "d");
+    assert_eq!(name, "x");
+    assert_eq!(desc, "first part. second part.");
+}
+
+#[test]
+fn test_bom_skill_md_parses() {
+    let root = fresh_test_dir("bom");
+    let dir = root.join("bomskill");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("SKILL.md"),
+        "\u{feff}---\nname: bom-name\ndescription: bom desc\n---\nbody\n",
+    )
+    .unwrap();
+    let skills = scan_dir(&root);
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].name, "bom-name");
+    assert_eq!(skills[0].description, "bom desc");
+    assert!(skills[0].issues.is_empty());
+    let (n, d) = parse_skill_frontmatter("\u{feff}---\nname: a\ndescription: b\n---\n", "z");
+    assert_eq!((n.as_str(), d.as_str()), ("a", "b"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn test_missing_skill_md_issue() {
+    let root = fresh_test_dir("missing-skill-md");
+    std::fs::create_dir_all(root.join("docs-only")).unwrap();
+    std::fs::write(root.join("docs-only").join("README.md"), "hi").unwrap();
+    std::fs::create_dir_all(root.join("empty")).unwrap();
+    std::fs::create_dir_all(root.join("no-md")).unwrap();
+    std::fs::write(root.join("no-md").join("a.txt"), "x").unwrap();
+    let skills = scan_dir(&root);
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].name, "docs-only");
+    assert_eq!(skills[0].description, "");
+    assert_eq!(skills[0].issues, vec![SkillIssue::MissingSkillMd]);
+    assert!(skills[0].path.ends_with("docs-only/SKILL.md"));
+    // The directory itself stays trashable-shaped (path/dir populated).
+    assert!(skills[0].dir.ends_with("docs-only"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn test_enabled_extension_target_rules() {
+    let dir = fresh_test_dir("ext-enable");
+    let disabled = dir.join("a.ts.disabled");
+    std::fs::write(&disabled, "x").unwrap();
+    let target = enabled_extension_target(&disabled).unwrap();
+    assert_eq!(target, dir.join("a.ts"));
+    std::fs::rename(&disabled, &target).unwrap();
+    assert!(target.is_file() && !disabled.exists());
+
+    // Not a .disabled file.
+    assert!(enabled_extension_target(&target).is_err());
+
+    // Target already exists.
+    let b_dis = dir.join("b.js.disabled");
+    std::fs::write(&b_dis, "x").unwrap();
+    std::fs::write(dir.join("b.js"), "y").unwrap();
+    assert!(enabled_extension_target(&b_dis).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_agent_dir_from_honors_override_and_profile() {
+    use crate::paths::agent_dir_from;
+    let home = Path::new("/h");
+    assert_eq!(agent_dir_from(None, None, home), Path::new("/h/.omp/agent"));
+    assert_eq!(
+        agent_dir_from(Some("/custom"), Some("p"), home),
+        Path::new("/custom")
+    );
+    assert_eq!(
+        agent_dir_from(Some("  "), Some("p"), home),
+        Path::new("/h/.omp/profiles/p/agent")
+    );
 }

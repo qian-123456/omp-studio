@@ -104,13 +104,15 @@ src/
       OmpPages.tsx           thin pages for omp-key-only nav ids (thinking, helper-models, tools, files, shell, subagents, memory, skills, web, …)
       RulesFilesSection.tsx  `agents-md` (nav 「规则文件」): 全局 / 当前项目 toggle over AGENTS.md, RULES.md, rules/*.md, APPEND_SYSTEM.md with 已存在/未创建 + one-click create; an existing row is a chevron button (「查看并编辑」) that expands the FileEditor inline under that row — one row at a time, missing files are plain rows with only 「创建」 (rulesFiles.ts = omp discovery paths/status)
       MemoryFilesPanel.tsx   below the 记忆 omp settings: project picker + edit memory_summary.md / MEMORY.md / skills/*/SKILL.md (delete skill), read-only raw_memories.md / rollout_summaries (memoryFiles.ts)
+      AgentDefsPanel.tsx     `subagents` lead panel: global / project agent definition files (agentDefs.ts = paths, layer resolution, `buildAgentFile`, `buildAgentDraftPrompt`); 「新建子代理」 opens NewAgentForm.tsx (name, description, prompt, tools, model → `omp_agent_write`; 「让 AI 帮我写」 starts a session with the draft prompt)
       ../FileEditor.tsx      shared file editor (edit/preview, discard, save with stamp conflict prompt 覆盖/重新载入, reveal, reload) used by both pages; fileEditorLogic.ts
       PromptCompositionSection.tsx `prompt-composition`: 系统提示词构成 — project picker (opened from the 「上下文占用明细」 popover button, preselected via `stores/promptComposition.openPromptComposition(cwd)`; else last used / Universal), category totals + per-item raw text, optimization hints, and 「让 AI 帮我优化」 (new session in a chosen workspace, default Universal; the prompt from `promptComposition.ts#buildOptimizePrompt` is prefilled via `composer.setDraft`, never sent, and instructs the AI to get user consent before changing any file)
       ShortcutRecorder.tsx   key-combo recorder → Tauri accelerator string (used by 通用 「快速记录快捷键」)
     ui.tsx                   SectionHeader, SettingsCard, SettingRow, ToggleRow, CommitInput, useSaveStatus/SaveIndicator
     useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
     settingsNav.ts           SettingsNavContext / useSettingsNav (search query + navigate)
-    AgentModelAssignmentsPanel.tsx  `omp-roles`: page header (incl. 「批量替换模型」 button) + one card holding the 配置范围 row and the 角色分配 table (agents, effective-model reasons, global/project roles, collapsed named overrides)
+    AgentModelAssignmentsPanel.tsx  `omp-roles`: page header (incl. 「添加角色」 and 「批量替换模型」 buttons) + one card holding the 配置范围 row and the 角色分配 table (agents, effective-model reasons, global/project roles, collapsed named overrides)
+    AddRoleForm.tsx          `omp-roles` inline 「添加角色」 form: new custom `modelRoles.<name>` (name + model) written to the shown scope via `omp_model_roles_set`
     FallbackChainsSection.tsx  `model-fallback`: preserved fallback-chain and role-cycle settings; no modelRoles writes
     modelReplace/            批量替换模型 dialog: usage overview grouped by model kind (missing / chat / search / judge / other; `kinds.ts` loads `model_kind_catalog`) with per-kind probe, X→Y pick (same-kind target tabs, level only for chat), per-row preview, step back-navigation, results/retry, live-session switch, history/undo; every step after the first goes back (「上一步」 + step pills) without losing source/target/level/overrides/checks, leaving the results page re-scans so a re-apply plans against disk (stale scans can't be applied), the results page's primary action returns to the overview with a fresh scan, 历史记录 always returns to the step it was opened from, and the dialog closes via ✕ / Esc / backdrop even while a write is in flight; pure value transforms in a tested module
     modelTemplates/          角色模板 + 额度自动切换 (inside `omp-roles`, below the role table, following the page-level 「配置范围」 bar owned by `RolesSection` / `modelRoleScope.tsx`): template list / role-table editor / apply preview (config path, 「将新建」 notice) / ordered quota rules with their own 作用范围 and a per-scope bottom-line template / switch log with undo, all filtered to the selected scope; pure helpers in a tested `logic.ts`
@@ -146,7 +148,7 @@ Rules for parallel work:
 | `~/.omp/agent/secrets.yml` | managed block (`# >>> omp-workspace privacy …` markers) of tracked entries WITHOUT any session cutoff for OMP's native secrets layer; user bytes preserved; not created while there are no such entries; non-sequence file ⇒ not written, status `conflict` (§8.2 fail-closed) |
 | `<repo>/.worktrees/<name>` | session worktrees (branch `omp/<name>`) and time-machine worktrees (`tm-<shortsha>`, detached) |
 
-`paths.rs` exposes `data_dir()`, `db_path()`, `global_dir()`, `spaces_dir()`, `global_dir_for(mode)`, `status_dir()`, `extension_path()`,
+`paths.rs` exposes `agent_dir()` (omp agent dir: `PI_CODING_AGENT_DIR` / profile env aware, default `~/.omp/agent`), `data_dir()`, `db_path()`, `global_dir()`, `spaces_dir()`, `global_dir_for(mode)`, `status_dir()`, `extension_path()`,
 `oneshot_dir()`, `omp_sessions_dir()`; `ensure_dirs()` is called at startup.
 
 ## 4. Shared types (`contracts.rs` ⇄ `lib/contracts.ts`)
@@ -267,10 +269,10 @@ pub struct Todo {
 }
 pub struct TodoCounts { pub open: u32, pub total: u32 }
 
-pub enum BacklogKind { Idea, Bug, Todo }
+pub enum BacklogKind { Idea, Bug }
 pub enum BacklogStatus { Inbox, Dispatched, Done, Closed }
 pub struct BacklogRef { pub kind: String /* "session" | "file" | "annotation" */, pub session_id: Option<String>, pub path: Option<String>, pub text: Option<String>, pub lines: Option<String> }
-pub struct BacklogItem { pub id: String, pub text: String, pub kind: BacklogKind, pub refs: Vec<BacklogRef>, pub status: BacklogStatus, pub target_session_id: Option<String>, pub project_dir: Option<String> /* cwd at capture; current-project-first sort */, pub created_at: String, pub updated_at: String }
+pub struct BacklogItem { pub id: String, pub text: String, pub kind: BacklogKind, pub refs: Vec<BacklogRef>, pub status: BacklogStatus, pub target_session_id: Option<String>, pub project_dir: Option<String> /* cwd at capture; current-project-first sort */, pub created_at: String, pub updated_at: String, pub deleted_at: Option<String> /* Some = in the trash (soft-deleted), purged after 7 days */ }
 
 pub struct GitFileChange { pub path: String, pub status: String /* M A D R ?? */, pub added: u32, pub deleted: u32 }
 pub struct GitSummary { pub is_repo: bool, pub branch: Option<String>, pub files: Vec<GitFileChange>, pub has_uncommitted: bool }
@@ -389,7 +391,12 @@ pub struct SkillItem {
   pub name: String, pub description: String, pub source: String /* "project" | "user" */,
   pub provider: SkillProvider /* ecosystem of the discovery root */,
   pub path: String /* SKILL.md */, pub dir: String,
+  pub root: String /* display root: "./rel" (project) or "~/…" (user) */,
+  pub copies: u32 /* discovery roots holding a skill of this name (>= 1) */,
+  pub issues: Vec<SkillIssue> /* empty = healthy */,
+  pub prompt_chars: u32 /* name + description chars + 4 */,
 }
+pub enum SkillIssue { MissingDescription, DescriptionTooLong, Unreadable, MissingSkillMd } // snake_case; MissingSkillMd = dir has no SKILL.md but contains other .md files
 pub struct ExtensionItem {
   pub name: String, pub path: String, pub source: String /* "project" | "user" */, pub enabled: bool,
 }
@@ -494,7 +501,7 @@ CREATE TABLE todos(id TEXT PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL
   title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL DEFAULT '{}', priority INTEGER NOT NULL DEFAULT 0,
   dedupe_key TEXT UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE backlog(id TEXT PRIMARY KEY, text TEXT NOT NULL, kind TEXT NOT NULL, refs TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL,
-  target_session_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);  -- later migration adds: backlog.project_dir TEXT
+  target_session_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);  -- later migrations add: backlog.project_dir TEXT, backlog.deleted_at TEXT (soft delete / trash)
 CREATE TABLE summaries(session_id TEXT PRIMARY KEY, summary TEXT NOT NULL, upto_offset INTEGER NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- single row key='settings' holding Settings JSON
 CREATE TABLE mobile_devices(token_hash TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, last_seen_at TEXT);
@@ -541,7 +548,7 @@ CREATE TABLE model_switch_log(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, rul
   edits TEXT NOT NULL, previous_template_id TEXT, session_results TEXT NOT NULL DEFAULT '[]', undone_at TEXT);
 -- v18: each of the three tables above gained `scope TEXT NOT NULL DEFAULT 'global'` ('global' or an absolute project directory)
 ```
-Use a `user_version` pragma for migrations (current: v18; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`; v17 adds the three `model_*` template/rule/log tables; v18 adds their `scope` column, added only when missing so a rewound `user_version` re-migrates cleanly). `db.rs` also provides `load_settings`/`save_settings` and
+Use a `user_version` pragma for migrations (current: v19; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`; v17 adds the three `model_*` template/rule/log tables; v18 adds their `scope` column, added only when missing so a rewound `user_version` re-migrates cleanly; v19 adds `backlog.deleted_at` and converts `backlog.kind = 'todo'` rows to `idea`). `db.rs` also provides `load_settings`/`save_settings` and
 `ensure_global_workspace(conn)` (creates the single global workspace row `global`/`~/.omp-workspace/global`, owned by
 the `chat` space). v11 moves the global row and every session group (and grouped sessions) to `chat` and drops the
 v10 per-mode `global:<mode>` rows (their dirs stay on disk).
@@ -624,6 +631,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `omp_files.rs` — confined, conflict-checked editing of omp-owned files (settings 「记忆文件」 / 「规则文件」). A *stamp* (`<mtime_ns>-<len>`) accompanies every read; writers pass it back and a mismatch is refused with an error starting `CONFLICT:` (nothing written). `StampedText { content: Option<String>, stamp: Option<String> }` (None = missing).
   - Memory (root `~/.omp/agent/memories/<slug>/`, slug = single path component, symlink-escape checked): `omp_memory_projects() -> Vec<String>`, `omp_memory_files(slug) -> Vec<{rel, editable}>`, `omp_memory_read(slug, rel) -> StampedText`, `omp_memory_write(slug, rel, content, expected_stamp) -> Option<String>` (editable + existing files only: `memory_summary.md`, `MEMORY.md`, `skills/<n>/SKILL.md`; never creates), `omp_memory_delete_skill(slug, name)`. `raw_memories.md` and `rollout_summaries/*.md` are read-only.
   - Rules: `omp_rule_read(path) -> StampedText`, `omp_rule_write(path, content, expected_stamp) -> Option<String>` (creates parent dirs; `expected_stamp = None` means "must not exist"). Path must be `AGENTS.md`, `RULES.md`, `APPEND_SYSTEM.md` or `<dir>/rules/*.md|.mdc`. Wrappers in `src/lib/ipc.ts` (`ompMemory*`, `ompRule*`).
+  - Agents: `omp_agent_read(path) -> StampedText`, `omp_agent_write(path, content, expected_stamp) -> Option<String>` (creates parent dirs; `expected_stamp = None` means "must not exist"). Path must be `<dir>/agents/*.md` (global `~/.omp/agent/agents` or project `.omp/agents`). Wrappers in `src/lib/ipc.ts` (`ompAgent*`).
 - `save_clipboard_image(base64_png) -> String` — writes pasted image PNG bytes to the durable `~/.omp-workspace/images/<ts>.png` (`paths::images_dir()`, asset-protocol scoped; the legacy `$APPCACHE/ompws-clip/` stays readable); `save_clipboard_file(base64_data, file_name?) -> String` — the non-image analogue for pasted/dropped File bytes with no filesystem path (`$APPCACHE/ompws-clip-files/<ts>-<name>`)
 - Startup (`backlog::init`): `backlog::images::migrate` copies images referenced by backlog rows (`[图片: path]` tags, `image` refs) into `~/.omp-workspace/images/` and rewrites those paths; idempotent, originals kept, omp session files untouched. Composer image attachments persist in localStorage (`omp_composer_images`) next to drafts. Scheduled-task instructions carry images as `[Image #N: path]` text inside `Schedule.prompt` (no schema change).
 - `import_image_file(path: String) -> String` — copies an existing image file (Finder drop/paste, temp screenshots, files outside the asset scope) into `~/.omp-workspace/images/<ts>.<ext>` so its thumbnail loads and it outlives the source; returns the copy's path (an image already inside `images/` or the legacy `ompws-clip` is returned unchanged; non-files error). Frontend wrapper: `importImageFile` in `src/lib/ipc.ts`
@@ -637,7 +645,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `summary_get(session_id, ensure: bool) -> Option<String>`
 - `local_rows_get(session_id) -> JSON array` (opaque to Rust; `[]` when none), `local_rows_set(session_id, rows: JSON array)` (empty array deletes the row; > 2 MiB rejected)
 - `diagnose_build_prompt(target_session_id) -> String`
-- `backlog_list() -> Vec<BacklogItem>`, `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(id)`, `backlog_build_prompt(ids: Vec<String>) -> String` (one item → full template; several → one preamble + compact numbered list + one closing)
+- `backlog_list() -> Vec<BacklogItem>` (ALL rows, including trashed ones with `deletedAt` set; the UI filters), `backlog_add(text, kind, refs: Vec<BacklogRef>, project_dir: Option<String>) -> BacklogItem`, `backlog_update(id, patch: {text?, kind?, status?, targetSessionId?, refs?}) -> BacklogItem`, `backlog_delete(ids: Vec<String>)` (soft delete: sets `deleted_at`), `backlog_restore(ids)` (clears `deleted_at`), `backlog_purge(ids)` (hard delete); each emits `backlog:changed` once. `backlog::init` first moves finished (done|closed) rows last updated more than 30 days ago into the trash, then hard-deletes rows trashed more than 7 days ago. Trashed rows stay in the table, so the storage image GC still protects their images. `backlog_build_prompt(ids: Vec<String>) -> String` (one item → full template; several → one preamble + compact numbered list + one closing)
 - `notify_test()`
 
 **E — mobile / terminal:**
@@ -669,6 +677,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 **F — skills & extensions (技能与扩展):**
 - `skills_list(cwd: Option<String>) -> SkillsCatalog`
 - `skills_read(path: String) -> String`
+- `skills_usage(days: u32) -> SkillUsageReport` — per-skill trigger counts scanned from `<agent dir>/sessions`
+- `extension_enable_file(cwd: Option<String>, path: String)` — re-enables a `.disabled`-suffixed extension by renaming `<name>.<ext>.disabled` → `<name>.<ext>`; `path` must match an entry of `skills_list(cwd).extensions`, end in `.disabled`, and the target must not exist
 - `skills_trash(dir: String)` — moves a skill directory to the OS Trash (validated to be a direct child of a known skill root)
 
 **D — MCP servers & plugins (settings):**
@@ -1242,11 +1252,12 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 ### G — Skills & extensions catalog (backend + frontend)
 - Discovery roots:
   - Project roots (walking up from `cwd` up to 5 levels or `.git`): `.omp/skills`, `.agents/skills`, `.agent/skills`, `.claude/skills`, `.codex/skills`, `.github/skills`; extensions in `.omp/extensions`.
-  - User global roots: `~/.omp/agent/skills`, `~/.omp/agent/managed-skills`, `~/.agents/skills`, `~/.agent/skills`, `~/.claude/skills`, `~/.codex/skills`; extensions in `~/.omp/agent/extensions`.
+  - User global roots: `<agent dir>/skills`, `<agent dir>/managed-skills`, `~/.agents/skills`, `~/.agent/skills`, `~/.claude/skills`, `~/.codex/skills`; extensions in `<agent dir>/extensions`. `<agent dir>` is `paths::agent_dir()` (shared `pub(crate)` helper, also used by MCP/settings): `PI_CODING_AGENT_DIR` if set, else `~/.omp/profiles/<name>/agent` when `OMP_PROFILE`/`PI_PROFILE` is set, else `~/.omp/agent`. Skills config (`config.yml`/`settings.json`) and usage sessions are read from the same dir.
+  - A non-hidden directory under a root without `SKILL.md` but containing at least one `.md` file is listed with issue `missing_skill_md`; empty dirs / dirs without `.md` are skipped.
 - Cheap scanning: frontmatter parsing extracts `name` and `description` from the YAML header of `SKILL.md` without loading entire files; fallback to directory name when name is missing.
 - Invocation syntax: slash command `/skill:<name> [arguments]` (registered in omp) or `skill://<name>` URI. UI button inserts `/skill:<name> ` directly into active session composer draft and auto-focuses it.
-- Read path restriction: `skills_read` strictly verifies `is_path_allowed`: target must be a `.md` file, strictly contained within recognized project skill directory structures or standard user home skill roots. Rejects directory traversal (`..`) and paths outside allowed skill roots.
-- Extension disablement: checks `disabledExtensions` array in global/project config (`config.yml` / `settings.json`) matching extension names, module IDs (`extension-module:<name>`), or file paths; files ending in `.disabled` are also treated as disabled. Toggled via `omp_config_set`.
+- Read path restriction: `skills_read` strictly verifies `is_path_allowed`: target must be a `.md` file, and its *resolved* (canonical) path must lie inside a canonicalized user skill root or a `<.omp|.agents|.agent|.claude|.codex|.github>/skills/<skill>` project structure — a symlink inside a skill cannot reach files outside the roots. The one exception is a skill directory (direct child of a root) that is itself a symlink: files are readable only within its own resolved target. Rejects directory traversal (`..`) and paths outside allowed skill roots.
+- Extension disablement: the backend (`load_disabled_extensions`) is the single source of truth for `ExtensionItem.enabled`, with omp's layered semantics: the global list is `<agent_dir>/config.yml` `disabledExtensions` (legacy `settings.json` only when `config.yml` is absent); `<cwd>/.omp/config.yml` is the only project layer (no ancestor walk) and, when it contains a `disabledExtensions` key (even `[]`), its list **replaces** the global one rather than merging. Entries match extension names, module IDs (`extension-module:<name>`), file paths or file names; files ending in `.disabled` are also treated as disabled (re-enabled via `extension_enable_file`, since config cannot override a filename suffix). The frontend uses the returned `enabled` as-is. Toggled via `omp_config_set`.
 - Frontend `SkillsPage` (`centerView === "skills"`): single-column "Skills 管理" center page — stat cards (全部/近期活跃/在吃灰/有问题), resident-context budget meter (~15k chars), source/status segmented filters plus sort menu, a table (name+issues+copies badges, install root, `N 天触发`, last used, row actions), a right-side detail drawer with rendered `skills_read` markdown, and an extensions tab with enable toggles. Usage stats come from `skills_usage`; the page degrades to `—` when it is unavailable. The right dock is hidden on this view (see `CENTER_WITHOUT_RIGHT_PANEL`).
 - Enablement: the page loads `skills.*` + `disabledExtensions` via `omp_config_list` into `skillConfig` and mirrors OMP's session-start filter (`resolveSkillEnablement` in store.ts): `skills.enabled` → `disabledExtensions` `skill:<name>` → per-source `skills.enable*` toggle (mapped from `SkillProvider` + source scope) → `skills.ignoredSkills` globs (`*`/`?`, single-segment, anchored, case-sensitive) → `skills.includeSkills` allowlist. The table's 启用 switch writes via `omp_config_set` with optimistic update + rollback; enable also removes an exact-name ignoredSkills entry. Disabled rows render dimmed with a reason badge; the budget meter counts enabled skills only; the status filter gains 已停用.
 - `skills_trash(dir)`: `validate_skill_dir_for_trash` accepts only absolute paths that are a direct child of a known skill root (the `is_path_allowed` root list or any `<x>/.omp|.agents|.agent|.claude|.codex|.github/skills`), never the root itself; `symlink_metadata` gates existence so symlinks are trashed as the link (the `trash` crate canonicalizes the parent only). Runs in `spawn_blocking`; UI confirms via FloatingLayer popover (row) / inline panel (drawer) and notes surviving same-name copies when `copies > 1`.

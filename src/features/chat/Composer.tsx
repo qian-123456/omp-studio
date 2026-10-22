@@ -15,7 +15,7 @@ import {
 	X,
 } from "lucide-react";
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { clipboardFilePaths, importImageFile, listWorkspaceFiles, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, skillsList, validatePath } from "../../lib/ipc";
+import { clipboardFilePaths, importImageFile, listWorkspaceFiles, ompConfigList, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, skillsList, validatePath } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment, SessionSnapshot } from "../../lib/contracts";
@@ -149,6 +149,7 @@ import { MAX_SIDE_CHAT_DEPTH } from "../sidechat/depth";
 import { useUi } from "../../stores/ui";
 import { hasLiveUserActivity, useLive, type SlashCommand } from "../../stores/live";
 import { skillCommandsFromCatalog } from "./slash/skillCatalog";
+import { DEFAULT_SKILL_CONFIG, parseSkillConfig } from "../../lib/skillEnablement";
 import { useSessions } from "../../stores/sessions";
 import { useHeldQueue } from "./heldQueue";
 import { abortTurn, interruptAndWait, linkSentSecrets, sendPrompt, useAbortState } from "./send";
@@ -685,9 +686,13 @@ export function Composer({
 	useEffect(() => {
 		if (!wantsDiskSkills) return;
 		let cancelled = false;
-		void skillsList(skillsCwd)
-			.then((cat) => {
-				if (!cancelled) setDiskSkills(skillCommandsFromCatalog(cat.skills));
+		void Promise.all([
+			skillsList(skillsCwd),
+			// Config failure falls back to all-enabled defaults.
+			Promise.resolve().then(() => ompConfigList()).then(parseSkillConfig, () => DEFAULT_SKILL_CONFIG),
+		])
+			.then(([cat, cfg]) => {
+				if (!cancelled) setDiskSkills(skillCommandsFromCatalog(cat.skills, cfg));
 			})
 			.catch((err) => console.warn("[composer] skills list failed", err));
 		return () => {

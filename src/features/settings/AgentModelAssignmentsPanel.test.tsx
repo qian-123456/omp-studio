@@ -15,8 +15,10 @@ vi.mock("@tauri-apps/api/app", () => ({ getVersion: vi.fn(() => Promise.resolve(
 vi.mock("../../lib/ipc", () => ({
 	ompModelRolesRead: rolesRead,
 	ompModelRolesSet: rolesSet,
+	ompConfigList: vi.fn(() => Promise.resolve({ found: true, entries: [] })),
 }));
 
+import { useModelCatalog } from "../../stores/modelCatalog";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { AgentModelAssignmentsPanel } from "./AgentModelAssignmentsPanel";
@@ -92,5 +94,55 @@ describe("模型角色 scope row", () => {
 		fireEvent.click(reload);
 
 		await waitFor(() => expect(rolesRead.mock.calls.length).toBe(before + 1));
+	});
+});
+
+describe("模型角色 添加角色", () => {
+	beforeEach(() => {
+		// The model picker's FloatingLayer measures its anchor with ResizeObserver, which jsdom lacks.
+		vi.stubGlobal(
+			"ResizeObserver",
+			class {
+				observe() {}
+				unobserve() {}
+				disconnect() {}
+			},
+		);
+		useModelCatalog.setState({ models: [], refresh: () => Promise.resolve() });
+	});
+
+	it("writes a new custom role into the shown scope and lists it", async () => {
+		rolesSet.mockResolvedValue({
+			...SNAPSHOT,
+			global: { ...SNAPSHOT.global, modelRoles: { default: "openai/gpt-5", reviewer: "openai/gpt-5.5" } },
+		});
+		render(<Harness />);
+		await waitFor(() => expect(screen.getByTestId("role-table")).toBeTruthy());
+
+		fireEvent.click(screen.getByRole("button", { name: /添加角色/ }));
+		fireEvent.change(screen.getByLabelText("新角色名称"), { target: { value: "reviewer" } });
+		fireEvent.click(screen.getByRole("button", { name: /选择模型/ }));
+		const search = screen.getByPlaceholderText("搜索模型，或直接输入模型标识…");
+		fireEvent.change(search, { target: { value: "openai/gpt-5.5" } });
+		fireEvent.keyDown(search, { key: "Enter" });
+		fireEvent.click(screen.getByRole("button", { name: "添加" }));
+
+		await waitFor(() => expect(screen.queryByTestId("add-role-form")).toBeNull());
+		expect(rolesSet).toHaveBeenCalledWith(null, "global", "modelRoles", "reviewer", "openai/gpt-5.5", null);
+		const row = document.querySelector('[data-row-kind="role"][data-row-name="reviewer"]');
+		// Nothing references the new role yet, so the row says it will not be called.
+		expect(row?.textContent).toContain("未被引用，不会被调用");
+	});
+
+	it("refuses a name that is already a role without writing", async () => {
+		render(<Harness />);
+		await waitFor(() => expect(screen.getByTestId("role-table")).toBeTruthy());
+
+		fireEvent.click(screen.getByRole("button", { name: /添加角色/ }));
+		fireEvent.change(screen.getByLabelText("新角色名称"), { target: { value: "smol" } });
+		fireEvent.click(screen.getByRole("button", { name: "添加" }));
+
+		expect(screen.getByRole("alert").textContent).toContain("已有角色「smol」");
+		expect(rolesSet).not.toHaveBeenCalled();
 	});
 });

@@ -16,7 +16,6 @@ pub fn kind_label(kind: BacklogKind) -> &'static str {
     match kind {
         BacklogKind::Idea => "idea",
         BacklogKind::Bug => "bug report",
-        BacklogKind::Todo => "task",
     }
 }
 
@@ -123,7 +122,6 @@ fn kind_tag(kind: BacklogKind) -> &'static str {
     match kind {
         BacklogKind::Idea => "idea",
         BacklogKind::Bug => "bug",
-        BacklogKind::Todo => "task",
     }
 }
 
@@ -204,7 +202,7 @@ mod tests {
                 let kind = if i % 2 == 0 {
                     BacklogKind::Bug
                 } else {
-                    BacklogKind::Todo
+                    BacklogKind::Idea
                 };
                 (
                     kind,
@@ -221,7 +219,7 @@ mod tests {
         );
         assert_eq!(out.matches("When done, report per item").count(), 1);
         assert!(!out.contains("Please take on"));
-        assert!(out.contains("## 1 [task]\nbody") && out.contains("## 2 [bug]"));
+        assert!(out.contains("## 1 [idea]\nbody") && out.contains("## 2 [bug]"));
         assert!(out.starts_with("Please handle") && out.ends_with("verified it."));
     }
 

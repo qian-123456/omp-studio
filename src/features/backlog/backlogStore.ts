@@ -18,20 +18,20 @@ export interface BacklogEditBuffer {
 }
 
 const DRAFT_KEY = "ompws:backlog-draft";
-const CAPTURE_KEY = "ompws:backlog-capture-draft";
 const EDIT_KEY = "ompws:backlog-edit-buffer";
 const LAST_KIND_KEY = "ompws:backlog-last-kind";
 const CAPTURE_PROJECT_KEY = "ompws:backlog-capture-project";
-const KINDS: readonly BacklogKind[] = ["todo", "bug", "idea"];
+const KINDS: readonly BacklogKind[] = ["bug", "idea"];
 
 const isKind = (v: unknown): v is BacklogKind => KINDS.includes(v as BacklogKind);
 
 function readLastKind(): BacklogKind {
 	try {
+		// Includes legacy stored "todo" (kind removed): anything unknown falls back to idea.
 		const v = localStorage.getItem(LAST_KIND_KEY);
-		return isKind(v) ? v : "todo";
+		return isKind(v) ? v : "idea";
 	} catch {
-		return "todo";
+		return "idea";
 	}
 }
 
@@ -90,10 +90,6 @@ interface BacklogState {
 	draft: BacklogDraft;
 	setDraft(patch: Partial<BacklogDraft>): void;
 	clearDraft(): void;
-	/** Quick-capture modal input, persisted so a page reload does not lose it. */
-	captureDraft: BacklogDraft;
-	setCaptureDraft(patch: Partial<BacklogDraft>): void;
-	clearCaptureDraft(): void;
 	/** Unsaved edit of an existing item; dropped on load() if the item is gone. */
 	editBuffer: BacklogEditBuffer | null;
 	setEditBuffer(buf: BacklogEditBuffer): void;
@@ -143,16 +139,6 @@ export const useBacklog = create<BacklogState>((set, get) => ({
 	clearDraft: () => {
 		set({ draft: { text: "", kind: get().lastKind, images: [] } });
 		write(DRAFT_KEY, null);
-	},
-	captureDraft: readDraft(CAPTURE_KEY, initialLastKind),
-	setCaptureDraft: (patch) => {
-		const captureDraft = { ...get().captureDraft, ...patch };
-		set({ captureDraft });
-		write(CAPTURE_KEY, JSON.stringify(captureDraft));
-	},
-	clearCaptureDraft: () => {
-		set({ captureDraft: { text: "", kind: get().lastKind, images: [] } });
-		write(CAPTURE_KEY, null);
 	},
 	editBuffer: readEditBuffer(),
 	setEditBuffer: (buf) => {

@@ -428,6 +428,9 @@ export const ompMemoryDeleteSkill = (slug: string, name: string) =>
 export const ompRuleRead = (path: string) => invoke<StampedText>("omp_rule_read", { path });
 export const ompRuleWrite = (path: string, content: string, expectedStamp: string | null) =>
 	invoke<string | null>("omp_rule_write", { path, content, expectedStamp });
+export const ompAgentRead = (path: string) => invoke<StampedText>("omp_agent_read", { path });
+export const ompAgentWrite = (path: string, content: string, expectedStamp: string | null) =>
+	invoke<string | null>("omp_agent_write", { path, content, expectedStamp });
 
 export const fsReadDir = (path: string) =>
 	invoke<DirEntry[]>("fs_read_dir", { path });
@@ -517,8 +520,17 @@ export const backlogAdd = (
 export const backlogUpdate = (id: string, patch: BacklogPatch) =>
 	invoke<BacklogItem>("backlog_update", { id, patch });
 
-export const backlogDelete = (id: string) =>
-	invoke<void>("backlog_delete", { id });
+/** Soft delete: moves items to the trash (sets `deletedAt`). */
+export const backlogDelete = (ids: string[]) =>
+	invoke<void>("backlog_delete", { ids });
+
+/** Takes items out of the trash; they return to their previous status. */
+export const backlogRestore = (ids: string[]) =>
+	invoke<void>("backlog_restore", { ids });
+
+/** Permanently deletes items (trash "彻底删除" / "清空废纸篓"). */
+export const backlogPurge = (ids: string[]) =>
+	invoke<void>("backlog_purge", { ids });
 
 export const backlogBuildPrompt = (ids: string[]) =>
 	invoke<string>("backlog_build_prompt", { ids });
@@ -877,6 +889,10 @@ export const pluginSetEnabled = (
 /** Permanently delete one discovered extension module (file or index dir). */
 export const extensionDelete = (path: string, cwd?: string | null) =>
 	invoke<void>("extension_delete", { cwd: cwd ?? null, path });
+
+/** Re-enable a `.disabled`-suffixed extension by renaming it back (same dir). */
+export const extensionEnableFile = (path: string, cwd?: string | null) =>
+	invoke<void>("extension_enable_file", { cwd: cwd ?? null, path });
 
 /** Resolve the configured omp binary, probe `omp --version`, and report agent-dir paths. */
 export const ompInfo = () => invoke<import("./contracts").OmpInfo>("omp_info");

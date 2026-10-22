@@ -33,6 +33,18 @@ describe("right tab persistence", () => {
 		expect(useUi.getState().rightTab).toBe("git");
 	});
 
+	it("closing the last tab collapses the whole panel; closing a non-last tab keeps it open", async () => {
+		const { useUi } = await import("./ui");
+		useUi.getState().setRightTab("git");
+		useUi.getState().setRightTab("plan");
+		useUi.getState().closeRightTab("plan");
+		expect(useUi.getState().rightOpen).toBe(true);
+		useUi.getState().closeRightTab("git");
+		expect(useUi.getState().rightOpen).toBe(false);
+		expect(useUi.getState().rightTab).toBeNull();
+		expect(JSON.parse(localStorage.getItem("ompws:right-by-mode") ?? "{}").code.open).toBe(false);
+	});
+
 	it("seeds the Code area from the legacy global keys; other areas start closed", async () => {
 		localStorage.setItem("ompws:right-open", "true");
 		localStorage.setItem("ompws:right-tabs", JSON.stringify(["git"]));

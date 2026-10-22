@@ -513,3 +513,59 @@ export const OMP_CONFIG_DESC_ZH: Record<string, string> = {
 	"worktree.cleanSource": "用 /wt 新建工作树时，把改动带过去之后，还原原目录里已跟踪的改动并删除未跟踪的文件。",
 	"worktree.clone": "新建的工作树以写时复制的方式克隆当前目录，这样 node_modules、target 等被忽略的构建产物也会一起带过去。文件系统不支持克隆时退回普通检出。",
 };
+
+/**
+ * Enum keys whose full description above spells out every choice. The settings row
+ * shows only `lead` plus the sentence for the value that is currently in effect;
+ * the full text stays in OMP_CONFIG_DESC_ZH for search.
+ */
+const OMP_CONFIG_VALUE_DESC_ZH: Record<string, { lead: string; byValue: Record<string, string> }> = {
+	"tools.approvalMode": {
+		lead: "工具调用的默认审批行为。",
+		byValue: {
+			"always-ask": "当前「每步必问」：只自动批准只读工具，改文件和执行命令都要先确认。",
+			write: "当前「写操作」：自动批准读取与工作区写入，执行命令前要确认。",
+			yolo: "当前「完全自动」：自动批准所有工具（用户策略仍可拦截）。",
+		},
+	},
+	"hindsight.scoping": {
+		lead: "记忆库怎么划分。",
+		byValue: {
+			global: "当前「全局」：所有项目共用一个库。",
+			"per-project": "当前「按项目」：每个项目各用独立的库，互不可见。",
+			"per-project-tagged": "当前「按项目（带标签）」：共用一个库但给记忆打上项目标签，回忆时项目记忆和全局记忆一起出现。",
+		},
+	},
+	"mnemopi.scoping": {
+		lead: "记忆库怎么划分。",
+		byValue: {
+			global: "当前「全局」：所有项目共用。",
+			"per-project": "当前「按项目」：每个项目独立，互不可见。",
+			"per-project-tagged": "当前「按项目（带标签）」：写入时按项目隔离，回忆时可同时看到全局记忆。",
+		},
+	},
+	"claudeResets.autoRedeem": {
+		lead: "额度用完卡住时，是否自动使用已有的 Claude 额度重置券。",
+		byValue: {
+			unset: "当前「未设置」：第一次使用前先问你。",
+			yes: "当前「是」：直接使用。",
+			no: "当前「否」：不使用。",
+		},
+	},
+	"codexResets.autoRedeem": {
+		lead: "额度用完卡住且没有其他账号可接手时，是否自动使用已保存的 Codex 额度重置，也会抢救即将过期的重置券。",
+		byValue: {
+			unset: "当前「未设置」：第一次使用前先问你。",
+			yes: "当前「是」：直接使用。",
+			no: "当前「否」：不使用。",
+		},
+	},
+};
+
+/** Description narrowed to the effective value; null when `key` has no per-value text or `value` is unknown. */
+export function ompConfigValueDescription(key: string, value: unknown): string | null {
+	const entry = OMP_CONFIG_VALUE_DESC_ZH[key];
+	if (!entry || typeof value !== "string") return null;
+	const text = entry.byValue[value];
+	return text ? `${entry.lead}${text}` : null;
+}

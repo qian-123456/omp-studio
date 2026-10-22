@@ -46,7 +46,14 @@ export function installEscapeGuard(): () => void {
 	return () => window.removeEventListener("keydown", onEscapeKeydown, true);
 }
 
+/** One Cmd+W press must act once: a duplicate native event must not fall through to "hide" after the tab just closed. */
+const CLOSE_DEBOUNCE_MS = 250;
+let lastCloseAt = 0;
+
 function closeActive(): void {
+	const now = Date.now();
+	if (now - lastCloseAt < CLOSE_DEBOUNCE_MS) return;
+	lastCloseAt = now;
 	const ui = useUi.getState();
 	const { rightTab, closeRightTab } = ui;
 	// Mirrors App's `rightVisible`: full-width views hide the dock, so there is no tab to close.

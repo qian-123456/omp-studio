@@ -2,7 +2,7 @@
 //! the `DispatchDialog` dispatch flow in `IdeasCapsule.tsx`.
 //!
 //! ## Routes
-//! - `GET /ideas` → `BacklogItem[]` (createdAt desc, same as `backlog_list`).
+//! - `GET /ideas` → `BacklogItem[]` (createdAt desc, trashed rows excluded).
 //! - `POST /ideas` `{text, kind, projectDir?, sessionIds?: string[], imagePaths?: string[]}`
 //!   → `BacklogItem`. `sessionIds` become `session` refs; `imagePaths` must point
 //!   inside the `images` dir (i.e. results of `POST /ideas/images`) and
@@ -11,7 +11,7 @@
 //! - `PATCH /ideas/{id}` `{text?, kind?, status?, targetSessionId?}` (= the
 //!   `BacklogPatch` of `backlog_update`) → updated `BacklogItem`; 404 unknown id;
 //!   `targetSessionId: ""` clears the link.
-//! - `DELETE /ideas/{id}` → `{ok: true}`; 404 unknown id.
+//! - `DELETE /ideas/{id}` → `{ok: true}` (soft delete to the trash); 404 unknown id.
 //! - `POST /ideas/images` — raw image bytes (≤20 MiB, no multipart) → `{path}`.
 //!   Stored under `~/.omp-workspace/images/<ts>-<rand>.<ext>` (`paths::images_dir()`), the same directory
 //!   the desktop `save_clipboard_image` (used by `IdeaImages.tsx`) writes to;
@@ -178,7 +178,11 @@ async fn list_ideas<B: Backend>(State(ctx): State<Arc<Ctx<B>>>) -> ApiResult<Vec
     let st = state(&ctx)?;
     let items = {
         let db = st.db.lock();
-        store::list(&db).map_err(internal)?
+        store::list(&db)
+            .map_err(internal)?
+            .into_iter()
+            .filter(|i| i.deleted_at.is_none())
+            .collect::<Vec<_>>()
     };
     Ok(Json(items))
 }
@@ -252,7 +256,7 @@ async fn delete_idea<B: Backend>(
         if store::get(&db, &id).map_err(internal)?.is_none() {
             return Err(not_found());
         }
-        store::delete(&db, &id).map_err(internal)?;
+        store::delete(&db, std::slice::from_ref(&id)).map_err(internal)?;
     }
     backlog::notify_changed(st);
     Ok(Json(json!({ "ok": true })))
@@ -331,7 +335,10 @@ async fn dispatch<B: Backend>(
     {
         let db = st.db.lock();
         for id in ids {
-            let Some(item) = store::get(&db, id).map_err(internal)? else {
+            let Some(item) = store::get(&db, id)
+                .map_err(internal)?
+                .filter(|i| i.deleted_at.is_none())
+            else {
                 return Err(not_found());
             };
             items.push(item);

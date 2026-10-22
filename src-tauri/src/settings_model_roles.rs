@@ -185,7 +185,7 @@ impl Ctx {
             }
         };
         Ok(Self {
-            agent_dir: crate::settings_mcp::agent_dir(),
+            agent_dir: crate::paths::agent_dir(),
             home,
             project_dir,
         })

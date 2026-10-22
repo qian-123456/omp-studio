@@ -16,7 +16,7 @@ import {
 	Bell,
 	AlertCircle,
 	Archive,
-	BookOpen,
+	Gauge,
 	Boxes,
 	Check,
 	ChevronDown,
@@ -56,6 +56,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import type { Anchor } from "../../components/FloatingLayer";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { openSettingsTarget } from "../settings/settingsTargets";
 import { HoverScrollText } from "../../components/HoverScrollText";
 import type {
 	SessionGroup,
@@ -2447,17 +2448,12 @@ export function SessionSidebar() {
 				</button>
 				<button
 					type="button"
-					onClick={() => setCenter("guide")}
-					aria-label="使用说明"
-					title="使用说明"
-					className={clsx(
-						"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
-						centerView === "guide"
-							? "bg-[var(--bg-active-fill)] text-[var(--text)] shadow-xs hairline"
-							: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
-					)}
+					onClick={() => openSettingsTarget("quota")}
+					aria-label="订阅与配额"
+					title="订阅与配额"
+					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 				>
-					<BookOpen size={17} strokeWidth={1.75} />
+					<Gauge size={17} strokeWidth={1.75} />
 				</button>
 			</div>
 

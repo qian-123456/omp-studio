@@ -59,7 +59,6 @@ export const NAV_GROUPS: NavGroup[] = [
 			{ id: "appearance", label: "外观", icon: Palette, lead: "主题、字号、界面密度和对话里显示哪些信息" },
 			{ id: "notifications", label: "通知", icon: Bell, lead: "什么时候提醒你、怎么提醒，以及免打扰时段" },
 			{ id: "privacy", label: "隐私", icon: Shield, lead: "隐私库里的敏感信息如何替换，以及 omp 的密钥脱敏和数据上报" },
-			{ id: "about", label: "版本与更新", icon: Info, lead: "本应用和 omp 的版本，检查与安装更新" },
 		],
 	},
 	{
@@ -106,6 +105,13 @@ export const NAV_GROUPS: NavGroup[] = [
 	{
 		title: "高级",
 		items: [{ id: "advanced", label: "高级", icon: Wrench, lead: "omp 程序位置、数据备份与恢复、问题自动上报" }],
+	},
+	{
+		title: "帮助",
+		items: [
+			{ id: "guide", label: "使用教程", icon: BookOpen, lead: "功能详解、操作指南与进阶技巧，支持按章节阅读与全文搜索" },
+			{ id: "about", label: "版本与更新", icon: Info, lead: "本应用和 omp 的版本，检查与安装更新" },
+		],
 	},
 ];
 
@@ -198,6 +204,7 @@ const EXTRA_TERMS: Record<string, string[]> = {
 		"关于", "版本", "更新", "升级", "自动更新", "会话切换", "旧版本", "立即切换", "重新检查", "version", "update",
 		"upgrade", "auto update", "about", "omp update", "检查更新", "检查间隔", "check interval",
 	],
+	guide: ["使用教程", "使用说明", "产品说明", "帮助", "教程", "文档", "指南", "手册", "help", "guide", "docs", "manual", "tutorial", "快捷键", "工作树", "子代理"],
 	privacy: ["隐私", "隐私库", "privacy", "secret", "占位符", "placeholder", "密码", "脱敏", "默认显示真实值"],
 	"model-fallback": ["fallback", "回退", "回退链", "切换顺序", "保存位置", "/model", "备用模型"],
 };

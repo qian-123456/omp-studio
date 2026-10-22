@@ -366,8 +366,10 @@ export const useUi = create<UiState>((set) => ({
 			const openRightTabs = s.openRightTabs.filter((x) => x !== t);
 			const rightTab =
 				s.rightTab === t ? (openRightTabs[idx] ?? openRightTabs[idx - 1] ?? null) : s.rightTab;
-			persistRight(s.rightOpen, openRightTabs, rightTab);
-			return { openRightTabs, rightTab };
+			// Closing the last tab collapses the whole panel instead of leaving the empty picker.
+			const rightOpen = openRightTabs.length === 0 ? false : s.rightOpen;
+			persistRight(rightOpen, openRightTabs, rightTab);
+			return { openRightTabs, rightTab, rightOpen };
 		}),
 	toggleRight: () =>
 		set((s) => {

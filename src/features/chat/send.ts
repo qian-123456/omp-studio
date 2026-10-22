@@ -13,6 +13,7 @@ import { errMsg } from "../../lib/dialogs";
 import type { ImageAttachment, PrivacyMarkScope, SecretEntry } from "../../lib/contracts";
 import { resolveLinkScope } from "./privacy/composerPrivacy";
 import { isForkDraftId, sendFromForkDraft } from "../sessions/forkDraft";
+import { emitPromptSend } from "../../stores/promptSendEvents";
 
 export interface AbortState {
 	aborting: Record<string, boolean>;
@@ -81,6 +82,7 @@ export async function sendPrompt(
 	const echoId = useLive.getState().addUserEcho(sessionId, trimmed, opts?.images, steerEcho);
 	// The message is now visible in the thread: let the caller release its input
 	// instead of holding the text until slow resume/RPC calls below finish.
+	emitPromptSend("echoed", sessionId, trimmed);
 	opts?.onEchoed?.();
 	try {
 		if (external) {
@@ -104,8 +106,10 @@ export async function sendPrompt(
 				streamingBehavior: opts?.steer ? "steer" : "followUp",
 			});
 		}
+		emitPromptSend("sent", sessionId, trimmed);
 	} catch (err) {
 		// Not sent: drop the bubble so a retry doesn't duplicate it.
+		emitPromptSend("failed", sessionId, trimmed);
 		if (echoId) useLive.getState().removeUserEcho(sessionId, echoId);
 		const replacement = await replaceStaleDraft(sessionId, err);
 		if (replacement) {

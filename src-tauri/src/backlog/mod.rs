@@ -20,6 +20,20 @@ pub fn init(state: AppState) {
         Ok(_) => {}
         Err(e) => tracing::warn!("backlog image migration failed: {e}"),
     }
+    // Finished items older than 30 days move to the trash first (so they get a fresh 7-day grace).
+    let archived = store::archive_finished(&state.db.lock(), chrono::Utc::now());
+    match archived {
+        Ok(n) if n > 0 => tracing::info!("backlog: moved {n} old finished item(s) to the trash"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!("backlog finished archive failed: {e}"),
+    }
+    // Trash keeps 7 days; rows (and their images) older than that go for good.
+    let purged = store::purge_expired(&state.db.lock(), chrono::Utc::now());
+    match purged {
+        Ok(n) if n > 0 => tracing::info!("backlog: purged {n} expired trashed item(s)"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!("backlog trash purge failed: {e}"),
+    }
     shortcut::spawn(state);
 }
 

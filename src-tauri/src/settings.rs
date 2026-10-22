@@ -1373,7 +1373,7 @@ pub struct OmpInfo {
 #[tauri::command]
 pub async fn omp_info(state: tauri::State<'_, AppState>) -> Result<OmpInfo, String> {
     let (exe, path) = omp_exe(&state);
-    let agent_dir = crate::settings_mcp::agent_dir();
+    let agent_dir = crate::paths::agent_dir();
     let config = agent_dir.join("config.yml");
     let found = exe.is_file();
     let version = if found {

@@ -6,17 +6,20 @@
  * to. Reloading and the 「批量替换模型」 flow are page-level actions and live in
  * the header.
  */
-import { ArrowLeftRight, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeftRight, Loader2, Plus, RefreshCw } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ModelRoleLayer, ModelRoleSnapshot } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { ompModelRolesRead, ompModelRolesSet } from "../../lib/ipc";
 import type { ModelOption } from "../../lib/models";
+import { toast } from "../../lib/toast";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
-import { type AssignmentScope, type AssignmentTable, buildAssignmentRows } from "./agentModelAssignments";
+import { AddRoleForm } from "./AddRoleForm";
+import { type AssignmentScope, type AssignmentTable, buildAssignmentRows, roleUsers } from "./agentModelAssignments";
 import { ModelReplaceDialog } from "./modelReplace/ModelReplaceDialog";
 import { useModelReplaceStore } from "./modelReplace/store";
 import type { RoleScope } from "./modelRoleScope";
+import { asStringList } from "./modelRoles";
 import { type AssignmentContext, RoleAssignmentTable } from "./ModelRoleTables";
 import { useOmpConfigStore } from "./ompConfigStore";
 import { Button, IconButton, Notice, SectionHeader, SettingsCard } from "./ui";
@@ -129,12 +132,16 @@ export function AgentModelAssignmentsPanel({
 	const modelOptions = useModelOptions();
 	// The bulk-replace dialog is a nested modal over the whole panel; it owns its own state.
 	const [replaceOpen, setReplaceOpen] = useState(false);
+	const [adding, setAdding] = useState(false);
 	const { scope, projectPath, projectName } = roleScope;
 	const { snapshot, loading, error, writing, reload, write } = useModelRoleState(projectPath, sessionModel);
 
 	useEffect(() => {
 		void useModelCatalog.getState().refresh();
+		// `cycleOrder` (who the model switcher cycles through) counts as a caller of a role.
+		void useOmpConfigStore.getState().load();
 	}, []);
+	const ompEntries = useOmpConfigStore((s) => s.entries);
 
 	const guardedWrite = useCallback(
 		(s: AssignmentScope, table: AssignmentTable, name: string, value: string | null) => {
@@ -160,6 +167,25 @@ export function AgentModelAssignmentsPanel({
 				: [],
 		[snapshot, projectLayer, sessionModel],
 	);
+	const roleNames = useMemo(() => new Set(rows.filter((r) => r.kind === "role").map((r) => r.name)), [rows]);
+	const users = useMemo(() => {
+		const layers = projectLayer ? [projectLayer.modelRoles, globalRoles] : [globalRoles];
+		const cycleOrder = asStringList(ompEntries.find((e) => e.key === "cycleOrder")?.value);
+		return roleUsers(rows, layers, cycleOrder);
+	}, [rows, projectLayer, globalRoles, ompEntries]);
+
+	// The form writes into one scope; switching scope or project closes it.
+	useEffect(() => setAdding(false), [scope, projectPath]);
+
+	const onRoleAdded = (name: string) => {
+		setAdding(false);
+		toast.success(`已添加角色「${name}」`);
+		requestAnimationFrame(() => {
+			// checkName only allows letters, digits and - _ ., so the attribute selector needs no escaping.
+			const row = document.querySelector<HTMLElement>(`[data-row-kind="role"][data-row-name="${name}"]`);
+			row?.scrollIntoView?.({ block: "nearest" });
+		});
+	};
 
 	const ctx: AssignmentContext = {
 		scope,
@@ -171,6 +197,7 @@ export function AgentModelAssignmentsPanel({
 		busy: writing,
 		write: guardedWrite,
 		roles: projectLayer ? { ...globalRoles, ...projectLayer.modelRoles } : globalRoles,
+		roleUsers: users,
 	};
 
 	return (
@@ -180,6 +207,15 @@ export function AgentModelAssignmentsPanel({
 				description="不同用途（主力、轻量、子代理…）分别用哪个模型，可全局设置或按项目覆盖"
 				actions={
 					<>
+						<Button
+							variant="primary"
+							icon={Plus}
+							onClick={() => setAdding(true)}
+							disabled={snapshot === null || adding}
+							title="新建一个自定义模型角色"
+						>
+							添加角色
+						</Button>
 						<Button icon={ArrowLeftRight} onClick={() => setReplaceOpen(true)} title="把某个模型一次性替换成另一个">
 							批量替换
 						</Button>
@@ -218,6 +254,10 @@ export function AgentModelAssignmentsPanel({
 						<Loader2 className="h-3.5 w-3.5 animate-spin" />
 						正在读取模型角色
 					</div>
+				)}
+
+				{snapshot !== null && adding && (
+					<AddRoleForm ctx={ctx} existing={roleNames} onAdded={onRoleAdded} onCancel={() => setAdding(false)} />
 				)}
 
 				{snapshot !== null && (

@@ -164,7 +164,32 @@ export function referencedRoles(value: string | null | undefined, layers: RoleLa
 	return names;
 }
 
-
+/**
+ * Who calls each role, from the rows of one scope: an agent whose applying value (named
+ * override, else its definition's `model:`) refers to the role, another role whose value
+ * refers to it, or the model switcher's `cycleOrder`. Direct references only; a role is
+ * never listed as its own user.
+ */
+export function roleUsers(rows: readonly AssignmentRow[], layers: RoleLayers, cycleOrder: readonly string[]): Map<string, string[]> {
+	const users = new Map<string, string[]>();
+	const add = (role: string, user: string) => {
+		const list = users.get(role) ?? [];
+		if (!list.includes(user)) list.push(user);
+		users.set(role, list);
+	};
+	for (const row of rows) {
+		if (row.kind === "agent") {
+			const applying = row.steps.find((s) => (s.level === 1 || s.level === 2) && s.value !== null)?.value ?? null;
+			for (const role of referencedRoles(applying, layers)) add(role, `子代理 ${row.name}`);
+		} else {
+			for (const role of referencedRoles(row.projectValue ?? row.globalValue, layers)) {
+				if (role !== row.name) add(role, `角色 ${row.name}`);
+			}
+		}
+	}
+	for (const role of cycleOrder) add(role, "模型切换轮换（cycleOrder）");
+	return users;
+}
 
 export type ValueCheck = { ok: true; value: string } | { ok: false; error: string };
 

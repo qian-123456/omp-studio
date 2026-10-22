@@ -5,7 +5,6 @@
 	const KINDS = [
 		["idea", "想法"],
 		["bug", "Bug"],
-		["todo", "待办"],
 	];
 	const KIND_LABEL = Object.fromEntries(KINDS);
 	const STATUS_LABEL = { inbox: "待处理", dispatched: "已派发", done: "已完成", closed: "已关闭" };
@@ -202,7 +201,7 @@
 	// ---------- add ----------
 	function openAdd() {
 		const st = { kind: "idea", files: [], link: !!(M.state.currentSession && M.state.currentSession.id), dir: curDir() || "" };
-		const ta = h("textarea", { class: "ideas-ta", rows: 4, placeholder: "记下想法、Bug 或待办…" });
+		const ta = h("textarea", { class: "ideas-ta", rows: 4, placeholder: "记下想法或 Bug…" });
 		const thumbs = h("div", { class: "ideas-thumbs" });
 		const drawThumbs = () => {
 			thumbs.textContent = "";

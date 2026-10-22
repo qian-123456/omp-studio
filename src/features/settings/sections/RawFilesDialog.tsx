@@ -9,9 +9,24 @@ import { toast } from "../../../lib/toast";
 import { Button } from "../ui";
 
 const FILES = [
-	{ name: "models.yml", label: "models.yml（供应商与模型）", kind: "yaml" },
-	{ name: "config.yml", label: "config.yml（omp 配置）", kind: "yaml" },
-	{ name: ".env", label: ".env（环境变量）", kind: "env" },
+	{
+		name: "models.yml",
+		label: "models.yml（供应商与模型）",
+		kind: "yaml",
+		hint: "记录有哪些供应商（接口地址、密钥变量名、接口类型）和每个模型的单独设置（如压缩用的模型）。「供应商」页管理的就是这个文件。",
+	},
+	{
+		name: "config.yml",
+		label: "config.yml（omp 配置）",
+		kind: "yaml",
+		hint: "omp 自身的全局设置：各角色默认用哪个模型和思考等级（modelRoles）、禁用的供应商、主题、压缩策略、编辑模式等。",
+	},
+	{
+		name: ".env",
+		label: ".env（环境变量）",
+		kind: "env",
+		hint: "存放各供应商的 API 密钥，格式为 变量名=密钥；models.yml 里的 apiKey 写的是这里的变量名。",
+	},
 ] as const;
 
 type FileName = (typeof FILES)[number]["name"];
@@ -43,7 +58,8 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 	}, []);
 
 	const path = agentDir ? `${agentDir}/${active}` : null;
-	const kind = FILES.find((f) => f.name === active)!.kind;
+	const meta = FILES.find((f) => f.name === active)!;
+	const kind = meta.kind;
 	const dirty = text !== saved;
 
 	useEffect(() => {
@@ -136,6 +152,7 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 					))}
 				</div>
 				{path ? <div className="break-all font-mono text-xs text-[var(--text-muted,inherit)]">{path}</div> : null}
+				<div className="text-xs">{meta.hint}</div>
 				{kind === "env" ? (
 					<div className="flex items-start gap-2 rounded-md border border-[var(--status-warning,var(--line))] p-2 text-xs">
 						<AlertTriangle size={14} className="mt-0.5 shrink-0" />

@@ -306,6 +306,52 @@ pub async fn omp_rule_write(
     .map_err(|e| e.to_string())?
 }
 
+// ---------------------------------------------------------------- agents ----
+
+/// Only omp sub-agent definition files may go through the agent commands:
+/// `<dir>/agents/<name>.md` (global `~/.omp/agent/agents`, project `.omp/agents`).
+fn check_agent_path(path: &str) -> Result<PathBuf, String> {
+    let p = files::resolve(path)?;
+    if p.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Err("路径不能包含 ..".into());
+    }
+    let name = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("无效路径")?
+        .to_string();
+    let in_agents = p
+        .parent()
+        .and_then(|d| d.file_name())
+        .is_some_and(|d| d == "agents");
+    if !in_agents || !name.ends_with(".md") || name.starts_with('.') {
+        return Err(format!("不是子代理定义文件：{name}"));
+    }
+    Ok(p)
+}
+
+#[tauri::command]
+pub async fn omp_agent_read(path: String) -> Result<StampedText, String> {
+    let p = check_agent_path(&path)?;
+    tokio::task::spawn_blocking(move || read_stamped(&p))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn omp_agent_write(
+    path: String,
+    content: String,
+    expected_stamp: Option<String>,
+) -> Result<Option<String>, String> {
+    let p = check_agent_path(&path)?;
+    tokio::task::spawn_blocking(move || {
+        write_checked(&p, &content, expected_stamp.as_deref(), true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,5 +469,17 @@ mod tests {
         assert!(check_rule_path("/p/notrules/a.md").is_err());
         assert!(check_rule_path("/p/../etc/AGENTS.md").is_err());
         assert!(check_rule_path("rules/a.md").is_err());
+    }
+
+    #[test]
+    fn agent_paths_are_restricted() {
+        assert!(check_agent_path("/Users/tester/.omp/agent/agents/scout.md").is_ok());
+        assert!(check_agent_path("/p/.omp/agents/reviewer.md").is_ok());
+        assert!(check_agent_path("/Users/tester/.omp/agent/agents/my-custom-agent.md").is_ok());
+        assert!(check_agent_path("/Users/tester/.omp/agent/agents/../evil.md").is_err());
+        assert!(check_agent_path("/Users/tester/.omp/agent/rules/scout.md").is_err());
+        assert!(check_agent_path("/Users/tester/.omp/agent/agents/scout.txt").is_err());
+        assert!(check_agent_path("/Users/tester/.omp/agent/agents/.hidden.md").is_err());
+        assert!(check_agent_path("agents/scout.md").is_err());
     }
 }

@@ -332,6 +332,17 @@ export function FloatingLayer({
 			if (t instanceof Element && t.closest(LIGHTBOX_SELECTOR)) return;
 			// Interacting with a modal stacked above (e.g. a confirm spawned from this popover) must not dismiss it.
 			if (modalAbove(ref.current)) return;
+			// A click inside a floating layer mounted after this one (a picker spawned from it) is not "outside".
+			if (t instanceof Element && ref.current) {
+				const nested = t.closest("[data-layer]");
+				if (
+					nested &&
+					nested !== ref.current &&
+					!nested.contains(ref.current) &&
+					ref.current.compareDocumentPosition(nested) & Node.DOCUMENT_POSITION_FOLLOWING
+				)
+					return;
+			}
 			if (ref.current?.contains(t)) return;
 			if (ignoreRefs?.some((r) => r.current?.contains(t))) return;
 			onDismiss();
@@ -341,6 +352,8 @@ export function FloatingLayer({
 				// Esc that cancels an IME candidate belongs to the IME, not to the layer.
 				if (isComposing({ nativeEvent: e, key: e.key })) return;
 				// An editor inside the layer owns Esc (cancels its own edit) when opted in.
+				// Any element marked data-owns-escape (e.g. an in-place idea editor) handles Esc itself.
+				if (e.target instanceof Element && e.target.closest("[data-owns-escape]")) return;
 				if (deferEscapeToEditors && isEditableWithin(e.target, ref.current)) return;
 				// Escape closes the topmost lightbox first; it handles the key itself.
 				if (document.querySelector(LIGHTBOX_SELECTOR)) return;

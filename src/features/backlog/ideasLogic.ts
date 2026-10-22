@@ -1,4 +1,4 @@
-import type { BacklogItem, SessionMeta, SessionStatus, Workspace } from "../../lib/contracts";
+import type { BacklogItem, BacklogKind, SessionMeta, Workspace } from "../../lib/contracts";
 import { repoRootFromWorktree } from "../git/helpers";
 
 /** Repo root for a project dir so all worktrees of one repo share a project. */
@@ -10,16 +10,21 @@ export function projectRoot(dir: string | null | undefined): string | null {
 export const byCreatedDesc = (a: BacklogItem, b: BacklogItem) =>
 	(b.createdAt || b.updatedAt).localeCompare(a.createdAt || a.updatedAt);
 
-export type IdeaPhase = "pending" | "running" | "review" | "finished";
+export type IdeaPhase = "pending" | "running" | "review" | "finished" | "trash";
+
+export const IDEA_PHASES: readonly IdeaPhase[] = ["pending", "running", "review", "finished", "trash"];
+
+/** Days a trashed item is kept before it is purged on app start. */
+export const TRASH_RETENTION_DAYS = 7;
 
 /**
- * Determine the phase of a backlog item.
- * inbox → pending; done|closed → finished;
+ * Determine the phase (tab) of a backlog item.
+ * deletedAt set → trash (never shown in other tabs); inbox → pending; done|closed → finished;
  * dispatched → running when the linked session exists, is not archived,
- * and status ∈ {working, awaiting_approval, awaiting_answer};
- * every other dispatched case → review.
+ * and status ∈ {working, awaiting_approval, awaiting_answer}; every other dispatched case → review.
  */
 export function ideaPhase(item: BacklogItem, session: SessionMeta | undefined): IdeaPhase {
+	if (item.deletedAt) return "trash";
 	if (item.status === "inbox") return "pending";
 	if (item.status === "done" || item.status === "closed") return "finished";
 	if (item.status === "dispatched") {
@@ -37,7 +42,9 @@ export function ideaPhase(item: BacklogItem, session: SessionMeta | undefined): 
 	return "finished";
 }
 
-/** Each bucket newest-created first (createdAt, falling back to updatedAt). */
+const byDeletedDesc = (a: BacklogItem, b: BacklogItem) => (b.deletedAt ?? "").localeCompare(a.deletedAt ?? "");
+
+/** Each bucket newest-created first (trash: most recently deleted first). */
 export function partitionByPhase(
 	items: BacklogItem[],
 	sessions: Record<string, SessionMeta>,
@@ -47,18 +54,19 @@ export function partitionByPhase(
 		running: [],
 		review: [],
 		finished: [],
+		trash: [],
 	};
 	for (const it of items) {
 		const session = it.targetSessionId ? sessions[it.targetSessionId] : undefined;
 		buckets[ideaPhase(it, session)].push(it);
 	}
-	for (const phase of Object.keys(buckets) as IdeaPhase[]) {
-		buckets[phase].sort(byCreatedDesc);
+	for (const phase of IDEA_PHASES) {
+		buckets[phase].sort(phase === "trash" ? byDeletedDesc : byCreatedDesc);
 	}
 	return buckets;
 }
 
-/** pending + review count; drives the top-bar badge. */
+/** pending + review count (trashed excluded); drives the top-bar badge. */
 export function needsAttentionCount(
 	items: BacklogItem[],
 	sessions: Record<string, SessionMeta>,
@@ -74,17 +82,76 @@ export function needsAttentionCount(
 	return count;
 }
 
-export type IdeasScope = "all" | "current";
+export interface IdeaSearch {
+	query: string;
+	/** Empty = all kinds. */
+	kinds: BacklogKind[];
+}
 
-/** Items visible under `scope`; "current" keeps items of the current project's repo (any worktree). */
-export function filterIdeas(
+export const EMPTY_SEARCH: IdeaSearch = { query: "", kinds: [] };
+
+/** Case-insensitive text match plus kind filter (empty kinds = no kind filter). */
+export function searchIdeas(items: BacklogItem[], search: IdeaSearch): BacklogItem[] {
+	const q = search.query.trim().toLowerCase();
+	if (!q && search.kinds.length === 0) return items;
+	return items.filter(
+		(it) =>
+			(search.kinds.length === 0 || search.kinds.includes(it.kind)) && (!q || it.text.toLowerCase().includes(q)),
+	);
+}
+
+/** Per-tab counts after scope and search (so counts reflect the active filters). */
+export function tabCounts(
 	items: BacklogItem[],
+	sessions: Record<string, SessionMeta>,
 	scope: IdeasScope,
-	currentProject: string | null,
-): BacklogItem[] {
-	if (scope !== "current") return items;
-	const root = projectRoot(currentProject);
-	return root === null ? [] : items.filter((i) => projectRoot(i.projectDir) === root);
+	search: IdeaSearch,
+): Record<IdeaPhase, number> {
+	const buckets = partitionByPhase(searchIdeas(filterIdeas(items, scope), search), sessions);
+	return {
+		pending: buckets.pending.length,
+		running: buckets.running.length,
+		review: buckets.review.length,
+		finished: buckets.finished.length,
+		trash: buckets.trash.length,
+	};
+}
+
+/** Whole days left before a trashed item is purged (at least 1 while it still exists). */
+export function trashDaysLeft(item: BacklogItem, now: Date = new Date()): number {
+	const deleted = item.deletedAt ? new Date(item.deletedAt).getTime() : Number.NaN;
+	if (Number.isNaN(deleted)) return TRASH_RETENTION_DAYS;
+	const left = TRASH_RETENTION_DAYS - (now.getTime() - deleted) / 86_400_000;
+	return Math.max(1, Math.ceil(left));
+}
+
+/** Project filter: a repo root (see `projectRoot`), or null for all projects. */
+export type IdeasScope = string | null;
+
+/** Items visible under `scope`; a repo root keeps items of that repo (any worktree), null keeps everything. */
+export function filterIdeas(items: BacklogItem[], scope: IdeasScope): BacklogItem[] {
+	if (scope === null) return items;
+	return items.filter((i) => projectRoot(i.projectDir) === scope);
+}
+
+export interface ScopeOption {
+	/** Repo root used as the scope value. */
+	root: string;
+	label: string;
+	isCurrent: boolean;
+}
+
+/** Distinct projects that have non-trashed ideas (current project first); ideas without a project are not listed. */
+export function scopeOptions(items: BacklogItem[], currentProject: string | null): ScopeOption[] {
+	return groupIdeasByProject(
+		items.filter((i) => !i.deletedAt),
+		currentProject,
+	).flatMap((g) => (g.project === null ? [] : [{ root: g.project, label: g.label, isCurrent: g.isCurrent }]));
+}
+
+/** A selected project that no longer has items falls back to all projects. */
+export function effectiveScope(scope: IdeasScope, options: readonly ScopeOption[]): IdeasScope {
+	return scope !== null && options.some((o) => o.root === scope) ? scope : null;
 }
 
 /**
@@ -104,6 +171,16 @@ export function rangeSelection(
 	const start = Math.min(anchorIdx, targetIdx);
 	const end = Math.max(anchorIdx, targetIdx);
 	return orderedIds.slice(start, end + 1);
+}
+
+export function splitSent(
+	items: BacklogItem[],
+	sentIds: ReadonlySet<string>,
+): { remaining: BacklogItem[]; sent: BacklogItem[] } {
+	const remaining: BacklogItem[] = [];
+	const sent: BacklogItem[] = [];
+	for (const it of items) (sentIds.has(it.id) ? sent : remaining).push(it);
+	return { remaining, sent };
 }
 
 /**
@@ -170,7 +247,7 @@ export function appendToDraft(existing: string, text: string): string {
 	return existing.trim().length > 0 ? `${existing.trimEnd()}\n${text}` : text;
 }
 
-const KIND_TAG: Record<BacklogItem["kind"], string> = { bug: "缺陷", todo: "待办", idea: "想法" };
+const KIND_TAG: Record<BacklogItem["kind"], string> = { bug: "缺陷", idea: "想法" };
 
 /** Plain-language header + numbered list of items, each prefixed with its type tag. */
 export function buildBatchFillText(items: ReadonlyArray<{ kind: BacklogItem["kind"]; body: string }>): string {
@@ -180,32 +257,20 @@ export function buildBatchFillText(items: ReadonlyArray<{ kind: BacklogItem["kin
 		// Continuation lines are indented under the number so the list stays readable.
 		return [prefix + first, ...rest.map((l) => (l.length > 0 ? `   ${l}` : l))].join("\n");
 	});
-	return `以下是 ${items.length} 个待处理问题（缺陷/待办/想法），请逐条处理：\n\n${lines.join("\n")}`;
+	return `以下是 ${items.length} 个待处理问题（缺陷/想法），请逐条处理：\n\n${lines.join("\n")}`;
 }
 
-/** "刚刚" / "N分钟前" / "N小时前" within a day, else "MM-DD HH:mm". */
+/** Minute precision: today "HH:mm", this year "MM-DD HH:mm", older "YYYY-MM-DD HH:mm". */
 export function formatAddedTime(iso: string, now: Date = new Date()): string {
 	const d = new Date(iso);
 	if (Number.isNaN(d.getTime())) return "";
-	const mins = Math.floor((now.getTime() - d.getTime()) / 60000);
-	if (mins >= 0 && mins < 1) return "刚刚";
-	if (mins >= 0 && mins < 60) return `${mins}分钟前`;
-	if (mins >= 0 && mins < 24 * 60) return `${Math.floor(mins / 60)}小时前`;
 	const p = (n: number) => String(n).padStart(2, "0");
-	return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+	const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+	const md = `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+	if (d.getFullYear() !== now.getFullYear()) return `${d.getFullYear()}-${md} ${hm}`;
+	const sameDay = d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+	return sameDay ? hm : `${md} ${hm}`;
 }
-
-const STATUS_LABEL: Record<SessionStatus, string> = {
-	working: "运行中",
-	awaiting_approval: "待批准",
-	awaiting_answer: "待回答",
-	review: "待验收",
-	idle: "空闲",
-	error: "报错",
-	interrupted: "已中断",
-	suspended: "已挂起",
-	external: "外部",
-};
 
 const SESSION_OPTION_SNIPPET_LENGTH = 40;
 
@@ -227,13 +292,6 @@ export function sessionOptionLabel(meta: SessionMeta): string {
 
 	const label = meta.label.trim();
 	return `${label ? `[${label}] ` : ""}${displayTitle}`;
-}
-
-/** Live status text for a dispatched item's linked session. */
-export function linkedSessionStatus(meta: SessionMeta | undefined): string {
-	if (!meta) return "会话不存在";
-	if (meta.archived) return "已归档";
-	return STATUS_LABEL[meta.status] ?? meta.status;
 }
 
 /** Picker value meaning "file under no project" (stored projectDir = null). */

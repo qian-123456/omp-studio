@@ -522,16 +522,18 @@ mod tests {
     fn reference_texts_cover_backlog_schedules_and_settings() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE backlog(text TEXT, refs TEXT);
+            "CREATE TABLE backlog(text TEXT, refs TEXT, deleted_at TEXT);
              CREATE TABLE schedules(prompt TEXT);
              CREATE TABLE settings(key TEXT, value TEXT);
-             INSERT INTO backlog VALUES('idea a.png', '[{\"path\":\"/x/b.png\"}]');
+             INSERT INTO backlog VALUES('idea a.png', '[{\"path\":\"/x/b.png\"}]', NULL);
+             INSERT INTO backlog VALUES('trashed e.png', '[]', '2026-01-01T00:00:00+00:00');
              INSERT INTO schedules VALUES('run c.png');
              INSERT INTO settings VALUES('k', 'd.png');",
         )
         .unwrap();
         let t = reference_texts(&conn).join("\n");
-        for n in ["a.png", "b.png", "c.png", "d.png"] {
+        // Trashed rows still count as references (their images are not cleaned).
+        for n in ["a.png", "b.png", "c.png", "d.png", "e.png"] {
             assert!(t.contains(n), "{n}");
         }
     }

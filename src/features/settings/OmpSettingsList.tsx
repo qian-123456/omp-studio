@@ -21,6 +21,8 @@ import { ompConfigReset, ompConfigSet, ompProjectConfigRead } from "../../lib/ip
 import { useModelOptions } from "../../stores/modelCatalog";
 import { Switch } from "./Switch";
 import { defaultState, defaultText, isStringList, lookupDotPath, parseProjectConfig, toStringList } from "./ompConfigEdit";
+import { OMP_CONFIG_DEFAULTS } from "./ompConfigDefaults";
+import { ompConfigValueDescription } from "./ompConfigDescZh";
 import { OMP_CONFIG_META, ompConfigDescription, ompConfigOptionLabel, ompConfigOptions, ompConfigTitle } from "./ompConfigMeta";
 import { useOmpConfigStore } from "./ompConfigStore";
 import {
@@ -291,7 +293,12 @@ export function OmpSettingRow({ entry, onChanged }: { entry: OmpConfigEntry; onC
 	const persistJson = (value: unknown) => persist(JSON.stringify(value));
 
 	const title = ompConfigTitle(entry.key);
-	const description = ompConfigDescription(entry.key, entry.description).trim();
+	const description = (
+		ompConfigValueDescription(
+			entry.key,
+			entry.value === null || entry.value === undefined ? OMP_CONFIG_DEFAULTS[entry.key] : entry.value,
+		) ?? ompConfigDescription(entry.key, entry.description)
+	).trim();
 	const warning = OMP_CONFIG_META[entry.key]?.warning?.trim() ?? "";
 	const override = project.overrideFor(entry.key);
 	const state = defaultState(entry.key, entry.value, entry.redacted);

@@ -9,6 +9,36 @@ fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// omp agent dir. `PI_CODING_AGENT_DIR` relocates it; a profile env
+/// (`OMP_PROFILE` / `PI_PROFILE`) narrows it to `~/.omp/profiles/<name>/agent`;
+/// otherwise `~/.omp/agent`.
+pub(crate) fn agent_dir() -> PathBuf {
+    let override_dir = std::env::var("PI_CODING_AGENT_DIR").ok();
+    let profile = std::env::var("OMP_PROFILE")
+        .or_else(|_| std::env::var("PI_PROFILE"))
+        .ok();
+    agent_dir_from(override_dir.as_deref(), profile.as_deref(), &home())
+}
+
+/// Pure core of [`agent_dir`]: env values are passed in so tests need no global env.
+pub(crate) fn agent_dir_from(
+    override_dir: Option<&str>,
+    profile: Option<&str>,
+    home: &std::path::Path,
+) -> PathBuf {
+    if let Some(dir) = override_dir.filter(|d| !d.trim().is_empty()) {
+        return PathBuf::from(dir);
+    }
+    if let Some(profile) = profile.map(str::trim).filter(|p| !p.is_empty()) {
+        return home
+            .join(".omp")
+            .join("profiles")
+            .join(profile)
+            .join("agent");
+    }
+    home.join(".omp").join("agent")
+}
+
 /// `~/.omp-workspace` (overridable via `OMPWS_DATA_DIR` for isolated dev/preview instances)
 pub fn data_dir() -> PathBuf {
     if let Ok(val) = std::env::var("OMPWS_DATA_DIR") {

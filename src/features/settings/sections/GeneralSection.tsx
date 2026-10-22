@@ -32,7 +32,6 @@ const APPROVAL_OPTIONS: { value: ApprovalMode; label: string; desc: string }[] =
 	{ value: "write", label: "改动前问", desc: "只读与搜索自动进行；改文件或跑命令前先询问确认（推荐）。" },
 	{ value: "yolo", label: "全自动", desc: "AI 直接修改文件与执行命令，无需确认（速度快，误操作不被拦截）。" },
 ];
-const APPROVAL_SUMMARY = APPROVAL_OPTIONS.map((o) => `${o.label}：${o.desc}`).join("");
 
 export function GeneralSection() {
 	const { settings, save } = useAppSettings();
@@ -109,8 +108,7 @@ export function GeneralSection() {
 				<SettingRow
 					fieldId="defaultApprovalMode"
 					label="审批模式"
-					description={APPROVAL_SUMMARY}
-					hint={`当前：${currentApprovalOption.label}`}
+					description={currentApprovalOption.desc}
 					status={approvalSave.status}
 					statusError={approvalSave.error}
 					control={

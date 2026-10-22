@@ -1,4 +1,4 @@
-//! Skill usage statistics: scans `~/.omp/agent/sessions/**/*.jsonl` for
+//! Skill usage statistics: scans `<agent dir>/sessions/**/*.jsonl` for
 //! model triggers (`read` toolCall with `path":"skill://NAME`) and user
 //! triggers (`/skill:NAME` prompts), aggregated into a `SkillUsageReport`.
 
@@ -503,19 +503,15 @@ fn scan_with_global_cache(base: &Path, days: u32) -> SkillUsageReport {
 /// Skills page does not wait for a cold scan.
 pub fn warm_up(days: u32) {
     std::thread::spawn(move || {
-        if let Some(base) = dirs::home_dir().map(|h| h.join(".omp").join("agent").join("sessions"))
-        {
-            let _ = scan_with_global_cache(&base, days);
-        }
+        let base = crate::paths::agent_dir().join("sessions");
+        let _ = scan_with_global_cache(&base, days);
     });
 }
 
 /// Tauri command `skills_usage`: per-skill trigger counts over `days` days.
 #[tauri::command]
 pub async fn skills_usage(days: u32) -> Result<SkillUsageReport, String> {
-    let base = dirs::home_dir()
-        .map(|h| h.join(".omp").join("agent").join("sessions"))
-        .ok_or_else(|| "无法定位主目录".to_string())?;
+    let base = crate::paths::agent_dir().join("sessions");
 
     let report = tokio::task::spawn_blocking(move || scan_with_global_cache(&base, days))
         .await

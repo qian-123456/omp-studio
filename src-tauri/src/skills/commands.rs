@@ -10,6 +10,7 @@ pub fn parse_skill_frontmatter(header: &str, fallback_name: &str) -> (String, St
     let mut name = fallback_name.to_string();
     let mut desc = String::new();
 
+    let header = header.trim_start_matches('\u{feff}');
     let lines: Vec<&str> = header.lines().collect();
     let mut idx = 0;
     while idx < lines.len() && lines[idx].trim().is_empty() {
@@ -31,6 +32,11 @@ pub fn parse_skill_frontmatter(header: &str, fallback_name: &str) -> (String, St
         }
 
         if in_desc {
+            // Blank lines are paragraph breaks inside a block scalar, not its end.
+            if trimmed.is_empty() {
+                idx += 1;
+                continue;
+            }
             if line.starts_with("  ") || line.starts_with('\t') {
                 desc_lines.push(trimmed);
                 idx += 1;
@@ -66,8 +72,9 @@ pub fn parse_skill_frontmatter(header: &str, fallback_name: &str) -> (String, St
     (name, desc)
 }
 
-/// Parses a list of disabled extension ids/names from YAML or JSON config text.
-pub fn parse_disabled_extensions_text(text: &str) -> Vec<String> {
+/// Parses the disabled extension ids/names from YAML or JSON config text.
+/// `None` = the `disabledExtensions` key is absent; `Some(vec![])` = present but empty.
+pub fn parse_disabled_extensions_text(text: &str) -> Option<Vec<String>> {
     let mut results = Vec::new();
 
     // Check JSON structure first
@@ -78,15 +85,17 @@ pub fn parse_disabled_extensions_text(text: &str) -> Vec<String> {
                     results.push(s.to_string());
                 }
             }
-            return results;
+            return Some(results);
         }
     }
 
     // Line-by-line YAML scanning for `disabledExtensions:` block
+    let mut present = false;
     let mut in_block = false;
     for line in text.lines() {
         let trimmed = line.trim();
         if let Some(stripped) = trimmed.strip_prefix("disabledExtensions:") {
+            present = true;
             in_block = true;
             // Check for inline array: disabledExtensions: ["a", "b"]
             let after = stripped.trim();
@@ -118,7 +127,7 @@ pub fn parse_disabled_extensions_text(text: &str) -> Vec<String> {
         }
     }
 
-    results
+    present.then_some(results)
 }
 
 /// Lexically normalizes a path (resolving `.` and `..`) without touching the filesystem.
@@ -138,7 +147,45 @@ pub fn normalize_path(path: &Path) -> PathBuf {
     normalized
 }
 
-/// Checks if a path is inside known skill roots and safe to read.
+/// Project-level agent dirs that may hold a `skills` root.
+const PROJECT_SKILL_DOTDIRS: [&str; 6] =
+    [".omp", ".agents", ".agent", ".claude", ".codex", ".github"];
+
+/// User-level skill discovery roots; the omp ones follow the shared agent dir
+/// (`PI_CODING_AGENT_DIR` / profile), the rest live directly under `$HOME`.
+pub(crate) fn user_skill_roots() -> Vec<(PathBuf, SkillProvider)> {
+    let agent = crate::paths::agent_dir();
+    let mut roots = vec![
+        (agent.join("skills"), SkillProvider::Native),
+        (agent.join("managed-skills"), SkillProvider::Managed),
+    ];
+    if let Some(home) = dirs::home_dir() {
+        roots.push((home.join(".agents").join("skills"), SkillProvider::Agents));
+        roots.push((home.join(".agent").join("skills"), SkillProvider::Agents));
+        roots.push((home.join(".claude").join("skills"), SkillProvider::Claude));
+        roots.push((home.join(".codex").join("skills"), SkillProvider::Codex));
+    }
+    roots
+}
+
+/// True when `canonical` (already resolved) lies inside a `<dotdir>/skills`
+/// project structure.
+fn has_project_skill_structure(canonical: &Path) -> bool {
+    let comps: Vec<_> = canonical
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect();
+    comps
+        .windows(2)
+        .any(|w| w[1] == "skills" && PROJECT_SKILL_DOTDIRS.contains(&w[0].as_ref()))
+}
+
+/// Checks that the resolved `canonical` file is inside a known skill root and safe to read.
+///
+/// The decision rests on the resolved path, so a symlink inside a skill cannot
+/// point at files outside the roots. The one deliberate exception: a skill
+/// directory (direct child of a root) that is itself a symlink — the way users
+/// link shared skills in — may be read, but only inside its own resolved target.
 pub fn is_path_allowed(raw_path: &Path, canonical: &Path) -> bool {
     if !canonical.is_file() {
         return false;
@@ -154,58 +201,43 @@ pub fn is_path_allowed(raw_path: &Path, canonical: &Path) -> bool {
     }
 
     let norm = normalize_path(raw_path);
+    let inside_skill_dir = |skill_dir: &Path| {
+        skill_dir
+            .canonicalize()
+            .map(|cd| canonical.starts_with(cd))
+            .unwrap_or(false)
+    };
 
-    // List of standard user home roots
-    if let Some(home) = dirs::home_dir() {
-        let user_roots = [
-            home.join(".omp").join("agent").join("skills"),
-            home.join(".omp").join("agent").join("managed-skills"),
-            home.join(".agents").join("skills"),
-            home.join(".agent").join("skills"),
-            home.join(".claude").join("skills"),
-            home.join(".codex").join("skills"),
-        ];
-
-        for root in &user_roots {
-            if norm.starts_with(root) {
+    for (root, _) in user_skill_roots() {
+        if let Ok(canonical_root) = root.canonicalize() {
+            if canonical.starts_with(&canonical_root) {
                 return true;
             }
-            if let Ok(canonical_root) = root.canonicalize() {
-                if canonical.starts_with(&canonical_root) {
+        }
+        if let Ok(rel) = norm.strip_prefix(&root) {
+            if let Some(first) = rel.components().next() {
+                if inside_skill_dir(&root.join(first)) {
                     return true;
                 }
             }
         }
     }
 
-    // Check project skill directories (containing `skills` preceded by `.omp`, `.agents`, etc.)
-    fn has_project_skill_structure(p: &Path) -> bool {
-        let comps: Vec<_> = p
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect();
-        for i in 0..comps.len().saturating_sub(1) {
-            let parent = comps[i].as_ref();
-            let child = comps[i + 1].as_ref();
-            if (parent == ".omp"
-                || parent == ".agents"
-                || parent == ".agent"
-                || parent == ".claude"
-                || parent == ".codex"
-                || parent == ".github")
-                && child == "skills"
-            {
+    // Project roots: `<dotdir>/skills/<skill>/...` on the raw path, with the
+    // skill dir resolving around the target.
+    let comps: Vec<Component> = norm.components().collect();
+    for i in 0..comps.len().saturating_sub(2) {
+        let parent = comps[i].as_os_str().to_string_lossy();
+        if comps[i + 1].as_os_str() == "skills" && PROJECT_SKILL_DOTDIRS.contains(&parent.as_ref())
+        {
+            let skill_dir: PathBuf = comps[..i + 3].iter().collect();
+            if inside_skill_dir(&skill_dir) {
                 return true;
             }
         }
-        false
     }
 
-    if has_project_skill_structure(&norm) || has_project_skill_structure(canonical) {
-        return true;
-    }
-
-    false
+    has_project_skill_structure(canonical)
 }
 
 /// Collects roots for project discovery starting at `cwd` and walking up to git repo root or parent limits.
@@ -267,14 +299,27 @@ fn read_skill_header(skill_md: &Path) -> Result<String, ()> {
         .read_to_end(&mut buf)
         .map_err(|_| ())?;
     match String::from_utf8(buf) {
-        Ok(s) => Ok(s),
+        Ok(s) => Ok(s.trim_start_matches('\u{feff}').to_string()),
         // Byte cap landed mid-codepoint: keep the valid prefix, not a failure.
         Err(e) if e.utf8_error().error_len().is_none() => {
             let valid = e.utf8_error().valid_up_to();
-            Ok(String::from_utf8_lossy(&e.into_bytes()[..valid]).into_owned())
+            let s = String::from_utf8_lossy(&e.into_bytes()[..valid]).into_owned();
+            Ok(s.trim_start_matches('\u{feff}').to_string())
         }
         Err(_) => Err(()),
     }
+}
+
+/// True when `dir` directly contains at least one `.md` file.
+fn dir_has_markdown(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten().any(|e| {
+                let p = e.path();
+                p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("md"))
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// Scans SKILL.md entries from a directory containing skill subdirectories.
@@ -321,7 +366,14 @@ pub(crate) fn scan_skills_in_dir(
                 vec![SkillIssue::Unreadable],
             )
         } else if !skill_md.is_file() {
-            continue;
+            if !dir_has_markdown(&entry_path) {
+                continue;
+            }
+            (
+                dir_name.clone(),
+                String::new(),
+                vec![SkillIssue::MissingSkillMd],
+            )
         } else {
             let mut issues = Vec::new();
             let (name, description) = match read_skill_header(&skill_md) {
@@ -449,32 +501,34 @@ fn scan_extensions_in_dir(
     }
 }
 
-/// Discovers disabled extensions by reading global and project config files.
+/// Pure resolution of omp's layered `disabledExtensions`: the project layer's
+/// list (when the key is present, even empty) replaces the global list.
+pub fn resolve_disabled_extensions(
+    global_text: Option<&str>,
+    project_text: Option<&str>,
+) -> HashSet<String> {
+    let project = project_text.and_then(parse_disabled_extensions_text);
+    let list = project
+        .or_else(|| global_text.and_then(parse_disabled_extensions_text))
+        .unwrap_or_default();
+    list.into_iter().collect()
+}
+
+/// Effective `disabledExtensions`: global `config.yml` (legacy `settings.json`
+/// only when it doesn't exist), replaced by `<cwd>/.omp/config.yml` when that
+/// file defines the key. Ancestor project roots are not consulted (omp joins
+/// the session cwd with `.omp` only).
+pub fn load_disabled_extensions_from(agent: &Path, cwd: Option<&Path>) -> HashSet<String> {
+    let global_text = std::fs::read_to_string(agent.join("config.yml"))
+        .ok()
+        .or_else(|| std::fs::read_to_string(agent.join("settings.json")).ok());
+    let project_text =
+        cwd.and_then(|c| std::fs::read_to_string(c.join(".omp").join("config.yml")).ok());
+    resolve_disabled_extensions(global_text.as_deref(), project_text.as_deref())
+}
+
 fn load_disabled_extensions(cwd: Option<&Path>) -> HashSet<String> {
-    let mut disabled = HashSet::new();
-
-    let mut candidate_files = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        candidate_files.push(home.join(".omp").join("agent").join("config.yml"));
-        candidate_files.push(home.join(".omp").join("agent").join("settings.json"));
-    }
-
-    if let Some(cwd_path) = cwd {
-        for project_dir in collect_project_roots(cwd_path) {
-            candidate_files.push(project_dir.join(".omp").join("config.yml"));
-            candidate_files.push(project_dir.join(".omp").join("settings.json"));
-        }
-    }
-
-    for file_path in candidate_files {
-        if let Ok(text) = std::fs::read_to_string(&file_path) {
-            for id in parse_disabled_extensions_text(&text) {
-                disabled.insert(id);
-            }
-        }
-    }
-
-    disabled
+    load_disabled_extensions_from(&crate::paths::agent_dir(), cwd)
 }
 
 /// Tauri command `skills_list`: lists all skills and extensions discovered in project and user roots.
@@ -544,46 +598,29 @@ pub async fn skills_list(cwd: Option<String>) -> Result<SkillsCatalog, String> {
     }
 
     // 2. User discovery (global)
-    if let Some(home) = dirs::home_dir() {
-        let user_skill_roots = [
-            (
-                home.join(".omp").join("agent").join("skills"),
-                SkillProvider::Native,
-            ),
-            (
-                home.join(".omp").join("agent").join("managed-skills"),
-                SkillProvider::Managed,
-            ),
-            (home.join(".agents").join("skills"), SkillProvider::Agents),
-            (home.join(".agent").join("skills"), SkillProvider::Agents),
-            (home.join(".claude").join("skills"), SkillProvider::Claude),
-            (home.join(".codex").join("skills"), SkillProvider::Codex),
-        ];
-
-        for (root, provider) in &user_skill_roots {
-            if root.is_dir() {
-                let root_display = display_skill_root(root, None);
-                scan_skills_in_dir(
-                    root,
-                    "user",
-                    *provider,
-                    &mut skill_index,
-                    &mut skills,
-                    &root_display,
-                );
-            }
-        }
-
-        let user_ext_root = home.join(".omp").join("agent").join("extensions");
-        if user_ext_root.is_dir() {
-            scan_extensions_in_dir(
-                &user_ext_root,
+    for (root, provider) in &user_skill_roots() {
+        if root.is_dir() {
+            let root_display = display_skill_root(root, None);
+            scan_skills_in_dir(
+                root,
                 "user",
-                &disabled,
-                &mut seen_extensions,
-                &mut extensions,
+                *provider,
+                &mut skill_index,
+                &mut skills,
+                &root_display,
             );
         }
+    }
+
+    let user_ext_root = crate::paths::agent_dir().join("extensions");
+    if user_ext_root.is_dir() {
+        scan_extensions_in_dir(
+            &user_ext_root,
+            "user",
+            &disabled,
+            &mut seen_extensions,
+            &mut extensions,
+        );
     }
 
     skills.sort_by_key(|a| a.name.to_lowercase());
@@ -602,6 +639,13 @@ pub async fn skills_read(path: String) -> Result<String, String> {
 
     if !canonical.is_file() {
         return Err("指定路径不是文件".to_string());
+    }
+
+    let is_md = canonical
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
+    if !is_md {
+        return Err("仅允许读取 Markdown（.md）文件".to_string());
     }
 
     if !is_path_allowed(raw_path, &canonical) {
@@ -639,29 +683,17 @@ pub(crate) fn validate_skill_dir_for_trash(dir: &Path) -> Result<PathBuf, String
 
     // Parent must be exactly a known skill root — same list as `is_path_allowed`.
     let mut allowed = false;
-    if let Some(home) = dirs::home_dir() {
-        let user_roots = [
-            home.join(".omp").join("agent").join("skills"),
-            home.join(".omp").join("agent").join("managed-skills"),
-            home.join(".agents").join("skills"),
-            home.join(".agent").join("skills"),
-            home.join(".claude").join("skills"),
-            home.join(".codex").join("skills"),
-        ];
-        for root in &user_roots {
-            // Compare both the lexical root and its canonical form: on macOS
-            // $HOME can sit behind /System/Volumes/Data symlinks and the
-            // caller may hand us either spelling.
-            if parent == root.as_path() {
-                allowed = true;
-                break;
-            }
-            if let Ok(canonical_root) = root.canonicalize() {
-                if parent == canonical_root.as_path() {
-                    allowed = true;
-                    break;
-                }
-            }
+    for (root, _) in user_skill_roots() {
+        // Compare both the lexical root and its canonical form: on macOS
+        // $HOME can sit behind /System/Volumes/Data symlinks and the
+        // caller may hand us either spelling.
+        if parent == root.as_path()
+            || root
+                .canonicalize()
+                .is_ok_and(|canonical_root| parent == canonical_root.as_path())
+        {
+            allowed = true;
+            break;
         }
     }
     if !allowed {
@@ -711,4 +743,42 @@ pub async fn skills_trash(dir: String) -> Result<(), String> {
     })
     .await
     .map_err(|e| format!("移到废纸篓失败：{e}"))?
+}
+
+/// Validates re-enabling a `.disabled` extension file and returns the target path.
+/// Pure filesystem check: catalog membership is verified by the command.
+pub(crate) fn enabled_extension_target(path: &Path) -> Result<PathBuf, String> {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "无效的扩展路径".to_string())?;
+    let enabled_name = match name.strip_suffix(".disabled") {
+        Some(n) if !n.is_empty() => n,
+        _ => return Err("该扩展不是通过 .disabled 后缀停用的，无法重命名启用".to_string()),
+    };
+    if !path.is_file() {
+        return Err("扩展文件不存在".to_string());
+    }
+    let target = path.with_file_name(enabled_name);
+    if target.exists() {
+        return Err(format!("同名扩展文件已存在，无法启用：{enabled_name}"));
+    }
+    Ok(target)
+}
+
+/// Tauri command `extension_enable_file`: renames `<name>.<ext>.disabled` back to
+/// `<name>.<ext>`. `path` must be an extension `skills_list(cwd)` reports.
+#[tauri::command]
+pub async fn extension_enable_file(cwd: Option<String>, path: String) -> Result<(), String> {
+    let catalog = skills_list(cwd).await?;
+    if !catalog.extensions.iter().any(|e| e.path == path) {
+        return Err("该路径不是已发现的扩展模块，已拒绝启用".to_string());
+    }
+    tokio::task::spawn_blocking(move || {
+        let from = Path::new(&path);
+        let target = enabled_extension_target(from)?;
+        std::fs::rename(from, target).map_err(|e| format!("启用扩展失败：{e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

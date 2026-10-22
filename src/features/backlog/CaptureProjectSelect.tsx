@@ -1,6 +1,6 @@
-import { FolderGit2 } from "lucide-react";
-import { useMemo } from "react";
-import { NativeSelect } from "../../components/NativeSelect";
+import { Check, ChevronDown, Folder } from "lucide-react";
+import { useMemo, useState } from "react";
+import { FloatingLayer } from "../../components/FloatingLayer";
 import { useSessions } from "../../stores/sessions";
 import { useBacklog } from "./backlogStore";
 import {
@@ -12,7 +12,7 @@ import {
 
 const AUTO = "__auto__";
 
-/** 「归属项目」 picker for new ideas; the resolved choice is what `backlogAdd` persists. */
+/** 「归属项目」 pill (folder + name + chevron) for new ideas; the resolved choice is what `backlogAdd` persists. */
 export function CaptureProjectSelect({
 	currentProject,
 	className = "",
@@ -24,34 +24,67 @@ export function CaptureProjectSelect({
 	const setPick = useBacklog((s) => s.setCaptureProject);
 	const workspaces = useSessions((s) => s.workspaces);
 	const options = useMemo(() => captureProjectOptions(workspaces), [workspaces]);
+	const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
-	const value = pick === null ? AUTO : pick;
 	const resolved = resolveCaptureProject(pick, currentProject);
-	// A remembered or current project that is no longer a workspace must stay selectable.
+	const label = resolved ? projectDisplayName(resolved) : "无项目";
+	// A remembered project that is no longer a workspace must stay selectable.
 	const extra =
 		pick !== null && pick !== CAPTURE_PROJECT_NONE && !options.some((o) => o.path === pick) ? pick : null;
 	const autoName = currentProject ? projectDisplayName(currentProject) : "无项目";
+	const value = pick === null ? AUTO : pick;
+
+	const rows: { value: string; label: string }[] = [
+		{ value: AUTO, label: `跟随当前会话（${autoName}）` },
+		...options.map((o) => ({ value: o.path, label: o.name })),
+		...(extra ? [{ value: extra, label: projectDisplayName(extra) }] : []),
+		{ value: CAPTURE_PROJECT_NONE, label: "不归属项目" },
+	];
 
 	return (
-		<label className={`flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--text-dim)] ${className}`}>
-			<FolderGit2 className="h-3 w-3 shrink-0" />
-			<span className="shrink-0">归属项目</span>
-			<NativeSelect
-				value={value}
-				onChange={(e) => setPick(e.target.value === AUTO ? null : e.target.value)}
+		<>
+			<button
+				type="button"
+				onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}
 				title={resolved ?? "不归属任何项目"}
-				containerClassName="min-w-0 flex-1"
-				className="py-0.5 pl-2 text-[11px]"
+				aria-label={`归属项目：${label}`}
+				aria-haspopup="listbox"
+				aria-expanded={anchor !== null}
+				className={`inline-flex h-7 min-w-0 max-w-[180px] items-center gap-1 rounded-full border border-[var(--border-divider)] px-2.5 text-[12px] text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] ${className}`}
 			>
-				<option value={AUTO}>跟随当前会话（{autoName}）</option>
-				{options.map((o) => (
-					<option key={o.path} value={o.path}>
-						{o.name}
-					</option>
+				<Folder className="h-3.5 w-3.5 shrink-0" />
+				<span className="min-w-0 truncate">{label}</span>
+				<ChevronDown className="h-3 w-3 shrink-0" />
+			</button>
+			<FloatingLayer
+				anchor={anchor}
+				placement="bottom-start"
+				layer="popover"
+				ignoreRefs={[{ current: anchor }]}
+				onDismiss={() => setAnchor(null)}
+				role="listbox"
+				aria-label="归属项目"
+				className="w-[240px] !bg-[var(--bg-panel)] py-1"
+			>
+				{rows.map((r) => (
+					<button
+						key={r.value}
+						type="button"
+						role="option"
+						aria-selected={value === r.value}
+						onClick={() => {
+							setPick(r.value === AUTO ? null : r.value);
+							setAnchor(null);
+						}}
+						className={`flex w-full items-start justify-between gap-2 px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] ${
+							value === r.value ? "text-[var(--text)]" : "text-[var(--text-muted)]"
+						}`}
+					>
+						<span className="min-w-0 break-words">{r.label}</span>
+						{value === r.value && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+					</button>
 				))}
-				{extra && <option value={extra}>{projectDisplayName(extra)}</option>}
-				<option value={CAPTURE_PROJECT_NONE}>不归属项目</option>
-			</NativeSelect>
-		</label>
+			</FloatingLayer>
+		</>
 	);
 }

@@ -863,7 +863,6 @@ details.fold .lbl {
 .ideas-refs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
 .ideas-check { font-size: 20px; }
 .ideas-k-bug { color: var(--err); }
-.ideas-k-todo { color: var(--warn); }
 .ideas-multibar { position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-ideas-bar); display: flex; align-items: center; justify-content: space-between; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--border); }
 /* Height follows the visual viewport (--vh) so the iOS keyboard never covers the sheet's buttons. */
 .ideas-mask { position: fixed; top: 0; left: 0; right: 0; height: var(--vh); z-index: var(--z-ideas-sheet); background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }

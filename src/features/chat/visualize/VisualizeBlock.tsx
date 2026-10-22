@@ -325,7 +325,7 @@ function VisualizeFrame({
 	return (
 		<div
 			className={clsx(
-				"relative overflow-hidden rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)]",
+				"relative overflow-hidden rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] p-3",
 				fill && "flex h-full flex-col",
 			)}
 		>

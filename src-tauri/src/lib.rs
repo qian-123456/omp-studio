@@ -394,6 +394,7 @@ pub fn run() {
             skills::commands::skills_read,
             skills::usage::skills_usage,
             skills::commands::skills_trash,
+            skills::commands::extension_enable_file,
             // D — MCP servers + plugin enablement (OMP-managed config files)
             settings_mcp::mcp_config_list,
             settings_mcp::mcp_server_upsert,

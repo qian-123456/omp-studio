@@ -7,6 +7,7 @@ import { AppearanceSection } from "./AppearanceSection";
 import { ContextWindowSection } from "./ContextWindowSection";
 import { FallbackSection } from "./FallbackSection";
 import { GeneralSection } from "./GeneralSection";
+import { GuideSection } from "./GuideSection";
 import { DoctorSection, InboxSection } from "./InboxSection";
 import { McpSettingsSection } from "./McpSettingsSection";
 import { MobileSettingsSection } from "./MobileSettingsSection";
@@ -37,6 +38,7 @@ export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	notifications: NotificationsSection,
 	privacy: PrivacySection,
 	about: AboutSection,
+	guide: GuideSection,
 	providers: ProvidersSection,
 	"omp-roles": RolesSection,
 	thinking: ThinkingSection,

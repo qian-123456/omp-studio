@@ -1,3 +1,4 @@
+import { AgentDefsPanel } from "./AgentDefsPanel";
 import { MemoryFilesPanel } from "./MemoryFilesPanel";
 import { OmpSettingsPage } from "../OmpSettingsList";
 
@@ -22,7 +23,14 @@ export function ShellSection() {
 }
 
 export function SubagentsSection() {
-	return <OmpSettingsPage page="subagents" title="子代理" description="子代理的并发、时长和深度限制，以及隔离运行方式" />;
+	return (
+		<OmpSettingsPage
+			page="subagents"
+			title="子代理"
+			description="子代理的提示词与定义，以及并发、时长和深度限制和隔离运行方式"
+			lead={<AgentDefsPanel />}
+		/>
+	);
 }
 
 export function MemorySection() {

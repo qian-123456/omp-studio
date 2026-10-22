@@ -272,6 +272,19 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         }
         conn.pragma_update(None, "user_version", 18)?;
     }
+    // v19: backlog soft delete (trash) + the `todo` kind is folded into `idea`.
+    if version < 19 {
+        let has_deleted_at: bool = conn.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('backlog') WHERE name = 'deleted_at'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_deleted_at {
+            conn.execute_batch("ALTER TABLE backlog ADD COLUMN deleted_at TEXT;")?;
+        }
+        conn.execute_batch("UPDATE backlog SET kind = 'idea' WHERE kind = 'todo';")?;
+        conn.pragma_update(None, "user_version", 19)?;
+    }
     Ok(())
 }
 
@@ -351,7 +364,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -374,7 +387,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 18);
+        assert_eq!(v3, 19);
     }
 
     #[test]
@@ -384,7 +397,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 18);
+        assert_eq!(v, 19);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -411,7 +424,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 18);
+        assert_eq!(v, 19);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(schedules)")
             .unwrap()
@@ -486,7 +499,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 18);
+        assert_eq!(v, 19);
         // Pre-existing row inherits the documented defaults.
         let (notify, new_chat): (String, i64) = conn
             .query_row(
@@ -581,7 +594,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 18);
+        assert_eq!(v, 19);
         // Pre-existing row: NULL cap, zero runs.
         let (max_runs, runs_done): (Option<i64>, i64) = conn
             .query_row(
@@ -641,7 +654,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 18);
+        assert_eq!(v, 19);
         // Pre-existing rows default to code.
         let mode: String = conn
             .query_row(
@@ -786,7 +799,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 18);
+        assert_eq!(v, 19);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(model_replace_log)")
             .unwrap()
@@ -829,7 +842,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 18);
+        assert_eq!(v, 19);
         let columns = |table: &str| -> Vec<String> {
             conn.prepare(&format!("PRAGMA table_info({table})"))
                 .unwrap()
@@ -895,7 +908,8 @@ mod tests {
     fn migrate_v18_puts_existing_rows_in_the_global_scope() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE model_templates(
+            "CREATE TABLE backlog(id TEXT PRIMARY KEY, kind TEXT NOT NULL);
+             CREATE TABLE model_templates(
                id TEXT PRIMARY KEY, name TEXT NOT NULL, roles TEXT NOT NULL,
                is_bottom_line INTEGER NOT NULL DEFAULT 0,
                created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -923,5 +937,46 @@ mod tests {
                 .unwrap();
             assert_eq!(scope, "global", "{table}");
         }
+    }
+}
+
+#[cfg(test)]
+mod backlog_v19_tests {
+    use super::*;
+
+    /// v19 adds `backlog.deleted_at` and folds legacy `todo` rows into `idea`.
+    #[test]
+    fn migrate_v19_adds_deleted_at_and_converts_todo_kind() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        // Rewind to v18 shape: drop the column, restore a legacy `todo` row.
+        conn.execute_batch("ALTER TABLE backlog DROP COLUMN deleted_at;")
+            .unwrap();
+        conn.execute_batch(
+            "INSERT INTO backlog(id, text, kind, refs, status, created_at, updated_at)
+             VALUES('a', 't', 'todo', '[]', 'inbox', 'x', 'x'),
+                   ('b', 'u', 'bug', '[]', 'inbox', 'x', 'x');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 18).unwrap();
+        migrate(&conn).unwrap();
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(backlog)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(cols.iter().any(|c| c == "deleted_at"));
+        let kind = |id: &str| -> String {
+            conn.query_row("SELECT kind FROM backlog WHERE id = ?1", [id], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(kind("a"), "idea");
+        assert_eq!(kind("b"), "bug");
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 19);
     }
 }

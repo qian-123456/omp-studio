@@ -7,6 +7,8 @@ import {
 	captureProjectOptions,
 	resolveCaptureProject,
 	byCreatedDesc,
+	EMPTY_SEARCH,
+	effectiveScope,
 	filterIdeas,
 	formatAddedTime,
 	groupIdeasByProject,
@@ -15,8 +17,13 @@ import {
 	needsAttentionCount,
 	partitionByPhase,
 	rangeSelection,
+	searchIdeas,
 	sessionOptionLabel,
 	splitByProject,
+	splitSent,
+	scopeOptions,
+	tabCounts,
+	trashDaysLeft,
 } from "./ideasLogic";
 
 const sessionMeta = (overrides: Partial<SessionMeta> = {}): SessionMeta => ({
@@ -79,13 +86,14 @@ const item = (
 ): BacklogItem => ({
 	id,
 	text: id,
-	kind: "todo",
+	kind: "idea",
 	refs: [],
 	status,
 	targetSessionId: null,
 	projectDir,
 	createdAt,
 	updatedAt,
+	deletedAt: null,
 });
 
 const items = [
@@ -247,11 +255,49 @@ describe("splitByProject", () => {
 	});
 });
 
+describe("splitSent", () => {
+	const rows = [
+		item("a", "inbox", "/p/a", "2026-01-01T00:00:00Z"),
+		item("b", "inbox", "/p/b", "2026-01-02T00:00:00Z"),
+		item("c", "inbox", "/p/a", "2026-01-03T00:00:00Z"),
+	];
+	it("keeps sent items out of later sends, whatever the grouping", () => {
+		const { remaining, sent } = splitSent(rows, new Set(["a", "c"]));
+		expect(remaining.map((i) => i.id)).toEqual(["b"]);
+		expect(sent.map((i) => i.id)).toEqual(["a", "c"]);
+		expect(splitByProject(remaining).map((g) => g.map((i) => i.id))).toEqual([["b"]]);
+		expect(splitSent(rows, new Set()).remaining).toEqual(rows);
+		expect(splitSent(rows, new Set(["a", "b", "c"])).remaining).toEqual([]);
+	});
+});
+
 describe("filterIdeas", () => {
-	it("current keeps only the current project's items in order; nothing without a project", () => {
-		expect(filterIdeas(nonFinished, "current", "/p/a").map((i) => i.id)).toEqual(["new-here", "old-here"]);
-		expect(filterIdeas(nonFinished, "current", null)).toEqual([]);
-		expect(filterIdeas(nonFinished, "all", null)).toBe(nonFinished);
+	it("a project root keeps only that project's items in order; null keeps all", () => {
+		expect(filterIdeas(nonFinished, "/p/a").map((i) => i.id)).toEqual(["new-here", "old-here"]);
+		expect(filterIdeas(nonFinished, "/p/b").map((i) => i.id)).toEqual(["new-other"]);
+		expect(filterIdeas(nonFinished, "/p/none")).toEqual([]);
+		expect(filterIdeas(nonFinished, null)).toBe(nonFinished);
+	});
+});
+
+describe("scopeOptions / effectiveScope", () => {
+	it("lists projects with non-trashed ideas, current first, without the global group", () => {
+		const opts = scopeOptions(nonFinished, "/p/b");
+		expect(opts.map((o) => [o.root, o.label, o.isCurrent])).toEqual([
+			["/p/b", "b", true],
+			["/p/a", "a", false],
+		]);
+	});
+	it("ignores trashed items and falls back to all when the project has no items left", () => {
+		const rows = [
+			item("x", "inbox", "/p/x", "2026-01-01T00:00:00Z"),
+			{ ...item("y", "inbox", "/p/y", "2026-01-02T00:00:00Z"), deletedAt: "2026-01-03T00:00:00Z" },
+		];
+		const opts = scopeOptions(rows, null);
+		expect(opts.map((o) => o.root)).toEqual(["/p/x"]);
+		expect(effectiveScope("/p/x", opts)).toBe("/p/x");
+		expect(effectiveScope("/p/y", opts)).toBeNull();
+		expect(effectiveScope(null, opts)).toBeNull();
 	});
 });
 
@@ -281,7 +327,7 @@ describe("groupIdeasByProject", () => {
 		expect(groups.map((g) => [g.project, g.label, g.isCurrent, g.items.map((i) => i.id)])).toEqual([
 			["/p/r", "r", true, ["wt", "main"]],
 		]);
-		expect(filterIdeas(wt, "current", "/p/r").map((i) => i.id)).toEqual(["main", "wt"]);
+		expect(filterIdeas(wt, "/p/r").map((i) => i.id)).toEqual(["main", "wt"]);
 	});
 });
 
@@ -311,24 +357,111 @@ describe("buildBatchFillText", () => {
 	it("adds the header, numbers items and tags each with its type", () => {
 		const text = buildBatchFillText([
 			{ kind: "bug", body: "崩溃 🖼️#1" },
-			{ kind: "todo", body: "加测试\n第二行" },
+			{ kind: "idea", body: "加测试\n第二行" },
 			{ kind: "idea", body: "做个 🖼️#2 并参考 🖼️#1" },
 		]);
 		expect(text).toBe(
-			"以下是 3 个待处理问题（缺陷/待办/想法），请逐条处理：\n\n" +
-				"1. 【缺陷】崩溃 🖼️#1\n2. 【待办】加测试\n   第二行\n3. 【想法】做个 🖼️#2 并参考 🖼️#1",
+			"以下是 3 个待处理问题（缺陷/想法），请逐条处理：\n\n" +
+				"1. 【缺陷】崩溃 🖼️#1\n2. 【想法】加测试\n   第二行\n3. 【想法】做个 🖼️#2 并参考 🖼️#1",
 		);
 	});
 });
 
 describe("formatAddedTime", () => {
 	const now = new Date(2026, 9, 3, 14, 30);
-	it("uses relative time within a day, else MM-DD HH:mm", () => {
-		expect(formatAddedTime(new Date(2026, 9, 3, 14, 29, 40).toISOString(), now)).toBe("刚刚");
-		expect(formatAddedTime(new Date(2026, 9, 3, 14, 20).toISOString(), now)).toBe("10分钟前");
-		expect(formatAddedTime(new Date(2026, 9, 3, 11, 0).toISOString(), now)).toBe("3小时前");
+	it("minute precision: today HH:mm, this year MM-DD HH:mm, older YYYY-MM-DD HH:mm", () => {
+		expect(formatAddedTime(new Date(2026, 9, 3, 14, 29, 40).toISOString(), now)).toBe("14:29");
+		expect(formatAddedTime(new Date(2026, 9, 3, 1, 5).toISOString(), now)).toBe("01:05");
+		expect(formatAddedTime(new Date(2026, 9, 2, 23, 59).toISOString(), now)).toBe("10-02 23:59");
 		expect(formatAddedTime(new Date(2026, 8, 1, 9, 5).toISOString(), now)).toBe("09-01 09:05");
+		expect(formatAddedTime(new Date(2025, 11, 31, 8, 0).toISOString(), now)).toBe("2025-12-31 08:00");
 		expect(formatAddedTime("bogus", now)).toBe("");
+	});
+});
+
+describe("trashDaysLeft", () => {
+	const now = new Date("2026-01-10T00:00:00Z");
+	const trashed = (deletedAt: string) => ({ ...item("t", "inbox", null, "2026-01-01T00:00:00Z"), deletedAt });
+	it("counts down from 7 days and never drops below 1", () => {
+		expect(trashDaysLeft(trashed("2026-01-10T00:00:00Z"), now)).toBe(7);
+		expect(trashDaysLeft(trashed("2026-01-07T12:00:00Z"), now)).toBe(5);
+		expect(trashDaysLeft(trashed("2026-01-03T00:00:00Z"), now)).toBe(1);
+		expect(trashDaysLeft(trashed("2025-12-01T00:00:00Z"), now)).toBe(1);
+	});
+});
+
+describe("tab membership", () => {
+	const sessionMap: Record<string, SessionMeta> = { s_work: sessionMeta({ id: "s_work", status: "working" }) };
+	const all: BacklogItem[] = [
+		item("inbox", "inbox", "/p/a", "2026-01-01T00:00:00Z"),
+		{ ...item("run", "dispatched", "/p/a", "2026-01-02T00:00:00Z"), targetSessionId: "s_work" },
+		item("rev", "dispatched", "/p/b", "2026-01-03T00:00:00Z"),
+		item("done", "done", "/p/a", "2026-01-04T00:00:00Z"),
+		item("closed", "closed", "/p/b", "2026-01-05T00:00:00Z"),
+		{ ...item("t-inbox", "inbox", "/p/a", "2026-01-06T00:00:00Z"), deletedAt: "2026-01-08T00:00:00Z" },
+		{ ...item("t-done", "done", "/p/a", "2026-01-07T00:00:00Z"), deletedAt: "2026-01-09T00:00:00Z" },
+	];
+
+	it("trashed items live only in the trash tab; 已结束 = done + closed", () => {
+		const b = partitionByPhase(all, sessionMap);
+		expect(b.pending.map((i) => i.id)).toEqual(["inbox"]);
+		expect(b.running.map((i) => i.id)).toEqual(["run"]);
+		expect(b.review.map((i) => i.id)).toEqual(["rev"]);
+		expect(b.finished.map((i) => i.id)).toEqual(["closed", "done"]);
+		expect(b.trash.map((i) => i.id)).toEqual(["t-done", "t-inbox"]);
+	});
+
+	it("badge count excludes trashed items", () => {
+		expect(needsAttentionCount(all, sessionMap)).toBe(2);
+	});
+});
+
+describe("searchIdeas", () => {
+	const base = [
+		{ ...item("a", "inbox", null, "2026-01-01T00:00:00Z"), text: "Fix Login crash", kind: "bug" as const },
+		{ ...item("b", "inbox", null, "2026-01-02T00:00:00Z"), text: "login page idea", kind: "idea" as const },
+		{ ...item("c", "inbox", null, "2026-01-03T00:00:00Z"), text: "other", kind: "idea" as const },
+	];
+	it("matches text case-insensitively and filters by kind", () => {
+		expect(searchIdeas(base, EMPTY_SEARCH)).toBe(base);
+		expect(searchIdeas(base, { query: "LOGIN", kinds: [] }).map((i) => i.id)).toEqual(["a", "b"]);
+		expect(searchIdeas(base, { query: "login", kinds: ["idea"] }).map((i) => i.id)).toEqual(["b"]);
+		expect(searchIdeas(base, { query: "", kinds: ["bug"] }).map((i) => i.id)).toEqual(["a"]);
+	});
+});
+
+describe("tabCounts", () => {
+	const sessionMap: Record<string, SessionMeta> = {};
+	const rows: BacklogItem[] = [
+		{ ...item("a1", "inbox", "/p/a", "2026-01-01T00:00:00Z"), text: "alpha" },
+		{ ...item("a2", "done", "/p/a", "2026-01-02T00:00:00Z"), text: "alpha done" },
+		{ ...item("b1", "inbox", "/p/b", "2026-01-03T00:00:00Z"), text: "alpha other" },
+		{ ...item("b2", "closed", "/p/b", "2026-01-04T00:00:00Z"), text: "beta" },
+		{ ...item("t1", "inbox", "/p/a", "2026-01-05T00:00:00Z"), text: "alpha gone", deletedAt: "2026-01-06T00:00:00Z" },
+	];
+	it("counts per tab within scope and search", () => {
+		expect(tabCounts(rows, sessionMap, null, EMPTY_SEARCH)).toEqual({
+			pending: 2,
+			running: 0,
+			review: 0,
+			finished: 2,
+			trash: 1,
+		});
+		expect(tabCounts(rows, sessionMap, "/p/a", EMPTY_SEARCH)).toMatchObject({
+			pending: 1,
+			finished: 1,
+			trash: 1,
+		});
+		expect(tabCounts(rows, sessionMap, null, { query: "alpha", kinds: [] })).toMatchObject({
+			pending: 2,
+			finished: 1,
+			trash: 1,
+		});
+		expect(tabCounts(rows, sessionMap, "/p/a", { query: "other", kinds: [] })).toMatchObject({
+			pending: 0,
+			finished: 0,
+			trash: 0,
+		});
 	});
 });
 

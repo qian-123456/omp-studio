@@ -86,30 +86,6 @@ pub struct McpConfigSnapshot {
 
 // ---------- path resolution ----------
 
-/// `PI_CODING_AGENT_DIR` relocates the agent dir; a profile env narrows it to
-/// `~/.omp/profiles/<name>/agent`.
-pub(crate) fn agent_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR") {
-        if !dir.trim().is_empty() {
-            return PathBuf::from(dir);
-        }
-    }
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-    if let Ok(profile) = std::env::var("OMP_PROFILE")
-        .or_else(|_| std::env::var("PI_PROFILE"))
-        .map(|p| p.trim().to_string())
-    {
-        if !profile.is_empty() {
-            return home
-                .join(".omp")
-                .join("profiles")
-                .join(profile)
-                .join("agent");
-        }
-    }
-    home.join(".omp").join("agent")
-}
-
 /// One candidate mcp.json file in omp discovery order.
 struct Candidate {
     path: PathBuf,
@@ -653,7 +629,7 @@ fn set_enabled_impl(
 /// `mcp_config_list` (§7 D): OMP-managed mcp.json files + their servers.
 #[tauri::command]
 pub async fn mcp_config_list(cwd: Option<String>) -> Result<McpConfigSnapshot, String> {
-    let agent_dir = agent_dir();
+    let agent_dir = crate::paths::agent_dir();
     let cwd_path = cwd.map(PathBuf::from);
     Ok(build_snapshot(&agent_dir, cwd_path.as_deref()))
 }
@@ -668,7 +644,7 @@ pub async fn mcp_server_upsert(
     name: String,
     patch: serde_json::Map<String, Value>,
 ) -> Result<(), String> {
-    let agent_dir = agent_dir();
+    let agent_dir = crate::paths::agent_dir();
     let cwd_path = cwd.as_deref().map(Path::new);
     let target = PathBuf::from(&path);
     if !is_allowed_path(&target, &agent_dir, cwd_path) {
@@ -684,7 +660,7 @@ pub async fn mcp_server_remove(
     path: String,
     name: String,
 ) -> Result<(), String> {
-    let agent_dir = agent_dir();
+    let agent_dir = crate::paths::agent_dir();
     let cwd_path = cwd.as_deref().map(Path::new);
     let target = PathBuf::from(&path);
     if !is_allowed_path(&target, &agent_dir, cwd_path) {
@@ -704,7 +680,7 @@ pub async fn mcp_server_set_enabled(
     name: String,
     enabled: bool,
 ) -> Result<(), String> {
-    let agent_dir = agent_dir();
+    let agent_dir = crate::paths::agent_dir();
     let cwd_path = cwd.as_deref().map(Path::new);
     set_enabled_impl(&agent_dir, cwd_path, &name, enabled)
 }
@@ -718,7 +694,7 @@ pub async fn mcp_server_move(
     to_path: String,
     name: String,
 ) -> Result<(), String> {
-    let agent_dir = agent_dir();
+    let agent_dir = crate::paths::agent_dir();
     let cwd_path = cwd.map(PathBuf::from);
     let from = PathBuf::from(from_path);
     let to = PathBuf::from(to_path);

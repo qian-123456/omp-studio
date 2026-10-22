@@ -9,6 +9,7 @@
 		"build": "tsc --noEmit && vite build",
 		"build:app": "tsc --noEmit && vite build && tauri build",
 		"preview": "vite preview",
+		"guide:build": "node site/guide/build.mjs",
 		"test": "vitest run",
 		"tauri": "tauri"
 	},

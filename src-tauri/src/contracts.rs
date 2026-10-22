@@ -504,7 +504,6 @@ pub struct TodoCounts {
 pub enum BacklogKind {
     Idea,
     Bug,
-    Todo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -540,6 +539,8 @@ pub struct BacklogItem {
     pub project_dir: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Set when moved to the trash; rows older than 7 days are purged on startup.
+    pub deleted_at: Option<String>,
 }
 
 /// Patch for `backlog_update` (§7 D).
@@ -1557,6 +1558,8 @@ pub enum SkillIssue {
     DescriptionTooLong,
     /// SKILL.md missing, unreadable, non-UTF-8, or the skill dir is a dangling symlink.
     Unreadable,
+    /// Skill directory has no SKILL.md but contains other Markdown files.
+    MissingSkillMd,
 }
 
 /// Which agent ecosystem provided the discovery root this skill was found in.
