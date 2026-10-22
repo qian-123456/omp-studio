@@ -513,11 +513,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 											</button>
 										</div>
 										<div
-											onClick={() => {
-												if (flowState.url)
-													void oauthLoginOpenUrl(flowState.url);
-											}}
-											className="cursor-pointer truncate rounded-lg bg-neutral-900/60 px-2.5 py-1.5 font-mono text-[11px] text-neutral-400 hover:text-neutral-200 transition-colors"
+											className="select-text whitespace-pre-wrap break-all rounded-lg bg-neutral-900/60 px-2.5 py-1.5 font-mono text-[11px] text-neutral-400"
 											title={flowState.url}
 										>
 											{flowState.url}

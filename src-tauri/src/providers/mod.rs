@@ -4,7 +4,8 @@
 //!
 //! Metadata: `~/.omp-workspace/providers.json` (non-secret).
 //! Secrets: `~/.omp-workspace/env/keys.env` (AES-256-GCM values, master key in
-//! the macOS Keychain). Child processes get decrypted keys via [`env_pairs`].
+//! `~/.omp-workspace/env/.master.key`; the macOS Keychain is only a one-time
+//! legacy migration source). Child processes get decrypted keys via [`env_pairs`].
 
 pub mod commands;
 pub mod models_yml_providers;

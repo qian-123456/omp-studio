@@ -3,7 +3,10 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { AlertTriangle, FolderOpen, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseDocument } from "yaml";
-import { errMsg } from "../../../lib/dialogs";
+import { confirmDialog, errMsg } from "../../../lib/dialogs";
+import { useEscapeKey } from "../../../lib/hooks";
+import { useOmpConfigStore } from "../ompConfigStore";
+import { useProviders } from "../../providers/store";
 import { ompInfo, readTextFile, writeTextFile } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
 import { Button } from "../ui";
@@ -90,16 +93,21 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 
 	const parseError = useMemo(() => (kind === "yaml" ? yamlError(text) : null), [kind, text]);
 
-	const switchTo = (name: FileName) => {
+	const switchTo = async (name: FileName) => {
 		if (name === active) return;
-		if (dirty && !window.confirm("当前文件有未保存的修改，切换后将丢失。继续吗？")) return;
+		if (dirty && !(await confirmDialog("当前文件有未保存的修改，切换后将丢失。继续吗？", { danger: true }))) return;
 		setActive(name);
 	};
 
-	const close = () => {
-		if (dirty && !window.confirm("有未保存的修改，关闭后将丢失。继续吗？")) return;
+	const close = async () => {
+		if (dirty && !(await confirmDialog("有未保存的修改，关闭后将丢失。继续吗？", { danger: true }))) return;
 		onClose();
 	};
+
+	// Esc closes only this dialog (with the unsaved-changes confirm), never settings.
+	useEscapeKey(() => {
+		if (!saving) void close();
+	});
 
 	const save = useCallback(async () => {
 		if (!path || parseError) return;
@@ -108,6 +116,9 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 		try {
 			await writeTextFile(path, text);
 			setSaved(text);
+			// The page stores cache these files; reload so they show the new values.
+			void useProviders.getState().load();
+			void useOmpConfigStore.getState().load(true);
 			toast.success(`已保存 ${active}`);
 		} catch (e) {
 			setSaveError(errMsg(e));
@@ -129,7 +140,7 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 		<div
 			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-150"
 			onMouseDown={(e) => {
-				if (e.target === e.currentTarget && !saving) close();
+				if (e.target === e.currentTarget && !saving) void close();
 			}}
 		>
 			<div
@@ -140,13 +151,13 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 			>
 				<div className="flex items-center justify-between">
 					<h2 className="text-base font-semibold">编辑原始配置文件</h2>
-					<button type="button" aria-label="关闭" onClick={close} className="rounded p-1 hover:bg-[var(--bg-hover,transparent)]">
+					<button type="button" aria-label="关闭" onClick={() => void close()} className="rounded p-1 hover:bg-[var(--bg-hover,transparent)]">
 						<X size={16} />
 					</button>
 				</div>
 				<div className="flex flex-wrap gap-2">
 					{FILES.map((f) => (
-						<Button key={f.name} variant={f.name === active ? "primary" : "secondary"} onClick={() => switchTo(f.name)}>
+						<Button key={f.name} variant={f.name === active ? "primary" : "secondary"} onClick={() => void switchTo(f.name)}>
 							{f.label}
 						</Button>
 					))}
@@ -181,7 +192,7 @@ export function RawFilesDialog({ onClose }: { onClose: () => void }) {
 				<div className="flex items-center justify-between gap-2">
 					<Button icon={FolderOpen} disabled={!path} onClick={() => void reveal()}>在访达中显示</Button>
 					<div className="flex gap-2">
-						<Button onClick={close}>关闭</Button>
+						<Button onClick={() => void close()}>关闭</Button>
 						<Button variant="primary" loading={saving} disabled={!dirty || !!parseError || loading || !!loadError} onClick={() => void save()}>
 							保存
 						</Button>

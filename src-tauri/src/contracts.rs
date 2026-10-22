@@ -1369,6 +1369,32 @@ pub struct OmpImportResult {
     pub id: String,
     pub ok: bool,
     pub error: Option<String>,
+    pub issue: Option<OmpImportIssue>,
+}
+
+/// Why an OMP provider cannot be (fully) imported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OmpImportIssue {
+    MissingBaseUrl,
+    UnsupportedApi,
+    NoKey,
+    EnvVarUnset,
+}
+
+/// Read-only dry-run verdict for one OMP provider. Never carries key material.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpImportPlanItem {
+    pub id: String,
+    pub slug: String,
+    pub base_url: Option<String>,
+    pub api: Option<String>,
+    /// "create" | "update"
+    pub action: String,
+    pub ok: bool,
+    pub issue: Option<OmpImportIssue>,
+    pub error: Option<String>,
 }
 
 // ---- E: Schedules (定时任务) ----

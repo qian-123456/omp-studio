@@ -17,6 +17,7 @@ import { canImportOmpProvider } from "../../providers/ompBadge";
 import { useProviders } from "../../providers/store";
 import { useUi } from "../../../stores/ui";
 import { Button, Chip, IconButton } from "../ui";
+import { sanitizeSlug } from "../../providers/envparse";
 import { ProviderBrandLogo } from "./ProviderBrandLogo";
 import {
 	type ProviderBrandConfig,
@@ -39,6 +40,8 @@ export interface QuotaAccountSheetProps {
 	provider: AccountSheetProvider | null;
 	now: number;
 	refreshing: boolean;
+	/** Last quota fetch failure; shown so a failed 刷新用量 is not silent. */
+	error?: string | null;
 	/** Re-fetches the usage report (same call as the dashboard header 刷新). */
 	onRefresh: () => Promise<void> | void;
 }
@@ -141,6 +144,7 @@ export function QuotaAccountSheet({
 	provider,
 	now,
 	refreshing,
+	error,
 	onRefresh,
 }: QuotaAccountSheetProps) {
 	const [loginOpen, setLoginOpen] = useState(false);
@@ -182,7 +186,8 @@ export function QuotaAccountSheet({
 		null,
 	);
 	const canRelogin = oauthIds.has(provider.providerId);
-	const workbench = workbenchProviders.find((c) => c.slug === provider.providerId) ?? null;
+	const workbench =
+		workbenchProviders.find((c) => c.slug === sanitizeSlug(provider.providerId)) ?? null;
 	// OAuth-only OMP providers have nothing editable here (re-login covers them).
 	const canManage =
 		workbench != null || ompProviders.some((p) => p.id === provider.providerId && canImportOmpProvider(p));
@@ -332,6 +337,11 @@ export function QuotaAccountSheet({
 				</div>
 
 				<div className="space-y-2 border-t border-[var(--border-divider)] px-4 py-3">
+					{error ? (
+						<pre className="w-full select-text whitespace-pre-wrap break-words rounded-md border border-[var(--status-error)] p-2 text-xs text-[var(--status-error)]">
+							刷新用量失败：{error}
+						</pre>
+					) : null}
 					<div className="flex items-center gap-1 text-xs text-[var(--text-dim)]">
 						<Clock className="h-3 w-3" />
 						{latestFetchedAt != null

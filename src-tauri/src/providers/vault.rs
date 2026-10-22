@@ -3,11 +3,13 @@
 //! The file is `.env`-format (`# comments`, `SLUG_API_KEY=<value>` lines) but
 //! VALUES ARE ENCRYPTED, not plaintext: AES-256-GCM with a random nonce per
 //! entry, stored as `v1:<nonce_b64>:<ct_b64>`. The 32-byte master key lives in
-//! the macOS Keychain (service `omp-workspace.vault`, account `master-v1`).
+//! the file `env/.master.key` next to it (mode 0600); the macOS Keychain
+//! (service `omp-workspace.vault`, account `master-v1`) is only read once as a
+//! legacy migration source.
 //! Plaintext key material exists ONLY in memory (injection / connection test /
 //! explicit .env export) — never logged, never returned to the frontend after
 //! save, never written anywhere but this file. There is NO plaintext fallback:
-//! when the Keychain is unavailable the vault fails with a clear error.
+//! when the master key cannot be read or created the vault fails with a clear error.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};

@@ -23,7 +23,6 @@ import {
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type {
 	ModelEntry,
-	OmpImportResult,
 	OmpProviderInfo,
 	ProviderConfig,
 } from "../../lib/contracts";
@@ -31,6 +30,8 @@ import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { canImportOmpProvider, getOmpAuthBadge } from "./ompBadge";
 import { OauthLoginDialog } from "./OauthLoginDialog";
+import { ImportOmpDialog } from "./ImportOmpDialog";
+import { sanitizeSlug } from "./envparse";
 import { API_LABELS, presetById } from "./presets";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders, type TestStatus } from "./store";
@@ -40,7 +41,7 @@ import { openSettingsTarget } from "../settings/settingsTargets";
 import { ProviderBrandLogo } from "../settings/sections/ProviderBrandLogo";
 
 const PRIVACY_NOTE =
-	"密钥使用 macOS 钥匙串加密后存于 ~/.omp-workspace/env/keys.env，明文仅在内存中出现，不会写入数据库或日志。";
+	"密钥使用 AES-256-GCM 加密后存于 ~/.omp-workspace/env/keys.env，主密钥保存在 ~/.omp-workspace/env/.master.key；明文仅在内存中出现，不会写入数据库或日志。";
 
 /** One row in the unified provider list — may carry both an OMP-discovered
  * config and a workbench-managed copy (matched by slug). */
@@ -63,7 +64,7 @@ export function ProviderPanel() {
 	const ompError = useProviders((s) => s.ompError);
 	const exportEnvText = useProviders((s) => s.exportEnvText);
 	const importingOmp = useProviders((s) => s.importingOmp);
-	const importOmp = useProviders((s) => s.importOmp);
+	const [importIds, setImportIds] = useState<string[] | null>(null);
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
 	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -75,17 +76,21 @@ export function ProviderPanel() {
 	}, [load]);
 
 	// Deep link from the quota sheet: expand the targeted provider row.
-	const { focusKey } = useSettingsNav();
+	const { focusKey, focusRequest } = useSettingsNav();
 	useEffect(() => {
 		if (focusKey?.startsWith("provider:")) setExpandedKey(focusKey.slice("provider:".length));
-	}, [focusKey]);
+	}, [focusKey, focusRequest]);
 
 	// Merge OMP-discovered providers and workbench-managed ones into one list,
 	// keyed by slug so the same provider never appears twice.
 	const rows = useMemo<ListRow[]>(() => {
 		const map = new Map<string, ListRow>();
 		for (const info of ompProviders) {
-			map.set(info.id, { key: info.id, omp: info, workbench: null });
+			map.set(sanitizeSlug(info.id), {
+				key: info.id,
+				omp: info,
+				workbench: null,
+			});
 		}
 		for (const cfg of providers) {
 			const existing = map.get(cfg.slug);
@@ -113,12 +118,14 @@ export function ProviderPanel() {
 		const q = query.trim().toLowerCase();
 		if (!q) return rows;
 		return rows.filter((r) => {
+			const wb = r.workbench;
+			const models =
+				wb && wb.models.length > 0 ? wb.models : (r.omp?.modelIds ?? []);
 			const haystack = [
-				r.omp?.id,
-				r.workbench?.name,
-				r.workbench?.slug,
-				r.omp?.baseUrl ?? r.workbench?.baseUrl,
-				...(r.omp?.modelIds ?? r.workbench?.models ?? []),
+				wb?.name ?? r.omp?.id,
+				wb?.slug ?? r.omp?.id,
+				wb?.baseUrl ?? r.omp?.baseUrl,
+				...models.map(modelEntryId),
 			]
 				.filter(Boolean)
 				.join(" ")
@@ -133,14 +140,9 @@ export function ProviderPanel() {
 		[ompProviders],
 	);
 
-	const handleImportAll = async () => {
+	const handleImportAll = () => {
 		if (eligibleOmpIds.length === 0 || importingOmp) return;
-		try {
-			const results = await importOmp(eligibleOmpIds);
-			notifyImportResults(results);
-		} catch (err) {
-			toast.error(`导入失败: ${errMsg(err)}`);
-		}
+		setImportIds(eligibleOmpIds);
 	};
 
 	const handleExport = async () => {
@@ -151,7 +153,7 @@ export function ProviderPanel() {
 				return;
 			}
 			await copyText(text);
-			toast.success("已复制明文 .env 到剪贴板（注意保密，粘贴后及时清空）");
+			toast.success("已复制全部密钥到剪贴板（内容是明文，注意保密，粘贴后及时清空）");
 		} catch (err) {
 			toast.error(`导出失败: ${errMsg(err)}`);
 		}
@@ -161,7 +163,7 @@ export function ProviderPanel() {
 	const isLoading =
 		(!loaded && !error) || (!ompLoaded && !ompError);
 	const totalCount = rows.length;
-	const managedCount = rows.filter((r) => r.workbench).length;
+	const managedCount = rows.filter((r) => r.workbench?.hasKey).length;
 
 	return (
 		<div className="space-y-4">
@@ -232,7 +234,7 @@ export function ProviderPanel() {
 										type="button"
 										onClick={() => {
 											setImportMenuOpen(false);
-											void handleImportAll();
+											handleImportAll();
 										}}
 										disabled={importingOmp}
 										className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-neutral-200 hover:bg-[var(--bg-hover)] disabled:opacity-40"
@@ -260,9 +262,9 @@ export function ProviderPanel() {
 								>
 									<FileInput className="h-3.5 w-3.5 text-neutral-400" />
 									<div className="flex-1">
-										<div className="font-medium">从 .env 文件导入</div>
+										<div className="font-medium">从 .env 导入密钥</div>
 										<div className="text-[10px] text-neutral-400">
-											批量解析环境变量并添加
+											一次添加多行 名字=密钥
 										</div>
 									</div>
 								</button>
@@ -276,9 +278,9 @@ export function ProviderPanel() {
 								>
 									<ClipboardCopy className="h-3.5 w-3.5 text-neutral-400" />
 									<div className="flex-1">
-										<div className="font-medium">复制 .env 文本</div>
+										<div className="font-medium">复制全部密钥</div>
 										<div className="text-[10px] text-neutral-400">
-											复制明文配置到剪贴板
+											以 名字=密钥 格式复制已加密保存的密钥，内容是明文，注意保密
 										</div>
 									</div>
 								</button>
@@ -387,6 +389,7 @@ export function ProviderPanel() {
 									curr === row.key ? null : row.key,
 								)
 							}
+							onImportRow={(id) => setImportIds([id])}
 							onEdit={() => {
 								if (row.workbench) {
 									setDialog({
@@ -412,29 +415,15 @@ export function ProviderPanel() {
 			{oauthDialogOpen && (
 				<OauthLoginDialog onClose={() => setOauthDialogOpen(false)} />
 			)}
+
+			{importIds && (
+				<ImportOmpDialog ids={importIds} onClose={() => setImportIds(null)} />
+			)}
 		</div>
 	);
 }
 
-function notifyImportResults(results: OmpImportResult[]) {
-	if (results.length === 0) return;
-	const succeeded = results.filter((r) => r.ok);
-	const failed = results.filter((r) => !r.ok);
 
-	if (succeeded.length > 0) {
-		toast.success(`成功导入 ${succeeded.length} 个`);
-	}
-
-	if (failed.length > 0) {
-		const reasons = failed
-			.slice(0, 3)
-			.map((r) => `${r.id}: ${r.error || "导入失败"}`);
-		if (failed.length > 3) {
-			reasons.push(`还有 ${failed.length - 3} 个供应商导入失败`);
-		}
-		toast.error(reasons.join("\n"));
-	}
-}
 
 function formatHostOnly(rawUrl: string | null | undefined): string | null {
 	if (!rawUrl) return null;
@@ -456,13 +445,14 @@ function UnifiedProviderRow({
 	isExpanded,
 	onToggleExpand,
 	onEdit,
+	onImportRow,
 }: {
 	row: ListRow;
 	isExpanded: boolean;
 	onToggleExpand: () => void;
 	onEdit: () => void;
+	onImportRow: (id: string) => void;
 }) {
-	const importOmp = useProviders((s) => s.importOmp);
 	const importingOmp = useProviders((s) => s.importingOmp);
 	const setEnabled = useProviders((s) => s.setEnabled);
 	const remove = useProviders((s) => s.remove);
@@ -472,7 +462,6 @@ function UnifiedProviderRow({
 	const test = useProviders((s) =>
 		row.workbench ? s.tests[row.workbench.id] : undefined,
 	);
-	const [rowImporting, setRowImporting] = useState(false);
 
 	const info = row.omp;
 	const workbench = row.workbench;
@@ -491,17 +480,9 @@ function UnifiedProviderRow({
 	const preset = workbench ? presetById(workbench.presetId) : undefined;
 	const isOmpOnly = !workbench && Boolean(info);
 
-	const handleRowImport = async () => {
-		if (!info || rowImporting || importingOmp) return;
-		setRowImporting(true);
-		try {
-			const results = await importOmp([info.id]);
-			notifyImportResults(results);
-		} catch (err) {
-			toast.error(`导入失败: ${errMsg(err)}`);
-		} finally {
-			setRowImporting(false);
-		}
+	const handleRowImport = () => {
+		if (!info || importingOmp) return;
+		onImportRow(info.id);
 	};
 
 	const handleDelete = async () => {
@@ -706,7 +687,7 @@ function UnifiedProviderRow({
 									e.stopPropagation();
 									void handleRowImport();
 								}}
-								disabled={importingOmp || rowImporting}
+								disabled={importingOmp}
 								title={
 									workbench
 										? "重新从 OMP 配置导入密钥以更新工作台配置"
@@ -714,7 +695,7 @@ function UnifiedProviderRow({
 								}
 								className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
 							>
-								{rowImporting ? (
+								{importingOmp ? (
 									<Loader2 className="h-3 w-3 animate-spin" />
 								) : (
 									<Download className="h-3 w-3" />
@@ -877,7 +858,7 @@ function UnifiedProviderRow({
 									e.stopPropagation();
 									void handleRowImport();
 								}}
-								disabled={importingOmp || rowImporting}
+								disabled={importingOmp}
 								title={
 									workbench
 										? "重新从 OMP 配置导入密钥以更新工作台配置"
@@ -885,7 +866,7 @@ function UnifiedProviderRow({
 								}
 								className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
 							>
-								{rowImporting ? (
+								{importingOmp ? (
 									<Loader2 className="h-3 w-3 animate-spin" />
 								) : (
 									<Download className="h-3 w-3" />
@@ -1063,7 +1044,7 @@ function UnifiedProviderRow({
 												</>
 											) : (
 												<div
-													className="flex items-center gap-1 truncate"
+													className="flex items-start gap-1 break-words"
 													title={`${modelTest.result.detail} (${modelTest.result.latencyMs}ms)`}
 												>
 													{modelTest.result.ok ? (
@@ -1071,7 +1052,7 @@ function UnifiedProviderRow({
 													) : (
 														<CircleX className="h-3 w-3 shrink-0" />
 													)}
-													<span className="truncate">
+													<span className="min-w-0 select-text whitespace-pre-wrap break-words">
 														{modelTest.result.detail}
 													</span>
 													<span className="shrink-0 font-mono text-[10px] opacity-80">
@@ -1123,7 +1104,7 @@ function TestResultLine({ test }: { test: TestStatus | undefined }) {
 	const { ok, latencyMs, detail } = test.result;
 	return (
 		<div
-			className={`mt-2 flex items-center gap-1.5 border-t border-[var(--border-divider)] pt-2 text-[11px] ${
+			className={`mt-2 flex items-start gap-1.5 border-t border-[var(--border-divider)] pt-2 text-[11px] ${
 				ok ? "text-emerald-400" : "text-rose-400"
 			}`}
 		>
@@ -1132,7 +1113,7 @@ function TestResultLine({ test }: { test: TestStatus | undefined }) {
 			) : (
 				<CircleX className="h-3 w-3 shrink-0" />
 			)}
-			<span className="truncate">
+			<span className="min-w-0 select-text whitespace-pre-wrap break-words">
 				{detail}（<span className="tabular-nums font-mono">{latencyMs}ms</span>）
 			</span>
 		</div>

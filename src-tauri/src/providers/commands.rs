@@ -2,11 +2,12 @@
 //! API keys arrive as command arguments, are encrypted into the vault and are
 //! never persisted anywhere else, logged, or returned to the frontend.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use crate::contracts::{
-    ModelEntry, OmpImportResult, ProviderApi, ProviderConfig, ProviderTestResult,
+    ModelEntry, OmpImportIssue, OmpImportPlanItem, OmpImportResult, ProviderApi, ProviderConfig,
+    ProviderTestResult,
 };
 
 use super::omp_config::{self, RawParsedProvider};
@@ -153,7 +154,7 @@ fn validate_unique(config: &ProviderConfig, providers: &[ProviderConfig]) -> Res
 
 #[tauri::command]
 pub async fn provider_list() -> Result<Vec<ProviderConfig>, String> {
-    let mut providers = store::load();
+    let mut providers = store::try_load()?;
     for provider in &mut providers {
         provider.has_key = vault::contains(&provider.slug);
     }
@@ -180,7 +181,7 @@ pub async fn provider_save(
     config.base_url = config.base_url.trim().to_string();
     config.env_var = config.env_var.trim().to_string();
 
-    let mut providers = store::load();
+    let mut providers = store::try_load()?;
     validate_unique(&config, &providers)?;
     // OMP reads `providers.<slug>.models` from models.yml itself: write there first so
     // a failure leaves the app store untouched. No-op for app-only providers.
@@ -308,7 +309,7 @@ pub async fn provider_save(
 #[tauri::command]
 pub async fn provider_delete(id: String) -> Result<(), String> {
     let _guard = super::MUTATION_LOCK.lock().await;
-    let mut providers = store::load();
+    let mut providers = store::try_load()?;
     if let Some(idx) = providers.iter().position(|p| p.id == id) {
         let slug = providers[idx].slug.clone();
         // Remove vault entry first; remove_entry is idempotent so if store::save
@@ -324,7 +325,7 @@ pub async fn provider_delete(id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn provider_set_enabled(id: String, enabled: bool) -> Result<(), String> {
     let _guard = super::MUTATION_LOCK.lock().await;
-    let mut providers = store::load();
+    let mut providers = store::try_load()?;
     let provider = providers
         .iter_mut()
         .find(|p| p.id == id)
@@ -339,7 +340,7 @@ pub async fn provider_set_enabled(id: String, enabled: bool) -> Result<(), Strin
 #[tauri::command]
 pub async fn provider_reorder(ids: Vec<String>) -> Result<(), String> {
     let _guard = super::MUTATION_LOCK.lock().await;
-    let mut providers = store::load();
+    let mut providers = store::try_load()?;
     let now = now_iso();
     for (index, id) in ids.iter().enumerate() {
         if let Some(provider) = providers.iter_mut().find(|p| p.id == *id) {
@@ -355,7 +356,7 @@ pub async fn provider_reorder(ids: Vec<String>) -> Result<(), String> {
 /// Chinese detail; key material never appears in errors or results.
 #[tauri::command]
 pub async fn provider_test(id: String) -> Result<ProviderTestResult, String> {
-    let config = store::load()
+    let config = store::try_load()?
         .into_iter()
         .find(|p| p.id == id)
         .ok_or_else(|| "供应商不存在".to_string())?;
@@ -636,7 +637,7 @@ pub async fn provider_test_model(
     if model_id.is_empty() {
         return Err("模型 ID 不能为空".to_string());
     }
-    let config = store::load()
+    let config = store::try_load()?
         .into_iter()
         .find(|p| p.id == id)
         .ok_or_else(|| "供应商不存在".to_string())?;
@@ -826,7 +827,7 @@ pub(crate) fn model_probe_request(
 /// is given, otherwise sort order. Only providers with keys are included.
 #[tauri::command]
 pub async fn provider_export_env_text(ids: Option<Vec<String>>) -> Result<String, String> {
-    let providers = store::load();
+    let providers = store::try_load()?;
     let selected: Vec<ProviderConfig> = match &ids {
         Some(ids) => ids
             .iter()
@@ -976,40 +977,60 @@ pub fn match_preset(provider_id: &str) -> Option<&'static presets::ProviderPrese
         .find(|p| normalize_identifier(p.id) == norm_id)
 }
 
-pub fn map_provider_api(api_str: Option<&str>, default_api: ProviderApi) -> ProviderApi {
-    match api_str.map(str::trim) {
-        Some(s)
-            if s.eq_ignore_ascii_case("openai-completions")
-                || s.eq_ignore_ascii_case("openai_completions")
-                || s.eq_ignore_ascii_case("chat-completions") =>
-        {
-            ProviderApi::OpenaiCompletions
-        }
-        Some(s)
-            if s.eq_ignore_ascii_case("openai-responses")
-                || s.eq_ignore_ascii_case("openai_responses")
-                || s.eq_ignore_ascii_case("responses") =>
-        {
-            ProviderApi::OpenaiResponses
-        }
-        Some(s)
-            if s.eq_ignore_ascii_case("anthropic")
-                || s.eq_ignore_ascii_case("anthropic-messages")
-                || s.eq_ignore_ascii_case("anthropic_messages") =>
-        {
-            ProviderApi::Anthropic
-        }
-        Some(s)
-            if s.eq_ignore_ascii_case("gemini")
-                || s.eq_ignore_ascii_case("google-generative-ai")
-                || s.eq_ignore_ascii_case("google_generative_ai") =>
-        {
-            ProviderApi::Gemini
-        }
-        Some(s) if s.eq_ignore_ascii_case("ollama") => ProviderApi::Ollama,
-        Some(_) => ProviderApi::OpenaiCompletions,
-        None => default_api,
+/// Map an OMP `api` string to a workbench protocol. `None` = not a protocol
+/// the workbench can talk to (OMP-proprietary such as `typesafe`/`devin`).
+pub fn map_provider_api(api_str: &str) -> Option<ProviderApi> {
+    let s = api_str.trim();
+    let is = |names: &[&str]| names.iter().any(|n| s.eq_ignore_ascii_case(n));
+    if is(&[
+        "openai-completions",
+        "openai_completions",
+        "chat-completions",
+    ]) {
+        Some(ProviderApi::OpenaiCompletions)
+    } else if is(&["openai-responses", "openai_responses", "responses"]) {
+        Some(ProviderApi::OpenaiResponses)
+    } else if is(&["anthropic", "anthropic-messages", "anthropic_messages"]) {
+        Some(ProviderApi::Anthropic)
+    } else if is(&["gemini", "google-generative-ai", "google_generative_ai"]) {
+        Some(ProviderApi::Gemini)
+    } else if is(&["ollama"]) {
+        Some(ProviderApi::Ollama)
+    } else {
+        None
     }
+}
+
+/// Slug rule shared with the frontend (`sanitizeSlug` in `envparse.ts`): an id
+/// made only of `[A-Za-z0-9_-]` (no leading/trailing `-`) is kept as is.
+/// Otherwise every run of other chars becomes one `-`, edges are trimmed (empty →
+/// `provider`) and `-<8-hex FNV-1a 32 of the UTF-8 id>` is appended, so two ids
+/// that sanitize alike (`聪明 AI-散户` / `别的 AI`) never share a workbench record.
+pub fn sanitize_slug(id: &str) -> String {
+    let mut out = String::with_capacity(id.len());
+    let mut in_bad_run = false;
+    for c in id.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+            out.push(c);
+            in_bad_run = false;
+        } else if !in_bad_run {
+            out.push('-');
+            in_bad_run = true;
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    if !trimmed.is_empty() && trimmed == id {
+        return id.to_string();
+    }
+    let base = if trimmed.is_empty() {
+        "provider"
+    } else {
+        trimmed
+    };
+    let hash = id.bytes().fold(0x811c_9dc5_u32, |h, b| {
+        (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
+    });
+    format!("{base}-{hash:08x}")
 }
 
 pub fn generate_import_env_var(slug: &str, api_key_env: Option<&str>) -> String {
@@ -1032,31 +1053,58 @@ pub fn generate_import_env_var(slug: &str, api_key_env: Option<&str>) -> String 
     format!("OMPWS_{sanitized}_API_KEY")
 }
 
+/// A reason an OMP provider cannot be imported, with a user-facing message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportFailure {
+    pub issue: OmpImportIssue,
+    pub message: String,
+}
+
+fn non_empty(s: Option<&str>) -> Option<&str> {
+    s.map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// Resolve baseUrl/api (override > yaml > OMP model cache > preset) and build
+/// the workbench config. Pure over its inputs.
 pub fn build_import_config(
     id: &str,
     raw: Option<&RawParsedProvider>,
-) -> Result<ProviderConfig, String> {
+    cache: Option<&omp_config::CachedEndpoint>,
+    base_url_override: Option<&str>,
+) -> Result<ProviderConfig, ImportFailure> {
     let preset = match_preset(id);
     let name = preset
         .map(|p| p.name.to_string())
         .unwrap_or_else(|| id.to_string());
     let preset_id = preset.map(|p| p.id.to_string());
 
-    let base_url = raw
-        .and_then(|r| r.base_url.as_deref())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
+    // API first: an unsupported protocol cannot be fixed by a URL.
+    let api = match non_empty(raw.and_then(|r| r.api.as_deref()))
+        .or_else(|| non_empty(cache.and_then(|c| c.api.as_deref())))
+    {
+        Some(s) => map_provider_api(s).ok_or_else(|| ImportFailure {
+            issue: OmpImportIssue::UnsupportedApi,
+            message: format!(
+                "该供应商使用 OMP 专有协议 {s}，工作台暂不能托管它的密钥；它在 OMP 里仍可直接使用"
+            ),
+        })?,
+        None => preset
+            .map(|p| p.api)
+            .unwrap_or(ProviderApi::OpenaiCompletions),
+    };
+
+    let base_url = non_empty(base_url_override)
+        .or_else(|| non_empty(raw.and_then(|r| r.base_url.as_deref())))
+        .or_else(|| non_empty(cache.and_then(|c| c.base_url.as_deref())))
         .map(ToString::to_string)
         .or_else(|| preset.map(|p| p.base_url.to_string()))
-        .ok_or_else(|| "缺少 baseUrl，请手动添加".to_string())?;
+        .ok_or_else(|| ImportFailure {
+            issue: OmpImportIssue::MissingBaseUrl,
+            message: "OMP 配置里没有它的服务地址，请填写地址后导入".to_string(),
+        })?;
 
-    let default_api = preset
-        .map(|p| p.api)
-        .unwrap_or(ProviderApi::OpenaiCompletions);
-    let api = map_provider_api(raw.and_then(|r| r.api.as_deref()), default_api);
-
-    let api_key_env = raw.and_then(|r| r.api_key_env.as_deref());
-    let env_var = generate_import_env_var(id, api_key_env);
+    let slug = sanitize_slug(id);
+    let env_var = generate_import_env_var(&slug, raw.and_then(|r| r.api_key_env.as_deref()));
 
     let models = raw
         .map(|r| r.model_ids.iter().cloned().map(ModelEntry::Id).collect())
@@ -1065,7 +1113,7 @@ pub fn build_import_config(
     Ok(ProviderConfig {
         id: String::new(),
         name,
-        slug: id.to_string(),
+        slug,
         preset_id,
         base_url,
         api,
@@ -1084,130 +1132,322 @@ pub fn build_import_config(
     })
 }
 
-/// Batch-import API keys and provider configurations from OMP global configs.
-#[tauri::command]
-pub async fn provider_import_omp(ids: Vec<String>) -> Result<Vec<OmpImportResult>, String> {
-    let scanned = omp_config::scan_for_import();
-    let agent_db_path = omp_config::home_agent_dir().join("agent.db");
+/// What `plan_item` resolved for an importable provider. Holds key material:
+/// never serialize, never return to the frontend.
+pub struct ImportPrepared {
+    pub config: ProviderConfig,
+    pub key: Option<String>,
+    pub unset_env_var: Option<String>,
+}
 
-    let mut results = Vec::with_capacity(ids.len());
+fn api_label(api: ProviderApi) -> String {
+    serde_json::to_value(api)
+        .ok()
+        .and_then(|v| v.as_str().map(ToString::to_string))
+        .unwrap_or_default()
+}
 
-    for id in ids {
-        let raw = scanned.get(&id);
-        let mut config = match build_import_config(&id, raw) {
-            Ok(cfg) => cfg,
-            Err(e) => {
-                results.push(OmpImportResult {
-                    id,
-                    ok: false,
-                    error: Some(e),
-                });
-                continue;
-            }
-        };
+/// Shared by dry run and import: resolve one provider. The key is resolved
+/// (yaml literal > env var via `env` > agent.db) but only returned in the
+/// second tuple slot; the plan item itself carries none.
+pub fn plan_item(
+    id: &str,
+    raw: Option<&RawParsedProvider>,
+    cache: Option<&omp_config::CachedEndpoint>,
+    base_url_override: Option<&str>,
+    existing_slugs: &[String],
+    agent_db_path: Option<&std::path::Path>,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> (OmpImportPlanItem, Option<ImportPrepared>) {
+    let slug = sanitize_slug(id);
+    let action = if existing_slugs
+        .iter()
+        .any(|s| vault::line_key(s) == vault::line_key(&slug))
+    {
+        "update"
+    } else {
+        "create"
+    };
+    let mut item = OmpImportPlanItem {
+        id: id.to_string(),
+        slug,
+        base_url: None,
+        api: None,
+        action: action.to_string(),
+        ok: false,
+        issue: None,
+        error: None,
+    };
 
-        // Reuse existing provider id if slug matches, making re-import idempotent
-        let existing = store::load();
-        if let Some(prev) = existing
-            .iter()
-            .find(|p| vault::line_key(&p.slug) == vault::line_key(&config.slug))
-        {
-            config.id = prev.id.clone();
+    let mut config = match build_import_config(id, raw, cache, base_url_override) {
+        Ok(c) => c,
+        Err(f) => {
+            // Surface whatever was resolved so the UI can prefill.
+            item.base_url = non_empty(base_url_override)
+                .or_else(|| non_empty(raw.and_then(|r| r.base_url.as_deref())))
+                .or_else(|| non_empty(cache.and_then(|c| c.base_url.as_deref())))
+                .map(ToString::to_string);
+            item.api = non_empty(raw.and_then(|r| r.api.as_deref()))
+                .or_else(|| non_empty(cache.and_then(|c| c.api.as_deref())))
+                .map(ToString::to_string);
+            item.issue = Some(f.issue);
+            item.error = Some(f.message);
+            return (item, None);
         }
+    };
+    item.base_url = Some(config.base_url.clone());
+    item.api = Some(api_label(config.api));
 
-        // Key resolution order:
-        // 1. yaml literal api_key_value
-        // 2. env var resolution std::env::var(api_key_env)
-        // 3. agent.db api_key data
-        // 4. none
-        let mut resolved_key: Option<String> = None;
-        let mut unresolvable_env_var: Option<String> = None;
-
-        if let Some(key) = raw
-            .and_then(|r| r.api_key_value.as_deref())
-            .map(str::trim)
-            .filter(|k| !k.is_empty())
-        {
-            resolved_key = Some(key.to_string());
-        } else if let Some(env_name) = raw
-            .and_then(|r| r.api_key_env.as_deref())
-            .map(str::trim)
-            .filter(|e| !e.is_empty())
-        {
-            match std::env::var(env_name) {
-                Ok(val) if !val.trim().is_empty() => {
-                    resolved_key = Some(val.trim().to_string());
-                }
-                _ => {
-                    unresolvable_env_var = Some(env_name.to_string());
-                }
-            }
-        }
-
-        if resolved_key.is_none() {
-            if let Some(db_key) = omp_config::read_agent_api_key(&agent_db_path, &id) {
-                let trimmed = db_key.trim();
-                if !trimmed.is_empty() {
-                    resolved_key = Some(trimmed.to_string());
-                    unresolvable_env_var = None;
-                }
-            }
-        }
-
-        match (resolved_key, unresolvable_env_var) {
-            (Some(key), _) => match provider_save(config, Some(key)).await {
-                Ok(_) => {
-                    results.push(OmpImportResult {
-                        id,
-                        ok: true,
-                        error: None,
-                    });
-                }
-                Err(err) => {
-                    results.push(OmpImportResult {
-                        id,
-                        ok: false,
-                        error: Some(err),
-                    });
-                }
-            },
-            (None, Some(var_name)) => match provider_save(config, None).await {
-                Ok(_) => {
-                    results.push(OmpImportResult {
-                        id,
-                        ok: true,
-                        error: Some(format!(
-                            "已导入元数据，但环境变量 {var_name} 当前无值，密钥未入库"
-                        )),
-                    });
-                }
-                Err(err) => {
-                    results.push(OmpImportResult {
-                        id,
-                        ok: false,
-                        error: Some(err),
-                    });
-                }
-            },
-            (None, None) => {
-                results.push(OmpImportResult {
-                    id,
-                    ok: false,
-                    error: Some(
-                        "该 provider 没有可导入的 API 密钥（OAuth 凭据由 OMP 托管）".to_string(),
-                    ),
-                });
+    let mut key = non_empty(raw.and_then(|r| r.api_key_value.as_deref())).map(ToString::to_string);
+    let mut unset_env_var = None;
+    if key.is_none() {
+        if let Some(var) = non_empty(raw.and_then(|r| r.api_key_env.as_deref())) {
+            match env(var)
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+            {
+                Some(v) => key = Some(v),
+                None => unset_env_var = Some(var.to_string()),
             }
         }
     }
+    if key.is_none() {
+        if let Some(k) = agent_db_path
+            .and_then(|p| omp_config::read_agent_api_key(p, id))
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty())
+        {
+            key = Some(k);
+            unset_env_var = None;
+        }
+    }
 
+    match (&key, &unset_env_var) {
+        (Some(_), _) => item.ok = true,
+        (None, Some(var)) => {
+            item.ok = true;
+            item.issue = Some(OmpImportIssue::EnvVarUnset);
+            item.error = Some(format!(
+                "环境变量 {var} 当前无值，只能导入元数据，密钥不会入库"
+            ));
+        }
+        (None, None) => {
+            item.issue = Some(OmpImportIssue::NoKey);
+            item.error = Some("该供应商没有可导入的 API 密钥（OAuth 凭据由 OMP 托管）".to_string());
+        }
+    }
+    config.slug = item.slug.clone();
+    (
+        item,
+        Some(ImportPrepared {
+            config,
+            key,
+            unset_env_var,
+        }),
+    )
+}
+
+fn process_env(name: &str) -> Option<String> {
+    std::env::var(name).ok()
+}
+
+/// Read-only dry run of `provider_import_omp`. Never returns key material.
+#[tauri::command]
+pub async fn provider_import_omp_plan(ids: Vec<String>) -> Result<Vec<OmpImportPlanItem>, String> {
+    let scanned = omp_config::scan_for_import();
+    let agent_dir = omp_config::home_agent_dir();
+    let agent_db = agent_dir.join("agent.db");
+    let cache_db = agent_dir.join("models.db");
+    let existing: Vec<String> = store::try_load()?.into_iter().map(|p| p.slug).collect();
+    Ok(ids
+        .iter()
+        .map(|id| {
+            let cache = omp_config::read_model_cache_endpoint(&cache_db, id);
+            plan_item(
+                id,
+                scanned.get(id),
+                cache.as_ref(),
+                None,
+                &existing,
+                Some(&agent_db),
+                &process_env,
+            )
+            .0
+        })
+        .collect())
+}
+
+/// Batch-import API keys and provider configurations from OMP global configs.
+/// `base_url_overrides` (OMP id → URL) wins over every other baseUrl source.
+#[tauri::command]
+pub async fn provider_import_omp(
+    ids: Vec<String>,
+    base_url_overrides: Option<HashMap<String, String>>,
+) -> Result<Vec<OmpImportResult>, String> {
+    let scanned = omp_config::scan_for_import();
+    let agent_dir = omp_config::home_agent_dir();
+    let agent_db = agent_dir.join("agent.db");
+    let cache_db = agent_dir.join("models.db");
+    let overrides = base_url_overrides.unwrap_or_default();
+
+    let mut results = Vec::with_capacity(ids.len());
+    for id in ids {
+        let cache = omp_config::read_model_cache_endpoint(&cache_db, &id);
+        // Re-read per item so re-import within one batch stays idempotent.
+        let existing_all = store::try_load()?;
+        let existing: Vec<String> = existing_all.iter().map(|p| p.slug.clone()).collect();
+        let (item, prepared) = plan_item(
+            &id,
+            scanned.get(&id),
+            cache.as_ref(),
+            overrides.get(&id).map(String::as_str),
+            &existing,
+            Some(&agent_db),
+            &process_env,
+        );
+        let Some(ImportPrepared {
+            mut config,
+            key,
+            unset_env_var,
+        }) = prepared
+        else {
+            results.push(OmpImportResult {
+                id,
+                ok: false,
+                error: item.error,
+                issue: item.issue,
+            });
+            continue;
+        };
+        if let Some(prev) = existing_all
+            .iter()
+            .find(|p| vault::line_key(&p.slug) == vault::line_key(&config.slug))
+        {
+            merge_reimport(prev, &mut config);
+        }
+        if key.is_none() && unset_env_var.is_none() {
+            results.push(OmpImportResult {
+                id,
+                ok: false,
+                error: item.error,
+                issue: item.issue,
+            });
+            continue;
+        }
+        match provider_save(config, key).await {
+            Ok(_) => results.push(OmpImportResult {
+                id,
+                ok: true,
+                error: item.error,
+                issue: item.issue,
+            }),
+            Err(err) => results.push(OmpImportResult {
+                id,
+                ok: false,
+                error: Some(err),
+                issue: None,
+            }),
+        }
+    }
     Ok(results)
+}
+
+/// Re-import keeps everything the user may have edited in the workbench; only
+/// baseUrl/api/env var/slug come from the fresh OMP config. Models: existing
+/// per-model specs survive; an empty OMP list keeps the previous models.
+fn merge_reimport(prev: &ProviderConfig, config: &mut ProviderConfig) {
+    config.id = prev.id.clone();
+    config.enabled = prev.enabled;
+    config.name = prev.name.clone();
+    config.notes = prev.notes.clone();
+    config.default_model = prev.default_model.clone();
+    config.default_context_window = prev.default_context_window;
+    config.default_max_tokens = prev.default_max_tokens;
+    config.sort = prev.sort;
+    config.created_at = prev.created_at.clone();
+    if config.models.is_empty() {
+        config.models = prev.models.clone();
+    } else {
+        for m in &mut config.models {
+            if let Some(old) = prev.models.iter().find(|o| o.id() == m.id()) {
+                *m = old.clone();
+            }
+        }
+    }
+}
+
+const MAX_ENV_FILE_BYTES: u64 = 256 * 1024;
+
+/// Read a user-chosen `.env` file for the import dialog. Content is never logged.
+#[tauri::command]
+pub fn provider_read_env_file(path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("请输入文件路径".to_string());
+    }
+    let expanded = if trimmed == "~" || trimmed.starts_with("~/") {
+        let home = dirs::home_dir().ok_or_else(|| "无法确定用户主目录".to_string())?;
+        home.join(trimmed.trim_start_matches('~').trim_start_matches('/'))
+    } else {
+        std::path::PathBuf::from(trimmed)
+    };
+    let meta = std::fs::metadata(&expanded)
+        .map_err(|e| format!("无法读取 {}：{e}", expanded.display()))?;
+    if !meta.is_file() {
+        return Err(format!("{} 不是普通文件", expanded.display()));
+    }
+    if meta.len() > MAX_ENV_FILE_BYTES {
+        return Err(format!(
+            "文件过大（{} 字节），上限为 {} KiB",
+            meta.len(),
+            MAX_ENV_FILE_BYTES / 1024
+        ));
+    }
+    let bytes =
+        std::fs::read(&expanded).map_err(|e| format!("无法读取 {}：{e}", expanded.display()))?;
+    String::from_utf8(bytes).map_err(|_| "文件不是有效的 UTF-8 文本".to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::contracts::ModelSpec;
+
+    #[test]
+    fn reimport_preserves_user_edits_and_model_specs() {
+        let mut prev = config("Mine", "dk", "https://old.dev", "DK_KEY");
+        prev.id = "id-1".to_string();
+        prev.enabled = false;
+        prev.notes = Some("my notes".to_string());
+        prev.sort = 7;
+        prev.created_at = "2026-01-01T00:00:00Z".to_string();
+        prev.default_model = Some("m1".to_string());
+        prev.models = vec![ModelEntry::Spec(ModelSpec {
+            id: "m1".to_string(),
+            context_window: Some(123_000),
+            ..Default::default()
+        })];
+
+        let mut fresh = config("DK", "dk", "https://new.dev", "DK_KEY");
+        fresh.models = vec![
+            ModelEntry::Id("m1".to_string()),
+            ModelEntry::Id("m2".to_string()),
+        ];
+        merge_reimport(&prev, &mut fresh);
+        assert_eq!(fresh.base_url, "https://new.dev");
+        assert_eq!(fresh.id, "id-1");
+        assert!(!fresh.enabled);
+        assert_eq!(fresh.name, "Mine");
+        assert_eq!(fresh.notes.as_deref(), Some("my notes"));
+        assert_eq!(fresh.sort, 7);
+        assert_eq!(fresh.default_model.as_deref(), Some("m1"));
+        assert_eq!(fresh.models.len(), 2);
+        assert_eq!(fresh.models[0], prev.models[0]);
+
+        let mut empty = config("DK", "dk", "https://new.dev", "DK_KEY");
+        merge_reimport(&prev, &mut empty);
+        assert_eq!(empty.models, prev.models);
+    }
 
     fn config(name: &str, slug: &str, base: &str, env: &str) -> ProviderConfig {
         ProviderConfig {
@@ -1437,42 +1677,24 @@ mod tests {
 
     #[test]
     fn test_map_provider_api_table() {
-        assert_eq!(
-            map_provider_api(Some("openai-completions"), ProviderApi::Anthropic),
-            ProviderApi::OpenaiCompletions
-        );
-        assert_eq!(
-            map_provider_api(Some("openai-responses"), ProviderApi::Anthropic),
-            ProviderApi::OpenaiResponses
-        );
-        assert_eq!(
-            map_provider_api(Some("anthropic"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Anthropic
-        );
-        assert_eq!(
-            map_provider_api(Some("anthropic-messages"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Anthropic
-        );
-        assert_eq!(
-            map_provider_api(Some("gemini"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Gemini
-        );
-        assert_eq!(
-            map_provider_api(Some("google-generative-ai"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Gemini
-        );
-        assert_eq!(
-            map_provider_api(Some("ollama"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Ollama
-        );
-        assert_eq!(
-            map_provider_api(Some("unknown-custom-api"), ProviderApi::Anthropic),
-            ProviderApi::OpenaiCompletions
-        );
-        assert_eq!(
-            map_provider_api(None, ProviderApi::Anthropic),
-            ProviderApi::Anthropic
-        );
+        use ProviderApi::*;
+        for (s, want) in [
+            ("openai-completions", OpenaiCompletions),
+            ("openai_completions", OpenaiCompletions),
+            ("chat-completions", OpenaiCompletions),
+            ("openai-responses", OpenaiResponses),
+            ("openai_responses", OpenaiResponses),
+            ("responses", OpenaiResponses),
+            ("anthropic", Anthropic),
+            ("anthropic-messages", Anthropic),
+            ("gemini", Gemini),
+            ("google-generative-ai", Gemini),
+            ("ollama", Ollama),
+        ] {
+            assert_eq!(map_provider_api(s), Some(want), "{s}");
+        }
+        assert_eq!(map_provider_api("unknown-custom-api"), None);
+        assert_eq!(map_provider_api("typesafe"), None);
     }
 
     #[test]
@@ -1492,7 +1714,7 @@ mod tests {
     #[test]
     fn test_build_import_config_precedence_and_validation() {
         // Preset match fills missing baseUrl and api
-        let cfg = build_import_config("openai", None).unwrap();
+        let cfg = build_import_config("openai", None, None, None).unwrap();
         assert_eq!(cfg.name, "OpenAI");
         assert_eq!(cfg.base_url, "https://api.openai.com/v1");
         assert_eq!(cfg.api, ProviderApi::OpenaiCompletions);
@@ -1508,7 +1730,7 @@ mod tests {
             model_ids: vec!["gpt-4o-custom".to_string()],
             ..Default::default()
         };
-        let cfg2 = build_import_config("openai", Some(&raw)).unwrap();
+        let cfg2 = build_import_config("openai", Some(&raw), None, None).unwrap();
         assert_eq!(cfg2.base_url, "https://custom-openai.proxy.com/v1");
         assert_eq!(cfg2.api, ProviderApi::Anthropic);
         assert_eq!(cfg2.env_var, "MY_OPENAI_KEY");
@@ -1518,87 +1740,162 @@ mod tests {
         );
 
         // Missing baseUrl in both raw and preset -> error
-        let err = build_import_config("unknown-provider", None).unwrap_err();
-        assert_eq!(err, "缺少 baseUrl，请手动添加");
+        let err = build_import_config("unknown-provider", None, None, None).unwrap_err();
+        assert_eq!(err.issue, OmpImportIssue::MissingBaseUrl);
     }
 
-    #[tokio::test]
-    async fn test_provider_import_omp_edge_cases() {
-        // Missing baseUrl edge
-        let missing_results = provider_import_omp(vec!["unknown-missing-base".to_string()])
-            .await
-            .unwrap();
-        assert_eq!(missing_results.len(), 1);
-        assert!(!missing_results[0].ok);
-        assert_eq!(
-            missing_results[0].error.as_deref(),
-            Some("缺少 baseUrl，请手动添加")
-        );
+    fn no_env(_: &str) -> Option<String> {
+        None
+    }
 
-        // Preset provider with no key material / OAuth only edge
-        let results = provider_import_omp(vec!["xai".to_string()]).await.unwrap();
-        assert_eq!(results.len(), 1);
-        if !results[0].ok {
-            let err = results[0].error.as_deref().unwrap_or("");
-            assert!(
-                err.contains("OAuth") || err.contains("托管"),
-                "error was: {err}"
-            );
-        }
+    fn plan_for(
+        id: &str,
+        raw: Option<&RawParsedProvider>,
+        cache: Option<&omp_config::CachedEndpoint>,
+        over: Option<&str>,
+    ) -> OmpImportPlanItem {
+        plan_item(id, raw, cache, over, &[], None, &no_env).0
     }
 
     #[test]
-    fn test_map_provider_api_variants_and_aliases() {
-        assert_eq!(
-            map_provider_api(Some("openai-responses"), ProviderApi::OpenaiCompletions),
-            ProviderApi::OpenaiResponses
-        );
-        assert_eq!(
-            map_provider_api(Some("openai_responses"), ProviderApi::OpenaiCompletions),
-            ProviderApi::OpenaiResponses
-        );
-        assert_eq!(
-            map_provider_api(Some("responses"), ProviderApi::OpenaiCompletions),
-            ProviderApi::OpenaiResponses
-        );
-        assert_eq!(
-            map_provider_api(Some("openai-completions"), ProviderApi::Anthropic),
-            ProviderApi::OpenaiCompletions
-        );
-        assert_eq!(
-            map_provider_api(Some("openai_completions"), ProviderApi::Anthropic),
-            ProviderApi::OpenaiCompletions
-        );
-        assert_eq!(
-            map_provider_api(Some("chat-completions"), ProviderApi::Anthropic),
-            ProviderApi::OpenaiCompletions
-        );
-        assert_eq!(
-            map_provider_api(Some("anthropic"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Anthropic
-        );
-        assert_eq!(
-            map_provider_api(Some("anthropic-messages"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Anthropic
-        );
-        assert_eq!(
-            map_provider_api(Some("gemini"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Gemini
-        );
-        assert_eq!(
-            map_provider_api(Some("google-generative-ai"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Gemini
-        );
-        assert_eq!(
-            map_provider_api(Some("ollama"), ProviderApi::OpenaiCompletions),
-            ProviderApi::Ollama
-        );
-        assert_eq!(
-            map_provider_api(None, ProviderApi::Gemini),
-            ProviderApi::Gemini
-        );
+    fn sanitize_slug_rule() {
+        assert_eq!(sanitize_slug("zhipu-coding-plan"), "zhipu-coding-plan");
+        assert_eq!(sanitize_slug("a__b"), "a__b");
+        // Same vectors as `sanitizeSlug` in envparse.test.ts.
+        assert_eq!(sanitize_slug("CTAI-luna+plus"), "CTAI-luna-plus-cb5cc89e");
+        assert_eq!(sanitize_slug("a  +  b"), "a-b-a1a5485d");
+        assert_eq!(sanitize_slug("聪明 AI-散户"), "AI-5d1cd3b8");
+        assert_eq!(sanitize_slug("别的 AI"), "AI-6910b992");
+        assert_eq!(sanitize_slug("聪明"), "provider-1d828678");
+        assert_eq!(sanitize_slug(""), "provider-811c9dc5");
     }
 
+    #[test]
+    fn import_config_uses_sanitized_slug_and_original_name() {
+        let raw = RawParsedProvider {
+            id: "CTAI-luna+plus".to_string(),
+            base_url: Some("https://x.dev/v1".to_string()),
+            ..Default::default()
+        };
+        let cfg = build_import_config("CTAI-luna+plus", Some(&raw), None, None).unwrap();
+        assert_eq!(cfg.slug, "CTAI-luna-plus-cb5cc89e");
+        assert_eq!(cfg.name, "CTAI-luna+plus");
+        assert_eq!(cfg.env_var, "OMPWS_CTAI_LUNA_PLUS_CB5CC89E_API_KEY");
+        assert!(validate(&cfg).is_ok());
+    }
+
+    #[test]
+    fn cache_fills_missing_base_url_and_override_wins() {
+        let cache = omp_config::CachedEndpoint {
+            base_url: Some("https://open.bigmodel.cn/api/coding/paas/v4".to_string()),
+            api: Some("openai-completions".to_string()),
+        };
+        let p = plan_for("zhipu-coding-plan", None, Some(&cache), None);
+        assert_eq!(
+            p.base_url.as_deref(),
+            Some("https://open.bigmodel.cn/api/coding/paas/v4")
+        );
+        assert_ne!(p.issue, Some(OmpImportIssue::MissingBaseUrl));
+
+        // yaml beats cache
+        let raw = RawParsedProvider {
+            id: "zhipu-coding-plan".to_string(),
+            base_url: Some("https://yaml.example/v1".to_string()),
+            ..Default::default()
+        };
+        let p = plan_for("zhipu-coding-plan", Some(&raw), Some(&cache), None);
+        assert_eq!(p.base_url.as_deref(), Some("https://yaml.example/v1"));
+
+        // override beats everything
+        let p = plan_for(
+            "zhipu-coding-plan",
+            Some(&raw),
+            Some(&cache),
+            Some(" https://override.example/v1 "),
+        );
+        assert_eq!(p.base_url.as_deref(), Some("https://override.example/v1"));
+
+        // nothing anywhere
+        let p = plan_for("unknown-missing-base", None, None, None);
+        assert!(!p.ok);
+        assert_eq!(p.issue, Some(OmpImportIssue::MissingBaseUrl));
+        assert!(p.error.as_deref().unwrap().contains("服务地址"));
+    }
+
+    #[test]
+    fn unknown_api_is_unsupported() {
+        let cache = omp_config::CachedEndpoint {
+            base_url: Some("https://api.typesafe.ai".to_string()),
+            api: Some("typesafe".to_string()),
+        };
+        let p = plan_for("typesafe", None, Some(&cache), None);
+        assert!(!p.ok);
+        assert_eq!(p.issue, Some(OmpImportIssue::UnsupportedApi));
+        assert!(p.error.as_deref().unwrap().contains("typesafe"));
+        // an override does not make an unsupported protocol supported
+        let p = plan_for("typesafe", None, Some(&cache), Some("https://x.dev"));
+        assert_eq!(p.issue, Some(OmpImportIssue::UnsupportedApi));
+    }
+
+    #[test]
+    fn plan_reports_key_state_without_key_material() {
+        let raw = RawParsedProvider {
+            id: "p".to_string(),
+            base_url: Some("https://x.dev/v1".to_string()),
+            api_key_value: Some("sk-SECRET-LITERAL".to_string()),
+            ..Default::default()
+        };
+        let p = plan_for("p", Some(&raw), None, None);
+        assert!(p.ok);
+        assert_eq!(p.action, "create");
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains("SECRET"), "{json}");
+
+        let raw_env = RawParsedProvider {
+            id: "p".to_string(),
+            base_url: Some("https://x.dev/v1".to_string()),
+            api_key_env: Some("MY_UNSET_VAR".to_string()),
+            ..Default::default()
+        };
+        let p = plan_for("p", Some(&raw_env), None, None);
+        assert_eq!(p.issue, Some(OmpImportIssue::EnvVarUnset));
+        assert!(p.error.as_deref().unwrap().contains("MY_UNSET_VAR"));
+
+        let raw_none = RawParsedProvider {
+            id: "p".to_string(),
+            base_url: Some("https://x.dev/v1".to_string()),
+            ..Default::default()
+        };
+        let p = plan_for("p", Some(&raw_none), None, None);
+        assert!(!p.ok);
+        assert_eq!(p.issue, Some(OmpImportIssue::NoKey));
+
+        // existing slug -> update
+        let existing = vec!["p".to_string()];
+        let (p, _) = plan_item("p", Some(&raw), None, None, &existing, None, &no_env);
+        assert_eq!(p.action, "update");
+    }
+
+    #[test]
+    fn read_env_file_validates() {
+        let dir = std::env::temp_dir().join(format!("ompws-envfile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.env");
+        std::fs::write(&f, "A=1\n").unwrap();
+        assert_eq!(
+            provider_read_env_file(f.to_string_lossy().to_string()).unwrap(),
+            "A=1\n"
+        );
+        assert!(provider_read_env_file(dir.to_string_lossy().to_string()).is_err());
+        assert!(provider_read_env_file(dir.join("nope").to_string_lossy().to_string()).is_err());
+        let big = dir.join("big.env");
+        std::fs::write(&big, vec![b'a'; 256 * 1024 + 1]).unwrap();
+        assert!(provider_read_env_file(big.to_string_lossy().to_string()).is_err());
+        let bin = dir.join("bin.env");
+        std::fs::write(&bin, [0xff, 0xfe]).unwrap();
+        assert!(provider_read_env_file(bin.to_string_lossy().to_string()).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     #[test]
     fn test_validate_model_specs_and_bounds() {
         let mut c = config("Provider", "slug", "https://api.openai.com/v1", "KEY");

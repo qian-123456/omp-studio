@@ -41,6 +41,7 @@ import type {
 	ModelSwitchRuleInput,
 	ModelTemplateInput,
 	OmpProviderInfo,
+	OmpImportPlanItem,
 	OmpImportResult,
 	OmpUsageReportData,
 	PairingInfo,
@@ -644,8 +645,21 @@ export const providerExportEnvText = (ids?: string[] | null) =>
 export const ompProvidersList = () =>
 	invoke<OmpProviderInfo[]>("omp_providers_list");
 
-export const providerImportOmp = (ids: string[]) =>
-	invoke<OmpImportResult[]>("provider_import_omp", { ids });
+export const providerImportOmpPlan = (ids: string[]) =>
+	invoke<OmpImportPlanItem[]>("provider_import_omp_plan", { ids });
+
+export const providerImportOmp = (
+	ids: string[],
+	baseUrlOverrides?: Record<string, string>,
+) =>
+	invoke<OmpImportResult[]>("provider_import_omp", {
+		ids,
+		baseUrlOverrides: baseUrlOverrides ?? null,
+	});
+
+/** Read a .env file (supports leading `~`); content is never logged. */
+export const providerReadEnvFile = (path: string) =>
+	invoke<string>("provider_read_env_file", { path });
 
 /** Targeted edit of `~/.omp/agent/models.yml` modelOverrides contextWindow (null deletes). */
 export const ompModelsSetContextWindows = (entries: ModelContextWindowEdit[]) =>

@@ -1123,6 +1123,25 @@ export interface OmpImportResult {
 	id: string;
 	ok: boolean;
 	error: string | null;
+	issue?: OmpImportIssue | null;
+}
+
+export type OmpImportIssue =
+	| "missingBaseUrl"
+	| "unsupportedApi"
+	| "noKey"
+	| "envVarUnset";
+
+/** Dry-run item for importing one OMP provider (never carries key material). */
+export interface OmpImportPlanItem {
+	id: string;
+	slug: string;
+	baseUrl: string | null;
+	api: string | null;
+	action: "create" | "update";
+	ok: boolean;
+	issue: OmpImportIssue | null;
+	error: string | null;
 }
 
 export interface OmpUsageLimit {

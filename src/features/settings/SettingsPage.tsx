@@ -4,8 +4,9 @@
  */
 import { Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
+import { isComposing } from "../../lib/hooks";
 import { useUi } from "../../stores/ui";
+import { useSettingsEscape } from "./nestedModal";
 import { FIELD_REGISTRY, findMatchingField } from "./fieldRegistry";
 import {
 	NAV_GROUPS,
@@ -51,7 +52,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 
 	const [activeSection, setActiveSection] = useState<string>(resolveSection(initialSection));
 	// Pending deep-link focus: scrolls the row into view and briefly flashes it.
-	const [focusFlash, setFocusFlash] = useState<{ key: string; n: number } | null>(null);
+	const [focusFlash, setFocusFlash] = useState<{ key: string; n: number; section: string } | null>(null);
 	const [navQuery, setNavQuery] = useState("");
 	const contentRef = useRef<HTMLDivElement>(null);
 	const navRef = useRef<HTMLElement>(null);
@@ -80,7 +81,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 	}, [activeSection]);
 
 	const handleBack = useCallback(() => (onClose ? onClose() : closeSettings()), [onClose, closeSettings]);
-	useEscapeKey(handleBack);
+	useSettingsEscape(handleBack);
 
 	// Cmd/Ctrl+F and Cmd/Ctrl+K focus the settings search. Capture phase runs
 	// before the global sidebar Cmd+F handler, which skips prevented events.
@@ -119,8 +120,16 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 			setNavQuery("");
 		}
 		if (target) setActiveSection(resolveSection(target));
-		if (pendingFocus) setFocusFlash({ key: pendingFocus, n: pendingRequest });
+		if (pendingFocus) {
+			setFocusFlash({ key: pendingFocus, n: pendingRequest, section: target ? resolveSection(target) : activeSection });
+		}
 	}
+
+	// A deep-link target only belongs to the section it jumped to; leaving that
+	// section drops it so re-entering never replays an old jump.
+	useEffect(() => {
+		if (focusFlash && focusFlash.section !== activeSection) setFocusFlash(null);
+	}, [focusFlash, activeSection]);
 
 	// Mark the request consumed without clearing its target, so a remount
 	// (Suspense re-reveal, HMR) re-applies the same section instead of
@@ -247,9 +256,10 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 	};
 
 	const focusKey = focusFlash?.key ?? null;
+	const focusRequest = focusFlash?.n ?? 0;
 	const navValue = useMemo<SettingsNavValue>(
-		() => ({ query: navQuery.trim(), navigate: (id) => setActiveSection(resolveSection(id)), focusKey }),
-		[navQuery, focusKey],
+		() => ({ query: navQuery.trim(), navigate: (id) => setActiveSection(resolveSection(id)), focusKey, focusRequest }),
+		[navQuery, focusKey, focusRequest],
 	);
 
 	const ActiveSection = SECTION_COMPONENTS[activeSection];

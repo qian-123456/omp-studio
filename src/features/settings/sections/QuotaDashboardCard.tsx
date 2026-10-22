@@ -116,9 +116,11 @@ export function QuotaDashboardCard() {
 			<div className="flex items-center justify-between gap-3 px-1">
 				<div className="min-w-0">
 					<h3 className="text-[13px] font-semibold text-[var(--text)]">配额与用量概览</h3>
-					<p className="mt-0.5 text-xs text-[var(--text-muted)]">
-						{stats.totalProviders} 个供应商 · {stats.totalAccounts} 个已授权账号
-					</p>
+					{data ? (
+						<p className="mt-0.5 text-xs text-[var(--text-muted)]">
+							{stats.totalProviders} 个供应商 · {stats.totalAccounts} 个已授权账号
+						</p>
+					) : null}
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
 					{data && (
@@ -136,21 +138,22 @@ export function QuotaDashboardCard() {
 				</div>
 			</div>
 
-			{loading ? (
-				<EmptyState icon={RefreshCw} spin title="正在获取官方订阅与额度快照" description="数据来自 omp，通常几秒内完成" />
-			) : error ? (
+			{error ? (
 				<Notice
 					tone="danger"
-					title="无法获取 omp 配额快照"
+					title={data ? "刷新配额快照失败，以下为上次获取的数据" : "无法获取 omp 配额快照"}
 					action={
 						<Button size="sm" onClick={() => void fetchReport(true)}>
 							重试
 						</Button>
 					}
 				>
-					<span className="break-words">{error}</span>
+					<span className="select-text break-words">{error}</span>
 				</Notice>
-			) : providers.length === 0 ? (
+			) : null}
+			{loading && !data ? (
+				<EmptyState icon={RefreshCw} spin title="正在获取官方订阅与额度快照" description="数据来自 omp，通常几秒内完成" />
+			) : !data ? null : providers.length === 0 ? (
 				<EmptyState
 					title="暂无已激活的官方订阅或 Coding Plan"
 					description={
@@ -178,6 +181,7 @@ export function QuotaDashboardCard() {
 				provider={sheetProvider}
 				now={now}
 				refreshing={refreshing}
+				error={error}
 				onRefresh={() => fetchReport(true)}
 			/>
 		</div>

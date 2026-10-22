@@ -1,4 +1,7 @@
-import { ChevronDown, Eye, EyeOff, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, FolderOpen, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { homeDir } from "@tauri-apps/api/path";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { NativeSelect } from "../../components/NativeSelect";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderApi, ProviderConfig } from "../../lib/contracts";
@@ -15,7 +18,7 @@ import {
 } from "./modelEntry";
 import { ModelPickerModal } from "./ModelPickerModal";
 import type { DiscoveredModel } from "../../lib/contracts";
-import { providerFetchModels } from "../../lib/ipc";
+import { providerFetchModels, providerReadEnvFile } from "../../lib/ipc";
 import { applyContextWindowsOnSave } from "./contextWindowOnSave";
 import { insecureHttpWarning } from "./httpWarning";
 
@@ -95,6 +98,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 	// Import mode state.
 	const [pasteText, setPasteText] = useState("");
 	const [importing, setImporting] = useState(false);
+	const [envPath, setEnvPath] = useState("");
+	const [readingFile, setReadingFile] = useState(false);
+	const [fileError, setFileError] = useState<string | null>(null);
+	const [dragOver, setDragOver] = useState(false);
 
 	// Model discovery state.
 	const [fetchingModels, setFetchingModels] = useState(false);
@@ -300,9 +307,17 @@ export function ProviderDialog({ target, onClose }: Props) {
 		if (formError) setFormError(null);
 	};
 
+	const ompProviders = useProviders((s) => s.ompProviders);
 	const uniqueSlug = (base: string): string => {
+		// Also avoid ids that OMP itself defines in models.yml: saving a
+		// workbench provider under such an id would replace OMP's models list.
+		const reserved = new Set(
+			ompProviders
+				.filter((o) => o.sources.includes("models.yml"))
+				.map((o) => o.id),
+		);
 		let slug = base;
-		for (let i = 2; providers.some((p) => p.slug === slug); i++) {
+		for (let i = 2; providers.some((p) => p.slug === slug) || reserved.has(slug); i++) {
 			slug = `${base}-${i}`;
 		}
 		return slug;
@@ -417,10 +432,10 @@ export function ProviderDialog({ target, onClose }: Props) {
 				return true;
 			})
 			.map((entry) => {
-				const matched = matchPresetByEnvVar(entry.key);
 				const existing = providers.find((p) => p.envVar === entry.key);
-				if (!matched) return { entry, kind: "unknown" as const };
 				if (existing) return { entry, kind: "update" as const, existing };
+				const matched = matchPresetByEnvVar(entry.key);
+				if (!matched) return { entry, kind: "unknown" as const };
 				return { entry, kind: "create" as const, preset: matched };
 			});
 	}, [pasteText, providers]);
@@ -462,6 +477,74 @@ export function ProviderDialog({ target, onClose }: Props) {
 			setImporting(false);
 		}
 	};
+
+	const loadEnvFile = useCallback(async (path: string) => {
+		const p = path.trim();
+		if (!p) return;
+		setReadingFile(true);
+		setFileError(null);
+		try {
+			setPasteText(await providerReadEnvFile(p));
+		} catch (err) {
+			setFileError(errMsg(err));
+		} finally {
+			setReadingFile(false);
+		}
+	}, []);
+
+	const handlePickFile = async () => {
+		try {
+			let defaultPath: string | undefined;
+			try {
+				defaultPath = await homeDir();
+			} catch {
+				defaultPath = undefined;
+			}
+			const selected = await openFileDialog({
+				directory: false,
+				multiple: false,
+				title: "选择 .env 文件",
+				defaultPath,
+			});
+			if (selected && typeof selected === "string") {
+				setEnvPath(selected);
+				await loadEnvFile(selected);
+			}
+		} catch (err) {
+			setFileError(errMsg(err));
+		}
+	};
+
+	useEffect(() => {
+		if (target.mode !== "import") return;
+		let disposed = false;
+		let unlisten: (() => void) | null = null;
+		getCurrentWebview()
+			.onDragDropEvent((event) => {
+				const p = event.payload;
+				if (p.type === "enter" || p.type === "over") {
+					setDragOver(true);
+				} else if (p.type === "leave") {
+					setDragOver(false);
+				} else if (p.type === "drop") {
+					setDragOver(false);
+					const first = p.paths[0];
+					if (first) {
+						setEnvPath(first);
+						void loadEnvFile(first);
+					}
+				}
+			})
+			.then((fn) => {
+				if (disposed) fn();
+				else unlisten = fn;
+			})
+			.catch(() => {});
+		return () => {
+			disposed = true;
+			unlisten?.();
+		};
+	}, [target.mode, loadEnvFile]);
 
 	return (
 		<div
@@ -512,6 +595,57 @@ export function ProviderDialog({ target, onClose }: Props) {
 
 				{target.mode === "import" ? (
 					<div className="flex-1 space-y-4 overflow-y-auto p-4">
+						<div
+							className={
+								dragOver
+									? "rounded-lg border border-dashed border-[var(--accent)] p-2"
+									: "rounded-lg border border-dashed border-transparent p-2"
+							}
+						>
+							<div className={labelCls}>从文件读取</div>
+							<div className="mt-1.5 flex items-center gap-1.5">
+								<input
+									type="text"
+									value={envPath}
+									onChange={(e) => setEnvPath(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter" && !isComposing(e)) {
+											e.preventDefault();
+											void loadEnvFile(envPath);
+										}
+									}}
+									placeholder="~/project/.env"
+									aria-label=".env 文件路径"
+									spellCheck={false}
+									className="w-full rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none"
+								/>
+								<button
+									type="button"
+									onClick={() => void loadEnvFile(envPath)}
+									disabled={readingFile || envPath.trim() === ""}
+									className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] disabled:opacity-40"
+								>
+									{readingFile && <Loader2 className="h-3 w-3 animate-spin" />}
+									<span>读取</span>
+								</button>
+								<button
+									type="button"
+									onClick={() => void handlePickFile()}
+									className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)]"
+								>
+									<FolderOpen className="h-3 w-3" />
+									<span>选择文件</span>
+								</button>
+							</div>
+							<div className={hintCls}>
+								看不到 .env？在选择窗口按 ⌘⇧.（Command + Shift + 句号）显示隐藏文件，或把文件拖进来 / 粘贴路径
+							</div>
+							{fileError && (
+								<div className="mt-1 select-text whitespace-pre-wrap break-words text-[11px] text-red-400">
+									{fileError}
+								</div>
+							)}
+						</div>
 						<div>
 							<label htmlFor="provider-import" className={labelCls}>粘贴 .env 内容</label>
 							<div className={hintCls}>
@@ -566,8 +700,8 @@ export function ProviderDialog({ target, onClose }: Props) {
 							</div>
 						)}
 						<div className={hintCls}>
-							密钥在保存时立即加密（AES-256-GCM，主密钥存于 macOS
-							钥匙串），粘贴内容不会落盘为明文
+							密钥在保存时立即加密（AES-256-GCM，保存于 ~/.omp-workspace/env/keys.env，
+							主密钥文件 ~/.omp-workspace/env/.master.key），粘贴或读取的内容不会落盘为明文
 						</div>
 					</div>
 				) : (

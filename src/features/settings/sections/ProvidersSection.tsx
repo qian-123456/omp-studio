@@ -25,14 +25,15 @@ function tabForFocus(focusKey: string | null): Tab | null {
 }
 
 export function ProvidersSection() {
-	const { focusKey } = useSettingsNav();
+	const { focusKey, focusRequest } = useSettingsNav();
 	const [tab, setTab] = useState<Tab>(() => tabForFocus(focusKey) ?? "config");
 	const [rawOpen, setRawOpen] = useState(false);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: focusRequest re-fires the jump for a repeated key
 	useEffect(() => {
 		const wanted = tabForFocus(focusKey);
 		if (wanted) setTab(wanted);
-	}, [focusKey]);
+	}, [focusKey, focusRequest]);
 
 	return (
 		<div className="space-y-5">

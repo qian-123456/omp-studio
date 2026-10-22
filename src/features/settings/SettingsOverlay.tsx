@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
 import { Settings as SettingsIcon, X } from "lucide-react";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
+import { isEscapeClaimed } from "../../lib/escapeClaim";
+import { isComposing } from "../../lib/hooks";
 import { hideAllScrollPills } from "../../lib/scrollPills";
 import { useUi } from "../../stores/ui";
+import { nestedModalOpen, useSettingsEscape } from "./nestedModal";
 import { SettingsPage } from "./SettingsPage";
 
 /**
@@ -19,7 +21,7 @@ function SettingsOverlayInner() {
 	const closeSettings = useUi((s) => s.closeSettings);
 	const dialogRef = useRef<HTMLDivElement>(null);
 
-	useEscapeKey(closeSettings);
+	useSettingsEscape(closeSettings);
 
 	// Focus management: focus dialog or first control on mount, restore on unmount
 	useEffect(() => {
@@ -57,6 +59,8 @@ function SettingsOverlayInner() {
 
 					// Escape key closes settings
 					if (e.key === "Escape") {
+						// A nested dialog (portaled, so its keydown bubbles here) owns this Esc.
+						if (isEscapeClaimed(e.nativeEvent) || nestedModalOpen()) return;
 						e.stopPropagation();
 						closeSettings();
 						return;

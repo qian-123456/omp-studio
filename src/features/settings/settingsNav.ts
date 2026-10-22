@@ -8,12 +8,15 @@ export interface SettingsNavValue {
 	navigate: (sectionId: string) => void;
 	/** Pending deep-link target (`data-field-id` or omp key) so tabbed pages can reveal the tab holding it. */
 	focusKey: string | null;
+	/** Id of the openSettings call that set focusKey; changes on every request so repeat jumps to the same key re-fire effects. */
+	focusRequest: number;
 }
 
 export const SettingsNavContext = createContext<SettingsNavValue>({
 	query: "",
 	navigate: () => {},
 	focusKey: null,
+	focusRequest: 0,
 });
 
 export function useSettingsNav(): SettingsNavValue {

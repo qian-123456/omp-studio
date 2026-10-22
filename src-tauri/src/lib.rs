@@ -350,6 +350,8 @@ pub fn run() {
             providers::commands::provider_export_env_text,
             providers::commands::omp_providers_list,
             providers::commands::provider_import_omp,
+            providers::commands::provider_import_omp_plan,
+            providers::commands::provider_read_env_file,
             providers::models_yml_write::omp_models_set_context_windows,
             providers::models_yml_write::omp_models_context_window_overrides,
             providers::commands::oauth_login_providers,

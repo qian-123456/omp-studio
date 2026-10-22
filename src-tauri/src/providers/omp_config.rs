@@ -574,9 +574,62 @@ pub fn read_agent_api_key(db_path: &Path, provider: &str) -> Option<String> {
     None
 }
 
+/// Endpoint info OMP cached for a built-in provider (`models.db`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CachedEndpoint {
+    pub base_url: Option<String>,
+    pub api: Option<String>,
+}
+
+/// Pure parse of a `model_cache.models` JSON array: first non-empty `baseUrl`
+/// and first non-empty `api` among the models.
+pub fn parse_cached_endpoint(models_json: &str) -> Option<CachedEndpoint> {
+    let val: serde_json::Value = serde_json::from_str(models_json).ok()?;
+    let arr = val.as_array()?;
+    let pick = |key: &str| {
+        arr.iter()
+            .filter_map(|m| m.get(key).and_then(|v| v.as_str()))
+            .map(str::trim)
+            .find(|s| !s.is_empty())
+            .map(ToString::to_string)
+    };
+    let ep = CachedEndpoint {
+        base_url: pick("baseUrl"),
+        api: pick("api"),
+    };
+    (ep.base_url.is_some() || ep.api.is_some()).then_some(ep)
+}
+
+/// Read-only lookup of OMP's model cache (`~/.omp/agent/models.db`).
+pub fn read_model_cache_endpoint(db_path: &Path, provider_id: &str) -> Option<CachedEndpoint> {
+    let conn =
+        rusqlite::Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
+    let models: String = conn
+        .query_row(
+            "SELECT models FROM model_cache WHERE provider_id=?1",
+            [provider_id],
+            |row| row.get(0),
+        )
+        .ok()?;
+    parse_cached_endpoint(&models)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_endpoint_parses_first_model_values() {
+        let ep = parse_cached_endpoint(
+            r#"[{"id":"a"},{"id":"b","baseUrl":" https://x.dev/v4 ","api":"openai-completions"}]"#,
+        )
+        .unwrap();
+        assert_eq!(ep.base_url.as_deref(), Some("https://x.dev/v4"));
+        assert_eq!(ep.api.as_deref(), Some("openai-completions"));
+        assert!(parse_cached_endpoint("[]").is_none());
+        assert!(parse_cached_endpoint("nope").is_none());
+    }
 
     #[test]
     fn test_models_yaml_multi_provider_and_secret_zero_exposure() {

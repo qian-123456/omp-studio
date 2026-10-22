@@ -46,7 +46,10 @@ interface ProvidersState {
 	runTest(id: string): Promise<void>;
 	runModelTest(providerId: string, modelId: string): Promise<void>;
 	exportEnvText(ids?: string[]): Promise<string>;
-	importOmp(ids: string[]): Promise<OmpImportResult[]>;
+	importOmp(
+		ids: string[],
+		baseUrlOverrides?: Record<string, string>,
+	): Promise<OmpImportResult[]>;
 }
 
 export const useProviders = create<ProvidersState>((set, get) => ({
@@ -169,10 +172,10 @@ export const useProviders = create<ProvidersState>((set, get) => ({
 
 	exportEnvText: (ids) => providerExportEnvText(ids ?? null),
 
-	importOmp: async (ids: string[]) => {
+	importOmp: async (ids: string[], baseUrlOverrides?: Record<string, string>) => {
 		set({ importingOmp: true });
 		try {
-			const results = await providerImportOmp(ids);
+			const results = await providerImportOmp(ids, baseUrlOverrides);
 			await get().load();
 			return results;
 		} finally {
