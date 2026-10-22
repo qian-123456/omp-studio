@@ -35,6 +35,7 @@ import { API_LABELS, presetById } from "./presets";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
 import { useProviders, type TestStatus } from "./store";
 import { formatTokens, modelEntryId, modelEntrySpec } from "./modelEntry";
+import { useSettingsNav } from "../settings/settingsNav";
 import { openSettingsTarget } from "../settings/settingsTargets";
 import { ProviderBrandLogo } from "../settings/sections/ProviderBrandLogo";
 
@@ -72,6 +73,12 @@ export function ProviderPanel() {
 	useEffect(() => {
 		void load();
 	}, [load]);
+
+	// Deep link from the quota sheet: expand the targeted provider row.
+	const { focusKey } = useSettingsNav();
+	useEffect(() => {
+		if (focusKey?.startsWith("provider:")) setExpandedKey(focusKey.slice("provider:".length));
+	}, [focusKey]);
 
 	// Merge OMP-discovered providers and workbench-managed ones into one list,
 	// keyed by slug so the same provider never appears twice.
@@ -371,8 +378,8 @@ export function ProviderPanel() {
 			{!isLoading && !combinedError && filteredRows.length > 0 && (
 				<div className="space-y-1.5">
 					{filteredRows.map((row) => (
+						<div key={row.key} data-field-id={`provider:${row.key}`}>
 						<UnifiedProviderRow
-							key={row.key}
 							row={row}
 							isExpanded={expandedKey === row.key}
 							onToggleExpand={() =>
@@ -389,6 +396,7 @@ export function ProviderPanel() {
 								}
 							}}
 						/>
+						</div>
 					))}
 				</div>
 			)}

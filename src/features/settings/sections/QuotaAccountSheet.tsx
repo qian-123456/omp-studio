@@ -14,7 +14,7 @@ import { oauthLoginProviders } from "../../../lib/ipc";
 import { OauthLoginDialog } from "../../providers/OauthLoginDialog";
 import { ProviderDialog, type ProviderDialogTarget } from "../../providers/ProviderDialog";
 import { useProviders } from "../../providers/store";
-import { openSettingsTarget } from "../settingsTargets";
+import { useUi } from "../../../stores/ui";
 import { Button, Chip, IconButton } from "../ui";
 import { ProviderBrandLogo } from "./ProviderBrandLogo";
 import {
@@ -190,7 +190,7 @@ export function QuotaAccountSheet({
 			return;
 		}
 		onClose();
-		openSettingsTarget("providers");
+		useUi.getState().openSettings("providers", { focusKey: `provider:${provider.providerId}` });
 	};
 
 	if (loginOpen) {

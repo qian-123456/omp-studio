@@ -16,6 +16,7 @@ type Tab = "config" | "quota";
 function tabForFocus(focusKey: string | null): Tab | null {
 	if (!focusKey) return null;
 	if (focusKey === "quotaDashboard") return "quota";
+	if (focusKey.startsWith("provider:")) return "config";
 	if (focusKey === "providerList") return "config";
 	const slot = ompSectionFor(focusKey).slot;
 	if (slot === "quota") return "quota";
