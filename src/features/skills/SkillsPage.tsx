@@ -36,15 +36,13 @@ import { useUi } from "../../stores/ui";
 import { Markdown } from "../chat/markdown";
 import { formatRelativeTime } from "../schedules/humanCadence";
 import { Switch } from "../settings/Switch";
+import { resolveSkillEnablement, type SkillDisabledReason } from "../../lib/skillEnablement";
 import {
 	SKILL_BUDGET_CHARS,
 	USAGE_DAYS,
 	computeSkillStats,
-	resolveSkillEnablement,
 	selectVisibleSkills,
-	updateOmpListSetting,
 	useSkillsStore,
-	type SkillDisabledReason,
 	type SkillSort,
 	type SkillsDrawerTarget,
 } from "./store";
@@ -71,9 +69,15 @@ const ISSUE_META: Record<SkillIssue, { label: string; explain: string }> = {
 		explain:
 			"SKILL.md 读取或 frontmatter 解析失败（也可能是目录符号链接失效），该技能大概率无法正常工作。",
 	},
+	missing_skill_md: {
+		label: "缺少 SKILL.md",
+		explain:
+			"这个文件夹放在技能目录里，但里面没有 SKILL.md 文件，OMP 会直接忽略它。补上 SKILL.md 后才会被识别。",
+	},
 };
 
 const ISSUE_ORDER: SkillIssue[] = [
+	"missing_skill_md",
 	"unreadable",
 	"description_too_long",
 	"missing_description",
@@ -127,35 +131,44 @@ function describeDisabledReason(reason: SkillDisabledReason): {
 	}
 }
 
+const GLOBAL_SCOPE_CHIP = "对所有项目生效";
+const PROJECT_OVERRIDE_TITLE =
+	"这个项目的 .omp/config.yml 自带一份停用名单，这里的全局开关在本项目里不起作用";
+
 /** A locked Switch can't take a title — wrap it so tooltips still work. */
 function SkillSwitch({
 	skill,
 	enabled,
 	reason,
 	pending,
+	overridden,
 	onToggle,
 }: {
 	skill: SkillItem;
 	enabled: boolean;
 	reason: SkillDisabledReason | null;
 	pending: boolean;
+	overridden: boolean;
 	onToggle: (skill: SkillItem, next: boolean) => void;
 }) {
 	const locked =
-		reason !== null &&
-		reason.kind !== "disabled" &&
-		!(reason.kind === "ignored" && reason.exact);
+		overridden ||
+		(reason !== null &&
+			reason.kind !== "disabled" &&
+			!(reason.kind === "ignored" && reason.exact));
 	return (
 		<span
 			className="inline-flex"
 			title={
 				pending
 					? "更新中…"
-					: reason
-						? describeDisabledReason(reason).detail
-						: enabled
-							? "停用后新会话不再加载该技能"
-							: undefined
+					: overridden
+						? PROJECT_OVERRIDE_TITLE
+						: reason
+							? describeDisabledReason(reason).detail
+							: enabled
+								? "停用后新会话不再加载该技能（对所有项目生效）"
+								: undefined
 			}
 		>
 			<Switch
@@ -224,11 +237,11 @@ function DeleteConfirmBody({
  * disabled skills, so for those we insert an instruction to read SKILL.md by
  * absolute path instead (the `read` tool accepts any file).
  */
-function insertSkillIntoComposer(skill: SkillItem, enabled: boolean) {
+function insertSkillIntoComposer(skill: SkillItem, enabled: boolean): boolean {
 	const selectedSessionId = useUi.getState().selectedSessionId;
 	if (!selectedSessionId) {
 		toast.error("当前未选择会话，请先在侧边栏选择一个会话");
-		return;
+		return false;
 	}
 	const existingDraft = useComposer.getState().drafts[selectedSessionId] ?? "";
 	const invocation = enabled
@@ -247,14 +260,26 @@ function insertSkillIntoComposer(skill: SkillItem, enabled: boolean) {
 			? `已插入 /skill:${skill.name} 到会话输入框`
 			: `「${skill.name}」已停用，已插入“读取该 Skill 文件”的指令`,
 	);
+	return true;
 }
 
+/** Skills without a SKILL.md are ignored by OMP, so there is nothing to invoke. */
+const skillUsable = (skill: SkillItem) =>
+	!skill.issues.includes("missing_skill_md");
+
+const ROW_ACTION =
+	"flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border-divider)] bg-neutral-800/60 text-neutral-300 transition-colors disabled:cursor-not-allowed disabled:opacity-30";
+
+const DISABLED_FILE_HINT = "启用（去掉文件名里的 .disabled）";
+
 const skillUseTitle = (skill: SkillItem, enabled: boolean, hasSession: boolean) =>
-	!hasSession
-		? "请先在侧边栏选择一个会话"
-		: enabled
-			? `在当前会话插入 /skill:${skill.name}`
-			: "已停用：/skill 命令不可用，将插入“读取该 Skill 文件”的指令临时使用";
+	!skillUsable(skill)
+		? "该文件夹缺少 SKILL.md，OMP 会忽略它，无法使用"
+		: !hasSession
+			? "请先在侧边栏选择一个会话"
+			: enabled
+				? `在当前会话插入 /skill:${skill.name}`
+				: "已停用：/skill 命令不可用，将插入“读取该 Skill 文件”的指令临时使用";
 
 /** Info circle next to the 启用 column header explaining what the switch does. */
 function EnableInfoButton() {
@@ -369,6 +394,7 @@ function DetailDrawer({
 }) {
 	const catalog = useSkillsStore((s) => s.catalog);
 	const skillConfig = useSkillsStore((s) => s.skillConfig);
+	const listOverridden = useSkillsStore((s) => s.skillConfigOverrides.includes("disabledExtensions"));
 	const usageError = useSkillsStore((s) => s.usageError);
 	const usageReport = useSkillsStore((s) => s.usageReport);
 	const usage = useSkillsStore((s) => s.usage);
@@ -651,8 +677,10 @@ function DetailDrawer({
 						{skill && (
 							<button
 								type="button"
-								onClick={() => insertSkillIntoComposer(skill, enablement?.enabled ?? true)}
-								disabled={!selectedSessionId}
+								onClick={() => {
+									if (insertSkillIntoComposer(skill, enablement?.enabled ?? true)) onClose();
+								}}
+								disabled={!selectedSessionId || !skillUsable(skill)}
 								title={skillUseTitle(skill, enablement?.enabled ?? true, !!selectedSessionId)}
 								className={clsx(
 									"flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-apple-card hairline transition-all active:scale-95",
@@ -669,14 +697,16 @@ function DetailDrawer({
 							<span
 								className="inline-flex"
 								title={
-									skillLocked && enablement.reason
-										? describeDisabledReason(enablement.reason).detail
-										: "启用/停用写入 OMP 配置，对新会话生效"
+									listOverridden
+										? PROJECT_OVERRIDE_TITLE
+										: skillLocked && enablement.reason
+											? describeDisabledReason(enablement.reason).detail
+											: "启用/停用写入全局 OMP 配置，对所有项目的新会话生效"
 								}
 							>
 								<button
 									type="button"
-									disabled={skillLocked || togglingSkill === skill.path}
+									disabled={skillLocked || listOverridden || togglingSkill === skill.path}
 									onClick={() => onToggleSkill(skill, !enablement.enabled)}
 									className={clsx(
 										"flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-apple-card hairline transition-all active:scale-95 disabled:opacity-50",
@@ -690,21 +720,31 @@ function DetailDrawer({
 								</button>
 							</span>
 						)}
+						{skill && (
+							<span className="text-[11px] text-neutral-500">{GLOBAL_SCOPE_CHIP}</span>
+						)}
 						{extension && (
-							<button
-								type="button"
-								disabled={togglingPath === extension.path}
-								onClick={() => onToggleExtension(extension)}
-								className={clsx(
-									"flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-apple-card hairline transition-all active:scale-95 disabled:opacity-50",
-									extension.enabled
-										? "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
-										: "bg-emerald-600 text-white hover:bg-emerald-500",
+							<>
+								<button
+									type="button"
+									disabled={togglingPath === extension.path || listOverridden}
+									title={listOverridden ? PROJECT_OVERRIDE_TITLE : undefined}
+									onClick={() => onToggleExtension(extension)}
+									className={clsx(
+										"flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-apple-card hairline transition-all active:scale-95 disabled:opacity-50",
+										extension.enabled
+											? "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+											: "bg-emerald-600 text-white hover:bg-emerald-500",
+									)}
+								>
+									<Power size={13} />
+									<span>{extension.enabled ? "停用扩展" : "启用扩展"}</span>
+								</button>
+								<span className="text-[11px] text-neutral-500">{GLOBAL_SCOPE_CHIP}</span>
+								{!extension.enabled && extension.path.endsWith(".disabled") && (
+									<span className="text-[11px] text-neutral-500">{DISABLED_FILE_HINT}</span>
 								)}
-							>
-								<Power size={13} />
-								<span>{extension.enabled ? "停用扩展" : "启用扩展"}</span>
-							</button>
+							</>
 						)}
 						<button
 							type="button"
@@ -804,6 +844,9 @@ export function SkillsPage() {
 	const searchQuery = useSkillsStore((s) => s.searchQuery);
 	const sourceFilter = useSkillsStore((s) => s.sourceFilter);
 	const skillConfig = useSkillsStore((s) => s.skillConfig);
+	const listOverridden = useSkillsStore((s) => s.skillConfigOverrides.includes("disabledExtensions"));
+	const projectConfigPath = useSkillsStore((s) => s.projectConfigPath);
+	const projectConfigNotice = useSkillsStore((s) => s.projectConfigNotice);
 	const trashingDirs = useSkillsStore((s) => s.trashingDirs);
 	const setSkillEnabled = useSkillsStore((s) => s.setSkillEnabled);
 	const trashSkill = useSkillsStore((s) => s.trashSkill);
@@ -826,7 +869,8 @@ export function SkillsPage() {
 	const setSort = useSkillsStore((s) => s.setSort);
 	const openDrawer = useSkillsStore((s) => s.openDrawer);
 	const closeDrawer = useSkillsStore((s) => s.closeDrawer);
-	const updateExtensionEnabled = useSkillsStore((s) => s.updateExtensionEnabled);
+	const setExtensionEnabled = useSkillsStore((s) => s.setExtensionEnabled);
+	const revalidateCatalog = useSkillsStore((s) => s.revalidateCatalog);
 
 	// Project scope follows the selected (or last viewed) session's cwd.
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
@@ -841,6 +885,13 @@ export function SkillsPage() {
 	useEffect(() => {
 		loadUsage();
 	}, [loadUsage]);
+	// Pick up external edits (files added/removed outside the app) on mount and window focus.
+	useEffect(() => {
+		if (useSkillsStore.getState().catalog) void revalidateCatalog(projectCwd);
+		const onFocus = () => void revalidateCatalog(projectCwd);
+		window.addEventListener("focus", onFocus);
+		return () => window.removeEventListener("focus", onFocus);
+	}, [projectCwd, revalidateCatalog]);
 
 	const stats = useMemo(
 		() => computeSkillStats(catalog?.skills ?? [], usage, skillConfig),
@@ -881,24 +932,21 @@ export function SkillsPage() {
 		if (togglingPath) return;
 		setTogglingPath(ext.path);
 		try {
-			await updateOmpListSetting("disabledExtensions", (currentDisabled) =>
-				ext.enabled
-					? Array.from(new Set([...currentDisabled, ext.name]))
-					: currentDisabled.filter(
-							(id) =>
-								id !== ext.name &&
-								id !== `extension-module:${ext.name}` &&
-								id !== ext.path,
-						),
-			);
-			updateExtensionEnabled(ext.path, !ext.enabled);
-			toast.success(
-				ext.enabled ? `已禁用扩展 ${ext.name}` : `已启用扩展 ${ext.name}`,
-			);
-		} catch (err) {
-			toast.error(`更新扩展状态失败: ${errMsg(err)}`);
+			await setExtensionEnabled(ext, !ext.enabled, projectCwd);
 		} finally {
 			setTogglingPath(null);
+		}
+	};
+
+	const [deleteBusy, setDeleteBusy] = useState(false);
+	const handleConfirmDelete = async (skill: SkillItem) => {
+		if (deleteBusy) return;
+		setDeleteBusy(true);
+		try {
+			await trashSkill(skill, projectCwd);
+		} finally {
+			setDeleteBusy(false);
+			setDeleteAnchor(null);
 		}
 	};
 
@@ -920,6 +968,8 @@ export function SkillsPage() {
 	};
 
 	const usagePending = usageLoading && !usageLoaded && !usageError;
+	// Count/lastUsed ordering depends on usage; hold the list back until it is known so rows never jump.
+	const sortPending = sort !== "name" && !usageLoaded && !usageError;
 	const usageUnavailable = !!usageError && !usageReport;
 	const days = usageReport?.days ?? USAGE_DAYS;
 
@@ -1022,12 +1072,68 @@ export function SkillsPage() {
 					</button>
 				</div>
 
+				{/* Project scope indicator */}
+				{activeTab === "skills" && (
+					<div className="mt-3 flex flex-wrap items-start gap-2 text-[11px]">
+						{projectCwd ? (
+							<>
+								<span className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-400">
+									当前项目：{projectCwd.split("/").filter(Boolean).pop() ?? projectCwd}
+								</span>
+								<span className="min-w-0 select-text break-all font-mono text-neutral-500">
+									{projectCwd}
+								</span>
+							</>
+						) : (
+							<span className="text-neutral-500">
+								项目级技能需要先选中一个会话，目前只显示全局技能
+							</span>
+						)}
+					</div>
+				)}
+
+				{/* Switches write the global config; show scope + project overrides */}
+				<div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+					<span className="shrink-0 rounded-md border border-[var(--border-divider)] bg-neutral-800/60 px-2 py-0.5 font-medium text-neutral-300">
+						{GLOBAL_SCOPE_CHIP}
+					</span>
+					<span>这里的启用/停用开关写入全局配置，会影响所有项目的新会话</span>
+				</div>
+				{listOverridden && (
+					<div
+						role="alert"
+						className="mt-2 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-300"
+					>
+						<AlertCircle size={14} className="mt-0.5 shrink-0" />
+						<span className="min-w-0 whitespace-pre-wrap break-words">
+							{PROJECT_OVERRIDE_TITLE}
+							{projectConfigPath && (
+								<>
+									{"\n"}配置文件：
+									<span className="select-text break-all font-mono">{projectConfigPath}</span>
+								</>
+							)}
+						</span>
+					</div>
+				)}
+				{projectConfigNotice && (
+					<div
+						role="status"
+						className="mt-2 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-300"
+					>
+						<AlertCircle size={14} className="mt-0.5 shrink-0" />
+						<span className="min-w-0 select-text whitespace-pre-wrap break-words">
+							{projectConfigNotice}
+						</span>
+					</div>
+				)}
+
 				{/* Error banner */}
 				{error && (
-					<div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-300">
-						<div className="flex min-w-0 items-center gap-2">
-							<AlertCircle size={14} className="shrink-0" />
-							<span className="truncate">加载失败：{error}</span>
+					<div className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-300">
+						<div className="flex min-w-0 items-start gap-2">
+							<AlertCircle size={14} className="mt-0.5 shrink-0" />
+							<span className="select-text whitespace-pre-wrap break-words">加载失败：{error}</span>
 						</div>
 						<button
 							type="button"
@@ -1138,11 +1244,11 @@ export function SkillsPage() {
 									{ value: "all", label: `全部状态 ${stats.total}` },
 									{
 										value: "active",
-										label: `活跃 ${usageUnavailable ? "—" : usagePending ? "…" : stats.active}`,
+										label: `活跃 ${usageUnavailable || usagePending ? "-" : stats.active}`,
 									},
 									{
 										value: "idle",
-										label: `未触发 ${usageUnavailable ? "—" : usagePending ? "…" : stats.idle}`,
+										label: `未触发 ${usageUnavailable || usagePending ? "-" : stats.idle}`,
 									},
 									{ value: "issues", label: `有问题 ${stats.withIssues}` },
 									{ value: "disabled", label: `已停用 ${stats.disabled}` },
@@ -1239,6 +1345,15 @@ export function SkillsPage() {
 										))}
 									</div>
 								)
+							) : sortPending ? (
+								<div className="space-y-px p-1" aria-busy="true" data-testid="skills-sort-pending">
+									{Array.from({ length: 8 }).map((_, i) => (
+										<div
+											key={i}
+											className="h-12 animate-pulse rounded-lg bg-neutral-800/30"
+										/>
+									))}
+								</div>
 							) : visibleSkills.length === 0 ? (
 								<div className="flex flex-col items-center justify-center gap-1.5 px-8 py-14 text-center">
 									<Sparkles size={26} className="text-neutral-600" />
@@ -1365,6 +1480,7 @@ export function SkillsPage() {
 											{/* Enable switch */}
 											<div className="flex justify-end">
 												<SkillSwitch
+													overridden={listOverridden}
 													skill={skill}
 													enabled={enablement.enabled}
 													reason={reason}
@@ -1374,16 +1490,16 @@ export function SkillsPage() {
 											</div>
 
 											{/* Row actions */}
-											<div className="flex items-center justify-end gap-0.5">
+											<div className="flex items-center justify-end gap-1">
 												<button
 													type="button"
-													disabled={!selectedSessionId}
+													disabled={!selectedSessionId || !skillUsable(skill)}
 													onClick={(e) => {
 														e.stopPropagation();
 														insertSkillIntoComposer(skill, enablement.enabled);
 													}}
 													title={skillUseTitle(skill, enablement.enabled, !!selectedSessionId)}
-													className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-[var(--bg-active-fill)] hover:text-amber-300 disabled:opacity-30"
+													className={`${ROW_ACTION} hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-300`}
 												>
 													<Play size={13} />
 												</button>
@@ -1394,7 +1510,7 @@ export function SkillsPage() {
 														revealInFinder(skill.dir || skill.path);
 													}}
 													title="在访达中显示"
-													className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
+													className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
 												>
 													<FolderOpen size={13} />
 												</button>
@@ -1406,7 +1522,7 @@ export function SkillsPage() {
 														setDeleteAnchor({ skill, el: e.currentTarget });
 													}}
 													title="移到废纸篓"
-													className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-30"
+													className={`${ROW_ACTION} hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400`}
 												>
 													<Trash2 size={13} />
 												</button>
@@ -1417,7 +1533,7 @@ export function SkillsPage() {
 														openDrawer({ kind: "skill", path: skill.path });
 													}}
 													title="查看详情"
-													className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-[var(--bg-active-fill)] hover:text-neutral-200"
+													className={`${ROW_ACTION} hover:bg-[var(--bg-active-fill)] hover:text-neutral-100`}
 												>
 													<ChevronRight size={14} />
 												</button>
@@ -1521,9 +1637,10 @@ export function SkillsPage() {
 										{ext.path}
 									</span>
 									<span className="flex items-center justify-end gap-2">
+										{/* scope is stated once in the page banner; per-row repeat wrapped into vertical text */}
 										<span
 											className={clsx(
-												"text-[11px]",
+												"whitespace-nowrap text-[11px]",
 												ext.enabled
 													? "text-emerald-400"
 													: "text-neutral-500",
@@ -1531,11 +1648,21 @@ export function SkillsPage() {
 										>
 											{ext.enabled ? "已启用" : "已停用"}
 										</span>
-										<Switch
-											checked={ext.enabled}
-											disabled={togglingPath === ext.path}
-											onChange={() => handleToggleExtension(ext)}
-										/>
+										<span
+											title={
+												listOverridden
+													? PROJECT_OVERRIDE_TITLE
+													: ext.path.endsWith(".disabled") && !ext.enabled
+														? DISABLED_FILE_HINT
+														: undefined
+											}
+										>
+											<Switch
+												checked={ext.enabled}
+												disabled={togglingPath === ext.path || listOverridden}
+												onChange={() => handleToggleExtension(ext)}
+											/>
+										</span>
 									</span>
 								</div>
 							))
@@ -1563,19 +1690,17 @@ export function SkillsPage() {
 				placement="bottom-end"
 				layer="popover"
 				offset={6}
-				onDismiss={() => setDeleteAnchor(null)}
+				onDismiss={() => {
+					if (!deleteBusy) setDeleteAnchor(null);
+				}}
 				className="p-3.5"
 			>
 				{deleteAnchor && (
 					<DeleteConfirmBody
 						skill={deleteAnchor.skill}
-						busy={trashingDirs.includes(deleteAnchor.skill.dir)}
+						busy={deleteBusy || trashingDirs.includes(deleteAnchor.skill.dir)}
 						onCancel={() => setDeleteAnchor(null)}
-						onConfirm={() => {
-							const s = deleteAnchor.skill;
-							setDeleteAnchor(null);
-							void trashSkill(s, projectCwd);
-						}}
+						onConfirm={() => void handleConfirmDelete(deleteAnchor.skill)}
 					/>
 				)}
 			</FloatingLayer>
