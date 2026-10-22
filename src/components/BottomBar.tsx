@@ -17,12 +17,14 @@ import { useSessions } from "../stores/sessions";
 import { useUi } from "../stores/ui";
 import { ompVersionLabel, useOmpUpdate } from "../stores/ompUpdate";
 import { getAppMemoryUsage, perfBreakdown, servicesList, type ProcessMemoryInfo } from "../lib/ipc";
+import { useDisplayPrefs } from "../stores/displayPrefs";
 import type { PerfBreakdown, ServiceInfo } from "../lib/contracts";
 import { useZoom } from "../lib/zoom";
 
 export function BottomBar() {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const lastSessionId = useUi((s) => s.lastSessionId);
+	const bottomBarVisible = useDisplayPrefs((s) => s.bottomBar);
 	const activeSessionId = selectedSessionId || lastSessionId;
 
 	const rightTab = useUi((s) => s.rightTab);
@@ -154,7 +156,7 @@ export function BottomBar() {
 	const dirty = activeSession?.git?.dirty ?? 0;
 
 	return (
-		<footer data-app-bottombar className="relative flex h-7 shrink-0 items-center justify-between border-t border-[var(--border-divider)] bg-neutral-950 px-3 text-[11px] text-neutral-400 select-none tabular-nums">
+		<footer data-app-bottombar className={`relative ${bottomBarVisible ? "flex" : "hidden"} h-7 shrink-0 items-center justify-between border-t border-[var(--border-divider)] bg-neutral-950 px-3 text-[11px] text-neutral-400 select-none tabular-nums`}>
 			{/* Left: dsh-style Session Stats */}
 			<div className="flex items-center gap-2">
 				{activeSessionId && stats.hasData ? (

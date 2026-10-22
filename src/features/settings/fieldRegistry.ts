@@ -145,6 +145,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		],
 	})),
 	{
+		id: "bottomBar",
+		sectionId: "appearance",
+		label: "显示底栏",
+		description: "窗口底部的状态栏（会话统计、性能、omp 版本、缩放）；关闭后隐藏，缩放快捷键仍可用",
+		keywords: ["底栏", "状态栏", "bottom", "bar", "statusbar", "隐藏", "显示"],
+	},
+	{
 		id: "thinkingPreview",
 		sectionId: "appearance",
 		label: "思考时显示最新两行",

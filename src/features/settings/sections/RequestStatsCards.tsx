@@ -66,9 +66,18 @@ export function ConversationDisplayCard() {
 	const setThinkingPreview = useDisplayPrefs((s) => s.setThinkingPreview);
 	const sideChatHandback = useDisplayPrefs((s) => s.sideChatHandback);
 	const setSideChatHandback = useDisplayPrefs((s) => s.setSideChatHandback);
+	const bottomBar = useDisplayPrefs((s) => s.bottomBar);
+	const setBottomBar = useDisplayPrefs((s) => s.setBottomBar);
 
 	return (
 		<SettingsCard title="对话显示" footer="保存在本机，立即生效。">
+			<ToggleRow
+				fieldId="bottomBar"
+				label="显示底栏"
+				description="窗口底部的状态栏（会话统计、性能、omp 版本、缩放）；关闭后隐藏，缩放快捷键仍可用"
+				checked={bottomBar}
+				onChange={setBottomBar}
+			/>
 			<ToggleRow
 				fieldId="thinkingPreview"
 				label="思考时显示最新两行"

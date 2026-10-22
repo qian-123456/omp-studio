@@ -31,6 +31,7 @@ const KEYS = {
 	requestStatFields: "ompws:request-stat-fields",
 	thinkingPreview: "ompws:thinking-preview",
 	sideChatHandback: "ompws:side-chat-handback",
+	bottomBar: "ompws:bottom-bar",
 } as const;
 
 /** 「回传给父会话」: 整理成结论 (summary) or 手动选择 (select) from the side-chat selection bubble. */
@@ -86,6 +87,9 @@ function readHandback(): SideChatHandbackMode {
 export interface DisplayPrefsState {
 	/** Show the per-request stats line (「请求统计」). */
 	requestStats: boolean;
+	/** Show the bottom status bar (默认显示). */
+	bottomBar: boolean;
+	setBottomBar(on: boolean): void;
 	/** Which fields the stats line shows. */
 	requestStatFields: RequestStatFieldPrefs;
 	/** Roll the newest two lines of reasoning under 「正在思考」 while it streams. */
@@ -101,6 +105,11 @@ export interface DisplayPrefsState {
 /** Local display preferences, persisted per machine in localStorage (like font size). */
 export const useDisplayPrefs = create<DisplayPrefsState>((set, get) => ({
 	requestStats: readBool(KEYS.requestStats, true),
+	bottomBar: readBool(KEYS.bottomBar, true),
+	setBottomBar: (on) => {
+		writeStorage(KEYS.bottomBar, on ? "1" : "0");
+		set({ bottomBar: on });
+	},
 	requestStatFields: readFields(),
 	thinkingPreview: readBool(KEYS.thinkingPreview, true),
 	setRequestStats: (on) => {
