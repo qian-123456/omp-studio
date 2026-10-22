@@ -185,6 +185,7 @@ pub fn run() {
             schedules::init(state.clone());
             model_templates::rules::init(state.clone());
             ime::watch(app.handle());
+            skills::usage::warm_up(45);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -289,6 +290,8 @@ pub fn run() {
             omp_files::omp_memory_delete_skill,
             omp_files::omp_rule_read,
             omp_files::omp_rule_write,
+            omp_files::omp_agent_read,
+            omp_files::omp_agent_write,
             services::commands::fs_read_dir,
             services::commands::validate_path,
             services::commands::save_clipboard_image,
@@ -312,6 +315,8 @@ pub fn run() {
             backlog::commands::backlog_add,
             backlog::commands::backlog_update,
             backlog::commands::backlog_delete,
+            backlog::commands::backlog_restore,
+            backlog::commands::backlog_purge,
             backlog::commands::backlog_build_prompt,
             // D — notify
             notify::commands::notify_test,

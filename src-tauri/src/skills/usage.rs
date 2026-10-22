@@ -20,7 +20,8 @@ const MAX_WALK_DEPTH: usize = 8;
 
 /// Per-file scan result cached in the process: file size, mtime, and the
 /// extracted `(skill name, epoch_ms)` triggers.
-type FileCache = HashMap<PathBuf, (u64, SystemTime, Vec<(String, i64)>)>;
+type Triggers = Vec<(String, i64)>;
+type FileCache = HashMap<PathBuf, (u64, SystemTime, Triggers)>;
 
 static FILE_CACHE: OnceLock<Mutex<FileCache>> = OnceLock::new();
 
@@ -306,26 +307,58 @@ fn scan_sessions(base: &Path, days: u32) -> SkillUsageReport {
     let mut per_skill: HashMap<String, (u64, i64)> = HashMap::new();
 
     {
-        let mut cache = lock_cache();
-        // Drop entries for vanished files.
-        let live: std::collections::HashSet<&Path> =
-            fresh.iter().map(|(p, _, _)| p.as_path()).collect();
-        cache.retain(|p, _| live.contains(p.as_path()));
-
-        for (path, size, mtime) in &fresh {
-            scanned_files += 1;
-            let cached = cache
-                .get(path)
-                .filter(|(s, m, _)| s == size && m == mtime)
-                .map(|(_, _, triggers)| triggers.clone());
-            let triggers = match cached {
-                Some(t) => t,
-                None => {
-                    let t = scan_file(path, system_time_ms(*mtime));
-                    cache.insert(path.clone(), (*size, *mtime, t.clone()));
-                    t
+        // Split into cache hits and misses; scan misses in parallel without
+        // holding the cache lock.
+        let mut results: Vec<Vec<(String, i64)>> = Vec::with_capacity(fresh.len());
+        let mut misses: Vec<usize> = Vec::new();
+        {
+            let mut cache = lock_cache();
+            // Drop entries for vanished files.
+            let live: std::collections::HashSet<&Path> =
+                fresh.iter().map(|(p, _, _)| p.as_path()).collect();
+            cache.retain(|p, _| live.contains(p.as_path()));
+            for (i, (path, size, mtime)) in fresh.iter().enumerate() {
+                match cache.get(path).filter(|(s, m, _)| s == size && m == mtime) {
+                    Some((_, _, t)) => results.push(t.clone()),
+                    None => {
+                        results.push(Vec::new());
+                        misses.push(i);
+                    }
                 }
-            };
+            }
+        }
+
+        if !misses.is_empty() {
+            let workers = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+                .min(misses.len());
+            let next = std::sync::atomic::AtomicUsize::new(0);
+            let scanned: Mutex<Vec<(usize, Triggers)>> = Mutex::new(Vec::new());
+            std::thread::scope(|scope| {
+                for _ in 0..workers {
+                    scope.spawn(|| loop {
+                        let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(&i) = misses.get(k) else { break };
+                        let (path, _, mtime) = &fresh[i];
+                        let t = scan_file(path, system_time_ms(*mtime));
+                        scanned
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .push((i, t));
+                    });
+                }
+            });
+            let mut cache = lock_cache();
+            for (i, t) in scanned.into_inner().unwrap_or_else(|e| e.into_inner()) {
+                let (path, size, mtime) = &fresh[i];
+                cache.insert(path.clone(), (*size, *mtime, t.clone()));
+                results[i] = t;
+            }
+        }
+
+        for triggers in results {
+            scanned_files += 1;
             for (name, ts_ms) in triggers {
                 if ts_ms < cutoff_ms {
                     continue;
@@ -356,6 +389,17 @@ fn scan_sessions(base: &Path, days: u32) -> SkillUsageReport {
         scanned_files,
         usage,
     }
+}
+
+/// Pre-fills the per-file cache in the background so the first visit to the
+/// Skills page does not wait for a cold scan.
+pub fn warm_up(days: u32) {
+    std::thread::spawn(move || {
+        if let Some(base) = dirs::home_dir().map(|h| h.join(".omp").join("agent").join("sessions"))
+        {
+            let _ = scan_sessions(&base, days);
+        }
+    });
 }
 
 /// Tauri command `skills_usage`: per-skill trigger counts over `days` days.
