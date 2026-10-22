@@ -1733,6 +1733,32 @@ export function MessageList({
 		echoCountRef.current = n;
 	}, [pendingEchoes.length]);
 
+	// A finished answer taller than the viewport: park the view on the question
+	// that started the turn (answer begins right below it) instead of leaving the
+	// user at the tail of a long reply. Only when still pinned — a user who
+	// scrolled away mid-stream keeps their position. Declared after the pin
+	// effect so it overrides that write in the same commit.
+	const prevLiveRef = useRef({ sessionId, liveVisible });
+	useLayoutEffect(() => {
+		const prev = prevLiveRef.current;
+		prevLiveRef.current = { sessionId, liveVisible };
+		if (prev.sessionId !== sessionId || !prev.liveVisible || liveVisible) return;
+		const el = scrollRef.current;
+		if (!el || !shouldFollow(followRef.current)) return;
+		let idx = -1;
+		for (let i = blocks.length - 1; i >= 0; i--) {
+			if (blocks[i].type === "turn") {
+				idx = i;
+				break;
+			}
+		}
+		const start = idx >= 0 ? virtualizer.measurementsCache[idx]?.start : undefined;
+		if (start === undefined || el.scrollHeight - start <= el.clientHeight) return;
+		followRef.current = detach(followRef.current);
+		el.scrollTop = start;
+		emitScrollState({ nearBottom: false });
+	}, [liveVisible, sessionId, blocks, virtualizer, scrollRef]);
+
 	// Auto-scroll when new blocks arrive: the pin already ran pre-paint; this
 	// passive pass coalesces the trailing write (handles heights that settle
 	// after commit) and flags "new messages" while detached.
