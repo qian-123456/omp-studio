@@ -1,23 +1,35 @@
 import { create } from "zustand";
 import type {
-	OmpConfigListResult,
+	ExtensionItem,
 	SkillItem,
-	SkillProvider,
 	SkillUsage,
 	SkillUsageReport,
 	SkillsCatalog,
 } from "../../lib/contracts";
 import {
+	extensionEnableFile,
 	ompConfigList,
+	ompProjectConfigRead,
 	ompConfigSet,
 	skillsList,
 	skillsTrash,
 	skillsUsage,
 } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import {
+	DEFAULT_SKILL_CONFIG,
+	EMPTY_PROJECT_LAYER,
+	mergeSkillConfig,
+	parseProjectSkillLayer,
+	parseSkillConfig,
+	resolveSkillEnablement,
+	type SkillEnableConfig,
+} from "../../lib/skillEnablement";
+import { useOmpConfigStore } from "../settings/ompConfigStore";
 
-/** Suggested resident system-prompt budget for skill name+description entries. */
-export const SKILL_BUDGET_CHARS = 15_000;
+/** Toast when a global write would be a no-op because the project config overrides it. */
+const PROJECT_OVERRIDE_WRITE_BLOCKED =
+	"这个项目的 .omp/config.yml 自带一份停用名单，全局开关在本项目里不起作用，未修改任何配置";
 
 /** Usage scan window surfaced in the UI (触发列标题、吃灰统计). */
 export const USAGE_DAYS = 45;
@@ -44,6 +56,12 @@ export interface SkillsState {
 	drawer: SkillsDrawerTarget | null;
 	/** OMP config slice deciding per-skill enablement (skills.* + disabledExtensions). */
 	skillConfig: SkillEnableConfig;
+	/** Config keys the project `.omp/config.yml` overrides (global writes can't reach them). */
+	skillConfigOverrides: string[];
+	/** Path of the project config read for the current cwd (null without a project). */
+	projectConfigPath: string | null;
+	/** Non-blocking notice when the project config could not be read/parsed. */
+	projectConfigNotice: string | null;
 	/** Dirs currently being trashed (in-flight guard). */
 	trashingDirs: string[];
 	/** Trigger stats keyed by skill name. */
@@ -68,6 +86,10 @@ export interface SkillsState {
 	updateExtensionEnabled: (path: string, enabled: boolean) => void;
 	/** Toggle a skill via disabledExtensions (+ exact ignoredSkills removal on enable). */
 	setSkillEnabled: (skill: SkillItem, enabled: boolean) => Promise<void>;
+	/** Toggle an extension (disabledExtensions + `.disabled` rename); errors become toasts. */
+	setExtensionEnabled: (ext: ExtensionItem, enabled: boolean, cwd: string | null) => Promise<void>;
+	/** Silent refetch: keeps current data visible, swaps in the new catalog on success. */
+	revalidateCatalog: (cwd: string | null) => Promise<void>;
 	/** Move a skill directory to the OS Trash, then refresh the catalog. */
 	trashSkill: (skill: SkillItem, cwd?: string | null) => Promise<void>;
 }
@@ -86,137 +108,11 @@ export interface SkillStats {
 	missingDescription: number;
 	tooLong: number;
 	unreadable: number;
-	/** Sum of promptChars across all skills — resident context cost estimate. */
-	budgetUsed: number;
 	/** Skills filtered out of new sessions by config (any reason). */
 	disabled: number;
 }
 
 
-// ---- Skill enablement (OMP config filter pipeline) ----
-
-/** The OMP config slice that decides whether a skill reaches new sessions. */
-export interface SkillEnableConfig {
-	/** `skills.enabled` master switch (default true). */
-	skillsEnabled: boolean;
-	/** `skills.enable*` source toggles, keyed by full config key. */
-	sourceToggles: Record<string, boolean>;
-	/** `skills.ignoredSkills` glob list. */
-	ignored: string[];
-	/** `skills.includeSkills` allowlist (empty = include everything). */
-	include: string[];
-	/** `disabledExtensions` entries (`skill:<name>` marks a disabled skill). */
-	disabledExtensions: string[];
-}
-
-export const DEFAULT_SKILL_CONFIG: SkillEnableConfig = {
-	skillsEnabled: true,
-	sourceToggles: {},
-	ignored: [],
-	include: [],
-	disabledExtensions: [],
-};
-
-/** Why a skill won't reach a new session. Order matches the filter pipeline. */
-export type SkillDisabledReason =
-	| { kind: "disabled" } // disabledExtensions contains skill:<name>
-	| { kind: "source"; key: string } // its source toggle is off
-	| { kind: "ignored"; pattern: string; exact: boolean } // ignoredSkills match
-	| { kind: "not_included" } // includeSkills non-empty and no match
-	| { kind: "all_off" }; // skills.enabled = false
-
-export interface SkillEnablement {
-	enabled: boolean;
-	reason: SkillDisabledReason | null;
-}
-
-/** `(provider, source)` → the OMP `skills.enable*` key gating that root. */
-const PROVIDER_SOURCE_TOGGLE: Record<SkillProvider, Record<string, string>> = {
-	native: { user: "skills.enablePiUser", project: "skills.enablePiProject" },
-	claude: {
-		user: "skills.enableClaudeUser",
-		project: "skills.enableClaudeProject",
-	},
-	agents: {
-		user: "skills.enableAgentsUser",
-		project: "skills.enableAgentsProject",
-	},
-	codex: { user: "skills.enableCodexUser" },
-	github: {},
-	managed: {},
-};
-
-/** Anchored single-segment glob (`*`, `?`; `**` ≡ `*`), case-sensitive. */
-export function skillGlobMatch(pattern: string, name: string): boolean {
-	const re = new RegExp(
-		`^${pattern
-			.replace(/[.+^${}()|[\]\\]/g, "\\$&")
-			.replace(/\*+/g, ".*")
-			.replace(/\?/g, ".")}$`,
-	);
-	return re.test(name);
-}
-
-/** Reads `omp config list` output into the slice needed for enablement. */
-export function parseSkillConfig(list: OmpConfigListResult): SkillEnableConfig {
-	const cfg: SkillEnableConfig = { ...DEFAULT_SKILL_CONFIG, sourceToggles: {} };
-	for (const entry of list.entries) {
-		const strList = () =>
-			Array.isArray(entry.value)
-				? entry.value.filter((v): v is string => typeof v === "string")
-				: [];
-		switch (entry.key) {
-			case "skills.enabled":
-				if (typeof entry.value === "boolean") cfg.skillsEnabled = entry.value;
-				break;
-			case "skills.ignoredSkills":
-				cfg.ignored = strList();
-				break;
-			case "skills.includeSkills":
-				cfg.include = strList();
-				break;
-			case "disabledExtensions":
-				cfg.disabledExtensions = strList();
-				break;
-			default:
-				if (
-					entry.key.startsWith("skills.enable") &&
-					typeof entry.value === "boolean"
-				) {
-					cfg.sourceToggles[entry.key] = entry.value;
-				}
-		}
-	}
-	return cfg;
-}
-
-/**
- * Applies OMP's session-start filter pipeline to one skill:
- * skills.enabled → disabledExtensions `skill:<name>` → source toggle →
- * ignoredSkills globs → includeSkills allowlist. Exported for tests.
- */
-export function resolveSkillEnablement(
-	skill: SkillItem,
-	cfg: SkillEnableConfig,
-): SkillEnablement {
-	const deny = (reason: SkillDisabledReason): SkillEnablement => ({
-		enabled: false,
-		reason,
-	});
-	if (!cfg.skillsEnabled) return deny({ kind: "all_off" });
-	if (cfg.disabledExtensions.includes(`skill:${skill.name}`))
-		return deny({ kind: "disabled" });
-	const key = PROVIDER_SOURCE_TOGGLE[skill.provider]?.[skill.source];
-	if (key && cfg.sourceToggles[key] === false)
-		return deny({ kind: "source", key });
-	const exact = cfg.ignored.some((p) => p === skill.name);
-	const globbed = cfg.ignored.find((p) => skillGlobMatch(p, skill.name));
-	if (exact) return deny({ kind: "ignored", pattern: skill.name, exact: true });
-	if (globbed) return deny({ kind: "ignored", pattern: globbed, exact: false });
-	if (cfg.include.length > 0 && !cfg.include.some((p) => skillGlobMatch(p, skill.name)))
-		return deny({ kind: "not_included" });
-	return { enabled: true, reason: null };
-}
 
 let configWriteChain: Promise<unknown> = Promise.resolve();
 
@@ -244,7 +140,7 @@ export function updateOmpListSetting(
 	configWriteChain = result.catch(() => undefined);
 	return result;
 }
-/** Pure stats used by the stat cards + budget meter; exported for tests. */
+/** Pure stats used by the stat cards; exported for tests. */
 export function computeSkillStats(
 	skills: SkillItem[],
 	usage: Record<string, SkillUsage>,
@@ -261,18 +157,12 @@ export function computeSkillStats(
 		missingDescription: 0,
 		tooLong: 0,
 		unreadable: 0,
-		budgetUsed: 0,
 		disabled: 0,
 	};
 	for (const s of skills) {
 		if (s.source === "project") stats.projectCount++;
 		else if (s.source === "user") stats.userCount++;
-		// Disabled skills never reach the system prompt — excluded from budget.
-		if (resolveSkillEnablement(s, cfg).enabled) {
-			stats.budgetUsed += s.promptChars;
-		} else {
-			stats.disabled++;
-		}
+		if (!resolveSkillEnablement(s, cfg).enabled) stats.disabled++;
 		const issues = s.issues;
 		if (issues.length > 0) {
 			stats.withIssues++;
@@ -355,6 +245,80 @@ let usageInflight: Promise<void> | null = null;
 /** Latest catalog request id; stale responses are dropped. */
 let catalogSeq = 0;
 
+interface LoadedConfig {
+	skillConfig: SkillEnableConfig;
+	overrides: string[];
+	projectConfigPath: string | null;
+	projectConfigNotice: string | null;
+}
+
+/** Global layer + project layer (arrays replace, scalars win). Project failure → global only. */
+async function fetchEffectiveConfig(cwd: string | null | undefined): Promise<LoadedConfig> {
+	const [configList, project] = await Promise.all([
+		// Config fetch failure must not block the catalog — fall back to
+		// the all-enabled defaults.
+		Promise.resolve()
+			.then(() => ompConfigList())
+			.catch(() => null),
+		cwd
+			? Promise.resolve()
+					.then(() => ompProjectConfigRead(cwd))
+					.then(
+						(file) => ({ file, error: null as string | null }),
+						(err: unknown) => ({
+							file: null,
+							error: err instanceof Error ? err.message : String(err),
+						}),
+					)
+			: Promise.resolve({ file: null, error: null as string | null }),
+	]);
+	const global = configList ? parseSkillConfig(configList) : DEFAULT_SKILL_CONFIG;
+	let layer = EMPTY_PROJECT_LAYER;
+	let notice = project.error
+		? `读取项目配置失败，已只按全局配置显示：${project.error}`
+		: null;
+	if (project.file?.exists) {
+		try {
+			layer = parseProjectSkillLayer(project.file.content);
+		} catch (err) {
+			notice = `项目配置 ${project.file.path} 解析失败，已只按全局配置显示：${
+				err instanceof Error ? err.message : String(err)
+			}`;
+		}
+	}
+	const { config, overrides } = mergeSkillConfig(global, layer);
+	return {
+		skillConfig: config,
+		overrides,
+		projectConfigPath: project.file?.path ?? null,
+		projectConfigNotice: notice,
+	};
+}
+
+async function fetchCatalogAndConfig(cwd: string | null | undefined) {
+	const [catalog, loaded] = await Promise.all([skillsList(cwd), fetchEffectiveConfig(cwd)]);
+	return {
+		catalog,
+		skillConfig: loaded.skillConfig,
+		overrides: loaded.overrides,
+		projectConfigPath: loaded.projectConfigPath,
+		projectConfigNotice: loaded.projectConfigNotice,
+	};
+}
+
+/** Keeps the drawer only when its target still exists in the new catalog. */
+function drawerAfterReload(
+	drawer: SkillsDrawerTarget | null,
+	catalog: SkillsCatalog,
+): SkillsDrawerTarget | null {
+	if (!drawer) return null;
+	const found =
+		drawer.kind === "skill"
+			? catalog.skills.some((sk) => sk.path === drawer.path)
+			: catalog.extensions.some((ex) => ex.path === drawer.path);
+	return found ? drawer : null;
+}
+
 export const useSkillsStore = create<SkillsState>((set, get) => ({
 	catalog: null,
 	loading: false,
@@ -372,6 +336,9 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 	usageLoaded: false,
 	lastLoadedCwd: undefined,
 	skillConfig: DEFAULT_SKILL_CONFIG,
+	skillConfigOverrides: [],
+	projectConfigPath: null,
+	projectConfigNotice: null,
 	trashingDirs: [],
 
 	loadCatalog: async (cwd, force = false) => {
@@ -384,34 +351,20 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 		const seq = ++catalogSeq;
 		set({ loading: true, error: null });
 		try {
-			const [catalog, configList] = await Promise.all([
-				skillsList(cwd),
-				// Config fetch failure must not block the catalog — fall back to
-				// the all-enabled defaults.
-				Promise.resolve()
-					.then(() => ompConfigList())
-					.catch(() => null),
-			]);
-			const skillConfig = configList
-				? parseSkillConfig(configList)
-				: DEFAULT_SKILL_CONFIG;
+			const loaded = await fetchCatalogAndConfig(cwd);
+			const { catalog } = loaded;
 			if (seq !== catalogSeq) return;
 			set((s) => ({
-				skillConfig,
+				skillConfig: loaded.skillConfig,
+				skillConfigOverrides: loaded.overrides,
+				projectConfigPath: loaded.projectConfigPath,
+				projectConfigNotice: loaded.projectConfigNotice,
 				catalog,
 				loading: false,
 				error: null,
 				lastLoadedCwd: cwd,
 				// Close the drawer when its target disappeared after a reload.
-				drawer:
-					s.drawer &&
-					(s.drawer.kind === "skill"
-						? catalog.skills.some((sk) => sk.path === s.drawer?.path)
-						: catalog.extensions.some(
-								(ex) => ex.path === s.drawer?.path,
-							))
-						? s.drawer
-						: null,
+				drawer: drawerAfterReload(s.drawer, catalog),
 			}));
 		} catch (err) {
 			if (seq !== catalogSeq) return;
@@ -488,12 +441,97 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 		});
 	},
 
+	setExtensionEnabled: async (ext, enabled, cwd) => {
+		if (get().skillConfigOverrides.includes("disabledExtensions")) {
+			toast.error(PROJECT_OVERRIDE_WRITE_BLOCKED);
+			return;
+		}
+		const prevConfig = get().skillConfig;
+		const prevEnabled =
+			get().catalog?.extensions.find((e) => e.path === ext.path)?.enabled ?? ext.enabled;
+		const needsRename = enabled && ext.path.endsWith(".disabled");
+		const nextList = (cur: string[]) =>
+			enabled
+				? cur.filter(
+						(id) =>
+							id !== ext.name &&
+							id !== `extension-module:${ext.name}` &&
+							id !== ext.path,
+					)
+				: [...new Set([...cur, ext.name])];
+
+		// Optimistic: reflect the write immediately, roll back on failure.
+		set({
+			skillConfig: {
+				...prevConfig,
+				disabledExtensions: nextList(prevConfig.disabledExtensions),
+			},
+		});
+		get().updateExtensionEnabled(ext.path, enabled);
+		try {
+			try {
+				await updateOmpListSetting("disabledExtensions", nextList);
+			} finally {
+				useOmpConfigStore.getState().invalidate();
+			}
+			if (needsRename) {
+				await extensionEnableFile(ext.path, cwd);
+				// The file path changed: pull the new catalog.
+				await get().revalidateCatalog(cwd);
+			}
+			toast.success(
+				enabled ? `已启用扩展 ${ext.name}` : `已禁用扩展 ${ext.name}`,
+			);
+		} catch (err) {
+			set({ skillConfig: prevConfig });
+			get().updateExtensionEnabled(ext.path, prevEnabled);
+			toast.error(
+				`更新扩展状态失败: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	},
+
+	revalidateCatalog: async (cwd) => {
+		const seq = ++catalogSeq;
+		try {
+			const loaded = await fetchCatalogAndConfig(cwd);
+			const { catalog } = loaded;
+			if (seq !== catalogSeq) return;
+			set((s) => ({
+				skillConfig: loaded.skillConfig,
+				skillConfigOverrides: loaded.overrides,
+				projectConfigPath: loaded.projectConfigPath,
+				projectConfigNotice: loaded.projectConfigNotice,
+				catalog,
+				loading: false,
+				error: null,
+				lastLoadedCwd: cwd,
+				drawer: drawerAfterReload(s.drawer, catalog),
+			}));
+		} catch (err) {
+			if (seq !== catalogSeq) return;
+			// Keep the visible data; surface the error only when there is none.
+			set((s) => ({
+				loading: false,
+				error: s.catalog ? s.error : err instanceof Error ? err.message : String(err),
+			}));
+		}
+	},
+
 	setSkillEnabled: async (skill, enabled) => {
+		const overrides = get().skillConfigOverrides;
+		if (overrides.includes("disabledExtensions")) {
+			toast.error(PROJECT_OVERRIDE_WRITE_BLOCKED);
+			return;
+		}
 		const prev = get().skillConfig;
 		const marker = `skill:${skill.name}`;
 		// Re-enabling also clears an exact-name ignoredSkills entry so the
 		// skill is actually live (glob matches stay — switch is locked for them).
-		const clearExactIgnored = enabled && prev.ignored.includes(skill.name);
+		const clearExactIgnored =
+			enabled &&
+			!overrides.includes("skills.ignoredSkills") &&
+			prev.ignored.includes(skill.name);
 
 		// Optimistic: reflect the write immediately, roll back on failure.
 		set({
@@ -523,12 +561,14 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 				);
 			}
 			await Promise.all(writes);
+			useOmpConfigStore.getState().invalidate();
 			toast.success(
 				enabled
 					? `已启用 ${skill.name}，新会话生效`
 					: `已停用 ${skill.name}，新会话生效`,
 			);
 		} catch (err) {
+			useOmpConfigStore.getState().invalidate();
 			set({ skillConfig: prev });
 			toast.error(
 				`更新技能状态失败: ${err instanceof Error ? err.message : String(err)}`,

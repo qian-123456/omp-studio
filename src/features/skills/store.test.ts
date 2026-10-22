@@ -3,12 +3,15 @@ import type { SkillItem, SkillsCatalog, SkillUsageReport } from "../../lib/contr
 import * as ipc from "../../lib/ipc";
 import {
 	DEFAULT_SKILL_CONFIG,
-	computeSkillStats,
 	resolveSkillEnablement,
-	selectVisibleSkills,
-	useSkillsStore,
 	type SkillEnableConfig,
-} from "./store";
+} from "../../lib/skillEnablement";
+import { computeSkillStats, selectVisibleSkills, useSkillsStore } from "./store";
+
+const { invalidate } = vi.hoisted(() => ({ invalidate: vi.fn() }));
+vi.mock("../settings/ompConfigStore", () => ({
+	useOmpConfigStore: { getState: () => ({ invalidate }) },
+}));
 
 vi.mock("../../lib/ipc", () => ({
 	skillsList: vi.fn(),
@@ -16,7 +19,9 @@ vi.mock("../../lib/ipc", () => ({
 	skillsUsage: vi.fn(),
 	skillsTrash: vi.fn(),
 	ompConfigList: vi.fn(),
+	ompProjectConfigRead: vi.fn(),
 	ompConfigSet: vi.fn(),
+	extensionEnableFile: vi.fn(),
 }));
 
 const skill = (over: Partial<SkillItem>): SkillItem => ({
@@ -234,10 +239,6 @@ describe("computeSkillStats", () => {
 		expect(stats.missingDescription).toBe(1);
 		expect(stats.tooLong).toBe(1);
 		expect(stats.unreadable).toBe(1);
-	});
-
-	it("sums promptChars as the resident budget estimate", () => {
-		expect(computeSkillStats(mockCatalog.skills, {}).budgetUsed).toBe(900);
 	});
 });
 
@@ -563,15 +564,117 @@ describe("setSkillEnabled", () => {
 	});
 });
 
-describe("budget excludes disabled skills", () => {
-	it("disabled promptChars don't count", () => {
+describe("extension toggle + revalidate", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetState();
+		vi.mocked(ipc.ompConfigSet).mockResolvedValue(undefined);
+		vi.mocked(ipc.extensionEnableFile).mockResolvedValue(undefined);
+	});
+	const cfgList = (disabled: string[]) => ({
+		found: true,
+		error: null,
+		entries: [
+			{
+				key: "disabledExtensions",
+				value: disabled,
+				valueType: "array",
+				description: "",
+				redacted: false,
+				tab: "",
+			},
+		],
+	});
+	const [liveExt, offExt] = mockCatalog.extensions;
+
+	it("disable writes ext.name, updates state and invalidates the config store", async () => {
+		vi.mocked(ipc.skillsList).mockResolvedValue(mockCatalog);
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(cfgList(["x"]));
+		await useSkillsStore.getState().loadCatalog("/c");
+		await useSkillsStore.getState().setExtensionEnabled(liveExt, false, "/c");
+		expect(ipc.ompConfigSet).toHaveBeenCalledWith(
+			"disabledExtensions",
+			JSON.stringify(["x", "session-autoname"]),
+		);
+		const s = useSkillsStore.getState();
+		expect(s.skillConfig.disabledExtensions).toEqual(["x", "session-autoname"]);
+		expect(s.catalog?.extensions[0].enabled).toBe(false);
+		expect(invalidate).toHaveBeenCalled();
+	});
+
+	it("enable removes name / module id / path entries", async () => {
+		vi.mocked(ipc.skillsList).mockResolvedValue(mockCatalog);
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(
+			cfgList(["session-autoname", "extension-module:session-autoname", "keep"]),
+		);
+		await useSkillsStore.getState().loadCatalog("/c");
+		await useSkillsStore.getState().setExtensionEnabled(liveExt, true, "/c");
+		expect(ipc.ompConfigSet).toHaveBeenCalledWith("disabledExtensions", JSON.stringify(["keep"]));
+		expect(ipc.extensionEnableFile).not.toHaveBeenCalled();
+	});
+
+	it("rolls back state when the config write fails", async () => {
+		vi.mocked(ipc.skillsList).mockResolvedValue(mockCatalog);
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(cfgList([]));
+		vi.mocked(ipc.ompConfigSet).mockRejectedValue(new Error("boom"));
+		await useSkillsStore.getState().loadCatalog("/c");
+		await expect(
+			useSkillsStore.getState().setExtensionEnabled(liveExt, false, "/c"),
+		).resolves.toBeUndefined();
+		const s = useSkillsStore.getState();
+		expect(s.skillConfig.disabledExtensions).toEqual([]);
+		expect(s.catalog?.extensions[0].enabled).toBe(true);
+	});
+
+	it(".disabled path renames the file and refetches the catalog", async () => {
+		vi.mocked(ipc.skillsList).mockResolvedValue(mockCatalog);
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(cfgList([]));
+		await useSkillsStore.getState().loadCatalog("/c");
+		vi.mocked(ipc.skillsList).mockClear();
+		await useSkillsStore.getState().setExtensionEnabled(offExt, true, "/c");
+		expect(ipc.extensionEnableFile).toHaveBeenCalledWith(offExt.path, "/c");
+		expect(ipc.skillsList).toHaveBeenCalledTimes(1);
+	});
+
+	it("setSkillEnabled invalidates the config store", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(cfgList([]));
+		await useSkillsStore.getState().setSkillEnabled(skill({ name: "foo" }), false);
+		expect(invalidate).toHaveBeenCalled();
+	});
+
+	it("revalidateCatalog swaps data silently and keeps old data on failure", async () => {
+		vi.mocked(ipc.skillsList).mockResolvedValue(mockCatalog);
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(cfgList([]));
+		await useSkillsStore.getState().loadCatalog("/c");
+		const seen: boolean[] = [];
+		const unsub = useSkillsStore.subscribe((s) => seen.push(s.loading));
+		const next = { skills: [mockCatalog.skills[0]], extensions: [] };
+		vi.mocked(ipc.skillsList).mockResolvedValue(next);
+		await useSkillsStore.getState().revalidateCatalog("/c");
+		expect(useSkillsStore.getState().catalog).toEqual(next);
+		vi.mocked(ipc.skillsList).mockRejectedValue(new Error("down"));
+		await useSkillsStore.getState().revalidateCatalog("/c");
+		unsub();
+		expect(useSkillsStore.getState().catalog).toEqual(next);
+		expect(useSkillsStore.getState().error).toBeNull();
+		expect(seen.every((l) => l === false)).toBe(true);
+	});
+
+	it("revalidateCatalog sets error only when no catalog exists", async () => {
+		vi.mocked(ipc.skillsList).mockRejectedValue(new Error("down"));
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(cfgList([]));
+		await useSkillsStore.getState().revalidateCatalog("/c");
+		expect(useSkillsStore.getState().error).toBe("down");
+	});
+});
+
+describe("disabled skills", () => {
+	it("stats count disabled skills", () => {
 		const cfg: SkillEnableConfig = {
 			...DEFAULT_SKILL_CONFIG,
 			disabledExtensions: ["skill:eli5"],
 		};
 		const stats = computeSkillStats(mockCatalog.skills, {}, cfg);
-		// 500 (ego-browser) + 100 (broken); eli5's 300 excluded
-		expect(stats.budgetUsed).toBe(600);
 		expect(stats.disabled).toBe(1);
 	});
 
@@ -589,5 +692,109 @@ describe("budget excludes disabled skills", () => {
 			},
 		}).map((s) => s.name);
 		expect(names).toEqual(["broken"]);
+	});
+});
+
+describe("project config layer", () => {
+	const projectFile = (content: string) => ({
+		path: "/c/.omp/config.yml",
+		exists: true,
+		content,
+	});
+	const globalList = (disabled: string[]) => ({
+		found: true,
+		error: null,
+		entries: [
+			{
+				key: "disabledExtensions",
+				value: disabled,
+				valueType: "array",
+				description: "",
+				redacted: false,
+				tab: "",
+			},
+		],
+	});
+	const [liveExt] = mockCatalog.extensions;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetState();
+		vi.mocked(ipc.skillsList).mockResolvedValue(mockCatalog);
+		vi.mocked(ipc.ompConfigSet).mockResolvedValue(undefined);
+	});
+
+	it("project disabledExtensions replaces global, records the override and path", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(globalList(["skill:a"]));
+		vi.mocked(ipc.ompProjectConfigRead).mockResolvedValue(
+			projectFile("disabledExtensions:\n  - skill:b\n"),
+		);
+		await useSkillsStore.getState().loadCatalog("/c");
+		const s = useSkillsStore.getState();
+		expect(s.skillConfig.disabledExtensions).toEqual(["skill:b"]);
+		expect(s.skillConfigOverrides).toContain("disabledExtensions");
+		expect(s.projectConfigPath).toBe("/c/.omp/config.yml");
+		expect(s.projectConfigNotice).toBeNull();
+	});
+
+	it("uses the backend-provided extension enabled flag as-is", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(globalList([liveExt.name]));
+		vi.mocked(ipc.ompProjectConfigRead).mockResolvedValue(projectFile("disabledExtensions: []\n"));
+		// The backend already applied project-replaces-global; the store must not recompute.
+		vi.mocked(ipc.skillsList).mockResolvedValue({
+			...mockCatalog,
+			extensions: mockCatalog.extensions.map((e) =>
+				e.name === liveExt.name ? { ...e, enabled: false } : e,
+			),
+		});
+		await useSkillsStore.getState().loadCatalog("/c");
+		const s = useSkillsStore.getState();
+		expect(s.skillConfig.disabledExtensions).toEqual([]);
+		expect(s.catalog?.extensions.find((e) => e.name === liveExt.name)?.enabled).toBe(false);
+	});
+
+	it("absent project key inherits global and flags no override", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(globalList(["skill:a"]));
+		vi.mocked(ipc.ompProjectConfigRead).mockResolvedValue(projectFile("theme: dark\n"));
+		await useSkillsStore.getState().loadCatalog("/c");
+		const s = useSkillsStore.getState();
+		expect(s.skillConfig.disabledExtensions).toEqual(["skill:a"]);
+		expect(s.skillConfigOverrides).toEqual([]);
+	});
+
+	it("project read failure falls back to global with a full-text notice", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(globalList(["skill:a"]));
+		vi.mocked(ipc.ompProjectConfigRead).mockRejectedValue(new Error("permission denied: /c/.omp"));
+		await useSkillsStore.getState().loadCatalog("/c");
+		const s = useSkillsStore.getState();
+		expect(s.error).toBeNull();
+		expect(s.skillConfig.disabledExtensions).toEqual(["skill:a"]);
+		expect(s.skillConfigOverrides).toEqual([]);
+		expect(s.projectConfigNotice).toContain("permission denied: /c/.omp");
+	});
+
+	it("invalid project YAML falls back to global with a notice naming the file", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(globalList(["skill:a"]));
+		vi.mocked(ipc.ompProjectConfigRead).mockResolvedValue(projectFile("a: [unclosed\n"));
+		await useSkillsStore.getState().loadCatalog("/c");
+		const s = useSkillsStore.getState();
+		expect(s.skillConfig.disabledExtensions).toEqual(["skill:a"]);
+		expect(s.projectConfigNotice).toContain("/c/.omp/config.yml");
+	});
+
+	it("without a cwd the project config is not read", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(globalList([]));
+		await useSkillsStore.getState().loadCatalog(null);
+		expect(ipc.ompProjectConfigRead).not.toHaveBeenCalled();
+		expect(useSkillsStore.getState().projectConfigPath).toBeNull();
+	});
+
+	it("toggles are refused (no global write) while the project overrides the list", async () => {
+		vi.mocked(ipc.ompConfigList).mockResolvedValue(globalList([]));
+		vi.mocked(ipc.ompProjectConfigRead).mockResolvedValue(projectFile("disabledExtensions: []\n"));
+		await useSkillsStore.getState().loadCatalog("/c");
+		await useSkillsStore.getState().setSkillEnabled(mockCatalog.skills[0], false);
+		await useSkillsStore.getState().setExtensionEnabled(liveExt, false, "/c");
+		expect(ipc.ompConfigSet).not.toHaveBeenCalled();
 	});
 });

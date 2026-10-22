@@ -38,7 +38,6 @@ import { formatRelativeTime } from "../schedules/humanCadence";
 import { Switch } from "../settings/Switch";
 import { resolveSkillEnablement, type SkillDisabledReason } from "../../lib/skillEnablement";
 import {
-	SKILL_BUDGET_CHARS,
 	USAGE_DAYS,
 	computeSkillStats,
 	selectVisibleSkills,
@@ -973,10 +972,6 @@ export function SkillsPage() {
 	const usageUnavailable = !!usageError && !usageReport;
 	const days = usageReport?.days ?? USAGE_DAYS;
 
-	const budgetUsed = stats.budgetUsed;
-	const budgetPct = budgetUsed / SKILL_BUDGET_CHARS;
-	const budgetOver = budgetPct > 1;
-
 	const statCards: {
 		key: "all" | "active" | "idle" | "issues";
 		label: string;
@@ -1179,64 +1174,24 @@ export function SkillsPage() {
 									</div>
 								</button>
 							))}
-
-							{/* Resident context budget */}
-							<div className="col-span-2 flex flex-col justify-center rounded-xl hairline bg-[var(--bg-panel)]/50 px-4 py-3">
-								<div className="flex items-center justify-between text-xs">
-									<span className="font-medium text-neutral-300">
-										常驻上下文占用
-									</span>
-									{budgetOver ? (
-										<span className="font-medium text-red-400">
-											≈超限 {budgetPct.toFixed(1)}×
-										</span>
-									) : (
-										<span className="text-neutral-500">
-											{Math.round(budgetPct * 100)}%
-										</span>
-									)}
-								</div>
-								<div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
-									<div
-										className={clsx(
-											"h-full rounded-full transition-all",
-											budgetOver
-												? "bg-red-500"
-												: budgetPct > 0.8
-													? "bg-amber-400"
-													: "bg-emerald-500/80",
-										)}
-										style={{
-											width: `${Math.min(100, Math.round(budgetPct * 100))}%`,
-										}}
-									/>
-								</div>
-								<div className="mt-1.5 text-[11px] text-neutral-500">
-									{budgetUsed.toLocaleString()} 字符 / 建议上限约{" "}
-									{SKILL_BUDGET_CHARS.toLocaleString()}（估算）
-								</div>
-								{budgetOver && (
-									<div className="mt-1 text-[11px] text-amber-500/90">
-										超限越多，每轮固定开销越大，技能触发越不准
-									</div>
-								)}
-							</div>
 						</div>
 
 						{/* Filter row */}
 						<div className="mt-5 flex flex-wrap items-center gap-2">
-							<Segmented
-								value={sourceFilter}
-								onChange={setSourceFilter}
-								options={[
-									{ value: "all", label: `全部来源 ${stats.total}` },
-									{ value: "user", label: `全局 ${stats.userCount}` },
-									{
-										value: "project",
-										label: `项目级 ${stats.projectCount}`,
-									},
-								]}
-							/>
+							{stats.projectCount > 0 && (
+								<Segmented
+									value={sourceFilter}
+									onChange={setSourceFilter}
+									options={[
+										{ value: "all", label: `全部来源 ${stats.total}` },
+										{ value: "user", label: `全局 ${stats.userCount}` },
+										{
+											value: "project",
+											label: `项目级 ${stats.projectCount}`,
+										},
+									]}
+								/>
+							)}
 							<Segmented
 								value={statusFilter}
 								onChange={setStatusFilter}
