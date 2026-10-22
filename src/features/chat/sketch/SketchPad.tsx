@@ -114,6 +114,10 @@ const SHAPE_KIND_STORAGE_KEY = "ompws:sketch-shape-kind";
 
 /** Canvas surface colors follow the app theme, mirroring ChatGPT's sketch modal. */
 const CANVAS_BG_DARK = "#212121";
+/** Dialog geometry: top offset and height clamp (px). */
+const SKETCH_TOP = 64;
+const SKETCH_MIN_HEIGHT = 520;
+const SKETCH_MAX_HEIGHT = 720;
 const CANVAS_BG_LIGHT = "#ffffff";
 const SELECTION_BLUE = "#2563eb";
 const CUSTOM_GRADIENT =
@@ -1596,10 +1600,17 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 
 	/* ---------------- derived view state ---------------- */
 	const cursor = brushTool ? "none" : snap.cursor;
-	const bottomInset =
-		composerTop != null
-			? Math.max(window.innerHeight - composerTop + 8, 16)
-			: 16;
+	// Dialog height: fill the space above the composer, but never shrink below
+	// SKETCH_MIN_HEIGHT (home page composer sits mid-screen) nor grow past
+	// SKETCH_MAX_HEIGHT; always stay inside the viewport.
+	const maxFit = Math.max(window.innerHeight - SKETCH_TOP - 16, 240);
+	const wanted =
+		composerTop != null ? composerTop - 8 - SKETCH_TOP : SKETCH_MAX_HEIGHT;
+	const dialogHeight = Math.min(
+		Math.max(wanted, SKETCH_MIN_HEIGHT),
+		SKETCH_MAX_HEIGHT,
+		maxFit,
+	);
 	const doneDisabled = snap.effectiveDocument.objects.length === 0;
 	const activeShape = snap.shapeKind;
 	const customSwatchActive =
@@ -1620,8 +1631,8 @@ export function SketchPad(props: SketchPadProps): ReactElement {
 				className={`@container/sketch-canvas absolute rounded-2xl border ${chrome.dialog}`}
 				role="dialog"
 				style={{
-					top: 64,
-					bottom: bottomInset,
+					top: SKETCH_TOP,
+					height: dialogHeight,
 					left: "50%",
 					transform: "translateX(-50%)",
 					width: "min(960px, calc(100vw - 48px))",
