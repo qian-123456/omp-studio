@@ -32,7 +32,7 @@ import {
 	type OmpSectionDef,
 } from "./ompPlacement";
 import { JsonEditor, RecordEditor, SecretInput, StringListEditor } from "./ompValueEditors";
-import { Button, Chip, CommitInput, EmptyState, IconButton, Notice, SaveIndicator, SectionHeader, SettingsCard, useSaveStatus } from "./ui";
+import { Button, Chip, CommitInput, EmptyState, IconButton, MODEL_PICKER_BUTTON_CLASS, Notice, SaveIndicator, SectionHeader, SettingsCard, useSaveStatus } from "./ui";
 import { useSettingsProjectCwd } from "./useAppSettings";
 
 // ── Project layer ────────────────────────────────────────────────────
@@ -112,11 +112,14 @@ function ModelTargetPicker({ current, disabled, onPick }: { current: string; dis
 			disabled={disabled}
 			closeOnSelect
 			allowCustom
-			widthClass="w-[380px]"
+			align="start"
+			widthClass="w-[360px]"
 			label={selector || "选择模型或角色"}
+			buttonClass={MODEL_PICKER_BUTTON_CLASS}
 			models={models}
 			currentValue={current}
 			extras={ROLE_TARGET_EXTRAS}
+			thinking
 			onSelect={(v) => {
 				if (v.trim() && v.trim() !== current) onPick(v.trim());
 			}}
