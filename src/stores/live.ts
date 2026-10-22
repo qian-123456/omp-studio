@@ -204,6 +204,9 @@ export interface SessionLive {
 	items: TranscriptItem[];
 	/** Byte offset for incremental transcript reads. */
 	nextOffset: number;
+	/** `tailId` of the last page read: lets the backend detect that the file
+	 * was rewritten under `nextOffset` and restart the read from 0. */
+	tailId?: string | null;
 	/** rpc:process liveness. */
 	alive: boolean;
 	/** Message scroll request queued for virtual list scrollToItem + highlight. */
@@ -1327,8 +1330,8 @@ export interface LiveState {
 	setPendingUi(sessionId: string, list: PendingUiRequest[]): void;
 	/** Replace/extend the transcript cache for a session. Pending user echoes
 	 * are reconciled against the incoming page (FIFO per user item). */
-	setItems(sessionId: string, items: TranscriptItem[], nextOffset: number): void;
-	appendItems(sessionId: string, items: TranscriptItem[], nextOffset: number): void;
+	setItems(sessionId: string, items: TranscriptItem[], nextOffset: number, tailId?: string | null): void;
+	appendItems(sessionId: string, items: TranscriptItem[], nextOffset: number, tailId?: string | null): void;
 	/** Optimistically append a user bubble after rpc_send accepts a prompt;
 	 * dropped once a transcript page confirms a matching user item. */
 	addUserEcho(
@@ -1505,7 +1508,7 @@ export const useLive = create<LiveState>((set) => ({
 				},
 			};
 		}),
-	setItems: (sessionId, items, nextOffset) =>
+	setItems: (sessionId, items, nextOffset, tailId) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			return {
@@ -1515,6 +1518,7 @@ export const useLive = create<LiveState>((set) => ({
 						...live,
 						items,
 						nextOffset,
+						tailId: tailId ?? null,
 						pendingUserEchoes: reconcileEchoes(
 							live.pendingUserEchoes,
 							newItemsOnly(live.items, items),
@@ -1523,7 +1527,7 @@ export const useLive = create<LiveState>((set) => ({
 				},
 			};
 		}),
-	appendItems: (sessionId, items, nextOffset) =>
+	appendItems: (sessionId, items, nextOffset, tailId) =>
 		set((s) => {
 			const live = s.sessions[sessionId] ?? emptySessionLive();
 			const known = new Set(live.items.map((i) => i.id));
@@ -1537,6 +1541,7 @@ export const useLive = create<LiveState>((set) => ({
 							...items.filter((i) => !known.has(i.id)),
 						],
 						nextOffset,
+						tailId: tailId ?? null,
 						pendingUserEchoes: reconcileEchoes(
 							live.pendingUserEchoes,
 							items.filter((i) => !known.has(i.id)),
@@ -1853,6 +1858,7 @@ async function evictLeftTranscripts(): Promise<void> {
 				...live,
 				items: [],
 				nextOffset: 0,
+				tailId: null,
 				streamingMessage: null,
 				tools: {},
 				liveRequests: [],

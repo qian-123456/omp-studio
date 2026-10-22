@@ -239,7 +239,7 @@ pub struct TranscriptItem {
   pub ttft: Option<u64>,       // assistant only: time to first token in ms (omp `message.ttft`)
   pub completed_at: Option<i64>, // assistant only: request end, epoch ms (omp `message.completedAt`)
 }
-pub struct TranscriptPage { pub session_id: String, pub items: Vec<TranscriptItem>, pub next_offset: u64 /* byte offset for incremental reads */, pub reset: bool }
+pub struct TranscriptPage { pub session_id: String, pub items: Vec<TranscriptItem>, pub next_offset: u64 /* byte offset for incremental reads */, pub reset: bool, pub tail_id: Option<String> /* id of the entry ending at next_offset */ }
 
 pub struct LiveSessionInfo { pub session_id: String, pub session_file: String, pub pid: u32, pub cwd: String }
 pub struct OmpStaleness { pub fingerprint: Option<String>, pub stale_session_ids: Vec<String> } // rpc_omp_staleness; fingerprint = canonical exe path + mtime + size
@@ -554,7 +554,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 **A — catalog:**
 - `list_sessions() -> Vec<SessionMeta>`
-- `get_transcript(session_id, from_offset: Option<u64>) -> TranscriptPage` — full parse from 0 or incremental from byte offset (streamed line by line). `ToolResultInfo.details` is slimmed: `task`/`agent`/`ask` keep it whole; every other tool keeps only `{diff}` (when a string) — the duplicated `displayContent`/`oldText`/`newText`/`perFileResults`/`truncation`/`meta` are dropped (the UI never reads them; −57% tool-result payload on the largest session)
+- `get_transcript(session_id, from_offset: Option<u64>, tail_id: Option<String>) -> TranscriptPage` — full parse from 0 or incremental from byte offset (streamed line by line). The offset is only trusted while the file under it is unchanged: omp rewrites the jsonl in place (`/shake`), so the read restarts from 0 with `reset = true` when `from_offset` is past EOF, is not a line boundary, or the entry ending there is not `tail_id` (the previous page's `tail_id`; the mobile `GET /sessions/:id/transcript` takes it as `?tail=`). `ToolResultInfo.details` is slimmed: `task`/`agent`/`ask` keep it whole; every other tool keeps only `{diff}` (when a string) — the duplicated `displayContent`/`oldText`/`newText`/`perFileResults`/`truncation`/`meta` are dropped (the UI never reads them; −57% tool-result payload on the largest session)
 - `update_session_meta(session_id, patch: {customName?, pinned?, archived?, workspaceId?})  -> SessionMeta`
 - `mark_seen(session_id)` — clears `unread`, stamps `session_meta.last_seen_at`; if pending is Review, also runs the `accept_session(id, false)` logic (view = accept; emits `SessionAccepted`). The frontend calls it after every 2 s dwell on a session
 - `accept_session(session_id, archive: bool)` — clears `pending=Review`, sets Idle, emits `SessionAccepted`

@@ -13,19 +13,40 @@ use crate::contracts::{
 };
 
 /// Read complete lines from `from_offset` and normalize them.
-/// An offset beyond the file size restarts from 0 with `reset = true`.
+///
+/// The offset is trusted only while the bytes before it are still the ones the
+/// caller read. omp rewrites the file in place (`/shake` elides old tool
+/// results), after which a stale offset points mid-line or at a later entry and
+/// an incremental read would silently skip the entries in between. The read
+/// restarts from 0 with `reset = true` when the offset is past EOF, is not a
+/// line boundary, or the entry ending there is not `tail_id` (the previous
+/// page's `tail_id`; `None` skips that check).
 pub fn read_page(
     path: &Path,
     session_id: &str,
     from_offset: u64,
+    tail_id: Option<&str>,
 ) -> std::io::Result<TranscriptPage> {
     let mut f = File::open(path)?;
     let size = f.metadata()?.len();
-    let (start, reset) = if from_offset > size {
-        (0, true)
+    let mut tail = None;
+    let start = if from_offset == 0 || from_offset > size {
+        0
     } else {
-        (from_offset, false)
+        match line_ending_at(&mut f, from_offset)? {
+            Some(line) => {
+                let id = entry_id(&line);
+                if tail_id.map_or(true, |t| id.as_deref() == Some(t)) {
+                    tail = id;
+                    from_offset
+                } else {
+                    0
+                }
+            }
+            None => 0,
+        }
     };
+    let reset = start != from_offset;
     f.seek(SeekFrom::Start(start))?;
     // Stream line by line instead of buffering the whole (possibly tens of MB)
     // file next to its parsed form. Only complete lines count; a trailing
@@ -41,14 +62,9 @@ pub fn read_page(
             break;
         }
         consumed += n as u64;
-        let body = &line[..n - 1];
-        if body.is_empty() {
-            continue;
-        }
-        if let Some(item) = serde_json::from_slice::<Value>(body)
-            .ok()
-            .and_then(|v| normalize_entry(&v))
-        {
+        let value = serde_json::from_slice::<Value>(&line[..n - 1]).ok();
+        tail = value.as_ref().and_then(value_id);
+        if let Some(item) = value.as_ref().and_then(normalize_entry) {
             items.push(item);
         }
     }
@@ -57,7 +73,53 @@ pub fn read_page(
         items,
         next_offset: start + consumed,
         reset,
+        tail_id: tail,
     })
+}
+
+/// The line (without its `\n`) that ends exactly at byte `end`, or `None` when
+/// `end` is not a line boundary. Reads backwards in chunks, so only that one
+/// line is loaded however large the file is.
+fn line_ending_at(f: &mut File, end: u64) -> std::io::Result<Option<Vec<u8>>> {
+    const CHUNK: u64 = 64 * 1024;
+    let mut chunks: Vec<Vec<u8>> = Vec::new();
+    let mut pos = end;
+    while pos > 0 {
+        let n = CHUNK.min(pos);
+        pos -= n;
+        let mut chunk = vec![0u8; n as usize];
+        f.seek(SeekFrom::Start(pos))?;
+        f.read_exact(&mut chunk)?;
+        // The newest chunk ends with the line's own terminator: skip it.
+        let search = if chunks.is_empty() {
+            if chunk.last() != Some(&b'\n') {
+                return Ok(None);
+            }
+            chunk.len() - 1
+        } else {
+            chunk.len()
+        };
+        if let Some(i) = chunk[..search].iter().rposition(|b| *b == b'\n') {
+            chunk.drain(..=i);
+            chunks.push(chunk);
+            break;
+        }
+        chunks.push(chunk);
+    }
+    let mut line: Vec<u8> = chunks.into_iter().rev().flatten().collect();
+    line.pop();
+    Ok(Some(line))
+}
+
+fn value_id(v: &Value) -> Option<String> {
+    v.get("id").and_then(Value::as_str).map(str::to_string)
+}
+
+fn entry_id(line: &[u8]) -> Option<String> {
+    serde_json::from_slice::<Value>(line)
+        .ok()
+        .as_ref()
+        .and_then(value_id)
 }
 
 /// Tool-result `details` the UI never reads dominate a long session's payload
@@ -450,24 +512,98 @@ mod tests {
         // Last line is incomplete (no trailing newline).
         let partial = r#"{"type":"message","id":"z","message":{"role":"user""#;
         std::fs::write(&path, format!("{FIXTURE}{partial}")).unwrap();
-        let page = read_page(&path, "S", 0).unwrap();
+        let page = read_page(&path, "S", 0, None).unwrap();
         assert_eq!(page.items.len(), 6);
         assert_eq!(page.next_offset, FIXTURE.len() as u64);
         assert!(!page.reset);
+        assert_eq!(page.tail_id.as_deref(), Some("k"));
         // Complete the line and read incrementally.
         std::fs::write(
             &path,
             format!("{FIXTURE}{partial},\"content\":\"more\"}}}}\n"),
         )
         .unwrap();
-        let page2 = read_page(&path, "S", page.next_offset).unwrap();
+        let page2 = read_page(&path, "S", page.next_offset, page.tail_id.as_deref()).unwrap();
+        assert!(!page2.reset);
         assert_eq!(page2.items.len(), 1);
         assert_eq!(page2.items[0].text.as_deref(), Some("more"));
+        assert_eq!(page2.tail_id.as_deref(), Some("z"));
+        // Nothing new: the tail is kept, no reset.
+        let page2b = read_page(&path, "S", page2.next_offset, Some("z")).unwrap();
+        assert!(!page2b.reset && page2b.items.is_empty());
+        assert_eq!(page2b.tail_id.as_deref(), Some("z"));
         // Offset past EOF resets.
-        let page3 = read_page(&path, "S", 10_000_000).unwrap();
+        let page3 = read_page(&path, "S", 10_000_000, None).unwrap();
         assert!(page3.reset);
         assert_eq!(page3.items.len(), 7);
         assert_eq!(sum_usage(&path).unwrap(), (115, 0.5));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn user_line(id: &str, text: &str) -> String {
+        format!(
+            r#"{{"type":"message","id":"{id}","timestamp":"T","message":{{"role":"user","content":[{{"type":"text","text":"{text}"}}]}}}}"#
+        ) + "\n"
+    }
+
+    /// omp `/shake` rewrites the file in place (old tool results shrink), then
+    /// the next turn is appended. The stale offset now points into the middle
+    /// of the new content: reading from it skipped the user's message.
+    #[test]
+    fn rewritten_file_restarts_instead_of_skipping_entries() {
+        let dir = std::env::temp_dir().join(format!("ompws-tr-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s.jsonl");
+        let big = "x".repeat(400);
+        let before = user_line("u1", "first") + &user_line("r1", &big);
+        std::fs::write(&path, &before).unwrap();
+        let page = read_page(&path, "S", 0, None).unwrap();
+        assert_eq!(page.tail_id.as_deref(), Some("r1"));
+
+        // Shake shrinks r1, then a new turn is appended past the old offset.
+        let after = user_line("u1", "first")
+            + &user_line("r1", "elided")
+            + &user_line("u2", "new message")
+            + &user_line("a2", &big);
+        std::fs::write(&path, &after).unwrap();
+        assert!((page.next_offset as usize) < after.len());
+        let page2 = read_page(&path, "S", page.next_offset, page.tail_id.as_deref()).unwrap();
+        assert!(page2.reset);
+        let ids: Vec<_> = page2.items.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, ["u1", "r1", "u2", "a2"]);
+
+        // Same length rewrite: the offset is still a line boundary, but the
+        // entry ending there is a different one.
+        let before = user_line("u1", "first") + &user_line("aa", "old");
+        std::fs::write(&path, &before).unwrap();
+        let page = read_page(&path, "S", 0, None).unwrap();
+        let after = user_line("u1", "first") + &user_line("bb", "new") + &user_line("u3", "next");
+        std::fs::write(&path, &after).unwrap();
+        let page2 = read_page(&path, "S", page.next_offset, page.tail_id.as_deref()).unwrap();
+        assert!(page2.reset);
+        assert_eq!(page2.items.len(), 3);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn line_ending_at_spans_chunks() {
+        let dir = std::env::temp_dir().join(format!("ompws-tr-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s.jsonl");
+        // A line longer than one 64 KiB backwards chunk, and the first line.
+        let long = user_line("big", &"y".repeat(150_000));
+        let content = user_line("u0", "head") + &long;
+        std::fs::write(&path, &content).unwrap();
+        let mut f = File::open(&path).unwrap();
+        let end = content.len() as u64;
+        let line = line_ending_at(&mut f, end).unwrap().unwrap();
+        assert_eq!(line, long.trim_end().as_bytes());
+        let first = user_line("u0", "head");
+        let line = line_ending_at(&mut f, first.len() as u64).unwrap().unwrap();
+        assert_eq!(line, first.trim_end().as_bytes());
+        assert!(line_ending_at(&mut f, first.len() as u64 + 5)
+            .unwrap()
+            .is_none());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

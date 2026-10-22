@@ -264,6 +264,7 @@
 		let child = null; // open thread session id
 		let items = [];
 		let offset = 0;
+		let tailId = null;
 		let optimistic = [];
 		let fetching = false;
 		let again = false;
@@ -338,11 +339,19 @@
 			fetching = true;
 			const id = child;
 			try {
-				const page = await M.api("GET", "/sessions/" + encodeURIComponent(id) + "/transcript?from=" + offset);
+				const page = await M.api(
+					"GET",
+					"/sessions/" +
+						encodeURIComponent(id) +
+						"/transcript?from=" +
+						offset +
+						(tailId ? "&tail=" + encodeURIComponent(tailId) : ""),
+				);
 				if (id !== child || !alive) return;
 				if (page.reset) items = [];
 				items = items.concat(page.items || []);
 				offset = page.nextOffset || offset;
+				tailId = page.tailId ?? null;
 				const users = (page.items || []).filter((x) => x.kind === "user" && x.text).map((x) => x.text.trim());
 				optimistic = optimistic.filter((o) => !users.includes(o.trim()));
 				renderThread();
@@ -362,6 +371,7 @@
 			child = id;
 			items = [];
 			offset = 0;
+			tailId = null;
 			optimistic = firstQuestion ? [firstQuestion] : [];
 			wrap.innerHTML = "";
 			const s = sessionById(id);

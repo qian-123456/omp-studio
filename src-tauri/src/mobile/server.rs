@@ -495,6 +495,8 @@ async fn last<B: Backend>(
 #[derive(Deserialize)]
 struct TranscriptQuery {
     from: Option<u64>,
+    /// `tailId` of the previous page (see `read_page`).
+    tail: Option<String>,
 }
 
 /// Cap on tool output / tool arguments sent to the phone; the desktop keeps the full text.
@@ -522,6 +524,7 @@ async fn transcript<B: Backend>(
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "会话不存在".into()))?;
     let file = std::path::PathBuf::from(&meta.file);
     let from = q.from.unwrap_or(0);
+    let tail = q.tail;
     let sid = id.clone();
     let page = tokio::task::spawn_blocking(move || {
         if !file.exists() {
@@ -530,7 +533,7 @@ async fn transcript<B: Backend>(
                 ..Default::default()
             });
         }
-        crate::catalog::transcript::read_page(&file, &sid, from)
+        crate::catalog::transcript::read_page(&file, &sid, from, tail.as_deref())
     })
     .await
     .map_err(|e| bad_gateway(e.to_string()))?

@@ -128,7 +128,7 @@ export function SessionView({
 		setTranscriptError(null);
 		try {
 			const page = await getTranscript(sessionId);
-			setItems(sessionId, page.items, page.nextOffset);
+			setItems(sessionId, page.items, page.nextOffset, page.tailId);
 		} catch (err) {
 			if (dropStaleDraft(sessionId, err)) return;
 			setTranscriptError(errMsg(err));
@@ -146,7 +146,7 @@ export function SessionView({
 		getTranscript(sessionId)
 			.then((page) => {
 				if (!cancelled) {
-					setItems(sessionId, page.items, page.nextOffset);
+					setItems(sessionId, page.items, page.nextOffset, page.tailId);
 					setIsLoadingTranscript(false);
 				}
 			})
@@ -176,11 +176,11 @@ export function SessionView({
 		const finished = wasStreaming.current && !streaming;
 		wasStreaming.current = streaming;
 		if (!finished) return;
-		const offset = useLive.getState().sessions[sessionId]?.nextOffset ?? 0;
-		getTranscript(sessionId, offset)
+		const live = useLive.getState().sessions[sessionId];
+		getTranscript(sessionId, live?.nextOffset ?? 0, live?.tailId)
 			.then((page) => {
-				if (page.reset) setItems(sessionId, page.items, page.nextOffset);
-				else appendItems(sessionId, page.items, page.nextOffset);
+				if (page.reset) setItems(sessionId, page.items, page.nextOffset, page.tailId);
+				else appendItems(sessionId, page.items, page.nextOffset, page.tailId);
 			})
 			.catch((err) => toast.error(`刷新会话记录失败: ${errMsg(err)}`))
 			.finally(() => {

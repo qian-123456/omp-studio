@@ -194,6 +194,9 @@ export interface TranscriptPage {
 	/** Byte offset for incremental reads. */
 	nextOffset: number;
 	reset: boolean;
+	/** Id of the entry ending at `nextOffset`; pass it back with the next
+	 * incremental read so a rewritten file (omp `/shake`) restarts from 0. */
+	tailId?: string | null;
 }
 
 export type SubagentStatus =

@@ -105,10 +105,11 @@ export const allowedToolsList = () => invoke<string[]>("allowed_tools_list");
 
 export const listSessions = () => invoke<SessionMeta[]>("list_sessions");
 
-export const getTranscript = (sessionId: string, fromOffset?: number) =>
+export const getTranscript = (sessionId: string, fromOffset?: number, tailId?: string | null) =>
 	invoke<TranscriptPage>("get_transcript", {
 		sessionId,
 		fromOffset: fromOffset ?? null,
+		tailId: tailId ?? null,
 	});
 
 export const updateSessionMeta = (

@@ -11,6 +11,7 @@
 	let cur = null; // session id
 	let items = []; // normalized transcript items
 	let offset = 0;
+	let tailId = null; // id of the entry ending at `offset`; detects a rewritten file
 	let optimistic = []; // {text}
 	let streamMsg = null; // in-flight assistant message snapshot
 	let liveTools = {}; // toolCallId -> {name,args,done,isError}
@@ -590,12 +591,16 @@
 		fetching = true;
 		const id = cur;
 		try {
-			const page = await M.api("GET", "/sessions/" + id + "/transcript?from=" + offset);
+			const page = await M.api(
+				"GET",
+				"/sessions/" + id + "/transcript?from=" + offset + (tailId ? "&tail=" + encodeURIComponent(tailId) : ""),
+			);
 			if (id !== cur) return;
 			if (page.reset) items = [];
 			const prevLen = items.length;
 			items = items.concat(page.items || []);
 			offset = page.nextOffset || offset;
+			tailId = page.tailId ?? null;
 			// Drop optimistic bubbles once the transcript shows the matching user message.
 			const newUsers = (page.items || []).filter((x) => x.kind === "user" && x.text).map((x) => x.text.trim());
 			if (newUsers.length)
@@ -1448,6 +1453,7 @@
 		cur = params.id;
 		items = [];
 		offset = 0;
+		tailId = null;
 		optimistic = [];
 		streamMsg = null;
 		liveTools = {};

@@ -214,7 +214,7 @@ async fn plan<B: Backend>(
     let text = if file.exists() {
         let id2 = id.clone();
         tokio::task::spawn_blocking(move || {
-            crate::catalog::transcript::read_page(&file, &id2, 0)
+            crate::catalog::transcript::read_page(&file, &id2, 0, None)
                 .map(|p| latest_assistant_text(&p.items))
         })
         .await

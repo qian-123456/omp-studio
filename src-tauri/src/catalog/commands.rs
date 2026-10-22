@@ -18,6 +18,7 @@ pub async fn get_transcript(
     _state: tauri::State<'_, AppState>,
     session_id: String,
     from_offset: Option<u64>,
+    tail_id: Option<String>,
 ) -> Result<TranscriptPage, String> {
     let file = crate::catalog::file_of(&session_id)
         .ok_or_else(|| format!("session not found: {session_id}"))?;
@@ -29,8 +30,13 @@ pub async fn get_transcript(
             ..Default::default()
         });
     }
-    transcript::read_page(&file, &session_id, from_offset.unwrap_or(0))
-        .map_err(|e| format!("read transcript {session_id}: {e}"))
+    transcript::read_page(
+        &file,
+        &session_id,
+        from_offset.unwrap_or(0),
+        tail_id.as_deref(),
+    )
+    .map_err(|e| format!("read transcript {session_id}: {e}"))
 }
 
 #[tauri::command]

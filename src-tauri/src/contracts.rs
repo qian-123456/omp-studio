@@ -314,6 +314,10 @@ pub struct TranscriptPage {
     /// Byte offset for incremental reads.
     pub next_offset: u64,
     pub reset: bool,
+    /// Id of the entry ending at `next_offset`; pass it back with the next
+    /// incremental read so a rewritten file (omp `/shake`) restarts from 0.
+    #[serde(default)]
+    pub tail_id: Option<String>,
 }
 
 /// Inferred lifecycle of a subagent session file.
