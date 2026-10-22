@@ -55,9 +55,6 @@ const fmt = (n: number) => formatTokens(n).toUpperCase();
 const GROW_WARNING =
 	"新值大于该模型的上游原始窗口：超过模型真实上限会导致自动压缩来不及触发、请求报错（提示上下文过长）。若出现此类错误，请回到本页调小。";
 
-/** Rows shown while the table is collapsed and no model has been modified yet. */
-const PREVIEW_ROWS = 6;
-
 const CARD_KEYS = new Set(["compaction.enabled", "compaction.thresholdTokens", "compaction.thresholdPercent"]);
 
 function GrowWarning() {
@@ -169,7 +166,6 @@ export function ContextWindowSection() {
 	const [status, setStatus] = useState<StatusFilter>("all");
 	const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 	const [selected, setSelected] = useState<Set<string>>(new Set());
-	const [showAll, setShowAll] = useState(false);
 
 	const deferredQuery = useDeferredValue(query);
 	const keywords = keywordsOf(deferredQuery);
@@ -195,9 +191,7 @@ export function ContextWindowSection() {
 		return m;
 	}, [rows]);
 
-	// Collapsed (default) view: only models overridden in models.yml, or the first few when none are.
-	const focusOnly = !showAll && keywords.length === 0 && providerFilter === "all" && status === "all";
-	const { sections, matchedTotal, preview } = useMemo(() => {
+	const { sections, matchedTotal } = useMemo(() => {
 		let matched: CwRow[] = [];
 		for (const r of rows) {
 			if (family !== "all" && modelFamily(r.modelId) !== family) continue;
@@ -210,12 +204,6 @@ export function ContextWindowSection() {
 			matched.push(r);
 		}
 		const total = matched.length;
-		let preview = false;
-		if (focusOnly) {
-			const changed = matched.filter((r) => r.kind === "catalog" && overrides.has(rowKey(r)));
-			preview = changed.length === 0;
-			matched = preview ? matched.slice(0, PREVIEW_ROWS) : changed;
-		}
 		const map = new Map<string, { key: string; name: string; rows: CwRow[] }>();
 		for (const r of matched) {
 			const { key, name } = matchKey(r.modelId);
@@ -226,9 +214,8 @@ export function ContextWindowSection() {
 		return {
 			sections: [...map.values()].sort((a, b) => a.name.localeCompare(b.name)),
 			matchedTotal: total,
-			preview,
 		};
-	}, [rows, family, providerFilter, keywords.join(" "), status, windowsByType, focusOnly, overrides]);
+	}, [rows, family, providerFilter, keywords.join(" "), status, windowsByType]);
 
 	const rowsByKey = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
 
@@ -434,20 +421,7 @@ export function ContextWindowSection() {
 
 			<SettingsCard
 				title="每个模型的上下文大小"
-				description={
-					focusOnly
-						? preview
-							? `尚未修改任何模型，先显示前 ${PREVIEW_ROWS} 个，共 ${rows.length} 个模型`
-							: `仅显示已修改的模型，共 ${rows.length} 个模型`
-						: `当前显示 ${matchedTotal} 个，共 ${rows.length} 个模型`
-				}
-				aside={
-					(showAll || focusOnly) && (
-						<Button variant="ghost" size="sm" onClick={() => setShowAll((v) => !v)}>
-							{showAll ? "收起" : `展开全部 ${rows.length} 个模型`}
-						</Button>
-					)
-				}
+				description={`当前显示 ${matchedTotal} 个，共 ${rows.length} 个模型`}
 				footer="订阅与 OMP 托管模型的窗口写入 OMP 模型配置，新开会话生效。工作台供应商的模型写入各自的模型配置，不修改供应商默认窗口。"
 			>
 				<div className="flex min-h-[320px]">
