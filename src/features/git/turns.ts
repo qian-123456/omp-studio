@@ -16,3 +16,16 @@ export function shaToTurnMap(turns: TurnCheckpoint[]): Map<string, TurnCheckpoin
 	}
 	return map;
 }
+
+/**
+ * One-line turn prompt for display: inline image markers
+ * (`[Image #1, 2560x1486: /long/path.png]`, `[图片: path]`) collapse to the
+ * composer's `🖼️#N` token. A marker cut off by the stored-prompt truncation
+ * (no closing `]`) collapses too.
+ */
+export function promptPreview(prompt: string): string {
+	return prompt
+		.replace(/\[Image\s*#(\d+)[^\]]*(?:\]|$)/g, "🖼️#$1")
+		.replace(/\[图片(?:\s*#(\d+))?\s*:[^\]]*(?:\]|$)/g, (_m, n?: string) => (n ? `🖼️#${n}` : "🖼️"))
+		.trim();
+}

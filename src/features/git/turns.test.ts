@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TurnCheckpoint } from "../../lib/contracts";
-import { shaToTurnMap } from "./turns";
+import { promptPreview, shaToTurnMap } from "./turns";
 
 const turn = (partial: Partial<TurnCheckpoint>): TurnCheckpoint =>
 	({
@@ -43,5 +43,22 @@ describe("shaToTurnMap", () => {
 		const map = shaToTurnMap([turn({ commits: [] }), turn({ turnId: "t2", commits: ["4".repeat(40)] })]);
 		expect(map.get("f".repeat(40))).toBeUndefined();
 		expect(map.size).toBe(1);
+	});
+});
+
+describe("promptPreview", () => {
+	it("collapses image markers to 🖼️#N and keeps the prose", () => {
+		expect(promptPreview("修正 skill [Image #1, 2560x1486: /Users/a/images/1.png] 看图 [Image #2: /b.png]")).toBe(
+			"修正 skill 🖼️#1 看图 🖼️#2",
+		);
+		expect(promptPreview("看 [图片: /a.png]")).toBe("看 🖼️");
+	});
+
+	it("collapses a marker cut off by prompt truncation", () => {
+		expect(promptPreview("改一下 [Image #1, 2560x1486: /Users/qianhairui/.omp-works…")).toBe("改一下 🖼️#1");
+	});
+
+	it("leaves plain text and brackets alone", () => {
+		expect(promptPreview("fix [wip] thing")).toBe("fix [wip] thing");
 	});
 });

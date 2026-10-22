@@ -20,9 +20,10 @@ import { keepIfEqual } from "./useAutoRefresh";
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { useTurnNav } from "../../stores/turnNav";
+import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { TmRunCard } from "./TmRunCard";
-import { shaToTurnMap } from "./turns";
+import { promptPreview, shaToTurnMap } from "./turns";
 
 const btn =
 	"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors focus:opacity-100";
@@ -124,7 +125,7 @@ interface CommitRowProps {
 function ActionLine({ label, children }: { label: string; children: ReactNode }) {
 	return (
 		<div className="flex items-start gap-2">
-			<span className="w-7 shrink-0 pt-[3px] text-[10px] text-neutral-500">{label}</span>
+			<span className="w-11 shrink-0 whitespace-nowrap pt-[3px] text-[10px] text-neutral-500">{label}</span>
 			<div className="flex min-w-0 flex-1 flex-wrap gap-1">{children}</div>
 		</div>
 	);
@@ -156,6 +157,7 @@ function CommitRow({
 	onRunUpdate,
 	onJumpTurn,
 }: CommitRowProps) {
+	const sessionTitle = useSessions((s) => (turn ? s.sessions[turn.sessionId]?.title : undefined)) || "未命名会话";
 	const [resetOpen, setResetOpen] = useState(false);
 	const parsed = parseCommitSubject(c.subject);
 	const when = absoluteTime(c.ts);
@@ -256,19 +258,12 @@ function CommitRow({
 					</button>
 				</div>
 			</div>
-			{/* Turn checkpoints: a commit made during an agent turn links back to the conversation. */}
+			{/* Turn checkpoints: a commit made during an agent turn names the session it came from. */}
 			{turn && (
-				<button
-					type="button"
-					onClick={() => onJumpTurn(turn)}
-					title={`跳转到这一轮对话\n${turn.prompt}`}
-					className="ml-[50px] mr-1 flex items-center gap-1 rounded px-1 py-0 text-left text-[10px] leading-[18px] text-indigo-400/80 transition-colors hover:bg-indigo-500/10 hover:text-indigo-300"
-				>
-					<MessageSquare size={10} className="shrink-0" />
-					<span className="min-w-0 truncate">
-						来自对话：{turn.prompt || "（空消息）"}
-					</span>
-				</button>
+				<div className="ml-[50px] mr-1 flex items-start gap-1 px-1 text-[10px] leading-[18px] text-indigo-400/80">
+					<MessageSquare size={10} className="mt-[4px] shrink-0" />
+					<span className="min-w-0 break-words">来自 session：{sessionTitle}</span>
+				</div>
 			)}
 
 			{expanded && (
@@ -293,7 +288,29 @@ function CommitRow({
 							<Copy size={11} />
 						</button>
 					</ActionLine>
-
+					{turn && (
+						<>
+							<ActionLine label="会话">
+								<span className="break-words px-1.5 py-0.5 text-neutral-300">{sessionTitle}</span>
+							</ActionLine>
+							<ActionLine label="来自消息">
+								<div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+									<span className="ml-1.5 break-words border-l-2 border-indigo-500/40 pl-2 text-neutral-300">
+										{promptPreview(turn.prompt) || "（空消息）"}
+									</span>
+									<button
+										type="button"
+										onClick={() => onJumpTurn(turn)}
+										title="打开这个 session，并定位到你发的这条消息"
+										className={btn}
+									>
+										<MessageSquare size={11} />
+										跳到这条消息
+									</button>
+								</div>
+							</ActionLine>
+						</>
+					)}
 					<ActionLine label="看看">
 						<button
 							type="button"
