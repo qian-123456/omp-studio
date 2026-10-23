@@ -376,6 +376,7 @@ const UserRow = React.memo(function UserRow({
 								await copyTextWithImages(
 									userText,
 									validImages.map((i) => i.path),
+									rawText,
 								);
 								toast.success(
 									validImages.length > 0

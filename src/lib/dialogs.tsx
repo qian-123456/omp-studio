@@ -197,32 +197,37 @@ export async function copyText(text: string): Promise<void> {
 	}
 }
 
-let lastMessageCopy: { text: string; paths: string[] } | null = null;
+let lastMessageCopy: { text: string; raw: string; paths: string[] } | null = null;
 
 /**
- * Image paths of the last in-app message copy when `pastedText` is exactly
- * that message's text, else null. WKWebView does not always surface the
- * pasteboard's file items to `paste` events next to a text item, so the
- * composer uses this to re-attach the images.
+ * The last in-app message copy when `pastedText` is exactly that message's
+ * text, else null. WKWebView does not reliably surface the pasteboard's file
+ * items to `paste` events next to a text item, so the composer rebuilds the
+ * message (text + images in order) from this record instead.
  */
-export function imagesOfCopiedMessage(pastedText: string): string[] | null {
+export function copiedMessageFor(pastedText: string): { raw: string; paths: string[] } | null {
 	if (!lastMessageCopy || lastMessageCopy.paths.length === 0) return null;
-	return pastedText.trim() === lastMessageCopy.text.trim() ? lastMessageCopy.paths : null;
+	return pastedText.trim() === lastMessageCopy.text.trim() ? lastMessageCopy : null;
 }
 
 /**
  * Copy a message's text together with its image files. Images go through the
  * native pasteboard as file URLs (WKWebView's async clipboard API silently
- * fails for ClipboardItem writes), one item per image plus the text.
+ * fails for ClipboardItem writes), one item per image plus the text. `raw` is
+ * the message with its inline image markers, used to restore image positions.
  */
-export async function copyTextWithImages(text: string, imagePaths: string[]): Promise<void> {
+export async function copyTextWithImages(
+	text: string,
+	imagePaths: string[],
+	raw: string = text,
+): Promise<void> {
 	if (imagePaths.length === 0) {
 		lastMessageCopy = null;
 		await copyText(text);
 		return;
 	}
 	await clipboardWriteMessage(text, imagePaths);
-	lastMessageCopy = { text, paths: imagePaths };
+	lastMessageCopy = { text, raw, paths: imagePaths };
 }
 
 /** Mirrors `rpc::SESSION_HELD_PREFIX` (src-tauri/src/rpc/mod.rs). */
