@@ -28,7 +28,6 @@ import type {
 	TurnCheckpoint,
 } from "../../lib/contracts";
 import { confirmDialog, copyTextWithImages, errMsg } from "../../lib/dialogs";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
@@ -374,13 +373,13 @@ const UserRow = React.memo(function UserRow({
 						type="button"
 						onClick={async () => {
 							try {
-								const skipped = await copyTextWithImages(
+								await copyTextWithImages(
 									userText,
-									validImages.map((i) => convertFileSrc(i.path)),
+									validImages.map((i) => i.path),
 								);
 								toast.success(
-									skipped > 0
-										? `已复制文字和第 1 张图片（剪贴板一次只能放 1 张，另 ${skipped} 张未复制）`
+									validImages.length > 0
+										? `已复制文字和 ${validImages.length} 张图片`
 										: "已复制用户消息",
 								);
 							} catch (e) {

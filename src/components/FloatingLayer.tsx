@@ -121,6 +121,9 @@ export interface FloatingPosition {
 	/** Max height that still fits the usable viewport on the chosen side. */
 	maxHeight: number;
 	placement: Placement;
+	/** Set for top-side placements: viewport y of the layer's bottom edge. The
+	 * layer is pinned by `bottom` so content growth never moves its anchor edge. */
+	bottomY?: number;
 }
 
 /**
@@ -155,6 +158,7 @@ export function computePosition(
 	const roomLeft = a.left - offset - vp.left;
 	let left: number;
 	let top: number;
+	let bottomY: number | undefined;
 	let maxHeight: number;
 	if (side === "bottom" || side === "top") {
 		let vertical = side;
@@ -164,6 +168,7 @@ export function computePosition(
 		maxHeight = Math.max(80, vertical === "bottom" ? roomBelow : roomAbove);
 		const h = Math.min(size.height, maxHeight);
 		top = vertical === "bottom" ? a.bottom + offset : a.top - offset - h;
+		if (vertical === "top") bottomY = Math.min(a.top - offset, vp.bottom);
 		left = align === "start" ? a.left : a.right - size.width;
 	} else {
 		let horizontal = side;
@@ -177,7 +182,7 @@ export function computePosition(
 	const h = Math.min(size.height, maxHeight);
 	left = Math.min(Math.max(left, vp.left), Math.max(vp.left, vp.right - size.width));
 	top = Math.min(Math.max(top, vp.top), Math.max(vp.top, vp.bottom - h));
-	return { left, top, maxHeight, placement: p };
+	return { left, top, maxHeight, placement: p, bottomY };
 }
 
 /**
@@ -209,7 +214,8 @@ export function useAnchoredPosition(
 			prev.left === next.left &&
 			prev.top === next.top &&
 			prev.maxHeight === next.maxHeight &&
-			prev.placement === next.placement
+			prev.placement === next.placement &&
+			prev.bottomY === next.bottomY
 				? prev
 				: next,
 		);
@@ -395,7 +401,8 @@ export function FloatingLayer({
 				transitionProperty: "none",
 				zIndex: z,
 				left: pos?.left ?? -9999,
-				top: pos?.top ?? -9999,
+				top: pos?.bottomY === undefined ? (pos?.top ?? -9999) : "auto",
+				bottom: pos?.bottomY === undefined ? undefined : window.innerHeight - pos.bottomY,
 				maxHeight: pos?.maxHeight,
 				visibility: pos ? "visible" : "hidden",
 			}}

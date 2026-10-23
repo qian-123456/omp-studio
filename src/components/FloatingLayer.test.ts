@@ -30,6 +30,23 @@ describe("computePosition edge cases", () => {
 		expect(pos.left).toBe(100);
 	});
 
+	it("pins a top-side layer by its bottom edge so content growth cannot detach it from the anchor", () => {
+		const anchor = makeRect(100, 600, 120, 30);
+		const vp = { top: 8, bottom: 900, left: 8, right: 1000 };
+		const small = computePosition(anchor, { width: 200, height: 80 }, "top-start", 6, vp);
+		const tall = computePosition(anchor, { width: 200, height: 300 }, "top-start", 6, vp);
+		expect(small.bottomY).toBe(594);
+		expect(tall.bottomY).toBe(594);
+	});
+
+	it("keeps the requested side when flip is off, however the content resizes", () => {
+		const anchor = makeRect(100, 300, 120, 30);
+		const vp = { top: 8, bottom: 700, left: 8, right: 1000 };
+		// roomAbove = 286, roomBelow = 360: a tall layer would flip with flip=true.
+		expect(computePosition(anchor, { width: 200, height: 500 }, "top-start", 6, vp).placement).toBe("bottom-start");
+		expect(computePosition(anchor, { width: 200, height: 500 }, "top-start", 6, vp, false).placement).toBe("top-start");
+	});
+
 	it("clamps above the status bar / bottom viewport edge", () => {
 		// Status bar starts at 700, so vp.bottom = 692 (700 - EDGE)
 		const vp = { top: 8, bottom: 692, left: 8, right: 1000 };

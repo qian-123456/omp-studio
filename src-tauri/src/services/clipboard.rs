@@ -67,6 +67,55 @@ async fn clipboard_file_paths_impl() -> Result<Vec<String>, String> {
     Ok(Vec::new())
 }
 
+/// JXA that replaces the pasteboard contents with a string item followed by
+/// one `public.file-url` item per path. argv[0] is `{"text": str, "paths": [str]}`.
+#[cfg(target_os = "macos")]
+const PB_WRITE_JXA: &str = r#"ObjC.import("AppKit");
+function run(argv) {
+	var a = JSON.parse(argv[0]);
+	var pb = $.NSPasteboard.generalPasteboard;
+	pb.clearContents;
+	var objs = [];
+	if (a.text) objs.push($(a.text));
+	a.paths.forEach(function (p) { objs.push($.NSURL.fileURLWithPath($(p))); });
+	if (!pb.writeObjects($(objs))) throw new Error("writeObjects failed");
+	return "ok";
+}"#;
+
+/// `clipboard_write_message` — put a message's text plus its image files on the
+/// macOS pasteboard (text item + one file-URL item per image) so a paste
+/// target takes whichever it understands.
+#[tauri::command]
+pub async fn clipboard_write_message(text: String, paths: Vec<String>) -> Result<(), String> {
+    clipboard_write_message_impl(text, paths).await
+}
+
+#[cfg(target_os = "macos")]
+async fn clipboard_write_message_impl(text: String, paths: Vec<String>) -> Result<(), String> {
+    let payload = serde_json::json!({ "text": text, "paths": paths }).to_string();
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::process::Command::new("osascript")
+            .args(["-l", "JavaScript", "-e", PB_WRITE_JXA, &payload])
+            .output(),
+    )
+    .await
+    .map_err(|_| "写入剪贴板超时".to_string())?
+    .map_err(|e| format!("osascript 启动失败: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "写入剪贴板失败: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn clipboard_write_message_impl(_text: String, _paths: Vec<String>) -> Result<(), String> {
+    Err("当前系统不支持复制图片".to_string())
+}
+
 /// Parse the JXA JSON output into absolute, existing paths.
 /// Exported for tests; treats non-array/garbage output as "no files".
 fn parse_clipboard_paths(stdout: &str) -> Vec<String> {
