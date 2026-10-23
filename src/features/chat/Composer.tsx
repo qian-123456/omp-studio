@@ -140,7 +140,8 @@ import { ContextRing } from "./ContextRing";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ThinkingLevelPicker, ThinkingLevelStrip } from "../../components/ThinkingLevelPicker";
-import { errMsg, imagesOfCopiedMessage } from "../../lib/dialogs";
+import { copiedMessageFor, errMsg } from "../../lib/dialogs";
+import { planMessagePaste } from "./messagePastePlan";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
 import { formatWithAnnotations, useComposer } from "../../stores/composer";
@@ -1532,6 +1533,20 @@ export function Composer({
 		}
 	};
 
+	/** Insert a copied message's text and images in their original order. */
+	const pasteCopiedMessage = async (copied: { raw: string; paths: string[] }) => {
+		for (const piece of planMessagePaste(copied.raw, copied.paths)) {
+			if (piece.kind === "text") {
+				insertMarkerAtCursor(piece.text);
+				// Let the caret land after the text before the next piece reads it.
+				await new Promise<void>((resolve) => setTimeout(resolve, 20));
+			} else {
+				await attachDroppedPath(piece.path);
+				await new Promise<void>((resolve) => setTimeout(resolve, 20));
+			}
+		}
+	};
+
 	/** Paste: screenshots keep the image pipeline; a Finder copy resolves the
 	 * REAL paths from the macOS pasteboard so the file attaches as a token
 	 * (the filename is never pasted as text). */
@@ -1547,17 +1562,15 @@ export function Composer({
 			if (f) fileItems.push(f);
 		}
 		const hasFilesType = types.includes("Files");
-		if (fileItems.length === 0 && !hasFilesType) {
-			// A message copied inside the app: the pasteboard also holds its image
-			// files, but WKWebView may expose only the text flavor here.
-			const copiedImages = imagesOfCopiedMessage(e.clipboardData?.getData("text/plain") ?? "");
-			if (!copiedImages) return;
+		// A message copied inside the app: rebuild it (text + images in order)
+		// from the copy record; the pasteboard's own flavors are unreliable here.
+		const copiedHere = copiedMessageFor(e.clipboardData?.getData("text/plain") ?? "");
+		if (copiedHere) {
 			e.preventDefault();
-			insertMarkerAtCursor(e.clipboardData?.getData("text/plain") ?? "");
-			await new Promise<void>((resolve) => setTimeout(resolve, 20));
-			for (const p of copiedImages) await attachDroppedPath(p);
+			await pasteCopiedMessage(copiedHere);
 			return;
 		}
+		if (fileItems.length === 0 && !hasFilesType) return;
 		// Files present → suppress default now, before any await, so the
 		// filename/text flavor can't sneak into the draft.
 		e.preventDefault();
@@ -1587,6 +1600,11 @@ export function Composer({
 		// a Finder copy has none, so the filename is still never pasted.
 		if (nativePaths.length > 0) {
 			const beside = await clipboardTextBesideFiles().catch(() => "");
+			const copied = copiedMessageFor(beside);
+			if (copied) {
+				await pasteCopiedMessage(copied);
+				return;
+			}
 			if (beside.trim()) {
 				insertMarkerAtCursor(beside);
 				// Let the caret land after the text before the image tokens read it.
