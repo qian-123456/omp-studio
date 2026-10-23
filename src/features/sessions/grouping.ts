@@ -53,7 +53,6 @@ export interface GroupedSessionsResult {
 }
 
 export interface GroupingOptions {
-	searchQuery?: string;
 	showArchived?: boolean;
 	/**
 	 * Live git worktrees per workspace id (`stores/worktrees.ts`). When a
@@ -71,7 +70,6 @@ export interface GroupingOptions {
 	 * by rank asc, ids absent (new) first by updatedAt desc.
 	 */
 	frozenOrder?: ReadonlyMap<string, number>;
-	workspaces?: Workspace[];
 	/**
 	 * Default true. When false, every workspace collapses to ONE flat
 	 * `default`/`isMain` subgroup (no worktree/branch split, no deleted-worktree
@@ -264,21 +262,16 @@ export function nestSideChats(sorted: SessionMeta[]): SessionMeta[] {
 	return out;
 }
 
-/** Filters a session list by search query, archive status, and deleted worktrees. */
+/** Filters a session list by archive status, empty side chats, and archive cascade. */
 export function filterSessions(
 	sessions: SessionMeta[],
 	options: GroupingOptions = {},
 ): SessionMeta[] {
-	const { searchQuery = "", showArchived = false, workspaces = [] } = options;
+	const { showArchived = false } = options;
 
 	const sessionById = new Map<string, SessionMeta>();
 	for (const s of sessions) {
 		sessionById.set(s.id, s);
-	}
-
-	const wsPathMap = new Map<string, string>();
-	for (const ws of workspaces) {
-		wsPathMap.set(ws.id, ws.path);
 	}
 
 	// Cascades archive state: if any ancestor is archived, children are also treated as archived.
@@ -318,12 +311,7 @@ export function filterSessions(
 		if (!showArchived && isArchivedCascaded(session)) {
 			return false;
 		}
-		if (searchQuery) {
-			const wsPath = session.workspaceId ? wsPathMap.get(session.workspaceId) : undefined;
-			if (!matchesSearch(session, searchQuery, wsPath)) {
-				return false;
-			}
-		}
+
 		return true;
 	});
 }
@@ -603,10 +591,7 @@ export function groupSessions(
 	const timeMap = buildSessionTimeMap(modeSessions);
 	const compare = createSessionComparator(timeMap, options.frozenOrder);
 
-	const visibleSessions = filterSessions(modeSessions, {
-		...options,
-		workspaces: modeWorkspaces,
-	});
+	const visibleSessions = filterSessions(modeSessions, options);
 
 	const globalWs = modeWorkspaces.find((w) => w.kind === "global") ?? null;
 	const projectWorkspaces = modeWorkspaces
@@ -689,8 +674,6 @@ export function groupSessions(
 		sessions,
 	}));
 
-	// While searching, drop empty subgroups so only real matches show.
-	const searching = (options.searchQuery ?? "").trim().length > 0;
 	const splitSubgroups = (
 		all: BranchSubgroup[],
 	): { live: BranchSubgroup[]; deleted: BranchSubgroup[] } => {
@@ -699,7 +682,7 @@ export function groupSessions(
 		for (const sg of all) {
 			if (sg.deleted) {
 				deleted.push(sg);
-			} else if (!searching || sg.sessions.length > 0) {
+			} else {
 				live.push(sg);
 			}
 		}

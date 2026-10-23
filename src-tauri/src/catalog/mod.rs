@@ -9,6 +9,7 @@ pub mod commands;
 pub(crate) mod external;
 pub(crate) mod parse;
 mod scan;
+pub mod search;
 mod status;
 pub(crate) mod store;
 mod tasks;
@@ -64,6 +65,7 @@ fn scan_lock() -> &'static tokio::sync::Mutex<()> {
 
 /// Spawn scanner/watcher/status tasks.
 pub fn init(state: AppState) {
+    search::init(&state);
     tasks::spawn_all(state);
 }
 

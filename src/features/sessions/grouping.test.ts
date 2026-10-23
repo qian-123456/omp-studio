@@ -76,10 +76,6 @@ describe("matchesSearch & filterSessions", () => {
 		expect(matchesSearch(s1, "#10")).toBe(true);
 		expect(matchesSearch(s2, "auth")).toBe(true);
 		expect(matchesSearch(s2, "nonexistent")).toBe(false);
-
-		const filtered = filterSessions([s1, s2], { searchQuery: "auth" });
-		expect(filtered).toHaveLength(1);
-		expect(filtered[0].id).toBe("s2");
 	});
 });
 
@@ -513,22 +509,6 @@ describe("worktree list grouping", () => {
 		expect(wg.deletedSubgroups).toHaveLength(1);
 		expect(wg.hasMultipleSubgroups).toBe(true); // 4 live worktrees listed
 	});
-
-	it("drops empty subgroups while searching", () => {
-		const s = makeSession({
-			id: "s1",
-			workspaceId: "proj1",
-			cwd: "/repo/my-proj",
-			title: "needle",
-		});
-		const result = groupSessions([s], [ws], {
-			worktrees: { proj1: worktrees },
-			searchQuery: "needle",
-		});
-		const wg = result.workspaceGroups[0];
-		expect(wg.subgroups.map((g) => g.label)).toEqual(["main"]);
-		expect(wg.hasMultipleSubgroups).toBe(false);
-	});
 });
 
 describe("groupByWorktree option", () => {
@@ -732,14 +712,15 @@ describe("global-id filter mode (G1 backstop)", () => {
 describe("pinnedCount under filters", () => {
 	it("counts pinned sessions belonging to the workspace after filters", () => {
 		const ws: Workspace = { id: "proj1", name: "P1", path: "/p1", kind: "project", sort: 0, mode: "code" };
-		const p1 = makeSession({ id: "p1", pinned: true, workspaceId: "proj1", title: "match needle" });
-		const p2 = makeSession({ id: "p2", pinned: true, workspaceId: "proj1", title: "other" });
-		const s1 = makeSession({ id: "s1", pinned: false, workspaceId: "proj1", title: "match needle" });
+		const p1 = makeSession({ id: "p1", pinned: true, workspaceId: "proj1" });
+		const p2 = makeSession({ id: "p2", pinned: true, archived: true, workspaceId: "proj1" });
+		const s1 = makeSession({ id: "s1", pinned: false, workspaceId: "proj1" });
+		const s2 = makeSession({ id: "s2", pinned: false, archived: true, workspaceId: "proj1" });
 
-		const res = groupSessions([p1, p2, s1], [ws], { searchQuery: "needle" });
+		const res = groupSessions([p1, p2, s1, s2], [ws], {});
 		const wg = res.workspaceGroups[0];
-		expect(wg.pinnedCount).toBe(1); // only p1 matches search
-		expect(wg.totalCount).toBe(1); // s1 matches search
+		expect(wg.pinnedCount).toBe(1); // p2 is archived and hidden
+		expect(wg.totalCount).toBe(1); // s2 is archived and hidden
 		expect(res.pinnedSessions.map((s) => s.id)).toEqual(["p1"]);
 	});
 });

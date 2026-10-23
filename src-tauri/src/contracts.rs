@@ -867,6 +867,44 @@ pub struct UsageSummary {
     pub source: String,
 }
 
+/// Role of a full-text search hit's message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchRole {
+    User,
+    Assistant,
+}
+
+/// One snippet piece; `hit` marks the matched query tokens.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchSegment {
+    pub text: String,
+    pub hit: bool,
+}
+
+/// Best matching message of one session for `search_sessions`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSearchHit {
+    pub session_id: String,
+    pub entry_id: String,
+    pub role: SearchRole,
+    pub ts: String,
+    pub segments: Vec<SearchSegment>,
+    pub truncated_start: bool,
+    pub truncated_end: bool,
+    pub match_count: u32,
+}
+
+/// Full-text index progress (`search_index_status`, `search_index:progress`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchIndexStatus {
+    pub indexed: u32,
+    pub total: u32,
+    pub building: bool,
+}
+
 /// Last-known config of a session recovered from its transcript, for the
 /// composer while no RPC process is alive (a live `get_state` supersedes it).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

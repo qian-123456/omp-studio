@@ -6,6 +6,7 @@
 import { isComposing } from "../../lib/hooks";
 import { useUi } from "../../stores/ui";
 import { startNewSession } from "./newSession";
+import { useSearchDialog } from "./search/searchStore";
 
 /** Checks if the event target is inside an editor, terminal, or component managing its own find (C5) */
 function isTargetOwningFind(target: HTMLElement | null): boolean {
@@ -17,33 +18,13 @@ function isTargetOwningFind(target: HTMLElement | null): boolean {
 	);
 }
 
-/** Window event asking the sidebar to reveal its (collapsed) search row. */
-export const SIDEBAR_SEARCH_OPEN_EVENT = "sidebar-search-open";
-
-/** Opens the sidebar if collapsed, reveals the search row, then focuses + selects the input (S19) */
+/**
+ * Opens the sidebar (which hosts the dialog) and the global session search
+ * dialog; while it is already open this re-focuses and selects its input (S19).
+ */
 export function focusSidebarSearch(): void {
 	useUi.getState().setSidebarOpen(true);
-	window.dispatchEvent(new Event(SIDEBAR_SEARCH_OPEN_EVENT));
-	const tryFocus = () => {
-		const input = document.querySelector<HTMLInputElement>(
-			'[data-sidebar-search="true"] input',
-		);
-		if (input) {
-			input.focus();
-			input.select();
-			return true;
-		}
-		return false;
-	};
-
-	if (!tryFocus()) {
-		// Sidebar may be mounting, retry on next frame
-		requestAnimationFrame(() => {
-			if (!tryFocus()) {
-				setTimeout(tryFocus, 50);
-			}
-		});
-	}
+	useSearchDialog.getState().openDialog();
 }
 
 let unregisterShortcuts: (() => void) | null = null;
@@ -66,7 +47,7 @@ export function registerSidebarShortcuts(): void {
 			return;
 		}
 
-		// Cmd+F: focus and select sidebar search input (S19)
+		// Cmd+F: open the session search dialog / re-focus its input (S19)
 		if (key === "f" && !e.shiftKey && !e.altKey) {
 			if (e.defaultPrevented) return;
 			const target = e.target as HTMLElement | null;

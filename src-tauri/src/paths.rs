@@ -55,6 +55,11 @@ pub fn db_path() -> PathBuf {
     data_dir().join("app.db")
 }
 
+/// `~/.omp-workspace/search.db` — disposable full-text index of session transcripts.
+pub fn search_db_path() -> PathBuf {
+    data_dir().join("search.db")
+}
+
 /// `~/.omp-workspace/images/` — durable store for pasted/dropped images.
 /// The legacy cache dir `<app-cache>/ompws-clip` stays readable.
 pub fn images_dir() -> PathBuf {

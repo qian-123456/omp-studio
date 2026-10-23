@@ -19,6 +19,19 @@ installDraftAutoCleanup();
 // Native scrollbars are hidden in CSS (classic always-on lane is ugly);
 // these JS-drawn overlay pills replace them.
 startScrollPills();
+// Suppress the native WebView menu ("Reload" / "Inspect Element"). Custom
+// menus call preventDefault themselves; editable fields keep the native
+// cut/copy/paste menu.
+document.addEventListener("contextmenu", (e) => {
+	if (e.defaultPrevented) return;
+	const t = e.target;
+	if (
+		t instanceof HTMLElement &&
+		(t.isContentEditable || t.closest("input, textarea"))
+	)
+		return;
+	e.preventDefault();
+});
 
 interface RootErrorBoundaryState {
 	error: Error | null;

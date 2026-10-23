@@ -99,8 +99,10 @@ async fn run_watcher(state: AppState) {
             batch.merge(more);
         }
         if batch.full {
+            super::search::request_rescan();
             super::rebuild(&state).await;
         } else {
+            super::search::request_paths(batch.sessions.iter().cloned().collect());
             super::refresh_paths(&state, batch.sessions.into_iter().collect()).await;
         }
         notify_external_check();
