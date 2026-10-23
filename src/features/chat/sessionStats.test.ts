@@ -291,4 +291,84 @@ describe("computeSessionStats", () => {
 		expect(stats.steps).toBe(4);
 		expect(stats.modelDurationMs).toBe(74397 + 180000);
 	});
+
+	it("computes tool duration from transcript item timestamps", () => {
+		const t0 = Date.now() - 60_000;
+		const items = [
+			makeItem({
+				kind: "assistant",
+				ts: new Date(t0).toISOString(),
+				toolCalls: [{ id: "tc1", name: "bash", args: {}, intent: null }],
+			}),
+			makeItem({
+				kind: "tool_result",
+				ts: new Date(t0 + 3500).toISOString(),
+				toolResult: {
+					toolCallId: "tc1",
+					toolName: "bash",
+					text: "ok",
+					isError: false,
+					details: null,
+				},
+			}),
+			makeItem({
+				kind: "assistant",
+				ts: new Date(t0 + 5000).toISOString(),
+				toolCalls: [{ id: "tc2", name: "read", args: {}, intent: null }],
+			}),
+			makeItem({
+				kind: "tool_result",
+				ts: new Date(t0 + 7200).toISOString(),
+				toolResult: {
+					toolCallId: "tc2",
+					toolName: "read",
+					text: "data",
+					isError: false,
+					details: null,
+				},
+			}),
+		];
+		const stats = computeSessionStats(items);
+		// 3500 + 2200 = 5700
+		expect(stats.toolDurationMs).toBe(5700);
+	});
+
+	it("does not double-count tool duration for live tools already in transcript", () => {
+		const t0 = Date.now() - 10_000;
+		const items = [
+			makeItem({
+				kind: "assistant",
+				ts: new Date(t0).toISOString(),
+				toolCalls: [{ id: "tc3", name: "grep", args: {}, intent: null }],
+			}),
+			makeItem({
+				kind: "tool_result",
+				ts: new Date(t0 + 1000).toISOString(),
+				toolResult: {
+					toolCallId: "tc3",
+					toolName: "grep",
+					text: "match",
+					isError: false,
+					details: null,
+				},
+			}),
+		];
+		const live = {
+			tools: {
+				tc3: {
+					toolCallId: "tc3",
+					toolName: "grep",
+					args: {},
+					text: "match",
+					isError: false,
+					details: null,
+					startedAt: t0 + 50,
+					endedAt: t0 + 900,
+				},
+			},
+		} as unknown as SessionLive;
+		const stats = computeSessionStats(items, live);
+		// live.tools has 850ms; transcript has 1000ms; should use live's 850 (no double count)
+		expect(stats.toolDurationMs).toBe(850);
+	});
 });

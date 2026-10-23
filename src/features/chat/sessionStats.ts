@@ -147,7 +147,35 @@ export function computeSessionStats(
 		}
 	}
 
-	// Incorporate live tool execution times if available
+	// Tool durations from transcript: pair each toolResult with its issuing
+	// assistant item via toolCallId and use their ISO timestamps' delta.
+	// Build a map from toolCallId → assistant item ts first.
+	const toolCallTs = new Map<string, number>();
+	for (const item of items) {
+		if (item.toolCalls && item.toolCalls.length > 0) {
+			const ts = Date.parse(item.ts);
+			if (!Number.isNaN(ts)) {
+				for (const tc of item.toolCalls) {
+					toolCallTs.set(tc.id, ts);
+				}
+			}
+		}
+	}
+	// Collect live-tool ids so we don't double-count the current turn.
+	const liveToolIds = new Set(live?.tools ? Object.keys(live.tools) : []);
+	for (const item of items) {
+		if (item.kind === "tool_result" && item.toolResult) {
+			const tcId = item.toolResult.toolCallId;
+			if (liveToolIds.has(tcId)) continue; // current turn covered below
+			const callTs = toolCallTs.get(tcId);
+			if (callTs == null) continue;
+			const resultTs = Date.parse(item.ts);
+			if (!Number.isNaN(resultTs) && resultTs > callTs) {
+				toolDurationMs += resultTs - callTs;
+			}
+		}
+	}
+	// Live tool execution times for the current turn (precise startedAt/endedAt).
 	if (live?.tools) {
 		for (const tool of Object.values(live.tools)) {
 			if (tool.startedAt && tool.endedAt && tool.endedAt >= tool.startedAt) {
