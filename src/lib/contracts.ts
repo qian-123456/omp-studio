@@ -215,6 +215,8 @@ export interface TranscriptItem {
 	ttft?: number | null;
 	/** Assistant only: completion time, epoch ms (omp `message.completedAt`). */
 	completedAt?: number | null;
+	/** Compaction only: first entry the compacted context still keeps verbatim. */
+	firstKeptEntryId?: string | null;
 }
 
 export interface TranscriptPage {

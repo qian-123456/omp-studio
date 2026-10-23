@@ -28,7 +28,7 @@ import {
 const RELATED_PAGES = [
 	{ id: "memory", label: "记忆", description: "memory_summary.md、MEMORY.md 和沉淀的技能，omp 从历史会话里自己整理，同样会带进新会话" },
 	{ id: "skills", label: "技能与命令", description: "从哪些目录加载技能和自定义命令" },
-	{ id: "prompt-composition", label: "系统提示词构成", description: "规则文件和记忆最终各占系统提示词多少" },
+	{ id: "prompt-composition", label: "系统提示词", description: "规则文件和记忆最终各占系统提示词多少" },
 ] as const;
 
 export function RulesFilesSection() {

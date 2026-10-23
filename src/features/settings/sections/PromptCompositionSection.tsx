@@ -1,4 +1,4 @@
-/** Settings ▸ 系统提示词构成: what a brand-new empty session carries in context, with optimization hints. */
+/** Settings ▸ 系统提示词: what a brand-new empty session carries in context, with optimization hints. */
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NativeSelect } from "../../../components/NativeSelect";
@@ -257,7 +257,7 @@ export function PromptCompositionSection() {
 	return (
 		<div className="space-y-5">
 			<SectionHeader
-				title="系统提示词构成"
+				title="系统提示词"
 				description="新建一个空会话时，模型在你说第一句话之前就已经带上的内容：系统提示词、规则文件、Skills、工具说明、MCP 工具。读取过程不调用模型，不产生费用，也不会留下会话。"
 			/>
 

@@ -106,7 +106,7 @@ src/
       MemoryFilesPanel.tsx   below the 记忆 omp settings: project picker + edit memory_summary.md / MEMORY.md / skills/*/SKILL.md (delete skill), read-only raw_memories.md / rollout_summaries (memoryFiles.ts)
       AgentDefsPanel.tsx     `subagents` lead panel: global / project agent definition files (agentDefs.ts = paths, layer resolution, `buildAgentFile`, `buildAgentDraftPrompt`); 「新建子代理」 opens NewAgentForm.tsx (name, description, prompt, tools, model → `omp_agent_write`; 「让 AI 帮我写」 starts a session with the draft prompt)
       ../FileEditor.tsx      shared file editor (edit/preview, discard, save with stamp conflict prompt 覆盖/重新载入, reveal, reload) used by both pages; fileEditorLogic.ts
-      PromptCompositionSection.tsx `prompt-composition`: 系统提示词构成 — project picker (opened from the 「上下文占用明细」 popover button, preselected via `stores/promptComposition.openPromptComposition(cwd)`; else last used / Universal), category totals + per-item raw text, optimization hints, and 「让 AI 帮我优化」 (new session in a chosen workspace, default Universal; the prompt from `promptComposition.ts#buildOptimizePrompt` is prefilled via `composer.setDraft`, never sent, and instructs the AI to get user consent before changing any file)
+      PromptCompositionSection.tsx `prompt-composition`: 系统提示词 — project picker (opened from the context popover's 「系统提示词」 group link 「在设置里查看系统提示词」, preselected via `stores/promptComposition.openPromptComposition(cwd)`; else last used / Universal), category totals + per-item raw text, optimization hints, and 「让 AI 帮我优化」 (new session in a chosen workspace, default Universal; the prompt from `promptComposition.ts#buildOptimizePrompt` is prefilled via `composer.setDraft`, never sent, and instructs the AI to get user consent before changing any file)
       ShortcutRecorder.tsx   key-combo recorder → Tauri accelerator string (used by 通用 「快速记录快捷键」)
     ui.tsx                   SectionHeader, SettingsCard, SettingRow, ToggleRow, CommitInput, useSaveStatus/SaveIndicator
     useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
@@ -242,6 +242,7 @@ pub struct TranscriptItem {
   pub duration: Option<u64>,   // assistant only: whole request in ms (omp `message.duration`)
   pub ttft: Option<u64>,       // assistant only: time to first token in ms (omp `message.ttft`)
   pub completed_at: Option<i64>, // assistant only: request end, epoch ms (omp `message.completedAt`)
+  pub first_kept_entry_id: Option<String>, // compaction only: first entry kept verbatim (omp `firstKeptEntryId`); context popover slices the live context from it
 }
 pub struct TranscriptPage { pub session_id: String, pub items: Vec<TranscriptItem>, pub next_offset: u64 /* byte offset for incremental reads */, pub reset: bool, pub tail_id: Option<String> /* id of the entry ending at next_offset */ }
 
@@ -1208,7 +1209,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - `SettingsPage`: navigation organized into 6 groups (`NAV_GROUPS` in `navigation.ts`):
   - 常规: `general` (通用), `appearance` (外观), `notifications` (通知), `privacy` (隐私), `about` (版本与更新)
   - 模型: `providers` (模型与供应商), `omp-roles` (模型角色: effective agents, global/project roles, named overrides), `thinking` (思考与采样), `helper-models` (辅助模型), `model-fallback` (备用模型与重试), `context-window` (上下文窗口)
-  - 会话: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `doctor` (会话体检), `agents-md` (规则文件 AGENTS.md), `prompt-composition` (系统提示词构成)
+  - 会话: `sessions` (会话), `inbox` (收件箱; legacy `todos` callers migrated), `doctor` (会话体检), `agents-md` (规则文件 AGENTS.md), `prompt-composition` (系统提示词)
   - Agent 能力: `tools` (工具), `files` (文件读写), `shell` (命令行), `subagents` (子代理), `memory` (记忆), `skills` (技能与命令)
   - 连接: `mobile` (手机访问; renders `MobilePanel`), `mcp` (MCP 服务器), `plugins` (插件), `web` (联网搜索)
   - 高级: `advanced` (高级)

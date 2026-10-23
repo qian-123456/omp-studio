@@ -1,13 +1,20 @@
 import clsx from "clsx";
 import { ArchiveRestore, ChevronRight, Loader2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { PromptComposition } from "../../lib/contracts";
 import { promptCompositionProbe } from "../../lib/ipc";
 import { openPromptComposition } from "../../stores/promptComposition";
+import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { buildContextSegments, type ContextSegment, computeRingArcs } from "./contextBreakdown";
+import {
+	buildContextSegments,
+	type ContextSegment,
+	computeRingArcs,
+	estimateConversation,
+	liveContextItems,
+} from "./contextBreakdown";
 
 /** One probe per project for the app's lifetime; concurrent opens share the in-flight request. */
 const compositionCache = new Map<string, Promise<PromptComposition>>();
@@ -34,10 +41,6 @@ function compactTokens(n: number): string {
 	return String(n);
 }
 
-interface DetailRow {
-	name: string;
-	tokens: number;
-}
 
 /** Donut chart: used categories as colored arcs over a free-space track, usage % in the hole. */
 function UsageDonut({
@@ -90,8 +93,9 @@ function UsageDonut({
 }
 
 /** One legend row; rows with `details` expand in place to list their sub-items. */
-function LegendRow({ item, pct, details }: { item: ContextSegment; pct: number; details?: DetailRow[] }) {
+function LegendRow({ item, pct }: { item: ContextSegment; pct: number }) {
 	const [expanded, setExpanded] = useState(false);
+	const details = item.details;
 	const expandable = !!details && details.length > 0;
 	const body = (
 		<>
@@ -148,35 +152,24 @@ function LegendRow({ item, pct, details }: { item: ContextSegment; pct: number; 
 	);
 }
 
-/** Legend rows that can expand into the probe's per-item breakdown. */
-const DETAIL_SEGMENTS: Partial<Record<string, true>> = { mcp: true, skills: true, rules: true };
-
-/** Categories the probe measured inside the system prompt (everything except chat and free space). */
-const PROMPT_SEGMENTS: Partial<Record<string, true>> = {
-	system: true,
-	tools: true,
-	mcp: true,
-	skills: true,
-	rules: true,
-	other: true,
-};
-
 /**
- * 「系统提示词」 group: one row totalling every prompt category, expanding into
- * those categories (each with its ring color) plus the full-composition link.
+ * A legend group (「对话」 / 「系统提示词」): one row totalling its parts, expanding
+ * into those parts (each with its ring color) plus an optional footer.
  */
-function PromptGroupRow({
+function GroupRow({
+	label,
 	parts,
 	windowSize,
-	detailsFor,
-	onOpenComposition,
+	footer,
+	defaultExpanded = false,
 }: {
+	label: string;
 	parts: ContextSegment[];
 	windowSize: number;
-	detailsFor: (id: string) => DetailRow[] | undefined;
-	onOpenComposition: () => void;
+	footer?: ReactNode;
+	defaultExpanded?: boolean;
 }) {
-	const [expanded, setExpanded] = useState(false);
+	const [expanded, setExpanded] = useState(defaultExpanded);
 	const total = parts.reduce((a, s) => a + s.tokens, 0);
 	// Mini pie swatch: the group is made of several ring colors.
 	let acc = 0;
@@ -200,7 +193,7 @@ function PromptGroupRow({
 					aria-hidden="true"
 				/>
 				<span className="flex min-w-0 flex-1 items-center gap-0.5 whitespace-nowrap text-[var(--text)]">
-					系统提示词
+					{label}
 					<span className="text-[var(--text-40)]">· {parts.length} 类</span>
 					<ChevronRight
 						size={11}
@@ -215,20 +208,9 @@ function PromptGroupRow({
 			{expanded && (
 				<div className="mb-1 ml-[9px] flex flex-col border-l border-[var(--line)] pl-1">
 					{parts.map((s) => (
-						<LegendRow
-							key={s.id}
-							item={s}
-							pct={(s.tokens / windowSize) * 100}
-							details={detailsFor(s.id)}
-						/>
+						<LegendRow key={s.id} item={s} pct={(s.tokens / windowSize) * 100} />
 					))}
-					<button
-						type="button"
-						onClick={onOpenComposition}
-						className="mt-1 ml-1 self-start whitespace-nowrap rounded-full bg-[var(--ghost-hover)] px-2.5 py-0.5 text-[11px] leading-[15px] text-[var(--text-60)] transition-colors hover:text-[var(--text)]"
-					>
-						查看完整构成与优化建议
-					</button>
+					{footer}
 				</div>
 			)}
 		</div>
@@ -335,7 +317,10 @@ export function ContextRing({
 		};
 	}, [open, sessionCwd]);
 
-	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe);
+	// Conversation estimates only while the popover is open (walks the whole live transcript).
+	const items = useLive((s) => (open && selectedSessionId ? s.sessions[selectedSessionId]?.items : undefined));
+	const chatEstimate = useMemo(() => (items ? estimateConversation(liveContextItems(items)) : null), [items]);
+	const segments = buildContextSegments(rawTokens ?? 0, rawWindow ?? 0, probe, chatEstimate);
 	const strokeDashoffset = circumference * (1 - Math.min(1, fraction));
 
 	return (
@@ -440,38 +425,42 @@ export function ContextRing({
 							</div>
 							<div className="flex min-w-0 flex-1 flex-col">
 								{(() => {
-									const parts = segments.filter((s) => PROMPT_SEGMENTS[s.id]);
-									const promptTotal = parts.reduce((a, s) => a + s.tokens, 0);
-									const messages = segments.find((s) => s.id === "messages");
-									const free = segments.find((s) => s.id === "free");
-									const detailsFor = (id: string) =>
-										probe && DETAIL_SEGMENTS[id]
-											? probe.categories
-													.find((c) => c.id === id)
-													?.items.map((it) => ({
-														name: it.detail ? `${it.detail} · ${it.title}` : it.title,
-														tokens: it.tokens,
-													}))
-											: undefined;
-									const group =
-										parts.length > 0 ? (
-											<PromptGroupRow
-												key="prompt"
+									const prompt = segments.filter((s) => s.group === "prompt");
+									const chat = segments.filter((s) => s.group === "chat");
+									const free = segments.find((s) => s.group === "free");
+									const groupOf = (label: string, parts: ContextSegment[], footer?: ReactNode) =>
+										parts.length > 1 ? (
+											<GroupRow
+												key={label}
+												label={label}
 												parts={parts}
 												windowSize={rawWindow}
-												detailsFor={detailsFor}
-												onOpenComposition={() => {
-													setOpen(false);
-													openPromptComposition(sessionCwd);
-												}}
+												footer={footer}
+												defaultExpanded={label === "对话"}
 											/>
+										) : parts.length === 1 ? (
+											<LegendRow key={label} item={parts[0]} pct={(parts[0].tokens / rawWindow) * 100} />
 										) : null;
-									const chat = messages ? (
-										<LegendRow key="messages" item={messages} pct={(messages.tokens / rawWindow) * 100} />
-									) : null;
+									const promptRow = groupOf(
+										"系统提示词",
+										prompt,
+										<button
+											type="button"
+											onClick={() => {
+												setOpen(false);
+												openPromptComposition(sessionCwd);
+											}}
+											className="mt-1 ml-1 self-start whitespace-nowrap rounded-full bg-[var(--ghost-hover)] px-2.5 py-0.5 text-[11px] leading-[15px] text-[var(--text-60)] transition-colors hover:text-[var(--text)]"
+										>
+											在设置里查看系统提示词
+										</button>,
+									);
+									const chatRow = groupOf("对话", chat);
+									// buildContextSegments already ordered the larger group first.
+									const chatFirst = segments[0]?.group === "chat";
 									return (
 										<>
-											{(messages?.tokens ?? 0) >= promptTotal ? [chat, group] : [group, chat]}
+											{chatFirst ? [chatRow, promptRow] : [promptRow, chatRow]}
 											{free && <LegendRow item={free} pct={(free.tokens / rawWindow) * 100} />}
 										</>
 									);
