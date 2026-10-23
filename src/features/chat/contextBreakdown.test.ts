@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PromptComposition } from "../../lib/contracts";
-import {
-	buildContextSegments,
-	computeMeterSegments,
-	type ContextSegment,
-} from "./contextBreakdown";
+import { buildContextSegments, computeRingArcs, type ContextSegment } from "./contextBreakdown";
 
 const comp = (cats: Array<[PromptComposition["categories"][number]["id"], number]>): PromptComposition => ({
 	cwd: "/a",
@@ -42,16 +38,25 @@ describe("buildContextSegments", () => {
 	});
 });
 
-describe("computeMeterSegments", () => {
-	it("computes exact startPct, widthPct, and pill radii matching Claude's StackedMeter", () => {
+describe("computeRingArcs", () => {
+	it("lays used categories end to end with seams and leaves free space as track", () => {
 		const segs = buildContextSegments(50_000, 200_000, comp([["tools", 30_000], ["system", 20_000]]));
-		const meter = computeMeterSegments(segs, 200_000, 4);
-		expect(meter).toHaveLength(2);
-		expect(meter[0].seam).toBe(0);
-		expect(meter[0].radiusStart).toBe(2);
-		expect(meter[1].seam).toBe(1);
-		expect(meter[1].radiusEnd).toBe(2);
-		expect(meter[0].startPct).toBe(0);
-		expect(meter[1].startPct).toBeGreaterThan(0);
+		const arcs = computeRingArcs(segs, 200_000, 400, { gap: 2, minLength: 3 });
+		expect(arcs.map((a) => a.id)).toEqual(["tools", "system"]);
+		expect(arcs[0].offset).toBe(0);
+		expect(arcs[0].length).toBe(58);
+		expect(arcs[1].offset).toBe(60);
+		expect(arcs[1].length).toBe(38);
+	});
+
+	it("keeps tiny categories visible and never runs past the full circle", () => {
+		const tiny = buildContextSegments(100, 1_000_000, comp([["skills", 10]]));
+		const arcs = computeRingArcs(tiny, 1_000_000, 300, { gap: 1, minLength: 3 });
+		expect(arcs.every((a) => a.length >= 3)).toBe(true);
+
+		const full = buildContextSegments(1000, 1000, comp([["tools", 999]]));
+		const fullArcs = computeRingArcs(full, 1000, 300, { gap: 1, minLength: 3 });
+		const last = fullArcs[fullArcs.length - 1];
+		expect(last.offset + last.length).toBeLessThanOrEqual(300);
 	});
 });

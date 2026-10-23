@@ -112,55 +112,48 @@ export function buildContextSegments(
 	return segments;
 }
 
-export interface MeterSegment {
+export interface RingArc {
 	id: ContextSegmentId;
+	name: string;
+	tokens: number;
 	color: string;
-	startPct: number;
-	widthPct: number;
-	seam: number;
-	radiusStart: number;
-	radiusEnd: number;
+	/** Distance along the circle (px) where the arc starts, measured from 12 o'clock clockwise. */
+	offset: number;
+	/** Visible arc length (px), already shortened by the seam gap. */
+	length: number;
 }
 
 /**
- * Port of Claude App's StackedMeter segment geometry calculation (`x` in c91b6e9db):
- * calculates seams (1px gap), radiusStart (2px or 1px), radiusEnd (2px or 1px), and percentages.
+ * Donut geometry for the used categories (free space is the ring's track).
+ * Each used category gets at least `minLength` px so tiny ones keep a visible
+ * color; consecutive arcs are separated by a `gap` px seam.
  */
-export function computeMeterSegments(
+export function computeRingArcs(
 	segments: ContextSegment[],
 	windowSize: number,
-	thickness = 4,
-): MeterSegment[] {
-	if (windowSize <= 0) return [];
+	circumference: number,
+	{ gap = 1.5, minLength = 3 }: { gap?: number; minLength?: number } = {},
+): RingArc[] {
+	if (windowSize <= 0 || circumference <= 0) return [];
 	const used = segments.filter((s) => s.id !== "free" && s.tokens > 0);
-	if (used.length === 0) return [];
-
-	const cornerRadius = Math.min(4, thickness / 4); // 1px
-	const pillRadius = thickness / 2; // 2px
-	const result: MeterSegment[] = [];
-	let currentPct = 0;
-
-	for (let i = 0; i < used.length; i++) {
-		const s = used[i];
-		const widthPct = (s.tokens / windowSize) * 100;
-		if (widthPct <= 0) continue;
-
-		const seam = result.length === 0 ? 0 : 1;
+	const seam = used.length > 1 ? gap : 0;
+	const result: RingArc[] = [];
+	let cursor = 0;
+	for (const s of used) {
+		if (cursor >= circumference) break;
+		const span = Math.min(
+			circumference - cursor,
+			Math.max(minLength + seam, (Math.min(s.tokens, windowSize) / windowSize) * circumference),
+		);
 		result.push({
 			id: s.id,
+			name: s.name,
+			tokens: s.tokens,
 			color: s.color,
-			startPct: currentPct,
-			widthPct,
-			seam,
-			radiusStart: seam === 0 ? pillRadius : cornerRadius,
-			radiusEnd: cornerRadius,
+			offset: cursor,
+			length: Math.max(0, span - seam),
 		});
-		currentPct += widthPct;
+		cursor += span;
 	}
-
-	if (result.length > 0) {
-		result[result.length - 1].radiusEnd = pillRadius;
-	}
-
 	return result;
 }
