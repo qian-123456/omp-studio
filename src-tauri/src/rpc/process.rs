@@ -765,6 +765,8 @@ async fn read_loop(
 async fn monitor(sink: OutSink, handle: Arc<SessionHandle>, mut child: Child) {
     let status = child.wait().await;
     handle.alive.store(false, Ordering::SeqCst);
+    // Wake the stdin writer: it owns a handle clone, so its channel never closes on its own.
+    let _ = handle.shutdown.send(true);
     let code = status.ok().and_then(|s| s.code());
     handle.pending.fail_all("omp process exited");
     handle.pending_ui.lock().clear();

@@ -46,8 +46,11 @@ struct Catalog {
     ready: bool,
     /// Ids deleted through `catalog::delete` — guards the bus loop against a
     /// process-exit event that lands after we purged the session's state.
-    deleted: HashSet<String>,
+    deleted: std::collections::VecDeque<String>,
 }
+
+/// Max remembered deleted ids; only recent ones can race a late exit event.
+const DELETED_CAP: usize = 512;
 
 fn cat() -> &'static Mutex<Catalog> {
     static CAT: OnceLock<Mutex<Catalog>> = OnceLock::new();
@@ -164,25 +167,11 @@ fn rebuild_blocking(state: &AppState) {
     {
         let db = state.db.lock();
         for path in &changed {
-            let s = &map[path];
-            if let Err(e) = store::ensure_row(&db, &s.head.id, &s.path.to_string_lossy()) {
-                tracing::warn!("ensure_row {}: {e}", s.head.id);
-            }
-            // New completed turn written by a non-app process -> unread.
-            if ready && !crate::rpc::is_live(&s.head.id) {
-                let old = prev
-                    .get(path)
-                    .and_then(|p| p.last_turn_ts().map(str::to_string));
-                if let Some(ts) = s.last_turn_ts() {
-                    if old.as_deref() != Some(ts) {
-                        let _ = store::set_unread(&db, &s.head.id, true);
-                    }
-                }
-            }
+            note_changed(&db, &map[path], prev.get(path).map(|p| &**p), ready);
         }
     }
     cat().lock().files = map;
-    recompute_blocking(state, None);
+    recompute_inner(state, None, false);
     cat().lock().ready = true;
     let total = t0.elapsed();
     let msg = format!(
@@ -194,6 +183,94 @@ fn rebuild_blocking(state: &AppState) {
     } else {
         tracing::info!("{msg}");
     }
+}
+
+/// Ensure the row of a (re)parsed file and flag a new completed turn written
+/// by a non-app process as unread.
+fn note_changed(db: &rusqlite::Connection, s: &Scanned, prev: Option<&Scanned>, ready: bool) {
+    if let Err(e) = store::ensure_row(db, &s.head.id, &s.path.to_string_lossy()) {
+        tracing::warn!("ensure_row {}: {e}", s.head.id);
+    }
+    if ready && !crate::rpc::is_live(&s.head.id) {
+        let old = prev.and_then(|p| p.last_turn_ts().map(str::to_string));
+        if let Some(ts) = s.last_turn_ts() {
+            if old.as_deref() != Some(ts) {
+                let _ = store::set_unread(db, &s.head.id, true);
+            }
+        }
+    }
+}
+
+/// Apply watcher events for `paths`. Re-parses only the changed, already
+/// indexed session files and recomputes just those sessions; anything the
+/// incremental path cannot express (new, deleted or unparsable files, a
+/// session id change) falls back to a full rebuild.
+pub(crate) async fn refresh_paths(state: &AppState, paths: Vec<PathBuf>) {
+    let _guard = scan_lock().lock().await;
+    let st = state.clone();
+    let r = tokio::task::spawn_blocking(move || {
+        if !refresh_paths_blocking(&st, &paths) {
+            rebuild_blocking(&st);
+        }
+    })
+    .await;
+    if let Err(e) = r {
+        tracing::error!("catalog refresh panicked: {e}");
+    }
+}
+
+/// Returns false when a full rebuild is required.
+fn refresh_paths_blocking(state: &AppState, paths: &[PathBuf]) -> bool {
+    let (known, ready) = {
+        let c = cat().lock();
+        let known: Vec<(PathBuf, Option<Arc<Scanned>>)> = paths
+            .iter()
+            .map(|p| (p.clone(), c.files.get(p).cloned()))
+            .collect();
+        (known, c.ready)
+    };
+    if !ready {
+        return false;
+    }
+    let mut updated: Vec<(Arc<Scanned>, Arc<Scanned>)> = Vec::new();
+    for (path, prev) in known {
+        let Some(prev) = prev else { return false };
+        let Ok(md) = std::fs::metadata(&path) else {
+            return false;
+        };
+        let mtime = md.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        if !md.is_file() {
+            return false;
+        }
+        if md.len() == prev.size && mtime == prev.mtime {
+            continue;
+        }
+        match scan::parse_file(&path, md.len(), mtime, Some(&prev)) {
+            Some(s) if s.head.id == prev.head.id => updated.push((prev, Arc::new(s))),
+            _ => return false,
+        }
+    }
+    if updated.is_empty() {
+        return true;
+    }
+    {
+        let db = state.db.lock();
+        for (prev, s) in &updated {
+            note_changed(&db, s, Some(prev), ready);
+        }
+    }
+    let mut ids: Vec<String> = Vec::with_capacity(updated.len());
+    {
+        let mut c = cat().lock();
+        for (_, s) in updated {
+            ids.push(s.head.id.clone());
+            c.files.insert(s.path.clone(), s);
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    recompute_blocking(state, Some(ids));
+    true
 }
 
 /// Newest file per session id.
@@ -268,6 +345,11 @@ fn refresh_git(cwds: Vec<String>, force: bool) -> Vec<String> {
         }
         c.git.insert(cwd, (now, info));
     }
+    // Bound the cache like `git::badge_cache`: drop entries past the TTL once
+    // it outgrows any realistic session count (fresh ones were just inserted).
+    if c.git.len() > 4096 {
+        c.git.retain(|_, (at, _)| at.elapsed() < GIT_TTL);
+    }
     changed
 }
 
@@ -303,6 +385,13 @@ pub(crate) async fn recompute_async(state: &AppState, ids: Option<Vec<String>>) 
 
 /// Recompute metas for `ids` (None = all), persist derived pending, emit diffs.
 fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
+    recompute_inner(state, ids, true);
+}
+
+/// [`recompute_blocking`]; `refresh` = false skips the git-facts refresh when
+/// the caller just refreshed the same cwds.
+fn recompute_inner(state: &AppState, ids: Option<Vec<String>>, refresh: bool) {
+    scan::reset_canon_cache();
     let full = ids.is_none();
     let index = index_by_id(&cat().lock().files);
     let targets: Vec<Arc<Scanned>> = match &ids {
@@ -340,7 +429,8 @@ fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
     };
 
     // Refresh git facts for the effective cwd of each target (override-aware).
-    {
+    // (Skipped right after a full rebuild, which already refreshed every cwd.)
+    if refresh {
         let empty_row = MetaRow::default();
         let cwds = targets
             .iter()
@@ -547,6 +637,9 @@ pub(crate) async fn delete_with(
         }
     }
 
+    // Close any PTY terminal opened for this session before its files go.
+    crate::terminal::commands::close_session_term(session_id);
+
     // Collect every transcript file for this session id.
     let (paths, meta_file) = {
         let c = cat().lock();
@@ -585,8 +678,14 @@ pub(crate) async fn delete_with(
         c.metas.remove(session_id);
         c.runtime.remove(session_id);
         c.external.retain(|p, _| !gone.contains(p));
-        c.deleted.insert(session_id.to_string());
+        if !c.deleted.contains(&session_id.to_string()) {
+            if c.deleted.len() >= DELETED_CAP {
+                c.deleted.pop_front();
+            }
+            c.deleted.push_back(session_id.to_string());
+        }
     }
+    crate::rpc::remove_resume_lock(session_id);
     emit_changes(state, Vec::new(), vec![session_id.to_string()], Vec::new());
     Ok(())
 }

@@ -1,5 +1,6 @@
 //! Worktree create/list/remove and orphan detection.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::cmd::{git, git_ok};
@@ -210,6 +211,29 @@ pub fn sessions_for_path(
     sessions_for_canon(path, all_paths, &canon_sessions)
 }
 
+/// Session cwds repeat on every `list` call and number in the thousands, so
+/// successful canonicalizations are memoized (failures are not: the dir may
+/// appear later). Bounded so a long-lived process cannot grow it forever.
+fn canon_cwd_cached(cwd: &str) -> PathBuf {
+    static CACHE: std::sync::OnceLock<parking_lot::Mutex<HashMap<String, PathBuf>>> =
+        std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(p) = cache.lock().get(cwd) {
+        return p.clone();
+    }
+    match std::fs::canonicalize(cwd) {
+        Ok(p) => {
+            let mut c = cache.lock();
+            if c.len() >= 8192 {
+                c.clear();
+            }
+            c.insert(cwd.to_string(), p.clone());
+            p
+        }
+        Err(_) => PathBuf::from(cwd),
+    }
+}
+
 /// List worktrees of `repo` with dirty flags and session mapping.
 pub fn list(repo: &Path, sessions: &[(String, String)]) -> Result<Vec<WorktreeInfo>, String> {
     let entries: Vec<WtEntry> = list_entries(repo)?
@@ -220,7 +244,7 @@ pub fn list(repo: &Path, sessions: &[(String, String)]) -> Result<Vec<WorktreeIn
     // Pre-canonicalize session paths once before the loop (avoids O(worktrees * sessions) syscalls)
     let canon_sessions: Vec<(&str, PathBuf)> = sessions
         .iter()
-        .map(|(id, cwd)| (id.as_str(), canon(Path::new(cwd))))
+        .map(|(id, cwd)| (id.as_str(), canon_cwd_cached(cwd)))
         .collect();
     let base = super::history::local_base(repo);
     Ok(entries

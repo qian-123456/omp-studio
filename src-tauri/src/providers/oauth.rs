@@ -60,8 +60,9 @@ pub fn open_browser_url(url: &str) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", url])
+        // No shell: the URL is passed as a single argv entry (cmd's `start` would split on `&`).
+        std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
             .spawn()
             .map_err(|e| format!("打开系统浏览器失败: {e}"))?;
     }

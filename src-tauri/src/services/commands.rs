@@ -27,6 +27,7 @@ pub async fn read_text_file(
     path: String,
 ) -> Result<String, String> {
     let p = files::resolve(&path)?;
+    files::ensure_not_protected(&p)?;
     tokio::task::spawn_blocking(move || files::read_text(&p))
         .await
         .map_err(|e| e.to_string())?
@@ -39,6 +40,7 @@ pub async fn write_text_file(
     content: String,
 ) -> Result<(), String> {
     let p = files::resolve(&path)?;
+    files::ensure_not_protected(&p)?;
     tokio::task::spawn_blocking(move || files::write_text(&p, &content))
         .await
         .map_err(|e| e.to_string())?
@@ -50,6 +52,7 @@ pub async fn fs_read_dir(
     path: String,
 ) -> Result<Vec<DirEntry>, String> {
     let p = files::resolve(&path)?;
+    files::ensure_not_protected(&p)?;
     tokio::task::spawn_blocking(move || {
         let entries = match std::fs::read_dir(&p) {
             Ok(e) => e,

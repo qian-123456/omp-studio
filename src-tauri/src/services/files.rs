@@ -9,7 +9,9 @@ pub fn resolve(path: &str) -> Result<PathBuf, String> {
     if path.is_empty() || path.contains('\0') {
         return Err("无效路径".into());
     }
-    let p = if let Some(rest) = path.strip_prefix("~/") {
+    let p = if path == "~" || path == "~/" || path == "~\\" {
+        dirs::home_dir().ok_or("no home dir")?
+    } else if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
         dirs::home_dir().ok_or("no home dir")?.join(rest)
     } else {
         PathBuf::from(path)
@@ -18,6 +20,41 @@ pub fn resolve(path: &str) -> Result<PathBuf, String> {
         return Err(format!("需要绝对路径：{path}"));
     }
     Ok(p)
+}
+
+/// Canonicalize the deepest existing ancestor and re-append the missing tail,
+/// so not-yet-existing targets (writes) still resolve through symlinks / `..`.
+fn canonical_lenient(p: &Path) -> PathBuf {
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    let mut cur = p.to_path_buf();
+    loop {
+        if let Ok(c) = cur.canonicalize() {
+            let mut out = c;
+            for t in tail.iter().rev() {
+                out.push(t);
+            }
+            return out;
+        }
+        match (cur.file_name().map(|n| n.to_os_string()), cur.parent()) {
+            (Some(n), Some(parent)) => {
+                tail.push(n);
+                cur = parent.to_path_buf();
+            }
+            _ => return p.to_path_buf(),
+        }
+    }
+}
+
+/// Refuse paths inside the app's own secret store (`<data_dir>/env`: vault + master key).
+pub fn ensure_not_protected(p: &Path) -> Result<(), String> {
+    ensure_not_inside(p, &crate::paths::data_dir().join("env"))
+}
+
+fn ensure_not_inside(p: &Path, protected: &Path) -> Result<(), String> {
+    if canonical_lenient(p).starts_with(canonical_lenient(protected)) {
+        return Err("该路径属于应用密钥库，禁止访问".into());
+    }
+    Ok(())
 }
 
 pub fn read_text(path: &Path) -> Result<String, String> {
@@ -87,5 +124,27 @@ mod tests {
         assert!(resolve("~/x.md").unwrap().is_absolute());
         assert!(write_text(&dir.join("missing/x.md"), "x").is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn protected_dir_denied_but_normal_path_allowed() {
+        let base = PathBuf::from(format!("/tmp/ompws-test-c/prot-{}", std::process::id()));
+        let env = base.join("env");
+        let other = base.join("other");
+        std::fs::create_dir_all(&env).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(env.join(".master.key"), "k").unwrap();
+        assert!(ensure_not_inside(&env.join(".master.key"), &env).is_err());
+        assert!(ensure_not_inside(&env, &env).is_err());
+        assert!(ensure_not_inside(&env.join("new.txt"), &env).is_err());
+        assert!(ensure_not_inside(&other.join("../env/.master.key"), &env).is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&env, other.join("link")).unwrap();
+            assert!(ensure_not_inside(&other.join("link/.master.key"), &env).is_err());
+        }
+        assert!(ensure_not_inside(&other.join("doc.md"), &env).is_ok());
+        assert!(ensure_not_inside(&base.join("env2/x"), &env).is_ok());
+        std::fs::remove_dir_all(&base).unwrap();
     }
 }

@@ -45,6 +45,13 @@ pub fn session_resume_lock(session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
         .clone()
 }
 
+pub fn remove_resume_lock(session_id: &str) {
+    if let Some(m) = RESUME_LOCKS.get() {
+        m.lock().remove(session_id);
+    }
+    autotitle::forget(session_id);
+}
+
 pub fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
     registry()
         .read()
@@ -432,7 +439,7 @@ pub async fn takeover_external(
 
 /// SIGTERM then SIGKILL after the grace window.
 async fn terminate_pid(pid: u32) {
-    if pid <= 1 {
+    if pid <= 1 || !pid_looks_like_omp(pid) {
         return;
     }
     // SAFETY: send SIGTERM to external process.
@@ -448,6 +455,33 @@ async fn terminate_pid(pid: u32) {
     // SAFETY: send SIGKILL after grace period.
     unsafe {
         libc::kill(pid as libc::pid_t, libc::SIGKILL);
+    }
+}
+
+/// Guard against PID reuse: only signal a process whose command line mentions omp.
+fn pid_looks_like_omp(pid: u32) -> bool {
+    std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "comm=,args="])
+        .output()
+        .map(|o| o.status.success() && ps_line_looks_like_omp(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or(false)
+}
+
+fn ps_line_looks_like_omp(line: &str) -> bool {
+    line.to_ascii_lowercase().contains("omp")
+}
+
+#[cfg(test)]
+mod pid_guard_tests {
+    use super::*;
+
+    #[test]
+    fn ps_line_matching() {
+        assert!(ps_line_looks_like_omp(
+            "bun /home/u/.bun/bin/omp --mode rpc"
+        ));
+        assert!(!ps_line_looks_like_omp("firefox /Applications/Firefox.app"));
+        assert!(!ps_line_looks_like_omp(""));
     }
 }
 

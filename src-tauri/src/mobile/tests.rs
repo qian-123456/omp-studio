@@ -707,6 +707,15 @@ fn test_csrf_origin_host_matching() {
     ));
 }
 
+#[test]
+fn test_csrf_ignores_x_forwarded_host() {
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(header::ORIGIN, "http://evil.com".parse().unwrap());
+    headers.insert(header::HOST, "192.168.1.10:7788".parse().unwrap());
+    headers.insert("x-forwarded-host", "evil.com".parse().unwrap());
+    assert!(server::verify_csrf(&headers, false).is_err());
+}
+
 #[tokio::test]
 async fn test_tls_pairing_sets_secure_cookie() {
     let h = harness();

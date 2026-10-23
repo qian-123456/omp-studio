@@ -77,42 +77,55 @@ pub fn load_meta_row(conn: &Connection, id: &str) -> MetaRow {
 }
 
 fn query_rows(conn: &Connection, id: Option<&str>) -> rusqlite::Result<HashMap<String, MetaRow>> {
-    let mut stmt = conn.prepare_cached(
+    // A plain `session_id = ?1` lets SQLite seek the primary key; the
+    // `?1 IS NULL OR …` form would scan.
+    let filter = if id.is_some() {
+        "WHERE session_id = ?1"
+    } else {
+        ""
+    };
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT session_id, custom_name, label, pinned, archived, parent_session_id, fork_depth,
                 workspace_id, unread, pending_kind, pending_since, accepted_at, suspended, seq,
                 cwd_override, last_seen_at, mode, group_id,
                 COALESCE(kind, CASE WHEN fork_depth > 0 AND created_by_app = 1 THEN 'side' END),
                 created_by_app
-         FROM session_meta WHERE ?1 IS NULL OR session_id = ?1",
-    )?;
-    let rows = stmt.query_map(params![id], |r| {
-        let pending: Option<String> = r.get(9)?;
-        Ok((
-            r.get::<_, String>(0)?,
-            MetaRow {
-                custom_name: r.get(1)?,
-                label: r.get(2)?,
-                pinned: r.get::<_, i64>(3)? != 0,
-                archived: r.get::<_, i64>(4)? != 0,
-                parent_session_id: r.get(5)?,
-                fork_depth: r.get::<_, i64>(6)?.clamp(0, 3) as u8,
-                workspace_id: r.get(7)?,
-                unread: r.get::<_, i64>(8)? != 0,
-                pending: pending.as_deref().and_then(pending_from_str),
-                pending_since: r.get(10)?,
-                accepted_at: r.get(11)?,
-                suspended: r.get::<_, i64>(12)? != 0,
-                seq: r.get(13)?,
-                cwd_override: r.get(14)?,
-                last_seen_at: r.get(15)?,
-                mode: SpaceMode::from_str_lossy(&r.get::<_, String>(16)?),
-                group_id: r.get(17)?,
-                kind: r.get(18)?,
-                created_by_app: r.get::<_, i64>(19)? != 0,
-            },
-        ))
-    })?;
+         FROM session_meta {filter}"
+    ))?;
+    let rows = if let Some(id) = id {
+        stmt.query_map(params![id], map_row)?
+    } else {
+        stmt.query_map([], map_row)?
+    };
     rows.collect()
+}
+
+fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<(String, MetaRow)> {
+    let pending: Option<String> = r.get(9)?;
+    Ok((
+        r.get::<_, String>(0)?,
+        MetaRow {
+            custom_name: r.get(1)?,
+            label: r.get(2)?,
+            pinned: r.get::<_, i64>(3)? != 0,
+            archived: r.get::<_, i64>(4)? != 0,
+            parent_session_id: r.get(5)?,
+            fork_depth: r.get::<_, i64>(6)?.clamp(0, 3) as u8,
+            workspace_id: r.get(7)?,
+            unread: r.get::<_, i64>(8)? != 0,
+            pending: pending.as_deref().and_then(pending_from_str),
+            pending_since: r.get(10)?,
+            accepted_at: r.get(11)?,
+            suspended: r.get::<_, i64>(12)? != 0,
+            seq: r.get(13)?,
+            cwd_override: r.get(14)?,
+            last_seen_at: r.get(15)?,
+            mode: SpaceMode::from_str_lossy(&r.get::<_, String>(16)?),
+            group_id: r.get(17)?,
+            kind: r.get(18)?,
+            created_by_app: r.get::<_, i64>(19)? != 0,
+        },
+    ))
 }
 
 /// Persist (or clear with None) the resume-directory override; the catalog

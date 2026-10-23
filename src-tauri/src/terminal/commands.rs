@@ -24,6 +24,14 @@ fn forget_term(term_id: &str) {
     session_terms().lock().retain(|_, (t, _)| t != term_id);
 }
 
+/// Close the PTY terminal opened for `session_id` (if any) and forget it.
+pub fn close_session_term(session_id: &str) {
+    let entry = session_terms().lock().remove(session_id);
+    if let Some((term_id, _)) = entry {
+        pty::close(&term_id);
+    }
+}
+
 /// True while this session's `omp --resume` terminal runs: it writes the same
 /// JSONL, so the RPC process must not be spawned alongside it.
 pub fn omp_terminal_open(session_id: &str) -> bool {

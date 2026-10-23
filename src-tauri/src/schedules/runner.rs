@@ -269,6 +269,7 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
     let _ = state.app.emit("schedules:changed", ());
 
     if let Err(e) = crate::rpc::send_prompt(&state, &session_id, &schedule.prompt).await {
+        stop_session_process(&session_id).await;
         finish_with_error(
             &state,
             &schedule,
@@ -336,6 +337,8 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
     }
 
     tokio::time::sleep(Duration::from_millis(150)).await;
+    // The run is over (ok, error or timeout): don't leave its omp process behind.
+    stop_session_process(&session_id).await;
 
     let file_path: Option<String> = {
         let db = state.db.lock();
@@ -408,6 +411,14 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
         crate::todos::notify_changed(&state);
     }
     let _ = state.app.emit("schedules:changed", ());
+}
+
+async fn stop_session_process(session_id: &str) {
+    if let Some(handle) = crate::rpc::get_handle(session_id) {
+        if let Err(e) = crate::rpc::stop(&handle).await {
+            tracing::warn!("schedule: stop {session_id} failed: {e}");
+        }
+    }
 }
 
 fn finish_with_error(

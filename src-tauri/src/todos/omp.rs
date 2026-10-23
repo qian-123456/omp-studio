@@ -30,13 +30,15 @@ static CELL: OnceLock<String> = OnceLock::new();
 
 fn query_login_path_blocking() -> String {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-    let mut child = match std::process::Command::new(shell)
-        .args(["-lc", "echo $PATH"])
+    let mut cmd = std::process::Command::new(shell);
+    cmd.args(["-lc", "echo $PATH"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    {
+        .stderr(Stdio::null());
+    // Own process group so the timeout `killpg` below only hits this probe.
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(_) => return String::new(),
     };

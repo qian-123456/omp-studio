@@ -29,6 +29,11 @@ fn handled() -> &'static parking_lot::Mutex<HashSet<String>> {
     HANDLED.get_or_init(Default::default)
 }
 
+/// Drop a deleted session from the examined set.
+pub fn forget(session_id: &str) {
+    handled().lock().remove(session_id);
+}
+
 pub fn spawn(state: AppState) {
     let mut rx = state.bus.subscribe();
     tauri::async_runtime::spawn(async move {

@@ -162,9 +162,9 @@ pub(crate) fn verify_csrf(headers: &HeaderMap, is_tls: bool) -> Result<(), ApiEr
         }
     }
 
+    // Only the real Host header: `X-Forwarded-Host` is attacker-controlled on a LAN.
     let expected_auth = headers
-        .get("x-forwarded-host")
-        .or_else(|| headers.get(header::HOST))
+        .get(header::HOST)
         .and_then(|v| v.to_str().ok())
         .map(str::trim);
     // The expected side's scheme comes from the connection itself, not from a

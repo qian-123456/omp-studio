@@ -82,7 +82,8 @@ pub fn parse_porcelain(raw: &[u8]) -> Status {
         let mut chars = field.chars();
         let x = chars.next().unwrap_or(' ');
         let y = chars.next().unwrap_or(' ');
-        let path = field[3..].to_string();
+        chars.next(); // separator; char-based so non-ASCII records cannot split a code point
+        let path = chars.as_str().to_string();
         if x == 'R' || x == 'C' || y == 'R' || y == 'C' {
             // Rename/copy: the original path follows as its own field.
             let _orig = fields.next();
@@ -216,6 +217,13 @@ pub fn summary(dir: &Path) -> GitSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn porcelain_non_ascii_garbage_does_not_panic() {
+        // Byte index 3 would fall inside the 3-byte char; must not panic.
+        let st = parse_porcelain("é文abc\0".as_bytes());
+        assert_eq!(st.entries.len(), 1);
+    }
 
     #[test]
     fn porcelain_parses_all_kinds() {

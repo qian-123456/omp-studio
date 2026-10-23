@@ -154,9 +154,27 @@ pub fn run_key_cli(id: Option<String>) -> i32 {
     providers::key_ref::run_cli(id)
 }
 
+/// Report an unrecoverable startup error (stderr + native dialog on macOS) and exit cleanly
+/// instead of surfacing a raw panic.
+fn fatal_startup(what: &str, err: &dyn std::fmt::Display) -> ! {
+    let msg = format!("{what}：{err}\n请检查 ~/.omp-workspace 的权限与磁盘空间后重试。");
+    eprintln!("omp-workspace: {msg}");
+    #[cfg(target_os = "macos")]
+    {
+        let escaped = msg.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            "display dialog \"{escaped}\" with title \"OMP Workspace 启动失败\" buttons {{\"好\"}} default button 1 with icon stop"
+        );
+        let _ = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .status();
+    }
+    std::process::exit(1)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    paths::ensure_dirs().expect("create ~/.omp-workspace dirs");
+    paths::ensure_dirs().unwrap_or_else(|e| fatal_startup("无法创建数据目录 ~/.omp-workspace", &e));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -171,8 +189,9 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let conn = db::open().expect("open app.db");
-            db::ensure_global_workspace(&conn).expect("ensure global workspace");
+            let conn = db::open().unwrap_or_else(|e| fatal_startup("无法打开应用数据库", &e));
+            db::ensure_global_workspace(&conn)
+                .unwrap_or_else(|e| fatal_startup("无法初始化全局工作区", &e));
             let settings = db::load_settings(&conn);
             let state = AppState::new(app.handle().clone(), conn, settings);
             app.manage(state.clone());

@@ -24,11 +24,40 @@ pub type LogSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
 struct Run {
     info: TmRun,
     log: VecDeque<String>,
+    /// Insertion order, used to evict the oldest finished runs.
+    seq: u64,
 }
 
 fn runs() -> &'static Mutex<HashMap<String, Run>> {
     static RUNS: OnceLock<Mutex<HashMap<String, Run>>> = OnceLock::new();
     RUNS.get_or_init(Default::default)
+}
+
+/// Finished (no pid) runs kept for the UI; older ones are dropped.
+const MAX_FINISHED_RUNS: usize = 20;
+
+/// Insert a run and evict the oldest finished runs beyond `MAX_FINISHED_RUNS`.
+fn insert_run(id: String, mut run: Run) {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    run.seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut map = runs().lock();
+    map.insert(id, run);
+    prune_finished(&mut map);
+}
+
+fn prune_finished(map: &mut HashMap<String, Run>) {
+    let mut done: Vec<(u64, String)> = map
+        .iter()
+        .filter(|(_, r)| r.info.pid.is_none())
+        .map(|(k, r)| (r.seq, k.clone()))
+        .collect();
+    if done.len() <= MAX_FINISHED_RUNS {
+        return;
+    }
+    done.sort_unstable();
+    for (_, k) in &done[..done.len() - MAX_FINISHED_RUNS] {
+        map.remove(k);
+    }
 }
 
 fn ansi_re() -> &'static Regex {
@@ -266,9 +295,9 @@ pub fn run(repo: &Path, sha: &str, command: Option<&str>, sink: LogSink) -> Resu
             "未检测到可运行的命令，已创建 worktree：{}",
             info.worktree
         ));
-        let run = Run { info, log };
+        let run = Run { info, log, seq: 0 };
         let snap = snapshot(&run);
-        runs().lock().insert(id, run);
+        insert_run(id, run);
         return Ok(snap);
     };
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
@@ -293,9 +322,9 @@ pub fn run(repo: &Path, sha: &str, command: Option<&str>, sink: LogSink) -> Resu
     info.pid = Some(child.id());
     let mut log = VecDeque::new();
     log.push_back(format!("$ {full}"));
-    let run = Run { info, log };
+    let run = Run { info, log, seq: 0 };
     let snap = snapshot(&run);
-    runs().lock().insert(id.clone(), run);
+    insert_run(id.clone(), run);
     if let Some(out) = child.stdout.take() {
         pump(out, id.clone(), sink.clone());
     }

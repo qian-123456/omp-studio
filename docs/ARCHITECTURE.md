@@ -549,7 +549,7 @@ CREATE TABLE model_switch_log(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, rul
   edits TEXT NOT NULL, previous_template_id TEXT, session_results TEXT NOT NULL DEFAULT '[]', undone_at TEXT);
 -- v18: each of the three tables above gained `scope TEXT NOT NULL DEFAULT 'global'` ('global' or an absolute project directory)
 ```
-Use a `user_version` pragma for migrations (current: v19; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`; v17 adds the three `model_*` template/rule/log tables; v18 adds their `scope` column, added only when missing so a rewound `user_version` re-migrates cleanly; v19 adds `backlog.deleted_at` and converts `backlog.kind = 'todo'` rows to `idea`). `db.rs` also provides `load_settings`/`save_settings` and
+Use a `user_version` pragma for migrations (current: v20; v12 deletes legacy `suggestion`/`supervisor` todo rows; v13 adds `model_replace_log`; v14 adds `session_meta.kind`; v15 adds `local_rows`; v17 adds the three `model_*` template/rule/log tables; v18 adds their `scope` column, added only when missing so a rewound `user_version` re-migrates cleanly; v19 adds `backlog.deleted_at` and converts `backlog.kind = 'todo'` rows to `idea`; v20 adds `idx_session_meta_parent` on `session_meta(parent_session_id)` for side-chat child lookups). `db.rs` also provides `load_settings`/`save_settings` and
 `ensure_global_workspace(conn)` (creates the single global workspace row `global`/`~/.omp-workspace/global`, owned by
 the `chat` space). v11 moves the global row and every session group (and grouped sessions) to `chat` and drops the
 v10 per-mode `global:<mode>` rows (their dirs stay on disk).

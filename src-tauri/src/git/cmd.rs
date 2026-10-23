@@ -61,7 +61,13 @@ pub fn run(mut cmd: Command, timeout: Duration) -> Result<Output, String> {
                 break None;
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(5)),
-            Err(e) => return Err(format!("wait failed: {e}")),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = out_t.join();
+                let _ = err_t.join();
+                return Err(format!("wait failed: {e}"));
+            }
         }
     };
     let stdout = out_t.join().unwrap_or_default();

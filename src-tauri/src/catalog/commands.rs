@@ -30,13 +30,13 @@ pub async fn get_transcript(
             ..Default::default()
         });
     }
-    transcript::read_page(
-        &file,
-        &session_id,
-        from_offset.unwrap_or(0),
-        tail_id.as_deref(),
-    )
-    .map_err(|e| format!("read transcript {session_id}: {e}"))
+    let sid = session_id.clone();
+    tokio::task::spawn_blocking(move || {
+        transcript::read_page(&file, &sid, from_offset.unwrap_or(0), tail_id.as_deref())
+            .map_err(|e| format!("read transcript {sid}: {e}"))
+    })
+    .await
+    .map_err(|e| format!("read transcript {session_id}: {e}"))?
 }
 
 #[tauri::command]

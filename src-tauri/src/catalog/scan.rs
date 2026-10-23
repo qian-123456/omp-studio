@@ -193,6 +193,31 @@ pub(crate) fn path_within(path: &str, root: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('/'))
 }
 
+fn canon_cache() -> &'static parking_lot::Mutex<HashMap<String, String>> {
+    static CANON_CACHE: std::sync::OnceLock<parking_lot::Mutex<HashMap<String, String>>> =
+        std::sync::OnceLock::new();
+    CANON_CACHE.get_or_init(Default::default)
+}
+
+/// Forget memoized canonical paths; called once at the start of each catalog
+/// build so symlink/dir changes are picked up by the next build.
+pub fn reset_canon_cache() {
+    canon_cache().lock().clear();
+}
+
+/// `canonicalize` (falling back to the input), memoized for the current build.
+fn canon_str(path: &str) -> String {
+    if let Some(v) = canon_cache().lock().get(path) {
+        return v.clone();
+    }
+    let v = std::fs::canonicalize(path)
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string());
+    canon_cache().lock().insert(path.to_string(), v.clone());
+    v
+}
+
 /// Membership within the session's mode: explicit override > registered
 /// project workspace containing `repo_root ?? cwd` (longest path wins) >
 /// the global workspace (chat space only) if cwd under `global_dir` > None.
@@ -215,20 +240,11 @@ pub fn resolve_workspace(
         // macOS: /tmp → /private/tmp, /var → /private/var. Session cwds keep
         // the short form while workspace paths are usually canonicalized —
         // compare canonical forms so symlinked dirs still group correctly.
-        let canon = std::fs::canonicalize(target)
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| target.to_string());
+        let canon = canon_str(target);
         let best = workspaces
             .iter()
             .filter(|w| w.kind == WorkspaceKind::Project && w.mode == mode)
-            .filter(|w| {
-                let wcanon = std::fs::canonicalize(&w.path)
-                    .ok()
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| w.path.clone());
-                path_within(&canon, &wcanon)
-            })
+            .filter(|w| path_within(&canon, &canon_str(&w.path)))
             .max_by_key(|w| w.path.len());
         if let Some(w) = best {
             return Some(w.id.clone());

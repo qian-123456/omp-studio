@@ -26,11 +26,7 @@ where
 
 /// `(session_id, cwd)` pairs from the catalog (empty while A is a stub).
 async fn session_cwds(state: &AppState) -> Vec<(String, String)> {
-    crate::catalog::list(state)
-        .await
-        .into_iter()
-        .map(|s| (s.id, s.cwd))
-        .collect()
+    crate::catalog::id_cwds(state).await
 }
 
 /// Paths of registered project workspaces.

@@ -60,23 +60,18 @@ async fn run_watcher(state: AppState) {
     let _ = std::fs::create_dir_all(&sessions_dir);
     let _ = std::fs::create_dir_all(&status_dir);
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(16);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WatchBatch>();
 
+    let watch_root = sessions_dir.clone();
     let debouncer_res = new_debouncer(
         Duration::from_millis(300),
         None,
         move |res: DebounceEventResult| {
             if let Ok(events) = res {
-                let matches = events.iter().any(|ev| {
-                    ev.paths.iter().any(|p| {
-                        matches!(
-                            p.extension().and_then(|x| x.to_str()),
-                            Some("jsonl" | "json")
-                        )
-                    })
-                });
-                if matches {
-                    let _ = tx.try_send(());
+                let batch =
+                    classify_events(&watch_root, events.iter().flat_map(|ev| ev.paths.iter()));
+                if !batch.is_empty() {
+                    let _ = tx.send(batch);
                 }
             }
         },
@@ -97,13 +92,60 @@ async fn run_watcher(state: AppState) {
         warn!("failed to watch status dir {status_dir:?}: {e}");
     }
 
-    while rx.recv().await.is_some() {
+    while let Some(mut batch) = rx.recv().await {
         // Coalesce rapid bursts of file modifications
         tokio::time::sleep(Duration::from_millis(50)).await;
-        while rx.try_recv().is_ok() {}
-        super::rebuild(&state).await;
+        while let Ok(more) = rx.try_recv() {
+            batch.merge(more);
+        }
+        if batch.full {
+            super::rebuild(&state).await;
+        } else {
+            super::refresh_paths(&state, batch.sessions.into_iter().collect()).await;
+        }
         notify_external_check();
     }
+}
+
+/// Watcher events reduced to what the catalog must do.
+#[derive(Default)]
+struct WatchBatch {
+    /// Something other than a plain change to a known-shaped session file
+    /// (status files, unexpected locations): rescan everything.
+    full: bool,
+    /// Changed `<sessions>/<bucket>/<name>.jsonl` files.
+    sessions: std::collections::HashSet<std::path::PathBuf>,
+}
+
+impl WatchBatch {
+    fn is_empty(&self) -> bool {
+        !self.full && self.sessions.is_empty()
+    }
+    fn merge(&mut self, other: WatchBatch) {
+        self.full |= other.full;
+        self.sessions.extend(other.sessions);
+    }
+}
+
+fn classify_events<'a>(
+    sessions_dir: &std::path::Path,
+    paths: impl Iterator<Item = &'a std::path::PathBuf>,
+) -> WatchBatch {
+    let mut batch = WatchBatch::default();
+    for p in paths {
+        let ext = p.extension().and_then(|x| x.to_str());
+        if !matches!(ext, Some("jsonl" | "json")) {
+            continue;
+        }
+        if ext == Some("jsonl") && super::scan::is_session_file(sessions_dir, p) {
+            batch.sessions.insert(p.clone());
+        } else if ext == Some("jsonl") && p.starts_with(sessions_dir) {
+            // Subagent / artifact logs below a session dir: not catalog input.
+        } else {
+            batch.full = true;
+        }
+    }
+    batch
 }
 
 async fn run_external_loop(state: AppState) {
@@ -281,5 +323,31 @@ async fn run_bus_loop(state: AppState, mut bus: tokio::sync::broadcast::Receiver
         if change.pending.is_some() || change.unread.is_some() || change.runtime {
             super::recompute_async(&state, Some(vec![session_id])).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod watch_tests {
+    use super::classify_events;
+    use std::path::PathBuf;
+
+    #[test]
+    fn classify_routes_session_subagent_and_status_events() {
+        let dir = PathBuf::from("/s");
+        let session = PathBuf::from("/s/b/one.jsonl");
+        let subagent = PathBuf::from("/s/b/one/sub.jsonl");
+        let status = PathBuf::from("/status/x.json");
+        let other = PathBuf::from("/s/b/readme.txt");
+
+        let b = classify_events(&dir, [&session, &subagent, &other].into_iter());
+        assert!(!b.full);
+        assert_eq!(b.sessions.len(), 1);
+        assert!(b.sessions.contains(&session));
+
+        assert!(classify_events(&dir, [&status].into_iter()).full);
+        assert!(classify_events(&dir, [&other, &subagent].into_iter()).is_empty());
+        // Outside the sessions dir (e.g. a symlinked root): rescan everything.
+        let elsewhere = PathBuf::from("/private/s/b/one.jsonl");
+        assert!(classify_events(&dir, [&elsewhere].into_iter()).full);
     }
 }

@@ -285,6 +285,13 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch("UPDATE backlog SET kind = 'idea' WHERE kind = 'todo';")?;
         conn.pragma_update(None, "user_version", 19)?;
     }
+    // v20: side-chat lookups (`WHERE parent_session_id = ?`) seek instead of scanning.
+    if version < 20 {
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_session_meta_parent ON session_meta(parent_session_id);",
+        )?;
+        conn.pragma_update(None, "user_version", 20)?;
+    }
     Ok(())
 }
 
@@ -364,7 +371,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(session_meta)")
             .unwrap()
@@ -387,7 +394,7 @@ mod tests {
         let v3: u32 = fresh
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v3, 19);
+        assert_eq!(v3, 20);
     }
 
     #[test]
@@ -397,7 +404,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 19);
+        assert_eq!(v, 20);
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('schedules', 'schedule_runs')",
@@ -424,7 +431,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 19);
+        assert_eq!(v, 20);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(schedules)")
             .unwrap()
@@ -499,7 +506,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 19);
+        assert_eq!(v, 20);
         // Pre-existing row inherits the documented defaults.
         let (notify, new_chat): (String, i64) = conn
             .query_row(
@@ -594,7 +601,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 19);
+        assert_eq!(v, 20);
         // Pre-existing row: NULL cap, zero runs.
         let (max_runs, runs_done): (Option<i64>, i64) = conn
             .query_row(
@@ -654,7 +661,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 19);
+        assert_eq!(v, 20);
         // Pre-existing rows default to code.
         let mode: String = conn
             .query_row(
@@ -799,7 +806,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 19);
+        assert_eq!(v, 20);
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(model_replace_log)")
             .unwrap()
@@ -842,7 +849,7 @@ mod tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 19);
+        assert_eq!(v, 20);
         let columns = |table: &str| -> Vec<String> {
             conn.prepare(&format!("PRAGMA table_info({table})"))
                 .unwrap()
@@ -908,7 +915,8 @@ mod tests {
     fn migrate_v18_puts_existing_rows_in_the_global_scope() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE backlog(id TEXT PRIMARY KEY, kind TEXT NOT NULL);
+            "CREATE TABLE session_meta(session_id TEXT PRIMARY KEY, parent_session_id TEXT);
+             CREATE TABLE backlog(id TEXT PRIMARY KEY, kind TEXT NOT NULL);
              CREATE TABLE model_templates(
                id TEXT PRIMARY KEY, name TEXT NOT NULL, roles TEXT NOT NULL,
                is_bottom_line INTEGER NOT NULL DEFAULT 0,
@@ -977,6 +985,6 @@ mod backlog_v19_tests {
         let v: u32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 19);
+        assert_eq!(v, 20);
     }
 }

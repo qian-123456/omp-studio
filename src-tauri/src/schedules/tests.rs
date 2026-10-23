@@ -950,3 +950,32 @@ fn test_max_runs_completes() {
     assert_eq!(s.max_runs, None);
     assert_eq!(s.lifecycle, ScheduleLifecycle::Active);
 }
+
+/// `next_run_at` strings carry differing UTC offsets (DST / timezone change):
+/// due-ness and the earliest wake-up must compare instants, not strings.
+#[test]
+fn test_due_compares_instants_across_offsets() {
+    use crate::schedules::store::{earliest_next_run, find_due};
+    let conn = setup_test_db();
+    let a = upsert(&conn, &daily_draft(None, true)).unwrap();
+    let b = upsert(&conn, &daily_draft(None, true)).unwrap();
+    // A = 13:00Z, B = 13:30Z; lexicographically B ("08:30") sorts before A ("09:00").
+    for (id, at) in [
+        (&a.id, "2026-11-02T09:00:00-04:00"),
+        (&b.id, "2026-11-02T08:30:00-05:00"),
+    ] {
+        conn.execute(
+            "UPDATE schedules SET next_run_at = ?2 WHERE id = ?1",
+            params![id, at],
+        )
+        .unwrap();
+    }
+    let due = find_due(&conn, "2026-11-02T13:10:00+00:00").unwrap();
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].id, a.id);
+    let earliest = earliest_next_run(&conn).unwrap().unwrap();
+    assert_eq!(
+        earliest.with_timezone(&chrono::Utc).to_rfc3339(),
+        "2026-11-02T13:00:00+00:00"
+    );
+}

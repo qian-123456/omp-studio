@@ -673,32 +673,46 @@ pub fn record_run_start(conn: &Connection, id: &str, at: &str) -> Result<(), rus
     )?;
     Ok(())
 }
+/// Due = parsed instant of `next_run_at` <= `before`. Compared as instants in Rust:
+/// stored strings carry local UTC offsets that differ across DST / timezone changes,
+/// so SQL string comparison is wrong.
 pub fn find_due(conn: &Connection, before: &str) -> Result<Vec<Schedule>, rusqlite::Error> {
+    let Ok(cutoff) = DateTime::parse_from_rfc3339(before) else {
+        return Ok(Vec::new());
+    };
     let mut stmt = conn.prepare(&format!(
-        "SELECT {SCHEDULE_COLS} FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?1"
+        "SELECT {SCHEDULE_COLS} FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL"
     ))?;
-    let rows = stmt.query_map(params![before], row_to_schedule)?;
-    rows.collect()
+    let rows = stmt.query_map([], row_to_schedule)?;
+    let mut due = Vec::new();
+    for row in rows {
+        let s = row?;
+        let is_due = s
+            .next_run_at
+            .as_deref()
+            .and_then(|v| DateTime::parse_from_rfc3339(v).ok())
+            .is_some_and(|dt| dt <= cutoff);
+        if is_due {
+            due.push(s);
+        }
+    }
+    Ok(due)
 }
 
 pub fn earliest_next_run(conn: &Connection) -> Result<Option<DateTime<Local>>, rusqlite::Error> {
-    let val: Option<String> = conn
-        .query_row(
-            "SELECT MIN(next_run_at) FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL",
-            [],
-            |r| r.get(0),
-        )
-        .optional()?
-        .flatten();
-
-    let Some(s) = val else {
-        return Ok(None);
-    };
-
-    match DateTime::parse_from_rfc3339(&s) {
-        Ok(dt) => Ok(Some(dt.with_timezone(&Local))),
-        Err(_) => Ok(None),
+    let mut stmt = conn.prepare(
+        "SELECT next_run_at FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL",
+    )?;
+    let vals = stmt.query_map([], |r| r.get::<_, String>(0))?;
+    let mut min: Option<DateTime<chrono::FixedOffset>> = None;
+    for v in vals {
+        if let Ok(dt) = DateTime::parse_from_rfc3339(&v?) {
+            if min.map_or(true, |m| dt < m) {
+                min = Some(dt);
+            }
+        }
     }
+    Ok(min.map(|dt| dt.with_timezone(&Local)))
 }
 
 pub fn create_run(
