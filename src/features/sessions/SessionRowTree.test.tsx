@@ -15,7 +15,7 @@ const makeSession = (id: string): SessionMeta =>
 		workspaceId: "ws1",
 		workspacePath: "/ws1",
 		updatedAt: new Date().toISOString(),
-	}) as SessionMeta;
+	}) as unknown as SessionMeta;
 
 describe("SessionRow tree line styling (withSpine)", () => {
 	afterEach(() => {
