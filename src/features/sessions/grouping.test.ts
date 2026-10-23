@@ -808,13 +808,13 @@ describe("multi-token search without absolute prefix (G10)", () => {
 		const s = makeSession({
 			id: "s1",
 			title: "Fix the sidebar layout",
-			cwd: "/Users/qianhairui/Documents/omp-workspace",
+			cwd: "/Users/me/Documents/omp-workspace",
 			workspaceId: "proj1",
 		});
 		const ws: Workspace = {
 			id: "proj1",
 			name: "omp-workspace",
-			path: "/Users/qianhairui/Documents/omp-workspace",
+			path: "/Users/me/Documents/omp-workspace",
 			kind: "project",
 			sort: 0,
 			mode: "code",
@@ -822,9 +822,9 @@ describe("multi-token search without absolute prefix (G10)", () => {
 
 		// "sidebar fix" matches both tokens in title
 		expect(matchesSearch(s, "sidebar fix", ws.path)).toBe(true);
-		// "doc" or "qianhairui" or "user" does not match the parent directory
+		// "doc" or "me" or "user" does not match the parent directory
 		expect(matchesSearch(s, "doc", ws.path)).toBe(false);
-		expect(matchesSearch(s, "qianhairui", ws.path)).toBe(false);
+		expect(matchesSearch(s, "me", ws.path)).toBe(false);
 		expect(matchesSearch(s, "user", ws.path)).toBe(false);
 		// "workspace" matches basename of workspace cwd
 		expect(matchesSearch(s, "workspace", ws.path)).toBe(true);

@@ -55,7 +55,7 @@ describe("promptPreview", () => {
 	});
 
 	it("collapses a marker cut off by prompt truncation", () => {
-		expect(promptPreview("改一下 [Image #1, 2560x1486: /Users/qianhairui/.omp-works…")).toBe("改一下 🖼️#1");
+		expect(promptPreview("改一下 [Image #1, 2560x1486: /Users/me/.omp-works…")).toBe("改一下 🖼️#1");
 	});
 
 	it("leaves plain text and brackets alone", () => {

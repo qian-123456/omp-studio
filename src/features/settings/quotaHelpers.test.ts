@@ -184,19 +184,19 @@ describe("formatAccountSubtitle", () => {
 	it("deduplicates when orgName is email's Organization", () => {
 		expect(
 			formatAccountSubtitle(
-				"qianhairui90@gmail.com",
-				"qianhairui90@gmail.com's Organization",
+				"user@example.com",
+				"user@example.com's Organization",
 			),
-		).toBe("qianhairui90@gmail.com");
+		).toBe("user@example.com");
 	});
 
 	it("deduplicates when orgName uses curly apostrophe", () => {
 		expect(
 			formatAccountSubtitle(
-				"qianhairui90@gmail.com",
-				"qianhairui90@gmail.com’s Organization",
+				"user@example.com",
+				"user@example.com’s Organization",
 			),
-		).toBe("qianhairui90@gmail.com");
+		).toBe("user@example.com");
 	});
 
 	it("deduplicates when orgName equals email or account", () => {
@@ -220,15 +220,15 @@ describe("formatAccountSubtitle", () => {
 	it("keeps genuine company or team org names intact", () => {
 		expect(
 			formatAccountSubtitle(
-				"qianhairui90@gmail.com",
+				"user@example.com",
 				"Acme Corp",
 			),
-		).toBe("qianhairui90@gmail.com · Acme Corp");
+		).toBe("user@example.com · Acme Corp");
 	});
 
 	it("handles missing email or missing orgName gracefully", () => {
-		expect(formatAccountSubtitle("qianhairui90@gmail.com", undefined)).toBe(
-			"qianhairui90@gmail.com",
+		expect(formatAccountSubtitle("user@example.com", undefined)).toBe(
+			"user@example.com",
 		);
 		expect(formatAccountSubtitle(undefined, "Acme Corp")).toBe("Acme Corp");
 		expect(formatAccountSubtitle(null, null)).toBe("");

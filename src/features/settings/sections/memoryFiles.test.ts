@@ -13,11 +13,11 @@ import {
 
 describe("cwdToMemorySlug", () => {
 	it("matches omp's directory naming", () => {
-		expect(cwdToMemorySlug("/Users/qianhairui/Documents/omp-workspace")).toBe(
-			"--Users-qianhairui-Documents-omp-workspace--",
+		expect(cwdToMemorySlug("/Users/me/Documents/omp-workspace")).toBe(
+			"--Users-me-Documents-omp-workspace--",
 		);
-		expect(cwdToMemorySlug("/Users/qianhairui/Documents/omp-workspace/.worktrees/bug-fix/")).toBe(
-			"--Users-qianhairui-Documents-omp-workspace-.worktrees-bug-fix--",
+		expect(cwdToMemorySlug("/Users/me/Documents/omp-workspace/.worktrees/bug-fix/")).toBe(
+			"--Users-me-Documents-omp-workspace-.worktrees-bug-fix--",
 		);
 		expect(cwdToMemorySlug("/Users/q/Documents/Coding Wiki")).toBe("--Users-q-Documents-Coding Wiki--");
 	});

@@ -42,9 +42,9 @@ describe("looksLikeFilePath", () => {
 
 describe("findFilePaths", () => {
 	it("finds paths embedded in CJK prose and trims punctuation", () => {
-		const text = "已经阅读了 /Users/qianhairui/.omp/agent/AGENTS.md、~/CodingWiki/x/y.md。";
+		const text = "已经阅读了 /Users/me/.omp/agent/AGENTS.md、~/CodingWiki/x/y.md。";
 		expect(findFilePaths(text).map((m) => m.path)).toEqual([
-			"/Users/qianhairui/.omp/agent/AGENTS.md",
+			"/Users/me/.omp/agent/AGENTS.md",
 			"~/CodingWiki/x/y.md",
 		]);
 	});

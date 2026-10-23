@@ -10,3 +10,9 @@ src-tauri/target/
 
 # AOCI agent host integration: .mcp.json is now portable (no machine paths) and committed.
 .mcp.json.backup.*
+
+# Local merged planning doc
+/PRD.md
+
+# Stray empty db files
+src-tauri/*.db
