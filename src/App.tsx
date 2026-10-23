@@ -26,6 +26,8 @@ import { installShortcutDispatcher } from "./features/shortcuts/dispatcher";
 import { effectiveCenterViewOf } from "./features/shortcuts/actions/navigation";
 import { suspendScrollPills } from "./lib/scrollPills";
 import { useSessions } from "./stores/sessions";
+import { OmpInstallDialog } from "./features/omp-install/OmpInstallDialog";
+import { useOmpInstall } from "./stores/ompInstall";
 import { useOmpUpdate, watchOmpStaleness, watchOmpUpdateChecks } from "./stores/ompUpdate";
 import { useStartupImageGc } from "./features/settings/useStartupImageGc";
 import {
@@ -277,7 +279,10 @@ export default function App() {
 	// Initialize todos subscription; load versions and auto-check omp updates at the configured interval
 	useEffect(() => {
 		startTodos();
-		void useOmpUpdate.getState().checkOnStartup();
+		void useOmpUpdate
+			.getState()
+			.checkOnStartup()
+			.then(() => useOmpInstall.getState().checkOnStartup());
 		const stopChecks = watchOmpUpdateChecks();
 		const stopStaleness = watchOmpStaleness();
 		return () => {
@@ -404,6 +409,7 @@ export default function App() {
 			{/* Global modals — render nothing unless ui.modal matches. Lazy loaded in Suspense */}
 			<QuickCapture />
 			<HandbackDialog />
+			<OmpInstallDialog />
 			<Suspense fallback={null}>
 				<DiagnoseDialog />
 				<ShareImageDialog />

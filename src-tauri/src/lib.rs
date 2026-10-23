@@ -13,6 +13,7 @@ mod model_replace;
 mod model_templates;
 mod notify;
 mod omp_files;
+mod omp_install;
 mod paths;
 mod privacy;
 mod prompt_composition;
@@ -371,6 +372,8 @@ pub fn run() {
             settings::omp_info,
             settings::omp_update_check,
             settings::omp_update_run,
+            omp_install::omp_install_run,
+            omp_install::omp_install_cancel,
             // providers (API provider manager + encrypted vault)
             providers::commands::provider_rows,
             providers::commands::provider_set_enabled,

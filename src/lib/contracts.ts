@@ -1732,6 +1732,22 @@ export interface OmpUpdateResult {
 	versionAfter: string | null;
 }
 
+/** Return value of `omp_install_run`: official installer run, `info` re-probed afterwards. */
+export interface OmpInstallResult {
+	success: boolean;
+	/** ANSI-stripped full log; on failure ends with a plain Chinese hint. */
+	output: string;
+	info: OmpInfo;
+}
+
+/** Event `omp:install` payload while the installer runs. */
+export interface OmpInstallProgress {
+	/** One ANSI-stripped output line. */
+	line: string | null;
+	/** Size of the in-progress `.omp.download.*` file in the install dir. */
+	downloadedBytes: number | null;
+}
+
 // --- storage (设置 ▸ 存储空间) ---
 export interface StorageGcSummary {
 	count: number;

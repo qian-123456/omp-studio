@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { AlertTriangle, Braces, FolderGit2, KeyRound, RefreshCw, RotateCcw } from "lucide-react";
+import { AlertTriangle, Braces, Download, FolderGit2, KeyRound, RefreshCw, RotateCcw } from "lucide-react";
 import {
 	createContext,
 	useCallback,
@@ -25,6 +25,7 @@ import { OMP_CONFIG_DEFAULTS } from "./ompConfigDefaults";
 import { ompConfigValueDescription } from "./ompConfigDescZh";
 import { OMP_CONFIG_META, ompConfigDescription, ompConfigOptionLabel, ompConfigOptions, ompConfigTitle } from "./ompConfigMeta";
 import { useOmpConfigStore } from "./ompConfigStore";
+import { useOmpInstall } from "../../stores/ompInstall";
 import {
 	groupEntriesForPage,
 	ompConditionHint,
@@ -610,9 +611,14 @@ function useConfigGate(): ReactNode | null {
 				tone="danger"
 				title="无法读取 omp 配置"
 				action={
-					<Button size="sm" icon={RefreshCw} onClick={() => void load(true)}>
-						重试
-					</Button>
+					<div className="flex gap-2">
+						<Button size="sm" icon={Download} onClick={() => void useOmpInstall.getState().openAndInstall()}>
+							安装 omp 内核
+						</Button>
+						<Button size="sm" icon={RefreshCw} onClick={() => void load(true)}>
+							重试
+						</Button>
+					</div>
 				}
 			>
 				<span className="select-text break-all">{error}</span>

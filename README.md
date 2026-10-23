@@ -21,7 +21,7 @@ The UI is in Simplified Chinese.
 ## Requirements
 
 - macOS (the primary target; other platforms are not regularly tested)
-- [`omp`](https://github.com/can1357/oh-my-pi) installed and on your `PATH` (or set its path in Settings ▸ 高级)
+- [`omp`](https://github.com/can1357/oh-my-pi) — installed automatically on first launch if missing (official installer, macOS/Linux); or install it yourself and keep it on your `PATH` (or set its path in Settings ▸ 高级)
 - At least one model provider credential
 - To build from source: Node.js 18+, `pnpm`, and a Rust toolchain (1.77.2+)
 
@@ -70,7 +70,7 @@ omp-workspace 是 [oh-my-pi](https://github.com/can1357/oh-my-pi)（`omp` 命令
 
 主要功能：会话列表与实时状态、带完整执行过程的对话、侧聊、Git 工作树隔离、文件浏览器、终端、时光机快照、定时任务、待办收件箱、想法收集箱、模型与供应商设置、手机远程访问。
 
-运行要求：macOS，已安装 `omp`，至少一个模型凭据。从源码构建还需要 Node.js 18+、`pnpm` 和 Rust 工具链。
+运行要求：macOS，至少一个模型凭据；未安装 `omp` 时应用会在启动时自动安装（官方安装器），也可自行安装。从源码构建还需要 Node.js 18+、`pnpm` 和 Rust 工具链。
 
 ```bash
 pnpm install
