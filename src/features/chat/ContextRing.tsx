@@ -1,6 +1,6 @@
 import clsx from "clsx";
-import { ArchiveRestore, ChevronRight, Loader2 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ArchiveRestore, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { PromptComposition } from "../../lib/contracts";
 import { promptCompositionProbe } from "../../lib/ipc";
@@ -92,47 +92,68 @@ function UsageDonut({
 	);
 }
 
-/** One legend row; rows with `details` expand in place to list their sub-items. */
-function LegendRow({ item, pct }: { item: ContextSegment; pct: number }) {
-	const [expanded, setExpanded] = useState(false);
-	const details = item.details;
-	const expandable = !!details && details.length > 0;
-	const body = (
+type DetailRows = NonNullable<ContextSegment["details"]>;
+
+/** CSS background for a group swatch: a conic pie of its parts, or the single part's color. */
+function groupSwatch(parts: ContextSegment[]): string {
+	if (parts.length === 1) return parts[0].color;
+	const total = parts.reduce((a, s) => a + s.tokens, 0);
+	let acc = 0;
+	const stops = parts.map((s) => {
+		const from = (acc / total) * 360;
+		acc += s.tokens;
+		return `${s.color} ${from}deg ${(acc / total) * 360}deg`;
+	});
+	return `conic-gradient(${stops.join(", ")})`;
+}
+
+/**
+ * One legend row. `details` (per-tool, per-skill, …) are always listed beneath it.
+ * With `onClick` the whole row is a button.
+ */
+function LegendRow({
+	name,
+	tokens,
+	pct,
+	background,
+	details,
+	onClick,
+}: {
+	name: string;
+	tokens: number;
+	pct: number;
+	background: string;
+	details?: DetailRows;
+	onClick?: () => void;
+}) {
+	const head = (
 		<>
-			<span className="size-[10px] shrink-0 rounded-[2px]" style={{ background: item.color }} aria-hidden="true" />
-			<span className="flex min-w-0 flex-1 items-center gap-0.5 whitespace-nowrap text-[var(--text)]">
-				{item.name}
-				{expandable && (
-					<>
-						<span className="text-[var(--text-40)]">· {details.length}</span>
-						<ChevronRight
-							size={11}
-							className={clsx(
-								"shrink-0 text-[var(--text-40)] transition-transform duration-150",
-								expanded && "rotate-90",
-							)}
-						/>
-					</>
-				)}
-			</span>
-			<span className="shrink-0 tabular-nums text-[var(--text-40)]">{compactTokens(item.tokens)}</span>
+			<span
+				className={clsx("size-[10px] shrink-0", onClick ? "rounded-full" : "rounded-[2px]")}
+				style={{ background }}
+				aria-hidden="true"
+			/>
+			<span className="min-w-0 flex-1 whitespace-nowrap text-[var(--text)]">{name}</span>
+			<span className="shrink-0 tabular-nums text-[var(--text-40)]">{compactTokens(tokens)}</span>
 			<span className="w-[40px] shrink-0 text-right tabular-nums text-[var(--text)]">{pct.toFixed(1)}%</span>
 		</>
 	);
-	const rowCls = "flex w-full items-center gap-1.5 rounded-md px-1 py-[3px] text-[12px] leading-[15px]";
-	if (!expandable) return <div className={rowCls}>{body}</div>;
+	const rowCls = "flex w-full items-center gap-1.5 rounded-md px-1 py-[3px] text-left text-[12px] leading-[15px]";
 	return (
 		<div className="flex flex-col">
-			<button
-				type="button"
-				onClick={() => setExpanded((v) => !v)}
-				aria-expanded={expanded}
-				title={expanded ? "收起明细" : "展开明细"}
-				className={clsx(rowCls, "cursor-pointer text-left transition-colors hover:bg-[var(--ghost-hover)]")}
-			>
-				{body}
-			</button>
-			{expanded && (
+			{onClick ? (
+				<button
+					type="button"
+					onClick={onClick}
+					title="打开系统提示词设置"
+					className={clsx(rowCls, "cursor-pointer transition-colors hover:bg-[var(--ghost-hover)]")}
+				>
+					{head}
+				</button>
+			) : (
+				<div className={rowCls}>{head}</div>
+			)}
+			{details && details.length > 0 && (
 				<div
 					className={clsx(
 						"ml-[17px] mt-0.5 mb-1 flex flex-col gap-0.5 border-l border-[var(--line)] pl-2",
@@ -146,71 +167,6 @@ function LegendRow({ item, pct }: { item: ContextSegment; pct: number }) {
 							<span className="shrink-0 tabular-nums text-[var(--text-40)]">{compactTokens(row.tokens)}</span>
 						</div>
 					))}
-				</div>
-			)}
-		</div>
-	);
-}
-
-/**
- * A legend group (「对话」 / 「系统提示词」): one row totalling its parts, expanding
- * into those parts (each with its ring color) plus an optional footer.
- */
-function GroupRow({
-	label,
-	parts,
-	windowSize,
-	footer,
-	defaultExpanded = false,
-}: {
-	label: string;
-	parts: ContextSegment[];
-	windowSize: number;
-	footer?: ReactNode;
-	defaultExpanded?: boolean;
-}) {
-	const [expanded, setExpanded] = useState(defaultExpanded);
-	const total = parts.reduce((a, s) => a + s.tokens, 0);
-	// Mini pie swatch: the group is made of several ring colors.
-	let acc = 0;
-	const stops = parts.map((s) => {
-		const from = (acc / total) * 360;
-		acc += s.tokens;
-		return `${s.color} ${from}deg ${(acc / total) * 360}deg`;
-	});
-	return (
-		<div className="flex flex-col">
-			<button
-				type="button"
-				onClick={() => setExpanded((v) => !v)}
-				aria-expanded={expanded}
-				title={expanded ? "收起构成" : "展开构成"}
-				className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1 py-[3px] text-left text-[12px] leading-[15px] transition-colors hover:bg-[var(--ghost-hover)]"
-			>
-				<span
-					className="size-[10px] shrink-0 rounded-full"
-					style={{ background: `conic-gradient(${stops.join(", ")})` }}
-					aria-hidden="true"
-				/>
-				<span className="flex min-w-0 flex-1 items-center gap-0.5 whitespace-nowrap text-[var(--text)]">
-					{label}
-					<span className="text-[var(--text-40)]">· {parts.length} 类</span>
-					<ChevronRight
-						size={11}
-						className={clsx("shrink-0 text-[var(--text-40)] transition-transform duration-150", expanded && "rotate-90")}
-					/>
-				</span>
-				<span className="shrink-0 tabular-nums text-[var(--text-40)]">{compactTokens(total)}</span>
-				<span className="w-[40px] shrink-0 text-right tabular-nums text-[var(--text)]">
-					{((total / windowSize) * 100).toFixed(1)}%
-				</span>
-			</button>
-			{expanded && (
-				<div className="mb-1 ml-[9px] flex flex-col border-l border-[var(--line)] pl-1">
-					{parts.map((s) => (
-						<LegendRow key={s.id} item={s} pct={(s.tokens / windowSize) * 100} />
-					))}
-					{footer}
 				</div>
 			)}
 		</div>
@@ -428,40 +384,53 @@ export function ContextRing({
 									const prompt = segments.filter((s) => s.group === "prompt");
 									const chat = segments.filter((s) => s.group === "chat");
 									const free = segments.find((s) => s.group === "free");
-									const groupOf = (label: string, parts: ContextSegment[], footer?: ReactNode) =>
-										parts.length > 1 ? (
-											<GroupRow
-												key={label}
-												label={label}
-												parts={parts}
-												windowSize={rawWindow}
-												footer={footer}
-												defaultExpanded={label === "对话"}
-											/>
-										) : parts.length === 1 ? (
-											<LegendRow key={label} item={parts[0]} pct={(parts[0].tokens / rawWindow) * 100} />
+									const sumOf = (parts: ContextSegment[]) => parts.reduce((a, s) => a + s.tokens, 0);
+									const pctOf = (tokens: number) => (tokens / rawWindow) * 100;
+									// 对话: a header row, then every part listed beneath it (no expanding).
+									const chatBlock =
+										chat.length > 0 ? (
+											<>
+												<LegendRow
+													name="对话"
+													tokens={sumOf(chat)}
+													pct={pctOf(sumOf(chat))}
+													background={groupSwatch(chat)}
+												/>
+												<div className="mb-1 ml-[9px] flex flex-col border-l border-[var(--line)] pl-1">
+													{chat.map((s) => (
+														<LegendRow
+															key={s.id}
+															name={s.name}
+															tokens={s.tokens}
+															pct={pctOf(s.tokens)}
+															background={s.color}
+															details={s.details}
+														/>
+													))}
+												</div>
+											</>
 										) : null;
-									const promptRow = groupOf(
-										"系统提示词",
-										prompt,
-										<button
-											type="button"
-											onClick={() => {
-												setOpen(false);
-												openPromptComposition(sessionCwd);
-											}}
-											className="mt-1 ml-1 self-start whitespace-nowrap rounded-full bg-[var(--ghost-hover)] px-2.5 py-0.5 text-[11px] leading-[15px] text-[var(--text-60)] transition-colors hover:text-[var(--text)]"
-										>
-											在设置里查看系统提示词
-										</button>,
-									);
-									const chatRow = groupOf("对话", chat);
+									// 系统提示词: one row; clicking it opens the settings page.
+									const promptRow =
+										prompt.length > 0 ? (
+											<LegendRow
+												name="系统提示词"
+												tokens={sumOf(prompt)}
+												pct={pctOf(sumOf(prompt))}
+												background={groupSwatch(prompt)}
+												onClick={() => {
+													setOpen(false);
+													openPromptComposition(sessionCwd);
+												}}
+											/>
+										) : null;
 									// buildContextSegments already ordered the larger group first.
 									const chatFirst = segments[0]?.group === "chat";
 									return (
 										<>
-											{chatFirst ? [chatRow, promptRow] : [promptRow, chatRow]}
-											{free && <LegendRow item={free} pct={(free.tokens / rawWindow) * 100} />}
+											{chatFirst ? chatBlock : promptRow}
+											{chatFirst ? promptRow : chatBlock}
+											{free && <LegendRow name={free.name} tokens={free.tokens} pct={pctOf(free.tokens)} background={free.color} />}
 										</>
 									);
 								})()}
