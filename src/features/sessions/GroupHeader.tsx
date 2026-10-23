@@ -3,7 +3,7 @@
  * Real button with aria-expanded, Enter/Space support, and collapsed-only status bubbles.
  */
 
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type React from "react";
 import type { BranchSubgroup } from "./grouping";
 import type { SessionMeta } from "../../lib/contracts";
@@ -136,17 +136,6 @@ export function GroupHeader({
 				aria-expanded={isOpen}
 				className="flex min-w-0 flex-1 items-center gap-1.5 text-left select-none overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] rounded"
 			>
-				{isOpen ? (
-					<ChevronDown
-						size={isSubgroup ? 11 : 13}
-						className="text-[var(--text-dim)] shrink-0"
-					/>
-				) : (
-					<ChevronRight
-						size={isSubgroup ? 11 : 13}
-						className="text-[var(--text-dim)] shrink-0"
-					/>
-				)}
 				<span className="shrink-0 flex items-center">{icon}</span>
 				{titleElement ?? (
 					<span
