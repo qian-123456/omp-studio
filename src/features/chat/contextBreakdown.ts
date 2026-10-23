@@ -24,6 +24,11 @@ export interface ContextSegment {
 	color: string;
 	/** Per-item breakdown (rule files, skills, tools …), scaled like `tokens`. */
 	details?: DetailRow[];
+	/**
+	 * Prompt group only: the system-prompt breakdown is not loaded yet (or failed), so this
+	 * slice is the unattributed remainder and the legend shows a status instead of numbers.
+	 */
+	pending?: true;
 }
 
 export const THEME_COLORS: Record<ContextSegmentId, string> = {
@@ -73,11 +78,35 @@ export function estimateTokens(text: string | null | undefined): number {
 }
 
 /**
- * Transcript items still in the model's context: after the latest compaction
- * only its summary, the entries it kept (`firstKeptEntryId` onward) and
- * everything after it remain. File order; branches are not resolved.
+ * The entries on the active branch, leaf (last item) back to the root. Dropped
+ * entries (`custom` bookkeeping rows, …) are not transcript items, so a missing
+ * (or absent) parent falls back to the previous item in file order, which is right for a
+ * linear history and only misjudges a fork hanging off a dropped entry.
  */
-export function liveContextItems(items: TranscriptItem[]): TranscriptItem[] {
+function activeBranch(items: TranscriptItem[]): TranscriptItem[] {
+	const index: Record<string, number> = {};
+	items.forEach((it, i) => {
+		index[it.id] = i;
+	});
+	const branch: TranscriptItem[] = [];
+	let i = items.length - 1;
+	while (i >= 0) {
+		const it = items[i];
+		branch.push(it);
+		const parent = it.parentId == null ? undefined : index[it.parentId];
+		// A parent at or after the item cannot be an ancestor; treat it as unknown.
+		i = parent !== undefined && parent < i ? parent : i - 1;
+	}
+	return branch.reverse();
+}
+
+/**
+ * Transcript items still in the model's context: the active branch only, and
+ * after its latest compaction just the summary, the entries it kept
+ * (`firstKeptEntryId` onward) and everything after it.
+ */
+export function liveContextItems(all: TranscriptItem[]): TranscriptItem[] {
+	const items = activeBranch(all);
 	for (let i = items.length - 1; i >= 0; i--) {
 		const c = items[i];
 		if (c.kind !== "compaction") continue;
@@ -92,6 +121,12 @@ export interface ChatEstimate {
 	id: ChatSegmentId;
 	tokens: number;
 	details?: DetailRow[];
+}
+
+/** Provider rule of thumb: width × height / 750, clamped; 1000 when the size is unknown. */
+function imageTokens(img: { width?: number | null; height?: number | null }): number {
+	if (!img.width || !img.height) return 1000;
+	return Math.min(1600, Math.max(85, Math.round((img.width * img.height) / 750)));
 }
 
 function skillOfPath(args: unknown): string | null {
@@ -145,7 +180,14 @@ export function estimateConversation(items: TranscriptItem[]): ChatEstimate[] {
 			const skill = it.text?.match(/^\/skill:([\w.-]+)/)?.[1];
 			if (skill) add("skillReads", skill, estimateTokens(it.text), 1);
 			else totals.messages += estimateTokens(it.text);
-		} else if (it.kind === "bash" || it.kind === "custom" || it.kind === "compaction" || it.kind === "branch_summary" || it.kind === "system") {
+			totals.messages += (it.images ?? []).reduce((a, img) => a + imageTokens(img), 0);
+		} else if (it.kind === "custom") {
+			// `skill-prompt` entries without `details.prompt` stay generic custom items whose
+			// content is the whole expanded skill.
+			const skill = it.text?.match(/^\[IMPORTANT: User invoked the "([^"]+)" skill/)?.[1];
+			if (skill) add("skillReads", skill, estimateTokens(it.text), 1);
+			else totals.messages += estimateTokens(it.text);
+		} else if (it.kind === "bash" || it.kind === "compaction" || it.kind === "branch_summary" || it.kind === "system") {
 			totals.messages += estimateTokens(it.text);
 		}
 	}
@@ -164,11 +206,31 @@ export function estimateConversation(items: TranscriptItem[]): ChatEstimate[] {
 const scaleRows = (rows: DetailRow[] | undefined, f: number) =>
 	rows?.map((r) => ({ name: r.name, tokens: Math.round(r.tokens * f) }));
 
+/** Integer shares of `total` proportional to `weights` (largest remainder), summing to `total` exactly. */
+function apportion(weights: number[], total: number): number[] {
+	const sum = weights.reduce((a, w) => a + w, 0);
+	if (sum <= 0 || total <= 0) return weights.map(() => 0);
+	const exact = weights.map((w) => (w * total) / sum);
+	const out = exact.map(Math.floor);
+	let left = total - out.reduce((a, n) => a + n, 0);
+	const order = exact.map((e, i) => ({ i, frac: e - Math.floor(e) })).sort((a, b) => b.frac - a.frac);
+	for (const { i } of order) {
+		if (left <= 0) break;
+		out[i]++;
+		left--;
+	}
+	return out;
+}
+
 /**
- * Ring/legend segments: prompt parts (probe estimates, scaled down if they
- * exceed usage), the conversation remainder split by `chat` estimates (scaled
- * to fill it exactly; one 对话消息 slice without estimates), then free space.
- * Groups are ordered by total, parts within a group by size.
+ * Ring/legend segments; the used segments always sum to `used` exactly.
+ * - Probe loaded: prompt parts keep their estimates and the conversation
+ *   estimates are scaled to fill the rest. When both together overshoot
+ *   `used`, both are scaled down proportionally (all are estimates).
+ * - Probe missing (loading or failed): the conversation keeps its raw
+ *   estimates (capped at `used`) and the unattributed remainder becomes one
+ *   `pending` 系统提示词 slice.
+ * Groups are ordered by total, parts within a group by size; free space last.
  */
 export function buildContextSegments(
 	used: number,
@@ -176,44 +238,80 @@ export function buildContextSegments(
 	comp: PromptComposition | null,
 	chat: ChatEstimate[] | null = null,
 ): ContextSegment[] {
-	const usedClamped = Math.min(Math.max(0, used), windowSize);
+	const usedClamped = Math.round(Math.min(Math.max(0, used), windowSize));
 
-	const cats = new Map((comp?.categories ?? []).map((c) => [c.id as PromptSegmentId, c]));
-	const estTotal = PROMPT_IDS.reduce((a, id) => a + (cats.get(id)?.tokens ?? 0), 0);
-	const promptScale = estTotal > usedClamped && estTotal > 0 ? usedClamped / estTotal : 1;
+	const cats: Partial<Record<PromptSegmentId, PromptComposition["categories"][number]>> = {};
+	for (const c of comp?.categories ?? []) cats[c.id as PromptSegmentId] = c;
+	const promptW = PROMPT_IDS.map((id) => Math.max(0, cats[id]?.tokens ?? 0));
+	const promptRaw = promptW.reduce((a, w) => a + w, 0);
+	const chatIn = (chat ?? []).filter((c) => c.tokens > 0);
+	const chatW = chatIn.map((c) => c.tokens);
+	const chatRaw = chatW.reduce((a, w) => a + w, 0);
+
+	let promptTokens = promptW.map(() => 0);
+	let chatTokens = chatW.map(() => 0);
+	let fillMessages = 0;
+	let pendingTokens = 0;
+	if (!comp) {
+		chatTokens = apportion(chatW, Math.min(Math.round(chatRaw), usedClamped));
+		pendingTokens = usedClamped - chatTokens.reduce((a, n) => a + n, 0);
+	} else if (chatRaw > 0 && promptRaw + chatRaw > usedClamped) {
+		const all = apportion([...promptW, ...chatW], usedClamped);
+		promptTokens = all.slice(0, promptW.length);
+		chatTokens = all.slice(promptW.length);
+	} else {
+		const promptTotal = Math.min(Math.round(promptRaw), usedClamped);
+		promptTokens = apportion(promptW, promptTotal);
+		const budget = usedClamped - promptTotal;
+		if (chatRaw > 0) chatTokens = apportion(chatW, budget);
+		else fillMessages = budget;
+	}
+
 	const prompt: ContextSegment[] = [];
-	for (const id of PROMPT_IDS) {
-		const cat = cats.get(id);
-		const tokens = Math.round((cat?.tokens ?? 0) * promptScale);
-		if (!cat || tokens <= 0) continue;
+	PROMPT_IDS.forEach((id, i) => {
+		const cat = cats[id];
+		const tokens = promptTokens[i];
+		if (!cat || tokens <= 0) return;
 		const details = DETAIL_PROMPT_IDS[id]
 			? scaleRows(
 					cat.items.map((it) => ({ name: it.detail ? `${it.detail} · ${it.title}` : it.title, tokens: it.tokens })),
-					promptScale,
+					tokens / promptW[i],
 				)
 			: undefined;
 		prompt.push({ id, group: "prompt", name: CLAUDE_NAMES_ZH[id], tokens, color: THEME_COLORS[id], details });
+	});
+	if (pendingTokens > 0) {
+		prompt.push({
+			id: "system",
+			group: "prompt",
+			name: "系统提示词",
+			tokens: pendingTokens,
+			color: THEME_COLORS.system,
+			pending: true,
+		});
 	}
 
-	const budget = Math.max(0, usedClamped - prompt.reduce((a, s) => a + s.tokens, 0));
-	const rawChat = (chat ?? []).reduce((a, c) => a + c.tokens, 0);
 	const conversation: ContextSegment[] = [];
-	if (budget > 0 && rawChat > 0) {
-		const f = budget / rawChat;
-		for (const c of chat ?? []) {
-			const tokens = Math.round(c.tokens * f);
-			if (tokens <= 0) continue;
-			conversation.push({
-				id: c.id,
-				group: "chat",
-				name: c.id === "messages" ? "对话文字" : CLAUDE_NAMES_ZH[c.id],
-				tokens,
-				color: THEME_COLORS[c.id],
-				details: c.details?.length ? scaleRows(c.details, f) : undefined,
-			});
-		}
-	} else if (budget > 0) {
-		conversation.push({ id: "messages", group: "chat", name: CLAUDE_NAMES_ZH.messages, tokens: budget, color: THEME_COLORS.messages });
+	chatIn.forEach((c, i) => {
+		const tokens = chatTokens[i];
+		if (tokens <= 0) return;
+		conversation.push({
+			id: c.id,
+			group: "chat",
+			name: c.id === "messages" ? "对话文字" : CLAUDE_NAMES_ZH[c.id],
+			tokens,
+			color: THEME_COLORS[c.id],
+			details: c.details?.length ? scaleRows(c.details, tokens / c.tokens) : undefined,
+		});
+	});
+	if (fillMessages > 0) {
+		conversation.push({
+			id: "messages",
+			group: "chat",
+			name: CLAUDE_NAMES_ZH.messages,
+			tokens: fillMessages,
+			color: THEME_COLORS.messages,
+		});
 	}
 
 	const bySize = (a: ContextSegment, b: ContextSegment) => b.tokens - a.tokens;
@@ -236,41 +334,49 @@ export interface RingArc {
 	color: string;
 	/** Distance along the circle (px) where the arc starts, measured from 12 o'clock clockwise. */
 	offset: number;
-	/** Visible arc length (px), already shortened by the seam gap. */
+	/** Arc length (px); each arc starts exactly where the previous one ends (minus `gap`, 0 by default). */
 	length: number;
 }
 
 /**
  * Donut geometry for the used categories (free space is the ring's track).
- * Each used category gets at least `minLength` px so tiny ones keep a visible
- * color; consecutive arcs are separated by a `gap` px seam.
+ * Arcs tile the used portion end to end without seams. Categories shorter than
+ * `minLength` px are widened to it and the larger arcs shrink to compensate, so
+ * the total span still equals the used fraction of the circle.
  */
 export function computeRingArcs(
 	segments: ContextSegment[],
 	windowSize: number,
 	circumference: number,
-	{ gap = 1.5, minLength = 3 }: { gap?: number; minLength?: number } = {},
+	{ gap = 0, minLength = 3 }: { gap?: number; minLength?: number } = {},
 ): RingArc[] {
 	if (windowSize <= 0 || circumference <= 0) return [];
 	const used = segments.filter((s) => s.id !== "free" && s.tokens > 0);
+	if (used.length === 0) return [];
 	const seam = used.length > 1 ? gap : 0;
-	const result: RingArc[] = [];
+	const usedTokens = used.reduce((a, s) => a + s.tokens, 0);
+	const total = (Math.min(usedTokens, windowSize) / windowSize) * circumference;
+	const floor = Math.min(minLength + seam, total / used.length);
+	const ideal = used.map((s) => (s.tokens / usedTokens) * total);
+
+	// Widen the tiny arcs to `floor`, taking the extra length from the larger ones.
+	const small = ideal.map((l) => l < floor);
+	const extra = ideal.reduce((a, l, i) => (small[i] ? a + (floor - l) : a), 0);
+	const bigSum = ideal.reduce((a, l, i) => (small[i] ? a : a + l), 0);
+	const shrink = bigSum > extra ? (bigSum - extra) / bigSum : 1;
+	const spans = ideal.map((l, i) => (small[i] ? floor : l * shrink));
+
 	let cursor = 0;
-	for (const s of used) {
-		if (cursor >= circumference) break;
-		const span = Math.min(
-			circumference - cursor,
-			Math.max(minLength + seam, (Math.min(s.tokens, windowSize) / windowSize) * circumference),
-		);
-		result.push({
+	return used.map((s, i) => {
+		const arc: RingArc = {
 			id: s.id,
 			name: s.name,
 			tokens: s.tokens,
 			color: s.color,
 			offset: cursor,
-			length: Math.max(0, span - seam),
-		});
-		cursor += span;
-	}
-	return result;
+			length: Math.max(0, spans[i] - seam),
+		};
+		cursor += spans[i];
+		return arc;
+	});
 }

@@ -3,7 +3,7 @@ import { ArchiveRestore, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { PromptComposition } from "../../lib/contracts";
-import { promptCompositionProbe } from "../../lib/ipc";
+import { sessionPromptComposition } from "../../lib/ipc";
 import { openPromptComposition } from "../../stores/promptComposition";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
@@ -14,16 +14,30 @@ import {
 	computeRingArcs,
 	estimateConversation,
 	liveContextItems,
+	THEME_COLORS,
 } from "./contextBreakdown";
 
-/** One probe per project for the app's lifetime; concurrent opens share the in-flight request. */
-const compositionCache = new Map<string, Promise<PromptComposition>>();
-function loadComposition(cwd: string): Promise<PromptComposition> {
-	let p = compositionCache.get(cwd);
+/** Last good composition per session, shown at once while a refetch runs. */
+const lastBySession: Record<string, PromptComposition> = {};
+const inflight: Record<string, Promise<PromptComposition>> = {};
+
+/**
+ * Every call refetches: a live session answers from its own process in milliseconds, and the
+ * slow probe fallback for non-live sessions is cached per cwd on the Rust side.
+ * Concurrent calls for one session share the in-flight request.
+ */
+function loadComposition(sessionId: string, cwd: string): Promise<PromptComposition> {
+	let p = inflight[sessionId];
 	if (!p) {
-		p = promptCompositionProbe(cwd);
-		compositionCache.set(cwd, p);
-		p.catch(() => compositionCache.delete(cwd));
+		p = sessionPromptComposition(sessionId, cwd).then((c) => {
+			lastBySession[sessionId] = c;
+			return c;
+		});
+		inflight[sessionId] = p;
+		const clear = () => {
+			delete inflight[sessionId];
+		};
+		p.then(clear, clear);
 	}
 	return p;
 }
@@ -94,19 +108,6 @@ function UsageDonut({
 
 type DetailRows = NonNullable<ContextSegment["details"]>;
 
-/** CSS background for a group swatch: a conic pie of its parts, or the single part's color. */
-function groupSwatch(parts: ContextSegment[]): string {
-	if (parts.length === 1) return parts[0].color;
-	const total = parts.reduce((a, s) => a + s.tokens, 0);
-	let acc = 0;
-	const stops = parts.map((s) => {
-		const from = (acc / total) * 360;
-		acc += s.tokens;
-		return `${s.color} ${from}deg ${(acc / total) * 360}deg`;
-	});
-	return `conic-gradient(${stops.join(", ")})`;
-}
-
 /**
  * One legend row. Rows with `details` (per-tool, per-skill, …) start collapsed and expand in
  * place on click. With `onClick` the row jumps somewhere instead.
@@ -117,6 +118,7 @@ function LegendRow({
 	pct,
 	background,
 	details,
+	status,
 	onClick,
 }: {
 	name: string;
@@ -124,6 +126,8 @@ function LegendRow({
 	pct: number;
 	background: string;
 	details?: DetailRows;
+	/** Replaces tokens/% while the value is not known yet (loading) or could not be loaded (error). */
+	status?: { kind: "loading" } | { kind: "error"; text: string };
 	onClick?: () => void;
 }) {
 	const [expanded, setExpanded] = useState(false);
@@ -137,6 +141,7 @@ function LegendRow({
 			/>
 			<span className="flex min-w-0 flex-1 items-center gap-0.5 whitespace-nowrap text-[var(--text)]">
 				{name}
+				{onClick && <ChevronRight size={11} className="shrink-0 text-[var(--text-40)]" />}
 				{expandable && (
 					<>
 						<span className="text-[var(--text-40)]">· {details.length}</span>
@@ -147,8 +152,19 @@ function LegendRow({
 					</>
 				)}
 			</span>
-			<span className="shrink-0 tabular-nums text-[var(--text-40)]">{compactTokens(tokens)}</span>
-			<span className="w-[40px] shrink-0 text-right tabular-nums text-[var(--text)]">{pct.toFixed(1)}%</span>
+			{status?.kind === "loading" ? (
+				<span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[var(--text-40)]">
+					<Loader2 size={11} className="animate-spin" />
+					加载中
+				</span>
+			) : status?.kind === "error" ? (
+				<span className="min-w-0 max-w-[60%] break-words text-right text-[var(--status-error)]">{status.text}</span>
+			) : (
+				<>
+					<span className="shrink-0 tabular-nums text-[var(--text-40)]">{compactTokens(tokens)}</span>
+					<span className="w-[40px] shrink-0 text-right tabular-nums text-[var(--text)]">{pct.toFixed(1)}%</span>
+				</>
+			)}
 		</>
 	);
 	const rowCls = "flex w-full items-center gap-1.5 rounded-md px-1 py-[3px] text-left text-[12px] leading-[15px]";
@@ -274,23 +290,29 @@ export function ContextRing({
 	const radius = center - strokeWidth;
 	const circumference = 2 * Math.PI * radius;
 
+	// Last good composition per session (kept visible while a refetch runs) + load state.
 	const [probe, setProbe] = useState<PromptComposition | null>(null);
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [prefetchTick, setPrefetchTick] = useState(0);
+	const wantComposition = open || prefetchTick > 0;
 	useEffect(() => {
-		if (!open || !sessionCwd) return;
+		if (!wantComposition || !sessionCwd || !selectedSessionId) return;
 		let alive = true;
-		loadComposition(sessionCwd)
+		setProbe(lastBySession[selectedSessionId] ?? null);
+		setLoadError(null);
+		loadComposition(selectedSessionId, sessionCwd)
 			.then((c) => {
 				if (!alive) return;
 				setProbe(c);
 			})
-			.catch(() => {
+			.catch((e: unknown) => {
 				if (!alive) return;
-				setProbe(null);
+				setLoadError(e instanceof Error ? e.message : String(e));
 			});
 		return () => {
 			alive = false;
 		};
-	}, [open, sessionCwd]);
+	}, [wantComposition, prefetchTick, sessionCwd, selectedSessionId]);
 
 	// Conversation estimates only while the popover is open (walks the whole live transcript).
 	const items = useLive((s) => (open && selectedSessionId ? s.sessions[selectedSessionId]?.items : undefined));
@@ -304,6 +326,9 @@ export function ContextRing({
 				ref={btnRef}
 				type="button"
 				onClick={() => setOpen((v) => !v)}
+				onPointerEnter={() => {
+					if (!open) setPrefetchTick((n) => n + 1);
+				}}
 				title={`上下文占用: ${pctInt}%${totalTokensStr ? ` (${totalTokensStr})` : ""}`}
 				className="group flex items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 			>
@@ -423,7 +448,14 @@ export function ContextRing({
 												name="系统提示词"
 												tokens={sumOf(prompt)}
 												pct={pctOf(sumOf(prompt))}
-												background={groupSwatch(prompt)}
+												background={THEME_COLORS.system}
+												status={
+													prompt.some((s) => s.pending)
+														? loadError
+															? { kind: "error", text: loadError }
+															: { kind: "loading" }
+														: undefined
+												}
 												onClick={() => {
 													setOpen(false);
 													openPromptComposition(sessionCwd);

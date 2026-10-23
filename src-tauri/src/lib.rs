@@ -367,6 +367,7 @@ pub fn run() {
             model_replace::model_probe,
             model_replace::model_kind_catalog,
             prompt_composition::prompt_composition_probe,
+            prompt_composition::session_prompt_composition,
             settings::omp_info,
             settings::omp_update_check,
             settings::omp_update_run,
