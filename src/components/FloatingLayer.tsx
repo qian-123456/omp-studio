@@ -133,6 +133,7 @@ export function computePosition(
 	placement: Placement,
 	offset: number,
 	vp: { top: number; bottom: number; left: number; right: number },
+	flip = true,
 ): FloatingPosition {
 	if (placement === "center") {
 		const width = vp.right - vp.left;
@@ -157,8 +158,8 @@ export function computePosition(
 	let maxHeight: number;
 	if (side === "bottom" || side === "top") {
 		let vertical = side;
-		if (vertical === "bottom" && size.height > roomBelow && roomAbove > roomBelow) vertical = "top";
-		else if (vertical === "top" && size.height > roomAbove && roomBelow > roomAbove) vertical = "bottom";
+		if (flip && vertical === "bottom" && size.height > roomBelow && roomAbove > roomBelow) vertical = "top";
+		else if (flip && vertical === "top" && size.height > roomAbove && roomBelow > roomAbove) vertical = "bottom";
 		p = `${vertical}-${align}` as Placement;
 		maxHeight = Math.max(80, vertical === "bottom" ? roomBelow : roomAbove);
 		const h = Math.min(size.height, maxHeight);
@@ -188,6 +189,7 @@ export function useAnchoredPosition(
 	floatingRef: RefObject<HTMLElement | null>,
 	placement: Placement = "bottom-start",
 	offset = 4,
+	flip = true,
 ): FloatingPosition | null {
 	const [pos, setPos] = useState<FloatingPosition | null>(null);
 
@@ -200,6 +202,7 @@ export function useAnchoredPosition(
 			placement,
 			offset,
 			usableViewport(),
+			flip,
 		);
 		setPos((prev) =>
 			prev &&
@@ -210,7 +213,7 @@ export function useAnchoredPosition(
 				? prev
 				: next,
 		);
-	}, [anchor, floatingRef, placement, offset]);
+	}, [anchor, floatingRef, placement, offset, flip]);
 
 	useLayoutEffect(() => {
 		if (!anchor) {
@@ -242,6 +245,8 @@ export interface FloatingLayerProps {
 	anchor: Anchor | null;
 	placement?: Placement;
 	offset?: number;
+	/** Keep the requested side even when content size changes (default: flip when it does not fit). */
+	flip?: boolean;
 	layer?: Exclude<ZLayer, "pill">;
 	/** Outside mousedown / Escape. Omit for non-dismissable surfaces (hover cards). */
 	onDismiss?: () => void;
@@ -294,6 +299,7 @@ export function FloatingLayer({
 	anchor,
 	placement = "bottom-start",
 	offset = 4,
+	flip = true,
 	layer = "popover",
 	onDismiss,
 	ignoreRefs,
@@ -304,7 +310,7 @@ export function FloatingLayer({
 	...rest
 }: FloatingLayerProps) {
 	const ref = useRef<HTMLDivElement>(null);
-	const pos = useAnchoredPosition(anchor, ref, placement, offset);
+	const pos = useAnchoredPosition(anchor, ref, placement, offset, flip);
 	const isHovercard = layer === "hovercard";
 	const [modalOpen, setModalOpen] = useState(false);
 	// Nested floating UI (a picker opened from a dialog, a menu from a popover) must stay above its parent.

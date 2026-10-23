@@ -19,7 +19,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { FloatingLayer } from "../../components/FloatingLayer";
+import { FloatingLayer, usableViewport } from "../../components/FloatingLayer";
 import type { BranchInfo, Workspace } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { addWorkspace, gitBadge, gitListBranchesDetailed, gitListWorktrees, gitRepoRoot } from "../../lib/ipc";
@@ -422,16 +422,27 @@ function BranchPickerPopover({
 	};
 
 	const [showCreateDialog, setShowCreateDialog] = useState(false);
+	// Pick the side once on open (from the room around the anchor) so typing /
+	// loading, which resize the content, can never flip the popover.
+	const [placement] = useState<"top-start" | "bottom-start">(() => {
+		if (!(anchor instanceof Element)) return "top-start";
+		const r = anchor.getBoundingClientRect();
+		const vp = usableViewport();
+		const above = r.top - 6 - vp.top;
+		const below = vp.bottom - (r.bottom + 6);
+		return above >= 380 || above >= below ? "top-start" : "bottom-start";
+	});
 
 	return (
 		<FloatingLayer
 			anchor={anchor}
-			placement="top-start"
+			placement={placement}
+			flip={false}
 			offset={6}
 			layer="popover"
 			ignoreRefs={[ignoreRef]}
 			onDismiss={onClose}
-			className="w-[280px] rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)]"
+			className="flex w-[280px] flex-col !overflow-hidden rounded-xl border-[var(--line,var(--border-divider))] !bg-[var(--bg-panel)]"
 		>
 			<PopoverSearch
 				value={query}
@@ -445,8 +456,8 @@ function BranchPickerPopover({
 					}
 				}}
 			/>
-			<div className="px-3 pt-2 pb-1 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">分支</div>
-			<div className="max-h-56 overflow-y-auto px-1 pb-1">
+			<div className="shrink-0 px-3 pt-2 pb-1 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">分支</div>
+			<div className="min-h-0 max-h-56 flex-1 overflow-y-auto px-1 pb-1">
 				{branches === null ? (
 					<div className="px-2 py-2 text-[12px] text-[var(--text-40,var(--text-dim))]">加载中…</div>
 				) : filtered.length === 0 ? (
@@ -475,7 +486,7 @@ function BranchPickerPopover({
 					})
 				)}
 			</div>
-			<div className="border-t border-[var(--line,var(--border-divider))] p-1">
+			<div className="shrink-0 border-t border-[var(--line,var(--border-divider))] p-1">
 				<ActionRow
 					icon={<Plus size={13} />}
 					label={query.trim() ? `创建并检出新分支 "${query.trim()}"` : "创建并检出新分支"}
