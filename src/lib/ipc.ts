@@ -62,7 +62,9 @@ import type {
 	ProviderTestResult,
 	PrUrlInfo,
 	ServiceInfo,
+	SearchIndexStatus,
 	SessionMeta,
+	SessionSearchHit,
 	SessionMetaPatch,
 	SessionGroup,
 	Settings,
@@ -121,6 +123,12 @@ export const updateSessionMeta = (
 
 export const markSeen = (sessionId: string) =>
 	invoke<void>("mark_seen", { sessionId });
+
+export const searchSessions = (query: string, limit?: number) =>
+	invoke<SessionSearchHit[]>("search_sessions", { query, limit: limit ?? null });
+
+export const searchIndexStatus = () =>
+	invoke<SearchIndexStatus>("search_index_status");
 
 export const acceptSession = (sessionId: string, archive: boolean) =>
 	invoke<void>("accept_session", { sessionId, archive });
@@ -452,6 +460,10 @@ export const importImageFile = (path: string) =>
  * Empty when the clipboard holds no file URLs or reading is unsupported. */
 export const clipboardFilePaths = () =>
 	invoke<string[]>("clipboard_file_paths");
+
+/** Put message text + image files on the pasteboard (macOS; text item + file-URL items). */
+export const clipboardWriteMessage = (text: string, paths: string[]) =>
+	invoke<void>("clipboard_write_message", { text, paths });
 
 /** Persist pasted/dropped bytes under the app cache dir; returns the path
  * used as the file-attachment reference (WKWebView File objects carry none). */
