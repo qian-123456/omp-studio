@@ -405,28 +405,17 @@ export function ContextRing({
 									const free = segments.find((s) => s.group === "free");
 									const sumOf = (parts: ContextSegment[]) => parts.reduce((a, s) => a + s.tokens, 0);
 									const pctOf = (tokens: number) => (tokens / rawWindow) * 100;
-									// 对话: a plain total row (not expandable), its parts listed at the same level.
-									const chatBlock =
-										chat.length > 0 ? (
-											<>
-												<LegendRow
-													name="对话"
-													tokens={sumOf(chat)}
-													pct={pctOf(sumOf(chat))}
-													background={groupSwatch(chat)}
-												/>
-												{chat.map((s) => (
-													<LegendRow
-														key={s.id}
-														name={s.name}
-														tokens={s.tokens}
-														pct={pctOf(s.tokens)}
-														background={s.color}
-														details={s.details}
-													/>
-												))}
-											</>
-										) : null;
+									// Conversation parts go straight into the list, each with its own row (no 对话 total row).
+									const chatBlock = chat.map((s) => (
+										<LegendRow
+											key={s.id}
+											name={s.name}
+											tokens={s.tokens}
+											pct={pctOf(s.tokens)}
+											background={s.color}
+											details={s.details}
+										/>
+									));
 									// 系统提示词: one row; clicking it opens the settings page.
 									const promptRow =
 										prompt.length > 0 ? (
