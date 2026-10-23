@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { ArchiveRestore, Loader2 } from "lucide-react";
+import { ArchiveRestore, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { PromptComposition } from "../../lib/contracts";
@@ -108,8 +108,8 @@ function groupSwatch(parts: ContextSegment[]): string {
 }
 
 /**
- * One legend row. `details` (per-tool, per-skill, …) are always listed beneath it.
- * With `onClick` the whole row is a button.
+ * One legend row. Rows with `details` (per-tool, per-skill, …) start collapsed and expand in
+ * place on click. With `onClick` the row jumps somewhere instead.
  */
 function LegendRow({
 	name,
@@ -126,6 +126,8 @@ function LegendRow({
 	details?: DetailRows;
 	onClick?: () => void;
 }) {
+	const [expanded, setExpanded] = useState(false);
+	const expandable = !!details && details.length > 0;
 	const head = (
 		<>
 			<span
@@ -133,27 +135,44 @@ function LegendRow({
 				style={{ background }}
 				aria-hidden="true"
 			/>
-			<span className="min-w-0 flex-1 whitespace-nowrap text-[var(--text)]">{name}</span>
+			<span className="flex min-w-0 flex-1 items-center gap-0.5 whitespace-nowrap text-[var(--text)]">
+				{name}
+				{expandable && (
+					<>
+						<span className="text-[var(--text-40)]">· {details.length}</span>
+						<ChevronRight
+							size={11}
+							className={clsx("shrink-0 text-[var(--text-40)] transition-transform duration-150", expanded && "rotate-90")}
+						/>
+					</>
+				)}
+			</span>
 			<span className="shrink-0 tabular-nums text-[var(--text-40)]">{compactTokens(tokens)}</span>
 			<span className="w-[40px] shrink-0 text-right tabular-nums text-[var(--text)]">{pct.toFixed(1)}%</span>
 		</>
 	);
 	const rowCls = "flex w-full items-center gap-1.5 rounded-md px-1 py-[3px] text-left text-[12px] leading-[15px]";
+	const rowBtnCls = clsx(rowCls, "cursor-pointer transition-colors hover:bg-[var(--ghost-hover)]");
 	return (
 		<div className="flex flex-col">
 			{onClick ? (
+				<button type="button" onClick={onClick} title="打开系统提示词设置" className={rowBtnCls}>
+					{head}
+				</button>
+			) : expandable ? (
 				<button
 					type="button"
-					onClick={onClick}
-					title="打开系统提示词设置"
-					className={clsx(rowCls, "cursor-pointer transition-colors hover:bg-[var(--ghost-hover)]")}
+					onClick={() => setExpanded((v) => !v)}
+					aria-expanded={expanded}
+					title={expanded ? "收起明细" : "展开明细"}
+					className={rowBtnCls}
 				>
 					{head}
 				</button>
 			) : (
 				<div className={rowCls}>{head}</div>
 			)}
-			{details && details.length > 0 && (
+			{expandable && expanded && (
 				<div
 					className={clsx(
 						"ml-[17px] mt-0.5 mb-1 flex flex-col gap-0.5 border-l border-[var(--line)] pl-2",
@@ -386,7 +405,7 @@ export function ContextRing({
 									const free = segments.find((s) => s.group === "free");
 									const sumOf = (parts: ContextSegment[]) => parts.reduce((a, s) => a + s.tokens, 0);
 									const pctOf = (tokens: number) => (tokens / rawWindow) * 100;
-									// 对话: a header row, then every part listed beneath it (no expanding).
+									// 对话: a plain total row (not expandable), its parts listed at the same level.
 									const chatBlock =
 										chat.length > 0 ? (
 											<>
@@ -396,18 +415,16 @@ export function ContextRing({
 													pct={pctOf(sumOf(chat))}
 													background={groupSwatch(chat)}
 												/>
-												<div className="mb-1 ml-[9px] flex flex-col border-l border-[var(--line)] pl-1">
-													{chat.map((s) => (
-														<LegendRow
-															key={s.id}
-															name={s.name}
-															tokens={s.tokens}
-															pct={pctOf(s.tokens)}
-															background={s.color}
-															details={s.details}
-														/>
-													))}
-												</div>
+												{chat.map((s) => (
+													<LegendRow
+														key={s.id}
+														name={s.name}
+														tokens={s.tokens}
+														pct={pctOf(s.tokens)}
+														background={s.color}
+														details={s.details}
+													/>
+												))}
 											</>
 										) : null;
 									// 系统提示词: one row; clicking it opens the settings page.
