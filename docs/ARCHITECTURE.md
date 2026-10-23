@@ -1,6 +1,6 @@
 # omp-workspace — Architecture & Module Contracts
 
-Source of truth for all implementers. Product requirements live in `PLAN.md` (Chinese).
+Source of truth for all implementers.
 This file pins the **contracts** (types, commands, events, DB, file layout) so modules can be
 built in parallel. Do not change a contract silently: if a module truly needs a contract change,
 note it in your final report under "Contract changes" with the exact diff.
@@ -979,7 +979,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
 - Spawn `settings.omp_binary --mode rpc --approval-mode <mode> [--model m] [--resume file] --cwd <cwd>` with `current_dir(cwd)`.
   PATH: macOS GUI apps get a minimal PATH — prepend `~/.local/bin`, `~/.bun/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and pass the user's
   login-shell PATH if obtainable (`$SHELL -lc 'echo $PATH'`, cached once).
-- Protocol (see `/tmp/oh-my-pi-src/docs/rpc.md`; verified live): wait for `ready`, send `negotiate_protocol` v2, implement `rpc_chunk`
+- Protocol (see the oh-my-pi repo, `docs/rpc.md`; verified live): wait for `ready`, send `negotiate_protocol` v2, implement `rpc_chunk`
   reassembly with validation; then `get_state` to learn `sessionId`/`sessionFile`; `set_subagent_subscription {level:"progress"}`.
   If `parent_session_id` set: `new_session {parentSession}` then `get_state` again. Correlate responses by id with a oneshot map.
   Emit every frame (except ready/chunks) as `rpc:frame` + `AppEvent::RpcFrame`. Track outstanding dialog requests for `rpc_pending_ui`

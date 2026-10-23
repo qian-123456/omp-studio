@@ -1,6 +1,6 @@
 # Getting Started
 
-> omp-workspace is the official desktop workbench for OMP AI agents: start, view, debug, and manage all your agent sessions and workspace code in a modern native window. This chapter covers the architecture, prerequisites, window layout, and starting your first session.
+> omp-workspace is a community desktop workbench for OMP AI agents: start, view, debug, and manage all your agent sessions and workspace code in a modern native window. This chapter covers the architecture, prerequisites, window layout, and starting your first session.
 
 In this chapter, you will learn how to:
 
