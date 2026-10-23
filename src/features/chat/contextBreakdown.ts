@@ -46,7 +46,7 @@ export const THEME_COLORS: Record<ContextSegmentId, string> = {
 
 export const CLAUDE_NAMES_ZH: Record<ContextSegmentId, string> = {
 	tools: "系统工具",
-	system: "系统提示词",
+	system: "基础指令",
 	mcp: "MCP 工具",
 	skills: "Skills",
 	rules: "规则文件",

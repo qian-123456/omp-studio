@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { ArchiveRestore, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ArchiveRestore, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { PromptComposition } from "../../lib/contracts";
@@ -150,6 +150,90 @@ function LegendRow({ item, pct, details }: { item: ContextSegment; pct: number; 
 
 /** Legend rows that can expand into the probe's per-item breakdown. */
 const DETAIL_SEGMENTS: Partial<Record<string, true>> = { mcp: true, skills: true, rules: true };
+
+/** Categories the probe measured inside the system prompt (everything except chat and free space). */
+const PROMPT_SEGMENTS: Partial<Record<string, true>> = {
+	system: true,
+	tools: true,
+	mcp: true,
+	skills: true,
+	rules: true,
+	other: true,
+};
+
+/**
+ * 「系统提示词」 group: one row totalling every prompt category, expanding into
+ * those categories (each with its ring color) plus the full-composition link.
+ */
+function PromptGroupRow({
+	parts,
+	windowSize,
+	detailsFor,
+	onOpenComposition,
+}: {
+	parts: ContextSegment[];
+	windowSize: number;
+	detailsFor: (id: string) => DetailRow[] | undefined;
+	onOpenComposition: () => void;
+}) {
+	const [expanded, setExpanded] = useState(false);
+	const total = parts.reduce((a, s) => a + s.tokens, 0);
+	// Mini pie swatch: the group is made of several ring colors.
+	let acc = 0;
+	const stops = parts.map((s) => {
+		const from = (acc / total) * 360;
+		acc += s.tokens;
+		return `${s.color} ${from}deg ${(acc / total) * 360}deg`;
+	});
+	return (
+		<div className="flex flex-col">
+			<button
+				type="button"
+				onClick={() => setExpanded((v) => !v)}
+				aria-expanded={expanded}
+				title={expanded ? "收起构成" : "展开构成"}
+				className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1 py-[3px] text-left text-[12px] leading-[15px] transition-colors hover:bg-[var(--ghost-hover)]"
+			>
+				<span
+					className="size-[10px] shrink-0 rounded-full"
+					style={{ background: `conic-gradient(${stops.join(", ")})` }}
+					aria-hidden="true"
+				/>
+				<span className="flex min-w-0 flex-1 items-center gap-0.5 whitespace-nowrap text-[var(--text)]">
+					系统提示词
+					<span className="text-[var(--text-40)]">· {parts.length} 类</span>
+					<ChevronRight
+						size={11}
+						className={clsx("shrink-0 text-[var(--text-40)] transition-transform duration-150", expanded && "rotate-90")}
+					/>
+				</span>
+				<span className="shrink-0 tabular-nums text-[var(--text-40)]">{compactTokens(total)}</span>
+				<span className="w-[40px] shrink-0 text-right tabular-nums text-[var(--text)]">
+					{((total / windowSize) * 100).toFixed(1)}%
+				</span>
+			</button>
+			{expanded && (
+				<div className="mb-1 ml-[9px] flex flex-col border-l border-[var(--line)] pl-1">
+					{parts.map((s) => (
+						<LegendRow
+							key={s.id}
+							item={s}
+							pct={(s.tokens / windowSize) * 100}
+							details={detailsFor(s.id)}
+						/>
+					))}
+					<button
+						type="button"
+						onClick={onOpenComposition}
+						className="mt-1 ml-1 self-start whitespace-nowrap rounded-full bg-[var(--ghost-hover)] px-2.5 py-0.5 text-[11px] leading-[15px] text-[var(--text-60)] transition-colors hover:text-[var(--text)]"
+					>
+						查看完整构成与优化建议
+					</button>
+				</div>
+			)}
+		</div>
+	);
+}
 
 interface ContextRingProps {
 	/** Context percentage, typically 0.0 to 1.0 (can exceed 1.0 if overloaded). */
@@ -318,50 +402,80 @@ export function ContextRing({
 					}}
 					className="border border-[var(--line)] rounded-2xl py-2 shadow-apple-card text-[var(--text)] flex flex-col"
 				>
-					{/* Header Button (P in c2d611398) */}
-					<div className="flex items-center justify-between px-3 py-1 min-h-[20px]">
-						<span className="text-[12px] leading-[15px] text-[var(--text-40)]">上下文窗口</span>
-						<div className="flex items-center gap-1.5">
-							{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 && (
-								<span className="text-[12px] leading-[15px] text-[var(--text-40)] tabular-nums">
-									{compactTokens(rawTokens)} / {compactTokens(rawWindow)} ({pctInt}%)
-								</span>
-							)}
+					{/* Header: usage numbers + compact action (outside click dismisses the popover). */}
+					<div className="flex min-h-[24px] items-center gap-2 px-3 py-0.5">
+						<span className="whitespace-nowrap text-[12px] leading-[15px] text-[var(--text-40)]">上下文窗口</span>
+						{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 && (
+							<span className="whitespace-nowrap text-[12px] leading-[15px] tabular-nums text-[var(--text-60)]">
+								{compactTokens(rawTokens)} / {compactTokens(rawWindow)}
+							</span>
+						)}
+						{onCompact && (
 							<button
 								type="button"
-								onClick={() => setOpen(false)}
-								className="text-[var(--text-40)] hover:text-[var(--text)] p-0.5 rounded transition-colors ml-0.5"
-								title="收起"
+								disabled={compacting || compactDisabled}
+								onClick={() => void onCompact()}
+								title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
+								className="ml-auto flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[12px] leading-[15px] text-[var(--text-60)] transition-colors hover:border-[var(--text-30)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
 							>
-								<ChevronDown size={12} />
+								{compacting ? <Loader2 size={11} className="animate-spin" /> : <ArchiveRestore size={11} />}
+								<span>{compacting ? "压缩中" : "压缩"}</span>
 							</button>
-						</div>
+						)}
 					</div>
 
-					{/* Donut + category legend; MCP / Skills / rules rows expand into their items. */}
+					{/* Donut + legend: chat, the system-prompt group (expands into its parts), free space. */}
 					{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 ? (
 						<div className="mt-1 flex items-center gap-4 px-3 pb-1">
-							<UsageDonut segments={segments} windowSize={rawWindow} pctInt={pctInt} />
+							<div className="flex shrink-0 flex-col items-center gap-1.5">
+								<UsageDonut segments={segments} windowSize={rawWindow} pctInt={pctInt} />
+								{totalTokensStr && (
+									<span
+										className="whitespace-nowrap text-[11px] leading-[14px] tabular-nums text-[var(--text-40)]"
+										title="本会话累计消耗的 token"
+									>
+										累计 {totalTokensStr}
+									</span>
+								)}
+							</div>
 							<div className="flex min-w-0 flex-1 flex-col">
-								{segments.map((item) => {
-									const details =
-										probe && DETAIL_SEGMENTS[item.id]
+								{(() => {
+									const parts = segments.filter((s) => PROMPT_SEGMENTS[s.id]);
+									const promptTotal = parts.reduce((a, s) => a + s.tokens, 0);
+									const messages = segments.find((s) => s.id === "messages");
+									const free = segments.find((s) => s.id === "free");
+									const detailsFor = (id: string) =>
+										probe && DETAIL_SEGMENTS[id]
 											? probe.categories
-													.find((c) => c.id === item.id)
+													.find((c) => c.id === id)
 													?.items.map((it) => ({
 														name: it.detail ? `${it.detail} · ${it.title}` : it.title,
 														tokens: it.tokens,
 													}))
 											: undefined;
+									const group =
+										parts.length > 0 ? (
+											<PromptGroupRow
+												key="prompt"
+												parts={parts}
+												windowSize={rawWindow}
+												detailsFor={detailsFor}
+												onOpenComposition={() => {
+													setOpen(false);
+													openPromptComposition(sessionCwd);
+												}}
+											/>
+										) : null;
+									const chat = messages ? (
+										<LegendRow key="messages" item={messages} pct={(messages.tokens / rawWindow) * 100} />
+									) : null;
 									return (
-										<LegendRow
-											key={item.id}
-											item={item}
-											pct={(item.tokens / rawWindow) * 100}
-											details={details}
-										/>
+										<>
+											{(messages?.tokens ?? 0) >= promptTotal ? [chat, group] : [group, chat]}
+											{free && <LegendRow item={free} pct={(free.tokens / rawWindow) * 100} />}
+										</>
 									);
-								})}
+								})()}
 							</div>
 						</div>
 					) : (
@@ -384,44 +498,13 @@ export function ContextRing({
 										))}
 								</div>
 							)}
-						</div>
-					)}
-
-					{/* Divider line styled via var(--line) */}
-					<div className="mx-3 my-1.5 h-px bg-[var(--line)]" />
-
-					{/* Footer: See detailed breakdown link + token total + compress button */}
-					<div className="flex items-center justify-between px-3 py-1 min-h-[20px] text-[12px] leading-[15px]">
-						<button
-							type="button"
-							onClick={() => {
-								setOpen(false);
-								openPromptComposition(sessionCwd);
-							}}
-							className="rounded-full border border-[var(--line)] px-2.5 py-0.5 whitespace-nowrap text-[var(--text-60)] transition-colors hover:border-[var(--text-30)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-						>
-							查看系统提示词构成
-						</button>
-						<div className="flex items-center gap-2 text-[var(--text-40)]">
-							{totalTokensStr && <span className="tabular-nums">累计 {totalTokensStr}</span>}
-							{onCompact && (
-								<button
-									type="button"
-									disabled={compacting || compactDisabled}
-									onClick={() => void onCompact()}
-									title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
-									className="flex items-center gap-1 px-2 py-0.5 rounded border border-[var(--line)] text-[var(--text-60)] hover:text-[var(--text)] hover:bg-[var(--ghost-hover)] hover:border-[var(--text-30)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-								>
-									{compacting ? (
-										<Loader2 size={10} className="animate-spin" />
-									) : (
-										<ArchiveRestore size={10} />
-									)}
-									<span>{compacting ? "压缩中" : "压缩"}</span>
-								</button>
+							{totalTokensStr && (
+								<div className="mt-2 whitespace-nowrap text-[11px] leading-[14px] tabular-nums text-[var(--text-40)]">
+									累计 {totalTokensStr}
+								</div>
 							)}
 						</div>
-					</div>
+					)}
 				</FloatingLayer>
 			)}
 		</div>
