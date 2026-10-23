@@ -37,11 +37,8 @@ import {
 	SquarePen,
 	Search,
 	Settings as SettingsIcon,
-	SlidersHorizontal,
 	Tag,
 	Trash2,
-	UnfoldVertical,
-	FoldVertical,
 	PanelLeftClose,
 	X,
 } from "lucide-react";
@@ -56,7 +53,6 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import type { Anchor } from "../../components/FloatingLayer";
 import { FloatingLayer } from "../../components/FloatingLayer";
-import { SearchInput } from "../../components/SearchInput";
 import { openSettingsTarget } from "../settings/settingsTargets";
 import { HoverScrollText } from "../../components/HoverScrollText";
 import type {
@@ -96,12 +92,12 @@ import {
 	type GroupedSessionsResult,
 	DELETED_LABEL,
 	UNASSIGNED_LABEL,
-	filterSessions,
 	groupSessions,
 	inferWorktreeName,
 	needsAttention,
 	snapshotOrder,
 } from "./grouping";
+import { visibleCut } from "./paging";
 import {
 	SPACE_MODE_META,
 	SPACE_MODES,
@@ -121,7 +117,8 @@ import { SessionDialogs } from "./SessionDialogs";
 import { LoadFailed } from "../../components/LoadFailed";
 import { deriveLoadState } from "../../lib/loadState";
 import { SessionRow } from "./SessionRow";
-import { SIDEBAR_SEARCH_OPEN_EVENT } from "./sidebarShortcuts";
+import { SessionSearchDialog } from "./search/SessionSearchDialog";
+import { useSearchDialog } from "./search/searchStore";
 import { useSidebarStore } from "./sidebarStore";
 import { SIDEBAR_LIST_ATTR, getVisibleSessionIds } from "./visibleRows";
 import { groupsForMode, splitSessionsByGroup, useSessionGroups } from "./sessionGroups";
@@ -287,10 +284,7 @@ export function SessionSidebar() {
 	const groupOpen = useSidebarStore((s) => s.groupOpen);
 	const setGroupOpen = useSidebarStore((s) => s.setGroupOpen);
 	const toggleGroup = useSidebarStore((s) => s.toggleGroup);
-	const searchQuery = useSidebarStore((s) => s.searchQuery);
-	const setSearchQuery = useSidebarStore((s) => s.setSearchQuery);
 	const showArchived = useSidebarStore((s) => s.showArchived);
-	const setShowArchived = useSidebarStore((s) => s.setShowArchived);
 	const expandedSections = useSidebarStore((s) => s.expandedSections);
 	const setSectionCount = useSidebarStore((s) => s.setSectionCount);
 	const toggleSection = useSidebarStore((s) => s.toggleSection);
@@ -303,30 +297,18 @@ export function SessionSidebar() {
 		void loadSessionGroups();
 	}, [loadSessionGroups]);
 
-	const searching = searchQuery.trim().length > 0;
-
-	// C1, C3 / Q03: derive isGroupOpen from groupOpen and force open while searching
 	const isGroupOpen = useCallback(
 		(key: string, defaultOpen = true) => {
-			if (searching) return true;
 			const open = groupOpen[key];
 			return open !== undefined ? open : defaultOpen;
 		},
-		[groupOpen, searching],
+		[groupOpen],
 	);
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 
 	// Dropdown and menu state
 	const [modeMenuOpen, setModeMenuOpen] = useState(false);
-	const [searchOpen, setSearchOpen] = useState(false);
-	// ⌘F (focusSidebarSearch) asks the sidebar to reveal the collapsed search row.
-	useEffect(() => {
-		const open = () => setSearchOpen(true);
-		window.addEventListener(SIDEBAR_SEARCH_OPEN_EVENT, open);
-		return () => window.removeEventListener(SIDEBAR_SEARCH_OPEN_EVENT, open);
-	}, []);
-	const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
 	const [plusMenu, setPlusMenu] = useState<PlusMenuState | null>(null);
 	const [wsMenu, setWsMenu] = useState<WsMenuState | null>(null);
 	const wsMenuTriggerRef = useRef<HTMLElement | null>(null);
@@ -361,8 +343,6 @@ export function SessionSidebar() {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const modeSwitcherRef = useRef<HTMLButtonElement>(null);
 
-	const filterBtnRef = useRef<HTMLButtonElement>(null);
-	const searchInputRef = useRef<HTMLInputElement>(null);
 	const plusTriggerRef = useRef<HTMLElement | null>(null);
 	const debounceTimerRef = useRef<number | null>(null);
 
@@ -508,7 +488,6 @@ export function SessionSidebar() {
 	const groupByWorktree = activeMode === "code" && groupByWorktreeSetting;
 	const grouped = useMemo(() => {
 		const res = groupSessions(sessionsList, workspaces, {
-			searchQuery,
 			showArchived,
 			mode: activeMode,
 			frozenOrder,
@@ -517,7 +496,7 @@ export function SessionSidebar() {
 		});
 		lastGroupedRef.current = res;
 		return res;
-	}, [sessionsList, workspaces, searchQuery, showArchived, activeMode, frozenOrder, worktrees, groupByWorktree]);
+	}, [sessionsList, workspaces, showArchived, activeMode, frozenOrder, worktrees, groupByWorktree]);
 
 	// 无项目 sessions of the active mode, split into per-group buckets.
 	const noProjectSplit = useMemo(() => {
@@ -526,75 +505,6 @@ export function SessionSidebar() {
 			: [];
 		return splitSessionsByGroup(all, modeGroups);
 	}, [grouped.globalGroup, modeGroups]);
-
-	// Collect group keys for expand/collapse all
-	const allGroupKeys = useMemo(() => {
-		const keys: string[] = [];
-		if (grouped.pinnedSessions.length > 0) keys.push("__pinned");
-		// 无项目 area + its user groups
-		keys.push("__global");
-		for (const g of modeGroups) keys.push(`grp:${g.id}`);
-		if (showLoose) {
-			keys.push("__chunk:today", "__chunk:yesterday", "__chunk:last7Days", "__chunk:earlier");
-		}
-		for (const wg of grouped.workspaceGroups) {
-			keys.push(wg.workspace.id);
-			if (wg.subgroups.some((s) => !s.deleted && s.sessions.length === 0))
-				keys.push(`${wg.workspace.id}|__empty`);
-			if (wg.deletedSubgroups.length > 0) keys.push(`${wg.workspace.id}|__deleted`);
-		}
-		keys.push("__unassigned");
-		if (grouped.deletedSessions.length > 0) keys.push("__deleted");
-		return keys;
-	}, [grouped, modeGroups, searching]);
-
-
-	const areAllCollapsed = useMemo(() => {
-		if (allGroupKeys.length === 0) return false;
-		return allGroupKeys.every(
-			(id) =>
-				!isGroupOpen(
-					id,
-					id !== "__unassigned" &&
-						!id.endsWith("__deleted") &&
-						!id.endsWith("__empty"),
-				),
-		);
-	}, [allGroupKeys, isGroupOpen, groupOpen]);
-
-	// S13: Merge into previous state, covers subgroups, no-op while searching
-	const handleToggleAllGroups = () => {
-		if (searching) return;
-		const shouldExpand = areAllCollapsed;
-		setGroupOpen((prev) => {
-			const next = { ...prev };
-			for (const id of allGroupKeys) {
-				next[id] = shouldExpand;
-			}
-			return next;
-		});
-		// Also expand/collapse all subgroups
-		const subKeys: string[] = [];
-		for (const wg of grouped.workspaceGroups) {
-			for (const sub of wg.subgroups) {
-				// Empty live subgroups render inside the "__empty" folder and
-				// get that folder's scope prefix instead.
-				subKeys.push(
-					!sub.deleted && sub.sessions.length === 0
-						? `${wg.workspace.id}|__empty|${sub.key}|sub`
-						: `${wg.workspace.id}|${sub.key}|sub`,
-				);
-			}
-			for (const sub of wg.deletedSubgroups) {
-				subKeys.push(`${wg.workspace.id}|__deleted|${sub.key}|sub`);
-			}
-		}
-		if (subKeys.length > 0) {
-			for (const key of subKeys) {
-				setSectionCount(key, shouldExpand ? 1 : 0);
-			}
-		}
-	};
 
 	// Centralized batch actions (C7, C8: stable deps, toggle pinned)
 	const handleBatchAction = useCallback(
@@ -666,7 +576,7 @@ export function SessionSidebar() {
 	// Reset frozen order on filter/mode changes, blur, pointerdown outside, or menu interactions (C9)
 	useEffect(() => {
 		setFrozenOrder(undefined);
-	}, [searchQuery, showArchived, activeMode]);
+	}, [showArchived, activeMode]);
 
 	useEffect(() => {
 		const handleBlur = () => setFrozenOrder(undefined);
@@ -684,10 +594,10 @@ export function SessionSidebar() {
 	}, []);
 
 	useEffect(() => {
-		if (wsMenu || plusMenu || filterPopoverOpen || modeMenuOpen || grpMenu) {
+		if (wsMenu || plusMenu || modeMenuOpen || grpMenu) {
 			setFrozenOrder(undefined);
 		}
-	}, [wsMenu, plusMenu, filterPopoverOpen, modeMenuOpen, grpMenu]);
+	}, [wsMenu, plusMenu, modeMenuOpen, grpMenu]);
 
 	// Q06 + reveal: when selectedSessionId changes and its row is not rendered,
 	// expand the containing workspace/group and subgroup, then scroll into view.
@@ -714,9 +624,8 @@ export function SessionSidebar() {
 		if (selectedSessionId === prevRevealedIdRef.current) return;
 		prevRevealedIdRef.current = selectedSessionId;
 
-		// 1. Filter checks: do nothing if filtered out by search / archived / mode
+		// 1. Filter checks: do nothing if filtered out by archived / mode
 		if (target.archived && !showArchived) return;
-		if (searching && filterSessions([target], { searchQuery, showArchived }).length === 0) return;
 		if (target.mode !== activeMode) return;
 
 		// 2. Identify containing group and subgroup
@@ -822,8 +731,6 @@ export function SessionSidebar() {
 		groupOpen,
 		expandedSections,
 		showArchived,
-		searching,
-		searchQuery,
 		activeMode,
 		globalWs,
 		setGroupOpen,
@@ -1037,7 +944,6 @@ export function SessionSidebar() {
 			}
 		} else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
 			// S12/G17: toggle the group the highlighted row actually lives in
-			if (searching) return;
 			const targetId = highlightId ?? selectedSessionId;
 			if (!targetId) return;
 
@@ -1122,7 +1028,6 @@ export function SessionSidebar() {
 			aria-expanded={modeMenuOpen}
 			onClick={() => {
 				setModeMenuOpen((v) => !v);
-				setFilterPopoverOpen(false);
 			}}
 			className="group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors hover:bg-[var(--bg-hover)]/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 			title={`${modeMeta.label} 模式 (点击切换)`}
@@ -1168,22 +1073,10 @@ export function SessionSidebar() {
 	const searchButton = (
 		<button
 			type="button"
-			onClick={() => {
-				if (searchOpen && !searchQuery && !showArchived) {
-					setSearchOpen(false);
-				} else {
-					setSearchOpen(true);
-					setTimeout(() => searchInputRef.current?.focus(), 0);
-				}
-			}}
+			onClick={() => useSearchDialog.getState().openDialog()}
 			aria-label="搜索"
-			title="搜索会话、分支 (⌘F)"
-			className={clsx(
-				"flex h-7 w-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
-				searchOpen || searchQuery
-					? "bg-[var(--bg-active-fill)] text-neutral-100"
-					: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
-			)}
+			title="搜索会话与聊天内容 (⌘F)"
+			className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 		>
 			<Search size={16} strokeWidth={1.5} />
 		</button>
@@ -1246,65 +1139,6 @@ export function SessionSidebar() {
 				</div>
 			)}
 			<div className="relative border-b border-[var(--border-divider)] bg-transparent px-2 pb-2 pt-1">
-
-				{/* Search & Filter Bar: revealed by the search icon / ⌘F, or while a filter is active */}
-				{(searchOpen || searchQuery || showArchived) && (
-				<div className="mt-1.5 flex items-center gap-1.5">
-					<div data-sidebar-search="true" className="min-w-0 flex-1">
-						<SearchInput
-							ref={searchInputRef}
-							value={searchQuery}
-							onChange={setSearchQuery}
-							onKeyDown={(e) => {
-								if (isComposing(e)) return;
-								if (e.key === "ArrowDown") {
-									e.preventDefault();
-									scrollRef.current?.focus();
-									const visibleIds = getVisibleSessionIds();
-									if (visibleIds[0]) setHighlightId(visibleIds[0]);
-								} else if (e.key === "Enter") {
-									e.preventDefault();
-									const visibleIds = getVisibleSessionIds();
-									if (visibleIds[0]) selectSession(visibleIds[0]);
-								} else if (e.key === "Escape") {
-									e.preventDefault();
-									claimEscape(e);
-									if (searchQuery) setSearchQuery("");
-									else setSearchOpen(false);
-									scrollRef.current?.focus();
-								}
-							}}
-							placeholder="搜索会话、分支..."
-							iconSize={13}
-							inputClassName="w-full rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500/70 transition-colors focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
-						/>
-					</div>
-
-					{/* Filter & View Options Button */}
-					<button
-						ref={filterBtnRef}
-						type="button"
-						aria-haspopup="menu"
-						aria-expanded={filterPopoverOpen}
-						onClick={() => {
-							setFilterPopoverOpen((v) => !v);
-							setModeMenuOpen(false);
-						}}
-						className={clsx(
-							"relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
-							showArchived
-								? "border-amber-500/40 bg-amber-500/15 text-amber-300"
-								: "hairline bg-[var(--well-bg)] text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
-						)}
-						title="过滤与显示设置"
-					>
-						<SlidersHorizontal size={13} />
-						{showArchived && (
-							<span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-amber-400" />
-						)}
-					</button>
-				</div>
-				)}
 
 				{/* First-class Navigation List (S22: real accessible buttons, no button-in-button) */}
 				<div className="space-y-1 pt-1.5 pb-0.5">
@@ -1443,63 +1277,6 @@ export function SessionSidebar() {
 				)}
 			</div>
 
-			{/* Filter Popover */}
-			{filterPopoverOpen && filterBtnRef.current && (
-				<FloatingLayer
-					anchor={filterBtnRef.current}
-					placement="bottom-end"
-					offset={4}
-					layer="popover"
-					ignoreRefs={[filterBtnRef]}
-					onDismiss={() => setFilterPopoverOpen(false)}
-					className="w-56 p-2 text-xs text-neutral-300"
-				>
-					<div
-						role="menu"
-						aria-label="显示与过滤"
-						className="space-y-0.5 focus:outline-none"
-					>
-						<div className="px-1 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-							显示与过滤
-						</div>
-						<button
-							type="button"
-							role="menuitem"
-							onClick={() => setShowArchived(!showArchived)}
-							className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left transition-colors hover:bg-neutral-800"
-						>
-							<div className="flex items-center gap-2">
-								<Archive size={13} className="text-amber-400" />
-								<span>显示已归档会话</span>
-							</div>
-							{showArchived && <Check size={13} className="text-indigo-400" />}
-						</button>
-						<div className="my-1 border-t border-neutral-800" />
-						<button
-							type="button"
-							role="menuitem"
-							onClick={() => {
-								handleToggleAllGroups();
-								setFilterPopoverOpen(false);
-							}}
-							className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
-						>
-							{areAllCollapsed ? (
-								<>
-									<UnfoldVertical size={13} />
-									<span>全部展开</span>
-								</>
-							) : (
-								<>
-									<FoldVertical size={13} />
-									<span>全部折叠</span>
-								</>
-							)}
-						</button>
-					</div>
-				</FloatingLayer>
-			)}
-
 			{/* Visible Error Notification Banner */}
 			{errorMessage && (
 				<div className="flex items-center justify-between border-b border-rose-900/50 bg-rose-950/40 px-3 py-2 text-rose-200 text-xs">
@@ -1610,7 +1387,6 @@ export function SessionSidebar() {
 											<SessionList
 												sessions={grouped.pinnedSessions}
 												scopeKey="__pinned"
-												searching={searching}
 												onSetCount={setSectionCount}
 												expanded={expandedSections}
 												workspaces={workspaces}
@@ -1754,7 +1530,6 @@ export function SessionSidebar() {
 																		<SessionList
 																			sessions={grpSessions}
 																			scopeKey={grpKey}
-																			searching={searching}
 																			onSetCount={setSectionCount}
 																			expanded={expandedSections}
 																			workspaces={workspaces}
@@ -1766,11 +1541,9 @@ export function SessionSidebar() {
 																		/>
 																	</div>
 																) : (
-																	!searching && (
-																		<div className="ml-[22px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
-																			暂无会话
-																		</div>
-																	)
+																	<div className="ml-[22px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
+																		暂无会话
+																	</div>
 																)}
 															</div>
 														)}
@@ -1871,7 +1644,6 @@ export function SessionSidebar() {
 																	<SessionList
 																		sessions={chunk.sessions}
 																		scopeKey={`__global_${chunk.key}`}
-																		searching={searching}
 																		onSetCount={setSectionCount}
 																		expanded={expandedSections}
 																		workspaces={workspaces}
@@ -1887,13 +1659,11 @@ export function SessionSidebar() {
 												})}
 											</div>
 										)}
-										{noProjectSplit.ungrouped.length === 0 &&
-											modeGroups.length === 0 &&
-											!searching && (
-												<div className="ml-[8px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
-													暂无会话
-												</div>
-											)}
+										{noProjectSplit.ungrouped.length === 0 && modeGroups.length === 0 && (
+											<div className="ml-[8px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
+												暂无会话
+											</div>
+										)}
 									</div>
 							</div>
 							);
@@ -1999,7 +1769,6 @@ export function SessionSidebar() {
 																		key={sub.key}
 																		sub={sub}
 																		scopeKey={`${wg.workspace.id}|${sub.key}`}
-																		searching={searching}
 																		onSetCount={setSectionCount}
 																		expanded={expandedSections}
 																		onToggle={toggleSection}
@@ -2018,11 +1787,10 @@ export function SessionSidebar() {
 																	/>
 																))
 															) : (
-																<div className="ml-[22px] pl-2 my-0.5">
+																<div className="ml-[18px] my-0.5">
 																	<SessionList
 																		sessions={liveSubs[0]?.sessions ?? []}
 																		scopeKey={`${wg.workspace.id}|default`}
-																		searching={searching}
 																		onSetCount={setSectionCount}
 																		expanded={expandedSections}
 																		workspaces={workspaces}
@@ -2037,7 +1805,6 @@ export function SessionSidebar() {
 																folderKey={`${wg.workspace.id}|__empty`}
 																ws={wg.workspace}
 																subgroups={emptySubs}
-																searching={searching}
 																isOpen={isGroupOpen(
 																	`${wg.workspace.id}|__empty`,
 																	false,
@@ -2061,7 +1828,6 @@ export function SessionSidebar() {
 																folderKey={`${wg.workspace.id}|__deleted`}
 																ws={wg.workspace}
 																subgroups={wg.deletedSubgroups}
-																searching={searching}
 																isOpen={isGroupOpen(
 																	`${wg.workspace.id}|__deleted`,
 																	false,
@@ -2125,9 +1891,7 @@ export function SessionSidebar() {
 												dirGroups.length,
 											);
 											const hiddenDirs = dirGroups.length - visibleDirCount;
-											const shownDirs = searching
-												? dirGroups
-												: dirGroups.slice(0, visibleDirCount);
+											const shownDirs = dirGroups.slice(0, visibleDirCount);
 											return (
 											<div className="pb-1" data-group-key="__unassigned">
 												{dirGroups.length > 0 ? (
@@ -2136,13 +1900,12 @@ export function SessionSidebar() {
 														// Default collapsed so the bucket renders as a
 														// compact list of directory headers, not a wall
 														// of session rows ("线性堆叠太多").
-														const isSubOpen = searching || isGroupOpen(subKey, false);
+														const isSubOpen = isGroupOpen(subKey, false);
 														return (
 															<UnassignedDirSubgroup
 																key={grp.key}
 																grp={grp}
 																subKey={subKey}
-																searching={searching}
 																isSubOpen={isSubOpen}
 																onToggle={() => toggleGroup(subKey, false)}
 																onSetCount={setSectionCount}
@@ -2170,7 +1933,6 @@ export function SessionSidebar() {
 														<SessionList
 															sessions={grouped.unassigned}
 															scopeKey="__unassigned"
-															searching={searching}
 															onSetCount={setSectionCount}
 															expanded={expandedSections}
 															workspaces={workspaces}
@@ -2180,7 +1942,7 @@ export function SessionSidebar() {
 														/>
 													</div>
 												)}
-												{dirGroups.length > UNASSIGNED_DIR_LIMIT && !searching && (
+												{dirGroups.length > UNASSIGNED_DIR_LIMIT && (
 													<div className="flex items-center py-1.5 px-3 ml-[14px] text-[11px] font-medium select-none">
 														<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
 														{hiddenDirs > 0 && (
@@ -2290,7 +2052,6 @@ export function SessionSidebar() {
 													<SessionList
 														sessions={grouped.deletedSessions}
 														scopeKey="__deleted"
-														searching={searching}
 														onSetCount={setSectionCount}
 														expanded={expandedSections}
 														workspaces={workspaces}
@@ -2306,46 +2067,10 @@ export function SessionSidebar() {
 
 						</>
 						)}
-						{/* Search with 0 hits or Empty State (G11, S20) */}
+						{/* Empty State (G11, S20) */}
 						{grouped.totalVisible === 0 && showProjects && (
 							<div className="flex flex-col items-center justify-center p-6 text-center text-neutral-500">
-								{searchQuery ? (
-									(() => {
-										// Search is scoped to the active space; archived matches
-										// of this mode get a one-click hint.
-										const modeSessionList = Object.values(sessions).filter(
-											(s) => s.mode === activeMode,
-										);
-										const allMatches = filterSessions(modeSessionList, {
-											searchQuery,
-											showArchived: true,
-										});
-										const archivedMatches = allMatches.filter((s) => s.archived);
-
-										return (
-											<div className="space-y-2">
-												<Search size={24} className="mx-auto text-neutral-600" />
-												<div className="text-xs">未找到匹配会话</div>
-												{archivedMatches.length > 0 && !showArchived && (
-													<button
-														type="button"
-														onClick={() => setShowArchived(true)}
-														className="block mx-auto text-[11px] text-amber-400 hover:underline"
-													>
-														含归档 {archivedMatches.length} 条 · 显示归档
-													</button>
-												)}
-												<button
-													type="button"
-													onClick={() => setSearchQuery("")}
-													className="block mx-auto mt-2 text-[11px] text-neutral-400 hover:underline"
-												>
-													清空搜索条件
-												</button>
-											</div>
-										);
-									})()
-								) : Object.keys(sessions).length === 0 && loadError ? (
+								{Object.keys(sessions).length === 0 && loadError ? (
 									// P5: retryable inline error block when loading failed
 									<div className="space-y-2">
 										<AlertCircle size={24} className="mx-auto text-rose-500" />
@@ -2607,6 +2332,7 @@ export function SessionSidebar() {
 
 			{/* Global dialogs rendered portaled once (Contract 3, S7) */}
 			<SessionDialogs />
+			<SessionSearchDialog />
 		</aside>
 	);
 }
@@ -2614,7 +2340,6 @@ export function SessionSidebar() {
 interface SessionListProps {
 	sessions: SessionMeta[];
 	scopeKey: string;
-	searching: boolean;
 	expanded: Record<string, number>;
 	onSetCount: (key: string, count: number) => void;
 	withSpine?: boolean;
@@ -2631,7 +2356,6 @@ interface SessionListProps {
 function SessionList({
 	sessions,
 	scopeKey,
-	searching,
 	withSpine = false,
 	large = false,
 	recentLimit = RECENT_LIMIT,
@@ -2643,75 +2367,42 @@ function SessionList({
 }: SessionListProps) {
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 
-	const SEARCH_LIMIT = 8;
-	const SEARCH_STEP = 10;
-	const limit = searching ? SEARCH_LIMIT : recentLimit;
-	const step = searching ? SEARCH_STEP : RECENT_STEP;
+	const limit = recentLimit;
+	const step = RECENT_STEP;
 
 	const moreKey = `${scopeKey}|more`;
-	const visibleCount = Math.min(
+	const userCount = Math.min(
 		Math.max(expanded[moreKey] ?? limit, limit),
 		sessions.length,
 	);
 
-	// G5, P4: Rows beyond the limit remain rendered if needsAttention(s) or s.id === selectedSessionId
-	const isRowRendered = (s: SessionMeta, idx: number) =>
-		idx < visibleCount || needsAttention(s) || s.id === selectedSessionId;
-
-	const renderedSessions = sessions.filter(isRowRendered);
-	const hiddenCount = sessions.length - renderedSessions.length;
+	const visibleCount = visibleCut(sessions, userCount, selectedSessionId, needsAttention);
+	const hiddenCount = sessions.length - visibleCount;
+	// A live/selected row below the user's count pushed the cut down.
+	const forced = visibleCount > userCount;
 
 	// C17: 展开 N 条 label = number of not-yet-rendered rows that the click will reveal
 	const nextVisibleCount = Math.min(visibleCount + step, sessions.length);
-	const newlyRevealedInWindow = sessions
-		.slice(visibleCount, nextVisibleCount)
-		.filter((s) => !needsAttention(s) && s.id !== selectedSessionId).length;
-	const expandable =
-		newlyRevealedInWindow > 0
-			? newlyRevealedInWindow
-			: Math.min(step, hiddenCount);
+	const expandable = nextVisibleCount - visibleCount;
 	const showExpand = hiddenCount > 0;
-	const showCollapse = visibleCount > limit;
+	// Collapsing is pointless when a forced row keeps the cut past the user's count.
+	const showCollapse = userCount > limit && !forced;
 
-	// Q11: where a sticky row sits above rows still hidden by paging, draw a
-	// hairline gap row labelled with the skipped count at that exact gap —
-	// once per gap, not the earlier per-row "···" that read as broken rows.
-	const skippedBefore = new Map<number, number>();
-	let skipped = 0;
-	for (let i = 0; i < sessions.length; i++) {
-		if (isRowRendered(sessions[i], i)) {
-			if (skipped > 0) {
-				skippedBefore.set(i, skipped);
-				skipped = 0;
-			}
-		} else {
-			skipped++;
-		}
-	}
+	const visibleSessions = sessions.slice(0, visibleCount);
 
 	return (
 		<>
-			{sessions.map((session, idx) => {
-				if (!isRowRendered(session, idx)) return null;
+			{visibleSessions.map((session, idx) => {
+				const isFirst = idx === 0;
+				const isLast = idx === visibleSessions.length - 1;
 
-				const gap = skippedBefore.get(idx);
 				return (
 					<React.Fragment key={session.id}>
-						{gap !== undefined && (
-							<div
-								aria-hidden="true"
-								className="mx-3 my-0.5 flex items-center gap-2 select-none"
-							>
-								<span className="h-px flex-1 bg-[var(--border-divider)] opacity-50" />
-								<span className="text-[9px] text-[var(--text-dim)] opacity-70 whitespace-nowrap">
-									{gap} 条未显示
-								</span>
-								<span className="h-px flex-1 bg-[var(--border-divider)] opacity-50" />
-							</div>
-						)}
 						<SessionRow
 							session={session}
 							withSpine={withSpine}
+							spineFirst={isFirst}
+							spineLast={isLast}
 							large={large}
 							workspaces={workspaces}
 							onRowFocus={onRowFocus}
@@ -2756,7 +2447,6 @@ function SessionList({
 interface CollapsibleSubgroupProps {
 	sub: BranchSubgroup;
 	scopeKey: string;
-	searching: boolean;
 	expanded: Record<string, number>;
 	onToggle: (key: string, defaultOpen?: boolean) => void;
 	onSetCount: (key: string, count: number) => void;
@@ -2775,7 +2465,6 @@ interface CollapsibleSubgroupProps {
 function CollapsibleSubgroup({
 	sub,
 	scopeKey,
-	searching,
 	expanded,
 	onSetCount,
 	onBatchArchive,
@@ -2793,7 +2482,7 @@ function CollapsibleSubgroup({
 		userExpanded !== undefined
 			? userExpanded === 0
 			: sub.deleted || sub.sessions.length === 0;
-	const open = searching || !isCollapsed;
+	const open = !isCollapsed;
 
 	const [hoverOpen, setHoverOpen] = useState(false);
 	const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -2939,11 +2628,10 @@ function CollapsibleSubgroup({
 			/>
 
 			{open && (
-				<div className="ml-[22px] pl-2 my-0.5">
+				<div className="ml-[18px] my-0.5">
 					<SessionList
 						sessions={sub.sessions}
 						scopeKey={scopeKey}
-						searching={searching}
 						expanded={expanded}
 						onSetCount={onSetCount}
 						workspaces={workspaces}
@@ -2972,7 +2660,6 @@ interface DeletedWorktreesFolderProps {
 	folderKey: string;
 	ws: Workspace;
 	subgroups: BranchSubgroup[];
-	searching: boolean;
 	isOpen: boolean;
 	onToggle: () => void;
 	onBatchArchive: (title: string, sessions: SessionMeta[]) => Promise<void>;
@@ -2993,7 +2680,6 @@ function DeletedWorktreesFolder({
 	folderKey,
 	ws,
 	subgroups,
-	searching,
 	isOpen,
 	onToggle,
 	onBatchArchive,
@@ -3029,7 +2715,7 @@ function DeletedWorktreesFolder({
 						className="text-[var(--text-dim)] shrink-0"
 					/>
 				}
-				isOpen={isOpen || searching}
+				isOpen={isOpen}
 				onToggle={onToggle}
 				statusCounts={getGroupStatusCounts(subgroups)}
 				actionButton={
@@ -3047,14 +2733,13 @@ function DeletedWorktreesFolder({
 				}
 			/>
 
-			{(isOpen || searching) && (
+			{isOpen && (
 				<div className="ml-[8px]" data-group-key={folderKey}>
 					{visibleSubgroups.map((sub) => (
 						<CollapsibleSubgroup
 							key={`${folderKey}|${sub.key}`}
 							sub={sub}
 							scopeKey={`${folderKey}|${sub.key}`}
-							searching={searching}
 							onSetCount={onSetCount}
 							expanded={expanded}
 							onToggle={onToggleSection}
@@ -3110,7 +2795,6 @@ interface EmptyWorktreesFolderProps {
 	folderKey: string;
 	ws: Workspace;
 	subgroups: BranchSubgroup[];
-	searching: boolean;
 	isOpen: boolean;
 	onToggle: () => void;
 	expanded: Record<string, number>;
@@ -3132,7 +2816,6 @@ function EmptyWorktreesFolder({
 	folderKey,
 	ws,
 	subgroups,
-	searching,
 	isOpen,
 	onToggle,
 	expanded,
@@ -3157,18 +2840,17 @@ function EmptyWorktreesFolder({
 						className="text-[var(--text-dim)] shrink-0"
 					/>
 				}
-				isOpen={isOpen || searching}
+				isOpen={isOpen}
 				onToggle={onToggle}
 			/>
 
-			{(isOpen || searching) && (
+			{isOpen && (
 				<div className="ml-[8px]" data-group-key={folderKey}>
 					{subgroups.map((sub) => (
 						<CollapsibleSubgroup
 							key={`${folderKey}|${sub.key}`}
 							sub={sub}
 							scopeKey={`${folderKey}|${sub.key}`}
-							searching={searching}
 							onSetCount={onSetCount}
 							expanded={expanded}
 							onToggle={onToggleSection}
@@ -3189,7 +2871,6 @@ function EmptyWorktreesFolder({
 interface UnassignedDirSubgroupProps {
 	grp: { key: string; cwd: string; label: string; sessions: SessionMeta[] };
 	subKey: string;
-	searching: boolean;
 	isSubOpen: boolean;
 	onToggle: () => void;
 	onSetCount: (key: string, count: number) => void;
@@ -3209,7 +2890,6 @@ interface UnassignedDirSubgroupProps {
 function UnassignedDirSubgroup({
 	grp,
 	subKey,
-	searching,
 	isSubOpen,
 	onToggle,
 	onSetCount,
@@ -3300,11 +2980,10 @@ function UnassignedDirSubgroup({
 				}
 			/>
 			{isSubOpen && (
-				<div className="ml-[22px] pl-2 my-0.5">
+				<div className="ml-[18px] my-0.5">
 					<SessionList
 						sessions={grp.sessions}
 						scopeKey={subKey}
-						searching={searching}
 						onSetCount={onSetCount}
 						expanded={expanded}
 						workspaces={workspaces}

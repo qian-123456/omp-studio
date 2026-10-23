@@ -86,6 +86,35 @@ export interface SessionMeta {
 	createdByApp?: boolean;
 }
 
+/** One piece of a search snippet; `hit` parts are the matched tokens. */
+export interface SearchSegment {
+	text: string;
+	hit: boolean;
+}
+
+/** Best full-text hit of one session (`search_sessions`). */
+export interface SessionSearchHit {
+	sessionId: string;
+	/** Transcript item id of the best matching message (same ids as TranscriptItem.id). */
+	entryId: string;
+	role: "user" | "assistant";
+	/** ISO-8601 of that entry. */
+	ts: string;
+	/** ~160 chars window around the first match; concatenated text = the snippet. */
+	segments: SearchSegment[];
+	truncatedStart: boolean;
+	truncatedEnd: boolean;
+	/** Number of matching entries in this session (>= 1). */
+	matchCount: number;
+}
+
+/** Full-text index build progress (`search_index_status`, `search_index:progress`). */
+export interface SearchIndexStatus {
+	indexed: number;
+	total: number;
+	building: boolean;
+}
+
 /** Inbox / sidebar attention kind, one per session (precedence top→bottom). */
 export type Attention = "awaiting" | "error" | "unread" | "running";
 

@@ -135,6 +135,7 @@ Rules for parallel work:
 |---|---|
 | `~/.omp/agent/sessions/<bucket>/<ts>_<id>.jsonl` | OMP session files (read-only for us, except via omp itself) |
 | `~/.omp-workspace/app.db` | SQLite (§6) |
+| `~/.omp-workspace/search.db` | disposable full-text index of session transcripts (`catalog/search.rs`, §11 A); deleted/corrupt/old-schema files are rebuilt, no migration |
 | `~/.omp-workspace/global/` | cwd for the 🌐 global workspace (Code space) |
 | (removed in v11) `~/.omp-workspace/spaces/<mode>/global/` | per-mode globals existed briefly in v10; dirs are left on disk, rows dropped |
 | `~/.omp-workspace/bin/ompws-key` | key shim (mode 0700) that OMP runs for encrypted provider `apiKey` command refs; rewritten at startup (see §7 Providers). `~/.omp-workspace/env/keys.env` + `.master.key` = the key vault. The retired `providers.json` is renamed `providers.json.migrated-<ts>` by the startup migration |
@@ -150,7 +151,7 @@ Rules for parallel work:
 | `<repo>/.worktrees/<name>` | session worktrees (branch `omp/<name>`) and time-machine worktrees (`tm-<shortsha>`, detached) |
 
 `paths.rs` exposes `agent_dir()` (omp agent dir: `PI_CODING_AGENT_DIR` / profile env aware, default `~/.omp/agent`), `data_dir()`, `db_path()`, `global_dir()`, `spaces_dir()`, `global_dir_for(mode)`, `status_dir()`, `extension_path()`,
-`oneshot_dir()`, `omp_sessions_dir()`; `ensure_dirs()` is called at startup.
+`oneshot_dir()`, `omp_sessions_dir()`, `search_db_path()`; `ensure_dirs()` is called at startup.
 
 ## 4. Shared types (`contracts.rs` ⇄ `lib/contracts.ts`)
 
@@ -475,6 +476,7 @@ Frontend events (`app.emit`), names are exact:
 | `tm:log` | `{ runId, line }` | C |
 | `quick-capture` | `null` (global shortcut fired) | D |
 | `schedules:changed` | `null` | E (schedules runner/scheduler/commands) |
+| `search_index:progress` | `SearchIndexStatus` `{indexed,total,building}` (≤4/s while building + a final one) | A (`catalog/search.rs`) |
 | `session_groups:changed` | `null` | A (after any session-group create/rename/delete/reorder/assign) |
 | `privacy_changed` | `null` | P (after every privacy mutation) |
 | `ime:changed` | `boolean` (current input source is an IME) | `ime.rs` (macOS TIS input-source-change notification) |
@@ -572,6 +574,8 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 - `session_usage(session_id) -> UsageSummary`
 - `session_snapshot(session_id) -> SessionSnapshot` — `{thinkingLevel, contextTokens}` recovered from the transcript (last `thinking_level_change`, last assistant prompt tokens unless a compaction follows); the composer shows it while no live `get_state` exists
 - `rescan_sessions()`
+- `search_sessions(query, limit?: u32) -> Vec<SessionSearchHit>` — full-text search over every session's visible user/assistant messages (all modes, archived included). `limit` default 50, cap 1000 (the dialog asks for 1000 so title-matched rows always get their snippet); trimmed empty query → `[]`. Whitespace-separated tokens, case-insensitive substring, ALL tokens in the SAME message; works for 1+ CJK chars. One hit per session (best message: phrase match, early match, short message, then recency), sorted relevance desc then `ts` desc. `SessionSearchHit {sessionId, entryId (= TranscriptItem.id), role: user|assistant, ts, segments: [{text, hit}] (~160-char window around the first match, no ellipsis chars), truncatedStart, truncatedEnd, matchCount}`. Correct while the index is still building (partial results)
+- `search_index_status() -> SearchIndexStatus` `{indexed, total, building}` (files indexed / session files); also pushed as `search_index:progress`
 
 **A — catalog (added):**
 - `session_export_html(session_id) -> String` — runs `omp --export <file>`, returns the produced HTML path
@@ -946,6 +950,14 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   or latest `custom` `session_exit` has kind ≠ normal or pendingToolCalls) and no later accept; pending Interrupted.
 - Result badge: scan recent `bash` toolCalls whose command matches test/build patterns (`test|vitest|jest|pytest|cargo (test|build|check)|tsc|build`)
   and their results (exit code / "failed"/"error" / "passed") → latest ResultBadge.
+- Full-text search (`catalog/search.rs`): a dedicated low-priority thread (started from `catalog::init`) maintains `search.db`
+  — `entries` (one row per visible user/assistant message via `transcript::normalize_entry`; thinking, tool calls/results, hidden
+  and custom items are skipped; text capped at 256 KB) mirrored into an external-content FTS5 `trigram` table. Tokens ≥3 chars use
+  FTS, shorter ones (1–2 CJK chars) a `LIKE` scan; every candidate is re-verified in Rust with per-char lowercase folding, which also
+  drives snippets. Startup pass is incremental by (size, mtime) per file, newest first, streaming line by line; growing files parse
+  only the appended complete lines while the last indexed line (length + FNV hash) is intact, otherwise (shrink, `/shake` rewrite)
+  the file is reindexed; rows of vanished files are purged. The catalog watcher forwards changed/removed session files
+  (`search::request_paths`, 1 s debounce) and full rescans (`request_rescan`).
 - `get_transcript`: full normalization to `TranscriptItem` (skip title/session header lines; map `message` roles; `custom_message`
   → Custom with `hidden = !display`; `compaction` → Compaction with summary text; `model_change` → ModelChange; ignore `custom`
   except it is used for status). Incremental reads from `from_offset` must only return complete lines.
@@ -961,8 +973,10 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   (`isEmptySideChat` in `grouping.ts`, enforced inside `filterSessions`) never lists. Rows: fork icon → title (marquee) → status mark next to title
   (RFC palette: sky 待回复 capsule, emerald 待验收 dot, red 异常/已中断 dot, grey spinner 运行中, blue unread dot
   only on unmarked rows) → timestamp with hover time-swap `…` menu; second line only inside `SessionHoverCard`.
-  Paging: `needsAttention` (working/awaiting/review/error/interrupted/unread) and the selected row stay rendered
-  past the limit with a `···` gap marker; `展开 N 条` counts only rows that will appear. Collapsed group headers
+  Paging (`visibleCut` in `paging.ts`): rendered rows are always a contiguous prefix — no gap pill, no row shown
+  with folded rows above it. A live row (`needsAttention`: working/awaiting) or the selected row below the user's
+  count drags the cut down to just past the lowest such row, revealing everything in between; `展开 N 条` then
+  counts only rows still hidden. Collapsed group headers
   show per-status count bubbles. While the pointer is over the list, ordering freezes (`frozenOrder`/`snapshotOrder`).
   Selection/`visible` truth = the DOM (`data-sidebar-list` + `#session-row-<id>`); keyboard ⌘N/⌘⇧K/⌘F global
   (registered in `sidebarShortcuts`), list owns ↑/↓/Enter/←/→/Delete(archive)/Shift+Delete/F2/Shift+F10.
@@ -974,6 +988,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   已清理的工作树 folder, no 「在独立工作树创建」 entry; the "+" button starts a session in the project dir directly.
   Selecting a row → `ui.selectSession(id)`; `SessionSidebar` reveals the selected row on selection change
   (expands group + scrolls into view).
+- Session search (`features/sessions/search/`): the 🔍 button / ⌘F (`focusSidebarSearch` → `useSearchDialog.openDialog()`; while open, ⌘F re-focuses the input) opens `SessionSearchDialog` (`Modal`, mounted by `SessionSidebar`) — there is no inline sidebar search row and the sidebar tree is never filtered by a query (`searchQuery` is gone from `sidebarStore`/`GroupingOptions`; `matchesSearch` in `grouping.ts` now only feeds the dialog's instant tier). The dialog header shows a quiet status toggle 「已包含已归档」/「未包含已归档」 (default included); the sidebar's own `showArchived` state has no UI entry point any more. Empty query: 「最近会话」 in 今天/昨天/过去 7 天/过去 30 天/更早 buckets (`bucketRecent`, capped at 100 rows). Typing: instant metadata tier (`metadataMatches`) + `search_sessions` content tier (`useContentSearch`: ~150 ms debounce, every newer query/unmount invalidates the in-flight one so stale responses are dropped; failures show the full IPC error). `mergeResults` yields one row per session (metadata rows carry the content snippet when they also matched by content), sorted newest first by `updatedAt || createdAt` (the time shown on the row) regardless of source; archived sessions get a 「已归档」 chip, sessions of another mode a mode badge. `useSearchIndexStatus` (`search_index_status` + `search_index:progress`) drives the non-blocking 「正在建立全文索引 x/y，结果可能不完整」 notice. ↑/↓/Enter/Esc + hover; keys ignored while `isComposing`; Esc is claimed by `Modal`'s `useEscapeKey`. Opening a row (`openSearchRow`): `switchSpaceMode` when the session's mode differs, `ui.selectSession`, and for a content hit `turnNav.showTurn(sessionId, entryId)` — `MessageList`'s `revealTurn` effect keeps the target pending until the transcript has items (`isLoadingTranscript` false and blocks non-empty), consumes it exactly once, scrolls the virtualized turn into view, refines to `#msg-<entryId>` when the hit is deeper in the turn, and flashes it.
 
 ### B — RPC channel (backend) + chat, side chat, heatmap (frontend)
 - Spawn `settings.omp_binary --mode rpc --approval-mode <mode> [--model m] [--resume file] --cwd <cwd>` with `current_dir(cwd)`.

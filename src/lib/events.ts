@@ -6,6 +6,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
 	OauthUiEvent,
+	SearchIndexStatus,
 	ServiceInfo,
 	SessionMeta,
 	TodoCounts,
@@ -82,6 +83,11 @@ export const onSessionGroupsChanged = (cb: () => void): Promise<UnlistenFn> =>
 
 export const onPrivacyChanged = (cb: () => void): Promise<UnlistenFn> =>
 	listen<null>("privacy_changed", () => cb());
+
+export const onSearchIndexProgress = (
+	cb: (status: SearchIndexStatus) => void,
+): Promise<UnlistenFn> =>
+	listen<SearchIndexStatus>("search_index:progress", (e) => cb(e.payload));
 
 export const onServicesChanged = (
 	cb: (services: ServiceInfo[]) => void,

@@ -67,10 +67,6 @@ export interface SidebarState {
 	toggleGroup: (key: string, defaultOpen?: boolean) => void;
 	isGroupOpen: (key: string, defaultOpen?: boolean) => boolean;
 
-	/** Search query in sidebar */
-	searchQuery: string;
-	setSearchQuery: (query: string) => void;
-
 	/** Whether archived sessions are included in grouping */
 	showArchived: boolean;
 	setShowArchived: (show: boolean) => void;
@@ -123,9 +119,6 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
 		const open = get().groupOpen[key];
 		return open !== undefined ? open : defaultOpen;
 	},
-
-	searchQuery: "",
-	setSearchQuery: (searchQuery: string) => set({ searchQuery }),
 
 	showArchived: false,
 	setShowArchived: (showArchived: boolean) => set({ showArchived }),
