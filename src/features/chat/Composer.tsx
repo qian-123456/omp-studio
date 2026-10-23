@@ -140,7 +140,7 @@ import { ContextRing } from "./ContextRing";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ThinkingLevelPicker, ThinkingLevelStrip } from "../../components/ThinkingLevelPicker";
-import { errMsg } from "../../lib/dialogs";
+import { errMsg, imagesOfCopiedMessage } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
 import { formatWithAnnotations, useComposer } from "../../stores/composer";
@@ -1547,7 +1547,17 @@ export function Composer({
 			if (f) fileItems.push(f);
 		}
 		const hasFilesType = types.includes("Files");
-		if (fileItems.length === 0 && !hasFilesType) return;
+		if (fileItems.length === 0 && !hasFilesType) {
+			// A message copied inside the app: the pasteboard also holds its image
+			// files, but WKWebView may expose only the text flavor here.
+			const copiedImages = imagesOfCopiedMessage(e.clipboardData?.getData("text/plain") ?? "");
+			if (!copiedImages) return;
+			e.preventDefault();
+			insertMarkerAtCursor(e.clipboardData?.getData("text/plain") ?? "");
+			await new Promise<void>((resolve) => setTimeout(resolve, 20));
+			for (const p of copiedImages) await attachDroppedPath(p);
+			return;
+		}
 		// Files present → suppress default now, before any await, so the
 		// filename/text flavor can't sneak into the draft.
 		e.preventDefault();

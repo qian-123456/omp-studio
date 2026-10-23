@@ -197,6 +197,19 @@ export async function copyText(text: string): Promise<void> {
 	}
 }
 
+let lastMessageCopy: { text: string; paths: string[] } | null = null;
+
+/**
+ * Image paths of the last in-app message copy when `pastedText` is exactly
+ * that message's text, else null. WKWebView does not always surface the
+ * pasteboard's file items to `paste` events next to a text item, so the
+ * composer uses this to re-attach the images.
+ */
+export function imagesOfCopiedMessage(pastedText: string): string[] | null {
+	if (!lastMessageCopy || lastMessageCopy.paths.length === 0) return null;
+	return pastedText.trim() === lastMessageCopy.text.trim() ? lastMessageCopy.paths : null;
+}
+
 /**
  * Copy a message's text together with its image files. Images go through the
  * native pasteboard as file URLs (WKWebView's async clipboard API silently
@@ -204,10 +217,12 @@ export async function copyText(text: string): Promise<void> {
  */
 export async function copyTextWithImages(text: string, imagePaths: string[]): Promise<void> {
 	if (imagePaths.length === 0) {
+		lastMessageCopy = null;
 		await copyText(text);
 		return;
 	}
 	await clipboardWriteMessage(text, imagePaths);
+	lastMessageCopy = { text, paths: imagePaths };
 }
 
 /** Mirrors `rpc::SESSION_HELD_PREFIX` (src-tauri/src/rpc/mod.rs). */
