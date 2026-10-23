@@ -190,6 +190,7 @@
 	--ghost-hover: color-mix(in oklab, var(--text) 6%, transparent);
 	--chat-user-bg: color-mix(in oklab, var(--text) 8%, transparent);
 	--status-info: var(--accent);
+	--tree-line: color-mix(in oklab, var(--accent) 42%, transparent);
 
 	/* scrollbars use native WKWebView overlay appearance — no tokens needed */
 	/* Apple HIG spring & sheet curves */

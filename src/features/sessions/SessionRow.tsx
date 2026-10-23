@@ -61,6 +61,10 @@ export interface SessionRowProps {
 	session: SessionMeta;
 	/** Draw this row's segment of the subgroup guide line at the row's left edge. */
 	withSpine?: boolean;
+	/** When true, extends the trunk line slightly upward to connect with the header above. */
+	spineFirst?: boolean;
+	/** When true and withSpine is true, terminates the guide line with an elbow (└─). */
+	spineLast?: boolean;
 	/** Compact navigation-row sizing (h-[30px], 13px) — used by the Universal space list. */
 	large?: boolean;
 	workspaces: Workspace[];
@@ -178,6 +182,8 @@ function HoverCardGate(props: {
 function SessionRowComponent({
 	session,
 	withSpine = false,
+	spineFirst = false,
+	spineLast = false,
 	large = false,
 	workspaces,
 	onRowFocus,
@@ -598,12 +604,47 @@ function SessionRowComponent({
 					"group-focus-visible/list:ring-2 group-focus-visible/list:ring-[var(--primary)] group-focus-visible/list:ring-inset",
 			)}
 		>
-			{/* Subgroup guide line segment (P9/P10) */}
+			{/* Subgroup guide line segment (P9/P10) — subagent-style terminal tree branch */}
 			{withSpine && (
 				<span
 					aria-hidden
-					className="absolute -left-1 top-0 bottom-0 w-[2px] bg-[var(--text-dim)]/40"
-				/>
+					className="pointer-events-none absolute -left-[8px] select-none"
+					style={{
+						top: spineFirst ? "-6px" : "0px",
+						bottom: spineLast ? "auto" : "0px",
+						height: spineLast
+							? spineFirst
+								? `${(large ? 15 : 14) + 6}px`
+								: `${large ? 15 : 14}px`
+							: undefined,
+						width: "8px",
+					}}
+				>
+					{/* Vertical trunk line */}
+					<span
+						className={clsx(
+							"absolute left-0 top-0 border-l border-[var(--tree-line)]",
+							spineLast ? "rounded-bl-[6px] border-b" : "bottom-0",
+						)}
+						style={
+							spineLast
+								? {
+										height: spineFirst
+											? `${(large ? 15 : 14) + 6}px`
+											: `${large ? 15 : 14}px`,
+										width: "8px",
+									}
+								: undefined
+						}
+					/>
+					{/* Horizontal elbow branch for non-last items */}
+					{!spineLast && (
+						<span
+							className="absolute left-0 w-[8px] border-t border-[var(--tree-line)]"
+							style={{ top: `${large ? 15 : 14}px` }}
+						/>
+					)}
+				</span>
 			)}
 
 			{/* Title column: status mark sits directly after title text (U3 / R13) */}
@@ -1167,6 +1208,8 @@ export const SessionRow = React.memo(SessionRowComponent, (prev, next) => {
 	return (
 		prev.session === next.session &&
 		prev.withSpine === next.withSpine &&
+		prev.spineFirst === next.spineFirst &&
+		prev.spineLast === next.spineLast &&
 		prev.large === next.large &&
 		prev.workspaces === next.workspaces &&
 		prev.onRowFocus === next.onRowFocus &&
