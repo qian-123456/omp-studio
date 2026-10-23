@@ -48,10 +48,41 @@ describe("buildContextSegments", () => {
 		expect(segs[segs.length - 1].id).toBe("free");
 	});
 
-	it("treats everything used as messages without a probe", () => {
+	it("shows everything as a pending system prompt when there is no probe and no chat estimate", () => {
 		const segs = buildContextSegments(800, 1000, null);
-		expect(tok(segs, "messages")).toBe(800);
+		expect(segs.find((s) => s.pending)).toMatchObject({ id: "system", group: "prompt", tokens: 800 });
 		expect(tok(segs, "free")).toBe(200);
+	});
+
+	it("keeps raw chat estimates without a probe and leaves the remainder pending", () => {
+		const chat = estimateConversation([item({ id: "a", kind: "assistant", text: "y".repeat(300) })]);
+		const segs = buildContextSegments(1000, 5000, null, chat);
+		expect(tok(segs, "messages")).toBe(100);
+		expect(segs.find((s) => s.pending)?.tokens).toBe(900);
+	});
+
+	it("caps raw chat estimates at used without a probe", () => {
+		const chat = estimateConversation([item({ id: "a", kind: "assistant", text: "y".repeat(3000) })]);
+		const segs = buildContextSegments(400, 5000, null, chat);
+		expect(tok(segs, "messages")).toBe(400);
+		expect(segs.find((s) => s.pending)).toBeUndefined();
+	});
+
+	it("keeps integer segments summing to used exactly", () => {
+		const chat: Parameters<typeof buildContextSegments>[3] = [
+			{ id: "messages", tokens: 1 },
+			{ id: "thinking", tokens: 1 },
+			{ id: "toolCalls", tokens: 1 },
+		];
+		const segs = buildContextSegments(1000, 5000, comp([["system", 333], ["tools", 111]]), chat);
+		expect(segs.filter((s) => s.group !== "free").reduce((a, s) => a + s.tokens, 0)).toBe(1000);
+	});
+
+	it("shares an overshoot between prompt and conversation instead of dropping the chat", () => {
+		const chat: Parameters<typeof buildContextSegments>[3] = [{ id: "messages", tokens: 3000 }];
+		const segs = buildContextSegments(10_000, 100_000, comp([["system", 12_000]]), chat);
+		expect(tok(segs, "system")).toBe(8000);
+		expect(tok(segs, "messages")).toBe(2000);
 	});
 
 	it("scales estimates down when they exceed reported usage", () => {
@@ -73,7 +104,50 @@ describe("liveContextItems", () => {
 	});
 });
 
+describe("liveContextItems branches", () => {
+	it("drops abandoned branches by following parentId from the leaf", () => {
+		const items = [
+			item({ id: "a", kind: "user", text: "root" }),
+			item({ id: "b", kind: "assistant", parentId: "a" }),
+			item({ id: "c", kind: "user", parentId: "b", text: "abandoned" }),
+			item({ id: "d", kind: "user", parentId: "b", text: "live" }),
+			item({ id: "e", kind: "assistant", parentId: "d" }),
+		];
+		expect(liveContextItems(items).map((i) => i.id)).toEqual(["a", "b", "d", "e"]);
+	});
+
+	it("falls back to file order when the parent is a dropped entry", () => {
+		const items = [
+			item({ id: "a", kind: "user" }),
+			item({ id: "b", kind: "tool_result", parentId: "ghost" }),
+		];
+		expect(liveContextItems(items).map((i) => i.id)).toEqual(["a", "b"]);
+	});
+
+	it("applies compaction on the active branch only", () => {
+		const items = [
+			item({ id: "a", kind: "user" }),
+			item({ id: "x", kind: "user", parentId: "a" }),
+			item({ id: "b", kind: "user", parentId: "a" }),
+			item({ id: "c", kind: "compaction", parentId: "b", firstKeptEntryId: "b" }),
+			item({ id: "d", kind: "user", parentId: "c" }),
+		];
+		expect(liveContextItems(items).map((i) => i.id)).toEqual(["c", "b", "d"]);
+	});
+});
+
 describe("estimateConversation", () => {
+	it("counts skill-prompt custom items as skill reads and images as messages", () => {
+		const est = estimateConversation([
+			item({ id: "s", kind: "custom", text: '[IMPORTANT: User invoked the "eli5" skill; follow it.]\n' + "x".repeat(900) }),
+			item({ id: "u", kind: "user", text: "", images: [{ id: "i", width: 1500, height: 1000 }] }),
+		]);
+		const by = Object.fromEntries(est.map((e) => [e.id, e]));
+		expect(by.skillReads.details?.[0].name).toBe("eli5");
+		expect(by.skillReads.tokens).toBeGreaterThan(300);
+		expect(by.messages.tokens).toBe(1600);
+	});
+
 	it("routes thinking, skill reads, MCP calls and other tool calls with their results", () => {
 		const est = estimateConversation([
 			item({ id: "u", kind: "user", text: "hi there" }),
@@ -115,24 +189,29 @@ describe("estimateConversation", () => {
 const estimateTokensOf = (s: string) => Math.ceil(s.length / 3);
 
 describe("computeRingArcs", () => {
-	it("lays used categories end to end with seams and leaves free space as track", () => {
+	it("tiles used categories end to end with no seams and leaves free space as track", () => {
 		const segs = buildContextSegments(50_000, 200_000, comp([["tools", 30_000], ["system", 20_000]]));
-		const arcs = computeRingArcs(segs, 200_000, 400, { gap: 2, minLength: 3 });
+		const arcs = computeRingArcs(segs, 200_000, 400);
 		expect(arcs.map((a) => a.id)).toEqual(["tools", "system"]);
 		expect(arcs[0].offset).toBe(0);
-		expect(arcs[0].length).toBe(58);
-		expect(arcs[1].offset).toBe(60);
-		expect(arcs[1].length).toBe(38);
+		expect(arcs[0].length).toBeCloseTo(60);
+		expect(arcs[1].offset).toBeCloseTo(60);
+		expect(arcs[1].length).toBeCloseTo(40);
 	});
 
-	it("keeps tiny categories visible and never runs past the full circle", () => {
-		const tiny = buildContextSegments(100, 1_000_000, comp([["skills", 10]]));
-		const arcs = computeRingArcs(tiny, 1_000_000, 300, { gap: 1, minLength: 3 });
-		expect(arcs.every((a) => a.length >= 3)).toBe(true);
+	it("widens tiny categories while the total span still equals the used fraction", () => {
+		const tiny = buildContextSegments(100_000, 1_000_000, comp([["skills", 10], ["tools", 99_990]]));
+		const arcs = computeRingArcs(tiny, 1_000_000, 300, { minLength: 3 });
+		expect(arcs.every((a) => a.length >= 3 - 1e-9)).toBe(true);
+		const last = arcs[arcs.length - 1];
+		expect(last.offset + last.length).toBeCloseTo(30);
+		arcs.slice(1).forEach((a, i) => expect(a.offset).toBeCloseTo(arcs[i].offset + arcs[i].length));
+	});
 
+	it("never runs past the full circle", () => {
 		const full = buildContextSegments(1000, 1000, comp([["tools", 999]]));
-		const fullArcs = computeRingArcs(full, 1000, 300, { gap: 1, minLength: 3 });
-		const last = fullArcs[fullArcs.length - 1];
-		expect(last.offset + last.length).toBeLessThanOrEqual(300);
+		const arcs = computeRingArcs(full, 1000, 300);
+		const last = arcs[arcs.length - 1];
+		expect(last.offset + last.length).toBeLessThanOrEqual(300 + 1e-9);
 	});
 });

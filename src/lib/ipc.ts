@@ -616,6 +616,10 @@ export const modelKindCatalog = () => invoke<ModelKindEntry[]>("model_kind_catal
 export const promptCompositionProbe = (cwd: string) =>
 	invoke<PromptComposition>("prompt_composition_probe", { cwd });
 
+/** A session's own prompt composition: instant for a live session, else the throwaway probe in `cwd`. */
+export const sessionPromptComposition = (sessionId: string, cwd: string) =>
+	invoke<PromptComposition>("session_prompt_composition", { sessionId, cwd });
+
 // ---- providers ----
 
 export const providerRows = () => invoke<ProviderRow[]>("provider_rows");

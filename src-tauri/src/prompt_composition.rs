@@ -850,6 +850,57 @@ pub async fn prompt_composition_probe(
     ))
 }
 
+/// Fallback probe results per cwd for [`session_prompt_composition`]: a session that is not live
+/// has no prompt of its own to read, and re-spawning omp on every popover open costs seconds.
+// `OnceLock` rather than `LazyLock`: the crate's MSRV (1.77) predates `LazyLock`.
+fn fallback_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, PromptComposition>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, PromptComposition>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Composition of a session's own prompt. A live session answers `get_state` on its running RPC
+/// process (instant, and its real prompt); otherwise this falls back to the throwaway probe,
+/// cached per cwd for the app's lifetime.
+#[tauri::command]
+pub async fn session_prompt_composition(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    cwd: String,
+) -> Result<PromptComposition, String> {
+    if let Some(handle) = crate::rpc::get_handle(&session_id) {
+        let started = Instant::now();
+        if let Ok(resp) = crate::rpc::send_command(&handle, json!({"type": "get_state"})).await {
+            if let Ok(raw) = parse_state(&resp) {
+                let probe_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+                return Ok(build_composition(
+                    cwd.trim(),
+                    &raw.blocks,
+                    &raw.tools,
+                    raw.reported_tokens,
+                    raw.context_window,
+                    probe_ms,
+                ));
+            }
+        }
+    }
+    let key = cwd.trim().to_string();
+    if let Some(hit) = fallback_cache()
+        .lock()
+        .ok()
+        .and_then(|c| c.get(&key).cloned())
+    {
+        return Ok(hit);
+    }
+    let comp = prompt_composition_probe(state, cwd).await?;
+    if let Ok(mut c) = fallback_cache().lock() {
+        c.insert(key, comp.clone());
+    }
+    Ok(comp)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
