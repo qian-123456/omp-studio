@@ -328,6 +328,7 @@ pub fn run() {
             services::commands::import_image_file,
             services::clipboard::clipboard_file_paths,
             services::clipboard::clipboard_write_message,
+            services::clipboard::clipboard_text_beside_files,
             services::clipboard::save_clipboard_file,
             services::commands::save_share_image,
             services::commands::app_memory_usage,

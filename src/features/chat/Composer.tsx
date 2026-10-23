@@ -15,7 +15,7 @@ import {
 	X,
 } from "lucide-react";
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { clipboardFilePaths, importImageFile, listWorkspaceFiles, ompConfigList, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, skillsList, validatePath } from "../../lib/ipc";
+import { clipboardFilePaths, clipboardTextBesideFiles, importImageFile, listWorkspaceFiles, ompConfigList, readTextFile, rpcSend, saveClipboardFile, saveClipboardImage, sessionSnapshot, sessionUsage, skillsList, validatePath } from "../../lib/ipc";
 import { useModelCatalog, useModelOptions } from "../../stores/modelCatalog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ImageAttachment, SessionSnapshot } from "../../lib/contracts";
@@ -1572,6 +1572,16 @@ export function Composer({
 			// Screenshot-style image data only (no file URLs on the pasteboard).
 			for (const img of imageFiles) await processImageFile(img);
 			return;
+		}
+		// Text copied together with the files (our message copy) lands first;
+		// a Finder copy has none, so the filename is still never pasted.
+		if (nativePaths.length > 0) {
+			const beside = await clipboardTextBesideFiles().catch(() => "");
+			if (beside.trim()) {
+				insertMarkerAtCursor(beside);
+				// Let the caret land after the text before the image tokens read it.
+				await new Promise<void>((resolve) => setTimeout(resolve, 20));
+			}
 		}
 		// Attach real paths first, in pasteboard order (images included).
 		const covered = new Set(nativePaths.map((p) => baseName(p).toLowerCase()));
