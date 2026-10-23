@@ -1,0 +1,810 @@
+import { describe, expect, it } from "vitest";
+import type { ToolCall, TranscriptItem } from "../../lib/contracts";
+import {
+	computeDurationMs,
+	activityGroupSummary,
+	formatDurationChinese,
+	formatDurationCompact,
+	formatMessageTimestamp,
+	formatShortModel,
+	groupActivityUnits,
+	groupTurnBlocks,
+	noticeBody,
+	noticeSummary,
+	parallelToolRuns,
+	splitAroundSteers,
+	type PlacedStep,
+	requestAnchors,
+	splitInterimProse,
+	splitInterimProseBySteer,
+	liveAnswerCandidate,
+	splitLiveTurn,
+	turnRequestItems,
+	type TurnBlock,
+	type TurnStep,
+	toolFilePaths,
+} from "./turnGrouping";
+
+function makeItem(partial: Partial<TranscriptItem> & { id: string; kind: TranscriptItem["kind"] }): TranscriptItem {
+	return {
+		parentId: null,
+		ts: "2026-10-01T12:00:00Z",
+		text: null,
+		thinking: null,
+		toolCalls: [],
+		toolResult: null,
+		usage: null,
+		model: null,
+		stopReason: null,
+		hidden: false,
+		...partial,
+	};
+}
+
+describe("turnGrouping", () => {
+	it("formats duration in Chinese correctly", () => {
+		expect(formatDurationChinese(0)).toBe("0 秒");
+		expect(formatDurationChinese(500)).toBe("1 秒");
+		expect(formatDurationChinese(12_000)).toBe("12 秒");
+		expect(formatDurationChinese(60_000)).toBe("1 分钟");
+		expect(formatDurationChinese(83_000)).toBe("1 分 23 秒");
+		expect(formatDurationChinese(3600_000)).toBe("1 小时");
+		expect(formatDurationChinese(7500_000)).toBe("2 小时 5 分");
+	});
+
+	it("formats message times and hides absent or invalid timestamps", () => {
+		const timestamp = new Date(2026, 9, 1, 9, 8).toISOString();
+		const sameDay = new Date(2026, 9, 1, 20, 0);
+		expect(formatMessageTimestamp(timestamp, sameDay)).toBe("09:08");
+		expect(formatMessageTimestamp(new Date(timestamp).getTime(), sameDay)).toBe("09:08");
+		expect(formatMessageTimestamp(null)).toBe("");
+		expect(formatMessageTimestamp(undefined)).toBe("");
+		expect(formatMessageTimestamp("invalid timestamp")).toBe("");
+	});
+
+	it("adds month/day for other days and the year for other years", () => {
+		const timestamp = new Date(2026, 9, 1, 9, 8).toISOString();
+		expect(formatMessageTimestamp(timestamp, new Date(2026, 9, 2, 0, 5))).toBe("10月1日 09:08");
+		expect(formatMessageTimestamp(timestamp, new Date(2026, 10, 1, 9, 8))).toBe("10月1日 09:08");
+		expect(formatMessageTimestamp(timestamp, new Date(2027, 9, 1, 9, 8))).toBe("2026年10月1日 09:08");
+	});
+
+	it("formats short model names cleanly", () => {
+		expect(formatShortModel(null)).toBe("");
+		expect(formatShortModel(undefined)).toBe("");
+		expect(formatShortModel("anthropic/claude-3-5-sonnet-20241022")).toBe(
+			"Claude 3.5 Sonnet",
+		);
+		expect(formatShortModel("claude-3-7-sonnet")).toBe("Claude 3.7 Sonnet");
+		expect(formatShortModel("openai/gpt-4o-mini")).toBe("GPT-4o mini");
+		expect(formatShortModel("deepseek/deepseek-r1")).toBe("DeepSeek R1");
+		expect(formatShortModel("unknown-model")).toBe("unknown-model");
+	});
+
+	it("computes duration in milliseconds correctly", () => {
+		expect(
+			computeDurationMs(
+				"2026-10-01T12:00:00.000Z",
+				"2026-10-01T12:00:15.500Z",
+			),
+		).toBe(15500);
+		expect(computeDurationMs(1000, 5000)).toBe(4000);
+		expect(computeDurationMs(5000, 1000)).toBeUndefined();
+	});
+
+	it("groups a standard turn with thinking, tool calls, and final answer", () => {
+		const toolCall1: ToolCall = {
+			id: "call-1",
+			name: "read_file",
+			args: { path: "foo.txt" },
+			intent: null,
+		};
+
+		const items: TranscriptItem[] = [
+			makeItem({
+				id: "msg-1",
+				kind: "user",
+				text: "Check foo.txt and summarize",
+				ts: "2026-10-01T12:00:00Z",
+			}),
+			makeItem({
+				id: "msg-2",
+				kind: "assistant",
+				thinking: "I should read foo.txt first.",
+				text: "Let me check the file.",
+				toolCalls: [toolCall1],
+				ts: "2026-10-01T12:00:03Z",
+			}),
+			makeItem({
+				id: "msg-3",
+				kind: "tool_result",
+				toolResult: {
+					toolCallId: "call-1",
+					toolName: "read_file",
+					text: "Hello world content",
+					isError: false,
+					details: null,
+				},
+				ts: "2026-10-01T12:00:05Z",
+			}),
+			makeItem({
+				id: "msg-4",
+				kind: "assistant",
+				text: "The file contains 'Hello world content'.",
+				ts: "2026-10-01T12:00:08Z",
+			}),
+		];
+
+		const blocks = groupTurnBlocks(items);
+		expect(blocks).toHaveLength(1);
+
+		const turn = blocks[0];
+		expect(turn.type).toBe("turn");
+		if (turn.type === "turn") {
+			expect(turn.id).toBe("turn-msg-1");
+			expect(turn.userItem?.id).toBe("msg-1");
+			expect(turn.answerItem?.id).toBe("msg-4");
+			expect(turn.durationMs).toBe(8000);
+
+			// Intermediate steps: thinking, intermediate text, tool call (with attached result)
+			expect(turn.intermediateSteps).toHaveLength(3);
+			expect(turn.intermediateSteps[0].kind).toBe("thinking");
+			expect(turn.intermediateSteps[1].kind).toBe("text");
+			expect(turn.intermediateSteps[2].kind).toBe("tool");
+
+			if (turn.intermediateSteps[2].kind === "tool") {
+				expect(turn.intermediateSteps[2].call.id).toBe("call-1");
+				expect(turn.intermediateSteps[2].result?.toolCallId).toBe("call-1");
+			}
+
+			expect(turn.allItemIds).toEqual(["msg-1", "msg-2", "msg-3", "msg-4"]);
+		}
+	});
+
+	it("turns a retried failed request into an in-order failure step, not prose", () => {
+		const call: ToolCall = { id: "c-1", name: "bash", args: {}, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "go" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "Request was aborted", stopReason: "error" }),
+			makeItem({ id: "a-2", kind: "assistant", text: null, toolCalls: [call] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: { toolCallId: "c-1", toolName: "bash", text: "ok", isError: false, details: null },
+			}),
+			makeItem({ id: "a-3", kind: "assistant", text: "done", stopReason: "stop" }),
+		]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["request-failed", "tool"]);
+		expect(turn.intermediateSteps[0].id).toBe("failed-a-1");
+		expect(turnRequestItems(turn.intermediateSteps, turn.answerItem).map((i) => i.id)).toEqual([
+			"a-1",
+			"a-2",
+			"a-3",
+		]);
+	});
+
+	it("surfaces text accompanying a final ask call as the answer, call in steps", () => {
+		const ask: ToolCall = { id: "ask-1", name: "ask", args: { question: "继续吗？" }, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "do it" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "需要你确认方案。", toolCalls: [ask] }),
+		]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		expect(turn.answerItem?.id).toBe("a-1");
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["tool"]);
+	});
+
+	it("treats last assistant text with a normal tool call as the answer", () => {
+		const call: ToolCall = { id: "c-1", name: "bash", args: {}, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "go" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "完成，最后跑一下。", toolCalls: [call] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: { toolCallId: "c-1", toolName: "bash", text: "ok", isError: false, details: null },
+			}),
+		]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		expect(turn.answerItem?.id).toBe("a-1");
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["tool"]);
+	});
+
+	it("keeps a mid-run steer message inside the running turn in order", () => {
+		const call: ToolCall = { id: "c-1", name: "bash", args: {}, intent: null };
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u-1", kind: "user", text: "go" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "先跑一下。", toolCalls: [call] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: { toolCallId: "c-1", toolName: "bash", text: "ok", isError: false, details: null },
+			}),
+			makeItem({ id: "u-2", kind: "user", text: "顺便看下日志" }),
+			makeItem({ id: "a-2", kind: "assistant", text: "好的，已完成。" }),
+			makeItem({ id: "u-3", kind: "user", text: "谢谢" }),
+		]);
+		expect(blocks.map((b) => b.id)).toEqual(["turn-u-1", "turn-u-3"]);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		expect(turn.intermediateSteps.map((s) => s.kind)).toEqual(["text", "tool", "steer"]);
+		expect(turn.answerItem?.id).toBe("a-2");
+	});
+
+	it("splitAroundSteers pulls steers out of the folded group, keeping order", () => {
+		const segs = splitAroundSteers([
+			{ kind: "tool", id: "t1" },
+			{ kind: "steer", id: "s1" },
+			{ kind: "text", id: "x" },
+			{ kind: "tool", id: "t2" },
+			{ kind: "steer", id: "s2" },
+		]);
+		expect(
+			segs.map((s) => (s.type === "steer" ? `steer:${s.step.id}` : s.steps.map((x) => x.id).join(","))),
+		).toEqual(["t1", "steer:s1", "x,t2", "steer:s2"]);
+	});
+
+	it("handles consecutive turns and standalone protocol items", () => {
+		const items: TranscriptItem[] = [
+			makeItem({
+				id: "u-1",
+				kind: "user",
+				text: "Hello",
+				ts: "2026-10-01T10:00:00Z",
+			}),
+			makeItem({
+				id: "a-1",
+				kind: "assistant",
+				text: "Hi there!",
+				ts: "2026-10-01T10:00:02Z",
+			}),
+			makeItem({
+				id: "proto-1",
+				kind: "model_change",
+				model: "claude-3-7-sonnet",
+				ts: "2026-10-01T10:01:00Z",
+			}),
+			makeItem({
+				id: "u-2",
+				kind: "user",
+				text: "How are you?",
+				ts: "2026-10-01T10:02:00Z",
+			}),
+			makeItem({
+				id: "a-2",
+				kind: "assistant",
+				thinking: "Reflecting...",
+				text: "I am doing well!",
+				ts: "2026-10-01T10:02:05Z",
+			}),
+		];
+
+		const blocks = groupTurnBlocks(items);
+		expect(blocks).toHaveLength(3);
+
+		expect(blocks[0].type).toBe("turn");
+		expect(blocks[1].type).toBe("protocol");
+		expect(blocks[2].type).toBe("turn");
+
+		const turn2 = blocks[2];
+		if (turn2.type === "turn") {
+			expect(turn2.userItem?.id).toBe("u-2");
+			expect(turn2.answerItem?.id).toBe("a-2");
+			// Thinking from final assistant message is captured in intermediateSteps
+			expect(turn2.intermediateSteps).toHaveLength(1);
+			expect(turn2.intermediateSteps[0].kind).toBe("thinking");
+		}
+	});
+
+	it("keeps a mid-run visible notice inside the turn as a notice step", () => {
+		const call1: ToolCall = { id: "call-1", name: "run", args: {}, intent: null };
+		const call2: ToolCall = { id: "call-2", name: "run", args: {}, intent: null };
+
+		const items: TranscriptItem[] = [
+			makeItem({ id: "u-1", kind: "user", text: "Run the job" }),
+			makeItem({ id: "a-1", kind: "assistant", toolCalls: [call1] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: {
+					toolCallId: "call-1",
+					toolName: "run",
+					text: "ok",
+					isError: false,
+					details: null,
+				},
+			}),
+			makeItem({
+				id: "n-1",
+				kind: "custom",
+				text: "<system-notice>\nBackground job bg_1 has completed. Resume your work using the result below.\nok\n</system-notice>",
+			}),
+			makeItem({ id: "a-2", kind: "assistant", toolCalls: [call2] }),
+			makeItem({
+				id: "r-2",
+				kind: "tool_result",
+				toolResult: {
+					toolCallId: "call-2",
+					toolName: "run",
+					text: "ok",
+					isError: false,
+					details: null,
+				},
+			}),
+			makeItem({ id: "a-3", kind: "assistant", text: "All done." }),
+		];
+
+		const blocks = groupTurnBlocks(items);
+		expect(blocks).toHaveLength(1);
+
+		const turn = blocks[0];
+		expect(turn.type).toBe("turn");
+		if (turn.type === "turn") {
+			expect(turn.userItem?.id).toBe("u-1");
+			expect(turn.answerItem?.id).toBe("a-3");
+			expect(turn.allItemIds).toEqual([
+				"u-1",
+				"a-1",
+				"r-1",
+				"n-1",
+				"a-2",
+				"r-2",
+				"a-3",
+			]);
+
+			// Steps: tool c1, notice n1, tool c2 — in order.
+			expect(turn.intermediateSteps.map((s) => s.kind)).toEqual([
+				"tool",
+				"notice",
+				"tool",
+			]);
+
+			const notice = turn.intermediateSteps[1];
+			expect(notice.id).toBe("notice-n-1");
+			if (notice.kind === "notice") {
+				expect(notice.item.id).toBe("n-1");
+			}
+
+			const firstTool = turn.intermediateSteps[0];
+			if (firstTool.kind === "tool") {
+				expect(firstTool.call.id).toBe("call-1");
+				expect(firstTool.result?.toolCallId).toBe("call-1");
+			}
+			const secondTool = turn.intermediateSteps[2];
+			if (secondTool.kind === "tool") {
+				expect(secondTool.call.id).toBe("call-2");
+				expect(secondTool.result?.toolCallId).toBe("call-2");
+			}
+		}
+	});
+
+	it("keeps a trailing protocol item as a standalone row", () => {
+		const items: TranscriptItem[] = [
+			makeItem({ id: "u-1", kind: "user", text: "Hi" }),
+			makeItem({ id: "a-1", kind: "assistant", text: "Hello!" }),
+			makeItem({ id: "n-1", kind: "custom", text: "Job finished" }),
+		];
+
+		const blocks = groupTurnBlocks(items);
+		expect(blocks).toHaveLength(2);
+
+		expect(blocks[0].type).toBe("turn");
+		if (blocks[0].type === "turn") {
+			expect(blocks[0].answerItem?.id).toBe("a-1");
+		}
+
+		expect(blocks[1].type).toBe("protocol");
+		if (blocks[1].type === "protocol") {
+			expect(blocks[1].id).toBe("protocol-n-1");
+			expect(blocks[1].item.id).toBe("n-1");
+		}
+	});
+
+	it("groups agent activity with no user message into a userless turn", () => {
+		const call1: ToolCall = { id: "call-1", name: "run", args: {}, intent: null };
+
+		const items: TranscriptItem[] = [
+			makeItem({ id: "a-1", kind: "assistant", toolCalls: [call1] }),
+			makeItem({
+				id: "r-1",
+				kind: "tool_result",
+				toolResult: {
+					toolCallId: "call-1",
+					toolName: "run",
+					text: "ok",
+					isError: false,
+					details: null,
+				},
+			}),
+			makeItem({ id: "a-2", kind: "assistant", text: "Finished." }),
+		];
+
+		const blocks = groupTurnBlocks(items);
+		expect(blocks).toHaveLength(1);
+
+		const turn = blocks[0];
+		expect(turn.type).toBe("turn");
+		if (turn.type === "turn") {
+			expect(turn.id).toBe("turn-a-1");
+			expect(turn.userItem).toBeNull();
+			expect(turn.answerItem?.id).toBe("a-2");
+			expect(turn.allItemIds).toEqual(["a-1", "r-1", "a-2"]);
+
+			expect(turn.intermediateSteps).toHaveLength(1);
+			const step = turn.intermediateSteps[0];
+			expect(step.kind).toBe("tool");
+			if (step.kind === "tool") {
+				expect(step.call.id).toBe("call-1");
+				expect(step.result?.toolCallId).toBe("call-1");
+			}
+		}
+	});
+
+	it("extracts notice bodies and one-line summaries", () => {
+		const notice = makeItem({
+			id: "n-1",
+			kind: "custom",
+			text: "<system-notice>\nBackground job bg_1 has completed. Resume your work using the result below.\nok\n</system-notice>",
+		});
+
+		expect(noticeSummary(notice)).toBe(
+			"Background job bg_1 has completed. Resume your work using the result below.",
+		);
+
+		const body = noticeBody(notice);
+		expect(body).toContain("ok");
+		expect(body).not.toContain("system-notice");
+
+		expect(
+			noticeSummary(
+				makeItem({
+					id: "m-1",
+					kind: "model_change",
+					model: "claude-3-7-sonnet",
+				}),
+			),
+		).toBe("");
+	});
+
+	it("does not count idle time between a finished reply and a later wake-up as work", () => {
+		const call: ToolCall = { id: "c1", name: "bash", args: {}, intent: null };
+		const result = (id: string, ts: string) =>
+			makeItem({
+				id,
+				kind: "tool_result",
+				toolResult: { toolCallId: "c1", toolName: "bash", text: "ok", isError: false, details: null },
+				ts,
+			});
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u", kind: "user", text: "go", ts: "2026-10-07T12:00:00Z" }),
+			makeItem({ id: "a1", kind: "assistant", toolCalls: [call], ts: "2026-10-07T12:00:10Z" }),
+			result("r1", "2026-10-07T12:00:20Z"),
+			// Agent finishes; a background-job notice wakes it 24h later.
+			makeItem({ id: "a2", kind: "assistant", text: "started", ts: "2026-10-07T12:00:30Z" }),
+			makeItem({ id: "n", kind: "system", text: "<system-notice>job done</system-notice>", ts: "2026-10-08T12:00:30Z" }),
+			makeItem({ id: "a3", kind: "assistant", toolCalls: [call], ts: "2026-10-08T12:00:40Z" }),
+			result("r2", "2026-10-08T12:00:50Z"),
+			makeItem({ id: "a4", kind: "assistant", text: "done", ts: "2026-10-08T12:01:00Z" }),
+		]);
+		expect(blocks).toHaveLength(1);
+		const turn = blocks[0];
+		if (turn.type !== "turn") throw new Error("expected turn");
+		// 30s before the idle gap + 30s after it.
+		expect(turn.durationMs).toBe(60_000);
+	});
+});
+
+describe("activity grouping", () => {
+	it("formats compact durations for the worked-for divider", () => {
+		expect(formatDurationCompact(0)).toBe("0秒");
+		expect(formatDurationCompact(500)).toBe("1秒");
+		expect(formatDurationCompact(123000)).toBe("2分3秒");
+		expect(formatDurationCompact(60000)).toBe("1分");
+		expect(formatDurationCompact(3600000 + 240000)).toBe("1小时4分");
+	});
+
+	const tool = (
+		id: string,
+		name: string,
+		args: unknown = {},
+	): Extract<TurnStep, { kind: "tool" }> => ({
+		id,
+		kind: "tool",
+		item: makeItem({ id: `${id}-item`, kind: "assistant" }),
+		call: { id, name, args, intent: null },
+	});
+
+	it("summarizes folded runs per kind", () => {
+		const explore = [tool("a", "read"), tool("b", "grep"), tool("c", "glob")];
+		expect(activityGroupSummary("exploration", explore, false)).toBe(
+			"已浏览 1 个文件、2 次搜索",
+		);
+		expect(activityGroupSummary("exploration", explore, true)).toBe(
+			"正在浏览…",
+		);
+		expect(
+			activityGroupSummary("commands", [tool("x", "bash"), tool("y", "bash")], false),
+		).toBe("已运行 2 条命令");
+		// Edits count distinct paths, not calls.
+		expect(
+			activityGroupSummary(
+				"edits",
+				[
+					tool("e1", "edit", { path: "a.ts" }),
+					tool("e2", "edit", { path: "a.ts" }),
+					tool("e3", "write", { path: "b.ts" }),
+				],
+				false,
+			),
+		).toBe("已编辑 2 个文件");
+	});
+
+	it("folds same-kind runs, splits on kind change, absorbs thinking", () => {
+		const thinking: TurnStep = {
+			id: "th-1",
+			kind: "thinking",
+			item: makeItem({ id: "th-item", kind: "assistant" }),
+			thinking: "…",
+		};
+
+		const units = groupActivityUnits([
+			tool("c1", "read"),
+			tool("c2", "grep"),
+			thinking,
+			tool("c3", "glob"),
+			tool("r1", "bash"),
+			tool("r2", "bash"),
+			tool("e1", "edit"),
+			tool("c4", "read"),
+		]);
+
+		expect(units.map((u) => (u.kind === "group" ? u.group : u.step.id))).toEqual(
+			["exploration", "commands", "e1", "c4"],
+		);
+		if (units[0].kind === "group") {
+			expect(units[0].steps.map((s) => s.call.name)).toEqual([
+				"read",
+				"grep",
+				"glob",
+			]);
+		}
+	});
+
+	it("keeps thinking that leads into a different tool, absorbs it inside a run", () => {
+		const thinking: TurnStep = {
+			id: "th-1",
+			kind: "thinking",
+			item: makeItem({ id: "th-item", kind: "assistant" }),
+			thinking: "why bash",
+		};
+		const units = groupActivityUnits([tool("c1", "read"), thinking, tool("r1", "bash")]);
+		expect(units.map((u) => (u.kind === "step" ? u.step.id : u.group))).toEqual([
+			"c1",
+			"th-1",
+			"r1",
+		]);
+		const inRun = groupActivityUnits([tool("c1", "read"), thinking, tool("c2", "grep")]);
+		expect(inRun).toHaveLength(1);
+	});
+
+	it("never absorbs a running thinking row", () => {
+		const running = {
+			id: "th-live",
+			kind: "thinking" as const,
+			thinking: "…",
+			running: true,
+		};
+		const units = groupActivityUnits([tool("c1", "read"), tool("c2", "grep"), running]);
+		expect(units.map((u) => (u.kind === "step" ? u.step.id : u.group))).toEqual([
+			"exploration",
+			"th-live",
+		]);
+		// Even when more same-kind tools would follow, a running row stays visible.
+		const mid = groupActivityUnits([tool("c1", "read"), running, tool("c2", "grep")]);
+		expect(mid.some((u) => u.kind === "step" && u.step.id === "th-live")).toBe(true);
+	});
+});
+
+describe("toolFilePaths", () => {
+	it("reads plain path args", () => {
+		expect(toolFilePaths({ path: "src/a.ts" })).toEqual(["src/a.ts"]);
+	});
+
+	it("parses hashline edit headers from input, one per file", () => {
+		const input = "[src/a.ts#AB12]\n@@ 3\n+x\n[/Users/me/My Dir/b.ts#CD34]\n-y\n";
+		expect(toolFilePaths({ input, i: "edit" })).toEqual([
+			"src/a.ts",
+			"/Users/me/My Dir/b.ts",
+		]);
+		expect(toolFilePaths({ input: "no header here" })).toEqual([]);
+		expect(toolFilePaths(undefined)).toEqual([]);
+	});
+
+	it("makes edit summaries count distinct hashline files", () => {
+		const mk = (_id: string, input: string) => ({ call: { name: "edit", args: { input } } });
+		expect(
+			activityGroupSummary(
+				"edits",
+				[mk("e1", "[a.ts#AAAA]\n+1"), mk("e2", "[b.ts#BBBB]\n+1"), mk("e3", "[a.ts#CCCC]\n+1")],
+				false,
+			),
+		).toBe("已编辑 2 个文件");
+	});
+});
+
+describe("per-request stats placement", () => {
+	/** Row list shaped like a turn's rendered steps, with its folded units. */
+	const rows = [
+		{ id: "r1", kind: "tool", call: { id: "c1" }, item: makeItem({ id: "a1", kind: "assistant" }) },
+		{ id: "r2", kind: "tool", call: { id: "c2" }, item: makeItem({ id: "a1", kind: "assistant" }) },
+		{ id: "r3", kind: "tool", call: { id: "c3" }, item: makeItem({ id: "a2", kind: "assistant" }) },
+		{ id: "th", kind: "thinking", item: makeItem({ id: "a3", kind: "assistant" }) },
+	];
+
+	it("hangs a parallel request's line under its LAST row", () => {
+		const anchors = requestAnchors(rows, [
+			{ id: "a1", toolCallIds: ["c1", "c2"] },
+			{ id: "a2", toolCallIds: ["c3"] },
+		]);
+		expect(anchors.get("a1")).toBe("r2");
+		expect(anchors.get("a2")).toBe("r3");
+	});
+
+	it("hangs a request with no tool call under its own thinking row", () => {
+		const anchors = requestAnchors(rows, [{ id: "a3", toolCallIds: [] }]);
+		expect(anchors.get("a3")).toBe("th");
+	});
+
+	it("maps a request with no row at all to null (trailing line)", () => {
+		expect(requestAnchors(rows, [{ id: "zz", toolCallIds: [] }]).get("zz")).toBeNull();
+	});
+
+	it("never anchors a request under a failed-request row", () => {
+		const failedRow = { id: "failed-a0", kind: "request-failed", item: makeItem({ id: "a0", kind: "assistant" }) };
+		expect(requestAnchors([failedRow], [{ id: "a0", toolCallIds: [] }]).get("a0")).toBeNull();
+	});
+
+	it("orders request items by first appearance, answer last", () => {
+		const answer = makeItem({ id: "a4", kind: "assistant", text: "done" });
+		expect(turnRequestItems(rows, answer).map((i) => i.id)).toEqual([
+			"a1",
+			"a2",
+			"a3",
+			"a4",
+		]);
+	});
+
+	it("brackets a parallel run but never spans units", () => {
+		const marks = parallelToolRuns([rows.slice(0, 2), [rows[2]], [rows[3]]]);
+		expect(marks.get("r1")).toEqual({ first: true, last: false });
+		expect(marks.get("r2")).toEqual({ first: false, last: true });
+		expect(marks.get("r3")).toBeUndefined();
+	});
+
+	it("brackets live rows that share a request id", () => {
+		const live: PlacedStep[] = [
+			{ id: "t1", kind: "tool", call: { id: "c1" }, requestId: "req-1" },
+			{ id: "t2", kind: "tool", call: { id: "c2" }, requestId: "req-1" },
+		];
+		const marks = parallelToolRuns([live]);
+		expect([...marks.entries()]).toEqual([
+			["t1", { first: true, last: false }],
+			["t2", { first: false, last: true }],
+		]);
+	});
+});
+
+describe("splitInterimProse", () => {
+	it("keeps assistant prose out of the fold, in order, and folds the rest", () => {
+		const a1 = makeItem({ id: "a1", kind: "assistant", text: "先看看" });
+		const a2 = makeItem({ id: "a2", kind: "assistant", text: "再改" });
+		const tr = makeItem({ id: "t1", kind: "tool_result" });
+		const steps: TurnStep[] = [
+			{ id: "text-a1", kind: "text", item: a1, text: "先看看" },
+			{ id: "thinking-a2", kind: "thinking", item: a2, thinking: "hm" },
+			{ id: "orphan-result-t1", kind: "text", item: tr, text: "[工具输出]" },
+			{ id: "text-a2", kind: "text", item: a2, text: "再改" },
+		];
+		const { folded, prose } = splitInterimProse(steps);
+		expect(prose.map((s) => s.id)).toEqual(["text-a1", "text-a2"]);
+		expect(folded.map((s) => s.id)).toEqual(["thinking-a2", "orphan-result-t1"]);
+	});
+});
+
+describe("think tags inside assistant text", () => {
+	it("moves tagged reasoning into a thinking step and keeps only the reply as the answer", () => {
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u1", kind: "user", text: "hi" }),
+			makeItem({ id: "a1", kind: "assistant", text: "<think>先想想</think>\n\n答案" }),
+		]);
+		const turn = blocks[0] as TurnBlock;
+		expect(turn.answerItem?.text).toBe("答案");
+		expect(turn.intermediateSteps.map((s) => s.id)).toEqual(["thinking-a1"]);
+		const step = turn.intermediateSteps[0];
+		expect(step.kind === "thinking" && step.thinking).toBe("先想想");
+	});
+
+	it("appends tagged reasoning to an existing thinking block", () => {
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u1", kind: "user", text: "hi" }),
+			makeItem({
+				id: "a1",
+				kind: "assistant",
+				thinking: "A",
+				text: "<think>B</think>done",
+			}),
+		]);
+		const step = (blocks[0] as TurnBlock).intermediateSteps[0];
+		expect(step.kind === "thinking" && step.thinking).toBe("A\n\nB");
+	});
+});
+
+describe("splitLiveTurn", () => {
+	const think = { id: "t", kind: "thinking" };
+	const tool = { id: "c", kind: "tool" };
+	const steer = { id: "s", kind: "steer", text: "also" };
+	const interim = { id: "p", kind: "text", text: "Looking at the files." };
+	const answer = { id: "a", kind: "text", text: "Done: it works." };
+
+	it("treats the trailing non-empty text step as the answer candidate", () => {
+		expect(liveAnswerCandidate([think, tool, answer])).toBe(answer);
+		expect(liveAnswerCandidate([answer, tool])).toBeNull();
+		expect(liveAnswerCandidate([think])).toBeNull();
+		expect(liveAnswerCandidate([{ id: "e", kind: "text", text: "  \n" }])).toBeNull();
+		expect(liveAnswerCandidate([])).toBeNull();
+	});
+
+	it("keeps every step in arrival order until the answer starts", () => {
+		const steps = [think, interim, tool, answer];
+		const out = splitLiveTurn(steps, false);
+		expect(out.activity).toBe(steps);
+		expect(out.prose).toEqual([]);
+		expect(out.answer).toBeNull();
+	});
+
+	it("folds activity and lifts interim prose once the answer starts", () => {
+		const out = splitLiveTurn([think, interim, tool, steer, answer], true);
+		expect(out.activity).toEqual([think, tool, steer]);
+		expect(out.prose).toEqual([interim]);
+		expect(out.answer).toBe(answer);
+	});
+
+	it("stays unfolded when the turn does not end in prose", () => {
+		const steps = [answer, tool];
+		const out = splitLiveTurn(steps, true);
+		expect(out.answer).toBeNull();
+		expect(out.activity).toBe(steps);
+	});
+});
+
+describe("splitInterimProseBySteer", () => {
+	const asst = (id: string) => makeItem({ id, kind: "assistant" });
+	it("keeps each segment's prose before the steer that followed it", () => {
+		const steps = [
+			{ id: "t1", kind: "tool", item: asst("a1") },
+			{ id: "p1", kind: "text", text: "before", item: asst("a1") },
+			{ id: "s1", kind: "steer", item: makeItem({ id: "u2", kind: "user" }) },
+			{ id: "t2", kind: "tool", item: asst("a2") },
+			{ id: "p2", kind: "text", text: "after", item: asst("a2") },
+		];
+		const segs = splitInterimProseBySteer(steps);
+		expect(segs.map((s) => (s.type === "steer" ? "steer" : `${s.folded.length}/${s.prose.map((p) => p.id)}`))).toEqual([
+			"1/p1",
+			"steer",
+			"1/p2",
+		]);
+	});
+
+	it("drops segments with neither fold nor prose and allows prose-only segments", () => {
+		const segs = splitInterimProseBySteer([
+			{ id: "s1", kind: "steer", item: makeItem({ id: "u2", kind: "user" }) },
+			{ id: "p1", kind: "text", text: "x", item: asst("a1") },
+		]);
+		expect(segs).toHaveLength(2);
+		expect(segs[1]).toMatchObject({ type: "steps", folded: [], prose: [{ id: "p1" }] });
+	});
+});

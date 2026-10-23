@@ -1,0 +1,8 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "omp-workspace-visualize",
+  "version": "1.0.0",
+  "description": "In-conversation visualizations: interactive charts, diagrams, and simulations rendered in a sandboxed surface.",
+  "author": { "name": "omp-workspace" },
+  "license": "Proprietary"
+}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+		/>
+		<meta name="theme-color" content="#0f0f10" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<title>omp-workspace</title>
+		<link rel="stylesheet" href="/static/css/app.css" />
+	</head>
+	<body>
+		<div id="fatal"></div>
+
+		<!-- Full-screen page stack (home / chat / left:* / right:*) -->
+		<div id="pages"></div>
+
+		<div id="scrim"></div>
+		<aside id="drawer-left" class="drawer left">
+			<div class="dtitle" id="drawer-left-title"></div>
+			<div class="dlist" id="drawer-left-list"></div>
+		</aside>
+		<aside id="drawer-right" class="drawer right">
+			<div class="dtitle" id="drawer-right-title"></div>
+			<div class="dlist" id="drawer-right-list"></div>
+		</aside>
+
+		<div id="toast"></div>
+		<div id="confirm">
+			<div class="sheet">
+				<div class="ctext" id="confirm-text"></div>
+				<div class="cbtns">
+					<button class="btn" id="confirm-cancel">取消</button>
+					<button class="btn primary" id="confirm-ok">确定</button>
+				</div>
+			</div>
+		</div>
+
+		<script defer src="/static/js/core.js"></script>
+		<script defer src="/static/js/settings-local.js"></script>
+		<script defer src="/static/js/request-stats.js"></script>
+		<script defer src="/static/js/chat.js"></script>
+		<script defer src="/static/js/sketch.js"></script>
+		<script defer src="/static/js/nav-left.js"></script>
+		<script defer src="/static/js/panel-files.js"></script>
+		<script defer src="/static/js/panel-misc.js"></script>
+		<script defer src="/static/js/ideas.js"></script>
+	</body>
+</html>

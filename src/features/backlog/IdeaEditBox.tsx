@@ -1,0 +1,97 @@
+import { useRef } from "react";
+import { isComposing } from "../../lib/hooks";
+import type { BacklogKind } from "../../lib/contracts";
+import { useBacklog } from "./backlogStore";
+import { IdeaEditor, type IdeaEditorHandle } from "./IdeaEditor";
+import { useImageAttach } from "./IdeaImages";
+import { ensureTokens, insertImages, reconcileDoc, storedToDoc, type TokenDoc } from "./ideaTokens";
+import { KIND_META, KINDS } from "./ideaStyles";
+
+/** Edit buffer → editable doc (buffers saved before inline tokens carry raw `[图片: path]` tags). */
+export function bufferDoc(buf: { text: string; images?: string[] }): TokenDoc {
+	return buf.images ? ensureTokens({ text: buf.text, images: buf.images }) : storedToDoc(buf.text);
+}
+
+/** In-place editor for one idea: auto-growing, Enter saves, Esc cancels, paste/drop adds image tokens. */
+export function IdeaEditBox({
+	id,
+	kind,
+	onKindChange,
+	onSave,
+	onCancel,
+}: {
+	id: string;
+	kind: BacklogKind;
+	onKindChange: (kind: BacklogKind) => void;
+	onSave: () => void;
+	onCancel: () => void;
+}) {
+	const buf = useBacklog((s) => s.editBuffer);
+	const setEditBuffer = useBacklog((s) => s.setEditBuffer);
+	const ref = useRef<IdeaEditorHandle>(null);
+	const attach = useImageAttach((paths) => {
+		const b = useBacklog.getState().editBuffer;
+		if (!b || b.id !== id) return;
+		const r = insertImages(bufferDoc(b), ref.current?.caret() ?? b.text.length, paths);
+		ref.current?.placeCaret(r.caret);
+		setEditBuffer({ id, text: r.doc.text, images: r.doc.images });
+	});
+	if (!buf || buf.id !== id) return null;
+	return (
+		<div className="space-y-1.5" data-owns-escape>
+			<div {...attach.dropProps} className={`rounded-xl ${attach.dragging ? "outline-dashed outline-1 outline-[var(--accent)]" : ""}`}>
+				<IdeaEditor
+					ref={ref}
+					doc={bufferDoc(buf)}
+					autoFocus
+					onChange={(d) => {
+						const r = reconcileDoc(d);
+						setEditBuffer({ id, text: r.text, images: r.images });
+					}}
+					onPaste={attach.onPaste}
+					onKeyDown={(e) => {
+						if (e.key === "Escape") {
+							onCancel();
+							return;
+						}
+						if (e.key !== "Enter" || e.shiftKey) return;
+						e.preventDefault();
+						if (!isComposing(e)) onSave();
+					}}
+					onBlur={() => {
+						// Window lost focus (app switch / reload): keep the buffer.
+						if (document.hasFocus()) onCancel();
+					}}
+					minHeight={52}
+					maxHeight={240}
+					boxClass="rounded-xl border-[var(--accent)]"
+				/>
+				<div className="mt-1 flex items-center justify-between gap-2">
+					<div className="text-[10px] text-[var(--text-dim)]">Enter 保存 · Shift+Enter 换行 · Esc 取消</div>
+					<div className="inline-flex shrink-0 items-center rounded-full border border-[var(--border-divider)] p-0.5">
+						{KINDS.map((k) => {
+							const Icon = KIND_META[k].icon;
+							return (
+								<button
+									key={k}
+									type="button"
+									aria-pressed={kind === k}
+									onMouseDown={(e) => e.preventDefault()}
+									onClick={() => onKindChange(k)}
+									className={`inline-flex h-6 items-center gap-1 rounded-full px-2 text-[12px] transition-colors ${
+										kind === k
+											? KIND_META[k].tone
+											: "text-[var(--text-dim)] hover:text-[var(--text)]"
+									}`}
+								>
+									<Icon className="h-3 w-3" />
+									{KIND_META[k].label}
+								</button>
+							);
+						})}
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}

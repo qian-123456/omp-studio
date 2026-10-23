@@ -1,0 +1,162 @@
+// Zustand store: backlog items cache + persisted capture draft / last kind.
+import { create } from "zustand";
+import type { BacklogItem, BacklogKind } from "../../lib/contracts";
+import { onBacklogChanged } from "../../lib/events";
+import { backlogList } from "../../lib/ipc";
+
+export interface BacklogDraft {
+	text: string;
+	kind: BacklogKind;
+	images: string[];
+}
+
+export interface BacklogEditBuffer {
+	id: string;
+	/** Editable text: image tokens (`🖼️ #N`) index into `images`. */
+	text: string;
+	images?: string[];
+}
+
+const DRAFT_KEY = "ompws:backlog-draft";
+const EDIT_KEY = "ompws:backlog-edit-buffer";
+const LAST_KIND_KEY = "ompws:backlog-last-kind";
+const CAPTURE_PROJECT_KEY = "ompws:backlog-capture-project";
+const KINDS: readonly BacklogKind[] = ["bug", "idea"];
+
+const isKind = (v: unknown): v is BacklogKind => KINDS.includes(v as BacklogKind);
+
+function readLastKind(): BacklogKind {
+	try {
+		// Includes legacy stored "todo" (kind removed): anything unknown falls back to idea.
+		const v = localStorage.getItem(LAST_KIND_KEY);
+		return isKind(v) ? v : "idea";
+	} catch {
+		return "idea";
+	}
+}
+
+function readDraft(key: string, fallbackKind: BacklogKind): BacklogDraft {
+	const empty = { text: "", kind: fallbackKind, images: [] };
+	try {
+		const raw = localStorage.getItem(key);
+		if (!raw) return empty;
+		const v = JSON.parse(raw) as Partial<BacklogDraft>;
+		return {
+			text: typeof v.text === "string" ? v.text : "",
+			kind: isKind(v.kind) ? v.kind : fallbackKind,
+			images: Array.isArray(v.images) ? v.images.filter((p): p is string => typeof p === "string") : [],
+		};
+	} catch {
+		return empty;
+	}
+}
+
+function readEditBuffer(): BacklogEditBuffer | null {
+	try {
+		const raw = localStorage.getItem(EDIT_KEY);
+		if (!raw) return null;
+		const v = JSON.parse(raw) as Partial<BacklogEditBuffer>;
+		if (typeof v.id !== "string" || typeof v.text !== "string") return null;
+		return Array.isArray(v.images)
+			? { id: v.id, text: v.text, images: v.images.filter((p): p is string => typeof p === "string") }
+			: { id: v.id, text: v.text };
+	} catch {
+		return null;
+	}
+}
+
+function readCaptureProject(): string | null {
+	try {
+		return localStorage.getItem(CAPTURE_PROJECT_KEY);
+	} catch {
+		return null;
+	}
+}
+
+function write(key: string, value: string | null) {
+	try {
+		if (value === null) localStorage.removeItem(key);
+		else localStorage.setItem(key, value);
+	} catch {
+		// Storage unavailable (private mode / quota); state stays in memory.
+	}
+}
+
+interface BacklogState {
+	items: BacklogItem[];
+	loading: boolean;
+	load(): Promise<void>;
+	/** Unsubmitted capture input, persisted across reopenings. */
+	draft: BacklogDraft;
+	setDraft(patch: Partial<BacklogDraft>): void;
+	clearDraft(): void;
+	/** Unsaved edit of an existing item; dropped on load() if the item is gone. */
+	editBuffer: BacklogEditBuffer | null;
+	setEditBuffer(buf: BacklogEditBuffer): void;
+	clearEditBuffer(): void;
+	/** Last chosen category; default for new captures. */
+	lastKind: BacklogKind;
+	setLastKind(k: BacklogKind): void;
+	/**
+	 * Project chosen for new ideas: null = follow the current session's project,
+	 * `CAPTURE_PROJECT_NONE` = no project, otherwise a project dir. Persisted.
+	 */
+	captureProject: string | null;
+	setCaptureProject(pick: string | null): void;
+}
+
+const initialLastKind = readLastKind();
+
+let subscribed = false;
+export const useBacklog = create<BacklogState>((set, get) => ({
+	items: [],
+	loading: false,
+	load: async () => {
+		set({ loading: true });
+		try {
+			const items = await backlogList();
+			const buf = get().editBuffer;
+			set({ items });
+			if (buf && !items.some((i) => i.id === buf.id)) get().clearEditBuffer();
+		} finally {
+			set({ loading: false });
+		}
+		if (!subscribed) {
+			subscribed = true;
+			void onBacklogChanged(() => {
+				get()
+					.load()
+					.catch(() => {});
+			});
+		}
+	},
+	draft: readDraft(DRAFT_KEY, initialLastKind),
+	setDraft: (patch) => {
+		const draft = { ...get().draft, ...patch };
+		set({ draft });
+		write(DRAFT_KEY, JSON.stringify(draft));
+	},
+	clearDraft: () => {
+		set({ draft: { text: "", kind: get().lastKind, images: [] } });
+		write(DRAFT_KEY, null);
+	},
+	editBuffer: readEditBuffer(),
+	setEditBuffer: (buf) => {
+		set({ editBuffer: buf });
+		write(EDIT_KEY, JSON.stringify(buf));
+	},
+	clearEditBuffer: () => {
+		set({ editBuffer: null });
+		write(EDIT_KEY, null);
+	},
+	lastKind: initialLastKind,
+	setLastKind: (k) => {
+		set({ lastKind: k });
+		write(LAST_KIND_KEY, k);
+	},
+	captureProject: readCaptureProject(),
+	setCaptureProject: (pick) => {
+		set({ captureProject: pick });
+		write(CAPTURE_PROJECT_KEY, pick);
+	},
+}));
