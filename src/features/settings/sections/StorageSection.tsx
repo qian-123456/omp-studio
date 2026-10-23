@@ -27,6 +27,7 @@ import {
 	selectedBytes,
 } from "../storageLogic";
 import { Notice } from "../../../components/Notice";
+import { SectionJumpBar } from "../SectionJumpBar";
 import { Button, Chip, SectionHeader, SettingRow, SettingsCard } from "../ui";
 
 function drafts(): string[] {
@@ -170,7 +171,8 @@ export function StorageSection() {
 				</Notice>
 			)}
 
-			<SettingsCard title="图片" description="粘贴、拖入的图片与旧版剪贴板缓存">
+			<SectionJumpBar />
+			<SettingsCard jump="图片" title="图片" description="粘贴、拖入的图片与旧版剪贴板缓存">
 				<SettingRow
 					label="没用到的图片"
 					description="只清理超过 30 天、且没被想法、定时任务、未发送草稿或任何会话引用的图片。每天启动后会在后台自动清理一次。"
@@ -188,7 +190,7 @@ export function StorageSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard title="缓存与记录">
+			<SettingsCard jump="缓存与记录" title="缓存与记录">
 				<SettingRow
 					label="网页缓存"
 					description="界面加载产生的临时网络缓存，清空后会自动重新生成。不会影响设置、草稿和登录状态。"
@@ -234,6 +236,7 @@ export function StorageSection() {
 			</SettingsCard>
 
 			<SettingsCard
+				jump="omp 会话"
 				title="omp 会话"
 				description="会话记录和工具输出。从这里删除会移到废纸篓，可以恢复文件。"
 				aside={sessions ? `共 ${formatBytes(sessions.totalBytes)} · ${sessions.sessionCount} 个会话` : undefined}
@@ -277,6 +280,7 @@ export function StorageSection() {
 
 			{sessions && (
 				<SettingsCard
+					jump="按项目查看"
 					title="按项目查看"
 					description="展开项目，勾选会话后移到废纸篓。"
 					footer={

@@ -22,6 +22,7 @@ import {
 	SettingsCard,
 	ToggleRow,
 } from "../ui";
+import { SectionJumpBar } from "../SectionJumpBar";
 
 const ERROR_TEXT: Record<string, string> = {
 	TOO_SHORT: "内容太短（至少 3 个字符）",
@@ -376,6 +377,7 @@ export function PrivacySection() {
 	return (
 		<div className="space-y-6">
 			<SectionHeader title="隐私" description="隐私库里的敏感信息如何替换，以及 omp 的密钥脱敏和数据上报" />
+			<SectionJumpBar />
 
 			{nativeStatus !== "ok" && (
 				<Notice tone="warning">
@@ -385,7 +387,7 @@ export function PrivacySection() {
 				</Notice>
 			)}
 
-			<SettingsCard title="显示">
+			<SettingsCard jump="显示" title="显示">
 				<ToggleRow
 					fieldId="privacyRevealDefault"
 					label="默认显示真实值"
@@ -395,7 +397,7 @@ export function PrivacySection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard
+			<SettingsCard jump="隐私库"
 				title="隐私库"
 				description="标记过的内容发给 AI 时会替换成占位符，只在本机执行工具前还原；占位符创建后固定不变，修改名称只影响界面显示。"
 				footer="隐私库中的内容在所有会话里都会被自动识别并替换。"
@@ -418,7 +420,7 @@ export function PrivacySection() {
 			<EditSecretDialog entry={editingEntry} onClose={() => setEditingEntry(null)} />
 
 			{sessionOnly.length > 0 && (
-				<SettingsCard title="仅在会话中标记" footer="只在标记过它们的会话里自动替换">
+				<SettingsCard jump="会话内标记" title="仅在会话中标记" footer="只在标记过它们的会话里自动替换">
 					{sessionOnly.map((e) => (
 						<EntryRow key={e.id} entry={e} onEdit={setEditingEntry} />
 					))}

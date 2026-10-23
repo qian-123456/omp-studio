@@ -170,6 +170,7 @@ export function ShortcutRecorder({
 		const onKey = (e: KeyboardEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
+			e.stopImmediatePropagation();
 			if (e.code === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
 				setRecording(false);
 				setHint(null);
@@ -209,6 +210,7 @@ export function ShortcutRecorder({
 			<button
 				type="button"
 				aria-label="录制全局快捷键"
+				data-shortcut-recording={recording ? "" : undefined}
 				title={value ? `当前：${value}` : undefined}
 				onClick={() => {
 					setHint(null);

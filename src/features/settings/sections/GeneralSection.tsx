@@ -1,5 +1,5 @@
 /**
- * Settings ▸ 通用 (`general`): new-session defaults, UI switches, shortcut, Git delivery,
+ * Settings ▸ 通用 (`general`): new-session defaults, UI switches, Git delivery,
  * plus the omp 系统 section (sleep prevention).
  */
 import { AlertTriangle, ChevronRight } from "lucide-react";
@@ -12,7 +12,6 @@ import { asRecord, roleValue, splitRoleValue } from "../modelRoles";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { useSettingsNav } from "../settingsNav";
 import { openSettingsTarget } from "../settingsTargets";
-import { DEFAULT_SETTINGS } from "../store";
 import { useAppSettings, useCatalogModels } from "../useAppSettings";
 import { OmpSections } from "../OmpSettingsList";
 import {
@@ -23,7 +22,7 @@ import {
 	ToggleRow,
 	useSaveStatus,
 } from "../ui";
-import { ShortcutRecorder } from "./ShortcutRecorder";
+import { SectionJumpBar } from "../SectionJumpBar";
 
 type ApprovalMode = "always-ask" | "write" | "yolo";
 
@@ -38,7 +37,6 @@ export function GeneralSection() {
 	const { models } = useCatalogModels();
 	const { navigate } = useSettingsNav();
 	const approvalSave = useSaveStatus();
-	const shortcutSave = useSaveStatus();
 	const ompEntries = useOmpConfigStore((s) => s.entries);
 	const ompLoaded = useOmpConfigStore((s) => s.loaded);
 	const loadOmp = useOmpConfigStore((s) => s.load);
@@ -85,9 +83,10 @@ export function GeneralSection() {
 
 	return (
 		<div className="space-y-6">
-			<SectionHeader title="通用" description="新会话的默认设置、界面开关与快捷键" />
+			<SectionHeader title="通用" description="新会话的默认设置与界面开关" />
+			<SectionJumpBar />
 
-			<SettingsCard title="新会话默认设置">
+			<SettingsCard jump="新会话默认设置" title="新会话默认设置">
 				<SettingRow
 					fieldId="newSessionModel"
 					label="全局默认模型"
@@ -155,7 +154,7 @@ export function GeneralSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard title="界面">
+			<SettingsCard jump="界面" title="界面">
 				<ToggleRow
 					fieldId="capsuleVisible"
 					label="顶部子代理胶囊"
@@ -179,25 +178,7 @@ export function GeneralSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard title="快捷键">
-				<SettingRow
-					fieldId="quickCaptureShortcut"
-					label="快速记录快捷键"
-					description="在任何应用里按下它，都能弹出快速记录窗口。点击按钮后按下新的组合键即可更换。"
-					hint="清除即停用；需包含 ⌘ / ⌃ / ⌥ / ⇧ 之一（F 键除外）"
-					status={shortcutSave.status}
-					statusError={shortcutSave.error}
-					control={
-						<ShortcutRecorder
-							value={settings?.quickCaptureShortcut ?? ""}
-							defaultValue={DEFAULT_SETTINGS.quickCaptureShortcut}
-							onCommit={(v) => void shortcutSave.run(() => save({ quickCaptureShortcut: v }))}
-						/>
-					}
-				/>
-			</SettingsCard>
-
-			<SettingsCard title="Git">
+			<SettingsCard jump="Git" title="Git">
 				<SettingRow
 					fieldId="gitDeliveryMode"
 					label="主干交付模式"

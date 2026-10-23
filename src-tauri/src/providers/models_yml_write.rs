@@ -14,6 +14,11 @@ const NEW_INDENT: usize = 2;
 pub async fn omp_models_set_context_windows(
     entries: Vec<ModelContextWindowEdit>,
 ) -> Result<(), String> {
+    // models.yml is read-modify-written as a whole by the provider editor too;
+    // without the shared lock a concurrent provider save and this edit each
+    // plan from the same old content and the later write silently drops the
+    // other change.
+    let _guard = super::MUTATION_LOCK.lock().await;
     let path = super::omp_config::home_agent_dir().join("models.yml");
     tokio::task::spawn_blocking(move || apply_to_file(&path, &entries))
         .await
@@ -250,15 +255,34 @@ pub(super) fn opens_block(rest: &str) -> bool {
 }
 
 pub(super) fn yaml_key(k: &str) -> String {
-    if !k.is_empty()
-        && k.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
-        && !k.starts_with(['-', '.'])
-    {
+    if is_plain_yaml_key(k) {
         k.to_string()
     } else {
         serde_json::to_string(k).unwrap_or_else(|_| format!("\"{k}\""))
     }
+}
+
+/// A key that YAML reads back as the same string: safe characters only, not
+/// starting with `-`/`.` (block sequence / anchor syntax), and not a scalar
+/// that the parser would resolve as a number, bool or null. Without the last
+/// check a model id like `123` or `true` would be written as a bare key, read
+/// back as a non-string, and fail verification.
+fn is_plain_yaml_key(k: &str) -> bool {
+    if k.is_empty()
+        || k.starts_with(['-', '.'])
+        || !k
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
+    {
+        return false;
+    }
+    if k.parse::<f64>().is_ok() {
+        return false;
+    }
+    !matches!(
+        k.to_ascii_lowercase().as_str(),
+        "true" | "false" | "yes" | "no" | "on" | "off" | "null" | "~" | "y" | "n"
+    )
 }
 
 /// Exclusive end of the block owned by the key at `start` with indent `indent`:
@@ -505,6 +529,33 @@ mod tests {
         );
         let out = edit_text(src, "a", "m2", None).unwrap();
         assert!(cw(&out, "a", "m1") == Some(5) && !out.contains("m2"));
+    }
+
+    /// A model id that YAML would resolve to a number/bool must be quoted, or
+    /// the write verifies against a non-string key and fails (and rolls back).
+    #[test]
+    fn numeric_and_boolean_model_ids_round_trip_as_strings() {
+        assert_eq!(yaml_key("123"), "\"123\"");
+        assert_eq!(yaml_key("1.5"), "\"1.5\"");
+        assert_eq!(yaml_key("true"), "\"true\"");
+        assert_eq!(yaml_key("Null"), "\"Null\"");
+        assert_eq!(yaml_key("gpt-4o"), "gpt-4o");
+        assert_eq!(yaml_key("gpt-4o:mini"), "\"gpt-4o:mini\"");
+
+        let path = tmp("numeric-key");
+        std::fs::write(&path, "providers:\n  acme:\n    apiKey: FAKE\n").unwrap();
+        apply_to_file(
+            &path,
+            &[
+                entry("acme", "123", Some(4096)),
+                entry("acme", "true", Some(8)),
+            ],
+        )
+        .unwrap();
+        let out = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(cw(&out, "acme", "123"), Some(4096), "{out}");
+        assert_eq!(cw(&out, "acme", "true"), Some(8), "{out}");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]

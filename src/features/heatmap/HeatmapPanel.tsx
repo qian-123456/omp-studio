@@ -237,7 +237,7 @@ export function HeatmapPanel() {
 											className={clsx(
 												"flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] transition-all whitespace-nowrap",
 												currentTarget === "main"
-													? "border-[var(--accent)] bg-[var(--bg-selected)] font-medium text-neutral-100 shadow-sm"
+													? "border-[var(--accent)] bg-[var(--bg-selected)] text-neutral-100 shadow-sm"
 													: "border-[var(--border)] bg-[var(--bg)] text-neutral-400 hover:bg-[var(--bg-hover)]",
 											)}
 										>
@@ -254,7 +254,7 @@ export function HeatmapPanel() {
 												className={clsx(
 													"flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] transition-all whitespace-nowrap",
 													currentTarget === sub.id
-														? "border-purple-400 bg-[var(--bg-selected)] font-medium text-neutral-100 shadow-sm"
+														? "border-purple-400 bg-[var(--bg-selected)] text-neutral-100 shadow-sm"
 														: "border-[var(--border)] bg-[var(--bg)] text-neutral-400 hover:bg-[var(--bg-hover)]",
 												)}
 											>
@@ -396,7 +396,7 @@ export function HeatmapPanel() {
 													className={clsx(
 														"text-[11px] truncate",
 														currentCategory === d.key
-															? "font-medium text-neutral-100"
+															? "text-neutral-100"
 															: "text-neutral-400",
 													)}
 												>

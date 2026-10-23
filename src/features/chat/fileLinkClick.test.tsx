@@ -15,7 +15,11 @@ const FILES = new Set([
 	"/repo/src/a.ts",
 	"/Users/me/CodingWiki/wiki/rules.md",
 	"/Users/me/projects/omp-workspace/AGENTS.md",
+	"/Users/me/Evil.app/Contents/MacOS/Evil",
 ]);
+vi.mock("../../lib/toast", () => ({
+	toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
+}));
 vi.mock("../../lib/ipc", () => ({
 	validatePath: async (path: string) => ({
 		exists: FILES.has(path),
@@ -30,7 +34,7 @@ vi.mock("../../lib/ipc", () => ({
 }));
 
 import { Markdown } from "../../components/Markdown";
-import { useFilePreview } from "../../stores/filePreview";
+import { openFileLink, useFilePreview } from "../../stores/filePreview";
 import { useUi } from "../../stores/ui";
 
 describe("Markdown file links", () => {
@@ -128,5 +132,39 @@ describe("Markdown file links", () => {
 				"/Users/me/.omp/agent/AGENTS.md",
 			);
 		});
+	});
+});
+
+describe("file links never execute anything", () => {
+	beforeEach(() => {
+		localStorage.clear();
+		useFilePreview.setState({ tabs: [], activePath: null });
+		useUi.setState({ rightTab: null, openRightTabs: [], rightOpen: false });
+	});
+
+	afterEach(cleanup);
+
+	it("does not link an executable path in prose or code", () => {
+		const { container } = render(
+			<Markdown text={"运行 /Users/me/Evil.app 或 `/Users/me/Evil.app` 再说"} />,
+		);
+		expect(container.querySelectorAll("a")).toHaveLength(0);
+		expect(container.textContent).toContain("/Users/me/Evil.app");
+	});
+
+	it("refuses an existing non-previewable file without calling the system opener", async () => {
+		const { openPath } = await import("@tauri-apps/plugin-opener");
+		await openFileLink("/Users/me/Evil.app/Contents/MacOS/Evil");
+		expect(useFilePreview.getState().tabs).toEqual([]);
+		expect(openPath).not.toHaveBeenCalled();
+	});
+
+	it("opens text files as a preview tab and still never calls the system opener", async () => {
+		const { openPath } = await import("@tauri-apps/plugin-opener");
+		await openFileLink("/Users/me/CodingWiki/wiki/rules.md");
+		expect(useFilePreview.getState().tabs[0]?.path).toBe(
+			"/Users/me/CodingWiki/wiki/rules.md",
+		);
+		expect(openPath).not.toHaveBeenCalled();
 	});
 });

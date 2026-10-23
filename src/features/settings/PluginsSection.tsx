@@ -41,6 +41,7 @@ import { toast } from "../../lib/toast";
 import { Switch } from "./Switch";
 import { projectName } from "./mcpDraft";
 import { OmpSections } from "./OmpSettingsList";
+import { SectionJumpBar } from "./SectionJumpBar";
 import { EmptyState } from "../../components/EmptyState";
 import { Notice } from "../../components/Notice";
 import { Button, Chip, IconButton, SectionHeader, SettingsCard } from "./ui";
@@ -219,6 +220,7 @@ export function PluginsSection({
 					/>
 				}
 			/>
+			<SectionJumpBar />
 
 			<div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
 				<FolderOpen className="h-3.5 w-3.5 shrink-0" />
@@ -247,6 +249,7 @@ export function PluginsSection({
 			{/* Installed plugins */}
 			<SettingsCard
 				title="已安装插件"
+				jump="已安装插件"
 				aside={`${catalog?.plugins.length ?? 0} 个`}
 				fieldId="pluginList"
 				clip
@@ -355,6 +358,7 @@ export function PluginsSection({
 			{/* Extension modules */}
 			<SettingsCard
 				title="扩展模块"
+				jump="扩展模块"
 				aside={`${extensions.length} 个`}
 				description="放在扩展目录中的脚本模块。"
 				fieldId="extensionList"

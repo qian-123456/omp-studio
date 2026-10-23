@@ -215,9 +215,13 @@ fn normalize_message(msg: &Value, item: &mut TranscriptItem) {
                 item.kind = TranscriptKind::User;
                 let raw = content_text(msg.get("content"));
                 let clean = super::parse::strip_system_reminders(&raw);
-                item.hidden = clean.is_empty() || raw.trim_start().starts_with("<system-reminder>");
-                item.text = opt(clean.to_string());
                 item.images = super::parse::parse_images(msg.get("content"));
+                // Hidden only when there is nothing to show: a message whose
+                // only content is an image keeps its text empty but must stay
+                // visible (the UI renders the attachments).
+                item.hidden = (clean.is_empty() && item.images.is_empty())
+                    || raw.trim_start().starts_with("<system-reminder>");
+                item.text = opt(clean.to_string());
             }
         }
         "developer" => {
@@ -492,6 +496,29 @@ mod tests {
         let r = items[4].tool_result.as_ref().unwrap();
         assert_eq!((r.tool_call_id.as_str(), r.text.as_str()), ("c1", "a.txt"));
         assert_eq!(items[5].text.as_deref(), Some("sum"));
+    }
+
+    /// A user message whose only content is an image must stay visible: the
+    /// text is empty by design, but hiding it drops the attachment from the
+    /// chat transcript.
+    #[test]
+    fn image_only_user_message_is_not_hidden() {
+        let line = r#"{"type":"message","id":"u2","parentId":"x","timestamp":"T","message":{"role":"user","content":[{"type":"image","data":"blob:sha256:abc"}]}}"#;
+        let item = normalize_entry(&serde_json::from_str(line).unwrap()).unwrap();
+        assert_eq!(item.kind, TranscriptKind::User);
+        assert_eq!(item.text, None);
+        assert_eq!(item.images.len(), 1);
+        assert!(!item.hidden, "image-only message must stay visible");
+
+        // Nothing at all (empty content) stays hidden.
+        let empty = r#"{"type":"message","id":"u3","parentId":"x","timestamp":"T","message":{"role":"user","content":[]}}"#;
+        let item = normalize_entry(&serde_json::from_str(empty).unwrap()).unwrap();
+        assert!(item.hidden);
+
+        // A system reminder alone stays hidden even though it carries no text.
+        let reminder = r#"{"type":"message","id":"u4","parentId":"x","timestamp":"T","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>x</system-reminder>"}]}}"#;
+        let item = normalize_entry(&serde_json::from_str(reminder).unwrap()).unwrap();
+        assert!(item.hidden);
     }
 
     #[test]

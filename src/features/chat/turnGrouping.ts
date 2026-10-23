@@ -80,6 +80,24 @@ export interface ProtocolBlock {
 }
 
 export type DisplayBlock = TurnBlock | ProtocolBlock;
+
+/**
+ * Element anchor (rendered as `msg-<anchor>`) of the newest user request: the
+ * last turn's latest steer, else its user message. null when the last turn has
+ * no visible request of its own.
+ */
+export function latestRequestAnchor(blocks: readonly DisplayBlock[]): string | null {
+	for (let i = blocks.length - 1; i >= 0; i--) {
+		const b = blocks[i];
+		if (b.type !== "turn") continue;
+		for (let j = b.intermediateSteps.length - 1; j >= 0; j--) {
+			const step = b.intermediateSteps[j];
+			if (step.kind === "steer") return step.id;
+		}
+		return b.userItem?.id ?? null;
+	}
+	return null;
+}
 /**
  * Format a chat message time; absent or invalid timestamps stay hidden.
  * Today: "HH:mm"; earlier this year: "M月D日 HH:mm"; other years: "YYYY年M月D日 HH:mm".

@@ -596,6 +596,12 @@ pub fn logout_credentials_conn(
     }
 
     if matched.is_empty() {
+        // An explicit account filter that matched nothing must never fall back
+        // to "log out whatever is there": a stale account row would otherwise
+        // sign the user out of a different account.
+        if email.is_some() || account_id.is_some() {
+            return Err("未找到匹配的授权账号，未退出任何账号".to_string());
+        }
         if identities.len() > 1 {
             return Err("该供应商配置了多个授权账号，请指定要退出的账号".to_string());
         }
@@ -741,9 +747,41 @@ mod tests {
             [],
         )
         .unwrap();
+        // An explicit filter that matches neither row must not fall back to
+        // "the only account there is": a stale account row would otherwise sign
+        // the user out of a different account.
+        assert!(
+            logout_credentials_conn(&mut conn, "devin", Some("u@x.com"), Some("user-1")).is_err()
+        );
+        assert_eq!(active(&conn), 2);
+        // Without a filter both rows are the same (unnamed) account.
         assert_eq!(
-            logout_credentials_conn(&mut conn, "devin", Some("u@x.com"), Some("user-1")),
+            logout_credentials_conn(&mut conn, "devin", None, None),
             Ok(2)
+        );
+        assert_eq!(active(&conn), 0);
+    }
+
+    /// One account, explicit filter that matches nothing → error, nothing disabled.
+    #[test]
+    fn logout_explicit_unmatched_filter_never_falls_back() {
+        let mut conn = logout_db();
+        add_cred(
+            &conn,
+            "p",
+            "email:alice@x.com",
+            r#"{"email":"alice@x.com"}"#,
+        );
+        let err = logout_credentials_conn(&mut conn, "p", Some("bob@x.com"), None).unwrap_err();
+        assert!(err.contains("未找到匹配的授权账号"), "{err}");
+        assert_eq!(active(&conn), 1);
+        let err = logout_credentials_conn(&mut conn, "p", None, Some("acct-bob")).unwrap_err();
+        assert!(err.contains("未找到匹配的授权账号"), "{err}");
+        assert_eq!(active(&conn), 1);
+        // The matching filter still works.
+        assert_eq!(
+            logout_credentials_conn(&mut conn, "p", Some("alice@x.com"), None),
+            Ok(1)
         );
         assert_eq!(active(&conn), 0);
     }

@@ -22,6 +22,8 @@ import { startTodos } from "./features/todos/store";
 
 import { terminalSetCurrentSession } from "./lib/ipc";
 import { installNativeShortcuts } from "./lib/nativeShortcuts";
+import { installShortcutDispatcher } from "./features/shortcuts/dispatcher";
+import { effectiveCenterViewOf } from "./features/shortcuts/actions/navigation";
 import { suspendScrollPills } from "./lib/scrollPills";
 import { useSessions } from "./stores/sessions";
 import { useOmpUpdate, watchOmpStaleness, watchOmpUpdateChecks } from "./stores/ompUpdate";
@@ -157,9 +159,6 @@ export default function App() {
 	const centerView = useUi((s) => s.centerView);
 	const previousCenterView = useUi((s) => s.previousCenterView);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
-	const lastSessionId = useUi((s) => s.lastSessionId);
-	const returnToSession = useUi((s) => s.returnToSession);
-	const selectSession = useUi((s) => s.selectSession);
 	useDoctorAutoScheduler();
 
 	// Track the underlying view so when settings overlay opens, the center view stays mounted
@@ -167,30 +166,14 @@ export default function App() {
 	if (centerView !== "settings") {
 		lastNonSettingsCenterView.current = centerView;
 	}
-	const effectiveCenterView =
-		centerView === "settings"
-			? previousCenterView ?? lastNonSettingsCenterView.current
-			: centerView;
+	const effectiveCenterView = effectiveCenterViewOf(
+		centerView,
+		previousCenterView,
+		lastNonSettingsCenterView.current,
+	);
 	// Full-width views drop the right dock entirely; the persisted `rightOpen`
 	// preference stays untouched so it is restored on the next normal view.
 	const rightVisible = rightOpen && !CENTER_WITHOUT_RIGHT_PANEL.has(effectiveCenterView);
-	// Narrow selector for parentId needed by Cmd+[ shortcut (no whole-map subscription)
-	const parentId = useSessions(
-		useCallback(
-			(s) => {
-				const id = selectedSessionId || lastSessionId;
-				if (!id) return null;
-				const session = s.sessions[id];
-				return (
-					session?.parentId ??
-					(session && "parentSessionId" in session && typeof session.parentSessionId === "string"
-						? session.parentSessionId
-						: null)
-				);
-			},
-			[selectedSessionId, lastSessionId],
-		),
-	);
 
 	// Resizable sidebars: delta-drag (seam keeps its grab offset under the pointer), rAF-throttled
 	// live updates, persistence only on drag end. Cursor/user-select live on the overlay div, so
@@ -288,56 +271,8 @@ export default function App() {
 		return () => suspendScrollPills(false);
 	}, [draggingSide]);
 
-	// Global keyboard shortcuts: Cmd+B (left sidebar) / Cmd+J (right panel) / Cmd+[ (return to session/parent)
-	// Cmd+` (right-panel command terminal) / Cmd+Shift+` (selected session: chat ⇄ Agent terminal)
-	useEffect(() => {
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (centerView === "settings") return;
-			const isMod = e.metaKey || e.ctrlKey;
-			if (!isMod) return;
-			if (e.key.toLowerCase() === "b" && !e.shiftKey && !e.altKey) {
-				e.preventDefault();
-				toggleSidebar();
-			} else if (
-				e.key.toLowerCase() === "j" &&
-				!e.shiftKey &&
-				!e.altKey &&
-				!CENTER_WITHOUT_RIGHT_PANEL.has(effectiveCenterView)
-			) {
-				e.preventDefault();
-				toggleRight();
-			} else if (e.key === "[" && !e.shiftKey && !e.altKey) {
-				e.preventDefault();
-				// On a full-page view (doc/inbox/…) ⌘[ leaves it first; only on the
-				// session itself does it climb to the side-chat parent.
-				if (parentId && effectiveCenterView === "session") {
-					selectSession(parentId);
-				} else {
-					returnToSession();
-				}
-
-			} else if ((e.key === "`" || e.code === "Backquote") && !e.shiftKey && !e.altKey) {
-				e.preventDefault();
-				const ui = useUi.getState();
-				if (ui.rightOpen && ui.rightTab === "terminal") ui.setRightOpen(false);
-				else ui.setRightTab("terminal");
-			}
-		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => {
-			window.removeEventListener("keydown", onKeyDown);
-		};
-	}, [
-		centerView,
-		effectiveCenterView,
-		toggleSidebar,
-		toggleRight,
-		parentId,
-		selectSession,
-		returnToSession,
-	]);
-
 	useEffect(() => installNativeShortcuts(), []);
+	useEffect(() => installShortcutDispatcher(), []);
 
 	// Initialize todos subscription; load versions and auto-check omp updates at the configured interval
 	useEffect(() => {

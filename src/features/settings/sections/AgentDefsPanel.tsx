@@ -260,7 +260,7 @@ export function AgentDefsPanel() {
 	};
 
 	return (
-		<div className="space-y-4">
+		<div data-jump="子代理定义" className="scroll-mt-4 space-y-4">
 			<SectionHeader
 				title="子代理提示词与定义"
 				description="自定义各子代理的提示词、可用工具和模型。项目配置优先于全局配置；自定义后会完整替换内置提示词。"

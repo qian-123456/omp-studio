@@ -312,13 +312,14 @@ fn next_line(reader: &mut BufReader<File>) -> LineRead {
 /// `(skill name, epoch_ms)` triggers found and the offset just past the last
 /// complete line. A trailing line without `\n` is still being written, so it
 /// is neither parsed nor consumed.
-fn scan_file(path: &Path, start: u64, mtime_ms: i64) -> (Triggers, u64) {
-    let mut file = match File::open(path) {
-        Ok(f) => f,
-        Err(_) => return (Vec::new(), start),
-    };
+///
+/// `None` = the file could not be opened or seeked. The caller must not treat
+/// that as "no triggers": caching the current size/mtime would then hide the
+/// file's real contents until it changes again.
+fn scan_file(path: &Path, start: u64, mtime_ms: i64) -> Option<(Triggers, u64)> {
+    let mut file = File::open(path).ok()?;
     if start > 0 && file.seek(SeekFrom::Start(start)).is_err() {
-        return (Vec::new(), start);
+        return None;
     }
     let mut reader = BufReader::with_capacity(256 * 1024, file);
     let mut out = Vec::new();
@@ -344,7 +345,7 @@ fn scan_file(path: &Path, start: u64, mtime_ms: i64) -> (Triggers, u64) {
             LineRead::Eof => break,
         }
     }
-    (out, offset)
+    Some((out, offset))
 }
 
 fn system_time_ms(t: SystemTime) -> i64 {
@@ -432,7 +433,12 @@ fn scan_sessions(base: &Path, days: u32, cache: &mut FileCache) -> (SkillUsageRe
                         break;
                     };
                     let (path, _, mtime_ms) = &fresh[i];
-                    let (t, offset) = scan_file(path, start, *mtime_ms);
+                    let Some((t, offset)) = scan_file(path, start, *mtime_ms) else {
+                        // Unreadable (permissions, IO error): leave the cache
+                        // entry alone so the next scan retries instead of
+                        // recording this size/mtime as already scanned.
+                        continue;
+                    };
                     scanned
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())

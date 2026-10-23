@@ -35,10 +35,9 @@ export function SubagentsSection() {
 
 export function MemorySection() {
 	return (
-		<div className="space-y-6">
-			<OmpSettingsPage page="memory" title="记忆" description="AI 跨会话记住什么、存在哪里" />
+		<OmpSettingsPage page="memory" title="记忆" description="AI 跨会话记住什么、存在哪里">
 			<MemoryFilesPanel />
-		</div>
+		</OmpSettingsPage>
 	);
 }
 

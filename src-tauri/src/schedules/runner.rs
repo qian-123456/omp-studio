@@ -12,6 +12,9 @@ use crate::schedules::store;
 use crate::state::{AppEvent, AppState};
 use crate::todos::store::NewTodo;
 
+/// Upper bound for one scheduled run's wait for the turn to finish.
+const RUN_TIMEOUT: Duration = Duration::from_secs(3600);
+
 /// Whether a finished run should produce an inbox todo under the schedule's
 /// notify policy. `needed_attention` = the run entered AwaitingApproval or
 /// AwaitingAnswer at any point (callers pass `false` when the run never
@@ -289,6 +292,10 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
     // finished run "important" under `ScheduleNotify::Important`.
     let mut needed_attention = false;
     let target_sid = session_id.clone();
+    // One absolute deadline for the whole wait. Re-creating the sleep inside the
+    // loop would restart it on every unrelated bus event, so a busy app could
+    // keep a stuck run alive past the documented one-hour cap.
+    let deadline = tokio::time::Instant::now() + RUN_TIMEOUT;
     loop {
         tokio::select! {
             ev = bus_rx.recv() => {
@@ -317,8 +324,9 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
                     }
                     Ok(AppEvent::RpcProcess { session_id: sid, running, exit_code }) if sid == target_sid => {
                         if !running {
-                            let is_err = exit_code.map(|c| c != 0).unwrap_or(false);
-                            ok = !is_err;
+                            // Only a clean `exit 0` counts as success; a signal
+                            // kill reports `None` and must not read as success.
+                            ok = exit_code == Some(0);
                             break;
                         }
                     }
@@ -329,7 +337,7 @@ async fn execute_run_with_existing_run(state: AppState, schedule: Schedule, run_
                     _ => {}
                 }
             }
-            _ = tokio::time::sleep(Duration::from_secs(3600)) => {
+            _ = tokio::time::sleep_until(deadline) => {
                 ok = false;
                 break;
             }

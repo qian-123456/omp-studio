@@ -268,7 +268,7 @@ export function MemoryFilesPanel() {
 		const filePath = pathOf(selected.rel);
 		const skillName = skillNameOf(selected.rel);
 		return (
-			<div className="space-y-3">
+			<div className="scroll-mt-4 space-y-3" data-jump="记忆文件">
 				<div className="flex items-center gap-2 px-1">
 					<Button icon={ArrowLeft} onClick={closeEditor}>
 						返回列表
@@ -303,7 +303,7 @@ export function MemoryFilesPanel() {
 	}
 
 	return (
-		<div className="space-y-3">
+		<div className="scroll-mt-4 space-y-3" data-jump="记忆文件">
 			<div className="flex flex-wrap items-start justify-between gap-2 px-1">
 				<div>
 					<h3 className="text-sm font-semibold text-[var(--text)]">记忆文件</h3>

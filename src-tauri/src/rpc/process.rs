@@ -25,6 +25,9 @@ const CMD_TIMEOUT: Duration = Duration::from_secs(120);
 const LONG_CMD_TIMEOUT: Duration = Duration::from_secs(900);
 /// Grace period between stdin close and SIGKILL on stop.
 const STOP_GRACE: Duration = Duration::from_secs(5);
+/// How long `monitor` waits for the stdout reader to drain after the child
+/// exits before it fails outstanding requests itself.
+const STDOUT_DRAIN: Duration = Duration::from_secs(2);
 
 static REQ_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -63,6 +66,16 @@ impl PendingMap {
             }));
         }
     }
+
+    /// Number of requests still waiting for a response. A non-empty map means
+    /// the process is mid-command, so idle suspension must leave it alone.
+    pub fn len(&self) -> usize {
+        self.map.lock().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.lock().is_empty()
+    }
 }
 
 /// UI-request methods that wait for a host answer (track for rpc_pending_ui).
@@ -80,6 +93,10 @@ pub struct SessionHandle {
     pub pending: PendingMap,
     pub pending_ui: parking_lot::Mutex<Vec<PendingUiRequest>>,
     pub pending_frames: parking_lot::Mutex<Vec<Value>>,
+    /// Flips to `true` when the stdout reader reached EOF. Pending requests are
+    /// only failed after this, so a response printed just before exit still
+    /// resolves its caller instead of racing the exit notification.
+    pub stdout_closed: watch::Sender<bool>,
     pub streaming: AtomicBool,
     pub alive: AtomicBool,
     pub last_activity: parking_lot::Mutex<Instant>,
@@ -94,6 +111,7 @@ impl SessionHandle {
     pub fn for_test() -> Self {
         let (stdin_tx, _rx) = mpsc::unbounded_channel();
         let (shutdown, _srx) = watch::channel(false);
+        let (stdout_closed, _orx) = watch::channel(true);
         Self {
             session_id: parking_lot::RwLock::new("s1".to_string()),
             session_file: parking_lot::RwLock::new("/tmp/s1.jsonl".to_string()),
@@ -104,6 +122,7 @@ impl SessionHandle {
             pending: PendingMap::default(),
             pending_ui: parking_lot::Mutex::new(Vec::new()),
             pending_frames: parking_lot::Mutex::new(Vec::new()),
+            stdout_closed,
             streaming: AtomicBool::new(false),
             alive: AtomicBool::new(true),
             last_activity: parking_lot::Mutex::new(Instant::now()),
@@ -123,6 +142,22 @@ impl SessionHandle {
 
     pub fn touch(&self) {
         *self.last_activity.lock() = Instant::now();
+    }
+
+    /// Wait until the stdout reader reports EOF, at most `timeout`.
+    async fn wait_stdout_closed(&self, timeout: Duration) {
+        let mut rx = self.stdout_closed.subscribe();
+        if *rx.borrow() {
+            return;
+        }
+        let _ = tokio::time::timeout(timeout, rx.wait_for(|closed| *closed)).await;
+    }
+
+    /// Fail outstanding requests only after stdout drained: a response the
+    /// child printed just before exiting must resolve its caller first.
+    async fn fail_pending_after_drain(&self, msg: &str) {
+        self.wait_stdout_closed(STDOUT_DRAIN).await;
+        self.pending.fail_all(msg);
     }
 }
 
@@ -497,6 +532,9 @@ pub async fn send_command(
         .stdin_tx
         .send(command.to_string())
         .map_err(|_| "session stdin closed".to_string())?;
+    // A long command may produce no inbound frames for minutes (`compact`),
+    // so the send itself counts as activity for the idle reaper.
+    handle.touch();
     let timeout = match command.get("type").and_then(Value::as_str) {
         Some("compact" | "handoff") => LONG_CMD_TIMEOUT,
         _ => CMD_TIMEOUT,
@@ -578,6 +616,7 @@ pub async fn spawn_with_sink(
 
     let (stdin_tx, mut stdin_rx) = mpsc::unbounded_channel::<String>();
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
+    let (stdout_closed_tx, _) = watch::channel(false);
     let (ready_tx, ready_rx) = oneshot::channel::<Value>();
 
     let handle = Arc::new(SessionHandle {
@@ -590,6 +629,7 @@ pub async fn spawn_with_sink(
         pending: PendingMap::default(),
         pending_ui: parking_lot::Mutex::new(Vec::new()),
         pending_frames: parking_lot::Mutex::new(Vec::new()),
+        stdout_closed: stdout_closed_tx,
         streaming: AtomicBool::new(false),
         alive: AtomicBool::new(true),
         last_activity: parking_lot::Mutex::new(Instant::now()),
@@ -618,8 +658,14 @@ pub async fn spawn_with_sink(
                 }
             }
         }
-        writer_handle.pending.fail_all("session stdin closed");
-        // Dropping ChildStdin closes stdin → omp exits gracefully.
+        // Dropping ChildStdin closes stdin → omp exits gracefully. Do it before
+        // waiting for stdout so the child is never kept alive by the wait.
+        drop(stdin);
+        // The child may still flush a final response on stdout; let the reader
+        // drain before failing anything, then fail whatever is left.
+        writer_handle
+            .fail_pending_after_drain("session stdin closed")
+            .await;
     });
 
     // stdout reader task.
@@ -760,6 +806,9 @@ async fn read_loop(
             Err(e) => tracing::warn!("rpc_chunk: {e}"),
         }
     }
+    // EOF: every response the child wrote has been applied. Wake the writer and
+    // the monitor so they can settle pending requests in the right order.
+    handle.stdout_closed.send_replace(true);
 }
 
 async fn monitor(sink: OutSink, handle: Arc<SessionHandle>, mut child: Child) {
@@ -768,28 +817,33 @@ async fn monitor(sink: OutSink, handle: Arc<SessionHandle>, mut child: Child) {
     // Wake the stdin writer: it owns a handle clone, so its channel never closes on its own.
     let _ = handle.shutdown.send(true);
     let code = status.ok().and_then(|s| s.code());
-    handle.pending.fail_all("omp process exited");
     handle.pending_ui.lock().clear();
     let session_id = handle.session_id.read().clone();
-    if session_id.is_empty() {
-        return;
-    }
-    sink(OutEvent::Process {
-        session_id: session_id.clone(),
-        running: false,
-        exit_code: code,
-    });
-    let mut reg = rpc::registry().write();
-    if let Some(existing) = reg.get(&session_id) {
-        if Arc::ptr_eq(existing, &handle) {
-            reg.remove(&session_id);
+    if !session_id.is_empty() {
+        sink(OutEvent::Process {
+            session_id: session_id.clone(),
+            running: false,
+            exit_code: code,
+        });
+        let mut reg = rpc::registry().write();
+        if let Some(existing) = reg.get(&session_id) {
+            if Arc::ptr_eq(existing, &handle) {
+                reg.remove(&session_id);
+            }
         }
     }
+    // Settle outstanding requests only after the reader drained stdout: a
+    // response printed immediately before exit must resolve its caller rather
+    // than lose the race to `fail_all`.
+    handle.fail_pending_after_drain("omp process exited").await;
 }
 
 /// Close stdin, wait ≤5s for exit, then SIGKILL.
 pub async fn stop_handle(handle: &Arc<SessionHandle>) -> Result<(), String> {
     let _ = handle.shutdown.send(true);
+    // An explicit stop cancels its callers: fail them now instead of waiting
+    // for the exit path (the reader may still resolve responses that already
+    // arrived; anything after this point has been abandoned by its caller).
     handle.pending.fail_all("session is stopping");
     for _ in 0..50 {
         if !handle.alive.load(Ordering::SeqCst) {
@@ -1027,6 +1081,57 @@ mod tests {
         assert_eq!(
             resp.get("error").and_then(Value::as_str),
             Some("session is stopping")
+        );
+    }
+
+    /// A response the child prints just before exiting must resolve its caller:
+    /// the exit path settles pending requests only after stdout hit EOF.
+    #[tokio::test]
+    async fn pending_is_failed_only_after_stdout_drains() {
+        let (tx, _rx) = mpsc::unbounded_channel::<String>();
+        let (shutdown, _srx) = watch::channel(false);
+        let (closed, _crx) = watch::channel(false);
+        let h = Arc::new(SessionHandle {
+            stdin_tx: tx,
+            shutdown,
+            stdout_closed: closed,
+            ..SessionHandle::for_test()
+        });
+        let rx = h.pending.insert("req_1".into());
+        let reader_handle = h.clone();
+        let reader = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            apply_frame(
+                &reader_handle,
+                &json!({"id":"req_1","type":"response","success":true,"data":{"ok":1}}),
+            );
+            reader_handle.stdout_closed.send_replace(true);
+        });
+        let fail_handle = h.clone();
+        let failer = tokio::spawn(async move {
+            fail_handle
+                .fail_pending_after_drain("omp process exited")
+                .await;
+        });
+        let resp = rx.await.expect("response resolved before fail_all");
+        assert_eq!(resp.get("success").and_then(Value::as_bool), Some(true));
+        reader.await.unwrap();
+        failer.await.unwrap();
+        assert!(h.pending.is_empty());
+    }
+
+    /// Whatever stdout did not answer is still failed once it drains (or after
+    /// the drain grace period), so callers never hang on a dead process.
+    #[tokio::test]
+    async fn drained_stdout_still_fails_unanswered_requests() {
+        let h = test_handle(); // for_test: stdout already closed
+        let rx = h.pending.insert("req_missing".into());
+        h.fail_pending_after_drain("omp process exited").await;
+        let resp = rx.await.unwrap();
+        assert_eq!(resp.get("success").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            resp.get("error").and_then(Value::as_str),
+            Some("omp process exited")
         );
     }
 

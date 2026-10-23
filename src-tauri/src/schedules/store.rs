@@ -793,6 +793,21 @@ pub fn has_active_run(conn: &Connection, schedule_id: &str) -> Result<bool, rusq
     Ok(count > 0)
 }
 
+/// Settle runs left `running` by a previous app process (crash, force quit,
+/// power loss) so they cannot block the schedule forever: `has_active_run`
+/// would keep reporting a run in progress and every later trigger would be
+/// skipped. Called once at scheduler startup, before the catch-up pass.
+/// Returns how many runs were closed.
+pub fn recover_stale_runs(conn: &Connection, at: &str) -> Result<usize, rusqlite::Error> {
+    conn.execute(
+        "UPDATE schedule_runs
+         SET status = 'error', finished_at = ?1,
+             summary = COALESCE(NULLIF(TRIM(summary), ''), '应用异常退出，本次运行未完成')
+         WHERE status = 'running'",
+        params![at],
+    )
+}
+
 /// File path of the session used by this schedule's most recent run that has
 /// one — the resume target when `new_chat_each_run` is false (local mode).
 pub fn last_run_session_file(

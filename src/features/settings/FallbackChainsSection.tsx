@@ -279,7 +279,7 @@ function RoleGroup({
 	children: ReactNode;
 }) {
 	return (
-		<SettingsCard title={title} aside={`${count} 个`} description={description} clip>
+		<SettingsCard title={title} aside={`${count} 个`} description={description} clip jump={title}>
 			{children}
 		</SettingsCard>
 	);
@@ -459,7 +459,7 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 
 					{showExplainer && <PriorityExplainer />}
 
-					<SettingsCard title="会话内切换" description="聊天时快捷键切换模型的先后顺序">
+					<SettingsCard title="会话内切换" description="聊天时快捷键切换模型的先后顺序" jump="会话内切换">
 						<div className="p-4">
 							<CycleOrderEditor value={cycle} availableRoles={allRoleIds} onSaved={handleChanged} />
 						</div>

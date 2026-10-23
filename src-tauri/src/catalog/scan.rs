@@ -19,6 +19,9 @@ pub struct Scanned {
     pub size: u64,
     pub mtime: SystemTime,
     pub head: HeadInfo,
+    /// Fingerprint of the head window the cached `head` was parsed from
+    /// ([`parse::head_fingerprint`]); 0 = unknown (legacy cache entry).
+    pub head_hash: u64,
     pub tail: TailInfo,
     pub first_user: Option<String>,
 }
@@ -122,10 +125,24 @@ pub fn parse_file(
     mtime: SystemTime,
     prev: Option<&Scanned>,
 ) -> Option<Scanned> {
-    let reuse = prev.filter(|p| size >= p.size && !p.head.id.is_empty());
-    let head = match reuse {
-        Some(p) => p.head.clone(),
-        None => parse::read_head(path).ok()??,
+    // A longer file is assumed appended-to, but that is only safe while the
+    // head bytes are unchanged: an in-place rewrite of the first lines (a new
+    // title slot) can keep or grow the size, and reusing the cached head would
+    // pin the old title/session id forever. Compare the head window instead of
+    // trusting the length.
+    let reuse = prev.filter(|p| {
+        size >= p.size
+            && !p.head.id.is_empty()
+            && p.head_hash != 0
+            && parse::read_head_bytes(path)
+                .is_ok_and(|bytes| parse::head_fingerprint(&bytes) == p.head_hash)
+    });
+    let (head, head_hash) = match reuse {
+        Some(p) => (p.head.clone(), p.head_hash),
+        None => {
+            let bytes = parse::read_head_bytes(path).ok()?;
+            (parse::parse_head(&bytes)?, parse::head_fingerprint(&bytes))
+        }
     };
     let tail = parse::read_tail(path, size).ok()?;
     let needs_first_user =
@@ -142,6 +159,7 @@ pub fn parse_file(
         size,
         mtime,
         head,
+        head_hash,
         tail,
         first_user,
     })
@@ -369,6 +387,7 @@ mod tests {
                 header_title: header.map(Into::into),
                 ..Default::default()
             },
+            head_hash: 0,
             tail: TailInfo {
                 title_change: change.map(Into::into),
                 ..Default::default()
@@ -654,6 +673,37 @@ mod tests {
         // Unchanged files are served from cache.
         let (_, changed) = scan_files(list_files(&dir), &map);
         assert!(changed.is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// An in-place rewrite of the first lines that keeps the size must invalidate
+    /// the cached head: the old title slot would otherwise win over the new one.
+    #[test]
+    fn equal_length_head_rewrite_invalidates_cached_head() {
+        let dir = std::env::temp_dir().join(format!("ompws-head-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.jsonl");
+        let line1 = r#"{"type":"title","title":"AAAA"}"#;
+        let line2 = r#"{"type":"session","id":"A","timestamp":"T","cwd":"/w"}"#;
+        std::fs::write(&f, format!("{line1}\n{line2}\n")).unwrap();
+        let size = std::fs::metadata(&f).unwrap().len();
+        let mtime = std::fs::metadata(&f).unwrap().modified().unwrap();
+        let first = parse_file(&f, size, mtime, None).unwrap();
+        assert_eq!(first.head.slot_title.as_deref(), Some("AAAA"));
+        assert_ne!(first.head_hash, 0);
+
+        // Same length, different title (a user rename written in place).
+        let rewritten = line1.replace("AAAA", "BBBB");
+        assert_eq!(rewritten.len(), line1.len());
+        std::fs::write(&f, format!("{rewritten}\n{line2}\n")).unwrap();
+        let meta = std::fs::metadata(&f).unwrap();
+        assert_eq!(meta.len(), size, "rewrite must keep the size");
+        let second = parse_file(&f, meta.len(), meta.modified().unwrap(), Some(&first)).unwrap();
+        assert_eq!(second.head.slot_title.as_deref(), Some("BBBB"));
+
+        // An untouched file still reuses the cached head.
+        let third = parse_file(&f, meta.len(), meta.modified().unwrap(), Some(&second)).unwrap();
+        assert_eq!(third.head_hash, second.head_hash);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

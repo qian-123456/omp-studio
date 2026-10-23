@@ -550,13 +550,40 @@ fn move_impl(
         );
         m
     });
-    servers_map_mut(&mut to_map)?.insert(name.to_string(), entry);
+    {
+        let servers = servers_map_mut(&mut to_map)?;
+        if servers.contains_key(name) {
+            // Moving would replace the target's own definition (its args, env
+            // and headers) with the source's; refuse instead of losing it.
+            return Err(format!(
+                "目标文件 {} 已存在同名服务器 \"{name}\"，未移动",
+                to_path.display()
+            ));
+        }
+        servers.insert(name.to_string(), entry);
+    }
 
-    // Write target first, then clean source
+    // Write target first, then clean source; if the source write fails, put the
+    // target back exactly as it was so the definition never ends up in both
+    // files (or in a half-moved state).
+    let target_before = if to_path.exists() {
+        Some(std::fs::read(to_path).map_err(|e| format!("读取 {} 失败: {e}", to_path.display()))?)
+    } else {
+        None
+    };
     write_json_map(to_path, &to_map)?;
     remove_from_list(&mut from_map, "disabledServers", name);
     remove_from_list(&mut from_map, "enabledServers", name);
-    write_json_map(from_path, &from_map)?;
+    if let Err(e) = write_json_map(from_path, &from_map) {
+        let rolled_back = match &target_before {
+            Some(bytes) => std::fs::write(to_path, bytes).map_err(|e| e.to_string()),
+            None => std::fs::remove_file(to_path).map_err(|e| e.to_string()),
+        };
+        return Err(match rolled_back {
+            Ok(()) => format!("{e}；已回滚目标文件"),
+            Err(revert) => format!("{e}；回滚目标文件失败: {revert}"),
+        });
+    }
 
     Ok(())
 }
@@ -771,6 +798,44 @@ mod tests {
         assert_eq!(rea_entry["command"], "npx");
         assert_eq!(rea_entry["env"]["SECRET_TOKEN"], "my-secret");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Moving onto a target that already defines the same name must refuse
+    /// instead of silently replacing the target's own args/env/headers.
+    #[test]
+    fn move_server_refuses_target_name_collision() {
+        let dir = temp_dir("move-collide");
+        let agent = dir.join("agent");
+        let proj = dir.join("proj");
+        std::fs::create_dir_all(&agent).unwrap();
+        std::fs::create_dir_all(proj.join(".omp")).unwrap();
+        let src_file = agent.join("mcp.json");
+        let dst_file = proj.join(".omp").join("mcp.json");
+
+        upsert_impl(
+            &src_file,
+            "fetch",
+            &patch(&[("command", Value::String("uvx".into()))]),
+        )
+        .unwrap();
+        upsert_impl(
+            &dst_file,
+            "fetch",
+            &patch_json(serde_json::json!({
+                "command": "npx",
+                "env": {"KEEP": "me"}
+            })),
+        )
+        .unwrap();
+        let dst_before = std::fs::read_to_string(&dst_file).unwrap();
+        let src_before = std::fs::read_to_string(&src_file).unwrap();
+
+        let err = move_impl(&agent, Some(&proj), &src_file, &dst_file, "fetch").unwrap_err();
+        assert!(err.contains("已存在同名服务器"), "{err}");
+        // Neither file changed.
+        assert_eq!(std::fs::read_to_string(&dst_file).unwrap(), dst_before);
+        assert_eq!(std::fs::read_to_string(&src_file).unwrap(), src_before);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

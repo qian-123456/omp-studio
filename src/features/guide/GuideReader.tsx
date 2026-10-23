@@ -166,7 +166,7 @@ function LangToggle({ lang, onChange }: { lang: GuideLang; onChange: (l: GuideLa
 					className={clsx(
 						"rounded-full px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 						lang === l
-							? "bg-[var(--bg-active-fill)] font-semibold text-[var(--text)] shadow-xs"
+							? "bg-[var(--bg-active-fill)] text-[var(--text)] shadow-xs"
 							: "text-[var(--text-60)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 					)}
 				>
@@ -452,7 +452,7 @@ export function GuideReader() {
 							className={clsx(
 								"flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 								c.slug === active?.slug
-									? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] font-semibold text-[var(--text)]"
+									? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--text)]"
 									: "border-[var(--line)] text-[var(--text-60)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
 							)}
 						>

@@ -346,7 +346,9 @@ fn log_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ModelSwitchLogEntry
 }
 
 /// Appends one log row, then prunes the log to [`LOG_LIMIT`] rows. Each scope's newest
-/// un-undone row always survives: it is what `current_state` and the auto-revert path read.
+/// un-undone *live* row (`applied`/`partial`) always survives: it is what `current_state`
+/// and the auto-revert path read. Refused/failed rows are history only, so a burst of
+/// them must never evict the row that describes the configuration in effect.
 pub(crate) fn insert_log(conn: &Connection, entry: &ModelSwitchLogEntry) -> Result<(), String> {
     let edits = serde_json::to_string(&entry.edits)
         .map_err(|error| format!("切换记录编辑项无法序列化：{error}"))?;
@@ -383,9 +385,11 @@ pub(crate) fn insert_log(conn: &Connection, entry: &ModelSwitchLogEntry) -> Resu
            AND id NOT IN (
              SELECT live.id FROM model_switch_log AS live
              WHERE live.undone_at IS NULL
+               AND live.status IN ('applied', 'partial')
                AND live.rowid = (
                  SELECT newest.rowid FROM model_switch_log AS newest
                  WHERE newest.scope = live.scope AND newest.undone_at IS NULL
+                   AND newest.status IN ('applied', 'partial')
                  ORDER BY newest.created_at DESC, newest.rowid DESC LIMIT 1)
            )",
         params![LOG_LIMIT],
@@ -883,6 +887,31 @@ mod tests {
             )
             .unwrap();
         assert_eq!(live_rows, 1);
+    }
+
+    /// A burst of `refused`/`failed` rows (which `latest_live_switch` ignores) must not evict
+    /// the `applied` row that describes the configuration actually in effect.
+    #[test]
+    fn log_pruning_keeps_applied_row_under_a_failure_flood() {
+        let conn = db();
+        let live = entry("live", "applied");
+        insert_log(&conn, &live).unwrap();
+        conn.execute(
+            "UPDATE model_switch_log SET created_at = '2000-01-01T00:00:00Z' WHERE id = ?1",
+            params![live.id],
+        )
+        .unwrap();
+        for index in 0..(LOG_LIMIT + 5) {
+            let status = if index % 2 == 0 { "refused" } else { "failed" };
+            insert_log(&conn, &entry(&format!("r{index}"), status)).unwrap();
+        }
+        let kept = get_log(&conn, &live.id).unwrap();
+        assert!(
+            kept.is_some(),
+            "the applied row must survive a refused/failed flood"
+        );
+        let current = latest_live_switch(&conn, "global", false).unwrap();
+        assert_eq!(current.map(|row| row.id), Some(live.id));
     }
 
     /// Every scope keeps its own newest un-undone row, even when another scope floods the log

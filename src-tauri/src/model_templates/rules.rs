@@ -719,32 +719,12 @@ async fn auto_revert(
     revert(state, &entry).await
 }
 
-/// Restores the values the switch replaced, then retires its log row. The previous template is
-/// reapplied when the log names one and it still exists, otherwise the recorded `before` values
-/// are written directly: a template deleted after the switch must not block the revert.
+/// Restores the values the switch replaced, then retires its log row. The recorded
+/// `before` values are authoritative: a template applied earlier may itself have been edited
+/// (or may only cover some of the roles this switch changed), so reapplying it would leave
+/// roles holding the switched value while the log claims to be undone.
 async fn revert(state: &AppState, entry: &ModelSwitchLogEntry) -> Result<(), String> {
-    let previous = entry
-        .previous_template_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|id| !id.is_empty());
-    let previous = match previous {
-        Some(template_id) => {
-            let conn = state.db.lock();
-            store::get_template(&conn, template_id)?.map(|_| template_id.to_string())
-        }
-        None => None,
-    };
-    match previous {
-        Some(template_id) => {
-            let result = apply::apply_template(state, &template_id, false, None).await?;
-            // A refused revert changed nothing; the switch stays in effect and stays current.
-            if result.status == "refused" {
-                return Ok(());
-            }
-        }
-        None => write_before_values(entry).await?,
-    }
+    write_before_values(entry).await?;
     {
         let conn = state.db.lock();
         store::mark_log_undone(&conn, &entry.id, &crate::schedules::store::now_rfc3339())?;

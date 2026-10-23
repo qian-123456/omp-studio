@@ -80,8 +80,16 @@
 				const tag = ordered ? "ol" : "ul";
 				out.push("<" + tag + ">" + buf.map((b) => "<li>" + inline(b) + "</li>").join("") + "</" + tag + ">");
 			} else {
-				const buf = [];
-				while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^\s*(```|~~~|#{1,6}\s)/.test(lines[i]) && !item.test(lines[i]))
+				// The first line is always consumed: an indented "  # x" matches the
+				// stop pattern below but no block branch, which would otherwise loop
+				// forever and freeze the page.
+				const buf = [lines[i++]];
+				while (
+					i < lines.length &&
+					!/^\s*$/.test(lines[i]) &&
+					!/^\s*(```|~~~|#{1,6}\s)/.test(lines[i]) &&
+					!item.test(lines[i])
+				)
 					buf.push(lines[i++]);
 				out.push("<p>" + buf.map(inline).join("<br>") + "</p>");
 			}

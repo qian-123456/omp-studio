@@ -7,12 +7,12 @@
 import { create } from "zustand";
 import { toast } from "../lib/toast";
 import {
-	previewKind,
+	canPreviewFile,
 	resolveFilePath,
 	stripLineSuffix,
 	stripMentionPrefix,
 } from "../lib/fileLinks";
-import { errMsg } from "../lib/dialogs";
+import { basename } from "../lib/paths";
 import { listWorkspaceFiles, validatePath } from "../lib/ipc";
 import { useUi } from "./ui";
 import { useSessions } from "./sessions";
@@ -167,7 +167,9 @@ async function locateFile(
 
 /**
  * Open a file the agent linked. Text and images open as a right-panel tab
- * (preview by default); anything else goes to the system's default app.
+ * (preview by default). Anything the panel cannot render as human-readable
+ * text or an image is refused with a toast — a link in an answer must never
+ * hand an arbitrary path (`.app`, `.command`, `.sh`, …) to the system opener.
  */
 export async function openFileLink(
 	raw: string,
@@ -182,14 +184,8 @@ export async function openFileLink(
 		toast.error(`找不到文件：${raw}\n已尝试 ${path}`);
 		return;
 	}
-	const kind = previewKind(path);
-	if (kind === "external") {
-		try {
-			const { openPath } = await import("@tauri-apps/plugin-opener");
-			await openPath(path);
-		} catch (e) {
-			toast.error(`打开文件失败: ${errMsg(e)}`);
-		}
+	if (!canPreviewFile(path)) {
+		toast.error(`只能在右侧预览文本或图片，已阻止打开：${basename(path)}`);
 		return;
 	}
 	useFilePreview.getState().openFile(path, { cwd: opts.cwd ?? null });

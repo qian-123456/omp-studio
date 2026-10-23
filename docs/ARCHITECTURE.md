@@ -107,7 +107,8 @@ src/
       AgentDefsPanel.tsx     `subagents` lead panel: global / project agent definition files (agentDefs.ts = paths, layer resolution, `buildAgentFile`, `buildAgentDraftPrompt`); 「新建子代理」 opens NewAgentForm.tsx (name, description, prompt, tools, model → `omp_agent_write`; 「让 AI 帮我写」 starts a session with the draft prompt)
       ../FileEditor.tsx      shared file editor (edit/preview, discard, save with stamp conflict prompt 覆盖/重新载入, reveal, reload) used by both pages; fileEditorLogic.ts
       PromptCompositionSection.tsx `prompt-composition`: 系统提示词 — project picker (opened from the context popover's 「系统提示词」 group link 「在设置里查看系统提示词」, preselected via `stores/promptComposition.openPromptComposition(cwd)`; else last used / Universal), category totals + per-item raw text, optimization hints, and 「让 AI 帮我优化」 (new session in a chosen workspace, default Universal; the prompt from `promptComposition.ts#buildOptimizePrompt` is prefilled via `composer.setDraft`, never sent, and instructs the AI to get user consent before changing any file)
-      ShortcutRecorder.tsx   key-combo recorder → Tauri accelerator string (used by 通用 「快速记录快捷键」)
+      ShortcutRecorder.tsx   key-combo recorder → Tauri accelerator string (used by 快捷键 「快速记录快捷键」); also exports eventToAccelerator/formatAccelerator
+      ShortcutsSection.tsx   `shortcuts`: 快捷键 — in-window bindings from features/shortcuts (record/clear/reset/conflict take-over), send key + fixed composer keys, global quick-capture key
     ui.tsx                   SectionHeader, SettingsCard, SettingRow, ToggleRow, CommitInput, useSaveStatus/SaveIndicator
     useAppSettings.ts        useAppSettings (settings + save), useModelCatalog, useSettingsProjectCwd
     settingsNav.ts           SettingsNavContext / useSettingsNav (search query + navigate)
@@ -1161,8 +1162,11 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   `lib/fileLinks.ts` (`looksLikeFilePath`, `findFilePaths`, `previewKind`, `resolveFilePath`); fenced code and existing links are
   never rewritten. Clicking resolves the path against the session cwd, its ancestors (repo-name prefixes), the home dir and open
   workspaces, then a `list_workspace_files` search; text/images open as a `files` right-panel tab (`stores/filePreview.ts`,
-  preview by default), everything else goes to the system opener. Preview markdown resolves its own relative links against the
-  file's directory.
+  preview by default). Links are preview-only: `canPreviewFile` (same module) refuses anything the panel cannot render as text or
+  an image, so an agent-written path (`.app`, `.command`, `.pkg`, …) is never handed to the system opener and a non-previewable
+  token stays plain text (`rehypeFilePathLinks` filters on the same predicate). Remote `http(s)` images in answers are not fetched
+  on render — they show a 「远程图片」 placeholder and load only after a click; local (`file:`/`~/`/cwd-relative/asset-scope) and
+  `data:` images render immediately. Preview markdown resolves its own relative links against the file's directory.
 - `NewSessionDialog`: pick workspace/cwd (default from props; global workspace allowed), model (optional), approval mode, "在独立 worktree 中运行"
   checkbox + name (default slug) → `git_create_worktree` then `rpc_start({cwd: worktree.path, ...})`, optional first prompt → send `prompt`
   via `rpc_send`, then select the session. Warn "同仓库已有 N 个会话在跑，建议开 worktree" when applicable.
@@ -1230,6 +1234,9 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   Serves `src-tauri/mobile/index.html` at `/`. No full message stream, no annotations, no code editing.
 - Mobile page: mobile-first vanilla JS; tabs 待办 / 会话; approve/deny buttons, answer box for questions, reply box for sessions awaiting answer,
   一键恢复 for interrupted, status dots; SSE auto-refresh; in-page Notification API + vibration when a new todo arrives (when permitted).
+  Everything interpolated into markup goes through `M.util.esc` — text and attribute values alike (`data-*`, `src`, `value`, `class`);
+  the lite markdown renderers (`chat.js`, `panel-misc.js`) always consume the first line of a paragraph block, so an indented
+  `  # heading` (matched by the block-stop pattern but by no block branch) cannot loop forever and freeze the page.
 - Tunnel: `tunnel_start`: `quick` → spawn `cloudflared tunnel --url http://localhost:<port>` and parse the `https://*.trycloudflare.com` URL from
   stderr; `named` → `cloudflared tunnel run --url http://localhost:<port> <tunnel_name>` with public URL `https://<tunnel_hostname>`.
   If `cloudflared` is missing, return an error explaining `brew install cloudflared`. `MobilePanel` UI: start/stop server, LAN URL, "生成配对二维码"
@@ -1237,9 +1244,11 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   局域网直连 / Cloudflare Tunnel（有域名绑子域名、无域名用临时隧道；建议配 Cloudflare Access）/ IPv6 直连.
 - IPv6 direct: second listener on `[::]:<mobile_ipv6_port>` (IPV6_V6ONLY, no SO_REUSEPORT), same router over TLS with a self-signed cert persisted
   under `data_dir()/mobile-tls/` (dir 0700, key created 0600; SANs `localhost` + `ddns_hostname`; regenerated only in `mobile_ipv6_start`;
-  `cert_sha256` is the fingerprint of the cert being served); pairing cookie is `Secure` over TLS. Public-facing hardening: TLS handshake
-  runs per connection with a timeout (never inside the accept loop), header-read timeout, capped concurrent connections, connections
-  force-closed after a grace period on stop. Address = stable global unicast (2000::/3, no ULA/link-local/doc; prefer non-temporary).
+  `cert_sha256` is the fingerprint of the cert being served); pairing cookie is `Secure` over TLS. Public-facing hardening, shared by
+  the plain-HTTP LAN listener and the TLS listener (`serve`/`serve_tls` in `mobile/server.rs`, one accept loop with the same guards):
+  TLS handshake runs per connection with a timeout (never inside the accept loop), header-read timeout, capped concurrent connections
+  (64, permit held per connection), finished tasks reaped via `try_join_next`, connections force-closed after a grace period on stop.
+  Address = stable global unicast (2000::/3, no ULA/link-local/doc; prefer non-temporary).
   CSRF compares exact host+port (bracket-aware for IPv6; missing port = scheme default, scheme from TLS or `x-forwarded-proto`).
   DDNS (`mobile/ddns.rs`): Cloudflare API v4 AAAA upsert, `proxied=false`, called only when the address or configured host/zone changes
   (loop ~5 min) or on manual sync; single in-flight API call (token verify included); 401/403/429 or 3 consecutive failures → `halted`

@@ -57,7 +57,7 @@ export function Segmented<T extends string>({
 							pill ? "rounded-full" : "rounded-md",
 							size === "sm" ? "text-[11px]" : "text-xs font-medium",
 							active
-								? "bg-[var(--bg-active-fill)] font-medium text-neutral-100 shadow-sm"
+								? "bg-[var(--bg-active-fill)] text-neutral-100 shadow-sm"
 								: "text-neutral-400 hover:text-neutral-200",
 						)}
 					>

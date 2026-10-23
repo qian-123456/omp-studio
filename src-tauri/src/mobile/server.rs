@@ -652,31 +652,16 @@ async fn events<B: Backend>(
     Sse::new(hello.chain(updates)).keep_alive(KeepAlive::default())
 }
 
-/// Serve until `shutdown` flips to true.
-pub async fn serve<B: Backend>(listener: tokio::net::TcpListener, ctx: Arc<Ctx<B>>) {
-    let mut sd = ctx.shutdown.clone();
-    let app = router(ctx);
-    let _ = axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            while !*sd.borrow() {
-                if sd.changed().await.is_err() {
-                    break;
-                }
-            }
-        })
-        .await;
-}
-
 /// TLS handshake timeout for one accepted connection.
 const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Max wait for request headers; also bounds idle keep-alive connections
 /// (hyper re-arms it each time the connection waits for the next request head).
-const TLS_HEADER_READ_TIMEOUT: Duration = Duration::from_secs(10);
-/// Cap on concurrent TLS connections; excess peers wait in the kernel backlog
-/// instead of holding process file descriptors.
-const TLS_MAX_CONNECTIONS: usize = 64;
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(10);
+/// Cap on concurrent connections per listener; excess peers wait in the kernel
+/// backlog instead of holding process file descriptors.
+const MAX_CONNECTIONS: usize = 64;
 /// How long in-flight requests may finish after stop before force-close.
-const TLS_STOP_GRACE: Duration = Duration::from_secs(3);
+const STOP_GRACE: Duration = Duration::from_secs(3);
 
 /// Resolves when the shutdown watch flips to true (or its sender disappears).
 async fn shutdown_fired(sd: &mut watch::Receiver<bool>) {
@@ -688,6 +673,117 @@ async fn shutdown_fired(sd: &mut watch::Receiver<bool>) {
             return;
         }
     }
+}
+
+/// The router with hyper's request body adapted to axum's `Body`.
+type AppService = tower::util::MapRequest<Router, fn(Request<Incoming>) -> Request<Body>>;
+
+fn into_body(req: Request<Incoming>) -> Request<Body> {
+    req.map(Body::new)
+}
+
+fn app_service(router: Router) -> AppService {
+    router.map_request(into_body as fn(Request<Incoming>) -> Request<Body>)
+}
+
+/// hyper builder shared by both listeners: request-header timeout and the
+/// timer it needs, so a silent client cannot hold a connection forever.
+fn conn_builder() -> auto::Builder<TokioExecutor> {
+    let mut builder = auto::Builder::new(TokioExecutor::new());
+    builder
+        .http1()
+        .timer(TokioTimer::new())
+        .header_read_timeout(HEADER_READ_TIMEOUT);
+    builder
+}
+
+/// Serve one accepted connection; the permit is held for its whole lifetime
+/// and bounds how many connections run at once.
+async fn serve_conn<S>(
+    stream: S,
+    app: AppService,
+    addr: std::net::SocketAddr,
+    builder: auto::Builder<TokioExecutor>,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+) where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let service = TowerToHyperService::new(app);
+    let conn = builder.serve_connection_with_upgrades(TokioIo::new(stream), service);
+    if let Err(e) = conn.await {
+        tracing::debug!("connection error from {addr}: {e}");
+    }
+}
+
+/// Wait for the next accepted connection, reaping finished ones meanwhile
+/// (an unjoined task keeps its result and memory until it is joined).
+/// `None` once the shutdown watch fires.
+async fn next_conn(
+    listener: &tokio::net::TcpListener,
+    sd: &mut watch::Receiver<bool>,
+    permits: &Arc<Semaphore>,
+    tasks: &mut tokio::task::JoinSet<()>,
+) -> Option<(
+    tokio::net::TcpStream,
+    std::net::SocketAddr,
+    tokio::sync::OwnedSemaphorePermit,
+)> {
+    loop {
+        while tasks.try_join_next().is_some() {}
+        tokio::select! {
+            _ = shutdown_fired(sd) => return None,
+            // acquire_owned: the permit owns an Arc clone, so it is 'static
+            // and can move into the spawned connection task.
+            permit = permits.clone().acquire_owned() => {
+                let permit = permit.ok()?;
+                let accepted = tokio::select! {
+                    _ = shutdown_fired(sd) => return None,
+                    accepted = listener.accept() => accepted,
+                };
+                match accepted {
+                    Ok((tcp, addr)) => return Some((tcp, addr, permit)),
+                    Err(_) => tokio::time::sleep(Duration::from_millis(50)).await,
+                }
+            }
+            _ = tasks.join_next(), if !tasks.is_empty() => {}
+        }
+    }
+}
+
+/// Grace period: let in-flight requests finish (SSE ends on the shutdown
+/// watch), then force-close whatever is still open and join it.
+async fn drain_connections(tasks: &mut tokio::task::JoinSet<()>) {
+    let grace = tokio::time::sleep(STOP_GRACE);
+    tokio::pin!(grace);
+    while !tasks.is_empty() {
+        tokio::select! {
+            _ = &mut grace => {
+                tasks.abort_all();
+                break;
+            }
+            _ = tasks.join_next() => {}
+        }
+    }
+    while tasks.join_next().await.is_some() {}
+}
+
+/// Serve until `shutdown` flips to true.
+///
+/// Same guards as the TLS listener (header-read timeout, connection cap, stop
+/// grace) so a plain-HTTP client cannot stall the accept loop or pin sockets.
+pub async fn serve<B: Backend>(listener: tokio::net::TcpListener, ctx: Arc<Ctx<B>>) {
+    let mut sd = ctx.shutdown.clone();
+    let app = app_service(router(ctx));
+    let permits = Arc::new(Semaphore::new(MAX_CONNECTIONS));
+    let builder = conn_builder();
+    let mut tasks: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
+    while let Some((tcp, addr, permit)) = next_conn(&listener, &mut sd, &permits, &mut tasks).await
+    {
+        let app = app.clone();
+        let builder = builder.clone();
+        tasks.spawn(serve_conn(tcp, app, addr, builder, permit));
+    }
+    drain_connections(&mut tasks).await;
 }
 
 /// Serve the same router over TLS until `shutdown` flips to true.
@@ -702,78 +798,31 @@ pub async fn serve_tls<B: Backend>(
     ctx: Arc<Ctx<B>>,
 ) {
     let mut sd = ctx.shutdown.clone();
-    let app = router(ctx)
-        .layer(axum::Extension(TlsConnection))
-        .map_request(|req: Request<Incoming>| req.map(Body::new));
-    let permits = Arc::new(Semaphore::new(TLS_MAX_CONNECTIONS));
-
-    let mut builder = auto::Builder::new(TokioExecutor::new());
-    builder
-        .http1()
-        .timer(TokioTimer::new())
-        .header_read_timeout(TLS_HEADER_READ_TIMEOUT);
-
+    let app = app_service(router(ctx).layer(axum::Extension(TlsConnection)));
+    let permits = Arc::new(Semaphore::new(MAX_CONNECTIONS));
+    let builder = conn_builder();
     let mut tasks: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
-    loop {
-        tokio::select! {
-            _ = shutdown_fired(&mut sd) => break,
-            // acquire_owned: the permit owns an Arc clone, so it is 'static
-            // and can move into the spawned connection task.
-            permit = permits.clone().acquire_owned() => {
-                let Ok(permit) = permit else { break };
-                let (tcp, addr) = tokio::select! {
-                    _ = shutdown_fired(&mut sd) => break,
-                    accepted = listener.accept() => match accepted {
-                        Ok(conn) => conn,
-                        Err(_) => {
-                            tokio::time::sleep(Duration::from_millis(50)).await;
-                            continue;
-                        }
-                    },
-                };
-                let app = app.clone();
-                let acceptor = acceptor.clone();
-                let builder = builder.clone();
-                tasks.spawn(async move {
-                    // Held for the whole connection; bounds concurrency.
-                    let _permit = permit;
-                    let tls_stream =
-                        match tokio::time::timeout(TLS_HANDSHAKE_TIMEOUT, acceptor.accept(tcp))
-                            .await
-                        {
-                            Ok(Ok(stream)) => stream,
-                            Ok(Err(e)) => {
-                                tracing::debug!("TLS handshake failed from {addr}: {e}");
-                                return;
-                            }
-                            Err(_) => {
-                                tracing::debug!("TLS handshake timed out from {addr}");
-                                return;
-                            }
-                        };
-                    let service = TowerToHyperService::new(app);
-                    let conn =
-                        builder.serve_connection_with_upgrades(TokioIo::new(tls_stream), service);
-                    if let Err(e) = conn.await {
-                        tracing::debug!("TLS connection error from {addr}: {e}");
+    while let Some((tcp, addr, permit)) = next_conn(&listener, &mut sd, &permits, &mut tasks).await
+    {
+        let app = app.clone();
+        let acceptor = acceptor.clone();
+        let builder = builder.clone();
+        tasks.spawn(async move {
+            // The permit is dropped on a failed handshake, freeing the slot.
+            let stream =
+                match tokio::time::timeout(TLS_HANDSHAKE_TIMEOUT, acceptor.accept(tcp)).await {
+                    Ok(Ok(stream)) => stream,
+                    Ok(Err(e)) => {
+                        tracing::debug!("TLS handshake failed from {addr}: {e}");
+                        return;
                     }
-                });
-            }
-        }
+                    Err(_) => {
+                        tracing::debug!("TLS handshake timed out from {addr}");
+                        return;
+                    }
+                };
+            serve_conn(stream, app, addr, builder, permit).await;
+        });
     }
-
-    // Grace period: let in-flight requests finish (SSE ends on the shutdown
-    // watch), then force-close whatever is still open.
-    let grace = tokio::time::sleep(TLS_STOP_GRACE);
-    tokio::pin!(grace);
-    while !tasks.is_empty() {
-        tokio::select! {
-            _ = &mut grace => {
-                tasks.abort_all();
-                break;
-            }
-            _ = tasks.join_next() => {}
-        }
-    }
-    while tasks.join_next().await.is_some() {}
+    drain_connections(&mut tasks).await;
 }

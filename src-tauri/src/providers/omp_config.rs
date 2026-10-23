@@ -7,11 +7,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// OMP agent dir, resolved exactly like the sessions' own processes do:
+/// `PI_CODING_AGENT_DIR`, then a profile (`OMP_PROFILE` / `PI_PROFILE`) →
+/// `~/.omp/profiles/<name>/agent`, else `~/.omp/agent`. Every provider/config
+/// path below hangs off this, so a profile switch never edits another profile.
 pub fn home_agent_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/"))
-        .join(".omp")
-        .join("agent")
+    crate::paths::agent_dir()
 }
 
 /// Query `agent.db` for authenticated credentials without selecting secrets.

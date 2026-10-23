@@ -141,7 +141,7 @@
 						: "";
 		const a = pretty(args);
 		return (
-			'<details class="fold"' + (key ? ' data-k="' + key + '"' : "") + (open ? " open" : "") + '><summary><span class="chev">▶</span><span class="nm">' +
+			'<details class="fold"' + (key ? ' data-k="' + esc(key) + '"' : "") + (open ? " open" : "") + '><summary><span class="chev">▶</span><span class="nm">' +
 			esc(name) +
 			'</span><span class="arg">' +
 			esc(argSummary(name, args)) +
@@ -412,7 +412,7 @@
 				// Always-visible label + 2-line preview (tap the preview to expand),
 				// matching the desktop 「思考了 N 秒」 row; no collapsed fold to open first.
 				return (
-					'<div class="think-pv" data-k="' + s.key + '"><div class="nm">' + (s.live ? "思考中…" : "思考过程") +
+					'<div class="think-pv" data-k="' + esc(s.key) + '"><div class="nm">' + (s.live ? "思考中…" : "思考过程") +
 					"</div>" +
 					previewHtml(s) +
 					"</div>"
@@ -448,9 +448,9 @@
 		if (t.steps.length) {
 			const open = foldOpen(t);
 			a +=
-				'<div class="tfold' + (open ? " open" : "") + (t.running ? " run" : "") + '" data-tf="' + t.id + '">' +
-				'<button class="tfold-h" data-fold="' + t.id + '"' +
-				(t.running ? ' data-start="' + (t.start || turnStart.get(t.id) || Date.now()) + '"' : "") +
+				'<div class="tfold' + (open ? " open" : "") + (t.running ? " run" : "") + '" data-tf="' + esc(t.id) + '">' +
+				'<button class="tfold-h" data-fold="' + esc(t.id) + '"' +
+				(t.running ? ' data-start="' + esc(t.start || turnStart.get(t.id) || Date.now()) + '"' : "") +
 				'><span class="chev">▶</span><span class="lbl">' + esc(foldLabel(t)) +
 				'</span></button><div class="tfold-b">' + t.steps.map(stepHtml).join("") + "</div></div>";
 		}
@@ -1016,17 +1016,17 @@
 			.map(
 				(a) =>
 					'<div class="ch-att ' +
-					a.status +
+					esc(a.status) +
 					'" data-id="' +
-					a.id +
+					esc(a.id) +
 					'">' +
-					(a.isImage && a.url ? '<img src="' + a.url + '" alt="">' : '<span class="ico">📎</span>') +
+					(a.isImage && a.url ? '<img src="' + esc(a.url) + '" alt="">' : '<span class="ico">📎</span>') +
 					'<span class="nm">' +
 					esc(a.name) +
 					'</span><span class="st">' +
 					(a.status === "up" ? "上传中…" : a.status === "err" ? "失败" : "") +
 					'</span><button class="x" data-rm="' +
-					a.id +
+					esc(a.id) +
 					'" aria-label="移除">×</button></div>',
 			)
 			.join("");

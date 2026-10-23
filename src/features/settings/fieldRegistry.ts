@@ -81,7 +81,7 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	},
 	{
 		id: "quickCaptureShortcut",
-		sectionId: "general",
+		sectionId: "shortcuts",
 		label: "快速记录快捷键",
 		description: "在任何应用里按下即可弹出快速记录窗口的全局快捷键",
 		keywords: ["shortcut", "快捷键", "快速捕获", "快速记录", "全局", "热键"],
@@ -120,7 +120,7 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		id: "uiScale",
 		sectionId: "appearance",
 		label: "界面缩放",
-		description: "调节窗口视图比例（快捷键：Cmd/Ctrl +/-，重置：Cmd/Ctrl 0）",
+		description: "调节窗口视图比例（快捷键见「快捷键」页）",
 		keywords: ["zoom", "缩放", "放大", "缩小", "比例", "视图"],
 	},
 	{
@@ -161,8 +161,8 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	{
 		id: "sideChatHandback",
 		sectionId: "appearance",
-		label: "回传给父会话的方式",
-		description: "辅助对话的结果怎样放回主对话：整理成结论，或手动选择文字",
+		label: "辅助对话怎么带回主对话",
+		description: "让 AI 把辅助对话整理成结论，或自己选文字，放进主对话输入框",
 		keywords: ["回传", "辅助对话", "侧聊", "父会话", "结论", "手动选择", "sideChatHandback"],
 	},
 
@@ -255,7 +255,7 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 	},
 	{
 		id: "sendShortcut",
-		sectionId: "sessions",
+		sectionId: "shortcuts",
 		label: "发送快捷键",
 		description: "Enter 发送，或 ⌘ Enter 发送（此时 Enter 换行）",
 		keywords: ["send", "enter", "shortcut", "快捷键", "发送", "换行", "command", "cmd", "⌘"],

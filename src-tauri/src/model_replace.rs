@@ -486,7 +486,15 @@ async fn apply_value_edit<B: ReplaceBackend>(
             scope,
             project_path,
             name,
-        } => replace_role(scope, project_path, "modelRoles", name, before, after),
+        } => replace_role(
+            scope,
+            project_path,
+            "modelRoles",
+            name,
+            before,
+            after,
+            direction,
+        ),
         ModelRefLocation::AgentOverride {
             scope,
             project_path,
@@ -498,6 +506,7 @@ async fn apply_value_edit<B: ReplaceBackend>(
             name,
             before,
             after,
+            direction,
         ),
         ModelRefLocation::AppSetting { field } => {
             backend.set_app_setting(*field, before, after).await
@@ -527,12 +536,23 @@ fn replace_role(
     name: &str,
     before: &str,
     after: &str,
+    direction: Direction,
 ) -> Result<(), EditError> {
     let scope = match scope {
         ModelRefScope::Global => "global",
         ModelRefScope::Project => "project",
     };
-    match roles::replace_value(project_path.as_deref(), scope, table, name, before, after) {
+    // Undo restores a value that was already in the file; the forward-only
+    // syntax check must not reject it (an older file may hold e.g. `"a, b"`).
+    let outcome = match direction {
+        Direction::Forward => {
+            roles::replace_value(project_path.as_deref(), scope, table, name, before, after)
+        }
+        Direction::Undo => {
+            roles::restore_value(project_path.as_deref(), scope, table, name, before, after)
+        }
+    };
+    match outcome {
         Ok(ReplaceOutcome::Stale) => Err(EditError::Mismatch),
         Ok(_) => Ok(()),
         Err(error) => Err(EditError::Failed(error)),

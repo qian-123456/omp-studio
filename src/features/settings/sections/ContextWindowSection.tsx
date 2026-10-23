@@ -43,6 +43,7 @@ import { OmpSections, OmpSettingRow } from "../OmpSettingsList";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { Notice } from "../../../components/Notice";
 import { Button, Chip, INPUT_CLASS, IconButton, SectionHeader, SettingsCard } from "../ui";
+import { SectionJumpBar } from "../SectionJumpBar";
 import { useCatalogModels } from "../useAppSettings";
 
 /** `to` is the value written (null deletes); `shown` is the window to display afterwards when it differs (catalog undo). */
@@ -370,10 +371,11 @@ export function ContextWindowSection() {
 	return (
 		<div className="space-y-6">
 			<SectionHeader title="上下文窗口" description="每个模型的上下文大小，以及什么时候自动压缩对话" />
+			<SectionJumpBar />
 
 			<Notice tone="warning">窗口设得比模型真实上限大，会导致自动压缩来不及触发、请求报错。</Notice>
 
-			<SettingsCard title="自动压缩" fieldId="compaction">
+			<SettingsCard jump="自动压缩" title="自动压缩" fieldId="compaction">
 				<AutoCompactionCard />
 				{extendedEntry && (
 					<div data-field-id="extendedContext">
@@ -385,7 +387,7 @@ export function ContextWindowSection() {
 				))}
 			</SettingsCard>
 
-			<SettingsCard
+			<SettingsCard jump="模型窗口"
 				title="每个模型的上下文大小"
 				description={`当前显示 ${matchedTotal} 个，共 ${rows.length} 个模型`}
 				footer="订阅与 OMP 托管模型的窗口写入 OMP 模型配置，新开会话生效。工作台供应商的模型写入各自的模型配置，不修改供应商默认窗口。"
@@ -604,7 +606,7 @@ export function ContextWindowSection() {
 				)}
 			</SettingsCard>
 
-			<SettingsCard
+			<SettingsCard jump="规则"
 				title="规则"
 				footer="规则 = 关键词 + 窗口值。新建或修改规则会立即应用到所有匹配模型；供应商保存时只对新增模型生效。多条规则命中时，关键词更多者优先，相同则后建者优先。"
 			>

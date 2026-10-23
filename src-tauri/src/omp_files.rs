@@ -48,11 +48,28 @@ fn read_stamped(path: &Path) -> Result<StampedText, String> {
             stamp: None,
         });
     }
-    let content = files::read_text(path)?;
-    Ok(StampedText {
-        content: Some(content),
-        stamp: stamp_of(path),
-    })
+    // Content and stamp must come from the same version of the file. Statting
+    // after the read would pair V1 content with V2's stamp when another writer
+    // lands in between, and the user's next save would pass the conflict check
+    // and silently overwrite V2. Read inside a stat-read-stat window instead.
+    for _ in 0..3 {
+        let before = stamp_of(path);
+        if before.is_none() {
+            return Ok(StampedText {
+                content: None,
+                stamp: None,
+            });
+        }
+        let content = files::read_text(path)?;
+        let after = stamp_of(path);
+        if before == after {
+            return Ok(StampedText {
+                content: Some(content),
+                stamp: after,
+            });
+        }
+    }
+    Err("文件正在被写入，请稍后重试".to_string())
 }
 
 /// Write only when the on-disk stamp still equals `expected` (`None` = the file
@@ -79,11 +96,9 @@ fn write_checked(
 // ---------------------------------------------------------------- memory ----
 
 fn memories_root() -> Result<PathBuf, String> {
-    Ok(dirs::home_dir()
-        .ok_or("no home dir")?
-        .join(".omp")
-        .join("agent")
-        .join("memories"))
+    // Follow the active profile / `PI_CODING_AGENT_DIR` like every other
+    // omp-owned path; a hardcoded `~/.omp/agent` would edit the wrong profile.
+    Ok(crate::paths::agent_dir().join("memories"))
 }
 
 /// A single plain path component (no separators, `.`/`..`, NUL).

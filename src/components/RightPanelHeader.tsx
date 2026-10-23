@@ -318,7 +318,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 								className={clsx(
 									"group relative flex h-full shrink cursor-pointer items-center rounded-t-lg px-2 text-xs transition-colors",
 									tab.active
-										? "bg-[var(--bg-panel)] font-medium text-neutral-100 before:pointer-events-none before:absolute before:bottom-0 before:-left-1.5 before:h-1.5 before:w-1.5 before:bg-[radial-gradient(circle_at_0_0,transparent_6px,var(--bg-panel)_6.5px)] after:pointer-events-none after:absolute after:bottom-0 after:-right-1.5 after:h-1.5 after:w-1.5 after:bg-[radial-gradient(circle_at_100%_0,transparent_6px,var(--bg-panel)_6.5px)]"
+										? "bg-[var(--bg-panel)] text-neutral-100 before:pointer-events-none before:absolute before:bottom-0 before:-left-1.5 before:h-1.5 before:w-1.5 before:bg-[radial-gradient(circle_at_0_0,transparent_6px,var(--bg-panel)_6.5px)] after:pointer-events-none after:absolute after:bottom-0 after:-right-1.5 after:h-1.5 after:w-1.5 after:bg-[radial-gradient(circle_at_100%_0,transparent_6px,var(--bg-panel)_6.5px)]"
 										: "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200",
 								)}
 							>
@@ -525,7 +525,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 									sideChatBlocked
 										? "cursor-not-allowed text-neutral-600"
 										: activeTab === tab.id
-											? "bg-neutral-800 font-medium text-neutral-100"
+											? "bg-neutral-800 text-neutral-100"
 											: "text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100",
 								)}
 							>

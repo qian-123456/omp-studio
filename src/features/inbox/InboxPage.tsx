@@ -184,7 +184,7 @@ export function InboxPage() {
 							}}
 							className={`-mb-px border-b-2 px-2.5 pb-2 text-xs transition-colors ${
 								tab === t.id
-									? "border-[var(--primary)] font-semibold text-[var(--text)]"
+									? "border-[var(--primary)] text-[var(--text)]"
 									: "border-transparent text-[var(--text-dim)] hover:text-[var(--text)]"
 							}`}
 						>

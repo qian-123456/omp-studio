@@ -12,6 +12,8 @@ import { sessionDisplayName } from "../../lib/sessionName";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useSidebarStore } from "./sidebarStore";
+import { switchSpaceMode } from "./switchMode";
 import { neighborAfterRemoval } from "./visibleRows";
 
 export interface ArchiveUndoItem {
@@ -26,6 +28,18 @@ interface ArchiveUndoState {
 	item: ArchiveUndoItem | null;
 	show(item: Omit<ArchiveUndoItem, "id">): void;
 	clear(id?: number): void;
+}
+
+/**
+ * Session ids archived during this app run, oldest first. Unlike the timed
+ * undo item it survives the bar timing out, so "reopen last archived" can walk
+ * back through them. Entries are validated lazily (restored/deleted are skipped).
+ */
+const archivedStack: string[] = [];
+
+/** Test hook: forget the archive history. */
+export function resetArchivedStack(): void {
+	archivedStack.length = 0;
 }
 
 let undoTimer: number | null = null;
@@ -140,6 +154,11 @@ export async function archiveSessions(
 	});
 
 	if (successes.length > 0) {
+		for (const s of successes) {
+			const at = archivedStack.indexOf(s.id);
+			if (at >= 0) archivedStack.splice(at, 1);
+			archivedStack.push(s.id);
+		}
 		useSessions.getState().upsert(successes);
 
 		if (isSelectedArchived) {
@@ -218,4 +237,48 @@ export async function undoArchive(): Promise<void> {
 	} finally {
 		useArchiveUndo.getState().clear(targetItemId);
 	}
+}
+
+/**
+ * Restore the most recently archived session of this app run and select it;
+ * repeated calls walk back through earlier ones. Ids already restored or
+ * deleted are skipped. Switches space mode when the session lives elsewhere
+ * (same as openSearchRow). Returns false (with a toast) when nothing is left.
+ */
+export async function reopenArchivedSession(): Promise<boolean> {
+	while (archivedStack.length > 0) {
+		const id = archivedStack[archivedStack.length - 1];
+		const meta = useSessions.getState().sessions[id];
+		if (!meta || !meta.archived) {
+			// Already restored or deleted: drop the stale entry and try the next one.
+			archivedStack.pop();
+			continue;
+		}
+		try {
+			const updated = await updateSessionMeta(id, { archived: false });
+			// Only now is the restore durable; a failure keeps the entry so the
+			// shortcut retries the same session instead of silently skipping it.
+			archivedStack.pop();
+			useSessions.getState().upsert([updated]);
+			if (useSidebarStore.getState().activeMode !== updated.mode) {
+				switchSpaceMode(updated.mode);
+			}
+			// The timed undo bar may still offer to undo this very archive.
+			const undo = useArchiveUndo.getState().item;
+			if (undo?.sessionIds.includes(id)) {
+				const left = undo.sessionIds.filter(
+					(sid) => sid !== id && useSessions.getState().sessions[sid]?.archived,
+				);
+				if (left.length === 0) useArchiveUndo.getState().clear(undo.id);
+			}
+			useUi.getState().selectSession(id);
+			toast.success(`已恢复「${sessionDisplayName(updated)}」`);
+			return true;
+		} catch (err) {
+			toast.error(`恢复归档失败: ${errMsg(err)}`);
+			return false;
+		}
+	}
+	toast.info("没有可恢复的归档会话");
+	return false;
 }

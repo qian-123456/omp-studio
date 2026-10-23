@@ -146,7 +146,7 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 			}}
 			aria-pressed={tab === id}
 			title={live ? `${label}（当前使用中）` : label}
-			className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+			className={`relative flex min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
 				tab === id
 					? "bg-[var(--bg-active-fill)] text-neutral-100 shadow-sm"
 					: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
@@ -155,7 +155,7 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 			{icon}
 			<span className="whitespace-nowrap">{label}</span>
 			{live && (
-				<span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
+				<span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
 			)}
 		</button>
 	);
@@ -164,7 +164,7 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 
 	return (
 		<div>
-			<div className="flex rounded-lg hairline bg-[var(--well-bg)] p-0.5">
+			<div className="grid grid-cols-4 rounded-lg hairline bg-[var(--well-bg)] p-0.5">
 				{tabBtn("dark", <Moon size={13} />, "深色", !wallpaper.enabled && chosen?.dark === true)}
 				{tabBtn("light", <Sun size={13} />, "浅色", !wallpaper.enabled && chosen != null && !chosen.dark)}
 				{tabBtn("system", <Monitor size={13} />, "跟随系统", !wallpaper.enabled && choice === "system")}

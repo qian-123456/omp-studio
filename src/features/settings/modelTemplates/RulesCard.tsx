@@ -522,6 +522,7 @@ export function RulesCard({
 	return (
 		<SettingsCard
 			title="自动切换规则"
+			jump="自动切换规则"
 			description="额度达到阈值，自动应用对应模板。"
 			aside={rules.length > 0 ? `${rules.length} 条` : undefined}
 			clip

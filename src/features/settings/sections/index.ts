@@ -29,10 +29,12 @@ import { PrivacySection } from "./PrivacySection";
 import { ProvidersSection } from "./ProvidersSection";
 import { RolesSection } from "./RolesSection";
 import { SessionsSection } from "./SessionsSection";
+import { ShortcutsSection } from "./ShortcutsSection";
 import { StorageSection } from "./StorageSection";
 
 export const SECTION_COMPONENTS: Record<string, ComponentType> = {
 	general: GeneralSection,
+	shortcuts: ShortcutsSection,
 	storage: StorageSection,
 	appearance: AppearanceSection,
 	notifications: NotificationsSection,

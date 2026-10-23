@@ -48,7 +48,7 @@ export function StatusTabs({
 							aria-selected={isActive}
 							onClick={() => onChange(tab.id)}
 							className={`flex min-w-0 flex-1 items-center justify-center gap-0.5 whitespace-nowrap rounded-full px-1 py-1 text-[11px] transition-colors ${
-								isActive ? `${on} font-medium` : "text-[var(--text-dim)] hover:text-[var(--text)]"
+								isActive ? `${on}` : "text-[var(--text-dim)] hover:text-[var(--text)]"
 							}`}
 						>
 							{tab.label}
