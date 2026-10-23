@@ -4,7 +4,7 @@
  * through these so layout and save semantics stay consistent.
  */
 import clsx from "clsx";
-import { AlertTriangle, Check, Info, Loader2, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Check, Loader2, type LucideIcon } from "lucide-react";
 import {
 	forwardRef,
 	useCallback,
@@ -542,85 +542,6 @@ export function Chip({
 			{Icon && <Icon className="h-3 w-3" />}
 			{children}
 		</span>
-	);
-}
-
-export type NoticeTone = "info" | "success" | "warning" | "danger";
-
-const NOTICE_TONE: Record<NoticeTone, { box: string; icon: string; Icon: ComponentType<{ className?: string }> }> = {
-	info: {
-		box: "border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]",
-		icon: "text-[var(--accent)]",
-		Icon: Info,
-	},
-	success: {
-		box: "border-[color-mix(in_srgb,var(--status-success)_30%,transparent)] bg-[color-mix(in_srgb,var(--status-success)_8%,transparent)]",
-		icon: "text-[var(--status-success)]",
-		Icon: Check,
-	},
-	warning: {
-		box: "border-[color-mix(in_srgb,var(--status-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--status-warning)_9%,transparent)]",
-		icon: "text-[var(--status-warning)]",
-		Icon: AlertTriangle,
-	},
-	danger: {
-		box: "border-[color-mix(in_srgb,var(--status-error)_35%,transparent)] bg-[color-mix(in_srgb,var(--status-error)_9%,transparent)]",
-		icon: "text-[var(--status-error)]",
-		Icon: AlertTriangle,
-	},
-};
-
-/** Inline callout. `action` renders on the right (usually a small Button). */
-export function Notice({
-	tone,
-	title,
-	children,
-	action,
-}: {
-	tone: NoticeTone;
-	title?: ReactNode;
-	children?: ReactNode;
-	action?: ReactNode;
-}) {
-	const t = NOTICE_TONE[tone];
-	return (
-		<div
-			role={tone === "danger" || tone === "warning" ? "alert" : "status"}
-			className={clsx("flex items-start gap-2.5 rounded-lg border px-3 py-2.5", t.box)}
-		>
-			<t.Icon className={clsx("mt-0.5 h-3.5 w-3.5 shrink-0", t.icon)} />
-			<div className="min-w-0 flex-1">
-				{title && <div className="text-[13px] font-medium leading-5 text-[var(--text)]">{title}</div>}
-				{children && (
-					<div className="text-xs leading-[18px] text-[var(--text-muted)]">{children}</div>
-				)}
-			</div>
-			{action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
-		</div>
-	);
-}
-
-export function EmptyState({
-	icon: Icon,
-	title,
-	description,
-	action,
-	spin,
-}: {
-	icon?: ComponentType<{ className?: string }>;
-	title: ReactNode;
-	description?: ReactNode;
-	action?: ReactNode;
-	/** Spin the icon (loading states). */
-	spin?: boolean;
-}) {
-	return (
-		<div className="flex flex-col items-center gap-1.5 px-4 py-8 text-center">
-			{Icon && <Icon className={clsx("mb-1 h-6 w-6 text-[var(--text-dim)]", spin && "animate-spin")} />}
-			<div className="text-[13px] font-medium text-[var(--text)]">{title}</div>
-			{description && <div className="max-w-sm text-xs leading-[18px] text-[var(--text-muted)]">{description}</div>}
-			{action && <div className="mt-2">{action}</div>}
-		</div>
 	);
 }
 

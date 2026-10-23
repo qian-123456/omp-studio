@@ -1,7 +1,7 @@
 import { GitBranch } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import type { GitCommit, ServiceInfo, WorktreeInfo } from "../../lib/contracts";
-import { relativeTime } from "../../lib/format";
+import { timeAgo } from "../../lib/format";
 import { useHomeDir } from "../../lib/hooks";
 import { gitLog } from "../../lib/ipc";
 import { shortPath } from "../../lib/paths";
@@ -35,14 +35,9 @@ export interface WorktreeHoverCardProps {
 	onClose?: () => void;
 }
 
-/** relativeTime() yields "N分钟"/"N天"; add 「前」 except for 刚刚 and calendar dates. */
-export function ago(ts: string): string {
-	const r = relativeTime(ts);
-	return !r || r === "刚刚" || r.includes("-") ? r : `${r}前`;
-}
-
 // Last commit per HEAD sha; a commit never changes once a sha is known.
 const commitCache = new Map<string, GitCommit | null>();
+const COMMIT_CACHE_LIMIT = 100;
 
 /** Lazily loads the HEAD commit of `path`, cached per head; null while loading/failed. */
 export function useHeadCommit(path: string | undefined, head: string | undefined, enabled: boolean) {
@@ -60,6 +55,10 @@ export function useHeadCommit(path: string | undefined, head: string | undefined
 			.then((h) => {
 				const c = h.commits[0] ?? null;
 				commitCache.set(key, c);
+				if (commitCache.size > COMMIT_CACHE_LIMIT) {
+					const oldest = commitCache.keys().next().value;
+					if (oldest !== undefined) commitCache.delete(oldest);
+				}
 				if (alive) setCommit(c);
 			})
 			.catch(() => {});
@@ -203,7 +202,7 @@ export function WorktreeHoverCard({
 							<div className="flex min-w-0 gap-1.5" title={commit.subject}>
 								<span className="shrink-0 font-mono text-neutral-500">{commit.short}</span>
 								<span className="min-w-0 flex-1 truncate">{commit.subject}</span>
-								<span className="shrink-0 text-neutral-500">{ago(commit.ts)}</span>
+								<span className="shrink-0 text-neutral-500">{timeAgo(commit.ts)}</span>
 							</div>
 						) : (
 							<div className="font-mono text-neutral-500">{wt.head.slice(0, 7)}</div>

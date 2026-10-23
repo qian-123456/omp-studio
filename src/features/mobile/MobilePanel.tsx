@@ -23,13 +23,13 @@ import {
 } from "../../lib/ipc";
 import { Switch } from "../settings/Switch";
 import { toast } from "../../lib/toast";
+import { Notice } from "../../components/Notice";
 import {
 	Button,
 	Chip,
 	CommitInput,
 	INPUT_CLASS,
 	IconButton,
-	Notice,
 	SaveIndicator,
 	SettingRow,
 	SettingsCard,

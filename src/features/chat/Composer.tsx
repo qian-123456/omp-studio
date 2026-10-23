@@ -310,17 +310,24 @@ export function Composer({
 	// Command chip: an atomic `/name` pinned to the input start; the draft
 	// holds only its arguments and `serializeChip` restores `/name args` on
 	// send. Persisted per session alongside drafts (see slash/chip.ts).
-	const [chip, setChipState] = useState<CommandChip | null>(() => loadChip(sessionId));
+	// The chip is stored with its owning session: on a session switch the render before the
+	// reload effect must not pair the old session's chip with the new draft (the re-anchor
+	// effect below would drop it and wipe the new session's saved chip).
+	const [chipBox, setChipBox] = useState<{ sid: string; chip: CommandChip | null }>(() => ({
+		sid: sessionId,
+		chip: loadChip(sessionId),
+	}));
+	const chip = chipBox.sid === sessionId ? chipBox.chip : loadChip(sessionId);
 	const hasInlineTokens = hasImageTokens || chip !== null;
 	const setChip = useCallback(
 		(next: CommandChip | null) => {
-			setChipState(next);
+			setChipBox({ sid: sessionId, chip: next });
 			saveChip(sessionId, next);
 		},
 		[sessionId],
 	);
 	useEffect(() => {
-		setChipState(loadChip(sessionId));
+		setChipBox({ sid: sessionId, chip: loadChip(sessionId) });
 	}, [sessionId]);
 	// Inline (skill) chips keep their literal in the draft; every draft edit
 	// shifts the recorded offset, and an edit that breaks the literal drops
@@ -468,13 +475,21 @@ export function Composer({
 			.filter((p) => !q || p.toLowerCase().includes(q))
 			.slice(0, 10);
 	}, [atToken, atFiles, atDismissedStart]);
+	// The `@` file list belongs to one workspace: reload when the session or its cwd changes.
+	useEffect(() => {
+		setAtFiles(null);
+	}, [sessionId, sessionMeta?.cwd]);
 	useEffect(() => {
 		if (atToken && atFiles === null) {
 			const cwd = sessionMeta?.cwd;
 			if (!cwd) return;
+			let cancelled = false;
 			void listWorkspaceFiles(cwd)
-				.then(setAtFiles)
-				.catch(() => setAtFiles([]));
+				.then((files) => !cancelled && setAtFiles(files))
+				.catch(() => !cancelled && setAtFiles([]));
+			return () => {
+				cancelled = true;
+			};
 		}
 	}, [atToken !== null, atFiles === null, sessionMeta?.cwd]);
 	const isAborting = useAbortState((s) => s.aborting[sessionId] === true);
@@ -500,13 +515,14 @@ export function Composer({
 	const snapshot = snapshotRec?.id === sessionId ? snapshotRec.snap : null;
 
 	// Total tokens summary
-	const [totalTokensStr, setTotalTokensStr] = useState<string | null>(null);
+	const [totalTokensRec, setTotalTokensRec] = useState<{ id: string; str: string } | null>(null);
+	const totalTokensStr = totalTokensRec?.id === sessionId ? totalTokensRec.str : null;
 	useEffect(() => {
 		let cancelled = false;
 		sessionUsage(sessionId)
 			.then((u) => {
 				if (!cancelled && u.available) {
-					setTotalTokensStr(formatTokens(u.tokens));
+					setTotalTokensRec({ id: sessionId, str: formatTokens(u.tokens) });
 				}
 			})
 			.catch((err) => console.warn("[composer] session usage fetch failed", err));

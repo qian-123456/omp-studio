@@ -6,11 +6,12 @@ import {
 	Loader2,
 	Plus,
 	RefreshCw,
-	Search,
 	Trash2,
 	Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EmptyState } from "../../components/EmptyState";
+import { SearchInput } from "../../components/SearchInput";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BranchInfo, MergePreview } from "../../lib/contracts";
 import { createSession } from "../../lib/createSession";
@@ -64,6 +65,7 @@ export function BranchAssetSection({
 
 	const [branches, setBranches] = useState<BranchInfo[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [loadError, setLoadError] = useState<string | null>(null);
 	const [tab, setTab] = useState<BranchTab>("local");
 	const [query, setQuery] = useState("");
 	const [fetching, setFetching] = useState(false);
@@ -72,10 +74,12 @@ export function BranchAssetSection({
 	const loadBranches = useCallback(async () => {
 		try {
 			setLoading(true);
+			setLoadError(null);
 			const list = await gitListBranchesDetailed(repo);
 			setBranches(list);
 		} catch (e) {
 			console.error("Failed to list branches:", e);
+			setLoadError(e instanceof Error ? e.message : String(e));
 		} finally {
 			setLoading(false);
 		}
@@ -346,12 +350,12 @@ export function BranchAssetSection({
 	return (
 		<div className="flex h-full min-h-0 flex-col gap-2 p-2.5 select-none">
 			{/* Section Header: Sketch Segmented Tabs [ 本地 ] | [ 云端 ] */}
-			<div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-neutral-800/80 pb-2">
+			<div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-[var(--border-divider)] pb-2">
 				<div className="flex min-w-0 items-center gap-1.5">
-					<span className="text-xs font-semibold text-neutral-300">
+					<span className="text-xs font-semibold text-[var(--text)]">
 						仓库分支资产
 					</span>
-					{loading && <Loader2 size={12} className="animate-spin text-neutral-500" />}
+					{loading && <Loader2 size={12} className="animate-spin text-[var(--text-dim)]" />}
 				</div>
 
 				<div className="flex shrink-0 items-center gap-1.5">
@@ -360,7 +364,7 @@ export function BranchAssetSection({
 						onClick={handleFetchAll}
 						disabled={fetching}
 						title="从云端获取最新分支与提交 (git fetch)"
-						className="flex items-center gap-1 rounded bg-neutral-800/70 hover:bg-neutral-700 px-2 py-0.5 text-[10px] text-neutral-300 transition-colors disabled:opacity-50"
+						className="flex items-center gap-1 rounded bg-[var(--well-bg)] hover:bg-[var(--bg-hover)] px-2 py-0.5 text-[10px] text-[var(--text)] transition-colors disabled:opacity-50"
 					>
 						<RefreshCw size={10} className={fetching ? "animate-spin text-indigo-400" : ""} />
 						<span>刷新云端</span>
@@ -371,7 +375,7 @@ export function BranchAssetSection({
 							type="button"
 							onClick={handlePruneMerged}
 							title="一键删除所有已合并到 main 的闲置本地分支"
-							className="flex items-center gap-1 rounded bg-neutral-800/60 hover:bg-rose-950/40 hover:text-rose-300 px-1.5 py-0.5 text-[10px] text-neutral-400 transition-colors"
+							className="flex items-center gap-1 rounded bg-[var(--well-bg)] hover:bg-rose-950/40 hover:text-rose-300 px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] transition-colors"
 						>
 							<Trash2 size={10} />
 							<span>清理已合并</span>
@@ -382,7 +386,7 @@ export function BranchAssetSection({
 
 			{/* Tab Switcher (Matches Hand-Drawn Sketch) */}
 			<div className="flex shrink-0 flex-wrap items-center gap-2">
-				<div className="flex shrink-0 rounded-md bg-neutral-900 p-0.5 border border-neutral-800 text-xs">
+				<div className="flex shrink-0 rounded-md bg-[var(--bg-panel)] p-0.5 border border-[var(--border-divider)] text-xs">
 					<button
 						type="button"
 						onClick={() => setTab("local")}
@@ -390,7 +394,7 @@ export function BranchAssetSection({
 							"rounded px-2.5 py-1 font-medium transition-colors text-xs whitespace-nowrap",
 							tab === "local"
 								? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
-								: "text-neutral-400 hover:text-neutral-200",
+								: "text-[var(--text-muted)] hover:text-[var(--text)]",
 						)}
 					>
 						本地 ({localBranches.length})
@@ -402,7 +406,7 @@ export function BranchAssetSection({
 							"rounded px-2.5 py-1 font-medium transition-colors text-xs whitespace-nowrap",
 							tab === "remote"
 								? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
-								: "text-neutral-400 hover:text-neutral-200",
+								: "text-[var(--text-muted)] hover:text-[var(--text)]",
 						)}
 					>
 						云端 origin ({remoteBranches.length})
@@ -410,26 +414,33 @@ export function BranchAssetSection({
 				</div>
 
 				{/* Search box */}
-				<div className="relative min-w-[8rem] flex-1">
-					<Search
-						size={12}
-						className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none"
-					/>
-					<input
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						placeholder="搜索分支 (名称)..."
-						className="w-full rounded bg-neutral-900 border border-neutral-800 pl-6 pr-2 py-1 text-[11px] text-neutral-200 placeholder-neutral-500 outline-none focus:border-amber-500/60 font-mono"
-					/>
-				</div>
+				<SearchInput
+					value={query}
+					onChange={setQuery}
+					placeholder="搜索分支 (名称)"
+					className="min-w-[8rem] flex-1"
+				/>
 			</div>
 
 			{/* Branch List */}
 			<div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-0.5">
-				{filteredBranches.length === 0 ? (
-					<div className="py-4 text-center text-xs text-neutral-500">
-						{query ? "没有匹配的分支" : tab === "local" ? "暂无本地分支" : "暂无云端分支 (可点击「刷新云端」获取)"}
+				{loadError ? (
+					<div className="m-1 flex items-start justify-between gap-2 rounded border border-rose-800/60 bg-rose-950/40 p-2 text-xs text-rose-300">
+						<span className="min-w-0 flex-1 select-text whitespace-pre-wrap break-words">
+							分支列表加载失败：{loadError}
+						</span>
+						<button
+							type="button"
+							onClick={() => void loadBranches()}
+							className="shrink-0 whitespace-nowrap rounded bg-rose-900/60 px-2 py-0.5 text-[11px] font-medium text-rose-200 hover:bg-rose-800/80 transition-colors"
+						>
+							重试
+						</button>
 					</div>
+				) : filteredBranches.length === 0 ? (
+					<EmptyState
+						title={query ? "没有匹配的分支" : tab === "local" ? "暂无本地分支" : "暂无云端分支 (可点击「刷新云端」获取)"}
+					/>
 				) : (
 					filteredBranches.map((branch) => {
 						const isBusy = actionRunning === branch.name;
@@ -442,7 +453,7 @@ export function BranchAssetSection({
 									"group relative rounded-lg border px-2 py-1.5 text-xs transition-colors",
 									isRunning
 										? "border-emerald-500/30 bg-emerald-950/10 hover:border-emerald-500/50"
-										: "border-neutral-800/70 bg-neutral-900/40 hover:border-neutral-700/80 hover:bg-neutral-900/70",
+										: "border-[var(--border-divider)] bg-[var(--bg-panel)] hover:border-[var(--border)] hover:bg-[var(--bg-hover)]",
 								)}
 							>
 								{/* Line 1: Branch name has top priority (wraps up to two lines); relative time on the right. */}
@@ -456,14 +467,14 @@ export function BranchAssetSection({
 													? "text-emerald-400"
 													: branch.isRemote
 														? "text-sky-400"
-														: "text-neutral-500 group-hover:text-neutral-300",
+														: "text-[var(--text-dim)] group-hover:text-[var(--text)]",
 											)}
 										/>
 										<span
 											title={branch.name}
 											className={clsx(
 												"line-clamp-2 [overflow-wrap:anywhere] font-mono text-xs font-semibold leading-4 min-w-0 flex-1",
-												isRunning ? "text-emerald-300" : "text-neutral-200",
+												isRunning ? "text-emerald-300" : "text-[var(--text)]",
 											)}
 										>
 											{branch.displayName}
@@ -497,12 +508,12 @@ export function BranchAssetSection({
 									</div>
 
 									{/* Relative time stays in place; actions overlay the summary line so geometry never shifts */}
-									<div className="shrink-0 pt-px text-[10px] leading-4 text-neutral-500 whitespace-nowrap">
+									<div className="shrink-0 pt-px text-[10px] leading-4 text-[var(--text-dim)] whitespace-nowrap">
 										{branch.lastCommitTime ? formatRelativeTime(branch.lastCommitTime) : ""}
 									</div>
 
 									{/* Hover/focus only: action toolbar overlaying the summary line */}
-									<div className="pointer-events-none absolute bottom-1 right-1.5 flex items-center gap-0.5 rounded-md border border-neutral-700/70 bg-neutral-900 px-0.5 opacity-0 shadow-sm transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+									<div className="pointer-events-none absolute bottom-1 right-1.5 flex items-center gap-0.5 rounded-md border border-[var(--border-divider)] bg-[var(--bg-panel)] px-0.5 opacity-0 shadow-sm transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
 											{isRunning && (
 												<button
 													type="button"
@@ -519,7 +530,7 @@ export function BranchAssetSection({
 											)}
 
 											{isBusy ? (
-												<Loader2 size={12} className="animate-spin text-neutral-400" />
+												<Loader2 size={12} className="animate-spin text-[var(--text-muted)]" />
 											) : !branch.isRemote ? (
 												<>
 													{/* Action: Push */}
@@ -531,7 +542,7 @@ export function BranchAssetSection({
 																? `推送到云端 ${branch.upstream}`
 																: `在 GitHub (origin) 上新建同名分支并推送代码`
 														}
-														className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-amber-300 transition-colors"
+														className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-amber-300 transition-colors"
 													>
 														<Upload size={11} />
 													</button>
@@ -545,7 +556,7 @@ export function BranchAssetSection({
 																? "直接合并入 main 并推送到云端"
 																: "推送到云端并在 GitHub 网页发起 Pull Request"
 														}
-														className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-indigo-300 transition-colors"
+														className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-indigo-300 transition-colors"
 													>
 														<GitPullRequest size={11} />
 													</button>
@@ -555,7 +566,7 @@ export function BranchAssetSection({
 														type="button"
 														onClick={() => void handleSyncFromMain(branch)}
 														title="从 main 吸收最新提交入此分支 (带冲突预检)"
-														className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-emerald-300 transition-colors"
+														className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-emerald-300 transition-colors"
 													>
 														<GitMerge size={11} />
 													</button>
@@ -572,7 +583,7 @@ export function BranchAssetSection({
 																});
 															}}
 															title="在此分支创建独立并行工作树并开启会话"
-															className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
+															className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 														>
 															<Plus size={11} />
 														</button>
@@ -587,8 +598,8 @@ export function BranchAssetSection({
 														className={clsx(
 															"rounded p-1 transition-colors",
 															isRunning
-																? "text-neutral-700 cursor-not-allowed"
-																: "text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300",
+																? "text-[var(--text-dim)] cursor-not-allowed"
+																: "text-[var(--text-muted)] hover:bg-rose-950/40 hover:text-rose-300",
 														)}
 													>
 														<Trash2 size={11} />
@@ -607,7 +618,7 @@ export function BranchAssetSection({
 															});
 														}}
 														title="从该云端分支拉取并检出为独立工作树"
-														className="flex items-center gap-1 rounded bg-neutral-800 hover:bg-indigo-600 px-1.5 py-0.5 text-[10px] text-neutral-200 hover:text-white transition-colors"
+														className="flex items-center gap-1 rounded bg-[var(--well-bg)] hover:bg-indigo-600 px-1.5 py-0.5 text-[10px] text-[var(--text)] hover:text-white transition-colors"
 													>
 														<Plus size={10} />
 														<span>建工作树</span>
@@ -617,7 +628,7 @@ export function BranchAssetSection({
 														type="button"
 														onClick={() => void handleDeleteBranch(branch)}
 														title="删除 GitHub 上的远端分支"
-														className="rounded p-1 text-neutral-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors"
+														className="rounded p-1 text-[var(--text-muted)] hover:bg-rose-950/40 hover:text-rose-300 transition-colors"
 													>
 														<Trash2 size={11} />
 													</button>
@@ -627,14 +638,14 @@ export function BranchAssetSection({
 								</div>
 
 								{/* Line 2: Status badges + commit summary; hover/focus actions overlay its right end. */}
-								<div className="mt-1 flex h-5 items-center gap-1.5 text-[10px] text-neutral-400 min-w-0 overflow-hidden">
+								<div className="mt-1 flex h-5 items-center gap-1.5 text-[10px] text-[var(--text-muted)] min-w-0 overflow-hidden">
 									{/* Status badges stay visible so hover never changes card content */}
 									{!branch.isRemote && (
 										<div className="flex items-center gap-1 shrink-0">
 											{!branch.upstream && (
 												<span
 													title="该分支仅存在于本地，尚未发布到 GitHub"
-													className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 text-[9px] text-neutral-400"
+													className="shrink-0 rounded bg-[var(--well-bg)] border border-[var(--border-divider)] px-1 text-[9px] text-[var(--text-muted)]"
 												>
 													仅本地
 												</span>
@@ -642,7 +653,7 @@ export function BranchAssetSection({
 											{branch.upstream && branch.ahead === 0 && branch.behind === 0 && (
 												<span
 													title="本地与云端已完全同步"
-													className="shrink-0 rounded bg-neutral-800 border border-neutral-700/60 px-1 text-[9px] text-neutral-400"
+													className="shrink-0 rounded bg-[var(--well-bg)] border border-[var(--border-divider)] px-1 text-[9px] text-[var(--text-muted)]"
 												>
 													已同步
 												</span>
@@ -650,7 +661,7 @@ export function BranchAssetSection({
 											{branch.isMerged && (
 												<span
 													title="该分支已完全合并入 main"
-													className="shrink-0 rounded bg-neutral-800/80 px-1 text-[9px] text-neutral-500"
+													className="shrink-0 rounded bg-[var(--well-bg)] px-1 text-[9px] text-[var(--text-dim)]"
 												>
 													已合并
 												</span>
@@ -666,7 +677,7 @@ export function BranchAssetSection({
 
 									{branch.lastCommitMessage && (
 										<span
-											className="truncate text-neutral-500 group-hover:text-neutral-400 flex-1 min-w-0 transition-colors"
+											className="truncate text-[var(--text-dim)] group-hover:text-[var(--text-muted)] flex-1 min-w-0 transition-colors"
 											title={branch.lastCommitMessage}
 										>
 											{branch.lastCommitMessage}

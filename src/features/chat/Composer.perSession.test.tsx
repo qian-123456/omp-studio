@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 /** Composer keyed by sessionId keeps attachment chips per session. */
 
+import { act } from "@testing-library/react";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadChip, saveChip } from "./slash/chip";
 import type * as IpcModule from "../../lib/ipc";
 import type * as EventsModule from "../../lib/events";
 import { emptySessionLive, useLive } from "../../stores/live";
@@ -86,5 +88,17 @@ describe("Composer keyed by sessionId", () => {
 		expect(chipPaths()).toEqual(["/tmp/two.txt"]);
 		rerender(<Composer key="s1" sessionId="s1" />);
 		expect(chipPaths()).toEqual(["/tmp/one.txt"]);
+	});
+
+	it("switching sessions without a remount keeps the new session's saved chip", async () => {
+		saveChip("s1", { name: "skill:aaa", title: "aaa", offset: 0 });
+		saveChip("s2", { name: "skill:bbb", title: "bbb", offset: 0 });
+		useComposer.getState().setDraft("s1", "/skill:aaa hello");
+		useComposer.getState().setDraft("s2", "/skill:bbb world");
+		const { rerender } = render(<Composer sessionId="s1" />);
+		rerender(<Composer sessionId="s2" />);
+		await act(async () => {});
+		expect(loadChip("s2")).toMatchObject({ name: "skill:bbb" });
+		expect(loadChip("s1")).toMatchObject({ name: "skill:aaa" });
 	});
 });

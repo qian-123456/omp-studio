@@ -176,6 +176,8 @@ export function SessionView({
 		const finished = wasStreaming.current && !streaming;
 		wasStreaming.current = streaming;
 		if (!finished) return;
+		// Switching sessions mid-refresh must not reload another session's turn chips.
+		let cancelled = false;
 		const live = useLive.getState().sessions[sessionId];
 		getTranscript(sessionId, live?.nextOffset ?? 0, live?.tailId)
 			.then((page) => {
@@ -184,8 +186,11 @@ export function SessionView({
 			})
 			.catch((err) => toast.error(`刷新会话记录失败: ${errMsg(err)}`))
 			.finally(() => {
-				loadTurns();
+				if (!cancelled) loadTurns();
 			});
+		return () => {
+			cancelled = true;
+		};
 	}, [streaming, sessionId, setItems, appendItems, loadTurns]);
 
 	// Esc while generating aborts the turn — but only when nothing else claims

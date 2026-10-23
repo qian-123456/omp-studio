@@ -20,6 +20,7 @@ import {
 	saveRetryHistory,
 } from "./retryNotice";
 import { useComposer } from "./composer";
+import { useHeldQueue } from "../features/chat/heldQueue";
 import { createFrameBatcher, scheduleFlush } from "./frameBatch";
 import {
 	type PersistedRow,
@@ -1895,6 +1896,24 @@ export function pruneRemovedSessions(ids: readonly string[]): void {
 			/* storage unavailable */
 		}
 	}
+	useHeldQueue.getState().pruneSessions(ids);
+	// Edit drafts are keyed by item id: collect them before the transcripts go.
+	const itemIds: string[] = [];
+	for (const id of gone) for (const item of useLive.getState().sessions[id]?.items ?? []) itemIds.push(item.id);
+	// Dynamic: these modules pull in UI code that imports this store (cycle).
+	void Promise.all([
+		import("../features/backlog/fillComposer"),
+		import("../features/sidechat/viewStore"),
+		import("../features/chat/ask/AskPanel"),
+		import("../features/chat/ToolCard"),
+		import("../features/chat/MessageList"),
+	]).then(([fill, side, ask, tool, list]) => {
+		fill.prunePendingFills(ids);
+		side.useSideChatView.getState().pruneSessions(ids);
+		ask.pruneAskState(ids);
+		tool.pruneToolCards(ids);
+		list.pruneEditDrafts(itemIds);
+	});
 	useLive.setState((s) => {
 		let sessions = s.sessions;
 		for (const id of gone) {

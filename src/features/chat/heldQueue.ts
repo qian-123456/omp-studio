@@ -80,6 +80,8 @@ export interface HeldQueueState {
 	/** Put an item back at the head (e.g. after a failed auto-send). */
 	unshift(sid: string, item: HeldItem): void;
 	setDismissed(sid: string, dismissed: boolean): void;
+	/** Session deleted: drop its queue (memory + localStorage) and dismissed flag. */
+	pruneSessions(ids: readonly string[]): void;
 }
 
 export const useHeldQueue = create<HeldQueueState>((set, get) => {
@@ -134,6 +136,24 @@ export const useHeldQueue = create<HeldQueueState>((set, get) => {
 		unshift: (sid, item) => write(sid, [item, ...items(sid)]),
 		setDismissed: (sid, dismissed) =>
 			set((s) => ({ dismissed: { ...s.dismissed, [sid]: dismissed } })),
+		pruneSessions: (ids) => {
+			for (const sid of ids) {
+				try {
+					globalThis.localStorage?.removeItem(KEY(sid));
+				} catch {
+					/* storage unavailable */
+				}
+			}
+			set((s) => {
+				const queues = { ...s.queues };
+				const dismissed = { ...s.dismissed };
+				for (const sid of ids) {
+					delete queues[sid];
+					delete dismissed[sid];
+				}
+				return { queues, dismissed };
+			});
+		},
 	};
 });
 

@@ -9,9 +9,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
-	Check,
 	Code2,
-	Copy,
 	Loader2,
 	Maximize2,
 	RotateCw,
@@ -24,7 +22,8 @@ import React, {
 	useState,
 } from "react";
 import { FloatingLayer } from "../../../components/FloatingLayer";
-import { copyText, errMsg } from "../../../lib/dialogs";
+import { CopyButton } from "../../../components/CopyButton";
+import { errMsg } from "../../../lib/dialogs";
 import { themeById, useResolvedThemeId } from "../../../lib/theme";
 import { toast } from "../../../lib/toast";
 import { sendPrompt } from "../send";
@@ -50,6 +49,8 @@ const LOAD_TIMEOUT_MS = 10_000;
  * reload (or the fullscreen frame) resumes where the last write left off.
  */
 const widgetStateMemory = new Map<string, string>();
+/** Entries are up to ~100 KB each; sessionStorage keeps the evicted ones readable. */
+const WIDGET_STATE_MEMORY_LIMIT = 50;
 
 function readWidgetState(key: string): string | null {
 	const hit = widgetStateMemory.get(key);
@@ -62,7 +63,13 @@ function readWidgetState(key: string): string | null {
 }
 
 function writeWidgetState(key: string, serialized: string): void {
+	// Re-insert so the Map's insertion order doubles as recency; evict oldest past the cap.
+	widgetStateMemory.delete(key);
 	widgetStateMemory.set(key, serialized);
+	if (widgetStateMemory.size > WIDGET_STATE_MEMORY_LIMIT) {
+		const oldest = widgetStateMemory.keys().next().value;
+		if (oldest !== undefined) widgetStateMemory.delete(oldest);
+	}
 	try {
 		window.sessionStorage.setItem(key, serialized);
 	} catch {
@@ -408,18 +415,6 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 }) {
 	const [fullscreen, setFullscreen] = useState(false);
 	const [showSource, setShowSource] = useState(false);
-	const [copied, setCopied] = useState(false);
-
-	const handleCopy = async () => {
-		try {
-			await copyText(html);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
-		} catch (e) {
-			toast.error(`复制失败: ${errMsg(e)}`);
-		}
-	};
-
 	if (streaming) {
 		return (
 			<div
@@ -455,19 +450,14 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 						<Code2 size={12} />
 						<span>{showSource ? "收起源码" : "查看源码"}</span>
 					</button>
-					<button
-						type="button"
-						onClick={handleCopy}
-						className={chromeButton}
+					<CopyButton
+						text={html}
+						label="复制源码"
+						copiedLabel="已复制"
 						title="复制源码"
-					>
-						{copied ? (
-							<Check size={12} className="text-[var(--status-success)]" />
-						) : (
-							<Copy size={12} />
-						)}
-						<span>{copied ? "已复制" : "复制源码"}</span>
-					</button>
+						resetMs={2000}
+						className={chromeButton}
+					/>
 					<button
 						type="button"
 						onClick={() => setFullscreen(true)}

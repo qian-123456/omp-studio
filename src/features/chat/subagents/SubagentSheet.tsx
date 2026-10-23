@@ -36,7 +36,7 @@ import { copyText, errMsg } from "../../../lib/dialogs";
 import { useEscapeKey } from "../../../lib/hooks";
 import { subagentTranscript } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
-import { Markdown } from "../markdown";
+import { Markdown } from "../../../components/Markdown";
 import { formatTokens } from "../sessionStats";
 import { formatDurationCompact, formatShortModel } from "../turnGrouping";
 import type { AgentRow } from "./merge";

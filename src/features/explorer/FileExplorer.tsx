@@ -5,12 +5,13 @@ import {
 	RefreshCw,
 	Search,
 	FoldVertical,
-	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DirEntry } from "../../lib/contracts";
 import { fsReadDir, listWorkspaceFiles } from "../../lib/ipc";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { EmptyState } from "../../components/EmptyState";
+import { SearchInput } from "../../components/SearchInput";
 import { toast } from "../../lib/toast";
 import { isComposing } from "../../lib/hooks";
 import { useExplorer } from "../../stores/explorer";
@@ -281,37 +282,21 @@ export function FileExplorer() {
 			{/* Search Input Bar (revealed on search click) */}
 			{searchOpen && (
 				<div className="border-b border-[var(--border-divider)] p-1.5 bg-[var(--well-bg)]">
-					<div className="relative flex items-center">
-						<Search
-							size={12}
-							className="pointer-events-none absolute left-2 text-neutral-500"
-						/>
-						<input
-							ref={searchInputRef}
-							type="text"
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
-							onKeyDown={(e) => {
-								if (isComposing(e)) return;
-								if (e.key === "Escape") {
-									claimEscape(e);
-									if (searchQuery) setSearchQuery("");
-									else setSearchOpen(false);
-								}
-							}}
-							placeholder="输入文件名过滤..."
-							className="w-full rounded hairline bg-[var(--well-bg)] py-0.5 pl-6 pr-5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
-						/>
-						{searchQuery && (
-							<button
-								type="button"
-								onClick={() => setSearchQuery("")}
-								className="absolute right-1.5 text-neutral-500 hover:text-neutral-300"
-							>
-								<X size={11} />
-							</button>
-						)}
-					</div>
+					<SearchInput
+						ref={searchInputRef}
+						value={searchQuery}
+						onChange={setSearchQuery}
+						placeholder="输入文件名过滤..."
+						iconSize={12}
+						inputClassName="w-full rounded hairline bg-[var(--well-bg)] py-0.5 pl-6 pr-5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
+						onKeyDown={(e) => {
+							if (isComposing(e)) return;
+							if (e.key === "Escape" && !searchQuery) {
+								claimEscape(e);
+								setSearchOpen(false);
+							}
+						}}
+					/>
 				</div>
 			)}
 
@@ -390,9 +375,7 @@ export function FileExplorer() {
 								<span>加载目录中...</span>
 							</div>
 						) : rootEntries.length === 0 ? (
-							<div className="py-6 text-center text-neutral-500 text-xs">
-								当前工作区暂无文件
-							</div>
+							<EmptyState title="当前工作区暂无文件" />
 						) : (
 							rootEntries.map((entry) => (
 								<FileTreeNode

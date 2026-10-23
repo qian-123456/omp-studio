@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import type { DirEntry } from "../../lib/contracts";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { copyText } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { FileIcon } from "./FileIcon";
 
@@ -70,7 +71,7 @@ export function FileTreeNode({
 			? entry.path.slice(rootPath.length).replace(/^[/\\]/, "")
 			: entry.name;
 		try {
-			await navigator.clipboard.writeText(rel);
+			await copyText(rel);
 			toast.success("已复制相对路径");
 		} catch {
 			toast.error("复制失败");
@@ -80,7 +81,7 @@ export function FileTreeNode({
 	const copyAbsolutePath = async () => {
 		setContextMenu(null);
 		try {
-			await navigator.clipboard.writeText(entry.path);
+			await copyText(entry.path);
 			toast.success("已复制绝对路径");
 		} catch {
 			toast.error("复制失败");

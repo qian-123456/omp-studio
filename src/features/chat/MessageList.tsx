@@ -65,7 +65,7 @@ import {
 } from "./ExecutionDisclosure";
 import type { ImageAttachment } from "../../lib/contracts";
 import { parseInlineFiles } from "./fileAttach";
-import { Markdown } from "./markdown";
+import { Markdown } from "../../components/Markdown";
 import { isContextOverflowError, splitModelRef } from "./contextOverflow";
 import {
 	buildToolResultsMap,
@@ -150,6 +150,11 @@ const USER_ACTION_BTN =
 
 /** Open inline-edit drafts by transcript item id (outlive the virtualized row). */
 const editDrafts = new Map<string, string>();
+
+/** Drop inline-edit drafts of the given transcript item ids (their session was removed). */
+export function pruneEditDrafts(itemIds: readonly string[]): void {
+	for (const id of itemIds) editDrafts.delete(id);
+}
 
 /**
  * User message: right-aligned Codex bubble (70% max width, 22px radius,

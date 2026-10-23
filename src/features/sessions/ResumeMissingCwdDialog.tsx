@@ -8,12 +8,11 @@
 import clsx from "clsx";
 import { FolderGit2, GitBranch, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Z_LAYER } from "../../components/FloatingLayer";
+import { Modal } from "../../components/Modal";
 import { NativeSelect } from "../../components/NativeSelect";
 import { errMsg } from "../../lib/dialogs";
 import { rejectResume, resolveResume } from "../../lib/ensureLive";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
+import { isComposing } from "../../lib/hooks";
 import {
 	gitCreateWorktree,
 	gitListBranches,
@@ -56,7 +55,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 		rejectResume(sessionId);
 		closeModal();
 	};
-	useEscapeKey(cancel, !busy);
+
 
 	// An unmount for any reason (superseded modal, app teardown) rejects the
 	// pending ensureLive promise.
@@ -148,23 +147,20 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 		else void submitWorktree();
 	};
 
-	return createPortal(
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget && !busy) cancel();
-			}}
+	return (
+		<Modal
+			onClose={cancel}
+			ariaLabel="恢复会话"
+			size="none"
+			className="w-[500px] max-w-[calc(100vw-2rem)]"
+			closeOnBackdrop={!busy}
+			closeOnEscape={!busy}
 		>
 			<div
 				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="resume-missing-cwd-title"
-				className="w-[500px] max-w-[calc(100vw-2rem)] max-h-[min(90vh,640px)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
-				onMouseDown={(e) => e.stopPropagation()}
+				className="flex min-h-0 flex-1 flex-col p-5 text-neutral-300"
 				onKeyDown={(e) => {
-					e.stopPropagation();
+					if (e.key !== "Escape") e.stopPropagation();
 					if (isComposing(e)) return;
 					if (e.key === "Enter") {
 						const target = e.target as HTMLElement | null;
@@ -354,7 +350,6 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 					</button>
 				</div>
 			</div>
-		</div>,
-		document.body,
+		</Modal>
 	);
 }

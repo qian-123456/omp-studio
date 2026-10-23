@@ -39,8 +39,10 @@ Rect/point anchors (context menus at the cursor) have no parent and use their ow
 ## Adding a new overlay
 
 1. Anchored popover/menu/hover card → `<FloatingLayer layer="popover|menu|hovercard" …>`.
-2. Blocking dialog or other full-screen surface → portal to `document.body` and set
-   `className="… z-(--z-modal)"` (or `style={{ zIndex: Z_LAYER.modal }}`).
+2. Blocking dialog or other full-screen surface → use `components/Modal.tsx` (portal to
+   `document.body` on `Z_LAYER.modal`, backdrop/Escape/focus-restore built in). Hand-rolled
+   surfaces portal to `document.body` and set `className="… z-(--z-modal)"` (or
+   `style={{ zIndex: Z_LAYER.modal }}`).
 3. Never write `z-50`, `z-[..]` or numeric `zIndex`. Only `z-0/10/20/30/40` for purely
    local stacking inside one card/panel.
 4. Need a new tier? Add it to `Z_LAYER` **and** `index.css`, then update this table; the

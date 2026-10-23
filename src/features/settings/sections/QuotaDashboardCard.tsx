@@ -12,7 +12,9 @@ import type {
 	OmpUsageReportData,
 } from "../../../lib/contracts";
 import { ompUsageReport } from "../../../lib/ipc";
-import { Button, Chip, EmptyState, Notice } from "../ui";
+import { EmptyState } from "../../../components/EmptyState";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip } from "../ui";
 import {
 	type AccountSheetProvider,
 	QuotaAccountSheet,

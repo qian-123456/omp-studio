@@ -41,7 +41,8 @@ import {
 import { matchKey, parseContextInput, ruleMatches } from "../modelNormalization";
 import { OmpSections, OmpSettingRow } from "../OmpSettingsList";
 import { useOmpConfigStore } from "../ompConfigStore";
-import { Button, Chip, INPUT_CLASS, IconButton, Notice, SectionHeader, SettingsCard } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, INPUT_CLASS, IconButton, SectionHeader, SettingsCard } from "../ui";
 import { useCatalogModels } from "../useAppSettings";
 
 /** `to` is the value written (null deletes); `shown` is the window to display afterwards when it differs (catalog undo). */

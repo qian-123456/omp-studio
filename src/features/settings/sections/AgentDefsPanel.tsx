@@ -18,7 +18,8 @@ import { FileEditor } from "../FileEditor";
 import { describeFileCommandError } from "../fileEditorLogic";
 import { RoleScopeBar, useRoleScope } from "../modelRoleScope";
 import { scopeDisplayName } from "../modelTemplates/logic";
-import { Button, Chip, Notice, SectionHeader, SettingsCard } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, SectionHeader, SettingsCard } from "../ui";
 import {
 	AGENT_LAYER_LABEL,
 	type AgentContents,
@@ -281,7 +282,7 @@ export function AgentDefsPanel() {
 						<span className="text-xs font-medium text-[var(--text)]">子代理列表（{layerWord}）</span>
 					</div>
 					{!creatingCustom && (
-						<Button size="sm" variant="primary" icon={Plus} disabled={!dir} onClick={() => setCreatingCustom(true)}>
+						<Button size="sm" variant="primary" icon={Plus} disabled={!dir} title={!dir ? "工作区目录尚未确定" : undefined} onClick={() => setCreatingCustom(true)}>
 							新建子代理
 						</Button>
 					)}

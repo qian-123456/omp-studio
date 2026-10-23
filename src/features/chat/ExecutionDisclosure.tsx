@@ -22,7 +22,7 @@ import { renderUserTextWithChips, stripImageMarkers } from "./userTextChips";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { useLive } from "../../stores/live";
 import { ActivityHeader } from "./ActivityHeader";
-import { Markdown } from "./markdown";
+import { Markdown } from "../../components/Markdown";
 import { isTaskTool, TaskToolBlock } from "./subagents/TaskToolBlock";
 import { ToolCard, type ToolStatus } from "./ToolCard";
 import { ThinkingPreview } from "./ThinkingPreview";
@@ -236,6 +236,11 @@ function processingLabel(elapsedMs: number): string {
 	return elapsedMs >= 1000
 		? `正在处理 ${formatDurationCompact(elapsedMs)}…`
 		: "正在处理…";
+}
+
+/** Leaf that owns the 1s tick so only the title text re-renders. */
+function ProcessingTitle({ startedAt }: { startedAt: number | undefined }) {
+	return <>{processingLabel(useElapsedMs(startedAt, true))}</>;
 }
 
 /** Shimmering 「正在等待模型回复」 row shown while the live turn waits for the
@@ -712,18 +717,17 @@ export function ExecutionDisclosure({
 		forceExpanded || liveOpen ? true : forceExpanded,
 	);
 	const live = Boolean(isStreaming) || Boolean(awaitingSubagents);
-	const elapsed = useElapsedMs(startedAt, live);
+	const titleText: ReactNode = live ? (
+		<ProcessingTitle startedAt={startedAt} />
+	) : durationMs ? (
+		`已处理 ${formatDurationCompact(durationMs)}`
+	) : (
+		`已处理 ${steps.length} 个步骤`
+	);
 
 	if (steps.length === 0) {
 		return null;
 	}
-
-	const durationLabel = durationMs ? formatDurationCompact(durationMs) : "";
-	const titleText = live
-		? processingLabel(elapsed)
-		: durationLabel
-			? `已处理 ${durationLabel}`
-			: `已处理 ${steps.length} 个步骤`;
 
 	return (
 		<div className={clsx("mt-1 flex flex-col", !liveOpen && "mb-1")}>
@@ -767,7 +771,7 @@ function DisclosureHeader({
 	expanded,
 	onToggle,
 }: {
-	title: string;
+	title: ReactNode;
 	shimmer: boolean;
 	expanded: boolean;
 	onToggle: () => void;
@@ -880,12 +884,13 @@ export function LiveDisclosure({
 	const [override, setOverride] = useState<boolean | null>(null);
 	useEffect(() => setOverride(null), [folded]);
 	const open = override ?? !folded;
-	const elapsed = useElapsedMs(startedAt, live);
-	const title = live
-		? processingLabel(elapsed)
-		: durationMs
-			? `已处理 ${formatDurationCompact(durationMs)}`
-			: `已处理 ${steps.length} 个步骤`;
+	const title: ReactNode = live ? (
+		<ProcessingTitle startedAt={startedAt} />
+	) : durationMs ? (
+		`已处理 ${formatDurationCompact(durationMs)}`
+	) : (
+		`已处理 ${steps.length} 个步骤`
+	);
 
 	return (
 		<div className="my-1 flex flex-col">

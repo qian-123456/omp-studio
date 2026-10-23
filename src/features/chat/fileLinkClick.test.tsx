@@ -29,7 +29,7 @@ vi.mock("../../lib/ipc", () => ({
 			.map((f) => f.slice(root.length + 1)),
 }));
 
-import { Markdown } from "./markdown";
+import { Markdown } from "../../components/Markdown";
 import { useFilePreview } from "../../stores/filePreview";
 import { useUi } from "../../stores/ui";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSplitRows, diffCounts, parseDiff } from "./DiffView";
+import { diffCounts, parseDiff } from "./DiffView";
 
 describe("DiffView diffCounts", () => {
 	it("counts only added/removed lines, not context", () => {
@@ -70,36 +70,5 @@ describe("DiffView parseDiff", () => {
 			{ kind: "add", line: 51, text: "add51" },
 			{ kind: "del", line: 51, text: "del51" },
 		]);
-	});
-});
-
-describe("DiffView buildSplitRows", () => {
-	it("pairs ctx lines across both sides and aligns add/del", () => {
-		const lines = [
-			{ kind: "ctx" as const, line: 1, text: "header" },
-			{ kind: "del" as const, line: 2, text: "old line" },
-			{ kind: "add" as const, line: 2, text: "new line" },
-			{ kind: "add" as const, line: 3, text: "extra line" },
-			{ kind: "ctx" as const, line: 4, text: "footer" },
-		];
-
-		const rows = buildSplitRows(lines);
-		expect(rows).toHaveLength(4);
-
-		// row 0: ctx
-		expect(rows[0].left?.text).toBe("header");
-		expect(rows[0].right?.text).toBe("header");
-
-		// row 1: del vs add
-		expect(rows[1].left?.text).toBe("old line");
-		expect(rows[1].right?.text).toBe("new line");
-
-		// row 2: null vs extra add
-		expect(rows[2].left).toBeNull();
-		expect(rows[2].right?.text).toBe("extra line");
-
-		// row 3: ctx
-		expect(rows[3].left?.text).toBe("footer");
-		expect(rows[3].right?.text).toBe("footer");
 	});
 });

@@ -1,6 +1,7 @@
-import { ChevronDown, ClipboardCopy, FileInput, Loader2, Lock, LogIn, Plus, RefreshCw, Search, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, ClipboardCopy, FileInput, Loader2, Lock, LogIn, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { SearchInput } from "../../components/SearchInput";
 import type { ProviderRow } from "../../lib/contracts";
 import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
@@ -118,27 +119,13 @@ export function ProviderPanel() {
 					<span className="font-medium text-[var(--accent)]">前往 →</span>
 				</button>
 				<div className="flex flex-col items-stretch justify-between gap-2.5 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-2 shadow-2xs sm:flex-row sm:items-center">
-					<div className="relative min-w-[200px] max-w-sm flex-1">
-						<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
-						<input
-							type="text"
-							value={query}
-							onChange={(e) => setQuery(e.target.value)}
-							placeholder="搜索名称、地址、协议或模型"
-							aria-label="筛选供应商"
-							className="w-full rounded-lg hairline bg-[var(--bg-panel)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-						/>
-						{query && (
-							<button
-								type="button"
-								onClick={() => setQuery("")}
-								aria-label="清除筛选"
-								className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
-							>
-								<X className="h-3 w-3" />
-							</button>
-						)}
-					</div>
+					<SearchInput
+						className="min-w-[200px] max-w-sm flex-1"
+						value={query}
+						onChange={setQuery}
+						placeholder="搜索名称、地址、协议或模型"
+						ariaLabel="筛选供应商"
+					/>
 					<div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:flex-nowrap">
 						<button
 							ref={menuBtnRef}
@@ -223,7 +210,7 @@ export function ProviderPanel() {
 			{error && (
 				<div role="alert" className="flex items-center gap-2 rounded-xl border border-rose-800/40 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
 					<span className="min-w-0 flex-1 break-words">{error}</span>
-					<button type="button" onClick={() => void load()} className="inline-flex shrink-0 items-center gap-1 text-xs text-rose-200 hover:underline">
+					<button type="button" onClick={() => void load()} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-rose-900/60 px-2.5 py-1 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-800/80">
 						<RefreshCw className="h-3 w-3" />
 						<span>重试</span>
 					</button>
@@ -254,7 +241,7 @@ export function ProviderPanel() {
 					) : (
 						<div className="space-y-2">
 							<p>没有匹配「{query.trim()}」的供应商</p>
-							<button type="button" onClick={() => setQuery("")} className="text-[var(--accent)] hover:underline">
+							<button type="button" onClick={() => setQuery("")} className="rounded-md border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors hover:bg-[var(--bg-hover)] text-[var(--accent)]">
 								清除筛选
 							</button>
 						</div>

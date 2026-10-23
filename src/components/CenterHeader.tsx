@@ -12,7 +12,6 @@ import {
 	Image as ImageIcon,
 	Share2,
 	Terminal,
-	X,
 } from "lucide-react";
 import React, {
 	useCallback,
@@ -20,7 +19,7 @@ import React, {
 	useRef,
 	useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { Modal } from "./Modal";
 import { FloatingLayer } from "./FloatingLayer";
 import { IdeasCapsule } from "../features/backlog/IdeasCapsule";
 import { formatSessionMarkdown } from "../features/chat/exportMarkdown";
@@ -601,42 +600,19 @@ export const CenterHeader = React.memo(function CenterHeader({
 			</header>
 
 			{/* Mobile QR Pairing modal portaled to body */}
-			{qrPairing &&
-				createPortal(
-					<div
-						className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] backdrop-blur-xs p-4"
-						onMouseDown={(e) => {
-							if (e.target === e.currentTarget) setQrPairing(null);
-						}}
-					>
+			{qrPairing && (
+				<Modal onClose={() => setQrPairing(null)} title="手机扫码查看" size="sm">
+					<div className="flex flex-col items-center gap-3 p-4">
 						<div
-							className="flex w-full max-w-xs flex-col items-center gap-3 rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-200 shadow-apple-modal hairline"
-							onClick={(e) => e.stopPropagation()}
-						>
-							<div className="flex w-full items-center justify-between border-b border-[var(--border-divider)] pb-2">
-								<span className="text-xs font-medium text-neutral-200">
-									手机扫码查看
-								</span>
-								<button
-									type="button"
-									onClick={() => setQrPairing(null)}
-									className="rounded p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
-									title="关闭"
-								>
-									<X size={14} />
-								</button>
-							</div>
-							<div
-								className="rounded-lg bg-white p-3 [&_svg]:h-44 [&_svg]:w-44"
-								dangerouslySetInnerHTML={{ __html: qrPairing.qrSvg }}
-							/>
-							<div className="text-center text-[11px] text-neutral-400">
-								手机与电脑在同一局域网下扫码即可接力查看
-							</div>
+							className="rounded-lg bg-white p-3 [&_svg]:h-44 [&_svg]:w-44"
+							dangerouslySetInnerHTML={{ __html: qrPairing.qrSvg }}
+						/>
+						<div className="text-center text-[11px] text-neutral-400">
+							手机与电脑在同一局域网下扫码即可接力查看
 						</div>
-					</div>,
-					document.body,
-				)}
+					</div>
+				</Modal>
+			)}
 		</>
 	);
 });

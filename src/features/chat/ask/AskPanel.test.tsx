@@ -9,7 +9,7 @@ vi.mock("../../../lib/ipc", () => ({
 }));
 vi.mock("../../../lib/toast", () => ({ toast: { error: vi.fn() } }));
 
-import { useAskRouting } from "./AskPanel";
+import { pruneAskState, useAskRouting } from "./AskPanel";
 
 const SID = "ask-recovery";
 const req = {
@@ -62,5 +62,15 @@ describe("useAskRouting", () => {
 
 		act(() => result.current.submit([{ selected: ["Red"], custom: "" }]));
 		await waitFor(() => expect(rpcUiRespond).toHaveBeenCalledTimes(2));
+	});
+
+	it("releases the composer as soon as the final answer is accepted", async () => {
+		pruneAskState([SID]); // the previous test left an answered id behind
+		rpcUiRespond.mockResolvedValue(undefined);
+		const { result } = renderHook(() => useAskRouting(SID, [req]));
+		act(() => result.current.submit([{ selected: ["Red"], custom: "" }]));
+		await waitFor(() => expect(rpcUiRespond).toHaveBeenCalledTimes(1));
+		// Well under the 4s fallback timer.
+		await waitFor(() => expect(result.current.awaiting).toBe(false), { timeout: 1000 });
 	});
 });

@@ -4,8 +4,6 @@
 
 import {
 	Bot,
-	Check,
-	Copy,
 	ExternalLink,
 	FileText,
 	FolderOpen,
@@ -19,14 +17,15 @@ import {
 	Terminal,
 	Wrench,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { useHomeDir } from "../../lib/hooks";
 import { openFileLink } from "../../stores/filePreview";
 import { useSessions } from "../../stores/sessions";
 import { diffCounts, DiffView, parseDiff } from "./DiffView";
 import { toolFilePaths } from "./turnGrouping";
-import { copyText, errMsg } from "../../lib/dialogs";
+import { CopyButton } from "../../components/CopyButton";
+import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { PrivacyText } from "../privacy/SecretChip";
 import { askResultSummary } from "./ask/askDriver";
@@ -196,6 +195,14 @@ function diffStat(diff: string | null): { adds: number; dels: number } | null {
 /** Remembered open state of tool cards, keyed by session + call id. */
 const openToolCards = new Set<string>();
 
+/** Forget remembered open state of the given sessions (call when sessions are removed). */
+export function pruneToolCards(sessionIds: readonly string[]): void {
+	const prefixes = sessionIds.map((sid) => `${sid}:`);
+	for (const key of [...openToolCards]) {
+		if (prefixes.some((p) => key.startsWith(p))) openToolCards.delete(key);
+	}
+}
+
 /** Only real filesystem paths get an open button; `proc://…` style URIs don't. */
 function openableFile(path: string): boolean {
 	return !/^(?!file:)[a-z][a-z0-9+.-]*:\/\//i.test(path);
@@ -217,29 +224,13 @@ function splitArgs(args: unknown): {
 
 /** Hover-only ghost copy affordance for quiet blocks. */
 function CopyGhostButton({ text, label }: { text: string; label: string }) {
-	const [copied, setCopied] = useState(false);
 	return (
-		<button
-			type="button"
-			onClick={async () => {
-				try {
-					await copyText(text);
-					setCopied(true);
-					setTimeout(() => setCopied(false), 1500);
-				} catch (e) {
-					toast.error(`复制失败: ${errMsg(e)}`);
-				}
-			}}
-			className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-[var(--text-30)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/copy:opacity-100"
+		<CopyButton
+			text={text}
+			size={11}
 			title={label}
-			aria-label={label}
-		>
-			{copied ? (
-				<Check size={11} className="text-[var(--status-success)]" />
-			) : (
-				<Copy size={11} />
-			)}
-		</button>
+			className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-[var(--text-30)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/copy:opacity-100"
+		/>
 	);
 }
 
@@ -322,7 +313,9 @@ export function toolActivityLabel(
 }
 
 /** `ask` results render as a compact Q→A summary instead of raw output. */
-export function ToolCard(props: Parameters<typeof ToolCardBody>[0]) {
+export const ToolCard = memo(function ToolCard(
+	props: Parameters<typeof ToolCardBodyImpl>[0],
+) {
 	const qa = props.name === "ask" ? askResultSummary(props.details) : null;
 	if (!qa) return <ToolCardBody {...props} />;
 	return (
@@ -337,9 +330,9 @@ export function ToolCard(props: Parameters<typeof ToolCardBody>[0]) {
 			))}
 		</div>
 	);
-}
+});
 
-function ToolCardBody({
+function ToolCardBodyImpl({
 	sessionId,
 	name,
 	args,
@@ -529,3 +522,5 @@ function ToolCardBody({
 		</div>
 	);
 }
+
+const ToolCardBody = memo(ToolCardBodyImpl);

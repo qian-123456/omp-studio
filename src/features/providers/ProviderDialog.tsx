@@ -3,10 +3,11 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { Activity, Eye, EyeOff, FolderOpen, Loader2, Plus, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Modal } from "../../components/Modal";
 import { NativeSelect } from "../../components/NativeSelect";
 import type { DiscoveredModel, KeyMode, ProviderRow } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
+import { isComposing } from "../../lib/hooks";
 import { providerFetchModels, providerReadEnvFile } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { applyContextWindowsOnSave } from "./contextWindowOnSave";
@@ -140,16 +141,11 @@ export function ProviderDialog({ target, onClose }: Props) {
 		onClose();
 	}, [isDirty, onClose]);
 
-	useEscapeKey(handleDismiss);
 	useEffect(() => {
-		const previous = document.activeElement;
 		(
 			dialogRef.current?.querySelector<HTMLElement>("input, textarea") ??
 			dialogRef.current?.querySelector<HTMLElement>("button")
 		)?.focus();
-		return () => {
-			if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-		};
 	}, []);
 
 	const uniqueId = (base: string): string => {
@@ -423,17 +419,15 @@ export function ProviderDialog({ target, onClose }: Props) {
 	}, [isImport, loadEnvFile]);
 
 	return (
-		<div
-			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) void handleDismiss();
-			}}
+		<>
+		<Modal
+			onClose={() => void handleDismiss()}
+			size="lg"
+			ariaLabel={editing ? "编辑供应商" : isImport ? "从 .env 文件导入" : "添加供应商"}
 		>
 			<div
 				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="provider-dialog-title"
+				className="flex min-h-0 flex-1 flex-col"
 				onKeyDown={(e) => {
 					if (e.key !== "Tab") return;
 					const controls = Array.from(
@@ -451,10 +445,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 						first?.focus();
 					}
 				}}
-				className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-[var(--bg-panel)] shadow-apple-modal hairline"
 			>
 				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
-					<div id="provider-dialog-title" className="text-xs font-semibold tracking-[-0.018em] text-neutral-100">
+					<div className="text-xs font-semibold tracking-[-0.018em] text-neutral-100">
 						{editing ? "编辑供应商" : isImport ? "从 .env 文件导入" : "添加供应商"}
 					</div>
 					<button
@@ -896,6 +889,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 					)}
 				</div>
 			</div>
+		</Modal>
 
 			{discoveredModels && (
 				<ModelPickerModal
@@ -906,6 +900,6 @@ export function ProviderDialog({ target, onClose }: Props) {
 					onReplace={(ids) => replaceModelRows(ids, false)}
 				/>
 			)}
-		</div>
+		</>
 	);
 }

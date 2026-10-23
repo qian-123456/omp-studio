@@ -198,7 +198,7 @@
 
 	/* Chat typography, controlled by the font-size setting (data-font-size).
 	 * Tailwind v4 operates without @tailwindcss/typography; markdown styling is handled
-	 * via [&_*] child selectors in src/features/chat/markdown.tsx.
+	 * via [&_*] child selectors in src/components/Markdown.tsx.
 	 */
 	--chat-font-size: 14px;
 	--chat-line-height: 22px;

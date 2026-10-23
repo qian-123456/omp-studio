@@ -9,6 +9,7 @@ import { basename, shortPath } from "../../lib/paths";
 import { ListMore, repoRootFromWorktree } from "./helpers";
 import { removeWorktreeFlow } from "./removeWorktree";
 import { HoverScrollText } from "../../components/HoverScrollText";
+import { Notice } from "../../components/Notice";
 import { useWorktrees } from "../../stores/worktrees";
 
 // In-memory dismissal tracked per repository root.
@@ -194,8 +195,8 @@ export function OrphanInlinePanel({
 			</p>
 
 			{error && (
-				<div className="mb-2 rounded bg-rose-950/60 border border-rose-800/50 p-1.5 text-[11px] text-rose-300">
-					{error}
+				<div className="mb-2">
+					<Notice tone="danger">{error}</Notice>
 				</div>
 			)}
 

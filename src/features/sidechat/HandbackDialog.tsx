@@ -7,6 +7,7 @@
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { Notice } from "../../components/Notice";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -57,9 +58,9 @@ export function HandbackDialog() {
 				</div>
 			)}
 			{phase === "error" && (
-				<div className="whitespace-pre-wrap break-words rounded-lg border border-rose-800/50 bg-rose-950/20 p-2.5 text-xs text-rose-300">
-					整理失败：{run?.error}
-				</div>
+				<Notice tone="danger">
+					<span className="whitespace-pre-wrap break-words">整理失败：{run?.error}</span>
+				</Notice>
 			)}
 			{phase === "ready" && run && (
 				<>

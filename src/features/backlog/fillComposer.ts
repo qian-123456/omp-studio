@@ -98,6 +98,13 @@ function detach(): void {
 	unsubs = [];
 }
 
+/** Sessions were deleted: forget their pending fills (detaches listeners when none remain). */
+export function prunePendingFills(sessionIds: readonly string[]): void {
+	let changed = false;
+	for (const id of sessionIds) changed = pending.delete(id) || changed;
+	if (changed && pending.size === 0) detach();
+}
+
 /** Drop all pending fills (tests, store resets). */
 export function resetPendingFills(): void {
 	pending.clear();

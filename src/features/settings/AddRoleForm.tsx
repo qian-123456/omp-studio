@@ -4,6 +4,7 @@
  * edited in the table instead, so their names are refused here.
  */
 import { useState } from "react";
+import { isComposing } from "../../lib/hooks";
 import { ModelSelect } from "../../components/ModelSelect";
 import { parseSelection } from "../../components/modelSelectLogic";
 import { errMsg } from "../../lib/dialogs";
@@ -82,7 +83,7 @@ export function AddRoleForm({
 						setError(null);
 					}}
 					onKeyDown={(e) => {
-						if (e.key === "Enter") {
+						if (e.key === "Enter" && !isComposing(e)) {
 							e.preventDefault();
 							void submit();
 						} else if (e.key === "Escape") {

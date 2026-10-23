@@ -6,7 +6,7 @@
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import clsx from "clsx";
-import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import React, { Suspense, use, useMemo, useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -15,23 +15,24 @@ import rehypeSanitize, { defaultSchema, type Options as Schema } from "rehype-sa
 import remarkGfm from "remark-gfm";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkMath from "remark-math";
-import { MATH_BLOCK_TAG, rehypeMathBlocks } from "./rehypeMathBlocks";
-import { normalizeMath } from "./mathNormalize";
-import { HIGHLIGHT_LANGUAGES, getRehypeKatex, pendingMarkdownAssets } from "./markdownAssets";
-import { copyText, errMsg } from "../../lib/dialogs";
-import { toast } from "../../lib/toast";
-import { useSessions } from "../../stores/sessions";
-import { useHomeDir } from "../../lib/hooks";
-import { looksLikeFilePath } from "../../lib/fileLinks";
-import { openFileLink } from "../../stores/filePreview";
-import { useSettings } from "../settings/store";
-import { FILE_LINK_TAG, rehypeFilePathLinks } from "./rehypeFilePathLinks";
-import { MarkdownSecretChip } from "../privacy/SecretChip";
-import { SECRET_CHIP_TAG, rehypeSecretChips } from "../privacy/render";
-import { VisualizeBlock } from "./visualize/VisualizeBlock";
-import { findVisualizeFence, isFenceClosed, parseVisualizeInfo } from "./visualize/frame";
-import { healStreamingMarkdown, splitStableBlocks } from "./streamingMarkdown";
-import { useRevealText } from "./useRevealText";
+import { MATH_BLOCK_TAG, rehypeMathBlocks } from "../features/chat/rehypeMathBlocks";
+import { normalizeMath } from "../features/chat/mathNormalize";
+import { HIGHLIGHT_LANGUAGES, getRehypeKatex, pendingMarkdownAssets } from "../features/chat/markdownAssets";
+import { CopyButton } from "./CopyButton";
+import { errMsg } from "../lib/dialogs";
+import { toast } from "../lib/toast";
+import { useSessions } from "../stores/sessions";
+import { useHomeDir } from "../lib/hooks";
+import { looksLikeFilePath } from "../lib/fileLinks";
+import { openFileLink } from "../stores/filePreview";
+import { useSettings } from "../features/settings/store";
+import { FILE_LINK_TAG, rehypeFilePathLinks } from "../features/chat/rehypeFilePathLinks";
+import { MarkdownSecretChip } from "../features/privacy/SecretChip";
+import { SECRET_CHIP_TAG, rehypeSecretChips } from "../features/privacy/render";
+import { VisualizeBlock } from "../features/chat/visualize/VisualizeBlock";
+import { findVisualizeFence, isFenceClosed, parseVisualizeInfo } from "../features/chat/visualize/frame";
+import { healStreamingMarkdown, splitStableBlocks } from "../features/chat/streamingMarkdown";
+import { useRevealText } from "../features/chat/useRevealText";
 
 /** Per-render context for component overrides (kept stable per Markdown). */
 interface MarkdownContextValue {
@@ -115,7 +116,6 @@ function PreBlock({
 	node,
 	...props
 }: React.ComponentPropsWithoutRef<"pre"> & { node?: HastNodeLike }) {
-	const [copied, setCopied] = useState(false);
 
 	const codeChild = React.isValidElement<{ className?: string }>(children)
 		? children
@@ -177,34 +177,19 @@ function PreBlock({
 		);
 	}
 
-	const handleCopy = async () => {
-		try {
-			await copyText(codeText);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
-		} catch (e) {
-			toast.error(`复制失败: ${errMsg(e)}`);
-		}
-	};
-
 	return (
 		<div className="group/codeblock my-2 overflow-hidden rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)] font-mono text-[12px]">
 			<div className="flex h-7 items-center justify-between border-b border-[var(--line)] px-3 text-[11px] text-[var(--text-40)]">
 				<span className="truncate">{lang || "code"}</span>
 				{!mdCtx.exportMode && (
-				<button
-					type="button"
-					onClick={handleCopy}
-					className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-[var(--text-40)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/codeblock:opacity-100"
+				<CopyButton
+					text={codeText}
+					label="复制"
+					copiedLabel="已复制"
 					title="复制代码"
-				>
-					{copied ? (
-						<Check size={12} className="text-[var(--status-success)]" />
-					) : (
-						<Copy size={12} />
-					)}
-					<span>{copied ? "已复制" : "复制"}</span>
-				</button>
+					resetMs={2000}
+					className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-[var(--text-40)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/codeblock:opacity-100"
+				/>
 				)}
 			</div>
 			<pre
@@ -527,35 +512,20 @@ function MathBlock({
 	children,
 	...props
 }: React.ComponentPropsWithoutRef<"div"> & { node?: unknown; "data-tex"?: string }) {
-	const [copied, setCopied] = useState(false);
 	const tex = props["data-tex"] ?? "";
-	const handleCopy = async () => {
-		try {
-			await copyText(tex);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
-		} catch (e) {
-			toast.error(`复制失败: ${errMsg(e)}`);
-		}
-	};
 	return (
 		<div className="group/codeblock my-2 overflow-hidden rounded-[10px] border border-[var(--line)] bg-[var(--well-bg)]">
 			<div className="flex h-7 items-center justify-between border-b border-[var(--line)] px-3 font-mono text-[11px] text-[var(--text-40)]">
 				<span className="truncate">LaTeX</span>
 				{tex && (
-					<button
-						type="button"
-						onClick={handleCopy}
-						className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-[var(--text-40)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/codeblock:opacity-100"
+					<CopyButton
+						text={tex}
+						label="复制"
+						copiedLabel="已复制"
 						title="复制 LaTeX 源码"
-					>
-						{copied ? (
-							<Check size={12} className="text-[var(--status-success)]" />
-						) : (
-							<Copy size={12} />
-						)}
-						<span>{copied ? "已复制" : "复制"}</span>
-					</button>
+						resetMs={2000}
+						className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-[var(--text-40)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/codeblock:opacity-100"
+					/>
 				)}
 			</div>
 			<div data-math-body className="overflow-x-auto p-3 [&_.katex-display]:m-0">{children}</div>

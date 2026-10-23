@@ -113,7 +113,7 @@ function SideChatThread({ childId }: { childId: string }) {
 				</FloatingLayer>
 			</div>
 			<div className="min-h-0 flex-1">
-				<SessionView sessionId={childId} compact />
+				<SessionView key={childId} sessionId={childId} compact />
 			</div>
 		</div>
 	);

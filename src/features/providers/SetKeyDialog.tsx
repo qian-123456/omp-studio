@@ -1,8 +1,9 @@
-import { Eye, EyeOff, Loader2, X } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Modal } from "../../components/Modal";
 import type { KeyMode, ProviderRow } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
+import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { KeyModeRadio } from "./KeyModeRadio";
 import { useProviders } from "./store";
@@ -17,8 +18,9 @@ export function SetKeyDialog({ row, onClose }: { row: ProviderRow; onClose: () =
 	const [error, setError] = useState<string | null>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	useEscapeKey(onClose);
-	useEffect(() => inputRef.current?.focus(), []);
+	useEffect(() => {
+		inputRef.current?.focus();
+	}, []);
 
 	const save = async () => {
 		const key = apiKey.trim();
@@ -39,32 +41,8 @@ export function SetKeyDialog({ row, onClose }: { row: ProviderRow; onClose: () =
 	};
 
 	return (
-		<div
-			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onClose();
-			}}
-		>
-			<div
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="set-key-title"
-				className="flex w-full max-w-sm flex-col rounded-2xl bg-[var(--bg-panel)] shadow-apple-modal hairline"
-			>
-				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
-					<div id="set-key-title" className="text-xs font-semibold text-neutral-100">
-						设置密钥 · {row.displayName ?? row.id}
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						aria-label="关闭"
-						className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200"
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
-				</div>
-				<div className="space-y-3 p-4">
+		<Modal onClose={onClose} size="sm" title={<>设置密钥 · {row.displayName ?? row.id}</>}>
+			<div className="space-y-3 p-4">
 					<div>
 						<label htmlFor="set-key-input" className="block text-xs font-medium text-neutral-200">
 							API 密钥
@@ -121,7 +99,6 @@ export function SetKeyDialog({ row, onClose }: { row: ProviderRow; onClose: () =
 						<span>保存</span>
 					</button>
 				</div>
-			</div>
-		</div>
+		</Modal>
 	);
 }

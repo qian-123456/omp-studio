@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, X } from "lucide-react";
 import { useLive, type CommandOutputEntry } from "../../../stores/live";
-import { Markdown } from "../markdown";
+import { Markdown } from "../../../components/Markdown";
 
 const COLLAPSED_MAX_H = 132;
 

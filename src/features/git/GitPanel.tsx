@@ -8,6 +8,7 @@ import { gitDiff, gitListWorktrees, gitLog, gitRepoRoot, gitSummary, tmList } fr
 import { basename } from "../../lib/paths";
 import { toast } from "../../lib/toast";
 import { HoverScrollText } from "../../components/HoverScrollText";
+import { Segmented } from "../../components/Segmented";
 import { WorktreeHoverCard } from "./WorktreeHoverCard";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -39,7 +40,7 @@ export function GitPanel() {
 			{session?.cwd ? (
 				<RepoView key={session.cwd} cwd={session.cwd} tick={session.file} />
 			) : (
-				<div className="p-3 text-xs text-neutral-500">
+				<div className="p-3 text-xs text-[var(--text-dim)]">
 					没有选中的会话，或该会话未关联工作目录
 				</div>
 			)}
@@ -149,9 +150,18 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	// Mount, and session activity (throttled): reload map + pane.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: tick is a change signal
 	useEffect(() => {
-		if (Date.now() - lastTick.current < 5_000) return;
-		lastTick.current = Date.now();
-		reloadAll();
+		const wait = 5_000 - (Date.now() - lastTick.current);
+		const run = () => {
+			lastTick.current = Date.now();
+			reloadAll();
+		};
+		if (wait <= 0) {
+			run();
+			return;
+		}
+		// Trailing refresh: never drop a session-switch tick inside the throttle window.
+		const timer = window.setTimeout(run, wait);
+		return () => window.clearTimeout(timer);
 	}, [reloadAll, tick]);
 
 	useAutoRefresh(() => void load(false), POLL_MS);
@@ -233,7 +243,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			{/* Compact repo header: repo name + view switch + refresh (path lives in the hover card) */}
-			<div className="flex shrink-0 items-center justify-between gap-1.5 border-b border-neutral-800/80 bg-neutral-900/40 px-3 py-1.5 text-xs">
+			<div className="flex shrink-0 items-center justify-between gap-1.5 border-b border-[var(--border-divider)] bg-[var(--bg-panel)] px-3 py-1.5 text-xs">
 				<div
 					onMouseEnter={handleTopMouseEnter}
 					onMouseLeave={handleTopMouseLeave}
@@ -243,12 +253,13 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 					<HoverScrollText
 						text={basename(mainRoot ?? cwd)}
 						title=""
-						className="font-semibold text-neutral-200 text-xs truncate max-w-[140px]"
+						className="font-semibold text-[var(--text)] text-xs truncate max-w-[140px]"
 					/>
 				</div>
 				<div className="flex items-center gap-1 shrink-0">
 					{isRepo && mode && (
 						<Segmented
+							size="sm"
 							value={mode}
 							onChange={setMode}
 							options={[
@@ -262,7 +273,7 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 						title="刷新 (⌘R)"
 						aria-label="刷新"
 						onClick={reloadAll}
-						className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+						className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 					>
 						<RefreshCw size={12} className={loading ? "animate-spin" : ""} />
 					</button>
@@ -270,8 +281,8 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 			</div>
 
 			{error && (
-				<div className="m-3 flex shrink-0 items-center justify-between rounded border border-rose-800/60 bg-rose-950/40 p-2 text-xs text-rose-300">
-					<span className="min-w-0 flex-1 truncate">{error}</span>
+				<div className="m-3 flex shrink-0 items-start justify-between rounded border border-rose-800/60 bg-rose-950/40 p-2 text-xs text-rose-300">
+					<span className="min-w-0 flex-1 select-text whitespace-pre-wrap break-words">{error}</span>
 					<button
 						type="button"
 						onClick={reloadAll}
@@ -283,10 +294,10 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 			)}
 
 			{(isRepo === null || (isRepo && mode === null)) && !error && (
-				<div className="p-3 text-xs text-neutral-500">加载中…</div>
+				<div className="p-3 text-xs text-[var(--text-dim)]">加载中…</div>
 			)}
 			{isRepo === false && (
-				<div className="p-3 text-xs text-neutral-500">{short(cwd)} 不是 git 仓库</div>
+				<div className="p-3 text-xs text-[var(--text-dim)]">{short(cwd)} 不是 git 仓库</div>
 			)}
 
 			{isRepo && mode === "branches" && (
@@ -341,16 +352,16 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 							aria-label="拖动调整高度"
 							tabIndex={-1}
 							onPointerDown={startDrag}
-							className="group relative h-1.5 shrink-0 cursor-row-resize touch-none border-y border-neutral-800 bg-neutral-900 hover:bg-indigo-500/30"
+							className="group relative h-1.5 shrink-0 cursor-row-resize touch-none border-y border-[var(--border-divider)] bg-[var(--bg-panel)] hover:bg-indigo-500/30"
 						/>
 					)}
-					{worktrees.length <= 1 && <div className="h-px shrink-0 bg-neutral-800" />}
+					{worktrees.length <= 1 && <div className="h-px shrink-0 bg-[var(--well-bg)]" />}
 
 					<div className="flex min-h-0 flex-1 flex-col">
 						{/* Detail pane header: which worktree, back-to-current, tab switch, diff */}
-						<div className="flex shrink-0 items-center gap-1.5 border-b border-neutral-800 bg-neutral-900/40 px-2 py-1 text-xs">
+						<div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border-divider)] bg-[var(--bg-panel)] px-2 py-1 text-xs">
 							<span
-								className="min-w-0 flex-1 truncate font-mono text-[11px] text-neutral-200"
+								className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text)]"
 								title={selectedName ?? selected}
 							>
 								{selectedName ?? basename(selected)}
@@ -361,12 +372,13 @@ function RepoView({ cwd, tick }: { cwd: string; tick: string }) {
 									onClick={() =>
 										setDiff({ title: "全部未提交的改动", load: () => gitDiff(selected) })
 									}
-									className="shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+									className="shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 								>
 									全部 diff
 								</button>
 							)}
 							<Segmented
+								size="sm"
 								value={tab}
 								onChange={(t) => setManualTab({ path: selected, tab: t })}
 								options={[
@@ -503,7 +515,7 @@ function FocusPane({
 		<div>
 			<div role="tabpanel" className="px-2 pb-2">
 				{error && <div className="px-1 pt-2 text-[11px] text-rose-400">{error}</div>}
-				{!summary && !error && <div className="px-1 py-2 text-xs text-neutral-500">加载中…</div>}
+				{!summary && !error && <div className="px-1 py-2 text-xs text-[var(--text-dim)]">加载中…</div>}
 				{summary &&
 					(tab === "changes" ? (
 						<ChangesSection
@@ -540,39 +552,6 @@ function FocusPane({
 						/>
 					))}
 			</div>
-		</div>
-	);
-}
-
-/** Compact two-way segmented control used by the repo and detail headers. */
-function Segmented<T extends string>({
-	value,
-	onChange,
-	options,
-}: {
-	value: T;
-	onChange: (v: T) => void;
-	options: { value: T; label: string }[];
-}) {
-	return (
-		<div role="tablist" className="flex shrink-0 rounded-md bg-neutral-800/60 p-0.5">
-			{options.map((o) => (
-				<button
-					key={o.value}
-					type="button"
-					role="tab"
-					aria-selected={value === o.value}
-					onClick={() => onChange(o.value)}
-					className={clsx(
-						"whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors",
-						value === o.value
-							? "bg-neutral-700 font-medium text-neutral-100"
-							: "text-neutral-400 hover:text-neutral-200",
-					)}
-				>
-					{o.label}
-				</button>
-			))}
 		</div>
 	);
 }

@@ -31,8 +31,9 @@ export function formatDate(input: string | number | Date): string {
 }
 
 /**
- * 刚刚 / N分钟前 / N小时前 / N天前；
- * 超过 30 天时显示日历日期（YYYY-MM-DD）。
+ * Compact relative time without the 「前」 suffix: 刚刚 / N分钟 / N小时 / N天；
+ * 超过 30 天时显示日历日期（YYYY-MM-DD）。用于侧边栏等紧凑位置；
+ * 需要完整语句时用 `timeAgo`。
  */
 export function relativeTime(input: string | number | Date): string {
 	const t =
@@ -49,6 +50,27 @@ export function relativeTime(input: string | number | Date): string {
 	if (hours < 24) return `${hours}小时`;
 	const days = Math.floor(hours / 24);
 	if (days <= 30) return `${days}天`;
+	return formatDate(t);
+}
+
+/**
+ * 完整相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前；
+ * 超过 30 天时显示日历日期（YYYY-MM-DD）。无效输入返回空串。
+ */
+export function timeAgo(input: string | number | Date): string {
+	const t =
+		typeof input === "string" || input instanceof Date
+			? new Date(input).getTime()
+			: input;
+	if (Number.isNaN(t)) return "";
+	const diff = Date.now() - t;
+	const minutes = Math.floor(diff / 60_000);
+	if (minutes < 1) return "刚刚";
+	if (minutes < 60) return `${minutes} 分钟前`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours} 小时前`;
+	const days = Math.floor(hours / 24);
+	if (days <= 30) return `${days} 天前`;
 	return formatDate(t);
 }
 
@@ -69,8 +91,9 @@ export function truncate(text: string, max: number): string {
 	return `${text.slice(0, Math.max(0, max - 1))}…`;
 }
 
-/** Human-readable byte size. */
-export function formatBytes(bytes: number): string {
+/** Human-readable byte size; 「—」 for null/undefined. */
+export function formatBytes(bytes: number | null | undefined): string {
+	if (bytes == null) return "—";
 	if (bytes < 1024) return `${bytes} B`;
 	const units = ["KB", "MB", "GB", "TB"];
 	let value = bytes / 1024;

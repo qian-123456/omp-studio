@@ -12,7 +12,8 @@ import { FileEditor } from "../FileEditor";
 import { describeFileCommandError } from "../fileEditorLogic";
 import { OmpSections } from "../OmpSettingsList";
 import { useSettingsNav } from "../settingsNav";
-import { Button, Chip, Notice, SectionHeader, SettingRow, SettingsCard } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, SectionHeader, SettingRow, SettingsCard } from "../ui";
 import { useSettingsProjectCwd } from "../useAppSettings";
 import {
 	type RuleContents,

@@ -27,13 +27,13 @@ import {
 	modelTemplateSave,
 } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
+import { Notice } from "../../../components/Notice";
 import {
 	Button,
 	Chip,
 	CommitInput,
 	IconButton,
 	INPUT_CLASS,
-	Notice,
 	SettingRow,
 	SettingsCard,
 } from "../ui";

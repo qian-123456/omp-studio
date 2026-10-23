@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { errMsg } from "../../../lib/dialogs";
 import { notifyTest } from "../../../lib/ipc";
 import { saveAppSettings, useAppSettings } from "../useAppSettings";
+import { Notice } from "../../../components/Notice";
 import {
 	Button,
 	INPUT_CLASS,
-	Notice,
 	SectionHeader,
 	SettingRow,
 	SettingsCard,

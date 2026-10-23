@@ -185,7 +185,7 @@ export function ThinkingLevelStrip({
 		<div className="border-t border-[var(--line,var(--border-divider))] px-2.5 py-2">
 			<div className="pb-1 text-[11px] text-[var(--text-40,var(--text-dim))]">思考等级</div>
 			{chip.kind === "unsupported" && (
-				<span className="inline-block rounded-full bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-30,var(--text-dim))]">
+				<span className="inline-block shrink-0 whitespace-nowrap rounded-full bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-30,var(--text-dim))]">
 					不支持思考
 				</span>
 			)}
@@ -194,7 +194,7 @@ export function ThinkingLevelStrip({
 					type="button"
 					onClick={onConfigure}
 					title="这个模型能思考，但没有配置思考等级。点击去供应商设置里补上"
-					className="rounded-full border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-40,var(--text-dim))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]"
+					className="shrink-0 whitespace-nowrap rounded-full border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,var(--bg-hover))] px-2 py-0.5 text-[12px] text-[var(--text-40,var(--text-dim))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]"
 				>
 					未配置思考等级
 				</button>
@@ -208,7 +208,7 @@ export function ThinkingLevelStrip({
 							title={thinkingLabel(level).desc}
 							onClick={() => onSelect(level)}
 							className={clsx(
-								"rounded-full border px-2.5 py-0.5 text-[12px] transition-colors",
+								"shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[12px] transition-colors",
 								value === level
 									? "border-[var(--text-40,var(--text-dim))] bg-[var(--bg-active-fill)] text-[var(--text)]"
 									: "border-[var(--line,var(--border-divider))] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)]",

@@ -13,7 +13,8 @@ import {
 import type { OauthLoginProvider, OauthUiEvent } from "../../lib/contracts";
 import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { onProvidersOauth } from "../../lib/events";
-import { useEscapeKey } from "../../lib/hooks";
+import { EmptyState } from "../../components/EmptyState";
+import { Modal } from "../../components/Modal";
 import {
 	oauthLoginCancel,
 	oauthLoginOpenUrl,
@@ -57,7 +58,6 @@ interface FlowState {
 }
 
 export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
-	const dialogRef = useRef<HTMLDivElement>(null);
 	const reloadProviders = useProviders((s) => s.load);
 
 	const [phase, setPhase] = useState<Phase>("list");
@@ -72,6 +72,8 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 	const unlistenRef = useRef<(() => void) | null>(null);
 	const isFlowActiveRef = useRef(false);
 	const isClosingRef = useRef(false);
+	/** Bumped on every flow start / back-to-list so late async results of an abandoned flow are ignored. */
+	const flowIdRef = useRef(0);
 
 	const loadProviders = useCallback(async () => {
 		setListLoading(true);
@@ -172,6 +174,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 			pendingPrompt: null,
 			completed: null,
 		};
+		const flowId = ++flowIdRef.current;
 		setFlowState(initialFlow);
 		setPhase("flow");
 		isFlowActiveRef.current = true;
@@ -186,13 +189,20 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 			const unlisten = await onProvidersOauth((event) => {
 				handleEvent(event, provider.id);
 			});
+			if (isClosingRef.current || flowIdRef.current !== flowId) {
+				// Dialog closed (or flow abandoned) while subscribing: don't leak the listener.
+				unlisten();
+				return;
+			}
 			unlistenRef.current = unlisten;
 
 			// 2. Start login process
 			await oauthLoginStart(provider.id);
+			if (flowIdRef.current !== flowId) return;
 
 			// 3. Hydrate any early event
 			const status = await oauthLoginStatus();
+			if (flowIdRef.current !== flowId) return;
 			if (status && status.providerId === provider.id) {
 				if (status.url) {
 					handleEvent(
@@ -220,6 +230,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 				}
 			}
 		} catch (err) {
+			if (flowIdRef.current !== flowId) return;
 			isFlowActiveRef.current = false;
 			const errorText = errMsg(err);
 			setFlowState((prev) =>
@@ -307,10 +318,33 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 		onClose();
 	}, [phase, flowState, onClose]);
 
-	useEscapeKey(handleDismiss);
+	// Escape is handled by <Modal onClose={handleDismiss}>.
+
+	/** 上一步: abandon the in-flight flow and return to the provider list. */
+	const handleBack = async () => {
+		flowIdRef.current++;
+		if (unlistenRef.current) {
+			unlistenRef.current();
+			unlistenRef.current = null;
+		}
+		if (isFlowActiveRef.current) {
+			isFlowActiveRef.current = false;
+			try {
+				await oauthLoginCancel();
+			} catch {
+				// Ignore cancel error
+			}
+		}
+		setInputValue("");
+		setFlowState(null);
+		setPhase("list");
+		void loadProviders();
+	};
 
 	useEffect(() => {
+		isClosingRef.current = false;
 		return () => {
+			isClosingRef.current = true;
 			if (unlistenRef.current) {
 				unlistenRef.current();
 				unlistenRef.current = null;
@@ -327,17 +361,13 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 		/terminal|secret|终端/i.test(flowState?.completed?.error ?? "");
 
 	return (
-		<div
-			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) void handleDismiss();
-			}}
+		<Modal
+			onClose={() => void handleDismiss()}
+			size="lg"
+			ariaLabel={phase === "flow" && flowState ? `登录 ${flowState.provider.name}` : "OAuth / 账号登录"}
 		>
 			<div
-				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="oauth-dialog-title"
+				className="flex min-h-0 flex-1 flex-col"
 				onKeyDown={(e) => {
 					if (e.key !== "Tab") return;
 					const controls = Array.from(
@@ -355,7 +385,6 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 						first?.focus();
 					}
 				}}
-				className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-[var(--bg-panel)] shadow-apple-modal hairline"
 			>
 				{/* Dialog Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
@@ -368,10 +397,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 						) : (
 							<LogIn className="h-4 w-4 text-[var(--accent)]" />
 						)}
-						<div
-							id="oauth-dialog-title"
-							className="text-xs font-semibold tracking-[-0.018em] text-neutral-100"
-						>
+						<div className="text-xs font-semibold tracking-[-0.018em] text-neutral-100">
 							{phase === "flow" && flowState
 								? `登录 ${flowState.provider.name}`
 								: "OAuth / 账号登录"}
@@ -423,9 +449,7 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 						)}
 
 						{!listLoading && !listError && providers.length === 0 && (
-							<div className="py-8 text-center text-xs text-neutral-500">
-								暂无支持登录的供应商
-							</div>
+							<EmptyState title="暂无支持登录的供应商" />
 						)}
 
 						{!listLoading && !listError && providers.length > 0 && (
@@ -733,16 +757,25 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 							</button>
 						</div>
 					) : (
-						<button
-							type="button"
-							onClick={() => void handleDismiss()}
-							className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
-						>
-							取消
-						</button>
+						<div className="flex items-center gap-2">
+							<button
+								type="button"
+								onClick={() => void handleBack()}
+								className="rounded-lg px-3 py-1.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
+							>
+								上一步
+							</button>
+							<button
+								type="button"
+								onClick={() => void handleDismiss()}
+								className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
+							>
+								取消
+							</button>
+						</div>
 					)}
 				</div>
 			</div>
-		</div>
+		</Modal>
 	);
 }

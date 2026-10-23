@@ -56,6 +56,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import type { Anchor } from "../../components/FloatingLayer";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { SearchInput } from "../../components/SearchInput";
 import { openSettingsTarget } from "../settings/settingsTargets";
 import { HoverScrollText } from "../../components/HoverScrollText";
 import type {
@@ -359,20 +360,7 @@ export function SessionSidebar() {
 
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const modeSwitcherRef = useRef<HTMLButtonElement>(null);
-	const modeMenuRef = useRef<HTMLDivElement>(null);
-	// Mode menu is rendered in-flow under the header (no portal/measure), so
-	// outside clicks are handled here.
-	useEffect(() => {
-		if (!modeMenuOpen) return;
-		const onDown = (e: MouseEvent) => {
-			const t = e.target as Node;
-			if (modeMenuRef.current?.contains(t)) return;
-			if (modeSwitcherRef.current?.contains(t)) return;
-			setModeMenuOpen(false);
-		};
-		document.addEventListener("mousedown", onDown, true);
-		return () => document.removeEventListener("mousedown", onDown, true);
-	}, [modeMenuOpen]);
+
 	const filterBtnRef = useRef<HTMLButtonElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const plusTriggerRef = useRef<HTMLElement | null>(null);
@@ -1262,17 +1250,11 @@ export function SessionSidebar() {
 				{/* Search & Filter Bar: revealed by the search icon / ⌘F, or while a filter is active */}
 				{(searchOpen || searchQuery || showArchived) && (
 				<div className="mt-1.5 flex items-center gap-1.5">
-					<div className="relative flex min-w-0 flex-1 items-center">
-						<Search
-							size={13}
-							className="pointer-events-none absolute left-2.5 text-neutral-500"
-						/>
-						<input
+					<div data-sidebar-search="true" className="min-w-0 flex-1">
+						<SearchInput
 							ref={searchInputRef}
-							type="text"
-							data-sidebar-search="true"
 							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
+							onChange={setSearchQuery}
 							onKeyDown={(e) => {
 								if (isComposing(e)) return;
 								if (e.key === "ArrowDown") {
@@ -1285,6 +1267,7 @@ export function SessionSidebar() {
 									const visibleIds = getVisibleSessionIds();
 									if (visibleIds[0]) selectSession(visibleIds[0]);
 								} else if (e.key === "Escape") {
+									e.preventDefault();
 									claimEscape(e);
 									if (searchQuery) setSearchQuery("");
 									else setSearchOpen(false);
@@ -1292,18 +1275,9 @@ export function SessionSidebar() {
 								}
 							}}
 							placeholder="搜索会话、分支..."
-							className="w-full rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500/70 transition-colors focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
+							iconSize={13}
+							inputClassName="w-full rounded-lg hairline bg-[var(--well-bg)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500/70 transition-colors focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 						/>
-						{searchQuery && (
-							<button
-								type="button"
-								onClick={() => setSearchQuery("")}
-								className="absolute right-2 text-neutral-500 hover:text-neutral-300"
-								title="清空搜索"
-							>
-								<X size={13} />
-							</button>
-						)}
 					</div>
 
 					{/* Filter & View Options Button */}
@@ -1405,12 +1379,17 @@ export function SessionSidebar() {
 					</button>
 				</div>
 
-				{/* Space Mode Switcher Dropdown (anchored to the header, 8px gutter + 32px title row + 4px gap) */}
-				{modeMenuOpen && (
-					<div
-						ref={modeMenuRef}
-						className="absolute left-2 top-1 z-(--z-popover) max-h-[70vh] w-[200px] overflow-y-auto rounded-xl border border-[var(--border-divider)] vibrancy-popover p-1.5 text-xs text-neutral-300 shadow-apple-modal backdrop-blur-2xl"
-					>
+				{/* Space Mode Switcher Dropdown */}
+				{modeMenuOpen && modeSwitcherRef.current && (
+				<FloatingLayer
+					anchor={modeSwitcherRef.current}
+					placement="bottom-start"
+					offset={4}
+					layer="popover"
+					ignoreRefs={[modeSwitcherRef]}
+					onDismiss={() => setModeMenuOpen(false)}
+					className="max-h-[70vh] w-[200px] overflow-y-auto p-1.5 text-xs text-neutral-300"
+				>
 					<MenuContainer
 						ariaLabel="切换模式"
 						onClose={() => setModeMenuOpen(false)}
@@ -1460,7 +1439,7 @@ export function SessionSidebar() {
 							每个模式有独立的项目与会话；Universal 不属于任何项目
 						</div>
 					</MenuContainer>
-					</div>
+				</FloatingLayer>
 				)}
 			</div>
 
@@ -2260,7 +2239,7 @@ export function SessionSidebar() {
 														className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 													>
 														<FolderInput size={11} className="shrink-0" />
-														<span className="whitespace-nowrap">归入工作区…</span>
+														<span className="whitespace-nowrap">归入工作区</span>
 													</button>
 													<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
 												</div>

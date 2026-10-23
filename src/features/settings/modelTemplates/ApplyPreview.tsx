@@ -8,9 +8,8 @@
  * primary button behind 「仍然应用」.
  */
 import { ArrowRight, ChevronDown, Loader2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Z_LAYER } from "../../../components/FloatingLayer";
+import { useCallback, useEffect, useState } from "react";
+import { Modal } from "../../../components/Modal";
 import type {
 	ModelTemplate,
 	PreflightVerdict,
@@ -18,11 +17,11 @@ import type {
 	TemplatePreview,
 } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
-import { claimEscape } from "../../../lib/escapeClaim";
-import { isComposing } from "../../../lib/hooks";
 import { modelTemplateApply, modelTemplatePreview } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
-import { Button, Chip, EmptyState, IconButton, Notice, type NoticeTone } from "../ui";
+import { EmptyState } from "../../../components/EmptyState";
+import { Notice, type NoticeTone } from "../../../components/Notice";
+import { Button, Chip, IconButton } from "../ui";
 import { GLOBAL_SCOPE } from "./logic";
 import { useModelTemplatesStore } from "./store";
 
@@ -113,7 +112,6 @@ export function ApplyPreview({
 	const [applyError, setApplyError] = useState<string | null>(null);
 	/** The backend refused because of the preflight; the footer offers 仍然应用. */
 	const [refused, setRefused] = useState(false);
-	const dialogRef = useRef<HTMLDivElement>(null);
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -131,10 +129,6 @@ export function ApplyPreview({
 		void load();
 	}, [load]);
 
-	// Move focus into the dialog so Tab/Escape stay inside it.
-	useEffect(() => {
-		dialogRef.current?.focus();
-	}, []);
 
 	const apply = async (force: boolean) => {
 		setApplying(true);
@@ -169,29 +163,21 @@ export function ApplyPreview({
 	const hasEdits = (preview?.edits.length ?? 0) > 0;
 	const busy = loading || applying;
 
-	return createPortal(
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-6 backdrop-blur-sm"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget && !applying) onClose();
+	return (
+		<Modal
+			// Escape/backdrop are swallowed (not passed through) while applying so they never reach settings underneath.
+			onClose={() => {
+				if (!applying) onClose();
 			}}
+			size="none"
+			ariaLabel={`应用模板「${template.name}」`}
+			className="h-[min(86vh,760px)] w-[820px] max-w-[calc(100vw-2rem)] overflow-hidden p-4 text-[var(--text)]"
 		>
 			<div
-				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="model-template-apply-title"
-				tabIndex={-1}
-				className="flex h-[min(86vh,760px)] w-[820px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-[var(--bg-panel)] p-4 text-[var(--text)] shadow-apple-modal hairline outline-none"
-				onMouseDown={(e) => e.stopPropagation()}
+				className="flex min-h-0 flex-1 flex-col"
 				onKeyDown={(e) => {
-					e.stopPropagation();
-					if (isComposing(e)) return;
-					if (e.key === "Escape") {
-						claimEscape(e);
-						if (!applying) onClose();
-					}
+					// Escape must reach Modal's window listener; other keys stay inside the dialog.
+					if (e.key !== "Escape") e.stopPropagation();
 				}}
 			>
 				<div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-divider)] pb-3">
@@ -321,7 +307,6 @@ export function ApplyPreview({
 					)}
 				</div>
 			</div>
-		</div>,
-		document.body,
+		</Modal>
 	);
 }

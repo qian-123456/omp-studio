@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (s: string) => s }));
 
-import { Markdown } from "./markdown";
-import { pendingMarkdownAssets } from "./markdownAssets";
+import { Markdown } from "./Markdown";
+import { pendingMarkdownAssets } from "../features/chat/markdownAssets";
 
 const html = (text: string) => renderToStaticMarkup(<Markdown text={text} />);
 
@@ -40,13 +40,13 @@ describe("Markdown inline HTML", () => {
 
 	it("turns prose and inline-code file paths into preview links", () => {
 		const out = html(
-			"读取 /Users/qianhairui/.omp/agent/AGENTS.md 与 `~/CodingWiki/wiki/rules.md`，目录 /Users/qianhairui 不链接。",
+			"读取 /Users/me/.omp/agent/AGENTS.md 与 `~/CodingWiki/wiki/rules.md`，目录 /Users/me 不链接。",
 		);
-		expect(out).toContain('href="/Users/qianhairui/.omp/agent/AGENTS.md"');
+		expect(out).toContain('href="/Users/me/.omp/agent/AGENTS.md"');
 		expect(out).toContain('href="~/CodingWiki/wiki/rules.md"');
 		expect(out).toContain("在右侧预览");
 		// A directory is not a file link.
-		expect(out).not.toContain('href="/Users/qianhairui"');
+		expect(out).not.toContain('href="/Users/me"');
 	});
 
 	it("keeps a leading @ outside the file link", () => {

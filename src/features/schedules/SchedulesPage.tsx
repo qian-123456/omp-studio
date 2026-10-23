@@ -9,6 +9,8 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { EmptyState } from "../../components/EmptyState";
+import { SearchInput } from "../../components/SearchInput";
 import { Segmented } from "../../components/Segmented";
 import type { Schedule } from "../../lib/contracts";
 import { formatCadence } from "./humanCadence";
@@ -35,6 +37,7 @@ export function SchedulesPage() {
 	const schedules = useSchedulesStore((s) => s.schedules);
 	const runs = useSchedulesStore((s) => s.runs);
 	const loading = useSchedulesStore((s) => s.loading);
+	const loadError = useSchedulesStore((s) => s.loadError);
 	const runningScheduleIds = useSchedulesStore((s) => s.runningScheduleIds);
 	const seenRuns = useSchedulesStore((s) => s.seenRuns);
 	const isEditorOpen = useSchedulesStore((s) => s.isEditorOpen);
@@ -233,29 +236,15 @@ export function SchedulesPage() {
 					{/* Toolbar: search + status filter */}
 					{schedules.length > 0 && (
 						<div className="mb-6 flex items-center justify-between gap-3">
-							<div className="relative flex w-56 items-center sm:w-64">
-								<Search
-									size={13}
-									className="pointer-events-none absolute left-3 text-[var(--text-30)]"
-								/>
-								<input
-									type="text"
-									value={query}
-									onChange={(e) => setQuery(e.target.value)}
-									placeholder="搜索任务…"
-									className="h-9 w-full rounded-xl hairline bg-[var(--bg-panel)] pl-8 pr-7 text-xs text-[var(--text)] placeholder-neutral-500 transition-all focus:outline-none focus:ring-1 focus:ring-[var(--hairline-strong)]"
-								/>
-								{query && (
-									<button
-										type="button"
-										onClick={() => setQuery("")}
-										className="absolute right-2.5 flex h-4 w-4 items-center justify-center rounded text-[var(--text-40)] hover:text-[var(--text)]"
-										title="清除搜索"
-									>
-										<X size={12} />
-									</button>
-								)}
-							</div>
+							<SearchInput
+								value={query}
+								onChange={setQuery}
+								placeholder="搜索任务…"
+								ariaLabel="搜索任务"
+								iconSize={13}
+								className="w-56 sm:w-64"
+								inputClassName="h-9 w-full rounded-xl hairline bg-[var(--bg-panel)] pl-8 pr-7 text-xs text-[var(--text)] placeholder-neutral-500 transition-all focus:outline-none focus:ring-1 focus:ring-[var(--hairline-strong)]"
+							/>
 
 							<Segmented<StatusFilter>
 								size="sm"
@@ -272,7 +261,23 @@ export function SchedulesPage() {
 						</div>
 					)}
 
-					{schedules.length === 0 ? (
+					{schedules.length === 0 && loadError ? (
+						<div
+							role="alert"
+							className="mx-auto flex max-w-2xl items-start justify-between gap-3 rounded-xl border border-rose-800/60 bg-rose-950/40 p-3 text-xs text-rose-300"
+						>
+							<span className="min-w-0 flex-1 select-text whitespace-pre-wrap break-words">
+								定时任务加载失败：{loadError}
+							</span>
+							<button
+								type="button"
+								onClick={() => void useSchedulesStore.getState().load()}
+								className="shrink-0 whitespace-nowrap rounded bg-rose-900/60 px-2.5 py-1 font-medium text-rose-200 transition-colors hover:bg-rose-800/80"
+							>
+								重试
+							</button>
+						</div>
+					) : schedules.length === 0 ? (
 						<div className="mx-auto max-w-2xl space-y-10 py-12">
 							{/* Empty explanation */}
 							<div className="space-y-4 text-center">
@@ -335,13 +340,11 @@ export function SchedulesPage() {
 							groups.completed.length ===
 							0 ? (
 						/* Search / filter empty state */
-						<div className="mx-auto max-w-md space-y-2 py-20 text-center">
-							<Search size={20} className="mx-auto text-[var(--text-30)]" />
-							<p className="text-sm text-[var(--text)]">没有匹配的定时任务</p>
-							<p className="text-xs text-[var(--text-40)]">
-								尝试更换关键词，或清除筛选条件。
-							</p>
-						</div>
+						<EmptyState
+							icon={Search}
+							title="没有匹配的定时任务"
+							description="尝试更换关键词，或清除筛选条件。"
+						/>
 					) : (
 						/* Grouped schedule list */
 						<div className="space-y-8">

@@ -15,8 +15,7 @@
  */
 import { AlertTriangle, ArrowLeft, History, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Z_LAYER } from "../../../components/FloatingLayer";
+import { Modal } from "../../../components/Modal";
 import type {
 	ModelReplaceEdit,
 	ModelReplaceItemResult,
@@ -51,7 +50,6 @@ import { ModelReplacePlanPreview } from "./ModelReplacePlanPreview";
 import { ModelReplaceResults } from "./ModelReplaceResults";
 import { invalidateAfterModelReplace } from "./store";
 import { BTN_GHOST, BTN_PRIMARY, LevelSelect, TargetPicker, tabOfGroup } from "./parts";
-import { claimEscape } from "../../../lib/escapeClaim";
 
 type Step = "overview" | "configure" | "preview" | "results" | "history";
 
@@ -100,7 +98,6 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 	 * not be sent there in the first place).
 	 */
 	const [scanStale, setScanStale] = useState(false);
-	const dialogRef = useRef<HTMLDivElement>(null);
 	/** Identifies the current apply/retry run; a response for an abandoned run is dropped. */
 	const runRef = useRef(0);
 	/** Writes started so far; a scan that spans one of them is stale. */
@@ -158,9 +155,6 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 		void loadKinds();
 	}, [loadKinds]);
 
-	useEffect(() => {
-		dialogRef.current?.focus();
-	}, []);
 
 	const projectNames = useMemo(() => projectNameMap(scan?.projects ?? []), [scan]);
 	const toGroup: KindGroup | null = toModel ? kindGroup(kinds.kindBySelector.get(toModel)) : null;
@@ -358,35 +352,20 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 				: "上次替换已经写入，正在重新扫描模型引用；扫描完成前不能再次应用。"
 			: null;
 
-	return createPortal(
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-6 backdrop-blur-sm"
-			onMouseDown={(e) => {
-				// Same exit as ✕: a write already sent to the backend is not cancelled by
-				// closing the dialog, so nothing is gained by trapping the user here.
-				if (e.target === e.currentTarget) onClose();
-			}}
+	return (
+		<Modal
+			onClose={onClose}
+			size="none"
+			ariaLabel="批量替换模型"
+			className="h-[min(85vh,780px)] w-[900px] max-w-[calc(100vw-2rem)] overflow-hidden p-4 text-[var(--text)]"
 		>
 			<div
-				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="model-replace-title"
-				tabIndex={-1}
-				className="flex h-[min(88vh,780px)] w-[900px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-[var(--bg-panel)] p-4 text-[var(--text)] shadow-apple-modal hairline outline-none"
-				onMouseDown={(e) => e.stopPropagation()}
+				className="flex min-h-0 flex-1 flex-col"
 				onKeyDown={(e) => {
-					// Escape must never reach the settings modal underneath.
-					e.stopPropagation();
+					// Keep keys inside the dialog from reaching the settings modal underneath;
+					// Escape must still reach Modal's window listener.
+					if (e.key !== "Escape") e.stopPropagation();
 					if (isComposing(e)) return;
-					if (e.key === "Escape") {
-						claimEscape(e);
-						// Closing never cancels a write that was already sent; trapping the
-						// user inside a dialog whose action is in flight only looks stuck.
-						onClose();
-						return;
-					}
 					if (e.key === "Tab") {
 						const controls = Array.from(
 							e.currentTarget.querySelectorAll<HTMLElement>(
@@ -666,7 +645,6 @@ export function ModelReplaceDialog({ onClose }: { onClose: () => void }) {
 					</div>
 				</div>
 			</div>
-		</div>,
-		document.body,
+		</Modal>
 	);
 }

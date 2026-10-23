@@ -7,11 +7,10 @@ import {
 	MessageSquare,
 	Play,
 	RotateCcw,
-	Search,
 	Terminal,
-	X,
 } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { SearchInput } from "../../components/SearchInput";
 import type { GitCommit, GitSummary, TmRun, TurnCheckpoint } from "../../lib/contracts";
 import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
 import { absoluteTime } from "../../lib/format";
@@ -709,30 +708,12 @@ export function TimelineSection({
 					{/* Filter & Search Bar */}
 					{commits.length > 0 && (
 						<div className="mb-2 flex items-center gap-1.5">
-							<div className="relative flex-1">
-								<Search
-									size={12}
-									className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none"
-								/>
-								<input
-									type="text"
-									value={filterText}
-									onChange={(e) => setFilterText(e.target.value)}
-									placeholder="搜索提交说明 / 作者 / 版本编号"
-									className="w-full rounded border border-neutral-800 bg-neutral-950/70 pl-6 pr-6 py-1 text-xs text-neutral-200 placeholder:text-neutral-600 outline-none focus:border-neutral-700 focus:bg-neutral-950 transition-colors"
-								/>
-								{filterText && (
-									<button
-										type="button"
-										onClick={() => setFilterText("")}
-										className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-neutral-500 hover:text-neutral-300"
-										title="清除"
-										aria-label="清除搜索"
-									>
-										<X size={12} />
-									</button>
-								)}
-							</div>
+							<SearchInput
+								value={filterText}
+								onChange={setFilterText}
+								placeholder="搜索提交说明 / 作者 / 版本编号"
+								className="flex-1"
+							/>
 						</div>
 					)}
 

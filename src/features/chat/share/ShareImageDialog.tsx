@@ -1,10 +1,9 @@
 import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { save } from "@tauri-apps/plugin-dialog";
-import { Copy, Download, ListChecks, Loader2, X } from "lucide-react";
+import { Copy, Download, ListChecks, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Z_LAYER } from "../../../components/FloatingLayer";
+import { Modal } from "../../../components/Modal";
 import { errMsg } from "../../../lib/dialogs";
-import { useEscapeKey } from "../../../lib/hooks";
 import { saveShareImage } from "../../../lib/ipc";
 import { sessionDisplayName } from "../../../lib/sessionName";
 import { toast } from "../../../lib/toast";
@@ -44,8 +43,6 @@ export function ShareImageDialog() {
 	const [busy, setBusy] = useState<"copy" | "save" | null>(null);
 	const [dateLabel, setDateLabel] = useState("");
 	const cardRef = useRef<HTMLDivElement>(null);
-
-	useEscapeKey(closeModal, isVisible);
 
 	// Snapshot the selected messages when the dialog opens.
 	useEffect(() => {
@@ -123,39 +120,18 @@ export function ShareImageDialog() {
 	};
 
 	return (
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) closeModal();
-			}}
+		<Modal
+			onClose={closeModal}
+			size="none"
+			className="w-full max-w-[560px] text-[var(--text)]"
+			title="分享为图片"
+			headerActions={
+				entries.length > 0 ? (
+					<span className="mr-1 text-[11px] text-[var(--text-40)]">共 {entries.length} 条消息</span>
+				) : undefined
+			}
 		>
-			<div
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="share-image-title"
-				className="flex max-h-[min(92vh,860px)] w-full max-w-[560px] flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-[var(--text)] shadow-apple-modal hairline"
-				onClick={(e) => e.stopPropagation()}
-			>
-				<div className="mb-3 flex shrink-0 items-center justify-between">
-					<div>
-						<h2 id="share-image-title" className="text-sm font-semibold">
-							分享为图片
-						</h2>
-						{entries.length > 0 && (
-							<p className="mt-0.5 text-[11px] text-[var(--text-40)]">共 {entries.length} 条消息</p>
-						)}
-					</div>
-					<button
-						type="button"
-						onClick={closeModal}
-						aria-label="关闭"
-						className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-					>
-						<X size={15} />
-					</button>
-				</div>
-
+			<div className="flex min-h-0 flex-1 flex-col p-4">
 				<div className="min-h-[160px] flex-1 overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--bg-hover)]/40 p-3">
 					{entries.length === 0 ? (
 						<div className="flex h-40 items-center justify-center text-xs text-[var(--text-40)]">
@@ -216,6 +192,6 @@ export function ShareImageDialog() {
 			<div aria-hidden className="pointer-events-none fixed left-[-10000px] top-0">
 				{entries.length > 0 && <ShareCard ref={cardRef} title={title} dateLabel={dateLabel} entries={entries} />}
 			</div>
-		</div>
+		</Modal>
 	);
 }

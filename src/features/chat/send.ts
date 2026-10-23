@@ -210,6 +210,9 @@ export async function abortTurn(sessionId: string): Promise<void> {
 			dropEchoesForTexts(sessionId, texts);
 			restoreTextsToDraft(sessionId, texts);
 		}
+		// Backend acknowledged: no Composer may be mounted to clear the flag, so do it here.
+		clearAbortTimer(sessionId);
+		useAbortState.getState().setAborting(sessionId, false);
 	} catch (err) {
 		clearAbortTimer(sessionId);
 		useAbortState.getState().setAborting(sessionId, false);

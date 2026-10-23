@@ -34,7 +34,9 @@ import {
 	type OmpSectionDef,
 } from "./ompPlacement";
 import { JsonEditor, RecordEditor, SecretInput, StringListEditor } from "./ompValueEditors";
-import { Button, Chip, CommitInput, EmptyState, IconButton, MODEL_PICKER_BUTTON_CLASS, Notice, SaveIndicator, SectionHeader, SettingsCard, useSaveStatus } from "./ui";
+import { EmptyState } from "../../components/EmptyState";
+import { Notice } from "../../components/Notice";
+import { Button, Chip, CommitInput, IconButton, MODEL_PICKER_BUTTON_CLASS, SaveIndicator, SectionHeader, SettingsCard, useSaveStatus } from "./ui";
 import { useSettingsProjectCwd } from "./useAppSettings";
 
 // ── Project layer ────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ import { type FileTab, useFilePreview } from "../../stores/filePreview";
 import { useUi } from "../../stores/ui";
 import { SelectionToolbar } from "../chat/SelectionToolbar";
 import { Segmented } from "../../components/Segmented";
-import { Markdown } from "../chat/markdown";
+import { Markdown } from "../../components/Markdown";
 import { useFileBuffer } from "../editor/useFileBuffer";
 
 const FileEditor = React.lazy(() => import("./FileEditor"));

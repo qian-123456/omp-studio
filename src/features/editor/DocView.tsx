@@ -5,9 +5,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import clsx from "clsx";
 import { FileText, MessageSquarePlus, RefreshCw, Save, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
+import { Markdown } from "../../components/Markdown";
 import { confirmDialog } from "../../lib/dialogs";
 import { isComposing, useEscapeKey, useShortPath } from "../../lib/hooks";
 import { basename } from "../../lib/paths";
@@ -20,44 +18,6 @@ import { claimEscape } from "../../lib/escapeClaim";
 import { useFileBuffer } from "./useFileBuffer";
 
 type Tab = "preview" | "split" | "edit";
-
-/** Tailwind styling for rendered markdown (no typography plugin). */
-const MD: Components = {
-	h1: ({ node: _n, ...p }) => <h1 className="mt-5 mb-3 text-xl font-semibold text-neutral-100" {...p} />,
-	h2: ({ node: _n, ...p }) => <h2 className="mt-5 mb-2 text-lg font-semibold text-neutral-100" {...p} />,
-	h3: ({ node: _n, ...p }) => <h3 className="mt-4 mb-2 text-base font-semibold text-neutral-200" {...p} />,
-	h4: ({ node: _n, ...p }) => <h4 className="mt-3 mb-1.5 text-sm font-semibold text-neutral-200" {...p} />,
-	p: ({ node: _n, ...p }) => <p className="my-2 leading-6 text-neutral-300" {...p} />,
-	a: ({ node: _n, ...p }) => <a className="text-sky-400 hover:underline" target="_blank" rel="noreferrer" {...p} />,
-	ul: ({ node: _n, ...p }) => <ul className="my-2 list-disc space-y-0.5 pl-5 text-neutral-300" {...p} />,
-	ol: ({ node: _n, ...p }) => <ol className="my-2 list-decimal space-y-0.5 pl-5 text-neutral-300" {...p} />,
-	li: ({ node: _n, ...p }) => <li className="leading-6" {...p} />,
-	blockquote: ({ node: _n, ...p }) => (
-		<blockquote className="my-2 border-l-2 border-neutral-600 pl-3 text-neutral-400" {...p} />
-	),
-	code: ({ node: _n, className, ...p }) => (
-		<code
-			className={clsx(
-				"rounded bg-neutral-800 px-1 py-0.5 font-mono text-[0.85em] text-amber-200",
-				className,
-			)}
-			{...p}
-		/>
-	),
-	pre: ({ node: _n, ...p }) => (
-		<pre
-			className="my-3 overflow-x-auto rounded border border-neutral-800 bg-neutral-950 p-3 font-mono text-xs [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-neutral-200"
-			{...p}
-		/>
-	),
-	table: ({ node: _n, ...p }) => <table className="my-3 border-collapse text-xs" {...p} />,
-	th: ({ node: _n, ...p }) => (
-		<th className="border border-neutral-700 bg-neutral-800/60 px-2 py-1 text-left text-neutral-200" {...p} />
-	),
-	td: ({ node: _n, ...p }) => <td className="border border-neutral-800 px-2 py-1 text-neutral-300" {...p} />,
-	hr: ({ node: _n, ...p }) => <hr className="my-4 border-neutral-800" {...p} />,
-	img: ({ node: _n, ...p }) => <img className="my-2 max-w-full rounded" {...p} />,
-};
 
 interface Selection {
 	text: string;
@@ -305,9 +265,7 @@ export function DocView({ path }: { path: string }) {
 							<div className="py-6 text-center text-xs text-neutral-500">加载中…</div>
 						)}
 						{saved !== null && (
-							<ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MD}>
-								{draft}
-							</ReactMarkdown>
+							<Markdown text={draft} />
 						)}
 					</div>
 				</div>
@@ -319,9 +277,7 @@ export function DocView({ path }: { path: string }) {
 				>
 					{saved === null && !error && <div className="py-6 text-center text-xs text-neutral-500">加载中…</div>}
 					{saved !== null && (
-						<ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MD}>
-							{draft}
-						</ReactMarkdown>
+						<Markdown text={draft} />
 					)}
 				</div>
 			) : (

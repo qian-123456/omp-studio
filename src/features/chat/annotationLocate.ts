@@ -29,8 +29,12 @@ export function findQuoteRange(itemId: string, quote: string): Range | null {
 	const el = document.getElementById(`msg-${itemId}`);
 	if (!el) return null;
 	const { text, segments } = collectTextSegments(el);
-	const hit = locateQuote(text, quote, occurrenceHints.get(hintKey(itemId, quote)));
-	return hit ? segmentRange(segments, hit.start, hit.end) : null;
+	const key = hintKey(itemId, quote);
+	const hit = locateQuote(text, quote, occurrenceHints.get(key));
+	if (!hit) return null;
+	// One-shot: the hint only serves the click that set it (kept while the text is still rendering).
+	occurrenceHints.delete(key);
+	return segmentRange(segments, hit.start, hit.end);
 }
 
 /**

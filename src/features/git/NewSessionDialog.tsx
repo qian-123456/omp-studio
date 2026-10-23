@@ -2,12 +2,12 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
-import { Z_LAYER } from "../../components/FloatingLayer";
-import { AlertTriangle, FolderOpen, X } from "lucide-react";
+import { Modal } from "../../components/Modal";
+import { AlertTriangle, FolderOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSession, sendFirstPrompt } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
-import { isComposing, useEscapeKey } from "../../lib/hooks";
+import { isComposing } from "../../lib/hooks";
 import {
 	appPaths,
 	deleteSession,
@@ -77,7 +77,6 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 		[workspaces, activeMode],
 	);
 
-	useEscapeKey(closeModal);
 
 	useEffect(() => {
 		const previous = document.activeElement;
@@ -334,34 +333,17 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	const input = INPUT_CLASS;
 
 	return (
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) closeModal();
-			}}
+		<Modal
+			onClose={closeModal}
+			title="新会话"
+			size="none"
+			className="w-[500px] max-w-[calc(100vw-2rem)]"
 		>
 			<div
 				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="new-session-dialog-title"
-				className="w-[500px] max-w-[calc(100vw-2rem)] max-h-[min(90vh,760px)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
-				onMouseDown={(e) => e.stopPropagation()}
+				className="flex min-h-0 flex-1 flex-col p-5 pt-3 text-neutral-300"
 				onKeyDown={(e) => handleDialogKeyDown(e, canSubmit ? submit : null)}
 			>
-				<div className="mb-3 flex items-center shrink-0">
-					<span id="new-session-dialog-title" className="flex-1 text-[15px] font-semibold tracking-tight text-[var(--text)]">新会话</span>
-					<button
-						type="button"
-						title="关闭 (Esc)"
-						aria-label="关闭对话框"
-						onClick={closeModal}
-						className="press-scale rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
-					>
-						<X size={15} />
-					</button>
-				</div>
 
 				<div className="flex-1 min-h-0 overflow-y-auto pr-1">
 				<div className="mb-1 flex items-center justify-between">
@@ -372,7 +354,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 						className="press-scale flex items-center gap-1 text-[11px] text-[#0A84FF] hover:text-[#0A84FF]/80 transition-colors"
 					>
 						<FolderOpen size={12} />
-						<span>浏览系统目录…</span>
+						<span>浏览系统目录</span>
 					</button>
 				</div>
 				<NativeSelect
@@ -414,7 +396,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 								aria-label="浏览系统目录"
 							>
 								<FolderOpen size={13} />
-								<span>浏览…</span>
+								<span>浏览</span>
 							</button>
 						</div>
 						{customCwdError && (
@@ -543,7 +525,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					</div>
 				</div>
 			</div>
-		</div>
+		</Modal>
 	);
 }
 
@@ -692,7 +674,6 @@ function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	useEscapeKey(closeModal);
 
 	useEffect(() => {
 		const previous = document.activeElement;
@@ -753,34 +734,17 @@ function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
 	};
 
 	return (
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-6"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) closeModal();
-			}}
+		<Modal
+			onClose={closeModal}
+			title="新建工作树会话"
+			size="none"
+			className="w-[500px] max-w-[calc(100vw-2rem)]"
 		>
 			<div
 				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="new-session-dialog-title"
-				className="w-[500px] max-w-[calc(100vw-2rem)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-5 text-neutral-300 shadow-apple-modal hairline"
-				onMouseDown={(e) => e.stopPropagation()}
+				className="flex min-h-0 flex-1 flex-col p-5 pt-3 text-neutral-300"
 				onKeyDown={(e) => handleDialogKeyDown(e, canSubmit ? submit : null)}
 			>
-				<div className="mb-3 flex items-center shrink-0">
-					<span id="new-session-dialog-title" className="flex-1 text-[15px] font-semibold tracking-tight text-[var(--text)]">新建工作树会话</span>
-					<button
-						type="button"
-						title="关闭 (Esc)"
-						aria-label="关闭对话框"
-						onClick={closeModal}
-						className="press-scale rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
-					>
-						<X size={15} />
-					</button>
-				</div>
 
 				<div className="mb-3 truncate text-[11px] text-neutral-400" title={repo}>
 					<span className="text-neutral-200">{repoName}</span>
@@ -823,6 +787,6 @@ function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
 					</div>
 				</div>
 			</div>
-		</div>
+		</Modal>
 	);
 }

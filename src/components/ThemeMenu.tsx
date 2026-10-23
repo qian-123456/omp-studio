@@ -46,7 +46,7 @@ export function ThemeMenu() {
 					}}
 					className="mt-2 flex w-full items-center gap-2 rounded-md border-t border-[var(--border-divider)] px-2 pt-2 text-left text-[11px] text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 				>
-					<span className="flex-1">更多外观设置…</span>
+					<span className="flex-1">更多外观设置</span>
 				</button>
 			</FloatingLayer>
 		</div>

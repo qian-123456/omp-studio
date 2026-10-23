@@ -7,6 +7,8 @@
 import clsx from "clsx";
 import { AlertCircle, Loader2, Send, Settings as SettingsIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { CopyButton } from "../../components/CopyButton";
+import { isComposing } from "../../lib/hooks";
 import type { SessionMeta, TranscriptItem } from "../../lib/contracts";
 import { relativeTime } from "../../lib/format";
 import { useComposer } from "../../stores/composer";
@@ -244,7 +246,7 @@ export function DoctorView({
 								value={followUp}
 								onChange={(e) => setFollowUp(e.target.value)}
 								onKeyDown={(e) => {
-									if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+									if (e.key === "Enter" && !e.shiftKey && !isComposing(e)) {
 										e.preventDefault();
 										sendFollowUp();
 									}
@@ -288,7 +290,6 @@ export function DoctorView({
 
 function PrescriptionCard({ sessionId, prescription }: { sessionId: string; prescription: DiagnosticPrescription }) {
 	const [text, setText] = useState(prescription.promptDraft);
-	const [copied, setCopied] = useState(false);
 	return (
 		<div className={CARD}>
 			<div className="mb-1 text-[11px] font-medium text-neutral-200">{prescription.label}</div>
@@ -302,18 +303,13 @@ function PrescriptionCard({ sessionId, prescription }: { sessionId: string; pres
 				className="w-full min-w-0 resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-2 font-mono text-[10.5px] text-neutral-200 outline-none focus:border-[var(--accent)]"
 			/>
 			<div className="mt-1.5 flex justify-end gap-1.5">
-				<button
-					type="button"
-					onClick={() => {
-						void navigator.clipboard.writeText(text).then(() => {
-							setCopied(true);
-							setTimeout(() => setCopied(false), 1500);
-						});
-					}}
+				<CopyButton
+					text={text}
+					label="复制"
+					copiedLabel="已复制"
+					hideIcon
 					className="rounded-lg border border-[var(--border)] px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)]"
-				>
-					{copied ? "已复制" : "复制"}
-				</button>
+				/>
 				<button
 					type="button"
 					onClick={() => {

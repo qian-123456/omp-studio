@@ -1,7 +1,8 @@
-import { AlertTriangle, Check, ExternalLink, FolderInput, Loader2, Tag, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, FolderInput, Loader2, Tag, Trash2 } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Z_LAYER } from "../../components/FloatingLayer";
+import { Modal } from "../../components/Modal";
+import { Notice } from "../../components/Notice";
 import type { SessionMeta } from "../../lib/contracts";
 import { isSessionBusy } from "../../lib/createSession";
 import { errMsg } from "../../lib/dialogs";
@@ -20,7 +21,6 @@ import {
 	type ArchiveWorktreeTarget,
 	useSessionActions,
 } from "./sessionActions";
-import { claimEscape } from "../../lib/escapeClaim";
 
 export function restoreSidebarFocus(prevElement: HTMLElement | null) {
 	if (
@@ -77,6 +77,12 @@ function handleTabTrap(e: React.KeyboardEvent<HTMLElement>) {
 			first?.focus();
 		}
 	}
+}
+
+/** Keeps keys inside the dialog (except Escape, which Modal claims on window) and traps Tab. */
+function dialogKeyDown(e: React.KeyboardEvent<HTMLElement>) {
+	if (e.key !== "Escape") e.stopPropagation();
+	handleTabTrap(e);
 }
 
 /**
@@ -179,31 +185,13 @@ function ArchiveWorktreeModal({
 		}
 	};
 	return (
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onClose();
-			}}
+		<Modal
+			onClose={onClose}
+			title="归档会话与工作树清理"
+			icon={<AlertTriangle size={14} className="text-amber-400" />}
+			size="md"
 		>
-			<div
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="archive-worktree-title"
-				onKeyDown={(e) => {
-					e.stopPropagation();
-					if (e.key === "Escape") {
-						claimEscape(e);
-						onClose();
-					}
-					handleTabTrap(e);
-				}}
-				className="w-full max-w-md rounded-2xl bg-[var(--bg-panel)] p-5 text-[var(--text)] shadow-apple-modal hairline flex flex-col gap-3"
-			>
-				<div className="flex items-center gap-2 text-amber-400 font-semibold text-sm">
-					<AlertTriangle size={18} />
-					<span id="archive-worktree-title">归档会话与工作树清理</span>
-				</div>
+			<div className="flex flex-col gap-3 p-5 pt-4 text-[var(--text)]" onKeyDown={dialogKeyDown}>
 
 				<p className="text-xs text-[var(--text-muted)] leading-relaxed">
 					此会话关联了工作树：
@@ -213,11 +201,11 @@ function ArchiveWorktreeModal({
 				</p>
 
 				{target.wt.dirty > 0 && (
-					<div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-300 leading-normal">
-						⚠️ 该工作树包含{" "}
+					<Notice tone="warning">
+						该工作树包含{" "}
 						<span className="font-bold">{target.wt.dirty}</span>{" "}
 						个未提交的改动。清理工作树时将提示是否强制清理并放弃改动。
-					</div>
+					</Notice>
 				)}
 
 				<div className="mt-2 flex flex-col gap-2 text-xs">
@@ -294,7 +282,7 @@ function ArchiveWorktreeModal({
 					</button>
 				</div>
 			</div>
-		</div>
+		</Modal>
 	);
 }
 
@@ -387,45 +375,19 @@ function AssignWorkspaceModal({
 	};
 
 	return (
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget && !busy) onClose();
-			}}
+		<Modal
+			onClose={onClose}
+			title={
+				sessionIds.length > 1
+					? `归入工作区（已选 ${sessionIds.length} 个会话）`
+					: "归入工作区"
+			}
+			icon={<FolderInput size={14} />}
+			size="sm"
+			closeOnBackdrop={!busy}
+			closeOnEscape={!busy}
 		>
-			<div
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="assign-workspace-title"
-				onKeyDown={(e) => {
-					e.stopPropagation();
-					if (e.key === "Escape" && !busy) {
-						claimEscape(e);
-						onClose();
-					}
-					handleTabTrap(e);
-				}}
-				className="w-full max-w-sm rounded-2xl bg-[var(--bg-panel)] p-5 text-[var(--text)] shadow-apple-modal hairline flex flex-col gap-3"
-			>
-				<div className="flex items-center justify-between pb-1 border-b border-[var(--border-divider)]">
-					<div className="flex items-center gap-2 font-semibold text-sm">
-						<FolderInput size={16} />
-						<span id="assign-workspace-title">
-							{sessionIds.length > 1
-								? `归入工作区（已选 ${sessionIds.length} 个会话）`
-								: "归入工作区"}
-						</span>
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="press-scale text-[var(--text-muted)] hover:text-[var(--text)] p-1 rounded-md"
-						title="关闭"
-					>
-						<X size={15} />
-					</button>
-				</div>
+			<div className="flex flex-col gap-3 p-5 pt-4 text-[var(--text)]" onKeyDown={dialogKeyDown}>
 
 				<div className="max-h-64 overflow-y-auto space-y-1 pr-1">
 					{modeWorkspaces.map((ws, idx) => {
@@ -471,7 +433,7 @@ function AssignWorkspaceModal({
 					</button>
 				</div>
 			</div>
-		</div>
+		</Modal>
 	);
 }
 
@@ -551,45 +513,19 @@ function MoveToGroupModal({
 	};
 
 	return (
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget && !busy) onClose();
-			}}
+		<Modal
+			onClose={onClose}
+			title={
+				sessionIds.length > 1
+					? `移到分组（已选 ${sessionIds.length} 个会话）`
+					: "移到分组"
+			}
+			icon={<Tag size={14} />}
+			size="sm"
+			closeOnBackdrop={!busy}
+			closeOnEscape={!busy}
 		>
-			<div
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="move-to-group-title"
-				onKeyDown={(e) => {
-					e.stopPropagation();
-					if (e.key === "Escape" && !busy) {
-						claimEscape(e);
-						onClose();
-					}
-					handleTabTrap(e);
-				}}
-				className="w-full max-w-sm rounded-2xl bg-[var(--bg-panel)] p-5 text-[var(--text)] shadow-apple-modal hairline flex flex-col gap-3"
-			>
-				<div className="flex items-center justify-between pb-1 border-b border-[var(--border-divider)]">
-					<div className="flex items-center gap-2 font-semibold text-sm">
-						<Tag size={16} />
-						<span id="move-to-group-title">
-							{sessionIds.length > 1
-								? `移到分组（已选 ${sessionIds.length} 个会话）`
-								: "移到分组"}
-						</span>
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="press-scale text-[var(--text-muted)] hover:text-[var(--text)] p-1 rounded-md"
-						title="关闭"
-					>
-						<X size={15} />
-					</button>
-				</div>
+			<div className="flex flex-col gap-3 p-5 pt-4 text-[var(--text)]" onKeyDown={dialogKeyDown}>
 
 				<div className="max-h-64 overflow-y-auto space-y-1 pr-1">
 					{modeGroups.map((g, idx) => {
@@ -637,7 +573,7 @@ function MoveToGroupModal({
 					</button>
 				</div>
 			</div>
-		</div>
+		</Modal>
 	);
 }
 
@@ -676,31 +612,15 @@ function TakeoverModal({
 	};
 
 	return (
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-md p-4"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget && !busy) onClose();
-			}}
+		<Modal
+			onClose={onClose}
+			title="接管外部会话"
+			icon={<ExternalLink size={14} className="text-purple-400" />}
+			size="sm"
+			closeOnBackdrop={!busy}
+			closeOnEscape={!busy}
 		>
-			<div
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="takeover-dialog-title"
-				onKeyDown={(e) => {
-					e.stopPropagation();
-					if (e.key === "Escape" && !busy) {
-						claimEscape(e);
-						onClose();
-					}
-					handleTabTrap(e);
-				}}
-				className="w-full max-w-sm rounded-2xl bg-[var(--bg-panel)] p-5 text-[var(--text)] shadow-apple-modal hairline flex flex-col gap-3"
-			>
-				<div className="flex items-center gap-2 pb-1 text-purple-400 font-semibold text-sm">
-					<ExternalLink size={18} />
-					<span id="takeover-dialog-title">接管外部会话</span>
-				</div>
+			<div className="flex flex-col gap-3 p-5 pt-4 text-[var(--text)]" onKeyDown={dialogKeyDown}>
 				<p className="text-xs text-[var(--text-muted)] leading-relaxed">
 					接管外部会话：
 					<strong className="text-rose-400 font-medium">
@@ -729,7 +649,7 @@ function TakeoverModal({
 					</button>
 				</div>
 			</div>
-		</div>
+		</Modal>
 	);
 }
 

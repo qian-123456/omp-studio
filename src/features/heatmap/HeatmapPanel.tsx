@@ -12,6 +12,7 @@
 import clsx from "clsx";
 import { AlertCircle, AlertTriangle, CheckCircle, ChevronDown, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { EmptyState } from "../../components/EmptyState";
 import { Segmented } from "../../components/Segmented";
 import type { SubagentSummary, TranscriptItem } from "../../lib/contracts";
 import { relativeTime } from "../../lib/format";
@@ -215,13 +216,9 @@ export function HeatmapPanel() {
 			{mainTab === "session" ? (
 				<div className="flex-1 min-w-0 p-3 space-y-3">
 					{!selectedId ? (
-						<div className="p-6 text-center text-xs text-neutral-500">
-							选择一个会话查看 Token 用量
-						</div>
+						<EmptyState title="选择一个会话查看 Token 用量" />
 					) : items.length === 0 ? (
-						<div className="p-6 text-center text-xs text-neutral-500">
-							暂无消息记录
-						</div>
+						<EmptyState title="暂无消息记录" />
 					) : (
 						<>
 							{/* 1. Agent Selection Pills (Main vs Subagents) */}

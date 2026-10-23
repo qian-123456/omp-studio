@@ -6,11 +6,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import {
 	BookOpen,
-	Check,
 	ChevronLeft,
 	ChevronRight,
 	Clock,
-	Copy,
 	List,
 	Search,
 	X,
@@ -20,6 +18,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
+import { CopyButton } from "../../components/CopyButton";
 import { errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
 import { HIGHLIGHT_LANGUAGES } from "../chat/markdownAssets";
@@ -120,19 +119,7 @@ function GuideImage({ src, alt }: { src?: string; alt?: string }) {
 	);
 }
 function CodeBlock({ children }: { children?: React.ReactNode }) {
-	const [copied, setCopied] = useState(false);
 	const textRef = useRef<HTMLPreElement>(null);
-	const onCopy = async () => {
-		const text = textRef.current?.innerText ?? "";
-		if (!text) return;
-		try {
-			await navigator.clipboard.writeText(text);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
-		} catch {
-			// ignore
-		}
-	};
 	return (
 		<div className="group relative my-3">
 			<pre
@@ -141,15 +128,13 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
 			>
 				{children}
 			</pre>
-			<button
-				type="button"
-				onClick={onCopy}
+			<CopyButton
+				text={() => textRef.current?.innerText ?? ""}
+				size={14}
 				title="复制代码"
-				aria-label="复制代码"
+				resetMs={2000}
 				className="absolute right-2 top-2 rounded border border-[var(--line)] bg-[var(--well-bg)] px-1.5 py-0.5 text-xs text-[var(--text-60)] opacity-0 transition hover:bg-[var(--bg-hover)] hover:text-[var(--text)] group-hover:opacity-100"
-			>
-				{copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-			</button>
+			/>
 		</div>
 	);
 }

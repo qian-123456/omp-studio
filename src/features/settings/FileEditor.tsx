@@ -12,8 +12,7 @@ import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import clsx from "clsx";
 import { FilePlus2, FolderOpen, RefreshCw, RotateCcw, Save } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Markdown } from "../../components/Markdown";
 import { Segmented } from "../../components/Segmented";
 import { confirmDialog } from "../../lib/dialogs";
 import { useShortPath } from "../../lib/hooks";
@@ -350,7 +349,7 @@ export function FileEditor({
 					) : (
 						<div className="max-h-[60vh] min-h-[240px] overflow-auto px-5 py-3 text-xs leading-6 text-[var(--text-muted)] [&_a]:text-[var(--accent)] [&_code]:rounded [&_code]:bg-[var(--well-bg)] [&_code]:px-1 [&_code]:font-mono [&_h1]:mt-3 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-[var(--text)] [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-[var(--text)] [&_h3]:mt-2 [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-[var(--well-bg)] [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5">
 							{draft.trim() ? (
-								<ReactMarkdown remarkPlugins={[remarkGfm]}>{draft}</ReactMarkdown>
+								<Markdown text={draft} />
 							) : (
 								<p className="text-[var(--text-dim)]">空文件</p>
 							)}

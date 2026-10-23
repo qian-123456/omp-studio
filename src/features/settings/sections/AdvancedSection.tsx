@@ -12,7 +12,8 @@ import { DEFAULT_SETTINGS } from "../store";
 import { useAppSettings } from "../useAppSettings";
 import { validateSettingsShape } from "../validation";
 import { OmpSections } from "../OmpSettingsList";
-import { Button, Chip, CommitInput, Notice, SectionHeader, SettingRow, SettingsCard } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, CommitInput, SectionHeader, SettingRow, SettingsCard } from "../ui";
 
 export function AdvancedSection() {
 	const { settings, save } = useAppSettings();
@@ -205,8 +206,8 @@ export function AdvancedSection() {
 					}
 					control={
 						<div className="flex flex-wrap items-center gap-2">
-							<Button icon={FileText} disabled={!info?.configExists} onClick={() => info && void reveal(info.configPath, "配置文件")}>在访达中显示 config.yml</Button>
-							<Button icon={FolderOpen} disabled={!info} onClick={() => info && void reveal(info.agentDir, "目录")}>打开 omp 数据目录</Button>
+							<Button icon={FileText} disabled={!info?.configExists} title={!info?.configExists ? "配置文件尚未创建" : undefined} onClick={() => info && void reveal(info.configPath, "配置文件")}>在访达中显示 config.yml</Button>
+							<Button icon={FolderOpen} disabled={!info} title={!info ? "尚未读取到 omp 数据目录" : undefined} onClick={() => info && void reveal(info.agentDir, "目录")}>打开 omp 数据目录</Button>
 							<Button
 								icon={RefreshCw}
 								loading={ompLoading || infoLoading}

@@ -21,7 +21,7 @@ import { isDesktopRelevant, ompSearchTerms, ompSectionFor } from "./ompPlacement
 import { SECTION_COMPONENTS } from "./sections";
 import { SettingsNavContext, type SettingsNavValue } from "./settingsNav";
 import { useSettings } from "./store";
-import { Notice } from "./ui";
+import { Notice } from "../../components/Notice";
 
 interface SettingsPageProps {
 	onClose?: () => void;

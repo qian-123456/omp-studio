@@ -1,3 +1,4 @@
+import { toast } from "../lib/toast";
 import { Check, ImageOff, Moon, Pipette, Sun, Trash2, Upload } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
 import { saveClipboardImage } from "../lib/ipc";
@@ -142,6 +143,7 @@ export function WallpaperPicker() {
 			setWallpaper({ enabled: true, id, url: dataUrl, accentColor: palette.soft, variant: "soft", appearance: app });
 		} catch (err) {
 			console.error("upload wallpaper failed", err);
+			toast.error("壁纸图片解析失败，请尝试其他图片");
 			setUploading(false);
 		}
 	};

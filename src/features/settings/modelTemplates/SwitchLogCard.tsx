@@ -7,9 +7,8 @@
  * an 「撤销」 button that restores the previous role values.
  */
 import { ChevronDown, History, RotateCcw, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Z_LAYER } from "../../../components/FloatingLayer";
+import { useMemo, useState } from "react";
+import { Modal } from "../../../components/Modal";
 import type {
 	ModelSwitchLogEntry,
 	SessionSwitchResult,
@@ -17,12 +16,11 @@ import type {
 	TemplateStoreSnapshot,
 } from "../../../lib/contracts";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
-import { claimEscape } from "../../../lib/escapeClaim";
-import { absoluteTime, relativeTime } from "../../../lib/format";
-import { isComposing } from "../../../lib/hooks";
+import { absoluteTime, timeAgo } from "../../../lib/format";
 import { modelSwitchUndo } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
-import { Button, Chip, IconButton, Notice, SettingsCard, type ChipTone } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, IconButton, SettingsCard, type ChipTone } from "../ui";
 import { inScope, statusLabel, statusTone } from "./logic";
 import { useModelTemplatesStore } from "./store";
 
@@ -79,9 +77,8 @@ function LogRow({
 }) {
 	const [open, setOpen] = useState(false);
 	const undoable = UNDOABLE[entry.status] === true && entry.undoneAt === null;
-	// `relativeTime` already returns 「刚刚」, so only real intervals take a 前 suffix.
-	const createdAgo = relativeTime(entry.createdAt);
-	const undoneAgo = entry.undoneAt ? relativeTime(entry.undoneAt) : "";
+	const createdAgo = timeAgo(entry.createdAt);
+	const undoneAgo = entry.undoneAt ? timeAgo(entry.undoneAt) : "";
 
 	return (
 		<div>
@@ -92,7 +89,7 @@ function LogRow({
 						<span className="break-words text-[13px] font-medium text-[var(--text)]">{entry.templateName}</span>
 						{entry.ruleName && <Chip tone="neutral">规则：{entry.ruleName}</Chip>}
 						<span className="text-[11px] text-[var(--text-dim)]" title={absoluteTime(entry.createdAt)}>
-							{createdAgo === "刚刚" ? createdAgo : `${createdAgo}前`}
+							{createdAgo}
 						</span>
 					</div>
 					{entry.reason && (
@@ -102,7 +99,7 @@ function LogRow({
 					)}
 					{entry.undoneAt && (
 						<div className="mt-0.5 text-[11px] leading-4 text-[var(--text-dim)]">
-							已于 {undoneAgo === "刚刚" ? "刚刚" : `${undoneAgo}前`}撤销
+							已于 {undoneAgo}撤销
 						</div>
 					)}
 				</div>
@@ -159,12 +156,12 @@ function CompactRow({
 	onUndo: () => void;
 }) {
 	const undoable = UNDOABLE[entry.status] === true && entry.undoneAt === null;
-	const createdAgo = relativeTime(entry.createdAt);
+	const createdAgo = timeAgo(entry.createdAt);
 	return (
 		<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
 			<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
 				<span className="text-[11px] text-[var(--text-dim)]" title={absoluteTime(entry.createdAt)}>
-					{createdAgo === "刚刚" ? createdAgo : `${createdAgo}前`}
+					{createdAgo}
 				</span>
 				<span className="break-words text-[13px] font-medium text-[var(--text)]">{entry.templateName}</span>
 				<Chip tone="neutral">{entry.ruleName ? `规则：${entry.ruleName}` : "手动"}</Chip>
@@ -193,34 +190,18 @@ function LogModal({
 	onUndo: (entry: ModelSwitchLogEntry) => void;
 	onClose: () => void;
 }) {
-	const dialogRef = useRef<HTMLDivElement>(null);
-	useEffect(() => {
-		dialogRef.current?.focus();
-	}, []);
-
-	return createPortal(
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-6 backdrop-blur-sm"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onClose();
-			}}
+	return (
+		<Modal
+			onClose={onClose}
+			size="none"
+			ariaLabel="全部切换记录"
+			className="h-[min(80vh,680px)] w-[720px] max-w-[calc(100vw-2rem)] overflow-hidden p-4 text-[var(--text)]"
 		>
 			<div
-				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="switch-log-modal-title"
-				tabIndex={-1}
-				className="flex h-[min(80vh,680px)] w-[720px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-[var(--bg-panel)] p-4 text-[var(--text)] shadow-apple-modal hairline outline-none"
-				onMouseDown={(e) => e.stopPropagation()}
+				className="flex min-h-0 flex-1 flex-col"
 				onKeyDown={(e) => {
-					e.stopPropagation();
-					if (isComposing(e)) return;
-					if (e.key === "Escape") {
-						claimEscape(e);
-						onClose();
-					}
+					// Escape must reach Modal's window listener; other keys stay inside the dialog.
+					if (e.key !== "Escape") e.stopPropagation();
 				}}
 			>
 				<div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-divider)] pb-3">
@@ -247,8 +228,7 @@ function LogModal({
 					))}
 				</div>
 			</div>
-		</div>,
-		document.body,
+		</Modal>
 	);
 }
 

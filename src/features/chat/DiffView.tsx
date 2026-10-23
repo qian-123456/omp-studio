@@ -4,6 +4,7 @@
 import clsx from "clsx";
 import { Columns2, MessageSquarePlus, Rows } from "lucide-react";
 import React, { useMemo, useRef, useState } from "react";
+import { buildSplitRows } from "../../lib/diff";
 import { isComposing } from "../../lib/hooks";
 import { useComposer } from "../../stores/composer";
 import { claimEscape } from "../../lib/escapeClaim";
@@ -165,65 +166,6 @@ export function renderHighlightedCode(
 	return parts;
 }
 
-export interface SplitCell {
-	line: number | null;
-	text: string;
-	kind: "ctx" | "add" | "del";
-	origIdx: number;
-}
-
-export interface SplitRow {
-	left: SplitCell | null;
-	right: SplitCell | null;
-}
-
-export function buildSplitRows(lines: DiffLine[]): SplitRow[] {
-	const rows: SplitRow[] = [];
-	let i = 0;
-	while (i < lines.length) {
-		const cur = lines[i];
-		if (cur.kind === "ctx") {
-			rows.push({
-				left: { line: cur.line, text: cur.text, kind: "ctx", origIdx: i },
-				right: { line: cur.line, text: cur.text, kind: "ctx", origIdx: i },
-			});
-			i++;
-		} else {
-			const dels: SplitCell[] = [];
-			const adds: SplitCell[] = [];
-			while (
-				i < lines.length &&
-				(lines[i].kind === "del" || lines[i].kind === "add")
-			) {
-				if (lines[i].kind === "del") {
-					dels.push({
-						line: lines[i].line,
-						text: lines[i].text,
-						kind: "del",
-						origIdx: i,
-					});
-				} else {
-					adds.push({
-						line: lines[i].line,
-						text: lines[i].text,
-						kind: "add",
-						origIdx: i,
-					});
-				}
-				i++;
-			}
-			const count = Math.max(dels.length, adds.length);
-			for (let k = 0; k < count; k++) {
-				rows.push({
-					left: dels[k] ?? null,
-					right: adds[k] ?? null,
-				});
-			}
-		}
-	}
-	return rows;
-}
-
 /** Rows rendered before the 「展开剩余 N 行」 control; keeps huge diffs cheap. */
 const DIFF_ROW_CAP = 200;
 
@@ -307,6 +249,13 @@ export function DiffView({
 		setComment("");
 		setCommenting(false);
 	};
+
+	// Tokenize once per visible line set: selection / comment typing re-render
+	// this component but must not re-run the regex over every line.
+	const highlighted = useMemo(
+		() => visibleLines.map((l) => renderHighlightedCode(l.text, l.kind)),
+		[visibleLines],
+	);
 
 	const splitRows = useMemo(
 		() => (viewMode === "split" ? buildSplitRows(visibleLines) : []),
@@ -405,7 +354,7 @@ export function DiffView({
 								</span>
 							</div>
 							<div className="min-w-0 flex-1 select-text whitespace-pre-wrap break-all px-1.5 py-0.5">
-								{renderHighlightedCode(l.text, l.kind)}
+								{highlighted[i]}
 							</div>
 						</div>
 					))}
@@ -442,10 +391,7 @@ export function DiffView({
 												</span>
 											</div>
 											<div className="min-w-0 flex-1 select-text whitespace-pre-wrap break-all px-1">
-												{renderHighlightedCode(
-													row.left.text,
-													row.left.kind,
-												)}
+												{highlighted[row.left.origIdx]}
 											</div>
 										</>
 									) : (
@@ -480,10 +426,7 @@ export function DiffView({
 												</span>
 											</div>
 											<div className="min-w-0 flex-1 select-text whitespace-pre-wrap break-all px-1">
-												{renderHighlightedCode(
-													row.right.text,
-													row.right.kind,
-												)}
+												{highlighted[row.right.origIdx]}
 											</div>
 										</>
 									) : (

@@ -11,7 +11,7 @@ import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useUi } from "../../stores/ui";
 import type { TranscriptItem } from "../../lib/contracts";
-import { Markdown } from "./markdown";
+import { Markdown } from "../../components/Markdown";
 import { sendPrompt } from "./send";
 
 /** Last transcript item id at the moment plan mode was switched on, per

@@ -8,11 +8,11 @@ import {
 	Stethoscope,
 	X,
 } from "lucide-react";
-import { Z_LAYER } from "../../components/FloatingLayer";
 import { isComposing } from "../../lib/hooks";
 import { useCallback, useEffect, useState } from "react";
+import { Modal } from "../../components/Modal";
+import { Notice } from "../../components/Notice";
 import { errMsg } from "../../lib/dialogs";
-import { useEscapeKey } from "../../lib/hooks";
 import {
 	diagnoseBuildPrompt,
 	dispatchPrompt,
@@ -47,7 +47,6 @@ export function DiagnoseDialog() {
 	const [error, setError] = useState<string | null>(null);
 
 	const targetSession = targetSessionId ? sessions[targetSessionId] : undefined;
-	useEscapeKey(closeModal, isVisible);
 
 	const fetchPrompt = useCallback(() => {
 		if (!targetSessionId) return;
@@ -120,19 +119,14 @@ export function DiagnoseDialog() {
 	);
 
 	return (
-		<div
-			style={{ zIndex: Z_LAYER.modal }}
-			className="fixed inset-0 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) closeModal();
-			}}
+		<Modal
+			onClose={closeModal}
+			size="none"
+			ariaLabel="诊断异常会话"
+			className="w-full max-w-xl max-h-[min(90vh,720px)] p-6 text-[var(--text)]"
 		>
 			<div
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="diagnose-dialog-title"
-				className="w-full max-w-xl max-h-[min(90vh,720px)] flex flex-col rounded-2xl bg-[var(--bg-panel)] p-6 shadow-apple-modal hairline text-[var(--text)]"
-				onClick={(e) => e.stopPropagation()}
+				className="flex min-h-0 flex-1 flex-col"
 				onKeyDown={(e) => {
 					if (isComposing(e)) return;
 					if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -189,17 +183,23 @@ export function DiagnoseDialog() {
 				<div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-4">
 
 				{error && (
-					<div className="mb-4 flex items-center justify-between rounded-lg border border-rose-800/50 bg-rose-950/20 p-2.5 text-xs text-rose-300">
-						<span>{error}</span>
-						<button
-							type="button"
-							onClick={fetchPrompt}
-							disabled={loadingPrompt}
-							className="ml-2 inline-flex items-center gap-1 rounded bg-rose-900/40 px-2 py-1 text-xs text-rose-200 hover:bg-rose-900/60 disabled:opacity-40"
+					<div className="mb-4">
+						<Notice
+							tone="danger"
+							action={
+								<button
+									type="button"
+									onClick={fetchPrompt}
+									disabled={loadingPrompt}
+									className="inline-flex items-center gap-1 rounded bg-[var(--bg-hover)] px-2 py-1 text-xs text-neutral-200 hover:bg-[var(--bg-active-fill)] disabled:opacity-40"
+								>
+									<RefreshCw className={`h-3 w-3 ${loadingPrompt ? "animate-spin" : ""}`} />
+									<span>重试</span>
+								</button>
+							}
 						>
-							<RefreshCw className={`h-3 w-3 ${loadingPrompt ? "animate-spin" : ""}`} />
-							<span>重试</span>
-						</button>
+							<span className="select-text break-words">{error}</span>
+						</Notice>
 					</div>
 				)}
 
@@ -214,7 +214,7 @@ export function DiagnoseDialog() {
 						</span>
 					</div>
 					{targetSession?.cwd && (
-						<div className="mt-1 text-[11px] text-neutral-500 truncate">
+						<div className="mt-1 break-all text-[11px] text-neutral-500" title={targetSession.cwd}>
 							工作目录: {targetSession.cwd}
 						</div>
 					)}
@@ -397,6 +397,6 @@ export function DiagnoseDialog() {
 					</button>
 				</div>
 			</div>
-		</div>
+		</Modal>
 	);
 }

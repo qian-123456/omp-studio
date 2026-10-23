@@ -18,7 +18,8 @@ import { toast } from "../../../lib/toast";
 import { formatTokenEstimate } from "../../../lib/tokenEstimate";
 import { FileEditor } from "../FileEditor";
 import { describeFileCommandError } from "../fileEditorLogic";
-import { Button, Chip, Notice, SettingRow, SettingsCard } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, SettingRow, SettingsCard } from "../ui";
 import { useSettingsProjectCwd } from "../useAppSettings";
 import {
 	defaultMemorySlug,

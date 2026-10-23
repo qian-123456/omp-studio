@@ -21,7 +21,8 @@ import { toast } from "../../../lib/toast";
 import { useModelOptions } from "../../../stores/modelCatalog";
 import { BUILTIN_ROLES } from "../modelRoles";
 import { Switch } from "../Switch";
-import { Button, Chip, IconButton, INPUT_CLASS, MODEL_PICKER_BUTTON_CLASS, Notice } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, IconButton, INPUT_CLASS, MODEL_PICKER_BUTTON_CLASS } from "../ui";
 import { GLOBAL_SCOPE } from "./logic";
 import { useModelTemplatesStore } from "./store";
 

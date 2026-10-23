@@ -18,6 +18,7 @@ import {
 import { useRef, useState } from "react";
 import clsx from "clsx";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { copyText } from "../lib/dialogs";
 import { rpcRestart, sessionExportHtml, sessionResumeCommand } from "../lib/ipc";
 import { toast } from "../lib/toast";
 
@@ -93,7 +94,7 @@ export function SessionOverflowMenu({
 		if (busy) return;
 		setBusy(true);
 		try {
-			await navigator.clipboard.writeText(await sessionResumeCommand(sessionId));
+			await copyText(await sessionResumeCommand(sessionId));
 			toast.success("已复制终端续接命令");
 			setOpen(false);
 		} catch (err) {

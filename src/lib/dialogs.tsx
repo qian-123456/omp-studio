@@ -8,7 +8,7 @@
  */
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { X } from "lucide-react";
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Z_LAYER } from "../components/FloatingLayer";
 import { isComposing, useEscapeKey } from "./hooks";
@@ -127,33 +127,42 @@ function ConfirmDialogView({
 	);
 }
 
-function showConfirmDialog(
-	message: string,
-	opts: { title: string; danger: boolean; okLabel: string; cancelLabel: string },
-): Promise<boolean> {
-	return new Promise<boolean>((resolve) => {
+/**
+ * Mounts an imperative prompt dialog in its own React root and resolves with
+ * the first value passed to `resolve`; the root and host element are removed
+ * afterwards. Later `resolve` calls are ignored.
+ */
+export function mountPromptDialog<T>(render: (resolve: (value: T) => void) => ReactNode): Promise<T> {
+	return new Promise<T>((resolve) => {
 		const host = document.createElement("div");
 		document.body.appendChild(host);
 		const root = createRoot(host);
 		let settled = false;
-		const done = (ok: boolean) => {
+		const done = (value: T) => {
 			if (settled) return;
 			settled = true;
 			root.unmount();
 			host.remove();
-			resolve(ok);
+			resolve(value);
 		};
-		root.render(
-			<ConfirmDialogView
-				title={opts.title}
-				message={message}
-				okLabel={opts.okLabel}
-				cancelLabel={opts.cancelLabel}
-				danger={opts.danger}
-				onDone={done}
-			/>,
-		);
+		root.render(render(done));
 	});
+}
+
+function showConfirmDialog(
+	message: string,
+	opts: { title: string; danger: boolean; okLabel: string; cancelLabel: string },
+): Promise<boolean> {
+	return mountPromptDialog<boolean>((done) => (
+		<ConfirmDialogView
+			title={opts.title}
+			message={message}
+			okLabel={opts.okLabel}
+			cancelLabel={opts.cancelLabel}
+			danger={opts.danger}
+			onDone={done}
+		/>
+	));
 }
 
 let dialogQueue: Promise<unknown> = Promise.resolve();

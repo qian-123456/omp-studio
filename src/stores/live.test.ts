@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isFlowBusy, makeUserEcho, pruneRemovedSessions, queuedEchoIds, useLive } from "./live";
 import { useComposer } from "./composer";
+import { useHeldQueue } from "../features/chat/heldQueue";
 
 const SID = "s1";
 
@@ -874,6 +875,23 @@ describe("live retention", () => {
 		useLive.getState().reduceFrame({ sessionId: "c", frame: { type: "agent_start" } });
 		pruneRemovedSessions(["a", "c", "unknown"]);
 		expect(Object.keys(useLive.getState().sessions)).toEqual(["b"]);
+	});
+
+	it("pruneRemovedSessions clears the held queue (memory and localStorage)", () => {
+		const store = new Map<string, string>();
+		vi.stubGlobal("localStorage", {
+			getItem: (k: string) => store.get(k) ?? null,
+			setItem: (k: string, v: string) => void store.set(k, v),
+			removeItem: (k: string) => void store.delete(k),
+		});
+		useHeldQueue.getState().push("gone", "queued text");
+		useHeldQueue.getState().push("kept", "other");
+		expect(store.has("ompws-held:gone")).toBe(true);
+		pruneRemovedSessions(["gone"]);
+		expect(useHeldQueue.getState().queues["gone"]).toBeUndefined();
+		expect(store.has("ompws-held:gone")).toBe(false);
+		expect(useHeldQueue.getState().queues["kept"]).toHaveLength(1);
+		vi.unstubAllGlobals();
 	});
 });
 

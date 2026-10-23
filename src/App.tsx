@@ -115,7 +115,7 @@ function MainCenterView({ activeView }: { activeView: CenterView }) {
 	switch (activeView) {
 		case "session":
 			view = selectedSessionId ? (
-				<SessionView sessionId={selectedSessionId} />
+				<SessionView key={selectedSessionId} sessionId={selectedSessionId} />
 			) : hasForkDraft ? (
 				<ForkDraftView />
 			) : hasPending ? (

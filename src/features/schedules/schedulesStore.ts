@@ -46,6 +46,8 @@ export interface SchedulesState {
 	schedules: Schedule[];
 	runs: Record<string, ScheduleRun[]>;
 	loading: boolean;
+	/** Last load failure (full text); null when the last load succeeded. */
+	loadError: string | null;
 	runningScheduleIds: Record<string, boolean>;
 	/** Run ids the user has already seen (opened history/session for). */
 	seenRuns: Record<string, true>;
@@ -73,6 +75,7 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 	schedules: [],
 	runs: {},
 	loading: false,
+	loadError: null,
 	runningScheduleIds: {},
 	seenRuns: readSeenRuns(),
 	isEditorOpen: false,
@@ -95,10 +98,10 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 			}
 
 			const list = await listSchedules();
-			set({ schedules: list, loading: false });
+			set({ schedules: list, loading: false, loadError: null });
 		} catch (e) {
 			console.error("Failed to load schedules:", e);
-			set({ loading: false });
+			set({ loading: false, loadError: e instanceof Error ? e.message : String(e) });
 		}
 	},
 
@@ -153,9 +156,10 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 	removeSchedule: async (id: string) => {
 		try {
 			await ipcDeleteSchedule(id);
-			set((state) => ({
-				schedules: state.schedules.filter((s) => s.id !== id),
-			}));
+			set((state) => {
+				const { [id]: _dropped, ...runs } = state.runs;
+				return { schedules: state.schedules.filter((s) => s.id !== id), runs };
+			});
 			toast.success("定时任务已删除");
 		} catch (e) {
 			toast.error(`删除失败：${e}`);

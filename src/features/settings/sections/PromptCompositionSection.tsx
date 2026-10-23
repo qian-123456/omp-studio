@@ -11,7 +11,8 @@ import { useComposer } from "../../../stores/composer";
 import { usePromptComposition } from "../../../stores/promptComposition";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
-import { Button, Chip, Notice, SectionHeader, SettingsCard } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, SectionHeader, SettingsCard } from "../ui";
 import { OmpSections } from "../OmpSettingsList";
 import {
 	buildOptimizePrompt,
@@ -135,7 +136,7 @@ function HintRow({ hint, onLocate }: { hint: PromptHint; onLocate: (ids: string[
 			</div>
 			{hint.quote && (
 				<div>
-					<button type="button" onClick={() => setQuoteOpen((v) => !v)} className="text-[11px] text-[var(--accent)] hover:underline">
+					<button type="button" onClick={() => setQuoteOpen((v) => !v)} className="rounded-md border border-[var(--line)] bg-[var(--well-bg)] px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors hover:bg-[var(--bg-hover)] text-[var(--accent)]">
 						{quoteOpen ? "收起重复内容" : "查看重复内容"}
 					</button>
 					{quoteOpen && (

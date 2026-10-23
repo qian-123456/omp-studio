@@ -21,7 +21,8 @@ import { BUILTIN_ROLES, asRecord, asStringList, customRoles, parseChain } from "
 import { FallbackChainEditor } from "./FallbackChainEditor";
 import { FallbackSwitchesCard, UsageAwareCard } from "./FallbackSwitchesCard";
 import { ModelRulesSection } from "./ModelRulesSection";
-import { Button, Chip, IconButton, Notice, SettingsCard } from "./ui";
+import { Notice } from "../../components/Notice";
+import { Button, Chip, IconButton, SettingsCard } from "./ui";
 import { useOmpConfigStore } from "./ompConfigStore";
 
 const NO_MODELS: ModelOption[] = [];

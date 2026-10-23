@@ -7,6 +7,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, ChevronDown, Folder, GitBranch, Loader2, Plus } from "lucide-react";
+import { isComposing } from "../../lib/hooks";
 import { StartGlow, StartHero } from "../../components/StartHero";
 import { gitBadge } from "../../lib/ipc";
 import { usePendingSession } from "./pendingSession";
@@ -91,7 +92,7 @@ export function PendingSessionView() {
 									if (
 										e.key === "Enter" &&
 										!e.shiftKey &&
-										!e.nativeEvent.isComposing
+										!isComposing(e)
 									) {
 										e.preventDefault();
 										submit();

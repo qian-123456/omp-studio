@@ -28,6 +28,7 @@ vi.mock("../../stores/live", () => ({
 			selector({ sessions: {}, scrollToItem: () => {} }),
 		{ getState: () => ({ sessions: {}, addUserEcho: h.addUserEcho }) },
 	),
+	holdTranscript: () => () => {},
 }));
 vi.mock("../../stores/modelCatalog", () => ({
 	useModelOptions: () => null,

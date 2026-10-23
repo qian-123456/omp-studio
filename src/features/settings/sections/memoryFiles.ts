@@ -1,5 +1,6 @@
 /** Pure helpers for the 记忆文件 editor (omp memory dir: ~/.omp/agent/memories/<slug>/). */
 
+import { formatBytes } from "../../../lib/format";
 import type { MemoryFileInfo } from "../../../lib/ipc";
 
 /** omp's per-project memory dir name: `--` + path with separators → `-` + `--`. */
@@ -137,6 +138,5 @@ export function previewText(text: string, maxLines = 6): TextPreview {
 
 /** UTF-8 byte size of `text` in KB/B, e.g. 「2.3 KB」. */
 export function formatTextSize(text: string): string {
-	const bytes = new TextEncoder().encode(text).length;
-	return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+	return formatBytes(new TextEncoder().encode(text).length);
 }

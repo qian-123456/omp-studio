@@ -2,6 +2,7 @@
 import { ArrowUpCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Loader2, RefreshCw, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../../../lib/dialogs";
+import { timeAgo } from "../../../lib/format";
 import { sessionDisplayName } from "../../../lib/sessionName";
 import { toast } from "../../../lib/toast";
 import { ompVersionLabel, useOmpUpdate } from "../../../stores/ompUpdate";
@@ -24,14 +25,6 @@ import {
 function nameOf(id: string): string {
 	const meta = useSessions.getState().sessions[id];
 	return meta ? sessionDisplayName(meta) : id;
-}
-
-function formatChecked(at: number): string {
-	const mins = Math.floor((Date.now() - at) / 60_000);
-	if (mins < 1) return "刚刚";
-	if (mins < 60) return `${mins} 分钟前`;
-	if (mins < 24 * 60) return `${Math.floor(mins / 60)} 小时前`;
-	return new Date(at).toLocaleString();
 }
 
 export function AboutSection() {
@@ -108,6 +101,7 @@ export function AboutSection() {
 				<Button
 					icon={RotateCw}
 					disabled={!info?.found && status?.updateAvailable}
+					title={!info?.found && status?.updateAvailable ? "未在 PATH 中找到 omp 命令行" : undefined}
 					onClick={() => void (status?.updateAvailable ? handleUpdate() : check())}
 				>
 					重试
@@ -117,7 +111,7 @@ export function AboutSection() {
 	} else if (status?.updateAvailable) {
 		latestHint = <Chip tone="accent" icon={ArrowUpCircle}>有新版本 {status.latest}</Chip>;
 		latestControl = (
-			<Button variant="primary" icon={ArrowUpCircle} disabled={!info?.found} onClick={() => void handleUpdate()}>
+			<Button variant="primary" icon={ArrowUpCircle} disabled={!info?.found} title={!info?.found ? "未在 PATH 中找到 omp 命令行" : undefined} onClick={() => void handleUpdate()}>
 				更新到 {status.latest}
 			</Button>
 		);
@@ -125,7 +119,7 @@ export function AboutSection() {
 		latestHint = (
 			<span className="inline-flex items-center gap-2">
 				<Chip tone="success" icon={CheckCircle2}>已是最新版本</Chip>
-				{lastCheckedAt ? <span className="text-[11px] text-[var(--text-dim)]">上次检查 {formatChecked(lastCheckedAt)}</span> : null}
+				{lastCheckedAt ? <span className="text-[11px] text-[var(--text-dim)]">上次检查 {timeAgo(lastCheckedAt)}</span> : null}
 			</span>
 		);
 		latestControl = (

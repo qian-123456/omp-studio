@@ -10,9 +10,10 @@
  * a probe result opens in its own full-width, wrapped, collapsible area under
  * the row, so the columns above never shift.
  */
-import { AlertTriangle, ArrowRightLeft, ChevronDown, ChevronRight, Loader2, PlayCircle, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, ChevronDown, ChevronRight, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { NativeSelect } from "../../../components/NativeSelect";
+import { SearchInput } from "../../../components/SearchInput";
 import type { ModelProbeResult, ModelUsageScan } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
 import { modelProbe } from "../../../lib/ipc";
@@ -293,28 +294,15 @@ export function ModelReplaceOverview({
 			</div>
 
 			<div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-				<label className="relative min-w-48 flex-1">
-					<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-500" />
-					<input
-						type="text"
-						value={query}
-						onChange={(e) => onQueryChange(e.target.value)}
-						placeholder="搜索模型名、供应商或位置"
-						aria-label="搜索模型引用"
-						className="w-full rounded-lg hairline bg-[var(--bg-active-fill)] py-1.5 pl-8 pr-8 text-xs text-[var(--text)] placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)]"
-					/>
-					{query !== "" && (
-						<button
-							type="button"
-							onClick={() => onQueryChange("")}
-							aria-label="清除搜索"
-							title="清除搜索"
-							className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-neutral-500 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
-						>
-							<X className="h-3 w-3" />
-						</button>
-					)}
-				</label>
+				<SearchInput
+					className="min-w-48 flex-1"
+					value={query}
+					onChange={onQueryChange}
+					placeholder="搜索模型名、供应商或位置"
+					ariaLabel="搜索模型引用"
+					iconSize={12}
+					inputClassName="w-full rounded-lg hairline bg-[var(--bg-active-fill)] py-1.5 pl-8 pr-8 text-xs text-[var(--text)] placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)]"
+				/>
 				<span className="shrink-0 text-[11px] text-neutral-500">范围</span>
 				<NativeSelect
 					aria-label="替换范围"

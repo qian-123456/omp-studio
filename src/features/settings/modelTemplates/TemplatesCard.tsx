@@ -18,7 +18,8 @@ import type {
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
 import { modelTemplateDelete } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
-import { Button, Chip, EmptyState, SettingsCard, type ChipTone } from "../ui";
+import { EmptyState } from "../../../components/EmptyState";
+import { Button, Chip, SettingsCard, type ChipTone } from "../ui";
 import {
 	currentForScope,
 	driftSummary,

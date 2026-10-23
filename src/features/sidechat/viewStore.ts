@@ -9,6 +9,7 @@
 
 import { create } from "zustand";
 import { useUi } from "../../stores/ui";
+import { holdTranscript } from "../../stores/live";
 
 const STORAGE_KEY = "omp_sidechat_open_child";
 const TABS_STORAGE_KEY = "omp_sidechat_open_tabs";
@@ -115,6 +116,8 @@ export interface SideChatViewState {
 	openChild: Record<string, string>;
 	/** Tabs keyed by parent sessionId, display order (persisted). */
 	openTabs: Record<string, string[]>;
+	/** Last-used time per parent sessionId, ms (persisted). */
+	usedAt: Record<string, number>;
 	/** First message of a blank tab, shown as a pending bubble until it is bound (not persisted). */
 	pending: Record<string, string>;
 	/** Show tab `id` (opening it); `null` clears the active tab. */
@@ -126,21 +129,112 @@ export interface SideChatViewState {
 	setPending(blankId: string, text: string | null): void;
 	/** Close one tab (the conversation itself is kept). Closing the last one closes the panel group. */
 	closeTab(parentId: string, id: string): void;
+	/** Drop view memory for removed sessions (as parent or as child tab). */
+	pruneSessions(ids: readonly string[]): void;
 }
 
-function initialState(): Pick<SideChatViewState, "openChild" | "openTabs"> {
+/** Per-parent last-used timestamps (ms). */
+const USED_STORAGE_KEY = "omp_sidechat_used_at";
+/** Tab memory of a parent unused this long is forgotten. */
+export const SIDECHAT_MEMORY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function loadUsed(): Record<string, number> {
+	try {
+		if (typeof localStorage === "undefined") return {};
+		const raw = localStorage.getItem(USED_STORAGE_KEY);
+		const parsed: unknown = raw ? JSON.parse(raw) : null;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		const out: Record<string, number> = {};
+		for (const [k, v] of Object.entries(parsed)) {
+			if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+/**
+ * Drop parents unused for 30 days; parents without a timestamp (data saved before
+ * timestamps existed) are stamped `now`. Returns fresh maps, input is untouched.
+ */
+export function expireSideChatMemory(
+	openChild: Record<string, string>,
+	openTabs: Record<string, string[]>,
+	usedAt: Record<string, number>,
+	now: number,
+): {
+	openChild: Record<string, string>;
+	openTabs: Record<string, string[]>;
+	usedAt: Record<string, number>;
+} {
+	const out = { openChild: { ...openChild }, openTabs: { ...openTabs }, usedAt: {} as Record<string, number> };
+	for (const parent of new Set([...Object.keys(openChild), ...Object.keys(openTabs)])) {
+		const t = usedAt[parent] ?? now;
+		if (now - t > SIDECHAT_MEMORY_TTL_MS) {
+			delete out.openChild[parent];
+			delete out.openTabs[parent];
+		} else out.usedAt[parent] = t;
+	}
+	return out;
+}
+
+function initialState(): Pick<SideChatViewState, "openChild" | "openTabs" | "usedAt"> {
 	const openChild = loadMap(STORAGE_KEY);
 	const openTabs = loadTabs(TABS_STORAGE_KEY);
 	// Migration: a stored active child always has a tab.
 	for (const [parent, child] of Object.entries(openChild)) {
 		openTabs[parent] = withTab(openTabs[parent] ?? [], child);
 	}
-	return { openChild, openTabs };
+	const kept = expireSideChatMemory(openChild, openTabs, loadUsed(), Date.now());
+	save(STORAGE_KEY, kept.openChild);
+	save(TABS_STORAGE_KEY, kept.openTabs);
+	save(USED_STORAGE_KEY, kept.usedAt);
+	return kept;
+}
+
+/** Persist all three maps, stamping `parentId` as used now and expiring stale parents. */
+function persist(
+	s: Pick<SideChatViewState, "openChild" | "openTabs" | "usedAt">,
+	parentId: string,
+): Pick<SideChatViewState, "openChild" | "openTabs" | "usedAt"> {
+	const now = Date.now();
+	const next = expireSideChatMemory(s.openChild, s.openTabs, { ...s.usedAt, [parentId]: now }, now);
+	save(STORAGE_KEY, next.openChild);
+	save(TABS_STORAGE_KEY, next.openTabs);
+	save(USED_STORAGE_KEY, next.usedAt);
+	return next;
 }
 
 export const useSideChatView = create<SideChatViewState>((set) => ({
 	...initialState(),
 	pending: {},
+	pruneSessions: (ids) =>
+		set((s) => {
+			const gone = new Set(ids);
+			const dead = (parent: string) => gone.has(parent);
+			const openChild: Record<string, string> = {};
+			const openTabs: Record<string, string[]> = {};
+			const usedAt: Record<string, number> = {};
+			let changed = false;
+			for (const [p, c] of Object.entries(s.openChild)) {
+				if (dead(p) || gone.has(c)) changed = true;
+				else openChild[p] = c;
+			}
+			for (const [p, tabs] of Object.entries(s.openTabs)) {
+				const kept = dead(p) ? [] : tabs.filter((t) => !gone.has(t));
+				if (kept.length !== tabs.length) changed = true;
+				if (kept.length > 0) openTabs[p] = kept;
+			}
+			for (const [p, t] of Object.entries(s.usedAt)) {
+				if (!dead(p)) usedAt[p] = t;
+			}
+			if (!changed) return s;
+			save(STORAGE_KEY, openChild);
+			save(TABS_STORAGE_KEY, openTabs);
+			save(USED_STORAGE_KEY, usedAt);
+			return { openChild, openTabs, usedAt };
+		}),
 	setOpenChild: (parentId, id) =>
 		set((s) => {
 			const openChild = { ...s.openChild };
@@ -151,9 +245,7 @@ export const useSideChatView = create<SideChatViewState>((set) => ({
 			} else {
 				delete openChild[parentId];
 			}
-			save(STORAGE_KEY, openChild);
-			save(TABS_STORAGE_KEY, openTabs);
-			return { openChild, openTabs };
+			return persist({ openChild, openTabs, usedAt: s.usedAt }, parentId);
 		}),
 	openBlankTab: (parentId) => {
 		const id = newBlankTabId();
@@ -166,9 +258,7 @@ export const useSideChatView = create<SideChatViewState>((set) => ({
 			const openTabs = { ...s.openTabs };
 			openTabs[parentId] = replaceTab(openTabs[parentId] ?? [], blankId, sessionId);
 			if (openChild[parentId] === blankId) openChild[parentId] = sessionId;
-			save(STORAGE_KEY, openChild);
-			save(TABS_STORAGE_KEY, openTabs);
-			return { openChild, openTabs };
+			return persist({ openChild, openTabs, usedAt: s.usedAt }, parentId);
 		}),
 	setPending: (blankId, text) =>
 		set((s) => {
@@ -192,10 +282,10 @@ export const useSideChatView = create<SideChatViewState>((set) => ({
 			if (r.tabs.length > 0) openTabs[parentId] = r.tabs;
 			else delete openTabs[parentId];
 			emptied = r.tabs.length === 0;
-			save(STORAGE_KEY, openChild);
-			save(TABS_STORAGE_KEY, openTabs);
-			return { openChild, openTabs };
+			return persist({ openChild, openTabs, usedAt: s.usedAt }, parentId);
 		});
+		// The closed conversation's transcript becomes evictable (LRU) instead of pinned forever.
+		if (!isBlankTab(id)) holdTranscript(id)();
 		// Last side-chat tab closed: leave the right panel normal.
 		if (emptied) useUi.getState().closeRightTab("sidechat");
 	},

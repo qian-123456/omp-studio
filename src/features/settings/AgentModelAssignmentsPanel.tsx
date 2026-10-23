@@ -22,7 +22,8 @@ import type { RoleScope } from "./modelRoleScope";
 import { asStringList } from "./modelRoles";
 import { type AssignmentContext, RoleAssignmentTable } from "./ModelRoleTables";
 import { useOmpConfigStore } from "./ompConfigStore";
-import { Button, IconButton, Notice, SectionHeader, SettingsCard } from "./ui";
+import { Notice } from "../../components/Notice";
+import { Button, IconButton, SectionHeader, SettingsCard } from "./ui";
 import { useSettingsScopeSessionId, useSettingsSessionModel } from "./useAppSettings";
 
 const EMPTY_LAYER: Record<string, string> = {};

@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { Markdown } from "../markdown";
+import { Markdown } from "../../../components/Markdown";
 import type { ShareEntry } from "./shareEntries";
 
 /** Fixed export width in CSS px; the PNG is rendered at 2x this. */

@@ -26,7 +26,7 @@ export function focusSidebarSearch(): void {
 	window.dispatchEvent(new Event(SIDEBAR_SEARCH_OPEN_EVENT));
 	const tryFocus = () => {
 		const input = document.querySelector<HTMLInputElement>(
-			'input[data-sidebar-search="true"]',
+			'[data-sidebar-search="true"] input',
 		);
 		if (input) {
 			input.focus();

@@ -54,7 +54,9 @@ import {
 	type ServerDraft,
 } from "./mcpDraft";
 import { OmpSections } from "./OmpSettingsList";
-import { Button, Chip, EmptyState, IconButton, Notice, SectionHeader, SettingsCard } from "./ui";
+import { EmptyState } from "../../components/EmptyState";
+import { Notice } from "../../components/Notice";
+import { Button, Chip, IconButton, SectionHeader, SettingsCard } from "./ui";
 import { Switch } from "./Switch";
 
 const FIELD_CLASS =

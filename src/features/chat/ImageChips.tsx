@@ -5,6 +5,7 @@ import { ImageOff, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getImageTokenPalette } from "./Composer";
 import { baseName } from "./fileAttach";
+import { formatBytes } from "../../lib/format";
 import { errMsg } from "../../lib/dialogs";
 import { validatePath } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
@@ -125,13 +126,6 @@ function fileKindOf(path: string): FileKind {
 	if (/^(zip|rar|7z|tar|gz|tgz)$/.test(ext)) return { label: "ZIP", bg: "#7A6A53" };
 	if (/^(md|txt|log)$/.test(ext)) return { label: "TXT", bg: "#6B7280" };
 	return { label: ext ? ext.slice(0, 4).toUpperCase() : "FILE", bg: "#6B7280" };
-}
-
-function formatBytes(n: number): string {
-	if (n < 1024) return `${n}B`;
-	if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
-	if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)}MB`;
-	return `${(n / 1024 / 1024 / 1024).toFixed(1)}GB`;
 }
 
 /** Non-image attachment card (📎#N): file name (two lines max) + size on the

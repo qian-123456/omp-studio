@@ -1,7 +1,7 @@
-import { Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import { Modal } from "../../components/Modal";
+import { SearchInput } from "../../components/SearchInput";
 import type { DiscoveredModel } from "../../lib/contracts";
-import { useEscapeKey } from "../../lib/hooks";
 
 interface Props {
 	models: DiscoveredModel[];
@@ -21,15 +21,8 @@ export function ModelPickerModal({
 	onAppend,
 	onReplace,
 }: Props) {
-	const dialogRef = useRef<HTMLDivElement>(null);
 	const [search, setSearch] = useState("");
 	const [selected, setSelected] = useState<Set<string>>(new Set());
-
-	useEscapeKey(onClose);
-
-	useEffect(() => {
-		dialogRef.current?.querySelector<HTMLElement>("input")?.focus();
-	}, []);
 
 	const filtered = useMemo(() => {
 		const term = search.trim().toLowerCase();
@@ -71,48 +64,19 @@ export function ModelPickerModal({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onClose();
-			}}
+		<Modal
+			onClose={onClose}
+			title={`从供应商获取模型（已发现 ${models.length} 个模型）`}
 		>
-			<div
-				ref={dialogRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="model-picker-title"
-				className="flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-[var(--bg-panel)] shadow-apple-modal hairline"
-			>
-				<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-4 py-3">
-					<div
-						id="model-picker-title"
-						className="text-xs font-semibold tracking-[-0.018em] text-neutral-100"
-					>
-						从供应商获取模型（已发现 {models.length} 个模型）
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						aria-label="关闭"
-						className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
-				</div>
-
-				<div className="flex-1 overflow-hidden flex flex-col">
-					<div className="p-4 space-y-3 border-b border-[var(--border-divider)]">
-						<div className="relative">
-							<Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
-							<input
-								type="text"
-								value={search}
-								onChange={(e) => setSearch(e.target.value)}
-								placeholder="搜索模型 ID 或名称"
-								className={`${inputCls} pl-9`}
-							/>
-						</div>
+			<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+				<div className="space-y-3 border-b border-[var(--border-divider)] p-4">
+					<SearchInput
+						value={search}
+						onChange={setSearch}
+						autoFocus
+						placeholder="搜索模型 ID 或名称"
+						inputClassName={`${inputCls} pl-8 pr-7`}
+					/>
 
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-2">
@@ -201,8 +165,7 @@ export function ModelPickerModal({
 						)}
 					</div>
 				</div>
-
-				<div className="flex items-center justify-end gap-2 border-t border-[var(--border-divider)] px-4 py-3">
+				<div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-divider)] px-4 py-3">
 					<button
 						type="button"
 						onClick={onClose}
@@ -227,7 +190,6 @@ export function ModelPickerModal({
 						覆盖当前列表
 					</button>
 				</div>
-			</div>
-		</div>
+		</Modal>
 	);
 }

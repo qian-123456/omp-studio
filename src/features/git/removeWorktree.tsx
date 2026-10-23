@@ -1,6 +1,6 @@
 import { AlertTriangle, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { mountPromptDialog } from "../../lib/dialogs";
 import type { WorktreeInfo } from "../../lib/contracts";
 import { gitRemoveWorktree } from "../../lib/ipc";
 import { claimEscape } from "../../lib/escapeClaim";
@@ -128,19 +128,9 @@ function RemoveWorktreeModal({ wt, onResolve }: ModalProps) {
  * - deleteBranch: delete associated branch if present
  */
 export function promptRemoveWorktree(wt: WorktreeInfo): Promise<{ force: boolean; deleteBranch: boolean } | null> {
-	return new Promise((resolve) => {
-		const container = document.createElement("div");
-		document.body.appendChild(container);
-		const root = createRoot(container);
-
-		const handleResolve = (res: { force: boolean; deleteBranch: boolean } | null) => {
-			root.unmount();
-			container.remove();
-			resolve(res);
-		};
-
-		root.render(<RemoveWorktreeModal wt={wt} onResolve={handleResolve} />);
-	});
+	return mountPromptDialog<{ force: boolean; deleteBranch: boolean } | null>((resolve) => (
+		<RemoveWorktreeModal wt={wt} onResolve={resolve} />
+	));
 }
 /**
  * Interactive worktree cleanup with a single consolidated dialog.

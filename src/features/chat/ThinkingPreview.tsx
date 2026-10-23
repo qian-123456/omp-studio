@@ -6,7 +6,7 @@
  * whole thinking text. */
 
 import { useEffect, useRef } from "react";
-import { Markdown } from "./markdown";
+import { Markdown } from "../../components/Markdown";
 import { useRevealText } from "./useRevealText";
 
 /** Enough characters to fill two wrapped 12px lines of the peek box. */

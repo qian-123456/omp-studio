@@ -7,7 +7,6 @@ import {
 	Check,
 	ChevronDown,
 	ChevronRight,
-	Copy,
 	FolderOpen,
 	Info,
 	MessageSquarePlus,
@@ -15,7 +14,6 @@ import {
 	Power,
 	Puzzle,
 	RefreshCw,
-	Search,
 	Sparkles,
 	Trash2,
 	X,
@@ -23,9 +21,13 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FloatingLayer, Z_LAYER } from "../../components/FloatingLayer";
+import { CopyButton } from "../../components/CopyButton";
+import { EmptyState } from "../../components/EmptyState";
+import { Notice } from "../../components/Notice";
+import { SearchInput } from "../../components/SearchInput";
 import { Segmented } from "../../components/Segmented";
 import type { ExtensionItem, SkillIssue, SkillItem } from "../../lib/contracts";
-import { copyText, errMsg } from "../../lib/dialogs";
+import { errMsg } from "../../lib/dialogs";
 import { absoluteTime } from "../../lib/format";
 import { useEscapeKey } from "../../lib/hooks";
 import { skillsRead } from "../../lib/ipc";
@@ -33,7 +35,7 @@ import { toast } from "../../lib/toast";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
-import { Markdown } from "../chat/markdown";
+import { Markdown } from "../../components/Markdown";
 import { formatRelativeTime } from "../schedules/humanCadence";
 import { Switch } from "../settings/Switch";
 import { resolveSkillEnablement, type SkillDisabledReason } from "../../lib/skillEnablement";
@@ -557,18 +559,11 @@ function DetailDrawer({
 								>
 									{r.value}
 								</span>
-								<button
-									type="button"
+								<CopyButton
+									text={r.value}
 									title={`复制${r.label}`}
-									onClick={() => {
-										copyText(r.value)
-											.then(() => toast.success("已复制路径"))
-											.catch((e) => toast.error(`复制失败: ${errMsg(e)}`));
-									}}
 									className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
-								>
-									<Copy size={12} />
-								</button>
+								/>
 							</div>
 						))}
 
@@ -1027,30 +1022,14 @@ export function SkillsPage() {
 						]}
 					/>
 					<div className="flex-1" />
-					<div className="relative flex w-56 items-center sm:w-64">
-						<Search
-							size={13}
-							className="pointer-events-none absolute left-2.5 text-neutral-400"
-						/>
-						<input
-							type="text"
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
-							placeholder={
-								activeTab === "skills" ? "搜索 Skill…" : "搜索扩展…"
-							}
-							className="h-8 w-full rounded-lg hairline bg-[var(--well-bg)] pl-8 pr-7 text-xs text-neutral-100 placeholder-neutral-500 transition-all focus:outline-none focus:ring-1 focus:ring-amber-500/50"
-						/>
-						{searchQuery && (
-							<button
-								type="button"
-								onClick={() => setSearchQuery("")}
-								className="absolute right-2 flex h-4 w-4 items-center justify-center rounded text-neutral-400 hover:text-neutral-200"
-							>
-								<X size={12} />
-							</button>
-						)}
-					</div>
+					<SearchInput
+						value={searchQuery}
+						onChange={setSearchQuery}
+						placeholder={activeTab === "skills" ? "搜索 Skill…" : "搜索扩展…"}
+						iconSize={13}
+						className="w-56 sm:w-64"
+						inputClassName="h-8 w-full rounded-lg hairline bg-[var(--well-bg)] pl-8 pr-7 text-xs text-neutral-100 placeholder-neutral-500 transition-all focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+					/>
 					<button
 						type="button"
 						onClick={() => refresh(projectCwd)}
@@ -1125,18 +1104,21 @@ export function SkillsPage() {
 
 				{/* Error banner */}
 				{error && (
-					<div className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-300">
-						<div className="flex min-w-0 items-start gap-2">
-							<AlertCircle size={14} className="mt-0.5 shrink-0" />
-							<span className="select-text whitespace-pre-wrap break-words">加载失败：{error}</span>
-						</div>
-						<button
-							type="button"
-							onClick={() => refresh(projectCwd)}
-							className="shrink-0 rounded-md border border-red-500/30 px-2.5 py-1 font-medium text-red-200 transition-colors hover:bg-red-500/20"
+					<div className="mt-4">
+						<Notice
+							tone="danger"
+							action={
+								<button
+									type="button"
+									onClick={() => refresh(projectCwd)}
+									className="shrink-0 rounded-md border border-[var(--hairline-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-hover)]"
+								>
+									重试
+								</button>
+							}
 						>
-							重试
-						</button>
+							<span className="select-text whitespace-pre-wrap break-words">加载失败：{error}</span>
+						</Notice>
 					</div>
 				)}
 
@@ -1310,19 +1292,15 @@ export function SkillsPage() {
 									))}
 								</div>
 							) : visibleSkills.length === 0 ? (
-								<div className="flex flex-col items-center justify-center gap-1.5 px-8 py-14 text-center">
-									<Sparkles size={26} className="text-neutral-600" />
-									<span className="text-xs font-medium text-neutral-400">
-										{hasSkillFilters
-											? "没有符合筛选的 Skill"
-											: "没有发现任何 Skill"}
-									</span>
-									<span className="text-[11px] text-neutral-600">
-										{hasSkillFilters
+								<EmptyState
+									icon={Sparkles}
+									title={hasSkillFilters ? "没有符合筛选的 Skill" : "没有发现任何 Skill"}
+									description={
+										hasSkillFilters
 											? "换个关键词试试吧"
-											: "将 SKILL.md 放入 ~/.omp/agent/skills 或项目 .omp/skills 目录即可被发现"}
-									</span>
-								</div>
+											: "将 SKILL.md 放入 ~/.omp/agent/skills 或项目 .omp/skills 目录即可被发现"
+									}
+								/>
 							) : (
 								visibleSkills.map((skill) => {
 									const u = usage[skill.name];
@@ -1539,17 +1517,11 @@ export function SkillsPage() {
 								</div>
 							)
 						) : filteredExtensions.length === 0 ? (
-							<div className="flex flex-col items-center justify-center gap-1.5 px-8 py-14 text-center">
-								<Puzzle size={26} className="text-neutral-600" />
-								<span className="text-xs font-medium text-neutral-400">
-									{searchQuery ? "没有符合筛选的扩展" : "暂无可用的扩展"}
-								</span>
-								{searchQuery && (
-									<span className="text-[11px] text-neutral-600">
-										换个关键词试试吧
-									</span>
-								)}
-							</div>
+							<EmptyState
+								icon={Puzzle}
+								title={searchQuery ? "没有符合筛选的扩展" : "暂无可用的扩展"}
+								description={searchQuery ? "换个关键词试试吧" : undefined}
+							/>
 						) : (
 							filteredExtensions.map((ext) => (
 								<div

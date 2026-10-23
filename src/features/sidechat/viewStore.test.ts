@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUi } from "../../stores/ui";
 import {
 	closeTabResult,
+	expireSideChatMemory,
 	isBlankTab,
 	openNewSideChat,
 	replaceTab,
@@ -45,7 +46,7 @@ describe("side-chat tab helpers", () => {
 describe("useSideChatView", () => {
 	beforeEach(() => {
 		localStorage.clear();
-		useSideChatView.setState({ openChild: {}, openTabs: {}, pending: {} });
+		useSideChatView.setState({ openChild: {}, openTabs: {}, usedAt: {}, pending: {} });
 		useUi.setState({ rightTab: null, openRightTabs: [], rightOpen: false });
 	});
 
@@ -137,5 +138,53 @@ describe("side-chat tab restore", () => {
 		const s = fresh.useSideChatView.getState();
 		expect(s.openTabs).toEqual({ p1: ["c1"] });
 		expect(s.openChild).toEqual({});
+	});
+});
+
+describe("side-chat memory expiry", () => {
+	const DAY = 24 * 60 * 60 * 1000;
+
+	it("drops parents unused for over 30 days and stamps legacy entries as now", () => {
+		const now = 1_000_000_000_000;
+		const r = expireSideChatMemory(
+			{ old: "c1", fresh: "c2", legacy: "c3" },
+			{ old: ["c1"], fresh: ["c2"], legacy: ["c3"] },
+			{ old: now - 31 * DAY, fresh: now - 29 * DAY },
+			now,
+		);
+		expect(r.openChild).toEqual({ fresh: "c2", legacy: "c3" });
+		expect(r.openTabs).toEqual({ fresh: ["c2"], legacy: ["c3"] });
+		expect(r.usedAt).toEqual({ fresh: now - 29 * DAY, legacy: now });
+	});
+
+	it("an expired parent starts blank after reload and the stale data leaves storage", async () => {
+		localStorage.clear();
+		localStorage.setItem("omp_sidechat_open_tabs", JSON.stringify({ old: ["c1"], fresh: ["c2"] }));
+		localStorage.setItem("omp_sidechat_open_child", JSON.stringify({ old: "c1", fresh: "c2" }));
+		localStorage.setItem(
+			"omp_sidechat_used_at",
+			JSON.stringify({ old: Date.now() - 31 * DAY, fresh: Date.now() - DAY }),
+		);
+		vi.resetModules();
+		const fresh = await import("./viewStore");
+		const s = fresh.useSideChatView.getState();
+		expect(s.openTabs).toEqual({ fresh: ["c2"] });
+		expect(s.openChild).toEqual({ fresh: "c2" });
+		expect(JSON.parse(localStorage.getItem("omp_sidechat_open_tabs") ?? "{}")).toEqual({ fresh: ["c2"] });
+	});
+
+	it("using a parent refreshes its timestamp; pruneSessions drops parent and child tabs", () => {
+		localStorage.clear();
+		useSideChatView.setState({ openChild: {}, openTabs: {}, usedAt: {}, pending: {} });
+		const v = useSideChatView.getState();
+		v.setOpenChild("p1", "c1");
+		v.setOpenChild("p2", "c2");
+		v.setOpenChild("p2", "c9");
+		expect(useSideChatView.getState().usedAt["p1"]).toBeGreaterThan(0);
+		v.pruneSessions(["p1", "c9"]);
+		const s = useSideChatView.getState();
+		expect(s.openTabs).toEqual({ p2: ["c2"] });
+		expect(s.openChild).toEqual({});
+		expect(Object.keys(s.usedAt)).toEqual(["p2"]);
 	});
 });

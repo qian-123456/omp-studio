@@ -58,7 +58,8 @@ import { removeWorktreeFlow } from "./removeWorktree";
 import { type MenuEntry, WorktreeActionMenu } from "./WorktreeActionMenu";
 import { keepIfEqual, useAutoRefresh } from "./useAutoRefresh";
 import { WorktreeCommitPopover } from "./WorktreeCommitPopover";
-import { WorktreeHoverCard, useHeadCommit, ago } from "./WorktreeHoverCard";
+import { WorktreeHoverCard, useHeadCommit } from "./WorktreeHoverCard";
+import { timeAgo } from "../../lib/format";
 import { claimEscape } from "../../lib/escapeClaim";
 
 const CONFLICT_PREFIX = "CONFLICT:";
@@ -1092,5 +1093,5 @@ export function WorktreeSection({
 function IdleActivity({ wt }: { wt: WorktreeInfo }) {
 	const commit = useHeadCommit(wt.path, wt.head, true);
 	if (!commit) return null;
-	return <span title={`最近提交：${commit.subject}`}>{ago(commit.ts)}</span>;
+	return <span title={`最近提交：${commit.subject}`}>{timeAgo(commit.ts)}</span>;
 }

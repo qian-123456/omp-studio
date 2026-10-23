@@ -13,7 +13,6 @@ import {
 	Loader2,
 	PanelRight,
 	Plus,
-	Search,
 	Tag,
 	X,
 } from "lucide-react";
@@ -31,6 +30,7 @@ import { requestMoveToGroup } from "../sessions/sessionActions";
 import { useSessionGroups } from "../sessions/sessionGroups";
 import { startSessionInDir, startSessionInWorktree } from "../sessions/newSession";
 import { runSessionBash, shellQuote } from "./sessionShell";
+import { SearchInput } from "../../components/SearchInput";
 import { claimEscape } from "../../lib/escapeClaim";
 import { isComposing } from "../../lib/hooks";
 
@@ -51,12 +51,11 @@ function PopoverSearch({
 	onEnter?: () => void;
 }) {
 	return (
-		<div className="flex items-center gap-1.5 border-b border-[var(--line,var(--border-divider))] px-2.5 py-2">
-			<Search size={13} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
-			<input
+		<div className="border-b border-[var(--line,var(--border-divider))] px-1 py-0.5">
+			<SearchInput
 				autoFocus
 				value={value}
-				onChange={(e) => onChange(e.target.value)}
+				onChange={onChange}
 				onKeyDown={(e) => {
 					if (e.key === "Enter" && onEnter) {
 						e.preventDefault();
@@ -64,7 +63,8 @@ function PopoverSearch({
 					}
 				}}
 				placeholder={placeholder}
-				className="w-full bg-transparent text-[12.5px] text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))]"
+				iconSize={13}
+				inputClassName="w-full bg-transparent py-1.5 pl-8 pr-7 text-[12.5px] text-[var(--text)] outline-none placeholder:text-[var(--text-30,var(--text-dim))]"
 			/>
 		</div>
 	);

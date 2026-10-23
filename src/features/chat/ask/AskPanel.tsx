@@ -35,6 +35,14 @@ const driverStates = new Map<string, AskDriverState>();
 const respondedIds = new Set<string>();
 export const respondedKey = (sessionId: string, id: string): string => `${sessionId}:${id}`;
 
+/** Forget driver progress and answered ids of removed sessions (keys are `sessionId:...`). */
+export function pruneAskState(sessionIds: readonly string[]): void {
+	const prefixes = sessionIds.map((sid) => `${sid}:`);
+	const hit = (k: string) => prefixes.some((p) => k.startsWith(p));
+	for (const k of [...driverStates.keys()]) if (hit(k)) driverStates.delete(k);
+	for (const k of [...respondedIds]) if (hit(k)) respondedIds.delete(k);
+}
+
 export interface AskRoute {
 	req: PendingUiRequest;
 	spec: AskSpec;
@@ -88,7 +96,11 @@ export function useAskRouting(sessionId: string, pendingUi: PendingUiRequest[]) 
 		setAwaiting(true);
 		rpcUiRespond(sessionId, { id, value: resolution.value })
 			.then(() => {
-				if (final) driverStates.delete(key);
+				if (final) {
+					driverStates.delete(key);
+					// No further question follows: release the composer now.
+					setAwaiting(false);
+				}
 				else if (state) driverStates.set(key, { ...state, toggled: resolution.toggled });
 				dismissUi(sessionId, id);
 			})

@@ -480,8 +480,8 @@ export function CommandTerminalPanel() {
 
 					{/* Spawn failure banner */}
 					{activeTab?.status === "error" && activeEntry?.error && (
-						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between gap-3 border-t border-rose-800/40 bg-rose-950/40 backdrop-blur-md px-3 py-2 text-xs">
-							<span className="min-w-0 truncate text-rose-300">
+						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-start justify-between gap-3 border-t border-rose-800/40 bg-rose-950/40 backdrop-blur-md px-3 py-2 text-xs">
+							<span className="min-w-0 select-text whitespace-pre-wrap break-words text-rose-300">
 								本地终端启动失败: {activeEntry.error}
 							</span>
 							<button

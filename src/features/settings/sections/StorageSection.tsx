@@ -26,7 +26,8 @@ import {
 	selectableSessions,
 	selectedBytes,
 } from "../storageLogic";
-import { Button, Chip, Notice, SectionHeader, SettingRow, SettingsCard } from "../ui";
+import { Notice } from "../../../components/Notice";
+import { Button, Chip, SectionHeader, SettingRow, SettingsCard } from "../ui";
 
 function drafts(): string[] {
 	return collectDraftTexts(useComposer.getState(), window.localStorage);

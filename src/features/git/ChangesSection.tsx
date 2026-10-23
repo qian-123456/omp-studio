@@ -46,7 +46,7 @@ interface ContextMenuState {
 	file: GitFileChange;
 }
 
-const COMMIT_DRAFT_KEY = "omp_git_commit_draft";
+const commitDraftKey = (toplevel: string) => `omp_git_commit_draft:${toplevel}`;
 
 /**
  * One-click save: commits every change. The message is AI-written by default;
@@ -65,7 +65,7 @@ function CommitComposer({
 }) {
 	const [message, setMessage] = useState(() => {
 		try {
-			return localStorage.getItem(COMMIT_DRAFT_KEY) ?? "";
+			return localStorage.getItem(commitDraftKey(toplevel)) ?? "";
 		} catch {
 			return "";
 		}
@@ -73,12 +73,12 @@ function CommitComposer({
 	// Persist the draft; a successful commit resets `message` which clears it.
 	useEffect(() => {
 		try {
-			if (message) localStorage.setItem(COMMIT_DRAFT_KEY, message);
-			else localStorage.removeItem(COMMIT_DRAFT_KEY);
+			if (message) localStorage.setItem(commitDraftKey(toplevel), message);
+			else localStorage.removeItem(commitDraftKey(toplevel));
 		} catch {
 			/* storage unavailable */
 		}
-	}, [message]);
+	}, [message, toplevel]);
 	// A restored hand-written draft re-opens the manual message editor.
 	const [custom, setCustom] = useState(() => message !== "");
 	const [phase, setPhase] = useState<"idle" | "naming" | "saving">("idle");
@@ -273,6 +273,7 @@ export function ChangesSection({
 			) : (
 						<>
 							<CommitComposer
+								key={toplevel}
 								cwd={cwd}
 								toplevel={toplevel}
 								fileCount={files.length}

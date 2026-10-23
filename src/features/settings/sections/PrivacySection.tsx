@@ -2,7 +2,7 @@
  * values (placeholders sent upstream instead of values) and the omp privacy keys. */
 import { Edit2, Eye, EyeOff, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useEscapeKey } from "../../../lib/hooks";
+import { isComposing, useEscapeKey } from "../../../lib/hooks";
 import type { SecretEntry, SecretEntryPatch } from "../../../lib/contracts";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
 import { privacyDelete, privacyMark, privacyUpdate } from "../../../lib/ipc";
@@ -10,13 +10,13 @@ import { toast } from "../../../lib/toast";
 import { usePrivacy } from "../../../stores/privacy";
 import { useAppSettings } from "../useAppSettings";
 import { OmpSections } from "../OmpSettingsList";
+import { EmptyState } from "../../../components/EmptyState";
+import { Notice } from "../../../components/Notice";
 import {
 	Button,
 	Chip,
-	EmptyState,
 	INPUT_CLASS,
 	IconButton,
-	Notice,
 	SectionHeader,
 	SettingRow,
 	SettingsCard,
@@ -195,7 +195,7 @@ function AddSecretDialog({
 			<div
 				className="w-[440px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border-divider)] bg-[var(--bg-panel)] p-5 shadow-apple-modal text-[var(--text)] transition-all animate-in zoom-in-95 duration-150"
 				onKeyDown={(e) => {
-					if (e.key === "Enter" && !e.shiftKey && value.trim() && !busy) {
+					if (e.key === "Enter" && !e.shiftKey && !isComposing(e) && value.trim() && !busy) {
 						e.preventDefault();
 						void add();
 					}
@@ -301,7 +301,7 @@ function EditSecretDialog({
 			<div
 				className="w-[440px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border-divider)] bg-[var(--bg-panel)] p-5 shadow-apple-modal text-[var(--text)] transition-all animate-in zoom-in-95 duration-150"
 				onKeyDown={(e) => {
-					if (e.key === "Enter" && !e.shiftKey && !busy) {
+					if (e.key === "Enter" && !e.shiftKey && !isComposing(e) && !busy) {
 						e.preventDefault();
 						void save();
 					}
