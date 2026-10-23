@@ -465,6 +465,10 @@ export const clipboardFilePaths = () =>
 export const clipboardWriteMessage = (text: string, paths: string[]) =>
 	invoke<void>("clipboard_write_message", { text, paths });
 
+/** Message text that travels with files on the pasteboard (not a Finder filename). */
+export const clipboardTextBesideFiles = () =>
+	invoke<string>("clipboard_text_beside_files");
+
 /** Persist pasted/dropped bytes under the app cache dir; returns the path
  * used as the file-attachment reference (WKWebView File objects carry none). */
 export const saveClipboardFile = (base64Data: string, fileName?: string) =>

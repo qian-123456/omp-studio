@@ -116,6 +116,58 @@ async fn clipboard_write_message_impl(_text: String, _paths: Vec<String>) -> Res
     Err("当前系统不支持复制图片".to_string())
 }
 
+/// JXA that prints the plain text of pasteboard items that carry no
+/// `public.file-url` (the text item `clipboard_write_message` writes next to
+/// its files). A Finder copy keeps the filename text inside the file item, so
+/// it yields nothing here and the filename is never pasted as text.
+#[cfg(target_os = "macos")]
+const PB_TEXT_BESIDE_FILES_JXA: &str = r#"ObjC.import("AppKit");
+var out = "";
+var items = $.NSPasteboard.generalPasteboard.pasteboardItems;
+if (items) {
+	for (var i = 0; i < items.count; i++) {
+		var it = items.objectAtIndex(i);
+		if (it.stringForType($("public.file-url")).js !== undefined) continue;
+		var s = it.stringForType($("public.utf8-plain-text"));
+		if (s.js !== undefined) out += s.js;
+	}
+}
+out"#;
+
+/// `clipboard_text_beside_files` — message text that travels with files on the
+/// pasteboard; empty when there is none or the read fails.
+#[tauri::command]
+pub async fn clipboard_text_beside_files() -> Result<String, String> {
+    clipboard_text_beside_files_impl().await
+}
+
+#[cfg(target_os = "macos")]
+async fn clipboard_text_beside_files_impl() -> Result<String, String> {
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::process::Command::new("osascript")
+            .args(["-l", "JavaScript", "-e", PB_TEXT_BESIDE_FILES_JXA])
+            .output(),
+    )
+    .await
+    .map_err(|_| "读取剪贴板文字超时".to_string())?
+    .map_err(|e| format!("osascript 启动失败: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "读取剪贴板文字失败: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let s = String::from_utf8_lossy(&out.stdout);
+    // osascript appends one trailing newline to the printed result.
+    Ok(s.strip_suffix('\n').unwrap_or(&s).to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn clipboard_text_beside_files_impl() -> Result<String, String> {
+    Ok(String::new())
+}
+
 /// Parse the JXA JSON output into absolute, existing paths.
 /// Exported for tests; treats non-array/garbage output as "no files".
 fn parse_clipboard_paths(stdout: &str) -> Vec<String> {
