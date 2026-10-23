@@ -27,7 +27,8 @@ import type {
 	TranscriptItem,
 	TurnCheckpoint,
 } from "../../lib/contracts";
-import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
+import { confirmDialog, copyTextWithImages, errMsg } from "../../lib/dialogs";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
@@ -373,8 +374,15 @@ const UserRow = React.memo(function UserRow({
 						type="button"
 						onClick={async () => {
 							try {
-								await copyText(userText);
-								toast.success("已复制用户消息");
+								const skipped = await copyTextWithImages(
+									userText,
+									validImages.map((i) => convertFileSrc(i.path)),
+								);
+								toast.success(
+									skipped > 0
+										? `已复制文字和第 1 张图片（剪贴板一次只能放 1 张，另 ${skipped} 张未复制）`
+										: "已复制用户消息",
+								);
 							} catch (e) {
 								toast.error(`复制失败: ${errMsg(e)}`);
 							}
@@ -1846,6 +1854,9 @@ export function MessageList({
 		const idx = blocks.findIndex((b) =>
 			b.allItemIds.includes(revealTurn.userItemId),
 		);
+		// Transcript not materialised yet (load not started): keep the target
+		// pending instead of consuming it against an empty list.
+		if (idx < 0 && blocks.length === 0) return;
 		lastHandledReveal.current = revealTurn.nonce;
 		useTurnNav.getState().clearTurn();
 		if (idx < 0) return;
@@ -1853,6 +1864,19 @@ export function MessageList({
 		followRef.current = detach(followRef.current);
 		virtualizer.scrollToIndex(idx, { align: "start", behavior: "smooth" });
 		flashHighlight(revealTurn.userItemId, 2500);
+		// A target deeper inside the turn (an assistant reply from a search hit):
+		// refine to the message itself once its row has mounted.
+		const blk = blocks[idx];
+		if (blk.type === "turn" && blk.userItem?.id !== revealTurn.userItemId) {
+			const targetId = revealTurn.userItemId;
+			for (const delay of [150, 450, 900]) {
+				window.setTimeout(() => {
+					document
+						.getElementById(`msg-${targetId}`)
+						?.scrollIntoView({ behavior: "smooth", block: "center" });
+				}, delay);
+			}
+		}
 	}, [revealTurn, blocks, virtualizer, sessionId, isLoadingTranscript, flashHighlight]);
 
 	// Consume Token-panel "locate this tool call" targets: scroll to the call's

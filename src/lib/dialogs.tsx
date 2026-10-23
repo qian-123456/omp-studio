@@ -196,6 +196,38 @@ export async function copyText(text: string): Promise<void> {
 	}
 }
 
+/** Decode an image URL into a PNG blob (the only image type WebKit's clipboard accepts). */
+async function imageUrlToPng(url: string): Promise<Blob> {
+	const img = new Image();
+	img.decoding = "async";
+	img.src = url;
+	await img.decode();
+	const canvas = document.createElement("canvas");
+	canvas.width = img.naturalWidth;
+	canvas.height = img.naturalHeight;
+	canvas.getContext("2d")?.drawImage(img, 0, 0);
+	return await new Promise<Blob>((resolve, reject) =>
+		canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("图片编码失败"))), "image/png"),
+	);
+}
+
+/**
+ * Copy a message's text together with its first image (one clipboard item with
+ * text/plain + image/png, so a paste target takes whichever it understands).
+ * Returns how many images were left out (the clipboard item carries one).
+ */
+export async function copyTextWithImages(text: string, imageUrls: string[]): Promise<number> {
+	if (imageUrls.length === 0) {
+		await copyText(text);
+		return 0;
+	}
+	const png = await imageUrlToPng(imageUrls[0]);
+	const item: Record<string, Blob> = { "image/png": png };
+	if (text.trim()) item["text/plain"] = new Blob([text], { type: "text/plain" });
+	await navigator.clipboard.write([new ClipboardItem(item)]);
+	return imageUrls.length - 1;
+}
+
 /** Mirrors `rpc::SESSION_HELD_PREFIX` (src-tauri/src/rpc/mod.rs). */
 export const SESSION_HELD_PREFIX = "SESSION_HELD:";
 
