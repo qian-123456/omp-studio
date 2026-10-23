@@ -275,7 +275,7 @@ export function ProviderPanel() {
 								row={row}
 								expanded={expandedId === row.id}
 								onToggleExpand={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
-								onEdit={() => (row.origin === "custom" ? setDialog({ mode: "edit", row }) : setKeyDialogId(row.id))}
+								onEdit={() => setDialog({ mode: "edit", row })}
 								onSetKey={() => setKeyDialogId(row.id)}
 								onOauth={() => setOauthDialog(true)}
 							/>

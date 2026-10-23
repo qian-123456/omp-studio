@@ -57,6 +57,7 @@ import type {
 	ProviderApi,
 	ProviderBulkResult,
 	ProviderRow,
+	BuiltinOverride,
 	ProviderUpsert,
 	ProviderTestResult,
 	PrUrlInfo,
@@ -622,6 +623,13 @@ export const providerUpsert = (
 	apiKey: string | null,
 	keyMode: KeyMode,
 ) => invoke<ProviderRow>("provider_upsert", { input, apiKey, keyMode });
+
+/** Create/update the override block of a built-in provider; `apiKey` null keeps the current key. */
+export const providerSaveBuiltin = (
+	input: BuiltinOverride,
+	apiKey: string | null,
+	keyMode: KeyMode,
+) => invoke<ProviderRow>("provider_save_builtin", { input, apiKey, keyMode });
 
 export const providerSetKey = (id: string, apiKey: string, keyMode: KeyMode) =>
 	invoke<ProviderRow>("provider_set_key", { id, apiKey, keyMode });

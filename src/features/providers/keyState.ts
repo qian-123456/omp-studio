@@ -105,7 +105,8 @@ export interface AuthBadge {
 	tone: KeyTone;
 }
 
-export function authBadge(row: Pick<ProviderRow, "key">): AuthBadge {
+export function authBadge(row: Pick<ProviderRow, "key"> & { authNone?: boolean }): AuthBadge {
+	if (row.authNone) return { label: "无密钥", tone: "muted" };
 	switch (row.key.kind) {
 		case "oauth":
 			return { label: "OAuth", tone: "info" };

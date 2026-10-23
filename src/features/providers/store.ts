@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type {
+	BuiltinOverride,
 	KeyMode,
 	ProviderBulkResult,
 	ProviderRow,
@@ -9,6 +10,7 @@ import type {
 	ProviderUpsert,
 } from "../../lib/contracts";
 import {
+	providerSaveBuiltin,
 	providerDecrypt,
 	providerDelete,
 	providerEncrypt,
@@ -45,6 +47,8 @@ interface ProvidersState {
 	encryptAll(): Promise<ProviderBulkResult[]>;
 	/** Create/update a custom provider; `apiKey` null keeps the current key. */
 	upsert(input: ProviderUpsert, apiKey: string | null, keyMode: KeyMode): Promise<ProviderRow>;
+	/** Create/update the override block of a built-in provider; `apiKey` null keeps the current key. */
+	saveBuiltin(input: BuiltinOverride, apiKey: string | null, keyMode: KeyMode): Promise<ProviderRow>;
 	setKey(id: string, apiKey: string, keyMode: KeyMode): Promise<ProviderRow>;
 	remove(id: string): Promise<void>;
 	runTest(id: string): Promise<void>;
@@ -113,6 +117,12 @@ export const useProviders = create<ProvidersState>((set, get) => {
 		upsert: async (input, apiKey, keyMode) => {
 			const row = await providerUpsert(input, apiKey, keyMode);
 			applyRow(row, input.originalId ?? row.id);
+			return row;
+		},
+
+		saveBuiltin: async (input, apiKey, keyMode) => {
+			const row = await providerSaveBuiltin(input, apiKey, keyMode);
+			applyRow(row, input.id);
 			return row;
 		},
 

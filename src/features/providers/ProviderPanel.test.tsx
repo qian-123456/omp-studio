@@ -11,6 +11,7 @@ const ipc = vi.hoisted(() => ({
 	providerSetEnabled: vi.fn(),
 	providerSetKey: vi.fn(),
 	providerUpsert: vi.fn(),
+	providerSaveBuiltin: vi.fn(),
 	providerDelete: vi.fn(),
 	providerTest: vi.fn(),
 	providerTestModel: vi.fn(),
@@ -56,6 +57,9 @@ function row(id: string, kind: ProviderKeyKind, over: Partial<ProviderRow> = {})
 		key: { kind, envVar: kind === "envVar" ? "MY_KEY" : null, envSet: kind === "envVar" ? false : null },
 		enabled: true,
 		testable: true,
+		defaultBaseUrl: null,
+		extraModels: [],
+		authNone: false,
 		...over,
 	};
 }
@@ -237,6 +241,113 @@ describe("add dialog", () => {
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		expect((await screen.findByRole("alert")).textContent).toContain("taken");
 		expect(ipc.providerUpsert).not.toHaveBeenCalled();
+	});
+});
+
+describe("edit dialog", () => {
+	const builtin = (over: Partial<ProviderRow> = {}) =>
+		row("ollama", "none", {
+			origin: "builtin",
+			sources: ["builtin"],
+			baseUrl: "http://127.0.0.1:11434",
+			defaultBaseUrl: "http://127.0.0.1:11434",
+			api: "ollama",
+			models: [{ id: "llama3" }, { id: "qwen" }],
+			authNone: true,
+			...over,
+		});
+
+	async function openEdit(r: ProviderRow) {
+		await renderPanel([r]);
+		fireEvent.click(screen.getByText(r.id));
+		fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+		return screen.findByRole("dialog", { name: /编辑供应商/ });
+	}
+
+	it("shows the 无密钥 badge for authNone rows", async () => {
+		await renderPanel([builtin()]);
+		expect(screen.getByText("无密钥")).toBeTruthy();
+	});
+
+	it("builtin row: read-only name, default address placeholder, keyless checkbox, extra models editor", async () => {
+		await openEdit(builtin());
+		const name = screen.getByLabelText("名称") as HTMLInputElement;
+		expect(name.readOnly).toBe(true);
+		expect(name.value).toBe("ollama");
+		const url = screen.getByLabelText("地址") as HTMLInputElement;
+		expect(url.placeholder).toBe("http://127.0.0.1:11434");
+		expect(url.value).toBe("");
+		expect((screen.getByLabelText(/这个服务不需要密钥/) as HTMLInputElement).checked).toBe(true);
+		expect(screen.getByText("额外添加的模型")).toBeTruthy();
+		expect(screen.getByText(/OMP 自带的 2 个模型会保留/)).toBeTruthy();
+		expect(screen.queryByLabelText("API 密钥")).toBeNull();
+		expect(screen.queryByRole("button", { name: /删除|恢复 OMP 默认/ })).toBeNull();
+	});
+
+	it("saves a builtin through providerSaveBuiltin with null key and the chosen mode", async () => {
+		const r = builtin({ authNone: false, key: { kind: "missing", envVar: null, envSet: null } });
+		await openEdit(r);
+		ipc.providerSaveBuiltin.mockResolvedValue(r);
+		fireEvent.change(screen.getByLabelText("地址"), { target: { value: "http://gpu:11434" } });
+		fireEvent.click(screen.getByRole("button", { name: "添加模型" }));
+		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "extra-1" } });
+		fireEvent.click(screen.getByLabelText(/加密保存/));
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.providerSaveBuiltin).toHaveBeenCalledTimes(1));
+		const [input, key, mode] = ipc.providerSaveBuiltin.mock.calls[0];
+		expect(input).toMatchObject({
+			id: "ollama",
+			baseUrl: "http://gpu:11434",
+			authNone: false,
+			extraModels: ["extra-1"],
+		});
+		expect(key).toBeNull();
+		expect(mode).toBe("encrypted");
+	});
+
+	it("sends the typed key for a builtin", async () => {
+		const r = builtin({ authNone: false, key: { kind: "missing", envVar: null, envSet: null } });
+		await openEdit(r);
+		ipc.providerSaveBuiltin.mockResolvedValue(r);
+		fireEvent.change(screen.getByLabelText("API 密钥"), { target: { value: "sk-9" } });
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.providerSaveBuiltin).toHaveBeenCalledTimes(1));
+		expect(ipc.providerSaveBuiltin.mock.calls[0][1]).toBe("sk-9");
+		expect(ipc.providerSaveBuiltin.mock.calls[0][0]).toMatchObject({ baseUrl: null, extraModels: [] });
+	});
+
+	it("refuses extra models when there is no address and no default", async () => {
+		await openEdit(builtin({ baseUrl: null, defaultBaseUrl: null }));
+		fireEvent.click(screen.getByRole("button", { name: "添加模型" }));
+		fireEvent.change(screen.getByLabelText("第 1 个模型 ID"), { target: { value: "x" } });
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		expect((await screen.findByRole("alert")).textContent).toContain("添加模型需要先填写地址");
+		expect(ipc.providerSaveBuiltin).not.toHaveBeenCalled();
+	});
+
+	it("恢复 OMP 默认 confirms, then deletes the override", async () => {
+		await openEdit(builtin({ origin: "override", baseUrl: "http://gpu:11434" }));
+		ipc.providerDelete.mockResolvedValue(undefined);
+		confirmDialog.mockResolvedValueOnce(false);
+		fireEvent.click(screen.getByRole("button", { name: /恢复 OMP 默认/ }));
+		await waitFor(() => expect(confirmDialog).toHaveBeenCalledTimes(1));
+		expect(confirmDialog.mock.calls[0][0]).toContain("包括密钥");
+		expect(ipc.providerDelete).not.toHaveBeenCalled();
+		confirmDialog.mockResolvedValueOnce(true);
+		fireEvent.click(screen.getByRole("button", { name: /恢复 OMP 默认/ }));
+		await waitFor(() => expect(ipc.providerDelete).toHaveBeenCalledWith("ollama"));
+	});
+
+	it("custom rows save through providerUpsert with authNone", async () => {
+		const r = row("gw", "plaintext", { models: [{ id: "m1" }] });
+		await openEdit(r);
+		ipc.providerUpsert.mockResolvedValue(r);
+		fireEvent.click(screen.getByLabelText(/这个服务不需要密钥/));
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() => expect(ipc.providerUpsert).toHaveBeenCalledTimes(1));
+		const [input, key] = ipc.providerUpsert.mock.calls[0];
+		expect(input).toMatchObject({ originalId: "gw", id: "gw", authNone: true });
+		expect(key).toBeNull();
 	});
 });
 

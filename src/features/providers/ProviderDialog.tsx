@@ -1,7 +1,7 @@
 import { homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { Eye, EyeOff, FolderOpen, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { Activity, Eye, EyeOff, FolderOpen, Loader2, Plus, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NativeSelect } from "../../components/NativeSelect";
 import type { DiscoveredModel, KeyMode, ProviderRow } from "../../lib/contracts";
@@ -44,13 +44,26 @@ export function ProviderDialog({ target, onClose }: Props) {
 	const rows = useProviders((s) => s.rows);
 	const upsert = useProviders((s) => s.upsert);
 	const setKey = useProviders((s) => s.setKey);
+	const saveBuiltin = useProviders((s) => s.saveBuiltin);
+	const remove = useProviders((s) => s.remove);
+	const runTest = useProviders((s) => s.runTest);
+	const test = useProviders((s) => (target.mode === "edit" ? s.tests[target.row.id] : undefined));
 
 	const editing = target.mode === "edit" ? target.row : null;
 	const isImport = target.mode === "import";
+	/** Built-in or override rows: name/protocol are fixed, address is optional, models are additions. */
+	const isBuiltin = editing !== null && editing.origin !== "custom";
+	const isOverride = editing?.origin === "override";
+	const defaultBaseUrl = editing?.defaultBaseUrl ?? null;
+	const initialModels = isBuiltin ? (editing?.extraModels ?? []) : (editing?.models ?? []);
 
 	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 	const [id, setId] = useState(editing?.id ?? "");
-	const [baseUrl, setBaseUrl] = useState(editing?.baseUrl ?? "");
+	const [baseUrl, setBaseUrl] = useState(
+		isBuiltin && editing?.baseUrl === defaultBaseUrl ? "" : (editing?.baseUrl ?? ""),
+	);
+	const [authNone, setAuthNone] = useState(editing?.authNone ?? false);
+	const [removing, setRemoving] = useState(false);
 	const initialApi = editing?.api ?? "openai-completions";
 	const isKnownApi = KNOWN_APIS.some((a) => a.value === initialApi);
 	const [apiChoice, setApiChoice] = useState(isKnownApi ? initialApi : OTHER_API);
@@ -60,8 +73,8 @@ export function ProviderDialog({ target, onClose }: Props) {
 		editing?.key.kind === "encrypted" ? "encrypted" : "plaintext",
 	);
 	const [modelRows, setModelRows] = useState<ModelRow[]>(() => {
-		const initial = modelEntriesToRows(editing?.models ?? []);
-		return initial.length > 0 ? initial : [blankModelRow()];
+		const initial = modelEntriesToRows(initialModels);
+		return initial.length > 0 || isBuiltin ? initial : [blankModelRow()];
 	});
 	const [showKey, setShowKey] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -80,7 +93,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 	const [fetchingModels, setFetchingModels] = useState(false);
 	const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[] | null>(null);
 
-	const api = apiChoice === OTHER_API ? apiOther.trim() : apiChoice;
+	const api = isBuiltin ? (editing?.api ?? "") : apiChoice === OTHER_API ? apiOther.trim() : apiChoice;
 
 	const isDirty = useMemo(() => {
 		if (isImport) return pasteText.trim().length > 0;
@@ -88,10 +101,11 @@ export function ProviderDialog({ target, onClose }: Props) {
 		if (editing) {
 			return (
 				id !== editing.id ||
-				baseUrl !== (editing.baseUrl ?? "") ||
+				baseUrl !== (isBuiltin && editing.baseUrl === defaultBaseUrl ? "" : (editing.baseUrl ?? "")) ||
 				api !== (editing.api ?? "") ||
+				authNone !== editing.authNone ||
 				apiKey.length > 0 ||
-				JSON.stringify(entries) !== JSON.stringify(editing.models)
+				JSON.stringify(entries) !== JSON.stringify(initialModels)
 			);
 		}
 		return (
@@ -102,7 +116,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 			api !== "openai-completions" ||
 			entries.length > 0
 		);
-	}, [isImport, pasteText, editing, id, baseUrl, api, apiKey, modelRows, selectedPresetId]);
+	}, [isImport, pasteText, editing, isBuiltin, defaultBaseUrl, initialModels, id, baseUrl, api, authNone, apiKey, modelRows, selectedPresetId]);
 
 	const isClosingRef = useRef(false);
 	const handleDismiss = useCallback(async () => {
@@ -162,7 +176,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 	};
 
 	const handleFetchModels = async () => {
-		const trimmedUrl = baseUrl.trim();
+		const trimmedUrl = baseUrl.trim() || (isBuiltin ? (defaultBaseUrl ?? "") : "");
 		if (!trimmedUrl) {
 			toast.error("请先填写地址");
 			return;
@@ -176,7 +190,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 			const models = await providerFetchModels(
 				trimmedUrl,
 				api,
-				apiKey.trim() || null,
+				authNone ? null : apiKey.trim() || null,
 				editing?.id ?? null,
 			);
 			setDiscoveredModels(models);
@@ -198,10 +212,61 @@ export function ProviderDialog({ target, onClose }: Props) {
 		if (formError) setFormError(null);
 	};
 
+	const handleRemove = async () => {
+		if (!editing) return;
+		const title = editing.displayName ?? editing.id;
+		const ok = await confirmDialog(
+			isOverride
+				? "会删除你对这个供应商的所有修改，包括密钥"
+				: `删除供应商「${title}」？它会从 ~/.omp/agent/models.yml 移除，已加密的密钥也会一并删除。`,
+			isOverride
+				? { title: "恢复 OMP 默认", danger: true, okLabel: "恢复默认" }
+				: { title: "删除供应商", danger: true, okLabel: "删除" },
+		);
+		if (!ok) return;
+		setRemoving(true);
+		try {
+			await remove(editing.id);
+			toast.success(isOverride ? "已恢复 OMP 默认" : "已删除");
+			onClose();
+		} catch (err) {
+			setFormError(errMsg(err));
+			setRemoving(false);
+		}
+	};
+
 	const handleSave = async () => {
 		setFormError(null);
-		const newId = id.trim();
+		const key = authNone ? "" : apiKey.trim();
 		const url = baseUrl.trim();
+		if (editing && isBuiltin) {
+			const extra = rowsToModelEntries(modelRows);
+			if (extra.length > 0 && !url && !defaultBaseUrl) {
+				setFormError("添加模型需要先填写地址");
+				return;
+			}
+			setSaving(true);
+			try {
+				const { config, count } = await applyContextWindowsOnSave(
+					{ models: editing.extraModels },
+					{ models: extra },
+				);
+				await saveBuiltin(
+					{ id: editing.id, baseUrl: url || null, authNone, extraModels: config.models },
+					key || null,
+					keyMode,
+				);
+				toast.success(key && keyMode === "encrypted" ? "已保存，密钥已加密" : "已保存");
+				if (count > 0) toast.success(`按规则/目录为 ${count} 个模型设置了窗口`);
+				onClose();
+			} catch (err) {
+				setFormError(errMsg(err));
+			} finally {
+				setSaving(false);
+			}
+			return;
+		}
+		const newId = id.trim();
 		const missing: string[] = [];
 		if (!newId) missing.push("名称");
 		if (!url) missing.push("地址");
@@ -225,7 +290,6 @@ export function ProviderDialog({ target, onClose }: Props) {
 				editing ? { models: editing.models } : null,
 				{ models },
 			);
-			const key = apiKey.trim();
 			await upsert(
 				{
 					originalId: editing?.id ?? null,
@@ -234,6 +298,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 					baseUrl: url,
 					api,
 					models: config.models,
+					authNone,
 				},
 				key || null,
 				keyMode,
@@ -271,6 +336,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 							baseUrl: item.preset.baseUrl,
 							api: item.preset.api,
 							models: config.models,
+							authNone: false,
 						},
 						item.entry.value,
 						importMode,
@@ -534,11 +600,14 @@ export function ProviderDialog({ target, onClose }: Props) {
 									type="text"
 									value={id}
 									onChange={(e) => setId(e.target.value)}
+									readOnly={isBuiltin}
 									spellCheck={false}
-									className={`${inputCls} font-mono`}
+									className={`${inputCls} font-mono ${isBuiltin ? "cursor-default opacity-70" : ""}`}
 									placeholder="例如: my-gateway"
 								/>
-								<div className={hintCls}>就是 OMP 里的供应商名，选模型时显示为 名称/模型 ID</div>
+								<div className={hintCls}>
+									{isBuiltin ? "OMP 自带的供应商，名称不能改" : "就是 OMP 里的供应商名，选模型时显示为 名称/模型 ID"}
+								</div>
 							</div>
 							<div>
 								<label htmlFor="provider-url" className={labelCls}>
@@ -550,8 +619,9 @@ export function ProviderDialog({ target, onClose }: Props) {
 									value={baseUrl}
 									onChange={(e) => setBaseUrl(e.target.value)}
 									className={`${inputCls} font-mono`}
-									placeholder="https://api.example.com/v1"
+									placeholder={isBuiltin ? (defaultBaseUrl ?? "https://api.example.com/v1") : "https://api.example.com/v1"}
 								/>
+								{isBuiltin && <div className={hintCls}>留空就用 OMP 默认地址</div>}
 								{insecureHttpWarning(baseUrl) && (
 									<p
 										role="status"
@@ -567,66 +637,95 @@ export function ProviderDialog({ target, onClose }: Props) {
 							<label htmlFor="provider-api" className={labelCls}>
 								协议
 							</label>
-							<NativeSelect
-								id="provider-api"
-								value={apiChoice}
-								onChange={(e) => setApiChoice(e.target.value)}
-								containerClassName="mt-1.5"
-							>
-								{KNOWN_APIS.map((a) => (
-									<option key={a.value} value={a.value}>
-										{a.label}
-									</option>
-								))}
-								<option value={OTHER_API}>其他 OMP 支持的协议</option>
-							</NativeSelect>
-							{apiChoice === OTHER_API && (
-								<input
-									type="text"
-									value={apiOther}
-									onChange={(e) => setApiOther(e.target.value)}
-									aria-label="其他 OMP 支持的协议"
-									spellCheck={false}
-									className={`${inputCls} font-mono`}
-									placeholder="OMP 的 api 字段原文，如 azure-openai-responses"
-								/>
+							{isBuiltin ? (
+								<div
+									id="provider-api"
+									className="mt-1.5 select-text break-all rounded-lg hairline bg-[var(--well-bg)] px-3 py-1.5 font-mono text-xs text-neutral-300"
+								>
+									{editing?.api ?? "未知"}
+								</div>
+							) : (
+								<>
+									<NativeSelect
+										id="provider-api"
+										value={apiChoice}
+										onChange={(e) => setApiChoice(e.target.value)}
+										containerClassName="mt-1.5"
+									>
+										{KNOWN_APIS.map((a) => (
+											<option key={a.value} value={a.value}>
+												{a.label}
+											</option>
+										))}
+										<option value={OTHER_API}>其他 OMP 支持的协议</option>
+									</NativeSelect>
+									{apiChoice === OTHER_API && (
+										<input
+											type="text"
+											value={apiOther}
+											onChange={(e) => setApiOther(e.target.value)}
+											aria-label="其他 OMP 支持的协议"
+											spellCheck={false}
+											className={`${inputCls} font-mono`}
+											placeholder="OMP 的 api 字段原文，如 azure-openai-responses"
+										/>
+									)}
+								</>
 							)}
 						</div>
 
-						<div>
-							<label htmlFor="provider-key" className={labelCls}>
-								API 密钥
-							</label>
-							<div className="relative">
-								<input
-									id="provider-key"
-									type={showKey ? "text" : "password"}
-									value={apiKey}
-									onChange={(e) => setApiKey(e.target.value)}
-									onKeyDown={(e) => {
-										if (isComposing(e)) return;
-										if (e.key === "Enter" && !saving) void handleSave();
-									}}
-									autoComplete="new-password"
-									className={`${inputCls} pr-9`}
-									placeholder={editing ? "留空保持不变" : "sk-xxx"}
-								/>
-								<button
-									type="button"
-									onClick={() => setShowKey((value) => !value)}
-									title={showKey ? "隐藏密钥" : "显示密钥"}
-									aria-label={showKey ? "隐藏密钥" : "显示密钥"}
-									className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 rounded p-1 text-neutral-500 transition-all hover:text-neutral-200 active:scale-95"
-								>
-									{showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-								</button>
-							</div>
-						</div>
-						<KeyModeRadio name="provider-key-mode" value={keyMode} onChange={setKeyMode} />
+						<label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-200">
+							<input
+								type="checkbox"
+								checked={authNone}
+								onChange={(e) => setAuthNone(e.target.checked)}
+								className="h-3.5 w-3.5 accent-[var(--accent)]"
+							/>
+							<span>这个服务不需要密钥（本机模型常见）</span>
+						</label>
+
+						{!authNone && (
+							<>
+								<div>
+									<label htmlFor="provider-key" className={labelCls}>
+										API 密钥
+									</label>
+									<div className="relative">
+										<input
+											id="provider-key"
+											type={showKey ? "text" : "password"}
+											value={apiKey}
+											onChange={(e) => setApiKey(e.target.value)}
+											onKeyDown={(e) => {
+												if (isComposing(e)) return;
+												if (e.key === "Enter" && !saving) void handleSave();
+											}}
+											autoComplete="new-password"
+											className={`${inputCls} pr-9`}
+											placeholder={
+												editing && editing.key.kind !== "missing" && editing.key.kind !== "none"
+													? "留空保持不变"
+													: "sk-xxx"
+											}
+										/>
+										<button
+											type="button"
+											onClick={() => setShowKey((value) => !value)}
+											title={showKey ? "隐藏密钥" : "显示密钥"}
+											aria-label={showKey ? "隐藏密钥" : "显示密钥"}
+											className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 rounded p-1 text-neutral-500 transition-all hover:text-neutral-200 active:scale-95"
+										>
+											{showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+										</button>
+									</div>
+								</div>
+								<KeyModeRadio name="provider-key-mode" value={keyMode} onChange={setKeyMode} />
+							</>
+						)}
 
 						<div className="border-t border-[var(--border-divider)] pt-3">
 							<div className="flex items-center justify-between">
-								<span className={labelCls}>模型列表</span>
+								<span className={labelCls}>{isBuiltin ? "额外添加的模型" : "模型列表"}</span>
 								<div className="flex items-center gap-2">
 									<button
 										type="button"
@@ -651,7 +750,11 @@ export function ProviderDialog({ target, onClose }: Props) {
 									</button>
 								</div>
 							</div>
-							<p className={hintCls}>模型 ID 必填；上下文窗口和输出上限留空则用 OMP 默认值。</p>
+							<p className={hintCls}>
+								{isBuiltin
+									? `OMP 自带的 ${Math.max(0, (editing?.models.length ?? 0) - (editing?.extraModels.length ?? 0))} 个模型会保留。模型 ID 必填；上下文窗口和输出上限留空则用 OMP 默认值。`
+									: "模型 ID 必填；上下文窗口和输出上限留空则用 OMP 默认值。"}
+							</p>
 
 							<div className="mt-2 space-y-1.5">
 								{modelRows.length > 0 && (
@@ -709,7 +812,7 @@ export function ProviderDialog({ target, onClose }: Props) {
 								))}
 								{modelRows.length === 0 && (
 									<div className="rounded-lg hairline border-dashed border-neutral-700 p-3 text-center text-xs text-neutral-500">
-										暂无模型，点击右上角「添加模型」
+										{isBuiltin ? "没有额外模型，点击右上角「添加模型」可补充" : "暂无模型，点击右上角「添加模型」"}
 									</div>
 								)}
 							</div>
@@ -726,7 +829,43 @@ export function ProviderDialog({ target, onClose }: Props) {
 					</div>
 				)}
 
-				<div className="flex items-center justify-end gap-2 border-t border-[var(--border-divider)] px-4 py-3">
+				<div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border-divider)] px-4 py-3">
+					{editing && (
+						<div className="mr-auto flex flex-wrap items-center gap-2">
+							<button
+								type="button"
+								onClick={() => void runTest(editing.id)}
+								disabled={!editing.testable || test?.state === "testing"}
+								title={editing.testable ? "测试已保存的配置" : "暂不能测试：需要已知的地址、受支持的协议和可用的密钥"}
+								className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
+							>
+								{test?.state === "testing" ? (
+									<Loader2 className="h-3 w-3 animate-spin" />
+								) : (
+									<Activity className="h-3 w-3" />
+								)}
+								<span>测试连接</span>
+							</button>
+							{test?.state === "done" && (
+								<span
+									className={`whitespace-nowrap text-[11px] ${test.result.ok ? "text-emerald-400" : "text-rose-400"}`}
+								>
+									{test.result.ok ? "连接正常" : "连接失败"}
+								</span>
+							)}
+							{editing.origin !== "builtin" && (
+								<button
+									type="button"
+									onClick={() => void handleRemove()}
+									disabled={removing}
+									className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-300 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95 disabled:opacity-40"
+								>
+									{isOverride ? <RotateCcw className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
+									<span>{isOverride ? "恢复 OMP 默认" : "删除"}</span>
+								</button>
+							)}
+						</div>
+					)}
 					<button
 						type="button"
 						onClick={() => void handleDismiss()}

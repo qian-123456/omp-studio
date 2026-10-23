@@ -355,6 +355,7 @@ pub fn run() {
             providers::commands::provider_encrypt_all,
             providers::commands::provider_upsert,
             providers::commands::provider_set_key,
+            providers::commands::provider_save_builtin,
             providers::commands::provider_delete,
             providers::commands::provider_test,
             providers::commands::provider_test_model,

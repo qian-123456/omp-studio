@@ -1816,6 +1816,7 @@ async fn providers_save<B: Backend>(
                 base_url: url,
                 api,
                 models: row.models.clone(),
+                auth_none: row.auth_none,
             },
             None,
             mode,

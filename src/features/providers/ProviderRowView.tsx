@@ -301,7 +301,7 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 						<button
 							type="button"
 							onClick={onEdit}
-							title={row.origin === "custom" ? "编辑这个供应商" : "修改这个供应商的密钥"}
+							title="编辑这个供应商"
 							className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1 text-xs text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95"
 						>
 							<Pencil className="h-3 w-3" />

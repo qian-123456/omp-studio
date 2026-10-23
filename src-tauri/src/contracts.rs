@@ -1339,6 +1339,12 @@ pub struct ProviderRow {
     pub key: ProviderKeyState,
     pub enabled: bool,
     pub testable: bool,
+    /// Built-in default endpoint (models.db cache / known built-in); `None` for a pure custom provider.
+    pub default_base_url: Option<String>,
+    /// `models` listed in this provider's models.yml block (`[]` when none).
+    pub extra_models: Vec<ModelEntry>,
+    /// Block has `auth: none`, or a keyless local engine without a block.
+    pub auth_none: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1359,6 +1365,20 @@ pub struct ProviderUpsert {
     pub base_url: String,
     pub api: String,
     pub models: Vec<ModelEntry>,
+    /// `true` writes `auth: none` and removes `apiKey`; `false` removes `auth: none`.
+    pub auth_none: bool,
+}
+
+/// Editable fields of a built-in provider's override block in models.yml.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuiltinOverride {
+    pub id: String,
+    /// `None` / empty removes the `baseUrl` override.
+    pub base_url: Option<String>,
+    pub auth_none: bool,
+    /// Non-empty requires an effective baseUrl (explicit or the default).
+    pub extra_models: Vec<ModelEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

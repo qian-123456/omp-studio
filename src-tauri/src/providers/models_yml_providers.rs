@@ -566,6 +566,93 @@ pub fn upsert_block_text(text: &str, spec: &BlockSpec) -> Result<String, String>
     Ok(t)
 }
 
+/// `(discovery type, api)` OMP needs in a `providers.<id>` block of a
+/// discovery-only local engine, or implicit discovery is cancelled.
+pub fn discovery_spec(id: &str) -> Option<(&'static str, &'static str)> {
+    match id {
+        "ollama" => Some(("ollama", "ollama")),
+        "llama.cpp" => Some(("llama.cpp", "openai-completions")),
+        "lm-studio" => Some(("lm-studio", "openai-completions")),
+        "litellm" => Some(("litellm", "openai-completions")),
+        "vllm" => Some(("openai-models-list", "openai-completions")),
+        _ => None,
+    }
+}
+
+/// `None` when `providers.<id>` is absent, else whether it has no fields.
+pub fn block_is_empty(text: &str, id: &str) -> Result<Option<bool>, String> {
+    let root: Value =
+        serde_yaml_ng::from_str(text).map_err(|_| "现有 models.yml 无法解析".to_string())?;
+    Ok(match root.get("providers").and_then(|p| p.get(id)) {
+        None => None,
+        Some(Value::Null) => Some(true),
+        Some(Value::Mapping(m)) => Some(m.is_empty()),
+        Some(_) => Some(false),
+    })
+}
+
+/// Add `discovery: { type }` and `api` to `providers.<id>` for a
+/// discovery-only local engine; fields that already exist are kept.
+pub fn ensure_discovery_text(text: &str, id: &str) -> Result<String, String> {
+    let Some((kind, api)) = discovery_spec(id) else {
+        return Ok(text.to_string());
+    };
+    let root: Value =
+        serde_yaml_ng::from_str(text).map_err(|_| "现有 models.yml 无法解析".to_string())?;
+    let block = root.get("providers").and_then(|p| p.get(id));
+    let has = |k: &str| block.is_some_and(|b| b.get(k).is_some());
+    let mut t = text.to_string();
+    if !has("discovery") {
+        t = set_field(&t, id, "discovery", Some(&format!("{{ type: {kind} }}")))?;
+    }
+    if !has("api") {
+        t = set_field(&t, id, "api", Some(&yaml_scalar(api)))?;
+    }
+    Ok(t)
+}
+
+/// Replace `providers.<id>.models`; an empty list removes the key entirely.
+pub fn set_models_text(text: &str, id: &str, models: &[ModelEntry]) -> Result<String, String> {
+    let root: Value =
+        serde_yaml_ng::from_str(text).map_err(|_| "现有 models.yml 无法解析".to_string())?;
+    let provider = provider_of(&root, id);
+    let has_key = provider.is_some_and(|p| p.get("models").is_some());
+    if models.is_empty() && !has_key {
+        return Ok(text.to_string());
+    }
+    let existing = provider.map(models_of).unwrap_or_default();
+    let t = replace_models_text(text, id, &build_items(&existing, models))?;
+    if models.is_empty() {
+        set_field(&t, id, "models", None)
+    } else {
+        Ok(t)
+    }
+}
+
+/// Read-back check for a built-in override block: `baseUrl`, `auth: none` and
+/// the extra models. `None` for `base_url` means no override.
+pub fn verify_override(
+    text: &str,
+    id: &str,
+    base_url: Option<&str>,
+    auth_none: bool,
+    models: &[ModelEntry],
+) -> Result<(), String> {
+    let all = parse_providers(text).map_err(|_| "写入后 models.yml 无法解析".to_string())?;
+    let fail = || format!("写入后校验失败: {id}");
+    let Some(got) = all.iter().find(|p| p.id == id) else {
+        return Err(fail());
+    };
+    if got.base_url.as_deref() == base_url
+        && got.auth_none == auth_none
+        && (models.is_empty() && got.models.is_empty() || same_models(&got.models, models))
+    {
+        Ok(())
+    } else {
+        Err(fail())
+    }
+}
+
 /// Read-back check for [`upsert_block_text`].
 pub fn verify_block(text: &str, spec: &BlockSpec) -> Result<(), String> {
     let all = parse_providers(text).map_err(|_| "写入后 models.yml 无法解析".to_string())?;

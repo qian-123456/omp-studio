@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use crate::contracts::{KeyMode, ProviderKeyKind, ProviderUpsert};
+use crate::contracts::{BuiltinOverride, KeyMode, ProviderKeyKind, ProviderUpsert};
 
 use super::commands::sanitize_slug;
 use super::models_yml_providers::{self as yml, edit_file, BlockSpec, YmlProvider};
@@ -139,8 +139,10 @@ fn key_value(env: &Env, id: &str, key: &str, mode: KeyMode) -> (String, String) 
 }
 
 /// Set `providers.<id>.apiKey` (creating the block when absent), dropping a now
-/// contradictory `auth: none`.
+/// contradictory `auth: none`. A block created here for a discovery-only local
+/// engine also gets `discovery` + `api`, so OMP keeps discovering its models.
 fn set_api_key_text(text: &str, id: &str, rendered: &str) -> Result<String, String> {
+    let created = yml::block_is_empty(text, id)?.is_none();
     let mut t = yml::ensure_provider(text, id)?;
     t = yml::set_field(&t, id, "apiKey", Some(rendered))?;
     if yml::parse_providers(&t)?
@@ -148,6 +150,9 @@ fn set_api_key_text(text: &str, id: &str, rendered: &str) -> Result<String, Stri
         .any(|p| p.id == id && p.auth_none)
     {
         t = yml::set_field(&t, id, "auth", None)?;
+    }
+    if created {
+        t = yml::ensure_discovery_text(&t, id)?;
     }
     Ok(t)
 }
@@ -244,9 +249,10 @@ pub fn upsert(
     if api.is_empty() {
         return Err("API 协议不能为空".to_string());
     }
+    // `auth: none` and a key contradict each other; "no key needed" wins.
     let new_key = api_key
         .map(str::trim)
-        .filter(|k| !k.is_empty())
+        .filter(|k| !k.is_empty() && !input.auth_none)
         .map(validate_key)
         .transpose()?;
     if mode == KeyMode::Plaintext && new_key.is_some_and(|k| k.starts_with('!')) {
@@ -268,10 +274,11 @@ pub fn upsert(
     }
     let renaming = orig.is_some_and(|o| o != id);
     let old = orig.and_then(|o| all.iter().find(|p| p.id == o));
-    let old_was_ref = old.is_some_and(|p| env.is_own_ref(p));
+    let old_was_ref = old.is_some_and(|p| env.is_own_ref(p)) && !input.auth_none;
     let old_slug = old.map(|p| key_ref::vault_slug(&p.id));
     let slug = key_ref::vault_slug(id);
     let creating = orig.is_none();
+    let auth_none = input.auth_none || (creating && new_key.is_none() && is_local_url(base_url));
 
     let spec = BlockSpec {
         id: id.to_string(),
@@ -279,7 +286,7 @@ pub fn upsert(
         base_url: base_url.to_string(),
         api: api.to_string(),
         models: input.models.clone(),
-        auth_none: creating && new_key.is_none() && is_local_url(base_url),
+        auth_none,
     };
 
     let prev = env.store.get(&slug).ok().flatten();
@@ -310,6 +317,11 @@ pub fn upsert(
                 t = yml::rename_provider(&t, o, id)?;
             }
             t = yml::upsert_block_text(&t, &spec)?;
+            if input.auth_none {
+                t = yml::set_field(&t, id, "apiKey", None)?;
+            } else if !auth_none {
+                t = yml::set_field(&t, id, "auth", None)?;
+            }
             if let Some((_, rendered)) = &key_edit {
                 t = set_api_key_text(&t, id, rendered)?;
             } else if carry_ref {
@@ -324,6 +336,10 @@ pub fn upsert(
         },
         &|w| {
             yml::verify_block(w, &spec)?;
+            let got = yml::parse_providers(w)?;
+            if got.iter().any(|p| p.id == id && p.auth_none != auth_none) {
+                return Err(format!("写入后校验失败: {id}"));
+            }
             if let Some((raw, _)) = &key_edit {
                 check_api_key(w, id, raw)?;
             } else if carry_ref {
@@ -348,10 +364,101 @@ pub fn upsert(
             }
         }
     }
-    if new_key.is_some() && mode == KeyMode::Plaintext {
+    if (new_key.is_some() && mode == KeyMode::Plaintext) || input.auth_none {
         env.store.remove(&slug)?;
     }
     Ok(id.to_string())
+}
+
+/// Create / update / drop the override block of a built-in provider. Keeps the
+/// fields it does not manage (`modelOverrides`, `headers`, `name`, ...). `api_key`
+/// `None` keeps the current key; `auth_none` wins over a key. An empty result
+/// deletes the block. `default_base_url` is the built-in endpoint, used when
+/// extra models need an address and none was typed.
+pub fn save_builtin(
+    env: &Env,
+    input: &BuiltinOverride,
+    default_base_url: Option<&str>,
+    api_key: Option<&str>,
+    mode: KeyMode,
+) -> Result<(), String> {
+    let id = validate_id(&input.id)?;
+    let typed = input
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|u| !u.is_empty());
+    let base_url = if input.extra_models.is_empty() {
+        typed
+    } else {
+        Some(
+            typed
+                .or_else(|| default_base_url.map(str::trim).filter(|u| !u.is_empty()))
+                .ok_or_else(|| "添加模型需要先填写地址".to_string())?,
+        )
+    };
+    let new_key = api_key
+        .map(str::trim)
+        .filter(|k| !k.is_empty() && !input.auth_none)
+        .map(validate_key)
+        .transpose()?;
+    if mode == KeyMode::Plaintext && new_key.is_some_and(|k| k.starts_with('!')) {
+        return Err("明文密钥不能以 ! 开头（OMP 会把它当作命令执行），请改用加密保存".to_string());
+    }
+    let slug = key_ref::vault_slug(id);
+    let prev = env.store.get(&slug).ok().flatten();
+    let mut wrote_vault = false;
+    if let (Some(k), KeyMode::Encrypted) = (new_key, mode) {
+        env.store.put(&slug, k)?;
+        wrote_vault = true;
+    }
+    let key_edit = new_key.map(|k| key_value(env, id, k, mode));
+    let auth_none = input.auth_none;
+    let result = edit_file(
+        env.models_yml,
+        &|t| {
+            let mut t = yml::ensure_provider(t, id)?;
+            if let Some((_, rendered)) = &key_edit {
+                t = set_api_key_text(&t, id, rendered)?;
+            }
+            let url = base_url.map(yml::yaml_scalar);
+            t = yml::set_field(&t, id, "baseUrl", url.as_deref())?;
+            t = yml::set_models_text(&t, id, &input.extra_models)?;
+            if auth_none {
+                t = yml::set_field(&t, id, "apiKey", None)?;
+                t = yml::set_field(&t, id, "auth", Some("none"))?;
+            } else {
+                t = yml::set_field(&t, id, "auth", None)?;
+            }
+            if yml::block_is_empty(&t, id)? == Some(true) {
+                return yml::remove_provider(&t, id);
+            }
+            yml::ensure_discovery_text(&t, id)
+        },
+        &|w| {
+            if yml::block_is_empty(w, id)?.is_none() {
+                return Ok(());
+            }
+            yml::verify_override(w, id, base_url, auth_none, &input.extra_models)?;
+            if let Some((raw, _)) = &key_edit {
+                check_api_key(w, id, raw)?;
+            }
+            Ok(())
+        },
+    );
+    if let Err(e) = result {
+        if wrote_vault {
+            let _ = match &prev {
+                Some(p) => env.store.put(&slug, p),
+                None => env.store.remove(&slug),
+            };
+        }
+        return Err(e);
+    }
+    if (new_key.is_some() && mode == KeyMode::Plaintext) || auth_none {
+        env.store.remove(&slug)?;
+    }
+    Ok(())
 }
 
 /// Delete the `providers.<id>` block and its vault entry.
@@ -578,6 +685,7 @@ pub(super) mod tests {
             base_url: "https://n.example/v1".into(),
             api: "openai-completions".into(),
             models: vec![ModelEntry::Id("a".into())],
+            auth_none: false,
         };
         upsert(&env, &input, Some("sk-n"), KeyMode::Encrypted).unwrap();
         let t = fx.text();
@@ -640,6 +748,7 @@ pub(super) mod tests {
             base_url: "http://localhost:11434/v1".into(),
             api: "openai-completions".into(),
             models: vec![],
+            auth_none: false,
         };
         upsert(&env, &input, None, KeyMode::Plaintext).unwrap();
         assert!(env.provider("ollama").unwrap().unwrap().auth_none);
@@ -730,5 +839,167 @@ pub(super) mod tests {
         ] {
             assert!(!is_local_url(u), "{u}");
         }
+    }
+
+    fn ov(id: &str, base: Option<&str>, auth_none: bool, models: &[&str]) -> BuiltinOverride {
+        BuiltinOverride {
+            id: id.into(),
+            base_url: base.map(String::from),
+            auth_none,
+            extra_models: models.iter().map(|m| ModelEntry::Id((*m).into())).collect(),
+        }
+    }
+
+    #[test]
+    fn save_builtin_builds_updates_and_keeps_unmanaged_fields() {
+        let fx = Fx::new("providers:\n  openai:\n    name: Mine\n    modelOverrides:\n      gpt-4o:\n        name: X\n");
+        let env = fx.env();
+        save_builtin(
+            &env,
+            &ov("openai", Some("https://gw.example/v1"), false, &["m1"]),
+            None,
+            Some("sk-1"),
+            KeyMode::Plaintext,
+        )
+        .unwrap();
+        let p = env.provider("openai").unwrap().unwrap();
+        assert_eq!(p.base_url.as_deref(), Some("https://gw.example/v1"));
+        assert_eq!(p.api_key.as_deref(), Some("sk-1"));
+        assert_eq!(p.name.as_deref(), Some("Mine"));
+        assert_eq!(p.models, vec![ModelEntry::Id("m1".into())]);
+        assert!(fx.text().contains("modelOverrides:"));
+
+        // no key → kept; drop baseUrl + models
+        save_builtin(
+            &env,
+            &ov("openai", None, false, &[]),
+            None,
+            None,
+            KeyMode::Plaintext,
+        )
+        .unwrap();
+        let p = env.provider("openai").unwrap().unwrap();
+        assert_eq!(p.base_url, None);
+        assert!(p.models.is_empty());
+        assert_eq!(p.api_key.as_deref(), Some("sk-1"));
+        let t = fx.text();
+        assert!(t.contains("modelOverrides:") && t.contains("name: Mine"));
+        assert!(!t.contains("models:") && !t.contains("baseUrl"));
+    }
+
+    #[test]
+    fn save_builtin_extra_models_need_an_address() {
+        let fx = Fx::new(BASE);
+        let env = fx.env();
+        let err = save_builtin(
+            &env,
+            &ov("openai", None, false, &["m"]),
+            None,
+            None,
+            KeyMode::Plaintext,
+        )
+        .unwrap_err();
+        assert_eq!(err, "添加模型需要先填写地址");
+        assert_eq!(fx.text(), BASE);
+        save_builtin(
+            &env,
+            &ov("openai", None, false, &["m"]),
+            Some("https://api.openai.com/v1"),
+            None,
+            KeyMode::Plaintext,
+        )
+        .unwrap();
+        let p = env.provider("openai").unwrap().unwrap();
+        assert_eq!(p.base_url.as_deref(), Some("https://api.openai.com/v1"));
+        assert_eq!(p.models.len(), 1);
+    }
+
+    #[test]
+    fn save_builtin_auth_none_toggles_and_empty_block_is_deleted() {
+        let fx = Fx::new(BASE);
+        let env = fx.env();
+        save_builtin(
+            &env,
+            &ov("groq", None, true, &[]),
+            None,
+            Some("ignored"),
+            KeyMode::Encrypted,
+        )
+        .unwrap();
+        let p = env.provider("groq").unwrap().unwrap();
+        assert!(p.auth_none && p.api_key.is_none());
+        assert!(!fx.store.has(&key_ref::vault_slug("groq")), "key ignored");
+
+        save_builtin(
+            &env,
+            &ov("groq", None, false, &[]),
+            None,
+            Some("sk-g"),
+            KeyMode::Encrypted,
+        )
+        .unwrap();
+        let p = env.provider("groq").unwrap().unwrap();
+        assert!(!p.auth_none);
+        assert!(key_ref::is_ref_for(
+            p.api_key.as_deref().unwrap(),
+            Path::new(SHIM),
+            "groq"
+        ));
+
+        // unchecked, no key: still has the apiKey → block stays; removing it empties it
+        delete(&env, "groq").unwrap();
+        save_builtin(
+            &env,
+            &ov("groq", None, true, &[]),
+            None,
+            None,
+            KeyMode::Plaintext,
+        )
+        .unwrap();
+        save_builtin(
+            &env,
+            &ov("groq", None, false, &[]),
+            None,
+            None,
+            KeyMode::Plaintext,
+        )
+        .unwrap();
+        assert_eq!(fx.text(), BASE);
+        assert!(env.provider("groq").unwrap().is_none());
+    }
+
+    #[test]
+    fn discovery_only_blocks_always_get_discovery_and_api() {
+        let fx = Fx::new("");
+        let env = fx.env();
+        save_builtin(
+            &env,
+            &ov("ollama", None, true, &[]),
+            None,
+            None,
+            KeyMode::Plaintext,
+        )
+        .unwrap();
+        let t = fx.text();
+        assert!(
+            t.contains("discovery: { type: ollama }") && t.contains("api: ollama"),
+            "{t}"
+        );
+        assert!(env.provider("ollama").unwrap().unwrap().auth_none);
+
+        // set_key path
+        let fx = Fx::new("");
+        apply_key(&fx.env(), "lm-studio", "sk-x", KeyMode::Plaintext).unwrap();
+        let t = fx.text();
+        assert!(t.contains("discovery: { type: lm-studio }"), "{t}");
+        assert!(
+            t.contains("api: openai-completions") && t.contains("apiKey: sk-x"),
+            "{t}"
+        );
+
+        // a non-discovery built-in is left alone
+        let fx = Fx::new("");
+        apply_key(&fx.env(), "openai", "sk-x", KeyMode::Plaintext).unwrap();
+        assert!(!fx.text().contains("discovery"));
     }
 }

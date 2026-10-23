@@ -8,8 +8,8 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use crate::contracts::{
-    KeyMode, ProviderApi, ProviderBulkResult, ProviderKeyKind, ProviderRow, ProviderTestResult,
-    ProviderUpsert,
+    BuiltinOverride, KeyMode, ProviderApi, ProviderBulkResult, ProviderKeyKind, ProviderRow,
+    ProviderTestResult, ProviderUpsert,
 };
 
 use super::ops::{self, Env, VaultStore};
@@ -113,6 +113,32 @@ pub async fn provider_set_key(
 ) -> Result<ProviderRow, String> {
     let _guard = super::MUTATION_LOCK.lock().await;
     with_env(|env| ops::apply_key(env, &id, &api_key, key_mode))?;
+    row_of(&id)
+}
+
+/// Create / update / drop the override block of a built-in provider.
+/// `api_key` None keeps the current key.
+#[tauri::command]
+pub async fn provider_save_builtin(
+    input: BuiltinOverride,
+    api_key: Option<String>,
+    key_mode: KeyMode,
+) -> Result<ProviderRow, String> {
+    let _guard = super::MUTATION_LOCK.lock().await;
+    let id = input.id.trim().to_string();
+    let default_base_url = rows::load_rows()?
+        .into_iter()
+        .find(|r| r.id == id)
+        .and_then(|r| r.default_base_url);
+    with_env(|env| {
+        ops::save_builtin(
+            env,
+            &input,
+            default_base_url.as_deref(),
+            api_key.as_deref(),
+            key_mode,
+        )
+    })?;
     row_of(&id)
 }
 

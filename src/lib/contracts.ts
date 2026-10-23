@@ -1045,6 +1045,12 @@ export interface ProviderRow {
 	key: ProviderKeyState;
 	enabled: boolean;
 	testable: boolean;
+	/** Built-in default endpoint; null for custom providers. */
+	defaultBaseUrl: string | null;
+	/** `models` listed in this provider's models.yml block. */
+	extraModels: ModelEntry[];
+	/** Block has `auth: none`, or keyless local engine without a block. */
+	authNone: boolean;
 }
 
 export type KeyMode = "plaintext" | "encrypted";
@@ -1056,6 +1062,14 @@ export interface ProviderUpsert {
 	baseUrl: string;
 	api: string;
 	models: ModelEntry[];
+	authNone: boolean;
+}
+
+export interface BuiltinOverride {
+	id: string;
+	baseUrl: string | null;
+	authNone: boolean;
+	extraModels: ModelEntry[];
 }
 
 export interface ProviderBulkResult {

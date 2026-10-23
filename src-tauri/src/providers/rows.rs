@@ -90,6 +90,14 @@ fn api_string(api: ProviderApi) -> &'static str {
     }
 }
 
+/// Local engines OMP treats as keyless by default.
+pub fn is_keyless_local(id: &str) -> bool {
+    matches!(
+        id,
+        "ollama" | "llama.cpp" | "lm-studio" | "vllm" | "litellm"
+    )
+}
+
 fn key_resolvable(key: &ProviderKeyState) -> bool {
     match key.kind {
         ProviderKeyKind::Encrypted
@@ -165,13 +173,28 @@ pub fn build_rows(inp: &Inputs) -> Vec<ProviderRow> {
                     .map(|c| c.model_ids.iter().cloned().map(ModelEntry::Id).collect())
                     .unwrap_or_default(),
             };
-            let key = detect_key(
+            let mut key = detect_key(
                 &id,
                 yml.and_then(|p| p.api_key.as_deref()),
                 yml.is_some_and(|p| p.auth_none),
                 cred_types,
                 inp.env,
             );
+            // Keyless local engines need no key unless one is configured.
+            if key.kind == ProviderKeyKind::Missing && is_keyless_local(&id) {
+                key.kind = ProviderKeyKind::None;
+            }
+            let default_base_url = match origin {
+                ProviderOrigin::Custom => preset.map(|p| p.base_url.to_string()),
+                _ => cache
+                    .as_ref()
+                    .and_then(|c| c.base_url.clone())
+                    .or_else(|| preset.map(|p| p.base_url.to_string())),
+            };
+            let auth_none = match yml {
+                Some(p) => p.auth_none,
+                None => key.kind == ProviderKeyKind::None,
+            };
             let testable = base_url.is_some()
                 && api.as_deref().and_then(map_provider_api).is_some_and(|a| {
                     matches!(
@@ -194,6 +217,9 @@ pub fn build_rows(inp: &Inputs) -> Vec<ProviderRow> {
                 key,
                 enabled: !inp.disabled.contains(&id),
                 testable,
+                default_base_url,
+                extra_models: yml.map(|p| p.models.clone()).unwrap_or_default(),
+                auth_none,
                 id,
             }
         })
@@ -369,5 +395,39 @@ mod tests {
         assert_eq!(rows[3].models, vec![ModelEntry::Id("x/y".into())]);
         assert_eq!(rows[3].sources, ["agent.db", "models.db", "built-in"]);
         assert!(rows[3].testable && rows[3].enabled);
+    }
+
+    #[test]
+    fn blockless_ollama_row_is_keyless_with_default_address() {
+        let shim = PathBuf::from("/d/bin/ompws-key");
+        let (vault_has, env_set) = (|_: &str| false, |_: &str| false);
+        let env = KeyEnv {
+            shim: &shim,
+            vault_has: &vault_has,
+            env_set: &env_set,
+        };
+        let creds: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::from([
+            ("ollama".into(), (vec![], vec![])),
+            ("openai".into(), (vec![], vec![])),
+        ]);
+        let disabled = HashSet::new();
+        let cache = |_: &str| None;
+        let rows = build_rows(&Inputs {
+            yml: &[],
+            disabled: &disabled,
+            creds: &creds,
+            cache: &cache,
+            env: &env,
+        });
+        let ollama = rows.iter().find(|r| r.id == "ollama").unwrap();
+        assert_eq!(ollama.key.kind, ProviderKeyKind::None);
+        assert!(ollama.auth_none && ollama.extra_models.is_empty());
+        assert_eq!(
+            ollama.default_base_url.as_deref(),
+            Some("http://localhost:11434")
+        );
+        let openai = rows.iter().find(|r| r.id == "openai").unwrap();
+        assert_eq!(openai.key.kind, ProviderKeyKind::Missing);
+        assert!(!openai.auth_none);
     }
 }
