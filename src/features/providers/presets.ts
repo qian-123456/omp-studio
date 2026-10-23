@@ -1,5 +1,3 @@
-import type { ProviderApi } from "../../lib/contracts";
-
 /** Display preset mirroring the backend `providers/presets.rs` table. */
 export interface ProviderPreset {
 	id: string;
@@ -7,7 +5,7 @@ export interface ProviderPreset {
 	/** Row dot / chip color. */
 	color: string;
 	baseUrl: string;
-	api: ProviderApi;
+	api: string;
 	envVar: string;
 	models: string[];
 	defaultModel?: string;
@@ -21,7 +19,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "OpenAI",
 		color: "#10a37f",
 		baseUrl: "https://api.openai.com/v1",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "OPENAI_API_KEY",
 		models: ["gpt-4o", "gpt-4.1", "o3"],
 		defaultModel: "gpt-4o",
@@ -31,7 +29,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "Anthropic",
 		color: "#d97757",
 		baseUrl: "https://api.anthropic.com",
-		api: "anthropic",
+		api: "anthropic-messages",
 		envVar: "ANTHROPIC_API_KEY",
 		models: ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5"],
 		defaultModel: "claude-sonnet-4-5",
@@ -40,8 +38,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		id: "google",
 		name: "Google Gemini",
 		color: "#4285f4",
-		baseUrl: "https://generativelanguage.googleapis.com",
-		api: "gemini",
+		baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+		api: "google-generative-ai",
 		envVar: "GEMINI_API_KEY",
 		models: ["gemini-2.5-pro", "gemini-2.5-flash"],
 		defaultModel: "gemini-2.5-pro",
@@ -51,7 +49,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "DeepSeek",
 		color: "#4d6bfe",
 		baseUrl: "https://api.deepseek.com",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "DEEPSEEK_API_KEY",
 		models: ["deepseek-chat", "deepseek-reasoner"],
 		defaultModel: "deepseek-chat",
@@ -61,7 +59,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "Moonshot Kimi",
 		color: "#16b0a1",
 		baseUrl: "https://api.moonshot.cn/v1",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "MOONSHOT_API_KEY",
 		models: ["kimi-k2-turbo-preview", "kimi-k2-0905-preview"],
 		defaultModel: "kimi-k2-turbo-preview",
@@ -71,7 +69,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "OpenRouter",
 		color: "#8b5cf6",
 		baseUrl: "https://openrouter.ai/api/v1",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "OPENROUTER_API_KEY",
 		models: ["anthropic/claude-sonnet-4.5", "openai/gpt-4o", "google/gemini-2.5-pro"],
 		defaultModel: "anthropic/claude-sonnet-4.5",
@@ -81,7 +79,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "SiliconFlow",
 		color: "#7c3aed",
 		baseUrl: "https://api.siliconflow.cn/v1",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "SILICONFLOW_API_KEY",
 		models: ["deepseek-ai/DeepSeek-V3.1", "Qwen/Qwen3-235B-A22B-Instruct"],
 		defaultModel: "deepseek-ai/DeepSeek-V3.1",
@@ -91,7 +89,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "Groq",
 		color: "#f55036",
 		baseUrl: "https://api.groq.com/openai/v1",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "GROQ_API_KEY",
 		models: ["llama-3.3-70b-versatile", "moonshotai/kimi-k2-instruct"],
 		defaultModel: "llama-3.3-70b-versatile",
@@ -101,7 +99,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "Mistral",
 		color: "#ff7000",
 		baseUrl: "https://api.mistral.ai/v1",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "MISTRAL_API_KEY",
 		models: ["mistral-large-latest", "mistral-small-latest"],
 		defaultModel: "mistral-large-latest",
@@ -111,7 +109,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "xAI",
 		color: "#e4e4e7",
 		baseUrl: "https://api.x.ai/v1",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "XAI_API_KEY",
 		models: ["grok-4", "grok-3-mini"],
 		defaultModel: "grok-4",
@@ -120,8 +118,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		id: "ollama",
 		name: "Ollama",
 		color: "#6b7280",
-		baseUrl: "http://localhost:11434",
-		api: "ollama",
+		baseUrl: "http://localhost:11434/v1",
+		api: "openai-completions",
 		envVar: "OLLAMA_API_KEY",
 		models: [],
 		noKey: true,
@@ -131,7 +129,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		name: "自定义 OpenAI 兼容",
 		color: "#f59e0b",
 		baseUrl: "",
-		api: "openai_completions",
+		api: "openai-completions",
 		envVar: "",
 		models: [],
 	},
@@ -147,10 +145,10 @@ export function matchPresetByEnvVar(envVar: string): ProviderPreset | undefined 
 	return PROVIDER_PRESETS.find((p) => p.envVar !== "" && p.envVar === envVar);
 }
 
-export const API_LABELS: Record<ProviderApi, string> = {
-	openai_completions: "OpenAI 兼容",
-	openai_responses: "OpenAI Responses",
-	anthropic: "Anthropic",
-	gemini: "Gemini",
-	ollama: "Ollama",
-};
+/** Protocols offered in the provider form; any other OMP api string is entered as free text. */
+export const KNOWN_APIS: { value: string; label: string }[] = [
+	{ value: "openai-completions", label: "OpenAI 兼容（openai-completions）" },
+	{ value: "openai-responses", label: "OpenAI Responses（openai-responses）" },
+	{ value: "anthropic-messages", label: "Anthropic（anthropic-messages）" },
+	{ value: "google-generative-ai", label: "Gemini（google-generative-ai）" },
+];

@@ -1769,15 +1769,19 @@ async fn roles_set<B: Backend>(
 }
 
 async fn providers_get<B: Backend>(State(_ctx): State<Arc<Ctx<B>>>) -> ApiResult<Value> {
-    let list = crate::providers::commands::omp_providers_list()
+    let list = crate::providers::commands::provider_rows()
         .await
         .map_err(bad_gateway)?;
     Ok(Json(json!({ "providers": list })))
 }
 
+/// Mobile edits only a custom provider's Base URL and/or its key; the key keeps
+/// its current storage (vault stays vault, anything else is written plaintext).
 #[derive(Deserialize)]
 struct ProviderSaveBody {
-    config: crate::contracts::ProviderConfig,
+    id: String,
+    #[serde(default)]
+    base_url: Option<String>,
     #[serde(default)]
     api_key: Option<String>,
 }
@@ -1786,10 +1790,45 @@ async fn providers_save<B: Backend>(
     State(_ctx): State<Arc<Ctx<B>>>,
     Json(body): Json<ProviderSaveBody>,
 ) -> ApiResult<Value> {
-    let saved = crate::providers::commands::provider_save(body.config, body.api_key)
+    use crate::contracts::{KeyMode, ProviderKeyKind, ProviderOrigin, ProviderUpsert};
+    use crate::providers::commands::{provider_rows, provider_set_key, provider_upsert};
+    let rows = provider_rows().await.map_err(bad_request)?;
+    let row = rows
+        .into_iter()
+        .find(|r| r.id == body.id)
+        .ok_or_else(|| bad_request("供应商不存在".to_string()))?;
+    let mode = match row.key.kind {
+        ProviderKeyKind::Encrypted | ProviderKeyKind::VaultMissing => KeyMode::Encrypted,
+        _ => KeyMode::Plaintext,
+    };
+    let new_key = body.api_key.filter(|k| !k.trim().is_empty());
+    let new_url = body
+        .base_url
+        .map(|u| u.trim().to_string())
+        .filter(|u| !u.is_empty() && Some(u) != row.base_url.as_ref());
+    let mut saved = row.clone();
+    if let (Some(url), ProviderOrigin::Custom, Some(api)) = (new_url, row.origin, row.api.clone()) {
+        saved = provider_upsert(
+            ProviderUpsert {
+                original_id: Some(row.id.clone()),
+                id: row.id.clone(),
+                display_name: row.display_name.clone(),
+                base_url: url,
+                api,
+                models: row.models.clone(),
+            },
+            None,
+            mode,
+        )
         .await
         .map_err(bad_request)?;
-    Ok(Json(json!({ "ok": true, "config": saved })))
+    }
+    if let Some(key) = new_key {
+        saved = provider_set_key(row.id.clone(), key, mode)
+            .await
+            .map_err(bad_request)?;
+    }
+    Ok(Json(json!({ "ok": true, "provider": saved })))
 }
 
 #[derive(Deserialize)]

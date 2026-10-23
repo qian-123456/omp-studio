@@ -59,8 +59,7 @@ fn size(cols: u16, rows: u16) -> PtySize {
 }
 
 /// Spawn `argv` (empty → login shell) in a new PTY. Returns the termId.
-/// `extra_env` adds caller-scoped pairs (e.g. OMP provider metadata) on top of
-/// the shared provider key material.
+/// `extra_env` adds caller-scoped pairs (e.g. privacy placeholders) to the shell env.
 pub fn open(
     cwd: &str,
     argv: &[String],
@@ -110,10 +109,6 @@ pub fn open(
     cmd.env("COLORTERM", "truecolor");
     if std::env::var_os("LANG").is_none() {
         cmd.env("LANG", "en_US.UTF-8");
-    }
-    // Inject configured API provider keys (best effort; never logged).
-    for (key, value) in crate::providers::env_pairs() {
-        cmd.env(key, value);
     }
     for (key, value) in extra_env {
         cmd.env(key, value);

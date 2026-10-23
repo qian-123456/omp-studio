@@ -147,10 +147,8 @@ export function openContextWindowForModel(providerId: string | null, modelId: st
 		.openSettings("context-window", pid ? { focusKey: `cw-model:${pid}/${modelId}` } : undefined);
 }
 
-/** First provider (workbench, then OMP-managed) that lists `modelId`. */
+/** First OMP provider row that lists `modelId`. */
 function findProviderForModel(modelId: string): string | null {
-	const { providers, ompProviders } = useProviders.getState();
-	const own = providers.find((p) => p.models.some((m) => (typeof m === "string" ? m : m.id) === modelId));
-	if (own) return own.id;
-	return ompProviders.find((p) => p.modelIds.includes(modelId))?.id ?? null;
+	const { rows } = useProviders.getState();
+	return rows.find((p) => p.models.some((m) => (typeof m === "string" ? m : m.id) === modelId))?.id ?? null;
 }

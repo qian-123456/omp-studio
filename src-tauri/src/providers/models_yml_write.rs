@@ -114,9 +114,13 @@ pub(super) fn commit_text(
     text: &str,
     check: &dyn Fn(&str) -> Result<(), String>,
 ) -> Result<(), String> {
+    let label = path.file_name().map_or_else(
+        || "models.yml".to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
     let backup = if existed {
         let b = backup_path(path);
-        std::fs::copy(path, &b).map_err(|e| format!("备份 models.yml 失败: {}", e.kind()))?;
+        std::fs::copy(path, &b).map_err(|e| format!("备份 {label} 失败: {}", e.kind()))?;
         Some(b)
     } else {
         if let Some(dir) = path.parent() {
@@ -126,10 +130,10 @@ pub(super) fn commit_text(
     };
 
     let result = std::fs::write(path, text)
-        .map_err(|e| format!("写入 models.yml 失败: {}", e.kind()))
+        .map_err(|e| format!("写入 {label} 失败: {}", e.kind()))
         .and_then(|_| {
             let written = std::fs::read_to_string(path)
-                .map_err(|e| format!("回读 models.yml 失败: {}", e.kind()))?;
+                .map_err(|e| format!("回读 {label} 失败: {}", e.kind()))?;
             check(&written)
         });
     if let Err(err) = result {

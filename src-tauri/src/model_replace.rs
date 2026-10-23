@@ -6,7 +6,7 @@
 //! `newSessionModel` / `sideChatModel` / `doctorModel`, and every schedule's `model` (+
 //! `thinking`) — together with a per-location scan status, so a missing workspace directory or
 //! an unparsable config is reported instead of failing the scan. Agent frontmatter,
-//! `providers.json`, `models.yml` and session history are never touched.
+//! `models.yml` and session history are never touched.
 //!
 //! Guarding. Every write re-reads the current value and refuses to write unless it still
 //! equals the value the caller scanned (`当前值已变化，请重新扫描`). Role/override edits reuse
@@ -1138,13 +1138,8 @@ pub async fn model_kind_catalog(
 
 async fn kind_catalog(bin: &str) -> Result<Vec<ModelKindEntry>, String> {
     let cwd = std::env::temp_dir();
-    // Only `omp models` takes `-e`; `search` / `find` reject it.
-    let extension = crate::providers::try_extension_path();
-    let mut args = vec!["models", "--kind", "all", "--json"];
-    let extension_text = extension.as_ref().map(|path| path.to_string_lossy());
-    if let Some(text) = extension_text.as_deref() {
-        args.extend(["-e", text]);
-    }
+    // Only `omp models` is queried here; `search` / `find` are separate subcommands.
+    let args = vec!["models", "--kind", "all", "--json"];
     let run = run_omp(bin, &args, &cwd).await?;
     if !run.success {
         return Err(failure_detail(&run));
@@ -1293,7 +1288,6 @@ async fn run_omp(bin: &str, args: &[&str], cwd: &Path) -> Result<OmpRun, String>
     cmd.args(args);
     cmd.current_dir(cwd)
         .env("PATH", path)
-        .envs(crate::providers::omp_spawn_env())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1496,14 +1490,10 @@ async fn run_probe(bin: &str, model: &str) -> Result<String, String> {
     cmd.args(["-p", "--no-tools", "--no-session", "--no-title"]);
     cmd.args(crate::todos::omp::lightweight_args());
     cmd.arg("--config").arg(&overlay);
-    if let Some(extension) = crate::providers::try_extension_path() {
-        cmd.arg("-e").arg(extension);
-    }
     cmd.arg("--model")
         .arg(crate::todos::omp::normalize_model_selector(model));
     cmd.current_dir(crate::paths::oneshot_dir())
         .env("PATH", path)
-        .envs(crate::providers::omp_spawn_env())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

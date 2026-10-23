@@ -1,33 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProviderConfig } from "../../lib/contracts";
-import { applyContextUpdates, cleanModelId, matchKey, parseContextInput, ruleMatches, tokenizeModelId } from "./modelNormalization";
-
-function provider(
-	id: string,
-	models: ProviderConfig["models"],
-	defaultContextWindow: number | null = null,
-): ProviderConfig {
-	return {
-		id,
-		name: `Provider-${id}`,
-		slug: id,
-		presetId: null,
-		baseUrl: "https://example.com/v1",
-		api: "anthropic",
-		envVar: "API_KEY",
-		models,
-		defaultModel: null,
-		defaultContextWindow,
-		defaultMaxTokens: null,
-		enabled: true,
-		sort: 0,
-		hasKey: false,
-		keyHint: null,
-		notes: null,
-		createdAt: "",
-		updatedAt: "",
-	};
-}
+import { cleanModelId, matchKey, parseContextInput, ruleMatches, tokenizeModelId } from "./modelNormalization";
 
 describe("cleanModelId", () => {
 	it("strips vendor prefixes and date/variant suffixes", () => {
@@ -97,21 +69,5 @@ describe("parseContextInput", () => {
 
 	it.each(["", "abc", "0", "-5k", "12x"])("rejects invalid input %s", (input) => {
 		expect(parseContextInput(input)).toBeNull();
-	});
-});
-
-describe("applyContextUpdates", () => {
-	it("sets and removes per-model values without touching defaultContextWindow", () => {
-		const p1 = provider("p1", ["a", { id: "b", contextWindow: 100_000 }, { id: "c", contextWindow: 1, maxTokens: 9 }], 64_000);
-		const [changed] = applyContextUpdates(
-			[p1],
-			[
-				{ providerId: "p1", modelId: "a", contextWindow: 300_000 },
-				{ providerId: "p1", modelId: "b", contextWindow: null },
-				{ providerId: "p1", modelId: "c", contextWindow: null },
-			],
-		);
-		expect(changed.defaultContextWindow).toBe(64_000);
-		expect(changed.models).toEqual([{ id: "a", contextWindow: 300_000 }, "b", { id: "c", maxTokens: 9 }]);
 	});
 });

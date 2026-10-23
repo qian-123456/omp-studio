@@ -1,23 +1,25 @@
-/** [providers] Provider list store for the settings panel. */
+/** [providers] OMP provider rows for the settings panel. */
 
 import { create } from "zustand";
 import type {
-	OmpProviderInfo,
-	OmpImportResult,
-	ProviderConfig,
+	KeyMode,
+	ProviderBulkResult,
+	ProviderRow,
 	ProviderTestResult,
+	ProviderUpsert,
 } from "../../lib/contracts";
 import {
+	providerDecrypt,
 	providerDelete,
+	providerEncrypt,
+	providerEncryptAll,
 	providerExportEnvText,
-	ompProvidersList,
-	providerImportOmp,
-	providerList,
-	providerReorder,
-	providerSave,
+	providerRows,
 	providerSetEnabled,
+	providerSetKey,
 	providerTest,
 	providerTestModel,
+	providerUpsert,
 } from "../../lib/ipc";
 
 export type TestStatus =
@@ -25,161 +27,133 @@ export type TestStatus =
 	| { state: "done"; result: ProviderTestResult };
 
 interface ProvidersState {
-	providers: ProviderConfig[];
+	rows: ProviderRow[];
 	loaded: boolean;
 	error: string | null;
-	ompProviders: OmpProviderInfo[];
-	ompLoaded: boolean;
-	ompError: string | null;
-	importingOmp: boolean;
-	/** Per-provider inline probe state (ProviderPanel rows). */
+	/** Per-provider inline probe state. */
 	tests: Record<string, TestStatus>;
-	/** Per-model inline probe state (ProviderPanel rows). Key: `${providerId}::${modelId}` */
+	/** Per-model inline probe state. Key: `${providerId}::${modelId}` */
 	modelTests: Record<string, TestStatus>;
 	load(): Promise<void>;
-	loadOmp(): Promise<void>;
-	/** Upsert via backend; returns the saved config. */
-	save(config: ProviderConfig, apiKey?: string | null): Promise<ProviderConfig>;
-	remove(id: string): Promise<void>;
+	/** Optimistic toggle of OMP's `disabledProviders`; rolls back and rethrows on failure. */
 	setEnabled(id: string, enabled: boolean): Promise<void>;
-	reorder(ids: string[]): Promise<void>;
+	/** Moves the plaintext key into the vault (models.yml keeps a command reference). */
+	encrypt(id: string): Promise<ProviderRow>;
+	/** Writes the key back into models.yml as plaintext and drops the vault entry. */
+	decrypt(id: string): Promise<ProviderRow>;
+	/** Encrypts every plaintext-key provider; reloads rows afterwards. */
+	encryptAll(): Promise<ProviderBulkResult[]>;
+	/** Create/update a custom provider; `apiKey` null keeps the current key. */
+	upsert(input: ProviderUpsert, apiKey: string | null, keyMode: KeyMode): Promise<ProviderRow>;
+	setKey(id: string, apiKey: string, keyMode: KeyMode): Promise<ProviderRow>;
+	remove(id: string): Promise<void>;
 	runTest(id: string): Promise<void>;
 	runModelTest(providerId: string, modelId: string): Promise<void>;
 	exportEnvText(ids?: string[]): Promise<string>;
-	importOmp(
-		ids: string[],
-		baseUrlOverrides?: Record<string, string>,
-	): Promise<OmpImportResult[]>;
 }
 
-export const useProviders = create<ProvidersState>((set, get) => ({
-	providers: [],
-	loaded: false,
-	error: null,
-	ompProviders: [],
-	ompLoaded: false,
-	ompError: null,
-	tests: {},
-	modelTests: {},
-	importingOmp: false,
+const failedTest = (e: unknown): TestStatus => ({
+	state: "done",
+	result: { ok: false, latencyMs: 0, detail: String(e) },
+});
 
-	loadOmp: async () => {
-		try {
-			const ompProviders = await ompProvidersList();
-			set({ ompProviders, ompLoaded: true, ompError: null });
-		} catch (e) {
-			set({ ompError: String(e), ompLoaded: true });
-		}
-	},
+export const useProviders = create<ProvidersState>((set, get) => {
+	/** Replace a row in place (or append when new), keeping the list sorted by id. */
+	const applyRow = (row: ProviderRow, replacing: string = row.id) =>
+		set((s) => {
+			const rest = s.rows.filter((r) => r.id !== replacing && r.id !== row.id);
+			return { rows: [...rest, row].sort((a, b) => a.id.localeCompare(b.id)) };
+		});
 
-	load: async () => {
-		const loadWorkbench = async () => {
+	return {
+		rows: [],
+		loaded: false,
+		error: null,
+		tests: {},
+		modelTests: {},
+
+		load: async () => {
 			try {
-				const providers = await providerList();
-				set({ providers, loaded: true, error: null });
+				const rows = await providerRows();
+				set({ rows, loaded: true, error: null });
 			} catch (e) {
 				set({ error: String(e), loaded: true });
 			}
-		};
-		await Promise.all([loadWorkbench(), get().loadOmp()]);
-	},
+		},
 
-	save: async (config, apiKey) => {
-		const saved = await providerSave(config, apiKey ?? null);
-		set((s) => {
-			const exists = s.providers.some((p) => p.id === saved.id);
-			const providers = exists
-				? s.providers.map((p) => (p.id === saved.id ? saved : p))
-				: [...s.providers, saved];
-			providers.sort((a, b) => a.sort - b.sort);
-			return { providers };
-		});
-		return saved;
-	},
+		setEnabled: async (id, enabled) => {
+			const prev = get().rows;
+			set((s) => ({ rows: s.rows.map((r) => (r.id === id ? { ...r, enabled } : r)) }));
+			try {
+				await providerSetEnabled(id, enabled);
+			} catch (e) {
+				set({ rows: prev });
+				throw e;
+			}
+		},
 
-	remove: async (id) => {
-		await providerDelete(id);
-		set((s) => ({
-			providers: s.providers.filter((p) => p.id !== id),
-			tests: Object.fromEntries(
-				Object.entries(s.tests).filter(([key]) => key !== id),
-			),
-			modelTests: Object.fromEntries(
-				Object.entries(s.modelTests).filter(([key]) => !key.startsWith(`${id}::`)),
-			),
-		}));
-	},
+		encrypt: async (id) => {
+			const row = await providerEncrypt(id);
+			applyRow(row);
+			return row;
+		},
 
-	setEnabled: async (id, enabled) => {
-		// Optimistic toggle; revert on failure.
-		const prev = get().providers;
-		set((s) => ({
-			providers: s.providers.map((p) => (p.id === id ? { ...p, enabled } : p)),
-		}));
-		try {
-			await providerSetEnabled(id, enabled);
-		} catch (e) {
-			set({ providers: prev });
-			throw e;
-		}
-	},
+		decrypt: async (id) => {
+			const row = await providerDecrypt(id);
+			applyRow(row);
+			return row;
+		},
 
-	reorder: async (ids) => {
-		await providerReorder(ids);
-		await get().load();
-	},
-
-	runTest: async (id) => {
-		set((s) => ({ tests: { ...s.tests, [id]: { state: "testing" } } }));
-		try {
-			const result = await providerTest(id);
-			set((s) => ({
-				tests: { ...s.tests, [id]: { state: "done", result } },
-			}));
-		} catch (e) {
-			set((s) => ({
-				tests: {
-					...s.tests,
-					[id]: {
-						state: "done",
-						result: { ok: false, latencyMs: 0, detail: String(e) },
-					},
-				},
-			}));
-		}
-	},
-
-	runModelTest: async (providerId: string, modelId: string) => {
-		const key = `${providerId}::${modelId}`;
-		set((s) => ({ modelTests: { ...s.modelTests, [key]: { state: "testing" } } }));
-		try {
-			const result = await providerTestModel(providerId, modelId);
-			set((s) => ({
-				modelTests: { ...s.modelTests, [key]: { state: "done", result } },
-			}));
-		} catch (e) {
-			set((s) => ({
-				modelTests: {
-					...s.modelTests,
-					[key]: {
-						state: "done",
-						result: { ok: false, latencyMs: 0, detail: String(e) },
-					},
-				},
-			}));
-		}
-	},
-
-	exportEnvText: (ids) => providerExportEnvText(ids ?? null),
-
-	importOmp: async (ids: string[], baseUrlOverrides?: Record<string, string>) => {
-		set({ importingOmp: true });
-		try {
-			const results = await providerImportOmp(ids, baseUrlOverrides);
+		encryptAll: async () => {
+			const results = await providerEncryptAll();
 			await get().load();
 			return results;
-		} finally {
-			set({ importingOmp: false });
-		}
-	},
-}));
+		},
+
+		upsert: async (input, apiKey, keyMode) => {
+			const row = await providerUpsert(input, apiKey, keyMode);
+			applyRow(row, input.originalId ?? row.id);
+			return row;
+		},
+
+		setKey: async (id, apiKey, keyMode) => {
+			const row = await providerSetKey(id, apiKey, keyMode);
+			applyRow(row);
+			return row;
+		},
+
+		remove: async (id) => {
+			await providerDelete(id);
+			await get().load();
+			set((s) => ({
+				tests: Object.fromEntries(Object.entries(s.tests).filter(([key]) => key !== id)),
+				modelTests: Object.fromEntries(
+					Object.entries(s.modelTests).filter(([key]) => !key.startsWith(`${id}::`)),
+				),
+			}));
+		},
+
+		runTest: async (id) => {
+			set((s) => ({ tests: { ...s.tests, [id]: { state: "testing" } } }));
+			try {
+				const result = await providerTest(id);
+				set((s) => ({ tests: { ...s.tests, [id]: { state: "done", result } } }));
+			} catch (e) {
+				set((s) => ({ tests: { ...s.tests, [id]: failedTest(e) } }));
+			}
+		},
+
+		runModelTest: async (providerId, modelId) => {
+			const key = `${providerId}::${modelId}`;
+			set((s) => ({ modelTests: { ...s.modelTests, [key]: { state: "testing" } } }));
+			try {
+				const result = await providerTestModel(providerId, modelId);
+				set((s) => ({ modelTests: { ...s.modelTests, [key]: { state: "done", result } } }));
+			} catch (e) {
+				set((s) => ({ modelTests: { ...s.modelTests, [key]: failedTest(e) } }));
+			}
+		},
+
+		exportEnvText: (ids) => providerExportEnvText(ids ?? null),
+	};
+});

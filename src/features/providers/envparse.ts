@@ -47,17 +47,3 @@ export function slugify(name: string): string {
 		.replace(/^-+|-+$/g, "");
 	return slug || "custom";
 }
-
-/** Workbench slug for an OMP provider id; must match `sanitize_slug` in Rust.
- * Ids made only of `[A-Za-z0-9_-]` (no edge `-`) are kept. Otherwise runs of other
- * chars become one `-`, edges are trimmed (empty → `provider`) and
- * `-<8-hex FNV-1a 32 of the UTF-8 id>` is appended so lossy ids never collide. */
-export function sanitizeSlug(id: string): string {
-	const trimmed = id.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-	if (trimmed && trimmed === id) return id;
-	let hash = 0x811c9dc5;
-	for (const byte of new TextEncoder().encode(id)) {
-		hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
-	}
-	return `${trimmed || "provider"}-${hash.toString(16).padStart(8, "0")}`;
-}

@@ -1,4 +1,4 @@
-import type { Model, ModelEntry, ModelSpec, ProviderConfig } from "../../lib/contracts";
+import type { Model, ModelEntry, ModelSpec } from "../../lib/contracts";
 import { confirmDialog } from "../../lib/dialogs";
 import { listModels } from "../../lib/ipc";
 import {
@@ -17,6 +17,11 @@ export interface RuleConflict {
 	ruleValue: number;
 }
 
+/** The part of a provider form the window planner needs. */
+export interface ProviderModels {
+	models: ModelEntry[];
+}
+
 export interface WindowPlan {
 	/** Windows to write for models that currently have none. */
 	fills: Map<string, number>;
@@ -30,8 +35,8 @@ export interface WindowPlan {
  * values on new models are only replaced by a differing rule after confirmation.
  */
 export function planContextWindows(
-	before: ProviderConfig | null,
-	after: ProviderConfig,
+	before: ProviderModels | null,
+	after: ProviderModels,
 	rules: ContextWindowRule[],
 	catalog: readonly Model[],
 ): WindowPlan {
@@ -47,7 +52,6 @@ export function planContextWindows(
 				modelId: spec.id,
 				rules,
 				catalogWindow: catalogWindowFor(spec.id, catalog),
-				providerDefault: after.defaultContextWindow,
 			});
 			if (r) fills.set(spec.id, r.value);
 		} else if (isNew) {
@@ -60,7 +64,7 @@ export function planContextWindows(
 	return { fills, conflicts };
 }
 
-function withWindows(config: ProviderConfig, windows: Map<string, number>): ProviderConfig {
+function withWindows<T extends ProviderModels>(config: T, windows: Map<string, number>): T {
 	if (windows.size === 0) return config;
 	const models: ModelEntry[] = config.models.map((e) => {
 		const id = modelEntryId(e);
@@ -72,21 +76,19 @@ function withWindows(config: ProviderConfig, windows: Map<string, number>): Prov
 	return { ...config, models };
 }
 
-/** Workbench (providers.json) models have no upstream window, so no D10 grow warning applies. */
 function conflictMessage(conflicts: RuleConflict[]): string {
 	const lines = conflicts.map((c) => `• ${c.modelId}：${formatTokens(c.current)} → ${formatTokens(c.ruleValue)}`);
 	return `以下新增模型已填写的窗口与上下文窗口规则不一致：\n${lines.join("\n")}`;
 }
 
 /**
- * Applies D15 windows to `after` before it is saved. Never touches
- * `defaultContextWindow` or secrets. Returns the config to save and how many
+ * Applies D15 windows to `after` before it is saved. Never touches secrets. Returns the config to save and how many
  * model windows were set.
  */
-export async function applyContextWindowsOnSave(
-	before: ProviderConfig | null,
-	after: ProviderConfig,
-): Promise<{ config: ProviderConfig; count: number }> {
+export async function applyContextWindowsOnSave<T extends ProviderModels>(
+	before: ProviderModels | null,
+	after: T,
+): Promise<{ config: T; count: number }> {
 	let catalog: Model[] = [];
 	try {
 		catalog = await listModels();

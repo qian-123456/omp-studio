@@ -151,15 +151,12 @@ export function compactionTriggerPoint(
 
 // ── Table rows ───────────────────────────────────────────────────────
 
-export type RowKind = "workbench" | "catalog";
-
 /** One provider × model row. */
 export interface CwRow {
 	providerId: string;
 	providerName: string;
 	modelId: string;
 	contextWindow: number | null;
-	kind: RowKind;
 	/** Upstream original window (OMP catalog built-in without a models.yml override); null = unknown. */
 	upstreamWindow: number | null;
 }

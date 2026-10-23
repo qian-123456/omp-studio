@@ -194,8 +194,7 @@ pub async fn term_open_session(
             argv
         }
     };
-    let mut extra_env: Vec<(String, String)> =
-        crate::providers::terminal_extra_env().into_iter().collect();
+    let mut extra_env: Vec<(String, String)> = Vec::new();
     if is_omp {
         extra_env.extend(crate::privacy::spawn_env());
     }
@@ -263,9 +262,7 @@ pub async fn session_resume_command(
     let _ = extension::install_to(&crate::paths::extension_path());
     let settings = state.settings.read().clone();
     let shape = crate::rpc::prompt_shape_args(Some(&meta.file), None, None, &settings);
-    let mut env: Vec<(String, String)> =
-        crate::providers::terminal_extra_env().into_iter().collect();
-    env.extend(crate::privacy::spawn_env());
+    let env: Vec<(String, String)> = crate::privacy::spawn_env();
     Ok(resume_command_line(
         &meta.cwd,
         &settings.omp_binary,

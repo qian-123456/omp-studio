@@ -1,7 +1,7 @@
 /**
  * Slide-over sheet listing every bound account of a multi-account quota provider.
  */
-import { CheckCircle2, Clock, LogIn, RefreshCw, Settings2, X } from "lucide-react";
+import { CheckCircle2, Clock, LogIn, RefreshCw, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -12,12 +12,7 @@ import type {
 import { useEscapeKey } from "../../../lib/hooks";
 import { oauthLoginProviders } from "../../../lib/ipc";
 import { OauthLoginDialog } from "../../providers/OauthLoginDialog";
-import { ProviderDialog, type ProviderDialogTarget } from "../../providers/ProviderDialog";
-import { canImportOmpProvider } from "../../providers/ompBadge";
-import { useProviders } from "../../providers/store";
-import { useUi } from "../../../stores/ui";
 import { Button, Chip, IconButton } from "../ui";
-import { sanitizeSlug } from "../../providers/envparse";
 import { ProviderBrandLogo } from "./ProviderBrandLogo";
 import {
 	type ProviderBrandConfig,
@@ -148,22 +143,13 @@ export function QuotaAccountSheet({
 	onRefresh,
 }: QuotaAccountSheetProps) {
 	const [loginOpen, setLoginOpen] = useState(false);
-	const [manageTarget, setManageTarget] = useState<ProviderDialogTarget | null>(null);
 	const [oauthIds, setOauthIds] = useState<Set<string>>(new Set());
-	const workbenchProviders = useProviders((s) => s.providers);
-	const workbenchLoaded = useProviders((s) => s.loaded);
-	const ompProviders = useProviders((s) => s.ompProviders);
-	const ompLoaded = useProviders((s) => s.ompLoaded);
-	const loadWorkbench = useProviders((s) => s.load);
-	const loadOmp = useProviders((s) => s.loadOmp);
 
-	const childOpen = loginOpen || manageTarget !== null;
+	const childOpen = loginOpen;
 	useEscapeKey(onClose, isOpen && !childOpen);
 
 	useEffect(() => {
 		if (!isOpen) return;
-		if (!workbenchLoaded) void loadWorkbench();
-		if (!ompLoaded) void loadOmp();
 		let cancelled = false;
 		oauthLoginProviders()
 			.then((list) => {
@@ -175,7 +161,7 @@ export function QuotaAccountSheet({
 		return () => {
 			cancelled = true;
 		};
-	}, [isOpen, workbenchLoaded, ompLoaded, loadWorkbench, loadOmp]);
+	}, [isOpen]);
 
 	if (!isOpen || !provider) return null;
 
@@ -186,20 +172,6 @@ export function QuotaAccountSheet({
 		null,
 	);
 	const canRelogin = oauthIds.has(provider.providerId);
-	const workbench =
-		workbenchProviders.find((c) => c.slug === sanitizeSlug(provider.providerId)) ?? null;
-	// OAuth-only OMP providers have nothing editable here (re-login covers them).
-	const canManage =
-		workbench != null || ompProviders.some((p) => p.id === provider.providerId && canImportOmpProvider(p));
-
-	const handleManage = () => {
-		if (workbench) {
-			setManageTarget({ mode: "edit", provider: workbench });
-			return;
-		}
-		onClose();
-		useUi.getState().openSettings("providers", { focusKey: `provider:${provider.providerId}` });
-	};
 
 	if (loginOpen) {
 		return (
@@ -211,9 +183,6 @@ export function QuotaAccountSheet({
 				}}
 			/>
 		);
-	}
-	if (manageTarget) {
-		return <ProviderDialog target={manageTarget} onClose={() => setManageTarget(null)} />;
 	}
 
 	return createPortal(
@@ -362,11 +331,6 @@ export function QuotaAccountSheet({
 						{canRelogin && (
 							<Button size="sm" icon={LogIn} onClick={() => setLoginOpen(true)}>
 								重新登录
-							</Button>
-						)}
-						{canManage && (
-							<Button size="sm" icon={Settings2} onClick={handleManage}>
-								管理该供应商
 							</Button>
 						)}
 					</div>

@@ -2,9 +2,8 @@
  * Settings ▸ 上下文窗口 (`context-window`): auto-compaction card, a flat
  * provider × model window table (family rail, model-type sections, filters,
  * bulk apply with undo, inline edit), keyword rules and the remaining
- * `compaction.*` options. Workbench models write `providers.json`
- * (per-model only, never `defaultContextWindow`); OMP-managed models write
- * `~/.omp/agent/models.yml` modelOverrides.
+ * `compaction.*` options. Edits are written as models.yml modelOverrides
+ * through `omp_models_set_context_windows`.
  */
 import clsx from "clsx";
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Pencil, Search, Trash2, X } from "lucide-react";
@@ -39,7 +38,7 @@ import {
 	saveRules,
 	takenOverCount,
 } from "../contextWindow/core";
-import { applyContextUpdates, matchKey, parseContextInput, ruleMatches } from "../modelNormalization";
+import { matchKey, parseContextInput, ruleMatches } from "../modelNormalization";
 import { OmpSections, OmpSettingRow } from "../OmpSettingsList";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { Button, Chip, INPUT_CLASS, IconButton, Notice, SectionHeader, SettingsCard } from "../ui";
@@ -61,30 +60,17 @@ function GrowWarning() {
 	return <Notice tone="warning">{GROW_WARNING}</Notice>;
 }
 
-/** Writes edits to both targets; workbench via providers.json, catalog via models.yml. */
+/** Writes edits to models.yml modelOverrides, then refreshes the shared catalog. */
 async function writeEdits(edits: Edit[]): Promise<void> {
-	const wb = edits.filter((e) => e.row.kind === "workbench");
-	const cat = edits.filter((e) => e.row.kind === "catalog");
-	if (wb.length > 0) {
-		const store = useProviders.getState();
-		const changed = applyContextUpdates(
-			store.providers,
-			wb.map((e) => ({ providerId: e.row.providerId, modelId: e.row.modelId, contextWindow: e.to })),
-		);
-		for (const p of changed) await store.save(p);
-	}
-	if (cat.length > 0) {
-		await ompModelsSetContextWindows(
-			cat.map((e) => ({ providerId: e.row.providerId, modelId: e.row.modelId, contextWindow: e.to })),
-		);
-	}
+	await ompModelsSetContextWindows(
+		edits.map((e) => ({ providerId: e.row.providerId, modelId: e.row.modelId, contextWindow: e.to })),
+	);
 	// The composer's context popover reads windows from the shared catalog: re-read models.yml now.
 	await useModelCatalog.getState().refresh();
 }
 
 export function ContextWindowSection() {
-	const providers = useProviders((s) => s.providers);
-	const ompProviders = useProviders((s) => s.ompProviders);
+	const providerRows = useProviders((s) => s.rows);
 	const entries = useOmpConfigStore((s) => s.entries);
 	const { models: catalog } = useCatalogModels();
 
@@ -94,7 +80,6 @@ export function ContextWindowSection() {
 	const [loadedOverrideKeys, setLoadedOverrideKeys] = useState<Set<string> | null>(null);
 	useEffect(() => {
 		void useProviders.getState().load();
-		void useProviders.getState().loadOmp();
 		void useOmpConfigStore.getState().load();
 		ompModelsContextWindowOverrides()
 			.then((list) => {
@@ -114,38 +99,21 @@ export function ContextWindowSection() {
 	};
 
 	const rows = useMemo<CwRow[]>(() => {
-		const out: CwRow[] = providers.flatMap((p) =>
-			p.models.map((e) => ({
-				providerId: p.id,
-				providerName: p.name,
-				modelId: typeof e === "string" ? e : e.id,
-				contextWindow: typeof e === "string" ? null : (e.contextWindow ?? null),
-				kind: "workbench" as const,
-				upstreamWindow: null,
-			})),
-		);
-		// Workbench providers are bridged into OMP as `ompws-<slug>`; skip those aliases.
-		const aliases = new Set(providers.flatMap((p) => [p.id, p.slug, `ompws-${p.slug}`, `ompws-${p.id}`]));
-		const managed = new Set(
-			ompProviders
-				.filter((p) => p.hasApiKey || p.credentialTypes.length > 0 || p.accounts.length > 0 || p.modelIds.length > 0)
-				.map((p) => p.id)
-				.filter((id) => !aliases.has(id)),
-		);
+		const managed = new Map(providerRows.map((p) => [p.id, p.displayName ?? p.id]));
+		const out: CwRow[] = [];
 		for (const m of catalog) {
 			if (!managed.has(m.provider)) continue;
 			const key = rowKey({ providerId: m.provider, modelId: m.id });
 			out.push({
 				providerId: m.provider,
-				providerName: m.provider,
+				providerName: managed.get(m.provider) ?? m.provider,
 				modelId: m.id,
 				contextWindow: catalogOverlay.has(key) ? (catalogOverlay.get(key) ?? null) : (m.contextWindow ?? null),
-				kind: "catalog",
 				upstreamWindow: loadedOverrideKeys == null || loadedOverrideKeys.has(key) ? null : (m.contextWindow ?? null),
 			});
 		}
 		return out;
-	}, [providers, ompProviders, catalog, catalogOverlay, loadedOverrideKeys]);
+	}, [providerRows, catalog, catalogOverlay, loadedOverrideKeys]);
 
 	// ── Compaction threshold → trigger point column ──
 	const valueOf = (key: string) => entries.find((e) => e.key === key)?.value;
@@ -254,22 +222,19 @@ export function ContextWindowSection() {
 
 	const commit = async (edits: Edit[]) => {
 		await writeEdits(edits);
-		const cat = edits.filter((e) => e.row.kind === "catalog");
-		if (cat.length > 0) {
-			setCatalogOverlay((prev) => {
-				const next = new Map(prev);
-				for (const e of cat) next.set(rowKey(e.row), e.shown !== undefined ? e.shown : e.to);
-				return next;
-			});
-			setOverrides((prev) => {
-				const next = new Map(prev);
-				for (const e of cat) {
-					if (e.to == null) next.delete(rowKey(e.row));
-					else next.set(rowKey(e.row), e.to);
-				}
-				return next;
-			});
-		}
+		setCatalogOverlay((prev) => {
+			const next = new Map(prev);
+			for (const e of edits) next.set(rowKey(e.row), e.shown !== undefined ? e.shown : e.to);
+			return next;
+		});
+		setOverrides((prev) => {
+			const next = new Map(prev);
+			for (const e of edits) {
+				if (e.to == null) next.delete(rowKey(e.row));
+				else next.set(rowKey(e.row), e.to);
+			}
+			return next;
+		});
 	};
 
 	/** Apply edits immediately and offer undo back to each row's prior value (incl. absent). */
@@ -284,11 +249,11 @@ export function ContextWindowSection() {
 			await commit(real);
 			setUndo({
 				label,
-				edits: real.map((e) =>
-					e.row.kind === "catalog"
-						? { row: { ...e.row, contextWindow: e.to }, to: overrides.get(rowKey(e.row)) ?? null, shown: e.row.contextWindow }
-						: { row: { ...e.row, contextWindow: e.to }, to: e.row.contextWindow },
-				),
+				edits: real.map((e) => ({
+					row: { ...e.row, contextWindow: e.to },
+					to: overrides.get(rowKey(e.row)) ?? null,
+					shown: e.row.contextWindow,
+				})),
 			});
 		} catch (e) {
 			toast.error(`写入失败：${errMsg(e)}`);
@@ -581,7 +546,7 @@ export function ContextWindowSection() {
 												onCheck={(on) => toggle([rowKey(r)], on)}
 												trigger={compactionOn && r.contextWindow != null ? triggerOf(r.contextWindow) : null}
 												compactionOn={compactionOn}
-												modified={r.kind === "catalog" && overrides.has(rowKey(r))}
+												modified={overrides.has(rowKey(r))}
 												onEdit={(to) => applyWithUndo([{ row: r, to }], r.modelId)}
 											/>
 										</div>
@@ -787,7 +752,6 @@ function ModelRowView({
 				</span>
 				<span className="flex w-28 shrink-0 items-center gap-1 text-[var(--text-dim)]" title={row.providerName}>
 					<span className="min-w-0 break-words">{row.providerName}</span>
-					{row.kind === "catalog" && <Chip tone="accent">订阅</Chip>}
 				</span>
 				<span className="w-20 shrink-0 text-right">
 					{draft != null ? (

@@ -1286,36 +1286,87 @@ impl From<&str> for ModelEntry {
     }
 }
 
-/// Provider metadata (non-secret). Secrets live only in the encrypted vault
-/// (`providers::vault`); `hasKey`/`keyHint` are the only key-derived fields.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Why a provider row's key is (not) usable; see `providers::rows`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProviderConfig {
+pub enum ProviderKeyKind {
+    Encrypted,
+    VaultMissing,
+    Plaintext,
+    EnvVar,
+    Command,
+    Oauth,
+    LoginStored,
+    None,
+    Missing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderKeyState {
+    pub kind: ProviderKeyKind,
+    pub env_var: Option<String>,
+    pub env_set: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProviderOrigin {
+    /// models.yml block with a `baseUrl`.
+    Custom,
+    /// models.yml block without a `baseUrl` over an OMP built-in.
+    Override,
+    /// No models.yml block.
+    Builtin,
+}
+
+/// One OMP provider as the settings page shows it. Never carries key material.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRow {
+    /// OMP provider id, verbatim.
     pub id: String,
-    pub name: String,
-    /// Stable identifier `[A-Za-z0-9_-]+`; the vault line key derives from it.
+    pub display_name: Option<String>,
+    /// `sanitize_slug(id)`; the vault entry name derives from it.
     pub slug: String,
-    /// Frontend preset this provider was created from, if any.
-    pub preset_id: Option<String>,
-    pub base_url: String,
-    pub api: ProviderApi,
-    /// Env var injected into child processes (e.g. ANTHROPIC_API_KEY).
-    pub env_var: String,
+    pub origin: ProviderOrigin,
+    /// "models.yml" | "config.yml" | "agent.db" | "models.db" | "built-in"
+    pub sources: Vec<String>,
+    pub base_url: Option<String>,
+    /// OMP api string, verbatim.
+    pub api: Option<String>,
     pub models: Vec<ModelEntry>,
-    pub default_model: Option<String>,
-    #[serde(default)]
-    pub default_context_window: Option<u32>,
-    #[serde(default)]
-    pub default_max_tokens: Option<u32>,
+    pub key: ProviderKeyState,
     pub enabled: bool,
-    pub sort: i64,
-    /// True when an encrypted key exists in the vault for this slug.
-    pub has_key: bool,
-    /// Last 4 chars of the key, stored at save time for display.
-    pub key_hint: Option<String>,
-    pub notes: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub testable: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyMode {
+    Plaintext,
+    Encrypted,
+}
+
+/// Editable fields of a custom provider block in models.yml.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderUpsert {
+    /// `None` = create; `Some(old id)` = edit (renames when `id` differs).
+    pub original_id: Option<String>,
+    pub id: String,
+    pub display_name: Option<String>,
+    pub base_url: String,
+    pub api: String,
+    pub models: Vec<ModelEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderBulkResult {
+    pub id: String,
+    pub ok: bool,
+    pub error: Option<String>,
 }
 
 /// Result of `provider_test`.
@@ -1325,22 +1376,6 @@ pub struct ProviderTestResult {
     pub ok: bool,
     pub latency_ms: u64,
     pub detail: String,
-}
-
-/// Provider info discovered from OMP global configs (`models.yml`, `config.yml`, `agent.db`).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct OmpProviderInfo {
-    pub id: String,
-    pub sources: Vec<String>,
-    pub base_url: Option<String>,
-    pub api: Option<String>,
-    pub has_api_key: bool,
-    pub api_key_env: Option<String>,
-    pub model_ids: Vec<String>,
-    pub credential_types: Vec<String>,
-    pub accounts: Vec<String>,
-    pub used_in_roles: Vec<String>,
 }
 
 /// Event payload emitted during OAuth/RPC login flow (`providers:oauth`).
@@ -1359,41 +1394,6 @@ pub struct OauthUiEvent {
     pub timeout_ms: Option<u64>,
     pub message: Option<String>,
     pub ok: Option<bool>,
-    pub error: Option<String>,
-}
-
-/// Result of importing an OMP provider configuration into the vault.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OmpImportResult {
-    pub id: String,
-    pub ok: bool,
-    pub error: Option<String>,
-    pub issue: Option<OmpImportIssue>,
-}
-
-/// Why an OMP provider cannot be (fully) imported.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum OmpImportIssue {
-    MissingBaseUrl,
-    UnsupportedApi,
-    NoKey,
-    EnvVarUnset,
-}
-
-/// Read-only dry-run verdict for one OMP provider. Never carries key material.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OmpImportPlanItem {
-    pub id: String,
-    pub slug: String,
-    pub base_url: Option<String>,
-    pub api: Option<String>,
-    /// "create" | "update"
-    pub action: String,
-    pub ok: bool,
-    pub issue: Option<OmpImportIssue>,
     pub error: Option<String>,
 }
 
@@ -1719,28 +1719,5 @@ mod tests {
                 max_tokens: None,
             })
         );
-    }
-
-    #[test]
-    fn test_provider_config_missing_option_fields_default_to_none() {
-        let json = r#"{
-            "id": "p1",
-            "name": "Provider",
-            "slug": "p1",
-            "baseUrl": "https://api.openai.com/v1",
-            "api": "openai_responses",
-            "envVar": "OPENAI_API_KEY",
-            "models": ["gpt-4o"],
-            "enabled": true,
-            "sort": 1,
-            "hasKey": true,
-            "createdAt": "2026-01-01T00:00:00Z",
-            "updatedAt": "2026-01-01T00:00:00Z"
-        }"#;
-        let config: ProviderConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.api, ProviderApi::OpenaiResponses);
-        assert_eq!(config.default_context_window, None);
-        assert_eq!(config.default_max_tokens, None);
-        assert_eq!(config.models, vec![ModelEntry::Id("gpt-4o".into())]);
     }
 }

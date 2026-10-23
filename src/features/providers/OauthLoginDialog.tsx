@@ -58,7 +58,7 @@ interface FlowState {
 
 export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 	const dialogRef = useRef<HTMLDivElement>(null);
-	const loadOmp = useProviders((s) => s.loadOmp);
+	const reloadProviders = useProviders((s) => s.load);
 
 	const [phase, setPhase] = useState<Phase>("list");
 	const [providers, setProviders] = useState<OauthLoginProvider[]>([]);
@@ -149,14 +149,14 @@ export function OauthLoginDialog({ onClose, initialProviderId }: Props) {
 							error: event.error ?? null,
 						};
 						if (event.ok) {
-							void loadOmp();
+							void reloadProviders();
 						}
 						break;
 				}
 				return next;
 			});
 		},
-		[loadOmp],
+		[reloadProviders],
 	);
 
 	const startFlow = async (provider: OauthLoginProvider) => {

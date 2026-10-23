@@ -66,18 +66,3 @@ describe("slugify", () => {
 		expect(slugify("-Already-Slug-")).toBe("already-slug");
 	});
 });
-
-import { sanitizeSlug } from "./envparse";
-describe("sanitizeSlug", () => {
-	it("keeps valid ids and makes lossy ids unique like the backend", () => {
-		expect(sanitizeSlug("ok_id-1")).toBe("ok_id-1");
-		expect(sanitizeSlug("CTAI-luna+plus")).toBe("CTAI-luna-plus-cb5cc89e");
-		expect(sanitizeSlug("a  b//c")).toBe("a-b-c-2a43b649");
-		expect(sanitizeSlug("+x+")).toBe("x-75070c87");
-		expect(sanitizeSlug("")).toBe("provider-811c9dc5");
-		expect(sanitizeSlug("+++")).toBe("provider-6c3e4e28");
-		// Two ids that strip to the same ASCII must not share a workbench record.
-		expect(sanitizeSlug("聪明 AI-散户")).toBe("AI-5d1cd3b8");
-		expect(sanitizeSlug("别的 AI")).toBe("AI-6910b992");
-	});
-});

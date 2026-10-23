@@ -993,13 +993,8 @@ export interface DirEntry {
 	readonly: boolean;
 }
 
-/** API protocol used to talk to a provider. */
-export type ProviderApi =
-	| "openai_completions"
-	| "openai_responses"
-	| "anthropic"
-	| "gemini"
-	| "ollama";
+/** OMP API protocol string, verbatim (e.g. openai-completions). */
+export type ProviderApi = string;
 
 /** A model specification with optional limits and display name. */
 export interface ModelSpec {
@@ -1017,31 +1012,56 @@ export interface DiscoveredModel {
 /** A provider model entry: bare id or a spec with per-model limits. */
 export type ModelEntry = string | ModelSpec;
 
-/** Provider metadata (non-secret). Secrets live only in the backend vault. */
-export interface ProviderConfig {
+export type ProviderKeyKind =
+	| "encrypted"
+	| "vaultMissing"
+	| "plaintext"
+	| "envVar"
+	| "command"
+	| "oauth"
+	| "loginStored"
+	| "none"
+	| "missing";
+
+export interface ProviderKeyState {
+	kind: ProviderKeyKind;
+	envVar: string | null;
+	envSet: boolean | null;
+}
+
+/** custom: models.yml block with baseUrl; override: block without baseUrl over a built-in; builtin: no block. */
+export type ProviderOrigin = "custom" | "override" | "builtin";
+
+/** One OMP provider as shown in Settings (non-secret). */
+export interface ProviderRow {
 	id: string;
-	name: string;
-	/** Stable identifier [A-Za-z0-9_-]+; the vault line key derives from it. */
+	displayName: string | null;
 	slug: string;
-	/** Frontend preset this provider was created from, if any. */
-	presetId: string | null;
-	baseUrl: string;
-	api: ProviderApi;
-	/** Env var injected into child processes (e.g. ANTHROPIC_API_KEY). */
-	envVar: string;
+	origin: ProviderOrigin;
+	sources: string[];
+	baseUrl: string | null;
+	api: string | null;
 	models: ModelEntry[];
-	defaultModel: string | null;
-	defaultContextWindow: number | null;
-	defaultMaxTokens: number | null;
+	key: ProviderKeyState;
 	enabled: boolean;
-	sort: number;
-	/** True when an encrypted key exists in the vault for this slug. */
-	hasKey: boolean;
-	/** Last 4 chars of the key, stored at save time for display. */
-	keyHint: string | null;
-	notes: string | null;
-	createdAt: string;
-	updatedAt: string;
+	testable: boolean;
+}
+
+export type KeyMode = "plaintext" | "encrypted";
+
+export interface ProviderUpsert {
+	originalId: string | null;
+	id: string;
+	displayName: string | null;
+	baseUrl: string;
+	api: string;
+	models: ModelEntry[];
+}
+
+export interface ProviderBulkResult {
+	id: string;
+	ok: boolean;
+	error: string | null;
 }
 
 /** Result of `provider_test`. */
@@ -1051,19 +1071,6 @@ export interface ProviderTestResult {
 	detail: string;
 }
 
-/** Provider configured in OMP's own config (~/.omp/agent/models.yml, agent.db, etc.) */
-export interface OmpProviderInfo {
-	id: string;
-	sources: string[];
-	baseUrl: string | null;
-	api: string | null;
-	hasApiKey: boolean;
-	apiKeyEnv: string | null;
-	modelIds: string[];
-	credentialTypes: string[];
-	accounts: string[];
-	usedInRoles: string[];
-}
 
 /** Provider supported for OAuth/account login via `omp --mode rpc`. */
 export interface OauthLoginProvider {
@@ -1118,31 +1125,6 @@ export interface OauthLoginStatus {
 	[key: string]: unknown;
 }
 
-/** Result of batch-importing OMP provider keys into workbench vault. */
-export interface OmpImportResult {
-	id: string;
-	ok: boolean;
-	error: string | null;
-	issue?: OmpImportIssue | null;
-}
-
-export type OmpImportIssue =
-	| "missingBaseUrl"
-	| "unsupportedApi"
-	| "noKey"
-	| "envVarUnset";
-
-/** Dry-run item for importing one OMP provider (never carries key material). */
-export interface OmpImportPlanItem {
-	id: string;
-	slug: string;
-	baseUrl: string | null;
-	api: string | null;
-	action: "create" | "update";
-	ok: boolean;
-	issue: OmpImportIssue | null;
-	error: string | null;
-}
 
 export interface OmpUsageLimit {
 	id: string;

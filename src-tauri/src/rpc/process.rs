@@ -406,8 +406,8 @@ pub fn prompt_shape_args(
         args.push(append_prompt);
     }
     // Extension list and order are part of the prompt shape: the status extension
-    // reports progress (§8), checkpoints is opt-in (§8), privacy placeholders and
-    // provider routing are always on for app sessions.
+    // reports progress (§8), checkpoints is opt-in (§8), privacy placeholders are
+    // always on for app sessions.
     let status_ext = paths::extension_path();
     if status_ext.exists() {
         args.push("-e".to_string());
@@ -424,10 +424,6 @@ pub fn prompt_shape_args(
     if privacy_ext.exists() {
         args.push("-e".to_string());
         args.push(privacy_ext.to_string_lossy().into_owned());
-    }
-    if let Some(ext) = crate::providers::try_extension_path() {
-        args.push("-e".to_string());
-        args.push(ext.to_string_lossy().into_owned());
     }
     if let Some(dir) = viz_dir {
         args.push("--plugin-dir".to_string());
@@ -551,10 +547,6 @@ pub async fn spawn_with_sink(
     cmd.env("PATH", &path);
     // Same resolution std uses for the child (program looked up in the child's PATH).
     let omp_fingerprint = omp_fingerprint(&settings.omp_binary, &path);
-    // Inject configured API provider keys and routing metadata (best effort; never logged).
-    for (key, value) in crate::providers::omp_spawn_env() {
-        cmd.env(key, value);
-    }
     let mut native_hash = String::new();
     for (key, value) in crate::privacy::spawn_env() {
         if key == "OMPWS_PRIVACY_NATIVE_HASH" {

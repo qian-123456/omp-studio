@@ -1556,6 +1556,12 @@
 	}
 
 	/* ---------------------------------------------------------------- sub-page: providers */
+	const KEY_LABELS = {
+		encrypted: "已加密", vaultMissing: "密钥缺失", plaintext: "明文密钥", envVar: "环境变量",
+		command: "命令获取", oauth: "账号登录", loginStored: "登录保存", none: "无需密钥", missing: "未设密钥"
+	};
+	const keyLabel = (kind) => KEY_LABELS[kind] || "未设密钥";
+	const hasKey = (kind) => ["encrypted", "plaintext", "envVar", "command", "oauth", "loginStored"].includes(kind);
 	M.registerPage("left:settings:providers", {
 		title: "模型与供应商管理",
 		async mount(el) {
@@ -1573,15 +1579,15 @@
 						const card = h("div", { class: "st-provider-card" });
 						const head = h("div", { class: "st-provider-head" },
 							h("div", { class: "min-w-0" },
-								h("div", { class: "font-semibold text-[15px]" }, p.name || p.id),
-								h("div", { class: "text-xs text-muted mt-0.5" }, p.api + " · " + (p.models ? p.models.length : 0) + " 个模型")
+								h("div", { class: "font-semibold text-[15px]" }, p.displayName || p.id),
+								h("div", { class: "text-xs text-muted mt-0.5" }, (p.api || "—") + " · " + (p.models ? p.models.length : 0) + " 个模型")
 							),
-							h("span", { class: "st-badge project" }, p.hasKey ? "已配密钥" : "未设密钥")
+							h("span", { class: "st-badge project" }, keyLabel(p.key && p.key.kind))
 						);
 
 						const body = h("div", { class: "st-provider-body hidden" });
-						const urlIn = h("input", { value: p.baseUrl || "", placeholder: "https://api.example.com/v1" });
-						const keyIn = h("input", { type: "password", placeholder: p.hasKey ? "已配置（输入新密钥以覆盖）" : "请输入 API Key" });
+						const urlIn = h("input", { value: p.baseUrl || "", placeholder: "https://api.example.com/v1", disabled: p.origin !== "custom" });
+						const keyIn = h("input", { type: "password", placeholder: hasKey(p.key && p.key.kind) ? "已配置（输入新密钥以覆盖）" : "请输入 API Key" });
 
 						const testRes = h("div", { class: "text-xs text-muted" });
 						const testBtn = h("button", {
@@ -1602,11 +1608,10 @@
 						const saveBtn = h("button", {
 							class: "btn sm primary",
 							onclick: async () => {
-								const nextCfg = Object.assign({}, p, { baseUrl: urlIn.value.trim() });
 								const newKey = keyIn.value.trim() || undefined;
 								try {
-									await M.api("POST", "/left/providers/save", { config: nextCfg, api_key: newKey });
-									M.toast("供应商「" + (p.name || p.id) + "」已更新");
+									await M.api("POST", "/left/providers/save", { id: p.id, base_url: urlIn.value.trim() || undefined, api_key: newKey });
+									M.toast("供应商「" + (p.displayName || p.id) + "」已更新");
 									load();
 								} catch (err) {
 									M.toast("保存失败：" + err.message);

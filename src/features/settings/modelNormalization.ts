@@ -1,16 +1,6 @@
 /**
- * Cross-provider model name normalization, keyword matching, context input
- * parsing and per-model context window updates.
- * Never touches provider-wide defaults.
+ * Cross-provider model name normalization, keyword matching and context input parsing.
  */
-import type { ModelEntry, ProviderConfig } from "../../lib/contracts";
-
-/** A pending per-model context window change; `null` removes the per-model value. */
-export interface ContextUpdate {
-	providerId: string;
-	modelId: string;
-	contextWindow: number | null;
-}
 
 // ── Cleaning ─────────────────────────────────────────────────────────
 
@@ -158,41 +148,4 @@ export function parseContextInput(input: string): number | null {
 	const mult = unit ? ({ k: 1e3, m: 1e6, 万: 1e4, w: 1e4 } as Record<string, number>)[unit] : value < 1000 ? 1e3 : 1;
 	const n = Math.round(value * mult);
 	return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-const entryId = (e: ModelEntry) => (typeof e === "string" ? e : e.id);
-const entryCtx = (e: ModelEntry) => (typeof e === "string" ? null : (e.contextWindow ?? null));
-
-// ── Applying updates to ProviderConfig ─────────────────────────────────
-
-/**
- * Apply per-model context updates. Returns only providers that changed.
- * String entries become `ModelSpec`s; `null` drops the per-model value (a spec
- * with nothing else collapses back to a bare id); `defaultContextWindow` is never touched.
- */
-export function applyContextUpdates(providers: ProviderConfig[], updates: ContextUpdate[]): ProviderConfig[] {
-	const byProvider = new Map<string, Map<string, number | null>>();
-	for (const u of updates) {
-		let m = byProvider.get(u.providerId);
-		if (!m) byProvider.set(u.providerId, (m = new Map()));
-		m.set(u.modelId, u.contextWindow);
-	}
-	const changed: ProviderConfig[] = [];
-	for (const p of providers) {
-		const m = byProvider.get(p.id);
-		if (!m) continue;
-		let dirty = false;
-		const models = p.models.map((e): ModelEntry => {
-			const id = entryId(e);
-			if (!m.has(id)) return e;
-			const target = m.get(id) ?? null;
-			if (entryCtx(e) === target) return e;
-			dirty = true;
-			if (target != null) return typeof e === "string" ? { id: e, contextWindow: target } : { ...e, contextWindow: target };
-			const { contextWindow: _drop, ...rest } = e as Exclude<ModelEntry, string>;
-			return rest.name == null && rest.maxTokens == null ? rest.id : rest;
-		});
-		if (dirty) changed.push({ ...p, models });
-	}
-	return changed;
 }

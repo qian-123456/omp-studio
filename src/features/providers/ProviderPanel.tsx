@@ -1,155 +1,93 @@
+import { ChevronDown, ClipboardCopy, FileInput, Loader2, Lock, LogIn, Plus, RefreshCw, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import clsx from "clsx";
-import { SectionHeader } from "../settings/ui";
-import { Switch } from "../settings/Switch";
-import {
-	Activity,
-	ChevronDown,
-	CircleCheck,
-	CircleX,
-	ClipboardCopy,
-	Download,
-	FileInput,
-	Loader2,
-	LogIn,
-	Pencil,
-	Plus,
-	RefreshCw,
-	Search,
-	SlidersHorizontal,
-	Trash2,
-	X,
-} from "lucide-react";
 import { FloatingLayer } from "../../components/FloatingLayer";
-import type {
-	ModelEntry,
-	OmpProviderInfo,
-	ProviderConfig,
-} from "../../lib/contracts";
-import { confirmDialog, copyText, errMsg } from "../../lib/dialogs";
+import type { ProviderRow } from "../../lib/contracts";
+import { copyText, errMsg } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
-import { canImportOmpProvider, getOmpAuthBadge } from "./ompBadge";
-import { OauthLoginDialog } from "./OauthLoginDialog";
-import { ImportOmpDialog } from "./ImportOmpDialog";
-import { sanitizeSlug } from "./envparse";
-import { API_LABELS, presetById } from "./presets";
-import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
-import { useProviders, type TestStatus } from "./store";
-import { formatTokens, modelEntryId, modelEntrySpec } from "./modelEntry";
+import { SectionHeader } from "../settings/ui";
 import { useSettingsNav } from "../settings/settingsNav";
 import { openSettingsTarget } from "../settings/settingsTargets";
-import { ProviderBrandLogo } from "../settings/sections/ProviderBrandLogo";
+import { VAULT_PATH, MODELS_YML_PATH } from "./keyState";
+import { modelEntryId } from "./modelEntry";
+import { OauthLoginDialog } from "./OauthLoginDialog";
+import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
+import { ProviderRowView, ROW_GRID } from "./ProviderRowView";
+import { SetKeyDialog } from "./SetKeyDialog";
+import { useProviders } from "./store";
 
-const PRIVACY_NOTE =
-	"密钥使用 AES-256-GCM 加密后存于 ~/.omp-workspace/env/keys.env，主密钥保存在 ~/.omp-workspace/env/.master.key；明文仅在内存中出现，不会写入数据库或日志。";
+const FOOTER_NOTE = `加密的密钥存于 ${VAULT_PATH}，只在使用时解密，不写入数据库或日志；未加密的密钥按 OMP 默认留在 ${MODELS_YML_PATH}。`;
 
-/** One row in the unified provider list — may carry both an OMP-discovered
- * config and a workbench-managed copy (matched by slug). */
-interface ListRow {
-	key: string;
-	/** OMP config (models.yml/config.yml/agent.db), when the provider exists there. */
-	omp: OmpProviderInfo | null;
-
-	workbench: ProviderConfig | null;
+function matchesQuery(row: ProviderRow, q: string): boolean {
+	const haystack = [row.id, row.displayName, row.baseUrl, row.api, ...row.models.map(modelEntryId)]
+		.filter(Boolean)
+		.join(" ")
+		.toLowerCase();
+	return haystack.includes(q);
 }
 
-
 export function ProviderPanel() {
-	const providers = useProviders((s) => s.providers);
+	const rows = useProviders((s) => s.rows);
 	const loaded = useProviders((s) => s.loaded);
 	const error = useProviders((s) => s.error);
 	const load = useProviders((s) => s.load);
-	const ompProviders = useProviders((s) => s.ompProviders);
-	const ompLoaded = useProviders((s) => s.ompLoaded);
-	const ompError = useProviders((s) => s.ompError);
+	const encryptAll = useProviders((s) => s.encryptAll);
 	const exportEnvText = useProviders((s) => s.exportEnvText);
-	const importingOmp = useProviders((s) => s.importingOmp);
-	const [importIds, setImportIds] = useState<string[] | null>(null);
+
 	const [dialog, setDialog] = useState<ProviderDialogTarget | null>(null);
-	const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
+	const [keyDialogId, setKeyDialogId] = useState<string | null>(null);
+	const [oauthDialog, setOauthDialog] = useState(false);
 	const [query, setQuery] = useState("");
-	const [expandedKey, setExpandedKey] = useState<string | null>(null);
-	const [importMenuOpen, setImportMenuOpen] = useState(false);
-	const importMenuBtnRef = useRef<HTMLButtonElement>(null);
+	const [expandedId, setExpandedId] = useState<string | null>(null);
+	const [menuOpen, setMenuOpen] = useState(false);
+	const [encryptingAll, setEncryptingAll] = useState(false);
+	const menuBtnRef = useRef<HTMLButtonElement>(null);
+
 	useEffect(() => {
 		void load();
 	}, [load]);
 
 	// Deep link from the quota sheet: expand the targeted provider row.
 	const { focusKey, focusRequest } = useSettingsNav();
+	// biome-ignore lint/correctness/useExhaustiveDependencies: focusRequest re-fires the jump for a repeated key
 	useEffect(() => {
-		if (focusKey?.startsWith("provider:")) setExpandedKey(focusKey.slice("provider:".length));
+		if (focusKey?.startsWith("provider:")) setExpandedId(focusKey.slice("provider:".length));
 	}, [focusKey, focusRequest]);
 
-	// Merge OMP-discovered providers and workbench-managed ones into one list,
-	// keyed by slug so the same provider never appears twice.
-	const rows = useMemo<ListRow[]>(() => {
-		const map = new Map<string, ListRow>();
-		for (const info of ompProviders) {
-			map.set(sanitizeSlug(info.id), {
-				key: info.id,
-				omp: info,
-				workbench: null,
-			});
-		}
-		for (const cfg of providers) {
-			const existing = map.get(cfg.slug);
-			if (existing) {
-				existing.workbench = cfg;
-			} else {
-				map.set(cfg.slug, { key: cfg.slug, omp: null, workbench: cfg });
-			}
-		}
-		const list = [...map.values()];
-		list.sort((a, b) => {
-			// Managed rows first, then OMP-configured, then workbench-only;
-			// within a tier sort by id/name.
-			const ra = a.workbench ? (a.omp ? 0 : 2) : 1;
-			const rb = b.workbench ? (b.omp ? 0 : 2) : 1;
-			if (ra !== rb) return ra - rb;
-			const an = a.omp?.id ?? a.workbench?.name ?? "";
-			const bn = b.omp?.id ?? b.workbench?.name ?? "";
-			return an.localeCompare(bn);
-		});
-		return list;
-	}, [ompProviders, providers]);
-
-	const filteredRows = useMemo(() => {
-		const q = query.trim().toLowerCase();
-		if (!q) return rows;
-		return rows.filter((r) => {
-			const wb = r.workbench;
-			const models =
-				wb && wb.models.length > 0 ? wb.models : (r.omp?.modelIds ?? []);
-			const haystack = [
-				wb?.name ?? r.omp?.id,
-				wb?.slug ?? r.omp?.id,
-				wb?.baseUrl ?? r.omp?.baseUrl,
-				...models.map(modelEntryId),
-			]
-				.filter(Boolean)
-				.join(" ")
-				.toLowerCase();
-			return haystack.includes(q);
-		});
-	}, [rows, query]);
-
-
-	const eligibleOmpIds = useMemo(
-		() => ompProviders.filter(canImportOmpProvider).map((p) => p.id),
-		[ompProviders],
+	const sorted = useMemo(
+		() => [...rows].sort((a, b) => (a.displayName ?? a.id).localeCompare(b.displayName ?? b.id)),
+		[rows],
 	);
+	const filtered = useMemo(() => {
+		const q = query.trim().toLowerCase();
+		return q ? sorted.filter((r) => matchesQuery(r, q)) : sorted;
+	}, [sorted, query]);
 
-	const handleImportAll = () => {
-		if (eligibleOmpIds.length === 0 || importingOmp) return;
-		setImportIds(eligibleOmpIds);
+	const encryptedCount = rows.filter((r) => r.key.kind === "encrypted").length;
+	const plaintextCount = rows.filter((r) => r.key.kind === "plaintext").length;
+	const keyDialogRow = keyDialogId ? rows.find((r) => r.id === keyDialogId) : undefined;
+
+	const handleEncryptAll = async () => {
+		setMenuOpen(false);
+		setEncryptingAll(true);
+		try {
+			const results = await encryptAll();
+			const failed = results.filter((r) => !r.ok);
+			const done = results.length - failed.length;
+			if (failed.length === 0) toast.success(`已加密 ${done} 个供应商的密钥`);
+			else toast.error(`已加密 ${done} 个，${failed.length} 个失败：${failed[0].id}（${failed[0].error ?? "未知错误"}）`);
+		} catch (err) {
+			toast.error(`加密失败: ${errMsg(err)}`);
+		} finally {
+			setEncryptingAll(false);
+		}
 	};
 
 	const handleExport = async () => {
+		setMenuOpen(false);
 		try {
 			const text = (await exportEnvText()).trim();
 			if (!text) {
-				toast.info("还没有已配置密钥的供应商可导出");
+				toast.info("还没有可导出密钥的供应商");
 				return;
 			}
 			await copyText(text);
@@ -159,19 +97,16 @@ export function ProviderPanel() {
 		}
 	};
 
-	const combinedError = error ?? ompError;
-	const isLoading =
-		(!loaded && !error) || (!ompLoaded && !ompError);
-	const totalCount = rows.length;
-	const managedCount = rows.filter((r) => r.workbench?.hasKey).length;
+	const isLoading = !loaded && !error;
+	const menuItemCls =
+		"flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-neutral-200 hover:bg-[var(--bg-hover)] disabled:opacity-50 disabled:hover:bg-transparent";
 
 	return (
 		<div className="space-y-4">
-			{/* Fixed action bar — always visible, never scrolled away. */}
 			<div className="space-y-3">
 				<SectionHeader
 					title="API 供应商"
-					description={`共 ${totalCount} 个（${managedCount} 个的密钥由工作台加密保管）。供应商就是提供模型的服务商，配好后新会话即可使用其模型。`}
+					description={`共 ${rows.length} 个，其中 ${encryptedCount} 个的密钥已加密。供应商就是提供模型的服务商，开启后新会话就能用它的模型。`}
 				/>
 				<button
 					type="button"
@@ -180,16 +115,16 @@ export function ProviderPanel() {
 				>
 					<SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
 					<span className="flex-1">按型号批量设置各模型的上下文窗口与自动压缩，到「上下文窗口」页。</span>
-					<span className="text-[var(--accent)] font-medium">前往 →</span>
+					<span className="font-medium text-[var(--accent)]">前往 →</span>
 				</button>
-				<div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-2 shadow-2xs">
-					<div className="relative flex-1 min-w-[200px] max-w-sm">
+				<div className="flex flex-col items-stretch justify-between gap-2.5 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-2 shadow-2xs sm:flex-row sm:items-center">
+					<div className="relative min-w-[200px] max-w-sm flex-1">
 						<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
 						<input
 							type="text"
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}
-							placeholder="搜索供应商名称、地址或模型…"
+							placeholder="搜索名称、地址、协议或模型"
 							aria-label="筛选供应商"
 							className="w-full rounded-lg hairline bg-[var(--bg-panel)] py-1.5 pl-8 pr-7 text-xs text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
 						/>
@@ -204,115 +139,80 @@ export function ProviderPanel() {
 							</button>
 						)}
 					</div>
-					<div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap justify-end">
+					<div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:flex-nowrap">
 						<button
-							ref={importMenuBtnRef}
+							ref={menuBtnRef}
 							type="button"
-							onClick={() => setImportMenuOpen((v) => !v)}
-							className="inline-flex items-center gap-1 rounded-lg hairline bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
+							onClick={() => setMenuOpen((v) => !v)}
+							className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
 						>
-							<span>导入 / 导出</span>
-							<ChevronDown
-								className={`h-3 w-3 text-neutral-400 transition-transform ${
-									importMenuOpen ? "rotate-180" : ""
-								}`}
-							/>
+							{encryptingAll && <Loader2 className="h-3 w-3 animate-spin" />}
+							<span>批量管理密钥</span>
+							<ChevronDown className={`h-3 w-3 text-neutral-400 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
 						</button>
-
-						{importMenuOpen && (
+						{menuOpen && (
 							<FloatingLayer
-								anchor={importMenuBtnRef.current}
+								anchor={menuBtnRef.current}
 								placement="bottom-end"
 								offset={4}
 								layer="popover"
-								onDismiss={() => setImportMenuOpen(false)}
-								ignoreRefs={[importMenuBtnRef]}
-								className="w-56 p-1 rounded-xl border border-[var(--border-divider)] bg-[var(--bg-panel)] shadow-xl text-xs space-y-0.5"
+								onDismiss={() => setMenuOpen(false)}
+								ignoreRefs={[menuBtnRef]}
+								className="w-60 space-y-0.5 rounded-xl border border-[var(--border-divider)] bg-[var(--bg-panel)] p-1 text-xs shadow-xl"
 							>
-								{eligibleOmpIds.length > 0 && (
-									<button
-										type="button"
-										onClick={() => {
-											setImportMenuOpen(false);
-											handleImportAll();
-										}}
-										disabled={importingOmp}
-										className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-neutral-200 hover:bg-[var(--bg-hover)] disabled:opacity-40"
-									>
-										{importingOmp ? (
-											<Loader2 className="h-3.5 w-3.5 animate-spin" />
-										) : (
-											<Download className="h-3.5 w-3.5 text-[var(--accent)]" />
-										)}
-										<div className="flex-1">
-											<div className="font-medium">一键导入 OMP 供应商</div>
-											<div className="text-[10px] text-neutral-400">
-												将已配置密钥加密导入工作台
-											</div>
-										</div>
-									</button>
-								)}
 								<button
 									type="button"
-									onClick={() => {
-										setImportMenuOpen(false);
-										setDialog({ mode: "import" });
-									}}
-									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-neutral-200 hover:bg-[var(--bg-hover)]"
+									onClick={() => void handleEncryptAll()}
+									disabled={plaintextCount === 0 || encryptingAll}
+									className={menuItemCls}
 								>
-									<FileInput className="h-3.5 w-3.5 text-neutral-400" />
-									<div className="flex-1">
-										<div className="font-medium">从 .env 导入密钥</div>
-										<div className="text-[10px] text-neutral-400">
-											一次添加多行 名字=密钥
-										</div>
-									</div>
+									<Lock className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+									<span className="flex-1 whitespace-nowrap font-medium">
+										{plaintextCount === 0 ? "已全部加密" : `全部加密（${plaintextCount} 个明文）`}
+									</span>
 								</button>
 								<button
 									type="button"
 									onClick={() => {
-										setImportMenuOpen(false);
-										void handleExport();
+										setMenuOpen(false);
+										setDialog({ mode: "import" });
 									}}
-									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-neutral-200 hover:bg-[var(--bg-hover)]"
+									className={menuItemCls}
 								>
-									<ClipboardCopy className="h-3.5 w-3.5 text-neutral-400" />
-									<div className="flex-1">
-										<div className="font-medium">复制全部密钥</div>
-										<div className="text-[10px] text-neutral-400">
-											以 名字=密钥 格式复制已加密保存的密钥，内容是明文，注意保密
-										</div>
-									</div>
+									<FileInput className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+									<span className="flex-1 whitespace-nowrap font-medium">从 .env 文件导入</span>
+								</button>
+								<button type="button" onClick={() => void handleExport()} className={menuItemCls}>
+									<ClipboardCopy className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+									<span className="flex-1">
+										<span className="block whitespace-nowrap font-medium">复制全部密钥</span>
+										<span className="block text-[10px] text-neutral-400">格式为 名字=密钥，内容是明文，注意保密</span>
+									</span>
 								</button>
 							</FloatingLayer>
 						)}
-
 						<button
 							type="button"
-							onClick={() => setOauthDialogOpen(true)}
-							className="inline-flex items-center gap-1.5 rounded-lg hairline bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-[var(--bg-hover)] active:scale-95 transition-all"
+							onClick={() => setOauthDialog(true)}
+							className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg hairline bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95"
 						>
 							<LogIn className="h-3.5 w-3.5 text-neutral-400" />
 							<span>OAuth 登录</span>
 						</button>
-
 						<button
 							type="button"
 							onClick={() => setDialog({ mode: "add" })}
-							className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90 active:scale-95 transition-all shadow-xs"
+							className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] shadow-xs transition-all hover:opacity-90 active:scale-95"
 						>
 							<Plus className="h-3.5 w-3.5" />
 							<span>添加供应商</span>
 						</button>
-
 						<button
 							type="button"
-							onClick={() => {
-								void load();
-							}}
+							onClick={() => void load()}
 							title="刷新供应商"
 							aria-label="刷新供应商"
-							className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
+							className="rounded-lg p-1.5 text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
 						>
 							<RefreshCw className="h-3.5 w-3.5" />
 						</button>
@@ -320,34 +220,23 @@ export function ProviderPanel() {
 				</div>
 			</div>
 
-			{combinedError && (
-				<div
-					role="alert"
-					className="flex items-center gap-2 rounded-xl border border-rose-800/40 bg-rose-950/20 px-3 py-2 text-xs text-rose-300"
-				>
-					<span className="min-w-0 flex-1 break-words">{combinedError}</span>
-					<button
-						type="button"
-						onClick={() => void load()}
-						className="inline-flex items-center gap-1 text-xs text-rose-200 hover:underline shrink-0"
-					>
+			{error && (
+				<div role="alert" className="flex items-center gap-2 rounded-xl border border-rose-800/40 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
+					<span className="min-w-0 flex-1 break-words">{error}</span>
+					<button type="button" onClick={() => void load()} className="inline-flex shrink-0 items-center gap-1 text-xs text-rose-200 hover:underline">
 						<RefreshCw className="h-3 w-3" />
 						<span>重试</span>
 					</button>
 				</div>
 			)}
 
-			{isLoading && !combinedError && (
+			{isLoading && (
 				<div className="flex items-center justify-center py-6 text-neutral-500">
-					<Loader2
-						aria-label="加载供应商"
-						size={16}
-						className="animate-spin"
-					/>
+					<Loader2 aria-label="加载供应商" size={16} className="animate-spin" />
 				</div>
 			)}
 
-			{!isLoading && !combinedError && filteredRows.length === 0 && (
+			{!isLoading && !error && filtered.length === 0 && (
 				<div className="rounded-xl hairline bg-[var(--well-bg)]/40 px-4 py-8 text-center text-xs text-neutral-400">
 					{rows.length === 0 ? (
 						<div className="space-y-3">
@@ -356,7 +245,7 @@ export function ProviderPanel() {
 							<button
 								type="button"
 								onClick={() => setDialog({ mode: "add" })}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] shadow-sm transition-all hover:opacity-90 active:scale-95"
+								className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] shadow-sm transition-all hover:opacity-90 active:scale-95"
 							>
 								<Plus className="h-3.5 w-3.5" />
 								<span>添加供应商</span>
@@ -365,11 +254,7 @@ export function ProviderPanel() {
 					) : (
 						<div className="space-y-2">
 							<p>没有匹配「{query.trim()}」的供应商</p>
-							<button
-								type="button"
-								onClick={() => setQuery("")}
-								className="text-[var(--accent)] hover:underline"
-							>
+							<button type="button" onClick={() => setQuery("")} className="text-[var(--accent)] hover:underline">
 								清除筛选
 							</button>
 						</div>
@@ -377,745 +262,33 @@ export function ProviderPanel() {
 				</div>
 			)}
 
-			{!isLoading && !combinedError && filteredRows.length > 0 && (
-				<div className="space-y-1.5">
-					{filteredRows.map((row) => (
-						<div key={row.key} data-field-id={`provider:${row.key}`}>
-						<UnifiedProviderRow
-							row={row}
-							isExpanded={expandedKey === row.key}
-							onToggleExpand={() =>
-								setExpandedKey((curr) =>
-									curr === row.key ? null : row.key,
-								)
-							}
-							onImportRow={(id) => setImportIds([id])}
-							onEdit={() => {
-								if (row.workbench) {
-									setDialog({
-										mode: "edit",
-										provider: row.workbench,
-									});
-								}
-							}}
-						/>
+			{!isLoading && !error && filtered.length > 0 && (
+				<div className="space-y-1">
+					<div className={`${ROW_GRID} px-2.5 text-[11px] text-neutral-500`}>
+						<span>供应商（点名称看详情）</span>
+						<span className="whitespace-nowrap">密钥（点击可修改）</span>
+						<span className="text-right">启用</span>
+					</div>
+					{filtered.map((row) => (
+						<div key={row.id} data-field-id={`provider:${row.id}`}>
+							<ProviderRowView
+								row={row}
+								expanded={expandedId === row.id}
+								onToggleExpand={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
+								onEdit={() => (row.origin === "custom" ? setDialog({ mode: "edit", row }) : setKeyDialogId(row.id))}
+								onSetKey={() => setKeyDialogId(row.id)}
+								onOauth={() => setOauthDialog(true)}
+							/>
 						</div>
 					))}
 				</div>
 			)}
 
-			<div className="text-[11px] leading-relaxed text-neutral-600">
-				{PRIVACY_NOTE}
-			</div>
+			<div className="text-[11px] leading-relaxed text-neutral-600">{FOOTER_NOTE}</div>
 
-			{dialog && (
-				<ProviderDialog target={dialog} onClose={() => setDialog(null)} />
-			)}
-
-			{oauthDialogOpen && (
-				<OauthLoginDialog onClose={() => setOauthDialogOpen(false)} />
-			)}
-
-			{importIds && (
-				<ImportOmpDialog ids={importIds} onClose={() => setImportIds(null)} />
-			)}
-		</div>
-	);
-}
-
-
-
-function formatHostOnly(rawUrl: string | null | undefined): string | null {
-	if (!rawUrl) return null;
-	const trimmed = rawUrl.trim();
-	if (!trimmed) return null;
-	try {
-		const candidate = trimmed.includes("://") ? trimmed : `http://${trimmed}`;
-		const parsed = new URL(candidate);
-		const host = parsed.host;
-		if (host) return host;
-	} catch {
-		// ignore
-	}
-	return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
-}
-
-function UnifiedProviderRow({
-	row,
-	isExpanded,
-	onToggleExpand,
-	onEdit,
-	onImportRow,
-}: {
-	row: ListRow;
-	isExpanded: boolean;
-	onToggleExpand: () => void;
-	onEdit: () => void;
-	onImportRow: (id: string) => void;
-}) {
-	const importingOmp = useProviders((s) => s.importingOmp);
-	const setEnabled = useProviders((s) => s.setEnabled);
-	const remove = useProviders((s) => s.remove);
-	const runTest = useProviders((s) => s.runTest);
-	const runModelTest = useProviders((s) => s.runModelTest);
-	const modelTests = useProviders((s) => s.modelTests);
-	const test = useProviders((s) =>
-		row.workbench ? s.tests[row.workbench.id] : undefined,
-	);
-
-	const info = row.omp;
-	const workbench = row.workbench;
-	const authBadge = info ? getOmpAuthBadge(info) : null;
-	const canImport = info ? canImportOmpProvider(info) : false;
-
-	const displayName = workbench?.name ?? info?.id ?? "";
-	const displaySlug = workbench?.slug ?? info?.id ?? "";
-	const baseUrl = workbench?.baseUrl ?? info?.baseUrl ?? null;
-	const hostOnly = formatHostOnly(baseUrl);
-	const allModels: ModelEntry[] =
-		workbench && workbench.models.length > 0
-			? workbench.models
-			: (info?.modelIds ?? []);
-	const apiLabel = workbench ? API_LABELS[workbench.api] : info?.api;
-	const preset = workbench ? presetById(workbench.presetId) : undefined;
-	const isOmpOnly = !workbench && Boolean(info);
-
-	const handleRowImport = () => {
-		if (!info || importingOmp) return;
-		onImportRow(info.id);
-	};
-
-	const handleDelete = async () => {
-		if (!workbench) return;
-		const ok = await confirmDialog(
-			info
-				? `删除工作台私有副本「${workbench.name}」？加密密钥也会移除，但 OMP 全局配置（models.yml/agent.db）不受影响。`
-				: `删除供应商「${workbench.name}」？其加密密钥也会从密钥库中移除。`,
-			{ title: "删除供应商", danger: true, okLabel: "删除" },
-		);
-		if (!ok) return;
-		try {
-			await remove(workbench.id);
-			toast.success("已删除");
-		} catch (err) {
-			toast.error(`删除失败: ${errMsg(err)}`);
-		}
-	};
-
-	const notImportableTitle =
-		info?.credentialTypes?.includes("oauth") && !canImport
-			? "OAuth 凭据由 OMP 托管，无需导入"
-			: "没有可导入的 API 密钥";
-
-	// Collapsed single-line row (~38px, NOT a card)
-	if (!isExpanded) {
-		return (
-			<div
-				id={`provider-row-${row.key}`}
-				role="button"
-				tabIndex={0}
-				aria-expanded={false}
-				onClick={onToggleExpand}
-				onKeyDown={(e) => {
-					if (e.target !== e.currentTarget) return;
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						onToggleExpand();
-					}
-				}}
-				title="点击展开查看模型与详情"
-				className="group flex min-h-[38px] cursor-pointer select-none items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--accent)_60%,transparent)]"
-			>
-
-				{/* Left items: Preset dot + Name + Auth badge + host + {N} 模型 */}
-				<div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-					<ProviderBrandLogo
-						providerId={row.key}
-						color={preset?.color}
-						className="h-4 w-4 shrink-0"
-					/>
-
-					<span
-						className="max-w-[150px] shrink-0 truncate font-mono text-xs font-semibold text-neutral-100 sm:max-w-[200px]"
-						title={
-							displaySlug !== displayName
-								? `${displayName} (${displaySlug})`
-								: displayName
-						}
-					>
-						{displayName}
-					</span>
-
-					{/* Compact Auth badge */}
-					{authBadge && (
-						<span
-							title={authBadge.tooltip}
-							className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border ${
-								authBadge.badgeType === "oauth"
-									? "bg-indigo-950/40 text-indigo-300 border-indigo-700/40"
-									: authBadge.badgeType === "api_key"
-										? "bg-emerald-950/40 text-emerald-300 border-emerald-700/40"
-										: authBadge.badgeType === "env"
-											? "bg-amber-950/40 text-amber-300 border-amber-700/40"
-											: "bg-neutral-800/60 text-neutral-400 border-neutral-700/40"
-							}`}
-						>
-							<span>{authBadge.label}</span>
-							{authBadge.accountSuffix && (
-								<span className="max-w-[80px] truncate text-[10px] text-indigo-400/80 sm:max-w-[120px]">
-									· {authBadge.accountSuffix}
-								</span>
-							)}
-						</span>
-					)}
-					{!info && workbench?.hasKey && (
-						<span
-							title="密钥已加密存于工作台密钥库"
-							className="inline-flex shrink-0 items-center rounded-full border border-emerald-700/40 bg-emerald-950/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300"
-						>
-							API Key
-						</span>
-					)}
-					{!info && workbench && !workbench.hasKey && workbench.api !== "ollama" && (
-						<span
-							title="未检测到 API 凭据"
-							className="inline-flex shrink-0 items-center rounded-full border border-neutral-700/40 bg-neutral-800/60 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400"
-						>
-							无凭据
-						</span>
-					)}
-
-					{/* BaseUrl host only */}
-					{hostOnly && (
-						<span
-							className="max-w-[130px] truncate font-mono text-[10px] text-neutral-500 sm:max-w-[180px]"
-							title={baseUrl ?? undefined}
-						>
-							{hostOnly}
-						</span>
-					)}
-
-					{/* Model count */}
-					<span className="shrink-0 font-mono text-[10px] text-neutral-500">
-						{allModels.length} 个模型
-					</span>
-
-					{/* Last connection test result stays visible after the spinner ends. */}
-					{test?.state === "done" && (
-						<span
-							title={`${test.result.detail}（${test.result.latencyMs}ms）`}
-							className={clsx(
-								"inline-flex shrink-0 items-center gap-1 text-[10px]",
-								test.result.ok ? "text-emerald-400" : "text-rose-400",
-							)}
-						>
-							{test.result.ok ? (
-								<CircleCheck className="h-3 w-3" />
-							) : (
-								<CircleX className="h-3 w-3" />
-							)}
-							{test.result.ok ? "连接正常" : "连接失败"}
-						</span>
-					)}
-				</div>
-
-				{/* Actions zone: hover reveal + always-visible toggle/import */}
-				<div
-					className="flex shrink-0 items-center gap-1.5"
-					onClick={(e) => e.stopPropagation()}
-				>
-					{workbench && (
-						<div
-							className={clsx(
-								"flex items-center gap-1 transition-opacity duration-150",
-								test?.state === "testing"
-									? "opacity-100"
-									: "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
-							)}
-						>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									void runTest(workbench.id);
-								}}
-								disabled={test?.state === "testing"}
-								title="测试连接"
-								aria-label={`测试 ${workbench.name} 连接`}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
-							>
-								{test?.state === "testing" ? (
-									<Loader2 size={12} className="animate-spin" />
-								) : (
-									<Activity size={12} />
-								)}
-							</button>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									onEdit();
-								}}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
-								title="编辑"
-							>
-								<Pencil className="h-3 w-3" />
-							</button>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									void handleDelete();
-								}}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95"
-								title={
-									info
-										? "仅删除工作台私有副本与加密密钥；OMP 全局配置保留"
-										: "删除"
-								}
-							>
-								<Trash2 className="h-3 w-3" />
-							</button>
-						</div>
-					)}
-
-					{info &&
-						(canImport ? (
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									void handleRowImport();
-								}}
-								disabled={importingOmp}
-								title={
-									workbench
-										? "重新从 OMP 配置导入密钥以更新工作台配置"
-										: "将该供应商的密钥加密导入工作台密钥库"
-								}
-								className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-							>
-								{importingOmp ? (
-									<Loader2 className="h-3 w-3 animate-spin" />
-								) : (
-									<Download className="h-3 w-3" />
-								)}
-								<span>{workbench ? "重新导入" : "导入"}</span>
-							</button>
-						) : (
-							<span
-								title={notImportableTitle}
-								className="inline-flex cursor-not-allowed items-center rounded-md bg-neutral-800/40 px-2 py-0.5 text-[10px] font-medium text-neutral-500"
-							>
-								{info.credentialTypes?.includes("oauth") ? "OAuth 托管" : "导入"}
-							</span>
-						))}
-
-					{workbench && (
-						<EnabledToggle
-							provider={workbench}
-							onChange={(v) =>
-								void setEnabled(workbench.id, v).catch((err) =>
-									toast.error(`更新失败: ${errMsg(err)}`),
-								)
-							}
-						/>
-					)}
-				</div>
-			</div>
-		);
-	}
-
-	// Expanded state: card treatment echoing highlighted trace event
-	return (
-		<div
-			id={`provider-row-${row.key}`}
-			className="group rounded-xl hairline border-l-[3px] border-l-[var(--accent)] bg-[var(--well-bg)] p-3 transition-colors"
-		>
-
-			{/* Header bar — clicking toggles collapse */}
-			<div
-				onClick={onToggleExpand}
-				className="flex cursor-pointer select-none flex-wrap items-center justify-between gap-2"
-			>
-				{/* Left: Dot + Name + Slug + ApiLabel + AuthBadge */}
-				<div className="flex min-w-0 flex-wrap items-center gap-2">
-					<ProviderBrandLogo
-						providerId={row.key}
-						color={preset?.color}
-						className="h-4 w-4 shrink-0"
-					/>
-					<span className="font-mono text-xs font-semibold text-neutral-100">
-						{displayName}
-					</span>
-					{displaySlug !== displayName && (
-						<span className="font-mono text-[10px] text-neutral-500">
-							{displaySlug}
-						</span>
-					)}
-					{apiLabel && (
-						<span className="rounded-md hairline bg-[var(--bg-active-fill)] px-1.5 py-0.5 text-[10px] text-neutral-400">
-							{apiLabel}
-						</span>
-					)}
-					{authBadge && (
-						<span
-							title={authBadge.tooltip}
-							className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border ${
-								authBadge.badgeType === "oauth"
-									? "bg-indigo-950/40 text-indigo-300 border-indigo-700/40"
-									: authBadge.badgeType === "api_key"
-										? "bg-emerald-950/40 text-emerald-300 border-emerald-700/40"
-										: authBadge.badgeType === "env"
-											? "bg-amber-950/40 text-amber-300 border-amber-700/40"
-											: "bg-neutral-800/60 text-neutral-400 border-neutral-700/40"
-							}`}
-						>
-							<span>{authBadge.label}</span>
-							{authBadge.accountSuffix && (
-								<span className="max-w-[140px] truncate text-[10px] text-indigo-400/80">
-									· {authBadge.accountSuffix}
-								</span>
-							)}
-						</span>
-					)}
-					{!info && workbench?.hasKey && (
-						<span
-							title="密钥已加密存于工作台密钥库"
-							className="inline-flex items-center rounded-full border border-emerald-700/40 bg-emerald-950/40 px-2 py-0.5 text-[10px] font-medium text-emerald-300"
-						>
-							API Key
-						</span>
-					)}
-					{!info && workbench && !workbench.hasKey && workbench.api !== "ollama" && (
-						<span
-							title="未检测到 API 凭据"
-							className="inline-flex items-center rounded-full border border-neutral-700/40 bg-neutral-800/60 px-2 py-0.5 text-[10px] font-medium text-neutral-400"
-						>
-							无凭据
-						</span>
-					)}
-				</div>
-
-				{/* Right: Actions */}
-				<div
-					className="flex shrink-0 flex-wrap items-center gap-1.5"
-					onClick={(e) => e.stopPropagation()}
-				>
-					{workbench && (
-						<>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									void runTest(workbench.id);
-								}}
-								disabled={test?.state === "testing"}
-								title="测试连接"
-								aria-label={`测试 ${workbench.name} 连接`}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
-							>
-								{test?.state === "testing" ? (
-									<Loader2 size={12} className="animate-spin" />
-								) : (
-									<Activity size={12} />
-								)}
-							</button>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									onEdit();
-								}}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95"
-								title="编辑"
-							>
-								<Pencil className="h-3 w-3" />
-							</button>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									void handleDelete();
-								}}
-								className="rounded-lg hairline bg-[var(--bg-active-fill)] p-1.5 text-neutral-400 transition-all hover:bg-rose-950/40 hover:text-rose-300 active:scale-95"
-								title={
-									info
-										? "仅删除工作台私有副本与加密密钥；OMP 全局配置保留"
-										: "删除"
-								}
-							>
-								<Trash2 className="h-3 w-3" />
-							</button>
-						</>
-					)}
-
-					{info &&
-						(canImport ? (
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									void handleRowImport();
-								}}
-								disabled={importingOmp}
-								title={
-									workbench
-										? "重新从 OMP 配置导入密钥以更新工作台配置"
-										: "将该供应商的密钥加密导入工作台密钥库"
-								}
-								className="inline-flex items-center gap-1 rounded-md hairline bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] font-medium text-neutral-200 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-							>
-								{importingOmp ? (
-									<Loader2 className="h-3 w-3 animate-spin" />
-								) : (
-									<Download className="h-3 w-3" />
-								)}
-								<span>{workbench ? "重新导入" : "导入"}</span>
-							</button>
-						) : (
-							<span
-								title={notImportableTitle}
-								className="inline-flex cursor-not-allowed items-center rounded-md bg-neutral-800/40 px-2 py-0.5 text-[10px] font-medium text-neutral-500"
-							>
-								{info.credentialTypes?.includes("oauth") ? "OAuth 托管" : "导入"}
-							</span>
-						))}
-
-					{workbench && (
-						<EnabledToggle
-							provider={workbench}
-							onChange={(v) =>
-								void setEnabled(workbench.id, v).catch((err) =>
-									toast.error(`更新失败: ${errMsg(err)}`),
-								)
-							}
-						/>
-					)}
-				</div>
-			</div>
-
-			{/* Provenance: 来源 line */}
-			{((info && info.sources.length > 0) || workbench) && (
-				<div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
-					<span>来源:</span>
-					{info?.sources.map((src) => (
-						<span
-							key={src}
-							className="rounded bg-neutral-800/80 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400"
-						>
-							{src}
-						</span>
-					))}
-					{workbench && (
-						<span
-							className="rounded border border-sky-700/40 bg-sky-950/40 px-1.5 py-0.5 font-mono text-[10px] text-sky-300/90"
-						>
-							providers.json
-						</span>
-					)}
-				</div>
-			)}
-
-			{/* Full baseUrl + 角色 */}
-			<div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-				{baseUrl && (
-					<span
-						className="max-w-[480px] break-all font-mono text-neutral-300 select-all"
-						title={baseUrl}
-					>
-						{baseUrl}
-					</span>
-				)}
-				{baseUrl && (allModels.length > 0 || (info?.usedInRoles.length ?? 0) > 0) && (
-					<span className="text-neutral-600">·</span>
-				)}
-				{info && info.usedInRoles.length > 0 && (
-					<span>
-						角色:{" "}
-						<span className="font-mono text-neutral-300">
-							{info.usedInRoles.join(", ")}
-						</span>
-					</span>
-				)}
-				{!info && workbench && !workbench.hasKey && workbench.api !== "ollama" && (
-					<span className="text-neutral-500">未配置密钥</span>
-				)}
-			</div>
-
-			{/* Model grid */}
-			<div className="mt-3 border-t border-[var(--border-divider)] pt-2.5">
-				<div className="mb-2 flex items-center justify-between text-xs text-neutral-400">
-					<span className="font-medium text-neutral-300">
-						模型列表（{allModels.length}）
-					</span>
-					{workbench?.defaultModel && (
-						<span className="text-[11px]">
-							默认: <code className="font-mono text-neutral-200">{workbench.defaultModel}</code>
-						</span>
-					)}
-				</div>
-				{allModels.length === 0 ? (
-					<div className="rounded-lg bg-neutral-900/40 p-2.5 text-center text-xs text-neutral-500">
-						未配置模型
-					</div>
-				) : (
-					<div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-						{allModels.map((entry) => {
-							const id = modelEntryId(entry);
-							const spec = modelEntrySpec(entry);
-							const ctx =
-								spec.contextWindow ?? workbench?.defaultContextWindow ?? null;
-							const max =
-								spec.maxTokens ?? workbench?.defaultMaxTokens ?? null;
-							const testKey = workbench ? `${workbench.id}::${id}` : null;
-							const modelTest = testKey ? modelTests[testKey] : undefined;
-
-							return (
-								<div
-									key={id}
-									title={isOmpOnly ? "导入工作台后可单独测试该模型" : undefined}
-									className="flex flex-col justify-between gap-1.5 rounded-lg hairline bg-[var(--bg-active-fill)]/60 p-2.5 text-xs transition-all"
-								>
-									<div className="flex min-w-0 items-center justify-between gap-1.5">
-										<span
-											className="truncate font-mono font-medium text-neutral-200"
-											title={id}
-										>
-											{id}
-										</span>
-										{workbench && (
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													void runModelTest(workbench.id, id);
-												}}
-												disabled={modelTest?.state === "testing"}
-												title={`测试模型 ${id}`}
-												aria-label={`测试模型 ${id}`}
-												className="inline-flex shrink-0 items-center gap-1 rounded bg-[var(--well-bg)] px-2 py-0.5 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 disabled:opacity-40"
-											>
-												{modelTest?.state === "testing" ? (
-													<Loader2 size={11} className="animate-spin" />
-												) : (
-													<Activity size={11} />
-												)}
-												<span>测试</span>
-											</button>
-										)}
-									</div>
-
-									{(ctx != null || max != null) && (
-										<div className="flex flex-wrap items-center gap-1 text-[10px]">
-											{ctx != null && (
-												<span
-													className="rounded border border-sky-800/40 bg-sky-950/60 px-1.5 py-0.5 font-mono text-sky-300"
-													title={`上下文窗口: ${ctx} tokens`}
-												>
-													ctx:{formatTokens(ctx)}
-												</span>
-											)}
-											{max != null && (
-												<span
-													className="rounded border border-indigo-800/40 bg-indigo-950/60 px-1.5 py-0.5 font-mono text-indigo-300"
-													title={`输出上限: ${max} tokens`}
-												>
-													max:{formatTokens(max)}
-												</span>
-											)}
-										</div>
-									)}
-
-									{modelTest && (
-										<div
-											className={`text-[11px] ${
-												modelTest.state === "testing"
-													? "flex items-center gap-1 text-neutral-400"
-													: modelTest.result.ok
-														? "text-emerald-400"
-														: "text-rose-400"
-											}`}
-										>
-											{modelTest.state === "testing" ? (
-												<>
-													<Loader2 size={11} className="animate-spin" />
-													<span>正在测试…</span>
-												</>
-											) : (
-												<div
-													className="flex items-start gap-1 break-words"
-													title={`${modelTest.result.detail} (${modelTest.result.latencyMs}ms)`}
-												>
-													{modelTest.result.ok ? (
-														<CircleCheck className="h-3 w-3 shrink-0" />
-													) : (
-														<CircleX className="h-3 w-3 shrink-0" />
-													)}
-													<span className="min-w-0 select-text whitespace-pre-wrap break-words">
-														{modelTest.result.detail}
-													</span>
-													<span className="shrink-0 font-mono text-[10px] opacity-80">
-														({modelTest.result.latencyMs}ms)
-													</span>
-												</div>
-											)}
-										</div>
-									)}
-								</div>
-							);
-						})}
-					</div>
-				)}
-			</div>
-
-			{workbench && <TestResultLine test={test} />}
-		</div>
-	);
-}
-
-function EnabledToggle({
-	provider,
-	onChange,
-}: {
-	provider: ProviderConfig;
-	onChange: (next: boolean) => void;
-}) {
-	return (
-		<Switch
-			checked={provider.enabled}
-			onChange={onChange}
-			ariaLabel={`启用 ${provider.name}`}
-			title={provider.enabled ? "已启用（新会话注入密钥）" : "已停用"}
-		/>
-	);
-}
-
-function TestResultLine({ test }: { test: TestStatus | undefined }) {
-	if (!test) return null;
-	if (test.state === "testing") {
-		return (
-			<div className="mt-2 flex items-center gap-1.5 border-t border-[var(--border-divider)] pt-2 text-[11px] text-neutral-400">
-				<Loader2 className="h-3 w-3 animate-spin" />
-				正在连接…
-			</div>
-		);
-	}
-	const { ok, latencyMs, detail } = test.result;
-	return (
-		<div
-			className={`mt-2 flex items-start gap-1.5 border-t border-[var(--border-divider)] pt-2 text-[11px] ${
-				ok ? "text-emerald-400" : "text-rose-400"
-			}`}
-		>
-			{ok ? (
-				<CircleCheck className="h-3 w-3 shrink-0" />
-			) : (
-				<CircleX className="h-3 w-3 shrink-0" />
-			)}
-			<span className="min-w-0 select-text whitespace-pre-wrap break-words">
-				{detail}（<span className="tabular-nums font-mono">{latencyMs}ms</span>）
-			</span>
+			{dialog && <ProviderDialog target={dialog} onClose={() => setDialog(null)} />}
+			{keyDialogRow && <SetKeyDialog row={keyDialogRow} onClose={() => setKeyDialogId(null)} />}
+			{oauthDialog && <OauthLoginDialog onClose={() => setOauthDialog(false)} />}
 		</div>
 	);
 }

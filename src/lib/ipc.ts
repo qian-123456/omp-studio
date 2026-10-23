@@ -40,9 +40,7 @@ import type {
 	ModelRoleSnapshot,
 	ModelSwitchRuleInput,
 	ModelTemplateInput,
-	OmpProviderInfo,
-	OmpImportPlanItem,
-	OmpImportResult,
+	KeyMode,
 	OmpUsageReportData,
 	PairingInfo,
 	PairingTarget,
@@ -57,7 +55,9 @@ import type {
 	PluginCatalog,
 	ProcessMemoryInfo,
 	ProviderApi,
-	ProviderConfig,
+	ProviderBulkResult,
+	ProviderRow,
+	ProviderUpsert,
 	ProviderTestResult,
 	PrUrlInfo,
 	ServiceInfo,
@@ -601,22 +601,35 @@ export const promptCompositionProbe = (cwd: string) =>
 
 // ---- providers ----
 
-export const providerList = () => invoke<ProviderConfig[]>("provider_list");
-
-/** Upsert metadata; `apiKey` non-empty → (re)encrypt into the vault, else keep existing. */
-export const providerSave = (config: ProviderConfig, apiKey?: string | null) =>
-	invoke<ProviderConfig>("provider_save", { config, apiKey: apiKey ?? null });
-
-export const providerDelete = (id: string) =>
-	invoke<void>("provider_delete", { id });
+export const providerRows = () => invoke<ProviderRow[]>("provider_rows");
 
 export const providerSetEnabled = (id: string, enabled: boolean) =>
 	invoke<void>("provider_set_enabled", { id, enabled });
 
-export const providerReorder = (ids: string[]) =>
-	invoke<void>("provider_reorder", { ids });
+export const providerEncrypt = (id: string) =>
+	invoke<ProviderRow>("provider_encrypt", { id });
 
-/** Real HTTP probe with the key decrypted in memory only. */
+export const providerDecrypt = (id: string) =>
+	invoke<ProviderRow>("provider_decrypt", { id });
+
+/** Encrypts every plaintext-key provider; one result per provider. */
+export const providerEncryptAll = () =>
+	invoke<ProviderBulkResult[]>("provider_encrypt_all");
+
+/** Upsert a custom provider; `apiKey` null keeps the current key. */
+export const providerUpsert = (
+	input: ProviderUpsert,
+	apiKey: string | null,
+	keyMode: KeyMode,
+) => invoke<ProviderRow>("provider_upsert", { input, apiKey, keyMode });
+
+export const providerSetKey = (id: string, apiKey: string, keyMode: KeyMode) =>
+	invoke<ProviderRow>("provider_set_key", { id, apiKey, keyMode });
+
+export const providerDelete = (id: string) =>
+	invoke<void>("provider_delete", { id });
+
+/** Real HTTP probe with the key resolved in memory only. */
 export const providerTest = (id: string) =>
 	invoke<ProviderTestResult>("provider_test", { id });
 
@@ -629,33 +642,18 @@ export const providerFetchModels = (
 	baseUrl: string,
 	api: ProviderApi,
 	apiKey?: string | null,
-	providerId?: string | null,
+	id?: string | null,
 ) =>
 	invoke<DiscoveredModel[]>("provider_fetch_models", {
 		baseUrl,
-		apiKey: apiKey ?? null,
 		api,
-		providerId: providerId ?? null,
+		apiKey: apiKey ?? null,
+		id: id ?? null,
 	});
 
 /** Plaintext .env text (clipboard only — never persisted by the app). */
 export const providerExportEnvText = (ids?: string[] | null) =>
 	invoke<string>("provider_export_env_text", { ids: ids ?? null });
-
-export const ompProvidersList = () =>
-	invoke<OmpProviderInfo[]>("omp_providers_list");
-
-export const providerImportOmpPlan = (ids: string[]) =>
-	invoke<OmpImportPlanItem[]>("provider_import_omp_plan", { ids });
-
-export const providerImportOmp = (
-	ids: string[],
-	baseUrlOverrides?: Record<string, string>,
-) =>
-	invoke<OmpImportResult[]>("provider_import_omp", {
-		ids,
-		baseUrlOverrides: baseUrlOverrides ?? null,
-	});
 
 /** Read a .env file (supports leading `~`); content is never logged. */
 export const providerReadEnvFile = (path: string) =>
@@ -686,6 +684,12 @@ export const oauthLoginOpenUrl = (url: string) =>
 export const oauthLoginStatus = () =>
 	invoke<OauthLoginStatus | null>("oauth_login_status");
 
+/**
+ * Sign one account out of a provider: soft-disables its OAuth credential rows in OMP's
+ * `agent.db` (same `deleted by user` marker omp uses). `email` / `accountId` come from
+ * the usage report account metadata; omit both only for single-account providers.
+ * Resolves to the number of credential rows disabled.
+ */
 export const ompUsageReport = (refresh?: boolean) =>
 	invoke<OmpUsageReportData>("omp_usage_report", { refresh: refresh ?? false });
 

@@ -206,16 +206,12 @@ pub async fn run_print(
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.args(["-p", "--no-tools", "--no-session", "--no-title"]);
     cmd.args(lightweight_args());
-    if let Some(ext) = crate::providers::try_extension_path() {
-        cmd.arg("-e").arg(ext);
-    }
     let model = normalize_model_selector(model);
     if !model.is_empty() {
         cmd.arg("--model").arg(&model);
     }
     cmd.current_dir(paths::oneshot_dir())
         .env("PATH", path)
-        .envs(crate::providers::omp_spawn_env())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

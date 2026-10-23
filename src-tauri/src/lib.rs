@@ -145,6 +145,15 @@ async fn allowed_tools_list() -> Result<Vec<String>, String> {
     Ok(Vec::new())
 }
 
+/// CLI flag of the key-reference fast path (`omp-workspace --ompws-key <id>`).
+pub const KEY_FLAG: &str = providers::key_ref::KEY_FLAG;
+
+/// `--ompws-key <id>`: print the vault key for provider `id` to stdout and
+/// return the process exit code. Never starts Tauri, logging or the database.
+pub fn run_key_cli(id: Option<String>) -> i32 {
+    providers::key_ref::run_cli(id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     paths::ensure_dirs().expect("create ~/.omp-workspace dirs");
@@ -339,18 +348,18 @@ pub fn run() {
             settings::omp_update_check,
             settings::omp_update_run,
             // providers (API provider manager + encrypted vault)
-            providers::commands::provider_list,
-            providers::commands::provider_save,
-            providers::commands::provider_delete,
+            providers::commands::provider_rows,
             providers::commands::provider_set_enabled,
-            providers::commands::provider_reorder,
+            providers::commands::provider_encrypt,
+            providers::commands::provider_decrypt,
+            providers::commands::provider_encrypt_all,
+            providers::commands::provider_upsert,
+            providers::commands::provider_set_key,
+            providers::commands::provider_delete,
             providers::commands::provider_test,
             providers::commands::provider_test_model,
             providers::commands::provider_fetch_models,
             providers::commands::provider_export_env_text,
-            providers::commands::omp_providers_list,
-            providers::commands::provider_import_omp,
-            providers::commands::provider_import_omp_plan,
             providers::commands::provider_read_env_file,
             providers::models_yml_write::omp_models_set_context_windows,
             providers::models_yml_write::omp_models_context_window_overrides,

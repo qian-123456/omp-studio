@@ -636,11 +636,7 @@ pub async fn list_models(state: tauri::State<'_, AppState>) -> Result<Vec<Model>
 
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.args(["models", "--json"]);
-    if let Some(ext) = crate::providers::try_extension_path() {
-        cmd.arg("-e").arg(ext);
-    }
     cmd.env("PATH", &path_env);
-    cmd.envs(crate::providers::omp_spawn_env());
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
@@ -717,7 +713,6 @@ async fn run_omp_on_session(
         .arg(&file)
         .current_dir(&working_dir)
         .env("PATH", &path_env)
-        .envs(crate::providers::omp_spawn_env())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

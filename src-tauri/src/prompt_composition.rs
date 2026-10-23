@@ -684,16 +684,10 @@ fn probe_command(settings: &Settings, cwd: &str) -> tokio::process::Command {
     if privacy.exists() {
         cmd.arg("-e").arg(privacy);
     }
-    if let Some(ext) = crate::providers::try_extension_path() {
-        cmd.arg("-e").arg(ext);
-    }
     if let Some(dir) = viz_dir {
         cmd.arg("--plugin-dir").arg(dir);
     }
     cmd.env("PATH", crate::todos::omp::augmented_path());
-    for (k, v) in crate::providers::omp_spawn_env() {
-        cmd.env(k, v);
-    }
     for (k, v) in crate::privacy::spawn_env() {
         cmd.env(k, v);
     }
