@@ -16,3 +16,6 @@ src-tauri/target/
 
 # Stray empty db files
 src-tauri/*.db
+
+# Preset wallpaper images are local-only (not licensed for the public repo).
+src/assets/wallpapers/

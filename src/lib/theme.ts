@@ -10,6 +10,7 @@
 
 import { useSyncExternalStore } from "react";
 import {
+	PRESET_ID_PREFIX,
 	PRESET_WALLPAPERS,
 	type CustomWallpaperItem,
 	type WallpaperEffect,
@@ -475,10 +476,13 @@ function loadWallpaperStorage(): void {
 				: "clear";
 		const brightness = typeof ws.brightness === "number" ? ws.brightness : 1.0;
 		const veil = ws.veil === "white" || ws.veil === "black" || ws.veil === "none" ? ws.veil : undefined;
+		// A saved built-in preset whose image is not in this checkout falls back to no wallpaper.
+		const missingPreset = typeof ws.id === "string" && ws.id.startsWith(PRESET_ID_PREFIX) && !matchedPreset;
 		wallpaperState = {
 			...DEFAULT_WALLPAPER_STATE,
 			...ws,
-			url: matchedPreset ? matchedPreset.imageUrl : (ws.url ?? ""),
+			...(missingPreset ? { enabled: false, id: "none" } : {}),
+			url: matchedPreset ? matchedPreset.imageUrl : missingPreset ? "" : (ws.url ?? ""),
 			appearance: matchedPreset ? matchedPreset.appearance : (ws.appearance ?? "dark"),
 			effect,
 			brightness,

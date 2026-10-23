@@ -75,8 +75,13 @@ describe("color utils", () => {
     expect(hexToRgb("nope")).toBeNull();
   });
 
-  it("has 6 valid presets", () => {
-    expect(PRESET_WALLPAPERS).toHaveLength(6);
-    for (const w of PRESET_WALLPAPERS) expectValid(w.palette);
+  it("presets that have images carry valid palettes and both URLs", () => {
+    // Images are local-only assets, so the count depends on the checkout.
+    expect(PRESET_WALLPAPERS.length).toBeLessThanOrEqual(6);
+    for (const w of PRESET_WALLPAPERS) {
+      expectValid(w.palette);
+      expect(w.imageUrl).toBeTruthy();
+      expect(w.thumbnailUrl).toBeTruthy();
+    }
   });
 });

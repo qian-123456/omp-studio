@@ -120,14 +120,19 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 			onClick={() => {
 				if (id === "wallpaper") {
 					if (!wallpaper.enabled) {
+						const hasSaved = wallpaper.id !== "none" && !!wallpaper.url;
 						const fallback = PRESET_WALLPAPERS[0];
-						setWallpaper({
-							enabled: true,
-							id: wallpaper.id !== "none" ? wallpaper.id : fallback.id,
-							url: wallpaper.url || fallback.imageUrl,
-							accentColor: wallpaper.accentColor || fallback.palette.soft,
-							variant: wallpaper.variant || "soft",
-						});
+						// Without a saved wallpaper or a bundled preset there is nothing to show:
+						// open the tab so the picker can offer an upload instead.
+						if (hasSaved || fallback) {
+							setWallpaper({
+								enabled: true,
+								id: hasSaved ? wallpaper.id : fallback.id,
+								url: hasSaved ? wallpaper.url : fallback.imageUrl,
+								accentColor: wallpaper.accentColor || fallback?.palette.soft || "#5a7a9a",
+								variant: wallpaper.variant || "soft",
+							});
+						}
 					}
 				} else {
 					if (wallpaper.enabled) {

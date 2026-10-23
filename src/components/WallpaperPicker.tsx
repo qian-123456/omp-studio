@@ -339,6 +339,11 @@ export function WallpaperPicker() {
 					);
 				})}
 			</div>
+			{cards.length === 0 && (
+				<p className="text-xs text-neutral-500 dark:text-neutral-400">
+					没有内置壁纸。点右上角「上传图片」，用自己的图片作为壁纸。
+				</p>
+			)}
 			{state.enabled && state.id !== "none" && activeCard && (
 				<div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-black/10 bg-black/[0.03] p-2.5 text-xs dark:border-white/10 dark:bg-white/[0.04]">
 					<div className="flex items-center gap-1.5 font-medium text-neutral-600 dark:text-neutral-300">
