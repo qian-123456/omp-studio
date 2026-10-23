@@ -5,6 +5,7 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+	OmpInstallProgress,
 	OauthUiEvent,
 	SearchIndexStatus,
 	ServiceInfo,
@@ -74,6 +75,11 @@ export const onTodosChanged = (
 	cb: (counts: TodoCounts) => void,
 ): Promise<UnlistenFn> =>
 	listen<TodoCounts>("todos:changed", (e) => cb(e.payload));
+
+export const onOmpInstall = (
+	cb: (p: OmpInstallProgress) => void,
+): Promise<UnlistenFn> =>
+	listen<OmpInstallProgress>("omp:install", (e) => cb(e.payload));
 
 export const onBacklogChanged = (cb: () => void): Promise<UnlistenFn> =>
 	listen<null>("backlog:changed", () => cb());

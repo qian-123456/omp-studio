@@ -613,7 +613,7 @@ fn validate_config_value(key: &str, value: &str) -> Result<(), String> {
 }
 
 /// Resolves the configured omp binary against the augmented PATH.
-fn omp_exe(state: &AppState) -> (std::path::PathBuf, String) {
+pub(crate) fn omp_exe(state: &AppState) -> (std::path::PathBuf, String) {
     let bin = state.settings.read().omp_binary.clone();
     let path = crate::todos::omp::augmented_path();
     let exe = crate::todos::omp::resolve_binary(&bin, &path);
@@ -755,7 +755,7 @@ pub async fn omp_config_reset(
 
 /// Dedicated empty working directory for `omp config` so omp's project layer
 /// (`<cwd>/.omp/config.yml`) never merges in: results reflect global settings only.
-fn neutral_cwd() -> Result<std::path::PathBuf, String> {
+pub(crate) fn neutral_cwd() -> Result<std::path::PathBuf, String> {
     let dir = std::env::temp_dir().join("ompws-omp-config-cwd");
     std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建中立工作目录：{e}"))?;
     let stray = dir.join(".omp");
@@ -1373,6 +1373,12 @@ pub struct OmpInfo {
 #[tauri::command]
 pub async fn omp_info(state: tauri::State<'_, AppState>) -> Result<OmpInfo, String> {
     let (exe, path) = omp_exe(&state);
+    probe_omp_info(exe, &path).await
+}
+
+/// Probes `exe --version` and collects the omp location info (shared by `omp_info` and the
+/// installer's post-run re-probe).
+pub(crate) async fn probe_omp_info(exe: std::path::PathBuf, path: &str) -> Result<OmpInfo, String> {
     let agent_dir = crate::paths::agent_dir();
     let config = agent_dir.join("config.yml");
     let found = exe.is_file();
@@ -1380,7 +1386,7 @@ pub async fn omp_info(state: tauri::State<'_, AppState>) -> Result<OmpInfo, Stri
         let mut cmd = tokio::process::Command::new(&exe);
         cmd.current_dir(neutral_cwd()?)
             .arg("--version")
-            .env("PATH", &path)
+            .env("PATH", path)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

@@ -1,11 +1,12 @@
 /** Settings ▸ 版本与更新 (`about`): app version, omp version, `omp update` and stale-session switching. */
-import { ArrowUpCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Loader2, RefreshCw, RotateCw } from "lucide-react";
+import { ArrowUpCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Download, Loader2, RefreshCw, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../../../lib/dialogs";
 import { timeAgo } from "../../../lib/format";
 import { sessionDisplayName } from "../../../lib/sessionName";
 import { toast } from "../../../lib/toast";
 import { ompVersionLabel, useOmpUpdate } from "../../../stores/ompUpdate";
+import { useOmpInstall } from "../../../stores/ompInstall";
 import { switchPendingNow, syncStaleness, useOmpUpdateSessions } from "../../../stores/ompUpdateSessions";
 import { useSessions } from "../../../stores/sessions";
 import { useAppSettings } from "../useAppSettings";
@@ -151,8 +152,16 @@ export function AboutSection() {
 				/>
 				<SettingRow
 					label="omp 版本"
-					description={info?.found ? <span className="font-mono">{info.resolvedPath}</span> : "未找到 omp，可在「高级」中设置 omp 程序位置"}
-					control={<span className="font-mono text-xs text-[var(--text-muted)]">{ompVersion ?? "未知"}</span>}
+					description={info?.found ? <span className="font-mono">{info.resolvedPath}</span> : "未找到 omp 内核，可一键安装，或在「高级」中设置 omp 程序位置"}
+					control={
+						info?.found === false ? (
+							<Button icon={Download} onClick={() => void useOmpInstall.getState().openAndInstall()}>
+								安装 omp 内核
+							</Button>
+						) : (
+							<span className="font-mono text-xs text-[var(--text-muted)]">{ompVersion ?? "未知"}</span>
+						)
+					}
 				/>
 				<SettingRow
 					label="omp 更新"

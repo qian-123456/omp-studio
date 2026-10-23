@@ -25,7 +25,7 @@ omp-workspace is a native desktop shell (built with Tauri 2 + React 19) for the 
 | Requirement | Details |
 | --- | --- |
 | Operating System | macOS (uses macOS Keychain for secure credential encryption and supports Finder integrations) |
-| OMP CLI | `omp` should be installed and accessible in your shell |
+| OMP CLI | No need to install it first: if the `omp` core is missing at launch, the app opens an install dialog and installs it with the official installer (about 200 MB, no restart needed). You can also install it yourself so `omp` works in your shell |
 | Model Credentials | At least one valid provider (API key or OAuth subscription account), see [Configure model providers](#configure-model-providers) |
 | Building from Source | Node.js (>=18), `pnpm`, and Rust (Cargo) toolchain |
 
@@ -33,6 +33,9 @@ The app starts sessions using the command defined under **Settings ▸ Advanced 
 
 > [!NOTE]
 > If `omp` is located in a custom path or specific virtual environment, set its absolute path in **Settings ▸ Advanced ▸ omp program path**. Check **Settings ▸ Version and updates** to verify detection.
+
+> [!TIP]
+> If the automatic install fails or you prefer to do it by hand, run `curl -fsSL https://omp.sh/install | sh` in a terminal (on Windows, run `irm https://omp.sh/install.ps1 | iex` in PowerShell), then click "I installed it manually, check again" in the dialog.
 
 ## Installation & Launch
 
