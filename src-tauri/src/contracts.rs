@@ -304,6 +304,10 @@ pub struct TranscriptItem {
     /// Assistant only: completion time in epoch ms (omp `message.completedAt`).
     #[serde(default)]
     pub completed_at: Option<i64>,
+    /// Compaction only: first entry the compacted context still keeps verbatim
+    /// (omp `firstKeptEntryId`); earlier entries live on only in the summary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_kept_entry_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

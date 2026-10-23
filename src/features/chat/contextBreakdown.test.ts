@@ -1,6 +1,29 @@
 import { describe, expect, it } from "vitest";
-import type { PromptComposition } from "../../lib/contracts";
-import { buildContextSegments, computeRingArcs, type ContextSegment } from "./contextBreakdown";
+import type { PromptComposition, TranscriptItem } from "../../lib/contracts";
+import {
+	buildContextSegments,
+	computeRingArcs,
+	type ContextSegment,
+	estimateConversation,
+	liveContextItems,
+} from "./contextBreakdown";
+
+const item = (p: Partial<TranscriptItem> & Pick<TranscriptItem, "id" | "kind">): TranscriptItem => ({
+	parentId: null,
+	ts: "",
+	text: null,
+	thinking: null,
+	toolCalls: [],
+	toolResult: null,
+	usage: null,
+	model: null,
+	stopReason: null,
+	hidden: false,
+	...p,
+});
+const call = (id: string, name: string, args: unknown) => ({ id, name, args, intent: null });
+const result = (id: string, toolCallId: string, toolName: string, text: string) =>
+	item({ id, kind: "tool_result", toolResult: { toolCallId, toolName, text, isError: false, details: null } });
 
 const comp = (cats: Array<[PromptComposition["categories"][number]["id"], number]>): PromptComposition => ({
 	cwd: "/a",
@@ -37,6 +60,59 @@ describe("buildContextSegments", () => {
 		expect(tok(segs, "free")).toBe(900);
 	});
 });
+
+describe("liveContextItems", () => {
+	it("keeps only the latest compaction's summary, its kept entries and what follows", () => {
+		const items = [
+			item({ id: "a", kind: "user", text: "old" }),
+			item({ id: "b", kind: "user", text: "kept" }),
+			item({ id: "c", kind: "compaction", text: "summary", firstKeptEntryId: "b" }),
+			item({ id: "d", kind: "user", text: "new" }),
+		];
+		expect(liveContextItems(items).map((i) => i.id)).toEqual(["c", "b", "d"]);
+	});
+});
+
+describe("estimateConversation", () => {
+	it("routes thinking, skill reads, MCP calls and other tool calls with their results", () => {
+		const est = estimateConversation([
+			item({ id: "u", kind: "user", text: "hi there" }),
+			item({
+				id: "a",
+				kind: "assistant",
+				text: "ok",
+				thinking: "x".repeat(300),
+				toolCalls: [
+					call("c1", "read", { path: "skill://ego-browser/references/a.md" }),
+					call("c2", "mcp__github_search", { q: "x" }),
+					call("c3", "bash", { command: "ls" }),
+				],
+			}),
+			result("r1", "c1", "read", "s".repeat(3000)),
+			result("r2", "c2", "mcp__github_search", "m".repeat(600)),
+			result("r3", "c3", "bash", "b".repeat(90)),
+		]);
+		const by = Object.fromEntries(est.map((e) => [e.id, e]));
+		expect(by.thinking.tokens).toBe(100);
+		expect(by.skillReads.details?.[0].name).toBe("ego-browser");
+		expect(by.skillReads.tokens).toBeGreaterThan(1000);
+		expect(by.mcpCalls.details?.[0].name).toBe("github_search");
+		expect(by.toolCalls.details?.map((d) => d.name)).toEqual(["bash"]);
+		expect(by.messages.tokens).toBe(estimateTokensOf("hi there") + estimateTokensOf("ok"));
+	});
+
+	it("scales conversation estimates to exactly fill the reported remainder", () => {
+		const chat = estimateConversation([
+			item({ id: "a", kind: "assistant", text: "y".repeat(300), thinking: "z".repeat(300) }),
+		]);
+		const segs = buildContextSegments(10_000, 100_000, comp([["system", 2000]]), chat);
+		expect(tok(segs, "messages")).toBe(4000);
+		expect(tok(segs, "thinking")).toBe(4000);
+		expect(segs.filter((s) => s.group !== "free").reduce((a, s) => a + s.tokens, 0)).toBe(10_000);
+	});
+});
+
+const estimateTokensOf = (s: string) => Math.ceil(s.length / 3);
 
 describe("computeRingArcs", () => {
 	it("lays used categories end to end with seams and leaves free space as track", () => {

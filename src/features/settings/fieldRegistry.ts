@@ -439,11 +439,11 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		description: "点开规则文件那一行，就在该行下面查看、编辑并保存内容，新会话生效",
 		keywords: ["编辑", "保存", "预览", "markdown", "instructions", "长期说明", "约定"],
 	},
-	// 系统提示词构成
+	// 系统提示词
 	{
 		id: "promptCompositionOverview",
 		sectionId: "prompt-composition",
-		label: "系统提示词构成",
+		label: "系统提示词",
 		description: "新会话一开始带多少内容：系统提示词、规则文件、Skills、工具说明、MCP 工具，按类别看 token 占比",
 		keywords: ["系统提示词", "system prompt", "prompt", "token", "占用", "上下文", "规则文件", "skills", "工具说明", "mcp", "精简", "优化", "让 AI 帮我优化"],
 	},

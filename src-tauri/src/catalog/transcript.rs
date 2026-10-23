@@ -180,6 +180,10 @@ pub fn normalize_entry(v: &Value) -> Option<TranscriptItem> {
         "compaction" => {
             item.kind = TranscriptKind::Compaction;
             item.text = v.get("summary").and_then(Value::as_str).map(str::to_string);
+            item.first_kept_entry_id = v
+                .get("firstKeptEntryId")
+                .and_then(Value::as_str)
+                .map(str::to_string);
         }
         "branch_summary" => {
             item.kind = TranscriptKind::BranchSummary;
