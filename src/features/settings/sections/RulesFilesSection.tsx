@@ -13,6 +13,7 @@ import { describeFileCommandError } from "../fileEditorLogic";
 import { OmpSections } from "../OmpSettingsList";
 import { useSettingsNav } from "../settingsNav";
 import { Notice } from "../../../components/Notice";
+import { SectionJumpBar } from "../SectionJumpBar";
 import { Button, Chip, SectionHeader, SettingRow, SettingsCard } from "../ui";
 import { useSettingsProjectCwd } from "../useAppSettings";
 import {
@@ -206,7 +207,9 @@ export function RulesFilesSection() {
 
 			{error && <Notice tone="danger">{error}</Notice>}
 
+			<SectionJumpBar />
 			<SettingsCard
+				jump="作用范围"
 				fieldId="agentsMdScope"
 				footer={
 					effectiveScope === "global"
@@ -237,7 +240,7 @@ export function RulesFilesSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard fieldId="agentsMdProjectFile" clip>
+			<SettingsCard jump="文件列表" fieldId="agentsMdProjectFile" clip>
 				<div className="divide-y divide-[var(--border-divider)]">
 					{fixed.map(renderRow)}
 					{ruleFiles.map(renderRow)}
@@ -249,7 +252,7 @@ export function RulesFilesSection() {
 				)}
 			</SettingsCard>
 
-			<SettingsCard fieldId="agentsMdRelated">
+			<SettingsCard jump="相关设置" fieldId="agentsMdRelated">
 				<div className="divide-y divide-[var(--border-divider)]">
 					{RELATED_PAGES.map((p) => (
 						<SettingRow

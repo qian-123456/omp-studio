@@ -398,7 +398,7 @@ export function SubagentSheet({
 								className={clsx(
 									"relative rounded-full py-1 text-[12px] transition-colors",
 									tab === t.id
-										? "font-semibold text-[var(--text)]"
+										? "text-[var(--text)]"
 										: "text-[var(--text-40)] hover:text-[var(--text-60)]",
 								)}
 							>

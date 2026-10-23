@@ -16,6 +16,7 @@ import { useTurnNav } from "../../stores/turnNav";
 import { ChangesSection } from "./ChangesSection";
 import { CheckpointsCard } from "./CheckpointsCard";
 import { keepIfEqual, useAutoRefresh } from "./useAutoRefresh";
+import { gitDirOf } from "../chat/sessionWorkspace";
 import { countCrossedEmpty, type GitPaneTab, paneTab, toplevelFor } from "./helpers";
 import { TimelineSection } from "./TimelineSection";
 import { BranchAssetSection } from "./BranchAssetSection";
@@ -33,12 +34,18 @@ const MIN_DETAIL_H = 140;
 
 /** [C] Right tab: worktree map on top; the selected worktree's changes/history below. */
 export function GitPanel() {
-	const sid = useUi((s) => s.selectedSessionId);
+	// Same session the header/bottom bar describe: the selection, else the last
+	// session (a restored view can be on screen with nothing "selected").
+	const sid = useUi((s) => s.selectedSessionId || s.lastSessionId);
 	const session = useSessions((s) => (sid ? s.sessions[sid] : undefined));
+	// Stored catalog facts only: the panel must show the selected session's repo
+	// whether or not its omp process is running. `repoRoot` covers a session
+	// whose cwd is gone but whose repository is still known.
+	const dir = gitDirOf(session);
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			{session?.cwd ? (
-				<RepoView key={session.cwd} cwd={session.cwd} tick={session.file} />
+			{dir ? (
+				<RepoView key={dir} cwd={dir} tick={session?.file ?? ""} />
 			) : (
 				<div className="p-3 text-xs text-[var(--text-dim)]">
 					没有选中的会话，或该会话未关联工作目录

@@ -395,10 +395,24 @@ fn recompute_blocking(state: &AppState, ids: Option<Vec<String>>) {
 fn recompute_inner(state: &AppState, ids: Option<Vec<String>>, refresh: bool) {
     scan::reset_canon_cache();
     let full = ids.is_none();
-    let index = index_by_id(&cat().lock().files);
+    let (index, deleted) = {
+        let c = cat().lock();
+        (index_by_id(&c.files), c.deleted.clone())
+    };
+    // A delete that raced this recompute already purged the row and files; the
+    // snapshot above may still hold them, so never rebuild a deleted session.
+    let live_targets = |s: &Arc<Scanned>| !deleted.contains(&s.head.id);
     let targets: Vec<Arc<Scanned>> = match &ids {
-        None => index.values().cloned().collect(),
-        Some(ids) => ids.iter().filter_map(|id| index.get(id).cloned()).collect(),
+        None => index
+            .values()
+            .filter(|s| live_targets(s))
+            .cloned()
+            .collect(),
+        Some(ids) => ids
+            .iter()
+            .filter_map(|id| index.get(id).cloned())
+            .filter(|s| live_targets(s))
+            .collect(),
     };
     let live: HashSet<String> = targets
         .iter()
@@ -642,6 +656,13 @@ pub(crate) async fn delete_with(
     // Close any PTY terminal opened for this session before its files go.
     crate::terminal::commands::close_session_term(session_id);
 
+    // Serialize the file/row/cache mutation against scans: a scan that read
+    // `c.files` before the deletion would otherwise commit the removed session
+    // back into the catalog (and re-insert its `session_meta` row) after we
+    // purged it. `rebuild`/`refresh_paths` hold the same lock for their whole
+    // read-parse-commit cycle.
+    let scan_guard = scan_lock().lock().await;
+
     // Collect every transcript file for this session id.
     let (paths, meta_file) = {
         let c = cat().lock();
@@ -687,6 +708,7 @@ pub(crate) async fn delete_with(
             c.deleted.push_back(session_id.to_string());
         }
     }
+    drop(scan_guard);
     crate::rpc::remove_resume_lock(session_id);
     emit_changes(state, Vec::new(), vec![session_id.to_string()], Vec::new());
     Ok(())

@@ -34,9 +34,13 @@ import { SelectionToolbar } from "./SelectionToolbar";
 import { ShareSelectionBar } from "./share/ShareSelectionBar";
 import { useShareSelection } from "./share/shareStore";
 import { claimEscape, isEscapeClaimed } from "../../lib/escapeClaim";
+import { ThreadFindBar } from "./find/ThreadFindBar";
+import { useFindHighlights } from "./find/useFindHighlights";
+import { useThreadFind } from "./find/threadFindStore";
 import { TopCapsule } from "./subagents/TopCapsule";
 
 const EMPTY_PENDING_UI: PendingUiRequest[] = [];
+const NO_REF = { current: null };
 
 /**
  * A fresh draft is only a client-side stub until omp writes its transcript. If its
@@ -226,6 +230,17 @@ export function SessionView({
 		[sessionId],
 	);
 
+	// Find is scoped to one session: leaving it clears the bar and highlights.
+	useFindHighlights(compact ? NO_REF : scrollRef, sessionId);
+	useEffect(
+		() => () => {
+			if (!compact && useThreadFind.getState().sessionId === sessionId) {
+				useThreadFind.getState().close();
+			}
+		},
+		[sessionId, compact],
+	);
+
 	return (
 		<div
 			data-session-view=""
@@ -237,6 +252,7 @@ export function SessionView({
 						{!compact && (
 							<ChatTrace sessionId={sessionId} scrollRef={scrollRef} />
 						)}
+						{!compact && <ThreadFindBar sessionId={sessionId} />}
 						<div
 							ref={scrollRef}
 							className="thread-fade-mask relative h-full overflow-y-auto overflow-x-clip"

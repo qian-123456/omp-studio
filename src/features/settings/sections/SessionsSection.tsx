@@ -7,6 +7,7 @@ import { OmpSections } from "../OmpSettingsList";
 import { useSettingsNav } from "../settingsNav";
 import { useAppSettings } from "../useAppSettings";
 import { Button, CommitInput, SectionHeader, SettingRow, SettingsCard, ToggleRow } from "../ui";
+import { SectionJumpBar } from "../SectionJumpBar";
 import { useEffect } from "react";
 
 export function SessionsSection() {
@@ -27,7 +28,8 @@ export function SessionsSection() {
 	return (
 		<div className="space-y-6">
 			<SectionHeader title="会话" description="会话挂起与摘要、消息排队、计划与目标模式等对话行为" />
-			<SettingsCard title="后台运行">
+			<SectionJumpBar />
+			<SettingsCard jump="后台运行" title="后台运行">
 				<SettingRow
 					fieldId="idleSuspendMinutes"
 					label="闲置多久后休眠（分钟）"
@@ -62,7 +64,7 @@ export function SessionsSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard title="上下文压缩">
+			<SettingsCard jump="上下文压缩" title="上下文压缩">
 				<SettingRow
 					fieldId="sessionCompaction"
 					label="自动上下文压缩"
@@ -73,7 +75,7 @@ export function SessionsSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard
+			<SettingsCard jump="发送方式"
 				title="发送方式"
 				description="这里是桌面端对每条消息的处理；下方「消息排队与打断」是 omp 自身的排队模式，两者配合生效。"
 			>
@@ -83,21 +85,6 @@ export function SessionsSection() {
 					description="排队的消息在这一轮结束后自动逐条发送；关闭则等你手动确认。"
 					checked={settings?.queueAutoSend !== false}
 					onChange={(v) => save({ queueAutoSend: v })}
-				/>
-				<SettingRow
-					fieldId="sendShortcut"
-					label="发送快捷键"
-					description="选择用哪个按键发送消息，另一个组合用于换行。"
-					control={
-						<Segmented
-							value={settings?.sendShortcut ?? "enter"}
-							onChange={(v) => void save({ sendShortcut: v })}
-							options={[
-								{ value: "enter", label: "Enter 发送", title: "Enter 发送，Shift + Enter 换行" },
-								{ value: "mod-enter", label: "⌘ Enter 发送", title: "⌘ Enter 发送，Enter 换行" },
-							]}
-						/>
-					}
 				/>
 				<SettingRow
 					fieldId="followUpBehavior"
@@ -119,7 +106,7 @@ export function SessionsSection() {
 
 			<CheckpointsSection />
 
-			<SettingsCard
+			<SettingsCard jump="可视化"
 				title="可视化"
 				footer="只对在本应用里新开的对话生效；关闭后回答中的可视化代码按普通代码块显示。"
 			>

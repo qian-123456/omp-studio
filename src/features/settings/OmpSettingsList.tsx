@@ -37,6 +37,7 @@ import { JsonEditor, RecordEditor, SecretInput, StringListEditor } from "./ompVa
 import { EmptyState } from "../../components/EmptyState";
 import { Notice } from "../../components/Notice";
 import { Button, Chip, CommitInput, IconButton, MODEL_PICKER_BUTTON_CLASS, SaveIndicator, SectionHeader, SettingsCard, useSaveStatus } from "./ui";
+import { SectionJumpBar } from "./SectionJumpBar";
 import { useSettingsProjectCwd } from "./useAppSettings";
 
 // ── Project layer ────────────────────────────────────────────────────
@@ -659,7 +660,7 @@ export function OmpSections({ page, slot, only }: { page: OmpHostPage; slot?: st
 					</Notice>
 				)}
 				{groups.map((g) => (
-					<div key={g.section.id} data-omp-section={g.section.id} className="scroll-mt-4">
+					<div key={g.section.id} data-jump={g.section.title} className="scroll-mt-4">
 						<SettingsCard title={g.section.title} aside={g.section.tui} description={g.section.description}>
 							{g.visible.map((entry) => (
 								<OmpSettingRow key={entry.key} entry={entry} />
@@ -677,45 +678,29 @@ export function OmpSections({ page, slot, only }: { page: OmpHostPage; slot?: st
 	);
 }
 
-/** Pure omp page: header, optional lead content, section jump chips (≥ 4 sections) and the sections. */
+/** Pure omp page: header, jump chips (≥ 4 sections, omp groups plus any `lead`/`children` anchors) and the sections. */
 export function OmpSettingsPage({
 	page,
 	title,
 	description,
 	lead,
+	children,
 }: {
 	page: OmpHostPage;
 	title: string;
 	description: string;
 	/** Rendered right under the header, before the config sections. */
 	lead?: ReactNode;
+	/** Rendered after the config sections. */
+	children?: ReactNode;
 }) {
-	const groups = usePageGroups(page, undefined, undefined);
-	const rootRef = useRef<HTMLDivElement>(null);
-	const jump = (id: string) => {
-		rootRef.current
-			?.querySelector<HTMLElement>(`[data-omp-section="${id}"]`)
-			?.scrollIntoView({ behavior: "smooth", block: "start" });
-	};
 	return (
-		<div ref={rootRef} className="space-y-5">
+		<div className="space-y-5">
 			<SectionHeader title={title} description={description} />
+			<SectionJumpBar />
 			{lead}
-			{groups.length >= 4 && (
-				<div className="flex flex-wrap gap-1.5">
-					{groups.map((g) => (
-						<button
-							key={g.section.id}
-							type="button"
-							onClick={() => jump(g.section.id)}
-							className="rounded-full hairline bg-[var(--well-bg)] px-2.5 py-1 text-xs text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
-						>
-							{g.section.title}
-						</button>
-					))}
-				</div>
-			)}
 			<OmpSections page={page} />
+			{children}
 		</div>
 	);
 }

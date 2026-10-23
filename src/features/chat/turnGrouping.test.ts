@@ -9,6 +9,7 @@ import {
 	formatShortModel,
 	groupActivityUnits,
 	groupTurnBlocks,
+	latestRequestAnchor,
 	noticeBody,
 	noticeSummary,
 	parallelToolRuns,
@@ -806,5 +807,43 @@ describe("splitInterimProseBySteer", () => {
 		]);
 		expect(segs).toHaveLength(2);
 		expect(segs[1]).toMatchObject({ type: "steps", folded: [], prose: [{ id: "p1" }] });
+	});
+});
+
+describe("latestRequestAnchor", () => {
+	const tool = (id: string, callId: string) =>
+		makeItem({ id, kind: "assistant", toolCalls: [{ id: callId, name: "bash", args: {}, intent: null }] });
+	const result = (id: string, callId: string) =>
+		makeItem({
+			id,
+			kind: "tool_result",
+			toolResult: { toolCallId: callId, toolName: "bash", text: "ok", isError: false, details: null },
+		});
+
+	it("anchors the newest turn's request, not an earlier turn's", () => {
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u1", kind: "user", text: "first" }),
+			makeItem({ id: "a1", kind: "assistant", text: "answer one" }),
+			makeItem({ id: "u2", kind: "user", text: "second" }),
+			makeItem({ id: "a2", kind: "assistant", text: "answer two" }),
+		]);
+		expect(latestRequestAnchor(blocks)).toBe("u2");
+	});
+
+	it("anchors a request delivered mid-run, which joins the running turn as a steer", () => {
+		const blocks = groupTurnBlocks([
+			makeItem({ id: "u1", kind: "user", text: "first" }),
+			tool("a1", "c1"),
+			result("r1", "c1"),
+			makeItem({ id: "u2", kind: "user", text: "also this" }),
+			makeItem({ id: "a2", kind: "assistant", text: "done" }),
+		]);
+		expect(blocks).toHaveLength(1);
+		expect(latestRequestAnchor(blocks)).toBe("steer-u2");
+	});
+
+	it("has no anchor when the last turn carries no visible request", () => {
+		expect(latestRequestAnchor(groupTurnBlocks([makeItem({ id: "a1", kind: "assistant", text: "hi" })]))).toBeNull();
+		expect(latestRequestAnchor([])).toBeNull();
 	});
 });

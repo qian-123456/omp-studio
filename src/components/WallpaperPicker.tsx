@@ -61,7 +61,7 @@ function ColorDots({ palette }: { palette: WallpaperPalette }) {
 						aria-label={v.label}
 						className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition ${
 							active
-								? "border-[var(--accent,#3b82f6)] bg-[var(--accent,#3b82f6)]/15 font-semibold text-[var(--accent,#3b82f6)] shadow-xs"
+								? "border-[var(--accent,#3b82f6)] bg-[var(--accent,#3b82f6)]/15 text-[var(--accent,#3b82f6)] shadow-xs"
 								: "border-black/10 hover:border-black/25 dark:border-white/10 dark:hover:border-white/25"
 						}`}
 						onClick={() => setWallpaper({ accentColor: palette[v.key], variant: v.key })}
@@ -78,7 +78,7 @@ function ColorDots({ palette }: { palette: WallpaperPalette }) {
 				title="自定义取色"
 				className={`relative flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition ${
 					state.variant === "custom"
-						? "border-[var(--accent,#3b82f6)] bg-[var(--accent,#3b82f6)]/15 font-semibold text-[var(--accent,#3b82f6)] shadow-xs"
+						? "border-[var(--accent,#3b82f6)] bg-[var(--accent,#3b82f6)]/15 text-[var(--accent,#3b82f6)] shadow-xs"
 						: "border-black/10 hover:border-black/25 dark:border-white/10 dark:hover:border-white/25"
 				}`}
 			>
@@ -186,7 +186,7 @@ export function WallpaperPicker() {
 										type="button"
 										className={`flex items-center gap-1 rounded px-2.5 py-1 transition ${
 											isCurrent
-												? "bg-[var(--accent,#3b82f6)]/15 font-semibold text-[var(--accent,#3b82f6)] shadow-xs"
+												? "bg-[var(--accent,#3b82f6)]/15 text-[var(--accent,#3b82f6)] shadow-xs"
 												: "opacity-70 hover:opacity-100"
 										}`}
 										onClick={() => setWallpaper({ appearance: key })}
@@ -217,7 +217,7 @@ export function WallpaperPicker() {
 										type="button"
 										className={`rounded px-2 py-1 transition ${
 											isCurrent
-												? "bg-[var(--accent,#3b82f6)]/15 font-semibold text-[var(--accent,#3b82f6)] shadow-xs"
+												? "bg-[var(--accent,#3b82f6)]/15 text-[var(--accent,#3b82f6)] shadow-xs"
 												: "opacity-70 hover:opacity-100"
 										}`}
 										onClick={() => setWallpaper({ brightness: b })}
@@ -247,7 +247,7 @@ export function WallpaperPicker() {
 										type="button"
 										className={`rounded px-2 py-1 transition ${
 											isCurrent
-												? "bg-[var(--accent,#3b82f6)]/15 font-semibold text-[var(--accent,#3b82f6)] shadow-xs"
+												? "bg-[var(--accent,#3b82f6)]/15 text-[var(--accent,#3b82f6)] shadow-xs"
 												: "opacity-70 hover:opacity-100"
 										}`}
 										onClick={() => setWallpaper({ veil: v })}
@@ -272,7 +272,7 @@ export function WallpaperPicker() {
 							<button
 								key={key}
 								type="button"
-								className={`rounded px-2.5 py-1 ${state.effect === key ? "bg-black/10 font-medium dark:bg-white/15" : "opacity-70 hover:opacity-100"}`}
+								className={`rounded px-2.5 py-1 ${state.effect === key ? "bg-black/10 dark:bg-white/15" : "opacity-70 hover:opacity-100"}`}
 								onClick={() => setWallpaper({ effect: key })}
 							>
 								{label}

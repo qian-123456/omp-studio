@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Segmented } from "../../../components/Segmented";
 import { ProviderPanel } from "../../providers/ProviderPanel";
 import { OmpSections } from "../OmpSettingsList";
+import { SectionJumpBar } from "../SectionJumpBar";
 import { ompSectionFor } from "../ompPlacement";
 import { useSettingsNav } from "../settingsNav";
 import { Button, SectionHeader } from "../ui";
@@ -38,6 +39,7 @@ export function ProvidersSection() {
 	return (
 		<div className="space-y-5">
 			<SectionHeader title="模型与供应商" description="API 密钥、订阅额度，以及启用哪些模型和供应商" />
+			<SectionJumpBar />
 			<div className="flex items-center justify-between gap-3">
 				<Segmented
 					options={[
@@ -52,14 +54,16 @@ export function ProvidersSection() {
 			</div>
 			{tab === "config" ? (
 				<div className="space-y-6">
-					<div data-field-id="providerList">
+					<div data-field-id="providerList" data-jump="供应商" className="scroll-mt-4">
 						<ProviderPanel />
 					</div>
 					<OmpSections page="providers" slot="keys" />
 				</div>
 			) : (
 				<div className="space-y-6">
-					<QuotaDashboardCard />
+					<div data-jump="配额概览" className="scroll-mt-4">
+						<QuotaDashboardCard />
+					</div>
 					<OmpSections page="providers" slot="quota" />
 				</div>
 			)}

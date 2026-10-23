@@ -56,6 +56,7 @@ export function SettingsCard({
 	aside,
 	footer,
 	fieldId,
+	jump,
 	clip,
 	children,
 }: {
@@ -67,13 +68,15 @@ export function SettingsCard({
 	footer?: ReactNode;
 	/** Renders `data-field-id` on the card (deep links to a whole card). */
 	fieldId?: string;
+	/** Chip label in the page's `SectionJumpBar`; omit for cards that should not appear there. */
+	jump?: string;
 	/** Clip children to the rounded corners (rows that paint their own hover background). */
 	clip?: boolean;
 	children: ReactNode;
 }) {
 	const hasHeading = title !== undefined && title !== null && title !== false && title !== "";
 	return (
-		<section className="space-y-2" data-field-id={fieldId}>
+		<section className="scroll-mt-4 space-y-2" data-field-id={fieldId} data-jump={jump}>
 			{(hasHeading || description) && (
 				<div className="px-1">
 					{hasHeading && (

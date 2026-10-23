@@ -177,6 +177,7 @@ export function ModelRulesSection({
 	return (
 		<SettingsCard
 			title="模型规则"
+			jump="模型规则"
 			aside={`${visible.length} 条`}
 			description="按出错的模型单独设置备用模型，优先级高于角色回退链"
 			clip

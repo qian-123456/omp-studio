@@ -222,7 +222,7 @@ export function TemplatesCard({
 	};
 
 	return (
-		<SettingsCard title="角色模板" description={`一份「角色 → 模型」对照表。${scopeWriteHint(scope, projects)}`} clip>
+		<SettingsCard title="角色模板" description={`一份「角色 → 模型」对照表。${scopeWriteHint(scope, projects)}`} clip jump="角色模板">
 			<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
 				<span className="text-[11px] text-[var(--text-dim)]">
 					{snapshot === null ? "正在读取" : `共 ${templates.length} 个模板`}

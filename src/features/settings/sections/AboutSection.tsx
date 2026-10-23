@@ -27,6 +27,8 @@ function nameOf(id: string): string {
 	return meta ? sessionDisplayName(meta) : id;
 }
 
+import { SectionJumpBar } from "../SectionJumpBar";
+
 export function AboutSection() {
 	const { appVersion, info, status, checking, updating, lastCheckedAt, error, lastOutput, loadInfo, check, runUpdate } =
 		useOmpUpdate();
@@ -140,7 +142,8 @@ export function AboutSection() {
 		<div className="space-y-6">
 			<SectionHeader title="版本与更新" description="本应用和 omp 的版本，检查与安装更新" />
 
-			<SettingsCard title="版本">
+			<SectionJumpBar />
+			<SettingsCard jump="版本" title="版本">
 				<SettingRow
 					label="本产品"
 					description="OMP 工作台桌面应用"

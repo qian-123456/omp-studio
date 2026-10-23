@@ -87,7 +87,7 @@ export function FallbackSwitchesCard({ onSaved }: { onSaved?: () => void }) {
 	const { master, fallbackOn, revert, busy, savedKey, save, offReason, noteOf } = useFallbackSwitches(onSaved);
 
 	return (
-		<SettingsCard title="自动换备用模型">
+		<SettingsCard title="自动换备用模型" jump="自动换备用模型">
 			<SettingRow
 				label={<span title="retry.modelFallback">失败时自动换用备用模型</span>}
 				description={master ? "模型出错或额度用完时，按下方回退链依次尝试备用模型（默认开启）" : offReason}
@@ -150,7 +150,7 @@ export function UsageAwareCard({ onSaved }: { onSaved?: () => void }) {
 	const active = master && usageAware;
 
 	return (
-		<SettingsCard title="额度预警" description="订阅套餐额度快用完时提前换模型，用得少">
+		<SettingsCard title="额度预警" description="订阅套餐额度快用完时提前换模型，用得少" jump="额度预警">
 			<div className={master ? undefined : "opacity-50"}>
 				<SettingRow
 					label={<span title="retry.usageAwareFallback">额度快用完时提前回退</span>}

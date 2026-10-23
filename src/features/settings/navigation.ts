@@ -10,6 +10,7 @@ import {
 	Globe,
 	Hammer,
 	Info,
+	Keyboard,
 	KeyRound,
 	Layers,
 	Library,
@@ -54,7 +55,8 @@ export const NAV_GROUPS: NavGroup[] = [
 	{
 		title: "常规",
 		items: [
-			{ id: "general", label: "通用", icon: Sliders, lead: "新会话的默认设置、界面开关与快捷键" },
+			{ id: "general", label: "通用", icon: Sliders, lead: "新会话的默认设置与界面开关" },
+			{ id: "shortcuts", label: "快捷键", icon: Keyboard, lead: "查看并修改所有键盘快捷键，包括发送键和全局快速记录键" },
 			{ id: "storage", label: "存储空间", icon: HardDrive, lead: "本应用和 omp 占用的磁盘空间，以及可以安全清理的内容" },
 			{ id: "appearance", label: "外观", icon: Palette, lead: "主题、字号、界面密度和对话里显示哪些信息" },
 			{ id: "notifications", label: "通知", icon: Bell, lead: "什么时候提醒你、怎么提醒，以及免打扰时段" },
@@ -204,7 +206,8 @@ const EXTRA_TERMS: Record<string, string[]> = {
 		"关于", "版本", "更新", "升级", "自动更新", "会话切换", "旧版本", "立即切换", "重新检查", "version", "update",
 		"upgrade", "auto update", "about", "omp update", "检查更新", "检查间隔", "check interval",
 	],
-	guide: ["使用教程", "使用说明", "产品说明", "帮助", "教程", "文档", "指南", "手册", "help", "guide", "docs", "manual", "tutorial", "快捷键", "工作树", "子代理"],
+	guide: ["使用教程", "使用说明", "产品说明", "帮助", "教程", "文档", "指南", "手册", "help", "guide", "docs", "manual", "tutorial", "工作树", "子代理"],
+	shortcuts: ["快捷键", "shortcut", "shortcuts", "热键", "键盘", "keyboard", "hotkey", "按键", "组合键", "cmd", "command", "ctrl", "⌘", "快捷", "绑定", "冲突"],
 	privacy: ["隐私", "隐私库", "privacy", "secret", "占位符", "placeholder", "密码", "脱敏", "默认显示真实值"],
 	"model-fallback": ["fallback", "回退", "回退链", "切换顺序", "保存位置", "/model", "备用模型"],
 };

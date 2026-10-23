@@ -138,11 +138,29 @@ pub fn parse_head(bytes: &[u8]) -> Option<HeadInfo> {
 }
 
 pub fn read_head(path: &Path) -> std::io::Result<Option<HeadInfo>> {
+    let bytes = read_head_bytes(path)?;
+    Ok(parse_head(&bytes))
+}
+
+/// First [`HEAD_BYTES`] of a file (the window [`parse_head`] looks at). Also
+/// used to prove that a cached head still describes the file: a rewrite that
+/// keeps the size (e.g. a new title slot) changes these bytes.
+pub fn read_head_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
     let mut f = File::open(path)?;
     let mut buf = vec![0u8; HEAD_BYTES];
     let n = read_up_to(&mut f, &mut buf)?;
     buf.truncate(n);
-    Ok(parse_head(&buf))
+    Ok(buf)
+}
+
+/// Stable 64-bit fingerprint of the head window (FNV-1a).
+pub fn head_fingerprint(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 /// Read the tail window, widening it if it holds no complete message line.

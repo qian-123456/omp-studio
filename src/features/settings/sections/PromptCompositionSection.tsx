@@ -13,6 +13,7 @@ import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
 import { Notice } from "../../../components/Notice";
 import { Button, Chip, SectionHeader, SettingsCard } from "../ui";
+import { SectionJumpBar } from "../SectionJumpBar";
 import { OmpSections } from "../OmpSettingsList";
 import {
 	buildOptimizePrompt,
@@ -260,8 +261,9 @@ export function PromptCompositionSection() {
 				title="系统提示词"
 				description="新建一个空会话时，模型在你说第一句话之前就已经带上的内容：系统提示词、规则文件、Skills、工具说明、MCP 工具。读取过程不调用模型，不产生费用，也不会留下会话。"
 			/>
+			<SectionJumpBar />
 
-			<SettingsCard>
+			<SettingsCard jump="读取范围">
 				<div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
 					<span className="text-xs text-neutral-300">项目</span>
 					<NativeSelect
@@ -296,7 +298,7 @@ export function PromptCompositionSection() {
 
 			{comp && (
 				<>
-					<SettingsCard
+					<SettingsCard jump="总览"
 						title="总览"
 						footer={`${comp.estimateNote}。读取用时 ${(comp.probeMs / 1000).toFixed(1)} 秒。`}
 					>
@@ -334,7 +336,7 @@ export function PromptCompositionSection() {
 						</div>
 					</SettingsCard>
 
-					<div className="space-y-2">
+					<div data-jump="按类别查看" className="scroll-mt-4 space-y-2">
 						<h3 className="px-1 text-[11px] font-semibold text-neutral-400">按类别查看（点开读原文）</h3>
 						{visible.map((c) => (
 							<CategoryCard
@@ -349,7 +351,7 @@ export function PromptCompositionSection() {
 						))}
 					</div>
 
-					<SettingsCard
+					<SettingsCard jump="优化线索"
 						title="优化线索"
 						footer="由固定规则自动算出，不调用 AI；只是线索，是否精简由你决定。"
 						clip
@@ -361,7 +363,7 @@ export function PromptCompositionSection() {
 						)}
 					</SettingsCard>
 
-					<SettingsCard
+					<SettingsCard jump="AI 优化"
 						title="让 AI 帮我优化"
 						footer="会新建一个会话，把上面的分析写进输入框，但不会自动发送。你看过、改过再发；AI 在改动任何文件前都必须先和你讨论并征得同意。"
 					>

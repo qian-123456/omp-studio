@@ -270,6 +270,7 @@ export function SwitchLogCard({
 		<>
 			<SettingsCard
 				title="最近切换"
+				jump="最近切换"
 				description="最近的应用、自动切换和撤销记录。"
 				aside={`${entries.length} 条`}
 				clip

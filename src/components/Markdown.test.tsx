@@ -92,3 +92,24 @@ describe("Markdown links and finished visualize fences", () => {
 		expect(out).not.toContain("<button");
 	});
 });
+
+describe("Markdown images", () => {
+	it("never fetches a remote image on render", () => {
+		const out = html("![p](https://tracker.example/pixel.png)");
+		expect(out).not.toContain("<img");
+		expect(out).not.toContain("src=");
+		expect(out).toContain("远程图片");
+		expect(out).toContain("https://tracker.example/pixel.png");
+	});
+
+	it("still renders a local absolute image immediately", () => {
+		const out = html("![p](/Users/me/pic.png)");
+		expect(out).toContain('src="/Users/me/pic.png"');
+		expect(out).not.toContain("远程图片");
+	});
+
+	it("still renders a data: image", () => {
+		const out = html("![p](data:image/png;base64,AAAA)");
+		expect(out).toContain('src="data:image/png;base64,AAAA"');
+	});
+});

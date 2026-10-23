@@ -24,6 +24,21 @@ pub fn start(state: AppState) {
     let notify = get_notify();
 
     tauri::async_runtime::spawn(async move {
+        // 0. Settle runs a previous process left `running` (crash / force quit):
+        // `has_active_run` treats them as in progress, which would block every
+        // later automatic and manual trigger of that schedule forever.
+        {
+            let db = state.db.lock();
+            match store::recover_stale_runs(&db, &store::now_rfc3339()) {
+                Ok(0) => {}
+                Ok(n) => {
+                    tracing::info!("Settled {n} interrupted scheduled run(s)");
+                    let _ = state.app.emit("schedules:changed", ());
+                }
+                Err(e) => tracing::warn!("recover interrupted scheduled runs: {e}"),
+            }
+        }
+
         // 1. Startup catch-up: any enabled schedule that missed its run while the app was closed.
         let now = Local::now();
         let missed_schedules = {

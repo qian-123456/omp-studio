@@ -1586,7 +1586,23 @@ html[data-theme="lavender"] {
 	background-color: rgba(251, 191, 36, 0.3);
 }
 
+/* In-thread find: every match, and the current one distinct. */
+::highlight(find-match) {
+	background-color: rgba(250, 204, 21, 0.32);
+}
+::highlight(find-current) {
+	background-color: rgba(249, 115, 22, 0.62);
+}
+
 /* Transient "定位到原消息" flash over the exact annotated text. */
 ::highlight(annotation-locate) {
 	background-color: rgba(249, 115, 22, 0.45);
+}
+
+/* Press-scale shrinks the button under the cursor, so a click near its edge
+   ends with mouseup outside the shrunk box and the browser drops the click
+   (felt as "needs several clicks"). Keep the hit box stable while pressed. */
+button:active,
+[role="button"]:active {
+	scale: none !important;
 }

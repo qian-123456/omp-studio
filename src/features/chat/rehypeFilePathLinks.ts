@@ -10,7 +10,12 @@
  *   the path is relative and cannot be resolved.
  */
 
-import { findFilePaths, looksLikeFilePath, stripMentionPrefix } from "../../lib/fileLinks";
+import {
+	canPreviewFile,
+	findFilePaths,
+	looksLikeFilePath,
+	stripMentionPrefix,
+} from "../../lib/fileLinks";
 
 /** Tag emitted by `rehypeFilePathLinks`; markdown maps it to a file link. */
 export const FILE_LINK_TAG = "file-link";
@@ -45,7 +50,8 @@ function linkNode(path: string, fromCode = false): HastNode {
 
 /** Split one text node into text / file-link nodes. */
 function splitText(value: string): HastNode[] {
-	const matches = findFilePaths(value);
+	// Only paths the right panel can actually preview become links.
+	const matches = findFilePaths(value).filter((m) => canPreviewFile(m.path));
 	if (matches.length === 0) return [{ type: "text", value }];
 	const out: HastNode[] = [];
 	let cursor = 0;
@@ -83,7 +89,10 @@ function walk(node: HastNode): void {
 			if (highlighted) continue;
 			const text = textOf(child).trim();
 			const path = stripMentionPrefix(text);
-			if (looksLikeFilePath(path, { allowRelative: true, allowBare: true })) {
+			if (
+				canPreviewFile(path) &&
+				looksLikeFilePath(path, { allowRelative: true, allowBare: true })
+			) {
 				// Keep a leading `@` (agent mention syntax) outside the link.
 				const replacement =
 					path === text

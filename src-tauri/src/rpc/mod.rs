@@ -61,7 +61,8 @@ pub fn get_handle(session_id: &str) -> Option<Arc<SessionHandle>> {
 }
 
 /// Idle-suspend loop (§11 B): every 60 s suspend live sessions that are not
-/// streaming, have no pending UI, and were inactive for `idle_suspend_minutes`.
+/// streaming, have no pending UI, no command awaiting a response, and were
+/// inactive for `idle_suspend_minutes`.
 pub fn init(state: AppState) {
     privacy_ext::install();
     crate::visualize::install();
@@ -76,19 +77,25 @@ pub fn init(state: AppState) {
             let threshold = Duration::from_secs(u64::from(minutes) * 60);
             let handles: Vec<Arc<SessionHandle>> = registry().read().values().cloned().collect();
             for handle in handles {
-                if handle.streaming.load(std::sync::atomic::Ordering::SeqCst)
-                    || !handle.pending_ui.lock().is_empty()
-                    || handle.last_activity.lock().elapsed() < threshold
-                {
-                    continue;
-                }
-                let session_id = handle.session_id.read().clone();
-                if stop(&handle).await.is_ok() {
-                    set_suspended(&state, &session_id, true);
+                if idle_suspendable(&handle, threshold) {
+                    let session_id = handle.session_id.read().clone();
+                    if stop(&handle).await.is_ok() {
+                        set_suspended(&state, &session_id, true);
+                    }
                 }
             }
         }
     });
+}
+
+/// Whether the idle reaper may stop `handle`: not streaming, no dialog open,
+/// no command awaiting its response (`compact`/`handoff` can run for 15
+/// minutes without emitting frames), and quiet for at least `threshold`.
+fn idle_suspendable(handle: &SessionHandle, threshold: Duration) -> bool {
+    !handle.streaming.load(std::sync::atomic::Ordering::SeqCst)
+        && handle.pending_ui.lock().is_empty()
+        && handle.pending.is_empty()
+        && handle.last_activity.lock().elapsed() >= threshold
 }
 
 /// Stop all app-owned rpc session processes concurrently.
@@ -624,6 +631,41 @@ mod tests {
             session_held_err(HashMap::new(), &status, |_| false, own, file),
             None
         );
+    }
+
+    #[test]
+    fn idle_suspend_skips_sessions_with_pending_commands() {
+        let h = SessionHandle::for_test();
+        let long_ago = Duration::from_secs(60);
+        // Pretend the session has been quiet for a while.
+        *h.last_activity.lock() = std::time::Instant::now() - Duration::from_secs(3600);
+        // Quiet session with nothing outstanding is suspendable.
+        assert!(idle_suspendable(&h, long_ago));
+        // A command awaiting its response (e.g. a 15-minute `compact`) blocks it.
+        let _rx = h.pending.insert("req_long".into());
+        assert!(!idle_suspendable(&h, long_ago));
+        h.pending.resolve(
+            "req_long",
+            json!({"id":"req_long","type":"response","success":true}),
+        );
+        assert!(idle_suspendable(&h, long_ago));
+        // Open dialog blocks it.
+        h.pending_ui
+            .lock()
+            .push(crate::contracts::PendingUiRequest {
+                session_id: "s1".into(),
+                request: json!({"id":"ui","method":"confirm"}),
+                received_at: String::new(),
+            });
+        assert!(!idle_suspendable(&h, long_ago));
+        h.pending_ui.lock().clear();
+        // Recent activity blocks it.
+        h.touch();
+        assert!(!idle_suspendable(&h, long_ago));
+        // Streaming blocks it.
+        *h.last_activity.lock() = std::time::Instant::now() - Duration::from_secs(3600);
+        h.streaming.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(!idle_suspendable(&h, long_ago));
     }
 
     #[test]

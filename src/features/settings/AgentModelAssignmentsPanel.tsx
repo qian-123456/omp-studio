@@ -232,7 +232,7 @@ export function AgentModelAssignmentsPanel({
 
 			{scopeBar}
 
-			<SettingsCard clip>
+			<SettingsCard clip jump="角色分配">
 				{error && (
 					<div className="p-3">
 						<Notice

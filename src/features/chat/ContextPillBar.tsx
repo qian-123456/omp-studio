@@ -29,6 +29,7 @@ import { useUi } from "../../stores/ui";
 import { requestMoveToGroup } from "../sessions/sessionActions";
 import { useSessionGroups } from "../sessions/sessionGroups";
 import { startSessionInDir, startSessionInWorktree } from "../sessions/newSession";
+import { resolveSessionLocation } from "./sessionWorkspace";
 import { runSessionBash, shellQuote } from "./sessionShell";
 import { SearchInput } from "../../components/SearchInput";
 import { claimEscape } from "../../lib/escapeClaim";
@@ -531,9 +532,18 @@ export function ContextPillBar({
 	const meta = useSessions((s) => s.sessions[sessionId]);
 	const workspaces = useSessions((s) => s.workspaces);
 	const cwd = meta?.cwd ?? "";
-	const workspace = workspaces.find((w) => w.id === meta?.workspaceId) ?? null;
-	const isGlobal = !workspace || workspace.kind === "global";
-	const wsLabel = isGlobal ? "全局" : workspace.name;
+	// Resolve from the stored catalog facts (cwd / repoRoot / workspaceId) — a
+	// session that was never started still knows where it lives, and 全局 is
+	// only shown when the cwd really is the project-less workspace.
+	const location = resolveSessionLocation(meta, workspaces);
+	const isGlobal = location.kind === "global";
+	const wsLabel = location.label;
+	const pillTitle =
+		location.kind === "location"
+			? `${location.path}（不在已登记的项目里，点击换到项目）`
+			: location.kind === "unknown"
+				? "未关联目录"
+				: cwd || location.label;
 	const groups = useSessionGroups((s) => s.groups);
 	const group = isGlobal && meta?.groupId ? groups.find((g) => g.id === meta.groupId) : null;
 
@@ -541,10 +551,15 @@ export function ContextPillBar({
 	const [branchOpen, setBranchOpen] = useState(false);
 	const [branch, setBranch] = useState<string | null | undefined>(undefined);
 	const [nonce, setNonce] = useState(0);
+	const branchRefreshSession = useRef(sessionId);
 
 	useEffect(() => {
-		if (!cwd) {
-			setBranch(null);
+		// Session metadata is the source of truth for display; do not probe Git
+		// merely to paint the composer for a stopped session. An explicit Git
+		// operation may refresh its result once.
+		if (branchRefreshSession.current !== sessionId || nonce === 0) {
+			branchRefreshSession.current = sessionId;
+			setBranch(meta?.git?.branch ?? null);
 			return;
 		}
 		let cancelled = false;
@@ -554,7 +569,7 @@ export function ContextPillBar({
 		return () => {
 			cancelled = true;
 		};
-	}, [cwd, nonce]);
+	}, [cwd, meta?.git?.branch, nonce]);
 
 	return (
 		<div className="flex items-center gap-1.5 border-b border-[var(--line,var(--border-divider))] px-3.5 py-2 text-[var(--text-60,var(--text-muted))]">
@@ -562,10 +577,14 @@ export function ContextPillBar({
 				ref={workspaceBtnRef}
 				type="button"
 				onClick={onWorkspaceClick}
-				title={cwd || "全局"}
+				title={pillTitle}
 				className={PILL}
 			>
-				{isGlobal ? <Globe size={14} className="shrink-0 text-neutral-400" /> : <Folder size={14} className="shrink-0 text-neutral-400" />}
+				{isGlobal ? (
+					<Globe size={14} className="shrink-0 text-neutral-400" />
+				) : (
+					<Folder size={14} className="shrink-0 text-neutral-400" />
+				)}
 				<span className="max-w-56 truncate">{wsLabel}</span>
 				<ChevronDown size={11} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
 			</button>

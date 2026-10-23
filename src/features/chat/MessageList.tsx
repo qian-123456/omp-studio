@@ -83,6 +83,7 @@ import {
 	formatDurationCompact,
 	formatMessageTimestamp,
 	groupTurnBlocks,
+	latestRequestAnchor,
 	liveAnswerCandidate,
 	noticeLabel,
 	noticeSummary,
@@ -116,8 +117,14 @@ import {
 import { useAnswerStarted } from "./useAnswerStarted";
 
 const EMPTY_ITEMS: TranscriptItem[] = [];
-/** Longest the live row outlives its stream while waiting for the committed turn. */
-const LIVE_HOLD_MS = 2500;
+/** Safety net: longest the live row outlives its stream when the post-stream
+ *  transcript page never lands (failed refresh). */
+const LIVE_HOLD_MS = 10_000;
+/** Window after the live row was last painted in which the committed turn's
+ *  first measurement counts as the live→committed hand-off. */
+const HANDOFF_MEASURE_MS = 5000;
+/** Gap kept above the parked request so it clears the scroller's 1rem top fade. */
+const PARK_TOP_GAP = 12;
 const EMPTY_ECHOES: UserEcho[] = [];
 const EMPTY_OUTPUTS: CommandOutputEntry[] = [];
 
@@ -1329,14 +1336,14 @@ export function MessageList({
 	// Hand-off from the live row to the committed block. The transcript is
 	// fetched only after the stream ends, so for a moment neither the streamed
 	// turn nor its committed twin exists: the live row stays mounted (painting
-	// its last snapshot) until the transcript delivers a new block, then both
-	// swap in one render. The timeout covers turns that commit nothing.
-	// Keyed on the raw transcript, not the blocks: a turn whose first item was
-	// already committed before the stream ended keeps the same block count and
-	// id when the answer lands, which left the held live row painted next to
-	// the committed answer (the reply showing twice) until the timeout.
+	// its last snapshot) until that transcript page lands, then both swap in
+	// one render. Keyed on the page itself (every applied page is a new items
+	// array), not on its content: a page that commits nothing new ends the hold
+	// too, and a slow page never leaves a gap where the finished answer has
+	// vanished and the previous reply sits at the bottom. The timeout only
+	// covers a refresh that never lands.
 	const blocksKey = `${items.length}:${items[items.length - 1]?.id ?? ""}`;
-	const [hold, setHold] = useState<{ key: string } | null>(null);
+	const [hold, setHold] = useState<{ page: TranscriptItem[] } | null>(null);
 	const [wasStreaming, setWasStreaming] = useState(isStreamingActive);
 	const [holdSessionId, setHoldSessionId] = useState(sessionId);
 	if (holdSessionId !== sessionId) {
@@ -1346,19 +1353,19 @@ export function MessageList({
 		setHold(null);
 	} else if (wasStreaming !== isStreamingActive) {
 		setWasStreaming(isStreamingActive);
-		setHold(isStreamingActive ? null : { key: blocksKey });
+		setHold(isStreamingActive ? null : { page: rawItems });
 	}
 	const holding =
-		holdSessionId === sessionId && !isStreamingActive && hold !== null && hold.key === blocksKey;
+		holdSessionId === sessionId && !isStreamingActive && hold !== null && hold.page === rawItems;
 	useEffect(() => {
 		if (!hold) return;
-		if (hold.key !== blocksKey) {
+		if (hold.page !== rawItems) {
 			setHold(null);
 			return;
 		}
 		const timer = window.setTimeout(() => setHold(null), LIVE_HOLD_MS);
 		return () => window.clearTimeout(timer);
-	}, [hold, blocksKey]);
+	}, [hold, rawItems]);
 	// In-turn steers render inside StreamingRow at their step position; only
 	// next-turn echoes (or steers orphaned after the stream ends) sit here.
 	const bottomEchoes = useMemo(() => {
@@ -1531,7 +1538,7 @@ export function MessageList({
 		if (
 			firstMeasure &&
 			item.key === lastTurnIdRef.current &&
-			Date.now() - liveSeenAtRef.current < LIVE_HOLD_MS + 2500 &&
+			Date.now() - liveSeenAtRef.current < HANDOFF_MEASURE_MS &&
 			item.end > viewportTop
 		) {
 			return false;
@@ -1746,31 +1753,46 @@ export function MessageList({
 		echoCountRef.current = n;
 	}, [pendingEchoes.length]);
 
-	// A finished answer taller than the viewport: park the view on the question
-	// that started the turn (answer begins right below it) instead of leaving the
-	// user at the tail of a long reply. Only when still pinned — a user who
-	// scrolled away mid-stream keeps their position. Declared after the pin
-	// effect so it overrides that write in the same commit.
-	const prevLiveRef = useRef({ sessionId, liveVisible });
+	// A finished answer taller than the viewport: park the view on the request
+	// that produced it (answer right below) instead of leaving the user at the
+	// tail of a long reply. Armed when the stream ends, fired by the first
+	// transcript delivery after that. Never by the live row merely going away
+	// (hold timeout before the transcript lands): the blocks then still end at
+	// the previous turn, and parking there showed the previous reply. Only when
+	// still pinned — a user who scrolled away mid-stream keeps their position.
+	// Declared after the pin effect so it overrides that write in the same commit.
+	const parkArmedRef = useRef<{ page: TranscriptItem[]; key: string } | null>(null);
+	const prevStreamRef = useRef({ sessionId, isStreamingActive });
 	useLayoutEffect(() => {
-		const prev = prevLiveRef.current;
-		prevLiveRef.current = { sessionId, liveVisible };
-		if (prev.sessionId !== sessionId || !prev.liveVisible || liveVisible) return;
+		const prev = prevStreamRef.current;
+		prevStreamRef.current = { sessionId, isStreamingActive };
+		if (prev.sessionId !== sessionId || isStreamingActive) parkArmedRef.current = null;
+		else if (prev.isStreamingActive) parkArmedRef.current = { page: rawItems, key: blocksKey };
+	}, [sessionId, isStreamingActive, rawItems, blocksKey]);
+	useLayoutEffect(() => {
+		const armed = parkArmedRef.current;
+		if (armed === null || liveVisible || armed.page === rawItems) return;
+		parkArmedRef.current = null;
+		// The refresh committed nothing new: there is no new answer to show.
+		if (armed.key === blocksKey) return;
 		const el = scrollRef.current;
-		if (!el || !shouldFollow(followRef.current)) return;
-		let idx = -1;
-		for (let i = blocks.length - 1; i >= 0; i--) {
-			if (blocks[i].type === "turn") {
-				idx = i;
-				break;
-			}
-		}
-		const start = idx >= 0 ? virtualizer.measurementsCache[idx]?.start : undefined;
-		if (start === undefined || el.scrollHeight - start <= el.clientHeight) return;
+		const anchor = latestRequestAnchor(blocks);
+		if (!el || anchor === null || !shouldFollow(followRef.current)) return;
+		const node = containerRef.current?.querySelector<HTMLElement>(`#${CSS.escape(`msg-${anchor}`)}`);
+		const list = node?.closest("[data-index]")?.parentElement;
+		if (!node || !list) return;
+		const contentTop = el.getBoundingClientRect().top - el.scrollTop;
+		const target = Math.max(0, node.getBoundingClientRect().top - contentTop - PARK_TOP_GAP);
+		// The new row was measured on mount, so the virtualizer's total is
+		// already exact while the DOM list height still holds the estimate.
+		const listTop = list.getBoundingClientRect().top - contentTop;
+		const afterList = el.scrollHeight - (listTop + list.offsetHeight);
+		const contentEnd = listTop + virtualizer.getTotalSize() + afterList;
+		if (contentEnd - target <= el.clientHeight) return;
 		followRef.current = detach(followRef.current);
-		el.scrollTop = start;
+		el.scrollTop = target;
 		emitScrollState({ nearBottom: false });
-	}, [liveVisible, sessionId, blocks, virtualizer, scrollRef]);
+	}, [liveVisible, rawItems, blocksKey, blocks, virtualizer, scrollRef]);
 
 	// Auto-scroll when new blocks arrive: the pin already ran pre-paint; this
 	// passive pass coalesces the trailing write (handles heights that settle

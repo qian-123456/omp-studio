@@ -3,7 +3,7 @@
  * hover-revealed copy button; tables and rules use hairlines; links use
  * --accent. hljs token colors are scoped per theme in index.css. */
 
-import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -290,7 +290,9 @@ function MarkdownLink({
 			} else if (looksLikeFilePath(href, { allowRelative: true, allowBare: true })) {
 				await openFileLink(href, { cwd, home });
 			} else {
-				await openPath(href);
+				// A relative non-file href has nowhere safe to go: never hand an
+				// agent-written path to the system opener (it would execute it).
+				toast.error(`无法打开链接：${href}`);
 			}
 		} catch (err) {
 			toast.error(`打开链接失败: ${errMsg(err)}`);
@@ -467,16 +469,37 @@ function localImagePath(src: string, cwd: string | null, home: string | null): s
 	return `${cwd.replace(/\/$/, "")}/${src.replace(/^\.\//, "")}`;
 }
 
+/**
+ * Remote (`http(s)`) images are never fetched on render: an answer could
+ * otherwise beacon the reader's IP to any host just by being displayed.
+ * They show as a placeholder and only load after an explicit click; local
+ * (`file:`, `~/`, cwd-relative, asset-scope) images still render immediately.
+ */
 function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
 	const { cwd, home } = useLinkBase();
 	const [failedSrc, setFailedSrc] = useState<string | null>(null);
+	const [loadedRemote, setLoadedRemote] = useState<string | null>(null);
 	if (typeof src !== "string" || !src) return null;
-	const remote = /^(?:https?|data):/i.test(src);
+	const remote = /^https?:\/\//i.test(src);
+	const inlineData = /^data:/i.test(src);
+	if (remote && loadedRemote !== src) {
+		return (
+			<button
+				type="button"
+				onClick={() => setLoadedRemote(src)}
+				title={`加载远程图片：${src}`}
+				className="my-1 inline-flex max-w-full items-start gap-1.5 rounded-full border border-[var(--line)] bg-[var(--well-bg)] px-3 py-1 text-left text-[12px] text-[var(--accent)] transition-colors hover:bg-[var(--ghost-hover)]"
+			>
+				<span className="shrink-0">远程图片</span>
+				<span className="min-w-0 break-all">{alt || src}</span>
+			</button>
+		);
+	}
 	if (failedSrc === src) {
 		// Unloadable (outside the asset scope, missing, offline): keep the path reachable.
 		const open = async () => {
 			try {
-				if (/^data:/i.test(src)) return;
+				if (inlineData) return;
 				if (remote) await openUrl(src);
 				else await openFileLink(src, { cwd, home });
 			} catch (err) {
@@ -487,20 +510,21 @@ function MarkdownImage({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) 
 			<button
 				type="button"
 				onClick={open}
-				title={/^data:/i.test(src) ? alt : src}
+				title={inlineData ? alt : src}
 				className="my-1 inline-flex max-w-full items-start gap-1.5 rounded-full border border-[var(--line)] bg-[var(--well-bg)] px-3 py-1 text-left text-[12px] text-[var(--accent)] transition-colors hover:bg-[var(--ghost-hover)]"
 			>
 				<span className="shrink-0">图片</span>
-				<span className="min-w-0 break-all">{alt || (/^data:/i.test(src) ? "无法显示" : src)}</span>
+				<span className="min-w-0 break-all">{alt || (inlineData ? "无法显示" : src)}</span>
 			</button>
 		);
 	}
-	const resolved = remote ? src : convertFileSrc(localImagePath(src, cwd, home));
+	const resolved = remote || inlineData ? src : convertFileSrc(localImagePath(src, cwd, home));
 	return (
 		<img
 			src={resolved}
 			alt={alt ?? ""}
 			loading="lazy"
+			referrerPolicy={remote ? "no-referrer" : undefined}
 			onError={() => setFailedSrc(src)}
 			className="my-2 max-h-80 max-w-full rounded-xl border border-[var(--line)] object-contain"
 		/>

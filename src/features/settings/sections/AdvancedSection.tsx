@@ -13,6 +13,7 @@ import { useAppSettings } from "../useAppSettings";
 import { validateSettingsShape } from "../validation";
 import { OmpSections } from "../OmpSettingsList";
 import { Notice } from "../../../components/Notice";
+import { SectionJumpBar } from "../SectionJumpBar";
 import { Button, Chip, CommitInput, SectionHeader, SettingRow, SettingsCard } from "../ui";
 
 export function AdvancedSection() {
@@ -174,7 +175,8 @@ export function AdvancedSection() {
 		<div className="space-y-6">
 			<SectionHeader title="高级" description="omp 程序位置、数据备份与恢复、问题自动上报" />
 
-			<SettingsCard title="omp 环境与路径">
+			<SectionJumpBar />
+			<SettingsCard jump="omp 环境与路径" title="omp 环境与路径">
 				<SettingRow
 					fieldId="ompBinary"
 					stacked
@@ -219,7 +221,7 @@ export function AdvancedSection() {
 					}
 				/>
 			</SettingsCard>
-			<SettingsCard title="外部终端联动">
+			<SettingsCard jump="外部终端联动" title="外部终端联动">
 				<SettingRow
 					fieldId="installStatusExtension"
 					label="让终端里的 omp 也显示在这里"
@@ -236,7 +238,7 @@ export function AdvancedSection() {
 				</SettingRow>
 			</SettingsCard>
 
-			<SettingsCard title="数据与备份">
+			<SettingsCard jump="数据与备份" title="数据与备份">
 				<SettingRow
 					fieldId="dataManagement"
 					stacked

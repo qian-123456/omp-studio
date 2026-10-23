@@ -35,21 +35,45 @@ pub fn open() -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
+/// Run one migration step atomically: every statement and the `user_version`
+/// bump commit together. An interrupted upgrade therefore either leaves the old
+/// version fully in place (and is retried next launch) or is fully applied —
+/// never a half-applied schema that fails on the retry (`duplicate column`).
+fn step(conn: &Connection, version: u32, sql: &str) -> rusqlite::Result<()> {
+    step_with(conn, version, |tx| tx.execute_batch(sql))
+}
+
+/// [`step`] for a migration whose statements are chosen at runtime.
+fn step_with(
+    conn: &Connection,
+    version: u32,
+    apply: impl FnOnce(&rusqlite::Transaction<'_>) -> rusqlite::Result<()>,
+) -> rusqlite::Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    apply(&tx)?;
+    tx.pragma_update(None, "user_version", version)?;
+    tx.commit()
+}
+
 pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if version < 1 {
-        conn.execute_batch(SCHEMA_V1)?;
-        conn.pragma_update(None, "user_version", 1)?;
+        step(conn, 1, SCHEMA_V1)?;
     }
     // v2: sessions whose worktree dir was deleted can be resumed in the repo's
     // main directory; the chosen cwd is persisted here (§6).
     if version < 2 {
-        conn.execute_batch("ALTER TABLE session_meta ADD COLUMN cwd_override TEXT;")?;
-        conn.pragma_update(None, "user_version", 2)?;
+        step(
+            conn,
+            2,
+            "ALTER TABLE session_meta ADD COLUMN cwd_override TEXT;",
+        )?;
     }
     // v3: scheduled tasks (schedules and schedule_runs tables).
     if version < 3 {
-        conn.execute_batch(
+        step(
+            conn,
+            3,
             "CREATE TABLE schedules(
                id TEXT PRIMARY KEY,
                name TEXT NOT NULL,
@@ -82,12 +106,13 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
     // v4: backlog items remember their project directory.
     if version < 4 {
-        conn.execute_batch("ALTER TABLE backlog ADD COLUMN project_dir TEXT;")?;
-        conn.pragma_update(None, "user_version", 4)?;
+        step(conn, 4, "ALTER TABLE backlog ADD COLUMN project_dir TEXT;")?;
     }
     // v5: privacy placeholders (secret entries, alias placeholders, session links).
     if version < 5 {
-        conn.execute_batch(
+        step(
+            conn,
+            5,
             "CREATE TABLE secret_entries(
                id TEXT PRIMARY KEY,
                value TEXT NOT NULL UNIQUE,
@@ -102,36 +127,39 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
              CREATE TABLE secret_aliases(placeholder TEXT PRIMARY KEY, entry_id TEXT NOT NULL);
              CREATE TABLE session_secrets(session_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY(session_id, entry_id));",
         )?;
-        conn.pragma_update(None, "user_version", 5)?;
     }
     // v6: per-session "protect only from here" cutoff (epoch ms; NULL = whole history).
     if version < 6 {
-        conn.execute_batch("ALTER TABLE session_secrets ADD COLUMN since_ms INTEGER;")?;
-        conn.pragma_update(None, "user_version", 6)?;
+        step(
+            conn,
+            6,
+            "ALTER TABLE session_secrets ADD COLUMN since_ms INTEGER;",
+        )?;
     }
     // v7: schedules can stop repeating at an absolute instant (`Schedule.endAt`).
     if version < 7 {
-        conn.execute_batch("ALTER TABLE schedules ADD COLUMN end_at TEXT;")?;
-        conn.pragma_update(None, "user_version", 7)?;
+        step(conn, 7, "ALTER TABLE schedules ADD COLUMN end_at TEXT;")?;
     }
     // v8: schedules gain an inbox policy (`notify`) and session-reuse flag
     // (`new_chat_each_run`); pre-existing rows keep the "every run notifies +
     // fresh session" behavior.
     if version < 8 {
-        conn.execute_batch(
+        step(
+            conn,
+            8,
             "ALTER TABLE schedules ADD COLUMN notify TEXT NOT NULL DEFAULT 'all';
              ALTER TABLE schedules ADD COLUMN new_chat_each_run INTEGER NOT NULL DEFAULT 1;",
         )?;
-        conn.pragma_update(None, "user_version", 8)?;
     }
     // v9: schedules gain a run cap (`max_runs`, NULL = unlimited) and a counter
     // of runs started so far (`runs_done`); `max_runs` is ignored for `once`.
     if version < 9 {
-        conn.execute_batch(
+        step(
+            conn,
+            9,
             "ALTER TABLE schedules ADD COLUMN max_runs INTEGER;
              ALTER TABLE schedules ADD COLUMN runs_done INTEGER NOT NULL DEFAULT 0;",
         )?;
-        conn.pragma_update(None, "user_version", 9)?;
     }
     // v10: spaces (modes). A session/workspace belongs to exactly one mode;
     // pre-existing rows are 'code'. `session_meta.group_id` files a global-
@@ -139,7 +167,9 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // `workspaces` is rebuilt so uniqueness is (path, mode) — the same disk
     // directory may be a project in several modes.
     if version < 10 {
-        conn.execute_batch(
+        step(
+            conn,
+            10,
             "CREATE TABLE workspaces_new(
                id TEXT PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL,
                kind TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0,
@@ -155,7 +185,6 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
                id TEXT PRIMARY KEY, mode TEXT NOT NULL, name TEXT NOT NULL,
                sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);",
         )?;
-        conn.pragma_update(None, "user_version", 10)?;
     }
     // v11: 通用对话 (`chat`) becomes a standalone space. The single global
     // workspace (`global`) belongs to it; the per-mode globals introduced in v10
@@ -164,24 +193,28 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // they become `chat` too; every other global-dir session is derived as
     // `chat` at scan time (cwd under the global dir).
     if version < 11 {
-        conn.execute_batch(
+        step(
+            conn,
+            11,
             "UPDATE workspaces SET mode = 'chat' WHERE id = 'global';
              DELETE FROM workspaces WHERE kind = 'global' AND id <> 'global';
              UPDATE session_groups SET mode = 'chat';
              UPDATE session_meta SET mode = 'chat' WHERE group_id IS NOT NULL;",
         )?;
-        conn.pragma_update(None, "user_version", 11)?;
     }
     // v12: the supervisor feature is gone; drop its leftover todo rows.
     if version < 12 {
-        conn.execute_batch(
+        step(
+            conn,
+            12,
             "DELETE FROM todos WHERE kind = 'suggestion' OR source = 'supervisor';",
         )?;
-        conn.pragma_update(None, "user_version", 12)?;
     }
     // v13: bulk model replace keeps its undo log (newest 10 records).
     if version < 13 {
-        conn.execute_batch(
+        step(
+            conn,
+            13,
             "CREATE TABLE IF NOT EXISTS model_replace_log(
                id TEXT PRIMARY KEY,
                created_at TEXT NOT NULL,
@@ -191,52 +224,57 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
                undone_at TEXT
              );",
         )?;
-        conn.pragma_update(None, "user_version", 13)?;
     }
     // v14: `session_meta.kind` distinguishes side chats ('side') from full
     // fork copies ('fork'); NULL = ordinary (legacy side chats are derived in
     // the catalog projection from fork_depth + created_by_app).
     if version < 14 {
-        // Guard: downgrade-and-rerun flows (and tests) re-enter with the column present.
-        let has_kind = conn
-            .prepare("PRAGMA table_info(session_meta)")?
-            .query_map([], |r| r.get::<_, String>(1))?
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .any(|c| c == "kind");
-        if !has_kind {
-            conn.execute_batch("ALTER TABLE session_meta ADD COLUMN kind TEXT;")?;
-        }
-        conn.pragma_update(None, "user_version", 14)?;
+        step_with(conn, 14, |tx| {
+            // Guard: downgrade-and-rerun flows (and tests) re-enter with the column present.
+            let has_kind = tx
+                .prepare("PRAGMA table_info(session_meta)")?
+                .query_map([], |r| r.get::<_, String>(1))?
+                .collect::<Result<Vec<_>, _>>()?
+                .iter()
+                .any(|c| c == "kind");
+            if !has_kind {
+                tx.execute_batch("ALTER TABLE session_meta ADD COLUMN kind TEXT;")?;
+            }
+            Ok(())
+        })?;
     }
     // v15: persisted app-local thread rows (slash-command echoes / result cards,
     // retry and compaction notices), one JSON array per session.
     if version < 15 {
-        conn.execute_batch(
+        step(
+            conn,
+            15,
             "CREATE TABLE IF NOT EXISTS local_rows(
                session_id TEXT PRIMARY KEY,
                rows TEXT NOT NULL,
                updated_at TEXT NOT NULL
              );",
         )?;
-        conn.pragma_update(None, "user_version", 15)?;
     }
     // v16: `session_meta.created_by_app` (column exists since v1) now marks every
     // app-owned session, not only forks/side chats. Backfill rows that show app
     // involvement (space/group/kind set, or viewed/accepted in the app); other
     // legacy rows are treated as plain-CLI until the app opens/continues them.
     if version < 16 {
-        conn.execute_batch(
+        step(
+            conn,
+            16,
             "UPDATE session_meta SET created_by_app = 1
              WHERE created_by_app = 0
                AND (mode <> 'code' OR group_id IS NOT NULL OR kind IS NOT NULL
                     OR last_seen_at IS NOT NULL OR accepted_at IS NOT NULL);",
         )?;
-        conn.pragma_update(None, "user_version", 16)?;
     }
     // v17: role templates, quota switch rules and their switch log.
     if version < 17 {
-        conn.execute_batch(
+        step(
+            conn,
+            17,
             "CREATE TABLE IF NOT EXISTS model_templates(
                id TEXT PRIMARY KEY, name TEXT NOT NULL, roles TEXT NOT NULL,
                is_bottom_line INTEGER NOT NULL DEFAULT 0,
@@ -253,44 +291,48 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
                status TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', edits TEXT NOT NULL,
                previous_template_id TEXT, session_results TEXT NOT NULL DEFAULT '[]', undone_at TEXT);",
         )?;
-        conn.pragma_update(None, "user_version", 17)?;
     }
     // v18: templates, rules and log rows belong to one scope: `global` or a project directory.
     if version < 18 {
-        // Idempotent: a database whose `user_version` was rewound already has the column.
-        for table in ["model_templates", "model_switch_rules", "model_switch_log"] {
-            let has_scope: bool = conn.query_row(
-                "SELECT COUNT(*) > 0 FROM pragma_table_info(?1) WHERE name = 'scope'",
-                [table],
-                |row| row.get(0),
-            )?;
-            if !has_scope {
-                conn.execute_batch(&format!(
-                    "ALTER TABLE {table} ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';"
-                ))?;
+        step_with(conn, 18, |tx| {
+            // Idempotent: a database whose `user_version` was rewound already has the column.
+            for table in ["model_templates", "model_switch_rules", "model_switch_log"] {
+                let has_scope: bool = tx.query_row(
+                    "SELECT COUNT(*) > 0 FROM pragma_table_info(?1) WHERE name = 'scope'",
+                    [table],
+                    |row| row.get(0),
+                )?;
+                if !has_scope {
+                    tx.execute_batch(&format!(
+                        "ALTER TABLE {table} ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';"
+                    ))?;
+                }
             }
-        }
-        conn.pragma_update(None, "user_version", 18)?;
+            Ok(())
+        })?;
     }
     // v19: backlog soft delete (trash) + the `todo` kind is folded into `idea`.
     if version < 19 {
-        let has_deleted_at: bool = conn.query_row(
-            "SELECT COUNT(*) > 0 FROM pragma_table_info('backlog') WHERE name = 'deleted_at'",
-            [],
-            |row| row.get(0),
-        )?;
-        if !has_deleted_at {
-            conn.execute_batch("ALTER TABLE backlog ADD COLUMN deleted_at TEXT;")?;
-        }
-        conn.execute_batch("UPDATE backlog SET kind = 'idea' WHERE kind = 'todo';")?;
-        conn.pragma_update(None, "user_version", 19)?;
+        step_with(conn, 19, |tx| {
+            let has_deleted_at: bool = tx.query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('backlog') WHERE name = 'deleted_at'",
+                [],
+                |row| row.get(0),
+            )?;
+            if !has_deleted_at {
+                tx.execute_batch("ALTER TABLE backlog ADD COLUMN deleted_at TEXT;")?;
+            }
+            tx.execute_batch("UPDATE backlog SET kind = 'idea' WHERE kind = 'todo';")?;
+            Ok(())
+        })?;
     }
     // v20: side-chat lookups (`WHERE parent_session_id = ?`) seek instead of scanning.
     if version < 20 {
-        conn.execute_batch(
+        step(
+            conn,
+            20,
             "CREATE INDEX IF NOT EXISTS idx_session_meta_parent ON session_meta(parent_session_id);",
         )?;
-        conn.pragma_update(None, "user_version", 20)?;
     }
     Ok(())
 }
@@ -945,6 +987,56 @@ mod tests {
                 .unwrap();
             assert_eq!(scope, "global", "{table}");
         }
+    }
+}
+
+#[cfg(test)]
+mod atomic_step_tests {
+    use super::*;
+
+    /// A failing migration statement must roll back the statements it already
+    /// ran, leaving `user_version` untouched so the retry starts clean. Before
+    /// the transaction wrapper, the `ADD COLUMN` stayed applied while the
+    /// version bump was skipped and the retry failed with "duplicate column".
+    #[test]
+    fn failed_step_rolls_back_schema_and_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.pragma_update(None, "user_version", 19).unwrap();
+        // A step whose second statement fails (column already exists).
+        let err = step(
+            &conn,
+            20,
+            "CREATE TABLE scratch(id TEXT);
+             ALTER TABLE backlog ADD COLUMN kind TEXT;",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("duplicate column"), "{err}");
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 19, "version must not advance");
+        let scratch: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='scratch'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(scratch, 0, "earlier statements must roll back");
+    }
+
+    /// Re-running `migrate` after a completed upgrade is a no-op (the version
+    /// gate is the only thing that makes the DDL idempotent).
+    #[test]
+    fn migrate_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        migrate(&conn).unwrap();
+        let v: u32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 20);
     }
 }
 

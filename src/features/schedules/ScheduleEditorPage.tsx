@@ -928,7 +928,7 @@ export function ScheduleEditorPage({
 																className={clsx(
 																	"h-6 w-6 rounded-full border text-[11px] transition-colors",
 																	on
-																		? "border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_18%,transparent)] font-medium text-[var(--accent)]"
+																		? "border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_18%,transparent)] text-[var(--accent)]"
 																		: "border-[var(--line,var(--border-divider))] bg-[var(--bg)] text-[var(--text-40,var(--text-dim))] hover:text-[var(--text)]",
 																)}
 															>

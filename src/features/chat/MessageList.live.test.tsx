@@ -168,6 +168,41 @@ describe("MessageList live turn", () => {
 		expect(screen.getAllByText("最终答案")).toHaveLength(1);
 	});
 
+	it("keeps the finished answer painted until a slow transcript page lands, then ends on any page", () => {
+		vi.useFakeTimers();
+		try {
+			useLive.setState({
+				sessions: {
+					s1: {
+						...emptySessionLive(),
+						alive: true,
+						streaming: true,
+						items: persisted(),
+						streamingMessage: { role: "assistant", content: [{ type: "text", text: "最终答案" }] } as never,
+					},
+				},
+			});
+			const { container } = mount("s1");
+			act(() => {
+				useLive.setState((s) => ({
+					sessions: { s1: { ...s.sessions.s1, streaming: false, streamingMessage: null } },
+				}));
+			});
+			// The refresh is slow: the answer must not vanish (leaving the previous reply at the bottom).
+			act(() => {
+				vi.advanceTimersByTime(5000);
+			});
+			expect(container.querySelector("#msg-live")).not.toBeNull();
+			// A page with nothing new still ends the hold: the turn committed nothing.
+			act(() => {
+				useLive.getState().appendItems("s1", [], 20);
+			});
+			expect(container.querySelector("#msg-live")).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("held row after agent_end repeats neither committed steps nor delivered steers", () => {
 		const req = {
 			id: "a1",

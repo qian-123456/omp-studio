@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	canPreviewFile,
 	findFilePaths,
 	isPreviewableFile,
 	looksLikeFilePath,
@@ -99,6 +100,21 @@ describe("previewKind", () => {
 	it("keeps isPreviewableFile aligned with text previews", () => {
 		expect(isPreviewableFile("/a/notes.yaml")).toBe(true);
 		expect(isPreviewableFile("/a/archive.zip")).toBe(false);
+	});
+});
+
+describe("canPreviewFile", () => {
+	it("allows text and image files", () => {
+		expect(canPreviewFile("/a/AGENTS.md")).toBe(true);
+		expect(canPreviewFile("/a/shot.png")).toBe(true);
+	});
+
+	it("refuses anything the panel cannot render (no system opener)", () => {
+		expect(canPreviewFile("/Applications/Evil.app")).toBe(false);
+		expect(canPreviewFile("/Users/me/run.command")).toBe(false);
+		expect(canPreviewFile("/Users/me/install.pkg")).toBe(false);
+		expect(canPreviewFile("/Users/me/setup.sh")).toBe(true); // sh is text
+		expect(canPreviewFile("/Users/me/a.dmg")).toBe(false);
 	});
 });
 

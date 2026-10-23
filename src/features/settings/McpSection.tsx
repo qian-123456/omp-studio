@@ -54,6 +54,7 @@ import {
 	type ServerDraft,
 } from "./mcpDraft";
 import { OmpSections } from "./OmpSettingsList";
+import { SectionJumpBar } from "./SectionJumpBar";
 import { EmptyState } from "../../components/EmptyState";
 import { Notice } from "../../components/Notice";
 import { Button, Chip, IconButton, SectionHeader, SettingsCard } from "./ui";
@@ -661,6 +662,7 @@ export function McpSection({
 					</>
 				}
 			/>
+			<SectionJumpBar />
 
 			<div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
 				<FolderOpen className="h-3.5 w-3.5 shrink-0" />
@@ -708,7 +710,7 @@ export function McpSection({
 			{form}
 
 			{/* Server list grouped by defining file */}
-			<div className="space-y-6" data-field-id="mcpServerList">
+			<div className="scroll-mt-4 space-y-6" data-field-id="mcpServerList" data-jump="服务器">
 				{!snap && !loadError && (
 					<div className="flex justify-center py-6 text-[var(--text-dim)]">
 						<Loader2 aria-label="加载 MCP 服务器" className="h-4 w-4 animate-spin" />
@@ -787,7 +789,7 @@ export function McpSection({
 
 			{/* Config files overview */}
 			{snap && snap.files.length > 0 && (
-				<SettingsCard title="配置文件" clip>
+				<SettingsCard title="配置文件" clip jump="配置文件">
 					{snap.files.map((f) => (
 						<div key={f.path} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
 							<div className="min-w-0">

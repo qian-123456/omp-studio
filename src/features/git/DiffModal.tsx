@@ -424,7 +424,7 @@ export function DiffModal({
 			className={clsx(
 				"press-scale flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors",
 				viewMode === mode
-					? "bg-[var(--bg-active-fill)] font-medium text-[var(--text)] shadow-sm"
+					? "bg-[var(--bg-active-fill)] text-[var(--text)] shadow-sm"
 					: "text-neutral-400 hover:text-neutral-200",
 			)}
 			title={mode === "unified" ? "单栏合并视图 (Unified)" : "双栏对比视图 (Split)"}

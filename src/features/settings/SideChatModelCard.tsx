@@ -30,7 +30,7 @@ export function SideChatModelCard() {
 	const label = current ? sideChatModelLabel(selector, models) : "选择模型";
 
 	return (
-		<SettingsCard title="侧边对话" fieldId="sideChatModel">
+		<SettingsCard title="侧边对话" fieldId="sideChatModel" jump="侧边对话">
 			<ToggleRow
 				label="侧边对话专用模型"
 				description="关闭时，侧边对话继承主对话的模型与思考级别；开启后新建的侧边对话使用下方选择的模型。侧边对话面板里仍可临时更改。"

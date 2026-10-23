@@ -4,6 +4,7 @@
  */
 
 import { Loader2 } from "lucide-react";
+import { useRef } from "react";
 import type React from "react";
 import type { BranchSubgroup } from "./grouping";
 import type { SessionMeta } from "../../lib/contracts";
@@ -122,17 +123,25 @@ export function GroupHeader({
 	className,
 	isSubgroup = false,
 }: GroupHeaderProps) {
+	// The whole highlighted row toggles, not just the inner button: clicks on the
+	// row padding / gap used to land on this div and silently do nothing. The
+	// button's own click (mouse, Enter, Space) bubbles here; the action area is
+	// excluded so its controls never also toggle the group.
+	const actionsRef = useRef<HTMLDivElement>(null);
 	return (
 		<div
 			data-group-key={groupKey}
 			onContextMenu={onContextMenu}
+			onClick={(e) => {
+				if (e.target instanceof Node && actionsRef.current?.contains(e.target)) return;
+				onToggle();
+			}}
 			className={`group flex items-center justify-between mx-1 rounded-md transition-colors ${
 				isSubgroup ? "px-1.5 py-1 text-[11px]" : "px-2 py-1.5 text-[12.5px]"
 			} hover:bg-[var(--bg-hover)] text-[var(--text)] ${className ?? ""}`}
 		>
 			<button
 				type="button"
-				onClick={onToggle}
 				aria-expanded={isOpen}
 				className="flex min-w-0 flex-1 items-center gap-1.5 text-left select-none overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] rounded"
 			>
@@ -152,7 +161,7 @@ export function GroupHeader({
 			</button>
 
 			{actionButton && (
-				<div className="flex items-center shrink-0 ml-1">
+				<div ref={actionsRef} className="flex items-center shrink-0 ml-1">
 					{actionButton}
 				</div>
 			)}

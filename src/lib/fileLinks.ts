@@ -143,6 +143,15 @@ export function isPreviewableFile(path: string): boolean {
 }
 
 /**
+ * Whether a link to this file can be opened in the right-panel preview at all.
+ * Everything else is refused: a link written by an agent must never launch an
+ * arbitrary file (`.app`, `.command`, `.sh`, …) through the system opener.
+ */
+export function canPreviewFile(path: string): boolean {
+	return previewKind(path) !== "external";
+}
+
+/**
  * Whether a whole token (inline code, link href) denotes a file path.
  * `allowRelative` is for code spans, where a literal path is unambiguous.
  */

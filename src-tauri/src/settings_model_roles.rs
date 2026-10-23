@@ -674,6 +674,9 @@ struct EntryParts {
     colon_end: usize,
     /// Byte range of a non-empty scalar value.
     value: Option<(usize, usize)>,
+    /// The value is a sequence (`[a, b]` or a block list), which a write replaces
+    /// with the equivalent comma-joined scalar.
+    sequence: bool,
 }
 
 struct EntryExtent {
@@ -815,16 +818,31 @@ fn set_in_block(
     label: &str,
 ) -> Result<Vec<Splice>, String> {
     if let Some(parts) = entry_parts(text, map, name, label)? {
-        return Ok(vec![value_splice(&parts, value)]);
+        return Ok(vec![value_splice(text, &parts, value)]);
     }
     let indent = first_key_column(text, map, label)?;
     let block = row(eol, indent, &entry_text(name, value));
     Ok(vec![insert_after_last(text, map, eol, &block, label)?])
 }
 
-fn value_splice(parts: &EntryParts, value: &str) -> Splice {
+fn value_splice(text: &str, parts: &EntryParts, value: &str) -> Splice {
     let quoted = format!("\"{value}\"");
+    // A block sequence's span may end past the last item's newline; trimming the
+    // trailing whitespace keeps that newline so the next entry stays on its line.
+    let sequence_end = parts
+        .value
+        .map_or(parts.colon_end, |(_, end)| trim_end(text, end));
     match parts.value {
+        // A sequence may span several lines; replacing from just after the colon
+        // rewrites the whole list as one inline scalar instead of leaving the
+        // value on the first item's line. A block list's own span stops at its
+        // last item, so the separator that follows is consumed too (a trailing
+        // comment stays and keeps its line).
+        Some((_, _)) if parts.sequence => Splice {
+            start: parts.colon_end,
+            end: sequence_end,
+            text: format!(" {quoted}"),
+        },
         Some((start, end)) => Splice {
             start,
             end,
@@ -894,7 +912,14 @@ fn plan_remove(
 /// A removed entry keeps its comment: the entry text is replaced by the comment alone, on the
 /// same line, so comment bytes are unchanged. Entries without a comment lose their line.
 fn entry_extent(text: &str, parts: &EntryParts, label: &str) -> Result<EntryExtent, String> {
-    let content_end = parts.value.map_or(parts.colon_end, |(_, end)| end);
+    let content_end = match parts.value {
+        // A block sequence's span reaches past its last item; trimming trailing
+        // whitespace leaves the item's own end, and `item_extent` removes the
+        // whole multi-line entry from there.
+        Some((_, end)) if parts.sequence => trim_end(text, end),
+        Some((_, end)) => end,
+        None => parts.colon_end,
+    };
     item_extent(text, parts.key_start, content_end, label)
 }
 
@@ -914,6 +939,28 @@ fn item_extent(
         .trim_start_matches(is_inline_space)
         .trim_end_matches('\r');
     let line_end = line_end_incl(text, content_end);
+    // A value that spans several lines (a block sequence) owns all of them: the
+    // removal runs from the key's line through the value's last line, and what
+    // follows on that last line belongs to the value, not to a sibling entry.
+    if break_at > line_break(text, start) {
+        let indent = &text[line..start];
+        let splice = if body.is_empty() {
+            Splice {
+                start: line,
+                end: line_end,
+                text: String::new(),
+            }
+        } else if body.starts_with('#') {
+            Splice {
+                start: line,
+                end: break_at,
+                text: format!("{indent}{}", tail.trim_start_matches(is_inline_space)),
+            }
+        } else {
+            return Err(format!("{label}条目行尾含有未知内容，拒绝写入"));
+        };
+        return Ok(EntryExtent { splice, line_end });
+    }
     if body.is_empty() {
         return Ok(EntryExtent {
             splice: delete_line(text, line, start),
@@ -975,16 +1022,26 @@ fn entry_parts(
         return Err(format!("{label}键与冒号之间含有未知内容，拒绝写入"));
     }
     let colon_end = key_end + colon + 1;
+    let mut sequence = false;
     let value = match entry.value_node() {
         None => None,
         Some(YamlNode::Scalar(scalar)) if scalar.value().trim().is_empty() => None,
         Some(node @ YamlNode::Scalar(_)) => Some(scalar_span(text, &node, label)?),
-        Some(_) => return Err(format!("{label}条目的值不是标量，拒绝写入")),
+        // omp accepts a role as a list (`[a, b]` or a block sequence) and joins
+        // it with commas when it reads the value back, so such an entry must be
+        // editable too: the whole sequence is one span that a write replaces
+        // with the equivalent comma-joined scalar.
+        Some(node @ YamlNode::Sequence(_)) => {
+            sequence = true;
+            Some(node_span(text, &node, label)?)
+        }
+        Some(_) => return Err(format!("{label}条目的值不是标量或序列，拒绝写入")),
     };
     Ok(Some(EntryParts {
         key_start,
         colon_end,
         value,
+        sequence,
     }))
 }
 
@@ -1547,10 +1604,41 @@ pub(crate) fn replace_value(
     before: &str,
     after: &str,
 ) -> Result<ReplaceOutcome, String> {
+    edit_value(cwd, scope, table, name, before, after, true)
+}
+
+/// [`replace_value`] for undo: restores a value that was already stored in the file, so the
+/// new-value syntax check is skipped (an older file may legitimately hold a list with spaces,
+/// e.g. `"p/a, p/a"`, which the forward editor would reject). The `before` guard and the YAML
+/// fidelity check still apply.
+pub(crate) fn restore_value(
+    cwd: Option<&str>,
+    scope: &str,
+    table: &str,
+    name: &str,
+    before: &str,
+    after: &str,
+) -> Result<ReplaceOutcome, String> {
+    edit_value(cwd, scope, table, name, before, after, false)
+}
+
+fn edit_value(
+    cwd: Option<&str>,
+    scope: &str,
+    table: &str,
+    name: &str,
+    before: &str,
+    after: &str,
+    validate: bool,
+) -> Result<ReplaceOutcome, String> {
     let scope = Scope::parse(scope)?;
     let table = Table::parse(table)?;
     let name = validate_name(name)?;
-    let after = validate_value_list(after)?;
+    let after = if validate {
+        validate_value_list(after)?
+    } else {
+        after.to_string()
+    };
     let ctx = Ctx::resolve(cwd)?;
     let _guard = WRITE_LOCK
         .lock()
@@ -2256,6 +2344,79 @@ mod tests {
         assert!(validate_value("anthropic/claude-sonnet-4-5:high").is_ok());
         assert!(validate_value("x y").is_err());
         assert!(validate_value("a@b").is_err());
+    }
+
+    /// omp reads a role as either a scalar or a list (joined with `,`), so a
+    /// sequence-valued entry must be editable: the whole sequence is replaced by
+    /// the equivalent quoted scalar, and the value verifies.
+    #[test]
+    fn sequence_role_value_is_editable_and_verifies() {
+        let original =
+            "modelRoles:\n  default:\n    - \"p/a\"\n    - \"p/b\"\n  smol: \"g/fast\"\n";
+        let next = plan(original, &set(Table::ModelRoles, "default", "p/c,p/d"))
+            .expect("plan")
+            .expect("changed");
+        assert_eq!(
+            next,
+            "modelRoles:\n  default: \"p/c,p/d\"\n  smol: \"g/fast\"\n"
+        );
+        // Flow style is one span too.
+        let flow = "modelRoles:\n  default: [\"p/a\", \"p/b\"]\n";
+        let next = plan(flow, &set(Table::ModelRoles, "default", "p/c"))
+            .expect("plan")
+            .expect("changed");
+        assert_eq!(next, "modelRoles:\n  default: \"p/c\"\n");
+        // Removal deletes the whole sequence entry, keeping siblings.
+        let next = plan(original, &remove(Table::ModelRoles, "default"))
+            .expect("plan")
+            .expect("changed");
+        assert_eq!(next, "modelRoles:\n  smol: \"g/fast\"\n");
+    }
+
+    /// Undo restores a value that was already in the file; the forward-only
+    /// syntax check must not reject it (an older value may contain spaces).
+    #[test]
+    fn restore_accepts_legacy_spaced_value_that_forward_edit_rejects() {
+        assert!(validate_value_list("p/a, p/a").is_err());
+        let project = batch_project_dir("restore");
+        fs::create_dir_all(project.join(OMP_DIR)).expect("project dir");
+        let config = project_config_file(&project);
+        fs::write(&config, "modelRoles:\n  default: \"p/b,p/b\"\n").expect("fixture");
+
+        // Forward edit to the legacy spaced value is refused.
+        let err = replace_value(
+            Some(project.to_str().unwrap()),
+            "project",
+            "modelRoles",
+            "default",
+            "p/b,p/b",
+            "p/a, p/a",
+        )
+        .unwrap_err();
+        assert!(err.contains("不能包含空白"), "{err}");
+        assert_eq!(
+            fs::read_to_string(&config).unwrap(),
+            "modelRoles:\n  default: \"p/b,p/b\"\n"
+        );
+
+        // Undo writes it back.
+        assert_eq!(
+            restore_value(
+                Some(project.to_str().unwrap()),
+                "project",
+                "modelRoles",
+                "default",
+                "p/b,p/b",
+                "p/a, p/a",
+            )
+            .unwrap(),
+            ReplaceOutcome::Written
+        );
+        assert_eq!(
+            fs::read_to_string(&config).unwrap(),
+            "modelRoles:\n  default: \"p/a, p/a\"\n"
+        );
+        let _ = fs::remove_dir_all(&project);
     }
 
     /// Bridge smoke: the same code path as the Tauri commands, on fixtures under `.cache`.

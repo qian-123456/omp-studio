@@ -87,16 +87,16 @@ export function ConversationDisplayCard() {
 			/>
 			<SettingRow
 				fieldId="sideChatHandback"
-				label="回传给父会话的方式"
+				label="辅助对话怎么带回主对话"
 				description={
 					sideChatHandback === "summary"
-						? "整理成结论：让辅助对话把讨论定下来的结论写成一段，确认后放进主对话输入框"
-						: "手动选择：在辅助对话里选中文字，点「发到主对话」放进主对话输入框"
+						? "整理成结论：AI 把辅助对话的结论写成一段，确认后放进主对话输入框"
+						: "手动选择：选中辅助对话里的文字，点「发到主对话」放进输入框"
 				}
-				hint="两种方式都不会自动发送给主对话；默认为整理成结论。"
+				hint="都不会自动发送，由你决定是否发出。"
 				control={
 					<Segmented<SideChatHandbackMode>
-						aria-label="回传给父会话的方式"
+						aria-label="辅助对话怎么带回主对话"
 						size="sm"
 						value={sideChatHandback}
 						onChange={setSideChatHandback}

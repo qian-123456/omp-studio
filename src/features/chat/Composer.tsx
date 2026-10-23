@@ -148,7 +148,8 @@ import { formatWithAnnotations, useComposer } from "../../stores/composer";
 import { moveToMain, moveToSideChat } from "../sidechat/annotationRoute";
 import { MAX_SIDE_CHAT_DEPTH } from "../sidechat/depth";
 import { useUi } from "../../stores/ui";
-import { hasLiveUserActivity, useLive, type SlashCommand } from "../../stores/live";
+import { useLive, type SlashCommand } from "../../stores/live";
+import { isBlankComposerSession } from "./sessionWorkspace";
 import { skillCommandsFromCatalog } from "./slash/skillCatalog";
 import { DEFAULT_SKILL_CONFIG, parseSkillConfig } from "../../lib/skillEnablement";
 import { useSessions } from "../../stores/sessions";
@@ -500,6 +501,9 @@ export function Composer({
 	// the thinking level / context size come from the transcript instead of
 	// falling back to "auto" / 0%.
 	const hasLiveState = live?.state != null;
+	// External (terminal) sessions keep writing the transcript: re-read the
+	// snapshot / usage whenever the catalog reports new activity.
+	const externalTick = readonly ? sessionMeta?.updatedAt : undefined;
 	const [snapshotRec, setSnapshotRec] = useState<{ id: string; snap: SessionSnapshot } | null>(null);
 	useEffect(() => {
 		if (hasLiveState) return;
@@ -512,7 +516,7 @@ export function Composer({
 		return () => {
 			cancelled = true;
 		};
-	}, [sessionId, hasLiveState]);
+	}, [sessionId, hasLiveState, externalTick]);
 	const snapshot = snapshotRec?.id === sessionId ? snapshotRec.snap : null;
 
 	// Total tokens summary
@@ -530,7 +534,7 @@ export function Composer({
 		return () => {
 			cancelled = true;
 		};
-	}, [sessionId, streaming]);
+	}, [sessionId, streaming, externalTick]);
 
 	// Pull the slash-command list once when the session comes up empty —
 	// available_commands_update only arrives when the list changes.
@@ -552,12 +556,14 @@ export function Composer({
 	const addBtnRef = useRef<HTMLButtonElement>(null);
 	const wsPillBtnRef = useRef<HTMLButtonElement>(null);
 	const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
-	// Context pill bar exists only on a blank draft: the session has seen no
-	// user/assistant activity (transcript items, pending echoes, in-flight
-	// turn) and the backend reports no last-assistant snippet yet.
-	const sessionHasMessages = useLive((s) =>
-		hasLiveUserActivity(s.sessions[sessionId]),
-	) || Boolean(sessionMeta?.lastAssistant);
+	// Context pill bar (project / branch) belongs to a session that has never
+	// shown a message. An existing session must not be mistaken for a blank one
+	// while its transcript is still loading — that painted a 全局 pill over a
+	// real conversation. A fork draft has no catalog meta and inherits its
+	// parent's project, so it never offers the selector.
+	const showContextPills = isBlankComposerSession(sessionMeta, live);
+	// Kept for the picker anchor: a blank draft opens the picker from its pill.
+	const sessionHasMessages = !showContextPills;
 	const workspacePickerIgnoreRefs = useMemo(
 		() => [wsPillBtnRef, addBtnRef],
 		[],
@@ -612,6 +618,7 @@ export function Composer({
 
 	/** Resolve a dropped path (from Tauri drag-drop) and attach it. */
 	const attachDroppedPath = async (filePath: string) => {
+		if (readonly) return;
 		try {
 			const info = await validatePath(filePath);
 			await attachPastedPath(filePath, info.isDir);
@@ -1502,12 +1509,19 @@ export function Composer({
 
 	const onDragOver = (e: React.DragEvent<HTMLTextAreaElement>) => {
 		if (!hasDraggedFiles(e)) return;
+		if (readonly) {
+			e.preventDefault();
+			e.stopPropagation();
+			setIsDraggingOver(false);
+			return;
+		}
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(true);
 	};
 
 	const onDragLeave = (e: React.DragEvent<HTMLTextAreaElement>) => {
+		if (readonly) return;
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
@@ -1519,6 +1533,12 @@ export function Composer({
 	 * never inlined as text. */
 	const onDrop = async (e: React.DragEvent<HTMLTextAreaElement>) => {
 		if (!hasDraggedFiles(e)) return;
+		if (readonly) {
+			e.preventDefault();
+			e.stopPropagation();
+			setIsDraggingOver(false);
+			return;
+		}
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
@@ -1630,13 +1650,22 @@ export function Composer({
 	// Tauri intercepts OS file drops before the DOM: listen for the native
 	// event and hit-test against this textarea so drops land as real paths.
 	const osDropRef = useRef<(paths: string[]) => void>(() => {});
+	// The drag-drop listener subscribes once; keep the latest readonly flag
+	// reachable from its closure so a session turning readonly stops accepting drops.
+	const readonlyRef = useRef(readonly);
+	readonlyRef.current = readonly;
 	useEffect(() => {
-		osDropRef.current = (paths) => {
-			for (const p of paths) void attachDroppedPath(p);
-		};
+		// The window-level native drop bypasses the textarea's `disabled`, so the
+		// readonly check has to live here or an observed session's draft mutates.
+		osDropRef.current = readonly
+			? () => {}
+			: (paths) => {
+					for (const p of paths) void attachDroppedPath(p);
+				};
 	});
 	useEffect(() => {
 		const hitTest = (pos: { x: number; y: number }) => {
+			if (readonlyRef.current) return false;
 			const ta = composerCardRef.current;
 			if (!ta) return false;
 			// Drag-drop positions are physical pixels.
@@ -2032,35 +2061,6 @@ export function Composer({
 		}
 	};
 
-	if (readonly) {
-		return (
-			<div className="shrink-0 px-3 pb-3 pt-1">
-				<div className="flex items-center justify-between gap-3 rounded-[18px] border border-[var(--line,var(--border))] bg-[var(--bg-panel)] px-4 py-3 shadow-sm">
-					<div className="flex items-center gap-2.5">
-						<span className="relative flex h-2.5 w-2.5 items-center justify-center">
-							<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-60" />
-							<span className="relative inline-flex h-2 w-2 rounded-full bg-purple-500" />
-						</span>
-						<span className="text-[13px] font-semibold text-[var(--text)]">
-							外部终端正在运行
-						</span>
-						<span className="text-[var(--text-30,var(--text-dim))]">·</span>
-						<span className="text-[12px] text-[var(--text-muted,var(--text-60))]">
-							当前为只读观察模式
-						</span>
-					</div>
-					<button
-						type="button"
-						onClick={() => requestTakeover(sessionId)}
-						className="press-scale flex shrink-0 items-center gap-1.5 rounded-lg bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-purple-500 active:bg-purple-700"
-					>
-						<span>接管会话</span>
-					</button>
-				</div>
-			</div>
-		);
-	}
-
 	return (
 		<div className="shrink-0 px-3 pb-3 pt-1">
 			{libraryPromptArmed &&
@@ -2069,6 +2069,7 @@ export function Composer({
 					<LibraryPromptCard entries={libraryCandidates} />
 				)}
 			{/* omp goal-mode bar: live objective directly above the composer. */}
+			{!readonly && (
 			<GoalBar
 				sessionId={sessionId}
 				onEdit={(objective) => {
@@ -2084,6 +2085,7 @@ export function Composer({
 					}, 0);
 				}}
 			/>
+			)}
 			<div
 				ref={composerCardRef}
 				className={clsx(
@@ -2093,7 +2095,7 @@ export function Composer({
 						: "border-[var(--line,var(--border))]",
 				)}
 			>
-				{!sessionHasMessages && (
+				{!sessionHasMessages && !readonly && (
 					<ContextPillBar
 						sessionId={sessionId}
 						onWorkspaceClick={() => setWorkspacePickerOpen((v) => !v)}
@@ -2234,6 +2236,7 @@ export function Composer({
 						</div>
 					)}
 					<textarea
+						disabled={readonly}
 						ref={taRef}
 						data-composer={sessionId}
 						value={text}
@@ -2363,15 +2366,17 @@ export function Composer({
 						onBlur={() => setTaFocused(false)}
 						rows={1}
 						placeholder={
-							legacyChip && !text
-								? chipHintText(chip)
-								: streaming
-									? "输入后续消息…"
-									: "输入消息，/ 命令，@ 引用文件"
+							readonly
+								? "外部终端正在运行 · 只读观察，接管会话后才能在这里发消息"
+								: legacyChip && !text
+									? chipHintText(chip)
+									: streaming
+										? "输入后续消息…"
+										: "输入消息，/ 命令，@ 引用文件"
 						}
 						style={{ outline: "none", boxShadow: "none", textIndent: legacyChip ? chipIndent : 0 }}
 						className={clsx(
-							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))]",
+							"w-full resize-none bg-transparent px-4 pt-3 pb-1.5 font-sans text-[var(--chat-font-size,14px)] leading-[1.35] outline-none !outline-none focus:outline-none focus:ring-0 placeholder:text-[var(--text-30,var(--text-dim))] disabled:cursor-not-allowed",
 							hasInlineTokens
 								? "relative z-10 text-transparent caret-[var(--text)] selection:bg-sky-500/30 selection:text-transparent"
 								: "relative text-[var(--text)]",
@@ -2396,6 +2401,31 @@ export function Composer({
 						toolbarTier >= TIER_TIGHT ? "gap-x-1" : "gap-x-2",
 					)}
 				>
+					{readonly ? (
+						<div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 pl-1.5">
+							<span
+								title="外部终端正在运行"
+								className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center"
+							>
+								<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-60" />
+								<span className="relative inline-flex h-2 w-2 rounded-full bg-purple-500" />
+							</span>
+							<span
+								title={modelLabel}
+								className="min-w-0 truncate whitespace-nowrap px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))]"
+							>
+								{modelLabel}
+							</span>
+							<span
+								title="思考等级"
+								className="shrink-0 whitespace-nowrap px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))]"
+							>
+								{thinkingKind === "unsupported" && !stateThinkingLevel
+									? "不支持思考"
+									: currentThinking}
+							</span>
+						</div>
+					) : (
 					<div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5">
 						<button
 							ref={addBtnRef}
@@ -2517,12 +2547,13 @@ export function Composer({
 							/>
 						)}
 					</div>
+					)}
 
 					{/* Right side actions */}
 					<div className="flex shrink-0 items-center gap-1.5">
 						{/* Held queue count pill: post-turn only (manual mode, un-dismisses the bar);
 						    while streaming the items show as queued bubbles in the thread. */}
-						{held.length > 0 && !streaming && (
+						{held.length > 0 && !streaming && !readonly && (
 							<button
 								type="button"
 								onClick={() => setDismissed(sessionId, false)}
@@ -2541,7 +2572,7 @@ export function Composer({
 							usageObj={contextUsageObj}
 							totalTokensStr={totalTokensStr}
 							onCompact={compactContext}
-							compactDisabled={streaming}
+							compactDisabled={streaming || readonly}
 							compacting={compacting}
 							open={contextOpen}
 							onOpenChange={setContextOpen}
@@ -2551,7 +2582,15 @@ export function Composer({
 
 						{/* Send / streaming controls (Codex circular button) */}
 						<div className="flex items-center gap-1.5">
-							{streaming ? (
+							{readonly ? (
+								<button
+									type="button"
+									onClick={() => requestTakeover(sessionId)}
+									className="press-scale flex shrink-0 items-center whitespace-nowrap rounded-full bg-purple-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-purple-500 active:bg-purple-700"
+								>
+									接管会话
+								</button>
+							) : streaming ? (
 								<>
 									{hasPayload && (
 										<button
@@ -2625,7 +2664,7 @@ export function Composer({
 			</div>
 
 			{/* @ file-completion menu — floats above the composer box. */}
-			{atMenu.length > 0 && atToken && (
+			{!readonly && atMenu.length > 0 && atToken && (
 				<FloatingLayer
 					anchor={composerCardRef.current}
 					placement="top-start"
@@ -2656,7 +2695,7 @@ export function Composer({
 			)}
 
 			{/* Slash-command menu — Codex-style grouped popup. */}
-			{subItems.length > 0 ? (
+			{readonly ? null : subItems.length > 0 ? (
 				<SlashMenu
 					anchor={composerCardRef.current}
 					sections={subSections}

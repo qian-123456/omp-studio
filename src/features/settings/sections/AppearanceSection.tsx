@@ -13,7 +13,10 @@ import {
 	type UiScale,
 } from "../../../lib/theme";
 import { DEFAULT_ZOOM, useZoom } from "../../../lib/zoom";
+import { acceleratorOf } from "../../shortcuts/bindingsStore";
+import { SectionJumpBar } from "../SectionJumpBar";
 import { Button, IconButton, SectionHeader, SettingRow, SettingsCard } from "../ui";
+import { formatAccelerator } from "./ShortcutRecorder";
 import { ConversationDisplayCard, RequestStatsCard } from "./RequestStatsCards";
 
 const DEFAULT_FONT_SIZE: FontSize = "md";
@@ -34,7 +37,8 @@ export function AppearanceSection() {
 	const uiScale = useUiScale();
 	const { zoom, zoomIn, zoomOut, resetZoom, minZoom, maxZoom } = useZoom();
 	const anyChanged = fontSize !== DEFAULT_FONT_SIZE || uiScale !== DEFAULT_UI_SCALE || zoom !== DEFAULT_ZOOM;
-
+	const zoomKeys = (["zoom.in", "zoom.out", "zoom.reset"] as const).map((id) => formatAccelerator(acceleratorOf(id)));
+	const zoomHint = `${zoomKeys[0]} 放大，${zoomKeys[1]} 缩小，${zoomKeys[2]} 恢复 100%`;
 	return (
 		<div className="space-y-6">
 			<SectionHeader
@@ -56,7 +60,8 @@ export function AppearanceSection() {
 					) : undefined
 				}
 			/>
-			<SettingsCard title="主题">
+			<SectionJumpBar />
+			<SettingsCard jump="主题" title="主题">
 				<SettingRow
 					fieldId="theme"
 					stacked
@@ -65,7 +70,7 @@ export function AppearanceSection() {
 					control={<ThemePicker />}
 				/>
 			</SettingsCard>
-			<SettingsCard title="文字与布局" footer="以上设置只保存在本机，立即生效，不需要重启。">
+			<SettingsCard jump="文字与布局" title="文字与布局" footer="以上设置只保存在本机，立即生效，不需要重启。">
 				<SettingRow
 					fieldId="fontSize"
 					label="聊天字号"
@@ -110,7 +115,7 @@ export function AppearanceSection() {
 					fieldId="uiScale"
 					label="界面缩放"
 					description={`整个窗口的放大比例（${minZoom}%–${maxZoom}%）`}
-					hint="快捷键：⌘ + 放大，⌘ − 缩小，⌘ 0 恢复 100%"
+					hint={`快捷键：${zoomHint}（可在「快捷键」页查看）`}
 					control={
 						<div className="flex items-center gap-1.5">
 							<ResetButton label="界面缩放" visible={zoom !== DEFAULT_ZOOM} onClick={resetZoom} />
@@ -126,8 +131,12 @@ export function AppearanceSection() {
 					}
 				/>
 			</SettingsCard>
-			<RequestStatsCard />
-			<ConversationDisplayCard />
+			<div data-jump="请求统计" className="scroll-mt-4">
+				<RequestStatsCard />
+			</div>
+			<div data-jump="对话显示" className="scroll-mt-4">
+				<ConversationDisplayCard />
+			</div>
 		</div>
 	);
 }

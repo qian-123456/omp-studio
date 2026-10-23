@@ -189,7 +189,7 @@ export function DocView({ path }: { path: string }) {
 								className={clsx(
 									"px-2.5 py-0.5 rounded-md transition-colors",
 									tab === t.id
-										? "bg-[var(--bg-active-fill)] text-[var(--text)] font-medium shadow-xs"
+										? "bg-[var(--bg-active-fill)] text-[var(--text)] shadow-xs"
 										: "text-neutral-400 hover:text-[var(--text)]",
 								)}
 							>

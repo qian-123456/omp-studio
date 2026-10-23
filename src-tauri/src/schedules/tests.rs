@@ -13,7 +13,7 @@ use crate::schedules::runner::should_create_inbox_todo;
 use crate::schedules::store::{
     advance_after_run, create_run, delete, derive_lifecycle, from_local_result, get,
     has_active_run, last_run_session_file, list, list_runs, next_run, next_run_bounded,
-    record_run_start, set_enabled, update_run, upsert,
+    record_run_start, recover_stale_runs, set_enabled, update_run, upsert,
 };
 
 fn make_local(year: i32, month: u32, day: u32, hour: u32, min: u32) -> DateTime<Local> {
@@ -381,6 +381,58 @@ fn test_store_crud() {
     delete(&conn, &created.id).unwrap();
     assert!(get(&conn, &created.id).unwrap().is_none());
     assert!(list(&conn).unwrap().is_empty());
+}
+
+/// A run left `running` by a previous app process must be settled at startup,
+/// otherwise it blocks every later trigger of that schedule forever.
+#[test]
+fn recover_stale_runs_settles_leftover_running_rows() {
+    let conn = setup_test_db();
+    let draft = ScheduleDraft {
+        id: None,
+        name: "清理遗留运行".to_string(),
+        prompt: "p".to_string(),
+        cwd: "/tmp/project".to_string(),
+        run_mode: ScheduleRunMode::Local,
+        cadence: ScheduleCadence::Interval { minutes: 30 },
+        model: None,
+        thinking: None,
+        approval_mode: None,
+        enabled: true,
+        end_at: None,
+        max_runs: None,
+        notify: ScheduleNotify::All,
+        new_chat_each_run: true,
+    };
+    let schedule = upsert(&conn, &draft).unwrap();
+    create_run(
+        &conn,
+        "orphan",
+        &schedule.id,
+        Some("session-x"),
+        ScheduleRunStatus::Running,
+        None,
+    )
+    .unwrap();
+    assert!(has_active_run(&conn, &schedule.id).unwrap());
+
+    assert_eq!(
+        recover_stale_runs(&conn, "2026-10-24T00:00:00Z").unwrap(),
+        1
+    );
+    assert!(!has_active_run(&conn, &schedule.id).unwrap());
+    let runs = list_runs(&conn, &schedule.id, 10).unwrap();
+    assert_eq!(runs[0].status, ScheduleRunStatus::Error);
+    assert_eq!(runs[0].finished_at.as_deref(), Some("2026-10-24T00:00:00Z"));
+    assert_eq!(
+        runs[0].summary.as_deref(),
+        Some("应用异常退出，本次运行未完成")
+    );
+    // Idempotent: nothing left to settle.
+    assert_eq!(
+        recover_stale_runs(&conn, "2026-10-24T00:01:00Z").unwrap(),
+        0
+    );
 }
 
 fn once_draft(at: &str, enabled: bool) -> ScheduleDraft {
