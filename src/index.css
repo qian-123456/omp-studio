@@ -1108,35 +1108,34 @@ html[data-ui-scale="large"] {
 }
 
 /*
- * Liquid glass: translucent theme-tinted body, strong blur + saturation, a
- * bright specular top edge, inner border, sheen and layered soft shadow. Body
- * colour comes from --bg-panel so it stays legible in every theme; only the
- * highlights are white (they read as light catching a glass edge in light and
- * dark themes alike). Unlayered on purpose so it beats the Tailwind utilities
- * FloatingLayer applies (rounded-xl, border, shadow, vibrancy-popover).
- * Sheen layers live in background-image (no pseudo-elements, no z-index).
+ * Liquid glass, tuned to Apple's: a mostly clear body (low tint, strong blur
+ * and saturation so the content behind shows through as colour, not as a grey
+ * slab), NO outline box. The edge is lit by directional rim light instead:
+ * bright on the top-left and bottom-right edges, faint elsewhere, plus a soft
+ * inner glow that brightens toward the rim (the cheap stand-in for lensing;
+ * WKWebView cannot run SVG displacement filters inside backdrop-filter).
+ * Shadow is one wide, diffuse lift. Body colour comes from --bg-panel so it
+ * stays legible in every theme. Unlayered on purpose so it beats the Tailwind
+ * utilities FloatingLayer applies (rounded-xl, border, shadow,
+ * vibrancy-popover). Sheen lives in background-image (no pseudo-elements, no
+ * z-index).
  */
 .liquid-glass {
 	isolation: isolate;
-	background-color: color-mix(in oklab, var(--bg-panel) 62%, transparent);
+	background-color: color-mix(in oklab, var(--bg-panel) 36%, transparent);
 	background-image:
-		linear-gradient(180deg, rgba(255, 255, 255, 0.24) 0, rgba(255, 255, 255, 0.05) 22px, transparent 46%),
-		radial-gradient(120% 60% at 15% 0, rgba(255, 255, 255, 0.14), transparent 60%),
-		radial-gradient(60% 14px at 50% 100%, rgba(255, 255, 255, 0.16), transparent),
-		linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03) 55%, rgba(255, 255, 255, 0.08));
-	backdrop-filter: blur(22px) saturate(1.8) brightness(1.04);
-	-webkit-backdrop-filter: blur(22px) saturate(1.8) brightness(1.04);
-	border: 1px solid rgba(255, 255, 255, 0.22);
+		linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0, rgba(255, 255, 255, 0.03) 38%, transparent 62%, rgba(255, 255, 255, 0.05) 100%);
+	backdrop-filter: blur(10px) saturate(1.8) brightness(1.06);
+	-webkit-backdrop-filter: blur(10px) saturate(1.8) brightness(1.06);
+	border: 1px solid transparent;
 	border-radius: var(--glass-radius, 22px);
 	box-shadow:
-		inset 0 1px 0 rgba(255, 255, 255, 0.55),
-		inset 0 -1px 0 rgba(255, 255, 255, 0.12),
-		inset 1px 0 0 rgba(255, 255, 255, 0.14),
-		inset -1px 0 0 rgba(255, 255, 255, 0.1),
-		inset 0 0 18px rgba(255, 255, 255, 0.07),
-		0 1px 2px rgba(0, 0, 0, 0.12),
-		0 10px 24px rgba(0, 0, 0, 0.16),
-		0 24px 48px rgba(0, 0, 0, 0.1);
+		inset 1.5px 1.5px 0 -0.5px rgba(255, 255, 255, 0.62),
+		inset -1.5px -1.5px 0 -0.5px rgba(255, 255, 255, 0.32),
+		inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+		inset 0 0 22px -6px rgba(255, 255, 255, 0.2),
+		0 1px 3px rgba(0, 0, 0, 0.08),
+		0 12px 40px rgba(0, 0, 0, 0.2);
 }
 @keyframes sa-sheet-in {
 	from {
@@ -1150,7 +1149,7 @@ html[data-ui-scale="large"] {
 }
 .sa-sheet-in {
 	animation: sa-sheet-in 0.2s ease-out;
-	background-color: color-mix(in oklab, var(--bg-panel) 82%, transparent);
+	background-color: color-mix(in oklab, var(--bg-panel) 62%, transparent);
 }
 .sa-seg-thumb {
 	transition: transform 0.18s ease;
@@ -1163,24 +1162,17 @@ html[data-ui-scale="large"] {
 		transition: none;
 	}
 }
-/* Text-on-glass row states (glass highlight, not a pill). */
+/* Text-on-glass row states: a soft lighter fill, never an outlined box. */
 .glass-row {
 	border: 1px solid transparent;
 	transition: background-color 0.12s;
 }
-.glass-row:hover,
-.glass-row[data-selected="true"] {
-	background-color: color-mix(in oklab, var(--text) 7%, transparent);
-	border-color: rgba(255, 255, 255, 0.2);
-	box-shadow:
-		inset 0 1px 0 rgba(255, 255, 255, 0.35),
-		0 1px 3px rgba(0, 0, 0, 0.08);
+.glass-row:hover {
+	background-color: color-mix(in oklab, var(--text) 8%, transparent);
 }
 .glass-row[data-selected="true"] {
-	background-color: color-mix(in oklab, var(--accent) 16%, transparent);
-	box-shadow:
-		inset 0 1px 0 rgba(255, 255, 255, 0.35),
-		inset 0 0 0 1px color-mix(in oklab, var(--accent) 34%, transparent);
+	background-color: color-mix(in oklab, var(--text) 13%, transparent);
+	box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.3);
 }
 @media (prefers-reduced-transparency: reduce) {
 	.liquid-glass {

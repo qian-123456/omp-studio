@@ -64,7 +64,8 @@ fn to_trash(path: &Path) -> Result<(), String> {
     if std::fs::symlink_metadata(path).is_err() {
         return Ok(());
     }
-    trash::delete(path).map_err(|e| format!("移到废纸篓失败 {}: {e}", path.display()))
+    crate::services::trash::move_to_trash(path)
+        .map_err(|e| format!("移到废纸篓失败 {}: {e}", path.display()))
 }
 
 /// Remove a session's files: artifacts dir, lock, then the transcript last so

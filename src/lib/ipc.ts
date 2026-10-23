@@ -698,6 +698,9 @@ export const oauthLoginStatus = () =>
  * the usage report account metadata; omit both only for single-account providers.
  * Resolves to the number of credential rows disabled.
  */
+export const oauthLogout = (providerId: string, email?: string | null, accountId?: string | null) =>
+	invoke<number>("oauth_logout", { providerId, email: email ?? null, accountId: accountId ?? null });
+
 export const ompUsageReport = (refresh?: boolean) =>
 	invoke<OmpUsageReportData>("omp_usage_report", { refresh: refresh ?? false });
 

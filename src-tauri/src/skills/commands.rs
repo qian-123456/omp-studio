@@ -664,7 +664,7 @@ pub async fn skills_read(path: String) -> Result<String, String> {
 /// project root — i.e. only whole skill directories one level below a
 /// discovery root may be trashed, never a root itself or a nested path.
 ///
-/// Returns the normalized path ready for `trash::delete`.
+/// Returns the normalized path ready for `move_to_trash`.
 pub(crate) fn validate_skill_dir_for_trash(dir: &Path) -> Result<PathBuf, String> {
     if !dir.is_absolute() {
         return Err("删除需要绝对路径".to_string());
@@ -739,7 +739,7 @@ fn is_project_skill_root(p: &Path) -> bool {
 pub async fn skills_trash(dir: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let path = validate_skill_dir_for_trash(Path::new(&dir))?;
-        trash::delete(&path).map_err(|e| format!("移到废纸篓失败：{e}"))
+        crate::services::trash::move_to_trash(&path).map_err(|e| format!("移到废纸篓失败：{e}"))
     })
     .await
     .map_err(|e| format!("移到废纸篓失败：{e}"))?

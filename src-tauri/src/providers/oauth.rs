@@ -536,9 +536,216 @@ pub async fn oauth_login_status() -> Result<Option<serde_json::Value>, String> {
     }
 }
 
+/// Soft-disable stored credentials for a provider (optionally only one account).
+pub fn logout_credentials_conn(
+    conn: &mut rusqlite::Connection,
+    provider_id: &str,
+    email: Option<&str>,
+    account_id: Option<&str>,
+) -> Result<u32, String> {
+    let email = email.map(str::trim).filter(|s| !s.is_empty());
+    let account_id = account_id.map(str::trim).filter(|s| !s.is_empty());
+    let rows: Vec<(i64, String, String)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, identity_key, data FROM auth_credentials \
+                 WHERE provider = ?1 AND disabled_cause IS NULL",
+            )
+            .map_err(|e| format!("读取凭据失败: {e}"))?;
+        let mapped = stmt
+            .query_map([provider_id], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                ))
+            })
+            .map_err(|e| format!("读取凭据失败: {e}"))?;
+        mapped
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("读取凭据失败: {e}"))?
+    };
+
+    let mut matched: Vec<i64> = Vec::new();
+    let mut identities: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (id, key, data) in &rows {
+        let json: serde_json::Value = serde_json::from_str(data).unwrap_or(serde_json::Value::Null);
+        let d_email = json.get("email").and_then(|v| v.as_str());
+        let d_acct = json.get("accountId").and_then(|v| v.as_str());
+        let ident = if !key.is_empty() {
+            key.clone()
+        } else if let Some(e) = d_email {
+            format!("email:{e}")
+        } else if let Some(a) = d_acct {
+            format!("account:{a}")
+        } else {
+            // Credentials with no identity (e.g. oauth + api_key rows of one login) are one account.
+            "unnamed".to_string()
+        };
+        identities.insert(ident);
+        let email_hit = email.is_some_and(|e| {
+            key.contains(&format!("email:{e}"))
+                || d_email.is_some_and(|x| x.eq_ignore_ascii_case(e))
+        });
+        let acct_hit =
+            account_id.is_some_and(|a| key.contains(&format!("account:{a}")) || d_acct == Some(a));
+        if email_hit || acct_hit {
+            matched.push(*id);
+        }
+    }
+
+    if matched.is_empty() {
+        if identities.len() > 1 {
+            return Err("该供应商配置了多个授权账号，请指定要退出的账号".to_string());
+        }
+        matched = rows.iter().map(|(id, _, _)| *id).collect();
+    }
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("退出登录失败: {e}"))?;
+    let mut count = 0u32;
+    for id in &matched {
+        let n = tx
+            .execute(
+                "UPDATE auth_credentials SET disabled_cause = 'deleted by user', \
+                 updated_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?1",
+                [id],
+            )
+            .map_err(|e| format!("退出登录失败: {e}"))?;
+        count += n as u32;
+    }
+    tx.commit().map_err(|e| format!("退出登录失败: {e}"))?;
+    Ok(count)
+}
+
+/// Log out of a provider account: stop any running login, disable credentials, drop usage cache.
+pub async fn oauth_logout(
+    state: &crate::state::AppState,
+    provider_id: &str,
+    email: Option<&str>,
+    account_id: Option<&str>,
+) -> Result<u32, String> {
+    cleanup_active(provider_id).await;
+    let db_path = super::omp_config::home_agent_dir().join("agent.db");
+    let (pid, em, ac) = (
+        provider_id.to_string(),
+        email.map(str::to_string),
+        account_id.map(str::to_string),
+    );
+    let count = tokio::task::spawn_blocking(move || {
+        let mut conn =
+            rusqlite::Connection::open(&db_path).map_err(|e| format!("打开 agent.db 失败: {e}"))?;
+        let _ = conn.busy_timeout(Duration::from_secs(5));
+        logout_credentials_conn(&mut conn, &pid, em.as_deref(), ac.as_deref())
+    })
+    .await
+    .map_err(|e| format!("退出登录失败: {e}"))??;
+
+    let path = crate::terminal::env::augmented_path();
+    let bin_setting = state.settings.read().omp_binary.clone();
+    let bin = if !bin_setting.trim().is_empty() {
+        bin_setting
+    } else {
+        crate::terminal::env::which("omp")
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "omp".to_string())
+    };
+    let _ = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::process::Command::new(&bin)
+            .args(["usage", "invalidate"])
+            .env("PATH", &path)
+            .current_dir(std::env::temp_dir())
+            .output(),
+    )
+    .await;
+    Ok(count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn logout_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE auth_credentials (id INTEGER PRIMARY KEY, provider TEXT, \
+             credential_type TEXT, identity_key TEXT, data TEXT, disabled_cause TEXT, \
+             updated_at INTEGER);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn add_cred(conn: &rusqlite::Connection, provider: &str, key: &str, data: &str) {
+        conn.execute(
+            "INSERT INTO auth_credentials (provider, credential_type, identity_key, data) \
+             VALUES (?1, 'oauth', ?2, ?3)",
+            [provider, key, data],
+        )
+        .unwrap();
+    }
+
+    fn active(conn: &rusqlite::Connection) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM auth_credentials WHERE disabled_cause IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn logout_single_account() {
+        let mut conn = logout_db();
+        add_cred(&conn, "devin", "email:a@x.com", r#"{"email":"a@x.com"}"#);
+        assert_eq!(
+            logout_credentials_conn(&mut conn, "devin", None, None),
+            Ok(1)
+        );
+        assert_eq!(active(&conn), 0);
+    }
+
+    #[test]
+    fn logout_one_of_many_by_email() {
+        let mut conn = logout_db();
+        add_cred(&conn, "p", "email:a@x.com", r#"{"email":"a@x.com"}"#);
+        add_cred(&conn, "p", "email:b@x.com", r#"{"email":"b@x.com"}"#);
+        add_cred(&conn, "q", "email:a@x.com", r#"{"email":"a@x.com"}"#);
+        assert_eq!(
+            logout_credentials_conn(&mut conn, "p", Some("a@x.com"), None),
+            Ok(1)
+        );
+        assert_eq!(active(&conn), 2);
+    }
+
+    #[test]
+    fn logout_many_without_match_fails() {
+        let mut conn = logout_db();
+        add_cred(&conn, "p", "email:a@x.com", r#"{"email":"a@x.com"}"#);
+        add_cred(&conn, "p", "email:b@x.com", r#"{"email":"b@x.com"}"#);
+        assert!(logout_credentials_conn(&mut conn, "p", Some("c@x.com"), None).is_err());
+        assert!(logout_credentials_conn(&mut conn, "p", None, None).is_err());
+        assert_eq!(active(&conn), 2);
+    }
+
+    #[test]
+    fn logout_unnamed_oauth_and_api_key_rows_is_one_account() {
+        let mut conn = logout_db();
+        add_cred(&conn, "devin", "", r#"{"access":"x"}"#);
+        conn.execute(
+            "INSERT INTO auth_credentials (provider, credential_type, identity_key, data) \
+             VALUES ('devin', 'api_key', NULL, '{\"key\":\"y\"}')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            logout_credentials_conn(&mut conn, "devin", Some("u@x.com"), Some("user-1")),
+            Ok(2)
+        );
+        assert_eq!(active(&conn), 0);
+    }
 
     #[test]
     fn test_url_validation() {

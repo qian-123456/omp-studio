@@ -6,6 +6,7 @@ pub mod commands;
 pub mod files;
 pub mod perf;
 pub mod scan;
+pub mod trash;
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};

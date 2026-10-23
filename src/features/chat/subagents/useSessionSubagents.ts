@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SubagentSummary } from "../../../lib/contracts";
-import { type LiveTool, type SubagentInfo, useLive } from "../../../stores/live";
+import { type AgentMessage, type LiveTool, type SubagentInfo, useLive } from "../../../stores/live";
 import { useSessions } from "../../../stores/sessions";
 import { type DiskSubscription, DISK_POLL_MS, subscribeDiskSubagents } from "./diskPoller";
 import { type AgentRow, asTaskDetails, mergeAgents } from "./merge";
@@ -29,6 +29,7 @@ export function mergeDiskAndLive(
 	disk: SubagentSummary[],
 	live: Record<string, SubagentInfo>,
 	tools?: Record<string, LiveTool>,
+	streamingMessage?: AgentMessage | null,
 ): { subagents: Record<string, SubagentInfo>; rows: Record<string, AgentRow> } {
 	const subagents: Record<string, SubagentInfo> = {};
 	const rows: Record<string, AgentRow> = {};
@@ -80,18 +81,17 @@ export function mergeDiskAndLive(
 	});
 	// Queued agents exist only in the dispatching task call's args/progress
 	// until omp starts them: surface those not yet tracked as pending.
-	for (const tool of Object.values(tools ?? {})) {
-		if (tool.status !== "running" || (tool.toolName !== "task" && tool.toolName !== "agent")) continue;
+	const addPending = (toolCallId: string, args: unknown, details: unknown) => {
 		const merged = mergeAgents({
-			args: tool.args,
-			details: asTaskDetails(tool.details),
+			args,
+			details: asTaskDetails(details),
 			fileList: disk,
 			liveSubagents: live,
-			toolCallId: tool.toolCallId,
+			toolCallId,
 		});
 		for (const r of merged.rows) {
 			if (r.status !== "pending" || subagents[r.id]) continue;
-			const key = rows[r.id] ? `${tool.toolCallId}:${r.id}` : r.id;
+			const key = rows[r.id] ? `${toolCallId}:${r.id}` : r.id;
 			subagents[key] = {
 				status: "pending",
 				agent: r.agent,
@@ -100,6 +100,22 @@ export function mergeDiskAndLive(
 				task: r.task,
 			};
 			rows[key] = { ...r, id: key };
+		}
+	};
+	for (const tool of Object.values(tools ?? {})) {
+		if (tool.status !== "running" || (tool.toolName !== "task" && tool.toolName !== "agent")) continue;
+		addPending(tool.toolCallId, tool.args, tool.details);
+	}
+	// A task call still being streamed by the model has no tool entry yet
+	// (its args can take minutes to arrive): its queued agents already count.
+	if (Array.isArray(streamingMessage?.content)) {
+		for (const part of streamingMessage.content as unknown[]) {
+			const o = (typeof part === "object" && part !== null ? part : {}) as Record<string, unknown>;
+			if (o.type !== "tool_use" && o.type !== "toolCall") continue;
+			if (o.name !== "task" && o.name !== "agent") continue;
+			const id = String(o.id ?? "");
+			if (!id || tools?.[id]) continue;
+			addPending(id, o.input ?? o.arguments, null);
 		}
 	}
 	return { subagents, rows };
@@ -138,9 +154,10 @@ export function useSessionSubagents(sessionId: string | null): {
 
 	const liveSubagents = live?.subagents;
 	const liveTools = live?.tools;
+	const streamingMessage = live?.streamingMessage;
 	const merged = useMemo(
-		() => mergeDiskAndLive(disk, liveSubagents ?? {}, liveTools),
-		[disk, liveSubagents, liveTools],
+		() => mergeDiskAndLive(disk, liveSubagents ?? {}, liveTools, streamingMessage),
+		[disk, liveSubagents, liveTools, streamingMessage],
 	);
 	return { parentFile, ...merged };
 }

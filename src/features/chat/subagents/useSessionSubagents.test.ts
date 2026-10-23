@@ -64,4 +64,36 @@ describe("mergeDiskAndLive", () => {
 		expect(subagentCounts(subagents)).toEqual({ running: 0, queued: 1, done: 1, failed: 0 });
 		expect(subagents.Later?.status).toBe("pending");
 	});
+
+	it("counts queued agents of a task call still being streamed (no tool entry yet)", () => {
+		const streaming = {
+			role: "assistant",
+			content: [
+				{ type: "text", text: "dispatching" },
+				{
+					type: "toolCall",
+					id: "t9",
+					name: "task",
+					arguments: { tasks: [{ id: "ImportBackend" }, { id: "ImportFrontend" }] },
+				},
+			],
+		};
+		const { subagents } = mergeDiskAndLive([], {}, {}, streaming);
+		expect(subagentCounts(subagents)).toEqual({ running: 0, queued: 2, done: 0, failed: 0 });
+
+		// Once omp starts the call, the tool entry owns the rows (no double count).
+		const started = {
+			t9: {
+				toolCallId: "t9",
+				toolName: "task",
+				args: { tasks: [{ id: "ImportBackend" }, { id: "ImportFrontend" }] },
+				intent: null,
+				status: "running" as const,
+				text: "",
+				details: null,
+			},
+		};
+		const after = mergeDiskAndLive([], {}, started, streaming);
+		expect(subagentCounts(after.subagents).queued).toBe(2);
+	});
 });

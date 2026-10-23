@@ -1,7 +1,7 @@
 /**
  * Slide-over sheet listing every bound account of a multi-account quota provider.
  */
-import { CheckCircle2, Clock, LogIn, RefreshCw, X } from "lucide-react";
+import { CheckCircle2, Clock, LogIn, LogOut, Plus, RefreshCw, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -10,7 +10,9 @@ import type {
 	OmpUsageProviderReport,
 } from "../../../lib/contracts";
 import { useEscapeKey } from "../../../lib/hooks";
-import { oauthLoginProviders } from "../../../lib/ipc";
+import { oauthLoginProviders, oauthLogout } from "../../../lib/ipc";
+import { confirmDialog, errMsg } from "../../../lib/dialogs";
+import { toast } from "../../../lib/toast";
 import { OauthLoginDialog } from "../../providers/OauthLoginDialog";
 import { Button, Chip, IconButton } from "../ui";
 import { ProviderBrandLogo } from "./ProviderBrandLogo";
@@ -144,6 +146,7 @@ export function QuotaAccountSheet({
 }: QuotaAccountSheetProps) {
 	const [loginOpen, setLoginOpen] = useState(false);
 	const [oauthIds, setOauthIds] = useState<Set<string>>(new Set());
+	const [loggingOutKey, setLoggingOutKey] = useState<string | null>(null);
 
 	const childOpen = loginOpen;
 	useEscapeKey(onClose, isOpen && !childOpen);
@@ -172,6 +175,30 @@ export function QuotaAccountSheet({
 		null,
 	);
 	const canRelogin = oauthIds.has(provider.providerId);
+	const handleLogout = async (
+		accountKey: string,
+		label: string,
+		email?: string | null,
+		accountId?: string | null,
+	) => {
+		if (loggingOutKey) return;
+		const ok = await confirmDialog(
+			`确定退出账号「${label}」？\n退出后该账号的授权凭据将从本地清除，需重新登录才能使用。`,
+			{ title: "退出登录", danger: true, okLabel: "退出登录" },
+		);
+		if (!ok) return;
+		setLoggingOutKey(accountKey);
+		try {
+			await oauthLogout(provider.providerId, email, accountId);
+			toast.success(`已退出账号 ${label}`);
+			if (totalAccounts <= 1) onClose();
+			await onRefresh();
+		} catch (err) {
+			toast.error(errMsg(err));
+		} finally {
+			setLoggingOutKey(null);
+		}
+	};
 
 	if (loginOpen) {
 		return (
@@ -232,19 +259,21 @@ export function QuotaAccountSheet({
 						const meta = report.metadata;
 						const limits = dedupeLimits(report.limits ?? []);
 						const credits = report.resetCredits?.availableCount ?? 0;
+						const accountKey = meta?.email || meta?.accountId || `report-${idx}`;
+						const label = meta?.email || meta?.accountId || "主账号";
 						return (
 							<div
-								key={meta?.email || meta?.accountId || idx}
+								key={accountKey}
 								className="space-y-2.5 rounded-xl border border-[var(--border-divider)] bg-[var(--well-bg)] p-3.5"
 							>
-								<div className="flex items-start justify-between gap-2">
-									<div className="min-w-0">
+								<div className="flex items-start justify-between gap-3">
+									<div className="min-w-0 flex-1">
 										<div className="flex flex-wrap items-center gap-2">
 											<span
 												className="break-all text-xs font-semibold text-[var(--text)]"
 												title={meta?.email || meta?.accountId || undefined}
 											>
-												{meta?.email || meta?.accountId || "主账号"}
+												{label}
 											</span>
 											{meta?.planType && <Chip>{meta.planType}</Chip>}
 										</div>
@@ -254,21 +283,41 @@ export function QuotaAccountSheet({
 											</div>
 										)}
 									</div>
-									<div className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] text-[var(--text-dim)]">
-										<span className="flex items-center gap-1 font-mono">
-											<Clock className="h-2.5 w-2.5" />
-											{formatRelativeTime(report.fetchedAt, now)}
-										</span>
-										{credits > 0 && (
-											<span className="font-semibold text-[var(--accent)]">
-												{credits} 次重置券
+									<div className="flex shrink-0 items-center gap-2.5">
+										<div className="flex flex-col items-end gap-0.5 text-[11px] text-[var(--text-dim)]">
+											<span className="flex items-center gap-1 font-mono">
+												<Clock className="h-2.5 w-2.5" />
+												{formatRelativeTime(report.fetchedAt, now)}
 											</span>
-										)}
-										{meta?.overageBalanceUsd != null && (
-											<span className="text-[var(--text-muted)]">
-												超额余额 ${meta.overageBalanceUsd.toFixed(2)}
-											</span>
-										)}
+											{credits > 0 && (
+												<span className="font-semibold text-[var(--accent)]">
+													{credits} 次重置券
+												</span>
+											)}
+											{meta?.overageBalanceUsd != null && (
+												<span className="text-[var(--text-muted)]">
+													超额余额 ${meta.overageBalanceUsd.toFixed(2)}
+												</span>
+											)}
+										</div>
+										<Button
+											variant="danger"
+											size="sm"
+											icon={LogOut}
+											className="whitespace-nowrap"
+											loading={loggingOutKey === accountKey}
+											disabled={loggingOutKey !== null}
+											onClick={() =>
+												void handleLogout(
+													accountKey,
+													label,
+													meta?.email,
+													meta?.accountId,
+												)
+											}
+										>
+											退出登录
+										</Button>
 									</div>
 								</div>
 								{limits.length > 0 ? (
@@ -289,20 +338,37 @@ export function QuotaAccountSheet({
 						);
 					})}
 
-					{provider.unmetered.map((u, idx) => (
-						<div
-							key={`unmetered-${u.enterpriseUrl || idx}`}
-							className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--border-divider)] bg-[var(--well-bg)] p-3.5 text-xs"
-						>
-							<span className="min-w-0 break-all font-medium text-[var(--text)]" title={u.enterpriseUrl}>
-								{u.enterpriseUrl || `${brand.name} 关联账号`}
-							</span>
-							<span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-dim)]">
-								<CheckCircle2 className="h-3 w-3" />
-								已连接 · 无独立配额
-							</span>
-						</div>
-					))}
+					{provider.unmetered.map((u, idx) => {
+						const accountKey = `unmetered-${u.enterpriseUrl || idx}`;
+						const label = u.enterpriseUrl || `${brand.name} 关联账号`;
+						return (
+							<div
+								key={accountKey}
+								className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--border-divider)] bg-[var(--well-bg)] p-3.5 text-xs"
+							>
+								<span className="min-w-0 break-all font-medium text-[var(--text)]" title={u.enterpriseUrl}>
+									{label}
+								</span>
+								<span className="flex shrink-0 items-center gap-2 text-xs text-[var(--text-dim)]">
+									<span className="flex items-center gap-1 whitespace-nowrap">
+										<CheckCircle2 className="h-3 w-3" />
+										已连接 · 无独立配额
+									</span>
+									<Button
+										variant="danger"
+										size="sm"
+										icon={LogOut}
+										className="whitespace-nowrap"
+										loading={loggingOutKey === accountKey}
+										disabled={loggingOutKey !== null}
+										onClick={() => void handleLogout(accountKey, label, null, null)}
+									>
+										退出登录
+									</Button>
+								</span>
+							</div>
+						);
+					})}
 				</div>
 
 				<div className="space-y-2 border-t border-[var(--border-divider)] px-4 py-3">
@@ -329,8 +395,13 @@ export function QuotaAccountSheet({
 							{refreshing ? "刷新中" : "刷新用量"}
 						</Button>
 						{canRelogin && (
-							<Button size="sm" icon={LogIn} onClick={() => setLoginOpen(true)}>
-								重新登录
+							<Button
+								size="sm"
+								icon={totalAccounts > 0 ? Plus : LogIn}
+								className="whitespace-nowrap"
+								onClick={() => setLoginOpen(true)}
+							>
+								{totalAccounts > 0 ? "添加账号" : "登录账号"}
 							</Button>
 						)}
 					</div>

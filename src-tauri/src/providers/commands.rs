@@ -667,6 +667,23 @@ pub async fn oauth_login_status() -> Result<Option<serde_json::Value>, String> {
     super::oauth::oauth_login_status().await
 }
 
+/// Log out of a provider account (soft-disable its stored credentials).
+#[tauri::command]
+pub async fn oauth_logout(
+    state: tauri::State<'_, crate::state::AppState>,
+    provider_id: String,
+    email: Option<String>,
+    account_id: Option<String>,
+) -> Result<u32, String> {
+    super::oauth::oauth_logout(
+        &state,
+        &provider_id,
+        email.as_deref(),
+        account_id.as_deref(),
+    )
+    .await
+}
+
 /// Query live subscription quota and coding plans via `omp usage --json`.
 #[tauri::command]
 pub async fn omp_usage_report(
