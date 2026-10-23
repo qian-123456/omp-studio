@@ -215,7 +215,7 @@ export function FileExplorer() {
 			{/* Top Tool Section: Actions Toolbar matching the reference screenshot */}
 			<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-2 py-1 bg-[var(--bg-active-fill)]">
 				<span className="text-[10.5px] font-semibold uppercase tracking-wider text-neutral-400">
-					资源管理器
+					文件
 				</span>
 
 				{/* Toolbar Icons matching the screenshot */}

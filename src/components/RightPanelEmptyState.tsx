@@ -37,7 +37,7 @@ export function RightPanelEmptyState({ tabBadges }: RightPanelEmptyStateProps) {
 	}[] = [
 		{
 			id: "explorer",
-			label: "资源管理器",
+			label: "文件",
 			icon: Folder,
 			iconColor: "text-amber-400",
 		},

@@ -64,7 +64,7 @@ type IconType = React.ComponentType<{ size?: number; className?: string }>;
 
 const PRIMARY_TABS: { id: RightTab; label: string; icon: IconType; iconColor: string }[] = [
 	{ id: "sidechat", label: "辅助对话", icon: MessageSquare, iconColor: "text-sky-400" },
-	{ id: "explorer", label: "资源管理器", icon: Folder, iconColor: "text-amber-400" },
+	{ id: "explorer", label: "文件", icon: Folder, iconColor: "text-amber-400" },
 	{ id: "git", label: "Git", icon: GitBranch, iconColor: "text-orange-400" },
 	{ id: "services", label: "服务", icon: Cpu, iconColor: "text-purple-400" },
 	{ id: "heatmap", label: "Token 用量", icon: Coins, iconColor: "text-amber-400" },
