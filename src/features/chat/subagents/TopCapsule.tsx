@@ -204,8 +204,8 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 									className="flex h-[18px] shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 text-[10.5px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 								>
 									{isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-									<span>{st.total}</span>
-									{st.running > 0 && <span className="text-[var(--status-info)]">· {st.running} 运行</span>}
+									{/* Collapsed: the whole subtree size. Expanded: direct children only — deeper rows carry their own chip. */}
+									<span>{isCollapsed ? `共 ${st.total} 个子代理` : `${n.children.length} 个下级`}</span>
 								</button>
 							)}
 							{ctx.perRowModel && model && (
