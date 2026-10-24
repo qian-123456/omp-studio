@@ -597,7 +597,7 @@ JS calls use camelCase argument keys (Tauri maps to snake_case).
 
 - `rpc_list_live() -> Vec<LiveSessionInfo>`
 - `rpc_omp_staleness() -> OmpStaleness` — stat-only (never runs omp): `fingerprint` identifies the binary a new spawn would exec (settings `omp_binary` resolved against the spawn PATH, canonicalized, + mtime + size; None if unresolvable); `stale_session_ids` = live sessions whose spawn-time fingerprint (stored on `SessionHandle`) differs. Unknown spawn fingerprint or None current → not stale. Detects `omp update` run outside the app; fix with `rpc_restart`.
-- `subagent_list(parent_file: String) -> Vec<SubagentSummary>` — scans the parent session's subagent dir; status inferred
+- `subagent_list(parent_file: String) -> Vec<SubagentSummary>` — scans the parent session's subagent dir recursively (nested agents live in `<dir>/<A>/<A>.<B>.jsonl`; id = file stem, `Parent.Child`; `subagent_transcript` resolves nested ids too); status inferred
   (output file → completed; fresh lock/jsonl ≤5 min → running; last stopReason error/aborted → failed/aborted)
 - `subagent_transcript(parent_file: String, agent_id: String, from_byte: Option<u64>) -> SubagentTranscript` — `parent_file`
   must be an existing `.jsonl` under `~/.omp/agent/sessions`; `agent_id` rejects separators/leading dot

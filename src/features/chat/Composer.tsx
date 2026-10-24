@@ -143,6 +143,7 @@ import { ThinkingLevelPicker, ThinkingLevelStrip } from "../../components/Thinki
 import { copiedMessageFor, errMsg } from "../../lib/dialogs";
 import { planMessagePaste } from "./messagePastePlan";
 import { toast } from "../../lib/toast";
+import { modelSwitchNotice } from "./modelSwitchNotice";
 import { isComposing } from "../../lib/hooks";
 import { formatWithAnnotations, useComposer } from "../../stores/composer";
 import { moveToMain, moveToSideChat } from "../sidechat/annotationRoute";
@@ -816,8 +817,10 @@ export function Composer({
 	const currentThinking = stateThinkingLevel ?? "auto";
 
 	const current = useMemo(
-		() => resolveCurrentModel(state.model ?? sessionMeta?.model, models),
-		[state.model, sessionMeta?.model, models],
+		// A read-only (terminal-driven) session has no live process of ours: its model
+		// is whatever the transcript last recorded, not a leftover get_state frame.
+		() => resolveCurrentModel(readonly ? (sessionMeta?.model ?? state.model) : (state.model ?? sessionMeta?.model), models),
+		[readonly, state.model, sessionMeta?.model, models],
 	);
 
 	// Live model metadata takes precedence; catalog capabilities are the fallback.
@@ -2508,9 +2511,12 @@ export function Composer({
 													if (!live?.alive) {
 														await ensureLive(sessionId);
 													}
+													const cur = useLive.getState().sessions[sessionId];
+													const turnRunning = !!cur && (cur.streaming || cur.streamingMessage !== null);
 													await rpcSend(sessionId, payload);
 													await rpcSend(sessionId, { type: "get_state" });
-													toast.success("已切换模型");
+													const notice = modelSwitchNotice(key, turnRunning);
+													toast[notice.kind](notice.text, notice.ttlMs);
 												} catch (err) {
 													if (!isResumeCancelled(err))
 														toast.error(`切换模型失败: ${errMsg(err)}`);

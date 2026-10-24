@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { subagentBucket, subagentCounts } from "./counts";
+import { countStatuses, subagentBucket, subagentCounts } from "./counts";
 
 describe("subagent counts", () => {
 	it("buckets subagent statuses correctly", () => {
@@ -25,5 +25,15 @@ describe("subagent counts", () => {
 				b: { label: "b", status: "completed" },
 			}),
 		).toEqual({ running: 0, queued: 1, done: 1, failed: 0 });
+	});
+
+	it("task card: all-pending rows count as queued (派发中), not running", () => {
+		expect(countStatuses(Array(6).fill("pending"))).toEqual({ running: 0, queued: 6, done: 0, failed: 0 });
+		expect(countStatuses(["pending", "running", "completed", "failed"])).toEqual({
+			running: 1,
+			queued: 1,
+			done: 1,
+			failed: 1,
+		});
 	});
 });

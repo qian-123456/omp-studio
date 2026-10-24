@@ -26,3 +26,10 @@ export function subagentCounts(
 	for (const s of Object.values(subagents)) c[subagentBucket(String(s.status ?? ""))] += 1;
 	return c;
 }
+
+/** Same bucketing for a plain list of statuses (inline task card). */
+export function countStatuses(statuses: readonly string[]): SubagentCounts {
+	const c: SubagentCounts = { running: 0, queued: 0, done: 0, failed: 0 };
+	for (const s of statuses) c[subagentBucket(s)] += 1;
+	return c;
+}

@@ -375,7 +375,7 @@ impl ScanCache {
     /// Drop entries under `dir` that were not seen in the latest listing.
     fn retain_seen(&mut self, dir: &Path, seen: &HashSet<PathBuf>) {
         self.map
-            .retain(|p, _| p.parent() != Some(dir) || seen.contains(p));
+            .retain(|p, _| !p.starts_with(dir) || seen.contains(p));
     }
 }
 
@@ -409,19 +409,15 @@ fn scan_cache() -> &'static Mutex<ScanCache> {
     CACHE.get_or_init(Mutex::default)
 }
 
-fn list_with(
-    parent_file: &str,
-    root: &Path,
-    cache: &mut ScanCache,
-) -> Result<Vec<SubagentSummary>, String> {
-    let parent = validate_parent(parent_file, root)?;
-    let dir = subagent_dir(&parent);
-    let mut out = Vec::new();
-    let Ok(entries) = fs::read_dir(&dir) else {
-        cache.retain_seen(&dir, &HashSet::new());
-        return Ok(out);
+/// Nested subagents (an agent that dispatches its own) live one directory
+/// deeper per generation: `<dir>/<A>/<A>.<B>.jsonl`, `<dir>/<A>/<A>.<B>/...`.
+const MAX_NEST_DEPTH: usize = 8;
+
+/// Every visible `*.jsonl` agent transcript under `dir`, nested ones included.
+fn collect_agent_files(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
     };
-    let mut seen = HashSet::new();
     for e in entries.flatten() {
         let path = e.path();
         let name = e.file_name();
@@ -430,12 +426,42 @@ fn list_with(
         if name.starts_with('.') {
             continue;
         }
-        if !e.file_type().is_ok_and(|t| t.is_file()) {
-            continue;
+        let Ok(kind) = e.file_type() else { continue };
+        if kind.is_dir() {
+            if depth < MAX_NEST_DEPTH {
+                collect_agent_files(&path, depth + 1, out);
+            }
+        } else if kind.is_file() && path.extension().and_then(|x| x.to_str()) == Some("jsonl") {
+            out.push(path);
         }
-        if path.extension().and_then(|x| x.to_str()) != Some("jsonl") {
-            continue;
-        }
+    }
+}
+
+/// Locate `<id>.jsonl` below `dir`: direct child first, then nested generations.
+fn find_agent_file(dir: &Path, id: &str) -> Option<PathBuf> {
+    let direct = dir.join(format!("{id}.jsonl"));
+    if direct.is_file() {
+        return Some(direct);
+    }
+    let mut files = Vec::new();
+    collect_agent_files(dir, 0, &mut files);
+    files
+        .into_iter()
+        .find(|p| p.file_stem().and_then(|s| s.to_str()) == Some(id))
+}
+
+fn list_with(
+    parent_file: &str,
+    root: &Path,
+    cache: &mut ScanCache,
+) -> Result<Vec<SubagentSummary>, String> {
+    let parent = validate_parent(parent_file, root)?;
+    let dir = subagent_dir(&parent);
+    let mut out = Vec::new();
+    let mut files = Vec::new();
+    collect_agent_files(&dir, 0, &mut files);
+    let mut seen = HashSet::new();
+    for path in files {
         let id = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -447,7 +473,8 @@ fn list_with(
         let Ok(scan) = cache.scan(&path) else {
             continue;
         };
-        let (status, output) = infer_status(&dir, &id, &scan.meta, mtime(&path));
+        let agent_dir = path.parent().unwrap_or(&dir);
+        let (status, output) = infer_status(agent_dir, &id, &scan.meta, mtime(&path));
         out.push(summary_from(&id, &path, scan, status, output));
         seen.insert(path);
     }
@@ -475,13 +502,13 @@ pub fn transcript_in(
     validate_agent_id(agent_id)?;
     let parent = validate_parent(parent_file, root)?;
     let dir = subagent_dir(&parent);
-    let (file, _lock, _out_md, _out_json) = agent_paths(&dir, agent_id);
-    if !file.is_file() {
+    let Some(file) = find_agent_file(&dir, agent_id) else {
         return Err(format!("subagent session not found: {agent_id}"));
-    }
+    };
+    let agent_dir = file.parent().unwrap_or(&dir).to_path_buf();
     let scan = scan_agent(&file, from_byte)
         .map_err(|e| format!("read subagent transcript {agent_id}: {e}"))?;
-    let (status, output_path) = infer_status(&dir, agent_id, &scan.meta, mtime(&file));
+    let (status, output_path) = infer_status(&agent_dir, agent_id, &scan.meta, mtime(&file));
     let summary = summary_from(agent_id, &file, &scan, status, output_path.clone());
     // Prefer the output artifact; fall back to the last assistant text.
     let output = output_path
@@ -676,6 +703,37 @@ mod tests {
         let scan_ab = scan_agent(&subdir.join("Ab.jsonl"), 0).unwrap();
         let (status, _) = infer_status(&subdir, "Ab", &scan_ab.meta, Some(SystemTime::UNIX_EPOCH));
         assert_eq!(status, SubagentStatus::Aborted);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// An agent that dispatches its own keeps the children one directory down
+    /// (`<parent>/<A>/<A>.<B>.jsonl`): they must be listed and readable too.
+    #[test]
+    fn nested_subagents_are_listed_and_readable() {
+        let (root, parent, subdir) = setup();
+        fs::write(subdir.join("A.jsonl"), AGENT).unwrap();
+        fs::create_dir_all(subdir.join("A").join("A.B")).unwrap();
+        fs::write(subdir.join("A").join("A.B.jsonl"), AGENT).unwrap();
+        fs::write(subdir.join("A").join(".A.B.jsonl.lock.os"), "").unwrap();
+        fs::write(subdir.join("A").join("A.B").join("A.B.C.jsonl"), AGENT).unwrap();
+        fs::write(subdir.join("A").join("A.B").join("A.B.C.md"), "out").unwrap();
+        let p = parent.to_str().unwrap();
+
+        let list = list_in(p, &root).unwrap();
+        let by: std::collections::HashMap<_, _> = list.iter().map(|s| (s.id.as_str(), s)).collect();
+        assert_eq!(list.len(), 3);
+        assert_eq!(by["A.B"].status, SubagentStatus::Running);
+        assert_eq!(by["A.B.C"].status, SubagentStatus::Completed);
+        assert!(by["A.B.C"]
+            .output_path
+            .as_deref()
+            .unwrap()
+            .ends_with("A.B.C.md"));
+
+        let t = transcript_in(p, "A.B.C", 0, &root).unwrap();
+        assert_eq!(t.output.as_deref(), Some("out"));
+        assert_eq!(t.summary.id, "A.B.C");
+        assert!(transcript_in(p, "A.Nope", 0, &root).is_err());
         fs::remove_dir_all(&root).ok();
     }
 

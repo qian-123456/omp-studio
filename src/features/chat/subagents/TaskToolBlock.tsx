@@ -15,6 +15,7 @@ import { ActivityHeader } from "../ActivityHeader";
 import { asTaskDetails, mergeAgents, type AgentRow } from "./merge";
 import { SubagentSheet } from "./SubagentSheet";
 import type { AgentProgress, SubagentStatus } from "./types";
+import { countStatuses } from "./counts";
 import {
 	formatDurationCompact,
 	formatShortModel,
@@ -247,19 +248,17 @@ export function TaskToolBlock({
 		[args, taskDetails, fileList, liveSubagents, toolCallId],
 	);
 
-	const running = rows.filter(
-		(r) => r.status === "running" || r.status === "pending",
-	).length;
-	const done = rows.filter((r) => r.status === "completed").length;
-	const failed = rows.filter(
-		(r) => r.status === "failed" || r.status === "aborted",
-	).length;
+	const counts = countStatuses(rows.map((r) => r.status));
+	const running = counts.running;
+	const queued = counts.queued;
+	const done = counts.done;
+	const failed = counts.failed;
 	const total = rows.length;
 
 	const isActive = status === "running" || status === "called";
 	const header = isActive
 		? total > 0
-			? `子代理运行中 · ${done}/${total} 完成`
+			? `${running === 0 && queued > 0 ? "子代理派发中" : "子代理运行中"} · ${done}/${total} 完成`
 			: "派发子代理"
 		: `派发 ${total} 个子代理`;
 
@@ -280,9 +279,14 @@ export function TaskToolBlock({
 				open={open}
 				onToggle={() => setOpen(!open)}
 				accessory={
-					isActive && running > 0 ? (
-						<span className="shrink-0 text-[12px] text-[var(--text-40)]">
-							{running} 运行中
+					isActive && (running > 0 || queued > 0) ? (
+						<span className="shrink-0 whitespace-nowrap text-[12px] text-[var(--text-40)]">
+							{[
+								running > 0 ? `${running} 运行中` : "",
+								queued > 0 ? `${queued} 派发中` : "",
+							]
+								.filter(Boolean)
+								.join(" · ")}
 						</span>
 					) : !isActive && failed > 0 ? (
 						<span className="shrink-0 text-[12px] text-[var(--status-error)]">
