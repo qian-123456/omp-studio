@@ -10,7 +10,7 @@ User decisions already made (do not re-ask):
 - Session row shows: status dot + name + second line `相对时间 · 分支` (+ dirty count, result badge).
 - Markdown: preview + annotate-and-send-back **and** manual CodeMirror editing.
 - Local git only; no remote pushes.
-- UI language: Simplified Chinese labels. Code, comments, commit messages: English.
+- UI language: Multilingual support via lightweight i18n (`src/lib/i18n/`, default `zh-CN`, `en-US` supported; configurable in Settings ▸ Appearance). Code, comments, commit messages: English.
 
 ## 1. Stack
 
@@ -1313,3 +1313,12 @@ All floating and layered surfaces throughout the desktop app MUST adhere to the 
 - **Stacking tiers (`Z_LAYER`)**: full table, nesting rule and "how to add an overlay" in `docs/LAYERS.md`. Order low→high: local (`Z_LOCAL` 0–40, component-internal only) < `pill` 50 (scroll pills) < `drawer` 100 (`SkillsPage` detail drawer) < `popover` 200 (`PerfPopover`, `SessionStatsPopover`, ideas panel) < `menu` 300 (context/action menus, `ModelSelect`) < `modal` 400 (`confirmDialog`, `NewSessionDialog`, settings, provider dialogs) < `hovercard` 500 (`SessionHoverCard`, heatmap tooltips) < `lightbox` 600 (`ImagePreviewModal`; clicks/Escape inside it do not dismiss the spawning `FloatingLayer`) < `toast` 700. Mirrored as `--z-*` CSS vars (`index.css`, usable as `z-(--z-modal)`); never ad-hoc integers (guard: `src/lib/zLayerGuard.test.ts`). A `FloatingLayer` anchored inside another floating surface sits at `max(own tier, parent z + 1)`, so pickers/menus opened inside a dialog render above it.
 - **No `position: fixed` inside `.vibrancy-chrome`**: Surfaces styled with `.vibrancy-chrome` apply `backdrop-filter: blur(20px) saturate(190%)`. By CSS specification, `backdrop-filter` creates a new containing block for `position: fixed` elements and a local stacking context, trapping any descendant with `position: fixed` or `z-index` and causing it to be clipped or painted over by sibling layout columns. Floating surfaces must always portal to `document.body` via `FloatingLayer`.
 - **Asset protocol & image preview**: Tauri asset protocol is enabled (`features = ["macos-private-api", "protocol-asset"]` in `Cargo.toml`, scopes `["$HOME/.omp/agent/blobs/**", "$APPCACHE/ompws-clip/**", "$HOME/.omp-workspace/images/**"]` in `tauri.conf.json`). Attached images (`ImageAttachment`) are rendered via `ImageChips.tsx`, and click-to-preview (`ImagePreviewModal`) is portaled at `Z_LAYER.lightbox`.
+
+## 13. Internationalization (i18n)
+
+The frontend workbench supports multiple display languages with zero external runtime bloat:
+
+- **Core module**: `src/lib/i18n/` defines `Locale` (`"zh-CN" | "en-US"`), strict typed dictionary schema (`TranslationSchema`), fast flattened dot-path key access ($O(1)$ lookup), parameter interpolation (`{name}` tokens), and automatic fallback to `zh-CN` followed by the raw key.
+- **Reactive store**: `src/stores/language.ts` (`useLanguageStore`, `useT()`) manages current locale state, persists choice in `localStorage["ompws:locale"]`, and detects browser language on first launch.
+- **Settings integration**: Users switch display languages in Settings ▸ Appearance (文字与布局 / Typography & Layout) via a `Segmented` control; changes take effect immediately across all subscribed components without page reload.
+- **Parity guard**: `src/lib/i18n/i18n.test.ts` validates 100% key parity between `zh-CN` and `en-US` dictionaries.

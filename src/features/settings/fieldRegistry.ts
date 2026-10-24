@@ -94,6 +94,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 		keywords: ["agents.md", "agents", "规则", "指令", "rules"],
 	},
 
+	{
+		id: "language",
+		sectionId: "appearance",
+		label: "界面语言",
+		description: "切换应用的显示语言（简体中文或 English）",
+		keywords: ["language", "语言", "i18n", "locale", "英文", "中文", "english", "chinese"],
+	},
 	// 外观
 	{
 		id: "theme",

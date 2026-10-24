@@ -4,6 +4,7 @@ import { isEscapeClaimed } from "../../lib/escapeClaim";
 import { isComposing } from "../../lib/hooks";
 import { hideAllScrollPills } from "../../lib/scrollPills";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { nestedModalOpen, useSettingsEscape } from "./nestedModal";
 import { SettingsPage } from "./SettingsPage";
 
@@ -18,6 +19,7 @@ export function SettingsOverlay() {
 }
 
 function SettingsOverlayInner() {
+	const { t } = useT();
 	const closeSettings = useUi((s) => s.closeSettings);
 	const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -105,14 +107,14 @@ function SettingsOverlayInner() {
 				<div className="flex h-11 shrink-0 items-center justify-between border-b border-[var(--border-divider)] px-4">
 					<div className="flex items-center gap-2 text-xs font-semibold text-neutral-200 tracking-[-0.01em]">
 						<SettingsIcon className="h-4 w-4 text-amber-400" />
-						<span id="settings-dialog-title">系统设置</span>
+						<span id="settings-dialog-title">{t("settings.title")}</span>
 					</div>
 					<button
 						type="button"
 						onClick={closeSettings}
 						className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95"
-						title="关闭设置 (Esc)"
-						aria-label="关闭设置"
+						title={`${t("common.close")} (Esc)`}
+						aria-label={t("common.close")}
 					>
 						<X className="h-4 w-4" />
 					</button>
