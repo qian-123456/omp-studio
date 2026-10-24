@@ -11,6 +11,8 @@ import { FIELD_REGISTRY, findMatchingField } from "./fieldRegistry";
 import {
 	NAV_GROUPS,
 	buildSearchIndex,
+	navGroupTitle,
+	navItemLabel,
 	navItem,
 	searchSection,
 	type NavItem,
@@ -322,7 +324,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 						navGroupsMatched.map((group) => (
 							<div key={group.title} className="space-y-0.5">
 								<div className="px-2.5 pb-0.5 pt-1 text-[11px] font-semibold text-neutral-500">
-									{group.title}
+									{navGroupTitle(t, group.title)}
 								</div>
 								{group.items.map((sec) => {
 									const Icon = sec.icon;
@@ -348,7 +350,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 										>
 											<Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? "text-[var(--accent)]" : ""}`} />
 											<span className="min-w-0 flex-1 text-left">
-												<span className="block truncate">{sec.label}</span>
+												<span className="block truncate">{navItemLabel(t, sec)}</span>
 												{sec.hint && (
 													<span className="block truncate text-[11px] font-normal text-neutral-500">
 														{sec.hint}

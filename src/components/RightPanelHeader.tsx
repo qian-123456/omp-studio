@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useT } from "../stores/language";
 import { useDrawerStore } from "../features/terminal/drawerStore";
 import {
 	STATUS_DOT,
@@ -90,6 +91,12 @@ interface HeaderTab {
 }
 
 export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps) {
+	const { t } = useT();
+	const tabLabel = (id: RightTab): string => {
+		const key = `rightPanel.${id}`;
+		const v = t(key);
+		return v === key ? (PRIMARY_TABS.find((p) => p.id === id)?.label ?? id) : v;
+	};
 	const openRightTabs = useUi((s) => s.openRightTabs);
 	const setRightTab = useUi((s) => s.setRightTab);
 	const closeRightTab = useUi((s) => s.closeRightTab);
@@ -213,8 +220,8 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 		return [
 			{
 				key: id,
-				label: info.label,
-				title: info.label,
+				label: tabLabel(info.id),
+				title: tabLabel(info.id),
 				lead: <Icon size={13} className={clsx(info.iconColor, "shrink-0")} />,
 				badge: tabBadges[id] ?? 0,
 				active: id === activeTab,
@@ -531,7 +538,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 							>
 								<div className="flex items-center gap-2.5">
 									<Icon size={14} className={tab.iconColor} />
-									<span>{tab.id === "sidechat" ? "新辅助对话" : tab.label}</span>
+									<span>{tab.id === "sidechat" ? "新辅助对话" : tabLabel(tab.id)}</span>
 								</div>
 								<div className="flex items-center gap-1.5">
 									{badge > 0 && (

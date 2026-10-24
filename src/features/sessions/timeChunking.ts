@@ -1,4 +1,6 @@
 import type { SessionMeta } from "../../lib/contracts";
+import { t } from "../../lib/i18n";
+import { useLanguageStore } from "../../stores/language";
 
 export type TimeChunkKey = "today" | "yesterday" | "last7Days" | "earlier";
 
@@ -21,6 +23,7 @@ export function chunkSessionsByTime(
 	sessions: readonly SessionMeta[],
 	now: Date = new Date(),
 ): TimeChunk[] {
+	const locale = useLanguageStore.getState().locale;
 	if (sessions.length === 0) return [];
 
 	const startOfToday = new Date(
@@ -61,10 +64,10 @@ export function chunkSessionsByTime(
 	}
 
 	const defs: Array<{ key: TimeChunkKey; label: string }> = [
-		{ key: "today", label: "今天" },
-		{ key: "yesterday", label: "昨天" },
-		{ key: "last7Days", label: "前 7 天" },
-		{ key: "earlier", label: "更早" },
+		{ key: "today", label: t("time.today", undefined, locale) },
+		{ key: "yesterday", label: t("time.yesterday", undefined, locale) },
+		{ key: "last7Days", label: t("time.last7Days", undefined, locale) },
+		{ key: "earlier", label: t("time.earlier", undefined, locale) },
 	];
 
 	const out: TimeChunk[] = [];

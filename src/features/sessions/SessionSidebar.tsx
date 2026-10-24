@@ -75,6 +75,7 @@ import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
+import { useT } from "../../stores/language";
 import { isBlankDraft } from "../../lib/createSession";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
@@ -90,8 +91,6 @@ import { chunkSessionsByTime } from "./timeChunking";
 import {
 	type BranchSubgroup,
 	type GroupedSessionsResult,
-	DELETED_LABEL,
-	UNASSIGNED_LABEL,
 	groupSessions,
 	inferWorktreeName,
 	needsAttention,
@@ -245,6 +244,7 @@ function MenuContainer({
 
 
 export function SessionSidebar() {
+	const { t } = useT();
 	const sessions = useSessions((s) => s.sessions);
 	const workspaces = useSessions((s) => s.workspaces);
 	const hasLoaded = useSessions((s) => s.hasLoaded);
@@ -1075,7 +1075,7 @@ export function SessionSidebar() {
 			type="button"
 			onClick={() => useSearchDialog.getState().openDialog()}
 			aria-label="搜索"
-			title="搜索会话与聊天内容 (⌘F)"
+			title={`${t("sidebar.searchSessions")} (⌘F)`}
 			className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 		>
 			<Search size={16} strokeWidth={1.5} />
@@ -1148,14 +1148,14 @@ export function SessionSidebar() {
 							type="button"
 							onClick={() => void startNewSession()}
 							className="flex min-w-0 flex-1 items-center gap-3 self-stretch text-left focus-visible:outline-none focus-visible:underline"
-							title="新建会话 (⌘N)"
+							title={`${t("sidebar.newSession")} (⌘N)`}
 						>
 							<SquarePen
 								size={17}
 								strokeWidth={1.75}
 								className="shrink-0 text-neutral-300 transition-colors group-hover:text-neutral-100"
 							/>
-							<span className="truncate">新建会话</span>
+							<span className="truncate">{t("sidebar.newSession")}</span>
 						</button>
 						<span className="shrink-0 select-none font-mono text-[11px] text-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 @max-[220px]:hidden">
 							⌘N
@@ -1542,7 +1542,7 @@ export function SessionSidebar() {
 																	</div>
 																) : (
 																	<div className="ml-[22px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
-																		暂无会话
+																		{t("sidebar.emptyNoSessions")}
 																	</div>
 																)}
 															</div>
@@ -1661,7 +1661,7 @@ export function SessionSidebar() {
 										)}
 										{noProjectSplit.ungrouped.length === 0 && modeGroups.length === 0 && (
 											<div className="ml-[8px] px-2 py-1 text-[11px] text-[var(--text-dim)] italic">
-												暂无会话
+												{t("sidebar.emptyNoSessions")}
 											</div>
 										)}
 									</div>
@@ -1674,12 +1674,12 @@ export function SessionSidebar() {
 						{/* 2. 项目 section header: 「添加工作区目录…」 lands in the CURRENT space */}
 						<div className="mx-1 mt-1 flex items-center justify-between rounded-md px-2 py-1">
 							<span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)]">
-								项目
+								{t("sidebar.projects")}
 							</span>
 							<button
 								type="button"
 								onClick={() => void handleAddWorkspace()}
-								title="添加工作区目录…"
+								title={t("sidebar.addWorkspaceDir")}
 								className="rounded p-1 text-[var(--text-dim)] opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] shrink-0 transition-all duration-150 ease-out focus:opacity-100 focus-visible:opacity-100"
 							>
 								<Plus size={13} />
@@ -1758,7 +1758,7 @@ export function SessionSidebar() {
 												<div className="pb-1" data-group-key={wg.workspace.id}>
 													{isTrulyEmpty ? (
 														<div className="px-6 py-2 text-[11px] text-[var(--text-dim)] italic">
-															暂无会话
+															{t("sidebar.emptyNoSessions")}
 														</div>
 													) : (
 														<>
@@ -1864,7 +1864,7 @@ export function SessionSidebar() {
 									<div className="mt-0.5">
 										<GroupHeader
 											groupKey="__unassigned"
-											title={UNASSIGNED_LABEL}
+											title={t("sidebar.unassignedWorkspaces")}
 											icon={
 												<FolderSearch
 													size={14}
@@ -1983,14 +1983,14 @@ export function SessionSidebar() {
 														type="button"
 														onClick={() =>
 															void batchArchiveSessions(
-																UNASSIGNED_LABEL,
+																t("sidebar.unassignedWorkspaces"),
 																grouped.unassigned,
 															)
 														}
 														className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-amber-300 hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 													>
 														<Archive size={11} className="shrink-0" />
-														<span className="whitespace-nowrap">全部归档 ({grouped.unassigned.length})</span>
+														<span className="whitespace-nowrap">{t("sidebar.archiveAll")} ({grouped.unassigned.length})</span>
 													</button>
 													<span className="mx-1.5 text-[var(--text-dim)] opacity-40">｜</span>
 													<button
@@ -2001,7 +2001,7 @@ export function SessionSidebar() {
 														className="flex items-center gap-1 rounded-md px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
 													>
 														<FolderInput size={11} className="shrink-0" />
-														<span className="whitespace-nowrap">归入工作区</span>
+														<span className="whitespace-nowrap">{t("sidebar.assignToWorkspace")}</span>
 													</button>
 													<span className="h-px flex-1 bg-[var(--border-divider)] opacity-40" />
 												</div>
@@ -2016,7 +2016,7 @@ export function SessionSidebar() {
 									<div className="mt-0.5 opacity-60 hover:opacity-100 transition-opacity">
 										<GroupHeader
 											groupKey="__deleted"
-											title={DELETED_LABEL}
+											title={t("sidebar.cleanedWorktrees")}
 											icon={
 												<FolderGit2
 													size={14}
@@ -2034,7 +2034,7 @@ export function SessionSidebar() {
 													onClick={(e) => {
 														e.stopPropagation();
 														void batchArchiveSessions(
-															DELETED_LABEL,
+															t("sidebar.cleanedWorktrees"),
 															grouped.deletedSessions,
 														);
 													}}
@@ -2692,6 +2692,7 @@ function DeletedWorktreesFolder({
 	onCreateSession,
 	creatingKey,
 }: DeletedWorktreesFolderProps) {
+	const { t } = useT();
 	if (subgroups.length === 0) return null;
 	const allDeleted = subgroups.flatMap((sg) => sg.sessions);
 	const DELETED_WT_LIMIT = 5;
@@ -2708,7 +2709,7 @@ function DeletedWorktreesFolder({
 		<div className="mt-0.5 ml-[14px] opacity-60 hover:opacity-100 transition-opacity">
 			<GroupHeader
 				groupKey={folderKey}
-				title={`${DELETED_LABEL} (${subgroups.length})`}
+				title={`${t("sidebar.cleanedWorktrees")} (${subgroups.length})`}
 				icon={
 					<FolderGit2
 						size={12}
@@ -2723,7 +2724,7 @@ function DeletedWorktreesFolder({
 						type="button"
 						onClick={(e) => {
 							e.stopPropagation();
-							void onBatchArchive(DELETED_LABEL, allDeleted);
+							void onBatchArchive(t("sidebar.cleanedWorktrees"), allDeleted);
 						}}
 						className="mr-1 shrink-0 rounded p-0.5 text-[var(--text-dim)] opacity-50 hover:opacity-100 transition-all hover:bg-neutral-700/60 hover:text-amber-300 focus-visible:opacity-100"
 						title="一键归档全部已清理工作树的会话"

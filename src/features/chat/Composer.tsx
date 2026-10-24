@@ -199,6 +199,7 @@ import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
 import { canStartOnType, useStartOnType } from "./useStartOnType";
 import { useTypeToFocus } from "./useTypeToFocus";
+import { useT } from "../../stores/language";
 import { useRestoreComposerFocus } from "./useRestoreComposerFocus";
 import { mergeFailedDraft, remainingDraft, syncAttachmentTokens } from "./composerRelease";
 import { formatTokens } from "./sessionStats";
@@ -277,6 +278,7 @@ export function Composer({
 	readonly?: boolean;
 	compact?: boolean;
 }) {
+	const { t } = useT();
 	const [busy, setBusy] = useState(false);
 	const [menuIndex, setMenuIndex] = useState(0);
 	const [menuDismissed, setMenuDismissed] = useState(false);
@@ -2371,12 +2373,12 @@ export function Composer({
 						rows={1}
 						placeholder={
 							readonly
-								? "外部终端正在运行 · 只读观察，接管会话后才能在这里发消息"
+								? t("composer.placeholderReadonly")
 								: legacyChip && !text
 									? chipHintText(chip)
 									: streaming
-										? "输入后续消息…"
-										: "输入消息，/ 命令，@ 引用文件"
+										? t("composer.placeholderStreaming")
+										: t("composer.placeholderDefault")
 						}
 						style={{ outline: "none", boxShadow: "none", textIndent: legacyChip ? chipIndent : 0 }}
 						className={clsx(
@@ -2644,11 +2646,13 @@ export function Composer({
 										}
 									}}
 									disabled={busy || (!hasPayload && !canResume)}
-									aria-label={resumeMode ? "恢复中断的回合" : "发送消息"}
+									aria-label={resumeMode ? t("composer.resume") : t("composer.send")}
 									title={
 										resumeMode
-											? "恢复中断的回合（发送 Continue）"
-											: `发送消息 (${sendShortcut === "mod-enter" ? "⌘/Ctrl+Enter" : "Enter"})`
+											? t("composer.resume")
+											: t("composer.sendShortcut", {
+													shortcut: sendShortcut === "mod-enter" ? "⌘/Ctrl+Enter" : "Enter",
+												})
 									}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150",

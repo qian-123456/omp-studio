@@ -1,7 +1,7 @@
-/** Time-of-day greeting shown as the headline of the new-task screens. */
-export function greetingFor(hour: number): string {
-	if (hour >= 5 && hour < 12) return "早上好，今天从哪里开始？";
-	if (hour >= 12 && hour < 18) return "下午好，这一程想让我帮你做什么？";
-	if (hour >= 18 && hour < 23) return "晚上好，夜色安静，正适合专心做点事。";
-	return "还没睡？我陪你把它做完。";
+/** i18n key of the time-of-day greeting shown as the headline of the new-task screens. */
+export function greetingKeyFor(hour: number): string {
+	if (hour >= 5 && hour < 12) return "hero.greetingMorning";
+	if (hour >= 12 && hour < 18) return "hero.greetingAfternoon";
+	if (hour >= 18 && hour < 23) return "hero.greetingEvening";
+	return "hero.greetingNight";
 }

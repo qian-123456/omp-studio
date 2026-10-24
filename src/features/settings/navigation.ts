@@ -119,6 +119,49 @@ export const NAV_GROUPS: NavGroup[] = [
 
 const NAV_ITEMS: ReadonlyMap<string, NavItem> = new Map(NAV_GROUPS.flatMap((g) => g.items).map((i) => [i.id, i]));
 
+type Translate = (key: string) => string;
+
+const GROUP_KEYS: Record<string, string> = {
+	"常规": "generalGroup",
+	"模型": "modelsGroup",
+	"会话": "sessionsGroup",
+	"Agent 能力": "agentCapabilitiesGroup",
+	"连接": "connectionsGroup",
+	"高级": "advancedGroup",
+	"帮助": "helpGroup",
+};
+
+const ITEM_KEYS: Record<string, string> = {
+	"omp-roles": "models",
+	"helper-models": "helperModels",
+	"model-fallback": "modelFallback",
+	"context-window": "contextWindow",
+	"agents-md": "agentsMd",
+	"prompt-composition": "promptComposition",
+};
+
+function translated(t: Translate, key: string, fallback: string): string {
+	const full = `settings.nav.${key}`;
+	const v = t(full);
+	return v === full ? fallback : v;
+}
+
+/** Localized group title; falls back to the Chinese source title. */
+export function navGroupTitle(t: Translate, title: string): string {
+	const key = GROUP_KEYS[title];
+	return key ? translated(t, key, title) : title;
+}
+
+/** Localized nav label for an item; falls back to the Chinese source label. */
+export function navItemLabel(t: Translate, item: NavItem): string {
+	return translated(t, ITEM_KEYS[item.id] ?? item.id, item.label);
+}
+
+/** Localized nav lead for an item; falls back to the Chinese source lead. */
+export function navItemLead(t: Translate, item: NavItem): string {
+	return translated(t, `${ITEM_KEYS[item.id] ?? item.id}Lead`, item.lead);
+}
+
 /** Nav entry (label / lead) for a section id. */
 export function navItem(id: string): NavItem | undefined {
 	return NAV_ITEMS.get(id);

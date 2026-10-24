@@ -86,11 +86,11 @@ export const CENTER_WITHOUT_RIGHT_PANEL: ReadonlySet<CenterView> = new Set([
 ]);
 
 /** Header title for non-session center views. */
-const CENTER_TITLE: Partial<Record<CenterView, string>> = {
-	doc: "文档",
-	inbox: "收件箱",
-	schedules: "定时任务",
-	skills: "Skills 管理",
+const CENTER_TITLE_KEY: Partial<Record<CenterView, string>> = {
+	doc: "topbar.doc",
+	inbox: "topbar.inbox",
+	schedules: "topbar.schedules",
+	skills: "topbar.skills",
 };
 
 export interface CenterHeaderProps {
@@ -378,7 +378,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 							type="button"
 							onClick={toggleSidebar}
 							className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
-							title="展开左侧栏 (⌘B)"
+							title={`${t("topbar.expandSidebar")} (⌘B)`}
 						>
 							<PanelLeftOpen size={16} strokeWidth={1.5} />
 						</button>
@@ -472,9 +472,9 @@ export const CenterHeader = React.memo(function CenterHeader({
 									<span className="shrink-0 text-neutral-600">/</span>
 								</>
 							)}
-							{CENTER_TITLE[effectiveCenterView] && (
+							{CENTER_TITLE_KEY[effectiveCenterView] && (
 								<span className="text-[13px] font-medium text-neutral-300 shrink-0">
-									{CENTER_TITLE[effectiveCenterView]}
+									{t(CENTER_TITLE_KEY[effectiveCenterView] as string)}
 								</span>
 							)}
 						</div>
@@ -576,8 +576,8 @@ export const CenterHeader = React.memo(function CenterHeader({
 						<button
 							type="button"
 							onClick={handleToggleTerminal}
-							aria-label="终端"
-							title={`终端 (${isMac ? "⌘" : "Ctrl+"}\`)`}
+							aria-label={t("topbar.terminal")}
+							title={`${t("topbar.terminal")} (${isMac ? "⌘" : "Ctrl+"}\`)`}
 							className={clsx(
 								"relative flex h-7 w-7 items-center justify-center rounded-lg active:scale-95 transition-all",
 								isTerminalOpen
@@ -595,7 +595,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 								type="button"
 								onClick={toggleRight}
 								className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-95 transition-all"
-								title="展开右侧面板 (⌘J)"
+								title={`${t("topbar.expandRightPanel")} (⌘J)`}
 							>
 								<PanelRightOpen size={15} />
 							</button>
