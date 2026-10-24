@@ -47,6 +47,24 @@ full-reload it; then confirm the app renders. Do not let several agents edit
 files that import each other while the live app is watching — land the shared
 module first.
 
+## Git worktrees (naming & isolation)
+
+- **Distinctive names and paths.** When creating a new worktree, always use a
+  clear, task-specific path and branch name (e.g. `.worktrees/<feature-or-fix-slug>`
+  with branch `omp/<feature-or-fix-slug>`). Never use vague or generic names like
+  `temp`, `test`, `dev`, or `worktree-1`.
+- **Runtime & port isolation.** When running dev instances across multiple
+  worktrees simultaneously, distinguish them explicitly:
+  - Ensure dev servers run on distinct ports (e.g. `pnpm dev:preview` with an
+    isolated port and data directory) to prevent port collisions or crosstalk.
+  - Verify that the app window being checked matches the target worktree before
+    concluding smoke tests or UI validations.
+- **Strict stage isolation.** Stage only files modified for the current task
+  (`git add <paths>`), never `git add -A`, to avoid absorbing concurrent changes
+  from other sessions sharing the repo.
+- **Timely cleanup.** Remove finished or merged worktrees (`git worktree remove`)
+  promptly to keep the worktree list clean and avoid stale branches.
+
 ## Style
 
 - UI text: Simplified Chinese. Code, comments, commit messages: English.
