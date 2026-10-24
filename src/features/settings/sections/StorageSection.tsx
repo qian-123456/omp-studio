@@ -184,23 +184,25 @@ export function StorageSection() {
 			<SectionJumpBar />
 			<SettingsCard jump={t("settingsSectionsStorage.storage.jumpImages")} title={t("settingsSectionsStorage.storage.titleImages")} description={t("settingsSectionsStorage.storage.descImages")}>
 				<SettingRow
+					label={t("settingsSectionsStorage.storage.imagesOverviewLabel")}
+					description={t("settingsSectionsStorage.storage.imagesOverviewDesc")}
+					hint={overview ? t("settingsSectionsStorage.storage.imagesOverviewHint", { count: overview.images.count, bytes: formatBytes(overview.images.bytes) }) : t("settingsSectionsStorage.storage.loading")}
+				/>
+				<SettingRow
 					label={t("settingsSectionsStorage.storage.unusedImagesLabel")}
 					description={t("settingsSectionsStorage.storage.unusedImagesDesc")}
 					hint={
-						overview && cleanable
-							? t(cleanable.count > 0 ? "settingsSectionsStorage.storage.imagesHintCleanable" : "settingsSectionsStorage.storage.imagesHintNone", {
-									count: overview.images.count,
-									bytes: formatBytes(overview.images.bytes),
-									cleanCount: cleanable.count,
-									cleanBytes: formatBytes(cleanable.bytes),
-								})
+						cleanable
+							? cleanable.count > 0
+								? t("settingsSectionsStorage.storage.imagesHintCleanable", { cleanCount: cleanable.count, cleanBytes: formatBytes(cleanable.bytes) })
+								: t("settingsSectionsStorage.storage.imagesHintNone")
 							: t("settingsSectionsStorage.storage.loading")
 					}
 					control={
 						<Button
 							icon={Trash2}
 							loading={busy === "images"}
-							disabled={busy !== null || !overview || !cleanable || cleanable.count === 0}
+							disabled={busy !== null || !cleanable || cleanable.count === 0}
 							onClick={() => void cleanImages()}
 						>
 							{t("settingsSectionsStorage.storage.cleanImagesBtn")}
