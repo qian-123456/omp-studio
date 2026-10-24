@@ -948,6 +948,7 @@ containment, and sessions in deleted worktree dirs group under a default-collaps
   Must handle 35+ buckets and multi-MB files fast (<1s cold on this machine).
 - Title: `session_meta.custom_name` > title slot > latest `title_change` > first user text (≤40 chars) > "未命名".
 - Display name (`src/lib/sessionName.ts`): the resolved title is shown verbatim, including OMP's `#<n>-<project-slug>` prefix; only the legacy `分支：` fork prefix is dropped, and an empty title shows the draft label.
+- Display name (`src/lib/sessionName.ts`): the resolved title is shown verbatim, including OMP's `#<n>-<project-slug>` prefix; only the legacy `分支：` fork prefix is dropped, and an empty title shows the draft label.
 - Label: `#<n>` from title regex `^#(\d+)`; else `#L<seq>` from `session_meta.seq`. Side chats keep the stored label.
 - Workspace membership (per space): explicit `session_meta.workspace_id` (ignored when it belongs to another mode) > registered
   workspace of the session's mode whose path equals/contains `repo_root ?? cwd` > that mode's Global if cwd under
