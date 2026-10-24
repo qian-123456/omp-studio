@@ -8,6 +8,7 @@ import { backlogBuildPrompt, backlogUpdate, dispatchPrompt, listWorkspaces, rpcS
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useT, tNow } from "../../stores/language";
 import { useSidebarStore } from "../sessions/sidebarStore";
 import { useBacklog } from "./backlogStore";
 import { projectDisplayName, projectRoot, sessionOptionLabel, splitByProject, splitSent } from "./ideasLogic";
@@ -18,7 +19,7 @@ type Step = "choose" | "confirm";
 
 function groupName(group: BacklogItem[]): string {
 	const root = projectRoot(group[0]?.projectDir);
-	return root ? projectDisplayName(root) : "未关联项目";
+	return root ? projectDisplayName(root) : tNow("backlog.unassociatedProject");
 }
 
 /** 「派给 Agent」: choose a target session, confirm, then send; keeps choices and shows full errors on failure. */
@@ -31,6 +32,7 @@ export function DispatchDialog({
 	currentProject: string | null;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const sessions = useSessions((s) => s.sessions);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const selectSession = useUi((s) => s.selectSession);
@@ -57,7 +59,7 @@ export function DispatchDialog({
 		const groupKey = group[0]?.id ?? "";
 		let sessionId: string;
 		if (target === "existing") {
-			if (!existingId) throw new Error("请选择目标会话");
+			if (!existingId) throw new Error(t("backlog.pleaseSelectSession"));
 			sessionId = existingId;
 		} else {
 			const known = createdSession.current.get(groupKey);
@@ -70,7 +72,7 @@ export function DispatchDialog({
 						? (await listWorkspaces()).find((w) => w.kind === "global")?.path
 						: undefined;
 				const cwd = group[0]?.projectDir ?? currentProject ?? globalPath;
-				if (!cwd) throw new Error("当前模式没有可用的项目目录，请先添加项目");
+				if (!cwd) throw new Error(t("backlog.noProjectDirInMode"));
 				const mode = globalPath && cwd === globalPath ? "chat" : activeMode === "chat" ? "code" : activeMode;
 				sessionId = (await rpcStart({ cwd, mode })).sessionId;
 				createdSession.current.set(groupKey, sessionId);
@@ -103,7 +105,7 @@ export function DispatchDialog({
 		await useBacklog.getState().load().catch(() => {});
 		setBusy(false);
 		if (Object.keys(nextErrors).length === 0) {
-			toast.success("已派给 Agent");
+			toast.success(t("backlog.dispatchedToAgent"));
 			onClose();
 			if (firstSession) selectSession(firstSession);
 		}
@@ -138,13 +140,13 @@ export function DispatchDialog({
 				<div className="flex items-center justify-between border-b border-[var(--border-divider)] pb-2.5">
 					<div className="flex items-center gap-2">
 						<Send className="h-4 w-4 text-[var(--accent)]" />
-						<h3 className="text-sm font-semibold text-[var(--text)]">派给 Agent</h3>
+						<h3 className="text-sm font-semibold text-[var(--text)]">{t("backlog.dispatchToAgent")}</h3>
 					</div>
 					<button
 						type="button"
 						disabled={busy}
 						onClick={onClose}
-						aria-label="关闭"
+						aria-label={t("common.close")}
 						className="rounded-full p-1 text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 					>
 						<X className="h-4 w-4" />
@@ -160,15 +162,15 @@ export function DispatchDialog({
 								onClick={() => switchTarget("existing")}
 								className={`${choiceCls(target === "existing")} disabled:opacity-40`}
 							>
-								现有会话
+								{t("backlog.existingSession")}
 							</button>
 							<button type="button" onClick={() => switchTarget("new")} className={choiceCls(target === "new")}>
-								开启新会话
+								{t("backlog.startNewSession")}
 							</button>
 						</div>
 						{target === "existing" && (
 							<div className="space-y-1.5">
-								<label className="text-[var(--text-dim)]">选择会话</label>
+								<label className="text-[var(--text-dim)]">{t("backlog.selectSession")}</label>
 								<NativeSelect value={existingId} onChange={(e) => setExistingId(e.target.value)} className="w-full">
 									{sessionList.map((session) => (
 										<option key={session.id} value={session.id}>
@@ -186,10 +188,10 @@ export function DispatchDialog({
 								{sentGroups.map((g) => (
 									<li key={g[0]?.id} className="flex flex-wrap items-center gap-1.5 rounded-lg bg-[var(--bg)] px-2.5 py-1.5 text-[var(--text)]">
 										<span className="min-w-0 break-words font-medium">{groupName(g)}</span>
-										<span className="text-[var(--text-dim)]">{g.length} 条</span>
+										<span className="text-[var(--text-dim)]">{t("backlog.itemsCount", { count: g.length })}</span>
 										<span className="inline-flex items-center gap-1 text-[var(--status-success)]">
 											<CheckCircle2 className="h-3 w-3" />
-											已派出
+											{t("backlog.alreadyDispatched")}
 										</span>
 									</li>
 								))}
@@ -197,10 +199,22 @@ export function DispatchDialog({
 						)}
 						<div>
 							{target === "existing"
-								? `将剩余 ${remaining.length} 条发给会话「${existingSession ? sessionOptionLabel(existingSession) : ""}」`
+								? t("backlog.dispatchRemainingToExisting", {
+										count: remaining.length,
+										name: existingSession ? sessionOptionLabel(existingSession) : "",
+									})
 								: groups.length > 1
-									? `剩余 ${remaining.length} 条来自 ${groups.length} 个项目，将分别开 ${groups.length} 个新会话：`
-									: `将在「${remaining[0]?.projectDir || currentProject ? groupName(projectGroups[0] ?? remaining) : "全局工作区"}」开启新会话，发送 ${remaining.length} 条`}
+									? t("backlog.dispatchRemainingToNewMultiple", {
+											count: remaining.length,
+											groups: groups.length,
+										})
+									: t("backlog.dispatchRemainingToNewSingle", {
+											count: remaining.length,
+											name:
+												remaining[0]?.projectDir || currentProject
+													? groupName(projectGroups[0] ?? remaining)
+													: t("backlog.globalWorkspace"),
+										})}
 						</div>
 						{target === "new" && (
 							<ul className="space-y-1">
@@ -208,7 +222,7 @@ export function DispatchDialog({
 									<li key={g[0]?.id ?? index} className="rounded-lg bg-[var(--bg)] px-2.5 py-1.5">
 										<div className="flex flex-wrap items-center gap-1.5 text-[var(--text)]">
 											<span className="min-w-0 break-words font-medium">{groupName(g)}</span>
-											<span className="text-[var(--text-dim)]">{g.length} 条</span>
+											<span className="text-[var(--text-dim)]">{t("backlog.itemsCount", { count: g.length })}</span>
 										</div>
 										{errors[index] && (
 											<div className="mt-1 whitespace-pre-wrap break-words text-[var(--status-error)] select-text">
@@ -225,7 +239,7 @@ export function DispatchDialog({
 							</div>
 						)}
 						{sentGroups.length > 0 && (
-							<div className="text-[var(--text-dim)]">已派出的不会重复发送{hasErrors ? "，失败的可点「重试」" : ""}。</div>
+							<div className="text-[var(--text-dim)]">{t("backlog.dispatchedNoRepeat", { retry: hasErrors ? t("backlog.retrySuffix") : "" })}</div>
 						)}
 					</div>
 				)}
@@ -233,11 +247,11 @@ export function DispatchDialog({
 				<div className="flex items-center justify-end gap-2 border-t border-[var(--border-divider)] pt-2">
 					{step === "confirm" && (
 						<button type="button" disabled={busy} onClick={() => setStep("choose")} className={`${PILL_OUTLINE} mr-auto`}>
-							上一步
+							{t("common.previousStep")}
 						</button>
 					)}
 					<button type="button" disabled={busy} onClick={onClose} className={PILL_OUTLINE}>
-						取消
+						{t("common.cancel")}
 					</button>
 					{step === "choose" ? (
 						<button
@@ -246,12 +260,12 @@ export function DispatchDialog({
 							onClick={() => setStep("confirm")}
 							className={PILL_PRIMARY}
 						>
-							下一步
+							{t("common.nextStep")}
 						</button>
 					) : (
 						<button type="button" disabled={busy} onClick={() => void run()} className={PILL_PRIMARY}>
 							{busy && <Loader2 className="h-3 w-3 animate-spin" />}
-							{hasErrors ? "重试" : "派给 Agent"}
+							{hasErrors ? t("common.retry") : t("backlog.dispatchToAgent")}
 						</button>
 					)}
 				</div>

@@ -19,6 +19,7 @@ import { useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { tNow } from "../../stores/language";
 
 const DRAFT_PREFIX = "fork-draft:";
 
@@ -122,8 +123,8 @@ export async function sendFromForkDraft(
 	send: (sessionId: string) => Promise<void>,
 ): Promise<void> {
 	const draft = useForkDraft.getState().draft;
-	if (!draft || draft.id !== draftId) throw new Error("分支草稿已关闭，请重新点击分支");
-	if (draft.sending) throw new Error("正在创建分支，请稍候");
+	if (!draft || draft.id !== draftId) throw new Error(tNow("sessions.forkDraftClosedError"));
+	if (draft.sending) throw new Error(tNow("sessions.forkDraftCreatingError"));
 	useForkDraft.setState({ draft: { ...draft, sending: true } });
 	useLive.getState().addUserEcho(draftId, text, opts.images);
 	opts.onEchoed?.();
@@ -155,7 +156,7 @@ export async function sendFromForkDraft(
 		await send(newId);
 	} catch (err) {
 		useComposer.getState().setDraft(newId, text);
-		toast.error(`发送失败: ${errMsg(err)}`);
+		toast.error(tNow("sessions.sendFailed", { error: errMsg(err) }));
 	}
 }
 
@@ -208,6 +209,6 @@ export async function startFork(parentId: string, entryId?: string | null): Prom
 		useUi.getState().selectSession(info.sessionId);
 		useComposer.getState().focusComposer(info.sessionId);
 	} catch (err) {
-		toast.error(`创建分支失败: ${errMsg(err)}`);
+		toast.error(tNow("sessions.createForkFailed", { error: errMsg(err) }));
 	}
 }

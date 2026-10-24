@@ -5,6 +5,7 @@
  */
 
 import type { SubagentInfo } from "../../../stores/live";
+import { tNow } from "../../../stores/language";
 import { subagentBucket } from "./counts";
 import type { AgentRow } from "./merge";
 
@@ -189,7 +190,9 @@ export function capTree(roots: TreeNode[], max: number): CappedTree {
 }
 
 export function moreLabel(hidden: number, allDone: boolean): string {
-	return allDone ? `还有 ${hidden} 个已完成` : `还有 ${hidden} 个`;
+	return allDone
+		? tNow("subagents.moreCompleted", { count: hidden })
+		: tNow("subagents.more", { count: hidden });
 }
 
 /** True when a not-yet-seen subagent is unfinished (panel should (re)expand). */
@@ -209,9 +212,9 @@ export function formatElapsed(ms: number | undefined): string {
 	const h = Math.floor(total / 3600);
 	const m = Math.floor((total % 3600) / 60);
 	const s = total % 60;
-	if (h > 0) return `${h}小时${m}分${s}秒`;
-	if (m > 0) return `${m}分${s}秒`;
-	return `${s}秒`;
+	if (h > 0) return tNow("subagents.elapsedHoursMinutesSeconds", { h, m, s });
+	if (m > 0) return tNow("subagents.elapsedMinutesSeconds", { m, s });
+	return tNow("subagents.elapsedSeconds", { s });
 }
 
 /** Elapsed ms: finished rows use their recorded duration, running rows tick from the start time. */
@@ -259,7 +262,7 @@ export function activityText(
 ): { text: string; error: boolean } {
 	if (state === "failed") {
 		const why = failureReason(info, row);
-		return { text: why ?? (String(info.status).toLowerCase() === "aborted" ? "已中止" : "执行失败"), error: true };
+		return { text: why ?? (String(info.status).toLowerCase() === "aborted" ? tNow("subagents.statusAborted") : tNow("subagents.execFailed")), error: true };
 	}
 	if (state === "running") {
 		const p = info.progress;
@@ -267,7 +270,7 @@ export function activityText(
 			p?.currentToolIntent || p?.lastIntent || p?.currentTool || row?.currentTool || undefined;
 		return { text: live ?? taskLine(info, row), error: false };
 	}
-	if (state === "waiting") return { text: taskLine(info, row) || "等待中", error: false };
+	if (state === "waiting") return { text: taskLine(info, row) || tNow("subagents.statusWaiting"), error: false };
 	return { text: taskLine(info, row), error: false };
 }
 

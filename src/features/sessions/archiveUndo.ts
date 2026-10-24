@@ -15,6 +15,7 @@ import { useUi } from "../../stores/ui";
 import { useSidebarStore } from "./sidebarStore";
 import { switchSpaceMode } from "./switchMode";
 import { neighborAfterRemoval } from "./visibleRows";
+import { tNow } from "../../stores/language";
 
 export interface ArchiveUndoItem {
 	id: number;
@@ -64,7 +65,7 @@ export const useArchiveUndo = create<ArchiveUndoState>((set, get) => ({
 			const title =
 				mergedIds.length === 1
 					? newItem.title
-					: `已归档 ${mergedIds.length} 个会话`;
+					: tNow("sessions.archivedCount", { count: mergedIds.length });
 			finalItem = {
 				id,
 				sessionIds: mergedIds,
@@ -122,10 +123,10 @@ export async function archiveSessions(
 
 	if (busyCount > 0) {
 		const ok = await confirmDialog(
-			`有 ${busyCount} 个会话仍在运行或等待回复，归档后将不再提醒，确定归档？`,
+			tNow("sessions.confirmArchiveBusy", { count: busyCount }),
 			{
-				title: "归档会话",
-				okLabel: "归档",
+				title: tNow("sessions.archiveSessionsTitle"),
+				okLabel: tNow("sessions.archiveAction"),
 				danger: true,
 			},
 		);
@@ -174,8 +175,8 @@ export async function archiveSessions(
 
 		const label =
 			successes.length === 1
-				? `已归档「${sessionDisplayName(successes[0])}」`
-				: (opts?.title ?? `已归档 ${successes.length} 个会话`);
+				? tNow("sessions.archivedSingle", { title: sessionDisplayName(successes[0]) })
+				: (opts?.title ?? tNow("sessions.archivedCount", { count: successes.length }));
 
 		useArchiveUndo.getState().show({
 			sessionIds: successes.map((s) => s.id),
@@ -186,7 +187,7 @@ export async function archiveSessions(
 	}
 
 	if (failed > 0) {
-		toast.error(`归档失败: ${failed} 个会话未能归档`);
+		toast.error(tNow("sessions.archiveFailedCount", { count: failed }));
 	}
 }
 
@@ -228,12 +229,12 @@ export async function undoArchive(): Promise<void> {
 		}
 
 		if (failed > 0) {
-			toast.error(`撤销归档失败: ${failed} 个会话未能恢复`);
+			toast.error(tNow("sessions.undoArchiveFailedCount", { count: failed }));
 		} else {
-			toast.success("已撤销归档");
+			toast.success(tNow("sessions.undoArchiveSuccess"));
 		}
 	} catch (err) {
-		toast.error(`撤销归档失败: ${errMsg(err)}`);
+		toast.error(tNow("sessions.undoArchiveFailed", { error: errMsg(err) }));
 	} finally {
 		useArchiveUndo.getState().clear(targetItemId);
 	}
@@ -272,13 +273,13 @@ export async function reopenArchivedSession(): Promise<boolean> {
 				if (left.length === 0) useArchiveUndo.getState().clear(undo.id);
 			}
 			useUi.getState().selectSession(id);
-			toast.success(`已恢复「${sessionDisplayName(updated)}」`);
+			toast.success(tNow("sessions.reopenArchivedSuccess", { title: sessionDisplayName(updated) }));
 			return true;
 		} catch (err) {
-			toast.error(`恢复归档失败: ${errMsg(err)}`);
+			toast.error(tNow("sessions.reopenArchivedFailed", { error: errMsg(err) }));
 			return false;
 		}
 	}
-	toast.info("没有可恢复的归档会话");
+	toast.info(tNow("sessions.noArchivedToReopen"));
 	return false;
 }

@@ -8,6 +8,7 @@ import type {
 	DiagnosticPrescription,
 	SessionDiagnosticSkeleton,
 } from "./distribution";
+import { tNow } from "../../stores/language";
 
 export interface DoctorTurn {
 	role: "user" | "assistant";
@@ -117,20 +118,20 @@ const strList = (v: unknown): string[] =>
 
 export function parseDiagnosis(raw: string, lens: DiagnosticLens): DiagnosticDiagnosisResult {
 	const json = extractJsonObject(raw);
-	if (!json) throw new Error("诊断模型没有返回有效的 JSON 结果");
+	if (!json) throw new Error(tNow("doctor.invalidJsonError"));
 	const obj = JSON.parse(json) as Record<string, unknown>;
 	if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-		throw new Error("诊断模型没有返回有效的 JSON 结果");
+		throw new Error(tNow("doctor.invalidJsonError"));
 	}
 	const conclusion = str(obj.conclusion);
-	if (!conclusion) throw new Error("诊断结果缺少结论（conclusion）");
+	if (!conclusion) throw new Error(tNow("doctor.missingConclusionError"));
 	const prescriptions: DiagnosticPrescription[] = (Array.isArray(obj.prescriptions) ? obj.prescriptions : [])
 		.map((p: unknown) => {
 			const r = (p ?? {}) as Record<string, unknown>;
 			return { label: str(r.label), promptDraft: str(r.promptDraft), explanation: str(r.explanation) };
 		})
 		.filter((p) => p.promptDraft)
-		.map((p) => ({ ...p, label: p.label || "处方" }))
+		.map((p) => ({ ...p, label: p.label || tNow("doctor.prescriptionDefaultLabel") }))
 		.slice(0, 3);
 	return {
 		lens,
@@ -174,10 +175,10 @@ export function buildFollowUpPrompt(
 		.join("\n\n");
 }
 
-const SCOPE_LABEL: Record<SystemicIssue["scope"], string> = {
-	"cross-project": "跨项目习惯",
-	"same-project": "同项目架构",
-	"same-model": "同模型短板",
+const SCOPE_LABEL_KEY: Record<SystemicIssue["scope"], string> = {
+	"cross-project": "doctor.scopeCrossProject",
+	"same-project": "doctor.scopeSameProject",
+	"same-model": "doctor.scopeSameModel",
 };
 
 export function aggregateSystemicIssues(history: DoctorHistoryEntry[]): SystemicIssue[] {
@@ -199,22 +200,24 @@ export function aggregateSystemicIssues(history: DoctorHistoryEntry[]): Systemic
 		// model → model weakness; across projects and models → personal habit.
 		if (byCwd.size === 1) {
 			const cwd = entries[0].cwd;
+			const projectName = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd || tNow("doctor.unknownProject");
 			issues.push({
 				scope: "same-project",
 				tag,
 				count: entries.length,
 				sessionIds,
-				scopeLabel: SCOPE_LABEL["same-project"],
-				hint: `「${tag}」在项目 ${cwd.split(/[\\/]/).filter(Boolean).pop() || cwd || "未知项目"} 中反复出现 ${entries.length} 次，可能与该项目的结构或约定有关。`,
+				scopeLabel: tNow(SCOPE_LABEL_KEY["same-project"]),
+				hint: tNow("doctor.hintSameProject", { tag, project: projectName, count: entries.length }),
 			});
 		} else if (byModel.size === 1) {
+			const modelName = entries[0].model || tNow("doctor.unknownModel");
 			issues.push({
 				scope: "same-model",
 				tag,
 				count: entries.length,
 				sessionIds,
-				scopeLabel: SCOPE_LABEL["same-model"],
-				hint: `「${tag}」在模型 ${entries[0].model || "未知模型"} 的 ${byCwd.size} 个项目会话中共出现 ${entries.length} 次，可能是该模型在此类任务上的短板。`,
+				scopeLabel: tNow(SCOPE_LABEL_KEY["same-model"]),
+				hint: tNow("doctor.hintSameModel", { tag, model: modelName, projects: byCwd.size, count: entries.length }),
 			});
 		} else {
 			issues.push({
@@ -222,8 +225,8 @@ export function aggregateSystemicIssues(history: DoctorHistoryEntry[]): Systemic
 				tag,
 				count: entries.length,
 				sessionIds,
-				scopeLabel: SCOPE_LABEL["cross-project"],
-				hint: `「${tag}」在 ${byCwd.size} 个项目、${byModel.size} 个模型中共出现 ${entries.length} 次，更可能是个人提问习惯，而非某个项目或模型的问题。`,
+				scopeLabel: tNow(SCOPE_LABEL_KEY["cross-project"]),
+				hint: tNow("doctor.hintCrossProject", { tag, projects: byCwd.size, models: byModel.size, count: entries.length }),
 			});
 		}
 	}

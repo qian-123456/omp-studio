@@ -10,6 +10,7 @@
 import clsx from "clsx";
 import { ChevronDown, ChevronRight, FilePlus2, Plus, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "../../../stores/language";
 import { useHomeDir } from "../../../lib/hooks";
 import { fsReadDir, ompAgentRead, ompAgentWrite } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
@@ -21,7 +22,7 @@ import { scopeDisplayName } from "../modelTemplates/logic";
 import { Notice } from "../../../components/Notice";
 import { Button, Chip, SectionHeader, SettingsCard } from "../ui";
 import {
-	AGENT_LAYER_LABEL,
+	getAgentLayerLabel,
 	type AgentContents,
 	type AgentEntry,
 	type AgentScope,
@@ -42,6 +43,7 @@ async function listAgentFiles(dir: string | null): Promise<string[]> {
 }
 
 export function AgentDefsPanel() {
+	const { t } = useT();
 	const roleScope = useRoleScope();
 	/**
 	 * Project whose `.omp/agents` is listed or checked for shadowing: the picked project on the 项目 tab,
@@ -65,7 +67,7 @@ export function AgentDefsPanel() {
 	const projectDir = agentsDirPath("project", home, cwd);
 	const dir = effectiveScope === "global" ? globalDir : projectDir;
 	const hereNames = effectiveScope === "global" ? globalNames : projectNames;
-	const entries = useMemo(() => (dir ? buildAgentEntries(dir, hereNames ?? []) : []), [dir, hereNames]);
+	const entries = useMemo(() => (dir ? buildAgentEntries(dir, hereNames ?? [], t) : []), [dir, hereNames, t]);
 	const expanded = entries.find((e) => e.id === expandedId) ?? null;
 
 	const refresh = useCallback(async () => {
@@ -78,7 +80,7 @@ export function AgentDefsPanel() {
 				setContents({});
 				return;
 			}
-			const currentEntries = buildAgentEntries(currentDir, effectiveScope === "global" ? g : p);
+			const currentEntries = buildAgentEntries(currentDir, effectiveScope === "global" ? g : p, t);
 			const reads = await Promise.all(
 				currentEntries.map(
 					async (e) =>
@@ -113,16 +115,16 @@ export function AgentDefsPanel() {
 		return () => cancelAnimationFrame(frame);
 	}, [expandedId]);
 
-	const layerWord = AGENT_LAYER_LABEL[effectiveScope];
+	const layerWord = getAgentLayerLabel(effectiveScope, t);
 
 	const handleCreate = async (entry: AgentEntry) => {
 		try {
 			await ompAgentWrite(entry.path, entry.starter, null);
 			await refresh();
 			setExpandedId(entry.id);
-			toast.success(`已为 ${entry.name} 新建${layerWord}，记得把提示词写完整`);
+			toast.success(t("agentDefs.rows.createdSuccess", { name: entry.name, layer: layerWord }));
 		} catch (e) {
-			toast.error(`创建失败：${describeFileCommandError(e)}`);
+			toast.error(t("agentDefs.rows.createFailed", { error: describeFileCommandError(e) }));
 		}
 	};
 
@@ -130,7 +132,7 @@ export function AgentDefsPanel() {
 		setCreatingCustom(false);
 		await refresh();
 		setExpandedId(name);
-		toast.success(`已新建子代理 ${name}，主 AI 现在可以派它了`);
+		toast.success(t("agentDefs.rows.customCreatedSuccess", { name }));
 	};
 	const takenNames = useMemo(() => new Set(entries.map((e) => e.name)), [entries]);
 	/** 「让 AI 帮我写」 runs where the file goes: the project, else the session's project, else home. */
@@ -163,23 +165,23 @@ export function AgentDefsPanel() {
 			<span className="min-w-0 flex-1">
 				<span className="flex flex-wrap items-center gap-2">
 					<code className="font-mono text-xs font-semibold text-[var(--text)]">{e.name}</code>
-					{!e.isBuiltin && <Chip tone="neutral">自己新建的</Chip>}
+					{!e.isBuiltin && <Chip tone="neutral">{t("agentDefs.rows.customTag")}</Chip>}
 					{!loading && layer.active && (
 						<Chip
 							tone={layer.active === effectiveScope ? "success" : "neutral"}
-							title="OMP 实际使用的是哪一份"
+							title={t("agentDefs.rows.inUseHint")}
 						>
-							正在用：{AGENT_LAYER_LABEL[layer.active]}
+							{t("agentDefs.rows.usingLayer", { layer: getAgentLayerLabel(layer.active, t) })}
 						</Chip>
 					)}
 					{meta.model && (
-						<Chip tone="neutral" title="文件里写的模型">
+						<Chip tone="neutral" title={t("agentDefs.rows.modelHint")}>
 							{meta.model}
 						</Chip>
 					)}
 					{meta.thinkingLevel && (
-						<Chip tone="neutral" title="思考等级">
-							思考: {meta.thinkingLevel}
+						<Chip tone="neutral" title={t("agentDefs.rows.modelHint")}>
+							{t("agentDefs.rows.thinkingTag", { level: meta.thinkingLevel })}
 						</Chip>
 					)}
 					{typeof text === "string" && text.trim() !== "" && <Chip>{formatTokenEstimate(text)}</Chip>}
@@ -187,7 +189,7 @@ export function AgentDefsPanel() {
 				<span className="mt-1 block text-[11px] text-[var(--text-muted)]">{meta.description || e.description}</span>
 				{layer.shadowedBy && (
 					<span className="mt-1 block text-[11px] text-[var(--status-warning)]">
-						「{projectName}」另有自己的{AGENT_LAYER_LABEL[layer.shadowedBy]}，这里的修改在那个项目里不会生效。
+						{t("agentDefs.rows.shadowedWarning", { project: projectName, layer: getAgentLayerLabel(layer.shadowedBy, t) })}
 					</span>
 				)}
 			</span>
@@ -202,8 +204,8 @@ export function AgentDefsPanel() {
 							onClick={() => setExpandedId(open ? null : e.id)}
 							aria-expanded={open}
 							aria-controls={open ? `agent-editor-${e.id}` : undefined}
-							aria-label={open ? `收起 ${e.name}` : `查看并编辑 ${e.name}`}
-							title={open ? `收起 ${e.name}` : `查看并编辑 ${e.name}（${e.path}）`}
+							aria-label={open ? t("agentDefs.rows.collapseAria", { name: e.name }) : t("agentDefs.rows.viewAndEditAria", { name: e.name })}
+							title={open ? t("agentDefs.rows.collapseAria", { name: e.name }) : t("agentDefs.rows.viewAndEditTitle", { name: e.name, path: e.path })}
 							className={clsx(
 								"flex min-w-0 flex-1 items-start gap-2 px-4 py-2.5 text-left transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]",
 								open && "bg-[var(--bg-active-fill)] hover:bg-[var(--bg-active-fill)]",
@@ -216,7 +218,7 @@ export function AgentDefsPanel() {
 							)}
 							{summary}
 							<span className="hairline shrink-0 whitespace-nowrap rounded-lg bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
-								{open ? "收起" : "查看并编辑"}
+								{open ? t("agentDefs.rows.collapse") : t("agentDefs.rows.viewAndEdit")}
 							</span>
 						</button>
 					) : (
@@ -226,11 +228,15 @@ export function AgentDefsPanel() {
 						<div className="py-2.5 pr-4">
 							<Button
 								icon={FilePlus2}
-								aria-label={`为 ${e.name} 新建${layerWord}`}
-								title={`在 ${e.path} 新建一份，之后${effectiveScope === "global" ? "所有项目" : `「${projectName}」`}都用它`}
+								aria-label={t("agentDefs.rows.createLayerAria", { name: e.name, layer: layerWord })}
+								title={
+									effectiveScope === "global"
+										? t("agentDefs.rows.createLayerTitleGlobal", { path: e.path })
+										: t("agentDefs.rows.createLayerTitleProject", { path: e.path, project: projectName })
+								}
 								onClick={() => void handleCreate(e)}
 							>
-								新建{layerWord}
+								{t("agentDefs.rows.createLayer", { layer: layerWord })}
 							</Button>
 						</div>
 					)}
@@ -249,8 +255,8 @@ export function AgentDefsPanel() {
 							save={save}
 							bare
 							createContent={e.starter}
-							savedToast="子代理定义已保存"
-							statusText={(loaded) => (loaded === null ? "还没有这份文件" : `这是${layerWord}`)}
+							savedToast={t("agentDefs.rows.editorSavedToast")}
+							statusText={(loaded) => (loaded === null ? t("agentDefs.rows.statusMissing") : t("agentDefs.rows.statusExists", { layer: layerWord }))}
 							onChanged={() => void refresh()}
 						/>
 					</div>
@@ -260,16 +266,16 @@ export function AgentDefsPanel() {
 	};
 
 	return (
-		<div data-jump="子代理定义" className="scroll-mt-4 space-y-4">
+		<div data-jump={t("agentDefs.title")} className="scroll-mt-4 space-y-4">
 			<SectionHeader
-				title="子代理提示词与定义"
-				description="自定义各子代理的提示词、可用工具和模型。项目配置优先于全局配置；自定义后会完整替换内置提示词。"
+				title={t("agentDefs.title")}
+				description={t("agentDefs.desc")}
 			/>
 
 			<RoleScopeBar
 				roleScope={roleScope}
-				label="配置范围"
-				projectTitle="只在所选项目用的版本"
+				label={t("agentDefs.configScope")}
+				projectTitle={t("agentDefs.projectVersionTitle")}
 				description={null}
 			/>
 
@@ -279,18 +285,18 @@ export function AgentDefsPanel() {
 				<div className="flex items-center justify-between gap-3 border-b border-[var(--border-divider)] px-4 py-2.5 bg-[var(--bg-card-subtle)]">
 					<div className="flex min-w-0 items-center gap-2">
 						<Sparkles size={14} className="shrink-0 text-[var(--text-muted)]" />
-						<span className="text-xs font-medium text-[var(--text)]">子代理列表（{layerWord}）</span>
+						<span className="text-xs font-medium text-[var(--text)]">{t("agentDefs.listTitle", { layer: layerWord })}</span>
 					</div>
 					{!creatingCustom && (
-						<Button size="sm" variant="primary" icon={Plus} disabled={!dir} title={!dir ? "工作区目录尚未确定" : undefined} onClick={() => setCreatingCustom(true)}>
-							新建子代理
+						<Button size="sm" variant="primary" icon={Plus} disabled={!dir} title={!dir ? t("agentDefs.workspaceDirNotDetermined") : undefined} onClick={() => setCreatingCustom(true)}>
+							{t("agentDefs.newSubagent")}
 						</Button>
 					)}
 				</div>
 				{creatingCustom && dir && (
 					<NewAgentForm
 						dir={dir}
-						scopeLabel={effectiveScope === "global" ? "全局版本（所有项目都能用）" : `「${projectName}」的项目版本`}
+						scopeLabel={effectiveScope === "global" ? t("agentDefs.globalScopeLabel") : t("agentDefs.projectScopeLabel", { project: projectName })}
 						taken={takenNames}
 						aiCwd={aiCwd}
 						onCreated={(name) => void handleCreatedCustom(name)}

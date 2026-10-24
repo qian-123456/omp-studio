@@ -8,6 +8,7 @@
 import { useEffect, useRef } from "react";
 import { Markdown } from "../../components/Markdown";
 import { useRevealText } from "./useRevealText";
+import { useT } from "../../stores/language";
 
 /** Enough characters to fill two wrapped 12px lines of the peek box. */
 const LIVE_TAIL_CHARS = 240;
@@ -44,6 +45,7 @@ export function ThinkingPreview({
 	open: boolean;
 	onToggle: () => void;
 }) {
+	const { t } = useT();
 	const boxRef = useRef<HTMLDivElement>(null);
 	// Collapsed peek paces its characters like the body; the expanded box
 	// paces inside <Markdown>.
@@ -73,7 +75,7 @@ export function ThinkingPreview({
 			type="button"
 			onClick={onToggle}
 			aria-expanded={false}
-			title="查看完整思考内容"
+			title={t("chatView.thinking.viewFullTitle")}
 			className="mt-px flex h-10 w-full cursor-pointer flex-col justify-end overflow-hidden rounded text-left text-[12px] leading-5 text-[var(--text-40)] hover:text-[var(--text-60)]"
 		>
 			{/* Bottom-anchored fixed 2-line window: older lines scroll out the top. */}

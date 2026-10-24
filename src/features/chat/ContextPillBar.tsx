@@ -35,6 +35,7 @@ import { SearchInput } from "../../components/SearchInput";
 import { claimEscape } from "../../lib/escapeClaim";
 import { isComposing } from "../../lib/hooks";
 
+import { tNow, useT } from "../../stores/language";
 const PILL =
 	"flex min-w-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium text-[var(--text-80,var(--text))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] select-none";
 const ROW =
@@ -99,6 +100,7 @@ export function WorkspacePickerPopover({
 	activeWorkspaceId: string | null;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const workspaces = useSessions((s) => s.workspaces);
 	const [query, setQuery] = useState("");
 	const projects = useMemo(() => {
@@ -118,14 +120,14 @@ export function WorkspacePickerPopover({
 	const browse = async () => {
 		onClose();
 		try {
-			const selected = await openDialog({ directory: true, multiple: false, title: "选择项目目录" });
+			const selected = await openDialog({ directory: true, multiple: false, title: t("chat.pill.selectProjectDir") });
 			const path = typeof selected === "string" ? selected : selected?.[0];
 			if (!path) return;
 			const ws = await addWorkspace(path);
 			await useSessions.getState().refreshWorkspaces();
 			await startSessionInDir(ws, false);
 		} catch (err) {
-			toast.error(`添加工作区失败: ${errMsg(err)}`);
+			toast.error(t("chat.pill.addWorkspaceFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -133,7 +135,7 @@ export function WorkspacePickerPopover({
 		onClose();
 		const globalWs = useSessions.getState().workspaces.find((w) => w.kind === "global");
 		if (!globalWs) {
-			toast.error("未找到全局工作区");
+			toast.error(t("chat.pill.globalWorkspaceNotFound"));
 			return;
 		}
 		if (globalWs.id === activeWorkspaceId) return;
@@ -153,12 +155,12 @@ export function WorkspacePickerPopover({
 			<PopoverSearch
 				value={query}
 				onChange={setQuery}
-				placeholder="搜索工作区 / 项目"
+				placeholder={t("chat.pill.searchWorkspace")}
 				onEnter={() => projects[0] && pick(projects[0])}
 			/>
 			<div className="max-h-64 overflow-y-auto p-1">
 				{projects.length === 0 ? (
-					<div className="px-2 py-2 text-[12px] text-[var(--text-40,var(--text-dim))]">无匹配的工作区</div>
+					<div className="px-2 py-2 text-[12px] text-[var(--text-40,var(--text-dim))]">{t("chat.pill.noMatchingWorkspace")}</div>
 				) : (
 					projects.map((ws) => (
 						<button key={ws.id} type="button" onClick={() => pick(ws)} title={ws.path} className={ROW}>
@@ -170,8 +172,8 @@ export function WorkspacePickerPopover({
 				)}
 			</div>
 			<div className="border-t border-[var(--line,var(--border-divider))] p-1">
-				<ActionRow icon={<FolderPlus size={13} />} label="新建工作区" onClick={() => void browse()} />
-				<ActionRow icon={<Globe size={13} />} label="全局模式 (不关联项目)" onClick={goGlobal} />
+				<ActionRow icon={<FolderPlus size={13} />} label={t("chat.pill.newWorkspace")} onClick={() => void browse()} />
+				<ActionRow icon={<Globe size={13} />} label={t("chat.pill.globalMode")} onClick={goGlobal} />
 			</div>
 		</FloatingLayer>
 	);
@@ -179,11 +181,11 @@ export function WorkspacePickerPopover({
 export function validateBranchName(name: string): string | null {
 	const trimmed = name.trim();
 	if (!trimmed) return null;
-	if (trimmed.endsWith("/")) return "分支名不能以“/”结尾。";
-	if (trimmed.startsWith("/")) return "分支名不能以“/”开头。";
-	if (/\s/.test(trimmed)) return "分支名不能包含空格。";
-	if (/[\^~:?*\[\\]/.test(trimmed)) return "分支名包含无效字符。";
-	if (trimmed.includes("..")) return "分支名不能包含“..”。";
+	if (trimmed.endsWith("/")) return tNow("chat.pill.branchSlashEnd");
+	if (trimmed.startsWith("/")) return tNow("chat.pill.branchSlashStart");
+	if (/\s/.test(trimmed)) return tNow("chat.pill.branchSpace");
+	if (/[\^~:?*\[\\]/.test(trimmed)) return tNow("chat.pill.branchInvalidChar");
+	if (trimmed.includes("..")) return tNow("chat.pill.branchDoubleDot");
 	return null;
 }
 
@@ -198,6 +200,7 @@ export function CreateBranchDialog({
 	onClose: () => void;
 	onCreated: () => void;
 }) {
+	const { t } = useT();
 	const [prefix, setPrefix] = useState("omp/");
 	const [branchName, setBranchName] = useState(initialName || prefix);
 	const [busy, setBusy] = useState(false);
@@ -218,10 +221,10 @@ export function CreateBranchDialog({
 		setBusy(true);
 		try {
 			await runSessionBash(sessionId, `git checkout -b ${shellQuote(branchName.trim())}`);
-			toast.success(`已创建并检出分支 ${branchName.trim()}`);
+			toast.success(t("chat.pill.branchCreated", { name: branchName.trim() }));
 			onCreated();
 		} catch (err) {
-			toast.error(`创建分支失败: ${errMsg(err)}`);
+			toast.error(t("chat.pill.createBranchFailed", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -232,7 +235,7 @@ export function CreateBranchDialog({
 			data-layer="modal"
 			role="dialog"
 			aria-modal="true"
-			aria-label="创建并检出分支"
+			aria-label={t("chat.pill.createAndCheckoutBranch")}
 			className="fixed inset-0 z-(--z-modal) flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
 			onClick={onClose}
 		>
@@ -253,12 +256,12 @@ export function CreateBranchDialog({
 				}}
 			>
 				<div className="flex items-center justify-between mb-3.5">
-					<h3 className="text-[15px] font-semibold tracking-tight text-[var(--text)]">创建并检出分支</h3>
+					<h3 className="text-[15px] font-semibold tracking-tight text-[var(--text)]">{t("chat.pill.createAndCheckoutBranch")}</h3>
 					<button
 						type="button"
 						onClick={onClose}
-						aria-label="关闭"
-						title="关闭"
+						aria-label={t("common.close")}
+						title={t("common.close")}
 						className="rounded-lg p-1 text-[var(--text-40,var(--text-dim))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 					>
 						<X size={15} />
@@ -266,7 +269,7 @@ export function CreateBranchDialog({
 				</div>
 
 				<div className="mb-1.5 flex items-center justify-between text-xs">
-					<label className="text-[12px] font-medium text-[var(--text-60,var(--text-muted))]">分支名称</label>
+					<label className="text-[12px] font-medium text-[var(--text-60,var(--text-muted))]">{t("chat.pill.branchName")}</label>
 					{editingPrefix ? (
 						<span className="flex items-center gap-1.5">
 							<input
@@ -281,7 +284,7 @@ export function CreateBranchDialog({
 										applyPrefix();
 									}
 								}}
-								aria-label="默认分支前缀"
+								aria-label={t("chat.pill.defaultBranchPrefix")}
 								className="w-28 rounded-md border border-[var(--line,var(--border-divider))] bg-[var(--well-bg,#18181b)] px-2 py-0.5 font-mono text-[11.5px] text-[var(--text)] outline-none"
 							/>
 							<button
@@ -289,7 +292,7 @@ export function CreateBranchDialog({
 								onClick={applyPrefix}
 								className="rounded-md border border-[var(--line,var(--border-divider))] px-2 py-0.5 text-[11.5px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 							>
-								应用
+								{t("chat.pill.apply")}
 							</button>
 						</span>
 					) : (
@@ -298,7 +301,7 @@ export function CreateBranchDialog({
 							onClick={() => setEditingPrefix(true)}
 							className="rounded-md border border-[var(--line,var(--border-divider))] px-2 py-0.5 text-[11.5px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 						>
-							设置前缀
+							{t("chat.pill.setPrefix")}
 						</button>
 					)}
 				</div>
@@ -331,7 +334,7 @@ export function CreateBranchDialog({
 						onClick={onClose}
 						className="rounded-xl border border-[var(--line,var(--border-divider))] px-4 py-2 text-[12.5px] font-medium text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors"
 					>
-						取消
+						{t("common.cancel")}
 					</button>
 					<button
 						type="button"
@@ -339,7 +342,7 @@ export function CreateBranchDialog({
 						onClick={() => void handleCreate()}
 						className="rounded-xl bg-[var(--text)] px-4 py-2 text-[12.5px] font-semibold text-[var(--bg)] hover:opacity-90 disabled:opacity-35 transition-opacity"
 					>
-						{busy ? "正在创建" : "创建并检出"}
+						{busy ? t("chat.pill.creating") : t("chat.pill.createAndCheckout")}
 					</button>
 				</div>
 			</div>
@@ -365,6 +368,7 @@ function BranchPickerPopover({
 	onChanged: () => void;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const [query, setQuery] = useState("");
 	const [branches, setBranches] = useState<BranchInfo[] | null>(null);
 	// branch name -> path of the *other* worktree that has it checked out
@@ -404,7 +408,7 @@ function BranchPickerPopover({
 			toast.success(okMsg);
 			onChanged();
 		} catch (err) {
-			toast.error(`Git 操作失败: ${errMsg(err)}`);
+			toast.error(t("chat.pill.gitOpFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -419,7 +423,7 @@ function BranchPickerPopover({
 			void startSessionInWorktree(other);
 			return;
 		}
-		void run(`git checkout ${shellQuote(name)}`, `已切换到分支 ${name}`);
+		void run(`git checkout ${shellQuote(name)}`, t("chat.pill.switchedBranch", { name }));
 	};
 
 	const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -448,7 +452,7 @@ function BranchPickerPopover({
 			<PopoverSearch
 				value={query}
 				onChange={setQuery}
-				placeholder="搜索分支"
+				placeholder={t("chat.pill.searchBranch")}
 				onEnter={() => {
 					if (filtered[0]) {
 						checkout(filtered[0].name);
@@ -457,12 +461,12 @@ function BranchPickerPopover({
 					}
 				}}
 			/>
-			<div className="shrink-0 px-3 pt-2 pb-1 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">分支</div>
+			<div className="shrink-0 px-3 pt-2 pb-1 text-[11px] font-medium text-[var(--text-40,var(--text-dim))]">{t("chat.pill.branchSection")}</div>
 			<div className="min-h-0 max-h-56 flex-1 overflow-y-auto px-1 pb-1">
 				{branches === null ? (
-					<div className="px-2 py-2 text-[12px] text-[var(--text-40,var(--text-dim))]">加载中…</div>
+					<div className="px-2 py-2 text-[12px] text-[var(--text-40,var(--text-dim))]">{t("common.loading")}</div>
 				) : filtered.length === 0 ? (
-					<div className="px-2 py-2 text-[12px] text-[var(--text-40,var(--text-dim))]">无匹配的分支</div>
+					<div className="px-2 py-2 text-[12px] text-[var(--text-40,var(--text-dim))]">{t("chat.pill.noMatchingBranch")}</div>
 				) : (
 					filtered.map((b) => {
 						const other = occupied[b.name];
@@ -470,7 +474,7 @@ function BranchPickerPopover({
 							<button
 								key={b.name}
 								type="button"
-								title={other ? `在该分支的工作树中新建会话：${other}` : undefined}
+								title={other ? t("chat.pill.worktreeExistsNewSession", { path: other }) : undefined}
 								onClick={() => checkout(b.name)}
 								className={ROW}
 							>
@@ -478,7 +482,7 @@ function BranchPickerPopover({
 								<span className="min-w-0 flex-1 truncate">{b.displayName || b.name}</span>
 								{other && (
 									<span className="shrink-0 rounded-full border border-[var(--line,var(--border-divider))] px-1.5 text-[10.5px] text-[var(--text-40,var(--text-dim))]">
-										已有工作树，点击切换
+										{t("chat.pill.worktreeExistsSwitch")}
 									</span>
 								)}
 								{b.name === currentBranch && <Check size={13} className="shrink-0" />}
@@ -490,12 +494,12 @@ function BranchPickerPopover({
 			<div className="shrink-0 border-t border-[var(--line,var(--border-divider))] p-1">
 				<ActionRow
 					icon={<Plus size={13} />}
-					label={query.trim() ? `创建并检出新分支 "${query.trim()}"` : "创建并检出新分支"}
+					label={query.trim() ? t("chat.pill.createAndCheckoutNamed", { name: query.trim() }) : t("chat.pill.createAndCheckoutNew")}
 					onClick={() => setShowCreateDialog(true)}
 				/>
 				<ActionRow
 					icon={<PanelRight size={13} />}
-					label="打开 Git 面板"
+					label={t("chat.pill.openGitPanel")}
 					onClick={() => {
 						onClose();
 						useUi.getState().setRightTab("git");
@@ -529,6 +533,7 @@ export function ContextPillBar({
 	onWorkspaceClick: () => void;
 	workspaceBtnRef: RefObject<HTMLButtonElement | null>;
 }) {
+	const { t } = useT();
 	const meta = useSessions((s) => s.sessions[sessionId]);
 	const workspaces = useSessions((s) => s.workspaces);
 	const cwd = meta?.cwd ?? "";
@@ -540,9 +545,9 @@ export function ContextPillBar({
 	const wsLabel = location.label;
 	const pillTitle =
 		location.kind === "location"
-			? `${location.path}（不在已登记的项目里，点击换到项目）`
+			? t("chat.pill.pathNotInProjects", { path: location.path })
 			: location.kind === "unknown"
-				? "未关联目录"
+				? t("chat.pill.noLinkedDir")
 				: cwd || location.label;
 	const groups = useSessionGroups((s) => s.groups);
 	const group = isGlobal && meta?.groupId ? groups.find((g) => g.id === meta.groupId) : null;
@@ -593,7 +598,7 @@ export function ContextPillBar({
 				<button
 					type="button"
 					onClick={() => requestMoveToGroup([sessionId])}
-					title={`当前分组: ${group.name}（点击修改）`}
+					title={t("chat.pill.currentGroup", { name: group.name })}
 					className={PILL}
 				>
 					<Tag size={13} className="shrink-0 text-neutral-400" />
@@ -602,14 +607,14 @@ export function ContextPillBar({
 			)}
 
 			{branch === null ? (
-				<span className="px-2 py-1 text-[12.5px] text-[var(--text-40,var(--text-dim))]">未关联 Git</span>
+				<span className="px-2 py-1 text-[12.5px] text-[var(--text-40,var(--text-dim))]">{t("chat.pill.noGitRepo")}</span>
 			) : branch !== undefined ? (
 				<>
 					<button
 						ref={branchRef}
 						type="button"
 						onClick={() => setBranchOpen((v) => !v)}
-						title={`当前分支: ${branch}`}
+						title={t("chat.pill.currentBranch", { branch })}
 						className={PILL}
 					>
 						<GitBranch size={14} className="shrink-0 text-neutral-400" />
@@ -631,7 +636,7 @@ export function ContextPillBar({
 			) : (
 				<span className="flex items-center gap-1.5 px-2 py-1 text-[12.5px] text-[var(--text-40,var(--text-dim))]">
 					<Loader2 size={12} className="animate-spin" />
-					读取分支
+					{t("chat.pill.loadingBranch")}
 				</span>
 			)}
 		</div>

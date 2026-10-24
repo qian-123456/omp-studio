@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { FloatingLayer } from "../../../components/FloatingLayer";
 import type { SubagentInfo } from "../../../stores/live";
+import { useT } from "../../../stores/language";
 import { formatTokens } from "../sessionStats";
 import { formatShortModel } from "../turnGrouping";
 import type { AgentRow } from "./merge";
@@ -12,11 +13,11 @@ import {
 	subagentTitle,
 } from "./subagentTree";
 
-const STATE_LABEL: Record<RowState, string> = {
-	running: "运行中",
-	done: "已完成",
-	failed: "已失败",
-	waiting: "等待中",
+const STATE_LABEL_KEYS: Record<RowState, string> = {
+	running: "subagents.runningState",
+	done: "subagents.doneState",
+	failed: "subagents.failedState",
+	waiting: "subagents.waitingState",
 };
 
 const STATE_COLOR: Record<RowState, string> = {
@@ -45,6 +46,7 @@ export function SubagentHoverCard({
 	parentName: string | undefined;
 	anchor: Element;
 }) {
+	const { t } = useT();
 	const task = row?.task ?? info.task ?? info.assignment ?? "";
 	const activity = activityText(info, row, state);
 	const why = state === "failed" ? failureReason(info, row) : undefined;
@@ -56,18 +58,18 @@ export function SubagentHoverCard({
 	const ctxTokens = row?.contextTokens ?? p?.contextTokens;
 	const ctxWindow = row?.contextWindow ?? p?.contextWindow;
 	const progress = [
-		toolCount ? `${toolCount} 次工具` : null,
+		toolCount ? t("subagents.toolCount", { count: toolCount }) : null,
 		tokens ? formatTokens(tokens) : null,
-		ctxTokens && ctxWindow ? `上下文 ${Math.round((ctxTokens / ctxWindow) * 100)}%` : null,
+		ctxTokens && ctxWindow ? t("subagents.contextUsage", { percent: Math.round((ctxTokens / ctxWindow) * 100) }) : null,
 	]
 		.filter(Boolean)
 		.join(" · ");
 
 	const fields: [string, string | undefined, boolean?][] = [
-		[state === "running" ? "正在" : state === "failed" ? "原因" : "", state === "failed" ? why : activity.text, state === "failed"],
-		["模型", model ? [formatShortModel(model), thinking].filter(Boolean).join(" · ") : undefined],
-		["进度", progress || undefined],
-		["用时", elapsed === undefined ? undefined : formatElapsed(elapsed)],
+		[state === "running" ? t("subagents.fieldActive") : state === "failed" ? t("subagents.fieldReason") : "", state === "failed" ? why : activity.text, state === "failed"],
+		[t("subagents.fieldModel"), model ? [formatShortModel(model), thinking].filter(Boolean).join(" · ") : undefined],
+		[t("subagents.fieldProgress"), progress || undefined],
+		[t("subagents.fieldElapsed"), elapsed === undefined ? undefined : formatElapsed(elapsed)],
 	];
 
 	return (
@@ -89,9 +91,9 @@ export function SubagentHoverCard({
 				{model && (
 					<span className="text-[11px] text-[var(--text-40)]">{formatShortModel(model)}</span>
 				)}
-				<span className={`text-[11px] ${STATE_COLOR[state]}`}>{STATE_LABEL[state]}</span>
+				<span className={`text-[11px] ${STATE_COLOR[state]}`}>{t(STATE_LABEL_KEYS[state])}</span>
 				<span className="ml-auto text-[11px] text-[var(--text-60)]">
-					{parentName ? `↳ 由 ${parentName} 派发` : "↳ 由主对话派发"}
+					{parentName ? t("subagents.dispatchedByParent", { parent: parentName }) : t("subagents.dispatchedByMain")}
 				</span>
 			</div>
 			{task && (
@@ -109,7 +111,7 @@ export function SubagentHoverCard({
 					) : null,
 				)}
 			</dl>
-			<div className="mt-2 text-[11px] text-[var(--text-40)]">点击查看完整过程</div>
+			<div className="mt-2 text-[11px] text-[var(--text-40)]">{t("subagents.clickToViewProcess")}</div>
 		</FloatingLayer>
 	);
 }

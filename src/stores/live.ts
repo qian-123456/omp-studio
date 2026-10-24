@@ -27,6 +27,7 @@ import {
 	parseLocalRows,
 	serializeLocalRows,
 } from "../features/chat/localRows";
+import { tNow } from "./language";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type {
@@ -940,7 +941,7 @@ function reduce(
 				return finishFlowNotice(
 					live,
 					running.id,
-					{ status: "error", detail: error || "已取消" },
+					{ status: "error", detail: error || tNow("shell.cancelled") },
 					now,
 				);
 			}

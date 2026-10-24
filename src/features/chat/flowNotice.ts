@@ -8,6 +8,7 @@
 import type { TranscriptItem } from "../../lib/contracts";
 import type { FlowNotice } from "../../stores/live";
 import { formatTokens } from "./sessionStats";
+import { tNow } from "../../stores/language";
 
 /** Transcript item that may stand for a live compaction/handoff notice. */
 export type FlowItem = TranscriptItem & { flow?: FlowNotice };
@@ -30,9 +31,10 @@ const joinParts = (parts: (string | false | undefined)[]): string =>
 /** One-row divider text of a notice: running → done/error. */
 export function flowNoticeText(n: FlowNotice): string {
 	const handoff = n.kind === "handoff";
-	if (n.status === "running") return handoff ? "正在生成交接文档" : "正在压缩上下文";
+	if (n.status === "running") return handoff ? tNow("chat.flow.generatingHandoff") : tNow("chat.flow.compactingContext");
 	if (n.status === "error") {
-		return `${handoff ? "交接失败" : "压缩失败"}${n.detail ? `：${n.detail}` : ""}`;
+		const prefix = handoff ? tNow("chat.flow.handoffFailed") : tNow("chat.flow.compactionFailed");
+		return n.detail ? tNow("chat.flow.failedWithDetail", { prefix, detail: n.detail }) : prefix;
 	}
 	const time = n.endedAt ? clockTime(n.endedAt) : "";
 	if (n.detail) return joinParts([n.detail, time]);
@@ -40,14 +42,14 @@ export function flowNoticeText(n: FlowNotice): string {
 		n.tokensBefore !== undefined && n.tokensAfter !== undefined
 			? `${formatTokens(n.tokensBefore)} → ${formatTokens(n.tokensAfter)}`
 			: n.tokensBefore !== undefined
-				? `压缩前 ${formatTokens(n.tokensBefore)}`
+				? tNow("chat.flow.beforeCompaction", { tokens: formatTokens(n.tokensBefore) })
 				: "";
-	return joinParts([handoff ? "已交接" : "已压缩", time, tokens]);
+	return joinParts([handoff ? tNow("chat.flow.handedOff") : tNow("chat.flow.compacted"), time, tokens]);
 }
 
 /** Divider text of a compaction entry loaded from the transcript file. */
 export function persistedCompactionText(item: TranscriptItem): string {
-	return joinParts(["已压缩", clockTime(item.ts)]);
+	return joinParts([tNow("chat.flow.compacted"), clockTime(item.ts)]);
 }
 
 function noticeItem(n: FlowNotice): FlowItem {

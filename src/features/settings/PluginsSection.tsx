@@ -13,6 +13,7 @@
  *   keys render as the omp section 扩展 (`<OmpSections page="plugins" />`).
  */
 
+import { useT } from "../../stores/language";
 import {
 	ExternalLink,
 	FolderOpen,
@@ -46,12 +47,13 @@ import { EmptyState } from "../../components/EmptyState";
 import { Notice } from "../../components/Notice";
 import { Button, Chip, IconButton, SectionHeader, SettingsCard } from "./ui";
 
-const KIND_LABELS: Record<string, string> = {
-	npm: "npm",
-	link: "本地链接",
-	marketplace: "市场",
-	unknown: "未知来源",
-};
+function pluginSourceLabel(p: PluginItem, t: (k: string) => string): string {
+	if (p.kind === "npm") return "npm";
+	if (p.kind === "link") return t("settingsCore.plugins.sourceLocal");
+	if (p.kind === "marketplace") return t("settingsCore.plugins.sourceMarketplace");
+	if (p.kind === "unknown") return t("settingsCore.plugins.sourceUnknown");
+	return p.kind;
+}
 
 /** Write an OMP string-array setting via `omp config set` (same shape the
  * skills page uses for disabledExtensions). */
@@ -70,9 +72,7 @@ async function updateOmpList(
 	await ompConfigSet(key, JSON.stringify(next));
 }
 
-function pluginSourceLabel(p: PluginItem): string {
-	return KIND_LABELS[p.kind] ?? p.kind;
-}
+
 
 export function PluginsSection({
 	cwd,
@@ -81,6 +81,7 @@ export function PluginsSection({
 	cwd: string | null;
 	query?: string;
 }) {
+	const { t } = useT();
 	const [catalog, setCatalog] = useState<PluginCatalog | null>(null);
 	const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
 	const [loadError, setLoadError] = useState<string | null>(null);
@@ -138,12 +139,12 @@ export function PluginsSection({
 			await pluginSetEnabled(p.name, !p.enabled, cwd);
 			toast.success(
 				p.enabled
-					? `已停用插件 ${p.name}，新会话生效`
-					: `已启用插件 ${p.name}，新会话生效`,
+					? t("settingsCore.plugins.pluginDisabledToast", { name: p.name })
+					: t("settingsCore.plugins.pluginEnabledToast", { name: p.name }),
 			);
 			await reload();
 		} catch (e) {
-			toast.error(`更新插件状态失败: ${errMsg(e)}`);
+			toast.error(t("settingsCore.plugins.pluginUpdateError", { error: errMsg(e) }));
 		} finally {
 			setBusy(null);
 		}
@@ -165,12 +166,12 @@ export function PluginsSection({
 			);
 			toast.success(
 				ext.enabled
-					? `已停用扩展 ${ext.name}，新会话生效`
-					: `已启用扩展 ${ext.name}，新会话生效`,
+					? t("settingsCore.plugins.extensionDisabledToast", { name: ext.name })
+					: t("settingsCore.plugins.extensionEnabledToast", { name: ext.name }),
 			);
 			await reload();
 		} catch (e) {
-			toast.error(`更新扩展状态失败: ${errMsg(e)}`);
+			toast.error(t("settingsCore.plugins.extensionUpdateError", { error: errMsg(e) }));
 		} finally {
 			setBusy(null);
 		}
@@ -179,17 +180,17 @@ export function PluginsSection({
 	const deleteExtension = async (ext: ExtensionItem) => {
 		if (busy) return;
 		const ok = await confirmDialog(
-			`永久删除扩展模块「${ext.name}」？\n${ext.path}\n文件会直接从磁盘删除，无法恢复。`,
-			{ title: "删除扩展模块", danger: true, okLabel: "删除" },
+			t("settingsCore.plugins.deleteExtensionConfirm", { name: ext.name, path: ext.path }),
+			{ title: t("settingsCore.plugins.deleteExtensionTitle"), danger: true, okLabel: t("settingsCore.plugins.delete") },
 		);
 		if (!ok) return;
 		setBusy(`ext:${ext.path}`);
 		try {
 			await extensionDelete(ext.path, cwd);
-			toast.success(`已删除扩展 ${ext.name}，新会话生效`);
+			toast.success(t("settingsCore.plugins.extensionDeletedToast", { name: ext.name }));
 			await reload();
 		} catch (e) {
-			toast.error(`删除扩展失败: ${errMsg(e)}`);
+			toast.error(t("settingsCore.plugins.extensionDeleteError", { error: errMsg(e) }));
 		} finally {
 			setBusy(null);
 		}
@@ -197,23 +198,23 @@ export function PluginsSection({
 
 	const reveal = (dir: string) => {
 		void revealItemInDir(dir).catch((e) =>
-			toast.error(`打开目录失败: ${errMsg(e)}`),
+			toast.error(t("settingsCore.plugins.openDirError", { error: errMsg(e) })),
 		);
 	};
 
 	const busyIcon = (
-		<Loader2 className="h-3 w-3 animate-spin text-[var(--text-dim)]" aria-label="正在保存" />
+		<Loader2 className="h-3 w-3 animate-spin text-[var(--text-dim)]" aria-label={t("settingsCore.plugins.saving")} />
 	);
 
 	return (
 		<div className="space-y-6">
 			<SectionHeader
-				title="插件"
-				description="已安装的插件与扩展。开关改动只对之后新开的会话生效。"
+				title={t("settingsCore.plugins.title")}
+				description={t("settingsCore.plugins.description")}
 				actions={
 					<IconButton
 						icon={RefreshCw}
-						label="重新扫描插件目录"
+						label={t("settingsCore.plugins.rescan")}
 						onClick={() => void reload()}
 						disabled={busy !== null || loading}
 						className={loading ? "[&_svg]:animate-spin" : undefined}
@@ -226,10 +227,10 @@ export function PluginsSection({
 				<FolderOpen className="h-3.5 w-3.5 shrink-0" />
 				{cwd ? (
 					<span className="min-w-0 truncate" title={cwd}>
-						当前项目：<span className="font-medium text-[var(--text)]">{projectName(cwd)}</span>
+						{t("settingsCore.plugins.currentProject")}<span className="font-medium text-[var(--text)]">{projectName(cwd)}</span>
 					</span>
 				) : (
-					<span className="text-[var(--text-dim)]">未选择项目，仅显示全局插件</span>
+					<span className="text-[var(--text-dim)]">{t("settingsCore.plugins.noProjectSelected")}</span>
 				)}
 			</div>
 
@@ -238,19 +239,19 @@ export function PluginsSection({
 					tone="danger"
 					action={
 						<Button size="sm" icon={RefreshCw} onClick={() => void reload()}>
-							重试
+							{t("settingsCore.plugins.retry")}
 						</Button>
 					}
 				>
-					<span className="break-all">读取插件失败：{loadError}</span>
+					<span className="break-all">{t("settingsCore.plugins.loadError", { error: loadError })}</span>
 				</Notice>
 			)}
 
 			{/* Installed plugins */}
 			<SettingsCard
-				title="已安装插件"
-				jump="已安装插件"
-				aside={`${catalog?.plugins.length ?? 0} 个`}
+				title={t("settingsCore.plugins.installedPlugins")}
+				jump={t("settingsCore.plugins.installedPlugins")}
+				aside={t("settingsCore.plugins.countUnit", { count: catalog?.plugins.length ?? 0 })}
 				fieldId="pluginList"
 				clip
 				footer={
@@ -265,7 +266,7 @@ export function PluginsSection({
 									title={r.dir}
 									onClick={() => reveal(r.dir)}
 								>
-									{r.scope === "project" ? "项目插件目录" : "全局插件目录"}
+									{r.scope === "project" ? t("settingsCore.plugins.projectPluginsDir") : t("settingsCore.plugins.globalPluginsDir")}
 								</Button>
 							))}
 						</span>
@@ -274,14 +275,14 @@ export function PluginsSection({
 			>
 				{!catalog && !loadError ? (
 					<div className="flex justify-center py-6 text-[var(--text-dim)]">
-						<Loader2 aria-label="加载插件" className="h-4 w-4 animate-spin" />
+						<Loader2 aria-label={t("settingsCore.plugins.loadingPlugins")} className="h-4 w-4 animate-spin" />
 					</div>
 				) : plugins.length === 0 ? (
 					<EmptyState
 						icon={Puzzle}
-						title={q ? `没有匹配「${q}」的插件` : "还没有安装插件"}
+						title={q ? t("settingsCore.plugins.noPluginsMatched", { query: q }) : t("settingsCore.plugins.noPluginsInstalled")}
 						description={
-							q ? undefined : "可在终端运行 omp plugin install <包名> 安装，装好后点右上角的刷新按钮。"
+							q ? undefined : t("settingsCore.plugins.installHint")
 						}
 					/>
 				) : (
@@ -296,21 +297,21 @@ export function PluginsSection({
 									{p.version && (
 										<span className="shrink-0 font-mono text-xs text-[var(--text-dim)]">v{p.version}</span>
 									)}
-									<Chip title="安装来源">{pluginSourceLabel(p)}</Chip>
+									<Chip title={t("settingsCore.plugins.installSource")}>{pluginSourceLabel(p, t)}</Chip>
 									<Chip
 										tone={p.scope === "project" ? "accent" : "neutral"}
-										title={p.scope === "project" ? "只在当前项目的会话中加载" : "所有项目的会话都会加载"}
+										title={p.scope === "project" ? t("settingsCore.plugins.projectScopeTooltip") : t("settingsCore.plugins.globalScopeTooltip")}
 									>
-										{p.scope === "project" ? "项目" : "全局"}
+										{p.scope === "project" ? t("settingsCore.plugins.projectScope") : t("settingsCore.plugins.globalScope")}
 									</Chip>
 									{!p.hasManifest && (
-										<Chip tone="warning" title="插件缺少 omp 清单（package.json 中的 omp 或 pi 字段），运行时不会加载">
-											无清单
+										<Chip tone="warning" title={t("settingsCore.plugins.noManifestTooltip")}>
+											{t("settingsCore.plugins.noManifest")}
 										</Chip>
 									)}
 									{p.projectDisabled && (
-										<Chip tone="warning" title="当前项目的 plugin-overrides.json 禁用了它，需在该文件中解除">
-											项目已禁用
+										<Chip tone="warning" title={t("settingsCore.plugins.projectDisabledTooltip")}>
+											{t("settingsCore.plugins.projectDisabled")}
 										</Chip>
 									)}
 								</div>
@@ -319,7 +320,7 @@ export function PluginsSection({
 								)}
 								{p.enabledFeatures != null && p.enabledFeatures.length > 0 && (
 									<div className="mt-0.5 truncate font-mono text-xs text-[var(--text-dim)]">
-										已启用功能：{p.enabledFeatures.join(", ")}
+										{t("settingsCore.plugins.enabledFeatures", { features: p.enabledFeatures.join(", ") })}
 									</div>
 								)}
 							</div>
@@ -327,8 +328,8 @@ export function PluginsSection({
 								{p.dir && (
 									<IconButton
 										icon={ExternalLink}
-										label={`在访达中显示 ${p.name}`}
-										title={`在访达中显示：${p.dir}`}
+										label={t("settingsCore.plugins.showInFinder", { name: p.name })}
+										title={t("settingsCore.plugins.showInFinderPath", { path: p.dir! })}
 										onClick={() => reveal(p.dir!)}
 									/>
 								)}
@@ -337,10 +338,10 @@ export function PluginsSection({
 									className="ml-2"
 									title={
 										p.projectDisabled
-											? "已被项目覆盖配置禁用，无法在此开启"
+											? t("settingsCore.plugins.disabledByOverride")
 											: p.enabled
-												? "已启用，点击停用"
-												: "已停用，点击启用"
+												? t("settingsCore.plugins.clickToDisable")
+												: t("settingsCore.plugins.clickToEnable")
 									}
 								>
 									<Switch
@@ -357,15 +358,15 @@ export function PluginsSection({
 
 			{/* Extension modules */}
 			<SettingsCard
-				title="扩展模块"
-				jump="扩展模块"
-				aside={`${extensions.length} 个`}
-				description="放在扩展目录中的脚本模块。"
+				title={t("settingsCore.plugins.extensions")}
+				jump={t("settingsCore.plugins.extensions")}
+				aside={t("settingsCore.plugins.countUnit", { count: extensions.length })}
+				description={t("settingsCore.plugins.extensionsDesc")}
 				fieldId="extensionList"
 				clip
 			>
 				{exts.length === 0 ? (
-					<EmptyState title={q ? `没有匹配「${q}」的扩展` : "未发现扩展模块"} />
+					<EmptyState title={q ? t("settingsCore.plugins.noExtensionsMatched", { query: q }) : t("settingsCore.plugins.noExtensionsFound")} />
 				) : (
 					exts.map((ext) => (
 						<div
@@ -376,7 +377,7 @@ export function PluginsSection({
 								<div className="flex min-w-0 items-center gap-1.5">
 									<span className="truncate text-[13px] font-medium text-[var(--text)]">{ext.name}</span>
 									<Chip tone={ext.source === "project" ? "accent" : "neutral"}>
-										{ext.source === "project" ? "项目" : "全局"}
+										{ext.source === "project" ? t("settingsCore.plugins.projectScope") : t("settingsCore.plugins.globalScope")}
 									</Chip>
 								</div>
 								<div className="mt-0.5 truncate font-mono text-xs text-[var(--text-dim)]" title={ext.path}>
@@ -386,15 +387,15 @@ export function PluginsSection({
 							<div className="flex shrink-0 items-center gap-0.5">
 								<IconButton
 									icon={ExternalLink}
-									label={`在访达中显示 ${ext.name}`}
-									title="在访达中显示"
+									label={t("settingsCore.plugins.showInFinder", { name: ext.name })}
+									title={t("settingsCore.plugins.showInFinderGeneric")}
 									onClick={() => reveal(ext.path)}
 								/>
 								<IconButton
 									icon={Trash2}
 									variant="danger"
-									label={`删除扩展 ${ext.name}`}
-									title="永久删除这个扩展模块"
+									label={t("settingsCore.plugins.deleteExtensionLabel", { name: ext.name })}
+									title={t("settingsCore.plugins.deleteExtensionTooltip")}
 									disabled={busy !== null}
 									onClick={() => void deleteExtension(ext)}
 								/>

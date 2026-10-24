@@ -5,6 +5,7 @@
  */
 import { errMsg } from "../../../lib/dialogs";
 import { isResumeCancelled } from "../../../lib/ensureLive";
+import { tNow } from "../../../stores/language";
 import { useLive } from "../../../stores/live";
 
 const inflight = new Set<string>();
@@ -39,7 +40,7 @@ export function trackCommand(
 				useLive.getState().dismissCommandOutput(sessionId, id);
 				return;
 			}
-			useLive.getState().finishCommandRun(sessionId, id, "error", `/${command} 失败：${errMsg(err)}`);
+			useLive.getState().finishCommandRun(sessionId, id, "error", tNow("slash.trackFailed", { command, error: errMsg(err) }));
 		},
 	);
 }

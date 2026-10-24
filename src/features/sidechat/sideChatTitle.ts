@@ -1,6 +1,7 @@
 /** Stable display names for side chats: 「侧边对话1」, 「侧边对话2」… per parent session. */
 
 import type { SessionMeta } from "../../lib/contracts";
+import { tNow } from "../../stores/language";
 import { compareSessionLabels } from "./labelSort";
 
 type SideChatLike = Pick<SessionMeta, "id" | "parentId" | "createdAt" | "label"> &
@@ -27,8 +28,5 @@ export function sideChatTitle(
 		.filter((s) => s.parentId === self.parentId && s.kind !== "fork")
 		.sort(compareCreation);
 	const index = siblings.findIndex((s) => s.id === sessionId);
-	return index < 0 ? null : `侧边对话${index + 1}`;
+	return index < 0 ? null : tNow("sidechat.titleIndexed", { index: index + 1 });
 }
-
-/** Title of a not-yet-created side chat tab. */
-export const NEW_SIDE_CHAT_TITLE = "新侧边对话";

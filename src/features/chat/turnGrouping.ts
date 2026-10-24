@@ -1,4 +1,5 @@
 import { splitThinkTags } from "../../lib/thinkTags";
+import { tNow } from "../../stores/language";
 import type {
 	ToolCall,
 	ToolResultInfo,
@@ -113,10 +114,19 @@ export function formatMessageTimestamp(
 	const minutes = String(date.getMinutes()).padStart(2, "0");
 	const time = `${hours}:${minutes}`;
 	if (date.getFullYear() !== now.getFullYear()) {
-		return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+		return tNow("chatView.turnGrouping.timestampYear", {
+			year: date.getFullYear(),
+			month: date.getMonth() + 1,
+			day: date.getDate(),
+			time,
+		});
 	}
 	if (date.getMonth() !== now.getMonth() || date.getDate() !== now.getDate()) {
-		return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+		return tNow("chatView.turnGrouping.timestampDate", {
+			month: date.getMonth() + 1,
+			day: date.getDate(),
+			time,
+		});
 	}
 	return time;
 }
@@ -126,40 +136,44 @@ export function formatMessageTimestamp(
  * e.g. "12 秒", "1 分 23 秒", "2 小时 5 分"
  */
 export function formatDurationChinese(ms: number): string {
-	if (ms <= 0) return "0 秒";
+	if (ms <= 0) return tNow("chatView.turnGrouping.durationChineseZero");
 	const totalSec = Math.round(ms / 1000);
 	if (totalSec < 60) {
-		return `${Math.max(1, totalSec)} 秒`;
+		return tNow("chatView.turnGrouping.durationChineseSecs", { s: Math.max(1, totalSec) });
 	}
 	const minutes = Math.floor(totalSec / 60);
 	const seconds = totalSec % 60;
 	if (minutes < 60) {
-		return seconds > 0 ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分钟`;
+		return seconds > 0
+			? tNow("chatView.turnGrouping.durationChineseMinsSecs", { m: minutes, s: seconds })
+			: tNow("chatView.turnGrouping.durationChineseMins", { m: minutes });
 	}
 	const hours = Math.floor(minutes / 60);
 	const remainingMinutes = minutes % 60;
 	return remainingMinutes > 0
-		? `${hours} 小时 ${remainingMinutes} 分`
-		: `${hours} 小时`;
+		? tNow("chatView.turnGrouping.durationChineseHoursMins", { h: hours, m: remainingMinutes })
+		: tNow("chatView.turnGrouping.durationChineseHours", { h: hours });
 }
 
 /**
  * Compact Chinese duration for the turn-activity rows: "2分3秒" / "5秒" / "1小时4分".
  */
 export function formatDurationCompact(ms: number): string {
-	if (ms <= 0) return "0秒";
+	if (ms <= 0) return tNow("chatView.turnGrouping.durationCompactZero");
 	const totalSec = Math.round(ms / 1000);
-	if (totalSec < 60) return `${Math.max(1, totalSec)}秒`;
+	if (totalSec < 60) return tNow("chatView.turnGrouping.durationCompactSecs", { s: Math.max(1, totalSec) });
 	const minutes = Math.floor(totalSec / 60);
 	const seconds = totalSec % 60;
 	if (minutes < 60) {
-		return seconds > 0 ? `${minutes}分${seconds}秒` : `${minutes}分`;
+		return seconds > 0
+			? tNow("chatView.turnGrouping.durationCompactMinsSecs", { m: minutes, s: seconds })
+			: tNow("chatView.turnGrouping.durationCompactMins", { m: minutes });
 	}
 	const hours = Math.floor(minutes / 60);
 	const remainingMinutes = minutes % 60;
 	return remainingMinutes > 0
-		? `${hours}小时${remainingMinutes}分`
-		: `${hours}小时`;
+		? tNow("chatView.turnGrouping.durationCompactHoursMins", { h: hours, m: remainingMinutes })
+		: tNow("chatView.turnGrouping.durationCompactHours", { h: hours });
 }
 
 /**
@@ -229,18 +243,18 @@ export function isProtocolKind(kind: TranscriptKind): boolean {
 export function noticeLabel(item: TranscriptItem): string {
 	switch (item.kind) {
 		case "model_change":
-			return `模型切换 → ${
+			return `${tNow("chatView.turnGrouping.modelSwitched")} → ${
 				formatShortModel(item.model ?? item.text) ||
 				(item.model ?? item.text ?? "?")
 			}`;
 		case "compaction":
 			return isFlowItem(item) ? flowNoticeText(item.flow) : persistedCompactionText(item);
 		case "branch_summary":
-			return "分支总结";
+			return tNow("chatView.turnGrouping.branchSummary");
 		case "thinking_level_change":
-			return `思考等级 → ${item.text ?? "?"}`;
+			return `${tNow("chatView.turnGrouping.thinkingLevel")} → ${item.text ?? "?"}`;
 		default:
-			return "系统通知";
+			return tNow("chatView.turnGrouping.systemNotice");
 	}
 }
 
@@ -259,7 +273,13 @@ export function noticeBody(item: TranscriptItem): string {
  * "" when the label already says everything (model_change, compaction, …).
  */
 export function noticeSummary(item: TranscriptItem): string {
-	if (noticeLabel(item) !== "系统通知") return "";
+	if (
+		item.kind === "model_change" ||
+		item.kind === "compaction" ||
+		item.kind === "branch_summary" ||
+		item.kind === "thinking_level_change"
+	)
+		return "";
 	return (
 		noticeBody(item)
 			.split("\n")
@@ -526,7 +546,7 @@ export function groupTurnBlocks(rawItems: TranscriptItem[]): DisplayBlock[] {
 					id: `orphan-result-${item.id}`,
 					kind: "text",
 					item,
-					text: item.text || item.toolResult?.text || "[工具输出]",
+					text: item.text || item.toolResult?.text || tNow("chatView.turnGrouping.toolOutput"),
 				});
 			}
 			continue;
@@ -705,27 +725,31 @@ export function activityGroupSummary(
 	running: boolean,
 ): string {
 	if (kind === "commands") {
-		return running ? "正在运行命令…" : `已运行 ${steps.length} 条命令`;
+		return running
+			? tNow("chatView.turnGrouping.groupRunningCommands")
+			: tNow("chatView.turnGrouping.groupRanCommands", { count: steps.length });
 	}
 	if (kind === "edits") {
-		if (running) return "正在编辑…";
+		if (running) return tNow("chatView.turnGrouping.groupRunningEdits");
 		const paths = new Set(
 			steps.flatMap((s) => {
 				const found = toolFilePaths(s.call.args);
 				return found.length > 0 ? found : [s.call.name];
 			}),
 		);
-		return `已编辑 ${paths.size} 个文件`;
+		return tNow("chatView.turnGrouping.groupRanEdits", { count: paths.size });
 	}
-	if (running) return "正在浏览…";
+	if (running) return tNow("chatView.turnGrouping.groupRunningExploration");
 	const searches = steps.filter(
 		(s) => SEARCH_TOOLS[s.call.name.toLowerCase()],
 	).length;
 	const files = steps.length - searches;
 	const parts: string[] = [];
-	if (files > 0) parts.push(`${files} 个文件`);
-	if (searches > 0) parts.push(`${searches} 次搜索`);
-	return `已浏览 ${parts.join("、")}`;
+	if (files > 0) parts.push(tNow("chatView.turnGrouping.groupFiles", { count: files }));
+	if (searches > 0) parts.push(tNow("chatView.turnGrouping.groupSearches", { count: searches }));
+	return tNow("chatView.turnGrouping.groupExplorationSummary", {
+		parts: parts.join(tNow("chatView.turnGrouping.groupSeparator")),
+	});
 }
 
 /** One row in the rendered activity list. */

@@ -20,6 +20,7 @@ import { holdTranscript, useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { toast } from "../../lib/toast";
+import { useT, tNow } from "../../stores/language";
 import { abortTurn } from "./send";
 import { StartGlow } from "../../components/StartHero";
 import { MODAL_SELECTOR } from "../../components/FloatingLayer";
@@ -56,7 +57,7 @@ function dropStaleDraft(sessionId: string, err: unknown): boolean {
 	if (useUi.getState().selectedSessionId === sessionId) {
 		useUi.getState().selectSession(null);
 	}
-	toast.info("这个草稿的后台会话已失效，已从列表移除");
+	toast.info(tNow("chatView.sessionView.draftExpired"));
 	return true;
 }
 
@@ -67,6 +68,7 @@ export function SessionView({
 	sessionId: string;
 	compact?: boolean;
 }) {
+	const { t } = useT();
 	const meta = useSessions((s) => s.sessions[sessionId]);
 	const streaming = useLive((s) => s.sessions[sessionId]?.streaming === true);
 	useQueueAutoSend(sessionId, streaming);
@@ -189,7 +191,7 @@ export function SessionView({
 				if (page.reset) setItems(sessionId, page.items, page.nextOffset, page.tailId);
 				else appendItems(sessionId, page.items, page.nextOffset, page.tailId);
 			})
-			.catch((err) => toast.error(`刷新会话记录失败: ${errMsg(err)}`))
+			.catch((err) => toast.error(t("chatView.sessionView.refreshHistoryFailed", { error: errMsg(err) })))
 			.finally(() => {
 				if (!cancelled) loadTurns();
 			});
@@ -238,13 +240,13 @@ export function SessionView({
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Escape" || e.isComposing || isEscapeClaimed(e)) return;
 			if (document.querySelector(MODAL_SELECTOR)) return;
-			const t = e.target instanceof Element ? e.target : null;
-			if (t?.closest('input, [contenteditable="true"]')) return;
-			if (t?.tagName === "TEXTAREA" && !t.hasAttribute("data-composer")) return;
+			const el = e.target instanceof Element ? e.target : null;
+			if (el?.closest('input, [contenteditable="true"]')) return;
+			if (el?.tagName === "TEXTAREA" && !el.hasAttribute("data-composer")) return;
 			claimEscape(e);
 			abortTurn(sessionId)
-				.then(() => toast.info("已终止对话生成"))
-				.catch((err) => toast.error(`终止失败: ${errMsg(err)}`));
+				.then(() => toast.info(t("chatView.sessionView.generationAborted")))
+				.catch((err) => toast.error(t("chatView.sessionView.abortFailed", { error: errMsg(err) })));
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
@@ -315,8 +317,8 @@ export function SessionView({
 						{!scrollPill.nearBottom && (
 							<button
 								type="button"
-								aria-label="滚动到底部"
-								title="滚动到底部"
+								aria-label={t("chatView.sessionView.scrollToBottom")}
+								title={t("chatView.sessionView.scrollToBottom")}
 								onClick={() => {
 									const el = scrollRef.current;
 									if (el)
@@ -369,7 +371,7 @@ export function SessionView({
 							ask.awaiting && (
 								<div className="flex shrink-0 items-center gap-2 px-5 py-3 text-[12px] text-[var(--text-40)]">
 									<Loader2 size={12} className="animate-spin" />
-									正在提交回答…
+									{t("chatView.sessionView.submittingAnswer")}
 								</div>
 							)
 						)}

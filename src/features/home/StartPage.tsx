@@ -8,6 +8,7 @@ import { errMsg } from "../../lib/dialogs";
 import { deriveLoadState } from "../../lib/loadState";
 import { addWorkspace } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { useT } from "../../stores/language";
 import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
@@ -51,6 +52,7 @@ function LaunchComposer({
 	failed: boolean;
 	onRetry: () => void;
 }) {
+	const { t } = useT();
 	const [text, setText] = useState("");
 	const activeMode = useSidebarStore((s) => s.activeMode);
 	const creating = useSidebarStore((s) => s.creatingKey !== null);
@@ -78,7 +80,7 @@ function LaunchComposer({
 			<div className="flex items-center gap-1.5 border-b border-[var(--line,var(--border-divider))] px-3.5 py-2 text-[13px] text-[var(--text-60,var(--text-muted))]">
 				<Folder size={14} className="shrink-0 text-neutral-400" />
 				<span title={target?.path} className="font-medium">
-					{target ? target.name : "未选择项目"}
+					{target ? target.name : t("home.noProjectSelected")}
 				</span>
 				{failed ? (
 					<button
@@ -86,12 +88,12 @@ function LaunchComposer({
 						onClick={onRetry}
 						className="ml-2 rounded-full border border-red-400/50 bg-red-500/10 px-2.5 py-0.5 text-[12px] text-red-600 transition-colors hover:bg-red-500/20"
 					>
-						会话没启动成功，点此重试
+						{t("home.sessionStartFailedRetry")}
 					</button>
 				) : (
 					<span className="ml-2 flex items-center gap-1.5 text-[var(--text-40,var(--text-dim))]">
 						<Loader2 size={12} className="animate-spin" />
-						{creating ? "正在创建会话" : "正在准备会话"}
+						{creating ? t("home.creatingSession") : t("home.preparingSession")}
 					</span>
 				)}
 			</div>
@@ -100,8 +102,8 @@ function LaunchComposer({
 				value={text}
 				rows={1}
 				onChange={(e) => handleChange(e.target.value)}
-				placeholder="输入你的需求，Enter 发送"
-				aria-label="新任务输入框"
+				placeholder={t("home.inputPlaceholder")}
+				aria-label={t("home.inputAriaLabel")}
 				className="field-sizing-content min-h-[1.35em] w-full resize-none bg-transparent px-4 pb-1.5 pt-3 text-[14px] leading-[1.35] text-[var(--text)] outline-none placeholder:text-[var(--text-40,var(--text-dim))]"
 			/>
 			<div className="flex items-center justify-between px-2.5 pb-2 text-[12px] text-[var(--text-40,var(--text-dim))]">
@@ -111,7 +113,7 @@ function LaunchComposer({
 					</span>
 					<span className="flex items-center gap-1.5 px-2 py-1">
 						<Loader2 size={12} className="animate-spin" />
-						加载模型
+						{t("home.loadingModel")}
 					</span>
 				</div>
 				<span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-active-fill)] text-[var(--text-30,var(--text-dim))]">
@@ -128,6 +130,7 @@ function LaunchComposer({
  * there is no workspace at all, asks for a project directory first.
  */
 export function StartPage() {
+	const { t } = useT();
 	const activeMode = useSidebarStore((s) => s.activeMode);
 	// 通用对话 always has its global workspace; project modes need a project of
 	// their own (workspaces of other modes never count).
@@ -154,7 +157,7 @@ export function StartPage() {
 			const selected = await openDialog({
 				directory: true,
 				multiple: false,
-				title: "选择项目目录",
+				title: t("home.selectProjectDir"),
 			});
 			const path = typeof selected === "string" ? selected : selected?.[0];
 			if (!path) return;
@@ -163,7 +166,7 @@ export function StartPage() {
 			await useSessions.getState().refreshWorkspaces();
 			await startSessionInDir(ws, false);
 		} catch (e) {
-			toast.error(`添加工作区失败: ${errMsg(e)}`);
+			toast.error(t("home.addWorkspaceFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -178,12 +181,12 @@ export function StartPage() {
 						className="start-rise flex w-full animate-pulse items-center gap-2 rounded-[22px] border border-[var(--line,var(--border))] bg-[var(--bg-panel)] px-4 py-6 text-[14px] text-[var(--text-40,var(--text-dim))]"
 					>
 						<Loader2 size={14} className="animate-spin" />
-						正在加载中
+						{t("home.loading")}
 					</div>
 				) : loadState === "error" ? (
 					<div className="start-rise w-full rounded-[22px] border border-[var(--line,var(--border))] bg-[var(--bg-panel)]">
 						<LoadFailed
-							what="项目列表"
+							what={t("home.projectList")}
 							error={loadError}
 							onRetry={() => void useSessions.getState().load().catch(() => {})}
 						/>
@@ -199,15 +202,15 @@ export function StartPage() {
 						type="button"
 						onClick={() => void pickDirectory()}
 						className="start-rise w-full rounded-[22px] border border-[var(--line,var(--border))] bg-[var(--bg-panel)] text-left transition-colors hover:border-[var(--text-30,var(--border))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]"
-						aria-label="选择项目目录开始"
+						aria-label={t("home.selectProjectDirToStart")}
 					>
 						<div className="flex items-center gap-1.5 border-b border-[var(--line,var(--border-divider))] px-3.5 py-2 text-[var(--text-60,var(--text-muted))]">
 							<FolderPlus size={14} className="shrink-0" />
-							<span className="text-[13px]">选择项目目录</span>
+							<span className="text-[13px]">{t("home.selectProjectDir")}</span>
 							<ChevronDown size={11} className="shrink-0 text-[var(--text-40,var(--text-dim))]" />
 						</div>
 						<div className="px-4 pb-3 pt-3.5 text-[14px] text-[var(--text-40,var(--text-dim))]">
-							先选择一个项目目录，再开始输入…
+							{t("home.selectProjectDirFirst")}
 						</div>
 						<div className="flex items-center justify-between px-3.5 pb-3">
 							<Plus size={16} className="text-[var(--text-40,var(--text-dim))]" />

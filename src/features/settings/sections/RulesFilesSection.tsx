@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { ArrowUpRight, ChevronDown, ChevronRight, FilePlus2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "../../../stores/language";
 import { Segmented } from "../../../components/Segmented";
 import { useHomeDir, useShortPath } from "../../../lib/hooks";
 import { fsReadDir, ompRuleRead, ompRuleWrite } from "../../../lib/ipc";
@@ -26,18 +27,17 @@ import {
 	rulesDirPath,
 } from "./rulesFiles";
 
-const RELATED_PAGES = [
-	{ id: "memory", label: "记忆", description: "memory_summary.md、MEMORY.md 和沉淀的技能，omp 从历史会话里自己整理，同样会带进新会话" },
-	{ id: "skills", label: "技能与命令", description: "从哪些目录加载技能和自定义命令" },
-	{ id: "prompt-composition", label: "系统提示词", description: "规则文件和记忆最终各占系统提示词多少" },
-] as const;
-
+const getRelatedPages = (t: (k: string) => string) => [
+	{ id: "memory" as const, label: t("memoryRules.relatedMemory"), description: t("memoryRules.relatedMemoryDesc") },
+	{ id: "skills" as const, label: t("memoryRules.relatedSkills"), description: t("memoryRules.relatedSkillsDesc") },
+	{ id: "prompt-composition" as const, label: t("memoryRules.relatedPromptComp"), description: t("memoryRules.relatedPromptCompDesc") },
+];
 export function RulesFilesSection() {
+	const { t, locale } = useT();
 	const cwd = useSettingsProjectCwd();
 	const { navigate } = useSettingsNav();
 	const home = useHomeDir();
 	const short = useShortPath();
-
 	const [scope, setScope] = useState<RuleScope>("global");
 	const effectiveScope: RuleScope = cwd ? scope : "global";
 	const [contents, setContents] = useState<RuleContents>({});
@@ -97,7 +97,7 @@ export function RulesFilesSection() {
 			await refresh();
 			setExpandedId(entry.id);
 		} catch (e) {
-			toast.error(`创建失败：${describeFileCommandError(e)}`);
+			toast.error(t("memoryRules.createFailed", { error: describeFileCommandError(e) }));
 		}
 	};
 
@@ -108,9 +108,9 @@ export function RulesFilesSection() {
 	);
 
 	const renderRow = (e: RuleEntry) => {
-		const st = ruleStatus(e, contents);
+		const st = ruleStatus(e, contents, t);
 		const isRuleFile = e.kind === "rule-file";
-		const loading = st.label === "读取中";
+		const loading = st.code === "loading";
 		const open = e.id === expandedId;
 		const text = contents[e.path];
 		// A file that is not on disk yet has nothing to open: its action is 「创建」.
@@ -122,7 +122,7 @@ export function RulesFilesSection() {
 				<span className="flex flex-wrap items-center gap-2">
 					<code className="font-mono text-xs text-[var(--text)]">{e.label}</code>
 					{!loading && (
-						<Chip tone={st.exists || isRuleFile ? "success" : "neutral"}>{isRuleFile ? "已存在" : st.label}</Chip>
+						<Chip tone={st.exists || isRuleFile ? "success" : "neutral"}>{isRuleFile ? t("memoryRules.statusExists") : st.label}</Chip>
 					)}
 					{typeof text === "string" && text.trim() !== "" && <Chip>{formatTokenEstimate(text)}</Chip>}
 					{st.note && <span className="text-[11px] text-[var(--status-warning)]">{st.note}</span>}
@@ -139,8 +139,8 @@ export function RulesFilesSection() {
 							onClick={() => setExpandedId(open ? null : e.id)}
 							aria-expanded={open}
 							aria-controls={open ? `rule-editor-${e.id}` : undefined}
-							aria-label={open ? `收起 ${e.label}` : `查看并编辑 ${e.label}`}
-							title={open ? `收起 ${e.label}` : `查看并编辑 ${e.label}（${e.path}）`}
+							aria-label={open ? t("memoryRules.collapseAria", { label: e.label }) : t("memoryRules.viewAndEditAria", { label: e.label })}
+							title={open ? t("memoryRules.collapseAria", { label: e.label }) : t("memoryRules.viewAndEditTitle", { label: e.label, path: e.path })}
 							className={clsx(
 								"flex min-w-0 flex-1 items-start gap-2 px-4 py-2.5 text-left transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]",
 								open && "bg-[var(--bg-active-fill)] hover:bg-[var(--bg-active-fill)]",
@@ -153,7 +153,7 @@ export function RulesFilesSection() {
 							)}
 							{summary}
 							<span className="hairline shrink-0 whitespace-nowrap rounded-lg bg-[var(--bg-active-fill)] px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
-								{open ? "收起" : "查看并编辑"}
+								{open ? t("memoryRules.collapse") : t("memoryRules.viewAndEdit")}
 							</span>
 						</button>
 					) : (
@@ -162,7 +162,7 @@ export function RulesFilesSection() {
 					{canCreate && (
 						<div className="py-2.5 pr-4">
 							<Button icon={FilePlus2} onClick={() => void create(e)}>
-								创建
+								{t("memoryRules.create")}
 							</Button>
 						</div>
 					)}
@@ -183,8 +183,8 @@ export function RulesFilesSection() {
 							bare
 							createContent={isRuleFile ? undefined : e.starter}
 							statusText={(loaded) => {
-								const s = ruleStatus(e, { [e.path]: loaded });
-								return s.note ? `${s.label}；${s.note}` : s.label;
+								const s = ruleStatus(e, { [e.path]: loaded }, t);
+								return s.note ? `${s.label}${locale === "zh-CN" ? "；" : "; "}${s.note}` : s.label;
 							}}
 							onChanged={() => void refresh()}
 						/>
@@ -197,42 +197,42 @@ export function RulesFilesSection() {
 	return (
 		<div className="space-y-5">
 			<SectionHeader
-				title="规则文件"
-				description="omp 每次对话都会带上的长期规则，以及输出时实时检查的规则"
+				title={t("memoryRules.rulesTitle")}
+				description={t("memoryRules.rulesDesc")}
 			/>
 
 			<Notice tone="info">
-				修改只对之后新开的会话生效；内容按原样保存，AGENTS.md 里的 <code>@路径</code> 引用行会在 omp 读取时展开。
+				{t("memoryRules.rulesNotice")}
 			</Notice>
 
 			{error && <Notice tone="danger">{error}</Notice>}
 
 			<SectionJumpBar />
 			<SettingsCard
-				jump="作用范围"
+				jump={t("memoryRules.rulesScope")}
 				fieldId="agentsMdScope"
 				footer={
 					effectiveScope === "global"
-						? "全局文件对所有项目的会话都生效。"
-						: "项目文件只对在该目录（及子目录）启动的会话生效，和全局文件同时生效。"
+						? t("memoryRules.scopeGlobalFooter")
+						: t("memoryRules.scopeProjectFooter")
 				}
 			>
 				<SettingRow
-					label="查看哪一层"
-					description={cwd ? `当前项目：${short(cwd)}` : "先在左侧选中一个会话，才能编辑它所在项目的规则文件"}
+					label={t("memoryRules.whichLayer")}
+					description={cwd ? t("memoryRules.currentProjectDesc", { path: short(cwd) }) : t("memoryRules.noSessionProjectDesc")}
 					control={
 						<Segmented<RuleScope>
-							aria-label="规则文件范围"
+							aria-label={t("memoryRules.scopeAria")}
 							size="sm"
 							value={effectiveScope}
 							onChange={setScope}
 							options={[
-								{ value: "global", label: "全局" },
+								{ value: "global", label: t("memoryRules.scopeGlobalOption") },
 								{
 									value: "project",
-									label: "当前项目",
+									label: t("memoryRules.scopeProjectOption"),
 									disabled: !cwd,
-									title: cwd ? undefined : "先在左侧选中一个会话",
+									title: cwd ? undefined : t("memoryRules.scopeProjectDisabledHint"),
 								},
 							]}
 						/>
@@ -240,28 +240,28 @@ export function RulesFilesSection() {
 				/>
 			</SettingsCard>
 
-			<SettingsCard jump="文件列表" fieldId="agentsMdProjectFile" clip>
+			<SettingsCard jump={t("memoryRules.fileListJump")} fieldId="agentsMdProjectFile" clip>
 				<div className="divide-y divide-[var(--border-divider)]">
 					{fixed.map(renderRow)}
 					{ruleFiles.map(renderRow)}
 				</div>
 				{ruleFiles.length === 0 && (
 					<p className="px-4 py-2.5 text-[11px] text-[var(--text-muted)]">
-						{dir ? short(dir) : "rules/"} 下还没有规则文件（rules/*.md）。可在访达里把规则文件放进去，这里会列出来。
+						{t("memoryRules.noRuleFiles", { dir: dir ? short(dir) : "rules/" })}
 					</p>
 				)}
 			</SettingsCard>
 
-			<SettingsCard jump="相关设置" fieldId="agentsMdRelated">
+			<SettingsCard jump={t("memoryRules.relatedPages")} fieldId="agentsMdRelated">
 				<div className="divide-y divide-[var(--border-divider)]">
-					{RELATED_PAGES.map((p) => (
+					{getRelatedPages(t).map((p) => (
 						<SettingRow
 							key={p.id}
 							label={p.label}
 							description={p.description}
 							control={
 								<Button icon={ArrowUpRight} onClick={() => navigate(p.id)}>
-									前往{p.label}
+									{t("memoryRules.goToPage", { label: p.label })}
 								</Button>
 							}
 						/>
@@ -271,7 +271,7 @@ export function RulesFilesSection() {
 
 			{!expanded && (
 				<p data-field-id="agentsMdEditor" className="px-1 text-xs text-[var(--text-muted)]">
-					点开带「查看并编辑」的一行，就能在那一行下面查看和修改文件内容。
+					{t("memoryRules.expandTip")}
 				</p>
 			)}
 

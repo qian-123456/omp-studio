@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useEscapeKey } from "../lib/hooks";
 import { Z_LAYER } from "./FloatingLayer";
+import { useT } from "../stores/language";
 
 export type ModalSize = "sm" | "md" | "lg" | "xl" | "none";
 
@@ -56,6 +57,7 @@ export function Modal({
 	closeOnEscape = true,
 	children,
 }: ModalProps) {
+	const { t } = useT();
 	const titleId = useId();
 	const panelRef = useRef<HTMLDivElement | null>(null);
 	// Captured during the first render, before any child `autoFocus` moves focus.
@@ -110,8 +112,8 @@ export function Modal({
 							<button
 								type="button"
 								onClick={onClose}
-								title="关闭 (Esc)"
-								aria-label="关闭"
+								title={t("components.closeEsc")}
+								aria-label={t("common.close")}
 								className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-[var(--bg-hover)] hover:text-neutral-200"
 							>
 								<X className="h-3.5 w-3.5" />

@@ -1,6 +1,7 @@
 import type { ToolResultInfo, TranscriptItem } from "../../lib/contracts";
 import { stripImageMarkers } from "./userTextChips";
 import type { ToolStatus } from "./ToolCard";
+import { tNow } from "../../stores/language";
 
 /**
  * Builds a lookup map of ToolResultInfo by toolCallId from transcript items.
@@ -158,13 +159,15 @@ export function collectChatTraceEntries(
 					: "empty";
 		const assistantPreview = buildPreview(
 			unit.assistantTexts,
-			assistantPreviewKind === "running" ? "助手仍在工作" : "暂无助手正文",
+			assistantPreviewKind === "running"
+				? tNow("chat.trace.runningAssistant")
+				: tNow("chat.trace.emptyAssistant"),
 		);
 		for (let i = 0; i < unit.queries.length; i++) {
 			const q = unit.queries[i];
 			entries.push({
 				id: q.id,
-				userPreview: buildPreview([stripImageMarkers(q.text ?? "")], "用户输入"),
+				userPreview: buildPreview([stripImageMarkers(q.text ?? "")], tNow("chat.trace.userQuery")),
 				assistantPreview,
 				assistantPreviewKind,
 				isRunning: isRunning && i === unit.queries.length - 1,

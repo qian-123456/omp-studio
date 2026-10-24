@@ -26,6 +26,7 @@ import { CopyButton } from "../../../components/CopyButton";
 import { errMsg } from "../../../lib/dialogs";
 import { themeById, useResolvedThemeId } from "../../../lib/theme";
 import { toast } from "../../../lib/toast";
+import { tNow, useT } from "../../../stores/language";
 import { sendPrompt } from "../send";
 import { vizBridgeSource } from "./bridge";
 import {
@@ -115,7 +116,7 @@ function VisualizeFrame({
 	const themeId = useResolvedThemeId();
 	const theme: "light" | "dark" =
 		themeById(themeId)?.dark === false ? "light" : "dark";
-
+	const { t } = useT();
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const portRef = useRef<MessagePort | null>(null);
 	const sessionIdRef = useRef(sessionId);
@@ -201,7 +202,7 @@ function VisualizeFrame({
 				try {
 					await openUrl(href);
 				} catch (err) {
-					toast.error(`打开链接失败: ${errMsg(err)}`);
+					toast.error(tNow("visualize.openLinkFailed", { error: errMsg(err) }));
 				}
 				break;
 			}
@@ -210,13 +211,13 @@ function VisualizeFrame({
 				if (!prompt || !consumeGesture()) return;
 				const target = sessionIdRef.current;
 				if (!target) {
-					toast.error("当前上下文不支持发送消息");
+					toast.error(tNow("visualize.unsupportedContext"));
 					return;
 				}
 				try {
 					await sendPrompt(target, prompt);
 				} catch (err) {
-					toast.error(`发送失败: ${errMsg(err)}`);
+					toast.error(tNow("visualize.sendFailed", { error: errMsg(err) }));
 				}
 				break;
 			}
@@ -339,7 +340,7 @@ function VisualizeFrame({
 			{status === "error" ? (
 				<div className="flex flex-col items-start gap-2 p-3 text-[12px]">
 					<div className="flex w-full items-center justify-between gap-2">
-						<span className="text-[var(--text-40)]">可视化加载失败</span>
+						<span className="text-[var(--text-40)]">{t("visualize.loadFailed")}</span>
 						<div className="flex items-center gap-1.5">
 							<button
 								type="button"
@@ -347,7 +348,7 @@ function VisualizeFrame({
 								className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:text-[var(--text)]"
 							>
 								<RotateCw size={12} />
-								<span>重新加载</span>
+								<span>{t("visualize.reload")}</span>
 							</button>
 							<button
 								type="button"
@@ -355,7 +356,7 @@ function VisualizeFrame({
 								className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:text-[var(--text)]"
 							>
 								<Code2 size={12} />
-								<span>{showSource ? "收起源码" : "查看源码"}</span>
+								<span>{showSource ? t("visualize.hideSource") : t("visualize.viewSource")}</span>
 							</button>
 						</div>
 					</div>
@@ -369,7 +370,7 @@ function VisualizeFrame({
 						sandbox="allow-scripts"
 						referrerPolicy="no-referrer"
 						srcDoc={srcDoc}
-						title="可视化内容"
+						title={t("visualize.contentTitle")}
 						onLoad={handleLoad}
 						onError={() => setStatus("error")}
 						className={clsx(
@@ -381,7 +382,7 @@ function VisualizeFrame({
 					{status === "loading" && (
 						<div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 bg-[var(--well-bg)] text-[12px] text-[var(--text-40)]">
 							<Loader2 size={13} className="animate-spin motion-reduce:animate-none" />
-							<span>正在生成可视化…</span>
+							<span>{t("visualize.generating")}</span>
 						</div>
 					)}
 				</>
@@ -415,6 +416,7 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 }) {
 	const [fullscreen, setFullscreen] = useState(false);
 	const [showSource, setShowSource] = useState(false);
+	const { t } = useT();
 	if (streaming) {
 		return (
 			<div
@@ -424,7 +426,7 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 				)}
 			>
 				<Loader2 size={13} className="animate-spin motion-reduce:animate-none" />
-				<span>正在生成可视化…</span>
+				<span>{t("visualize.generating")}</span>
 			</div>
 		);
 	}
@@ -445,16 +447,16 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 						type="button"
 						onClick={() => setShowSource((v) => !v)}
 						className={chromeButton}
-						title={showSource ? "收起源码" : "查看源码"}
+						title={showSource ? t("visualize.hideSource") : t("visualize.viewSource")}
 					>
 						<Code2 size={12} />
-						<span>{showSource ? "收起源码" : "查看源码"}</span>
+						<span>{showSource ? t("visualize.hideSource") : t("visualize.viewSource")}</span>
 					</button>
 					<CopyButton
 						text={html}
-						label="复制源码"
-						copiedLabel="已复制"
-						title="复制源码"
+						label={t("visualize.copySource")}
+						copiedLabel={t("visualize.copied")}
+						title={t("visualize.copySource")}
 						resetMs={2000}
 						className={chromeButton}
 					/>
@@ -462,10 +464,10 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 						type="button"
 						onClick={() => setFullscreen(true)}
 						className={chromeButton}
-						title="全屏"
+						title={t("visualize.fullscreen")}
 					>
 						<Maximize2 size={12} />
-						<span>全屏</span>
+						<span>{t("visualize.fullscreen")}</span>
 					</button>
 				</div>
 				<VisualizeFrame html={html} mode={mode} sessionId={sessionId} />
@@ -477,7 +479,7 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 					placement="center"
 					layer="modal"
 					onDismiss={() => setFullscreen(false)}
-					aria-label="可视化全屏"
+					aria-label={t("visualize.fullscreenTitle")}
 					className="flex h-[calc(100vh-4rem)] w-[min(1100px,calc(100vw-3rem))] flex-col p-4 shadow-apple-modal"
 				>
 					<div className="mb-2 flex items-center justify-end">
@@ -485,10 +487,10 @@ export const VisualizeBlock = React.memo(function VisualizeBlock({
 							type="button"
 							onClick={() => setFullscreen(false)}
 							className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:text-[var(--text)]"
-							title="退出全屏"
+							title={t("visualize.exitFullscreen")}
 						>
 							<X size={13} />
-							<span>退出全屏</span>
+							<span>{t("visualize.exitFullscreen")}</span>
 						</button>
 					</div>
 					<VisualizeFrame html={html} mode={mode} sessionId={sessionId} fill />

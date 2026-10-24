@@ -26,6 +26,7 @@ import {
 import type { ReactNode, Ref } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { ModelSelect } from "../../components/ModelSelect";
+import { useT } from "../../stores/language";
 import {
 	composeSelection,
 	parseSelection,
@@ -75,12 +76,18 @@ import { type EditorTab, useSchedulesStore } from "./schedulesStore";
 /** Stable empty list so the zustand selector never returns a fresh array. */
 const EMPTY_RUNS: ScheduleRun[] = [];
 
-const RUN_STATUS_LABEL: Record<ScheduleRun["status"], string> = {
-	running: "运行中",
-	ok: "成功",
-	error: "失败",
-	skipped: "已跳过",
-};
+function getRunStatusLabel(status: ScheduleRun["status"], t: (k: string) => string): string {
+	switch (status) {
+		case "running":
+			return t("schedules.runStatusRunning");
+		case "ok":
+			return t("schedules.runStatusOk");
+		case "error":
+			return t("schedules.runStatusError");
+		case "skipped":
+			return t("schedules.runStatusSkipped");
+	}
+}
 
 interface Props {
 	onClose: () => void;
@@ -120,58 +127,55 @@ type MenuId =
 const APPROVAL_OPTIONS = [
 	{
 		value: "always-ask",
-		label: "每次询问",
-		desc: "仅只读工具自动通过，写入与执行前均需确认",
+		labelKey: "schedules.approvalAlwaysAsk",
+		descKey: "schedules.approvalAlwaysAskDesc",
 	},
 	{
 		value: "write",
-		label: "写入需审批",
-		desc: "只读与文件写入自动通过，执行命令需确认",
+		labelKey: "schedules.approvalWrite",
+		descKey: "schedules.approvalWriteDesc",
 	},
 	{
 		value: "yolo",
-		label: "完全访问",
-		desc: "全部工具自动批准，无人值守也能跑完",
+		labelKey: "schedules.approvalYolo",
+		descKey: "schedules.approvalYoloDesc",
 	},
 ] as const;
 
-function approvalLabel(value: string): string {
-	return (
-		APPROVAL_OPTIONS.find((o) => o.value === value)?.label ??
-		(value || "跟随默认")
-	);
+function approvalLabel(value: string, t: (k: string) => string): string {
+	const opt = APPROVAL_OPTIONS.find((o) => o.value === value);
+	return opt ? t(opt.labelKey) : (value || t("schedules.approvalFollowDefault"));
 }
 
 /** 收件箱通知 options — which finished runs create an inbox entry. */
-const NOTIFY_OPTIONS: { value: ScheduleNotify; label: string; desc: string }[] =
+const NOTIFY_OPTIONS: { value: ScheduleNotify; labelKey: string; descKey: string }[] =
 	[
 		{
 			value: "important",
-			label: "重要更新",
-			desc: "仅在运行失败，或中途需要你审批/回答时提醒",
+			labelKey: "schedules.notifyImportant",
+			descKey: "schedules.notifyImportantDesc",
 		},
 		{
 			value: "all",
-			label: "所有更新",
-			desc: "每次运行结束都提醒",
+			labelKey: "schedules.notifyAll",
+			descKey: "schedules.notifyAllDesc",
 		},
 		{
 			value: "none",
-			label: "不通知",
-			desc: "不放入收件箱（运行记录仍保存在「历史」）",
+			labelKey: "schedules.notifyNone",
+			descKey: "schedules.notifyNoneDesc",
 		},
 	];
 
-/** Recurring 周期 preset rows (order matches the menu); "once"/"custom" are appended separately. */
 const PRESET_MENU: {
 	value: Exclude<CadencePreset, "once" | "custom">;
-	label: string;
+	labelKey: string;
 }[] = [
-	{ value: "hourly", label: "每小时" },
-	{ value: "daily", label: "每天" },
-	{ value: "weekdays", label: "每工作日" },
-	{ value: "weekly", label: "每周" },
-	{ value: "monthly", label: "每月" },
+	{ value: "hourly", labelKey: "schedules.presetHourly" },
+	{ value: "daily", labelKey: "schedules.presetDaily" },
+	{ value: "weekdays", labelKey: "schedules.presetWeekdays" },
+	{ value: "weekly", labelKey: "schedules.presetWeekly" },
+	{ value: "monthly", labelKey: "schedules.presetMonthly" },
 ];
 
 export function ScheduleEditorPage({
@@ -181,6 +185,7 @@ export function ScheduleEditorPage({
 	initialTab = "settings",
 	onSave,
 }: Props) {
+	const { t, locale } = useT();
 	const workspaces = useSessions((s) => s.workspaces);
 	// Spaces are isolated: the editor only offers the active mode's workspaces.
 	const activeMode = useSidebarStore((s) => s.activeMode);
@@ -336,11 +341,11 @@ export function ScheduleEditorPage({
 		confirmingRef.current = true;
 		try {
 			const discard = await confirmDialog(
-				"您有未保存的修改，关闭后将丢失。",
+				t("schedules.discardMsg"),
 				{
-					title: "放弃修改？",
-					okLabel: "放弃",
-					cancelLabel: "继续编辑",
+					title: t("schedules.discardTitle"),
+					okLabel: t("schedules.discardOk"),
+					cancelLabel: t("schedules.discardCancel"),
 					danger: true,
 				},
 			);
@@ -456,7 +461,7 @@ export function ScheduleEditorPage({
 	);
 	const modelLabel = modelSel.selector
 		? (selectedModel?.id ?? modelSel.selector)
-		: "默认模型";
+		: t("schedules.defaultModel");
 	const pickThinkingLevel = (level: string) => {
 		set(
 			"modelSel",
@@ -479,7 +484,7 @@ export function ScheduleEditorPage({
 		? selectedWorkspace.name
 		: form.cwd
 			? basename(form.cwd)
-			: "选择目录";
+			: t("schedules.selectDir");
 	const customCwd = form.cwd && !selectedWorkspace ? form.cwd : null;
 	const currentWorktree =
 		worktrees.find((wt) => trimTrailingSlash(wt.path) === cwdKey) ?? null;
@@ -488,20 +493,21 @@ export function ScheduleEditorPage({
 		repoRoot !== null && trimTrailingSlash(wt.path) === trimTrailingSlash(repoRoot);
 	const worktreeLabel =
 		form.runMode === "worktree"
-			? "新建 Worktree"
+			? t("schedules.newWorktree")
 			: currentWorktree
 				? worktreeName(currentWorktree)
-				: "Worktree";
+				: t("schedules.worktreeTitle");
 
 	/** The named preset the current `每 N unit` model matches, else "自定义". */
 	const activePreset = presetOfForm(form);
 	const cadenceLabel =
 		activePreset === "once"
-			? "不重复"
+			? t("schedules.presetOnce")
 			: activePreset === "custom"
-				? "自定义"
-				: (PRESET_MENU.find((o) => o.value === activePreset)?.label ??
-					"自定义");
+				? t("schedules.presetCustom")
+				: (PRESET_MENU.find((o) => o.value === activePreset)?.labelKey
+					? t(PRESET_MENU.find((o) => o.value === activePreset)!.labelKey)
+					: t("schedules.presetCustom"));
 	/** The `每 N unit` composer row: revealed by 自定义 or a non-preset model. */
 	const composerVisible = customOpen || activePreset === "custom";
 
@@ -582,28 +588,28 @@ export function ScheduleEditorPage({
 	/** Shared items of the 周期 dropdown (+ 清除计划 once a cadence exists). */
 	const cadenceMenuItems = (
 		<>
-			<MenuHeader>周期</MenuHeader>
+			<MenuHeader>{t("schedules.cadenceMenuHeader")}</MenuHeader>
 			{PRESET_MENU.map((p) => (
 				<MenuItem
 					key={p.value}
 					selected={!composerVisible && activePreset === p.value}
 					onClick={() => applyPreset(p.value)}
 				>
-					{p.label}
+					{t(p.labelKey)}
 				</MenuItem>
 			))}
 			<MenuItem
 				selected={composerVisible}
 				onClick={() => applyPreset("custom")}
 			>
-				自定义
+				{t("schedules.presetCustom")}
 			</MenuItem>
 			<MenuDivider />
 			<MenuItem
 				selected={activePreset === "once"}
 				onClick={() => applyPreset("once")}
 			>
-				不重复（仅一次）
+				{t("schedules.presetOnceOnly")}
 			</MenuItem>
 			{form.hasSchedule && (
 				<>
@@ -614,7 +620,7 @@ export function ScheduleEditorPage({
 							set("hasSchedule", false);
 						}}
 					>
-						清除计划
+						{t("schedules.clearCadence")}
 					</MenuItem>
 				</>
 			)}
@@ -642,21 +648,21 @@ export function ScheduleEditorPage({
 					<div className="mx-auto max-w-[880px] px-8 py-6">
 						<div className="mt-1">
 							<h1 className="text-lg font-semibold text-[var(--text)]">
-								{editingSchedule.name || "定时任务"}
+								{editingSchedule.name || t("schedules.placeholderTitle")}
 							</h1>
 							<p className="mt-1 text-xs text-[var(--text-60,var(--text-muted))]">
-								查看该任务的历次运行记录。
+								{t("schedules.historySubtitle")}
 							</p>
 						</div>
 
 						<div className="mt-5 flex items-center justify-between gap-3">
 							<PillTabs<EditorTab>
-								aria-label="任务视图"
+								aria-label={t("schedules.tabViewAria")}
 								value={tab}
 								onChange={setTab}
 								options={[
-									{ value: "settings", label: "设置" },
-									{ value: "history", label: "历史" },
+									{ value: "settings", label: t("schedules.tabSettings") },
+									{ value: "history", label: t("schedules.tabHistory") },
 								]}
 							/>
 						</div>
@@ -667,7 +673,7 @@ export function ScheduleEditorPage({
 									<div className="mx-auto w-9 h-9 rounded-full bg-neutral-500/10 border border-[var(--border-divider)] flex items-center justify-center text-neutral-500">
 										<Clock size={16} />
 									</div>
-									<p className="text-xs text-neutral-400">暂无运行记录</p>
+									<p className="text-xs text-neutral-400">{t("schedules.noRunHistory")}</p>
 								</div>
 							) : (
 								<div className="space-y-1.5">
@@ -685,8 +691,8 @@ export function ScheduleEditorPage({
 											)}
 											title={
 												r.sessionId
-													? "在主工作台打开该会话"
-													: "该次运行没有关联会话"
+													? t("schedules.openSessionInWorkbench")
+													: t("schedules.runHasNoSession")
 											}
 										>
 											<RunStatusIcon status={r.status} />
@@ -704,11 +710,11 @@ export function ScheduleEditorPage({
 																		: "text-amber-400",
 														)}
 													>
-														{RUN_STATUS_LABEL[r.status]}
+														{getRunStatusLabel(r.status, t)}
 													</span>
 													<span
 														className="text-neutral-400"
-														title={formatRelativeTime(r.startedAt)}
+														title={formatRelativeTime(r.startedAt, locale)}
 													>
 														{absoluteTime(r.startedAt)}
 													</span>
@@ -740,27 +746,27 @@ export function ScheduleEditorPage({
 				<div className="flex-1 overflow-y-auto">
 					<div className="mx-auto max-w-[880px] px-8 pb-12 pt-6">
 						<h1 className="mt-1 text-lg font-semibold text-[var(--text)]">
-							{editingSchedule ? "编辑定时任务" : "新建定时任务"}
+							{editingSchedule ? t("schedules.editTitle") : t("schedules.createTitle")}
 						</h1>
 						<p className="mt-1 text-xs text-[var(--text-60,var(--text-muted))]">
-							配置任务的执行时间、指令和运行方式。
+							{t("schedules.editorSubtitle")}
 						</p>
 
 						{/* Tabs + primary action on one row */}
 						<div className="mt-5 flex items-center justify-between gap-3">
 							<PillTabs<EditorTab>
-								aria-label="任务视图"
+								aria-label={t("schedules.tabViewAria")}
 								value={tab}
 								onChange={setTab}
 								options={[
-									{ value: "settings", label: "设置" },
+									{ value: "settings", label: t("schedules.tabSettings") },
 									{
 										value: "history",
-										label: "历史",
+										label: t("schedules.tabHistory"),
 										disabled: !editingSchedule,
 										title: editingSchedule
 											? undefined
-											: "创建后可查看运行历史",
+											: t("schedules.tabHistoryDisabledTitle"),
 									},
 								]}
 							/>
@@ -772,29 +778,29 @@ export function ScheduleEditorPage({
 								className="flex items-center gap-1.5 rounded-full bg-[var(--text)] px-4 py-2 text-xs font-semibold text-[var(--bg)] shadow-sm transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
 							>
 								{saving && <Loader2 size={13} className="animate-spin" />}
-								<span>{editingSchedule ? "保存更改" : "创建定时任务"}</span>
+								<span>{editingSchedule ? t("schedules.saveChanges") : t("schedules.createSchedule")}</span>
 							</button>
 						</div>
 
 
 						{/* 任务标题 */}
 						<section className="mt-6">
-							<FieldLabel>任务标题</FieldLabel>
+							<FieldLabel>{t("schedules.fieldTitle")}</FieldLabel>
 							<input
 								type="text"
-								placeholder="未命名定时任务"
+								placeholder={t("schedules.placeholderTitle")}
 								value={form.name}
 								onChange={(e) => set("name", e.target.value)}
 								className={INPUT_CLASS}
 							/>
 							<p className="mt-1.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
-								留空时将使用指令第一行作为名称
+								{t("schedules.titleHint")}
 							</p>
 						</section>
 
 						{/* 周期 */}
 						<section className="mt-6">
-							<FieldLabel>周期</FieldLabel>
+							<FieldLabel>{t("schedules.fieldCadence")}</FieldLabel>
 							<div
 								ref={scheduleCardRef}
 								className="rounded-3xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm"
@@ -807,12 +813,12 @@ export function ScheduleEditorPage({
 										className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs text-[var(--text-60,var(--text-muted))] transition-colors hover:text-[var(--text)]"
 									>
 										<Plus size={14} className="shrink-0" />
-										<span>添加计划</span>
+										<span>{t("schedules.addCadence")}</span>
 									</button>
 								) : (
 									<div className="divide-y divide-[var(--line)]">
 										{/* 周期 — preset dropdown */}
-										<CardRow label="周期">
+										<CardRow label={t("schedules.fieldCadence")}>
 											<PillButton
 												ref={repeatPillRef}
 												open={openMenu === "preset"}
@@ -824,12 +830,12 @@ export function ScheduleEditorPage({
 
 										{/* 每 N 单位 — the composer; revealed by 自定义 or any non-preset model */}
 										{form.repeat === "recur" && composerVisible && (
-											<CardRow label="每">
+											<CardRow label={t("schedules.everyPrefix")}>
 												<NumberStepper
 													value={form.every}
 													min={form.unit === "minute" ? 5 : 1}
 													onChange={(v) => set("every", v)}
-													ariaLabel="重复间隔"
+													ariaLabel={t("schedules.repeatInterval")}
 												/>
 												<PillMenu
 													id="unit"
@@ -838,7 +844,7 @@ export function ScheduleEditorPage({
 													label={
 														CADENCE_UNITS.find(
 															(u) => u.value === form.unit,
-														)?.label ?? ""
+														)?.labelKey ? t(CADENCE_UNITS.find((u) => u.value === form.unit)!.labelKey) : ""
 													}
 													menuClassName="w-32"
 												>
@@ -859,13 +865,13 @@ export function ScheduleEditorPage({
 																}));
 															}}
 														>
-															{u.label}
+															{t(u.labelKey)}
 														</MenuItem>
 													))}
 												</PillMenu>
 												{form.unit === "minute" && (
 													<span className="text-[11px] text-[var(--text-40,var(--text-dim))]">
-														至少 5
+														{t("schedules.atLeast5")}
 													</span>
 												)}
 											</CardRow>
@@ -876,7 +882,7 @@ export function ScheduleEditorPage({
 											(form.unit === "day" ||
 												form.unit === "week" ||
 												form.unit === "month") && (
-												<CardRow label="时间">
+												<CardRow label={t("schedules.fieldTime")}>
 													<PillMenu
 														id="time"
 														openMenu={openMenu}
@@ -905,7 +911,7 @@ export function ScheduleEditorPage({
 
 										{/* 星期 chips (week unit) */}
 										{form.repeat === "recur" && form.unit === "week" && (
-											<CardRow label="星期">
+											<CardRow label={t("schedules.fieldWeekday")}>
 												<div className="flex gap-1">
 													{WEEKDAY_CHIPS.map((w) => {
 														const on = form.weekdays.includes(w.id);
@@ -932,7 +938,7 @@ export function ScheduleEditorPage({
 																		: "border-[var(--line,var(--border-divider))] bg-[var(--bg)] text-[var(--text-40,var(--text-dim))] hover:text-[var(--text)]",
 																)}
 															>
-																{w.label}
+																{locale === "en-US" ? w.labelEn : w.label}
 															</button>
 														);
 													})}
@@ -942,12 +948,12 @@ export function ScheduleEditorPage({
 
 										{/* 日期 (month unit, 1-31; short months clamp) */}
 										{form.repeat === "recur" && form.unit === "month" && (
-											<CardRow label="日期">
+											<CardRow label={t("schedules.fieldMonthDay")}>
 												<PillMenu
 													id="monthDay"
 													openMenu={openMenu}
 													onToggle={toggleMenu}
-													label={`${form.monthDay} 日`}
+													label={t("schedules.dayUnit", { day: form.monthDay })}
 													menuClassName="w-32"
 												>
 													{MONTH_DAYS.map((d) => (
@@ -959,13 +965,13 @@ export function ScheduleEditorPage({
 																set("monthDay", d);
 															}}
 														>
-															{d} 日
+															{t("schedules.dayUnit", { day: d })}
 														</MenuItem>
 													))}
 												</PillMenu>
 												{form.monthDay > 28 && (
 													<span className="text-[11px] text-[var(--text-40,var(--text-dim))]">
-														小月自动顺延到最后一天
+														{t("schedules.shortMonthClampHint")}
 													</span>
 												)}
 											</CardRow>
@@ -973,7 +979,7 @@ export function ScheduleEditorPage({
 
 										{/* 执行时间 (不重复/仅一次) */}
 										{form.repeat === "once" && (
-											<CardRow label="执行时间">
+											<CardRow label={t("schedules.fieldRunTime")}>
 												<input
 													type="datetime-local"
 													value={form.onceAt}
@@ -988,7 +994,7 @@ export function ScheduleEditorPage({
 
 										{/* 结束重复: 从不 / 截止日期 / 重复 N 次后 */}
 										{form.repeat === "recur" && (
-											<CardRow label="结束重复">
+											<CardRow label={t("schedules.fieldEndRepeat")}>
 												{form.endMode === "date" && (
 													<input
 														type="date"
@@ -1007,7 +1013,7 @@ export function ScheduleEditorPage({
 														value={form.endRuns}
 														min={1}
 														onChange={(v) => set("endRuns", v)}
-														ariaLabel="重复次数"
+														ariaLabel={t("schedules.repeatCount")}
 													/>
 												)}
 												<PillMenu
@@ -1016,14 +1022,14 @@ export function ScheduleEditorPage({
 													onToggle={toggleMenu}
 													label={
 														form.endMode === "date"
-															? form.endDate || "截止日期"
+															? form.endDate || t("schedules.endDate")
 															: form.endMode === "count"
 																? Number.isFinite(
 																		Math.floor(form.endRuns),
 																	) && form.endRuns >= 1
-																	? `重复 ${Math.floor(form.endRuns)} 次后`
-																	: "重复 N 次后"
-																: "从不"
+																	? t("schedules.endCountLabel", { count: Math.floor(form.endRuns) })
+																	: t("schedules.endCount")
+																: t("schedules.endNever")
 													}
 													menuClassName="w-36"
 												>
@@ -1034,7 +1040,7 @@ export function ScheduleEditorPage({
 															set("endMode", "never");
 														}}
 													>
-														从不
+														{t("schedules.endNever")}
 													</MenuItem>
 													<MenuItem
 														selected={form.endMode === "date"}
@@ -1043,7 +1049,7 @@ export function ScheduleEditorPage({
 															set("endMode", "date");
 														}}
 													>
-														截止日期
+														{t("schedules.endDate")}
 													</MenuItem>
 													<MenuItem
 														selected={form.endMode === "count"}
@@ -1052,7 +1058,7 @@ export function ScheduleEditorPage({
 															set("endMode", "count");
 														}}
 													>
-														重复 N 次后
+														{t("schedules.endCount")}
 													</MenuItem>
 												</PillMenu>
 											</CardRow>
@@ -1106,7 +1112,7 @@ export function ScheduleEditorPage({
 						{/* images: stored inline as `[Image #N: path]` in the prompt text */}
 						{/* 指令 — chat-composer card: textarea + attached toolbar strip */}
 						<section className="mt-6">
-							<FieldLabel>指令</FieldLabel>
+							<FieldLabel>{t("schedules.fieldPrompt")}</FieldLabel>
 							<div
 								className={clsx(
 									"rounded-3xl border bg-[var(--bg-panel)] shadow-sm",
@@ -1126,7 +1132,7 @@ export function ScheduleEditorPage({
 								<textarea
 									ref={promptRef}
 									rows={2}
-									placeholder="例如：Review 最近 24 小时的提交，总结可能引入的 bug 和修复建议（可粘贴或拖入图片）"
+									placeholder={t("schedules.promptPlaceholder")}
 									value={promptDoc.text}
 									onChange={(e) => {
 										set("prompt", docToPrompt({ text: e.target.value, images: promptDoc.images }));
@@ -1146,7 +1152,7 @@ export function ScheduleEditorPage({
 											<button
 												type="button"
 												onClick={() => toggleMenu("workspace")}
-												title={form.cwd || "选择项目目录"}
+												title={form.cwd || t("schedules.selectProjectDir")}
 												className={TOOLBAR_CHIP_CLASS}
 											>
 												<FolderOpen
@@ -1171,7 +1177,7 @@ export function ScheduleEditorPage({
 													onDismiss={() => setOpenMenu(null)}
 													className={clsx("w-[300px]", MENU_CLASS)}
 												>
-													<MenuHeader>项目目录</MenuHeader>
+													<MenuHeader>{t("schedules.projectDirHeader")}</MenuHeader>
 													<div className="max-h-64 overflow-y-auto">
 														{modeWorkspaces.map((ws) => (
 															<MenuItem
@@ -1182,7 +1188,7 @@ export function ScheduleEditorPage({
 																		{ws.name}
 																		{ws.kind === "global" && (
 																			<span className="ml-1.5 text-[10px] font-normal text-[var(--text-40,var(--text-dim))]">
-																				全局
+																				{t("schedules.globalScope")}
 																			</span>
 																		)}
 																	</>
@@ -1197,7 +1203,7 @@ export function ScheduleEditorPage({
 														{customCwd && (
 															<MenuItem
 																selected
-																label="自定义目录"
+																label={t("schedules.customDir")}
 																desc={customCwd}
 																onClick={() => setOpenMenu(null)}
 															/>
@@ -1212,7 +1218,7 @@ export function ScheduleEditorPage({
 													>
 														<span className="flex items-center gap-2">
 															<FolderOpen size={12} className="shrink-0" />
-															浏览目录…
+															{t("schedules.browseDir")}
 														</span>
 													</MenuItem>
 												</FloatingLayer>
@@ -1224,7 +1230,7 @@ export function ScheduleEditorPage({
 											<button
 												type="button"
 												onClick={() => toggleMenu("approval")}
-												title="审批模式"
+												title={t("schedules.approvalModeTitle")}
 												className={TOOLBAR_CHIP_CLASS}
 											>
 												<ShieldCheck
@@ -1242,7 +1248,7 @@ export function ScheduleEditorPage({
 														form.approvalMode === "yolo" && "text-amber-400",
 													)}
 												>
-													{approvalLabel(form.approvalMode)}
+													{approvalLabel(form.approvalMode, t)}
 												</span>
 												<ChevronDown
 													size={10}
@@ -1259,13 +1265,13 @@ export function ScheduleEditorPage({
 													onDismiss={() => setOpenMenu(null)}
 													className={clsx("w-[280px]", MENU_CLASS)}
 												>
-													<MenuHeader>审批模式</MenuHeader>
+													<MenuHeader>{t("schedules.approvalModeHeader")}</MenuHeader>
 													{APPROVAL_OPTIONS.map((o) => (
 														<MenuItem
 															key={o.value}
 															selected={form.approvalMode === o.value}
-															label={o.label}
-															desc={o.desc}
+															label={t(o.labelKey)}
+															desc={t(o.descKey)}
 															onClick={() => {
 																setOpenMenu(null);
 																set("approvalMode", o.value);
@@ -1285,7 +1291,7 @@ export function ScheduleEditorPage({
 													onClick={() => toggleMenu("worktree")}
 													title={
 														form.runMode === "worktree"
-															? "每次运行新建独立 Git Worktree"
+															? t("schedules.worktreeRunTitle")
 															: form.cwd
 													}
 													className={TOOLBAR_CHIP_CLASS}
@@ -1310,7 +1316,7 @@ export function ScheduleEditorPage({
 														onDismiss={() => setOpenMenu(null)}
 														className={clsx("w-[320px]", MENU_CLASS)}
 													>
-														<MenuHeader>运行在哪个 Worktree</MenuHeader>
+														<MenuHeader>{t("schedules.worktreeHeader")}</MenuHeader>
 														<div className="max-h-64 overflow-y-auto">
 															{worktrees.map((wt) => (
 																<MenuItem
@@ -1324,7 +1330,7 @@ export function ScheduleEditorPage({
 																			{worktreeName(wt)}
 																			{isMainWorktree(wt) && (
 																				<span className="ml-1.5 text-[10px] font-normal text-[var(--text-40,var(--text-dim))]">
-																					主目录
+																					{t("schedules.mainDir")}
 																				</span>
 																			)}
 																		</>
@@ -1344,8 +1350,8 @@ export function ScheduleEditorPage({
 														<MenuDivider />
 														<MenuItem
 															selected={form.runMode === "worktree"}
-															label="每次新建独立 Worktree"
-															desc="自动隔离在专属分支中运行，每次都新建会话"
+															label={t("schedules.newWorktreeOption")}
+															desc={t("schedules.newWorktreeDesc")}
 															onClick={() => {
 																setOpenMenu(null);
 																setForm((f) => ({
@@ -1368,7 +1374,7 @@ export function ScheduleEditorPage({
 											models={availableModels}
 											currentValue={modelSel.selector}
 											onSelect={(val) => set("modelSel", val)}
-											extras={[{ value: "", label: "使用默认模型" }]}
+											extras={[{ value: "", label: t("schedules.useDefaultModel") }]}
 											buttonClass={clsx(TOOLBAR_CHIP_CLASS, "max-w-40")}
 											widthClass="w-[380px]"
 											direction="up"
@@ -1407,7 +1413,7 @@ export function ScheduleEditorPage({
 								aria-expanded={advancedOpen}
 								className="flex items-center gap-1 py-1 text-xs font-medium text-[var(--text-60,var(--text-muted))] transition-colors hover:text-[var(--text)]"
 							>
-								<span>高级选项</span>
+								<span>{t("schedules.advancedOptions")}</span>
 								<ChevronDown
 									size={14}
 									className={clsx(
@@ -1421,8 +1427,8 @@ export function ScheduleEditorPage({
 								<div className="mt-3 divide-y divide-[var(--line)] rounded-3xl border border-[var(--line)] bg-[var(--bg-panel)] shadow-sm">
 									{/* 收件箱通知 — which finished runs create an inbox entry */}
 									<CardRow
-										label="收件箱通知"
-										labelHint="决定每次运行结束后，是否在收件箱里放一条结果。"
+										label={t("schedules.notifyLabel")}
+										labelHint={t("schedules.notifyHint")}
 									>
 										<PillMenu
 											id="notify"
@@ -1431,17 +1437,17 @@ export function ScheduleEditorPage({
 											label={
 												NOTIFY_OPTIONS.find(
 													(o) => o.value === form.notify,
-												)?.label ?? form.notify
+												)?.labelKey ? t(NOTIFY_OPTIONS.find((o) => o.value === form.notify)!.labelKey) : form.notify
 											}
 											menuClassName="w-60"
 										>
-											<MenuHeader>收件箱通知</MenuHeader>
+											<MenuHeader>{t("schedules.notifyLabel")}</MenuHeader>
 											{NOTIFY_OPTIONS.map((o) => (
 												<MenuItem
 													key={o.value}
 													selected={form.notify === o.value}
-													label={o.label}
-													desc={o.desc}
+													label={t(o.labelKey)}
+													desc={t(o.descKey)}
 													onClick={() => {
 														setOpenMenu(null);
 														set("notify", o.value);
@@ -1452,23 +1458,23 @@ export function ScheduleEditorPage({
 									</CardRow>
 
 									{/* 运行位置 — local dir vs isolated git worktree */}
-									<CardRow label="运行位置" desc="在本地目录直接运行，或隔离到独立 Git Worktree">
+									<CardRow label={t("schedules.runLocationLabel")} desc={t("schedules.runLocationDesc")}>
 										<PillMenu
 											id="runMode"
 											openMenu={openMenu}
 											onToggle={toggleMenu}
 											label={
 												form.runMode === "worktree"
-													? "独立 Git Worktree"
-													: "本地目录"
+													? t("schedules.runModeWorktree")
+													: t("schedules.runModeLocal")
 											}
 											menuClassName="w-64"
 										>
-											<MenuHeader>运行位置</MenuHeader>
+											<MenuHeader>{t("schedules.runLocationLabel")}</MenuHeader>
 											<MenuItem
 												selected={form.runMode === "local"}
-												label="本地目录"
-												desc="直接在项目当前目录运行"
+												label={t("schedules.runModeLocal")}
+												desc={t("schedules.runModeLocalDesc")}
 												onClick={() => {
 													setOpenMenu(null);
 													set("runMode", "local");
@@ -1477,11 +1483,11 @@ export function ScheduleEditorPage({
 											<MenuItem
 												selected={form.runMode === "worktree"}
 												disabled={!isGitRepo}
-												label="独立 Git Worktree"
+												label={t("schedules.runModeWorktree")}
 												desc={
 													isGitRepo
-														? "自动隔离在专属分支中运行"
-														: "当前目录不是 Git 仓库，不可用"
+														? t("schedules.runModeWorktreeDesc")
+														: t("schedules.runModeWorktreeDisabled")
 												}
 												onClick={() => {
 													setOpenMenu(null);
@@ -1499,7 +1505,7 @@ export function ScheduleEditorPage({
 									<div className="px-4 py-3">
 										<div className="flex items-center justify-between gap-3">
 											<span className="text-xs text-[var(--text)]">
-												每次运行新建会话
+												{t("schedules.newSessionEachRun")}
 											</span>
 											<Switch
 												checked={
@@ -1511,16 +1517,16 @@ export function ScheduleEditorPage({
 												onChange={(v) => set("newChatEachRun", v)}
 												title={
 													form.runMode === "worktree"
-														? "Worktree 模式下每次都在新会话运行"
+														? t("schedules.newSessionWorktreeSwitchTitle")
 														: undefined
 												}
-												ariaLabel="每次运行新建会话"
+												ariaLabel={t("schedules.newSessionEachRun")}
 											/>
 										</div>
 										<p className="mt-1 text-[11px] text-[var(--text-40,var(--text-dim))]">
 											{form.runMode === "worktree"
-												? "Worktree 模式下无法复用会话，每次都会新建"
-												: "关闭后，每次接着上一次的会话继续"}
+												? t("schedules.newSessionWorktreeHint")
+												: t("schedules.newSessionReuseHint")}
 										</p>
 									</div>
 
@@ -1529,7 +1535,7 @@ export function ScheduleEditorPage({
 										<div className="flex items-center gap-1.5 px-4 py-2.5 text-[11px] text-[var(--text-40,var(--text-dim))]">
 											<Info size={12} className="shrink-0" />
 											<span>
-												无人值守触发时若需审批，将在收件箱中等待确认。
+												{t("schedules.unattendedApprovalHint")}
 											</span>
 										</div>
 									)}
@@ -1800,6 +1806,7 @@ function NumberStepper({
 	onChange: (value: number) => void;
 	ariaLabel: string;
 }) {
+	const { t } = useT();
 	const step = (delta: number) => onChange(Math.max(min, value + delta));
 	const btn =
 		"flex h-6 w-6 items-center justify-center rounded-full text-[var(--text-60,var(--text-muted))] transition-colors hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] active:scale-95";
@@ -1809,7 +1816,7 @@ function NumberStepper({
 				type="button"
 				onClick={() => step(-1)}
 				disabled={value <= min}
-				aria-label="减少"
+				aria-label={t("schedules.stepperDecrease")}
 				className={clsx(btn, "disabled:opacity-30")}
 			>
 				<Minus size={11} />
@@ -1825,7 +1832,7 @@ function NumberStepper({
 			<button
 				type="button"
 				onClick={() => step(1)}
-				aria-label="增加"
+				aria-label={t("schedules.stepperIncrease")}
 				className={btn}
 			>
 				<Plus size={11} />

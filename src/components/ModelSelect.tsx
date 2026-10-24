@@ -23,6 +23,7 @@ import {
 	thinkingModelFor,
 } from "./modelSelectLogic";
 import { useModelSelectPrefs } from "./modelSelectPrefs";
+import { useT } from "../stores/language";
 export interface ModelExtraOption {
 	/** Value reported via onSelect; e.g. "" for a default row. */
 	value: string;
@@ -115,6 +116,7 @@ export function ModelMenuContent({
 	roles: rolesOverride,
 	closeOnSelect = false,
 }: MenuProps) {
+	const { t } = useT();
 	const [q, setQ] = useState("");
 	const [localSelection, setLocalSelection] = useState<string | null>(null);
 	const [group, setGroup] = useState<GroupId | null>(null);
@@ -240,7 +242,7 @@ export function ModelMenuContent({
 	} else if (effectiveGroup === GROUP_COMMON) {
 		if (plainExtras.length > 0) sections.push({ entries: plainExtras.map(extraEntry) });
 		if (recentModels.length > 0) {
-			sections.push({ title: "最近使用", entries: recentModels.map((m) => modelEntry(m, true, true)) });
+			sections.push({ title: t("models.recentModels"), entries: recentModels.map((m) => modelEntry(m, true, true)) });
 		}
 	} else if (effectiveGroup === GROUP_ROLES) {
 		const entries: Entry[] = [];
@@ -271,7 +273,7 @@ export function ModelMenuContent({
 		return (
 			<div className="flex items-center gap-2 p-2.5 text-xs text-neutral-400">
 				<Loader2 size={13} className="animate-spin text-neutral-400" />
-				<span>加载模型列表中…</span>
+				<span>{t("models.loadingModels")}</span>
 			</div>
 		);
 	}
@@ -339,8 +341,8 @@ export function ModelMenuContent({
 					{e.removable && (
 						<button
 							type="button"
-							title="移出最近使用"
-							aria-label="移出最近使用"
+							title={t("models.removeFromRecent")}
+							aria-label={t("models.removeFromRecent")}
 							onClick={() => {
 								setUndo({ key, prev: recent });
 								removeRecent(key);
@@ -363,8 +365,8 @@ export function ModelMenuContent({
 					className={clsx(ROW_CLASS, highlighted ? ROW_HI : ROW_IDLE)}
 				>
 					<span className="min-w-0 break-all">
-						使用 <span className="font-mono text-[var(--text)]">{customQuery}</span>
-						<span className="text-neutral-500"> 作为模型标识</span>
+						{t("models.usePrefix")}<span className="font-mono text-[var(--text)]">{customQuery}</span>
+						<span className="text-neutral-500">{t("models.asModelIdSuffix")}</span>
 					</span>
 					<CornerDownLeft size={12} className="shrink-0 text-neutral-500" />
 				</button>
@@ -423,7 +425,7 @@ export function ModelMenuContent({
 	const body =
 		flat.length === 0 && roleGuides.length === 0 ? (
 			<div className="px-3 py-2 text-center text-xs text-neutral-500">
-				{searching ? "无匹配模型" : "这里还没有可选项"}
+				{searching ? t("models.noMatchingModels") : t("models.noOptions")}
 			</div>
 		) : (
 			sections.map((s, si) => {
@@ -450,7 +452,7 @@ export function ModelMenuContent({
 						<Loader2
 							size={11}
 							className="shrink-0 animate-spin text-neutral-500"
-							aria-label="正在刷新模型列表"
+							aria-label={t("models.refreshingModels")}
 						/>
 					)}
 				</div>
@@ -464,7 +466,7 @@ export function ModelMenuContent({
 							autoFocus
 							value={q}
 							onChange={(e) => setQ(e.target.value)}
-							placeholder={allowCustom ? "搜索模型，或直接输入模型标识…" : "搜索模型或 provider…"}
+							placeholder={allowCustom ? t("models.searchPlaceholderWithCustom") : t("models.searchPlaceholder")}
 							className="w-full bg-transparent outline-none placeholder:text-neutral-500"
 						/>
 					</div>
@@ -475,8 +477,8 @@ export function ModelMenuContent({
 			<div className="flex h-72 min-h-0">
 				{!searching && (
 					<div className="w-36 shrink-0 overflow-y-auto border-r border-[var(--border-divider)] py-0.5">
-						{hasCommon && groupButton(GROUP_COMMON, "★ 常用", plainExtras.length + recentModels.length)}
-						{hasRoles && groupButton(GROUP_ROLES, "角色", roleExtras.length)}
+						{hasCommon && groupButton(GROUP_COMMON, t("models.commonGroup"), plainExtras.length + recentModels.length)}
+						{hasRoles && groupButton(GROUP_ROLES, t("models.rolesGroup"), roleExtras.length)}
 						{providers.map(([p, list]) => groupButton(providerGroup(p), p, list.length))}
 					</div>
 				)}
@@ -489,12 +491,12 @@ export function ModelMenuContent({
 								onClick={() => openSettingsTarget("models")}
 								className="min-w-0 flex-1 text-left hover:text-[var(--accent)]"
 							>
-								{x.label} 未配置 · 去配置 →
+								{t("models.roleUnconfigured", { label: x.label })}
 							</button>
 							<button
 								type="button"
-								aria-label="不再提示"
-								title="不再提示"
+								aria-label={t("models.dismiss")}
+								title={t("models.dismiss")}
 								onClick={() => dismissGuide(roleId)}
 								className="shrink-0 rounded p-0.5 hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 							>
@@ -507,7 +509,7 @@ export function ModelMenuContent({
 
 			{undo && (
 				<div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-divider)] px-2.5 pt-1.5 text-[11px] text-neutral-400">
-					<span className="min-w-0 break-all">已移出最近使用：{undo.key}</span>
+					<span className="min-w-0 break-all">{t("models.removedFromRecent", { key: undo.key })}</span>
 					<button
 						type="button"
 						onClick={() => {
@@ -516,12 +518,12 @@ export function ModelMenuContent({
 						}}
 						className="shrink-0 rounded-full border border-[var(--border-divider)] px-2 py-0.5 text-[var(--text)] hover:bg-[var(--bg-hover)]"
 					>
-						撤销
+						{t("models.undo")}
 					</button>
 				</div>
 			)}
 			<div className="shrink-0 border-t border-[var(--border-divider)] px-2.5 pt-1.5 text-[10px] text-neutral-500">
-				↑↓ 选择 · ←→ 切换分组 · ↵ 确认
+				{t("models.keyboardNavTip")}
 			</div>
 		</div>
 	);
@@ -559,6 +561,7 @@ export function ModelSelect({
 	thinking = false,
 	...menu
 }: SelectProps) {
+	const { t } = useT();
 	const [open, setOpen] = useState(false);
 	const [levelOpen, setLevelOpen] = useState(false);
 	const buttonRef = useRef<HTMLButtonElement>(null);
@@ -609,7 +612,7 @@ export function ModelSelect({
 				onClick={() => {
 					if (!disabled) setOpen((v) => !v);
 				}}
-				title={displayLabel || "选择模型"}
+				title={displayLabel || t("models.selectModel")}
 				className={buttonClass}
 			>
 				<span className="truncate">{displayLabel}</span>

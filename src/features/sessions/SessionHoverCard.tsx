@@ -5,6 +5,7 @@ import { sessionDisplayName } from "../../lib/sessionName";
 import { shortPath } from "../../lib/paths";
 import { useHomeDir } from "../../lib/hooks";
 import { FloatingLayer } from "../../components/FloatingLayer";
+import { useT } from "../../stores/language";
 
 export interface SessionHoverCardProps {
 	session: SessionMeta;
@@ -32,6 +33,7 @@ export function SessionHoverCard({
 	onMouseLeaveCard,
 	onClose,
 }: SessionHoverCardProps) {
+	const { t } = useT();
 	const home = useHomeDir();
 
 	if (!open || !anchorRect) return null;
@@ -63,7 +65,7 @@ export function SessionHoverCard({
 				{session.parentId && (
 					<div className="flex items-center gap-1 text-[11px] text-[var(--text-muted)]">
 						<GitFork size={11} className="shrink-0 text-indigo-400" />
-						<span>分叉会话</span>
+						<span>{t("sessions.forkedSession")}</span>
 					</div>
 				)}
 			</div>
@@ -71,25 +73,25 @@ export function SessionHoverCard({
 			{/* 分支 Section */}
 			<div className="space-y-1 pt-1.5 border-t border-[var(--border-divider)]">
 				<div className="text-[10px] font-semibold text-[var(--text-dim)]">
-					分支
+					{t("sessions.branch")}
 				</div>
 				{hasGit ? (
 					<div className="flex items-center justify-between gap-1.5 font-mono text-xs text-[var(--text)] min-w-0">
 						<div className="flex items-center gap-1.5 min-w-0 truncate">
 							<GitBranch size={12} className="shrink-0 text-[var(--text-muted)]" />
-							<span className="truncate" title={branch ?? "默认分支"}>
-								{branch ?? "默认分支"}
+							<span className="truncate" title={branch ?? t("sessions.defaultBranch")}>
+								{branch ?? t("sessions.defaultBranch")}
 							</span>
 						</div>
 						{dirty > 0 && (
 							<span className="shrink-0 text-[10px] text-amber-400 font-sans whitespace-nowrap">
-								●{dirty} 未提交
+								●{dirty} {t("sessions.uncommitted")}
 							</span>
 						)}
 					</div>
 				) : (
 					<div className="text-[11px] text-[var(--text-dim)]">
-						非 Git 目录
+						{t("sessions.nonGitDir")}
 					</div>
 				)}
 			</div>
@@ -98,7 +100,7 @@ export function SessionHoverCard({
 			{worktree && (
 				<div className="space-y-1 pt-1.5 border-t border-[var(--border-divider)]">
 					<div className="text-[10px] font-semibold text-[var(--text-dim)]">
-						工作树
+						{t("sessions.worktree")}
 					</div>
 					<div className="flex items-center gap-1.5 font-mono text-xs text-[var(--text)] min-w-0">
 						<FolderGit2 size={12} className="shrink-0 text-emerald-400" />
@@ -106,7 +108,7 @@ export function SessionHoverCard({
 							{worktree}
 						</span>
 						<span className="shrink-0 rounded bg-emerald-950/80 border border-emerald-800/60 px-1 py-0.2 text-[9px] text-emerald-300 font-sans">
-							独立工作树
+							{t("sessions.isolatedWorktree")}
 						</span>
 					</div>
 				</div>
@@ -116,7 +118,7 @@ export function SessionHoverCard({
 			{result && (
 				<div className="space-y-1 pt-1.5 border-t border-[var(--border-divider)]">
 					<div className="text-[10px] font-semibold text-[var(--text-dim)]">
-						结果
+						{t("sessions.result")}
 					</div>
 					<div className="flex items-center gap-1.5 text-xs text-[var(--text)] min-w-0">
 						<span className="shrink-0">{result.ok ? "✅" : "❌"}</span>
@@ -139,7 +141,7 @@ export function SessionHoverCard({
 			{session.cwd && (
 				<div className="space-y-0.5 text-[11px] text-[var(--text-muted)] pt-1.5 border-t border-[var(--border-divider)]">
 					<div className="text-[10px] font-semibold text-[var(--text-dim)]">
-						目录
+						{t("sessions.directory")}
 					</div>
 					<div
 						className="font-mono truncate text-[11px] text-[var(--text)]"

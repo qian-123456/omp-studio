@@ -8,6 +8,7 @@
  * a note in the UI never disagrees with the model the backend resolves.
  */
 import type { AgentModelAssignment } from "../../lib/contracts";
+import { tNow } from "../../stores/language";
 import { BUILTIN_ROLES, splitRoleValue } from "./modelRoles";
 
 export type AssignmentScope = "global" | "project";
@@ -114,14 +115,14 @@ function resolveCandidates(value: string, layers: RoleLayers, trail: string[]): 
  */
 function resolveRole(name: string, level: string | null, layers: RoleLayers, trail: string[]): Resolution {
 	if (trail.includes(name)) {
-		return { status: "unresolved", reason: `循环引用：${[...trail, name].map((n) => `@${n}`).join(" → ")}` };
+		return { status: "unresolved", reason: tNow("settingsModels.circularRef", { trail: [...trail, name].map((n) => `@${n}`).join(" → ") }) };
 	}
 	const value = lookup(layers, name);
 	trail.push(name);
 	let outcome: Resolution;
 	if (value !== null) outcome = resolveCandidates(value, layers, trail);
 	else if (BUILTIN_ROLE_IDS.has(name)) outcome = { status: "unset" };
-	else outcome = { status: "unresolved", reason: `未知角色 @${name}（未配置）` };
+	else outcome = { status: "unresolved", reason: tNow("settingsModels.unknownRole", { name }) };
 	trail.pop();
 	if (outcome.status === "model" && level !== null) {
 		return { status: "model", selector: `${outcome.selector}:${level}` };
@@ -149,9 +150,9 @@ export function describeAliasValue(value: string | null, layers: RoleLayers): Va
 	const r = resolveCandidates(value, layers, []);
 	if (r.status === "model") return { tone: "ok", text: `→ ${r.selector}` };
 	if (r.status === "unset") {
-		return { tone: "muted", text: "未配置：所引角色尚未设置，解析时跳过，回退到 modelRoles.task → 会话模型" };
+		return { tone: "muted", text: tNow("settingsModels.unsetAliasNote") };
 	}
-	return { tone: "error", text: `无法解析：${r.reason}` };
+	return { tone: "error", text: tNow("settingsModels.unresolvedAliasNote", { reason: r.reason }) };
 }
 
 /** Names of the roles a declared or stored value refers to, candidates expanded, in order and without repeats. */
@@ -180,14 +181,14 @@ export function roleUsers(rows: readonly AssignmentRow[], layers: RoleLayers, cy
 	for (const row of rows) {
 		if (row.kind === "agent") {
 			const applying = row.steps.find((s) => (s.level === 1 || s.level === 2) && s.value !== null)?.value ?? null;
-			for (const role of referencedRoles(applying, layers)) add(role, `子代理 ${row.name}`);
+			for (const role of referencedRoles(applying, layers)) add(role, tNow("settingsModels.userSubAgent", { name: row.name }));
 		} else {
 			for (const role of referencedRoles(row.projectValue ?? row.globalValue, layers)) {
-				if (role !== row.name) add(role, `角色 ${row.name}`);
+				if (role !== row.name) add(role, tNow("settingsModels.userRole", { name: row.name }));
 			}
 		}
 	}
-	for (const role of cycleOrder) add(role, "模型切换轮换（cycleOrder）");
+	for (const role of cycleOrder) add(role, tNow("settingsModels.userCycleOrder"));
 	return users;
 }
 
@@ -201,33 +202,33 @@ export type ValueCheck = { ok: true; value: string } | { ok: false; error: strin
  */
 export function checkAssignmentValue(raw: string): ValueCheck {
 	const value = raw.trim();
-	if (!value) return { ok: false, error: "值不能为空；要清除请使用「删除」" };
-	if (/\s/.test(value)) return { ok: false, error: "值中不能包含空格" };
+	if (!value) return { ok: false, error: tNow("settingsModels.errValueEmpty") };
+	if (/\s/.test(value)) return { ok: false, error: tNow("settingsModels.errValueSpace") };
 	if (Array.from(value).length > MAX_VALUE_CHARS) {
-		return { ok: false, error: `值不能超过 ${MAX_VALUE_CHARS} 字符` };
+		return { ok: false, error: tNow("settingsModels.errValueTooLong", { max: MAX_VALUE_CHARS }) };
 	}
 	if (!VALUE_CHARS_RE.test(value) || (value.includes("@") && !value.startsWith("@"))) {
-		return { ok: false, error: "值只允许字母、数字与 - _ . / : + @，且 @ 只能作为角色引用的开头" };
+		return { ok: false, error: tNow("settingsModels.errValueAllowedChars") };
 	}
 	if (value.startsWith("@")) {
 		// Same split as the backend: the role is everything before the first colon, and an
 		// optional level after that colon must be a non-empty token (backend `valid_level`).
 		const { name, level } = splitLevel(value.slice(1));
-		if (name === "") return { ok: false, error: "角色引用 @ 之后需要角色名" };
+		if (name === "") return { ok: false, error: tNow("settingsModels.errRoleRefNeedsName") };
 		const role = checkName(name);
 		if (!role.ok) return { ok: false, error: role.error };
 		if (level !== null && !NAME_CHARS_RE.test(level)) {
-			return { ok: false, error: "层级只允许字母、数字与 - _ .，且不能为空" };
+			return { ok: false, error: tNow("settingsModels.errLevelChars") };
 		}
 	} else {
 		// Literal `provider/model[:level]`: split at the first slash, as backend `validate_value` does.
 		const slash = value.indexOf("/");
-		if (slash < 0) return { ok: false, error: "模型值需写作 provider/模型[:思考级别]，或 @角色" };
+		if (slash < 0) return { ok: false, error: tNow("settingsModels.errModelFormatHelp") };
 		if (!NAME_CHARS_RE.test(value.slice(0, slash))) {
-			return { ok: false, error: "provider 只允许字母、数字与 - _ .，且不能为空" };
+			return { ok: false, error: tNow("settingsModels.errProviderChars") };
 		}
 		if (!MODEL_CHARS_RE.test(value.slice(slash + 1))) {
-			return { ok: false, error: "模型名只允许字母、数字与 - _ . / : +，且不能为空" };
+			return { ok: false, error: tNow("settingsModels.errModelNameChars") };
 		}
 	}
 	return { ok: true, value };
@@ -237,7 +238,7 @@ export function checkAssignmentValue(raw: string): ValueCheck {
 export function checkName(raw: string): { ok: true; name: string } | { ok: false; error: string } {
 	const name = raw.trim();
 	const valid = name !== "" && Array.from(name).length <= MAX_NAME_CHARS && NAME_CHARS_RE.test(name);
-	return valid ? { ok: true, name } : { ok: false, error: "名称只允许字母、数字与 - _ .，且不超过 128 字符" };
+	return valid ? { ok: true, name } : { ok: false, error: tNow("settingsModels.errNameFormat") };
 }
 
 /** Case-insensitive substring match over any of the fields; an empty query matches everything. */
@@ -407,10 +408,10 @@ export function buildAssignmentRows(input: {
 			overrideValue,
 			overrideValue === null ? null : globalOverride !== null ? "global" : "project",
 		);
-		push(2, `${name} 定义里的 model:`, declared, null);
+		push(2, tNow("settingsModels.declaredModelField", { name }), declared, null);
 		push(3, "modelRoles.task", taskValue, taskLayer);
 		raw.push({
-			step: { level: 4, field: "当前会话模型", value: sessionModel, layer: null, model: sessionModel, error: null },
+			step: { level: 4, field: tNow("settingsModels.sessionModelField"), value: sessionModel, layer: null, model: sessionModel, error: null },
 			via: null,
 		});
 

@@ -10,23 +10,26 @@ import { type Annotation, useComposer } from "../../stores/composer";
 import { useLive } from "../../stores/live";
 import { claimEscape } from "../../lib/escapeClaim";
 import { setQuoteOccurrenceHint } from "./annotationLocate";
+import { tNow, useT } from "../../stores/language";
 
 /** Grace period so the pointer can cross the (zero-gap) seam between chip and popover. */
 const HOVER_CLOSE_DELAY_MS = 120;
 
-const SOURCE_LABEL: Record<Annotation["source"], string> = {
-	message: "选中文本:",
-	diff: "差异",
-	doc: "文档",
-	terminal: "终端",
-};
+function sourceLabel(source: Annotation["source"]): string {
+	switch (source) {
+		case "message": return tNow("chat.annotation.sourceMessage");
+		case "diff": return tNow("chat.annotation.sourceDiff");
+		case "doc": return tNow("chat.annotation.sourceDoc");
+		case "terminal": return tNow("chat.annotation.sourceTerminal");
+	}
+}
 
 /** Entry header: quotes from messages are labelled as such; others show their location. */
 function entryLabel(a: Annotation): string {
 	if (a.label) return a.label;
-	if (a.source === "message") return SOURCE_LABEL.message;
+	if (a.source === "message") return sourceLabel("message");
 	const where = [a.file, a.lines].filter(Boolean).join(" ");
-	return where || SOURCE_LABEL[a.source];
+	return where || sourceLabel(a.source);
 }
 
 const iconBtn =
@@ -57,6 +60,7 @@ function AnnotationEntry({
 	/** Tooltip/aria for the move button. */
 	moveLabel?: string;
 }) {
+	const { t } = useT();
 	const updateAnnotation = useComposer((s) => s.updateAnnotation);
 	const removeAnnotation = useComposer((s) => s.removeAnnotation);
 	const scrollToItem = useLive((s) => s.scrollToItem);
@@ -101,7 +105,7 @@ function AnnotationEntry({
 						autoFocus
 						rows={2}
 						value={draft}
-						placeholder="输入批注 (Enter保存, Shift+Enter换行, Esc取消)…"
+						placeholder={t("chat.annotation.inputPlaceholder")}
 						onChange={(e) => setDraft(e.target.value)}
 						onKeyDown={(e) => {
 							if (isComposing(e)) return;
@@ -121,7 +125,7 @@ function AnnotationEntry({
 				) : (
 					a.comment && (
 						<div className="mt-1 whitespace-pre-wrap break-words text-[11px] text-[var(--text-40,var(--text-dim))]">
-							批注：{a.comment}
+							{t("chat.annotation.notePrefix", { comment: a.comment })}
 						</div>
 					)
 				)}
@@ -130,8 +134,8 @@ function AnnotationEntry({
 				{a.itemId && (
 					<button
 						type="button"
-						aria-label="定位到原消息"
-						title="定位到原消息"
+						aria-label={t("chat.annotation.locateOriginal")}
+						title={t("chat.annotation.locateOriginal")}
 						onClick={() => {
 							setQuoteOccurrenceHint(a.itemId!, a.text, a.occurrence);
 							scrollToItem(anchorSessionId, a.itemId!, a.text);
@@ -141,7 +145,7 @@ function AnnotationEntry({
 						<LocateFixed size={12} />
 					</button>
 				)}
-				<button type="button" aria-label="编辑批注" title="编辑批注" onClick={startEdit} className={iconBtn}>
+				<button type="button" aria-label={t("chat.annotation.editNote")} title={t("chat.annotation.editNote")} onClick={startEdit} className={iconBtn}>
 					<Pencil size={12} />
 				</button>
 				{onMove && moveLabel && (
@@ -161,8 +165,8 @@ function AnnotationEntry({
 				)}
 				<button
 					type="button"
-					aria-label="删除批注"
-					title="删除批注"
+					aria-label={t("chat.annotation.deleteNote")}
+					title={t("chat.annotation.deleteNote")}
 					onClick={() => {
 						removeAnnotation(sessionId, a.id);
 						onRemove();
@@ -194,6 +198,7 @@ export function AnnotationChip({
 	/** Tooltip/aria for the move button, e.g. "移到辅助对话". */
 	moveLabel?: string;
 }) {
+	const { t } = useT();
 	const removeAnnotation = useComposer((s) => s.removeAnnotation);
 	const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 	const popRef = useRef<HTMLOListElement>(null);
@@ -240,16 +245,16 @@ export function AnnotationChip({
 				<button
 					type="button"
 					aria-expanded={open}
-					aria-label={`${annotations.length} 条批注`}
+					aria-label={t("chat.annotation.countNotes", { count: annotations.length })}
 					className="flex min-w-0 items-center gap-1 outline-none"
 				>
 					<MessageSquareQuote size={12} className="shrink-0" />
-					<span className="truncate">{annotations.length} 条批注</span>
+					<span className="truncate">{t("chat.annotation.countNotes", { count: annotations.length })}</span>
 				</button>
 				<button
 					type="button"
-					aria-label="清空批注"
-					title="清空批注"
+					aria-label={t("chat.annotation.clearNotes")}
+					title={t("chat.annotation.clearNotes")}
 					onClick={() => {
 						for (const a of annotations) removeAnnotation(sessionId, a.id);
 						setEditingId(null);

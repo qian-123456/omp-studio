@@ -1,8 +1,8 @@
 /** /status card body — markdown assembled from get_state + session stats. */
 
 import { formatTokens } from "../sessionStats";
+import { tNow } from "../../../stores/language";
 import type { SlashContext } from "./types";
-
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number | null =>
 	typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -34,7 +34,7 @@ function modelLabel(state: Record<string, unknown>): string {
 		if (id) return id;
 		if (provider) return provider;
 	}
-	return "未设置";
+	return tNow("slash.statusCard.notSet");
 }
 
 export async function buildStatusCard(ctx: SlashContext): Promise<string> {
@@ -74,9 +74,9 @@ export async function buildStatusCard(ctx: SlashContext): Promise<string> {
 	}
 
 	const lines: string[] = [
-		`- **模型**: ${modelLabel(state)}`,
-		`- **思考等级**: ${str(state.thinkingLevel) || "auto"}`,
-		`- **快速模式**: ${state.fastModeEnabled === true ? "开启" : "关闭"}`,
+		`- **${tNow("slash.statusCard.modelLabel")}**: ${modelLabel(state)}`,
+		`- **${tNow("slash.statusCard.thinkingLabel")}**: ${str(state.thinkingLevel) || "auto"}`,
+		`- **${tNow("slash.statusCard.fastModeLabel")}**: ${state.fastModeEnabled === true ? tNow("slash.statusCard.on") : tNow("slash.statusCard.off")}`,
 	];
 	if (pct !== null || used !== null) {
 		const pctText = pct !== null ? `${Math.round(pct > 1 ? pct : pct * 100)}%` : "";
@@ -84,11 +84,11 @@ export async function buildStatusCard(ctx: SlashContext): Promise<string> {
 			used !== null
 				? `${formatTokens(used)}${window_ ? ` / ${formatTokens(window_)}` : ""}`
 				: "";
-		lines.push(`- **上下文**: ${[pctText, abs].filter(Boolean).join(" · ")}`);
+		lines.push(`- **${tNow("slash.statusCard.contextLabel")}**: ${[pctText, abs].filter(Boolean).join(" · ")}`);
 	}
 	if (tokens !== null || cost !== null) {
 		lines.push(
-			`- **用量**: ${[
+			`- **${tNow("slash.statusCard.usageLabel")}**: ${[
 				tokens !== null ? formatTokens(tokens) : "",
 				cost !== null ? `$${cost.toFixed(4)}` : "",
 			]
@@ -97,10 +97,10 @@ export async function buildStatusCard(ctx: SlashContext): Promise<string> {
 		);
 	}
 	const msgCount = num(state.messageCount);
-	if (msgCount !== null) lines.push(`- **消息数**: ${msgCount}`);
-	if (queuedCount) lines.push(`- **排队消息**: ${queuedCount}`);
-	lines.push(`- **目录**: ${session?.cwd ?? "—"}`);
+	if (msgCount !== null) lines.push(`- **${tNow("slash.statusCard.messageCountLabel")}**: ${msgCount}`);
+	if (queuedCount) lines.push(`- **${tNow("slash.statusCard.queuedMessageCountLabel")}**: ${queuedCount}`);
+	lines.push(`- **${tNow("slash.statusCard.directoryLabel")}**: ${session?.cwd ?? "—"}`);
 	const file = str(state.sessionFile) || session?.file;
-	if (file) lines.push(`- **会话文件**: \`${file}\``);
+	if (file) lines.push(`- **${tNow("slash.statusCard.sessionFileLabel")}**: \`${file}\``);
 	return lines.join("\n");
 }

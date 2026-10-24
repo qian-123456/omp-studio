@@ -166,7 +166,7 @@ export function BottomBar() {
 						ref={statsBtnRef}
 						type="button"
 						onClick={() => setStatsOpen(!statsOpen)}
-						title="点击查看详细会话统计 (模型用时、TTFT、TPS、Token 消耗)"
+						title={t("bottomBar.statsTip")}
 						className="group flex items-center gap-1.5 rounded-[6px] px-1.5 py-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97 transition-all"
 					>
 						<Gauge
@@ -177,7 +177,7 @@ export function BottomBar() {
 							)}
 						/>
 						<span className="tabular-nums font-mono">
-							{stats.rounds} 轮 {stats.steps} 步
+							{t("bottomBar.roundsAndSteps", { rounds: stats.rounds, steps: stats.steps })}
 						</span>
 						{stats.tps != null && (
 							<>
@@ -191,14 +191,14 @@ export function BottomBar() {
 						{stats.cacheHitRate > 0 && (
 							<>
 								<span className="text-neutral-600">·</span>
-								<span className="tabular-nums font-mono">缓存 {stats.cacheHitRate.toFixed(1)}%</span>
+								<span className="tabular-nums font-mono">{t("bottomBar.cacheHitRate", { rate: stats.cacheHitRate.toFixed(1) })}</span>
 							</>
 						)}
 					</button>
 				) : (
 					<div className="flex items-center gap-1.5 text-neutral-500">
 						<Activity size={12} className="text-neutral-600" />
-						<span>OMP 工作台已就绪</span>
+						<span>{t("bottomBar.ready")}</span>
 					</div>
 				)}
 
@@ -219,7 +219,9 @@ export function BottomBar() {
 					ref={perfBtnRef}
 					type="button"
 					onClick={() => setPerfOpen((v) => !v)}
-					title={`真实物理内存占用 (对齐活动监视器口径，含本体及 WebView/帮助进程)${memoryInfo?.processes ? ` — 含 ${memoryInfo.processes} 个进程` : ""}，点击查看各进程明细`}
+					title={t("bottomBar.memoryTooltip", {
+						processes: memoryInfo?.processes ? t("bottomBar.processesCount", { count: memoryInfo.processes }) : "",
+					})}
 					className={clsx(
 						"flex items-center gap-1 rounded-[6px] px-1 py-0.5 transition-all hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97",
 						perfOpen && "bg-[var(--bg-hover)] text-neutral-100",
@@ -227,7 +229,7 @@ export function BottomBar() {
 				>
 					<Activity size={11} className="text-emerald-400" />
 					<span className="tabular-nums font-mono text-[10.5px]">
-						性能 {realMemoryStr ?? memEstimate}
+						{t("bottomBar.performance", { memory: realMemoryStr ?? memEstimate })}
 					</span>
 				</button>
 				<PerfPopover

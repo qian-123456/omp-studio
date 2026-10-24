@@ -39,7 +39,7 @@ import { FloatingLayer } from "./FloatingLayer";
 import { sessionDisplayName } from "../lib/sessionName";
 import { basename } from "../lib/paths";
 import { openNewSideChat, isBlankTab, resolveActiveTab, useSideChatView } from "../features/sidechat/viewStore";
-import { NEW_SIDE_CHAT_TITLE, sideChatTitle } from "../features/sidechat/sideChatTitle";
+import { sideChatTitle } from "../features/sidechat/sideChatTitle";
 import { SIDE_CHAT_TAB_ACTIONS } from "../features/sidechat/sideChatActions";
 import { visibleSideChatActions } from "../features/sidechat/handbackLogic";
 import { useDisplayPrefs } from "../stores/displayPrefs";
@@ -63,15 +63,15 @@ interface RightPanelHeaderProps {
 
 type IconType = React.ComponentType<{ size?: number; className?: string }>;
 
-const PRIMARY_TABS: { id: RightTab; label: string; icon: IconType; iconColor: string }[] = [
-	{ id: "sidechat", label: "辅助对话", icon: MessageSquare, iconColor: "text-sky-400" },
-	{ id: "explorer", label: "文件", icon: Folder, iconColor: "text-amber-400" },
-	{ id: "git", label: "Git", icon: GitBranch, iconColor: "text-orange-400" },
-	{ id: "services", label: "服务", icon: Cpu, iconColor: "text-purple-400" },
-	{ id: "heatmap", label: "Token 用量", icon: Coins, iconColor: "text-amber-400" },
-	{ id: "terminal", label: "终端", icon: SquareTerminal, iconColor: "text-emerald-400" },
-	{ id: "plan", label: "计划", icon: NotebookPen, iconColor: "text-amber-400" },
-	{ id: "files", label: "文件预览", icon: FileText, iconColor: "text-sky-400" },
+const PRIMARY_TABS: { id: RightTab; icon: IconType; iconColor: string }[] = [
+	{ id: "sidechat", icon: MessageSquare, iconColor: "text-sky-400" },
+	{ id: "explorer", icon: Folder, iconColor: "text-amber-400" },
+	{ id: "git", icon: GitBranch, iconColor: "text-orange-400" },
+	{ id: "services", icon: Cpu, iconColor: "text-purple-400" },
+	{ id: "heatmap", icon: Coins, iconColor: "text-amber-400" },
+	{ id: "terminal", icon: SquareTerminal, iconColor: "text-emerald-400" },
+	{ id: "plan", icon: NotebookPen, iconColor: "text-amber-400" },
+	{ id: "files", icon: FileText, iconColor: "text-sky-400" },
 ];
 
 /** One rendered Chrome tab: a panel tab, or a terminal instance of the active terminal panel tab. */
@@ -92,11 +92,7 @@ interface HeaderTab {
 
 export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps) {
 	const { t } = useT();
-	const tabLabel = (id: RightTab): string => {
-		const key = `rightPanel.${id}`;
-		const v = t(key);
-		return v === key ? (PRIMARY_TABS.find((p) => p.id === id)?.label ?? id) : v;
-	};
+	const tabLabel = (id: RightTab): string => t(`rightPanel.${id}`);
 	const openRightTabs = useUi((s) => s.openRightTabs);
 	const setRightTab = useUi((s) => s.setRightTab);
 	const closeRightTab = useUi((s) => s.closeRightTab);
@@ -189,7 +185,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 				const blank = isBlankTab(tid);
 				const c = blank ? undefined : sessions[tid];
 				if (!blank && (!c || c.parentId !== selectedId)) return [];
-				const name = c ? (sideChatTitle(tid, sessions) ?? sessionDisplayName(c)) : NEW_SIDE_CHAT_TITLE;
+				const name = c ? (sideChatTitle(tid, sessions) ?? sessionDisplayName(c)) : t("sidechat.newSideChatTitle");
 				return [
 					{
 						key: `sidechat:${tid}`,
@@ -256,8 +252,8 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 				e.stopPropagation();
 				tab.close();
 			}}
-			title="关闭标签页"
-			aria-label="关闭标签页"
+			title={t("rightPanel.closeTab")}
+			aria-label={t("rightPanel.closeTab")}
 			className="shrink-0 rounded p-0.5 text-neutral-400 opacity-70 transition-all hover:bg-neutral-700 hover:text-neutral-100 hover:opacity-100"
 		>
 			<X size={size} />
@@ -273,8 +269,8 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 					setOverflowOpen(false);
 					tab.detach?.();
 				}}
-				title="折叠为后台服务"
-				aria-label="折叠为后台服务"
+				title={t("rightPanel.collapseToService")}
+				aria-label={t("rightPanel.collapseToService")}
 				className="shrink-0 rounded p-0.5 text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-neutral-100"
 			>
 				<Minus size={size} />
@@ -379,8 +375,8 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 						ref={moreBtnRef}
 						type="button"
 						onClick={() => setOverflowOpen((v) => !v)}
-						title={`全部标签页（另有 ${hidden.length} 个未显示）`}
-						aria-label="全部标签页"
+						title={t("rightPanel.allTabsWithHidden", { count: hidden.length })}
+						aria-label={t("rightPanel.allTabs")}
 						className={clsx(
 							"flex h-6 shrink-0 items-center gap-0.5 rounded-md px-1.5 text-[11px] transition-colors",
 							overflowOpen
@@ -403,8 +399,8 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 							? "bg-neutral-800 text-neutral-100"
 							: "text-neutral-400 hover:bg-neutral-800/80 hover:text-neutral-200",
 					)}
-					title="打开新标签页"
-					aria-label="打开新标签页"
+					title={t("rightPanel.openNewTab")}
+					aria-label={t("rightPanel.openNewTab")}
 				>
 					<Plus size={14} />
 				</button>
@@ -414,8 +410,8 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 				type="button"
 				onClick={toggleRight}
 				className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-800/80 hover:text-neutral-200"
-				title="收起侧边面板 (⌘J)"
-				aria-label="收起侧边面板 (⌘J)"
+				title={t("rightPanel.collapsePanel")}
+				aria-label={t("rightPanel.collapsePanel")}
 			>
 				<PanelRightClose size={15} />
 			</button>
@@ -504,7 +500,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 						className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-neutral-300 transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
 					>
 						<SquareTerminal size={14} className="text-emerald-400" />
-						<span>新建终端</span>
+						<span>{t("rightPanel.newTerminal")}</span>
 					</button>
 					<div className="my-1 border-t border-[var(--border-divider)]" />
 					{/* 计划 is not a manual option: plan mode auto-opens it
@@ -519,7 +515,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 								key={tab.id}
 								type="button"
 								disabled={sideChatBlocked}
-								title={sideChatBlocked ? "请先选择一个会话，辅助对话依附于当前会话" : undefined}
+								title={sideChatBlocked ? t("rightPanel.sideChatNeedSession") : undefined}
 								onClick={() => {
 									if (tab.id === "sidechat") {
 										if (!selectedId) return;
@@ -538,7 +534,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 							>
 								<div className="flex items-center gap-2.5">
 									<Icon size={14} className={tab.iconColor} />
-									<span>{tab.id === "sidechat" ? "新辅助对话" : tabLabel(tab.id)}</span>
+									<span>{tab.id === "sidechat" ? t("rightPanel.newSideChat") : tabLabel(tab.id)}</span>
 								</div>
 								<div className="flex items-center gap-1.5">
 									{badge > 0 && (
@@ -547,7 +543,7 @@ export function RightPanelHeader({ activeTab, tabBadges }: RightPanelHeaderProps
 										</span>
 									)}
 									{isOpen && (
-										<Check size={12} className="text-neutral-400" aria-label="已打开" />
+										<Check size={12} className="text-neutral-400" aria-label={t("rightPanel.opened")} />
 									)}
 								</div>
 							</button>

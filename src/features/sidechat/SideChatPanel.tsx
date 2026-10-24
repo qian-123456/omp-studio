@@ -32,12 +32,14 @@ import { SIDE_CHAT_TAB_ACTIONS, sendFirstMessage } from "./sideChatActions";
 import { visibleSideChatActions } from "./handbackLogic";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
 import { isBlankTab, resolveActiveTab, useSideChatView } from "./viewStore";
+import { useT } from "../../stores/language";
 
 const NO_MODELS: ModelOption[] = [];
 const EMPTY_ANNS: Annotation[] = [];
 
 /** Right tab body: the active side-chat tab of the selected session (thread or blank new chat). */
 export function SideChatPanel() {
+	const { t } = useT();
 	const parentId = useUi((s) => s.selectedSessionId);
 	const sessions = useSessions((s) => s.sessions);
 	const tabs = useSideChatView((s) => (parentId ? s.openTabs[parentId] : undefined));
@@ -63,7 +65,7 @@ export function SideChatPanel() {
 	}, [parentId, active]);
 
 	if (!parentId) {
-		return <div className="p-3 text-xs text-[var(--text-40)]">选择一个会话后可开辅助对话</div>;
+		return <div className="p-3 text-xs text-[var(--text-40)]">{t("sidechat.needSessionFirst")}</div>;
 	}
 	if (!active) return null;
 	if (isBlankTab(active)) return <NewSideChat key={active} parentId={parentId} tabId={active} />;
@@ -72,6 +74,7 @@ export function SideChatPanel() {
 
 /** An existing side chat: a compact thread view plus a 更多 menu for the extra actions. */
 function SideChatThread({ childId }: { childId: string }) {
+	const { t } = useT();
 	const [open, setOpen] = useState(false);
 	const btnRef = useRef<HTMLButtonElement>(null);
 	const handbackMode = useDisplayPrefs((s) => s.sideChatHandback);
@@ -81,8 +84,8 @@ function SideChatThread({ childId }: { childId: string }) {
 				<button
 					ref={btnRef}
 					type="button"
-					aria-label="更多操作"
-					title="更多操作"
+					aria-label={t("shell.moreActions")}
+					title={t("shell.moreActions")}
 					onClick={() => setOpen((v) => !v)}
 					className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-60)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 				>
@@ -121,6 +124,7 @@ function SideChatThread({ childId }: { childId: string }) {
 
 /** A blank new side chat: nothing exists on the backend until the first message is sent. */
 function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
+	const { t } = useT();
 	const selectedId = parentId;
 	const sessions = useSessions((s) => s.sessions);
 	const sideChatDrafts = useComposer((s) => s.sideChatDrafts);
@@ -212,7 +216,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 	const effectiveRole = roleIdOf(effective.selector);
 	const baseModelName = effectiveRole
 		? RESOLVABLE_ROLES[effectiveRole]
-		: (activeModel.label || activeModel.id || "选择模型");
+		: (activeModel.label || activeModel.id || t("models.selectModel"));
 	const displayModelName = baseModelName;
 	const annKey = selectedId ? sideChatAnnKey(selectedId) : "";
 	const stagedAll = useComposer((s) => s.annotations[annKey]) ?? EMPTY_ANNS;
@@ -266,7 +270,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 			const msg = errMsg(err);
 			setSideChatDraft(tabId, q);
 			setError(msg);
-			toast.error(`创建辅助对话失败: ${msg}`);
+			toast.error(t("sidechat.createSideChatFailed", { error: msg }));
 		} finally {
 			setBusy(false);
 		}
@@ -282,12 +286,12 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 						</div>
 						<div className="flex items-center gap-1 text-[10px] text-[var(--text-40)]">
 							<Loader2 size={10} className="animate-spin" />
-							正在创建辅助对话
+							{t("sidechat.creatingSideChat")}
 						</div>
 					</div>
 				) : (
 					<div className="py-4 text-center text-[11px] text-[var(--text-40)]">
-						输入问题开始新的辅助对话，或在正文中划选文字后提问。
+						{t("sidechat.newChatGuide")}
 					</div>
 				)}
 			</div>
@@ -296,10 +300,10 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 				{tooDeep ? (
 					<div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--bg-panel)] p-3 text-center">
 						<div className="text-[12px] font-medium text-[var(--text)]">
-							已达分支嵌套深度上限（3 层）
+							{t("sidechat.depthLimitTitle")}
 						</div>
 						<div className="text-[11px] leading-relaxed text-[var(--text-40)]">
-							侧聊分支最多支持 3 层嵌套，无法在此分支下继续创建子侧聊。请创建新的主会话以继续开展工作。
+							{t("sidechat.depthLimitDesc")}
 						</div>
 						<button
 							type="button"
@@ -307,7 +311,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 							className="mt-1 flex items-center gap-1.5 rounded-md bg-[var(--text)] px-3 py-1.5 text-[12px] font-medium text-[var(--bg-panel)] hover:opacity-90 transition-opacity"
 						>
 							<Plus size={13} />
-							新建主会话
+							{t("sidechat.newMainSession")}
 						</button>
 					</div>
 				) : (
@@ -325,7 +329,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 										anchorSessionId={selectedId}
 										annotations={stagedAnns}
 										onMove={(id) => moveToMain(annKey, parentId, id)}
-										moveLabel="移到主对话"
+										moveLabel={t("sidechat.moveToMain")}
 									/>
 								</div>
 							)}
@@ -345,7 +349,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 										void send();
 									}
 								}}
-								placeholder="输入侧聊消息，/ 命令，Enter 发送…"
+								placeholder={t("sidechat.inputPlaceholder")}
 								rows={1}
 								className="w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 font-sans text-[13px] leading-[1.35] text-[var(--text)] placeholder:text-[var(--text-30,var(--text-dim))] outline-none max-h-36 min-h-[44px]"
 							/>
@@ -357,7 +361,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 										<button
 											type="button"
 											onClick={() => setModelOpen((v) => !v)}
-											title={`侧聊模型: ${displayModelName}${effective.source === "picker" ? "" : effective.source === "setting" ? " (侧聊专属)" : " (跟随主会话)"}`}
+											title={t("sidechat.modelTooltip", { model: displayModelName, source: effective.source === "picker" ? "" : effective.source === "setting" ? t("sidechat.sourceDedicated") : t("sidechat.sourceFollowParent") })}
 											className="flex min-w-0 max-w-full items-center gap-1 rounded-md px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors select-none"
 										>
 											<span className="min-w-0 break-all text-left">{displayModelName}</span>
@@ -381,10 +385,10 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 														{
 															value: "",
 															label: dedicatedUsable
-																? `默认：${dedicatedLabel}`
+																? t("sidechat.defaultDedicated", { label: dedicatedLabel })
 																: parentModel.label
-																	? `默认：跟随主会话 (${parentModel.label})`
-																	: "默认：跟随主会话模型",
+																	? t("sidechat.defaultFollowParent", { label: parentModel.label })
+																	: t("sidechat.defaultFollowParentGeneric"),
 														},
 													]}
 													onSelect={(key) => {
@@ -416,7 +420,7 @@ function NewSideChat({ parentId, tabId }: { parentId: string; tabId: string }) {
 									type="button"
 									disabled={busy || (!question.trim() && stagedAnns.length === 0)}
 									onClick={() => void send()}
-									title={busy ? "正在发送" : "发送 (Enter)"}
+									title={busy ? t("sidechat.sending") : t("sidechat.sendEnter")}
 									className={clsx(
 										"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 shrink-0",
 										busy

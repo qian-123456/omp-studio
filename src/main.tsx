@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { tNow } from "./stores/language";
 import { initTheme } from "./lib/theme";
 import { startScrollPills } from "./lib/scrollPills";
 import { installDraftAutoCleanup } from "./features/sessions/newSession";
@@ -56,7 +57,7 @@ class RootErrorBoundary extends React.Component<
 			return (
 				<div className="flex h-screen w-screen flex-col items-center justify-center bg-neutral-950 p-6 text-neutral-200">
 					<div className="max-w-lg rounded-xl border border-red-900/60 bg-red-950/30 p-6 shadow-xl">
-						<h2 className="text-base font-semibold text-red-300">界面加载异常</h2>
+						<h2 className="text-base font-semibold text-red-300">{tNow("shell.appCrashTitle")}</h2>
 						<p className="mt-2 text-xs text-neutral-400 font-mono break-all whitespace-pre-wrap">
 							{this.state.error?.message || String(this.state.error)}
 						</p>
@@ -65,7 +66,7 @@ class RootErrorBoundary extends React.Component<
 							className="mt-4 rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
 							onClick={() => window.location.reload()}
 						>
-							重新加载界面
+							{tNow("shell.reloadApp")}
 						</button>
 					</div>
 				</div>

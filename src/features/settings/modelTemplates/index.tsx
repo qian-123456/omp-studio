@@ -19,8 +19,10 @@ import { TemplateEditor, type TemplateDraft, draftFromInput, draftFromTemplate }
 import { TemplatesCard } from "./TemplatesCard";
 import { inScope, type ScopeProject } from "./logic";
 import { useModelTemplatesStore } from "./store";
+import { useT } from "../../../stores/language";
 
 export function ModelTemplatesPanel({ scope, projects }: { scope: string; projects: ScopeProject[] }) {
+	const { t, locale } = useT();
 	const snapshot = useModelTemplatesStore((s) => s.snapshot);
 	const status = useModelTemplatesStore((s) => s.status);
 	const loading = useModelTemplatesStore((s) => s.loading);
@@ -59,7 +61,7 @@ export function ModelTemplatesPanel({ scope, projects }: { scope: string; projec
 		setCapturing(true);
 		setCaptureError(null);
 		try {
-			const input = await modelTemplateCapture(`模板 ${scopedTemplates.length + 1}`, scope);
+			const input = await modelTemplateCapture(t("modelTemplates.defaultTemplateName", { index: String(scopedTemplates.length + 1) }), scope);
 			setEditorDraft(draftFromInput(input));
 		} catch (e) {
 			setCaptureError(errMsg(e));
@@ -72,7 +74,7 @@ export function ModelTemplatesPanel({ scope, projects }: { scope: string; projec
 		setEditorDraft({
 			...draftFromTemplate(template),
 			id: null,
-			name: `${template.name} 副本`,
+			name: t("modelTemplates.duplicateTemplateName", { name: template.name }),
 			isBottomLine: false,
 		});
 	};
@@ -80,12 +82,12 @@ export function ModelTemplatesPanel({ scope, projects }: { scope: string; projec
 	return (
 		<div className="space-y-6" data-testid="model-templates-panel">
 			<SectionHeader
-				title="模板与自动切换"
-				description="把「角色 → 模型」存成模板，一键应用；也可以按额度用量自动切换。"
+				title={t("modelTemplates.panelTitle")}
+				description={t("modelTemplates.panelDesc")}
 				actions={
 					<IconButton
 						icon={RefreshCw}
-						label="重新读取模板与额度状态"
+						label={t("modelTemplates.refreshAria")}
 						onClick={() => void refresh()}
 						disabled={loading}
 					/>
@@ -95,10 +97,10 @@ export function ModelTemplatesPanel({ scope, projects }: { scope: string; projec
 			{error && (
 				<Notice
 					tone="danger"
-					title={snapshot ? "读取失败，显示的是上次结果" : "无法读取模板"}
+					title={snapshot ? t("modelTemplates.readErrorFallback") : t("modelTemplates.readError")}
 					action={
 						<Button size="sm" onClick={() => void refresh()}>
-							重新读取
+							{t("common.retry")}
 						</Button>
 					}
 				>
@@ -107,24 +109,24 @@ export function ModelTemplatesPanel({ scope, projects }: { scope: string; projec
 			)}
 
 			{status?.blocked && status.blocked.scope === scope && (
-				<Notice tone="danger" title="额度检查已被阻塞">
+				<Notice tone="danger" title={t("modelTemplates.blockedTitle")}>
 					<span className="select-text break-all">
 						{status.blocked.message}
-						{status.blocked.providers.length > 0 ? `（供应商：${status.blocked.providers.join("、")}）` : ""}
+						{status.blocked.providers.length > 0 ? t("modelTemplates.blockedProviders", { providers: status.blocked.providers.join(locale === "zh-CN" ? "、" : ", ") }) : ""}
 					</span>
 				</Notice>
 			)}
 
 			{statusError && (
-				<Notice tone="warning" title="无法读取额度状态">
+				<Notice tone="warning" title={t("modelTemplates.statusErrorTitle")}>
 					<span className="select-text break-all">
-						{statusError}。规则里的供应商与窗口选项、当前百分比可能不完整。
+						{t("modelTemplates.statusErrorDesc", { error: statusError })}
 					</span>
 				</Notice>
 			)}
 
 			{captureError && (
-				<Notice tone="danger" title="无法读取当前配置">
+				<Notice tone="danger" title={t("modelTemplates.captureErrorTitle")}>
 					<span className="select-text break-all">{captureError}</span>
 				</Notice>
 			)}

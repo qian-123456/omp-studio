@@ -32,6 +32,7 @@ import { useComposer } from "../../stores/composer";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
+import { useT } from "../../stores/language";
 import { useSidebarStore } from "../sessions/sidebarStore";
 import { useSettings } from "../settings/store";
 import { defaultSlug, runningInRepo } from "./helpers";
@@ -63,6 +64,7 @@ export function NewSessionDialog() {
 }
 
 function NewSessionForm({ props }: { props: Record<string, unknown> }) {
+	const { t } = useT();
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const workspaces = useSessions((s) => s.workspaces);
 	const sessions = useSessions((s) => s.sessions);
@@ -135,7 +137,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					(s) => s.live,
 				);
 				if (!liveSession) {
-					toast.error("获取可用模型失败");
+					toast.error(t("git.newSession.fetchModelsFailed"));
 					return;
 				}
 				rpcSend(liveSession.id, { type: "get_available_models" })
@@ -146,10 +148,10 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 								: resp;
 						const m = parseModels(data);
 						if (m.length > 0) setRpcModels(m);
-						else toast.error("获取可用模型失败");
+						else toast.error(t("git.newSession.fetchModelsFailed"));
 					})
 					.catch((err) => {
-						toast.error(`获取可用模型失败: ${errMsg(err)}`);
+						toast.error(t("git.newSession.fetchModelsFailedDetail", { error: errMsg(err) }));
 					});
 			});
 	}, []);
@@ -166,9 +168,9 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				.then((res) => {
 					if (cancelled) return;
 					if (!res.exists) {
-						setCustomCwdError("路径不存在");
+						setCustomCwdError(t("git.newSession.pathNotExist"));
 					} else if (!res.isDir) {
-						setCustomCwdError("指定路径不是一个目录");
+						setCustomCwdError(t("git.newSession.pathNotDir"));
 					} else {
 						setCustomCwdError(null);
 					}
@@ -224,7 +226,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					}
 				})
 				.catch((err) => {
-					toast.error(`获取分支列表失败: ${errMsg(err)}`);
+					toast.error(t("git.newSession.fetchBranchesFailed", { error: errMsg(err) }));
 				});
 		} else {
 			setBranches([]);
@@ -256,7 +258,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 			const selected = await open({
 				directory: true,
 				multiple: false,
-				title: "选择目录",
+				title: t("git.newSession.selectDirTitle"),
 				defaultPath: customCwd || propCwd || undefined,
 			});
 			if (selected && typeof selected === "string") {
@@ -308,13 +310,13 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				if (isLive) {
 					selectSession(sessionId);
 					closeModal();
-					toast.error(`会话已创建，但发送第一条消息失败: ${errMsg(promptErr)}`);
+					toast.error(t("git.newSession.sessionCreatedSendFailed", { error: errMsg(promptErr) }));
 					return;
 				}
 
 				useSessions.getState().remove([sessionId]);
 				await deleteSession(sessionId).catch(() => {});
-				setError(`发送初始消息失败: ${errMsg(promptErr)}`);
+				setError(t("git.newSession.sendInitialFailed", { error: errMsg(promptErr) }));
 				return;
 			}
 			selectSession(sessionId);
@@ -335,7 +337,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 	return (
 		<Modal
 			onClose={closeModal}
-			title="新会话"
+			title={t("git.newSession.title")}
 			size="none"
 			className="w-[500px] max-w-[calc(100vw-2rem)]"
 		>
@@ -347,14 +349,14 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 				<div className="flex-1 min-h-0 overflow-y-auto pr-1">
 				<div className="mb-1 flex items-center justify-between">
-					<label className="text-[11px] text-neutral-400">工作区 / 目录</label>
+					<label className="text-[11px] text-neutral-400">{t("git.newSession.workspaceOrDir")}</label>
 					<button
 						type="button"
 						onClick={handleBrowse}
 						className="press-scale flex items-center gap-1 text-[11px] text-[#0A84FF] hover:text-[#0A84FF]/80 transition-colors"
 					>
 						<FolderOpen size={12} />
-						<span>浏览系统目录</span>
+						<span>{t("git.newSession.browseSystemDir")}</span>
 					</button>
 				</div>
 				<NativeSelect
@@ -364,7 +366,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 					containerClassName="mb-2"
 				>
 					{propCwd && !modeWorkspaces.some((w) => w.path === propCwd) && (
-						<option value={CUSTOM}>传入目录：{propCwd}</option>
+						<option value={CUSTOM}>{t("git.newSession.passedCwd", { cwd: propCwd })}</option>
 					)}
 					{modeWorkspaces.map((w) => (
 						<option key={w.id} value={w.id}>
@@ -372,7 +374,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 							{w.name}（{w.path}）
 						</option>
 					))}
-					<option value={CUSTOM}>自定义路径…</option>
+					<option value={CUSTOM}>{t("git.newSession.customPathDots")}</option>
 				</NativeSelect>
 				{wsSel === CUSTOM && (
 					<div className="mb-2">
@@ -380,7 +382,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 							<input
 								value={customCwd}
 								onChange={(e) => setCustomCwd(e.target.value)}
-								placeholder="/绝对/路径"
+								placeholder={t("git.newSession.customPathPlaceholder")}
 								className={clsx(
 									input,
 									"font-mono flex-1",
@@ -392,11 +394,11 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 								type="button"
 								onClick={handleBrowse}
 								className="press-scale flex shrink-0 items-center gap-1 rounded-lg hairline bg-[var(--bg-active-fill)] px-2.5 py-1.5 text-xs text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors"
-								title="浏览目录"
-								aria-label="浏览系统目录"
+								title={t("git.newSession.browseTitle")}
+								aria-label={t("git.newSession.browseSystemDir")}
 							>
 								<FolderOpen size={13} />
-								<span>浏览</span>
+								<span>{t("git.newSession.browse")}</span>
 							</button>
 						</div>
 						{customCwdError && (
@@ -409,7 +411,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 
 				<div className="mb-2">
 					<label className="mb-1 block text-[11px] text-neutral-400">
-						模型（可选）
+						{t("git.newSession.modelOptional")}
 					</label>
 					<ModelSelect
 						direction="down"
@@ -421,13 +423,13 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 									? (availableModels.find(
 											(m) => toModelKey(m.provider, m.id) === modelSel,
 										)?.id ?? modelSel)
-									: (defaultModel || "默认（跟随设置）")
+									: (defaultModel || t("git.newSession.defaultFollowSettings"))
 						}
 						buttonClass={`${input} flex items-center justify-between text-left`}
 						models={availableModels.length > 0 ? availableModels : []}
 						currentValue={modelSel}
 						extras={[
-							{ value: "", label: "默认（跟随设置）" },
+							{ value: "", label: t("git.newSession.defaultFollowSettings") },
 						]}
 						allowCustom
 						onSelect={(v: string) => setModelSel(v.trim())}
@@ -444,8 +446,8 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 						checked={planYolo}
 						onChange={(e) => setPlanYolo(e.target.checked)}
 					/>
-					<span>规划模式</span>
-					<span className="text-[10px] text-neutral-400">（先只读规划并自动进入实施）</span>
+					<span>{t("git.newSession.planMode")}</span>
+					<span className="text-[10px] text-neutral-400">{t("git.newSession.planModeDesc")}</span>
 				</label>
 
 				<label
@@ -460,13 +462,13 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 						disabled={isRepo !== true}
 						onChange={(e) => setUseWorktree(e.target.checked)}
 					/>
-					{linkedWt ? "另建一个新工作树" : "在独立工作树中运行"}
-					<span className="text-[10px] text-neutral-500">（单独的文件夹，改动互不影响）</span>
-					{isRepo === false && <span className="text-[10px]">（所选目录不是 git 仓库）</span>}
+					{linkedWt ? t("git.newSession.createAnotherWorktree") : t("git.newSession.runInIsolatedWorktree")}
+					<span className="text-[10px] text-neutral-500">{t("git.newSession.isolatedFolderDesc")}</span>
+					{isRepo === false && <span className="text-[10px]">{t("git.newSession.notGitRepo")}</span>}
 				</label>
 				{linkedWt && !useWorktree && (
 					<div className="mb-2 text-[11px] text-emerald-300/90">
-						将直接在已有工作树「{linkedWt}」中运行，无需勾选上面的选项
+						{t("git.newSession.alreadyLinkedWorktreeDesc", { worktree: linkedWt })}
 					</div>
 				)}
 				{useWorktree && (
@@ -487,16 +489,16 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				{running.length > 0 && !useWorktree && isRepo === true && (
 					<div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
 						<AlertTriangle size={12} className="shrink-0" />
-						同仓库已有 {running.length} 个会话在运行，建议开独立工作树
+						{t("git.newSession.runningSessionsWarning", { count: running.length })}
 					</div>
 				)}
 
-				<label className="mb-1 block text-[11px] text-neutral-400">第一条消息（可选）</label>
+				<label className="mb-1 block text-[11px] text-neutral-400">{t("git.newSession.firstMessageOptional")}</label>
 				<textarea
 					value={prompt}
 					onChange={(e) => setPrompt(e.target.value)}
 					rows={3}
-					placeholder={`创建后立即发送给 Agent（支持 ${isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速创建）`}
+					placeholder={t("git.newSession.firstMessagePlaceholder", { shortcut: isMac ? "Cmd+Enter" : "Ctrl+Enter" })}
 					className={clsx(input, "mb-3 resize-none")}
 				/>
 
@@ -505,14 +507,14 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 				</div>
 
 				<div className="flex items-center justify-between shrink-0 pt-3 border-t border-[var(--border-divider)] mt-2">
-					<span className="text-[11px] text-neutral-400">按 {isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速提交</span>
+					<span className="text-[11px] text-neutral-400">{t("git.newSession.shortcutHint", { shortcut: isMac ? "Cmd+Enter" : "Ctrl+Enter" })}</span>
 					<div className="flex gap-2">
 						<button
 							type="button"
 							onClick={closeModal}
 							className="press-scale rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 						>
-							取消
+							{t("common.cancel")}
 						</button>
 						<button
 							type="button"
@@ -520,7 +522,7 @@ function NewSessionForm({ props }: { props: Record<string, unknown> }) {
 							onClick={submit}
 							className="press-scale rounded-lg bg-[#0A84FF] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 disabled:opacity-40 transition-colors"
 						>
-							{busy ? "创建中…" : "创建会话"}
+							{busy ? t("git.newSession.creating") : t("git.newSession.createSession")}
 						</button>
 					</div>
 				</div>
@@ -579,13 +581,14 @@ function WorktreeFields({
 	/** Existing branch to check out; hides base-branch and prefix inputs. */
 	checkoutBranch?: string;
 }) {
+	const { t } = useT();
 	return (
 		<div className="space-y-2.5">
 			{!checkoutBranch && (
 			<div className="grid grid-cols-2 gap-2">
 				<div>
 					<label className="text-[10px] text-neutral-400 block mb-1">
-						从哪个分支分出
+						{t("git.newSession.branchForkFrom")}
 					</label>
 					<NativeSelect
 						value={baseBranch}
@@ -598,19 +601,19 @@ function WorktreeFields({
 								</option>
 							))
 						) : (
-							<option value="">当前所在版本</option>
+							<option value="">{t("git.newSession.currentHeadVersion")}</option>
 						)}
 					</NativeSelect>
 				</div>
 				<div>
 					<label className="text-[10px] text-neutral-400 block mb-1">
-						新分支名前缀
+						{t("git.newSession.newBranchPrefix")}
 					</label>
 					<input
 						type="text"
 						value={branchPrefix}
 						onChange={(e) => setBranchPrefix(e.target.value)}
-						placeholder="例如 omp/"
+						placeholder={t("git.newSession.branchPrefixPlaceholder")}
 						className={clsx(INPUT_CLASS, "font-mono")}
 					/>
 				</div>
@@ -619,12 +622,12 @@ function WorktreeFields({
 
 			<div>
 				<label className="text-[10px] text-neutral-400 block mb-1">
-					工作树目录名
+					{t("git.newSession.worktreeDirName")}
 				</label>
 				<input
 					value={wtName}
 					onChange={(e) => setWtName(e.target.value)}
-					placeholder={`文件夹名（默认 ${slug}）`}
+					placeholder={t("git.newSession.worktreeDirPlaceholder", { slug })}
 					className={clsx(INPUT_CLASS, "font-mono")}
 				/>
 			</div>
@@ -632,18 +635,18 @@ function WorktreeFields({
 			<div className="text-[11px] text-neutral-400">
 				{checkoutBranch ? (
 					<>
-						将检出已有分支：
+						{t("git.newSession.willCheckoutExisting")}
 						<span className="font-mono text-[#70b1ff] ml-1">{checkoutBranch}</span>
 					</>
 				) : (
 					<>
-						将创建新分支：
+						{t("git.newSession.willCreateNewBranch")}
 						<span className="font-mono text-[#70b1ff] ml-1">
 							{branchPrefix}
 							{wtName.trim() || slug}
 						</span>
 						{baseBranch && (
-							<span className="text-neutral-500 ml-1">（从 {baseBranch} 分出）</span>
+							<span className="text-neutral-500 ml-1">{t("git.newSession.forkFromBranch", { branch: baseBranch })}</span>
 						)}
 					</>
 				)}
@@ -661,6 +664,7 @@ function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const closeModal = useUi((s) => s.closeModal);
 	const defaultModel = useSettings((s) => s.settings?.newSessionModel);
+	const { t } = useT();
 	const repo = props.cwd as string;
 	const propWs = typeof props.workspaceId === "string" ? props.workspaceId : null;
 	const propBranch =
@@ -693,7 +697,7 @@ function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
 				setBaseBranch((prev) => (prev && list.includes(prev) ? prev : (list[0] ?? "")));
 			})
 			.catch((err) => {
-				if (!cancelled) toast.error(`获取分支列表失败: ${errMsg(err)}`);
+				if (!cancelled) toast.error(t("git.newSession.fetchBranchesFailed", { error: errMsg(err) }));
 			});
 		return () => {
 			cancelled = true;
@@ -736,7 +740,7 @@ function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
 	return (
 		<Modal
 			onClose={closeModal}
-			title="新建工作树会话"
+			title={t("git.newSession.worktreeSessionTitle")}
 			size="none"
 			className="w-[500px] max-w-[calc(100vw-2rem)]"
 		>
@@ -767,14 +771,14 @@ function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
 				{error && <div className="mt-2 text-xs text-rose-400">{error}</div>}
 
 				<div className="flex items-center justify-between shrink-0 pt-3 border-t border-[var(--border-divider)] mt-3">
-					<span className="text-[11px] text-neutral-400">按 {isMac ? "Cmd+Enter" : "Ctrl+Enter"} 快速提交</span>
+					<span className="text-[11px] text-neutral-400">{t("git.newSession.shortcutHint", { shortcut: isMac ? "Cmd+Enter" : "Ctrl+Enter" })}</span>
 					<div className="flex gap-2">
 						<button
 							type="button"
 							onClick={closeModal}
 							className="press-scale rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors"
 						>
-							取消
+							{t("common.cancel")}
 						</button>
 						<button
 							type="button"
@@ -782,7 +786,7 @@ function WorktreeSessionForm({ props }: { props: Record<string, unknown> }) {
 							onClick={submit}
 							className="press-scale rounded-lg bg-[#0A84FF] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 disabled:opacity-40 transition-colors"
 						>
-							{busy ? "创建中…" : "创建"}
+							{busy ? t("git.newSession.creating") : t("git.newSession.create")}
 						</button>
 					</div>
 				</div>

@@ -1,5 +1,6 @@
 /** Pure helpers for Settings ▸ 系统提示词构成: project options and the 「让 AI 帮我优化」 prompt. */
 import type { PromptCategory, PromptComposition, PromptItem, Workspace } from "../../../lib/contracts";
+import { tNow } from "../../../stores/language";
 
 export interface ProjectOption {
 	/** Directory the probe runs in. */
@@ -21,7 +22,7 @@ export function projectOptions(workspaces: readonly Workspace[], extraCwd?: stri
 	};
 	for (const w of workspaces) {
 		if (w.kind === "global") {
-			push({ path: w.path, label: "Universal（无项目）", workspaceId: w.id, universal: true });
+			push({ path: w.path, label: tNow("promptComposition.universalProject"), workspaceId: w.id, universal: true });
 		}
 	}
 	const projects = workspaces
@@ -30,7 +31,7 @@ export function projectOptions(workspaces: readonly Workspace[], extraCwd?: stri
 	for (const w of projects) {
 		push({ path: w.path, label: `${w.name}（${w.path}）`, workspaceId: w.id, universal: false });
 	}
-	if (extraCwd) push({ path: extraCwd, label: `当前会话目录（${extraCwd}）`, workspaceId: null, universal: false });
+	if (extraCwd) push({ path: extraCwd, label: tNow("promptComposition.currentSessionDir", { cwd: extraCwd }), workspaceId: null, universal: false });
 	return out;
 }
 

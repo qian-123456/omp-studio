@@ -5,6 +5,7 @@ import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { errMsg } from "../../lib/dialogs";
 import { saveClipboardImage } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { useT, tNow } from "../../stores/language";
 
 function fileToBase64(file: Blob): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -33,7 +34,7 @@ export function useImageAttach(onAdd: (paths: string[]) => void) {
 			try {
 				paths.push(await saveClipboardImage(await fileToBase64(blob)));
 			} catch (err) {
-				toast.error(`处理图片失败: ${errMsg(err)}`);
+				toast.error(tNow("backlog.processImageFailed", { error: errMsg(err) }));
 			}
 		}
 		if (paths.length > 0) onAdd(paths);
@@ -71,7 +72,7 @@ export function useImageAttach(onAdd: (paths: string[]) => void) {
 				if (e.dataTransfer.files.length === 0) return;
 				e.preventDefault();
 				if (files.length === 0) {
-					toast.error("仅支持图片文件");
+					toast.error(tNow("backlog.onlyImageFilesSupported"));
 					return;
 				}
 				void save(files);
@@ -96,10 +97,11 @@ export function useImageAttach(onAdd: (paths: string[]) => void) {
 }
 
 export function AddImageButton({ onClick, className }: { onClick: () => void; className?: string }) {
+	const { t } = useT();
 	return (
-		<button type="button" onClick={onClick} className={className} title="添加图片（也可粘贴或拖入）">
+		<button type="button" onClick={onClick} className={className} title={t("backlog.addImageTitle")}>
 			<ImagePlus className="h-3.5 w-3.5" />
-			<span>添加图片</span>
+			<span>{t("backlog.addImage")}</span>
 		</button>
 	);
 }
@@ -114,6 +116,7 @@ export function ImageThumbs({
 	onRemove?: (path: string) => void;
 	size?: string;
 }) {
+	const { t } = useT();
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	if (paths.length === 0) return null;
 	return (
@@ -133,7 +136,7 @@ export function ImageThumbs({
 							type="button"
 							onClick={() => onRemove(p)}
 							className="absolute -right-1 -top-1 rounded-full bg-neutral-900 p-0.5 text-neutral-300 hover:text-rose-400"
-							title="移除图片"
+							title={t("backlog.removeImage")}
 						>
 							<X className="h-2.5 w-2.5" />
 						</button>
@@ -144,7 +147,7 @@ export function ImageThumbs({
 				<ImagePreviewModal
 					images={paths.map((p, idx) => ({
 						path: p,
-						marker: `图片 #${idx + 1}`,
+						marker: t("backlog.imageMarker", { index: idx + 1 }),
 					}))}
 					initialIndex={previewIndex}
 					onClose={() => setPreviewIndex(null)}

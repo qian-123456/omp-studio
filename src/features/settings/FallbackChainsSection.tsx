@@ -9,6 +9,7 @@
  */
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useT } from "../../stores/language";
 import { NativeSelect } from "../../components/NativeSelect";
 import type { OmpConfigEntry } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
@@ -40,10 +41,10 @@ function flashSaved(setter: (v: boolean) => void) {
 }
 
 /** Chain-state chip label for the collapsed row. */
-function chainChipLabel(state: "unset" | "empty" | "list", count: number) {
-	if (state === "unset") return "未设置";
-	if (state === "empty") return "不回退";
-	return `${count} 项`;
+function chainChipLabel(state: "unset" | "empty" | "list", count: number, t: (k: string, p?: Record<string, string | number>) => string) {
+	if (state === "unset") return t("settingsModels.stateUnset");
+	if (state === "empty") return t("settingsModels.stateEmpty");
+	return t("settingsModels.stateCount", { count });
 }
 
 /** One compact role row: label, role id, chain state chip; expands the chain editor inline. */
@@ -68,11 +69,12 @@ function ChainRow({
 	roleIds: string[];
 	onSaved: () => void;
 }) {
+	const { t } = useT();
 	const [chainOpen, setChainOpen] = useState(false);
 	const chain = useMemo(() => parseChain(chains[roleId]), [chains, roleId]);
 
 	const preview =
-		chain.state === "list" ? chain.items.join(" → ") : chain.state === "empty" ? "失败即停，不回退" : inheritHint;
+		chain.state === "list" ? chain.items.join(" → ") : chain.state === "empty" ? t("settingsModels.noFallbackStop") : inheritHint;
 
 	return (
 		<div>
@@ -86,14 +88,14 @@ function ChainRow({
 				<span title={description} className="w-24 shrink-0 pt-0.5">
 					<span className="flex flex-wrap items-center gap-1.5">
 						<span className="min-w-0 break-all font-mono text-xs font-semibold text-[var(--text)]">{roleId}</span>
-						{isCustom && <Chip tone="accent">自定义</Chip>}
+						{isCustom && <Chip tone="accent">{t("settingsModels.customBadge")}</Chip>}
 					</span>
 					{label && label !== roleId && chainOpen && (
 						<span className="mt-0.5 block break-words text-[11px] text-[var(--text-dim)]">{label}</span>
 					)}
 				</span>
 				<Chip tone={chain.state === "unset" ? "neutral" : chain.state === "empty" ? "warning" : "success"}>
-					{chainChipLabel(chain.state, chain.items.length)}
+					{chainChipLabel(chain.state, chain.items.length, t)}
 				</Chip>
 				<span
 					className={`min-w-0 flex-1 break-all pt-0.5 text-[11px] leading-[1.45] ${chain.state === "unset" ? "text-[var(--text-dim)]" : "font-mono text-[var(--text-muted)]"}`}
@@ -114,8 +116,8 @@ function ChainRow({
 						roleIds={roleIds}
 						onSaved={onSaved}
 						onCollapse={() => setChainOpen(false)}
-						unsetTitle="继承：模型职能角色用内置候选，对话角色跟随 default 链"
-						emptyTitle="显式空链 []：此角色失败时不回退"
+						unsetTitle={t("settingsModels.unsetRoleTitle")}
+						emptyTitle={t("settingsModels.emptyRoleTitle")}
 					/>
 				</div>
 			)}
@@ -133,6 +135,7 @@ function CycleOrderEditor({
 	availableRoles: string[];
 	onSaved: () => void;
 }) {
+	const { t } = useT();
 	const [items, setItems] = useState<string[]>(value);
 	const [busy, setBusy] = useState(false);
 	const [savedTick, setSavedTick] = useState(false);
@@ -168,7 +171,7 @@ function CycleOrderEditor({
 			flashSaved(setSavedTick);
 			onSaved();
 		} catch (e) {
-			toast.error(`保存切换顺序失败：${errMsg(e)}`);
+			toast.error(t("settingsModels.saveOrderFailed", { error: errMsg(e) }));
 		} finally {
 			setBusy(false);
 		}
@@ -178,12 +181,12 @@ function CycleOrderEditor({
 		<div>
 			<div className="flex flex-wrap items-center gap-2">
 				<span
-					title="会话内模型切换器按此顺序轮换对话角色（cycleOrder）"
+					title={t("settingsModels.cycleOrderCardDesc")}
 					className="text-xs font-medium text-[var(--text)]"
 				>
-					角色切换顺序
+					{t("settingsModels.cycleOrderCardTitle")}
 				</span>
-				<span className="text-xs text-[var(--text-dim)]">会话内切换模型时按此顺序轮换</span>
+				<span className="text-xs text-[var(--text-dim)]">{t("settingsModels.cycleOrderHint")}</span>
 				{savedTick && <Check className="h-3 w-3 text-[var(--status-success)]" />}
 			</div>
 			<div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -193,27 +196,27 @@ function CycleOrderEditor({
 						className="inline-flex min-w-0 items-center gap-0.5 rounded-lg hairline bg-[var(--well-bg)] py-0.5 pl-1.5 pr-0.5"
 					>
 						<span className="text-[10px] tabular-nums text-[var(--text-dim)]">{i + 1}</span>
-						<IconButton icon={ChevronLeft} size="sm" label="前移" disabled={busy || i === 0} onClick={() => move(i, -1)} />
+						<IconButton icon={ChevronLeft} size="sm" label={t("settingsModels.movePrevAria")} disabled={busy || i === 0} onClick={() => move(i, -1)} />
 						<span title={r} className="min-w-0 break-all font-mono text-[11px] text-[var(--text)]">
 							{r}
 						</span>
 						<IconButton
 							icon={ChevronRight}
 							size="sm"
-							label="后移"
+							label={t("settingsModels.moveNextAria")}
 							disabled={busy || i === items.length - 1}
 							onClick={() => move(i, 1)}
 						/>
 						<IconButton
 							icon={Trash2}
 							size="sm"
-							label="移除"
+							label={t("settingsModels.removeAria")}
 							disabled={busy}
 							onClick={() => setItems(items.filter((_, j) => j !== i))}
 						/>
 					</span>
 				))}
-				{items.length === 0 && <span className="text-xs text-[var(--text-dim)]">暂无角色</span>}
+				{items.length === 0 && <span className="text-xs text-[var(--text-dim)]">{t("settingsModels.noRolesYet")}</span>}
 			</div>
 			<div className="mt-3 flex flex-wrap items-center gap-1.5">
 				<NativeSelect
@@ -227,7 +230,7 @@ function CycleOrderEditor({
 					className="text-[11px]"
 					containerClassName="w-28 shrink-0"
 				>
-					<option value="">＋ 角色</option>
+					<option value="">{t("settingsModels.addRoleSelectOption")}</option>
 					{addable.map((r) => (
 						<option key={r} value={r}>
 							{r}
@@ -247,19 +250,19 @@ function CycleOrderEditor({
 						}
 					}}
 					spellCheck={false}
-					placeholder="自定义角色名"
+					placeholder={t("settingsModels.customRolePlaceholder")}
 					className="w-28 shrink-0 rounded-lg hairline bg-[var(--well-bg)] px-2 py-1 font-mono text-[11px] text-[var(--text)] focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all"
 				/>
 				<IconButton
 					icon={Plus}
 					size="sm"
-					label="把自定义角色名加入轮换顺序"
+					label={t("settingsModels.addCustomRoleAria")}
 					disabled={busy || !other.trim() || items.includes(other.trim())}
 					onClick={addOther}
 				/>
 				<span className="flex-1" />
 				<Button variant="primary" size="sm" loading={busy} disabled={!dirty} onClick={() => void apply()}>
-					{busy ? "保存中" : "应用"}
+					{busy ? t("settingsModels.applySaving") : t("settingsModels.applyBtn")}
 				</Button>
 			</div>
 		</div>
@@ -278,8 +281,9 @@ function RoleGroup({
 	count: number;
 	children: ReactNode;
 }) {
+	const { t } = useT();
 	return (
-		<SettingsCard title={title} aside={`${count} 个`} description={description} clip jump={title}>
+		<SettingsCard title={title} aside={t("settingsModels.countItemsAside", { count })} description={description} clip jump={title}>
 			{children}
 		</SettingsCard>
 	);
@@ -288,6 +292,7 @@ function RoleGroup({
 /** Collapsible plain-language summary of how omp picks the backup chain. */
 function PriorityExplainer() {
 	const [open, setOpen] = useState(false);
+	const { t } = useT();
 	return (
 		<div className="rounded-xl hairline bg-[var(--bg-panel)] shadow-apple-card">
 			<button
@@ -296,38 +301,38 @@ function PriorityExplainer() {
 				onClick={() => setOpen((v) => !v)}
 				className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-semibold text-[var(--text)] transition-colors hover:bg-[var(--bg-hover)]"
 			>
-				<span className="flex-1">出错后用哪份备用名单？看这里</span>
-				<Chip>{open ? "收起" : "展开说明"}</Chip>
+				<span className="flex-1">{t("settingsModels.fallbackExplainerToggle")}</span>
+				<Chip>{open ? t("settingsModels.fallbackExplainerCollapse") : t("settingsModels.fallbackExplainerExpand")}</Chip>
 				<ChevronDown className={`h-3 w-3 shrink-0 text-[var(--text-dim)] transition-transform ${open ? "rotate-180" : ""}`} />
 			</button>
 			{open && (
 				<div className="space-y-3 px-4 pb-4 text-xs leading-[1.55] text-[var(--text-muted)]">
 					<div>
-						<p className="mb-1 font-semibold text-[var(--text)]">一个模型出错时，按这个顺序找备用名单，找到就用：</p>
+						<p className="mb-1 font-semibold text-[var(--text)]">{t("settingsModels.fallbackOrderTitle")}</p>
 						<ol className="list-decimal space-y-0.5 pl-5">
-							<li>先看「模型规则」里有没有专门写给这个模型的（供应商/模型名）。</li>
-							<li>没有，再看有没有写给它所属供应商的（供应商/*）。</li>
-							<li>还没有，用它当时扮演的角色那一行的备用名单。</li>
-							<li>仍然没有，聊天类角色会用 default 的名单；图像、搜索等专用角色不会用 default。</li>
+							<li>{t("settingsModels.fallbackOrder1")}</li>
+							<li>{t("settingsModels.fallbackOrder2")}</li>
+							<li>{t("settingsModels.fallbackOrder3")}</li>
+							<li>{t("settingsModels.fallbackOrder4")}</li>
 						</ol>
 					</div>
 					<div>
-						<p className="mb-1 font-semibold text-[var(--text)]">每一行有三种状态：</p>
+						<p className="mb-1 font-semibold text-[var(--text)]">{t("settingsModels.fallbackStatesTitle")}</p>
 						<ul className="list-disc space-y-0.5 pl-5">
-							<li>未设置：专用角色用内置的备选；聊天类角色沿用 default 的名单。</li>
-							<li>不回退：明确不换，出错就停。</li>
-							<li>自定义：按你排的顺序一个个试。</li>
+							<li>{t("settingsModels.fallbackState1")}</li>
+							<li>{t("settingsModels.fallbackState2")}</li>
+							<li>{t("settingsModels.fallbackState3")}</li>
 						</ul>
 					</div>
 					<div>
-						<p className="mb-1 font-semibold text-[var(--text)]">名单里可以写：</p>
+						<p className="mb-1 font-semibold text-[var(--text)]">{t("settingsModels.fallbackContentsTitle")}</p>
 						<ul className="list-disc space-y-0.5 pl-5">
-							<li>某个模型，可选思考强度；不选就沿用出错那一轮的强度。</li>
-							<li>@角色：换成那个角色现在用的模型。</li>
-							<li>供应商/*：模型名不变，只换供应商，强度总是沿用。</li>
+							<li>{t("settingsModels.fallbackContent1")}</li>
+							<li>{t("settingsModels.fallbackContent2")}</li>
+							<li>{t("settingsModels.fallbackContent3")}</li>
 						</ul>
 					</div>
-					<p>子代理没有单独的回退名单：它自己配置的多个模型就是它的备用顺序，所以这里不提供编辑。</p>
+					<p>{t("settingsModels.fallbackAgentNote")}</p>
 				</div>
 			)}
 		</div>
@@ -336,6 +341,7 @@ function PriorityExplainer() {
 
 /** Global fallback chains per role, the cycle order and the /model storage mode. */
 export function FallbackChainsSection({ query = "" }: { query?: string }) {
+	const { t } = useT();
 	const entries = useOmpConfigStore((s) => s.entries);
 	const loading = useOmpConfigStore((s) => s.loading);
 	const loaded = useOmpConfigStore((s) => s.loaded);
@@ -379,7 +385,7 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 
 	const defaultChain = parseChain(chains.default);
 	const defaultInherit =
-		defaultChain.state === "list" ? `沿用 default：${defaultChain.items.join(" → ")}` : "沿用 default 链";
+		defaultChain.state === "list" ? t("settingsModels.defaultInheritHint", { items: defaultChain.items.join(" → ") }) : t("settingsModels.defaultInheritChain");
 
 	const renderRow = (r: { id: string; label: string; description: string }, isCustom = false, inheritHint = "") => (
 		<ChainRow
@@ -396,8 +402,8 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 		/>
 	);
 
-	const showSwitches = q === "" || /retry|fallback|usage|开关|额度|回退|冷却|切换/i.test(q);
-	const showExplainer = q === "" || /优先|顺序|规则|agent|代理|继承|default/i.test(q);
+	const showSwitches = q === "" || /retry|fallback|usage|开关|额度|回退|冷却|切换|switch|quota|revert|cooling/i.test(q);
+	const showExplainer = q === "" || /优先|顺序|规则|agent|代理|继承|default|priority|order|rule|inherit/i.test(q);
 
 	return (
 		<div className="space-y-6">
@@ -407,7 +413,7 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 				</Notice>
 			)}
 			{!loaded && !error && (
-				<div className="text-xs text-[var(--text-dim)]">{loading ? "正在读取配置" : "暂无配置数据"}</div>
+				<div className="text-xs text-[var(--text-dim)]">{loading ? t("settingsModels.readingConfig") : t("settingsModels.noConfigData")}</div>
 			)}
 
 			{loaded && (
@@ -422,12 +428,12 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 					/>
 
 					{chatRows.length > 0 && (
-						<RoleGroup title="对话角色" description="聊天时使用的模型角色；备用模型可带思考强度后缀" count={chatRows.length}>
+						<RoleGroup title={t("settingsModels.groupChatRoles")} description={t("settingsModels.groupChatRolesDesc")} count={chatRows.length}>
 							{chatRows.map((r) =>
 								renderRow(
 									{ id: r.id, label: r.zhLabel, description: r.description },
 									false,
-									r.id === "default" ? "未配置回退链" : defaultInherit,
+									r.id === "default" ? t("settingsModels.unconfiguredChain") : defaultInherit,
 								),
 							)}
 						</RoleGroup>
@@ -435,31 +441,31 @@ export function FallbackChainsSection({ query = "" }: { query?: string }) {
 
 					{kindRows.length > 0 && (
 						<RoleGroup
-							title="模型职能角色"
-							description="图像、搜索、语音等专用模型角色；未设置时用内置备选"
+							title={t("settingsModels.groupFunctionalRoles")}
+							description={t("settingsModels.groupFunctionalRolesDesc")}
 							count={kindRows.length}
 						>
 							{kindRows.map((r) =>
-								renderRow({ id: r.id, label: r.zhLabel, description: r.description }, false, "使用内置候选"),
+								renderRow({ id: r.id, label: r.zhLabel, description: r.description }, false, t("settingsModels.useBuiltinCandidates")),
 							)}
 						</RoleGroup>
 					)}
 
 					{customRows.length > 0 && (
-						<RoleGroup title="自定义角色" description="你自己加的角色，也可以设置失败后的备用模型" count={customRows.length}>
+						<RoleGroup title={t("settingsModels.groupCustomRoles")} description={t("settingsModels.groupCustomRolesDesc")} count={customRows.length}>
 							{customRows.map((id) =>
-								renderRow({ id, label: id, description: "用户自定义角色（模型角色中的非内置项）" }, true, defaultInherit),
+								renderRow({ id, label: id, description: t("settingsModels.customRoleDesc") }, true, defaultInherit),
 							)}
 						</RoleGroup>
 					)}
 
 					{q !== "" && !anyRole && (
-						<p className="px-1 text-xs text-[var(--text-dim)]">没有匹配「{q}」的角色。</p>
+						<p className="px-1 text-xs text-[var(--text-dim)]">{t("settingsModels.noMatchingRoles", { query: q })}</p>
 					)}
 
 					{showExplainer && <PriorityExplainer />}
 
-					<SettingsCard title="会话内切换" description="聊天时快捷键切换模型的先后顺序" jump="会话内切换">
+					<SettingsCard title={t("settingsModels.inSessionSwitchCardTitle")} description={t("settingsModels.inSessionSwitchCardDesc")} jump={t("settingsModels.inSessionSwitchCardTitle")}>
 						<div className="p-4">
 							<CycleOrderEditor value={cycle} availableRoles={allRoleIds} onSaved={handleChanged} />
 						</div>

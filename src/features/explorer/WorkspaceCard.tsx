@@ -5,6 +5,7 @@ import type { Workspace } from "../../lib/contracts";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { toast } from "../../lib/toast";
+import { useT } from "../../stores/language";
 
 interface WorkspaceCardProps {
 	currentWorkspace: Workspace | null;
@@ -19,10 +20,11 @@ export function WorkspaceCard({
 	onSelectWorkspace,
 	gitDirtyCount = 0,
 }: WorkspaceCardProps) {
+	const { t } = useT();
 	const [menuOpen, setMenuOpen] = useState(false);
 	const cardRef = useRef<HTMLDivElement>(null);
 
-	const name = currentWorkspace?.name || "未选择工作区";
+	const name = currentWorkspace?.name || t("explorer.noWorkspaceSelected");
 	const path = currentWorkspace?.path || "";
 
 	const handleOpenInFinder = async (e: React.MouseEvent) => {
@@ -31,7 +33,7 @@ export function WorkspaceCard({
 		try {
 			await revealItemInDir(path);
 		} catch (err) {
-			toast.error(`在访达中打开失败: ${String(err)}`);
+			toast.error(t("explorer.openInFinderFailed", { error: String(err) }));
 		}
 	};
 
@@ -58,7 +60,11 @@ export function WorkspaceCard({
 				)}
 				title={
 					path
-						? `${name}\n${path}\n(右键在访达中显示${workspaces.length > 1 ? "，点击切换工作区" : ""})`
+						? t("explorer.workspaceCardTip", {
+								name,
+								path,
+								switchHint: workspaces.length > 1 ? t("explorer.switchHint") : "",
+						  })
 						: name
 				}
 			>
@@ -82,7 +88,7 @@ export function WorkspaceCard({
 						/>
 					)}
 					<span className="truncate font-mono text-[9.5px] text-neutral-500 flex-1">
-						{path || "选择或添加工作区目录"}
+						{path || t("explorer.selectOrAddWorkspace")}
 					</span>
 				</div>
 
@@ -97,8 +103,8 @@ export function WorkspaceCard({
 						)}
 						title={
 							gitDirtyCount > 0
-								? `工作区就绪 (${gitDirtyCount} 处未提交变更)`
-								: "工作区已就绪"
+								? t("explorer.workspaceReadyWithDirty", { count: gitDirtyCount })
+								: t("explorer.workspaceReady")
 						}
 					/>
 				</div>
@@ -116,7 +122,7 @@ export function WorkspaceCard({
 					className="w-[280px] p-1"
 				>
 					<div className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-						切换工作区
+						{t("explorer.switchWorkspace")}
 					</div>
 					{workspaces.map((ws) => (
 						<button

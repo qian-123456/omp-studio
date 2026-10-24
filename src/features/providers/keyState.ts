@@ -1,7 +1,7 @@
 /** [providers] Presentation + click behavior of a provider row's key state (the merged 密钥 column). */
 
 import type { ProviderRow } from "../../lib/contracts";
-
+import { tNow } from "../../stores/language";
 export type KeyTone = "success" | "warning" | "error" | "info" | "muted";
 
 /** What clicking the key status does. `none` = plain, non-interactive text. */
@@ -25,93 +25,92 @@ export const VAULT_PATH = "~/.omp-workspace/env/keys.env";
 export const MODELS_YML_PATH = "~/.omp/agent/models.yml";
 export const AGENT_DB_PATH = "~/.omp/agent/agent.db";
 
-export const LOGIN_STORED_NOTE =
-	"这个供应商的密钥由 OMP 自己的登录保存（~/.omp/agent/agent.db），由 OMP 管理；暂不支持在这里加密。";
-
 export function describeKey(row: Pick<ProviderRow, "key">): KeyPresentation {
 	const { kind, envVar, envSet } = row.key;
 	switch (kind) {
 		case "encrypted":
 			return {
-				label: "已加密",
+				label: tNow("providers.labelEncrypted"),
 				tone: "success",
 				action: "decrypt",
-				title: "密钥已加密保存在工作台密钥库。点击可改回明文",
+				title: tNow("providers.titleEncrypted"),
 			};
 		case "plaintext":
 			return {
-				label: "明文",
+				label: tNow("providers.labelPlaintext"),
 				tone: "warning",
 				action: "encrypt",
-				title: `密钥以明文保存在 ${MODELS_YML_PATH}。点击立即加密`,
+				title: tNow("providers.titlePlaintext", { path: MODELS_YML_PATH }),
 			};
 		case "vaultMissing":
 			return {
-				label: "加密密钥丢失",
+				label: tNow("providers.labelVaultMissing"),
 				tone: "error",
 				action: "setKey",
-				title: "密钥库里找不到这个供应商的密钥。点击重新设置密钥",
+				title: tNow("providers.titleVaultMissing"),
 			};
 		case "envVar": {
 			const name = envVar ?? "";
 			const set = envSet === true;
 			return {
-				label: set ? "环境变量" : "环境变量未设置",
+				label: set ? tNow("providers.labelEnvVarSet") : tNow("providers.labelEnvVarUnset"),
 				tone: set ? "info" : "warning",
 				action: "setKey",
-				title: `密钥取自环境变量 ${name}（${set ? "已设置" : "未设置"}）。点击可直接设置密钥`,
+				title: tNow("providers.titleEnvVar", {
+					name,
+					status: set ? tNow("providers.statusSet") : tNow("providers.statusUnset"),
+				}),
 			};
 		}
 		case "missing":
 			return {
-				label: "未配置密钥",
+				label: tNow("providers.labelMissing"),
 				tone: "warning",
 				action: "setKey",
-				title: "还没有密钥。点击设置密钥",
+				title: tNow("providers.titleMissing"),
 			};
 		case "oauth":
 			return {
-				label: "OAuth 登录",
+				label: tNow("providers.labelOauth"),
 				tone: "info",
 				action: "oauth",
-				title: "通过账号登录。点击管理账号",
+				title: tNow("providers.titleOauth"),
 			};
 		case "loginStored":
 			return {
-				label: "OMP 登录保存",
+				label: tNow("providers.labelLoginStored"),
 				tone: "info",
 				action: "explainLogin",
-				title: "密钥由 OMP 的登录保存。点击查看说明",
+				title: tNow("providers.titleLoginStored"),
 			};
 		case "none":
 			return {
-				label: "无需密钥",
+				label: tNow("providers.labelNone"),
 				tone: "muted",
 				action: "none",
-				title: "这个供应商不需要密钥",
+				title: tNow("providers.titleNone"),
 			};
 		case "command":
 			return {
-				label: "命令获取",
+				label: tNow("providers.labelCommand"),
 				tone: "muted",
 				action: "none",
-				title: "密钥由 models.yml 中的命令获取，由你自己管理",
+				title: tNow("providers.titleCommand"),
 			};
 	}
 }
-
 export interface AuthBadge {
 	label: string;
 	tone: KeyTone;
 }
 
 export function authBadge(row: Pick<ProviderRow, "key"> & { authNone?: boolean }): AuthBadge {
-	if (row.authNone) return { label: "无密钥", tone: "muted" };
+	if (row.authNone) return { label: tNow("providers.badgeAuthNone"), tone: "muted" };
 	switch (row.key.kind) {
 		case "oauth":
 			return { label: "OAuth", tone: "info" };
 		case "none":
-			return { label: "无密钥", tone: "muted" };
+			return { label: tNow("providers.badgeAuthNone"), tone: "muted" };
 		default:
 			return { label: "API Key", tone: "success" };
 	}
@@ -121,22 +120,28 @@ export function authBadge(row: Pick<ProviderRow, "key"> & { authNone?: boolean }
 export function keyLocation(row: Pick<ProviderRow, "key">): string {
 	switch (row.key.kind) {
 		case "encrypted":
-			return `${VAULT_PATH}（AES-GCM 加密，models.yml 里只有读取命令）`;
+			return tNow("providers.locEncrypted", { path: VAULT_PATH });
 		case "plaintext":
 			return MODELS_YML_PATH;
 		case "oauth":
 		case "loginStored":
 			return AGENT_DB_PATH;
 		case "envVar":
-			return `环境变量 ${row.key.envVar ?? ""}（${row.key.envSet ? "已设置" : "未设置"}）`;
+			return tNow("providers.locEnvVar", {
+				name: row.key.envVar ?? "",
+				status: row.key.envSet ? tNow("providers.statusSet") : tNow("providers.statusUnset"),
+			});
 		case "command":
-			return `${MODELS_YML_PATH} 中的命令`;
+			return tNow("providers.locCommand", { path: MODELS_YML_PATH });
 		case "vaultMissing":
-			return `${MODELS_YML_PATH} 引用了密钥库条目，但 ${VAULT_PATH} 里没有`;
+			return tNow("providers.locVaultMissing", {
+				modelsPath: MODELS_YML_PATH,
+				vaultPath: VAULT_PATH,
+			});
 		case "none":
-			return "无需密钥";
+			return tNow("providers.locNone");
 		case "missing":
-			return "未配置";
+			return tNow("providers.locMissing");
 	}
 }
 

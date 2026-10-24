@@ -26,6 +26,7 @@ import { installShortcutDispatcher } from "./features/shortcuts/dispatcher";
 import { effectiveCenterViewOf } from "./features/shortcuts/actions/navigation";
 import { suspendScrollPills } from "./lib/scrollPills";
 import { useSessions } from "./stores/sessions";
+import { tNow, useT } from "./stores/language";
 import { OmpInstallDialog } from "./features/omp-install/OmpInstallDialog";
 import { useOmpInstall } from "./stores/ompInstall";
 import { useOmpUpdate, watchOmpStaleness, watchOmpUpdateChecks } from "./stores/ompUpdate";
@@ -91,7 +92,7 @@ class ErrorBoundary extends React.Component<
 			return (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center text-xs text-neutral-400">
 					<div className="font-medium text-red-400">
-						{this.props.label} 渲染出错
+						{tNow("shell.renderError", { label: this.props.label })}
 					</div>
 					<div className="mt-1 font-mono text-[11px] text-neutral-500">
 						{this.state.error}
@@ -101,7 +102,7 @@ class ErrorBoundary extends React.Component<
 						onClick={() => this.setState({ error: null, stack: null })}
 						className="mt-3 rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-neutral-300 hover:bg-neutral-700"
 					>
-						重试
+						{tNow("common.retry")}
 					</button>
 				</div>
 			);
@@ -147,6 +148,7 @@ function MainCenterView({ activeView }: { activeView: CenterView }) {
 }
 
 export default function App() {
+	const { t } = useT();
 	useStartupImageGc();
 	const rightOpen = useUi((s) => s.rightOpen);
 	const toggleRight = useUi((s) => s.toggleRight);
@@ -356,7 +358,7 @@ export default function App() {
 						<div
 							onMouseDown={onLeftDragStart}
 							className="group/handle relative z-40 w-0 shrink-0 cursor-col-resize"
-							title="拖拽调节左栏宽度"
+							title={t("shortcuts.dragLeftCol")}
 						>
 							<div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2" />
 							<div
@@ -377,7 +379,7 @@ export default function App() {
 
 					{/* Center main view */}
 					<main className="min-h-0 min-w-0 flex-1">
-						<ErrorBoundary label="主视图">
+						<ErrorBoundary label={t("shell.mainView")}>
 							<MainCenterView activeView={effectiveCenterView} />
 						</ErrorBoundary>
 					</main>
@@ -390,7 +392,7 @@ export default function App() {
 						<div
 							onMouseDown={onRightDragStart}
 							className="group/handle relative z-40 w-0 shrink-0 cursor-col-resize"
-							title="拖拽调节右栏宽度"
+							title={t("shortcuts.dragRightCol")}
 						>
 							<div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2" />
 							<div

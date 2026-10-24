@@ -23,6 +23,7 @@ import { Notice } from "../../../components/Notice";
 import { Button, Chip, IconButton, SettingsCard, type ChipTone } from "../ui";
 import { inScope, statusLabel, statusTone } from "./logic";
 import { useModelTemplatesStore } from "./store";
+import { useT } from "../../../stores/language";
 
 const TONE_CHIP: Record<"ok" | "warn" | "error" | "muted", ChipTone> = {
 	ok: "success",
@@ -35,16 +36,17 @@ const TONE_CHIP: Record<"ok" | "warn" | "error" | "muted", ChipTone> = {
 const UNDOABLE: Record<string, true> = { applied: true, partial: true };
 
 function EditList({ edits }: { edits: TemplateRoleEdit[] }) {
-	if (edits.length === 0) return <div className="text-[11px] text-[var(--text-dim)]">没有角色改动</div>;
+	const { t } = useT();
+	if (edits.length === 0) return <div className="text-[11px] text-[var(--text-dim)]">{t("modelTemplates.noRoleEdits")}</div>;
 	return (
 		<ul className="space-y-1">
 			{edits.map((edit) => (
 				<li key={edit.role} className="text-[11px] leading-[18px]">
 					<span className="break-all font-mono font-semibold text-[var(--text)]">{edit.role}</span>
-					<span className="text-[var(--text-dim)]">：</span>
-					<span className="break-all text-[var(--text-muted)]">{edit.before ?? "未配置"}</span>
+					<span className="text-[var(--text-dim)]">{t("modelTemplates.colon")}</span>
+					<span className="break-all text-[var(--text-muted)]">{edit.before ?? t("modelTemplates.unconfigured")}</span>
 					<span className="text-[var(--text-dim)]"> → </span>
-					<span className="break-all text-[var(--text)]">{edit.after ?? "未配置"}</span>
+					<span className="break-all text-[var(--text)]">{edit.after ?? t("modelTemplates.unconfigured")}</span>
 				</li>
 			))}
 		</ul>
@@ -52,12 +54,13 @@ function EditList({ edits }: { edits: TemplateRoleEdit[] }) {
 }
 
 function SessionList({ results }: { results: SessionSwitchResult[] }) {
-	if (results.length === 0) return <div className="text-[11px] text-[var(--text-dim)]">没有运行中的会话需要切换</div>;
+	const { t } = useT();
+	if (results.length === 0) return <div className="text-[11px] text-[var(--text-dim)]">{t("modelTemplates.noRunningSessions")}</div>;
 	return (
 		<ul className="space-y-1">
 			{results.map((result) => (
 				<li key={result.sessionId} className="text-[11px] leading-[18px]">
-					<Chip tone={result.ok ? "success" : "warning"}>{result.ok ? "已切换" : "未切换"}</Chip>{" "}
+					<Chip tone={result.ok ? "success" : "warning"}>{result.ok ? t("modelTemplates.switched") : t("modelTemplates.notSwitched")}</Chip>{" "}
 					<span className="break-all font-medium text-[var(--text)]">{result.title || result.sessionId}</span>
 					{result.reason && <span className="break-words text-[var(--text-muted)]"> · {result.reason}</span>}
 				</li>
@@ -75,6 +78,7 @@ function LogRow({
 	busy: boolean;
 	onUndo: () => void;
 }) {
+	const { t } = useT();
 	const [open, setOpen] = useState(false);
 	const undoable = UNDOABLE[entry.status] === true && entry.undoneAt === null;
 	const createdAgo = timeAgo(entry.createdAt);
@@ -87,7 +91,7 @@ function LogRow({
 					<div className="flex flex-wrap items-center gap-1.5">
 						<Chip tone={TONE_CHIP[statusTone(entry.status)]}>{statusLabel(entry.status)}</Chip>
 						<span className="break-words text-[13px] font-medium text-[var(--text)]">{entry.templateName}</span>
-						{entry.ruleName && <Chip tone="neutral">规则：{entry.ruleName}</Chip>}
+						{entry.ruleName && <Chip tone="neutral">{t("modelTemplates.ruleBadge", { rule: entry.ruleName })}</Chip>}
 						<span className="text-[11px] text-[var(--text-dim)]" title={absoluteTime(entry.createdAt)}>
 							{createdAgo}
 						</span>
@@ -99,14 +103,14 @@ function LogRow({
 					)}
 					{entry.undoneAt && (
 						<div className="mt-0.5 text-[11px] leading-4 text-[var(--text-dim)]">
-							已于 {undoneAgo}撤销
+							{t("modelTemplates.undoneAgo", { time: undoneAgo })}
 						</div>
 					)}
 				</div>
 				<div className="flex shrink-0 items-center gap-1.5">
 					{undoable && (
 						<Button size="sm" icon={RotateCcw} loading={busy} onClick={onUndo}>
-							撤销
+							{t("modelTemplates.undo")}
 						</Button>
 					)}
 					<button
@@ -115,7 +119,7 @@ function LogRow({
 						onClick={() => setOpen((v) => !v)}
 						className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 					>
-						{open ? "收起详情" : "展开详情"}
+						{open ? t("modelTemplates.collapseDetails") : t("modelTemplates.expandDetails")}
 						<ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
 					</button>
 				</div>
@@ -123,19 +127,19 @@ function LogRow({
 			{open && (
 				<div className="space-y-2 border-t border-[var(--border-divider)] bg-[var(--well-bg)] px-4 py-2.5">
 					<div>
-						<div className="text-[11px] font-semibold text-[var(--text)]">原因</div>
+						<div className="text-[11px] font-semibold text-[var(--text)]">{t("modelTemplates.reasonLabel")}</div>
 						<div className="select-text whitespace-pre-wrap break-words text-[11px] leading-[18px] text-[var(--text-muted)]">
-							{entry.reason || "（无）"}
+							{entry.reason || t("common.none")}
 						</div>
 					</div>
 					<div>
 						<div className="text-[11px] font-semibold text-[var(--text)]">
-							角色改动（{entry.edits.length} 处）
+							{t("modelTemplates.roleEditsCount", { count: String(entry.edits.length) })}
 						</div>
 						<EditList edits={entry.edits} />
 					</div>
 					<div>
-						<div className="text-[11px] font-semibold text-[var(--text)]">会话切换</div>
+						<div className="text-[11px] font-semibold text-[var(--text)]">{t("modelTemplates.sessionSwitch")}</div>
 						<SessionList results={entry.sessionResults} />
 					</div>
 				</div>
@@ -155,6 +159,7 @@ function CompactRow({
 	busy: boolean;
 	onUndo: () => void;
 }) {
+	const { t } = useT();
 	const undoable = UNDOABLE[entry.status] === true && entry.undoneAt === null;
 	const createdAgo = timeAgo(entry.createdAt);
 	return (
@@ -164,13 +169,13 @@ function CompactRow({
 					{createdAgo}
 				</span>
 				<span className="break-words text-[13px] font-medium text-[var(--text)]">{entry.templateName}</span>
-				<Chip tone="neutral">{entry.ruleName ? `规则：${entry.ruleName}` : "手动"}</Chip>
+				<Chip tone="neutral">{entry.ruleName ? t("modelTemplates.ruleBadge", { rule: entry.ruleName }) : t("modelTemplates.manualBadge")}</Chip>
 				<Chip tone={TONE_CHIP[statusTone(entry.status)]}>{statusLabel(entry.status)}</Chip>
-				{entry.undoneAt && <span className="text-[11px] text-[var(--text-dim)]">已撤销</span>}
+				{entry.undoneAt && <span className="text-[11px] text-[var(--text-dim)]">{t("modelTemplates.undoneBadge")}</span>}
 			</div>
 			{undoable && (
 				<Button size="sm" icon={RotateCcw} loading={busy} onClick={onUndo}>
-					撤销
+					{t("modelTemplates.undo")}
 				</Button>
 			)}
 		</div>
@@ -190,11 +195,12 @@ function LogModal({
 	onUndo: (entry: ModelSwitchLogEntry) => void;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	return (
 		<Modal
 			onClose={onClose}
 			size="none"
-			ariaLabel="全部切换记录"
+			ariaLabel={t("modelTemplates.allSwitchLogsAria")}
 			className="h-[min(80vh,680px)] w-[720px] max-w-[calc(100vw-2rem)] overflow-hidden p-4 text-[var(--text)]"
 		>
 			<div
@@ -207,17 +213,17 @@ function LogModal({
 				<div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-divider)] pb-3">
 					<div className="min-w-0">
 						<h2 id="switch-log-modal-title" className="text-sm font-semibold text-[var(--text)]">
-							全部切换记录
+							{t("modelTemplates.allSwitchLogsTitle")}
 						</h2>
 						<p className="mt-0.5 text-[11px] leading-5 text-[var(--text-muted)]">
-							最近 200 次应用、自动切换和撤销，共 {entries.length} 条。
+							{t("modelTemplates.allSwitchLogsDesc", { count: String(entries.length) })}
 						</p>
 					</div>
-					<IconButton icon={X} label="关闭" onClick={onClose} />
+					<IconButton icon={X} label={t("common.close")} onClick={onClose} />
 				</div>
 				{error && (
 					<div className="shrink-0 pt-3">
-						<Notice tone="danger" title="撤销失败">
+						<Notice tone="danger" title={t("modelTemplates.undoFailed")}>
 							<span className="select-text break-all">{error}</span>
 						</Notice>
 					</div>
@@ -244,18 +250,19 @@ export function SwitchLogCard({
 	const [error, setError] = useState<string | null>(null);
 	const [showAll, setShowAll] = useState(false);
 	const entries = useMemo(() => inScope(snapshot?.log ?? [], scope), [snapshot, scope]);
+	const { t } = useT();
 
 	const undo = async (entry: ModelSwitchLogEntry) => {
 		const ok = await confirmDialog(
-			`确定撤销这次切换，把角色恢复成应用前的模型吗？\n模板「${entry.templateName}」`,
-			{ title: "撤销切换", okLabel: "撤销" },
+			t("modelTemplates.undoConfirm", { template: entry.templateName }),
+			{ title: t("modelTemplates.undoTitle"), okLabel: t("modelTemplates.undo") },
 		);
 		if (!ok) return;
 		setBusyId(entry.id);
 		setError(null);
 		try {
 			const result = await modelSwitchUndo(entry.id);
-			toast.success(result.reason || "已撤销并恢复原配置");
+			toast.success(result.reason || t("modelTemplates.undoneSuccess"));
 			await useModelTemplatesStore.getState().refresh();
 		} catch (e) {
 			setError(errMsg(e));
@@ -269,15 +276,15 @@ export function SwitchLogCard({
 	return (
 		<>
 			<SettingsCard
-				title="最近切换"
-				jump="最近切换"
-				description="最近的应用、自动切换和撤销记录。"
-				aside={`${entries.length} 条`}
+				title={t("modelTemplates.recentSwitchesTitle")}
+				jump={t("modelTemplates.recentSwitchesTitle")}
+				description={t("modelTemplates.recentSwitchesDesc")}
+				aside={t("modelTemplates.rulesCount", { count: String(entries.length) })}
 				clip
 			>
 				{error && !showAll && (
 					<div className="px-4 py-3">
-						<Notice tone="danger" title="撤销失败">
+						<Notice tone="danger" title={t("modelTemplates.undoFailed")}>
 							<span className="select-text break-all">{error}</span>
 						</Notice>
 					</div>
@@ -292,7 +299,7 @@ export function SwitchLogCard({
 				))}
 				<div className="flex justify-end px-4 py-2">
 					<Button size="sm" icon={History} onClick={() => setShowAll(true)}>
-						{entries.length > INLINE_LIMIT ? `查看全部 ${entries.length} 条` : "详情"}
+						{entries.length > INLINE_LIMIT ? t("modelTemplates.viewAllCount", { count: String(entries.length) }) : t("modelTemplates.details")}
 					</Button>
 				</div>
 			</SettingsCard>

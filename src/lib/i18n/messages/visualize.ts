@@ -1,0 +1,36 @@
+import { defineMessages } from "../define";
+
+export default defineMessages({
+	"zh-CN": {
+		openLinkFailed: "打开链接失败: {error}",
+		unsupportedContext: "当前上下文不支持发送消息",
+		sendFailed: "发送失败: {error}",
+		loadFailed: "可视化加载失败",
+		reload: "重新加载",
+		hideSource: "收起源码",
+		viewSource: "查看源码",
+		contentTitle: "可视化内容",
+		generating: "正在生成可视化…",
+		copySource: "复制源码",
+		copied: "已复制",
+		fullscreen: "全屏",
+		fullscreenTitle: "可视化全屏",
+		exitFullscreen: "退出全屏",
+	},
+	"en-US": {
+		openLinkFailed: "Failed to open link: {error}",
+		unsupportedContext: "Current context does not support sending messages",
+		sendFailed: "Failed to send: {error}",
+		loadFailed: "Failed to load visualization",
+		reload: "Reload",
+		hideSource: "Hide source",
+		viewSource: "View source",
+		contentTitle: "Visualization content",
+		generating: "Generating visualization…",
+		copySource: "Copy source",
+		copied: "Copied",
+		fullscreen: "Fullscreen",
+		fullscreenTitle: "Fullscreen visualization",
+		exitFullscreen: "Exit fullscreen",
+	},
+});

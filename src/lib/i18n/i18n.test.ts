@@ -1,68 +1,62 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { interpolate, t } from "./index";
-import { zhCN } from "./locales/zh-CN";
-import { enUS } from "./locales/en-US";
+import { FLAT_DICTS, interpolate, t } from "./index";
 
-function getLeafKeys(obj: unknown, prefix = ""): string[] {
-	if (!obj || typeof obj !== "object") return [];
-	const keys: string[] = [];
-	for (const [k, v] of Object.entries(obj)) {
-		const fullKey = prefix ? `${prefix}.${k}` : k;
-		if (typeof v === "string") {
-			keys.push(fullKey);
-		} else {
-			keys.push(...getLeafKeys(v, fullKey));
-		}
-	}
-	return keys.sort();
+const CJK = /[\u3400-\u9fff\uff00-\uffef\u3000-\u303f]/;
+const placeholders = (s: string) => [...s.matchAll(/\{([a-zA-Z0-9_-]+)\}/g)].map((m) => m[1]).sort();
+
+function sourceFiles(dir: string): string[] {
+	return readdirSync(dir).flatMap((name) => {
+		const path = join(dir, name);
+		if (statSync(path).isDirectory()) return sourceFiles(path);
+		return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : [];
+	});
 }
 
-describe("i18n core", () => {
-	it("maintains key parity between zh-CN and en-US dictionaries", () => {
-		const zhKeys = getLeafKeys(zhCN);
-		const enKeys = getLeafKeys(enUS);
-
-		expect(zhKeys).toEqual(enKeys);
-		expect(zhKeys.length).toBeGreaterThan(15);
+describe("i18n dictionaries", () => {
+	it("has an en-US entry for every zh-CN key", () => {
+		expect([...FLAT_DICTS["en-US"].keys()].sort()).toEqual([...FLAT_DICTS["zh-CN"].keys()].sort());
 	});
 
-	it("translates common keys in zh-CN and en-US", () => {
+	it("has no untranslated Chinese left in en-US", () => {
+		const leftovers = [...FLAT_DICTS["en-US"]].filter(([, v]) => CJK.test(v)).map(([k, v]) => `${k}: ${v}`);
+		expect(leftovers).toEqual([]);
+	});
+
+	it("keeps the same {placeholders} in both locales", () => {
+		const mismatched = [...FLAT_DICTS["zh-CN"]]
+			.filter(([k, zh]) => placeholders(zh).join() !== placeholders(FLAT_DICTS["en-US"].get(k) ?? "").join())
+			.map(([k]) => k);
+		expect(mismatched).toEqual([]);
+	});
+
+	it("resolves every literal key passed to t()/tNow() in source", () => {
+		const call = /\b(?:t|tr|tNow|translate)\(\s*["'`]([A-Za-z][\w-]*(?:\.[\w-]+)+)["'`]/g;
+		const missing: string[] = [];
+		for (const file of sourceFiles(join(__dirname, "../.."))) {
+			for (const m of readFileSync(file, "utf8").matchAll(call)) {
+				if (!FLAT_DICTS["zh-CN"].has(m[1])) missing.push(`${file.split("/src/")[1]}: ${m[1]}`);
+			}
+		}
+		expect(missing).toEqual([]);
+	});
+});
+
+describe("t()", () => {
+	it("translates per locale with params", () => {
 		expect(t("common.confirm", undefined, "zh-CN")).toBe("确认");
 		expect(t("common.confirm", undefined, "en-US")).toBe("Confirm");
-
-		expect(t("common.cancel", undefined, "zh-CN")).toBe("取消");
-		expect(t("common.cancel", undefined, "en-US")).toBe("Cancel");
-
-		expect(t("settings.language", undefined, "zh-CN")).toBe("界面语言");
-		expect(t("settings.language", undefined, "en-US")).toBe("Language");
+		const keys = { inKey: "Cmd++", outKey: "Cmd+-", resetKey: "Cmd+0" };
+		expect(t("shortcuts.zoomHint", keys, "en-US")).toBe("Cmd++ zoom in, Cmd+- zoom out, Cmd+0 reset to 100%");
 	});
 
-	it("interpolates parameters correctly", () => {
-		expect(interpolate("Hello {name}!", { name: "OMP" })).toBe("Hello OMP!");
-		expect(interpolate("{inKey} in, {outKey} out", { inKey: "Cmd++", outKey: "Cmd+-" })).toBe(
-			"Cmd++ in, Cmd+- out",
-		);
-		expect(interpolate("Missing {param}")).toBe("Missing {param}");
-	});
-
-	it("supports t() with params in different locales", () => {
-		const zhHint = t(
-			"shortcuts.zoomHint",
-			{ inKey: "Cmd++", outKey: "Cmd+-", resetKey: "Cmd+0" },
-			"zh-CN",
-		);
-		expect(zhHint).toBe("Cmd++ 放大，Cmd+- 缩小，Cmd+0 恢复 100%");
-
-		const enHint = t(
-			"shortcuts.zoomHint",
-			{ inKey: "Cmd++", outKey: "Cmd+-", resetKey: "Cmd+0" },
-			"en-US",
-		);
-		expect(enHint).toBe("Cmd++ zoom in, Cmd+- zoom out, Cmd+0 reset to 100%");
-	});
-
-	it("falls back to default locale or raw key when key is missing", () => {
-		// Non-existent key
+	it("falls back to the raw key when missing", () => {
 		expect(t("non.existent.key")).toBe("non.existent.key");
+	});
+
+	it("interpolates and leaves unknown tokens intact", () => {
+		expect(interpolate("Hello {name}!", { name: "OMP" })).toBe("Hello OMP!");
+		expect(interpolate("Missing {param}")).toBe("Missing {param}");
 	});
 });

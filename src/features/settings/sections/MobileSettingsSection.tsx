@@ -1,13 +1,15 @@
 /** Settings ▸ 手机访问 (`mobile`): header around MobilePanel. */
 import { MobilePanel } from "../../mobile/MobilePanel";
 import { SectionHeader } from "../ui";
+import { useT } from "../../../stores/language";
 
 export function MobileSettingsSection() {
+	const { t } = useT();
 	return (
 		<div className="space-y-6">
 			<SectionHeader
-				title="手机访问"
-				description="用手机查看和回复会话：启动服务，生成二维码，手机扫码"
+				title={t("settingsSections.mobile.title")}
+				description={t("settingsSections.mobile.description")}
 			/>
 			<MobilePanel />
 		</div>

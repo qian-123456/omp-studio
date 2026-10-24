@@ -11,6 +11,7 @@ import { NativeSelect } from "../../../components/NativeSelect";
 import type { ModelKindEntry } from "../../../lib/contracts";
 import type { ModelOption } from "../../../lib/models";
 import { type KindGroup, kindGroup } from "./kinds";
+import { useT } from "../../../stores/language";
 
 export const BTN_PRIMARY =
 	"shrink-0 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-50";
@@ -41,6 +42,7 @@ export function LevelSelect({
 	ariaLabel: string;
 	containerClassName?: string;
 }) {
+	const { t } = useT();
 	if (levels.length === 0) return null;
 	return (
 		<NativeSelect
@@ -51,10 +53,10 @@ export function LevelSelect({
 			containerClassName={containerClassName}
 			className="text-[11px]"
 		>
-			<option value="">模型默认</option>
+			<option value="">{t("modelReplace.modelDefault")}</option>
 			{levels.map((level) => (
 				<option key={level} value={level}>
-					{level === "off" ? "off（关闭思考）" : level}
+					{level === "off" ? t("modelReplace.offThinking") : level}
 				</option>
 			))}
 		</NativeSelect>
@@ -64,12 +66,12 @@ export function LevelSelect({
 /** Tabs of the target picker; models that are in no tab group (`missing`) never appear. */
 export const TARGET_TABS: readonly KindGroup[] = ["chat", "search", "judge", "other"];
 
-const TARGET_TAB_LABELS: Record<KindGroup, string> = {
-	missing: "对话模型",
-	chat: "对话模型",
-	search: "搜索服务",
-	judge: "判断模型",
-	other: "其他",
+const TARGET_TAB_KEYS: Record<KindGroup, string> = {
+	missing: "modelReplace.kindGroup.chat",
+	chat: "modelReplace.kindGroup.chat",
+	search: "modelReplace.kindGroup.search",
+	judge: "modelReplace.kindGroup.judge",
+	other: "modelReplace.tabOther",
 };
 
 /** The tab a source group starts on: `missing` (not in the catalogue) means chat. */
@@ -110,6 +112,7 @@ export function TargetPicker({
 	buttonClass?: string;
 	caption?: string;
 }) {
+	const { t } = useT();
 	const [open, setOpen] = useState(false);
 	const [tab, setTab] = useState<KindGroup>(tabOfGroup(lockGroup ?? initialGroup));
 	const buttonRef = useRef<HTMLButtonElement>(null);
@@ -146,7 +149,7 @@ export function TargetPicker({
 				ref={buttonRef}
 				type="button"
 				disabled={disabled}
-				title={value || "选择目标模型"}
+				title={value || t("modelReplace.selectTargetModel")}
 				aria-haspopup="listbox"
 				aria-expanded={open}
 				onClick={() => {
@@ -157,7 +160,7 @@ export function TargetPicker({
 				className={buttonClass ?? PICKER_BUTTON}
 			>
 				<span className={clsx("min-w-0 flex-1 break-all", value ? "font-mono" : "text-neutral-400")}>
-					{value || "选择目标模型"}
+					{value || t("modelReplace.selectTargetModel")}
 				</span>
 				<ChevronDown size={11} className="shrink-0 text-neutral-500" />
 			</button>
@@ -187,7 +190,7 @@ export function TargetPicker({
 										: "bg-[var(--well-bg)] text-neutral-400 hover:text-neutral-200",
 								)}
 							>
-								{TARGET_TAB_LABELS[group]}
+								{t(TARGET_TAB_KEYS[group])}
 							</button>
 						))}
 					</div>
@@ -195,13 +198,13 @@ export function TargetPicker({
 				{models === null ? (
 					<div className="px-3 py-3 text-[11px]">
 						{error !== null && !loading ? (
-							<span className="break-all text-rose-300">模型目录读取失败：{error}</span>
+							<span className="break-all text-rose-300">{t("modelReplace.catalogError", { error })}</span>
 						) : (
-							<span className="text-neutral-500">正在读取模型目录…</span>
+							<span className="text-neutral-500">{t("modelReplace.loadingCatalog")}</span>
 						)}
 					</div>
 				) : models.length === 0 ? (
-					<div className="px-3 py-3 text-[11px] text-neutral-500">模型目录里没有这一类模型</div>
+					<div className="px-3 py-3 text-[11px] text-neutral-500">{t("modelReplace.noModelsInGroup")}</div>
 				) : (
 					<ModelMenuContent
 						key={activeTab}

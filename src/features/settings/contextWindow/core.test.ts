@@ -108,6 +108,6 @@ describe("ruleKeywordsForBrand", () => {
 	it("falls back to the model tokens when not the whole brand or brand name is absent", () => {
 		expect(ruleKeywordsForBrand("GLM", false, ["glm-5.3-flash-free"])).toEqual(ruleKeywordsForSelection(["glm-5.3-flash-free"]));
 		expect(ruleKeywordsForBrand("GLM", true, ["zhipu-x", "zai-y"])).toEqual([]);
-		expect(ruleKeywordsForBrand("其他", true, ["foo-1", "foo-2"])).toEqual(["foo"]);
+		expect(ruleKeywordsForBrand("other", true, ["foo-1", "foo-2"])).toEqual(["foo"]);
 	});
 });

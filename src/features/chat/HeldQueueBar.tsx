@@ -7,6 +7,7 @@ import { confirmDialog, errMsg } from "../../lib/dialogs";
 import { isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { mergeHeldItems, useHeldItems, useHeldQueue } from "./heldQueue";
+import { useT } from "../../stores/language";
 import { sendPrompt } from "./send";
 export function HeldQueueBar({
 	sessionId,
@@ -15,6 +16,7 @@ export function HeldQueueBar({
 	sessionId: string;
 	streaming: boolean;
 }) {
+	const { t } = useT();
 	const items = useHeldItems(sessionId);
 	const dismissed = useHeldQueue((s) => s.dismissed[sessionId] === true);
 	const { update, remove, move, clear, setDismissed } = useHeldQueue();
@@ -31,10 +33,10 @@ export function HeldQueueBar({
 		try {
 			await sendPrompt(sessionId, merged, images.length > 0 ? { images } : undefined);
 			clear(sessionId);
-			toast.success("已合并发送暂存消息");
+			toast.success(t("chat.heldQueue.mergedSuccess"));
 		} catch (err) {
 			if (!isResumeCancelled(err))
-				toast.error(`发送失败: ${errMsg(err)}`);
+				toast.error(t("chat.heldQueue.sendFailed", { error: errMsg(err) }));
 		} finally {
 			setSending(false);
 		}
@@ -52,10 +54,10 @@ export function HeldQueueBar({
 				item.images?.length ? { images: item.images } : undefined,
 			);
 			remove(sessionId, index);
-			toast.success("已发送暂存消息");
+			toast.success(t("chat.heldQueue.sentSuccess"));
 		} catch (err) {
 			if (!isResumeCancelled(err))
-				toast.error(`发送失败: ${errMsg(err)}`);
+				toast.error(t("chat.heldQueue.sendFailed", { error: errMsg(err) }));
 		} finally {
 			setSending(false);
 		}
@@ -63,12 +65,12 @@ export function HeldQueueBar({
 
 	const handleClearAll = async () => {
 		const ok = await confirmDialog(
-			`确定要清空全部 ${items.length} 条暂存消息吗？清空后无法恢复。`,
-			{ danger: true, okLabel: "清空暂存" },
+			t("chat.heldQueue.clearConfirm", { count: items.length }),
+			{ danger: true, okLabel: t("chat.heldQueue.clearQueue") },
 		);
 		if (ok) {
 			clear(sessionId);
-			toast.success("已清空暂存消息");
+			toast.success(t("chat.heldQueue.clearedSuccess"));
 		}
 	};
 	const handleRemoveOne = async (index: number) => {
@@ -77,14 +79,14 @@ export function HeldQueueBar({
 		const preview = item.text.trim().slice(0, 30);
 		const label = preview
 			? `「${preview}${item.text.length > 30 ? "…" : ""}」`
-			: "该条暂存消息";
-		const ok = await confirmDialog(`确定要删除${label}吗？`, {
+			: t("chat.heldQueue.thisItem");
+		const ok = await confirmDialog(t("chat.heldQueue.removeConfirm", { label }), {
 			danger: true,
-			okLabel: "删除",
+			okLabel: t("common.delete"),
 		});
 		if (ok) {
 			remove(sessionId, index);
-			toast.info("已删除暂存消息");
+			toast.info(t("chat.heldQueue.deletedSuccess"));
 		}
 	};
 
@@ -92,17 +94,17 @@ export function HeldQueueBar({
 	return (
 		<div className="shrink-0 border-t border-[var(--line)] bg-[var(--bg-panel)] px-3 py-1.5 text-[12px] text-[var(--text-60)]">
 			<div className="flex items-center gap-1">
-				<span className="font-medium text-[var(--text)]">排队队列 ({items.length})</span>
+				<span className="font-medium text-[var(--text)]">{t("chat.heldQueue.title", { count: items.length })}</span>
 				{streaming && (
 					<span className="text-[11px] text-[var(--text-40)]">
-						（回合进行中，将按序执行）
+						{t("chat.heldQueue.inProgressHint")}
 					</span>
 				)}
 				<div className="ml-auto flex items-center gap-0.5">
 					<button
 						type="button"
-						aria-label={expanded ? "收起" : "逐条确认"}
-						title={expanded ? "收起" : "逐条确认"}
+						aria-label={expanded ? t("common.collapse") : t("chat.heldQueue.reviewOneByOne")}
+						title={expanded ? t("common.collapse") : t("chat.heldQueue.reviewOneByOne")}
 						onClick={() => setExpanded((v) => !v)}
 						className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 					>
@@ -110,8 +112,8 @@ export function HeldQueueBar({
 					</button>
 					<button
 						type="button"
-						aria-label="继续暂存"
-						title="继续暂存（隐藏此栏）"
+						aria-label={t("chat.heldQueue.keepHeld")}
+						title={t("chat.heldQueue.keepHeldTooltip")}
 						onClick={() => setDismissed(sessionId, true)}
 						className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 					>
@@ -119,8 +121,8 @@ export function HeldQueueBar({
 					</button>
 					<button
 						type="button"
-						aria-label="清空"
-						title="清空队列"
+						aria-label={t("chat.heldQueue.clearAria")}
+						title={t("chat.heldQueue.clearTooltip")}
 						onClick={() => void handleClearAll()}
 						className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 					>
@@ -130,11 +132,11 @@ export function HeldQueueBar({
 						type="button"
 						disabled={sending || streaming}
 						onClick={() => void sendMerged()}
-						title={streaming ? "回合进行中，结束后可发送" : "合并为一条并立即发送"}
+						title={streaming ? t("chat.heldQueue.sendMergedInTurn") : t("chat.heldQueue.sendMergedTooltip")}
 						className="ml-1 flex items-center gap-1 rounded-full bg-[var(--text)] px-2.5 py-0.5 text-[11px] text-[var(--bg)] hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
 					>
 						<Send size={11} />
-						<span>发送</span>
+						<span>{t("chat.heldQueue.sendButton")}</span>
 					</button>
 				</div>
 			</div>
@@ -154,8 +156,8 @@ export function HeldQueueBar({
 							<div className="flex shrink-0 flex-col gap-0.5">
 								<button
 									type="button"
-									aria-label="上移"
-									title="上移"
+									aria-label={t("chat.heldQueue.moveUp")}
+									title={t("chat.heldQueue.moveUp")}
 									onClick={() => move(sessionId, i, -1)}
 									className="text-[var(--text-40)] hover:text-[var(--text)]"
 								>
@@ -163,8 +165,8 @@ export function HeldQueueBar({
 								</button>
 								<button
 									type="button"
-									aria-label="下移"
-									title="下移"
+									aria-label={t("chat.heldQueue.moveDown")}
+									title={t("chat.heldQueue.moveDown")}
 									onClick={() => move(sessionId, i, 1)}
 									className="text-[var(--text-40)] hover:text-[var(--text)]"
 								>
@@ -173,8 +175,8 @@ export function HeldQueueBar({
 							</div>
 							<button
 								type="button"
-								aria-label="发送此条"
-								title={streaming ? "回合进行中，结束后可发送" : "发送此条"}
+								aria-label={t("chat.heldQueue.sendThis")}
+								title={streaming ? t("chat.heldQueue.sendMergedInTurn") : t("chat.heldQueue.sendThis")}
 								disabled={sending || streaming}
 								onClick={() => void sendOne(i)}
 								className="shrink-0 rounded p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
@@ -183,8 +185,8 @@ export function HeldQueueBar({
 							</button>
 							<button
 								type="button"
-								aria-label="删除此条"
-								title="删除"
+								aria-label={t("chat.heldQueue.deleteThis")}
+								title={t("common.delete")}
 								onClick={() => void handleRemoveOne(i)}
 								className="shrink-0 rounded p-1 text-[var(--text-40)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 							>

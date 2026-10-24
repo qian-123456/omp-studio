@@ -3,7 +3,7 @@
  * suffixes, chain renames/merges/dedupe, plan grouping, retry merge and the
  * undo/history display.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type {
 	ChainChange,
 	ModelKindEntry,
@@ -24,6 +24,7 @@ import {
 	invertEdit,
 	isModelSelector,
 	listCandidates,
+	type OverviewRow,
 	liveSessionsOnModel,
 	mergeResults,
 	projectNameMap,
@@ -834,7 +835,10 @@ describe("replace scope", () => {
 
 describe("overview search", () => {
 	const scan = scanOf([roleRef("default", OPUS), roleRef("smol", GPT, "project"), appRef("doctorModel", GPT)]);
-	const rows = buildOverview(scan, null);
+	let rows: OverviewRow[];
+	beforeEach(() => {
+		rows = buildOverview(scan, null);
+	});
 
 	it("keeps everything for a blank query", () => {
 		expect(filterOverviewRows(rows, "   ")).toEqual(rows);

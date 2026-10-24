@@ -4,6 +4,7 @@
 import clsx from "clsx";
 import React, { useEffect, useState } from "react";
 import { CopyButton } from "../../components/CopyButton";
+import { useT } from "../../stores/language";
 import { currentMermaidMode, renderMermaidSvg, svgViewBoxSize } from "./mermaidRender";
 
 type RenderState =
@@ -23,6 +24,7 @@ function useColorMode(): "dark" | "light" {
 }
 
 export const MermaidBlock = React.memo(function MermaidBlock({ source }: { source: string }) {
+	const { t } = useT();
 	const mode = useColorMode();
 	const [state, setState] = useState<RenderState>({ status: "loading" });
 	const [showSource, setShowSource] = useState(false);
@@ -66,18 +68,18 @@ export const MermaidBlock = React.memo(function MermaidBlock({ source }: { sourc
 					{state.status !== "error" && (
 						<>
 							<button type="button" className={tab(!showSource)} onClick={() => setShowSource(false)}>
-								图表
+								{t("chat.mermaid.diagram")}
 							</button>
 							<button type="button" className={tab(showSource)} onClick={() => setShowSource(true)}>
-								源码
+								{t("chat.mermaid.source")}
 							</button>
 						</>
 					)}
 					<CopyButton
 						text={source}
-						label="复制"
-						copiedLabel="已复制"
-						title="复制 Mermaid 源码"
+						label={t("common.copy")}
+						copiedLabel={t("common.copied")}
+						title={t("chat.mermaid.copySource")}
 						resetMs={2000}
 						className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-[var(--text-40)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/codeblock:opacity-100"
 					/>
@@ -85,7 +87,7 @@ export const MermaidBlock = React.memo(function MermaidBlock({ source }: { sourc
 			</div>
 			{state.status === "error" && (
 				<div className="select-text whitespace-pre-wrap break-words border-b border-[var(--line)] px-3 py-2 text-[12px] text-[var(--status-error)]">
-					图表渲染失败：{state.message}
+					{t("chat.mermaid.renderFailed", { message: state.message })}
 				</div>
 			)}
 			{sourceVisible ? (
@@ -96,14 +98,14 @@ export const MermaidBlock = React.memo(function MermaidBlock({ source }: { sourc
 				<div className="overflow-x-auto p-3">
 					<img
 						src={state.src}
-						alt="Mermaid 图表"
+						alt={t("chat.mermaid.alt")}
 						draggable={false}
 						style={{ width: state.width ?? undefined, maxWidth: "100%" }}
 						className="mx-auto block h-auto"
 					/>
 				</div>
 			) : (
-				<div className="px-3 py-4 text-center text-[12px] text-[var(--text-40)]">正在渲染图表</div>
+				<div className="px-3 py-4 text-center text-[12px] text-[var(--text-40)]">{t("chat.mermaid.rendering")}</div>
 			)}
 		</div>
 	);

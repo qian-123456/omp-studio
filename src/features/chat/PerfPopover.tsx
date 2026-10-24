@@ -5,6 +5,7 @@ import type { PerfBreakdown, ServiceInfo } from "../../lib/contracts";
 import { useLive } from "../../stores/live";
 import { useSessions } from "../../stores/sessions";
 import { type Anchor, FloatingLayer } from "../../components/FloatingLayer";
+import { useT } from "../../stores/language";
 
 export interface PerfPopoverProps {
 	anchor?: Anchor | null;
@@ -64,6 +65,7 @@ export function PerfPopover({
 	ignoreRefs,
 	className,
 }: PerfPopoverProps) {
+	const { t } = useT();
 	const workspaces = useSessions((s) => s.workspaces);
 	const liveSessions = useLive((s) => s.sessions);
 	const liveOmpCount = useMemo(
@@ -142,7 +144,7 @@ export function PerfPopover({
 			<div className="mb-3 flex items-center justify-between border-b border-[var(--line)] pb-2">
 				<div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text)]">
 					<Activity size={14} className="text-[var(--text-60)]" />
-					<span>性能</span>
+					<span>{t("chatView.perf.title")}</span>
 				</div>
 				<button
 					type="button"
@@ -154,16 +156,19 @@ export function PerfPopover({
 			</div>
 
 			<div className="mb-3 rounded-md bg-[var(--ghost-hover)] px-2 py-1.5 text-[10.5px] leading-snug text-[var(--text-60)]">
-				整机内存分布（本应用 / OMP 智能体 / 其他程序 / 空闲）与活跃窗口；打开时每 4 秒刷新
+				{t("chatView.perf.description")}
 			</div>
 
 			{/* 内存分布: stacked bar + legend */}
 			<div className="mb-2.5">
 				<div className="mb-1.5 text-[10px] font-medium tracking-wide text-[var(--text-40)]">
-					内存分布
+					{t("chatView.perf.memoryDistribution")}
 					{bd?.usedBytes != null && bd?.totalBytes != null && (
 						<span className="ml-1 font-normal text-[var(--text-40)]">
-							已用 {formatBytes(bd.usedBytes)} / 共 {formatBytes(bd.totalBytes)}
+							{t("chatView.perf.usedOfTotal", {
+								used: formatBytes(bd.usedBytes),
+								total: formatBytes(bd.totalBytes),
+							})}
 						</span>
 					)}
 				</div>
@@ -182,10 +187,10 @@ export function PerfPopover({
 						</div>
 						<div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
 							{([
-								["app", "本应用", bd?.app.bytes],
-								["omp", "OMP 智能体", bd?.barOmpBytes],
-								["other", "其他程序", bd?.otherBytes],
-								["free", "空闲", bd?.freeBytes],
+								["app", t("chatView.perf.app"), bd?.app.bytes],
+								["omp", t("chatView.perf.ompAgents"), bd?.barOmpBytes],
+								["other", t("chatView.perf.otherApps"), bd?.otherBytes],
+								["free", t("chatView.perf.free"), bd?.freeBytes],
 							] as const).map(([key, label, bytes]) => (
 								<div key={key} className="flex items-center justify-between gap-2">
 									<span className="flex min-w-0 items-center gap-1.5 text-[var(--text-60)]">
@@ -201,7 +206,7 @@ export function PerfPopover({
 					</>
 				) : (
 					<div className="py-1.5 text-center text-[11px] text-[var(--text-40)]">
-						{bd ? "暂不支持当前系统" : "采集数据…"}
+						{bd ? t("chatView.perf.notSupported") : t("chatView.perf.collecting")}
 					</div>
 				)}
 			</div>
@@ -210,13 +215,13 @@ export function PerfPopover({
 			<div className="space-y-1 text-xs">
 				<div
 					className="flex items-center justify-between"
-					title={`本程序进程树（本体 + WebView/帮助进程），共 ${bd?.app.processes ?? processes} 个进程；与底部状态栏同一口径`}
+					title={t("chatView.perf.appProcessTreeTitle", { count: bd?.app.processes ?? processes })}
 				>
 					<div className="flex min-w-0 items-center gap-1.5">
 						<AppWindow size={12} className="shrink-0 text-[var(--text-60)]" />
-						<span className="truncate text-[var(--text-60)]">本应用（界面）</span>
+						<span className="truncate text-[var(--text-60)]">{t("chatView.perf.appUi")}</span>
 						<span className="shrink-0 font-mono text-[10px] text-[var(--text-40)]">
-							{bd?.app.processes ?? processes} 个进程
+							{t("chatView.perf.processCount", { count: bd?.app.processes ?? processes })}
 						</span>
 					</div>
 					<span className="shrink-0 font-mono tabular-nums text-[var(--text)]">
@@ -225,13 +230,13 @@ export function PerfPopover({
 				</div>
 				<div
 					className="flex items-center justify-between"
-					title="由本程序启动的 omp Agent 会话进程"
+					title={t("chatView.perf.ompSpawnedTitle")}
 				>
 					<div className="flex min-w-0 items-center gap-1.5">
 						<span className="w-3 shrink-0 text-center text-[var(--text-40)]">└</span>
-						<span className="truncate text-[var(--text-60)]">OMP · 本应用开的会话</span>
+						<span className="truncate text-[var(--text-60)]">{t("chatView.perf.ompSpawned")}</span>
 						<span className="shrink-0 font-mono text-[10px] text-[var(--text-40)]">
-							{bd?.ompSpawned.bytes != null ? `${bd.ompSpawned.processes} 个进程` : "—"}
+							{bd?.ompSpawned.bytes != null ? t("chatView.perf.processCount", { count: bd.ompSpawned.processes }) : "—"}
 						</span>
 					</div>
 					<span className="shrink-0 font-mono tabular-nums text-[var(--text)]">
@@ -240,13 +245,13 @@ export function PerfPopover({
 				</div>
 				<div
 					className="flex items-center justify-between"
-					title="本机其他 omp 进程（终端、其他窗口启动的会话等）"
+					title={t("chatView.perf.ompExternalTitle")}
 				>
 					<div className="flex min-w-0 items-center gap-1.5">
 						<span className="w-3 shrink-0 text-center text-[var(--text-40)]">└</span>
-						<span className="truncate text-[var(--text-60)]">OMP · 终端/其他窗口开的</span>
+						<span className="truncate text-[var(--text-60)]">{t("chatView.perf.ompExternal")}</span>
 						<span className="shrink-0 font-mono text-[10px] text-[var(--text-40)]">
-							{bd?.ompExternal.bytes != null ? `${bd.ompExternal.processes} 个进程` : "—"}
+							{bd?.ompExternal.bytes != null ? t("chatView.perf.processCount", { count: bd.ompExternal.processes }) : "—"}
 						</span>
 					</div>
 					<span className="shrink-0 font-mono tabular-nums text-[var(--text)]">
@@ -258,9 +263,9 @@ export function PerfPopover({
 			{/* 活跃窗口 */}
 			<div className="mt-3 border-t border-[var(--line)] pt-2.5">
 				<div className="mb-1.5 flex items-center justify-between text-[10px] font-medium tracking-wide text-[var(--text-40)]">
-					<span>活跃窗口</span>
+					<span>{t("chatView.perf.activeWindows")}</span>
 					<span className="font-normal">
-						本机 {bd?.instances.length ?? "—"} 个实例 · 本窗口 OMP 会话 {liveOmpCount} 个
+						{t("chatView.perf.instancesSummary", { total: bd?.instances.length ?? "—", live: liveOmpCount })}
 					</span>
 				</div>
 				{bd && bd.instances.length > 0 ? (
@@ -281,7 +286,7 @@ export function PerfPopover({
 									/>
 									<span className="truncate text-[var(--text-60)]">
 										{i.label}
-										{i.isThis ? "（本窗口）" : ""}
+										{i.isThis ? t("chatView.perf.thisWindow") : ""}
 									</span>
 								</div>
 								<span className="shrink-0 font-mono text-[10px] text-[var(--text-40)]">
@@ -292,7 +297,7 @@ export function PerfPopover({
 					</div>
 				) : (
 					<div className="py-1.5 text-center text-[11px] text-[var(--text-40)]">
-						{bd ? "仅当前窗口" : "采集数据…"}
+						{bd ? t("chatView.perf.currentWindowOnly") : t("chatView.perf.collecting")}
 					</div>
 				)}
 			</div>
@@ -301,15 +306,15 @@ export function PerfPopover({
 			<div className="mt-3 border-t border-[var(--line)] pt-2.5">
 				<div className="mb-1.5 flex items-center gap-1 text-[10px] font-medium tracking-wide text-[var(--text-40)]">
 					<Layers size={10} className="text-[var(--text-40)]" />
-					服务进程
+					{t("chatView.perf.serviceProcesses")}
 				</div>
 				{rows === null ? (
 					<div className="py-2 text-center text-[11px] text-[var(--text-40)]">
-						加载中…
+						{t("chatView.perf.loading")}
 					</div>
 				) : procs.length === 0 ? (
 					<div className="py-2 text-center text-[11px] text-[var(--text-40)]">
-						未发现当前项目关联的进程
+						{t("chatView.perf.noServiceProcesses")}
 					</div>
 				) : (
 					<div className="max-h-48 space-y-1 overflow-y-auto pr-3 text-[11px]">

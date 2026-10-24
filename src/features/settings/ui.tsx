@@ -4,6 +4,7 @@
  * through these so layout and save semantics stay consistent.
  */
 import clsx from "clsx";
+import { useT } from "../../stores/language";
 import { AlertTriangle, Check, Loader2, type LucideIcon } from "lucide-react";
 import {
 	forwardRef,
@@ -269,25 +270,26 @@ export function useSaveStatus(): SaveStatus {
 }
 
 export function SaveIndicator({ status, error }: { status: SaveState; error?: string | null }) {
+	const { t } = useT();
 	if (status === "idle") return null;
 	if (status === "saving")
 		return (
 			<span className="inline-flex items-center gap-1 text-[10px] text-neutral-500">
 				<Loader2 className="h-3 w-3 animate-spin" />
-				保存中
+				{t("settingsCore.ui.saving")}
 			</span>
 		);
 	if (status === "saved")
 		return (
 			<span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400">
 				<Check className="h-3 w-3" />
-				已保存
+				{t("settingsCore.ui.saved")}
 			</span>
 		);
 	return (
 		<span title={error ?? undefined} className="inline-flex items-center gap-0.5 text-[10px] text-rose-400">
 			<AlertTriangle className="h-3 w-3" />
-			保存失败
+			{t("settingsCore.ui.saveFailed")}
 		</span>
 	);
 }

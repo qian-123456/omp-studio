@@ -5,6 +5,7 @@ import type { Todo, TodoCounts } from "../../lib/contracts";
 import { onTodosChanged } from "../../lib/events";
 import { todosAct, todosCounts, todosList } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { tNow } from "../../stores/language";
 
 export interface IgnoredTodoRef {
 	id: string;
@@ -68,7 +69,7 @@ export const useTodos = create<TodosState>((set, get) => ({
 			set({ lastIgnored: null });
 		}
 		await get().refresh();
-		toast.success("已重新打开待办");
+		toast.success(tNow("sessions.reopenedTodo"));
 	},
 	undoIgnore: async () => {
 		const last = get().lastIgnored;

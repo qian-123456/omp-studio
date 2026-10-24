@@ -8,6 +8,7 @@
  */
 import { ArrowLeftRight, Loader2, Plus, RefreshCw } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "../../stores/language";
 import type { ModelRoleLayer, ModelRoleSnapshot } from "../../lib/contracts";
 import { errMsg } from "../../lib/dialogs";
 import { ompModelRolesRead, ompModelRolesSet } from "../../lib/ipc";
@@ -134,6 +135,7 @@ export function AgentModelAssignmentsPanel({
 	// The bulk-replace dialog is a nested modal over the whole panel; it owns its own state.
 	const [replaceOpen, setReplaceOpen] = useState(false);
 	const [adding, setAdding] = useState(false);
+	const { t } = useT();
 	const { scope, projectPath, projectName } = roleScope;
 	const { snapshot, loading, error, writing, reload, write } = useModelRoleState(projectPath, sessionModel);
 
@@ -147,7 +149,7 @@ export function AgentModelAssignmentsPanel({
 	const guardedWrite = useCallback(
 		(s: AssignmentScope, table: AssignmentTable, name: string, value: string | null) => {
 			// Never write the project layer without an explicitly chosen project.
-			if (s === "project" && projectPath === null) return Promise.reject(new Error("请先选择一个项目"));
+			if (s === "project" && projectPath === null) return Promise.reject(new Error(t("settingsModels.selectProjectFirstError")));
 			return write(s, table, name, value);
 		},
 		[write, projectPath],
@@ -180,7 +182,7 @@ export function AgentModelAssignmentsPanel({
 
 	const onRoleAdded = (name: string) => {
 		setAdding(false);
-		toast.success(`已添加角色「${name}」`);
+		toast.success(t("settingsModels.roleAddedToast", { name }));
 		requestAnimationFrame(() => {
 			// checkName only allows letters, digits and - _ ., so the attribute selector needs no escaping.
 			const row = document.querySelector<HTMLElement>(`[data-row-kind="role"][data-row-name="${name}"]`);
@@ -204,8 +206,8 @@ export function AgentModelAssignmentsPanel({
 	return (
 		<div className="space-y-6" data-testid="model-roles-panel">
 			<SectionHeader
-				title="模型角色"
-				description="不同用途（主力、轻量、子代理…）分别用哪个模型，可全局设置或按项目覆盖"
+				title={t("settingsModels.panelTitle")}
+				description={t("settingsModels.panelDesc")}
 				actions={
 					<>
 						<Button
@@ -213,16 +215,16 @@ export function AgentModelAssignmentsPanel({
 							icon={Plus}
 							onClick={() => setAdding(true)}
 							disabled={snapshot === null || adding}
-							title="新建一个自定义模型角色"
+							title={t("settingsModels.addRoleTitle")}
 						>
-							添加角色
+							{t("settingsModels.addRoleBtn")}
 						</Button>
-						<Button icon={ArrowLeftRight} onClick={() => setReplaceOpen(true)} title="把某个模型一次性替换成另一个">
-							批量替换
+						<Button icon={ArrowLeftRight} onClick={() => setReplaceOpen(true)} title={t("settingsModels.batchReplaceTitle")}>
+							{t("settingsModels.batchReplaceBtn")}
 						</Button>
 						<IconButton
 							icon={RefreshCw}
-							label="重新读取模型角色"
+							label={t("settingsModels.reloadRolesAria")}
 							onClick={reload}
 							disabled={writing || loading}
 						/>
@@ -232,19 +234,19 @@ export function AgentModelAssignmentsPanel({
 
 			{scopeBar}
 
-			<SettingsCard clip jump="角色分配">
+			<SettingsCard clip jump={t("settingsModels.jumpRoleAssignments")}>
 				{error && (
 					<div className="p-3">
 						<Notice
 							tone="danger"
 							action={
 								<Button size="sm" onClick={reload}>
-									重新读取
+									{t("settingsModels.reloadBtn")}
 								</Button>
 							}
 						>
 							<span className="break-all">
-								{snapshot ? `读取失败，保留上次结果：${error}` : `无法读取模型角色：${error}`}
+								{snapshot ? t("settingsModels.readFailedWithSnapshot", { error }) : t("settingsModels.readFailedNoSnapshot", { error })}
 							</span>
 						</Notice>
 					</div>
@@ -253,7 +255,7 @@ export function AgentModelAssignmentsPanel({
 				{snapshot === null && !error && (
 					<div className="flex items-center gap-2 px-4 py-3 text-xs text-[var(--text-dim)]">
 						<Loader2 className="h-3.5 w-3.5 animate-spin" />
-						正在读取模型角色
+						{t("settingsModels.loadingRolesText")}
 					</div>
 				)}
 

@@ -33,7 +33,7 @@ import { isComposing } from "../../lib/hooks";
 import { acceptSession, rpcRestart, updateSessionMeta } from "../../lib/ipc";
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
-import { useT } from "../../stores/language";
+import { tNow, useT } from "../../stores/language";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { HoverScrollText } from "../../components/HoverScrollText";
@@ -85,29 +85,29 @@ export interface SessionRowProps {
  */
 type StatusMark =
 	| { kind: "none" }
-	| { kind: "spinner"; label: string; pillCls: string }
-	| { kind: "pill"; label: string }
-	| { kind: "dot"; label: string; dotCls: string; pillCls: string };
+	| { kind: "spinner"; labelKey: string; pillCls: string }
+	| { kind: "pill"; labelKey: string }
+	| { kind: "dot"; labelKey: string; dotCls: string; pillCls: string };
 
 const STATUS_CONFIG: Record<SessionMeta["status"], StatusMark> = {
-	awaiting_approval: { kind: "pill", label: "待回复" },
-	awaiting_answer: { kind: "pill", label: "待回复" },
+	awaiting_approval: { kind: "pill", labelKey: "sessions.statusAwaiting" },
+	awaiting_answer: { kind: "pill", labelKey: "sessions.statusAwaiting" },
 	review: { kind: "none" },
 	error: {
 		kind: "dot",
-		label: "异常",
+		labelKey: "sessions.statusAbnormal",
 		dotCls: "bg-red-500",
 		pillCls: "bg-red-500/15 text-red-400",
 	},
 	interrupted: {
 		kind: "dot",
-		label: "已中断",
+		labelKey: "sessions.statusInterrupted",
 		dotCls: "bg-red-500",
 		pillCls: "bg-red-500/15 text-red-400",
 	},
 	working: {
 		kind: "spinner",
-		label: "运行中",
+		labelKey: "sessions.statusRunning",
 		pillCls: "bg-neutral-500/20 text-[var(--text-muted)]",
 	},
 	suspended: { kind: "none" },
@@ -122,7 +122,7 @@ export function renderStatusDot(status: SessionMeta["status"]) {
 	if (cfg.kind === "pill") {
 		return (
 			<span className="shrink-0 whitespace-nowrap rounded-[4px] bg-sky-500/15 px-1 text-[9px] font-semibold leading-[14px] text-sky-400">
-				{cfg.label}
+				{tNow(cfg.labelKey)}
 			</span>
 		);
 	}
@@ -364,10 +364,10 @@ function SessionRowComponent({
 			});
 			useSessions.getState().upsert([updated]);
 			setIsRenaming(false);
-			toast.success(trimmed === "" ? "已恢复默认标题" : "已重命名");
+			toast.success(trimmed === "" ? t("sessions.titleResetDefault") : t("sessions.renamed"));
 		} catch (err) {
 			// Stay in rename mode on failure so text is not lost (R17)
-			toast.error(`重命名失败: ${errMsg(err)}`);
+			toast.error(t("sessions.renameFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -451,7 +451,7 @@ function SessionRowComponent({
 			});
 			useSessions.getState().upsert([updated]);
 		} catch (err) {
-			toast.error(`切换置顶失败: ${errMsg(err)}`);
+			toast.error(t("sessions.togglePinFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -464,7 +464,7 @@ function SessionRowComponent({
 			selectSession(session.id);
 		} catch (err) {
 			if (!isResumeCancelled(err)) {
-				toast.error(`恢复会话失败: ${errMsg(err)}`);
+				toast.error(t("sessions.resumeSessionFailed", { error: errMsg(err) }));
 			}
 		} finally {
 			setBusy(false);
@@ -479,9 +479,9 @@ function SessionRowComponent({
 			// P13: acceptSession(id, false) then archiveSessions([id]) for undo + neighbor selection
 			await acceptSession(session.id, false);
 			await archiveSessions([session.id]);
-			toast.success("已验收并归档");
+			toast.success(t("sessions.acceptedAndArchived"));
 		} catch (err) {
-			toast.error(`验收失败: ${errMsg(err)}`);
+			toast.error(t("sessions.acceptFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -491,8 +491,8 @@ function SessionRowComponent({
 		closeMenu(true);
 		if (restart.kind === "live" && restartNeedsConfirm(session)) {
 			const ok = await confirmDialog(
-				"该会话正在运行或等待回复，重启会中断当前回合（历史会保留）。确定重启？",
-				{ title: "重启会话", okLabel: "重启", danger: true },
+				t("sessions.confirmRestartBusy"),
+				{ title: t("sessions.restartSession"), okLabel: t("sessions.restartAction"), danger: true },
 			);
 			if (!ok) return;
 		}
@@ -500,14 +500,14 @@ function SessionRowComponent({
 		try {
 			if (restart.kind === "live") {
 				await rpcRestart(session.id);
-				toast.success(`已重启会话「${sessionDisplayName(session)}」`);
+				toast.success(t("sessions.restartedSession", { title: sessionDisplayName(session) }));
 			} else {
 				await ensureLive(session.id);
-				toast.success(`已启动会话「${sessionDisplayName(session)}」，未发送任何消息`);
+				toast.success(t("sessions.startedSessionNoMessage", { title: sessionDisplayName(session) }));
 			}
 		} catch (err) {
 			if (isResumeCancelled(err)) return;
-			toast.error(`重启会话失败: ${errMsg(err)}`);
+			toast.error(t("sessions.restartSessionFailed", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -521,9 +521,9 @@ function SessionRowComponent({
 		if (!text) return;
 		try {
 			await copyText(text);
-			toast.success(`已复制${label}`);
+			toast.success(t("sessions.copiedNamed", { name: label }));
 		} catch (err) {
-			toast.error(`复制失败: ${errMsg(err)}`);
+			toast.error(t("sessions.copyFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -532,7 +532,7 @@ function SessionRowComponent({
 		try {
 			await revealItemInDir(session.cwd);
 		} catch (err) {
-			toast.error(`在访达中打开失败: ${errMsg(err)}`);
+			toast.error(t("sessions.openInFinderFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -654,23 +654,23 @@ function SessionRowComponent({
 				{session.kind === "side" ? (
 					<span
 						className="shrink-0 text-[var(--text-dim)]"
-						title={`辅助对话（来自：${parentTitle || "已不在列表中的会话"}）`}
+						title={t("sessions.sideChatFrom", { title: parentTitle || t("sessions.missingSessionTitle") })}
 					>
 						<MessageSquare size={11} />
 					</span>
 				) : session.kind === "fork" ? (
 					<span
 						className="inline-flex shrink-0 items-center gap-0.5 rounded bg-indigo-500/15 px-1 text-[10px] leading-4 text-indigo-400"
-						title={`分叉自: ${parentTitle || "已不在列表中的会话"}`}
+						title={t("sessions.forkedFrom", { title: parentTitle || t("sessions.missingSessionTitle") })}
 					>
 						<GitFork size={9} />
-						分叉
+						{t("sessions.forkLabel")}
 					</span>
 				) : (
 					session.parentId && (
 						<span
 							className="shrink-0 text-[var(--text-dim)]"
-							title={`分叉自: ${parentTitle || "已不在列表中的会话"}`}
+							title={t("sessions.forkedFrom", { title: parentTitle || t("sessions.missingSessionTitle") })}
 						>
 							<GitFork size={11} />
 						</span>
@@ -722,7 +722,7 @@ function SessionRowComponent({
 				)}
 				{!isRenaming && !session.title?.trim() && session.kind !== "side" && (
 					<span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] leading-4 text-amber-400">
-						草稿
+						{t("sessions.statusDraft")}
 					</span>
 				)}
 				{busy ? (
@@ -734,7 +734,7 @@ function SessionRowComponent({
 					renderStatusDot(session.status)
 				)}
 				{session.archived && (
-					<span title="已归档" className="shrink-0 flex items-center text-[var(--text-dim)]">
+					<span title={t("sessionActions.archived")} className="shrink-0 flex items-center text-[var(--text-dim)]">
 						<Archive size={11} />
 					</span>
 				)}
@@ -755,7 +755,7 @@ function SessionRowComponent({
 									? "opacity-100"
 									: "group-hover:opacity-0 group-focus-within:opacity-0",
 						)}
-						title="未读"
+						title={t("sessions.unread")}
 					/>
 				)}
 				<span
@@ -794,7 +794,7 @@ function SessionRowComponent({
 									m.pillCls,
 								)}
 							>
-								{m.label}
+								{t(m.labelKey)}
 							</span>
 						);
 					})()}
@@ -810,7 +810,7 @@ function SessionRowComponent({
 						type="button"
 						onClick={handleMenuBtnClick}
 						className="press-scale flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)] transition-colors p-0.5"
-						title="操作菜单"
+						title={t("sessions.actionsMenu")}
 					>
 						<MoreHorizontal size={14} />
 					</button>
@@ -831,7 +831,7 @@ function SessionRowComponent({
 						ref={menuContainerRef}
 						role="menu"
 						tabIndex={-1}
-						aria-label="会话操作"
+						aria-label={t("sessions.sessionActionsAria")}
 						onClick={(e) => e.stopPropagation()}
 						onContextMenu={(e) => {
 							e.preventDefault();
@@ -879,7 +879,7 @@ function SessionRowComponent({
 						{selectedIds.size > 1 && isInSelectedSet ? (
 							<>
 								<div className="px-2.5 py-1 font-semibold text-[11px] text-[var(--text-muted)] border-b border-[var(--border-divider)]">
-									已选 {selectedIds.size} 个会话
+									{t("sessions.selectedSessionsCount", { count: selectedIds.size })}
 								</div>
 								<button
 									role="menuitem"
@@ -925,7 +925,7 @@ function SessionRowComponent({
 										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 									>
 										<Tag size={13} />
-										批量移到分组…
+										{t("sessionActions.batchMoveToGroup")}
 									</button>
 								)}
 								<div className="my-1 border-t border-[var(--border-divider)]" />
@@ -1024,7 +1024,7 @@ function SessionRowComponent({
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 								>
 									<FolderInput size={13} />
-									归入工作区…
+									{t("sessionActions.assignToWorkspaceEllipsis")}
 								</button>
 
 								{inGlobalArea && (
@@ -1039,7 +1039,7 @@ function SessionRowComponent({
 										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 									>
 										<Tag size={13} />
-										移到分组…
+										{t("sessionActions.moveToGroupEllipsis")}
 									</button>
 								)}
 
@@ -1054,7 +1054,7 @@ function SessionRowComponent({
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 								>
 									<Stethoscope size={13} />
-									诊断此会话
+									{t("sessionActions.diagnoseSession")}
 								</button>
 
 								{(session.status === "interrupted" ||
@@ -1069,7 +1069,7 @@ function SessionRowComponent({
 										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-emerald-400 hover:bg-[var(--bg-hover)] text-left transition-colors"
 									>
 										<Play size={13} />
-										恢复会话
+										{t("sessionActions.resumeSession")}
 									</button>
 								)}
 
@@ -1087,7 +1087,7 @@ function SessionRowComponent({
 										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-purple-400 hover:bg-[var(--bg-hover)] text-left transition-colors"
 									>
 										<ExternalLink size={13} />
-										接管会话…
+										{t("sessionActions.takeoverSession")}
 									</button>
 								)}
 
@@ -1098,12 +1098,12 @@ function SessionRowComponent({
 									tabIndex={-1}
 									type="button"
 									onClick={() => {
-										void handleCopy(session.id, "会话 ID");
+										void handleCopy(session.id, t("sessions.sessionId"));
 									}}
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 								>
 									<Copy size={13} />
-									复制会话 ID
+									{t("sessionActions.copySessionId")}
 								</button>
 
 								{session.git?.branch && (
@@ -1114,13 +1114,13 @@ function SessionRowComponent({
 										onClick={() => {
 											void handleCopy(
 												session.git?.branch,
-												"分支名",
+												t("sessions.branchName"),
 											);
 										}}
 										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 									>
 										<GitBranch size={13} />
-										复制分支名
+										{t("sessionActions.copyBranchName")}
 									</button>
 								)}
 
@@ -1134,7 +1134,7 @@ function SessionRowComponent({
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 								>
 									<FolderOpen size={13} />
-									在访达中打开
+									{t("sessionActions.openInFinder")}
 								</button>
 
 								<button
@@ -1146,8 +1146,8 @@ function SessionRowComponent({
 										restart.kind === "disabled"
 											? restart.reason
 											: restart.kind === "wake"
-												? "启动该会话的 omp 进程，不发送任何消息"
-												: "停止该会话的 omp 进程并在同一会话上重新启动，历史保留"
+												? t("sessions.startOmpWakeDesc")
+												: t("sessions.startOmpRestartDesc")
 									}
 									onClick={() => {
 										void handleRestart();
@@ -1156,7 +1156,7 @@ function SessionRowComponent({
 								>
 									<RotateCw size={13} className={busy ? "animate-spin" : undefined} />
 									<span className="flex min-w-0 flex-col">
-										<span>重启会话</span>
+										<span>{t("sessionActions.restartSession")}</span>
 										{restart.kind === "disabled" && (
 											<span className="text-[10px] text-[var(--text-muted)]">
 												{restart.reason}
@@ -1174,7 +1174,7 @@ function SessionRowComponent({
 									disabled={isSessionBusy(session)}
 									title={
 										isSessionBusy(session)
-											? "会话仍在运行，请先停止当前回合"
+											? t("sessions.sessionBusyStopFirst")
 											: undefined
 									}
 									onClick={() => {

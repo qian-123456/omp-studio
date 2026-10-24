@@ -14,14 +14,15 @@ import { relativeTime } from "../../lib/format";
 import { useComposer } from "../../stores/composer";
 import { useUi } from "../../stores/ui";
 import { useSettings } from "../settings/store";
+import { useT, tNow } from "../../stores/language";
 import { type DiagnosticLens, type DiagnosticPrescription, distillSessionSkeleton } from "./distribution";
 import { useDoctor } from "./doctorStore";
 
-const LENSES: { value: DiagnosticLens; label: string; hint: string }[] = [
-	{ value: "cost", label: "🪙 省钱瘦身", hint: "找出上下文浪费、重复读取与无效重试" },
-	{ value: "prompt", label: "🎯 提问调优", hint: "分析需求表述是否导致范围蔓延或反复返工" },
-	{ value: "quality", label: "🛡️ 代码暗坑", hint: "排查过度设计、隐藏风险与未验证的改动" },
-	{ value: "freeform", label: "💬 自由提问", hint: "就本对话提出你自己的问题" },
+const LENS_KEYS: { value: DiagnosticLens; labelKey: string; hintKey: string }[] = [
+	{ value: "cost", labelKey: "doctor.lensCostLabel", hintKey: "doctor.lensCostHint" },
+	{ value: "prompt", labelKey: "doctor.lensPromptLabel", hintKey: "doctor.lensPromptHint" },
+	{ value: "quality", labelKey: "doctor.lensQualityLabel", hintKey: "doctor.lensQualityHint" },
+	{ value: "freeform", labelKey: "doctor.lensFreeformLabel", hintKey: "doctor.lensFreeformHint" },
 ];
 
 const CARD = "rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3";
@@ -31,9 +32,9 @@ function formatTok(n: number): string {
 }
 
 function autoModeLabel(mode: string | undefined, idle: number | undefined, time: string | undefined): string {
-	if (mode === "idle") return `闲置 ${idle ?? 30} 分钟后自动体检`;
-	if (mode === "scheduled") return `每日 ${time ?? "23:00"} 自动体检`;
-	return "手动（仅在你点击时体检）";
+	if (mode === "idle") return tNow("doctor.autoModeIdle", { idle: idle ?? 30 });
+	if (mode === "scheduled") return tNow("doctor.autoModeScheduled", { time: time ?? "23:00" });
+	return tNow("doctor.autoModeManual");
 }
 
 export function DoctorView({
@@ -45,10 +46,10 @@ export function DoctorView({
 	meta: SessionMeta | undefined;
 	items: TranscriptItem[];
 }) {
+	const { t } = useT();
 	const state = useDoctor((s) => s.bySession[sessionId]);
 	const settings = useSettings((s) => s.settings);
 	const doctorModel = settings?.doctorModel || "smol";
-
 	const [lens, setLens] = useState<DiagnosticLens>(state?.lens ?? "cost");
 	const [question, setQuestion] = useState("");
 	const [followUp, setFollowUp] = useState("");
@@ -84,13 +85,13 @@ export function DoctorView({
 		<div className="min-w-0 space-y-3 break-words [overflow-wrap:anywhere]">
 			{/* Lens selector */}
 			<div className={CARD}>
-				<div className="mb-2 text-[11.5px] font-medium text-neutral-200">选择体检方向</div>
+				<div className="mb-2 text-[11.5px] font-medium text-neutral-200">{t("doctor.selectLens")}</div>
 				<div className="grid grid-cols-2 gap-1.5">
-					{LENSES.map((l) => (
+					{LENS_KEYS.map((l) => (
 						<button
 							key={l.value}
 							type="button"
-							title={l.hint}
+							title={t(l.hintKey)}
 							onClick={() => setLens(l.value)}
 							className={clsx(
 								"rounded-lg border px-2 py-1.5 text-left text-[11px] transition-all",
@@ -99,16 +100,16 @@ export function DoctorView({
 									: "border-[var(--border)] text-neutral-400 hover:bg-[var(--bg-hover)]",
 							)}
 						>
-							{l.label}
+							{t(l.labelKey)}
 						</button>
 					))}
 				</div>
-				<div className="mt-1.5 text-[10px] text-neutral-500">{LENSES.find((l) => l.value === lens)?.hint}</div>
+				<div className="mt-1.5 text-[10px] text-neutral-500">{t(LENS_KEYS.find((l) => l.value === lens)?.hintKey ?? "")}</div>
 				{lens === "freeform" && (
 					<textarea
 						value={question}
 						onChange={(e) => setQuestion(e.target.value)}
-						placeholder="例如：为什么这次改动反复失败？我该怎么描述需求才能一次做对？（必填）"
+						placeholder={t("doctor.freeformPlaceholder")}
 						rows={3}
 						className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-2 text-[11px] text-neutral-200 outline-none focus:border-[var(--accent)]"
 					/>
@@ -116,11 +117,11 @@ export function DoctorView({
 
 				<div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[10px]">
 					<span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-emerald-400">
-						⚡ 已脱水为 ~{formatTok(skeletonTokens)} token 骨架
+						{t("doctor.dehydratedBadge", { tokens: formatTok(skeletonTokens) })}
 					</span>
 				</div>
 				<div className="mt-1 text-[10px] text-neutral-500">
-					只发送这份精简骨架（目标、动作序列、报错、改动文件），不会发送完整对话记录。
+					{t("doctor.skeletonExplanation")}
 				</div>
 
 				<button
@@ -135,10 +136,10 @@ export function DoctorView({
 					)}
 				>
 					{running ? <Loader2 size={12} className="animate-spin" /> : null}
-					{running ? "体检中…" : result ? "🩺 重新体检" : "🩺 开始体检"}
+					{running ? t("doctor.diagnosing") : result ? t("doctor.rediagnose") : t("doctor.startDiagnosis")}
 				</button>
 				<div className="mt-1 text-center text-[10px] text-neutral-500">
-					使用模型 <span className="font-mono text-neutral-400">{doctorModel}</span>，每次体检会消耗少量 token
+					{t("doctor.tokenCostHintPre")}<span className="font-mono text-neutral-400">{doctorModel}</span>{t("doctor.tokenCostHintPost")}
 				</div>
 			</div>
 
@@ -146,10 +147,10 @@ export function DoctorView({
 			{state?.status === "error" && (
 				<div className="rounded-xl border border-red-500/30 bg-red-500/5 p-3">
 					<div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-medium text-red-400">
-						<AlertCircle size={12} /> 体检失败
+						<AlertCircle size={12} /> {t("doctor.diagnosisFailed")}
 					</div>
 					<pre className="whitespace-pre-wrap break-words font-mono text-[10.5px] text-red-300/90">
-						{state.error ?? "未知错误"}
+						{state.error ?? t("doctor.unknownError")}
 					</pre>
 					<button
 						type="button"
@@ -157,7 +158,7 @@ export function DoctorView({
 						disabled={!canStart}
 						className="mt-2 rounded-lg border border-[var(--border)] px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)] disabled:opacity-50"
 					>
-						重试
+						{t("common.retry")}
 					</button>
 				</div>
 			)}
@@ -167,7 +168,7 @@ export function DoctorView({
 				<>
 					<div className={CARD}>
 						<div className="mb-1 flex items-center justify-between">
-							<span className="text-[11.5px] font-medium text-neutral-200">核心结论</span>
+							<span className="text-[11.5px] font-medium text-neutral-200">{t("doctor.coreConclusion")}</span>
 							{state?.diagnosedAt && (
 								<span className="text-[10px] text-neutral-500">
 									{relativeTime(new Date(state.diagnosedAt).toISOString())}
@@ -191,7 +192,7 @@ export function DoctorView({
 
 					{result.evidence.length > 0 && (
 						<div className={CARD}>
-							<div className="mb-1 text-[11.5px] font-medium text-neutral-200">事实证据</div>
+							<div className="mb-1 text-[11.5px] font-medium text-neutral-200">{t("doctor.evidence")}</div>
 							<ul className="list-disc space-y-1 pl-4 text-[11px] text-neutral-300">
 								{result.evidence.map((e, i) => (
 									// biome-ignore lint/suspicious/noArrayIndexKey: static list per result
@@ -202,13 +203,13 @@ export function DoctorView({
 					)}
 
 					<div className={CARD}>
-						<div className="mb-1 text-[11.5px] font-medium text-neutral-200">根因分析</div>
+						<div className="mb-1 text-[11.5px] font-medium text-neutral-200">{t("doctor.rootCause")}</div>
 						<div className="text-[11px] leading-relaxed text-neutral-300">{result.rootCause}</div>
 					</div>
 
 					{result.prescriptions.length > 0 && (
 						<div className="space-y-2">
-							<div className="px-0.5 text-[11.5px] font-medium text-neutral-200">纠偏 Prompt 草稿</div>
+							<div className="px-0.5 text-[11.5px] font-medium text-neutral-200">{t("doctor.promptDraftsTitle")}</div>
 							{result.prescriptions.map((p, i) => (
 								<PrescriptionCard
 									// biome-ignore lint/suspicious/noArrayIndexKey: reseed drafts when a new result arrives
@@ -222,7 +223,7 @@ export function DoctorView({
 
 					{/* Follow-up thread */}
 					<div className={CARD}>
-						<div className="mb-1.5 text-[11.5px] font-medium text-neutral-200">追问</div>
+						<div className="mb-1.5 text-[11.5px] font-medium text-neutral-200">{t("doctor.followUpTitle")}</div>
 						{thread.length > 0 && (
 							<div className="mb-2 space-y-1.5">
 								{thread.map((t, i) => (
@@ -252,7 +253,7 @@ export function DoctorView({
 									}
 								}}
 								disabled={running}
-								placeholder={running ? "体检中…" : "继续追问，回车发送"}
+								placeholder={running ? t("doctor.followUpPlaceholderRunning") : t("doctor.followUpPlaceholder")}
 								className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-1 text-[11px] text-neutral-200 outline-none focus:border-[var(--accent)] disabled:opacity-50"
 							/>
 							<button
@@ -260,7 +261,7 @@ export function DoctorView({
 								onClick={sendFollowUp}
 								disabled={running || !followUp.trim()}
 								className="rounded-lg border border-[var(--border)] p-1.5 text-neutral-300 hover:bg-[var(--bg-hover)] disabled:opacity-40"
-								title="发送"
+								title={t("doctor.send")}
 							>
 								<Send size={12} />
 							</button>
@@ -272,16 +273,16 @@ export function DoctorView({
 			{/* Settings hint */}
 			<div className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--border)] px-3 py-2 text-[10.5px] text-neutral-500">
 				<span>
-					体检模式：{autoModeLabel(settings?.doctorAutoMode, settings?.doctorIdleMinutes, settings?.doctorScheduleTime)}
-					· 模型 <span className="font-mono">{doctorModel}</span>
+					{t("doctor.doctorModePrefix")}{autoModeLabel(settings?.doctorAutoMode, settings?.doctorIdleMinutes, settings?.doctorScheduleTime)}
+					{t("doctor.modelPrefix")}<span className="font-mono">{doctorModel}</span>
 				</span>
 				<button
 					type="button"
 					onClick={() => useUi.getState().openSettings("doctor")}
 					className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-neutral-400 hover:bg-[var(--bg-hover)]"
-					title="设置 → 会话体检"
+					title={t("doctor.settingsTitle")}
 				>
-					<SettingsIcon size={11} /> 设置
+					<SettingsIcon size={11} /> {t("common.settings")}
 				</button>
 			</div>
 		</div>
@@ -289,6 +290,7 @@ export function DoctorView({
 }
 
 function PrescriptionCard({ sessionId, prescription }: { sessionId: string; prescription: DiagnosticPrescription }) {
+	const { t } = useT();
 	const [text, setText] = useState(prescription.promptDraft);
 	return (
 		<div className={CARD}>
@@ -305,8 +307,8 @@ function PrescriptionCard({ sessionId, prescription }: { sessionId: string; pres
 			<div className="mt-1.5 flex justify-end gap-1.5">
 				<CopyButton
 					text={text}
-					label="复制"
-					copiedLabel="已复制"
+					label={t("common.copy")}
+					copiedLabel={t("common.copied")}
 					hideIcon
 					className="rounded-lg border border-[var(--border)] px-2.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--bg-hover)]"
 				/>
@@ -319,7 +321,7 @@ function PrescriptionCard({ sessionId, prescription }: { sessionId: string; pres
 					}}
 					className="rounded-lg bg-[var(--accent)] px-2.5 py-1 text-[11px] text-white hover:opacity-90"
 				>
-					填入输入框
+					{t("doctor.fillComposer")}
 				</button>
 			</div>
 		</div>

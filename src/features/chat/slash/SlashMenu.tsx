@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { useEffect, useRef } from "react";
 import { Settings2 } from "lucide-react";
 import { FloatingLayer } from "../../../components/FloatingLayer";
+import { useT } from "../../../stores/language";
 import { openSettingsTarget } from "../../settings/settingsTargets";
 import { argHintLabel } from "./chip";
 import type { SlashMenuItem, SlashMenuSection } from "./menu";
@@ -16,7 +17,7 @@ export interface SlashMenuProps {
 	activeIndex: number;
 	/** Triggered when the query/box is empty but nothing matched. */
 	empty: boolean;
-	/** Footer hint override (subcommand menu says 选择 rather than 执行). */
+	/** Footer hint override (already translated; defaults to the run hint). */
 	footer?: string;
 	onSelect(item: SlashMenuItem): void;
 	onDismiss(): void;
@@ -27,12 +28,12 @@ export function SlashMenu({
 	sections,
 	activeIndex,
 	empty,
-	footer = "↑↓ 选择 · ↵ 执行 · Esc 关闭",
+	footer,
 	onSelect,
 	onDismiss,
 }: SlashMenuProps) {
+	const { t } = useT();
 	const listRef = useRef<HTMLDivElement>(null);
-
 	// Keep the active row visible while keyboard-navigating.
 	useEffect(() => {
 		const el = listRef.current?.querySelector("[data-active='true']");
@@ -49,18 +50,18 @@ export function SlashMenu({
 			onDismiss={onDismiss}
 			className="w-[min(calc(100vw-32px),560px)] !overflow-hidden rounded-xl border-[var(--line,var(--border))] !bg-[var(--bg-panel)] p-1"
 			role="listbox"
-			aria-label="斜杠命令"
+			aria-label={t("slash.menuAriaLabel")}
 		>
 			<div ref={listRef} className="max-h-[min(50vh,420px)] overflow-y-auto">
 				{empty ? (
 					<div className="px-3 py-2.5 text-[12px] text-[var(--text-40,var(--text-dim))]">
-						无匹配命令
+						{t("slash.noMatchingCommands")}
 					</div>
 				) : (
 					sections.map((section) => (
-						<div key={section.label}>
+						<div key={section.group}>
 							<div className="px-2 pb-0.5 pt-1.5 text-[12px] text-[var(--text-30,var(--text-dim))]">
-								{section.label}
+								{t(`slash.group.${section.group}`)}
 							</div>
 							{section.items.map((item) => {
 								flatIndex += 1;
@@ -80,7 +81,7 @@ export function SlashMenu({
 				)}
 			</div>
 			<div className="border-t border-[var(--line,var(--border-divider))] px-2.5 py-1.5 text-[11px] text-[var(--text-30,var(--text-dim))]">
-				{footer}
+				{footer ?? t("slash.menuFooterRun")}
 			</div>
 		</FloatingLayer>
 	);
@@ -97,6 +98,7 @@ function SlashRow({
 	onSelect(item: SlashMenuItem): void;
 	onDismiss(): void;
 }) {
+	const { t } = useT();
 	const Icon = item.icon;
 	return (
 		<div
@@ -145,8 +147,8 @@ function SlashRow({
 			{item.settingsTarget && (
 				<button
 					type="button"
-					title="去设置"
-					aria-label={`去设置 ${item.title || item.name}`}
+					title={t("slash.openSettings")}
+					aria-label={t("slash.openSettingsFor", { name: item.title || item.name })}
 					className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-30,var(--text-dim))] opacity-0 transition-opacity hover:bg-[var(--bg-active-fill)] hover:text-[var(--text)] focus:opacity-100 group-hover/slashrow:opacity-100"
 					onMouseDown={(e) => {
 						e.preventDefault();

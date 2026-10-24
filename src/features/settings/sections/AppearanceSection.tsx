@@ -26,10 +26,11 @@ const DEFAULT_UI_SCALE: UiScale = "standard";
 
 /** Small "恢复默认" button; hidden while the value already equals the default. */
 function ResetButton({ visible, onClick, label }: { visible: boolean; onClick: () => void; label: string }) {
+	const { t } = useT();
 	if (!visible) return null;
 	return (
-		<Button size="sm" variant="ghost" icon={RotateCcw} onClick={onClick} aria-label={`${label}恢复默认`}>
-			恢复默认
+		<Button size="sm" variant="ghost" icon={RotateCcw} onClick={onClick} aria-label={t("settingsSections.appearance.restoreDefaultAria", { label })}>
+			{t("settingsSections.appearance.restoreDefault")}
 		</Button>
 	);
 }
@@ -60,24 +61,24 @@ export function AppearanceSection() {
 								setUiScale(DEFAULT_UI_SCALE);
 								resetZoom();
 							}}
-							title="字号、密度、缩放全部恢复默认（不影响主题）"
+							title={t("settingsSections.appearance.restoreAllDefaultsTitle")}
 						>
-							全部恢复默认
+							{t("settingsSections.appearance.restoreAllDefaults")}
 						</Button>
 					) : undefined
 				}
 			/>
 			<SectionJumpBar />
-			<SettingsCard jump="主题" title={t("settings.appearance.theme")}>
+			<SettingsCard jump={t("settingsSections.appearance.themeJump")} title={t("settings.appearance.theme")}>
 				<SettingRow
 					fieldId="theme"
 					stacked
-					label="配色主题"
-					description="选择浅色或深色主题、跟随系统，或使用图片背景与自选强调色"
+					label={t("settingsSections.appearance.themeLabel")}
+					description={t("settingsSections.appearance.themeDesc")}
 					control={<ThemePicker />}
 				/>
 			</SettingsCard>
-			<SettingsCard jump="文字与布局" title={t("settings.appearance.typographyAndLayout")} footer={t("settings.appearance.footerLocalOnly")}>
+			<SettingsCard jump={t("settingsSections.appearance.typographyAndLayoutJump")} title={t("settings.appearance.typographyAndLayout")} footer={t("settings.appearance.footerLocalOnly")}>
 				<SettingRow
 					fieldId="language"
 					label={t("settings.language")}
@@ -134,27 +135,27 @@ export function AppearanceSection() {
 				<SettingRow
 					fieldId="uiScale"
 					label={t("settings.appearance.zoom")}
-					description={`整个窗口的放大比例（${minZoom}%–${maxZoom}%）`}
-					hint={`快捷键：${zoomHint}（可在「快捷键」页查看）`}
+					description={t("settingsSections.appearance.zoomDesc", { min: minZoom, max: maxZoom })}
+					hint={t("settingsSections.appearance.zoomHint", { hint: zoomHint })}
 					control={
 						<div className="flex items-center gap-1.5">
 							<ResetButton label={t("settings.appearance.zoom")} visible={zoom !== DEFAULT_ZOOM} onClick={resetZoom} />
-							<IconButton icon={Minus} label="缩小" onClick={zoomOut} disabled={zoom <= minZoom} />
+							<IconButton icon={Minus} label={t("settingsSections.appearance.zoomOut")} onClick={zoomOut} disabled={zoom <= minZoom} />
 							<span
 								className="min-w-14 text-center font-mono text-xs font-medium tabular-nums text-[var(--text)]"
 								aria-live="polite"
 							>
 								{zoom}%
 							</span>
-							<IconButton icon={Plus} label="放大" onClick={zoomIn} disabled={zoom >= maxZoom} />
+							<IconButton icon={Plus} label={t("settingsSections.appearance.zoomIn")} onClick={zoomIn} disabled={zoom >= maxZoom} />
 						</div>
 					}
 				/>
 			</SettingsCard>
-			<div data-jump="请求统计" className="scroll-mt-4">
+			<div data-jump={t("settingsSections.appearance.jumpRequestStats")} className="scroll-mt-4">
 				<RequestStatsCard />
 			</div>
-			<div data-jump="对话显示" className="scroll-mt-4">
+			<div data-jump={t("settingsSections.appearance.jumpConversationDisplay")} className="scroll-mt-4">
 				<ConversationDisplayCard />
 			</div>
 		</div>

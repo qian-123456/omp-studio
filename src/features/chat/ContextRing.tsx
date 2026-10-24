@@ -18,6 +18,7 @@ import {
 	ringSegments,
 	THEME_COLORS,
 } from "./contextBreakdown";
+import { useT } from "../../stores/language";
 
 /** Last good composition per session, shown at once while a refetch runs. */
 const lastBySession: Record<string, PromptComposition> = {};
@@ -68,6 +69,7 @@ function UsageDonut({
 	windowSize: number;
 	pctInt: number;
 }) {
+	const { t } = useT();
 	const size = 112;
 	const stroke = 12;
 	const r = (size - stroke) / 2;
@@ -102,7 +104,7 @@ function UsageDonut({
 			</svg>
 			<div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
 				<span className="text-[18px] font-semibold leading-[22px] tabular-nums text-[var(--text)]">{pctInt}%</span>
-				<span className="whitespace-nowrap text-[11px] leading-[14px] text-[var(--text-40)]">已用</span>
+				<span className="whitespace-nowrap text-[11px] leading-[14px] text-[var(--text-40)]">{t("chat.context.used")}</span>
 			</div>
 		</div>
 	);
@@ -132,6 +134,7 @@ function LegendRow({
 	status?: { kind: "loading" } | { kind: "error"; text: string };
 	onClick?: () => void;
 }) {
+	const { t } = useT();
 	const [expanded, setExpanded] = useState(false);
 	const expandable = !!details && details.length > 0;
 	const head = (
@@ -157,7 +160,7 @@ function LegendRow({
 			{status?.kind === "loading" ? (
 				<span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[var(--text-40)]">
 					<Loader2 size={11} className="animate-spin" />
-					加载中
+					{t("chat.loadingShort")}
 				</span>
 			) : status?.kind === "error" ? (
 				<span className="min-w-0 max-w-[60%] break-words text-right text-[var(--status-error)]">{status.text}</span>
@@ -174,7 +177,7 @@ function LegendRow({
 	return (
 		<div className="flex flex-col">
 			{onClick ? (
-				<button type="button" onClick={onClick} title="打开系统提示词设置" className={rowBtnCls}>
+				<button type="button" onClick={onClick} title={t("chat.context.openSystemPromptSettings")} className={rowBtnCls}>
 					{head}
 				</button>
 			) : expandable ? (
@@ -182,7 +185,7 @@ function LegendRow({
 					type="button"
 					onClick={() => setExpanded((v) => !v)}
 					aria-expanded={expanded}
-					title={expanded ? "收起明细" : "展开明细"}
+					title={expanded ? t("chat.context.collapseDetails") : t("chat.context.expandDetails")}
 					className={rowBtnCls}
 				>
 					{head}
@@ -242,6 +245,7 @@ export function ContextRing({
 	className,
 	showPercent = true,
 }: ContextRingProps) {
+	const { t } = useT();
 	const [openInner, setOpenInner] = useState(false);
 	const open = openProp ?? openInner;
 	const setOpen = (v: boolean | ((p: boolean) => boolean)) =>
@@ -334,7 +338,7 @@ export function ContextRing({
 				onPointerEnter={() => {
 					if (!open) setPrefetchTick((n) => n + 1);
 				}}
-				title={`上下文占用: ${pctInt}%${totalTokensStr ? ` (${totalTokensStr})` : ""}`}
+				title={t("chat.context.usageTooltip", { pct: pctInt, total: totalTokensStr ? ` (${totalTokensStr})` : "" })}
 				className="group flex items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[11px] text-[var(--text-40)] transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 			>
 				{/* Circular Progress Ring */}
@@ -394,7 +398,7 @@ export function ContextRing({
 				>
 					{/* Header: usage numbers + compact action (outside click dismisses the popover). */}
 					<div className="flex min-h-[24px] items-center gap-2 px-3 py-0.5">
-						<span className="whitespace-nowrap text-[12px] leading-[15px] text-[var(--text-40)]">上下文窗口</span>
+						<span className="whitespace-nowrap text-[12px] leading-[15px] text-[var(--text-40)]">{t("chat.context.window")}</span>
 						{typeof rawTokens === "number" && typeof rawWindow === "number" && rawWindow > 0 && (
 							<span className="whitespace-nowrap text-[12px] leading-[15px] tabular-nums text-[var(--text-60)]">
 								{compactTokens(rawTokens)} / {compactTokens(rawWindow)}
@@ -405,11 +409,11 @@ export function ContextRing({
 								type="button"
 								disabled={compacting || compactDisabled}
 								onClick={() => void onCompact()}
-								title={compactDisabled ? "回合进行中，暂不能压缩" : "压缩上下文"}
+								title={compactDisabled ? t("chat.context.cannotCompactInTurn") : t("chat.context.compact")}
 								className="ml-auto flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[12px] leading-[15px] text-[var(--text-60)] transition-colors hover:border-[var(--text-30)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
 							>
 								{compacting ? <Loader2 size={11} className="animate-spin" /> : <ArchiveRestore size={11} />}
-								<span>{compacting ? "压缩中" : "压缩"}</span>
+								<span>{compacting ? t("chat.context.compacting") : t("chat.context.compactAction")}</span>
 							</button>
 						)}
 					</div>
@@ -422,9 +426,9 @@ export function ContextRing({
 								{totalTokensStr && (
 									<span
 										className="whitespace-nowrap text-[11px] leading-[14px] tabular-nums text-[var(--text-40)]"
-										title="本会话累计消耗的 token"
+										title={t("chat.context.totalTokensTooltip")}
 									>
-										累计 {totalTokensStr}
+										{t("chat.context.total", { total: totalTokensStr })}
 									</span>
 								)}
 							</div>
@@ -450,7 +454,7 @@ export function ContextRing({
 									const promptRow =
 										prompt.length > 0 ? (
 											<LegendRow
-												name="系统提示词"
+												name={t("chat.context.systemPrompt")}
 												tokens={sumOf(prompt)}
 												pct={pctOf(sumOf(prompt))}
 												background={THEME_COLORS.system}
@@ -501,7 +505,7 @@ export function ContextRing({
 							)}
 							{totalTokensStr && (
 								<div className="mt-2 whitespace-nowrap text-[11px] leading-[14px] tabular-nums text-[var(--text-40)]">
-									累计 {totalTokensStr}
+									{t("chat.context.total", { total: totalTokensStr })}
 								</div>
 							)}
 						</div>

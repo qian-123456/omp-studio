@@ -21,6 +21,7 @@ import { useLive } from "../../stores/live";
 import { useLocate } from "../../stores/locate";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { DoctorView } from "./DoctorView";
 import { SystemicIssuesCard } from "./SystemicIssuesCard";
 import {
@@ -49,6 +50,7 @@ type TimeRange = "today" | "7d" | "all";
 type SortOption = "consumption" | "waste" | "latest";
 
 export function HeatmapPanel() {
+	const { t, locale } = useT();
 	const selectedId = useUi((s) => s.selectedSessionId);
 	const sessions = useSessions((s) => s.sessions);
 	const sessionMeta = selectedId ? sessions[selectedId] : undefined;
@@ -98,7 +100,7 @@ export function HeatmapPanel() {
 	// Calculate main distribution
 	const mainAnalysis = useMemo(
 		() => analyzeMainDistribution(items, sessionMeta?.model ?? undefined),
-		[items, sessionMeta?.model],
+		[items, sessionMeta?.model, locale],
 	);
 
 	// Calculate subagent distributions map
@@ -108,7 +110,7 @@ export function HeatmapPanel() {
 			map.set(sub.id, analyzeSubagentDistribution(sub));
 		}
 		return map;
-	}, [subagents]);
+	}, [subagents, locale]);
 
 	// Total tokens across all subagents (Isolation ROI)
 	const subagentsTotalTokens = useMemo(
@@ -193,9 +195,9 @@ export function HeatmapPanel() {
 			<div className="p-3 pb-2.5 hairline-b sticky top-0 bg-[var(--bg-panel)] z-10 flex items-center justify-between">
 				<Segmented
 					options={[
-						{ value: "session", label: "本对话" },
-						{ value: "global", label: "全局洞察" },
-						{ value: "doctor", label: "🩺 会话体检" },
+						{ value: "session", label: t("heatmap.tabSession") },
+						{ value: "global", label: t("heatmap.tabGlobal") },
+						{ value: "doctor", label: t("heatmap.tabDoctor") },
 					]}
 					value={mainTab}
 					onChange={setMainTab}
@@ -204,10 +206,10 @@ export function HeatmapPanel() {
 				{mainTab === "session" && subagentsTotalTokens > 0 && (
 					<span
 						className="flex items-center gap-1 text-[10.5px] font-mono text-emerald-400 font-medium"
-						title="通过并发子代理沙箱隔离，避免将冗长输出持久污染到主对话上下文"
+						title={t("heatmap.isolationSavingsTitle")}
 					>
 						<ShieldCheck size={12} />
-						隔离省流 ~{formatTokens(subagentsTotalTokens)}
+						{t("heatmap.isolationSavings", { tokens: formatTokens(subagentsTotalTokens) })}
 					</span>
 				)}
 			</div>
@@ -216,18 +218,18 @@ export function HeatmapPanel() {
 			{mainTab === "session" ? (
 				<div className="flex-1 min-w-0 p-3 space-y-3">
 					{!selectedId ? (
-						<EmptyState title="选择一个会话查看 Token 用量" />
+						<EmptyState title={t("heatmap.selectSessionEmpty")} />
 					) : items.length === 0 ? (
-						<EmptyState title="暂无消息记录" />
+						<EmptyState title={t("heatmap.noMessagesEmpty")} />
 					) : (
 						<>
 							{/* 1. Agent Selection Pills (Main vs Subagents) */}
 							{subagents.length > 0 && (
 								<div className="space-y-1">
 									<div className="flex items-center justify-between text-[10.5px] text-neutral-400 px-0.5">
-										<span>检查对象</span>
+										<span>{t("heatmap.inspectTarget")}</span>
 										<span className="font-mono text-[10px]">
-											{subagents.length} 个 Subagents
+											{t("heatmap.subagentsCount", { count: subagents.length })}
 										</span>
 									</div>
 									<div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
@@ -241,7 +243,7 @@ export function HeatmapPanel() {
 													: "border-[var(--border)] bg-[var(--bg)] text-neutral-400 hover:bg-[var(--bg-hover)]",
 											)}
 										>
-											<span>👑 主对话</span>
+											<span>{t("heatmap.mainConversation")}</span>
 											<span className="font-mono text-[10px] opacity-75">
 												{formatTokens(mainAnalysis.totalTokens)}
 											</span>
@@ -288,7 +290,7 @@ export function HeatmapPanel() {
 								</div>
 
 								<div className="flex items-center justify-between text-[10.5px] text-neutral-400 mb-1">
-									<span>上下文水位</span>
+									<span>{t("heatmap.contextGauge")}</span>
 									<span className="font-mono">
 										{formatTokens(activeAnalysis.contextGauge.usedTokens)} /{" "}
 										{formatTokens(activeAnalysis.contextGauge.limitTokens)} (
@@ -332,14 +334,15 @@ export function HeatmapPanel() {
 										{activeAnalysis.contextGauge.statusText}
 									</span>
 									<span className="font-mono text-neutral-500">
-										余量 ~
-										{formatTokens(
-											Math.max(
-												0,
-												activeAnalysis.contextGauge.limitTokens -
-													activeAnalysis.contextGauge.usedTokens,
+										{t("heatmap.remainingTokens", {
+											tokens: formatTokens(
+												Math.max(
+													0,
+													activeAnalysis.contextGauge.limitTokens -
+														activeAnalysis.contextGauge.usedTokens,
+												),
 											),
-										)}
+										})}
 									</span>
 								</div>
 							</div>
@@ -348,10 +351,10 @@ export function HeatmapPanel() {
 							<div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3 shadow-sm">
 								<div className="flex items-center justify-between mb-2">
 									<span className="font-medium text-[11px] text-neutral-400">
-										Token 消耗分布 (Distribution)
+										{t("heatmap.distributionTitle")}
 									</span>
 									<span className="text-[10px] text-neutral-500">
-										点击类别钻取明细
+										{t("heatmap.drilldownHint")}
 									</span>
 								</div>
 
@@ -405,7 +408,7 @@ export function HeatmapPanel() {
 												{d.hasWaste && (
 													<span
 														className="text-[9.5px] text-amber-400 font-medium"
-														title="检测到潜在浪费或冗余"
+														title={t("heatmap.potentialWaste")}
 													>
 														⚠️
 													</span>
@@ -424,26 +427,26 @@ export function HeatmapPanel() {
 								<div className="flex items-center justify-between mb-2 pb-1.5 hairline-b">
 									<div className="flex items-center gap-1.5 font-medium text-[11.5px] text-neutral-200">
 										<span>
-											🔍 钻取明细：
+											{t("heatmap.drilldownTitle")}
 											{currentCategory === "tools"
-												? "Tool Calls (工具输出)"
+												? t("heatmap.categoryToolsFull")
 												: currentCategory === "skills"
-													? "Skills 注入 (规约与插件)"
+													? t("heatmap.categorySkillsFull")
 													: currentCategory === "system"
-														? "System Prompt (系统设定)"
+														? t("heatmap.categorySystemFull")
 														: currentCategory === "mcp"
-															? "MCP 协议服务"
-															: "思考与回复文本"}
+															? t("heatmap.categoryMcpFull")
+															: t("heatmap.categoryProseFull")}
 										</span>
 									</div>
 									<span className="text-[10px] text-neutral-500">
-										共 {drilldownItems.length} 项
+										{t("heatmap.itemCount", { count: drilldownItems.length })}
 									</span>
 								</div>
 
 								{drilldownItems.length === 0 ? (
 									<div className="py-4 text-center text-xs text-neutral-500">
-										当前对象未调用该类资源
+										{t("heatmap.noResourcesCalled")}
 									</div>
 								) : (
 									<div className="space-y-1.5">
@@ -515,7 +518,8 @@ export function HeatmapPanel() {
 															}}
 															className="text-neutral-400 hover:text-neutral-200 underline decoration-neutral-600 underline-offset-2"
 														>
-															调用 {item.calls} 次 {hasCalls ? (isExpanded ? "▲ 收起" : "▼ 展开查看每次调用") : ""}
+															{t("heatmap.callCount", { count: item.calls })}{" "}
+															{hasCalls ? (isExpanded ? t("heatmap.collapse") : t("heatmap.expandCalls")) : ""}
 														</button>
 														{item.targetItemId && selectedId && (
 															<button
@@ -534,7 +538,7 @@ export function HeatmapPanel() {
 																}}
 																className="rounded-full border border-[var(--accent)]/50 px-2 py-0.5 text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white"
 															>
-																定位到会话
+																{t("heatmap.locateToSession")}
 															</button>
 														)}
 													</div>
@@ -543,8 +547,8 @@ export function HeatmapPanel() {
 													{isExpanded && hasCalls && (
 														<div className="mt-2.5 pt-2 border-t border-[var(--border-divider)] space-y-1">
 															<div className="text-[10px] text-neutral-400 font-medium flex items-center justify-between mb-1">
-																<span>具体调用历史 ({item.callDetails!.length} 次)</span>
-																<span className="text-[9.5px] text-neutral-500">点击「定位」跳到对话中的这一步，可用上一处/下一处切换</span>
+																<span>{t("heatmap.callHistoryTitle", { count: item.callDetails!.length })}</span>
+																<span className="text-[9.5px] text-neutral-500">{t("heatmap.callHistoryTip")}</span>
 															</div>
 															<div className="max-h-48 overflow-y-auto space-y-1 pr-0.5 no-scrollbar">
 																{item.callDetails!.map((call, cIdx) => (
@@ -569,7 +573,7 @@ export function HeatmapPanel() {
 																			</span>
 																			{call.isError && (
 																				<span className="text-red-400 font-medium text-[9px]">
-																					报错
+																					{t("heatmap.errorBadge")}
 																				</span>
 																			)}
 																			<button
@@ -588,7 +592,7 @@ export function HeatmapPanel() {
 																				}}
 																				className="rounded-full border border-[var(--accent)]/50 px-2 py-0.5 text-[10px] text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white"
 																			>
-																				定位
+																				{t("heatmap.locate")}
 																			</button>
 																		</div>
 																	</div>
@@ -619,25 +623,25 @@ export function HeatmapPanel() {
 					<div className="space-y-2">
 						<Segmented
 							options={[
-								{ value: "today", label: "今天" },
-								{ value: "7d", label: "近 7 天" },
-								{ value: "all", label: "全部历史" },
+								{ value: "today", label: t("heatmap.timeRangeToday") },
+								{ value: "7d", label: t("heatmap.timeRange7d") },
+								{ value: "all", label: t("heatmap.timeRangeAll") },
 							]}
 							value={timeRange}
 							onChange={setTimeRange}
 							size="sm"
 						/>
 						<div className="flex items-center justify-between text-[11px] text-neutral-400 px-0.5">
-							<span>排序方式</span>
+							<span>{t("heatmap.sortBy")}</span>
 							<div className="relative inline-block">
 								<select
 									value={sortBy}
 									onChange={(e) => setSortBy(e.target.value as SortOption)}
 									className="appearance-none bg-[var(--bg)] border border-[var(--border)] rounded px-2.5 py-1 text-[11px] text-neutral-200 pr-6 focus:outline-none focus:border-[var(--accent)]"
 								>
-									<option value="consumption">最高消耗优先</option>
-									<option value="waste">最多问题优先</option>
-									<option value="latest">最新活动优先</option>
+									<option value="consumption">{t("heatmap.sortConsumption")}</option>
+									<option value="waste">{t("heatmap.sortWaste")}</option>
+									<option value="latest">{t("heatmap.sortLatest")}</option>
 								</select>
 								<ChevronDown
 									size={12}
@@ -650,19 +654,19 @@ export function HeatmapPanel() {
 					{/* Summary Cards */}
 					<div className="grid grid-cols-3 gap-2 text-[11px]">
 						<div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-2 text-center shadow-sm">
-							<div className="text-neutral-500 mb-0.5 text-[10px]">会话总数</div>
+							<div className="text-neutral-500 mb-0.5 text-[10px]">{t("heatmap.totalSessions")}</div>
 							<div className="font-mono text-neutral-200 text-[13px] font-medium">
 								{globalTotals.count}
 							</div>
 						</div>
 						<div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-2 text-center shadow-sm">
-							<div className="text-neutral-500 mb-0.5 text-[10px]">总消耗</div>
+							<div className="text-neutral-500 mb-0.5 text-[10px]">{t("heatmap.totalTokens")}</div>
 							<div className="font-mono text-neutral-200 text-[13px] font-medium">
 								{formatTokens(globalTotals.tokens)}
 							</div>
 						</div>
 						<div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-2 text-center shadow-sm">
-							<div className="text-neutral-500 mb-0.5 text-[10px]">预估成本</div>
+							<div className="text-neutral-500 mb-0.5 text-[10px]">{t("heatmap.estimatedCost")}</div>
 							<div className="font-mono text-emerald-400 text-[13px] font-medium">
 								{formatCost(globalTotals.cost)}
 							</div>
@@ -672,11 +676,11 @@ export function HeatmapPanel() {
 					{/* Sessions List */}
 					<div className="space-y-1">
 						<div className="text-[11px] font-medium text-neutral-400 px-0.5 mb-1.5">
-							OMP 会话明细 (点击切入诊断)
+							{t("heatmap.sessionListTitle")}
 						</div>
 						{filteredSessions.length === 0 ? (
 							<div className="p-6 text-center text-xs text-neutral-500">
-								无匹配会话记录
+								{t("heatmap.noMatchingSessions")}
 							</div>
 						) : (
 							<div className="space-y-1.5">
@@ -696,7 +700,7 @@ export function HeatmapPanel() {
 									>
 										<div className="flex items-center justify-between mb-1">
 											<div className="font-medium text-neutral-200 break-words min-w-0 pr-2 text-[11.5px]">
-												{meta.title || "未命名会话"}
+												{meta.title || t("heatmap.unnamedSession")}
 											</div>
 											<div className="text-[10px] text-neutral-500 shrink-0 font-mono">
 												{relativeTime(meta.updatedAt || meta.createdAt)}
@@ -719,11 +723,11 @@ export function HeatmapPanel() {
 											<div>
 												{hasWaste ? (
 													<span className="text-amber-400 font-medium">
-														⚠️ 异常中断
+														{t("heatmap.statusAbnormal")}
 													</span>
 												) : (
 													<span className="text-emerald-400 font-medium">
-														● 正常
+														{t("heatmap.statusNormal")}
 													</span>
 												)}
 											</div>
@@ -737,7 +741,7 @@ export function HeatmapPanel() {
 			) : (
 				<div className="flex-1 min-w-0 p-3 space-y-3">
 					{!selectedId ? (
-						<div className="p-6 text-center text-xs text-neutral-500">先在左侧选择一个对话，再开始会话体检</div>
+						<div className="p-6 text-center text-xs text-neutral-500">{t("heatmap.selectSessionToDiagnose")}</div>
 					) : (
 						<DoctorView key={selectedId} sessionId={selectedId} meta={sessionMeta} items={items} />
 					)}

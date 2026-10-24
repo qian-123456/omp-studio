@@ -16,6 +16,7 @@ import {
 	type WallpaperEffect,
 	type WallpaperState,
 } from "./wallpaperPalette";
+import { tNow } from "../stores/language";
 
 export interface ThemeDef {
 	id: string;
@@ -55,7 +56,7 @@ export const DEFAULT_WALLPAPER_STATE: WallpaperState = {
 export const THEMES: ThemeDef[] = [
 	{
 		id: "ompws",
-		name: "默认",
+		get name() { return tNow("theme.themeDefault"); },
 		dark: true,
 		swatch: { bg: "#0a0a0a", panel: "#171717", accent: "#f59e0b", text: "#f5f5f5" },
 	},
@@ -151,19 +152,19 @@ export const THEMES: ThemeDef[] = [
 	},
 	{
 		id: "sakura",
-		name: "樱花",
+		get name() { return tNow("theme.themeSakura"); },
 		dark: false,
 		swatch: { bg: "#fdf4f6", panel: "#f9eaee", accent: "#d6336c", text: "#472b36" },
 	},
 	{
 		id: "glacier",
-		name: "冰川",
+		get name() { return tNow("theme.themeGlacier"); },
 		dark: false,
 		swatch: { bg: "#f6fafc", panel: "#ecf3f8", accent: "#0d94bd", text: "#1f3a4d" },
 	},
 	{
 		id: "lavender",
-		name: "薰衣草",
+		get name() { return tNow("theme.themeLavender"); },
 		dark: false,
 		swatch: { bg: "#f8f6fc", panel: "#f0ecf8", accent: "#7c5cd6", text: "#38304f" },
 	},
@@ -238,17 +239,17 @@ export const THEMES: ThemeDef[] = [
 export const DEFAULT_THEME: ThemeDef["id"] = "ompws";
 
 export const FONT_SIZES: { id: FontSize; name: string }[] = [
-	{ id: "sm", name: "小" },
-	{ id: "md", name: "标准" },
-	{ id: "lg", name: "大" },
-	{ id: "xl", name: "特大" },
+	{ id: "sm", get name() { return tNow("theme.fontSizeSm"); } },
+	{ id: "md", get name() { return tNow("theme.fontSizeMd"); } },
+	{ id: "lg", get name() { return tNow("theme.fontSizeLg"); } },
+	{ id: "xl", get name() { return tNow("theme.fontSizeXl"); } },
 ];
 
 export const UI_SCALES: { id: UiScale; name: string }[] = [
-	{ id: "compact", name: "紧凑" },
-	{ id: "standard", name: "标准" },
-	{ id: "comfortable", name: "宽松" },
-	{ id: "large", name: "大" },
+	{ id: "compact", get name() { return tNow("theme.densityCompact"); } },
+	{ id: "standard", get name() { return tNow("theme.densityStandard"); } },
+	{ id: "comfortable", get name() { return tNow("theme.densityComfortable"); } },
+	{ id: "large", get name() { return tNow("theme.densityLarge"); } },
 ];
 
 const KEYS = {

@@ -1,3 +1,5 @@
+import { tNow } from "../../stores/language";
+
 /** True for hosts where plain HTTP is normal: loopback, LAN, link-local, `.local`. */
 function isLocalOrPrivateHost(rawHost: string): boolean {
 	const host = rawHost.toLowerCase().replace(/^\[|\]$/g, "");
@@ -34,5 +36,5 @@ export function insecureHttpWarning(baseUrl: string): string | null {
 	}
 	if (url.protocol !== "http:") return null;
 	if (isLocalOrPrivateHost(url.hostname)) return null;
-	return "该地址使用 http:// 明文传输，API Key 可能在网络中被窃听。仍可保存；建议改用 https://。";
+	return tNow("providers.httpWarning");
 }

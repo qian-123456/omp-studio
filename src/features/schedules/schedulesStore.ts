@@ -11,6 +11,7 @@ import {
 	setScheduleEnabled,
 } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
+import { tNow } from "../../stores/language";
 
 export type EditorTab = "settings" | "history";
 
@@ -131,7 +132,7 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 				schedules: state.schedules.map((s) => (s.id === id ? updated : s)),
 			}));
 		} catch (e) {
-			toast.error(`切换状态失败：${e}`);
+			toast.error(tNow("schedules.toastToggleStatusFailed", { error: String(e) }));
 		}
 	},
 
@@ -141,11 +142,11 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 		}));
 		try {
 			await runScheduleNow(id);
-			toast.success("定时任务已触发运行");
+			toast.success(tNow("schedules.toastTriggerSuccess"));
 			void get().load();
 			void get().loadRuns(id);
 		} catch (e) {
-			toast.error(`触发失败：${e}`);
+			toast.error(tNow("schedules.toastTriggerFailed", { error: String(e) }));
 		} finally {
 			set((state) => ({
 				runningScheduleIds: { ...state.runningScheduleIds, [id]: false },
@@ -160,16 +161,16 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 				const { [id]: _dropped, ...runs } = state.runs;
 				return { schedules: state.schedules.filter((s) => s.id !== id), runs };
 			});
-			toast.success("定时任务已删除");
+			toast.success(tNow("schedules.toastDeleteSuccess"));
 		} catch (e) {
-			toast.error(`删除失败：${e}`);
+			toast.error(tNow("schedules.toastDeleteFailed", { error: String(e) }));
 		}
 	},
 
 	saveSchedule: async (draft: ScheduleDraft) => {
 		try {
 			const saved = await ipcSaveSchedule(draft);
-			toast.success(draft.id ? "任务已更新" : "定时任务已创建");
+			toast.success(draft.id ? tNow("schedules.toastTaskUpdated") : tNow("schedules.toastTaskCreated"));
 			set((state) => {
 				const idx = state.schedules.findIndex((s) => s.id === saved.id);
 				const nextList =
@@ -185,7 +186,7 @@ export const useSchedulesStore = create<SchedulesState>((set, get) => ({
 			});
 			return saved;
 		} catch (e) {
-			toast.error(`保存失败：${e}`);
+			toast.error(tNow("schedules.toastSaveFailed", { error: String(e) }));
 			return null;
 		}
 	},

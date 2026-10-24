@@ -7,6 +7,7 @@ import { isComposing } from "../../lib/hooks";
 import { gitCommit, gitCommitSuggest } from "../../lib/ipc";
 import { isInside } from "../../lib/paths";
 import { toast } from "../../lib/toast";
+import { useT } from "../../stores/language";
 import { useSessions } from "../../stores/sessions";
 
 /**
@@ -28,6 +29,7 @@ export function WorktreeCommitPopover({
 	onDismiss: () => void;
 	onCommitted: () => void;
 }) {
+	const { t } = useT();
 	const [message, setMessage] = useState("");
 	const [custom, setCustom] = useState(false);
 	const [phase, setPhase] = useState<"idle" | "naming" | "saving">("idle");
@@ -45,7 +47,7 @@ export function WorktreeCommitPopover({
 			setMessage((await gitCommitSuggest(cwd)).trim());
 			setCustom(true);
 		} catch (e) {
-			toast.error(`生成说明失败：${errMsg(e)}`);
+			toast.error(t("worktree.commit.suggestFailed", { error: errMsg(e) }));
 		} finally {
 			setPhase("idle");
 		}
@@ -57,15 +59,15 @@ export function WorktreeCommitPopover({
 			if (!msg) {
 				setPhase("naming");
 				msg = (await gitCommitSuggest(cwd)).trim();
-				if (!msg) throw new Error("AI 没有返回说明");
+				if (!msg) throw new Error(t("worktree.commit.aiNoDescription"));
 			}
 			setPhase("saving");
 			await gitCommit(cwd, msg);
-			toast.success(`已提交「${branch}」：${msg.split("\n")[0]}`);
+			toast.success(t("worktree.commit.committedToast", { branch, summary: msg.split("\n")[0] }));
 			onCommitted();
 			onDismiss();
 		} catch (e) {
-			toast.error(`提交失败：${errMsg(e)}`);
+			toast.error(t("worktree.commit.commitFailed", { error: errMsg(e) }));
 			if (!msg) setCustom(true);
 		} finally {
 			setPhase("idle");
@@ -83,11 +85,11 @@ export function WorktreeCommitPopover({
 			className="w-72 space-y-1.5 rounded-lg border border-neutral-700 bg-neutral-900 p-2 text-xs shadow-xl"
 		>
 			<div className="truncate text-[11px] font-medium text-neutral-300">
-				提交「{branch}」的全部 {fileCount} 处改动
+				{t("worktree.commit.commitAllChanges", { branch, count: fileCount })}
 			</div>
 			{working && (
 				<div className="rounded border border-amber-700/50 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-300">
-					Agent 还在修改这个工作树，现在提交可能只存下一半的改动
+					{t("worktree.commit.workingWarning")}
 				</div>
 			)}
 			<div className="flex items-center gap-1.5">
@@ -100,20 +102,20 @@ export function WorktreeCommitPopover({
 					{busy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
 					<span className="truncate">
 						{phase === "naming"
-							? "正在生成说明…"
+							? t("git.changes.generatingDesc")
 							: phase === "saving"
-								? "正在提交…"
+								? t("worktree.commit.committing")
 								: custom
-									? "用这条说明提交"
-									: "AI 写说明并提交"}
+									? t("worktree.commit.submitCustom")
+									: t("worktree.commit.aiSubmit")}
 					</span>
 				</button>
 				<button
 					type="button"
 					onClick={() => setCustom((v) => !v)}
 					aria-pressed={custom}
-					aria-label="自己写提交说明（可选）"
-					title="自己写提交说明（可选）；不写则由 AI 自动生成"
+					aria-label={t("git.changes.customDescAria")}
+					title={t("git.changes.customDescTitle")}
 					className={clsx(
 						"shrink-0 rounded-md border p-1.5 transition-colors",
 						custom
@@ -139,7 +141,7 @@ export function WorktreeCommitPopover({
 						}}
 						disabled={busy}
 						rows={3}
-						placeholder="提交说明（⌘Enter 提交）"
+						placeholder={t("worktree.commit.customPlaceholder")}
 						className="w-full resize-y rounded-md border border-neutral-700/80 bg-neutral-950/80 p-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none disabled:opacity-50"
 					/>
 					<button
@@ -149,7 +151,7 @@ export function WorktreeCommitPopover({
 						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
 					>
 						<Sparkles size={11} />
-						先让 AI 写一版，再手动修改
+						{t("git.changes.aiSuggestFirst")}
 					</button>
 				</div>
 			)}

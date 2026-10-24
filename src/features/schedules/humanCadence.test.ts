@@ -204,3 +204,67 @@ describe("formatNextRun", () => {
 		).toBe("8 天后");
 	});
 });
+
+describe("humanCadence en-US", () => {
+	it("formats intervals", () => {
+		expect(formatCadence({ kind: "interval", minutes: 30 }, "en-US")).toBe(
+			"Every 30 minutes",
+		);
+		expect(formatCadence({ kind: "interval", minutes: 60 }, "en-US")).toBe(
+			"Every hour",
+		);
+		expect(formatCadence({ kind: "interval", minutes: 120 }, "en-US")).toBe(
+			"Every 2 hours",
+		);
+	});
+
+	it("formats daily and weekdays", () => {
+		expect(
+			formatCadence({ kind: "daily", time: "09:00" }, "en-US"),
+		).toBe("Daily at 09:00");
+		expect(
+			formatCadence(
+				{ kind: "daily", time: "18:00", weekdays: [1, 2, 3, 4, 5] },
+				"en-US",
+			),
+		).toBe("Weekdays at 18:00");
+		expect(
+			formatCadence(
+				{ kind: "daily", time: "10:00", weekdays: [0, 6] },
+				"en-US",
+			),
+		).toBe("Weekends at 10:00");
+		expect(
+			formatCadence(
+				{ kind: "daily", time: "09:30", weekdays: [1, 3] },
+				"en-US",
+			),
+		).toBe("Every Mon, Wed at 09:30");
+	});
+
+	it("formats monthly and once", () => {
+		expect(
+			formatCadence({ kind: "monthly", day: 15, time: "09:00" }, "en-US"),
+		).toBe("Monthly on day 15 · 09:00");
+		const at = new Date(2026, 9, 15, 9, 0, 0).toISOString();
+		expect(formatCadence({ kind: "once", at }, "en-US")).toBe(
+			"Once · Oct 15, 2026 09:00",
+		);
+	});
+
+	it("formats end conditions", () => {
+		const endAt = new Date(2026, 9, 31, 23, 59).toISOString();
+		expect(
+			formatCadenceWithEnd(
+				{ kind: "daily", time: "09:00" },
+				endAt,
+				10,
+				"en-US",
+			),
+		).toBe("Daily at 09:00 · 10 runs total · until Oct 31");
+	});
+
+	it("formats relative time", () => {
+		expect(formatRelativeTime(null, "en-US")).toBe("Never run");
+	});
+});

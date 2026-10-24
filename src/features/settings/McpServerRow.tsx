@@ -1,6 +1,7 @@
 /** One MCP server row: identity, status chips, endpoint, placement ("用在：") and actions. */
 
 import { Pencil, Trash2 } from "lucide-react";
+import { tNow, useT } from "../../stores/language";
 import type { ReactNode } from "react";
 import type { McpServerView } from "../../lib/contracts";
 import { projectName, transportLabel } from "./mcpDraft";
@@ -12,7 +13,7 @@ const PILL_CLASS =
 
 export function serverEndpoint(view: McpServerView): string {
 	const d = view.definition;
-	const base = d.command ?? d.url ?? "未填写命令或地址";
+	const base = d.command ?? d.url ?? tNow("mcp.noCommandOrUrl");
 	return d.args.length > 0 ? `${base} ${d.args.join(" ")}` : base;
 }
 
@@ -38,20 +39,21 @@ export function McpServerRow({
 	onPickProjects: () => void;
 	onAddToCurrent: () => void;
 }) {
+	const { t } = useT();
 	const d = view.definition;
 	const nameOf = (p: string) => projectNames.get(p) ?? projectName(p);
 	const custom = new Set(view.customProjects);
 	const on = view.mode !== "off" && !view.denylisted;
-	const keys = (list: { key: string }[]) => list.map((kv) => kv.key).join("、");
+	const keys = (list: { key: string }[]) => list.map((kv) => kv.key).join(t("settingsModels.listSep"));
 
 	const projectChip = (p: string) => (
 		<Chip
 			key={p}
 			tone={p === current ? "accent" : "neutral"}
-			title={custom.has(p) ? "这个项目里的配置和其他地方不同" : p}
+			title={custom.has(p) ? t("mcp.customProjectConfig") : p}
 		>
 			{nameOf(p)}
-			{custom.has(p) && <span className="opacity-70">· 单独配置</span>}
+			{custom.has(p) && <span className="opacity-70">{t("mcp.customBadge")}</span>}
 		</Chip>
 	);
 
@@ -59,12 +61,12 @@ export function McpServerRow({
 	if (view.mode === "all") {
 		placement = (
 			<>
-				<Chip tone="accent" title="包括以后新加的项目">
-					所有项目
+				<Chip tone="accent" title={t("mcp.allProjectsChipTitle")}>
+					{t("mcp.allProjectsChip")}
 				</Chip>
 				{view.excludedProjects.length > 0 && (
 					<>
-						<span className="whitespace-nowrap text-[11px] text-[var(--text-dim)]">除了</span>
+						<span className="whitespace-nowrap text-[11px] text-[var(--text-dim)]">{t("mcp.exceptLabel")}</span>
 						{view.excludedProjects.map(projectChip)}
 					</>
 				)}
@@ -75,10 +77,10 @@ export function McpServerRow({
 	} else {
 		placement = (
 			<>
-				<Chip>暂未使用</Chip>
+				<Chip>{t("mcp.notUsedYet")}</Chip>
 				{view.copyProjects.length > 0 && (
 					<span className="text-[11px] text-[var(--text-dim)]">
-						之前用在：{view.copyProjects.map(nameOf).join("、")}
+						{t("mcp.previouslyUsedIn", { projects: view.copyProjects.map(nameOf).join(t("settingsModels.listSep")) })}
 					</span>
 				)}
 			</>
@@ -98,26 +100,26 @@ export function McpServerRow({
 					<Chip
 						title={
 							d.transport === "stdio"
-								? "在本机启动一个程序作为工具服务"
-								: "连接到一个远程网址提供的工具服务"
+								? t("mcp.stdioDesc")
+								: t("mcp.remoteDesc")
 						}
 					>
 						{transportLabel(d.transport)}
 					</Chip>
-					{view.mode === "off" && <Chip tone="warning">已停用</Chip>}
+					{view.mode === "off" && <Chip tone="warning">{t("mcp.disabledBadge")}</Chip>}
 					{view.denylisted && (
-						<Chip tone="warning" title="打开右侧开关会把它从停用列表里移除">
-							被停用列表屏蔽
+						<Chip tone="warning" title={t("mcp.denylistedTitle")}>
+							{t("mcp.denylistedBadge")}
 						</Chip>
 					)}
-					{d.error && <Chip tone="danger">配置有误</Chip>}
+					{d.error && <Chip tone="danger">{t("mcp.configErrorBadge")}</Chip>}
 				</div>
 				<div className="break-all font-mono text-xs text-[var(--text-dim)]">{serverEndpoint(view)}</div>
 				{(d.env.length > 0 || d.headers.length > 0 || d.hasAuth || d.hasOauth) && (
 					<div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[var(--text-dim)]">
-						{d.env.length > 0 && <span title="值不在界面中显示">环境变量：{keys(d.env)}</span>}
-						{d.headers.length > 0 && <span title="值不在界面中显示">请求头：{keys(d.headers)}</span>}
-						{(d.hasAuth || d.hasOauth) && <span>使用 OAuth 登录</span>}
+						{d.env.length > 0 && <span title={t("mcp.secretHidden")}>{t("mcp.envKeys", { keys: keys(d.env) })}</span>}
+						{d.headers.length > 0 && <span title={t("mcp.secretHidden")}>{t("mcp.headerKeys", { keys: keys(d.headers) })}</span>}
+						{(d.hasAuth || d.hasOauth) && <span>{t("mcp.oauthBadge")}</span>}
 					</div>
 				)}
 				{d.error && (
@@ -126,27 +128,27 @@ export function McpServerRow({
 					</div>
 				)}
 				<div className="flex flex-wrap items-center gap-1.5 pt-0.5" data-testid="mcp-placement">
-					<span className="whitespace-nowrap text-[11px] text-[var(--text-muted)]">用在：</span>
+					<span className="whitespace-nowrap text-[11px] text-[var(--text-muted)]">{t("mcp.usedInLabel")}</span>
 					{placement}
 				</div>
 				<div className="flex flex-wrap items-center gap-1.5 pt-1">
 					<button type="button" className={PILL_CLASS} disabled={busy} onClick={onPickProjects}>
-						选择项目
+						{t("mcp.selectProjectsBtn")}
 					</button>
 					{canAddToCurrent && (
 						<button type="button" className={PILL_CLASS} disabled={busy} onClick={onAddToCurrent}>
-							加到当前项目
+							{t("mcp.addToCurrentBtn")}
 						</button>
 					)}
 				</div>
 			</div>
 			<div className="flex shrink-0 items-center gap-0.5">
-				<IconButton icon={Pencil} label={`编辑 ${view.name}`} title="编辑" disabled={busy} onClick={onEdit} />
+				<IconButton icon={Pencil} label={t("mcp.editServerAria", { name: view.name })} title={t("common.edit")} disabled={busy} onClick={onEdit} />
 				<IconButton
 					icon={Trash2}
 					variant="danger"
-					label={`删除 ${view.name}`}
-					title="删除"
+					label={t("mcp.deleteServerAria", { name: view.name })}
+					title={t("common.delete")}
 					disabled={busy}
 					onClick={onDelete}
 				/>
@@ -154,16 +156,16 @@ export function McpServerRow({
 					className="ml-2"
 					title={
 						on
-							? "已启用，点击暂停。暂停后会记住选好的项目，再打开即可恢复"
+							? t("mcp.switchTitleOn")
 							: view.denylisted
-								? "被停用列表屏蔽，点击打开会把它从停用列表里移除"
-								: "已暂停，点击恢复使用，会沿用之前选好的项目"
+								? t("mcp.switchTitleDenylisted")
+								: t("mcp.switchTitlePaused")
 					}
 				>
 					<Switch
 						checked={on}
 						disabled={busy}
-						ariaLabel={`启用 ${view.name}`}
+						ariaLabel={t("mcp.enableServerAria", { name: view.name })}
 						onChange={() => onToggle(!on)}
 					/>
 				</span>

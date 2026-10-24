@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import { Markdown } from "../../../components/Markdown";
+import { useT } from "../../../stores/language";
 import type { ShareEntry } from "./shareEntries";
 
 /** Fixed export width in CSS px; the PNG is rendered at 2x this. */
@@ -14,6 +15,7 @@ export const ShareCard = forwardRef<
 	HTMLDivElement,
 	{ title: string; dateLabel: string; entries: ShareEntry[] }
 >(function ShareCard({ title, dateLabel, entries }, ref) {
+	const { t } = useT();
 	return (
 		<div
 			ref={ref}
@@ -33,7 +35,7 @@ export const ShareCard = forwardRef<
 							</div>
 							{entry.imageCount > 0 && (
 								<div className="text-[11px] text-[var(--text-40)]">
-									（含 {entry.imageCount} 张图片）
+									{t("share.imageCount", { count: entry.imageCount })}
 								</div>
 							)}
 						</div>
@@ -47,7 +49,7 @@ export const ShareCard = forwardRef<
 					),
 				)}
 			</div>
-			<div className="mt-8 text-center text-[11px] text-[var(--text-30)]">由 OMP 工作台生成</div>
+			<div className="mt-8 text-center text-[11px] text-[var(--text-30)]">{t("share.watermark")}</div>
 		</div>
 	);
 });

@@ -59,6 +59,7 @@ import { forkAndSend, isForkDraftId, startFork } from "../../sessions/forkDraft"
 import { sendPrompt } from "../send";
 import { useComposer } from "../../../stores/composer";
 import { toast } from "../../../lib/toast";
+import { tNow } from "../../../stores/language";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
 import { buildStatusCard } from "./status";
@@ -101,30 +102,30 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	// ---- 会话 ----
 	{
 		name: "new",
-		title: "新会话",
-		description: "在当前目录开始一个新会话",
+		get title() { return tNow("slash.cmd.new.title"); },
+		get description() { return tNow("slash.cmd.new.desc"); },
 		icon: FilePlus2,
-		group: "会话",
+		group: "session",
 		requiresEmptyComposer: true,
 		run: async (ctx) => {
 			const cwd = ctx.session?.cwd;
-			if (!cwd) throw new SlashAbort("无法确定当前目录");
+			if (!cwd) throw new SlashAbort(tNow("slash.cmd.new.abortNoCwd"));
 			const { sessionId, stub } = await createSession({ cwd });
 			useSessions.getState().upsert([stub]);
 			useUi.getState().selectSession(sessionId);
-			toast.success("已创建新会话");
+			toast.success(tNow("slash.cmd.new.success"));
 		},
 	},
 	{
 		name: "fork",
-		title: "分支",
-		description: "复制当前对话为新会话；可附带第一条消息",
+		get title() { return tNow("slash.cmd.fork.title"); },
+		get description() { return tNow("slash.cmd.fork.desc"); },
 		icon: GitFork,
-		group: "会话",
-		argHint: "[消息]",
+		group: "session",
+		get argHint() { return tNow("slash.cmd.fork.argHint"); },
 		run: async (ctx) => {
 			if (isForkDraftId(ctx.sessionId)) {
-				throw new SlashAbort("已在分支草稿中，直接发送消息即可");
+				throw new SlashAbort(tNow("slash.cmd.fork.abortInFork"));
 			}
 			const text = ctx.args.trim();
 			if (!text) {
@@ -136,11 +137,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	},
 	{
 		name: "btw",
-		title: "顺便问一句",
-		description: "开一个侧聊提问，不打断当前会话",
+		get title() { return tNow("slash.cmd.btw.title"); },
+		get description() { return tNow("slash.cmd.btw.desc"); },
 		icon: MessagesSquare,
-		group: "会话",
-		argHint: "[问题]",
+		group: "session",
+		get argHint() { return tNow("slash.cmd.btw.argHint"); },
 		run: async (ctx) => {
 			const question = ctx.args.trim();
 			if (!question) {
@@ -152,30 +153,30 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	},
 	{
 		name: "rename",
-		title: "重命名",
-		description: "修改当前会话的名称",
+		get title() { return tNow("slash.cmd.rename.title"); },
+		get description() { return tNow("slash.cmd.rename.desc"); },
 		icon: PenLine,
-		group: "会话",
-		argHint: "<名称>",
+		group: "session",
+		get argHint() { return tNow("slash.cmd.rename.argHint"); },
 		run: async (ctx) => {
 			const name = ctx.args.trim();
 			if (!name) {
-				toast.info("用法: /rename <名称>");
+				toast.info(tNow("slash.cmd.rename.usage"));
 				throw new SlashAbort();
 			}
-			ctx.track("rename", "正在重命名", async () => {
+			ctx.track("rename", tNow("slash.cmd.rename.tracking"), async () => {
 				await ctx.rpcSend({ type: "set_session_name", name });
-				return `已重命名为「${name}」`;
+				return tNow("slash.cmd.rename.result", { name });
 			});
 		},
 	},
 	{
 		name: "compact",
-		title: "压缩上下文",
-		description: "压缩会话上下文，可附带自定义指令",
+		get title() { return tNow("slash.cmd.compact.title"); },
+		get description() { return tNow("slash.cmd.compact.desc"); },
 		icon: ArchiveRestore,
-		group: "会话",
-		argHint: "[指令]",
+		group: "session",
+		get argHint() { return tNow("slash.cmd.compact.argHint"); },
 		settingsTarget: "compaction",
 		run: async (ctx) => {
 			// Fire and forget: runCompaction owns the transcript status row.
@@ -192,10 +193,10 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	},
 	{
 		name: "handoff",
-		title: "交接",
-		description: "总结当前会话为交接文档并压缩上下文",
+		get title() { return tNow("slash.cmd.handoff.title"); },
+		get description() { return tNow("slash.cmd.handoff.desc"); },
 		icon: ArrowRightToLine,
-		group: "会话",
+		group: "session",
 		settingsTarget: "compaction",
 		run: async (ctx) => {
 			// One divider in the thread: running → done/error in place.
@@ -210,7 +211,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 					useLive.getState().finishFlowNotice(ctx.sessionId, noticeId, { status: "done" });
 					const data = (resp.data ?? resp) as Record<string, unknown> | null;
 					if (data && typeof data.savedPath === "string") {
-						ctx.pushOutput("handoff", `交接文档已保存：${data.savedPath}`);
+						ctx.pushOutput("handoff", tNow("slash.cmd.handoff.saved", { path: data.savedPath }));
 					}
 				},
 				(err) => {
@@ -227,10 +228,10 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	},
 	{
 		name: "shake",
-		title: "精简上下文",
-		description: "丢弃上下文中的大块内容（工具结果、大段代码块），不调用模型",
+		get title() { return tNow("slash.cmd.shake.title"); },
+		get description() { return tNow("slash.cmd.shake.desc"); },
 		icon: Vibrate,
-		group: "会话",
+		group: "session",
 		argHint: "[elide|images|thinking]",
 		settingsTarget: "compaction",
 		run: async (ctx) => {
@@ -242,30 +243,30 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	},
 	{
 		name: "export",
-		title: "导出 HTML",
-		description: "导出当前会话为 HTML 并在访达中显示",
+		get title() { return tNow("slash.cmd.export.title"); },
+		get description() { return tNow("slash.cmd.export.desc"); },
 		icon: Download,
-		group: "会话",
+		group: "session",
 		run: async (ctx) => {
-			ctx.track("export", "正在导出 HTML", async () => {
+			ctx.track("export", tNow("slash.cmd.export.tracking"), async () => {
 				const outPath = await sessionExportHtml(ctx.sessionId);
 				try {
 					await revealItemInDir(outPath);
 				} catch {
 					/* reveal failure is non-fatal */
 				}
-				return `已导出 HTML：${outPath}`;
+				return tNow("slash.cmd.export.result", { path: outPath });
 			});
 		},
 	},
 	{
 		name: "copy",
-		title: "复制回复",
-		description: "复制最近一条助手回复到剪贴板",
+		get title() { return tNow("slash.cmd.copy.title"); },
+		get description() { return tNow("slash.cmd.copy.desc"); },
 		icon: ClipboardCopy,
-		group: "会话",
+		group: "session",
 		run: async (ctx) => {
-			ctx.track("copy", "正在复制最近一条助手回复", async () => {
+			ctx.track("copy", tNow("slash.cmd.copy.tracking"), async () => {
 				const resp = await ctx.rpcSend({ type: "get_last_assistant_text" });
 				const data = resp.data ?? resp;
 				const text =
@@ -274,26 +275,26 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 						: typeof (data as Record<string, unknown>)?.text === "string"
 							? ((data as Record<string, unknown>).text as string)
 							: "";
-				if (!text.trim()) return "暂无可复制的助手回复";
+				if (!text.trim()) return tNow("slash.cmd.copy.empty");
 				await copyText(text);
-				return "已复制最近一条助手回复";
+				return tNow("slash.cmd.copy.result");
 			});
 		},
 	},
 	{
 		name: "retry",
-		title: "重试",
-		description: "重试上一次失败的回合",
+		get title() { return tNow("slash.cmd.retry.title"); },
+		get description() { return tNow("slash.cmd.retry.desc"); },
 		icon: RotateCcw,
-		group: "会话",
+		group: "session",
 		run: sendAsPrompt,
 	},
 	{
 		name: "resume",
-		title: "继续",
-		description: "恢复上一次被打断的回合",
+		get title() { return tNow("slash.cmd.resume.title"); },
+		get description() { return tNow("slash.cmd.resume.desc"); },
 		icon: Play,
-		group: "会话",
+		group: "session",
 		run: async (ctx) => {
 			const items = ctx.live?.items ?? [];
 			for (let i = items.length - 1; i >= 0; i--) {
@@ -305,16 +306,16 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 				}
 				break;
 			}
-			toast.info("没有可恢复的回合");
+			toast.info(tNow("slash.cmd.resume.noTurn"));
 			throw new SlashAbort();
 		},
 	},
 	{
 		name: "plan",
-		title: "规划模式",
-		description: "切换规划模式：先出计划再执行",
+		get title() { return tNow("slash.cmd.plan.title"); },
+		get description() { return tNow("slash.cmd.plan.desc"); },
 		icon: NotebookPen,
-		group: "会话",
+		group: "session",
 		// Client-side plan mode (prompt prefix + composer badge); the
 		// produced plan shows in the right-side 计划 tab. omp exposes no
 		// plan-mode RPC toggle for hosts.
@@ -323,16 +324,16 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 			const on = !(composer.planModes[ctx.sessionId] === true);
 			composer.setPlanMode(ctx.sessionId, on);
 			if (on) useUi.getState().setRightTab("plan");
-			ctx.pushOutput("plan", on ? "规划模式已开启：发送需求后生成计划" : "规划模式已关闭");
+			ctx.pushOutput("plan", on ? tNow("slash.cmd.plan.on") : tNow("slash.cmd.plan.off"));
 		},
 	},
 	{
 		name: "goal",
-		title: "目标",
-		description: "设置或更新持续追求的目标",
+		get title() { return tNow("slash.cmd.goal.title"); },
+		get description() { return tNow("slash.cmd.goal.desc"); },
 		icon: Target,
-		group: "会话",
-		argHint: "<目标描述 | pause | resume | off>",
+		group: "session",
+		get argHint() { return tNow("slash.cmd.goal.argHint"); },
 		run: async (ctx) => {
 			let arg = ctx.args.trim();
 			// omp subcommands: `show` = bare `/goal`; `set <text>` = `<text>`;
@@ -341,37 +342,37 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 			else arg = arg.replace(/^set\s+(?=\S)/i, "");
 			if (!arg) {
 				const g = goalModeOf(ctx)?.goal;
-				ctx.pushOutput("goal", g?.objective ? `当前目标：${g.objective}` : "当前没有目标");
+				ctx.pushOutput("goal", g?.objective ? tNow("slash.cmd.goal.current", { goal: g.objective }) : tNow("slash.cmd.goal.noGoal"));
 				return;
 			}
 			if (/^(?:off|drop)$/i.test(arg)) {
-				ctx.track("goal", "正在清除目标", async () => {
+				ctx.track("goal", tNow("slash.cmd.goal.dropTracking"), async () => {
 					await sendGoalOp(ctx, "drop");
-					return "已清除目标";
+					return tNow("slash.cmd.goal.dropResult");
 				});
 				return;
 			}
 			if (/^(?:pause|暂停)$/i.test(arg)) {
-				ctx.track("goal", "正在暂停目标", async () => {
+				ctx.track("goal", tNow("slash.cmd.goal.pauseTracking"), async () => {
 					await sendGoalOp(ctx, "pause");
-					return "已暂停目标";
+					return tNow("slash.cmd.goal.pauseResult");
 				});
 				return;
 			}
 			if (/^(?:resume|继续)$/i.test(arg)) {
-				ctx.track("goal", "正在恢复目标", async () => {
+				ctx.track("goal", tNow("slash.cmd.goal.resumeTracking"), async () => {
 					await sendGoalOp(ctx, "resume");
-					return "已恢复目标";
+					return tNow("slash.cmd.goal.resumeResult");
 				});
 				return;
 			}
 			// Creating requires no active goal — drop the existing one first
 			// (same outcome as editing the objective).
 			const hadGoal = Boolean(goalModeOf(ctx)?.goal?.objective);
-			ctx.track("goal", "正在设置目标", async () => {
+			ctx.track("goal", tNow("slash.cmd.goal.setTracking"), async () => {
 				if (hadGoal) await sendGoalOp(ctx, "drop");
 				await sendGoalOp(ctx, "create", { objective: arg });
-				return `已设置目标：${arg}`;
+				return tNow("slash.cmd.goal.setResult", { goal: arg });
 			});
 		},
 	},
@@ -380,68 +381,68 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	{
 		name: "model",
 		aliases: ["models"],
-		title: "切换模型",
-		description: "打开模型选择器切换当前会话模型",
+		get title() { return tNow("slash.cmd.model.title"); },
+		get description() { return tNow("slash.cmd.model.desc"); },
 		icon: Cpu,
-		group: "模型",
+		group: "model",
 		settingsTarget: "models",
 		run: (ctx) => ctx.openModelPicker(),
 	},
 	{
 		name: "thinking",
-		title: "思考等级",
-		description: "打开思考等级选择器",
+		get title() { return tNow("slash.cmd.thinking.title"); },
+		get description() { return tNow("slash.cmd.thinking.desc"); },
 		icon: Brain,
-		group: "模型",
+		group: "model",
 		settingsTarget: "thinking",
 		run: (ctx) => ctx.openThinkingPicker(),
 	},
 	{
 		name: "fast",
-		title: "快速模式",
-		description: "切换快速服务档位",
+		get title() { return tNow("slash.cmd.fast.title"); },
+		get description() { return tNow("slash.cmd.fast.desc"); },
 		icon: Zap,
-		group: "模型",
+		group: "model",
 		settingsTarget: "fastMode",
 		run: nativeOrForward(async (ctx) => {
 			const enabled = ctx.live?.state?.fastModeEnabled === true;
-			ctx.track("fast", "正在切换快速模式", async () => {
+			ctx.track("fast", tNow("slash.cmd.fast.tracking"), async () => {
 				await ctx.rpcSend({ type: "set_fast_mode", enabled: !enabled });
-				return enabled ? "已关闭快速模式" : "已开启快速模式";
+				return enabled ? tNow("slash.cmd.fast.off") : tNow("slash.cmd.fast.on");
 			});
 		}),
 	},
 	{
 		name: "slow",
-		title: "慢速模式",
-		description: "切换低优先级/经济服务档位",
+		get title() { return tNow("slash.cmd.slow.title"); },
+		get description() { return tNow("slash.cmd.slow.desc"); },
 		icon: Gauge,
-		group: "模型",
+		group: "model",
 		run: nativeOrForward(async (ctx) => {
 			const enabled = ctx.live?.state?.slowModeEnabled === true;
-			ctx.track("slow", "正在切换慢速模式", async () => {
+			ctx.track("slow", tNow("slash.cmd.slow.tracking"), async () => {
 				if (!ctx.live?.alive) await ensureLive(ctx.sessionId);
 				await ctx.rpcSend({ type: "set_slow_mode", enabled: !enabled });
-				return enabled ? "已关闭慢速模式" : "已开启慢速模式";
+				return enabled ? tNow("slash.cmd.slow.off") : tNow("slash.cmd.slow.on");
 			});
 		}),
 	},
 	{
 		name: "advisor",
-		title: "顾问模型",
-		description: "切换顾问模型介入",
+		get title() { return tNow("slash.cmd.advisor.title"); },
+		get description() { return tNow("slash.cmd.advisor.desc"); },
 		icon: Eye,
-		group: "模型",
+		group: "model",
 		run: nativeOrForward((ctx) => ctx.openSettingsTarget("advisor")),
 	},
 
 	// ---- 状态 ----
 	{
 		name: "status",
-		title: "会话状态",
-		description: "查看模型、上下文、用量与队列概况",
+		get title() { return tNow("slash.cmd.status.title"); },
+		get description() { return tNow("slash.cmd.status.desc"); },
 		icon: Activity,
-		group: "状态",
+		group: "status",
 		run: async (ctx) => {
 			const card = await buildStatusCard(ctx);
 			ctx.pushOutput("status", card);
@@ -449,53 +450,53 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	},
 	{
 		name: "context",
-		title: "上下文占用",
-		description: "查看上下文窗口的占用明细",
+		get title() { return tNow("slash.cmd.context.title"); },
+		get description() { return tNow("slash.cmd.context.desc"); },
 		icon: Layers,
-		group: "状态",
+		group: "status",
 		run: (ctx) => ctx.openContextPopover(),
 	},
 	{
 		name: "usage",
-		title: "用量",
-		description: "查看供应商订阅与配额",
+		get title() { return tNow("slash.cmd.usage.title"); },
+		get description() { return tNow("slash.cmd.usage.desc"); },
 		icon: ChartPie,
-		group: "状态",
+		group: "status",
 		run: nativeOrForward((ctx) => ctx.openSettingsTarget("quota")),
 	},
 	{
 		name: "tools",
-		title: "工具列表",
-		description: "列出当前对代理可见的工具",
+		get title() { return tNow("slash.cmd.tools.title"); },
+		get description() { return tNow("slash.cmd.tools.desc"); },
 		icon: Wrench,
-		group: "状态",
+		group: "status",
 		run: sendAsPrompt,
 	},
 	{
 		name: "jobs",
-		title: "后台任务",
-		description: "查看异步后台任务状态",
+		get title() { return tNow("slash.cmd.jobs.title"); },
+		get description() { return tNow("slash.cmd.jobs.desc"); },
 		icon: ListChecks,
-		group: "状态",
+		group: "status",
 		run: sendAsPrompt,
 	},
 	{
 		name: "stats",
-		title: "统计",
-		description: "查看会话统计数据",
+		get title() { return tNow("slash.cmd.stats.title"); },
+		get description() { return tNow("slash.cmd.stats.desc"); },
 		icon: ChartPie,
-		group: "状态",
+		group: "status",
 		run: () => useChatUi.getState().setStatsOpen(true),
 	},
 
 	// ---- 集成 ----
 	{
 		name: "mcp",
-		title: "MCP 服务器",
-		description: "管理 MCP 服务器",
+		get title() { return tNow("slash.cmd.mcp.title"); },
+		get description() { return tNow("slash.cmd.mcp.desc"); },
 		icon: Cable,
-		group: "集成",
-		argHint: "<子命令>",
+		group: "integration",
+		get argHint() { return tNow("slash.subcommandHint"); },
 		run: (ctx) => {
 			if (ctx.args.trim()) return sendAsPrompt(ctx);
 			ctx.openSettingsTarget("mcp");
@@ -505,79 +506,79 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	{
 		name: "plugins",
 		aliases: ["plugin", "marketplace"],
-		title: "插件",
-		description: "管理插件与扩展市场",
+		get title() { return tNow("slash.cmd.plugins.title"); },
+		get description() { return tNow("slash.cmd.plugins.desc"); },
 		icon: Puzzle,
-		group: "集成",
+		group: "integration",
 		run: nativeOrForward((ctx) => ctx.openSettingsTarget("plugins")),
 	},
 	{
 		name: "memory",
-		title: "记忆",
-		description: "维护记忆后端",
+		get title() { return tNow("slash.cmd.memory.title"); },
+		get description() { return tNow("slash.cmd.memory.desc"); },
 		icon: Database,
-		group: "集成",
+		group: "integration",
 		run: nativeOrForward((ctx) => ctx.openSettingsTarget("memory")),
 	},
 	{
 		name: "browser",
-		title: "浏览器",
-		description: "切换浏览器可见模式",
+		get title() { return tNow("slash.cmd.browser.title"); },
+		get description() { return tNow("slash.cmd.browser.desc"); },
 		icon: Globe,
-		group: "集成",
+		group: "integration",
 		run: nativeOrForward((ctx) => ctx.openSettingsTarget("browser")),
 	},
 	{
 		name: "computer",
-		title: "计算机操作",
-		description: "切换计算机操作能力",
+		get title() { return tNow("slash.cmd.computer.title"); },
+		get description() { return tNow("slash.cmd.computer.desc"); },
 		icon: Monitor,
-		group: "集成",
+		group: "integration",
 		run: nativeOrForward((ctx) => ctx.openSettingsTarget("computerUse")),
 	},
 	{
 		name: "extended-context",
-		title: "扩展上下文",
-		description: "切换扩展上下文窗口",
+		get title() { return tNow("slash.cmd.extendedContext.title"); },
+		get description() { return tNow("slash.cmd.extendedContext.desc"); },
 		icon: Expand,
-		group: "集成",
+		group: "integration",
 		run: nativeOrForward((ctx) => ctx.openSettingsTarget("extendedContext")),
 	},
 
 	// ---- 设置 ----
 	{
 		name: "agents",
-		title: "子代理",
-		description: "配置子代理",
+		get title() { return tNow("slash.cmd.agents.title"); },
+		get description() { return tNow("slash.cmd.agents.desc"); },
 		icon: Bot,
-		group: "设置",
+		group: "settings",
 		settingsTarget: "subagents",
 		run: (ctx) => ctx.openSettingsTarget("subagents"),
 	},
 	{
 		name: "approvals",
-		title: "审批",
-		description: "配置工具审批规则",
+		get title() { return tNow("slash.cmd.approvals.title"); },
+		get description() { return tNow("slash.cmd.approvals.desc"); },
 		icon: ShieldCheck,
-		group: "设置",
+		group: "settings",
 		settingsTarget: "approvals",
 		run: (ctx) => ctx.openSettingsTarget("approvals"),
 	},
 	{
 		name: "login",
-		title: "登录",
-		description: "管理供应商登录",
+		get title() { return tNow("slash.cmd.login.title"); },
+		get description() { return tNow("slash.cmd.login.desc"); },
 		icon: KeyRound,
-		group: "设置",
+		group: "settings",
 		settingsTarget: "providers",
 		run: (ctx) => ctx.openSettingsTarget("providers"),
 	},
 	{
 		name: "settings",
-		title: "设置",
-		description: "打开应用设置",
+		get title() { return tNow("slash.cmd.settings.title"); },
+		get description() { return tNow("slash.cmd.settings.desc"); },
 		icon: Settings,
-		group: "设置",
+		group: "settings",
 		run: (ctx) => ctx.openSettings(),
 	},
 
@@ -585,68 +586,68 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 	// same-named dynamic omp commands are shadowed) ----
 	{
 		name: "init",
-		title: "初始化项目",
-		description: "为当前项目生成 AGENTS.md 等配置",
+		get title() { return tNow("slash.cmd.init.title"); },
+		get description() { return tNow("slash.cmd.init.desc"); },
 		icon: Sparkles,
-		group: "更多 OMP 命令",
+		group: "omp",
 		run: sendAsPrompt,
 	},
 	{
 		name: "share",
-		title: "分享会话",
-		description: "生成当前会话的分享链接",
+		get title() { return tNow("slash.cmd.share.title"); },
+		get description() { return tNow("slash.cmd.share.desc"); },
 		icon: Share2,
-		group: "更多 OMP 命令",
+		group: "omp",
 		// Same flow as CenterHeader's 分享链接: confirm, sessionShare, copy.
 		run: async (ctx) => {
 			const ok = await confirmDialog(
-				"将把本会话加密后上传到 OMP 分享服务。拿到链接的任何人都能查看内容，已知密钥会自动脱敏。继续？",
-				{ title: "创建分享链接", okLabel: "创建并复制" },
+				tNow("slash.cmd.share.confirmMessage"),
+				{ title: tNow("slash.cmd.share.confirmTitle"), okLabel: tNow("slash.cmd.share.confirmOk") },
 			);
 			if (!ok) throw new SlashAbort();
-			ctx.track("share", "正在生成分享链接", async () => {
+			ctx.track("share", tNow("slash.cmd.share.tracking"), async () => {
 				const url = await sessionShare(ctx.sessionId);
 				await copyText(url);
-				return `分享链接已复制：${url}`;
+				return tNow("slash.cmd.share.result", { url });
 			});
 		},
 	},
 	{
 		name: "review",
-		title: "代码审查",
-		description: "让代理审查当前改动",
+		get title() { return tNow("slash.cmd.review.title"); },
+		get description() { return tNow("slash.cmd.review.desc"); },
 		icon: ClipboardCheck,
-		group: "更多 OMP 命令",
-		argHint: "[说明]",
+		group: "omp",
+		get argHint() { return tNow("slash.cmd.review.argHint"); },
 		run: sendAsPrompt,
 	},
 	{
 		name: "changelog",
-		title: "更新日志",
-		description: "查看 omp 版本更新内容",
+		get title() { return tNow("slash.cmd.changelog.title"); },
+		get description() { return tNow("slash.cmd.changelog.desc"); },
 		icon: ScrollText,
-		group: "更多 OMP 命令",
+		group: "omp",
 		// omp's changelog text has no transcript-less GUI surface; the About
 		// section is the app's version/update surface.
 		run: nativeOrForward((ctx) => ctx.openSettingsTarget("about")),
 	},
 	{
 		name: "security",
-		title: "安全检查",
-		description: "检查环境与权限配置",
+		get title() { return tNow("slash.cmd.security.title"); },
+		get description() { return tNow("slash.cmd.security.desc"); },
 		icon: ShieldAlert,
-		group: "更多 OMP 命令",
+		group: "omp",
 		run: sendAsPrompt,
 	},
 	// ---- 技能 ----
 	{
 		name: "skill:visualize",
 		aliases: ["visualize"],
-		title: "Visualize",
-		description: "创建可视化和交互工具",
+		get title() { return tNow("slash.cmd.visualize.title"); },
+		get description() { return tNow("slash.cmd.visualize.desc"); },
 		icon: ChartColumn,
-		group: "技能",
-		argHint: "<要可视化的内容>",
+		group: "skill",
+		get argHint() { return tNow("slash.cmd.visualize.argHint"); },
 		feature: "visualize",
 		// omp registers skills as `/skill:<name>`; normalize the friendlier
 		// `/visualize` alias so both invocations reach the bundled skill.

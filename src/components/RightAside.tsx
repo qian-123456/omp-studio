@@ -3,7 +3,7 @@ import { type RightTab, useUi } from "../stores/ui";
 import { useTabBadges } from "../features/sessions/useTabBadges";
 import { RightPanelHeader } from "./RightPanelHeader";
 import { RightPanelEmptyState } from "./RightPanelEmptyState";
-
+import { tNow } from "../stores/language";
 // Only the active tab is mounted, so each panel (xterm, git, …) loads on first open.
 const FileExplorer = lazy(() =>
 	import("../features/explorer/FileExplorer").then((m) => ({ default: m.FileExplorer })),
@@ -46,7 +46,7 @@ class ErrorBoundary extends React.Component<
 			return (
 				<div className="flex h-full flex-col items-center justify-center p-6 text-center text-xs text-neutral-400">
 					<div className="font-medium text-red-400">
-						{this.props.label} 渲染出错
+						{tNow("shell.renderError", { label: this.props.label })}
 					</div>
 					<div className="mt-1 font-mono text-[11px] text-neutral-500">
 						{this.state.error}
@@ -94,7 +94,7 @@ export const RightAside = React.memo(function RightAside() {
 				<>
 					<RightPanelHeader activeTab={rightTab} tabBadges={tabBadges} />
 					<div className="min-h-0 flex-1 overflow-y-auto">
-						<ErrorBoundary label="右侧面板">
+						<ErrorBoundary label={tNow("rightPanel.panelTitle")}>
 							<Suspense fallback={null}>
 								<RightPanelBody tab={rightTab} />
 							</Suspense>

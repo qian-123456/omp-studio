@@ -1,6 +1,6 @@
 /** [D] Pure helpers behind the OMP config editors (default detection, list/record
  * transforms, project-override lookup). Kept React-free so they are unit tested. */
-
+import { tNow } from "../../stores/language";
 import { parse as parseYaml } from "yaml";
 import { OMP_CONFIG_DEFAULTS } from "./ompConfigDefaults";
 
@@ -48,8 +48,8 @@ export function defaultState(
 export function defaultText(key: string, defaults: Record<string, unknown> = OMP_CONFIG_DEFAULTS): string | null {
 	if (!hasOwn(defaults, key)) return null;
 	const v = defaults[key];
-	if (v === null || v === undefined) return "未设置";
-	if (typeof v === "string") return v === "" ? "（空）" : v;
+	if (v === null || v === undefined) return tNow("settingsCore.ompList.unset");
+	if (typeof v === "string") return v === "" ? tNow("settingsCore.ompConfigEdit.empty") : v;
 	return JSON.stringify(v);
 }
 
@@ -120,13 +120,13 @@ export function rowsToRecord(rows: readonly RecordRow[]): RowsResult {
 		const { key, text, kind } = rows[i];
 		const k = key.trim();
 		if (!k && text.trim() === "") continue;
-		if (!k) return { ok: false, error: `第 ${i + 1} 行的名称不能为空`, index: i };
-		if (hasOwn(out, k)) return { ok: false, error: `名称「${k}」重复`, index: i };
+		if (!k) return { ok: false, error: tNow("settingsCore.ompConfigEdit.rowNameRequired", { index: i + 1 }), index: i };
+		if (hasOwn(out, k)) return { ok: false, error: tNow("settingsCore.ompConfigEdit.duplicateName", { name: k }), index: i };
 		if (kind === "json") {
 			try {
 				out[k] = JSON.parse(text);
 			} catch {
-				return { ok: false, error: `「${k}」的值不是有效的 JSON`, index: i };
+				return { ok: false, error: tNow("settingsCore.ompConfigEdit.invalidJsonValue", { name: k }), index: i };
 			}
 		} else {
 			out[k] = text;
@@ -145,13 +145,13 @@ export function parseJsonFor(valueType: string, text: string): JsonResult {
 	try {
 		value = JSON.parse(text.trim() === "" ? (valueType === "array" ? "[]" : "{}") : text);
 	} catch (e) {
-		return { ok: false, error: `JSON 格式不正确：${e instanceof Error ? e.message : String(e)}` };
+		return { ok: false, error: tNow("settingsCore.ompConfigEdit.invalidJsonFormat", { error: e instanceof Error ? e.message : String(e) }) };
 	}
 	if (valueType === "array" && !Array.isArray(value)) {
-		return { ok: false, error: "这里需要一个列表（以 [ 开头）" };
+		return { ok: false, error: tNow("settingsCore.ompConfigEdit.listExpected") };
 	}
 	if (valueType === "record" && (value === null || typeof value !== "object" || Array.isArray(value))) {
-		return { ok: false, error: "这里需要一个对象（以 { 开头）" };
+		return { ok: false, error: tNow("settingsCore.ompConfigEdit.recordExpected") };
 	}
 	return { ok: true, value };
 }

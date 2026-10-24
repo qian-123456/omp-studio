@@ -23,6 +23,7 @@ import {
 } from "../lib/theme";
 import { PRESET_WALLPAPERS } from "../lib/wallpaperPalette";
 import { WallpaperPicker } from "./WallpaperPicker";
+import { useT } from "../stores/language";
 
 type ModeTab = "dark" | "light" | "system" | "wallpaper";
 
@@ -81,6 +82,7 @@ function ThemeCard({
 }
 
 export function ThemePicker({ compact = false }: { compact?: boolean }) {
+	const { t } = useT();
 	const choice = useThemeChoice();
 	const sysDark = useSystemDarkTheme();
 	const sysLight = useSystemLightTheme();
@@ -145,7 +147,7 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 				setTab(id);
 			}}
 			aria-pressed={tab === id}
-			title={live ? `${label}（当前使用中）` : label}
+			title={live ? t("theme.currentlyInUse", { label }) : label}
 			className={`relative flex min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
 				tab === id
 					? "bg-[var(--bg-active-fill)] text-neutral-100 shadow-sm"
@@ -165,10 +167,10 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 	return (
 		<div>
 			<div className="grid grid-cols-4 rounded-lg hairline bg-[var(--well-bg)] p-0.5">
-				{tabBtn("dark", <Moon size={13} />, "深色", !wallpaper.enabled && chosen?.dark === true)}
-				{tabBtn("light", <Sun size={13} />, "浅色", !wallpaper.enabled && chosen != null && !chosen.dark)}
-				{tabBtn("system", <Monitor size={13} />, "跟随系统", !wallpaper.enabled && choice === "system")}
-				{tabBtn("wallpaper", <ImageIcon size={13} />, "背景主题", wallpaper.enabled)}
+				{tabBtn("dark", <Moon size={13} />, t("theme.dark"), !wallpaper.enabled && chosen?.dark === true)}
+				{tabBtn("light", <Sun size={13} />, t("theme.light"), !wallpaper.enabled && chosen != null && !chosen.dark)}
+				{tabBtn("system", <Monitor size={13} />, t("theme.system"), !wallpaper.enabled && choice === "system")}
+				{tabBtn("wallpaper", <ImageIcon size={13} />, t("theme.wallpaper"), wallpaper.enabled)}
 			</div>
 			{tab === "dark" && (
 				<div className={`mt-2 grid gap-2 ${cols}`}>
@@ -188,7 +190,7 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 				<div className="mt-2 space-y-3">
 					<div>
 						<div className="text-[11px] font-medium text-neutral-400">
-							白天（浅色）
+							{t("theme.dayLight")}
 						</div>
 						<div className={`mt-1.5 grid gap-2 ${cols}`}>
 							{THEMES.filter((t) => !t.dark).map((t) =>
@@ -198,7 +200,7 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 					</div>
 					<div>
 						<div className="text-[11px] font-medium text-neutral-400">
-							夜间（深色）
+							{t("theme.nightDark")}
 						</div>
 						<div className={`mt-1.5 grid gap-2 ${cols}`}>
 							{THEMES.filter((t) => t.dark).map((t) =>
@@ -207,7 +209,7 @@ export function ThemePicker({ compact = false }: { compact?: boolean }) {
 						</div>
 					</div>
 					<p className="px-0.5 text-[11px] text-neutral-500">
-						按系统明暗在以上两套主题间自动切换；黄点表示当前正在使用
+						{t("theme.autoSwitchDesc")}
 					</p>
 				</div>
 			)}

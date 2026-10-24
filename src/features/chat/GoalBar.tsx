@@ -11,6 +11,7 @@ import { rpcSend } from "../../lib/ipc";
 import { ensureLive } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
 import { useLive } from "../../stores/live";
+import { useT } from "../../stores/language";
 
 interface GoalLike {
 	objective?: string;
@@ -38,6 +39,7 @@ export function GoalBar({
 	/** Seed the composer with `/goal <objective>` so the user can reword it. */
 	onEdit(objective: string): void;
 }) {
+	const { t } = useT();
 	const [busy, setBusy] = useState(false);
 	const rawGoal = useLive((s) => s.sessions[sessionId]?.state?.goal);
 	const mode = goalModeOf(rawGoal);
@@ -52,7 +54,7 @@ export function GoalBar({
 			await rpcSend(sessionId, { type: "goal", op });
 			await rpcSend(sessionId, { type: "get_state" });
 		} catch (err) {
-			toast.error(`目标操作失败: ${errMsg(err)}`);
+			toast.error(t("chat.goal.opFailed", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -64,10 +66,10 @@ export function GoalBar({
 	return (
 		<div className="flex items-center gap-1.5 px-3 pb-1.5 text-[11.5px]">
 			<Target size={12} className="shrink-0 text-emerald-500" />
-			<span className="shrink-0 font-medium text-[var(--text-60,var(--text-muted))]">目标</span>
+			<span className="shrink-0 font-medium text-[var(--text-60,var(--text-muted))]">{t("chat.goal.label")}</span>
 			{paused && (
 				<span className="shrink-0 rounded-full border border-[var(--line,var(--border))] px-1.5 text-[10px] text-[var(--text-40,var(--text-dim))]">
-					已暂停
+					{t("chat.goal.paused")}
 				</span>
 			)}
 			<span
@@ -83,8 +85,8 @@ export function GoalBar({
 				type="button"
 				disabled={busy}
 				onClick={() => void run(paused ? "resume" : "pause")}
-				title={paused ? "恢复目标" : "暂停目标"}
-				aria-label={paused ? "恢复目标" : "暂停目标"}
+				title={paused ? t("chat.goal.resume") : t("chat.goal.pause")}
+				aria-label={paused ? t("chat.goal.resume") : t("chat.goal.pause")}
 				className={btn}
 			>
 				{paused ? <Play size={11} /> : <Pause size={11} />}
@@ -93,8 +95,8 @@ export function GoalBar({
 				type="button"
 				disabled={busy}
 				onClick={() => onEdit(objective)}
-				title="编辑目标"
-				aria-label="编辑目标"
+				title={t("chat.goal.edit")}
+				aria-label={t("chat.goal.edit")}
 				className={btn}
 			>
 				<PenLine size={11} />
@@ -103,8 +105,8 @@ export function GoalBar({
 				type="button"
 				disabled={busy}
 				onClick={() => void run("drop")}
-				title="清除目标"
-				aria-label="清除目标"
+				title={t("chat.goal.clear")}
+				aria-label={t("chat.goal.clear")}
 				className={btn}
 			>
 				<X size={12} />

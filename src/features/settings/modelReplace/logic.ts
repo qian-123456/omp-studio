@@ -24,6 +24,7 @@ import { resolveCurrentModel, resolveThinkingLevels } from "../../../lib/models"
 import { basename } from "../../../lib/paths";
 import { BUILTIN_ROLES, splitRoleValue, THINKING_SUFFIXES } from "../modelRoles";
 import { type KindGroup, kindGroup } from "./kinds";
+import { tNow } from "../../../stores/language";
 
 // ── selectors, comma lists, levels ───────────────────────────────────
 
@@ -114,22 +115,30 @@ export type PlanGroup = "global" | "project" | "chain" | "appSetting" | "schedul
 /** Group headings in the order the preview shows them. */
 export const GROUP_ORDER: readonly PlanGroup[] = ["global", "project", "chain", "appSetting", "schedule"];
 
-export const GROUP_TITLES: Record<PlanGroup, string> = {
-	global: "全局",
-	project: "每个项目",
-	chain: "回退链",
-	appSetting: "应用设置",
-	schedule: "定时任务",
+export const GROUP_TITLE_KEYS: Record<PlanGroup, string> = {
+	global: "modelReplace.groupTitle.global",
+	project: "modelReplace.groupTitle.project",
+	chain: "modelReplace.groupTitle.chain",
+	appSetting: "modelReplace.groupTitle.appSetting",
+	schedule: "modelReplace.groupTitle.schedule",
 };
 
-const APP_SETTING_LABELS: Record<string, string> = {
-	newSessionModel: "新会话默认模型",
-	sideChatModel: "侧边对话专用模型",
-	doctorModel: "诊断模型",
+export const GROUP_TITLES: Record<PlanGroup, string> = new Proxy({} as Record<PlanGroup, string>, {
+	get(_target, prop: string) {
+		const key = GROUP_TITLE_KEYS[prop as PlanGroup];
+		return key ? tNow(key) : undefined;
+	},
+});
+
+const APP_SETTING_KEYS: Record<string, string> = {
+	newSessionModel: "modelReplace.appSetting.newSessionModel",
+	sideChatModel: "modelReplace.appSetting.sideChatModel",
+	doctorModel: "modelReplace.appSetting.doctorModel",
 };
 
 export function appSettingLabel(field: string): string {
-	return APP_SETTING_LABELS[field] ?? field;
+	const key = APP_SETTING_KEYS[field];
+	return key ? tNow(key) : field;
 }
 
 /** `default · 主力模型` for built-in roles, else the raw key. */
@@ -146,7 +155,7 @@ export function projectNameMap(projects: ScannedProject[]): Record<string, strin
 }
 
 const projectLabel = (path: string | null, names: Record<string, string>): string =>
-	path === null ? "项目" : (names[path] ?? basename(path));
+	path === null ? tNow("modelReplace.project") : (names[path] ?? basename(path));
 
 export interface LocationInfo {
 	/** Stable row identity for one location. */
@@ -162,8 +171,8 @@ export function locationInfo(location: ModelRefLocation, names: Record<string, s
 		return {
 			id: `${location.kind}:${location.scope}:${location.projectPath ?? ""}:${location.name}`,
 			group: location.scope === "global" ? "global" : "project",
-			title: location.kind === "role" ? roleTitle(location.name) : `子代理 ${location.name}`,
-			context: location.scope === "global" ? "全局" : projectLabel(location.projectPath, names),
+			title: location.kind === "role" ? roleTitle(location.name) : tNow("modelReplace.subAgentTitle", { name: location.name }),
+			context: location.scope === "global" ? tNow("modelReplace.scopeGlobal") : projectLabel(location.projectPath, names),
 		};
 	}
 	if (location.kind === "appSetting") {
@@ -171,14 +180,14 @@ export function locationInfo(location: ModelRefLocation, names: Record<string, s
 			id: `appSetting:${location.field}`,
 			group: "appSetting",
 			title: appSettingLabel(location.field),
-			context: "应用设置",
+			context: tNow("modelReplace.groupTitle.appSetting"),
 		};
 	}
 	return {
 		id: `schedule:${location.id}`,
 		group: "schedule",
 		title: location.name || location.id,
-		context: "定时任务",
+		context: tNow("modelReplace.groupTitle.schedule"),
 	};
 }
 
@@ -236,8 +245,8 @@ export interface ScopeOption {
 /** 全部 / 全局 / every project that holds at least one model reference. */
 export function scopeOptions(scan: ModelUsageScan | null): ScopeOption[] {
 	const options: ScopeOption[] = [
-		{ value: "all", label: "全部" },
-		{ value: "global", label: "全局（含回退链、应用设置、定时任务）" },
+		{ value: "all", label: tNow("modelReplace.scopeAll") },
+		{ value: "global", label: tNow("modelReplace.scopeGlobalDetail") },
 	];
 	if (scan === null) return options;
 	const names = projectNameMap(scan.projects);
@@ -250,7 +259,7 @@ export function scopeOptions(scan: ModelUsageScan | null): ScopeOption[] {
 		seen.add(location.projectPath);
 		options.push({
 			value: projectScope(location.projectPath),
-			label: `项目：${projectLabel(location.projectPath, names)}`,
+			label: tNow("modelReplace.scopeProjectLabel", { name: projectLabel(location.projectPath, names) }),
 			title: location.projectPath,
 		});
 	}
@@ -259,10 +268,10 @@ export function scopeOptions(scan: ModelUsageScan | null): ScopeOption[] {
 
 /** Display name of a scope (`全部`, `全局`, `项目：<name>`). */
 export function scopeLabel(scope: ReplaceScope, names: Record<string, string>): string {
-	if (scope === "all") return "全部";
-	if (scope === "global") return "全局";
+	if (scope === "all") return tNow("modelReplace.scopeAll");
+	if (scope === "global") return tNow("modelReplace.scopeGlobal");
 	const path = scopeProjectPath(scope) ?? "";
-	return `项目：${names[path] ?? basename(path)}`;
+	return tNow("modelReplace.scopeProjectLabel", { name: names[path] ?? basename(path) });
 }
 
 // ── overview ─────────────────────────────────────────────────────────
@@ -336,8 +345,8 @@ export function buildOverview(
 	}
 	const chains = chainsInScope(scope) ? (scan.fallbackChains?.chains ?? {}) : {};
 	for (const [key, items] of Object.entries(chains)) {
-		add(key, { scope: "回退链", title: `链键 ${key}` });
-		for (const item of items) add(item, { scope: "回退链", title: `链 ${key}` });
+		add(key, { scope: tNow("modelReplace.groupTitle.chain"), title: tNow("modelReplace.chainKeyTitle", { key }) });
+		for (const item of items) add(item, { scope: tNow("modelReplace.groupTitle.chain"), title: tNow("modelReplace.chainItemTitle", { key }) });
 	}
 
 	return [...bySelector.values()]
@@ -413,9 +422,9 @@ export function editsScopeLabel(edits: readonly ModelReplaceEdit[], names: Recor
 		}
 	}
 	const projectText =
-		projects.size === 1 ? scopeLabel(projectScope([...projects][0] ?? ""), names) : `${projects.size} 个项目`;
-	if (projects.size === 0) return "全局";
-	return hasNonProject ? `全局 + ${projectText}` : projectText;
+		projects.size === 1 ? scopeLabel(projectScope([...projects][0] ?? ""), names) : tNow("modelReplace.projectCount", { count: String(projects.size) });
+	if (projects.size === 0) return tNow("modelReplace.scopeGlobal");
+	return hasNonProject ? tNow("modelReplace.globalPlusProjects", { projects: projectText }) : projectText;
 }
 
 // ── plan ─────────────────────────────────────────────────────────────
@@ -478,7 +487,7 @@ export interface PlanInput {
 }
 
 const chainItemsText = (items: string[] | null): string =>
-	items === null ? "（不存在）" : items.length === 0 ? "（空）" : items.join(", ");
+	items === null ? tNow("modelReplace.chainNotExist") : items.length === 0 ? tNow("modelReplace.chainEmpty") : items.join(", ");
 
 /** `selector:level` for display (a schedule's model column plus its thinking column). */
 function withThinking(value: string, thinking: string | null): string {
@@ -609,7 +618,7 @@ export function buildPlan({
 				id,
 				group: "chain",
 				title: key,
-				context: hasExisting ? `回退链键 → ${newKey}（已存在）` : `回退链键 → ${newKey}`,
+				context: hasExisting ? tNow("modelReplace.chainKeyExists", { key: newKey }) : tNow("modelReplace.chainKeyNew", { key: newKey }),
 				before: `${key}: ${chainItemsText(items)}`,
 				after: `${newKey}: ${chainItemsText(after)}`,
 				checked: rowChecked,
@@ -630,7 +639,7 @@ export function buildPlan({
 			id,
 			group: "chain",
 			title: key,
-			context: "回退链条目",
+			context: tNow("modelReplace.chainItemContext"),
 			before: chainItemsText(items),
 			after: chainItemsText(after),
 			checked: rowChecked,
@@ -661,7 +670,7 @@ export function buildPlan({
 				name: p.name || basename(p.path),
 				path: p.path,
 				// The backend explains its own failures (global config errors arrive here too).
-				reason: p.error ?? (p.status === "missing" ? "目录不存在" : "配置无法读取"),
+				reason: p.error ?? (p.status === "missing" ? tNow("modelReplace.dirNotFound") : tNow("modelReplace.configReadFailed")),
 			})),
 		chainError: scan.fallbackChainsError,
 	};
@@ -743,7 +752,7 @@ export function summarizeEdit(
 	if (edit.kind === "fallbackChain") {
 		return {
 			title: edit.label,
-			context: "回退链",
+			context: tNow("modelReplace.groupTitle.chain"),
 			before: chainItemsText(edit.changes[0]?.before ?? null),
 			after: chainItemsText(edit.changes[0]?.after ?? null),
 			details: edit.changes.map((c) => `${c.key}: ${chainItemsText(c.before)} → ${chainItemsText(c.after)}`),
@@ -760,7 +769,7 @@ export function summarizeEdit(
 		before: isSchedule ? withThinking(edit.before, edit.thinkingBefore) : edit.before,
 		after: isSchedule ? withThinking(edit.after, edit.thinkingAfter) : edit.after,
 		details: isSchedule
-			? [`思考等级: ${edit.thinkingBefore ?? "未设置"} → ${edit.thinkingAfter ?? "未设置"}`]
+			? [tNow("modelReplace.thinkingLevelChange", { before: edit.thinkingBefore ?? tNow("modelReplace.notSet"), after: edit.thinkingAfter ?? tNow("modelReplace.notSet") })]
 			: [],
 	};
 }

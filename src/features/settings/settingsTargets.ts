@@ -32,65 +32,54 @@ export type SettingsTarget =
 
 export const SETTINGS_TARGETS: Record<
 	SettingsTarget,
-	{ section: string; focusKey?: string; label: string }
+	{ section: string; focusKey?: string }
 > = {
 	// Native sections anchor on a data-field-id; OMP sections anchor on the
 	// config key rendered as data-omp-key inside OmpSettingRow.
 	models: {
 		section: "omp-roles",
 		focusKey: "modelRolesPanel",
-		label: "模型角色",
 	},
 	thinking: {
 		section: "thinking",
 		focusKey: "defaultThinkingLevel",
-		label: "思考级别",
 	},
 	fastMode: {
 		// Service tiers (`tier.*` / omp `/fast`) live in the Thinking tab.
 		section: "thinking",
 		focusKey: "tier.openai",
-		label: "快速模式（服务层级）",
 	},
 	advisor: {
 		section: "helper-models",
 		focusKey: "advisor.enabled",
-		label: "顾问（Advisor）",
 	},
 	extendedContext: {
 		section: "context-window",
 		focusKey: "extendedContext",
-		label: "扩展上下文",
 	},
 	browser: {
 		section: "tools",
 		focusKey: "browser.enabled",
-		label: "浏览器工具",
 	},
 	computerUse: {
 		section: "tools",
 		focusKey: "computer.enabled",
-		label: "电脑操控",
 	},
 	memory: {
 		section: "memory",
 		focusKey: "memory.backend",
-		label: "记忆后端",
 	},
 	mcp: {
 		section: "mcp",
 		focusKey: "mcpServerList",
-		label: "MCP 服务器",
 	},
 	plugins: {
 		section: "plugins",
 		focusKey: "pluginList",
-		label: "插件",
 	},
 	subagents: {
 		section: "subagents",
 		focusKey: "task.maxConcurrency",
-		label: "任务与子代理",
 	},
 	// The app always passes --approval-mode to omp from this native setting,
 	// so it is the real control for approvals (omp's tools.approvalMode key is
@@ -98,31 +87,25 @@ export const SETTINGS_TARGETS: Record<
 	approvals: {
 		section: "general",
 		focusKey: "defaultApprovalMode",
-		label: "默认审批模式",
 	},
 	providers: {
 		section: "providers",
 		focusKey: "providerList",
-		label: "API 供应商",
 	},
 	compaction: {
 		section: "context-window",
 		focusKey: "compaction",
-		label: "自动压缩",
 	},
 	modelContext: {
 		section: "context-window",
-		label: "上下文窗口",
 	},
 	// ProvidersSection flips to the 订阅与配额 tab when it holds the focus key.
 	quota: {
 		section: "providers",
 		focusKey: "quotaDashboard",
-		label: "订阅与配额",
 	},
 	about: {
 		section: "about",
-		label: "关于与更新",
 	},
 };
 

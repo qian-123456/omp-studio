@@ -1,5 +1,6 @@
 import type { BacklogItem, BacklogKind, SessionMeta, Workspace } from "../../lib/contracts";
 import { repoRootFromWorktree } from "../git/helpers";
+import { tNow } from "../../stores/language";
 
 /** Repo root for a project dir so all worktrees of one repo share a project. */
 export function projectRoot(dir: string | null | undefined): string | null {
@@ -226,7 +227,7 @@ export function groupIdeasByProject(items: BacklogItem[], currentProject: string
 	return [...groups.entries()]
 		.map(([project, list]) => ({
 			project,
-			label: project === null ? "未关联项目" : (project.split("/").filter(Boolean).pop() ?? project),
+			label: project === null ? tNow("backlog.unassociatedProject") : (project.split("/").filter(Boolean).pop() ?? project),
 			isCurrent: project !== null && project === current,
 			items: list,
 		}))
@@ -277,7 +278,7 @@ const SESSION_OPTION_SNIPPET_LENGTH = 40;
 /** Concise label for a session option, preferring recent context over generated titles. */
 export function sessionOptionLabel(meta: SessionMeta): string {
 	const title = meta.title.trim();
-	const genericPrefix = /^会话\s+(.+)$/.exec(title)?.[1];
+	const genericPrefix = /^(?:会话|Session)\s+(.+)$/.exec(title)?.[1];
 	const isGenericTitle = title === meta.id || (genericPrefix !== undefined && meta.id.startsWith(genericPrefix));
 	const snippet = meta.lastAssistant?.trim().replace(/\s+/g, " ");
 	let displayTitle: string;
@@ -287,7 +288,7 @@ export function sessionOptionLabel(meta: SessionMeta): string {
 			? `${snippet.slice(0, SESSION_OPTION_SNIPPET_LENGTH - 1).trimEnd()}…`
 			: snippet;
 	} else {
-		displayTitle = title && title !== meta.id ? title : `会话 ${meta.id.slice(0, 8)}`;
+		displayTitle = title && title !== meta.id ? title : tNow("backlog.sessionPrefix", { id: meta.id.slice(0, 8) });
 	}
 
 	const label = meta.label.trim();

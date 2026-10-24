@@ -15,7 +15,7 @@ export interface ArgCandidate {
 
 export interface ArgProvider {
 	/** Popup section label. */
-	groupLabel: SlashGroup;
+	groupKey: SlashGroup;
 	icon: SlashCommandDef["icon"];
 	/** Fetch current candidates (local data source). */
 	load(cwd?: string | null): Promise<ArgCandidate[]>;
@@ -25,7 +25,7 @@ export interface ArgProvider {
  * substring; empty query = all). `enable` lists disabled candidates first,
  * every other subcommand lists enabled ones first; order is stable otherwise. */
 export function buildArgItems(
-	provider: Pick<ArgProvider, "groupLabel" | "icon">,
+	provider: Pick<ArgProvider, "groupKey" | "icon">,
 	candidates: readonly ArgCandidate[],
 	sub: string,
 	query: string,
@@ -48,7 +48,7 @@ export function buildArgItems(
 			title: "",
 			description: c.description,
 			icon: provider.icon,
-			group: provider.groupLabel,
+			group: provider.groupKey,
 			registry: false,
 			plain: true,
 		}));

@@ -3,6 +3,7 @@
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FolderOpen, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { tNow, useT } from "../../../stores/language";
 import { NativeSelect } from "../../../components/NativeSelect";
 import { confirmDialog, errMsg } from "../../../lib/dialogs";
 import { useHomeDir } from "../../../lib/hooks";
@@ -40,7 +41,7 @@ async function openFolder(path: string) {
 		try {
 			await revealItemInDir(path);
 		} catch (e) {
-			toast.error(`在访达中打开失败：${errMsg(e)}`);
+			toast.error(tNow("memoryRules.openFolderFailed", { error: errMsg(e) }));
 		}
 	}
 }
@@ -52,7 +53,7 @@ async function openWithDefaultEditor(path: string) {
 		try {
 			await revealItemInDir(path);
 		} catch (e) {
-			toast.error(`打开文件失败：${errMsg(e)}`);
+			toast.error(tNow("memoryRules.openFileFailed", { error: errMsg(e) }));
 		}
 	}
 }
@@ -83,6 +84,7 @@ interface CardProps {
 }
 
 function NoteCard({ slug, file, path, reloadToken, onEdit }: CardProps) {
+	const { t } = useT();
 	const text = useMemoryText(slug, file.rel, reloadToken);
 	const [expanded, setExpanded] = useState(false);
 	const d = describeMemoryFile(file.rel);
@@ -103,15 +105,15 @@ function NoteCard({ slug, file, path, reloadToken, onEdit }: CardProps) {
 				</div>
 				<div className="flex flex-wrap items-center gap-1.5">
 					<Button size="sm" icon={Pencil} onClick={onEdit}>
-						编辑
+						{t("memoryRules.edit")}
 					</Button>
 					<Button size="sm" icon={ExternalLink} disabled={!path} onClick={() => path && void openWithDefaultEditor(path)}>
-						用默认编辑器打开
+						{t("memoryRules.openInDefaultEditor")}
 					</Button>
 				</div>
 			</div>
 			{preview === null ? (
-				<p className="text-xs text-[var(--text-muted)]">文件内容为空或已不存在。</p>
+				<p className="text-xs text-[var(--text-muted)]">{t("memoryRules.emptyOrMissing")}</p>
 			) : (
 				<>
 					<pre className="whitespace-pre-wrap break-words rounded-lg bg-[var(--bg-active-fill)] px-3 py-2 font-mono text-[11px] leading-4 text-[var(--text-muted)]">
@@ -124,7 +126,7 @@ function NoteCard({ slug, file, path, reloadToken, onEdit }: CardProps) {
 							icon={expanded ? ChevronDown : ChevronRight}
 							onClick={() => setExpanded((v) => !v)}
 						>
-							{expanded ? "收起" : `展开全文（还有 ${preview.hiddenLines} 行）`}
+							{expanded ? t("memoryRules.collapse") : t("memoryRules.expandAll", { lines: preview.hiddenLines })}
 						</Button>
 					)}
 				</>
@@ -142,6 +144,7 @@ function SkillCard({
 	onEdit,
 	onDelete,
 }: CardProps & { folderPath: string | null; onDelete: () => void }) {
+	const { t } = useT();
 	const text = useMemoryText(slug, file.rel, reloadToken);
 	const name = skillNameOf(file.rel) ?? file.rel;
 	const description = text === null ? null : parseSkillDescription(text);
@@ -151,27 +154,28 @@ function SkillCard({
 				<span className="text-[13px] font-semibold text-[var(--text)]">{name}</span>
 				<div className="flex flex-wrap items-center gap-1.5">
 					<Button size="sm" icon={Pencil} onClick={onEdit}>
-						编辑
+						{t("memoryRules.edit")}
 					</Button>
 					<Button size="sm" icon={FolderOpen} disabled={!folderPath} onClick={() => folderPath && void openFolder(folderPath)}>
-						打开文件夹
+						{t("memoryRules.openFolder")}
 					</Button>
 					<Button size="sm" icon={ExternalLink} disabled={!path} onClick={() => path && void openWithDefaultEditor(path)}>
-						用默认编辑器打开
+						{t("memoryRules.openInDefaultEditor")}
 					</Button>
 					<Button size="sm" variant="danger" icon={Trash2} onClick={onDelete}>
-						删除
+						{t("memoryRules.delete")}
 					</Button>
 				</div>
 			</div>
 			<p className="text-xs leading-4 text-[var(--text-muted)]">
-				{text === null ? "文件已不存在" : (description ?? "SKILL.md 没有写 description")}
+				{text === null ? t("memoryRules.fileNotFound") : (description ?? t("memoryRules.noDescription"))}
 			</p>
 		</div>
 	);
 }
 
 export function MemoryFilesPanel() {
+	const { t } = useT();
 	const cwd = useSettingsProjectCwd();
 	const home = useHomeDir();
 	const [projects, setProjects] = useState<string[] | null>(null);
@@ -236,19 +240,19 @@ export function MemoryFilesPanel() {
 
 	const deleteSkill = async (name: string) => {
 		if (!slug) return;
-		const ok = await confirmDialog(`删除技能「${name}」？整个技能文件夹会被移除，无法恢复。`, {
-			title: "删除技能",
+		const ok = await confirmDialog(t("memoryRules.deleteSkillConfirm", { name }), {
+			title: t("memoryRules.deleteSkillTitle"),
 			danger: true,
-			okLabel: "删除",
+			okLabel: t("memoryRules.delete"),
 		});
 		if (!ok) return;
 		try {
 			await ompMemoryDeleteSkill(slug, name);
-			toast.success("技能已删除");
+			toast.success(t("memoryRules.skillDeleted"));
 			setRel(null);
 			await refreshFiles();
 		} catch (e) {
-			toast.error(`删除失败：${describeFileCommandError(e)}`);
+			toast.error(t("memoryRules.deleteFailed", { error: describeFileCommandError(e) }));
 		}
 	};
 
@@ -268,10 +272,10 @@ export function MemoryFilesPanel() {
 		const filePath = pathOf(selected.rel);
 		const skillName = skillNameOf(selected.rel);
 		return (
-			<div className="scroll-mt-4 space-y-3" data-jump="记忆文件">
+			<div className="scroll-mt-4 space-y-3" data-jump={t("memoryRules.title")}>
 				<div className="flex items-center gap-2 px-1">
 					<Button icon={ArrowLeft} onClick={closeEditor}>
-						返回列表
+						{t("memoryRules.backToList")}
 					</Button>
 					<span className="text-xs text-[var(--text-muted)]">{describeMemoryFile(selected.rel).title}</span>
 				</div>
@@ -285,17 +289,21 @@ export function MemoryFilesPanel() {
 						save={save}
 						readOnly={!selected.editable}
 						statusText={(loaded) =>
-							loaded === null ? "文件已不存在" : selected.editable ? "omp 会读取这个文件" : "由 omp 生成"
+							loaded === null
+								? t("memoryRules.fileNotFound")
+								: selected.editable
+									? t("memoryRules.ompWillRead")
+									: t("memoryRules.generatedByOmp")
 						}
 						extraActions={
 							skillName ? (
 								<Button icon={Trash2} variant="danger" onClick={() => void deleteSkill(skillName)}>
-									删除技能
+									{t("memoryRules.deleteSkill")}
 								</Button>
 							) : undefined
 						}
 						onChanged={() => void refreshFiles()}
-						savedToast="已保存，新开的会话会使用新内容"
+						savedToast={t("memoryRules.savedToast")}
 					/>
 				)}
 			</div>
@@ -303,16 +311,14 @@ export function MemoryFilesPanel() {
 	}
 
 	return (
-		<div className="scroll-mt-4 space-y-3" data-jump="记忆文件">
+		<div className="scroll-mt-4 space-y-3" data-jump={t("memoryRules.title")}>
 			<div className="flex flex-wrap items-start justify-between gap-2 px-1">
 				<div>
-					<h3 className="text-sm font-semibold text-[var(--text)]">记忆文件</h3>
-					<p className="mt-0.5 text-xs text-[var(--text-muted)]">
-						omp 为每个项目单独存放的记忆。摘要和技能可以直接改，改完新开的会话生效；这里不会新建文件。
-					</p>
+					<h3 className="text-sm font-semibold text-[var(--text)]">{t("memoryRules.title")}</h3>
+					<p className="mt-0.5 text-xs text-[var(--text-muted)]">{t("memoryRules.desc")}</p>
 				</div>
 				<Button icon={FolderOpen} disabled={!projectDir} onClick={() => projectDir && void openFolder(projectDir)}>
-					在访达中打开记忆目录
+					{t("memoryRules.openInFinder")}
 				</Button>
 			</div>
 
@@ -320,17 +326,17 @@ export function MemoryFilesPanel() {
 
 			<SettingsCard>
 				<SettingRow
-					label="项目"
+					label={t("memoryRules.project")}
 					description={
 						projects && projects.length === 0 && !error
-							? "还没有任何项目的记忆"
+							? t("memoryRules.noProjectMemory")
 							: projectLabel
-								? `${projectLabel.label}${projectLabel.exact ? "" : "（路径里的 - 可能是目录分隔符）"}`
-								: "默认是当前会话所在的项目"
+								? `${projectLabel.label}${projectLabel.exact ? "" : t("memoryRules.hyphenNote")}`
+								: t("memoryRules.defaultCurrentProject")
 					}
 					control={
 						<NativeSelect
-							aria-label="记忆所属项目"
+							aria-label={t("memoryRules.projectSelectAria")}
 							containerClassName="w-72"
 							value={slug ?? ""}
 							disabled={!projects || projects.length === 0}
@@ -347,11 +353,11 @@ export function MemoryFilesPanel() {
 			</SettingsCard>
 
 			{slug && files.length === 0 && !error && (
-				<p className="px-1 text-xs text-[var(--text-muted)]">这个项目下还没有记忆文件。</p>
+				<p className="px-1 text-xs text-[var(--text-muted)]">{t("memoryRules.noFilesUnderProject")}</p>
 			)}
 
 			{slug && split.notes.length > 0 && (
-				<SettingsCard title="记忆" description="摘要在每次新会话开头注入；完整记忆由 agent 需要时查阅。">
+				<SettingsCard title={t("memoryRules.memoryCardTitle")} description={t("memoryRules.memoryCardDesc")}>
 					{split.notes.map((f) => (
 						<NoteCard
 							key={f.rel}
@@ -366,9 +372,9 @@ export function MemoryFilesPanel() {
 			)}
 
 			{slug && (
-				<SettingsCard title="沉淀的技能" description="每个技能一个文件夹，可编辑或删除。">
+				<SettingsCard title={t("memoryRules.skillsCardTitle")} description={t("memoryRules.skillsCardDesc")}>
 					{split.skills.length === 0 ? (
-						<p className="px-4 py-3 text-xs text-[var(--text-muted)]">还没有沉淀的技能</p>
+						<p className="px-4 py-3 text-xs text-[var(--text-muted)]">{t("memoryRules.noSkillsYet")}</p>
 					) : (
 						split.skills.map((f) => {
 							const name = skillNameOf(f.rel) ?? f.rel;
@@ -399,12 +405,12 @@ export function MemoryFilesPanel() {
 							className="flex w-full items-center gap-1.5 text-left text-xs font-medium text-[var(--text)]"
 						>
 							{rawOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-							omp 自动生成的原始记录（{split.generatedCount} 个）
+							{t("memoryRules.generatedRecordsTitle", { count: split.generatedCount })}
 						</button>
 						{rawOpen && (
 							<div className="mt-2 flex flex-wrap items-center justify-between gap-2 pl-5">
 								<p className="text-xs text-[var(--text-muted)]">
-									原始记忆和各次会话摘要由 omp 反复重新生成，手改没有意义，需要时在访达里查看。
+									{t("memoryRules.generatedRecordsDesc")}
 								</p>
 								<Button
 									size="sm"
@@ -412,7 +418,7 @@ export function MemoryFilesPanel() {
 									disabled={!projectDir}
 									onClick={() => projectDir && void openFolder(projectDir)}
 								>
-									在访达中显示
+									{t("memoryRules.showInFinder")}
 								</Button>
 							</div>
 						)}

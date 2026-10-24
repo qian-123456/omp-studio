@@ -1,35 +1,39 @@
-import { DEFAULT_LOCALE, type Locale, type TranslationSchema } from "./types";
-import { zhCN } from "./locales/zh-CN";
-import { enUS } from "./locales/en-US";
+import type { MessageTree, NamespaceMessages } from "./define";
+import { DEFAULT_LOCALE, type Locale } from "./types";
 
 export * from "./types";
+export { defineMessages } from "./define";
 
-export const LOCALES: Record<Locale, TranslationSchema> = {
-	"zh-CN": zhCN,
-	"en-US": enUS,
-};
+/**
+ * Every `messages/<namespace>.ts` registers itself: the file name is the key
+ * prefix, so `messages/git.ts` → `t("git.…")`. New namespaces need no edit here.
+ */
+const NAMESPACES = import.meta.glob<NamespaceMessages>("./messages/*.ts", {
+	eager: true,
+	import: "default",
+});
 
-function flattenDictionary(schema: TranslationSchema): Map<string, string> {
-	const map = new Map<string, string>();
-	function walk(node: unknown, prefix: string): void {
-		if (typeof node === "string") {
-			map.set(prefix, node);
-			return;
-		}
-		if (node && typeof node === "object") {
-			for (const [key, val] of Object.entries(node)) {
-				const nextKey = prefix ? `${prefix}.${key}` : key;
-				walk(val, nextKey);
-			}
-		}
+function flatten(node: MessageTree, prefix: string, into: Map<string, string>): void {
+	for (const [key, val] of Object.entries(node)) {
+		const path = `${prefix}.${key}`;
+		if (typeof val === "string") into.set(path, val);
+		else flatten(val, path, into);
 	}
-	walk(schema, "");
+}
+
+function buildDict(locale: Locale): Map<string, string> {
+	const map = new Map<string, string>();
+	for (const [file, messages] of Object.entries(NAMESPACES)) {
+		const ns = file.slice(file.lastIndexOf("/") + 1, -".ts".length);
+		flatten(messages[locale] as MessageTree, ns, map);
+	}
 	return map;
 }
 
-const FLAT_DICTS: Record<Locale, Map<string, string>> = {
-	"zh-CN": flattenDictionary(zhCN),
-	"en-US": flattenDictionary(enUS),
+/** Flattened dot-path → template, per locale. Exported for the parity/coverage tests. */
+export const FLAT_DICTS: Record<Locale, ReadonlyMap<string, string>> = {
+	"zh-CN": buildDict("zh-CN"),
+	"en-US": buildDict("en-US"),
 };
 
 /**
@@ -55,18 +59,6 @@ export function t(
 	params?: Record<string, string | number>,
 	locale: Locale = DEFAULT_LOCALE,
 ): string {
-	const currentDict = FLAT_DICTS[locale] ?? FLAT_DICTS[DEFAULT_LOCALE];
-	let pattern = currentDict.get(key);
-
-	// Fallback to default locale if not found in current dictionary
-	if (pattern === undefined && locale !== DEFAULT_LOCALE) {
-		pattern = FLAT_DICTS[DEFAULT_LOCALE]?.get(key);
-	}
-
-	// Final fallback: return key itself if not resolved
-	if (pattern === undefined) {
-		return key;
-	}
-
-	return interpolate(pattern, params);
+	const pattern = FLAT_DICTS[locale]?.get(key) ?? FLAT_DICTS[DEFAULT_LOCALE].get(key);
+	return pattern === undefined ? key : interpolate(pattern, params);
 }

@@ -3,6 +3,7 @@
  * role → model resolution (omp `modelRoles`), and the recent-models list.
  */
 import { type ModelOption, resolveThinkingLevels, toModelKey } from "../lib/models";
+import { tNow } from "../stores/language";
 
 /** Thinking levels accepted as a trailing `:<level>` on a model/role selector. */
 export const THINKING_LEVELS = [
@@ -46,11 +47,21 @@ export function composeSelection(selector: string, level?: string | null): strin
 }
 
 /** Role ids the picker knows how to resolve and label. */
-export const RESOLVABLE_ROLES: Record<string, string> = {
-	smol: "快速模型 (smol)",
-	default: "主力模型 (default)",
-	slow: "深度模型 (slow)",
-};
+export const RESOLVABLE_ROLES: Record<string, string> = new Proxy(
+	{
+		smol: "",
+		default: "",
+		slow: "",
+	},
+	{
+		get(target, prop: string) {
+			if (prop === "smol") return tNow("models.roleSmol");
+			if (prop === "default") return tNow("models.roleDefault");
+			if (prop === "slow") return tNow("models.roleSlow");
+			return Reflect.get(target, prop);
+		},
+	},
+);
 
 /** Role id for a selector like "smol" / "@smol", else null. */
 export function roleIdOf(selector: string): string | null {
@@ -113,10 +124,14 @@ export function resolveRole(
 
 /** Text after the role label, e.g. "Claude Haiku · high" / "跟随主力：Opus" / "omp 自动挑选". */
 export function describeResolution(r: RoleResolution, levelOverride?: string | null): string {
-	if (r.kind === "auto") return levelOverride ? `omp 自动挑选 · ${levelOverride}` : "omp 自动挑选";
+	if (r.kind === "auto") {
+		return levelOverride
+			? tNow("models.autoPickWithLevel", { level: levelOverride })
+			: tNow("models.autoPick");
+	}
 	const name = r.model?.name ?? r.selector;
 	const level = levelOverride ?? r.level;
-	const base = r.kind === "followDefault" ? `跟随主力：${name}` : name;
+	const base = r.kind === "followDefault" ? tNow("models.followDefault", { name }) : name;
 	return level ? `${base} · ${level}` : base;
 }
 

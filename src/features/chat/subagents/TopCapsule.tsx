@@ -3,6 +3,7 @@ import { Bot, Check, ChevronDown, ChevronRight, ChevronUp, Clock, X } from "luci
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { claimEscape, isEscapeClaimed } from "../../../lib/escapeClaim";
 import type { SubagentInfo } from "../../../stores/live";
+import { useT } from "../../../stores/language";
 import { useUi } from "../../../stores/ui";
 import { useSettings } from "../../settings/store";
 import { subagentCounts } from "./counts";
@@ -58,6 +59,7 @@ function SummaryBadge({
 	counts: { running: number; done: number; failed: number; queued?: number };
 	small?: boolean;
 }) {
+	const { t } = useT();
 	const s = statusSummary(counts);
 	const seg = clsx(
 		"inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
@@ -70,13 +72,13 @@ function SummaryBadge({
 				{s.mode === "running" && (
 					<span className={clsx(seg, TINT.running)}>
 						<Spinner />
-						{s.running} 运行中
+						{t("subagents.runningCount", { count: s.running })}
 					</span>
 				)}
 				{queued > 0 && (
-					<span className={clsx(seg, TINT.queued)} title={`${queued} 个子代理排队中，尚未开始`}>
+					<span className={clsx(seg, TINT.queued)} title={t("subagents.queuedTitle", { count: queued })}>
 						<Clock className="h-3 w-3" />
-						{queued} 排队中
+						{t("subagents.topQueuedCount", { count: queued })}
 					</span>
 				)}
 				<span className="text-[11px] tabular-nums text-[var(--text-40)]">{s.progress}</span>
@@ -85,7 +87,7 @@ function SummaryBadge({
 	}
 	if (s.mode === "done") {
 		return (
-			<span className={clsx(seg, TINT.done)} title={`${s.count} 个子代理已全部完成`}>
+			<span className={clsx(seg, TINT.done)} title={t("subagents.allDoneTitle", { count: s.count })}>
 				<Check className="h-3 w-3" strokeWidth={3} />
 				{s.count}
 			</span>
@@ -137,6 +139,7 @@ interface RowCtx {
 }
 
 function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
+	const { t } = useT();
 	return (
 		<>
 			{nodes.map((n) => {
@@ -194,8 +197,12 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 								<button
 									type="button"
 									aria-expanded={!isCollapsed}
-									aria-label={`${isCollapsed ? "展开" : "收起"} ${title} 的 ${st.total} 个下级子代理`}
-									title={isCollapsed ? "展开下级子代理" : "收起下级子代理"}
+									aria-label={t("subagents.toggleSubtreeAria", {
+										action: isCollapsed ? t("subagents.expand") : t("subagents.collapse"),
+										title,
+										count: st.total,
+									})}
+									title={isCollapsed ? t("subagents.expandSubtreeTitle") : t("subagents.collapseSubtreeTitle")}
 									onClick={(e) => {
 										e.stopPropagation();
 										ctx.onToggle(n.id);
@@ -205,7 +212,7 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 								>
 									{isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
 									{/* Collapsed: the whole subtree size. Expanded: direct children only — deeper rows carry their own chip. */}
-									<span>{isCollapsed ? `共 ${st.total} 个子代理` : `${n.children.length} 个下级`}</span>
+									<span>{isCollapsed ? t("subagents.totalSubtreeCount", { count: st.total }) : t("subagents.directChildrenCount", { count: n.children.length })}</span>
 								</button>
 							)}
 							{ctx.perRowModel && model && (
@@ -236,6 +243,7 @@ function TreeRows({ nodes, ctx }: { nodes: TreeNode[]; ctx: RowCtx }) {
 }
 
 export function TopCapsule() {
+	const { t } = useT();
 	const settings = useSettings((s) => s.settings);
 	const loadSettings = useSettings((s) => s.load);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
@@ -394,10 +402,10 @@ export function TopCapsule() {
 					aria-expanded={false}
 					style={{ "--glass-radius": "999px" } as CSSProperties}
 					className="liquid-glass pointer-events-auto relative inline-flex h-8 items-center gap-1.5 py-0 pl-2.5 pr-2 text-[12px] text-[var(--text)]"
-					title="展开子代理（Subagents）状态面板"
+					title={t("subagents.expandPanelTitle")}
 				>
 					<Bot className="h-[15px] w-[15px] shrink-0 text-[var(--accent)]" />
-					<span className="text-[12.5px] font-semibold">子代理</span>
+					<span className="text-[12.5px] font-semibold">{t("subagents.subagents")}</span>
 					<SummaryBadge counts={counts} />
 					<ChevronDown className="-ml-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-60)]" />
 				</button>
@@ -405,13 +413,13 @@ export function TopCapsule() {
 			{open && (
 				<div
 					role="region"
-					aria-label="子代理状态"
+					aria-label={t("subagents.panelAria")}
 					className="liquid-glass pointer-events-auto w-[400px] max-w-full p-2 text-[12.5px] text-[var(--text)]"
 				>
 					<div ref={panelRef} className="outline-none">
 					<div className="flex items-center gap-1.5 py-1 pl-1.5 pr-0.5">
 						<Bot className="h-[15px] w-[15px] shrink-0 text-[var(--accent)]" />
-						<span className="shrink-0 whitespace-nowrap text-[12.5px] font-semibold">子代理</span>
+						<span className="shrink-0 whitespace-nowrap text-[12.5px] font-semibold">{t("subagents.subagents")}</span>
 						<span className="flex min-w-0 flex-1 items-center gap-1.5">
 							<SummaryBadge counts={counts} small />
 						</span>
@@ -419,15 +427,15 @@ export function TopCapsule() {
 							type="button"
 							onClick={() => setOpen(false)}
 							className="grid h-[22px] w-[22px] place-items-center rounded-full text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
-							title="收起为胶囊"
-							aria-label="收起子代理面板"
+							title={t("subagents.collapseToCapsuleTitle")}
+							aria-label={t("subagents.collapsePanelAria")}
 						>
 							<ChevronUp className="h-3.5 w-3.5" />
 						</button>
 					</div>
 					{sharedModel && (
-						<div className="pb-1 pl-[27px] text-[11px] text-[var(--text-40)]" title="所有子代理使用的模型">
-							全部使用 {sharedModel}
+						<div className="pb-1 pl-[27px] text-[11px] text-[var(--text-40)]" title={t("subagents.sharedModelTitle")}>
+							{t("subagents.allUseModel", { model: sharedModel })}
 						</div>
 					)}
 
@@ -442,7 +450,7 @@ export function TopCapsule() {
 							onClick={() => setShowAll(!showAll)}
 							className="mt-1 ml-[15px] flex h-[26px] w-[calc(100%-15px)] items-center gap-1 rounded-[10px] px-2 text-left text-[12px] text-[var(--text-60)] hover:bg-[var(--ghost-hover)] hover:text-[var(--text)]"
 						>
-							{showAll ? "收起多余的行" : moreLabel(capped.hidden, capped.hiddenAllDone)}
+							{showAll ? t("subagents.collapseExtraRows") : moreLabel(capped.hidden, capped.hiddenAllDone)}
 							{showAll ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
 						</button>
 					)}

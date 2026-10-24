@@ -1,4 +1,5 @@
 /** Pure helpers for the MCP server add/edit form (McpServerEditor) and the import dialog. */
+import { tNow } from "../../stores/language";
 import type { McpServerItem, McpServerPatch } from "../../lib/contracts";
 
 export type McpTransport = "stdio" | "http" | "sse";
@@ -29,9 +30,15 @@ export interface ServerDraft {
 }
 
 export const TRANSPORT_LABELS: Record<McpTransport, string> = {
-	stdio: "本地命令",
-	http: "HTTP",
-	sse: "SSE",
+	get stdio() {
+		return tNow("mcp.transportStdio");
+	},
+	get http() {
+		return tNow("mcp.transportHttp");
+	},
+	get sse() {
+		return tNow("mcp.transportSse");
+	},
 };
 
 export function transportLabel(t: string): string {
@@ -74,40 +81,40 @@ export type DraftErrors = Partial<
 export function validateDraft(d: ServerDraft, existingNames: readonly string[]): DraftErrors {
 	const errors: DraftErrors = {};
 	const name = d.name.trim();
-	if (!name) errors.name = "请填写名称";
-	else if (!NAME_RE.test(name)) errors.name = "名称只能包含字母、数字、- _ .";
+	if (!name) errors.name = tNow("mcp.nameRequired");
+	else if (!NAME_RE.test(name)) errors.name = tNow("mcp.nameInvalid");
 	else if (name !== d.original?.name && existingNames.includes(name))
-		errors.name = `已存在同名服务器「${name}」`;
+		errors.name = tNow("mcp.nameDuplicate", { name });
 
 	if (d.type === "stdio") {
-		if (!d.command.trim()) errors.command = "请填写要运行的命令，例如 npx";
+		if (!d.command.trim()) errors.command = tNow("mcp.commandRequired");
 	} else {
 		const url = d.url.trim();
-		if (!url) errors.url = "请填写服务器地址";
-		else if (!/^https?:\/\/\S+$/i.test(url)) errors.url = "地址需以 http:// 或 https:// 开头";
+		if (!url) errors.url = tNow("mcp.urlRequired");
+		else if (!/^https?:\/\/\S+$/i.test(url)) errors.url = tNow("mcp.urlInvalid");
 	}
 
 	const timeout = d.timeout.trim();
 	if (timeout && !(/^\d+$/.test(timeout) && Number(timeout) > 0))
-		errors.timeout = "超时需为正整数（毫秒）";
+		errors.timeout = tNow("mcp.timeoutInvalid");
 
 	const kvError = (rows: KvRow[], re: RegExp, what: string): string | undefined => {
 		const seen = new Set<string>();
 		for (const { key, value } of rows) {
 			const k = key.trim();
 			if (!k && !value) continue;
-			if (!k) return `${what}缺少名称`;
-			if (!re.test(k)) return `${what}名称「${k}」不合法`;
-			if (seen.has(k)) return `${what}「${k}」重复`;
+			if (!k) return tNow("mcp.kvMissingKey", { what });
+			if (!re.test(k)) return tNow("mcp.kvInvalidKey", { what, key: k });
+			if (seen.has(k)) return tNow("mcp.kvDuplicateKey", { what, key: k });
 			seen.add(k);
 		}
 		return undefined;
 	};
 	if (d.type === "stdio") {
-		const e = kvError(d.envAdds, ENV_KEY_RE, "环境变量");
+		const e = kvError(d.envAdds, ENV_KEY_RE, tNow("mcp.envWhat"));
 		if (e) errors.env = e;
 	} else {
-		const e = kvError(d.headerAdds, HEADER_KEY_RE, "请求头");
+		const e = kvError(d.headerAdds, HEADER_KEY_RE, tNow("mcp.headersWhat"));
 		if (e) errors.headers = e;
 	}
 	return errors;

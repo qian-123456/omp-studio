@@ -13,6 +13,15 @@ import { SPACE_MODE_META } from "../modes";
 import { useSidebarStore } from "../sidebarStore";
 import { HighlightedSnippet } from "./HighlightedSnippet";
 import { openSearchRow } from "./openSearchRow";
+import { useT } from "../../../stores/language";
+
+const BUCKET_LABEL_KEYS: Record<string, string> = {
+	today: "time.today",
+	yesterday: "time.yesterday",
+	last7Days: "time.past7Days",
+	last30Days: "time.past30Days",
+	earlier: "time.earlier",
+};
 import {
 	RECENT_LIMIT,
 	bucketRecent,
@@ -33,6 +42,7 @@ export function SessionSearchDialog() {
 }
 
 function SearchDialogBody() {
+	const { t } = useT();
 	const closeDialog = useSearchDialog((s) => s.closeDialog);
 	const focusSeq = useSearchDialog((s) => s.focusSeq);
 	const sessions = useSessions((s) => s.sessions);
@@ -132,7 +142,7 @@ function SearchDialogBody() {
 		<Modal
 			onClose={closeDialog}
 			size="none"
-			ariaLabel="搜索会话"
+			ariaLabel={t("sessions.searchDialogAria")}
 			className="h-[min(560px,85vh)] w-full max-w-xl overflow-hidden"
 		>
 			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-divider)] px-3 py-2.5">
@@ -142,8 +152,8 @@ function SearchDialogBody() {
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
 					onKeyDown={onKeyDown}
-					placeholder="搜索会话标题与聊天内容"
-					aria-label="搜索会话"
+					placeholder={t("sidebar.searchSessions")}
+					aria-label={t("sessions.searchDialogAria")}
 					role="combobox"
 					aria-expanded="true"
 					aria-controls="session-search-list"
@@ -154,7 +164,7 @@ function SearchDialogBody() {
 					<Loader2
 						size={14}
 						role="status"
-						aria-label="正在搜索"
+						aria-label={t("sessions.searchingAria")}
 						className="shrink-0 animate-spin text-neutral-400"
 					/>
 				)}
@@ -162,20 +172,20 @@ function SearchDialogBody() {
 					type="button"
 					aria-pressed={includeArchived}
 					onClick={() => setIncludeArchived((v) => !v)}
-					title={includeArchived ? "点击后不再搜索已归档会话" : "点击后同时搜索已归档会话"}
+					title={includeArchived ? t("sessions.clickToExcludeArchived") : t("sessions.clickToIncludeArchived")}
 					className={clsx(
 						"flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[12px] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)]",
 						includeArchived ? "text-neutral-300" : "text-neutral-500",
 					)}
 				>
 					<Archive size={13} strokeWidth={1.6} className="shrink-0" />
-					{includeArchived ? "已包含已归档" : "未包含已归档"}
+					{includeArchived ? t("sessions.includedArchived") : t("sessions.excludedArchived")}
 				</button>
 			</div>
 
 			{indexStatus?.building && (
 				<div className="shrink-0 border-b border-[var(--border-divider)] px-3 py-1.5 text-[11px] text-amber-300/90">
-					{`正在建立全文索引 ${indexStatus.indexed}/${indexStatus.total}，结果可能不完整`}
+					{t("sessions.indexingFullText", { indexed: indexStatus.indexed, total: indexStatus.total })}
 				</div>
 			)}
 
@@ -184,7 +194,7 @@ function SearchDialogBody() {
 					role="alert"
 					className="shrink-0 select-text whitespace-pre-wrap break-all border-b border-[var(--border-divider)] px-3 py-2 text-[11px] text-rose-300"
 				>
-					{`全文搜索失败：${content.error}`}
+					{t("sessions.contentSearchFailed", { error: content.error })}
 				</div>
 			)}
 
@@ -223,7 +233,7 @@ function SearchDialogBody() {
 						</OptionButton>
 					))}
 				{showEmpty && (
-					<div className="px-3 py-10 text-center text-[13px] text-neutral-500">没有找到相关会话</div>
+					<div className="px-3 py-10 text-center text-[13px] text-neutral-500">{t("sessions.noMatchingSessions")}</div>
 				)}
 			</div>
 		</Modal>
@@ -282,13 +292,14 @@ function RecentList({
 	allSessions: Record<string, SessionMeta>;
 	workspaceNames: ReadonlyMap<string, string>;
 }) {
+	const { t } = useT();
 	let index = 0;
 	return (
 		<>
 			{buckets.map((bucket) => (
 				<div key={bucket.key} data-bucket={bucket.key}>
 					<div className="px-2.5 pb-1 pt-3 text-[11px] font-medium text-neutral-500">
-						{bucket.label}
+						{BUCKET_LABEL_KEYS[bucket.key] ? t(BUCKET_LABEL_KEYS[bucket.key]) : bucket.label}
 					</div>
 					{bucket.sessions.map((session) => {
 						const i = index++;
@@ -327,12 +338,13 @@ function SessionRowBody({
 	allSessions: Record<string, SessionMeta>;
 	workspaceNames: ReadonlyMap<string, string>;
 }) {
+	const { t } = useT();
 	const { session, hit } = row;
 	const title =
 		session.title?.trim() ||
 		(session.kind === "side" ? sideChatTitle(session.id, allSessions) : null) ||
 		session.label ||
-		"未命名会话";
+		t("sessions.untitledSession");
 	const wsName = session.workspaceId ? workspaceNames.get(session.workspaceId) : undefined;
 	const place = [wsName, session.git?.branch].filter(Boolean).join(" · ");
 	return (
@@ -343,7 +355,7 @@ function SessionRowBody({
 				</span>
 				{session.archived && (
 					<span className="shrink-0 whitespace-nowrap rounded bg-neutral-500/20 px-1.5 text-[10px] leading-4 text-neutral-300">
-						已归档
+						{t("sessionActions.archived")}
 					</span>
 				)}
 				{session.mode !== activeMode && (
@@ -366,7 +378,7 @@ function SessionRowBody({
 			{hit && (
 				<div className="flex items-start gap-1.5 text-[12px] leading-5 text-neutral-400">
 					<span className="shrink-0 whitespace-nowrap text-neutral-500">
-						{hit.role === "user" ? "你" : "助手"}
+						{hit.role === "user" ? t("sessions.roleYou") : t("sessions.roleAssistant")}
 					</span>
 					<HighlightedSnippet
 						segments={hit.segments}

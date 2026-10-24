@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { errMsg } from "../lib/dialogs";
 import { rpcOmpStaleness, rpcRestart } from "../lib/ipc";
 import { toast } from "../lib/toast";
+import { tNow } from "./language";
 import { type SessionLive, useLive } from "./live";
 
 export type LiveClass = "idle" | "busy" | "dead";
@@ -74,8 +75,8 @@ function removePending(id: string): void {
 
 function flushToast(): void {
 	toastTimer = undefined;
-	if (switched > 0) toast.success(`已将 ${switched} 个会话切换到 omp ${version ?? "新版本"}`);
-	if (failures.length > 0) toast.error(`${failures.length} 个会话切换到新版 omp 失败：${failures[0]}`);
+	if (switched > 0) toast.success(tNow("shell.switchedSessionsToOmp", { count: switched, version: version ?? tNow("shell.newVersion") }));
+	if (failures.length > 0) toast.error(tNow("shell.switchedSessionsFailed", { count: failures.length, error: failures[0] }));
 	switched = 0;
 	failures.length = 0;
 }

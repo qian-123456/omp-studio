@@ -1,3 +1,4 @@
+import { useT } from "../../stores/language";
 /** [D] Structured editors for OMP config values: string list chips, key/value
  * table, JSON escape hatch and write-only secret input. Each calls `onSave`
  * with the new value; the caller serializes and persists it. */
@@ -25,6 +26,7 @@ type Save = (value: unknown) => Promise<boolean>;
 
 /** Chip list for arrays of strings: Enter adds (comma/newline split, deduped). */
 export function StringListEditor({ value, onSave, busy }: { value: string[]; onSave: Save; busy: boolean }) {
+	const { t } = useT();
 	const [draft, setDraft] = useState("");
 	const add = async () => {
 		const next = listAdd(value, draft);
@@ -37,7 +39,7 @@ export function StringListEditor({ value, onSave, busy }: { value: string[]; onS
 	return (
 		<div className="space-y-1.5">
 			{value.length === 0 ? (
-				<div className="text-[11px] text-neutral-600">列表为空</div>
+				<div className="text-[11px] text-neutral-600">{t("settingsCore.ompValueEditors.listEmpty")}</div>
 			) : (
 				<ul className="space-y-1">
 					{value.map((item, i) => (
@@ -50,7 +52,7 @@ export function StringListEditor({ value, onSave, busy }: { value: string[]; onS
 							</span>
 							<button
 								type="button"
-								title="上移"
+								title={t("settingsCore.ompValueEditors.moveUp")}
 								disabled={busy || i === 0}
 								onClick={() => void onSave(listMove(value, i, -1))}
 								className={ICON_BUTTON}
@@ -59,7 +61,7 @@ export function StringListEditor({ value, onSave, busy }: { value: string[]; onS
 							</button>
 							<button
 								type="button"
-								title="下移"
+								title={t("settingsCore.ompValueEditors.moveDown")}
 								disabled={busy || i === value.length - 1}
 								onClick={() => void onSave(listMove(value, i, 1))}
 								className={ICON_BUTTON}
@@ -68,7 +70,7 @@ export function StringListEditor({ value, onSave, busy }: { value: string[]; onS
 							</button>
 							<button
 								type="button"
-								title="删除"
+								title={t("settingsCore.ompValueEditors.remove")}
 								disabled={busy}
 								onClick={() => void onSave(listRemove(value, i))}
 								className={clsx(ICON_BUTTON, "hover:text-rose-300")}
@@ -92,7 +94,7 @@ export function StringListEditor({ value, onSave, busy }: { value: string[]; onS
 						}
 					}}
 					spellCheck={false}
-					placeholder="输入后按回车添加（可用逗号一次添加多项）"
+					placeholder={t("settingsCore.ompValueEditors.addPlaceholder")}
 					className={clsx(INPUT_CLASS, "min-w-0 flex-1 font-mono")}
 				/>
 				<button
@@ -100,7 +102,7 @@ export function StringListEditor({ value, onSave, busy }: { value: string[]; onS
 					disabled={busy || !draft.trim()}
 					onClick={() => void add()}
 					className={clsx(ICON_BUTTON, "hairline px-2 py-1")}
-					title="添加"
+					title={t("settingsCore.ompValueEditors.add")}
 				>
 					<Plus className="h-3.5 w-3.5" />
 				</button>
@@ -111,6 +113,7 @@ export function StringListEditor({ value, onSave, busy }: { value: string[]; onS
 
 /** Key/value table for records; nested values edit as per-entry JSON. Saves on blur/Enter. */
 export function RecordEditor({ value, onSave, busy }: { value: unknown; onSave: Save; busy: boolean }) {
+	const { t } = useT();
 	const [rows, setRows] = useState<RecordRow[]>(() => recordToRows(value));
 	const [error, setError] = useState<{ index: number; text: string } | null>(null);
 	const serialized = JSON.stringify(value ?? {});
@@ -142,7 +145,7 @@ export function RecordEditor({ value, onSave, busy }: { value: unknown; onSave: 
 
 	return (
 		<div className="space-y-1.5">
-			{rows.length === 0 && <div className="text-[11px] text-neutral-600">还没有条目</div>}
+			{rows.length === 0 && <div className="text-[11px] text-neutral-600">{t("settingsCore.ompValueEditors.noEntries")}</div>}
 			{rows.map((row, i) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id while keys are being edited
 				<div key={i} className="flex items-center gap-1.5">
@@ -153,7 +156,7 @@ export function RecordEditor({ value, onSave, busy }: { value: unknown; onSave: 
 						onBlur={() => void commit(rows)}
 						onKeyDown={onKey}
 						spellCheck={false}
-						placeholder="名称"
+						placeholder={t("settingsCore.ompValueEditors.namePlaceholder")}
 						aria-invalid={error?.index === i || undefined}
 						className={clsx(
 							INPUT_CLASS,
@@ -169,13 +172,13 @@ export function RecordEditor({ value, onSave, busy }: { value: unknown; onSave: 
 						onBlur={() => void commit(rows)}
 						onKeyDown={onKey}
 						spellCheck={false}
-						placeholder={row.kind === "json" ? "JSON 值" : "值"}
-						title={row.kind === "json" ? "这一项是嵌套结构，请按 JSON 填写" : undefined}
+						placeholder={row.kind === "json" ? t("settingsCore.ompValueEditors.jsonValuePlaceholder") : t("settingsCore.ompValueEditors.valuePlaceholder")}
+						title={row.kind === "json" ? t("settingsCore.ompValueEditors.jsonTooltip") : undefined}
 						className={clsx(INPUT_CLASS, "min-w-0 flex-1 font-mono")}
 					/>
 					<button
 						type="button"
-						title={row.kind === "json" ? "按纯文本编辑" : "按 JSON 编辑（数字、列表、嵌套对象）"}
+						title={row.kind === "json" ? t("settingsCore.ompValueEditors.editAsText") : t("settingsCore.ompValueEditors.editAsJson")}
 						disabled={busy}
 						onClick={() => {
 							const next = rows.map((r, j) =>
@@ -190,7 +193,7 @@ export function RecordEditor({ value, onSave, busy }: { value: unknown; onSave: 
 					</button>
 					<button
 						type="button"
-						title="删除"
+						title={t("settingsCore.ompValueEditors.remove")}
 						disabled={busy}
 						onClick={() => {
 							const next = rows.filter((_, j) => j !== i);
@@ -211,7 +214,7 @@ export function RecordEditor({ value, onSave, busy }: { value: unknown; onSave: 
 				className={LINK_BUTTON}
 			>
 				<Plus className="h-3 w-3" />
-				添加一项
+				{t("settingsCore.ompValueEditors.addEntry")}
 			</button>
 		</div>
 	);
@@ -231,6 +234,7 @@ export function JsonEditor({
 	onClose: () => void;
 	busy: boolean;
 }) {
+	const { t } = useT();
 	const [draft, setDraft] = useState(() => JSON.stringify(value ?? (valueType === "array" ? [] : {}), null, 2));
 	const [error, setError] = useState<string | null>(null);
 	const apply = async () => {
@@ -276,12 +280,12 @@ export function JsonEditor({
 					onClick={() => void apply()}
 					className="rounded-lg bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-[var(--bg)] shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
 				>
-					应用
+					{t("settingsCore.ompValueEditors.apply")}
 				</button>
 				<button type="button" onClick={onClose} className={LINK_BUTTON}>
-					取消
+					{t("settingsCore.ompValueEditors.cancel")}
 				</button>
-				<span className="text-[10px] text-neutral-600">⌘↩ 应用 · Esc 取消</span>
+				<span className="text-[10px] text-neutral-600">{t("settingsCore.ompValueEditors.shortcutsHint")}</span>
 			</div>
 		</div>
 	);
@@ -302,6 +306,7 @@ export function SecretInput({
 	busy: boolean;
 	label: string;
 }) {
+	const { t } = useT();
 	const [draft, setDraft] = useState("");
 	const [reveal, setReveal] = useState(false);
 	const commit = async () => {
@@ -329,12 +334,12 @@ export function SecretInput({
 				}}
 				autoComplete="off"
 				spellCheck={false}
-				placeholder={isSet ? "已设置 · 输入新值以替换" : "未设置 · 输入后按回车保存"}
+				placeholder={isSet ? t("settingsCore.ompValueEditors.secretPlaceholderSet") : t("settingsCore.ompValueEditors.secretPlaceholderUnset")}
 				className={clsx(INPUT_CLASS, "w-56 font-mono")}
 			/>
 			<button
 				type="button"
-				title={reveal ? "隐藏正在输入的内容" : "显示正在输入的内容"}
+				title={reveal ? t("settingsCore.ompValueEditors.hideSecret") : t("settingsCore.ompValueEditors.showSecret")}
 				onClick={() => setReveal(!reveal)}
 				className={ICON_BUTTON}
 			>

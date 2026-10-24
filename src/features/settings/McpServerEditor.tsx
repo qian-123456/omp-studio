@@ -4,6 +4,7 @@
  * scope picker; on edit it is only sent when changed.
  */
 
+import { useT } from "../../stores/language";
 import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import { useMemo, useState, type ClipboardEvent } from "react";
 import { Modal } from "../../components/Modal";
@@ -62,6 +63,7 @@ function KvEditor({
 	onRemoveExisting: (key: string) => void;
 	onChangeAdds: (rows: KvRow[]) => void;
 }) {
+	const { t } = useT();
 	const kept = existing.filter((kv) => !removed.has(kv.key));
 	return (
 		<div className="space-y-1">
@@ -71,11 +73,11 @@ function KvEditor({
 				{kept.map((kv) => (
 					<div key={kv.key} className="flex items-center gap-1.5">
 						<span className="w-40 shrink-0 break-all font-mono text-xs text-[var(--text)]">{kv.key}</span>
-						<span className="flex-1 text-xs text-[var(--text-dim)]">已设置，值不显示</span>
+						<span className="flex-1 text-xs text-[var(--text-dim)]">{t("mcp.valueHidden")}</span>
 						<IconButton
 							icon={X}
-							label={`删除 ${kv.key}`}
-							title="删除此项"
+							label={t("mcp.deleteKvAria", { key: kv.key })}
+							title={t("mcp.deleteThisItem")}
 							size="sm"
 							onClick={() => onRemoveExisting(kv.key)}
 						/>
@@ -89,7 +91,7 @@ function KvEditor({
 								onChangeAdds(adds.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))
 							}
 							placeholder={keyPlaceholder}
-							aria-label="名称"
+							aria-label={t("mcp.kvNameAria")}
 							className="w-40 shrink-0 rounded-lg hairline bg-[var(--well-bg)] px-2 py-1 font-mono text-xs text-[var(--text)] outline-none"
 						/>
 						<input
@@ -99,13 +101,13 @@ function KvEditor({
 							onChange={(e) =>
 								onChangeAdds(adds.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))
 							}
-							placeholder="值，也可写 ${VAR} 引用本机环境变量"
-							aria-label="值"
+							placeholder={t("mcp.kvValuePlaceholder")}
+							aria-label={t("mcp.kvValueAria")}
 							className="min-w-0 flex-1 rounded-lg hairline bg-[var(--well-bg)] px-2 py-1 font-mono text-xs text-[var(--text)] outline-none"
 						/>
 						<IconButton
 							icon={X}
-							label="移除此行"
+							label={t("mcp.removeThisRow")}
 							size="sm"
 							onClick={() => onChangeAdds(adds.filter((_, j) => j !== i))}
 						/>
@@ -143,6 +145,7 @@ export function McpServerEditor({
 	onSubmit: (name: string, patch: McpServerPatch, scope: McpScope | null) => Promise<string | null>;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const paths = useMemo(() => projects.map((p) => p.path), [projects]);
 	const [draft, setDraft] = useState<ServerDraft>(() => draftFrom(original?.definition ?? null));
 	const [initialScope] = useState<McpScope>(() =>
@@ -206,7 +209,7 @@ export function McpServerEditor({
 
 	return (
 		<Modal
-			title={original ? `编辑「${original.name}」` : "添加 MCP 服务器"}
+			title={original ? t("mcp.editTitle", { name: original.name }) : t("mcp.addTitle")}
 			size="xl"
 			closeOnBackdrop={false}
 			onClose={onClose}
@@ -222,33 +225,33 @@ export function McpServerEditor({
 			>
 				<div className="grid grid-cols-2 gap-2">
 					<label className="space-y-1">
-						<span className={LABEL_CLASS}>名称</span>
+						<span className={LABEL_CLASS}>{t("mcp.nameLabel")}</span>
 						<input
 							autoFocus
 							value={draft.name}
 							onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-							placeholder="例如 filesystem"
+							placeholder={t("mcp.namePlaceholder")}
 							className={FIELD_CLASS}
 						/>
 						<FieldError msg={visible.name} />
 					</label>
 					<div className="space-y-1">
-						<span className={LABEL_CLASS}>连接方式</span>
+						<span className={LABEL_CLASS}>{t("mcp.transportLabel")}</span>
 						<div>
 							<Segmented
-								aria-label="连接方式"
-								options={(["stdio", "http", "sse"] as const).map((t) => ({
-									value: t,
-									label: TRANSPORT_LABELS[t],
+								aria-label={t("mcp.transportLabel")}
+								options={(["stdio", "http", "sse"] as const).map((transportType) => ({
+									value: transportType,
+									label: TRANSPORT_LABELS[transportType],
 									title:
-										t === "stdio"
-											? "在本机运行一个命令，最常见，如用 npx 启动某个包"
-											: t === "http"
-												? "连接远程 HTTP 地址"
-												: "连接远程 SSE 地址，旧式推送协议",
+										transportType === "stdio"
+											? t("mcp.transportStdioTitle")
+											: transportType === "http"
+												? t("mcp.transportHttpTitle")
+												: t("mcp.transportSseTitle"),
 								}))}
 								value={draft.type}
-								onChange={(t) => setDraft({ ...draft, type: t })}
+								onChange={(transportType) => setDraft({ ...draft, type: transportType })}
 							/>
 						</div>
 					</div>
@@ -257,7 +260,7 @@ export function McpServerEditor({
 				{draft.type === "stdio" ? (
 					<>
 						<label className="block space-y-1">
-							<span className={LABEL_CLASS}>命令</span>
+							<span className={LABEL_CLASS}>{t("mcp.commandLabel")}</span>
 							<input
 								value={draft.command}
 								onChange={(e) => setDraft({ ...draft, command: e.target.value })}
@@ -266,44 +269,44 @@ export function McpServerEditor({
 									const next = applySplit(draft);
 									if (next) setDraft(next);
 								}}
-								placeholder="npx"
+								placeholder={t("mcp.commandPlaceholder")}
 								className={`${FIELD_CLASS} font-mono`}
 							/>
 							{splitNote && (
 								<div className="text-[11px] text-[var(--text-dim)]">
-									已把整行命令拆成「命令」和「参数」，请检查下面的参数。
+									{t("mcp.splitNote")}
 								</div>
 							)}
 							<FieldError msg={visible.command} />
 						</label>
 						<label className="block space-y-1">
-							<span className={LABEL_CLASS}>参数（每行一个）</span>
+							<span className={LABEL_CLASS}>{t("mcp.argsLabel")}</span>
 							<textarea
 								value={draft.args}
 								onChange={(e) => setDraft({ ...draft, args: e.target.value })}
 								rows={3}
-								placeholder={"-y\n@modelcontextprotocol/server-filesystem"}
+								placeholder={t("mcp.argsPlaceholder")}
 								className={`${FIELD_CLASS} font-mono`}
 							/>
 						</label>
 						<label className="block space-y-1">
-							<span className={LABEL_CLASS}>工作目录（可选）</span>
+							<span className={LABEL_CLASS}>{t("mcp.cwdLabel")}</span>
 							<input
 								value={draft.cwd}
 								onChange={(e) => setDraft({ ...draft, cwd: e.target.value })}
-								placeholder="留空则使用会话所在目录"
+								placeholder={t("mcp.cwdPlaceholder")}
 								className={`${FIELD_CLASS} font-mono`}
 							/>
 						</label>
 						<KvEditor
-							label="环境变量"
-							hint="传给该命令的环境变量，常用于填写 API 密钥。已保存的值不会显示；再次填写同名项即可覆盖。"
+							label={t("mcp.envLabel")}
+							hint={t("mcp.envHint")}
 							existing={draft.original?.env ?? []}
 							removed={draft.envRemoves}
 							adds={draft.envAdds}
 							error={visible.env}
 							keyPlaceholder="API_KEY"
-							addLabel="添加环境变量"
+							addLabel={t("mcp.addEnv")}
 							onRemoveExisting={(k) =>
 								setDraft({ ...draft, envRemoves: new Set([...draft.envRemoves, k]) })
 							}
@@ -313,7 +316,7 @@ export function McpServerEditor({
 				) : (
 					<>
 						<label className="block space-y-1">
-							<span className={LABEL_CLASS}>服务器地址</span>
+							<span className={LABEL_CLASS}>{t("mcp.urlLabel")}</span>
 							<input
 								value={draft.url}
 								onChange={(e) => setDraft({ ...draft, url: e.target.value })}
@@ -323,14 +326,14 @@ export function McpServerEditor({
 							<FieldError msg={visible.url} />
 						</label>
 						<KvEditor
-							label="请求头"
-							hint="每次请求附带的 HTTP 头，常用于填写授权令牌。已保存的值不会显示；再次填写同名项即可覆盖。"
+							label={t("mcp.headersLabel")}
+							hint={t("mcp.headersHint")}
 							existing={draft.original?.headers ?? []}
 							removed={draft.headerRemoves}
 							adds={draft.headerAdds}
 							error={visible.headers}
 							keyPlaceholder="Authorization"
-							addLabel="添加请求头"
+							addLabel={t("mcp.addHeader")}
 							onRemoveExisting={(k) =>
 								setDraft({ ...draft, headerRemoves: new Set([...draft.headerRemoves, k]) })
 							}
@@ -340,7 +343,7 @@ export function McpServerEditor({
 				)}
 
 				<div className="space-y-1.5">
-					<div className="text-[13px] font-medium text-[var(--text)]">用在哪些项目</div>
+					<div className="text-[13px] font-medium text-[var(--text)]">{t("mcp.whichProjects")}</div>
 					<McpScopePicker
 						projects={projects}
 						current={current}
@@ -362,7 +365,7 @@ export function McpServerEditor({
 						className="flex items-center gap-1 whitespace-nowrap text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
 					>
 						{moreOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-						更多选项
+						{t("mcp.moreOptions")}
 					</button>
 					{moreOpen && (
 						<div className="mt-2 flex flex-wrap items-start justify-between gap-3">
@@ -371,18 +374,18 @@ export function McpServerEditor({
 									checked={draft.instructions}
 									onChange={(v) => setDraft({ ...draft, instructions: v })}
 								/>
-								<span className="text-xs text-[var(--text)]" title="服务器自带的使用说明">
-									把使用说明告诉模型
+								<span className="text-xs text-[var(--text)]" title={t("mcp.instructionsTitle")}>
+									{t("mcp.instructionsLabel")}
 								</span>
 							</label>
 							<label className="space-y-1">
 								<span className="flex items-center gap-2">
-									<span className={`${LABEL_CLASS} whitespace-nowrap`}>超时（毫秒）</span>
+									<span className={`${LABEL_CLASS} whitespace-nowrap`}>{t("mcp.timeoutLabel")}</span>
 									<input
 										inputMode="numeric"
 										value={draft.timeout}
 										onChange={(e) => setDraft({ ...draft, timeout: e.target.value })}
-										placeholder="默认"
+										placeholder={t("mcp.timeoutPlaceholder")}
 										className="w-24 rounded-lg hairline bg-[var(--well-bg)] px-2 py-1 font-mono text-xs text-[var(--text)] outline-none"
 									/>
 								</span>
@@ -402,13 +405,13 @@ export function McpServerEditor({
 				)}
 			</div>
 			<div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-divider)] px-4 py-3">
-				<span className="text-[11px] text-[var(--text-dim)]">保存后对新开的会话生效（⌘/Ctrl+Enter 保存）</span>
+				<span className="text-[11px] text-[var(--text-dim)]">{t("mcp.saveShortcutHint")}</span>
 				<div className="flex gap-2">
 					<Button variant="ghost" onClick={onClose}>
-						取消
+						{t("common.cancel")}
 					</Button>
 					<Button variant="primary" loading={saving} disabled={scopeInvalid} onClick={() => void save()}>
-						保存
+						{t("common.save")}
 					</Button>
 				</div>
 			</div>

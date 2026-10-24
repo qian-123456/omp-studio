@@ -3,7 +3,7 @@ import { Search, X } from "lucide-react";
 import { forwardRef, type KeyboardEvent } from "react";
 import { claimEscape } from "../lib/escapeClaim";
 import { isComposing } from "../lib/hooks";
-
+import { useT } from "../stores/language";
 export interface SearchInputProps {
 	value: string;
 	onChange: (value: string) => void;
@@ -34,6 +34,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
 	{ value, onChange, placeholder, ariaLabel, autoFocus, className, inputClassName, onClear, onKeyDown, iconSize = 14 },
 	ref,
 ) {
+	const { t } = useT();
 	const clear = () => {
 		onChange("");
 		onClear?.();
@@ -67,8 +68,8 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
 				<button
 					type="button"
 					onClick={clear}
-					aria-label="清除搜索"
-					title="清除搜索"
+					aria-label={t("components.clearSearch")}
+					title={t("components.clearSearch")}
 					className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 transition-colors hover:text-neutral-300"
 				>
 					<X className="h-3 w-3" />

@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useLayoutEffect, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { locateLabel, useLocate } from "../../stores/locate";
+import { useT } from "../../stores/language";
 
 const btn =
 	"inline-flex h-6 items-center gap-0.5 rounded-full border border-[var(--border-divider)] px-2 text-[11px] text-[var(--text-60)] transition-colors enabled:hover:bg-[var(--ghost-hover)] enabled:hover:text-[var(--text)] disabled:opacity-40";
@@ -35,6 +36,7 @@ function useTopStrip(host: HTMLElement | null, active: boolean): DOMRect | null 
  * target for this session is active; steps through the group's other calls.
  */
 export function LocatePill({ sessionId, host }: { sessionId: string; host: HTMLElement | null }) {
+	const { t } = useT();
 	const target = useLocate((s) => (s.target?.sessionId === sessionId ? s.target : null));
 	const rect = useTopStrip(host, target !== null);
 	if (!target) return null;
@@ -46,7 +48,7 @@ export function LocatePill({ sessionId, host }: { sessionId: string; host: HTMLE
 			offset={36}
 			layer="popover"
 			role="status"
-			aria-label="定位到的工具调用"
+			aria-label={t("chat.locate.ariaLabel")}
 			className="flex items-center gap-1.5 overflow-visible rounded-full px-2 py-1"
 		>
 			<span className="select-text pl-1 text-[12px] text-[var(--text)]">
@@ -62,7 +64,7 @@ export function LocatePill({ sessionId, host }: { sessionId: string; host: HTMLE
 				onClick={() => useLocate.getState().step(-1)}
 			>
 				<ChevronUp size={12} />
-				上一处
+				{t("chat.locate.prev")}
 			</button>
 			<button
 				type="button"
@@ -71,13 +73,13 @@ export function LocatePill({ sessionId, host }: { sessionId: string; host: HTMLE
 				onClick={() => useLocate.getState().step(1)}
 			>
 				<ChevronDown size={12} />
-				下一处
+				{t("chat.locate.next")}
 			</button>
 			<button
 				type="button"
 				className={btn}
-				title="关闭定位"
-				aria-label="关闭定位"
+				title={t("chat.locate.close")}
+				aria-label={t("chat.locate.close")}
 				onClick={() => useLocate.getState().clear()}
 			>
 				<X size={12} />

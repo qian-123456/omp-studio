@@ -7,6 +7,7 @@ import { backlogAdd } from "../../lib/ipc";
 import { toast } from "../../lib/toast";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { useBacklog } from "./backlogStore";
 import { CaptureProjectSelect } from "./CaptureProjectSelect";
 import { IdeaEditor, type IdeaEditorHandle } from "./IdeaEditor";
@@ -15,9 +16,9 @@ import { resolveCaptureProject } from "./ideasLogic";
 import { docToStored, ensureTokens, insertImages, reconcileDoc, removeImage } from "./ideaTokens";
 import { KIND_META } from "./ideaStyles";
 
-const KIND_OPTIONS: { kind: BacklogKind; label: string; Icon: typeof Bug }[] = [
-	{ kind: "bug", label: "缺陷", Icon: Bug },
-	{ kind: "idea", label: "想法", Icon: Lightbulb },
+const KIND_CONFIG: { kind: BacklogKind; labelKey: string; Icon: typeof Bug }[] = [
+	{ kind: "bug", labelKey: "backlog.kindBug", Icon: Bug },
+	{ kind: "idea", labelKey: "backlog.kindIdea", Icon: Lightbulb },
 ];
 
 export interface IdeaCaptureBoxProps {
@@ -34,6 +35,7 @@ export interface IdeaCaptureBoxProps {
  * and QuickCapture: same draft (backlog store), same stored format (`[图片: path]` inline tags).
  */
 export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: IdeaCaptureBoxProps) {
+	const { t } = useT();
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const sessions = useSessions((s) => s.sessions);
 	const targetSessionId = sessionId === undefined ? selectedSessionId : sessionId;
@@ -86,7 +88,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 			if (wrapRef.current?.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
 			onSubmitted?.(item);
 		} catch (err) {
-			toast.error(`保存失败: ${errMsg(err)}`);
+			toast.error(t("backlog.saveFailed", { error: errMsg(err) }));
 		} finally {
 			setSubmitting(false);
 		}
@@ -97,8 +99,8 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 			type="button"
 			onClick={() => void submit()}
 			disabled={!hasContent || submitting}
-			title="记录（Enter）"
-			aria-label="记录"
+			title={t("backlog.captureEnterTitle")}
+			aria-label={t("backlog.captureAriaLabel")}
 			className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg)] transition-opacity hover:opacity-85 disabled:cursor-default disabled:opacity-25 disabled:hover:opacity-25"
 		>
 			{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
@@ -109,8 +111,8 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 		<button
 			type="button"
 			onClick={attach.pick}
-			title="添加图片（也可粘贴或拖入）"
-			aria-label="添加图片"
+			title={t("backlog.addImageTitle")}
+			aria-label={t("backlog.addImageAriaLabel")}
 			className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 		>
 			<ImagePlus className="h-4 w-4" />
@@ -158,7 +160,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 							if (isComposing(e)) return;
 							void submit();
 						}}
-						placeholder="记一条想法"
+						placeholder={t("backlog.capturePlaceholder")}
 						minHeight={expanded ? (variant === "quick" ? 72 : 52) : 32}
 						maxHeight={variant === "quick" ? 220 : 160}
 						textClass="text-[13px] leading-5"
@@ -179,7 +181,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 					{imageButton}
 					<CaptureProjectSelect currentProject={currentProject} />
 					<div className="inline-flex items-center rounded-full border border-[var(--border-divider)] p-0.5">
-						{KIND_OPTIONS.map(({ kind: k, label, Icon }) => (
+						{KIND_CONFIG.map(({ kind: k, labelKey, Icon }) => (
 							<button
 								key={k}
 								type="button"
@@ -195,7 +197,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 								}`}
 							>
 								<Icon className="h-3 w-3" />
-								{label}
+								{t(labelKey)}
 							</button>
 						))}
 					</div>
@@ -209,7 +211,7 @@ export function IdeaCaptureBox({ variant, autoFocus, onSubmitted, sessionId }: I
 							/>
 							<MessageSquare className="h-3 w-3 shrink-0" />
 							<span className="break-all" title={targetSession?.title || targetSessionId}>
-								附带当前会话
+								{t("backlog.attachCurrentSession")}
 							</span>
 						</label>
 					)}

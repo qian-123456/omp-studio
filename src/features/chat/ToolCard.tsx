@@ -30,6 +30,7 @@ import { toast } from "../../lib/toast";
 import { PrivacyText } from "../privacy/SecretChip";
 import { askResultSummary } from "./ask/askDriver";
 import { ActivityHeader } from "./ActivityHeader";
+import { useT, tNow } from "../../stores/language";
 
 export type ToolStatus = "running" | "done" | "error" | "called";
 
@@ -101,19 +102,67 @@ const TOOL_FAMILY: Record<string, ToolFamily> = {
 };
 
 /** Verb-first labels per status, Codex-style ("正在读取" / "已读取" / "运行失败"). */
-const VERBS: Record<ToolFamily, { doing: string; did: string; base: string }> = {
-	read: { doing: "正在读取", did: "已读取", base: "读取" },
-	search: { doing: "正在搜索", did: "已搜索", base: "搜索" },
-	find: { doing: "正在查找", did: "已查找", base: "查找" },
-	list: { doing: "正在列出", did: "已列出", base: "列出" },
-	run: { doing: "正在运行", did: "已运行", base: "运行" },
-	edit: { doing: "正在编辑", did: "已编辑", base: "编辑" },
-	write: { doing: "正在写入", did: "已写入", base: "写入" },
-	todo: { doing: "正在更新待办", did: "已更新待办", base: "更新待办" },
-	web: { doing: "正在获取网页", did: "已获取网页", base: "获取网页" },
-	task: { doing: "正在运行子代理", did: "已运行子代理", base: "子代理" },
-	wait: { doing: "正在等待", did: "已等待", base: "等待" },
-	other: { doing: "正在调用工具", did: "已调用工具", base: "调用工具" },
+const VERBS: Record<ToolFamily, { readonly doing: string; readonly did: string; readonly base: string }> = {
+	read: {
+		get doing() { return tNow("tools.verbs.readDoing"); },
+		get did() { return tNow("tools.verbs.readDid"); },
+		get base() { return tNow("tools.verbs.readBase"); },
+	},
+	search: {
+		get doing() { return tNow("tools.verbs.searchDoing"); },
+		get did() { return tNow("tools.verbs.searchDid"); },
+		get base() { return tNow("tools.verbs.searchBase"); },
+	},
+	find: {
+		get doing() { return tNow("tools.verbs.findDoing"); },
+		get did() { return tNow("tools.verbs.findDid"); },
+		get base() { return tNow("tools.verbs.findBase"); },
+	},
+	list: {
+		get doing() { return tNow("tools.verbs.listDoing"); },
+		get did() { return tNow("tools.verbs.listDid"); },
+		get base() { return tNow("tools.verbs.listBase"); },
+	},
+	run: {
+		get doing() { return tNow("tools.verbs.runDoing"); },
+		get did() { return tNow("tools.verbs.runDid"); },
+		get base() { return tNow("tools.verbs.runBase"); },
+	},
+	edit: {
+		get doing() { return tNow("tools.verbs.editDoing"); },
+		get did() { return tNow("tools.verbs.editDid"); },
+		get base() { return tNow("tools.verbs.editBase"); },
+	},
+	write: {
+		get doing() { return tNow("tools.verbs.writeDoing"); },
+		get did() { return tNow("tools.verbs.writeDid"); },
+		get base() { return tNow("tools.verbs.writeBase"); },
+	},
+	todo: {
+		get doing() { return tNow("tools.verbs.todoDoing"); },
+		get did() { return tNow("tools.verbs.todoDid"); },
+		get base() { return tNow("tools.verbs.todoBase"); },
+	},
+	web: {
+		get doing() { return tNow("tools.verbs.webDoing"); },
+		get did() { return tNow("tools.verbs.webDid"); },
+		get base() { return tNow("tools.verbs.webBase"); },
+	},
+	task: {
+		get doing() { return tNow("tools.verbs.taskDoing"); },
+		get did() { return tNow("tools.verbs.taskDid"); },
+		get base() { return tNow("tools.verbs.taskBase"); },
+	},
+	wait: {
+		get doing() { return tNow("tools.verbs.waitDoing"); },
+		get did() { return tNow("tools.verbs.waitDid"); },
+		get base() { return tNow("tools.verbs.waitBase"); },
+	},
+	other: {
+		get doing() { return tNow("tools.verbs.otherDoing"); },
+		get did() { return tNow("tools.verbs.otherDid"); },
+		get base() { return tNow("tools.verbs.otherBase"); },
+	},
 };
 
 function toolFamily(name: string): ToolFamily {
@@ -297,7 +346,7 @@ export function toolActivityLabel(
 	const verbs = VERBS[family];
 	const verb =
 		status === "error"
-			? "运行失败"
+			? tNow("tools.verbs.failed")
 			: status === "running"
 				? verbs.doing
 				: status === "done"
@@ -324,8 +373,8 @@ export const ToolCard = memo(function ToolCard(
 				<ActivityHeader
 					key={`${i}:${p.question}`}
 					icon={MessageCircleQuestion}
-					label="已询问"
-					object={`${p.question} → ${p.answer || "（未回答）"}`}
+					label={tNow("tools.ask.asked")}
+					object={`${p.question} → ${p.answer || tNow("tools.ask.unanswered")}`}
 				/>
 			))}
 		</div>
@@ -358,6 +407,7 @@ function ToolCardBodyImpl({
 	startedAt?: number;
 	endedAt?: number;
 }) {
+	const { t } = useT();
 	// Codex keeps every tool row collapsed to one line; failures show via the
 	// header's error tone, not by dumping the body open mid-run.
 	const openKey = callId ? `${sessionId}:${callId}` : undefined;
@@ -444,10 +494,10 @@ function ToolCardBodyImpl({
 						<QuietMonoBlock
 							header={`$ ${command}`}
 							headerCopyText={command}
-							headerCopyLabel="复制命令"
-							body={output?.trim() ? output : status === "running" ? "" : "无输出"}
+							headerCopyLabel={t("tools.copy.command")}
+							body={output?.trim() ? output : status === "running" ? "" : t("tools.copy.noOutput")}
 							copyText={output}
-							copyLabel="复制输出"
+							copyLabel={t("tools.copy.output")}
 						/>
 					)}
 
@@ -467,12 +517,12 @@ function ToolCardBodyImpl({
 											try {
 												await openFileLink(f, { cwd, home });
 											} catch (e) {
-												toast.error(`打开文件失败: ${errMsg(e)}`);
+												toast.error(t("tools.file.openFailed", { error: errMsg(e) }));
 											}
 										}}
 										className="flex shrink-0 items-center rounded px-1 py-0.5 text-[var(--text-30)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/copy:opacity-100"
-										title="打开文件"
-										aria-label="打开文件"
+										title={t("tools.file.open")}
+										aria-label={t("tools.file.open")}
 									>
 										<ExternalLink size={11} />
 									</button>
@@ -483,7 +533,7 @@ function ToolCardBodyImpl({
 					{diff && <DiffView diff={diff} file={file} sessionId={sessionId} />}
 
 					{!command && output && (
-						<QuietMonoBlock body={output} copyLabel="复制输出" />
+						<QuietMonoBlock body={output} copyLabel={t("tools.copy.output")} />
 					)}
 
 					{name === "write" &&
@@ -491,7 +541,7 @@ function ToolCardBodyImpl({
 						!output && (
 							<QuietMonoBlock
 								body={String(asObj(args).content)}
-								copyLabel="复制写入内容"
+								copyLabel={t("tools.copy.writeContent")}
 							/>
 						)}
 
@@ -504,7 +554,7 @@ function ToolCardBodyImpl({
 								{Object.keys(restArgs).length > 0 && (
 									<QuietMonoBlock
 										body={JSON.stringify(restArgs, null, 2)}
-										copyLabel="复制参数"
+										copyLabel={t("tools.copy.args")}
 									/>
 								)}
 								{longFields.map(([key, value]) => (
@@ -512,7 +562,7 @@ function ToolCardBodyImpl({
 										key={key}
 										header={key}
 										body={value}
-										copyLabel={`复制 ${key}`}
+										copyLabel={t("tools.copy.field", { field: key })}
 									/>
 								))}
 							</>

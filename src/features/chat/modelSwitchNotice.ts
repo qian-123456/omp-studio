@@ -5,6 +5,7 @@
  * used from the next request. Say so instead of a bare "switched".
  */
 import { formatShortModel } from "./turnGrouping";
+import { tNow } from "../../stores/language";
 
 export function modelSwitchNotice(
 	modelKey: string,
@@ -14,9 +15,9 @@ export function modelSwitchNotice(
 	if (turnRunning) {
 		return {
 			kind: "info",
-			text: `已切换到 ${name}。当前这一轮仍由原模型完成，下一轮起使用新模型`,
+			text: tNow("chat.modelSwitch.switchedToPending", { name }),
 			ttlMs: 7000,
 		};
 	}
-	return { kind: "success", text: "已切换模型" };
+	return { kind: "success", text: tNow("chat.modelSwitch.switched") };
 }

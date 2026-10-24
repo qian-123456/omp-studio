@@ -1318,7 +1318,10 @@ All floating and layered surfaces throughout the desktop app MUST adhere to the 
 
 The frontend workbench supports multiple display languages with zero external runtime bloat:
 
-- **Core module**: `src/lib/i18n/` defines `Locale` (`"zh-CN" | "en-US"`), strict typed dictionary schema (`TranslationSchema`), fast flattened dot-path key access ($O(1)$ lookup), parameter interpolation (`{name}` tokens), and automatic fallback to `zh-CN` followed by the raw key.
-- **Reactive store**: `src/stores/language.ts` (`useLanguageStore`, `useT()`) manages current locale state, persists choice in `localStorage["ompws:locale"]`, and detects browser language on first launch.
+- **Core module**: `src/lib/i18n/` defines `Locale` (`"zh-CN" | "en-US"`), flattened dot-path key lookup, parameter interpolation (`{name}` tokens), and fallback to `zh-CN` then the raw key.
+- **Namespaces**: one file per namespace, `src/lib/i18n/messages/<ns>.ts` → keys `<ns>.…`, auto-registered via `import.meta.glob`. Each file calls `defineMessages({ "zh-CN": {...}, "en-US": {...} })`; `zh-CN` is the source shape and tsc rejects missing/extra `en-US` keys.
+- **Reactive store**: `src/stores/language.ts` (`useLanguageStore`, `useT()`) manages current locale state, persists choice in `localStorage["ompws:locale"]`, and detects browser language on first launch. Non-React code calls `tNow(key, params)` at use time — never at module load, or the label ignores locale switches.
+- **What is not translated**: LLM prompt text sent to agents, persisted ids/values, and strings matched against backend output stay as-is; Rust backend messages are not localized yet. Logic must key off stable ids, never off display text.
 - **Settings integration**: Users switch display languages in Settings ▸ Appearance (文字与布局 / Typography & Layout) via a `Segmented` control; changes take effect immediately across all subscribed components without page reload.
-- **Parity guard**: `src/lib/i18n/i18n.test.ts` validates 100% key parity between `zh-CN` and `en-US` dictionaries.
+- **OMP config labels**: `ompConfigZh.ts` / `ompConfigDescZh.ts` are a zh-CN overlay over the English schema in `ompConfigMeta.ts`; `en-US` uses the schema text directly.
+- **Guards**: `src/lib/i18n/i18n.test.ts` checks key parity, no CJK in `en-US`, placeholder parity, and that every literal `t("…")` / `tNow("…")` key in source exists. `src/test/setupLocale.ts` pins tests to `zh-CN`.

@@ -31,88 +31,87 @@ import {
 	Wrench,
 	type LucideIcon,
 } from "lucide-react";
+import { t as translate, type Locale } from "../../lib/i18n";
+import { useLanguageStore } from "../../stores/language";
 import type { OmpConfigEntry } from "../../lib/contracts";
-import { FIELD_REGISTRY } from "./fieldRegistry";
+import { FIELD_REGISTRY, fieldDescription, fieldLabel } from "./fieldRegistry";
 import { BUILTIN_ROLES, asRecord, customRoles } from "./modelRoles";
 import { ompConfigDescription, ompConfigTitle } from "./ompConfigMeta";
 import { isDesktopRelevant, ompSearchTerms, ompSectionFor } from "./ompPlacement";
 
 export interface NavItem {
 	id: string;
-	label: string;
 	icon: LucideIcon;
-	/** One-line page description shown under the page title. */
-	lead: string;
 }
 
 export interface NavGroup {
-	title: string;
+	id: string;
 	items: NavItem[];
 }
 
 /** Information architecture: grouped by what the user wants to change. */
 export const NAV_GROUPS: NavGroup[] = [
 	{
-		title: "常规",
+		id: "general",
 		items: [
-			{ id: "general", label: "通用", icon: Sliders, lead: "新会话的默认设置与界面开关" },
-			{ id: "shortcuts", label: "快捷键", icon: Keyboard, lead: "查看并修改所有键盘快捷键，包括发送键和全局快速记录键" },
-			{ id: "storage", label: "存储空间", icon: HardDrive, lead: "本应用和 omp 占用的磁盘空间，以及可以安全清理的内容" },
-			{ id: "appearance", label: "外观", icon: Palette, lead: "主题、字号、界面密度和对话里显示哪些信息" },
-			{ id: "notifications", label: "通知", icon: Bell, lead: "什么时候提醒你、怎么提醒，以及免打扰时段" },
-			{ id: "privacy", label: "隐私", icon: Shield, lead: "隐私库里的敏感信息如何替换，以及 omp 的密钥脱敏和数据上报" },
+			{ id: "general", icon: Sliders },
+			{ id: "shortcuts", icon: Keyboard },
+			{ id: "storage", icon: HardDrive },
+			{ id: "appearance", icon: Palette },
+			{ id: "notifications", icon: Bell },
+			{ id: "privacy", icon: Shield },
 		],
 	},
 	{
-		title: "模型",
+		id: "models",
 		items: [
-			{ id: "providers", label: "模型与供应商", icon: KeyRound, lead: "API 密钥、订阅额度，以及启用哪些模型和供应商" },
-			{ id: "omp-roles", label: "模型角色", icon: Users, lead: "不同用途（主力、轻量、子代理…）分别用哪个模型" },
-			{ id: "thinking", label: "思考与采样", icon: Brain, lead: "思考深度与预算、温度等采样参数、回复风格" },
-			{ id: "helper-models", label: "辅助模型", icon: Cpu, lead: "顾问模型、预探、图片识别等会额外调用模型的功能" },
-			{ id: "model-fallback", label: "备用模型与重试", icon: Route, lead: "模型出错或额度用完时：自动换备用模型、重试、超时与防死循环" },
-			{ id: "context-window", label: "上下文窗口", icon: Ruler, lead: "每个模型的上下文大小，以及什么时候自动压缩对话" },
+			{ id: "providers", icon: KeyRound },
+			{ id: "omp-roles", icon: Users },
+			{ id: "thinking", icon: Brain },
+			{ id: "helper-models", icon: Cpu },
+			{ id: "model-fallback", icon: Route },
+			{ id: "context-window", icon: Ruler },
 		],
 	},
 	{
-		title: "会话",
+		id: "sessions",
 		items: [
-			{ id: "sessions", label: "会话", icon: Bot, lead: "会话挂起与摘要、消息排队、计划与目标模式等对话行为" },
-			{ id: "inbox", label: "收件箱", icon: Sparkles, lead: "哪些会话进入收件箱、保留多久" },
-			{ id: "doctor", label: "会话体检", icon: Stethoscope, lead: "在 Token 用量面板里体检会话，找出绕路、返工和上下文浪费" },
-			{ id: "agents-md", label: "规则文件", icon: FileText, lead: "omp 每次对话都会带上的长期规则，以及输出时实时检查的规则" },
-			{ id: "prompt-composition", label: "系统提示词", icon: Layers, lead: "每次请求的系统提示词由哪些内容组成、各占多少" },
+			{ id: "sessions", icon: Bot },
+			{ id: "inbox", icon: Sparkles },
+			{ id: "doctor", icon: Stethoscope },
+			{ id: "agents-md", icon: FileText },
+			{ id: "prompt-composition", icon: Layers },
 		],
 	},
 	{
-		title: "Agent 能力",
+		id: "agentCapabilities",
 		items: [
-			{ id: "tools", label: "工具", icon: Hammer, lead: "AI 能用哪些工具、哪些要先审批、输出多长" },
-			{ id: "files", label: "文件读写", icon: FileCode, lead: "AI 读取和编辑文件的方式，以及代码诊断（LSP）" },
-			{ id: "shell", label: "命令行", icon: Terminal, lead: "AI 执行 Shell 命令、运行 Python / JS 代码的方式" },
-			{ id: "subagents", label: "子代理", icon: Network, lead: "子代理的并发、时长和深度限制，以及隔离运行方式" },
-			{ id: "memory", label: "记忆", icon: Library, lead: "AI 跨会话记住什么、存在哪里" },
-			{ id: "skills", label: "技能与命令", icon: BookOpen, lead: "从哪些目录加载技能和自定义命令" },
+			{ id: "tools", icon: Hammer },
+			{ id: "files", icon: FileCode },
+			{ id: "shell", icon: Terminal },
+			{ id: "subagents", icon: Network },
+			{ id: "memory", icon: Library },
+			{ id: "skills", icon: BookOpen },
 		],
 	},
 	{
-		title: "连接",
+		id: "connections",
 		items: [
-			{ id: "mobile", label: "手机访问", icon: Smartphone, lead: "用手机查看和回复会话" },
-			{ id: "mcp", label: "MCP 服务器", icon: Server, lead: "给 AI 接入外部工具服务（MCP）" },
-			{ id: "plugins", label: "插件", icon: Puzzle, lead: "已安装的插件与扩展" },
-			{ id: "web", label: "联网搜索", icon: Globe, lead: "AI 联网搜索和抓取网页时用的服务" },
+			{ id: "mobile", icon: Smartphone },
+			{ id: "mcp", icon: Server },
+			{ id: "plugins", icon: Puzzle },
+			{ id: "web", icon: Globe },
 		],
 	},
 	{
-		title: "高级",
-		items: [{ id: "advanced", label: "高级", icon: Wrench, lead: "omp 程序位置、数据备份与恢复、问题自动上报" }],
+		id: "advanced",
+		items: [{ id: "advanced", icon: Wrench }],
 	},
 	{
-		title: "帮助",
+		id: "help",
 		items: [
-			{ id: "guide", label: "使用教程", icon: BookOpen, lead: "功能详解、操作指南与进阶技巧，支持按章节阅读与全文搜索" },
-			{ id: "about", label: "版本与更新", icon: Info, lead: "本应用和 omp 的版本，检查与安装更新" },
+			{ id: "guide", icon: BookOpen },
+			{ id: "about", icon: Info },
 		],
 	},
 ];
@@ -121,16 +120,17 @@ const NAV_ITEMS: ReadonlyMap<string, NavItem> = new Map(NAV_GROUPS.flatMap((g) =
 
 type Translate = (key: string) => string;
 
-const GROUP_KEYS: Record<string, string> = {
-	"常规": "generalGroup",
-	"模型": "modelsGroup",
-	"会话": "sessionsGroup",
-	"Agent 能力": "agentCapabilitiesGroup",
-	"连接": "connectionsGroup",
-	"高级": "advancedGroup",
-	"帮助": "helpGroup",
+const GROUP_KEY_BY_ID: Record<string, string> = {
+	general: "generalGroup",
+	models: "modelsGroup",
+	sessions: "sessionsGroup",
+	agentCapabilities: "agentCapabilitiesGroup",
+	connections: "connectionsGroup",
+	advanced: "advancedGroup",
+	help: "helpGroup",
 };
 
+/** Nav item id → message key under `settings.nav` (defaults to the id itself). */
 const ITEM_KEYS: Record<string, string> = {
 	"omp-roles": "models",
 	"helper-models": "helperModels",
@@ -140,29 +140,19 @@ const ITEM_KEYS: Record<string, string> = {
 	"prompt-composition": "promptComposition",
 };
 
-function translated(t: Translate, key: string, fallback: string): string {
-	const full = `settings.nav.${key}`;
-	const v = t(full);
-	return v === full ? fallback : v;
+const itemMessageKey = (item: Pick<NavItem, "id">) => `settings.nav.${ITEM_KEYS[item.id] ?? item.id}`;
+
+/** Localized group title. */
+export function navGroupTitle(t: Translate, group: Pick<NavGroup, "id">): string {
+	return t(`settings.nav.${GROUP_KEY_BY_ID[group.id]}`);
 }
 
-/** Localized group title; falls back to the Chinese source title. */
-export function navGroupTitle(t: Translate, title: string): string {
-	const key = GROUP_KEYS[title];
-	return key ? translated(t, key, title) : title;
+/** Localized nav label for an item. */
+export function navItemLabel(t: Translate, item: Pick<NavItem, "id">): string {
+	return t(itemMessageKey(item));
 }
 
-/** Localized nav label for an item; falls back to the Chinese source label. */
-export function navItemLabel(t: Translate, item: NavItem): string {
-	return translated(t, ITEM_KEYS[item.id] ?? item.id, item.label);
-}
-
-/** Localized nav lead for an item; falls back to the Chinese source lead. */
-export function navItemLead(t: Translate, item: NavItem): string {
-	return translated(t, `${ITEM_KEYS[item.id] ?? item.id}Lead`, item.lead);
-}
-
-/** Nav entry (label / lead) for a section id. */
+/** Nav entry for a section id. */
 export function navItem(id: string): NavItem | undefined {
 	return NAV_ITEMS.get(id);
 }
@@ -256,7 +246,7 @@ const EXTRA_TERMS: Record<string, string[]> = {
 };
 
 /** Build the per-page search index (call once per omp entry list). */
-export function buildSearchIndex(ompEntries: readonly OmpConfigEntry[]): SearchIndex {
+export function buildSearchIndex(ompEntries: readonly OmpConfigEntry[], locale?: Locale): SearchIndex {
 	const index: SearchIndex = new Map();
 	const add = (page: string, field: IndexedField) => {
 		const list = index.get(page);
@@ -265,18 +255,27 @@ export function buildSearchIndex(ompEntries: readonly OmpConfigEntry[]): SearchI
 	};
 
 	for (const f of FIELD_REGISTRY) {
-		add(f.sectionId, { name: f.label, top: lower([f.label]), mid: lower(f.keywords), low: lower([f.description]) });
+		const label = fieldLabel(f, locale);
+		const desc = fieldDescription(f, locale);
+		add(f.sectionId, {
+			name: label,
+			top: lower([label, fieldLabel(f, "zh-CN"), fieldLabel(f, "en-US")]),
+			mid: lower(f.keywords),
+			low: lower([desc, fieldDescription(f, "zh-CN"), fieldDescription(f, "en-US")]),
+		});
 	}
 
 	for (const e of ompEntries) {
 		const editorPage = editorPageOf(e.key);
 		if (!editorPage && !isDesktopRelevant(e.key)) continue;
-		const title = ompConfigTitle(e.key);
-		const desc = ompConfigDescription(e.key, e.description);
-		const mid = ompSearchTerms(e.key).filter((t) => t !== title && t !== desc);
+		const title = ompConfigTitle(e.key, locale);
+		const titleZh = ompConfigTitle(e.key, "zh-CN");
+		const titleEn = ompConfigTitle(e.key, "en-US");
+		const desc = ompConfigDescription(e.key, e.description, locale);
+		const mid = ompSearchTerms(e.key, locale).filter((t) => t !== title && t !== desc);
 		add(editorPage ?? ompSectionFor(e.key).page, {
 			name: title,
-			top: lower([title]),
+			top: lower([title, titleZh, titleEn]),
 			mid: lower(mid),
 			low: lower([desc]),
 		});
@@ -302,9 +301,14 @@ export function buildSearchIndex(ompEntries: readonly OmpConfigEntry[]): SearchI
 	return index;
 }
 
+const NAV_LOCALES = (): Locale[] => [...new Set<Locale>([useLanguageStore.getState().locale, "zh-CN", "en-US"])];
+
 /** Score one nav page for a lowercased query; names are readable matched settings. */
 export function searchSection(index: SearchIndex, item: NavItem, q: string): SectionSearchResult {
-	if (item.label.toLowerCase().includes(q)) return { score: SCORE_LABEL, names: [] };
+	// The page label matches in the active locale and both source languages.
+	if (NAV_LOCALES().some((l) => translate(itemMessageKey(item), undefined, l).toLowerCase().includes(q))) {
+		return { score: SCORE_LABEL, names: [] };
+	}
 	let best = 0;
 	const hits: { score: number; name: string }[] = [];
 	for (const f of index.get(item.id) ?? []) {

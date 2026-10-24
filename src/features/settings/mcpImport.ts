@@ -1,4 +1,5 @@
 /** Pure parser for pasted MCP configs (Claude/Cursor, VS Code, bare maps, single entries). */
+import { tNow } from "../../stores/language";
 import { NAME_RE, transportLabel } from "./mcpDraft";
 
 export type ImportEntry = Record<string, unknown>;
@@ -57,18 +58,18 @@ const toServers = (map: Record<string, unknown>): ImportParse => {
 	const servers = Object.entries(map).map(([name, v]) => ({ name, entry: asEntry(v) }));
 	return servers.length > 0
 		? { kind: "servers", servers }
-		: { kind: "error", message: "没有找到任何服务器" };
+		: { kind: "error", message: tNow("mcp.noServersFound") };
 };
 
 export function parseMcpImport(text: string): ImportParse {
-	if (!text.trim()) return { kind: "error", message: "还没有内容" };
+	if (!text.trim()) return { kind: "error", message: tNow("mcp.noContent") };
 	let root: unknown;
 	try {
 		root = JSON.parse(stripJsonExtras(text));
 	} catch (e) {
-		return { kind: "error", message: `不是有效的 JSON：${e instanceof Error ? e.message : String(e)}` };
+		return { kind: "error", message: tNow("mcp.invalidJson", { error: e instanceof Error ? e.message : String(e) }) };
 	}
-	if (!isObject(root)) return { kind: "error", message: "需要一个 JSON 对象，例如 {\"mcpServers\": {…}}" };
+	if (!isObject(root)) return { kind: "error", message: tNow("mcp.needJsonObject") };
 	if (isObject(root.mcpServers)) return toServers(root.mcpServers);
 	if (isObject(root.servers)) return toServers(root.servers);
 	if (isObject(root.mcp) && isObject(root.mcp.servers)) return toServers(root.mcp.servers);
@@ -77,7 +78,7 @@ export function parseMcpImport(text: string): ImportParse {
 	}
 	const values = Object.values(root);
 	if (values.length > 0 && values.every(isObject)) return toServers(root);
-	return { kind: "error", message: "没有认出服务器配置：需要 mcpServers、servers，或「名称: {command 或 url}」的写法" };
+	return { kind: "error", message: tNow("mcp.unrecognizedFormat") };
 }
 
 /** Transport label + endpoint text for the preview list. */
@@ -99,10 +100,10 @@ export function importSkipReason(
 	entry: ImportEntry,
 	existingNames: readonly string[],
 ): string | null {
-	if (!NAME_RE.test(name)) return "名称不合法";
-	if (existingNames.includes(name)) return "名称已存在";
+	if (!NAME_RE.test(name)) return tNow("mcp.importSkipBadName");
+	if (existingNames.includes(name)) return tNow("mcp.importSkipDuplicate");
 	const command = typeof entry.command === "string" && entry.command.trim();
 	const url = typeof entry.url === "string" && entry.url.trim();
-	if (!command && !url) return "缺少命令或地址";
+	if (!command && !url) return tNow("mcp.importSkipMissingEndpoint");
 	return null;
 }

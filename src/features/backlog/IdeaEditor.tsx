@@ -4,7 +4,7 @@ import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { exceedsLines, useLineClampOverflow } from "../../lib/useLineClamp";
 import { getImageTokenPalette } from "../chat/Composer";
 import { splitTokens, storedToDoc, type TokenDoc } from "./ideaTokens";
-
+import { useT, tNow } from "../../stores/language";
 export interface IdeaEditorHandle {
 	/** Current caret offset in the text (end of text when unfocused). */
 	caret(): number;
@@ -12,7 +12,8 @@ export interface IdeaEditorHandle {
 	placeCaret(pos: number): void;
 }
 
-const previewImages = (images: string[]) => images.map((path, i) => ({ path, marker: `图片 #${i + 1}` }));
+const previewImages = (images: string[]) =>
+	images.map((path, i) => ({ path, marker: tNow("backlog.imageMarker", { index: i + 1 }) }));
 
 /**
  * Auto-growing multi-line textarea. Image tokens (`🖼️ #N`) are painted as coloured chips
@@ -43,6 +44,7 @@ export const IdeaEditor = forwardRef<
 	{ doc, onChange, placeholder, autoFocus, minHeight, maxHeight, onKeyDown, onPaste, onBlur, onFocus, boxClass = "", textClass = "text-xs leading-5", bgClass = "bg-[var(--bg)]" },
 	ref,
 ) {
+	const { t } = useT();
 	const taRef = useRef<HTMLTextAreaElement>(null);
 	const pendingCaret = useRef<number | null>(null);
 	const [scrollTop, setScrollTop] = useState(0);
@@ -112,7 +114,7 @@ export const IdeaEditor = forwardRef<
 								key={`i${i}-${s.index}`}
 								className="pointer-events-auto cursor-pointer rounded-sm underline decoration-2 underline-offset-[3px]"
 								style={{ color: hex, textDecorationColor: hex, backgroundColor: `${hex}22` }}
-								title={`${path}（点击预览）`}
+								title={t("backlog.clickToPreview", { path })}
 								onMouseDown={(e) => {
 									e.preventDefault();
 									setPreview(s.index - 1);
@@ -167,6 +169,7 @@ export function IdeaTextView({
 	/** Reports whether the text exceeds the 3-line clamp. */
 	onOverflowChange?: (overflowing: boolean) => void;
 }) {
+	const { t } = useT();
 	const doc = useMemo(() => storedToDoc(stored, refImages), [stored, refImages]);
 	const [preview, setPreview] = useState<number | null>(null);
 	const [localExpanded, setLocalExpanded] = useState(false);
@@ -228,8 +231,8 @@ export function IdeaTextView({
 			type="button"
 			onClick={onToggle}
 			className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full align-middle text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
-			title={expanded ? "收起" : "展开全文"}
-			aria-label={expanded ? "收起" : "展开全文"}
+			title={expanded ? t("common.collapse") : t("backlog.expandAll")}
+			aria-label={expanded ? t("common.collapse") : t("backlog.expandAll")}
 		>
 			<ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
 		</button>
@@ -245,7 +248,7 @@ export function IdeaTextView({
 					key={`i${i}-${s.index}`}
 					type="button"
 					onClick={() => setPreview(s.index - 1)}
-					title={`${path}（点击预览）`}
+					title={t("backlog.clickToPreview", { path })}
 					className="mx-0.5 inline-flex items-center gap-0.5 rounded px-1 align-baseline text-[11px] font-medium hover:brightness-125"
 					style={{ color: hex, backgroundColor: `${hex}22` }}
 				>
@@ -289,7 +292,7 @@ export function IdeaTextView({
 					onClick={() => setLocalExpanded((v) => !v)}
 					className="mt-0.5 text-[10px] text-sky-400 hover:underline"
 				>
-					{expanded ? "收起" : "展开全文"}
+					{expanded ? t("common.collapse") : t("backlog.expandAll")}
 				</button>
 			)}
 			{preview !== null && (

@@ -38,6 +38,7 @@ import {
 import { isComposing } from "../../lib/hooks";
 import { toast } from "../../lib/toast";
 import { sideChatAnnKey, useComposer } from "../../stores/composer";
+import { tNow, useT } from "../../stores/language";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { openSideChatTab } from "../sidechat/sideChatActions";
@@ -89,10 +90,10 @@ const panelUi = {
 };
 
 export function CommandTerminalPanel() {
+	const { t } = useT();
 	const tabs = useDrawerStore((s) => s.tabs);
 	const activeTabId = useDrawerStore((s) => s.activeTabId);
 	const updateTab = useDrawerStore((s) => s.updateTab);
-
 	const visibleTabs = tabs.filter((t) => !t.detached);
 	const activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? null;
 	const activeEntry = activeTabId ? drawerRegistry.get(activeTabId) : undefined;
@@ -270,7 +271,7 @@ export function CommandTerminalPanel() {
 				entry.phase = "error";
 				entry.error = msg;
 				useDrawerStore.getState().updateTab(tab.id, { status: "error", exitCode: null });
-				toast.error(`终端启动失败: ${msg}`);
+				toast.error(tNow("terminal.startFailed", { error: msg }));
 			}
 		})();
 	}, []);
@@ -360,7 +361,7 @@ export function CommandTerminalPanel() {
 		const sel = activeEntry?.term.getSelection();
 		if (sel) {
 			await copyText(sel);
-			toast.success("已复制选中内容");
+			toast.success(tNow("terminal.copiedSelection"));
 		}
 	}, [activeEntry]);
 
@@ -373,7 +374,7 @@ export function CommandTerminalPanel() {
 				await termWrite(activeEntry.termId, text);
 			}
 		} catch (e) {
-			toast.error(`粘贴失败: ${errMsg(e)}`);
+			toast.error(tNow("terminal.pasteFailed", { error: errMsg(e) }));
 		}
 	}, [activeEntry]);
 
@@ -389,17 +390,17 @@ export function CommandTerminalPanel() {
 		const entry = id ? drawerRegistry.get(id) : undefined;
 		const text = entry?.term.getSelection()?.trim();
 		if (!text) {
-			toast.info("未选中任何终端文本");
+			toast.info(tNow("terminal.noSelection"));
 			return;
 		}
 		const ui = useUi.getState();
 		const sessionId = ui.selectedSessionId || ui.lastSessionId;
 		if (sessionId) {
 			useComposer.getState().addAnnotation(sessionId, { source: "terminal", text });
-			toast.success("已将选中内容添加至批注");
+			toast.success(tNow("terminal.addedToAnnotation"));
 		} else {
 			void copyText(text);
-			toast.success("已复制选中内容");
+			toast.success(tNow("terminal.copiedSelection"));
 		}
 		setCopied(true);
 		setTimeout(() => setCopied(false), 1500);
@@ -414,7 +415,7 @@ export function CommandTerminalPanel() {
 		const ui = useUi.getState();
 		const sessionId = ui.selectedSessionId || ui.lastSessionId;
 		if (!sel || !sessionId) {
-			toast.info("未选中任何终端文本");
+			toast.info(tNow("terminal.noSelection"));
 			return;
 		}
 		// Stage the output as quoted context in a blank side chat; nothing is sent.
@@ -456,7 +457,7 @@ export function CommandTerminalPanel() {
 
 					{visibleTabs.length === 0 && (
 						<div className="flex h-full items-center justify-center text-xs text-neutral-600">
-							点击 + 新建终端
+							{t("terminal.emptyPrompt")}
 						</div>
 					)}
 
@@ -464,8 +465,8 @@ export function CommandTerminalPanel() {
 					{activeTab?.status === "exited" && (
 						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between border-t border-[var(--border-divider)] bg-[var(--bg-panel)]/95 backdrop-blur-md px-3 py-2 text-xs">
 							<span className="text-neutral-400">
-								终端进程已退出
-								{activeTab.exitCode !== null ? ` (退出代码: ${activeTab.exitCode})` : ""}
+								{t("terminal.processExited")}
+								{activeTab.exitCode !== null ? t("terminal.exitCode", { code: activeTab.exitCode }) : ""}
 							</span>
 							<button
 								type="button"
@@ -473,7 +474,7 @@ export function CommandTerminalPanel() {
 								className="flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-2.5 py-1 font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
 							>
 								<RefreshCw size={12} />
-								重新连接
+								{t("terminal.reconnect")}
 							</button>
 						</div>
 					)}
@@ -482,7 +483,7 @@ export function CommandTerminalPanel() {
 					{activeTab?.status === "error" && activeEntry?.error && (
 						<div className="absolute bottom-0 left-0 right-0 z-10 flex items-start justify-between gap-3 border-t border-rose-800/40 bg-rose-950/40 backdrop-blur-md px-3 py-2 text-xs">
 							<span className="min-w-0 select-text whitespace-pre-wrap break-words text-rose-300">
-								本地终端启动失败: {activeEntry.error}
+								{t("terminal.spawnFailed", { error: activeEntry.error })}
 							</span>
 							<button
 								type="button"
@@ -490,7 +491,7 @@ export function CommandTerminalPanel() {
 								className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#0A84FF] px-2.5 py-1 font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-sm"
 							>
 								<RefreshCw size={12} />
-								重试
+								{t("terminal.retry")}
 							</button>
 						</div>
 					)}
@@ -505,22 +506,22 @@ export function CommandTerminalPanel() {
 								type="button"
 								onMouseDown={(e) => e.preventDefault()}
 								onClick={captureSelection}
-								title={parentSessionId ? "将选中内容加入批注 (⌘⇧A)" : "复制选中内容"}
+								title={parentSessionId ? t("terminal.quoteToAnnotationShortcut") : t("terminal.copySelection")}
 								className="flex items-center gap-1 rounded-md px-2 py-0.5 text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 transition-all"
 							>
 								<MessageSquareQuote size={12} className="text-indigo-400" />
-								{copied ? "已完成" : parentSessionId ? "引用" : "复制"}
+								{copied ? t("terminal.copied") : parentSessionId ? t("terminal.quote") : t("terminal.copy")}
 							</button>
 							{parentSessionId && (
 								<button
 									type="button"
 									onMouseDown={(e) => e.preventDefault()}
 									onClick={() => void handleSendToSideChat()}
-									title="将选中终端文本发送到侧聊"
+									title={t("terminal.sendToSideChat")}
 									className="flex items-center gap-1 rounded-md px-2 py-0.5 text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all"
 								>
 									<GitBranch size={12} />
-									发送到侧聊
+									{t("terminal.sendToSideChatShort")}
 								</button>
 							)}
 						</div>
@@ -560,20 +561,23 @@ export function CommandTerminalPanel() {
 										else handleFindNext();
 									}
 								}}
-								placeholder="在终端中搜索…"
+								placeholder={t("terminal.searchPlaceholder")}
 								className="w-44 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1 text-xs text-neutral-200 outline-none focus:ring-1 focus:ring-[#0A84FF]/50"
 							/>
 							{searchQuery.trim() && (
 								<span className="shrink-0 text-[11px] text-neutral-400 select-none">
 									{searchResult && searchResult.count > 0
-										? `第 ${searchResult.index >= 0 ? searchResult.index + 1 : 0} / 共 ${searchResult.count} 项`
-										: "共 0 项"}
+										? t("terminal.matchCount", {
+												current: searchResult.index >= 0 ? searchResult.index + 1 : 0,
+												total: searchResult.count,
+											})
+										: t("terminal.zeroMatches")}
 								</span>
 							)}
 							<button
 								type="button"
 								onClick={handleFindPrevious}
-								title="上一处匹配 (Shift+Enter)"
+								title={t("terminal.findPrevious")}
 								className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 transition-all"
 							>
 								<ArrowUp size={13} />
@@ -581,7 +585,7 @@ export function CommandTerminalPanel() {
 							<button
 								type="button"
 								onClick={handleFindNext}
-								title="下一处匹配 (Enter)"
+								title={t("terminal.findNext")}
 								className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 transition-all"
 							>
 								<ArrowDown size={13} />
@@ -590,7 +594,7 @@ export function CommandTerminalPanel() {
 							<button
 								type="button"
 								onClick={() => setSearchCaseSensitive((v) => !v)}
-								title="大小写匹配"
+								title={t("terminal.matchCase")}
 								className={clsx(
 									"rounded-md px-1.5 py-0.5 text-[10px] font-mono transition-all active:scale-95",
 									searchCaseSensitive
@@ -603,7 +607,7 @@ export function CommandTerminalPanel() {
 							<button
 								type="button"
 								onClick={() => setSearchWholeWord((v) => !v)}
-								title="全字匹配"
+								title={t("terminal.matchWholeWord")}
 								className={clsx(
 									"rounded-md px-1.5 py-0.5 text-[10px] font-mono transition-all active:scale-95",
 									searchWholeWord
@@ -616,7 +620,7 @@ export function CommandTerminalPanel() {
 							<button
 								type="button"
 								onClick={() => setSearchRegex((v) => !v)}
-								title="正则表达式"
+								title={t("terminal.matchRegex")}
 								className={clsx(
 									"rounded-md px-1.5 py-0.5 text-[10px] font-mono transition-all active:scale-95",
 									searchRegex ? "bg-[#0A84FF] text-white" : "text-neutral-400 hover:bg-[var(--bg-hover)]",
@@ -627,7 +631,7 @@ export function CommandTerminalPanel() {
 							<button
 								type="button"
 								onClick={closeSearch}
-								title="关闭搜索 (Esc)"
+								title={t("terminal.closeSearch")}
 								className="rounded-md p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] active:scale-95 transition-all"
 							>
 								<X size={13} />
@@ -657,7 +661,7 @@ export function CommandTerminalPanel() {
 									className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 								>
 									<MessageSquareQuote size={13} className="text-indigo-400" />
-									{parentSessionId ? "引用至批注 (⌘⇧A)" : "复制选中内容"}
+									{parentSessionId ? t("terminal.quoteToAnnotationShortcut") : t("terminal.copySelection")}
 								</button>
 							)}
 							{hasSelection && parentSessionId && (
@@ -667,7 +671,7 @@ export function CommandTerminalPanel() {
 									className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 								>
 									<GitBranch size={13} className="text-amber-400" />
-									发送到侧聊
+									{t("terminal.sendToSideChatShort")}
 								</button>
 							)}
 							{hasSelection && <div className="my-1 border-t border-[var(--border-divider)]" />}
@@ -677,7 +681,7 @@ export function CommandTerminalPanel() {
 								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<ClipboardCopy size={13} className="text-neutral-400" />
-								复制选中内容
+								{t("terminal.copySelection")}
 							</button>
 							<button
 								type="button"
@@ -685,7 +689,7 @@ export function CommandTerminalPanel() {
 								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<ClipboardPaste size={13} className="text-neutral-400" />
-								粘贴至终端
+								{t("terminal.pasteToTerminal")}
 							</button>
 							<div className="my-1 border-t border-[var(--border-divider)]" />
 							<button
@@ -694,7 +698,7 @@ export function CommandTerminalPanel() {
 								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-neutral-300 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<Eraser size={13} className="text-neutral-400" />
-								清屏
+								{t("terminal.clearScreen")}
 							</button>
 						</>
 					)}

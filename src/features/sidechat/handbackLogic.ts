@@ -7,6 +7,7 @@
 import type { TranscriptItem } from "../../lib/contracts";
 import type { Annotation } from "../../stores/composer";
 import type { SideChatHandbackMode } from "../../stores/displayPrefs";
+import { tNow } from "../../stores/language";
 
 /** First line of the instruction; marks the user message in the side-chat transcript. */
 export const HANDBACK_MARKER = "【回传整理】";
@@ -65,9 +66,9 @@ export function extractHandbackDraft(items: readonly TranscriptItem[]): DraftRes
 		return { ok: true, text: last.text!.trim() };
 	}
 	const tail = after[after.length - 1];
-	if (tail.stopReason === "aborted") return { ok: false, pending: false, error: "整理已被中止" };
-	if (tail.stopReason === "error") return { ok: false, pending: false, error: "模型返回了错误，没有生成结论" };
-	return { ok: false, pending: false, error: "模型没有返回文字内容" };
+	if (tail.stopReason === "aborted") return { ok: false, pending: false, error: tNow("sidechat.handbackAborted") };
+	if (tail.stopReason === "error") return { ok: false, pending: false, error: tNow("sidechat.handbackModelError") };
+	return { ok: false, pending: false, error: tNow("sidechat.handbackNoText") };
 }
 
 /** Visible user/assistant text before the handback instruction, as `用户：…` / `助手：…` lines. */

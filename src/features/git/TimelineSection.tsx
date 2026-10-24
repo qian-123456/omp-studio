@@ -21,6 +21,7 @@ import { toast } from "../../lib/toast";
 import { useTurnNav } from "../../stores/turnNav";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { TmRunCard } from "./TmRunCard";
 import { promptPreview, shaToTurnMap } from "./turns";
 
@@ -74,21 +75,21 @@ function dayKey(d: Date): string {
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function formatDayLabel(d: Date, now: Date): string {
+function formatDayLabel(d: Date, now: Date, t: (key: string, params?: Record<string, string | number>) => string): string {
 	const todayKey = dayKey(now);
 	const yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
 	const yestKey = dayKey(yest);
 	const targetKey = dayKey(d);
 
-	if (targetKey === todayKey) return "今天";
-	if (targetKey === yestKey) return "昨天";
+	if (targetKey === todayKey) return t("time.today");
+	if (targetKey === yestKey) return t("time.yesterday");
 
 	const m = d.getMonth() + 1;
 	const day = d.getDate();
 	if (d.getFullYear() === now.getFullYear()) {
-		return `${m}月${day}日`;
+		return t("git.timeline.dateSameYear", { month: m, day });
 	}
-	return `${d.getFullYear()}年${m}月${day}日`;
+	return t("git.timeline.dateDiffYear", { year: d.getFullYear(), month: m, day });
 }
 
 interface CommitRowProps {
@@ -156,7 +157,8 @@ function CommitRow({
 	onRunUpdate,
 	onJumpTurn,
 }: CommitRowProps) {
-	const sessionTitle = useSessions((s) => (turn ? s.sessions[turn.sessionId]?.title : undefined)) || "未命名会话";
+	const { t } = useT();
+	const sessionTitle = useSessions((s) => (turn ? s.sessions[turn.sessionId]?.title : undefined)) || t("git.timeline.unnamedSession");
 	const [resetOpen, setResetOpen] = useState(false);
 	const parsed = parseCommitSubject(c.subject);
 	const when = absoluteTime(c.ts);
@@ -182,7 +184,7 @@ function CommitRow({
 							? "bg-neutral-800/60"
 							: "hover:bg-neutral-800/40",
 				)}
-				title={`${c.subject}\n作者 ${c.author} · ${when}\n版本编号 ${c.short}`}
+				title={t("git.timeline.commitTitle", { subject: c.subject, author: c.author, when, short: c.short })}
 			>
 				<span className="w-[38px] shrink-0 py-0.5 pl-1 font-mono text-[10px] leading-[18px] tabular-nums text-neutral-500">
 					{when.slice(11, 16)}
@@ -239,8 +241,8 @@ function CommitRow({
 					<button
 						type="button"
 						onClick={() => onDiff(c.sha, `${c.short} ${c.subject}`)}
-						title="这一版改了什么"
-						aria-label="这一版改了什么"
+						title={t("git.timeline.whatChanged")}
+						aria-label={t("git.timeline.whatChanged")}
 						className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors"
 					>
 						<FileDiff size={12} />
@@ -249,8 +251,8 @@ function CommitRow({
 						type="button"
 						disabled={busy}
 						onClick={() => onStart(c.sha)}
-						title="在隔离的临时目录（.worktrees/tm-xxxx）中运行该历史版本的快照，不影响当前工作树代码"
-						aria-label="时光机快照预览"
+						title={t("git.timeline.tmPreviewTitle")}
+						aria-label={t("git.timeline.tmPreview")}
 						className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-emerald-300 transition-colors"
 					>
 						<Play size={12} />
@@ -261,26 +263,26 @@ function CommitRow({
 			{turn && (
 				<div className="ml-[50px] mr-1 flex items-start gap-1 px-1 text-[10px] leading-[18px] text-indigo-400/80">
 					<MessageSquare size={10} className="mt-[4px] shrink-0" />
-					<span className="min-w-0 break-words">来自 session：{sessionTitle}</span>
+					<span className="min-w-0 break-words">{t("git.timeline.fromSession", { session: sessionTitle })}</span>
 				</div>
 			)}
 
 			{expanded && (
 				<div className="mb-1.5 ml-[50px] mr-1 mt-1 space-y-1.5 rounded border border-neutral-800 bg-neutral-900/60 p-2 text-[11px]">
-					<ActionLine label="原文">
+					<ActionLine label={t("git.timeline.labelOriginal")}>
 						<span className="break-words px-1.5 py-0.5 text-neutral-300">{c.subject}</span>
 					</ActionLine>
-					<ActionLine label="作者">
+					<ActionLine label={t("git.timeline.labelAuthor")}>
 						<span className="break-all px-1.5 py-0.5 text-neutral-300">{c.author}</span>
 					</ActionLine>
-					<ActionLine label="时间">
+					<ActionLine label={t("git.timeline.labelTime")}>
 						<span className="px-1.5 py-0.5 font-mono tabular-nums text-neutral-300">{when}</span>
 					</ActionLine>
-					<ActionLine label="编号">
+					<ActionLine label={t("git.timeline.labelSha")}>
 						<button
 							type="button"
 							onClick={() => onCopySha(c.sha, c.short)}
-							title={`复制完整版本编号\n${c.sha}`}
+							title={t("git.timeline.copyFullSha", { sha: c.sha })}
 							className={clsx(btn, "font-mono")}
 						>
 							{c.short}
@@ -289,49 +291,49 @@ function CommitRow({
 					</ActionLine>
 					{turn && (
 						<>
-							<ActionLine label="会话">
+							<ActionLine label={t("git.timeline.labelSession")}>
 								<span className="break-words px-1.5 py-0.5 text-neutral-300">{sessionTitle}</span>
 							</ActionLine>
-							<ActionLine label="来自消息">
+							<ActionLine label={t("git.timeline.labelFromMessage")}>
 								<div className="flex min-w-0 flex-1 flex-col items-start gap-1">
 									<span className="ml-1.5 break-words border-l-2 border-indigo-500/40 pl-2 text-neutral-300">
-										{promptPreview(turn.prompt) || "（空消息）"}
+										{promptPreview(turn.prompt) || t("git.timeline.emptyMessage")}
 									</span>
 									<button
 										type="button"
 										onClick={() => onJumpTurn(turn)}
-										title="打开这个 session，并定位到你发的这条消息"
+										title={t("git.timeline.jumpTurnTitle")}
 										className={btn}
 									>
 										<MessageSquare size={11} />
-										跳到这条消息
+										{t("git.timeline.jumpTurn")}
 									</button>
 								</div>
 							</ActionLine>
 						</>
 					)}
-					<ActionLine label="看看">
+					<ActionLine label={t("git.timeline.labelSee")}>
 						<button
 							type="button"
 							className={btn}
 							onClick={() => onDiff(c.sha, `${c.short} ${c.subject}`)}
 						>
-							<FileDiff size={12} /> 这一版改了什么
+							<FileDiff size={12} /> {t("git.timeline.whatChanged")}
 						</button>
 					</ActionLine>
 
-					<ActionLine label="试试">
+					<ActionLine label={t("git.timeline.labelTry")}>
 						<button
 							type="button"
 							className={btn}
 							disabled={busy}
 							onClick={() => onStart(c.sha)}
-							title="在隔离的临时目录（.worktrees/tm-xxxx）中运行该历史版本的快照，不影响当前工作树代码"
+							title={t("git.timeline.tmPreviewTitle")}
 						>
-							<Play size={12} /> {busy ? "启动时光机快照…" : "时光机快照预览"}
+							<Play size={12} /> {busy ? t("git.timeline.startingTm") : t("git.timeline.tmPreview")}
 						</button>
 						<button type="button" className={btn} onClick={onCustomFor}>
-							<Terminal size={12} /> 用自定义命令运行
+							<Terminal size={12} /> {t("git.timeline.runCustomCmd")}
 						</button>
 					</ActionLine>
 
@@ -356,7 +358,7 @@ function CommitRow({
 											if (currentCustom.trim()) onStart(c.sha, currentCustom.trim());
 										}
 									}}
-									placeholder="例如 pnpm dev --port 5180"
+									placeholder={t("git.timeline.customCmdPlaceholder")}
 									className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-0.5 font-mono text-[11px] text-neutral-200 outline-none focus:border-indigo-500"
 								/>
 								<datalist id={`history-${c.sha}`}>
@@ -369,12 +371,12 @@ function CommitRow({
 									disabled={!currentCustom.trim() || busy}
 									className="rounded bg-indigo-600 px-2 text-[11px] text-white hover:bg-indigo-500 disabled:opacity-40"
 								>
-									运行
+									{t("git.timeline.run")}
 								</button>
 							</div>
 							{cmdHistory.length > 0 && (
 								<div className="flex flex-wrap items-center gap-1 text-[10px] text-neutral-500">
-									<span>最近用过:</span>
+									<span>{t("git.timeline.recentUsed")}</span>
 									{cmdHistory.slice(0, 3).map((cmd) => (
 										<button
 											key={cmd}
@@ -390,14 +392,14 @@ function CommitRow({
 						</form>
 					)}
 
-					<ActionLine label="回到">
+					<ActionLine label={t("git.timeline.labelRevert")}>
 						<button
 							type="button"
 							className={btn}
 							aria-expanded={resetOpen}
 							onClick={() => setResetOpen((v) => !v)}
 						>
-							<RotateCcw size={12} /> 回到这个版本…
+							<RotateCcw size={12} /> {t("git.timeline.revertToThisVersion")}
 						</button>
 					</ActionLine>
 
@@ -408,9 +410,9 @@ function CommitRow({
 								onClick={() => onReset(c, "soft")}
 								className="block w-full rounded border border-neutral-700 px-2 py-1 text-left transition-colors hover:bg-neutral-800"
 							>
-								<span className="block text-neutral-200">保留之后的修改（推荐）</span>
+								<span className="block text-neutral-200">{t("git.timeline.softResetTitle")}</span>
 								<span className="block text-[10px] text-neutral-500">
-									撤销这个版本之后的提交，文件里的修改留着，变成未提交的改动
+									{t("git.timeline.softResetDesc")}
 								</span>
 							</button>
 							<button
@@ -418,9 +420,9 @@ function CommitRow({
 								onClick={() => onReset(c, "hard")}
 								className="block w-full rounded border border-rose-900/60 px-2 py-1 text-left transition-colors hover:bg-rose-950/40"
 							>
-								<span className="block text-rose-300">彻底丢弃之后的一切</span>
+								<span className="block text-rose-300">{t("git.timeline.hardResetTitle")}</span>
 								<span className="block text-[10px] text-rose-400/70">
-									之后的提交和现在所有未提交的修改都会消失，无法恢复
+									{t("git.timeline.hardResetDesc")}
 								</span>
 							</button>
 						</div>
@@ -466,6 +468,7 @@ export function TimelineSection({
 	onRunsChange: (runs: TmRun[]) => void;
 	onChanged: () => void;
 }) {
+	const { t } = useT();
 	const rootRef = useRef<HTMLDivElement>(null);
 	const [open, setOpen] = useState<string | null>(null);
 	const [customFor, setCustomFor] = useState<string | null>(null);
@@ -552,7 +555,7 @@ export function TimelineSection({
 			const isYest = key === yestKey;
 			return {
 				key,
-				label: formatDayLabel(group.date, now),
+				label: formatDayLabel(group.date, now, t),
 				date: group.date,
 				items: group.items,
 				isRecent: isToday || isYest,
@@ -570,7 +573,7 @@ export function TimelineSection({
 		const i = filteredCommits.findIndex((c) => c.sha === forkPoint);
 		return i > 0 ? i : -1;
 	}, [filteredCommits, forkPoint, isSearching]);
-	const baseLabel = baseBranch?.replace(/^origin\//, "") ?? "主干";
+	const baseLabel = baseBranch?.replace(/^origin\//, "") ?? t("git.timeline.mainline");
 	// sha→true for commits inherited from the base (fork point included).
 	const inherited = useMemo<Record<string, true>>(
 		() =>
@@ -657,7 +660,7 @@ export function TimelineSection({
 			const run = await tmRun(cwd, sha, command);
 			onRunsChange([...runs.filter((r) => r.id !== run.id), run]);
 			setOpen(sha);
-			toast.success(command ? `已启动自定义命令: ${command}` : "已启动时光机运行");
+			toast.success(command ? t("git.timeline.startedCustomCmd", { command }) : t("git.timeline.startedTm"));
 		} catch (e) {
 			setError(errMsg(e));
 			toast.error(errMsg(e));
@@ -668,17 +671,17 @@ export function TimelineSection({
 
 	const reset = async (c: GitCommit, mode: "soft" | "hard") => {
 		const dirty = summary.hasUncommitted
-			? `\n\n现在还有 ${summary.files.length} 个文件没有保存成版本。`
+			? t("git.timeline.dirtyFilesWarning", { count: summary.files.length })
 			: "";
 		const ok =
 			mode === "soft"
 				? await confirmDialog(
-						`回到版本 ${c.short}「${c.subject}」，并保留之后的修改？\n\n之后的提交会被撤销，但文件里的修改都留着，变成未提交的改动，随时可以重新提交。${dirty}`,
-						{ title: "回到这个版本", okLabel: "回到这个版本" },
+						t("git.timeline.softResetConfirm", { short: c.short, subject: c.subject, dirty }),
+						{ title: t("git.timeline.revertToThisVersionTitle"), okLabel: t("git.timeline.revertToThisVersionTitle") },
 					)
 				: await confirmDialog(
-						`回到版本 ${c.short}「${c.subject}」，并彻底丢弃之后的一切？\n\n这个版本之后的所有提交、以及现在所有未提交的修改都会消失，无法恢复。${dirty}`,
-						{ danger: true, title: "彻底丢弃之后的一切", okLabel: "确认丢弃" },
+						t("git.timeline.hardResetConfirm", { short: c.short, subject: c.subject, dirty }),
+						{ danger: true, title: t("git.timeline.hardResetTitle"), okLabel: t("git.timeline.confirmDiscard") },
 					);
 		if (!ok) return;
 		setError(null);
@@ -686,8 +689,8 @@ export function TimelineSection({
 			await gitResetTo(cwd, c.sha, mode);
 			toast.success(
 				mode === "soft"
-					? `已回到 ${c.short}，之后的修改保留为未提交的改动`
-					: `已回到 ${c.short}，之后的内容已丢弃`,
+					? t("git.timeline.softResetSuccess", { short: c.short })
+					: t("git.timeline.hardResetSuccess", { short: c.short }),
 			);
 			onChanged();
 		} catch (e) {
@@ -698,7 +701,7 @@ export function TimelineSection({
 
 	const copySha = async (sha: string, short: string) => {
 		await copyText(sha);
-		toast.success(`已复制 ${short}`);
+		toast.success(t("git.timeline.copiedSha", { short }));
 	};
 
 	return (
@@ -711,26 +714,26 @@ export function TimelineSection({
 							<SearchInput
 								value={filterText}
 								onChange={setFilterText}
-								placeholder="搜索提交说明 / 作者 / 版本编号"
+								placeholder={t("git.timeline.searchPlaceholder")}
 								className="flex-1"
 							/>
 						</div>
 					)}
 
 					{commits.length === 0 && (
-						<div className="py-2 text-xs text-neutral-500">还没有提交记录</div>
+						<div className="py-2 text-xs text-neutral-500">{t("git.timeline.noCommits")}</div>
 					)}
 
 					{commits.length > 0 && filteredCommits.length === 0 && (
 						<div className="py-3 text-center text-xs text-neutral-500">
-							<p>未找到匹配的提交</p>
+							<p>{t("git.timeline.noMatchedCommits")}</p>
 							{filterText && (
 								<button
 									type="button"
 									onClick={() => setFilterText("")}
 									className="mt-1 text-[11px] text-indigo-400 hover:text-indigo-300 underline"
 								>
-									清除搜索条件
+									{t("git.timeline.clearSearch")}
 								</button>
 							)}
 						</div>
@@ -790,7 +793,7 @@ export function TimelineSection({
 																		<div className="ml-[50px] flex items-center gap-2 py-1 pr-1">
 																			<span className="h-px flex-1 border-t border-dashed border-neutral-800" />
 																			<span className="shrink-0 font-mono text-[10px] text-neutral-600">
-																				以下继承自 {baseLabel}
+																				{t("git.timeline.inheritedFrom", { base: baseLabel })}
 																			</span>
 																		</div>
 																	</li>
@@ -850,7 +853,7 @@ export function TimelineSection({
 																>
 																	<ChevronDown size={12} />
 																	<span>
-																		还有 {remaining} 条 · 展开更多 (+{Math.min(remaining, COMMIT_STEP)})
+																		{t("git.timeline.moreCommits", { remaining, step: Math.min(remaining, COMMIT_STEP) })}
 																	</span>
 																</button>
 															)}
@@ -865,7 +868,7 @@ export function TimelineSection({
 																	}
 																	className="rounded px-2 py-0.5 hover:bg-neutral-800/60 hover:text-neutral-300 transition-colors"
 																>
-																	收起
+																	{t("common.collapse")}
 																</button>
 															)}
 														</div>
@@ -887,7 +890,7 @@ export function TimelineSection({
 								onClick={onLoadMore}
 								className="w-full rounded border border-neutral-800 bg-neutral-900/60 py-1 text-center text-[11px] text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-50"
 							>
-								{loadingMore ? "正在加载更多提交…" : "加载更多提交…"}
+								{loadingMore ? t("git.timeline.loadingMoreCommits") : t("git.timeline.loadMoreCommits")}
 							</button>
 						</div>
 			)}

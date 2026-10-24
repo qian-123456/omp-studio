@@ -199,7 +199,7 @@ import { findSlashCommand } from "./slash/registry";
 import { applyListEdit, continueListOnEnter, indentList, type ListEdit } from "./mdListEdit";
 import { canStartOnType, useStartOnType } from "./useStartOnType";
 import { useTypeToFocus } from "./useTypeToFocus";
-import { useT } from "../../stores/language";
+import { tNow, useT } from "../../stores/language";
 import { useRestoreComposerFocus } from "./useRestoreComposerFocus";
 import { mergeFailedDraft, remainingDraft, syncAttachmentTokens } from "./composerRelease";
 import { formatTokens } from "./sessionStats";
@@ -265,7 +265,7 @@ function getSlashToken(fullText: string, cursor: number): SlashToken | null {
 function chipHintText(chip: CommandChip): string {
 	if (chip.sub) return chip.argHint ?? "";
 	const hint = chip.argHint ?? findSlashCommand(chip.name)?.argHint;
-	return hint === undefined ? "<参数>" : argHintLabel(chip.name, hint);
+	return hint === undefined ? tNow("composer.defaultArgHint") : argHintLabel(chip.name, hint);
 }
 
 export function Composer({
@@ -278,7 +278,7 @@ export function Composer({
 	readonly?: boolean;
 	compact?: boolean;
 }) {
-	const { t } = useT();
+	const { t, locale } = useT();
 	const [busy, setBusy] = useState(false);
 	const [menuIndex, setMenuIndex] = useState(0);
 	const [menuDismissed, setMenuDismissed] = useState(false);
@@ -455,11 +455,11 @@ export function Composer({
 	const annotationMove = useMemo(() => {
 		const parentId = sessionMeta?.parentId;
 		if (compact && parentId) {
-			return { label: "移到主对话", run: (id: string) => moveToMain(sessionId, parentId, id) };
+			return { label: t("composer.moveToMain"), run: (id: string) => moveToMain(sessionId, parentId, id) };
 		}
 		if ((sessionMeta?.forkDepth ?? 0) >= MAX_SIDE_CHAT_DEPTH) return null;
-		return { label: "移到辅助对话", run: (id: string) => moveToSideChat(sessionId, id) };
-	}, [compact, sessionId, sessionMeta?.parentId, sessionMeta?.forkDepth]);
+		return { label: t("composer.moveToSideChat"), run: (id: string) => moveToSideChat(sessionId, id) };
+	}, [compact, sessionId, sessionMeta?.parentId, sessionMeta?.forkDepth, locale]);
 	const [atFiles, setAtFiles] = useState<string[] | null>(null);
 	const atToken = useMemo(() => {
 		const beforeCursor = text.slice(0, cursorPos);
@@ -636,14 +636,14 @@ export function Composer({
 			const selected = await openDialog({
 				multiple: true,
 				directory: false,
-				title: "选择附加文件",
+				title: t("composer.selectAttachFiles"),
 			});
 			if (!selected) return;
 			const paths = typeof selected === "string" ? [selected] : selected;
 			for (const p of paths) await attachPath(p);
-			if (paths.length > 0) toast.success(`已添加 ${paths.length} 个文件引用`);
+			if (paths.length > 0) toast.success(t("composer.addedFileRefs", { count: paths.length }));
 		} catch (dialogErr) {
-			toast.error(`打开文件对话框失败: ${errMsg(dialogErr)}`);
+			toast.error(t("composer.openFileDialogFailed", { error: errMsg(dialogErr) }));
 		}
 	};
 
@@ -653,16 +653,16 @@ export function Composer({
 			const out = await runSessionBash(sessionId, FINDER_SELECTION_SCRIPT);
 			const paths = out.split("\n").map((l) => l.trim()).filter(Boolean);
 			if (paths.length === 0) {
-				toast.info("Finder 中没有选中的项目");
+				toast.info(t("composer.finderNoSelection"));
 				return;
 			}
 			for (const p of paths) {
 				const isDir = p.endsWith("/");
 				await attachPath(isDir ? p.replace(/\/+$/, "") || p : p, isDir);
 			}
-			toast.success(`已附加 ${paths.length} 个 Finder 选中项`);
+			toast.success(t("composer.attachedFinderItems", { count: paths.length }));
 		} catch (err) {
-			if (!isResumeCancelled(err)) toast.error(`读取 Finder 选中项失败: ${errMsg(err)}`);
+			if (!isResumeCancelled(err)) toast.error(t("composer.readFinderFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -771,7 +771,7 @@ export function Composer({
 		[subParent, subQuery, menuDismissed],
 	);
 	const subSections = useMemo(
-		() => (subItems.length > 0 ? [{ label: "子命令" as const, items: subItems }] : []),
+		() => (subItems.length > 0 ? [{ group: "subcommand" as const, items: subItems }] : []),
 		[subItems],
 	);
 	useEffect(() => setMenuIndex(0), [subQuery]);
@@ -807,7 +807,7 @@ export function Composer({
 	const argSections = useMemo(
 		() =>
 			argProvider && argItems.length > 0
-				? [{ label: argProvider.groupLabel, items: argItems }]
+				? [{ group: argProvider.groupKey, items: argItems }]
 				: [],
 		[argProvider, argItems],
 	);
@@ -876,7 +876,7 @@ export function Composer({
 			setThinkingOpen(false);
 		} catch (err) {
 			if (isResumeCancelled(err)) setThinkingOpen(false);
-			else toast.error(`切换思考等级失败: ${errMsg(err)}`);
+			else toast.error(t("composer.switchThinkingFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -892,7 +892,7 @@ export function Composer({
 		ro.observe(el);
 		return () => ro.disconnect();
 	}, []);
-	const modelLabel = current.value ? current.label : models === null ? "加载中" : "选择模型";
+	const modelLabel = current.value ? current.label : models === null ? t("chat.loadingShort") : t("composer.selectModel");
 	const thinkingKind = thinkingChipState(thinkingLevels, currentModelOption?.reasoning).kind;
 	const toolbarTier = pickToolbarTier({
 		width: toolbarWidth,
@@ -1068,7 +1068,7 @@ export function Composer({
 				}
 			} catch (err) {
 				if (!isResumeCancelled(err))
-					toast.error(`/${item.name} 失败: ${errMsg(err)}`);
+					toast.error(t("composer.cmdFailed", { name: item.name, error: errMsg(err) }));
 			}
 			setTimeout(() => taRef.current?.focus(), 0);
 		})();
@@ -1085,7 +1085,7 @@ export function Composer({
 			setMenuDismissed(true);
 			setArgHintLine(null);
 			void runSlashInput(sessionId, `/${name}`, makeSlashDeps()).catch((err) => {
-				if (!isResumeCancelled(err)) toast.error(`/${name} 失败: ${errMsg(err)}`);
+				if (!isResumeCancelled(err)) toast.error(t("composer.cmdFailed", { name, error: errMsg(err) }));
 			});
 			setTimeout(() => taRef.current?.focus(), 0);
 			return;
@@ -1123,7 +1123,7 @@ export function Composer({
 		try {
 			await sendPrompt(sessionId, "Continue");
 		} catch (err) {
-			if (!isResumeCancelled(err)) toast.error(`恢复失败: ${errMsg(err)}`);
+			if (!isResumeCancelled(err)) toast.error(t("composer.resumeFailed", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -1198,7 +1198,7 @@ export function Composer({
 				}
 			} catch (err) {
 				if (!isResumeCancelled(err))
-					toast.error(`发送失败: ${errMsg(err)}`);
+					toast.error(t("composer.sendFailed", { error: errMsg(err) }));
 			} finally {
 				setBusy(false);
 			}
@@ -1309,14 +1309,14 @@ export function Composer({
 				if (!released) return;
 			} else {
 				pushHeld(sessionId, message, imageAttachments);
-				toast.error("打断超时，回合仍在运行：消息已暂存，回合结束后自动发送");
+				toast.error(t("composer.interruptTimeout"));
 				releaseComposer();
 			}
 			pushHistory(raw.trim());
 			finishPrivacySend();
 		} catch (err) {
 			restoreComposer();
-			if (!isResumeCancelled(err)) toast.error(`发送失败: ${errMsg(err)}`);
+			if (!isResumeCancelled(err)) toast.error(t("composer.sendFailed", { error: errMsg(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -1342,9 +1342,9 @@ export function Composer({
 	const handleAbort = async () => {
 		try {
 			await abortTurn(sessionId);
-			toast.info("已请求停止当前回合");
+			toast.info(t("composer.requestedStop"));
 		} catch (err) {
-			toast.error(`停止失败: ${errMsg(err)}`);
+			toast.error(t("composer.stopFailed", { error: errMsg(err) }));
 		}
 	};
 	const fileToBase64 = (file: File | Blob): Promise<string> =>
@@ -1458,9 +1458,9 @@ export function Composer({
 			addImage(sessionId, stored, name, dimensions);
 			const nextNum = (useComposer.getState().images[sessionId] ?? []).length;
 			insertMarkerAtCursor(`🖼️#${nextNum}`);
-			toast.success(`已插入图片 #${nextNum}`);
+			toast.success(t("composer.insertedImage", { num: nextNum }));
 		} catch (err) {
-			toast.error(`处理图片失败: ${errMsg(err)}`);
+			toast.error(t("composer.processImageFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -1470,7 +1470,7 @@ export function Composer({
 			const savedPath = await saveClipboardImage(base64);
 			await insertImageToken(savedPath, file instanceof File ? file.name : undefined);
 		} catch (err) {
-			toast.error(`处理图片失败: ${errMsg(err)}`);
+			toast.error(t("composer.processImageFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -1481,9 +1481,9 @@ export function Composer({
 			addFile(sessionId, filePath, name);
 			const nextNum = (useComposer.getState().files[sessionId] ?? []).length;
 			insertMarkerAtCursor(`📎#${nextNum}`);
-			toast.success(`已插入文件 #${nextNum}`);
+			toast.success(t("composer.insertedFile", { num: nextNum }));
 		} catch (err) {
-			toast.error(`附加文件失败: ${errMsg(err)}`);
+			toast.error(t("composer.attachFileFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -1496,7 +1496,7 @@ export function Composer({
 			const savedPath = await saveClipboardFile(base64, file.name || undefined);
 			processFilePath(savedPath, file.name || undefined);
 		} catch (err) {
-			toast.error(`附加文件失败: ${errMsg(err)}`);
+			toast.error(t("composer.attachFileFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -1506,7 +1506,7 @@ export function Composer({
 			const blob = await (await fetch(dataUrl)).blob();
 			await processImageFile(new File([blob], `sketch-${Date.now()}.png`, { type: "image/png" }));
 		} catch (err) {
-			toast.error(`插入草图失败: ${errMsg(err)}`);
+			toast.error(t("composer.insertSketchFailed", { error: errMsg(err) }));
 		}
 	};
 
@@ -1615,7 +1615,7 @@ export function Composer({
 		if (nativePaths.length === 0 && nonImageFiles.length === 0) {
 			if (imageFiles.length === 0) {
 				// Clipboard advertised Files but nothing resolved — surface it.
-				toast.error("无法读取剪贴板中的文件路径");
+				toast.error(t("composer.clipboardNoPath"));
 				return;
 			}
 			// Screenshot-style image data only (no file URLs on the pasteboard).
@@ -2079,7 +2079,7 @@ export function Composer({
 			<GoalBar
 				sessionId={sessionId}
 				onEdit={(objective) => {
-					setChip({ name: "goal", title: "目标" });
+					setChip({ name: "goal", title: t("chat.goal.label") });
 					setText(objective);
 					setDraft(sessionId, objective);
 					setTimeout(() => {
@@ -2121,11 +2121,11 @@ export function Composer({
 						<button
 							type="button"
 							onClick={() => togglePlanMode(sessionId)}
-							title="点击关闭规划模式"
+							title={t("chat.planMode.clickToDisable")}
 							className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600 hover:bg-amber-500/20"
 						>
 							<Lightbulb size={11} />
-							规划模式已启用
+							{t("chat.planMode.enabled")}
 							<X size={10} />
 						</button>
 					</div>
@@ -2276,7 +2276,7 @@ export function Composer({
 										title: "",
 										description: sub.description ?? "",
 										argHint: sub.usage,
-										group: "子命令",
+										group: "subcommand",
 										icon: subParent.icon,
 										registry: subParent.registry,
 									}, fw.rest);
@@ -2410,7 +2410,7 @@ export function Composer({
 					{readonly ? (
 						<div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 pl-1.5">
 							<span
-								title="外部终端正在运行"
+								title={t("composer.externalTerminalRunning")}
 								className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center"
 							>
 								<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-60" />
@@ -2423,11 +2423,11 @@ export function Composer({
 								{modelLabel}
 							</span>
 							<span
-								title="思考等级"
+								title={t("composer.thinkingLevel")}
 								className="shrink-0 whitespace-nowrap px-2 py-1 text-[12px] text-[var(--text-60,var(--text-muted))]"
 							>
 								{thinkingKind === "unsupported" && !stateThinkingLevel
-									? "不支持思考"
+									? t("chat.toolbar.unsupportedThinking")
 									: currentThinking}
 							</span>
 						</div>
@@ -2437,8 +2437,8 @@ export function Composer({
 							ref={addBtnRef}
 							type="button"
 							onClick={() => setAddMenuOpen((v) => !v)}
-							aria-label="添加"
-							title="添加文件、项目、目标或规划模式"
+							aria-label={t("composer.addAria")}
+							title={t("composer.addTitle")}
 							className={clsx(
 								"flex h-7 shrink-0 w-7 items-center justify-center rounded-md hover:bg-[var(--ghost-hover,var(--bg-hover))] hover:text-[var(--text)] transition-colors",
 								addMenuOpen ? "bg-[var(--ghost-hover,var(--bg-hover))] text-[var(--text)]" : "text-[var(--text-60,var(--text-muted))]",
@@ -2461,7 +2461,7 @@ export function Composer({
 							/>
 						)}
 						{planMode && (
-							<span title="规划模式已启用" className="flex h-7 items-center px-1 text-amber-500">
+							<span title={t("chat.planMode.enabled")} className="flex h-7 items-center px-1 text-amber-500">
 								<Lightbulb size={13} />
 							</span>
 						)}
@@ -2476,7 +2476,7 @@ export function Composer({
 								}}
 							title={
 								toolbarTier >= TIER_MERGED && thinkingKind !== "unsupported"
-									? `${modelLabel}，思考等级: ${currentThinking}`
+									? t("composer.modelThinkingTooltip", { model: modelLabel, level: currentThinking })
 									: modelLabel
 							}
 							className={clsx(
@@ -2522,7 +2522,7 @@ export function Composer({
 													toast[notice.kind](notice.text, notice.ttlMs);
 												} catch (err) {
 													if (!isResumeCancelled(err))
-														toast.error(`切换模型失败: ${errMsg(err)}`);
+														toast.error(t("composer.switchModelFailed", { error: errMsg(err) }));
 												}
 											}
 											setModelOpen(false);
@@ -2566,12 +2566,12 @@ export function Composer({
 							<button
 								type="button"
 								onClick={() => setDismissed(sessionId, false)}
-								aria-label="查看排队消息"
-								title="点击查看排队消息"
+								aria-label={t("composer.viewHeldQueue")}
+								title={t("composer.clickToViewHeldQueue")}
 								className="flex items-center gap-1 rounded-full bg-[var(--ghost-hover,var(--bg-active-fill))] px-2 py-0.5 text-[11px] text-[var(--text-60,var(--text-muted))] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 							>
 								<CornerDownRight size={11} />
-								<span>排队 {held.length}</span>
+								<span>{t("composer.heldCount", { count: held.length })}</span>
 							</button>
 						)}
 
@@ -2597,7 +2597,7 @@ export function Composer({
 									onClick={() => requestTakeover(sessionId)}
 									className="press-scale flex shrink-0 items-center whitespace-nowrap rounded-full bg-purple-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-purple-500 active:bg-purple-700"
 								>
-									接管会话
+									{t("composer.takeover")}
 								</button>
 							) : streaming ? (
 								<>
@@ -2607,7 +2607,11 @@ export function Composer({
 											onClick={() => void submit(streamingSendAction)}
 											disabled={busy}
 											aria-label={FOLLOW_UP_LABEL[streamingSendAction]}
-											title={`${FOLLOW_UP_LABEL[streamingSendAction]}（${alternateShortcutHint(sendShortcut)} 改为${FOLLOW_UP_LABEL[streamingAltAction]}）`}
+											title={t("chat.followUp.tooltip", {
+												action: FOLLOW_UP_LABEL[streamingSendAction],
+												hint: alternateShortcutHint(sendShortcut),
+												altAction: FOLLOW_UP_LABEL[streamingAltAction],
+											})}
 											className={clsx(
 												"flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150",
 												busy
@@ -2623,8 +2627,8 @@ export function Composer({
 										type="button"
 										onClick={() => void handleAbort()}
 										disabled={isAborting}
-										aria-label="停止当前回合"
-										title={isAborting ? "正在停止当前回合…" : "停止当前回合"}
+										aria-label={t("composer.stopCurrentTurn")}
+										title={isAborting ? t("composer.stoppingCurrentTurn") : t("composer.stopCurrentTurn")}
 										className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--text)] text-[var(--bg)] hover:opacity-85 disabled:opacity-50 transition-opacity"
 									>
 										{isAborting ? (
@@ -2712,7 +2716,7 @@ export function Composer({
 					sections={subSections}
 					activeIndex={Math.min(menuIndex, Math.max(0, subItems.length - 1))}
 					empty={false}
-					footer="↑↓ 选择 · ↵ 选择 · Esc 关闭"
+					footer={t("slash.menuFooterSelect")}
 					onSelect={selectSubcommand}
 					onDismiss={() => setMenuDismissed(true)}
 				/>
@@ -2722,7 +2726,7 @@ export function Composer({
 					sections={argSections}
 					activeIndex={Math.min(menuIndex, Math.max(0, argItems.length - 1))}
 					empty={false}
-					footer="↑↓ 选择 · ↵ 选择 · Esc 关闭"
+					footer={t("slash.menuFooterSelect")}
 					onSelect={selectArgItem}
 					onDismiss={() => setMenuDismissed(true)}
 				/>

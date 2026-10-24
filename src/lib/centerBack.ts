@@ -1,4 +1,5 @@
 import type { CenterView } from "../stores/ui";
+import { tNow } from "../stores/language";
 
 /** Where the main-area "back" control leads. */
 export type BackTarget =
@@ -33,7 +34,7 @@ export function resolveBackTarget(input: BackInput): BackTarget | null {
 
 /** Short label for the back control: names where it goes. */
 export function backLabel(target: BackTarget, sessionName: string | null): string {
-	return target.kind === "session" ? sessionName || "会话" : "首页";
+	return target.kind === "session" ? sessionName || tNow("shell.sessionFallback") : tNow("shell.homeFallback");
 }
 
 /** Minimal shape of the Esc event target/doc state needed to decide. */

@@ -11,6 +11,7 @@
 
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, Plus, RefreshCw, Server, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "../../stores/language";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { EmptyState } from "../../components/EmptyState";
 import { Notice } from "../../components/Notice";
@@ -47,11 +48,11 @@ type Dialog =
 type Filter = "all" | "current";
 
 /** Where a delete will remove the server from, in plain words. */
-function deleteTargets(view: McpServerView, names: (p: string) => string): string {
+function deleteTargets(view: McpServerView, names: (p: string) => string, t: (k: string, p?: Record<string, string | number>) => string): string {
 	const parts: string[] = [];
-	if (view.hasGlobal) parts.push("全局配置");
-	if (view.copyProjects.length > 0) parts.push(`项目 ${view.copyProjects.map(names).join("、")}`);
-	return parts.length > 0 ? parts.join("和") : "配置文件";
+	if (view.hasGlobal) parts.push(t("mcp.targetGlobal"));
+	if (view.copyProjects.length > 0) parts.push(t("mcp.targetProjects", { projects: view.copyProjects.map(names).join(t("settingsModels.listSep")) }));
+	return parts.length > 0 ? parts.join(t("mcp.targetAnd")) : t("mcp.targetConfigFiles");
 }
 
 export function McpSection({
@@ -63,6 +64,7 @@ export function McpSection({
 	/** Nav search query. */
 	query?: string;
 }) {
+	const { t } = useT();
 	const workspaces = useSessions((s) => s.workspaces);
 	const { projects, current } = useMemo(() => deriveProjects(workspaces, cwd), [workspaces, cwd]);
 	const paths = useMemo(() => projects.map((p) => p.path), [projects]);
@@ -153,34 +155,34 @@ export function McpSection({
 	);
 
 	const openFile = (path: string) => {
-		void openPath(path).catch((e: unknown) => toast.error(`打开文件失败: ${errMsg(e)}`));
+		void openPath(path).catch((e: unknown) => toast.error(t("mcp.openFileFailed", { error: errMsg(e) })));
 	};
 
 	const toggle = (s: McpServerView, enabled: boolean) =>
 		void act(
 			() => mcpServerSetEnabled(paths, s.name, enabled),
-			enabled ? `已恢复使用「${s.name}」，新开的会话生效` : `已暂停「${s.name}」，新开的会话生效`,
+			enabled ? t("mcp.resumeEnabled", { name: s.name }) : t("mcp.pauseDisabled", { name: s.name }),
 		);
 
 	const remove = async (s: McpServerView) => {
 		const confirmed = await confirmDialog(
-			`将从${deleteTargets(s, nameOf)}中删除 MCP 服务器「${s.name}」。此操作会改写配置文件，无法撤销。`,
-			{ title: "删除 MCP 服务器", danger: true, okLabel: "删除" },
+			t("mcp.deleteConfirmText", { targets: deleteTargets(s, nameOf, t), name: s.name }),
+			{ title: t("mcp.deleteConfirmTitle"), danger: true, okLabel: t("common.delete") },
 		);
 		if (!confirmed) return;
-		await act(() => mcpServerDelete(paths, s.name), `已删除「${s.name}」`);
+		await act(() => mcpServerDelete(paths, s.name), t("mcp.deletedToast", { name: s.name }));
 	};
 
 	const addToCurrent = (s: McpServerView) => {
 		if (!current) return;
 		void act(
 			() => mcpServerSetScope(paths, s.name, scopeWithCurrent(s, paths, current)),
-			`已把「${s.name}」加到当前项目，新开的会话生效`,
+			t("mcp.addedToCurrentToast", { name: s.name }),
 		);
 	};
 
 	const saveScope = async (s: McpServerView, scope: McpScope) => {
-		if (await act(() => mcpServerSetScope(paths, s.name, scope), `已更新「${s.name}」的使用范围，新开的会话生效`))
+		if (await act(() => mcpServerSetScope(paths, s.name, scope), t("mcp.scopeUpdatedToast", { name: s.name })))
 			setDialog(null);
 	};
 
@@ -192,7 +194,7 @@ export function McpSection({
 	): Promise<string | null> => {
 		const err = await write(() => mcpServerSave(paths, originalName, name, patch, scope));
 		if (!err) {
-			toast.success(`已保存「${name}」，新开的会话生效`);
+			toast.success(t("mcp.savedToast", { name }));
 			setDialog(null);
 		}
 		return err;
@@ -202,7 +204,7 @@ export function McpSection({
 		write(() => mcpServerSave(paths, null, name, entry as McpServerPatch, scope), false);
 
 	const importFinished = (imported: number) => {
-		if (imported > 0) toast.success(`已导入 ${imported} 个服务器，新开的会话生效`);
+		if (imported > 0) toast.success(t("mcp.importedToast", { count: imported }));
 		void reload();
 	};
 
@@ -213,19 +215,19 @@ export function McpSection({
 	return (
 		<div className="space-y-6">
 			<SectionHeader
-				title="MCP 服务器"
-				description="MCP 服务器是 AI 可以调用的外部工具。每个服务器可以用在所有项目，也可以只用在你选的项目；改动只对之后新开的会话生效。"
+				title={t("mcp.sectionTitle")}
+				description={t("mcp.sectionDesc")}
 				actions={
 					<>
 						<IconButton
 							icon={RefreshCw}
-							label="重新读取配置文件"
+							label={t("mcp.reloadAria")}
 							onClick={() => void reload()}
 							disabled={busy || loading}
 							className={loading ? "[&_svg]:animate-spin" : undefined}
 						/>
 						<Button icon={Upload} onClick={() => setDialog({ kind: "import" })} disabled={!catalog || busy}>
-							导入配置
+							{t("mcp.importBtn")}
 						</Button>
 						<Button
 							variant="primary"
@@ -233,7 +235,7 @@ export function McpSection({
 							onClick={() => setDialog({ kind: "add" })}
 							disabled={!catalog || busy}
 						>
-							添加服务器
+							{t("mcp.addServerBtn")}
 						</Button>
 					</>
 				}
@@ -243,13 +245,13 @@ export function McpSection({
 			{current && catalog && (
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<div className="text-xs text-[var(--text-muted)]">
-						当前项目「{currentName}」的新会话会加载 {loadedHere} 个服务器
+						{t("mcp.currentProjectLoadedSummary", { name: currentName ?? "", count: loadedHere })}
 					</div>
 					<Segmented<Filter>
-						aria-label="服务器筛选"
+						aria-label={t("mcp.filterAria")}
 						options={[
-							{ value: "all", label: "全部服务器" },
-							{ value: "current", label: "只看当前项目" },
+							{ value: "all", label: t("mcp.filterAll") },
+							{ value: "current", label: t("mcp.filterCurrent") },
 						]}
 						value={filter}
 						onChange={setFilter}
@@ -262,11 +264,11 @@ export function McpSection({
 					tone="danger"
 					action={
 						<Button size="sm" icon={RefreshCw} onClick={() => void reload()}>
-							重试
+							{t("common.retry")}
 						</Button>
 					}
 				>
-					<span className="select-text break-all">读取配置失败：{loadError}</span>
+					<span className="select-text break-all">{t("mcp.readConfigFailed", { error: loadError })}</span>
 				</Notice>
 			)}
 
@@ -274,10 +276,10 @@ export function McpSection({
 				<Notice
 					key={f.path}
 					tone="danger"
-					title="配置文件格式有误，里面的服务器不会加载"
+					title={t("mcp.brokenConfigTitle")}
 					action={
 						<Button size="sm" icon={ExternalLink} onClick={() => openFile(f.path)}>
-							打开文件
+							{t("mcp.openFileBtn")}
 						</Button>
 					}
 				>
@@ -286,28 +288,28 @@ export function McpSection({
 				</Notice>
 			))}
 
-			<div className="scroll-mt-4 space-y-6" data-field-id="mcpServerList" data-jump="服务器">
+			<div className="scroll-mt-4 space-y-6" data-field-id="mcpServerList" data-jump={t("mcp.jumpServers")}>
 				{!catalog && !loadError && (
 					<div className="flex justify-center py-6 text-[var(--text-dim)]">
-						<Loader2 aria-label="加载 MCP 服务器" className="h-4 w-4 animate-spin" />
+						<Loader2 aria-label={t("mcp.loadingServersAria")} className="h-4 w-4 animate-spin" />
 					</div>
 				)}
 
 				{catalog && (
-					<SettingsCard title="已配置服务器" clip>
+					<SettingsCard title={t("mcp.configuredServersCardTitle")} clip>
 						{visibleServers.length === 0 ? (
 							allServers.length === 0 ? (
 								<EmptyState
 									icon={Server}
-									title="还没有配置 MCP 服务器"
-									description="添加后，AI 在新会话中就能使用它提供的工具。"
+									title={t("mcp.noServersTitle")}
+									description={t("mcp.noServersDesc")}
 									action={
 										<div className="flex items-center gap-2">
 											<Button variant="primary" icon={Plus} onClick={() => setDialog({ kind: "add" })}>
-												添加服务器
+												{t("mcp.addServerBtn")}
 											</Button>
 											<Button icon={Upload} onClick={() => setDialog({ kind: "import" })}>
-												导入配置
+												{t("mcp.importBtn")}
 											</Button>
 										</div>
 									}
@@ -317,10 +319,10 @@ export function McpSection({
 									icon={Server}
 									title={
 										q
-											? `没有匹配「${query.trim()}」的服务器`
-											: `当前项目「${currentName}」还没有加载任何服务器`
+											? t("mcp.noMatchQuery", { query: query.trim() })
+											: t("mcp.noServersInCurrent", { name: currentName ?? "" })
 									}
-									description={q ? undefined : "切换到「全部服务器」，给想用的服务器点「加到当前项目」。"}
+									description={q ? undefined : t("mcp.switchToAllHint")}
 								/>
 							)
 						) : (
@@ -344,7 +346,7 @@ export function McpSection({
 			</div>
 
 			{catalog && catalog.files.length > 0 && (
-				<div data-jump="配置文件" className="scroll-mt-4 space-y-2">
+				<div data-jump={t("mcp.jumpConfigFiles")} className="scroll-mt-4 space-y-2">
 					<button
 						type="button"
 						aria-expanded={filesOpen}
@@ -352,7 +354,7 @@ export function McpSection({
 						className="flex items-center gap-1 whitespace-nowrap px-1 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text)]"
 					>
 						{filesOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-						配置文件（高级）
+						{t("mcp.advancedConfigFiles")}
 					</button>
 					{filesOpen && (
 						<SettingsCard>
@@ -361,17 +363,17 @@ export function McpSection({
 									<div className="min-w-0">
 										<div className="select-text break-all font-mono text-xs text-[var(--text)]">{f.path}</div>
 										<div className="mt-0.5 break-all text-[11px] text-[var(--text-dim)]">
-											{f.scope === "project" ? `项目 ${f.project ? nameOf(f.project) : ""}` : "全局"}
-											{!f.exists && " · 尚未创建"}
-											{f.parseError && ` · 格式错误：${f.parseError}`}
-											{f.disabledServers.length > 0 && ` · 停用列表 ${f.disabledServers.length} 个`}
+											{f.scope === "project" ? t("mcp.scopeProject", { name: f.project ? nameOf(f.project) : "" }) : t("mcp.scopeGlobal")}
+											{!f.exists && t("mcp.fileNotCreated")}
+											{f.parseError && t("mcp.fileFormatError", { error: f.parseError })}
+											{f.disabledServers.length > 0 && t("mcp.fileDenylistedCount", { count: f.disabledServers.length })}
 										</div>
 									</div>
 									{f.exists && (
 										<IconButton
 											icon={ExternalLink}
-											label={`打开文件 ${f.path}`}
-											title="用默认程序打开"
+											label={t("mcp.openFileAria", { path: f.path })}
+											title={t("mcp.openWithDefaultProgram")}
 											size="sm"
 											onClick={() => openFile(f.path)}
 										/>

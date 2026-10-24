@@ -50,6 +50,7 @@ import { useSessions } from "../../stores/sessions";
 import { useSettings } from "../../features/settings/store";
 import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
+import { useT } from "../../stores/language";
 import { addTerminalTabWithCwd } from "../terminal/terminalTabs";
 import { startSessionInWorktree } from "../sessions/newSession";
 import { defaultSlug } from "./helpers";
@@ -106,6 +107,7 @@ export function WorktreeSection({
 	onOpenPane: (path: string, tab: "changes" | "history") => void;
 	onDiff: (req: { title: string; load: () => Promise<string> }) => void;
 }) {
+	const { t } = useT();
 	const openModal = useUi((s) => s.openModal);
 	const selectSession = useUi((s) => s.selectSession);
 	const setRightTab = useUi((s) => s.setRightTab);
@@ -216,7 +218,7 @@ export function WorktreeSection({
 		try {
 			await gitCreateWorktree(repo, name);
 			void useWorktrees.getState().refresh();
-			toast.success(`已创建工作树：${name}`);
+			toast.success(t("worktree.created", { name }));
 			setNewWtName("");
 			setShowCreate(false);
 			onChanged();
@@ -254,7 +256,7 @@ export function WorktreeSection({
 						}
 					}
 					void useWorktrees.getState().refresh();
-					toast.success("已清理工作树，并自动归档关联会话");
+					toast.success(t("worktree.cleanSuccess"));
 					onChanged();
 				}
 			} catch (e) {
@@ -269,7 +271,7 @@ export function WorktreeSection({
 			setExplorerWorkspace(ws.id);
 			setRightTab("explorer");
 		} catch (e) {
-			toast.error(`在侧边栏打开失败: ${errMsg(e)}`);
+			toast.error(t("worktree.openInSidebarFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -277,7 +279,7 @@ export function WorktreeSection({
 		const name = wt.branch ?? "worktree";
 		addTerminalTabWithCwd(wt.path, name);
 		setRightTab("terminal");
-		toast.success(`已在「${name}」工作树打开终端`);
+		toast.success(t("worktree.openedTerminal", { name }));
 	};
 
 	// Launch an AI session that performs the conflicting operation itself and resolves it.
@@ -305,22 +307,22 @@ export function WorktreeSection({
 			].join("\n");
 			useComposer.getState().setDraft(sessionId, prompt);
 			useComposer.getState().focusComposer(sessionId);
-			toast.success("已创建解冲突会话，提示词可在输入框随时调整");
+			toast.success(t("worktree.conflictToast"));
 		} catch (e) {
-			toast.error(`启动解冲突会话失败: ${errMsg(e)}`);
+			toast.error(t("worktree.conflictToastFailed", { error: errMsg(e) }));
 		}
 	};
 
 	const offerConflictSession = async (wt: WorktreeInfo, op: ConflictOp, files: string[]) => {
 		const ok = await confirmDialog(
-			`${op.desc}会产生冲突：\n${files.join("\n") || "多个文件冲突"}\n\n仓库已保持原状。是否启动 AI 会话来执行该操作并解决冲突？`,
-			{ title: "检测到冲突", okLabel: "✨ AI 辅助解冲突", cancelLabel: "取消" },
+			t("worktree.conflictDialogMessage", { desc: op.desc, files: files.join("\n") || t("git.branches.multipleFilesConflict") }),
+			{ title: t("worktree.conflictDialogTitle"), okLabel: t("worktree.conflictAiHelp"), cancelLabel: t("common.cancel") },
 		);
 		if (ok) await launchAiConflictSession(wt, op, files);
 	};
 
 	const mergeOp = (wt: WorktreeInfo, source: string): ConflictOp => ({
-		desc: `把分支 ${source} 合并进 ${wt.branch}`,
+		desc: t("worktree.mergeOpDesc", { source, target: wt.branch ?? "" }),
 		command: `git merge ${source}`,
 		finish: "完成合并提交（git add 后 git commit）。",
 	});
@@ -337,21 +339,21 @@ export function WorktreeSection({
 					return;
 				}
 				if (preview.commitsAhead === 0) {
-					toast.info(`「${branch}」已包含 ${source} 的全部提交`);
+					toast.info(t("worktree.allCommitsContained", { branch, source }));
 					return;
 				}
 				const ok = await confirmDialog(
-					`将把 ${source} 的 ${preview.commitsAhead} 个新提交合并进「${branch}」，预检无冲突。确认合并？`,
-					{ title, okLabel: "确认合并" },
+					t("worktree.mergePreviewConfirm", { source, commits: preview.commitsAhead, branch }),
+					{ title, okLabel: t("worktree.confirmMerge") },
 				);
 				if (!ok) return;
 				await gitMergeBranch(wt.path, source);
-				toast.success(`已把 ${source} 合并进「${branch}」`);
+				toast.success(t("worktree.mergedSuccess", { source, branch }));
 				onChanged();
 			} catch (e) {
 				const files = conflictFiles(e);
 				if (files) await offerConflictSession(wt, mergeOp(wt, source), files);
-				else toast.error(`合并失败: ${errMsg(e)}`);
+				else toast.error(t("worktree.mergeFailed", { error: errMsg(e) }));
 			}
 		});
 	};
@@ -367,25 +369,19 @@ export function WorktreeSection({
 					return;
 				}
 				const ok = await confirmDialog(
-					[
-						`将在本地依次执行两步（不涉及远端）：`,
-						`1. 把 ${baseBranch} 的 ${preview.commitsAhead} 个新提交合并进「${branch}」；`,
-						`2. 把本地 ${baseBranch} 快进到「${branch}」，带上它的 ${wt.ahead} 个提交。`,
-						"",
-						`若 ${baseBranch} 所在工作树有会被覆盖的未提交改动，第 2 步会被 git 拒绝。`,
-					].join("\n"),
-					{ title: `同步并合入 ${baseBranch}`, okLabel: "确认同步" },
+					t("worktree.syncAndMergeConfirm", { baseBranch, commits: preview.commitsAhead, branch, ahead: wt.ahead }),
+					{ title: t("worktree.syncAndMergeTitle", { baseBranch }), okLabel: t("worktree.confirmSync") },
 				);
 				if (!ok) return;
 				const r = await gitSyncWithBase(wt.path);
 				toast.success(
-					`已同步并合入 ${baseBranch}：同步了 ${r.mergedFromBase} 个 ${baseBranch} 提交，${baseBranch} 快进了 ${r.fastForwarded} 个提交`,
+					t("worktree.syncAndMergeSuccess", { baseBranch, merged: r.mergedFromBase, fastForwarded: r.fastForwarded }),
 				);
 				onChanged();
 			} catch (e) {
 				const files = conflictFiles(e);
 				if (files) await offerConflictSession(wt, mergeOp(wt, baseBranch), files);
-				else toast.error(`同步并合入 ${baseBranch} 失败: ${errMsg(e)}`);
+				else toast.error(t("worktree.syncAndMergeFailed", { baseBranch, error: errMsg(e) }));
 			}
 		});
 
@@ -394,13 +390,13 @@ export function WorktreeSection({
 			const branch = wt.branch;
 			if (!branch) return;
 			const ok = await confirmDialog(
-				`将把「${branch}」的 ${wt.ahead} 个提交变基到最新的 ${baseBranch} 之上。\n\n变基会重写该分支的提交历史；如果它已经推送到远端，之后需要强制推送（force push），协作者手里的旧历史会失效。`,
-				{ title: `变基到 ${baseBranch}`, danger: true, okLabel: "确认变基" },
+				t("worktree.rebaseConfirm", { branch, ahead: wt.ahead, baseBranch }),
+				{ title: t("worktree.rebaseTitle", { baseBranch }), danger: true, okLabel: t("worktree.confirmRebase") },
 			);
 			if (!ok) return;
 			try {
 				await gitRebaseOntoBase(wt.path);
-				toast.success(`已把「${branch}」变基到 ${baseBranch}`);
+				toast.success(t("worktree.rebaseSuccess", { branch, baseBranch }));
 				onChanged();
 			} catch (e) {
 				const files = conflictFiles(e);
@@ -408,29 +404,29 @@ export function WorktreeSection({
 					await offerConflictSession(
 						wt,
 						{
-							desc: `把分支 ${branch} 变基到 ${baseBranch}`,
+							desc: t("worktree.rebaseOpDesc", { branch, base: baseBranch }),
 							command: `git rebase ${baseBranch}`,
 							finish: "每解决一轮冲突后 git add 并 git rebase --continue，直到变基完成。",
 						},
 						files,
 					);
-				} else toast.error(`变基失败: ${errMsg(e)}`);
+				} else toast.error(t("worktree.rebaseFailed", { error: errMsg(e) }));
 			}
 		});
 
 	const handleDiscardAll = (wt: WorktreeInfo) =>
 		runBusy(wt, async () => {
 			const ok = await confirmDialog(
-				`将丢弃「${wt.branch ?? wt.path}」的全部 ${wt.dirty} 处未提交改动（含未跟踪的新文件），此操作无法撤销。\n被 .gitignore 忽略的文件（如 node_modules、.env）会保留。`,
-				{ title: "丢弃全部未提交改动", danger: true, okLabel: "确认丢弃" },
+				t("worktree.discardAllConfirm", { name: wt.branch ?? wt.path, dirty: wt.dirty }),
+				{ title: t("worktree.discardAllTitle"), danger: true, okLabel: t("worktree.confirmDiscard") },
 			);
 			if (!ok) return;
 			try {
 				await gitDiscardAll(wt.path);
-				toast.success("已丢弃全部未提交改动");
+				toast.success(t("worktree.discardAllSuccess"));
 				onChanged();
 			} catch (e) {
-				toast.error(`丢弃失败: ${errMsg(e)}`);
+				toast.error(t("worktree.discardAllFailed", { error: errMsg(e) }));
 			}
 		});
 
@@ -441,11 +437,11 @@ export function WorktreeSection({
 
 		if (deliveryMode === "direct") {
 			const ok = await confirmDialog(
-				`确认将工作树「${branchName}」合并入本地 ${baseBranch} 并推送到云端 origin/${baseBranch}？\n（这是直推模式，无需 PR 审查）`,
+				t("worktree.directMergeConfirm", { branch: branchName, baseBranch }),
 				{
-					title: `直接合并入 ${baseBranch}`,
+					title: t("worktree.directMergeTitle", { baseBranch }),
 					danger: true,
-					okLabel: "确认直接合并推送",
+					okLabel: t("worktree.directMergeOk"),
 				},
 			);
 			if (!ok) return;
@@ -453,10 +449,10 @@ export function WorktreeSection({
 				try {
 					await gitSyncBranch(repo, branchName, "push");
 					await gitMergeBranch(repo, branchName);
-					toast.success(`已直接合并入 ${baseBranch}`);
+					toast.success(t("worktree.directMergeSuccess", { baseBranch }));
 					onChanged();
 				} catch (e) {
-					toast.error(`合并失败: ${errMsg(e)}`);
+					toast.error(t("worktree.mergeFailed", { error: errMsg(e) }));
 				}
 			});
 			return;
@@ -469,12 +465,12 @@ export function WorktreeSection({
 				const prInfo = await gitGetPrUrl(repo, branchName, baseBranch);
 				if (prInfo.prUrl) {
 					await openUrl(prInfo.prUrl);
-					toast.success("已在浏览器中打开 GitHub Pull Request 创建页");
+					toast.success(t("worktree.openedPrPage"));
 				} else {
-					toast.success(`已推送到云端 origin/${branchName}，未配置 GitHub 仓库链接`);
+					toast.success(t("worktree.pushedNoPrLink", { branch: branchName }));
 				}
 			} catch (e) {
-				toast.error(`交付/提 PR 失败: ${errMsg(e)}`);
+				toast.error(t("worktree.deliverFailed", { error: errMsg(e) }));
 			}
 		});
 	};
@@ -483,12 +479,12 @@ export function WorktreeSection({
 		try {
 			const branches = (await gitListBranches(repo)).filter((b) => b !== wt.branch);
 			if (branches.length === 0) {
-				toast.info("没有其他可合并的分支");
+				toast.info(t("worktree.noOtherBranches"));
 				return;
 			}
 			setBranchPick({ path: wt.path, anchor, branches });
 		} catch (e) {
-			toast.error(`读取分支列表失败: ${errMsg(e)}`);
+			toast.error(t("worktree.readBranchesFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -503,39 +499,39 @@ export function WorktreeSection({
 			entries.push(
 				{
 					key: "sync-from-base",
-					label: `从 ${baseBranch} 同步`,
+					label: t("worktree.syncFromBase", { baseBranch }),
 					icon: <GitMerge size={12} />,
-					title: `把 ${baseBranch} 的最新提交合并进此工作树（带冲突预检）`,
+					title: t("worktree.syncFromBaseTitle", { baseBranch }),
 					disabled: busy,
-					onSelect: () => void mergeInto(wt, baseBranch, `从 ${baseBranch} 同步更新`),
+					onSelect: () => void mergeInto(wt, baseBranch, t("worktree.syncFromBaseAction", { baseBranch })),
 				},
 				{
 					key: "sync-and-merge",
-					label: `同步并合入 ${baseBranch}`,
+					label: t("worktree.syncAndMergeMenu", { baseBranch }),
 					icon: <ArrowDownUp size={12} />,
-					title: `先合入 ${baseBranch}，再把本地 ${baseBranch} 快进到此分支；仅本地，不推送`,
+					title: t("worktree.syncAndMergeMenuTitle", { baseBranch }),
 					disabled: busy || wt.dirty > 0,
 					onSelect: () => void handleSyncAndMerge(wt),
 				},
 				{
 					key: "merge-other",
-					label: "合并其他分支进来…",
+					label: t("worktree.mergeOtherBranch"),
 					icon: <Waypoints size={12} />,
 					disabled: busy,
 					onSelect: () => void openBranchPicker(wt, anchor),
 				},
 				{
 					key: "rebase",
-					label: `变基到 ${baseBranch}`,
+					label: t("worktree.rebaseMenu", { baseBranch }),
 					icon: <RefreshCw size={12} />,
-					title: "重写此分支历史；已推送过则需要强制推送",
+					title: t("worktree.rebaseMenuTitle"),
 					danger: true,
 					disabled: busy || wt.dirty > 0,
 					onSelect: () => void handleRebase(wt),
 				},
 				{
 					key: "deliver",
-					label: deliveryMode === "direct" ? `交付（直接合并入 ${baseBranch}）` : "交付/提PR",
+					label: deliveryMode === "direct" ? t("worktree.deliverDirect", { baseBranch }) : t("worktree.deliverPr"),
 					icon: <GitPullRequest size={12} />,
 					disabled: busy,
 					onSelect: () => void handleDeliverToMain(wt),
@@ -546,11 +542,11 @@ export function WorktreeSection({
 		if (branch && !isBase) {
 			entries.push({
 				key: "diff-base",
-				label: `查看相对 ${baseBranch} 的总 diff`,
+				label: t("worktree.viewTotalDiff", { baseBranch }),
 				icon: <FileDiff size={12} />,
 				onSelect: () =>
 					onDiff({
-						title: `${branch} 相对 ${baseBranch} 的全部提交改动`,
+						title: t("worktree.totalDiffTitle", { branch, baseBranch }),
 						load: () => gitDiffBase(wt.path),
 					}),
 			});
@@ -558,36 +554,36 @@ export function WorktreeSection({
 		entries.push(
 			{
 				key: "terminal",
-				label: "在此工作树打开终端",
+				label: t("worktree.openTerminalMenu"),
 				icon: <SquareTerminal size={12} />,
 				onSelect: () => openTerminal(wt),
 			},
 			{
 				key: "explorer",
-				label: "在文件管理器打开",
+				label: t("worktree.openExplorerMenu"),
 				icon: <FolderOpen size={12} />,
 				onSelect: () => void openInExplorer(wt.path),
 			},
 			{
 				key: "copy-path",
-				label: "复制路径",
+				label: t("worktree.copyPathMenu"),
 				icon: <Copy size={12} />,
-				onSelect: () => void copyText(wt.path).then(() => toast.success("已复制工作树路径")),
+				onSelect: () => void copyText(wt.path).then(() => toast.success(t("worktree.copiedPath"))),
 			},
 		);
 		if (branch) {
 			entries.push({
 				key: "copy-branch",
-				label: "复制分支名",
+				label: t("worktree.copyBranchMenu"),
 				icon: <GitBranch size={12} />,
-				onSelect: () => void copyText(branch).then(() => toast.success("已复制分支名")),
+				onSelect: () => void copyText(branch).then(() => toast.success(t("worktree.copiedBranch"))),
 			});
 		}
 		entries.push("separator");
 		if (wt.dirty > 0) {
 			entries.push({
 				key: "discard",
-				label: `丢弃全部未提交改动（${wt.dirty}）`,
+				label: t("worktree.discardAllMenu", { dirty: wt.dirty }),
 				icon: <Undo2 size={12} />,
 				danger: true,
 				disabled: busy,
@@ -597,7 +593,7 @@ export function WorktreeSection({
 		if (!isMainCheckout) {
 			entries.push({
 				key: "remove",
-				label: "删除工作树",
+				label: t("worktree.deleteWorktreeMenu"),
 				icon: <Trash2 size={12} />,
 				danger: true,
 				disabled: busy,
@@ -643,15 +639,15 @@ export function WorktreeSection({
 		const rowOverlay =
 			menu?.path === wt.path || commitFor?.path === wt.path || branchPick?.path === wt.path;
 		const uniquePorts = (servicesByWorktree.get(wt.path) ?? []).map((s) => s.port);
-		const displayName = wt.branch ?? `分离 HEAD · ${wt.head.slice(0, 7)}`;
+		const displayName = wt.branch ?? t("worktree.detachedHead", { head: wt.head.slice(0, 7) });
 		const label = wt.branch ?? wt.path;
 		const isBase = wt.branch === baseBranch;
 		const showSync = !idle && !isBase && (wt.ahead > 0 || wt.behind > 0);
 		const syncTitle = [
 			wt.ahead > 0 &&
-				`领先 ${baseBranch} ${wt.ahead} 个提交：这些提交还没进入 ${baseBranch}，可「${deliveryMode === "direct" ? "交付" : "交付/提PR"}」或「同步并合入 ${baseBranch}」`,
+				t("worktree.aheadSyncHint", { baseBranch, ahead: wt.ahead, deliverText: deliveryMode === "direct" ? t("worktree.deliverDirectWord") : t("worktree.deliverPrWord") }),
 			wt.behind > 0 &&
-				`落后 ${baseBranch} ${wt.behind} 个提交：${baseBranch} 有新提交而此分支没有，建议「从 ${baseBranch} 同步」`,
+				t("worktree.behindSyncHint", { baseBranch, behind: wt.behind }),
 		]
 			.filter(Boolean)
 			.join("\n");
@@ -731,10 +727,10 @@ export function WorktreeSection({
 					</button>
 					{isCurrent && (
 						<span
-							title="当前窗口正在使用的工作树"
+							title={t("worktree.currentWorktreeTitle")}
 							className="shrink-0 select-none rounded border border-emerald-500/35 bg-emerald-500/15 px-1 text-[9.5px] font-medium leading-tight text-emerald-300"
 						>
-							当前
+							{t("worktree.currentBadge")}
 						</span>
 					)}
 					{isBusy && <Loader2 size={11} className="shrink-0 animate-spin text-neutral-400" />}
@@ -758,11 +754,11 @@ export function WorktreeSection({
 								dismissHover();
 								void clean(wt);
 							}}
-							title="回收此闲置工作树（删除工作树目录）"
+							title={t("worktree.reclaimIdleTitle")}
 							className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] disabled:opacity-40"
 						>
 							<Trash2 size={11} />
-							回收
+							{t("worktree.reclaim")}
 						</button>
 					) : (
 						<>
@@ -774,8 +770,8 @@ export function WorktreeSection({
 										dismissHover();
 										setCommitFor({ path: wt.path, anchor: e.currentTarget });
 									}}
-									title="提交全部改动（AI 生成说明）"
-									aria-label="提交全部改动"
+									title={t("worktree.commitAllTitle")}
+									aria-label={t("worktree.commitAllAria")}
 									className="rounded p-1 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
 								>
 									<GitCommitHorizontal size={11} />
@@ -784,8 +780,8 @@ export function WorktreeSection({
 							<button
 								type="button"
 								onClick={() => void startSessionInWorktree(wt.path)}
-								title="在此工作树新建会话"
-								aria-label="在此工作树新建会话"
+								title={t("worktree.newSessionInWorktree")}
+								aria-label={t("worktree.newSessionInWorktree")}
 								className="rounded p-1 hover:bg-neutral-800 hover:text-neutral-100"
 							>
 								<Plus size={11} />
@@ -795,8 +791,8 @@ export function WorktreeSection({
 					<button
 						type="button"
 						onClick={(e) => openMenuAt(e.currentTarget)}
-						title={`更多操作：${label}`}
-						aria-label="更多操作"
+						title={t("worktree.moreActions", { label })}
+						aria-label={t("worktree.moreActionsAria")}
 						aria-haspopup="menu"
 						className="rounded p-1 hover:bg-neutral-800 hover:text-neutral-100"
 					>
@@ -812,15 +808,15 @@ export function WorktreeSection({
 						<button
 							type="button"
 							onClick={() => onOpenPane(wt.path, "changes")}
-							title={`${wt.dirty} 个文件未提交，点击查看改动`}
+							title={t("worktree.uncommittedFilesTitle", { dirty: wt.dirty })}
 							className="rounded border border-amber-500/30 bg-amber-500/10 px-1 text-[10px] text-amber-300 hover:bg-amber-500/20"
 						>
-							{wt.dirty} 未提交
+							{t("worktree.uncommittedCount", { dirty: wt.dirty })}
 						</button>
 					)}
 					{showSync && (
 						<span title={syncTitle} className="cursor-help text-[10px] text-neutral-500">
-							{[wt.ahead > 0 && `领先 ${wt.ahead}`, wt.behind > 0 && `落后 ${wt.behind}`]
+							{[wt.ahead > 0 && t("worktree.aheadCount", { ahead: wt.ahead }), wt.behind > 0 && t("worktree.behindCount", { behind: wt.behind })]
 								.filter(Boolean)
 								.join(" · ")}
 						</span>
@@ -832,9 +828,9 @@ export function WorktreeSection({
 								type="button"
 								onClick={() => {
 									void openUrl(`http://localhost:${port}`);
-									toast.success(`已在浏览器中打开 http://localhost:${port}`);
+									toast.success(t("worktree.openedPortToast", { port }));
 								}}
-								title={`正在监听端口 :${port}，点击在浏览器中打开预览`}
+								title={t("worktree.listeningPortTitle", { port })}
 								className="flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/15 px-1 font-mono text-[10px] text-emerald-300 hover:bg-emerald-500/30"
 							>
 								<span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />:{port}
@@ -854,10 +850,10 @@ export function WorktreeSection({
 									setSessionMenuAnchor(e.currentTarget);
 								}
 							}}
-							title="查看关联会话"
+							title={t("worktree.viewSessionsTitle")}
 							className="flex items-center gap-0.5 rounded bg-neutral-800 px-1 text-[10px] text-neutral-300 hover:bg-neutral-700"
 						>
-							{wt.sessionIds.length} 会话
+							{t("worktree.sessionsCount", { count: wt.sessionIds.length })}
 							<ChevronDown size={10} className="text-neutral-500" />
 						</button>
 					)}
@@ -881,12 +877,12 @@ export function WorktreeSection({
 			<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1 py-0.5 text-xs">
 				<div className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-neutral-200">
 					<FolderGit2 size={13} className="text-emerald-400" />
-					<span>活跃工作树</span>
+					<span>{t("worktree.activeWorktreesHeader")}</span>
 					<span className="rounded-full bg-neutral-800 px-1.5 font-mono text-[10px] text-neutral-400">
 						{worktrees.length}
 					</span>
 					<span
-						title="每个工作树是一份独立的物理代码目录，支持多任务并行修改代码，互不干扰、互不踩文件。右键工作树可打开更多操作。"
+						title={t("worktree.activeWorktreesTooltip")}
 						className="cursor-help text-neutral-500 transition-colors hover:text-neutral-300"
 					>
 						<Info size={11} />
@@ -902,8 +898,8 @@ export function WorktreeSection({
 					<button
 						type="button"
 						onClick={() => setShowCreate(!showCreate)}
-						title="新建并行工作树"
-						aria-label="新建并行工作树"
+						title={t("worktree.newParallelWorktreeTitle")}
+						aria-label={t("worktree.newParallelWorktreeTitle")}
 						className={clsx(
 							"rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100",
 							showCreate && "bg-neutral-800 text-neutral-100",
@@ -933,7 +929,7 @@ export function WorktreeSection({
 
 			{showCreate && (
 				<div className="rounded-lg border border-neutral-800 bg-neutral-900/90 p-2 text-xs shadow-sm">
-					<div className="mb-1 text-[11px] font-medium text-neutral-300">新建并行工作树</div>
+					<div className="mb-1 text-[11px] font-medium text-neutral-300">{t("worktree.newParallelWorktree")}</div>
 					<div className="mb-1.5 flex gap-1.5">
 						<input
 							autoFocus
@@ -950,7 +946,7 @@ export function WorktreeSection({
 									setShowCreate(false);
 								}
 							}}
-							placeholder="工作树名称（例如 feat-auth）"
+							placeholder={t("worktree.worktreeNamePlaceholder")}
 							className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 font-mono text-xs text-neutral-200 outline-none focus:border-indigo-500"
 						/>
 						<button
@@ -960,11 +956,11 @@ export function WorktreeSection({
 							className="flex shrink-0 items-center gap-1 rounded bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
 						>
 							{creating && <Loader2 size={11} className="animate-spin" />}
-							<span>创建</span>
+							<span>{t("worktree.create")}</span>
 						</button>
 					</div>
 					<div className="flex items-center justify-between text-[10px] text-neutral-500">
-						<span>按 Enter 创建，Esc 取消</span>
+						<span>{t("worktree.createWorktreeShortcutHint")}</span>
 						<button
 							type="button"
 							onClick={() => {
@@ -973,7 +969,7 @@ export function WorktreeSection({
 							}}
 							className="text-indigo-400 hover:underline"
 						>
-							更多选项…
+							{t("worktree.moreOptions")}
 						</button>
 					</div>
 				</div>
@@ -987,11 +983,11 @@ export function WorktreeSection({
 							type="button"
 							onClick={() => setShowIdle((v) => !v)}
 							aria-expanded={showIdle}
-							title="没有关联会话的工作树"
+							title={t("worktree.idleWorktreesTitle")}
 							className="flex w-full items-center gap-1 rounded px-2 py-0.5 text-[10px] text-neutral-500 hover:bg-neutral-900/70 hover:text-neutral-300"
 						>
 							{showIdle ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-							闲置 {idleWts.length}
+							{t("worktree.idleWorktreesCount", { count: idleWts.length })}
 						</button>
 						{showIdle && idleWts.map((w) => renderRow(w, true))}
 					</>
@@ -1001,7 +997,7 @@ export function WorktreeSection({
 			{menu && menuWt && (
 				<WorktreeActionMenu
 					anchor={menu.anchor}
-					header={menuWt.branch ?? `分离 HEAD · ${menuWt.head.slice(0, 7)}`}
+					header={menuWt.branch ?? t("worktree.detachedHead", { head: menuWt.head.slice(0, 7) })}
 					entries={menuEntries(menuWt, menu.anchor)}
 					onDismiss={() => setMenu(null)}
 				/>
@@ -1010,12 +1006,12 @@ export function WorktreeSection({
 			{branchPick && pickWt?.branch && (
 				<WorktreeActionMenu
 					anchor={branchPick.anchor}
-					header={`合并到「${pickWt.branch}」的来源分支`}
+					header={t("worktree.mergeSourceBranchHeader", { branch: pickWt.branch })}
 					entries={branchPick.branches.map((b) => ({
 						key: b,
 						label: b,
 						icon: <GitBranch size={12} />,
-						onSelect: () => void mergeInto(pickWt, b, `合并 ${b}`),
+						onSelect: () => void mergeInto(pickWt, b, t("worktree.mergeBranchTitle", { branch: b })),
 					}))}
 					onDismiss={() => setBranchPick(null)}
 				/>
@@ -1044,13 +1040,13 @@ export function WorktreeSection({
 					className="w-56 rounded-lg border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-xl"
 				>
 					<div className="border-b border-neutral-800 px-2 py-1 text-[10px] font-semibold text-neutral-400">
-						关联会话
+						{t("worktree.linkedSessions")}
 					</div>
 					<div className="max-h-48 overflow-y-auto py-1">
 						{(() => {
 							const wt = worktrees.find((w) => w.path === sessionMenuWt);
 							if (!wt || wt.sessionIds.length === 0) {
-								return <div className="px-2 py-1 text-neutral-500">暂无会话</div>;
+								return <div className="px-2 py-1 text-neutral-500">{t("worktree.noSessions")}</div>;
 							}
 							return wt.sessionIds.map((sid) => {
 								const s = sessions[sid];
@@ -1091,7 +1087,8 @@ export function WorktreeSection({
 
 /** Idle-row right label: relative time of the HEAD commit, loaded once the row mounts (group expanded). */
 function IdleActivity({ wt }: { wt: WorktreeInfo }) {
+	const { t } = useT();
 	const commit = useHeadCommit(wt.path, wt.head, true);
 	if (!commit) return null;
-	return <span title={`最近提交：${commit.subject}`}>{timeAgo(commit.ts)}</span>;
+	return <span title={t("worktree.latestCommit", { subject: commit.subject })}>{timeAgo(commit.ts)}</span>;
 }

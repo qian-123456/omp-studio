@@ -11,6 +11,7 @@ import { useUi } from "../../stores/ui";
 import { useWorktrees } from "../../stores/worktrees";
 import { archiveSessions } from "./archiveUndo";
 import { neighborAfterRemoval } from "./visibleRows";
+import { tNow } from "../../stores/language";
 
 export interface ArchiveWorktreeTarget {
 	session: SessionMeta;
@@ -106,9 +107,9 @@ export function requestArchive(sessionId: string): void {
 		updateSessionMeta(session.id, { archived: false })
 			.then((updated) => {
 				useSessions.getState().upsert([updated]);
-				toast.success("已取消归档");
+				toast.success(tNow("sessionActions.unarchived"));
 			})
-			.catch((err) => toast.error(`取消归档失败: ${errMsg(err)}`));
+			.catch((err) => toast.error(tNow("sessions.unarchiveFailed", { error: errMsg(err) })));
 		return;
 	}
 
@@ -148,20 +149,20 @@ export async function requestDelete(sessionIds: string[]): Promise<void> {
 
 	if (deletable.length === 0) {
 		if (skippedCount > 0) {
-			toast.info("所选会话均在运行中，请先停止当前回合");
+			toast.info(tNow("sessions.allSelectedBusyStopFirst"));
 		}
 		return;
 	}
 
 	const confirmMessage =
 		deletable.length === 1
-			? `永久删除会话「${sessionDisplayName(sessions[deletable[0]])}」？\n该操作会删除 transcript 文件与全部记录，无法恢复。`
-			: `永久删除选中的 ${deletable.length} 个会话？\n该操作会删除 transcript 文件与全部记录，无法恢复。`;
+			? tNow("sessions.confirmDeleteSingle", { title: sessionDisplayName(sessions[deletable[0]]) })
+			: tNow("sessions.confirmDeleteCount", { count: deletable.length });
 
 	const ok = await confirmDialog(confirmMessage, {
 		danger: true,
-		okLabel: "永久删除",
-		title: "删除会话",
+		okLabel: tNow("sessions.permanentDeleteAction"),
+		title: tNow("sessions.deleteSessionsTitle"),
 	});
 	if (!ok) return;
 
@@ -200,12 +201,16 @@ export async function requestDelete(sessionIds: string[]): Promise<void> {
 	}
 
 	if (failedCount > 0) {
-		toast.error(`删除失败: ${failedCount} 个会话未能删除`);
+		toast.error(tNow("sessions.deleteFailedCount", { count: failedCount }));
 	} else {
 		const msg =
-			deletedIds.length === 1 ? "会话已删除" : `已删除 ${deletedIds.length} 个会话`;
+			deletedIds.length === 1
+				? tNow("sessions.sessionDeleted")
+				: tNow("sessions.deletedCount", { count: deletedIds.length });
 		toast.success(
-			skippedCount > 0 ? `${msg}（已跳过 ${skippedCount} 个运行中会话）` : msg,
+			skippedCount > 0
+				? tNow("sessions.deletedWithSkipped", { message: msg, count: skippedCount })
+				: msg,
 		);
 	}
 }

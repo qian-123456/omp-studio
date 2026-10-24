@@ -1,5 +1,6 @@
 import { Search, X } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { useT } from "../../stores/language";
 import type { BacklogKind } from "../../lib/contracts";
 import type { IdeaSearch } from "./ideasLogic";
 import { KIND_META, KINDS } from "./ideaStyles";
@@ -14,6 +15,7 @@ export function IdeaSearchBar({
 	onChange: (next: IdeaSearch) => void;
 	onClose: () => void;
 }) {
+	const { t } = useT();
 	const inputRef = useRef<HTMLInputElement>(null);
 	useEffect(() => {
 		inputRef.current?.focus();
@@ -31,14 +33,14 @@ export function IdeaSearchBar({
 					value={search.query}
 					onChange={(e) => onChange({ ...search, query: e.target.value })}
 					data-idea-search=""
-					placeholder="搜索想法内容"
+					placeholder={t("backlog.searchPlaceholder")}
 					className="min-w-0 flex-1 bg-transparent text-xs text-[var(--text)] outline-none placeholder:text-[var(--text-dim)]"
 				/>
 				<button
 					type="button"
 					onClick={onClose}
-					title="清除并关闭搜索"
-					aria-label="清除并关闭搜索"
+					title={t("backlog.clearAndCloseSearch")}
+					aria-label={t("backlog.clearAndCloseSearch")}
 					className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[var(--text-dim)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
 				>
 					<X className="h-3 w-3" />
@@ -61,7 +63,7 @@ export function IdeaSearchBar({
 						}`}
 					>
 						<Icon className="h-3 w-3" />
-						{meta.label}
+						{t(meta.labelKey)}
 					</button>
 				);
 			})}

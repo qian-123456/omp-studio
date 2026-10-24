@@ -7,6 +7,7 @@
  */
 import { Check, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { tNow, useT } from "../../stores/language";
 import { ModelSelect } from "../../components/ModelSelect";
 import { NativeSelect } from "../../components/NativeSelect";
 import { Segmented } from "../../components/Segmented";
@@ -34,10 +35,18 @@ const SMALL_INPUT =
 	"rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5 text-[11px] text-[var(--text)] focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_40%,transparent)] focus:outline-none transition-all";
 
 const ENTRY_KIND_CHIP: Record<ChainEntryKind, { label: string; tone: ChipTone }> = {
-	model: { label: "模型", tone: "neutral" },
-	role: { label: "角色", tone: "accent" },
-	wildcard: { label: "通配符", tone: "warning" },
-	invalid: { label: "格式有误", tone: "danger" },
+	get model() {
+		return { label: tNow("settingsModels.kindModel"), tone: "neutral" as const };
+	},
+	get role() {
+		return { label: tNow("settingsModels.kindRole"), tone: "accent" as const };
+	},
+	get wildcard() {
+		return { label: tNow("settingsModels.kindWildcard"), tone: "warning" as const };
+	},
+	get invalid() {
+		return { label: tNow("settingsModels.kindInvalid"), tone: "danger" as const };
+	},
 };
 
 function flashSaved(setter: (v: boolean) => void) {
@@ -83,6 +92,7 @@ function EntryRow({
 	onRemove: () => void;
 	onEnter: () => void;
 }) {
+	const { t } = useT();
 	const { selector, level } = splitChainEntry(value);
 	const kind = classifyChainEntry(value);
 	const error = value.trim() === "" ? null : validateChainEntry(value);
@@ -135,12 +145,12 @@ function EntryRow({
 						}
 					}}
 					spellCheck={false}
-					placeholder="供应商/模型，或 @角色"
+					placeholder={t("settingsModels.chainInputPlaceholder")}
 					className={`min-w-0 flex-1 font-mono ${SMALL_INPUT}`}
 				/>
 				{!error && levels.length > 0 && (
 					<label className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--text-dim)]">
-						<span className="whitespace-nowrap">思考强度</span>
+						<span className="whitespace-nowrap">{t("settingsModels.thinkingIntensityLabel")}</span>
 						<NativeSelect
 							value={level ?? ""}
 							disabled={busy}
@@ -148,7 +158,7 @@ function EntryRow({
 							className="!py-1 !text-[11px]"
 							onChange={(e) => onChange(formatChainEntry(selector, e.target.value || null))}
 						>
-							<option value="">沿用出错那一轮</option>
+							<option value="">{t("settingsModels.inheritErrorTurn")}</option>
 							{levels.map((l) => (
 								<option key={l} value={l}>
 									{l}
@@ -157,21 +167,21 @@ function EntryRow({
 						</NativeSelect>
 					</label>
 				)}
-				<IconButton icon={ChevronUp} size="sm" label="上移" disabled={busy || index === 0} onClick={() => onMove(-1)} />
+				<IconButton icon={ChevronUp} size="sm" label={t("settingsModels.moveUpAria")} disabled={busy || index === 0} onClick={() => onMove(-1)} />
 				<IconButton
 					icon={ChevronDown}
 					size="sm"
-					label="下移"
+					label={t("settingsModels.moveDownAria")}
 					disabled={busy || index === count - 1}
 					onClick={() => onMove(1)}
 				/>
-				<IconButton icon={Trash2} size="sm" label="移除" disabled={busy} onClick={onRemove} />
+				<IconButton icon={Trash2} size="sm" label={t("settingsModels.removeAria")} disabled={busy} onClick={onRemove} />
 			</div>
 			{(error || kind === "wildcard") && (
 				<div className="flex flex-wrap items-center gap-2 pl-5 text-[11px]">
 					{error && <span className="min-w-0 break-words text-[var(--status-error)]">{error}</span>}
 					{!error && kind === "wildcard" && (
-						<span className="text-[var(--text-dim)]">保持出错模型的名字，只换供应商；思考强度沿用出错那一轮</span>
+						<span className="text-[var(--text-dim)]">{t("settingsModels.wildcardNote")}</span>
 					)}
 				</div>
 			)}
@@ -190,6 +200,7 @@ export function FallbackChainEditor({
 	unsetTitle,
 	emptyTitle,
 }: FallbackChainEditorProps) {
+	const { t } = useT();
 	const committed = useMemo(() => parseChain(chains[chainKey]), [chains, chainKey]);
 	const [items, setItems] = useState<string[]>(committed.items);
 	const [busy, setBusy] = useState(false);
@@ -218,7 +229,7 @@ export function FallbackChainEditor({
 			flashSaved(setSavedTick);
 			onSaved();
 		} catch (e) {
-			toast.error(`保存回退链失败：${errMsg(e)}`);
+			toast.error(t("settingsModels.saveChainFailed", { error: errMsg(e) }));
 		} finally {
 			setBusy(false);
 		}
@@ -254,15 +265,15 @@ export function FallbackChainEditor({
 					disabled={busy}
 					onChange={(m) => void pickMode(m)}
 					options={[
-						{ value: "unset", label: "未设置", title: unsetTitle },
-						{ value: "empty", label: "不回退", title: emptyTitle },
-						{ value: "list", label: "自定义", title: "按顺序尝试的备用模型" },
+						{ value: "unset", label: t("settingsModels.stateUnset"), title: unsetTitle },
+						{ value: "empty", label: t("settingsModels.stateEmpty"), title: emptyTitle },
+						{ value: "list", label: t("settingsModels.stateCustom"), title: t("settingsModels.customStateTitle") },
 					]}
 				/>
 				{savedTick && (
 					<span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--status-success)]">
 						<Check className="h-3 w-3" />
-						已保存
+						{t("settingsModels.savedBadge")}
 					</span>
 				)}
 			</div>
@@ -292,7 +303,7 @@ export function FallbackChainEditor({
 							direction="down"
 							align="start"
 							widthClass="w-[380px]"
-							label="添加备用模型"
+							label={t("settingsModels.addFallbackModelBtn")}
 							buttonClass={PICKER_BUTTON_CLASS}
 							models={models}
 							currentValue=""
@@ -304,7 +315,7 @@ export function FallbackChainEditor({
 					<IconButton
 						icon={Plus}
 						size="sm"
-						label="添加一行手动输入"
+						label={t("settingsModels.addManualRowAria")}
 						disabled={busy}
 						onClick={() => setItems([...items, ""])}
 					/>
@@ -317,7 +328,7 @@ export function FallbackChainEditor({
 							if (e.target.value) setItems([...items, `@${e.target.value}`]);
 						}}
 					>
-						<option value="">添加「角色」：沿用该角色当前的模型</option>
+						<option value="">{t("settingsModels.addRoleOption")}</option>
 						{addableRoles.map((r) => (
 							<option key={r} value={r}>
 								@{r}
@@ -332,7 +343,7 @@ export function FallbackChainEditor({
 						containerClassName="w-40"
 						onChange={(e) => setWildProvider(e.target.value)}
 					>
-						<option value="">换供应商（同名模型）</option>
+						<option value="">{t("settingsModels.switchProviderOption")}</option>
 						{providers.map((p) => (
 							<option key={p} value={p}>
 								{p}
@@ -345,8 +356,8 @@ export function FallbackChainEditor({
 						disabled={busy}
 						onChange={(e) => setWildPrefix(e.target.value)}
 						spellCheck={false}
-						placeholder="模型名前缀（可不填）"
-						title="例如在 openrouter 下填 google，只匹配 openrouter/google/ 开头的模型"
+						placeholder={t("settingsModels.prefixPlaceholder")}
+						title={t("settingsModels.prefixTitle")}
 						className={`w-40 font-mono ${SMALL_INPUT}`}
 					/>
 					<Button
@@ -358,21 +369,21 @@ export function FallbackChainEditor({
 							setWildPrefix("");
 						}}
 					>
-						添加通配符
+						{t("settingsModels.addWildcardBtn")}
 					</Button>
 				</div>
 			</div>
 
 			<div className="flex flex-wrap items-center gap-2 pl-5">
 				<Button variant="primary" size="sm" loading={busy} disabled={!dirty || hasError} onClick={() => void apply()}>
-					{busy ? "保存中" : "应用"}
+					{busy ? t("settingsModels.applySaving") : t("settingsModels.applyBtn")}
 				</Button>
 				{dirty && (
 					<Button variant="ghost" size="sm" disabled={busy} onClick={() => setItems(committed.items)}>
-						放弃
+						{t("settingsModels.discardBtn")}
 					</Button>
 				)}
-				{hasError && <span className="text-[11px] text-[var(--status-error)]">有条目格式不对，修正后才能应用</span>}
+				{hasError && <span className="text-[11px] text-[var(--status-error)]">{t("settingsModels.hasFormatErrorNote")}</span>}
 			</div>
 		</div>
 	);

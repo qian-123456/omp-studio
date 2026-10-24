@@ -11,6 +11,7 @@ import {
 import { textAnnotationsOf } from "./annotations";
 import { type Anchor } from "../../components/FloatingLayer";
 import { AnnotationHoverCard, AnnotationNotePopover } from "./AnnotationNotePopover";
+import { tNow, useT } from "../../stores/language";
 import {
 	collectTextSegments,
 	locateQuote,
@@ -31,10 +32,6 @@ const HOVER_DELAY_MS = 300;
 /** Which annotation list a marker belongs to: main composer or the side chat. */
 type MarkerKind = "main" | "sidechat";
 
-const KIND_TITLE: Record<MarkerKind, string> = {
-	main: "批注",
-	sidechat: "侧聊批注",
-};
 
 /** Round badge colours: main = theme accent, side chat = accent-strong. */
 const KIND_CLASS: Record<MarkerKind, string> = {
@@ -82,7 +79,10 @@ function messageMarkerSources(
 			itemId: a.itemId,
 			quote: a.text,
 			occurrence: a.occurrence,
-			title: `${KIND_TITLE[kind]} ${n}：${label}`,
+			title:
+				kind === "main"
+					? tNow("chat.annotation.mainMarkerTitle", { n, label })
+					: tNow("chat.annotation.sidechatMarkerTitle", { n, label }),
 			kind,
 		});
 	});
@@ -436,6 +436,7 @@ export function AnnotationMarkers({
 	sessionId: string;
 	containerRef: RefObject<HTMLElement | null>;
 }) {
+	const { locale } = useT();
 	const annotations = useComposer(
 		(s) => s.annotations[sessionId] ?? EMPTY_ANNOTATIONS,
 	);
@@ -444,9 +445,11 @@ export function AnnotationMarkers({
 	const sideChatAnnotations = useComposer(
 		(s) => s.annotations[sideChatAnnKey(sessionId)] ?? EMPTY_ANNOTATIONS,
 	);
+	// `locale` re-derives the titles (built via tNow) when the language changes.
 	const sources = useMemo(
 		() => markerSources(annotations, sideChatAnnotations),
-		[annotations, sideChatAnnotations],
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[annotations, sideChatAnnotations, locale],
 	);
 	if (sources.length === 0) return null;
 	return (

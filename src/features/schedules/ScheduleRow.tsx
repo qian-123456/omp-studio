@@ -22,6 +22,7 @@ import { formatCadenceWithEnd, formatNextRun } from "./humanCadence";
 import { lifecycleOf } from "./scheduleUtils";
 import type { EditorTab } from "./schedulesStore";
 import { claimEscape } from "../../lib/escapeClaim";
+import { useT } from "../../stores/language";
 
 interface Props {
 	schedule: Schedule;
@@ -51,6 +52,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 	onDelete,
 	onRename,
 }: Props) {
+	const { t, locale } = useT();
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const menuBtnRef = useRef<HTMLButtonElement>(null);
@@ -83,14 +85,17 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 		schedule.cadence,
 		schedule.endAt,
 		schedule.maxRuns,
+		locale,
 	);
 	const nextRun = schedule.nextRunAt;
 	const nextLabel = completed
-		? "已完成"
+		? t("schedules.statusCompleted")
 		: !schedule.enabled
-			? "已暂停"
+			? t("schedules.statusPaused")
 			: nextRun
-				? `下次运行 ${formatNextRun(nextRun) ?? ""}`
+				? t("schedules.nextRunPrefix", {
+						time: formatNextRun(nextRun, undefined, locale) ?? "",
+					})
 				: "";
 	/** "3/10" run progress toward a maxRuns cap. */
 	const progress =
@@ -98,9 +103,9 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 			? `${schedule.runsDone ?? 0}/${schedule.maxRuns}`
 			: null;
 	const statusText = runningNow
-		? "正在运行…"
+		? t("schedules.statusRunningNow")
 		: lastFailed
-			? `上次运行失败${nextLabel ? ` · ${nextLabel}` : ""}`
+			? `${t("schedules.statusLastFailed")}${nextLabel ? ` · ${nextLabel}` : ""}`
 			: nextLabel;
 	const secondary = [progress, statusText].filter(Boolean).join(" · ");
 
@@ -136,14 +141,14 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 				)}
 				title={
 					runningNow
-						? "正在运行"
+						? t("schedules.statusRunningNow")
 						: completed
-							? "已完成"
+							? t("schedules.statusCompleted")
 							: lastFailed
-								? "上次运行失败"
+								? t("schedules.statusLastFailed")
 								: lifecycle === "paused"
-									? "已暂停"
-									: "运行中"
+									? t("schedules.statusPaused")
+									: t("schedules.statusActive")
 				}
 			>
 				{runningNow ? (
@@ -164,7 +169,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 						<input
 							ref={nameInputRef}
 							value={nameDraft}
-							aria-label="任务标题"
+							aria-label={t("schedules.taskTitle")}
 							maxLength={80}
 							onChange={(e) => setNameDraft(e.target.value)}
 							onClick={(e) => e.stopPropagation()}
@@ -189,8 +194,8 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 							</h3>
 							<button
 								type="button"
-								aria-label="重命名"
-								title="重命名"
+								aria-label={t("schedules.rename")}
+								title={t("schedules.rename")}
 								onClick={(e) => {
 									e.stopPropagation();
 									startRename();
@@ -209,7 +214,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 					{isUnread && (
 						<span
 							className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]"
-							title="有新的运行结果"
+							title={t("schedules.hasNewRunResult")}
 						/>
 					)}
 				</div>
@@ -250,12 +255,12 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 					onChange={onToggleEnabled}
 					title={
 						completed
-							? "任务已完成"
+							? t("schedules.taskCompleted")
 							: schedule.enabled
-								? "暂停任务"
-								: "恢复任务"
+								? t("schedules.pauseTask")
+								: t("schedules.resumeTask")
 					}
-					ariaLabel={schedule.enabled ? "暂停任务" : "恢复任务"}
+					ariaLabel={schedule.enabled ? t("schedules.pauseTask") : t("schedules.resumeTask")}
 				/>
 			</div>
 
@@ -264,10 +269,10 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 				<button
 					ref={menuBtnRef}
 					type="button"
-					aria-label="更多操作"
+					aria-label={t("schedules.moreActions")}
 					aria-haspopup="menu"
 					aria-expanded={menuOpen}
-					title="更多操作"
+					title={t("schedules.moreActions")}
 					onClick={(e) => {
 						e.stopPropagation();
 						setConfirmDelete(false);
@@ -304,10 +309,10 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 							onRunNow();
 						}}
 						className={MENU_ITEM}
-						title="立即触发一次执行"
+						title={t("schedules.runNowTitle")}
 					>
 						<Play size={13} className="shrink-0 text-[var(--text-40)]" />
-						<span className="flex-1 truncate">立即运行</span>
+						<span className="flex-1 truncate">{t("schedules.runNow")}</span>
 					</button>
 
 					<button
@@ -320,7 +325,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 							onToggleEnabled(!schedule.enabled);
 						}}
 						className={MENU_ITEM}
-						title={completed ? "任务已完成" : undefined}
+						title={completed ? t("schedules.taskCompleted") : undefined}
 					>
 						{schedule.enabled ? (
 							<Pause size={13} className="shrink-0 text-[var(--text-40)]" />
@@ -328,7 +333,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 							<Play size={13} className="shrink-0 text-[var(--text-40)]" />
 						)}
 						<span className="flex-1 truncate">
-							{schedule.enabled ? "暂停" : "恢复"}
+							{schedule.enabled ? t("schedules.pause") : t("schedules.resume")}
 						</span>
 					</button>
 
@@ -343,7 +348,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 						className={MENU_ITEM}
 					>
 						<Edit2 size={13} className="shrink-0 text-[var(--text-40)]" />
-						<span className="flex-1 truncate">编辑</span>
+						<span className="flex-1 truncate">{t("schedules.edit")}</span>
 					</button>
 
 					<button
@@ -357,7 +362,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 						className={MENU_ITEM}
 					>
 						<PenLine size={13} className="shrink-0 text-[var(--text-40)]" />
-						<span className="flex-1 truncate">重命名</span>
+						<span className="flex-1 truncate">{t("schedules.rename")}</span>
 					</button>
 
 					<button
@@ -369,10 +374,10 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 							onDuplicate();
 						}}
 						className={MENU_ITEM}
-						title="以此任务的配置新建一个任务"
+						title={t("schedules.duplicateTitle")}
 					>
 						<Copy size={13} className="shrink-0 text-[var(--text-40)]" />
-						<span className="flex-1 truncate">复制</span>
+						<span className="flex-1 truncate">{t("schedules.duplicate")}</span>
 					</button>
 
 					<div className="my-1 border-t border-[var(--border-divider)]" />
@@ -380,7 +385,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 					{confirmDelete ? (
 						<div className="flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5">
 							<span className="flex-1 text-[11px] text-rose-300">
-								删除该任务？
+								{t("schedules.deleteConfirm")}
 							</span>
 							<button
 								type="button"
@@ -391,7 +396,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 								}}
 								className="text-[11px] font-bold text-rose-400 hover:text-rose-200"
 							>
-								删除
+								{t("common.delete")}
 							</button>
 							<button
 								type="button"
@@ -401,7 +406,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 								}}
 								className="text-[11px] text-[var(--text-40)] hover:text-[var(--text)]"
 							>
-								取消
+								{t("common.cancel")}
 							</button>
 						</div>
 					) : (
@@ -418,7 +423,7 @@ export const ScheduleRow = React.memo(function ScheduleRow({
 							)}
 						>
 							<Trash2 size={13} className="shrink-0" />
-							<span className="flex-1 truncate">删除</span>
+							<span className="flex-1 truncate">{t("common.delete")}</span>
 						</button>
 					)}
 				</FloatingLayer>

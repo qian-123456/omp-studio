@@ -8,6 +8,7 @@ import { formatBytes } from "../../lib/format";
 import { ompVersionLabel, useOmpUpdate } from "../../stores/ompUpdate";
 import { useOmpInstall } from "../../stores/ompInstall";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 import { Button } from "../settings/ui";
 import { openSettingsTarget } from "../settings/settingsTargets";
 
@@ -21,6 +22,7 @@ function formatElapsed(ms: number): string {
 }
 
 function LogBox({ text, autoScroll }: { text: string; autoScroll?: boolean }) {
+	const { t } = useT();
 	const ref = useRef<HTMLPreElement>(null);
 	useEffect(() => {
 		if (autoScroll && ref.current) ref.current.scrollTop = ref.current.scrollHeight;
@@ -30,17 +32,18 @@ function LogBox({ text, autoScroll }: { text: string; autoScroll?: boolean }) {
 			ref={ref}
 			className="max-h-48 select-text overflow-auto whitespace-pre-wrap break-all rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-2 font-mono text-[11px] leading-4 text-[var(--text-muted)]"
 		>
-			{text || "（暂无输出）"}
+			{text || t("ompInstall.noOutput")}
 		</pre>
 	);
 }
 
 function ManualCommand() {
+	const { t } = useT();
 	const command = IS_WINDOWS ? WINDOWS_COMMAND : UNIX_COMMAND;
 	return (
 		<div className="space-y-1">
 			<div className="text-xs text-[var(--text-muted)]">
-				也可以在{IS_WINDOWS ? " PowerShell " : "终端"}里手动安装：
+				{t("ompInstall.manualCommandHint", { target: IS_WINDOWS ? t("ompInstall.targetPowershell") : t("ompInstall.targetTerminal") })}
 			</div>
 			<div className="flex items-center gap-2 rounded-lg hairline bg-[var(--well-bg)] px-2.5 py-1.5">
 				<code className="min-w-0 flex-1 select-text break-all font-mono text-[11px] text-[var(--text)]">{command}</code>
@@ -51,6 +54,7 @@ function ManualCommand() {
 }
 
 function Running() {
+	const { t } = useT();
 	const lines = useOmpInstall((s) => s.lines);
 	const downloaded = useOmpInstall((s) => s.downloadedBytes);
 	const startedAt = useOmpInstall((s) => s.startedAt);
@@ -62,17 +66,17 @@ function Running() {
 		const id = window.setInterval(() => setNow(Date.now()), 1000);
 		return () => window.clearInterval(id);
 	}, []);
-	const stage = [...lines].reverse().find((l) => l.trim()) ?? "正在准备安装";
+	const stage = [...lines].reverse().find((l) => l.trim()) ?? t("ompInstall.stagePreparing");
 	return (
 		<div className="space-y-3">
 			<p className="text-xs leading-5 text-[var(--text-muted)]">
-				omp 是本应用的 AI 内核。正在从官方源下载并安装，文件较大（约 200 MB），请保持网络畅通。
+				{t("ompInstall.installIntro")}
 			</p>
 			<div className="rounded-lg hairline bg-[var(--well-bg)] px-3 py-2.5">
 				<div className="select-text break-all text-[13px] text-[var(--text)]">{stage}</div>
 				<div className="mt-1 flex items-center gap-3 text-xs text-[var(--text-muted)]">
-					{downloaded != null && <span>已下载 {formatBytes(downloaded)}</span>}
-					<span>已用时 {startedAt ? formatElapsed(now - startedAt) : "0:00"}</span>
+					{downloaded != null && <span>{t("ompInstall.downloadedBytes", { bytes: formatBytes(downloaded) })}</span>}
+					<span>{t("ompInstall.elapsedTime", { time: startedAt ? formatElapsed(now - startedAt) : "0:00" })}</span>
 				</div>
 			</div>
 			<button
@@ -81,7 +85,7 @@ function Running() {
 				className="flex items-center gap-1 whitespace-nowrap text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
 			>
 				{logOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-				完整日志
+				{t("ompInstall.fullLog")}
 			</button>
 			{logOpen && <LogBox text={lines.join("\n")} autoScroll />}
 			<div className="flex justify-end">
@@ -92,7 +96,7 @@ function Running() {
 						void cancel().finally(() => setCancelling(false));
 					}}
 				>
-					取消
+					{t("common.cancel")}
 				</Button>
 			</div>
 		</div>
@@ -100,6 +104,7 @@ function Running() {
 }
 
 function Success() {
+	const { t } = useT();
 	const info = useOmpUpdate((s) => s.info);
 	const status = useOmpUpdate((s) => s.status);
 	const result = useOmpInstall((s) => s.result);
@@ -107,10 +112,10 @@ function Success() {
 	const version = ompVersionLabel(info, status) ?? ompVersionLabel(result?.info ?? null, null);
 	return (
 		<div className="space-y-3">
-			<Notice tone="success" title={version ? `omp 内核 ${version} 已安装` : "omp 内核已安装"}>
+			<Notice tone="success" title={version ? t("ompInstall.installedTitleVersion", { version }) : t("ompInstall.installedTitleNoVersion")}>
 				<span className="select-text break-all">{result?.info.resolvedPath}</span>
 			</Notice>
-			<p className="text-xs leading-5 text-[var(--text-muted)]">无需重启应用。接下来配置一个模型供应商，就可以开始对话了。</p>
+			<p className="text-xs leading-5 text-[var(--text-muted)]">{t("ompInstall.installedDesc")}</p>
 			<div className="flex justify-end gap-2">
 				<Button
 					onClick={() => {
@@ -118,10 +123,10 @@ function Success() {
 						openSettingsTarget("providers");
 					}}
 				>
-					去配置模型
+					{t("ompInstall.btnConfigModels")}
 				</Button>
 				<Button variant="primary" icon={CheckCircle2} onClick={close}>
-					开始使用
+					{t("ompInstall.btnStartUsing")}
 				</Button>
 			</div>
 		</div>
@@ -129,6 +134,7 @@ function Success() {
 }
 
 function Failed() {
+	const { t } = useT();
 	const result = useOmpInstall((s) => s.result);
 	const error = useOmpInstall((s) => s.error);
 	const cancelled = useOmpInstall((s) => s.cancelled);
@@ -140,10 +146,10 @@ function Failed() {
 	const text = result?.output ?? error ?? "";
 	return (
 		<div className="space-y-3">
-			<Notice tone={cancelled ? "warning" : "danger"} title={cancelled ? "安装已取消" : "omp 内核安装失败"} />
+			<Notice tone={cancelled ? "warning" : "danger"} title={cancelled ? t("ompInstall.cancelledTitle") : t("ompInstall.failedTitle")} />
 			<LogBox text={text} />
 			<ManualCommand />
-			{notFound && <div className="text-xs text-[var(--status-error)]">仍未检测到 omp，请确认安装完成后再试。</div>}
+			{notFound && <div className="text-xs text-[var(--status-error)]">{t("ompInstall.notFoundWarning")}</div>}
 			<div className="flex flex-wrap justify-end gap-2">
 				<Button
 					loading={checking}
@@ -154,7 +160,7 @@ function Failed() {
 							.finally(() => setChecking(false));
 					}}
 				>
-					我已手动安装，重新检测
+					{t("ompInstall.btnRecheckManual")}
 				</Button>
 				<Button
 					onClick={() => {
@@ -162,11 +168,11 @@ function Failed() {
 						useUi.getState().openSettings("advanced", { focusKey: "ompBinary" });
 					}}
 				>
-					指定 omp 位置
+					{t("ompInstall.btnSpecifyPath")}
 				</Button>
 				{!IS_WINDOWS && (
 					<Button variant="primary" icon={RefreshCw} onClick={() => void start()}>
-						重试
+						{t("common.retry")}
 					</Button>
 				)}
 			</div>
@@ -175,16 +181,17 @@ function Failed() {
 }
 
 function CustomPathMissing() {
+	const { t } = useT();
 	const ompBinary = useOmpUpdate((s) => s.info?.resolvedPath);
 	const switchToAutoInstall = useOmpInstall((s) => s.switchToAutoInstall);
 	const close = useOmpInstall((s) => s.close);
 	return (
 		<div className="space-y-3">
-			<Notice tone="warning" title="找不到你指定的 omp 位置">
-				<span className="select-text break-all">{ompBinary || "已配置的路径无效"}</span>
+			<Notice tone="warning" title={t("ompInstall.titleBinaryNotFound")}>
+				<span className="select-text break-all">{ompBinary || t("ompInstall.invalidPathFallback")}</span>
 			</Notice>
 			<p className="text-xs leading-5 text-[var(--text-muted)]">
-				可以改用自动安装（会把 omp 程序位置恢复为默认的 omp），或者去设置里修正路径。
+				{t("ompInstall.binaryNotFoundDesc")}
 			</p>
 			<div className="flex justify-end gap-2">
 				<Button
@@ -193,11 +200,11 @@ function CustomPathMissing() {
 						useUi.getState().openSettings("advanced", { focusKey: "ompBinary" });
 					}}
 				>
-					去设置
+					{t("ompInstall.btnGoSettings")}
 				</Button>
 				{!IS_WINDOWS && (
 					<Button variant="primary" icon={Download} onClick={() => void switchToAutoInstall()}>
-						改用自动安装
+						{t("ompInstall.btnSwitchAutoInstall")}
 					</Button>
 				)}
 			</div>
@@ -206,6 +213,7 @@ function CustomPathMissing() {
 }
 
 export function OmpInstallDialog() {
+	const { t } = useT();
 	const open = useOmpInstall((s) => s.open);
 	const phase = useOmpInstall((s) => s.phase);
 	const customPathMissing = useOmpInstall((s) => s.customPathMissing);
@@ -214,7 +222,7 @@ export function OmpInstallDialog() {
 	return (
 		<Modal
 			onClose={close}
-			title="安装 omp 内核"
+			title={t("ompInstall.dialogTitle")}
 			icon={<Download className="h-4 w-4" />}
 			size="lg"
 			closeOnBackdrop={false}
@@ -230,9 +238,9 @@ export function OmpInstallDialog() {
 				) : customPathMissing ? (
 					<CustomPathMissing />
 				) : (
-					<Notice tone="info" title="尚未安装 omp 内核">
+					<Notice tone="info" title={t("ompInstall.noticeNotInstalledTitle")}>
 						<Button variant="primary" icon={Download} onClick={() => void useOmpInstall.getState().start()}>
-							开始安装
+							{t("ompInstall.btnStartInstall")}
 						</Button>
 					</Notice>
 				)}

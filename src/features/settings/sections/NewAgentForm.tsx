@@ -19,41 +19,54 @@ import { useComposer } from "../../../stores/composer";
 import { useModelCatalog, useModelOptions } from "../../../stores/modelCatalog";
 import { useSessions } from "../../../stores/sessions";
 import { useUi } from "../../../stores/ui";
+import { useT } from "../../../stores/language";
 import { describeFileCommandError } from "../fileEditorLogic";
 import { asRecord, BUILTIN_ROLES } from "../modelRoles";
 import { useOmpConfigStore } from "../ompConfigStore";
 import { Button, INPUT_CLASS, MODEL_PICKER_BUTTON_CLASS } from "../ui";
 import {
-	AGENT_TOOL_GROUPS,
+	type AgentToolGroup,
 	buildAgentDraftPrompt,
 	buildAgentFile,
 	checkNewAgentName,
+	getAgentToolGroups,
 	type NewAgentSpec,
 	orderPickedTools,
 	READONLY_AGENT_TOOLS,
 } from "./agentDefs";
-
 type ToolsMode = "default" | "readonly" | "custom";
 type ModelMode = "inherit" | "role" | "model";
 
-const TOOLS_OPTIONS: { value: ToolsMode; label: string; hint: string }[] = [
-	{ value: "default", label: "默认全部工具", hint: "和普通子代理一样，能读写文件、跑命令" },
-	{ value: "readonly", label: "只读", hint: `只能查看和搜索：${READONLY_AGENT_TOOLS.join(", ")}` },
-	{ value: "custom", label: "自己选", hint: "点选它能用的工具。MCP 和插件提供的工具 OMP 会自动带上，不用在这里选。" },
-];
+function getToolsOptions(t: (k: string, p?: Record<string, string | number>) => string): { value: ToolsMode; label: string; hint: string }[] {
+	return [
+		{ value: "default", label: t("agentDefs.form.toolDefault"), hint: t("agentDefs.form.toolDefaultHint") },
+		{ value: "readonly", label: t("agentDefs.form.toolReadonly"), hint: t("agentDefs.form.toolReadonlyHint", { tools: READONLY_AGENT_TOOLS.join(", ") }) },
+		{ value: "custom", label: t("agentDefs.form.toolCustom"), hint: t("agentDefs.form.toolCustomHint") },
+	];
+}
+
+function getModelOptions(t: (k: string) => string): { value: ModelMode; label: string; hint: string }[] {
+	return [
+		{ value: "inherit", label: t("agentDefs.form.modelInherit"), hint: t("agentDefs.form.modelInheritHint") },
+		{ value: "role", label: t("agentDefs.form.modelRole"), hint: t("agentDefs.form.modelRoleHint") },
+		{ value: "model", label: t("agentDefs.form.modelModel"), hint: t("agentDefs.form.modelModelHint") },
+	];
+}
 
 function ToolPicker({
 	picked,
 	disabled,
 	onToggle,
+	toolGroups,
 }: {
 	picked: ReadonlySet<string>;
 	disabled: boolean;
 	onToggle: (name: string) => void;
+	toolGroups: readonly AgentToolGroup[];
 }) {
 	return (
 		<div className="space-y-2 rounded-lg hairline bg-[var(--bg-panel)] p-3">
-			{AGENT_TOOL_GROUPS.map((g) => (
+			{toolGroups.map((g) => (
 				<div key={g.title} role="group" aria-label={g.title} className="flex flex-wrap items-center gap-1.5">
 					<span className="w-16 shrink-0 text-[11px] text-[var(--text-dim)]">{g.title}</span>
 					{g.tools.map((t) => {
@@ -85,13 +98,7 @@ function ToolPicker({
 		</div>
 	);
 }
-
-const MODEL_OPTIONS: { value: ModelMode; label: string; hint: string }[] = [
-	{ value: "inherit", label: "跟随主会话", hint: "不写 model，用派它的那个会话的模型" },
-	{ value: "role", label: "复用模型角色", hint: "写 @角色名，以后在「模型角色」页换模型即可" },
-	{ value: "model", label: "指定模型", hint: "固定用某个模型" },
-];
-
+// (ToolPicker and getModelOptions moved above)
 function Segmented<T extends string>({
 	label,
 	value,
@@ -148,17 +155,17 @@ export function NewAgentForm({
 	onCreated,
 	onCancel,
 }: {
-	/** `agents` directory of the scope being shown; the file lands at `<dir>/<name>.md`. */
 	dir: string;
-	/** Where the file goes, in words (e.g. 「全局版本」). */
 	scopeLabel: string;
-	/** Agent names this list already shows; those are edited in the list instead. */
 	taken: ReadonlySet<string>;
-	/** Working directory for the 「让 AI 帮我写」 session; null hides the button. */
 	aiCwd: string | null;
 	onCreated: (name: string) => void;
 	onCancel: () => void;
 }) {
+	const { t } = useT();
+	const toolsOptions = useMemo(() => getToolsOptions(t), [t]);
+	const modelOptions = useMemo(() => getModelOptions(t), [t]);
+	const toolGroups = useMemo(() => getAgentToolGroups(t), [t]);
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [prompt, setPrompt] = useState("");
@@ -202,20 +209,20 @@ export function NewAgentForm({
 
 	const submit = async () => {
 		if (locked) return;
-		const checked = checkNewAgentName(name, taken);
+		const checked = checkNewAgentName(name, taken, t);
 		if (!checked.ok) return setError(checked.error);
-		if (!description.trim()) return setError("请写一句「负责什么」，主 AI 只看这句话决定什么时候派它");
-		if (!prompt.trim()) return setError("请写「工作要求」，这是子代理拿到任务后遵守的提示词");
-		if (toolsMode === "custom" && tools?.length === 0) return setError("请至少选一个工具，或改选「默认全部工具」");
-		if (modelMode === "role" && !role) return setError("请选择要复用的模型角色");
-		if (modelMode === "model" && !model) return setError("请选择一个模型");
+		if (!description.trim()) return setError(t("agentDefs.validation.descRequired"));
+		if (!prompt.trim()) return setError(t("agentDefs.validation.promptRequired"));
+		if (toolsMode === "custom" && tools?.length === 0) return setError(t("agentDefs.validation.toolsRequired"));
+		if (modelMode === "role" && !role) return setError(t("agentDefs.validation.roleRequired"));
+		if (modelMode === "model" && !model) return setError(t("agentDefs.validation.modelRequired"));
 		const spec: NewAgentSpec = { name: checked.name, description, prompt, tools, model: modelValue };
 		setPending("create");
 		try {
 			await ompAgentWrite(`${dir}/${checked.name}.md`, buildAgentFile(spec), null);
 			onCreated(checked.name);
 		} catch (e) {
-			setError(`创建失败：${describeFileCommandError(e)}`);
+			setError(t("agentDefs.rows.createFailed", { error: describeFileCommandError(e) }));
 		} finally {
 			setPending(null);
 		}
@@ -240,9 +247,9 @@ export function NewAgentForm({
 			useSessions.getState().upsert([stub]);
 			useComposer.getState().setDraft(sessionId, draft);
 			useUi.getState().selectSession(sessionId);
-			toast.success("已新建会话，需求已填入输入框，确认后再发送");
+			toast.success(t("agentDefs.form.askAiCreated"));
 		} catch (e) {
-			setError(`新建会话失败：${errMsg(e)}`);
+			setError(t("agentDefs.form.askAiFailed", { error: errMsg(e) }));
 			setPending(null);
 		}
 	};
@@ -250,12 +257,12 @@ export function NewAgentForm({
 	return (
 		<div data-testid="new-agent-form" className="space-y-4 border-b border-[var(--border-divider)] bg-[var(--well-bg)]/40 px-4 py-4">
 			<p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
-				填好下面几项就能用：文件存为{scopeLabel}，主 AI 派发任务时会在 task 工具的子代理列表里看到它，并根据「负责什么」自己决定什么时候派它；你也可以直接说「用 xxx 子代理去做…」。已经开着的会话可以点名使用，要让主 AI 主动想到它，新开一个会话最稳妥。
+				{t("agentDefs.form.lead", { scopeLabel })}
 			</p>
 
-			<Field label="名字" hint="只用英文字母、数字、- 和 _，例如 docs-writer。派发时就用这个名字。">
+			<Field label={t("agentDefs.form.nameLabel")} hint={t("agentDefs.form.nameHint")}>
 				<input
-					aria-label="子代理名字"
+					aria-label={t("agentDefs.form.nameAria")}
 					value={name}
 					autoFocus
 					spellCheck={false}
@@ -273,39 +280,39 @@ export function NewAgentForm({
 				/>
 			</Field>
 
-			<Field label="负责什么" hint="一句话写清它擅长什么、什么情况下该派它。主 AI 只看这句话决定要不要派它。">
+			<Field label={t("agentDefs.form.descLabel")} hint={t("agentDefs.form.descHint")}>
 				<input
-					aria-label="负责什么"
+					aria-label={t("agentDefs.form.descAria")}
 					value={description}
 					disabled={locked}
-					placeholder="为改动过的公开接口补写或更新文档；改了 API 后应派它"
+					placeholder={t("agentDefs.form.descPlaceholder")}
 					onChange={(e) => edit(setDescription)(e.target.value)}
 					className={clsx(INPUT_CLASS, "w-full")}
 				/>
 			</Field>
 
-			<Field label="工作要求" hint="子代理拿到任务后遵守的提示词：怎么做、不能做什么、做完交回什么。">
+			<Field label={t("agentDefs.form.promptLabel")} hint={t("agentDefs.form.promptHint")}>
 				<textarea
-					aria-label="工作要求"
+					aria-label={t("agentDefs.form.promptAria")}
 					value={prompt}
 					disabled={locked}
 					rows={5}
-					placeholder={"你是文档维护专家。\n先读相关代码，再更新对应文档；不要改代码。\n完成后列出改了哪些文件。"}
+					placeholder={t("agentDefs.form.promptPlaceholder")}
 					onChange={(e) => edit(setPrompt)(e.target.value)}
 					className={clsx(INPUT_CLASS, "w-full resize-y leading-relaxed")}
 				/>
 			</Field>
 
-			<Field label="可用工具" hint={TOOLS_OPTIONS.find((o) => o.value === toolsMode)?.hint ?? ""}>
-				<Segmented label="可用工具" value={toolsMode} options={TOOLS_OPTIONS} disabled={locked} onChange={edit(setToolsMode)} />
-				{toolsMode === "custom" && <ToolPicker picked={picked} disabled={locked} onToggle={togglePicked} />}
+			<Field label={t("agentDefs.form.toolsLabel")} hint={toolsOptions.find((o) => o.value === toolsMode)?.hint ?? ""}>
+				<Segmented label={t("agentDefs.form.toolsLabel")} value={toolsMode} options={toolsOptions} disabled={locked} onChange={edit(setToolsMode)} />
+				{toolsMode === "custom" && <ToolPicker picked={picked} disabled={locked} onToggle={togglePicked} toolGroups={toolGroups} />}
 			</Field>
 
-			<Field label="模型" hint={MODEL_OPTIONS.find((o) => o.value === modelMode)?.hint ?? ""}>
-				<Segmented label="模型" value={modelMode} options={MODEL_OPTIONS} disabled={locked} onChange={edit(setModelMode)} />
+			<Field label={t("agentDefs.form.modelLabel")} hint={modelOptions.find((o) => o.value === modelMode)?.hint ?? ""}>
+				<Segmented label={t("agentDefs.form.modelLabel")} value={modelMode} options={modelOptions} disabled={locked} onChange={edit(setModelMode)} />
 				{modelMode === "role" && (
-					<NativeSelect aria-label="复用的模型角色" value={role} disabled={locked} onChange={(e) => edit(setRole)(e.target.value)}>
-						<option value="">选择模型角色</option>
+					<NativeSelect aria-label={t("agentDefs.form.reuseRoleAria")} value={role} disabled={locked} onChange={(e) => edit(setRole)(e.target.value)}>
+						<option value="">{t("agentDefs.form.selectRole")}</option>
 						{roleNames.map((r) => (
 							<option key={r} value={r}>
 								@{r}
@@ -320,7 +327,7 @@ export function NewAgentForm({
 						direction="down"
 						align="start"
 						widthClass="w-[360px]"
-						label={model === null ? "选择模型" : parseSelection(model).selector}
+						label={model === null ? t("agentDefs.form.selectModel") : parseSelection(model).selector}
 						buttonClass={clsx(MODEL_PICKER_BUTTON_CLASS, model === null && "italic text-[var(--text-muted)]")}
 						models={models}
 						currentValue={model ?? ""}
@@ -339,7 +346,7 @@ export function NewAgentForm({
 
 			<div className="flex flex-wrap items-center gap-2">
 				<Button variant="primary" size="sm" loading={pending === "create"} disabled={locked} onClick={() => void submit()}>
-					创建子代理
+					{t("agentDefs.form.createSubagent")}
 				</Button>
 				{aiCwd && (
 					<Button
@@ -347,14 +354,14 @@ export function NewAgentForm({
 						icon={Sparkles}
 						loading={pending === "ai"}
 						disabled={locked}
-						title={`在 ${aiCwd} 新开一个会话，把已填的内容交给 AI，由它问清楚后帮你写好文件`}
+						title={t("agentDefs.form.askAiTitle", { cwd: aiCwd })}
 						onClick={() => void askAi()}
 					>
-						让 AI 帮我写
+						{t("agentDefs.form.askAi")}
 					</Button>
 				)}
 				<Button size="sm" variant="ghost" disabled={locked} onClick={onCancel}>
-					取消
+					{t("agentDefs.form.cancel")}
 				</Button>
 			</div>
 		</div>

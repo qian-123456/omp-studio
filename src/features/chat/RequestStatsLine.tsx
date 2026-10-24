@@ -7,6 +7,7 @@ import clsx from "clsx";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import { useDisplayPrefs } from "../../stores/displayPrefs";
+import { useT, tNow } from "../../stores/language";
 import {
 	REQUEST_STAT_FIELDS,
 	aggregateRequestStats,
@@ -29,13 +30,16 @@ function statDateTime(epochMs: number): string {
 		d.getMonth() === now.getMonth() &&
 		d.getDate() === now.getDate()
 	) {
-		return `今天 ${clock}`;
+		return tNow("chatView.stats.today", { time: clock });
 	}
-	const md = `${d.getMonth() + 1}月${d.getDate()}日`;
-	const prefix = d.getFullYear() === now.getFullYear() ? md : `${d.getFullYear()}年${md}`;
+	const month = d.getMonth() + 1;
+	const day = d.getDate();
+	const prefix =
+		d.getFullYear() === now.getFullYear()
+			? tNow("chatView.stats.dateMonthDay", { month, day })
+			: tNow("chatView.stats.dateYearMonthDay", { year: d.getFullYear(), month, day });
 	return `${prefix} ${clock}`;
 }
-
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 /**
@@ -124,6 +128,7 @@ function FieldRow({
 
 /** ttft vs. the rest of the request: where the wall time of one call went. */
 function TimeSplit({ stat }: { stat: RequestStat }) {
+	const { t } = useT();
 	const duration = stat.durationMs;
 	const known = duration != null && duration > 0;
 	const ttft = stat.ttftMs;
@@ -140,8 +145,8 @@ function TimeSplit({ stat }: { stat: RequestStat }) {
 				<span className="flex-1 bg-[var(--text-60)]" />
 			</div>
 			<div className="mt-1 flex justify-between text-[11px] text-[var(--text-30)]">
-				<span>等第一个字 {ttft == null ? "—" : seconds(ttft)}</span>
-				<span>生成 {seconds(gen)}</span>
+				<span>{t("chatView.stats.firstTokenWait", { time: ttft == null ? "—" : seconds(ttft) })}</span>
+				<span>{t("chatView.stats.generationTime", { time: seconds(gen) })}</span>
 			</div>
 		</div>
 	);
@@ -149,11 +154,12 @@ function TimeSplit({ stat }: { stat: RequestStat }) {
 
 /** Card body for a failed request: what happened, no meaningless zero fields. */
 function FailedRequestCard({ stat }: { stat: RequestStat }) {
+	const { t } = useT();
 	const when = stat.startedAt ?? stat.completedAt;
 	return (
 		<div className="flex w-[290px] select-text flex-col gap-1.5 p-3">
 			<div className="text-[12px] text-[var(--text-60)]">
-				模型请求失败
+				{t("chatView.stats.modelRequestFailed")}
 				{when != null && (
 					<span className="ms-1.5 font-mono text-[11px] tabular-nums text-[var(--text-40)]">
 						{statDateTime(when)}
@@ -161,13 +167,13 @@ function FailedRequestCard({ stat }: { stat: RequestStat }) {
 				)}
 			</div>
 			<div className="text-[11px] leading-relaxed text-[var(--text-40)]">
-				这次请求没有得到模型的回复（例如在时限内没有响应），omp 已自动重试，不影响后续结果。
+				{t("chatView.stats.requestFailedExplanation")}
 			</div>
 			{stat.durationMs != null && (
 				<FieldRow
-					label="等待时长"
+					label={t("chatView.stats.waitDuration")}
 					value={seconds(stat.durationMs)}
-					description="从发出请求到判定失败的时间"
+					description={t("chatView.stats.waitDurationDesc")}
 				/>
 			)}
 			<div className="break-words rounded-md bg-rose-500/10 px-2 py-1 font-mono text-[11px] leading-relaxed text-rose-400">
@@ -179,13 +185,15 @@ function FailedRequestCard({ stat }: { stat: RequestStat }) {
 
 /** The explanation card body for one model request. */
 function RequestCard({ stat }: { stat: RequestStat }) {
+	const { t } = useT();
 	const fields = useDisplayPrefs((s) => s.requestStatFields);
-	const parts = useMemo(() => formatRequestStat(stat, fields), [stat, fields]);
+	// `t` in deps: formatRequestStat localizes via tNow, so re-run on locale switch.
+	const parts = useMemo(() => formatRequestStat(stat, fields), [stat, fields, t]);
 	const when = stat.startedAt ?? stat.completedAt;
 	return (
 		<div className="flex w-[290px] flex-col gap-1.5 p-3">
 			<div className="text-[12px] text-[var(--text-60)]">
-				模型请求
+				{t("chatView.stats.modelRequest")}
 				{when != null && (
 					<span className="ms-1.5 font-mono text-[11px] tabular-nums text-[var(--text-40)]">
 						{statDateTime(when)}
@@ -208,9 +216,9 @@ function RequestCard({ stat }: { stat: RequestStat }) {
 			{!fields.duration && (
 				<FieldRow
 					glyph={REQUEST_STAT_FIELDS.duration.glyph}
-					label="总耗时"
+					label={t("chatView.stats.totalDuration")}
 					value={stat.durationMs == null ? "—" : seconds(stat.durationMs)}
-					description="这次请求从发出到结束的时间"
+					description={t("chatView.stats.totalDurationDesc")}
 				/>
 			)}
 			<TimeSplit stat={stat} />
@@ -234,6 +242,7 @@ export function RequestStatsLine({
 	 * (the answer footer); the hover card still lists it. */
 	omitTime?: boolean;
 }) {
+	const { t } = useT();
 	const enabled = useDisplayPrefs((s) => s.requestStats);
 	const fields = useDisplayPrefs((s) => s.requestStatFields);
 	const parts = useMemo(
@@ -241,7 +250,7 @@ export function RequestStatsLine({
 			enabled
 				? formatRequestStat(stat, omitTime ? { ...fields, time: false } : fields)
 				: [],
-		[enabled, stat, fields, omitTime],
+		[enabled, stat, fields, omitTime, t],
 	);
 	const { open, anchor, enterProps, clickProps, cardProps } = useHoverCard();
 	const failedText = formatFailedRequest(stat);
@@ -266,7 +275,7 @@ export function RequestStatsLine({
 				}}
 				role="button"
 				tabIndex={0}
-				aria-label="查看这次模型请求的统计说明"
+				aria-label={t("chatView.stats.ariaViewStats")}
 			>
 				{failedText ? (
 					<>
@@ -318,29 +327,30 @@ export function TurnSummaryRows({
 	stats: RequestStat[];
 	durationMs?: number;
 }) {
+	const { t } = useT();
 	const withCost = useDisplayPrefs((s) => s.requestStatFields.cost);
 	const totals = useMemo(() => aggregateRequestStats(stats), [stats]);
 	const rows: { label: string; value: string }[] = [];
-	if (durationMs) rows.push({ label: "总用时", value: formatDurationCompact(durationMs) });
+	if (durationMs) rows.push({ label: t("chatView.stats.summaryTotalTime"), value: formatDurationCompact(durationMs) });
 	if (totals.count > 0) {
 		rows.push({
-			label: "请求次数",
-			value: totals.failed > 0 ? `${totals.count} 次（失败 ${totals.failed}）` : `${totals.count} 次`,
+			label: t("chatView.stats.summaryRequestCount"),
+			value: totals.failed > 0 ? t("chatView.stats.requestsWithFailed", { count: totals.count, failed: totals.failed }) : t("chatView.stats.requestsCount", { count: totals.count }),
 		});
 		rows.push({
-			label: "总输入",
+			label: t("chatView.stats.summaryTotalInput"),
 			value: `${REQUEST_STAT_FIELDS.input.glyph}${formatStatTokens(totals.input)}`,
 		});
 		rows.push({
-			label: "总输出",
+			label: t("chatView.stats.summaryTotalOutput"),
 			value: `${REQUEST_STAT_FIELDS.output.glyph}${formatStatTokens(totals.output)}`,
 		});
 		rows.push({
-			label: "缓存命中",
+			label: t("chatView.stats.summaryCacheHit"),
 			value: `${REQUEST_STAT_FIELDS.cache.glyph}${formatStatTokens(totals.cacheRead)}`,
 		});
 		rows.push({
-			label: "平均速度",
+			label: t("chatView.stats.summaryAvgSpeed"),
 			value:
 				totals.avgTps == null
 					? "—"
@@ -348,7 +358,7 @@ export function TurnSummaryRows({
 		});
 		if (withCost) {
 			rows.push({
-				label: "总费用",
+				label: t("chatView.stats.summaryTotalCost"),
 				value: `$${totals.cost.toFixed(totals.cost < 1 ? 3 : 2)}`,
 			});
 		}

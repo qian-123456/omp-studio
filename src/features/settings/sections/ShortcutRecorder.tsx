@@ -6,8 +6,8 @@
 import clsx from "clsx";
 import { Keyboard, RotateCcw, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useT } from "../../../stores/language";
 import { IconButton } from "../ui";
-
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
 
 const MODIFIER_CODES: Record<string, true> = {
@@ -162,6 +162,7 @@ export function ShortcutRecorder({
 	defaultValue: string;
 	onCommit: (next: string) => void;
 }) {
+	const { t } = useT();
 	const [recording, setRecording] = useState(false);
 	const [hint, setHint] = useState<string | null>(null);
 
@@ -183,12 +184,12 @@ export function ShortcutRecorder({
 					: [e.ctrlKey && "Ctrl", e.metaKey && "Win", e.altKey && "Alt", e.shiftKey && "Shift"]
 							.filter(Boolean)
 							.join("+");
-				setHint(held ? `${held} + 再按一个键` : null);
+				setHint(held ? t("shortcutsSettings.recorder.pressAnotherKey", { held }) : null);
 				return;
 			}
 			const acc = eventToAccelerator(e);
 			if (!acc) {
-				setHint("需要配合 ⌘ / ⌃ / ⌥ / ⇧ 等修饰键");
+				setHint(t("shortcutsSettings.recorder.needsModifier"));
 				return;
 			}
 			setRecording(false);
@@ -202,16 +203,16 @@ export function ShortcutRecorder({
 			window.removeEventListener("keydown", onKey, true);
 			window.removeEventListener("blur", onBlur);
 		};
-	}, [recording, value, onCommit]);
+	}, [recording, value, onCommit, t]);
 
 	const display = value ? formatAccelerator(value) : "";
 	return (
 		<div className="flex items-center gap-2">
 			<button
 				type="button"
-				aria-label="录制全局快捷键"
+				aria-label={t("shortcutsSettings.recorder.aria")}
 				data-shortcut-recording={recording ? "" : undefined}
-				title={value ? `当前：${value}` : undefined}
+				title={value ? t("shortcutsSettings.recorder.currentTitle", { value }) : undefined}
 				onClick={() => {
 					setHint(null);
 					setRecording((r) => !r);
@@ -225,19 +226,26 @@ export function ShortcutRecorder({
 			>
 				<Keyboard className="h-3.5 w-3.5 opacity-70" />
 				{recording ? (
-					<span>{hint ?? "请按下组合键，Esc 取消"}</span>
+					<span>{hint ?? t("shortcutsSettings.recorder.pressCombo")}</span>
 				) : display ? (
 					<span className="font-mono tracking-wide">{display}</span>
 				) : (
-					<span className="text-[var(--text-dim)]">未设置，点击录制</span>
+					<span className="text-[var(--text-dim)]">{t("shortcutsSettings.recorder.notSet")}</span>
 				)}
 			</button>
-			{value && !recording && <IconButton icon={X} label="清除快捷键" title="清除快捷键（停用）" onClick={() => onCommit("")} />}
+			{value && !recording && (
+				<IconButton
+					icon={X}
+					label={t("shortcutsSettings.recorder.clear")}
+					title={t("shortcutsSettings.recorder.clearTitle")}
+					onClick={() => onCommit("")}
+				/>
+			)}
 			{value !== defaultValue && !recording && (
 				<IconButton
 					icon={RotateCcw}
-					label="恢复默认快捷键"
-					title={`恢复默认快捷键（${formatAccelerator(defaultValue)}）`}
+					label={t("shortcutsSettings.recorder.reset")}
+					title={t("shortcutsSettings.recorder.resetTitle", { def: formatAccelerator(defaultValue) })}
 					onClick={() => onCommit(defaultValue)}
 				/>
 			)}

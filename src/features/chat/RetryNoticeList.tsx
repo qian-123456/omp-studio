@@ -14,6 +14,7 @@ import {
 	retrySummary,
 } from "../../stores/retryNotice";
 import { canUndoFallback, undoFallback } from "./fallbackUndo";
+import { useT } from "../../stores/language";
 
 const TONE: Record<RetryNotice["tone"], string> = {
 	warn: "text-[var(--warn,#d97706)]",
@@ -56,13 +57,14 @@ function UndoFallbackButton({
 	fallback: FallbackInfo | undefined;
 }): JSX.Element | null {
 	const stateModel = useLive((s) => s.sessions[sessionId]?.state?.model);
+	const { t } = useT();
 	const [busy, setBusy] = useState(false);
 	if (!fallback || !canUndoFallback(fallback, stateModel)) return null;
 	return (
 		<button
 			type="button"
 			disabled={busy}
-			title={`切回 ${fallback.from}`}
+			title={t("chatView.retry.switchBackTo", { model: fallback.from })}
 			onClick={() => {
 				setBusy(true);
 				void undoFallback(sessionId, fallback).finally(() => setBusy(false));
@@ -70,7 +72,7 @@ function UndoFallbackButton({
 			className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg-panel)] px-2.5 py-0.5 text-[11px] text-[var(--text)] transition-colors hover:bg-[var(--ghost-hover)] disabled:opacity-50"
 		>
 			<Undo2 size={11} />
-			切回原模型
+			{t("chatView.retry.switchBackOriginal")}
 		</button>
 	);
 }

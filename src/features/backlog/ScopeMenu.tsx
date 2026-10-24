@@ -1,5 +1,6 @@
 import { Check, ListFilter } from "lucide-react";
 import { useState } from "react";
+import { useT } from "../../stores/language";
 import { FloatingLayer } from "../../components/FloatingLayer";
 import type { IdeasScope, ScopeOption } from "./ideasLogic";
 import { ROUND_ICON } from "./ideaStyles";
@@ -14,10 +15,11 @@ export function ScopeMenu({
 	options: ScopeOption[];
 	onChange: (scope: IdeasScope) => void;
 }) {
+	const { t } = useT();
 	const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 	const active = scope !== null;
 	const rows: { value: IdeasScope; label: string; isCurrent: boolean; title?: string }[] = [
-		{ value: null, label: "全部项目", isCurrent: false },
+		{ value: null, label: t("backlog.allProjects"), isCurrent: false },
 		...options.map((o) => ({ value: o.root, label: o.label, isCurrent: o.isCurrent, title: o.root })),
 	];
 
@@ -28,8 +30,8 @@ export function ScopeMenu({
 				onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}
 				aria-haspopup="listbox"
 				aria-expanded={anchor !== null}
-				title="按项目筛选"
-				aria-label="按项目筛选"
+				title={t("backlog.filterByProjectTitle")}
+				aria-label={t("backlog.filterByProjectAriaLabel")}
 				className={`${ROUND_ICON} h-7 w-7 ${
 					active || anchor ? "bg-[var(--bg-selected)] text-[var(--text)]" : ""
 				}`}
@@ -43,7 +45,7 @@ export function ScopeMenu({
 				ignoreRefs={[{ current: anchor }]}
 				onDismiss={() => setAnchor(null)}
 				role="listbox"
-				aria-label="按项目筛选"
+				aria-label={t("backlog.filterByProjectAriaLabel")}
 				className="max-h-[320px] w-[220px] overflow-y-auto !bg-[var(--bg-panel)] py-1"
 			>
 				{rows.map((r) => {
@@ -66,7 +68,7 @@ export function ScopeMenu({
 							<span className="min-w-0 flex-1 break-words">{r.label}</span>
 							{r.isCurrent && (
 								<span className="shrink-0 rounded-full bg-[var(--bg-hover)] px-1.5 text-[10px] text-[var(--accent)]">
-									当前
+									{t("backlog.currentTag")}
 								</span>
 							)}
 							{selected && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />}

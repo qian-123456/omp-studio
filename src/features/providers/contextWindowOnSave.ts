@@ -1,6 +1,7 @@
 import type { Model, ModelEntry, ModelSpec } from "../../lib/contracts";
 import { confirmDialog } from "../../lib/dialogs";
 import { listModels } from "../../lib/ipc";
+import { tNow } from "../../stores/language";
 import {
 	catalogWindowFor,
 	loadRules,
@@ -77,10 +78,9 @@ function withWindows<T extends ProviderModels>(config: T, windows: Map<string, n
 }
 
 function conflictMessage(conflicts: RuleConflict[]): string {
-	const lines = conflicts.map((c) => `• ${c.modelId}：${formatTokens(c.current)} → ${formatTokens(c.ruleValue)}`);
-	return `以下新增模型已填写的窗口与上下文窗口规则不一致：\n${lines.join("\n")}`;
+	const lines = conflicts.map((c) => tNow("providers.conflictLine", { id: c.modelId, from: formatTokens(c.current), to: formatTokens(c.ruleValue) }));
+	return `${tNow("providers.conflictMessagePrefix")}${lines.join("\n")}`;
 }
-
 /**
  * Applies D15 windows to `after` before it is saved. Never touches secrets. Returns the config to save and how many
  * model windows were set.
@@ -99,9 +99,9 @@ export async function applyContextWindowsOnSave<T extends ProviderModels>(
 	const windows = new Map(plan.fills);
 	if (plan.conflicts.length > 0) {
 		const overwrite = await confirmDialog(conflictMessage(plan.conflicts), {
-			title: "规则覆盖确认",
-			okLabel: "全部覆盖",
-			cancelLabel: "保留原值",
+			title: tNow("providers.conflictConfirmTitle"),
+			okLabel: tNow("providers.conflictOverwriteAll"),
+			cancelLabel: tNow("providers.conflictKeepOriginal"),
 		});
 		if (overwrite) for (const c of plan.conflicts) windows.set(c.modelId, c.ruleValue);
 	}

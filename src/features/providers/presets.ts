@@ -1,3 +1,5 @@
+import { tNow } from "../../stores/language";
+
 /** Display preset mirroring the backend `providers/presets.rs` table. */
 export interface ProviderPreset {
 	id: string;
@@ -126,7 +128,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 	},
 	{
 		id: "custom",
-		name: "自定义 OpenAI 兼容",
+		get name() {
+			return tNow("providers.presetCustom");
+		},
 		color: "#f59e0b",
 		baseUrl: "",
 		api: "openai-completions",
@@ -134,7 +138,6 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 		models: [],
 	},
 ];
-
 export function presetById(id: string | null | undefined): ProviderPreset | undefined {
 	if (!id) return undefined;
 	return PROVIDER_PRESETS.find((p) => p.id === id);
@@ -146,9 +149,29 @@ export function matchPresetByEnvVar(envVar: string): ProviderPreset | undefined 
 }
 
 /** Protocols offered in the provider form; any other OMP api string is entered as free text. */
-export const KNOWN_APIS: { value: string; label: string }[] = [
-	{ value: "openai-completions", label: "OpenAI 兼容（openai-completions）" },
-	{ value: "openai-responses", label: "OpenAI Responses（openai-responses）" },
-	{ value: "anthropic-messages", label: "Anthropic（anthropic-messages）" },
-	{ value: "google-generative-ai", label: "Gemini（google-generative-ai）" },
+export const KNOWN_APIS: { value: string; readonly label: string }[] = [
+	{
+		value: "openai-completions",
+		get label() {
+			return tNow("providers.apiOpenaiCompletions");
+		},
+	},
+	{
+		value: "openai-responses",
+		get label() {
+			return tNow("providers.apiOpenaiResponses");
+		},
+	},
+	{
+		value: "anthropic-messages",
+		get label() {
+			return tNow("providers.apiAnthropicMessages");
+		},
+	},
+	{
+		value: "google-generative-ai",
+		get label() {
+			return tNow("providers.apiGoogleGenerativeAi");
+		},
+	},
 ];

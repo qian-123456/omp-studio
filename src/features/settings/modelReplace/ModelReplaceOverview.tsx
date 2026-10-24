@@ -18,6 +18,7 @@ import type { ModelProbeResult, ModelUsageScan } from "../../../lib/contracts";
 import { errMsg } from "../../../lib/dialogs";
 import { modelProbe } from "../../../lib/ipc";
 import { KIND_GROUP_ORDER, KIND_GROUP_TITLES, probeKindOf, useModelKindCatalog } from "./kinds";
+import { useT } from "../../../stores/language";
 import {
 	buildOverview,
 	filterOverviewRows,
@@ -44,11 +45,12 @@ function formatLatency(ms: number): string {
 
 /** Full-width probe result: status line + collapsible, wrapped, selectable detail. */
 function ProbeResultView({ outcome }: { outcome: ProbeOutcome }) {
+	const { t } = useT();
 	const [open, setOpen] = useState(!outcome.ok);
 	const hasDetail = outcome.detail.trim() !== "";
 	const summary = outcome.ok
-		? `可用${outcome.latencyMs === null ? "" : ` · ${formatLatency(outcome.latencyMs)}`}`
-		: "不可用";
+		? (outcome.latencyMs === null ? t("modelReplace.probeAvailable") : t("modelReplace.probeAvailableWithLatency", { latency: formatLatency(outcome.latencyMs) }))
+		: t("modelReplace.probeUnavailable");
 	return (
 		<div
 			className={`mt-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-5 ${
@@ -66,7 +68,7 @@ function ProbeResultView({ outcome }: { outcome: ProbeOutcome }) {
 					open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />
 				) : null}
 				{summary}
-				{hasDetail && <span className="font-normal opacity-70">{open ? "（收起详情）" : "（展开详情）"}</span>}
+				{hasDetail && <span className="font-normal opacity-70">{open ? t("modelReplace.collapseDetails") : t("modelReplace.expandDetails")}</span>}
 			</button>
 			{hasDetail && open && (
 				<pre className="mt-1 max-h-48 select-text overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-4 opacity-90">
@@ -94,6 +96,7 @@ function OverviewRowView({
 	showGroupFlag: boolean;
 	onReplace: (row: OverviewRow) => void;
 }) {
+	const { t } = useT();
 	const [expanded, setExpanded] = useState(false);
 	const [probing, setProbing] = useState(false);
 	const [outcome, setOutcome] = useState<ProbeOutcome | null>(null);
@@ -122,11 +125,11 @@ function OverviewRowView({
 					<Highlight text={row.selector} terms={terms} />
 				</span>
 				<span>
-					<Chip tone="neutral">{row.count} 处</Chip>
+					<Chip tone="neutral">{t("modelReplace.locationsCount", { count: String(row.count) })}</Chip>
 				</span>
 				<span className="flex flex-wrap gap-1">
 					{row.levels.length > 0 ? (
-						<Chip tone="info" title="已带思考等级引用">
+						<Chip tone="info" title={t("modelReplace.hasThinkingLevelTitle")}>
 							{row.levels.join("/")}
 						</Chip>
 					) : (
@@ -142,42 +145,42 @@ function OverviewRowView({
 							type="button"
 							onClick={() => setExpanded((v) => !v)}
 							aria-expanded={expanded}
-							title={expanded ? "收起位置列表" : "展开查看全部出现位置"}
+							title={expanded ? t("modelReplace.collapseLocationList") : t("modelReplace.expandLocationList")}
 							className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full bg-[var(--bg-active-fill)] px-2 py-0.5 text-[10px] text-[var(--accent)] transition-all hover:bg-[var(--bg-hover)] active:scale-95"
 						>
 							{expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-							全部 {total} 处
+							{t("modelReplace.allLocationsCount", { count: String(total) })}
 						</button>
 					)}
 				</div>
 				<div className="flex items-center justify-end gap-2">
 					{probeKind === null ? (
 						<span
-							title="此类型暂不支持测试"
+							title={t("modelReplace.unsupportedProbeTitle")}
 							className="whitespace-nowrap rounded-full bg-[var(--well-bg)] px-2.5 py-1 text-[10px] text-neutral-500"
 						>
-							不支持测试
+							{t("modelReplace.unsupportedProbe")}
 						</span>
 					) : (
 						<button
 							type="button"
 							onClick={() => void run()}
 							disabled={probing}
-							title={`用一次真实调用测试 ${row.selector}（含 omp 启动，通常几秒）`}
+							title={t("modelReplace.probeButtonTitle", { selector: row.selector })}
 							className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full hairline bg-[var(--well-bg)] px-3 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] hover:text-neutral-100 active:scale-95 disabled:opacity-50"
 						>
 							{probing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
-							测试
+							{t("modelReplace.probe")}
 						</button>
 					)}
 					<button
 						type="button"
 						onClick={() => onReplace(row)}
-						title="把这个模型的所有引用换成另一个模型"
+						title={t("modelReplace.replaceButtonTitle")}
 						className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] px-3 py-1 text-[11px] font-medium text-[var(--accent)] transition-all hover:bg-[color-mix(in_oklab,var(--accent)_28%,transparent)] active:scale-95"
 					>
 						<ArrowRightLeft className="h-3 w-3" />
-						替换
+						{t("modelReplace.replace")}
 					</button>
 				</div>
 			</div>
@@ -198,7 +201,7 @@ function OverviewRowView({
 			{probing && (
 				<p className="mt-1.5 flex items-center gap-1.5 text-[10px] text-neutral-500">
 					<Loader2 className="h-3 w-3 animate-spin" />
-					测试中…（真实调用）
+					{t("modelReplace.probing")}
 				</p>
 			)}
 			{!probing && outcome !== null && <ProbeResultView outcome={outcome} />}
@@ -244,6 +247,7 @@ export function ModelReplaceOverview({
 	onRescan: () => void;
 	onReplace: (row: OverviewRow) => void;
 }) {
+	const { t } = useT();
 	const kindEntries = useModelKindCatalog((s) => s.entries);
 	const kindBySelector = useModelKindCatalog((s) => s.kindBySelector);
 	const kindLoading = useModelKindCatalog((s) => s.loading);
@@ -279,17 +283,17 @@ export function ModelReplaceOverview({
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="flex items-center justify-between gap-4 px-4 pb-3">
 				<p className="text-xs leading-5 text-neutral-400">
-					下面是当前所有模型引用的使用情况。点某个模型右侧的「替换」，就能把它的所有引用批量换成另一个模型。
+					{t("modelReplace.overviewIntro")}
 				</p>
 				<button
 					type="button"
 					onClick={rescan}
 					disabled={loading || kindLoading}
-					title="重新扫描模型引用和模型目录"
+					title={t("modelReplace.rescanTitle")}
 					className="inline-flex shrink-0 items-center gap-1.5 rounded-full hairline bg-[var(--bg-active-fill)] px-3 py-1 text-[11px] text-neutral-300 transition-all hover:bg-[var(--bg-hover)] active:scale-95 disabled:opacity-50"
 				>
 					<RefreshCw className={`h-3 w-3 ${loading || kindLoading ? "animate-spin" : ""}`} />
-					重新扫描
+					{t("modelReplace.rescan")}
 				</button>
 			</div>
 
@@ -298,14 +302,14 @@ export function ModelReplaceOverview({
 					className="min-w-48 flex-1"
 					value={query}
 					onChange={onQueryChange}
-					placeholder="搜索模型名、供应商或位置"
-					ariaLabel="搜索模型引用"
+					placeholder={t("modelReplace.searchPlaceholder")}
+					ariaLabel={t("modelReplace.searchAria")}
 					iconSize={12}
 					inputClassName="w-full rounded-lg hairline bg-[var(--bg-active-fill)] py-1.5 pl-8 pr-8 text-xs text-[var(--text)] placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)]"
 				/>
-				<span className="shrink-0 text-[11px] text-neutral-500">范围</span>
+				<span className="shrink-0 text-[11px] text-neutral-500">{t("modelReplace.scopeLabel")}</span>
 				<NativeSelect
-					aria-label="替换范围"
+					aria-label={t("modelReplace.scopeAria")}
 					value={scope}
 					onChange={(e) => onScopeChange(e.target.value as ReplaceScope)}
 					containerClassName="w-72"
@@ -324,7 +328,7 @@ export function ModelReplaceOverview({
 				<div role="alert" className="mx-3 mb-2 flex items-start gap-2 rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] leading-5 text-rose-300">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="min-w-0 flex-1 break-all">
-						{scan ? `扫描失败，保留上次结果：${error}` : `无法扫描模型引用：${error}`}
+						{scan ? t("modelReplace.scanFailedKeepPrevious", { error }) : t("modelReplace.scanFailed", { error })}
 					</span>
 				</div>
 			)}
@@ -333,7 +337,7 @@ export function ModelReplaceOverview({
 				<div role="alert" className="mx-3 mb-2 flex items-start gap-2 rounded-lg bg-[color-mix(in_srgb,var(--status-warning)_12%,transparent)] px-3 py-2 text-[11px] leading-5 text-[var(--status-warning)]">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="min-w-0 flex-1 break-all">
-						无法加载模型目录，暂不分组，也无法判断哪些模型已失效：{kindError}
+						{t("modelReplace.kindCatalogLoadFailed", { error: kindError })}
 					</span>
 				</div>
 			)}
@@ -341,28 +345,28 @@ export function ModelReplaceOverview({
 			{kindLoading && kindEntries === null && (
 				<p className="mx-3 mb-2 flex items-center gap-2 text-[11px] text-neutral-400">
 					<Loader2 className="h-3 w-3 animate-spin" />
-					正在加载模型目录（用于分类，约需几秒）…
+					{t("modelReplace.kindCatalogLoading")}
 				</p>
 			)}
 
 			{loading && scan === null && (
 				<div className="flex items-center gap-2 px-3 py-6 text-xs text-neutral-400">
 					<Loader2 className="h-3.5 w-3.5 animate-spin" />
-					正在扫描模型引用…
+					{t("modelReplace.scanLoading")}
 				</div>
 			)}
 
 			{scan !== null && rows.length === 0 && (
 				<div className="px-3 py-6 text-xs text-neutral-500">
 					{scope === "all"
-						? "没有扫描到任何模型引用。先在「模型角色」里给角色指定模型，或在定时任务里选择模型。"
-						: "这个范围内没有模型引用。把范围改成「全部」可以看到所有位置。"}
+						? t("modelReplace.noModelRefsAll")
+						: t("modelReplace.noModelRefsScope")}
 				</div>
 			)}
 
 			{rows.length > 0 && visibleRows.length === 0 && (
 				<div className="px-3 py-6 text-xs text-neutral-500">
-					没有匹配「{query.trim()}」的模型引用。试试模型名、供应商或位置（如角色、项目名）的一部分。
+					{t("modelReplace.noMatchingRefs", { query: query.trim() })}
 				</div>
 			)}
 
@@ -386,10 +390,10 @@ export function ModelReplaceOverview({
 								</header>
 							)}
 							<div className={`${ROW_GRID} border-t border-[var(--border-divider)] px-4 py-1.5 text-[10px] font-medium tracking-wide text-neutral-500`}>
-								<span>模型</span>
-								<span>引用</span>
-								<span>思考等级</span>
-								<span>出现位置</span>
+								<span>{t("modelReplace.colModel")}</span>
+								<span>{t("modelReplace.colReferences")}</span>
+								<span>{t("modelReplace.colThinkingLevel")}</span>
+								<span>{t("modelReplace.colLocations")}</span>
 								<span />
 							</div>
 							{section.rows.map((row) => (
@@ -405,7 +409,7 @@ export function ModelReplaceOverview({
 					))}
 					<p className="flex items-start gap-1.5 px-1 text-[10px] leading-4 text-neutral-500">
 						<PlayCircle className="mt-px h-3 w-3 shrink-0" />
-						「测试」会按模型类型用一次真实调用探测它（消耗少量 token），只在点击时执行。
+						{t("modelReplace.testHint")}
 					</p>
 				</div>
 			)}

@@ -19,6 +19,7 @@ import {
 	rpcEnsureLive,
 } from "../../lib/ipc";
 import { useUi } from "../../stores/ui";
+import { useT } from "../../stores/language";
 
 const NEW_BRANCH = "__new";
 
@@ -31,6 +32,7 @@ export function ResumeMissingCwdDialog() {
 }
 
 function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
+	const { t } = useT();
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const confirmBtnRef = useRef<HTMLButtonElement>(null);
 	const closeModal = useUi((s) => s.closeModal);
@@ -127,7 +129,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 					: { branch: branchSel };
 			const wt = await gitCreateWorktree(repoRoot, worktreeName, opts);
 			if (wt.path !== cwd.replace(/\/+$/, "")) {
-				throw new Error(`重建的工作树路径不一致: ${wt.path}`);
+				throw new Error(t("sessions.worktreePathMismatch", { path: wt.path }));
 			}
 			const info = await rpcEnsureLive(sessionId);
 			resolveResume(sessionId, info);
@@ -150,7 +152,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 	return (
 		<Modal
 			onClose={cancel}
-			ariaLabel="恢复会话"
+			ariaLabel={t("sessions.resumeSession")}
 			size="none"
 			className="w-[500px] max-w-[calc(100vw-2rem)]"
 			closeOnBackdrop={!busy}
@@ -203,12 +205,12 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 						id="resume-missing-cwd-title"
 						className="flex-1 text-[15px] font-semibold tracking-tight text-[var(--text)]"
 					>
-						恢复会话
+						{t("sessions.resumeSession")}
 					</span>
 					<button
 						type="button"
-						title="关闭 (Esc)"
-						aria-label="关闭对话框"
+						title={t("sessions.closeEsc")}
+						aria-label={t("sessions.closeDialogAria")}
 						disabled={busy}
 						onClick={cancel}
 						className="press-scale rounded-lg p-1 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-100 transition-colors disabled:opacity-40"
@@ -219,7 +221,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 
 				<div className="flex-1 min-h-0 overflow-y-auto pr-1">
 				<p className="mb-1 text-[12px] text-neutral-300">
-					该会话原来的工作树目录已被删除：
+					{t("sessions.sessionCwdDeletedNotice")}
 				</p>
 				<p className="mb-3 break-all rounded-lg hairline bg-[var(--bg)]/60 px-2.5 py-1.5 font-mono text-[11px] text-neutral-400">
 					{cwd}
@@ -246,7 +248,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 						<span className="min-w-0">
 							<span className="flex items-center gap-1.5 text-[12px] text-neutral-200">
 								<FolderGit2 size={13} className="shrink-0" />
-								在主目录继续
+								{t("sessions.continueInMainDir")}
 							</span>
 							{repoRoot ? (
 								<>
@@ -254,12 +256,12 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 										{repoRoot}
 									</span>
 									<span className="mt-0.5 block text-[11px] text-neutral-500">
-										之后此会话会归到主目录
+										{t("sessions.sessionWillMoveToMainDir")}
 									</span>
 								</>
 							) : (
 								<span className="mt-0.5 block text-[11px] text-neutral-500">
-									无法确定仓库主目录
+									{t("sessions.cannotDetermineRepoRoot")}
 								</span>
 							)}
 						</span>
@@ -285,21 +287,21 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 							<span className="min-w-0 flex-1">
 								<span className="flex items-center gap-1.5 text-[12px] text-neutral-200">
 									<GitBranch size={13} className="shrink-0" />
-									重建工作树后继续
+									{t("sessions.recreateWorktreeAndContinue")}
 								</span>
 								<span className="mt-0.5 block text-[11px] text-neutral-500">
-									在原路径重新创建工作树：
+									{t("sessions.recreateWorktreeAtPath")}
 									<span className="font-mono">{cwd}</span>
 								</span>
 								{choice === "worktree" && (
 									<span className="mt-2 block">
 										<span className="mb-1 block text-[10px] text-neutral-400">
-											检出分支
+											{t("sessions.checkoutBranch")}
 										</span>
 										{branches === null ? (
 											<span className="flex items-center gap-1.5 text-[11px] text-neutral-500">
 												<Loader2 size={12} className="animate-spin" />
-												正在读取分支…
+												{t("sessions.loadingBranches")}
 											</span>
 										) : (
 											<NativeSelect
@@ -313,8 +315,8 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 													</option>
 												))}
 												<option value={NEW_BRANCH}>
-													新建分支 omp/{worktreeName}
-													{branches[0] ? `（从 ${branches[0]} 分出）` : ""}
+													{t("sessions.newBranchName", { name: worktreeName })}
+													{branches[0] ? t("sessions.newBranchBase", { base: branches[0] }) : ""}
 												</option>
 											</NativeSelect>
 										)}
@@ -336,7 +338,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 						onClick={cancel}
 						className="press-scale rounded-lg px-3 py-1.5 text-xs text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 transition-colors disabled:opacity-40"
 					>
-						取消
+						{t("common.cancel")}
 					</button>
 					<button
 						ref={confirmBtnRef}
@@ -346,7 +348,7 @@ function ResumeMissingCwdForm({ props }: { props: Record<string, unknown> }) {
 						className="press-scale flex items-center gap-1.5 rounded-lg bg-[#0A84FF] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#0A84FF]/90 disabled:opacity-40 transition-colors"
 					>
 						{busy && <Loader2 size={12} className="animate-spin" />}
-						{busy ? "恢复中…" : "继续"}
+						{busy ? t("sessions.resuming") : t("sessions.continueAction")}
 					</button>
 				</div>
 			</div>

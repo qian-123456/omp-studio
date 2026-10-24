@@ -44,7 +44,7 @@ function resolveSection(id: string | null | undefined): string {
 type NavEntry = NavItem & { hint: string | null };
 
 export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}) {
-	const { t } = useT();
+	const { t, locale } = useT();
 	const loadSettings = useSettings((s) => s.load);
 	const storeError = useSettings((s) => s.error);
 	const closeSettings = useUi((s) => s.closeSettings);
@@ -178,18 +178,18 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 
 	// Ranked nav search: label hit > title/name > keyword/English label/key > description.
 	const navQueryL = navQuery.trim().toLowerCase();
-	const searchIndex = useMemo(() => buildSearchIndex(ompEntries), [ompEntries]);
-	const navGroupsMatched = useMemo<{ title: string; items: NavEntry[] }[]>(() => {
+	const searchIndex = useMemo(() => buildSearchIndex(ompEntries, locale), [ompEntries, locale]);
+	const navGroupsMatched = useMemo<{ id: string; title: string; items: NavEntry[] }[]>(() => {
 		if (!navQueryL) {
-			return NAV_GROUPS.map((g) => ({ title: g.title, items: g.items.map((i) => ({ ...i, hint: null })) }));
+			return NAV_GROUPS.map((g) => ({ id: g.id, title: navGroupTitle(t, g), items: g.items.map((i) => ({ ...i, hint: null })) }));
 		}
 		const ranked = NAV_GROUPS.flatMap((g) => g.items)
 			.map((item, order) => ({ item, order, ...searchSection(searchIndex, item, navQueryL) }))
 			.filter((r) => r.score > 0)
 			.sort((a, b) => b.score - a.score || a.order - b.order)
 			.map<NavEntry>((r) => ({ ...r.item, hint: r.names.length > 0 ? r.names.join(" · ") : null }));
-		return ranked.length > 0 ? [{ title: "搜索结果", items: ranked }] : [];
-	}, [navQueryL, searchIndex]);
+		return ranked.length > 0 ? [{ id: "searchResults", title: t("settings.searchResults"), items: ranked }] : [];
+	}, [navQueryL, searchIndex, locale]); // `t` is derived from `locale`
 	const allMatchedItems = useMemo(() => navGroupsMatched.flatMap((g) => g.items), [navGroupsMatched]);
 
 	// Jump to the best match when the query changes; keep the active page inside the result set.
@@ -213,14 +213,20 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 		const root = contentRef.current;
 		if (!navQueryL || !root) return;
 		const find = (): HTMLElement | null => {
-			const field = findMatchingField(activeSection, navQueryL);
+			const field = findMatchingField(activeSection, navQueryL, locale);
 			const native = field ? root.querySelector<HTMLElement>(`[data-field-id="${CSS.escape(field.id)}"]`) : null;
 			if (native) return native;
 			const rows = [...root.querySelectorAll<HTMLElement>("[data-omp-key]")];
-			const byTitle = rows.find((el) => ompConfigTitle(el.dataset.ompKey ?? "").toLowerCase().includes(navQueryL));
+			const byTitle = rows.find((el) => {
+				const key = el.dataset.ompKey ?? "";
+				return (
+					ompConfigTitle(key, locale).toLowerCase().includes(navQueryL) ||
+					ompConfigTitle(key, "zh-CN").toLowerCase().includes(navQueryL)
+				);
+			});
 			if (byTitle) return byTitle;
 			return (
-				rows.find((el) => ompSearchTerms(el.dataset.ompKey ?? "").some((t) => t.toLowerCase().includes(navQueryL))) ??
+				rows.find((el) => ompSearchTerms(el.dataset.ompKey ?? "", locale).some((t) => t.toLowerCase().includes(navQueryL))) ??
 				null
 			);
 		};
@@ -315,16 +321,16 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 						</button>
 					)}
 				</div>
-				<nav ref={navRef} aria-label="设置分类" className="-mr-2.5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-2.5">
+				<nav ref={navRef} aria-label={t("settings.categories")} className="-mr-2.5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-2.5">
 					{noMatches ? (
 						<div className="px-2 py-3 text-center text-xs leading-4 text-neutral-500">
-							没有匹配「{navQuery.trim()}」的设置项
+							{t("settings.noMatchingCategories", { query: navQuery.trim() })}
 						</div>
 					) : (
 						navGroupsMatched.map((group) => (
-							<div key={group.title} className="space-y-0.5">
+							<div key={group.id} className="space-y-0.5">
 								<div className="px-2.5 pb-0.5 pt-1 text-[11px] font-semibold text-neutral-500">
-									{navGroupTitle(t, group.title)}
+									{group.title}
 								</div>
 								{group.items.map((sec) => {
 									const Icon = sec.icon;
@@ -370,13 +376,13 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 			<div ref={contentRef} className="flex-1 overflow-y-auto p-6 lg:p-7">
 				<div className="mx-auto max-w-3xl space-y-8">
 					{storeError && (
-						<Notice tone="danger" title="保存失败">
+						<Notice tone="danger" title={t("settings.saveFailed")}>
 							<span className="select-text break-all">{storeError}</span>
 						</Notice>
 					)}
 					{noMatches ? (
 						<div className="py-16 text-center text-xs text-neutral-500">
-							没有找到与「{navQuery.trim()}」相关的设置。试试换个关键词，或按 Esc 清除搜索。
+							{t("settings.noMatchingSettings", { query: navQuery.trim() })}
 						</div>
 					) : (
 						<SettingsNavContext.Provider value={navValue}>

@@ -11,6 +11,7 @@
  * rewritten as a whole record via `withChain` and `JSON.stringify`.
  */
 
+import { tNow } from "../../stores/language";
 export interface BuiltinRole {
 	id: string;
 	/** Short Chinese label for the role. */
@@ -25,93 +26,153 @@ export const BUILTIN_ROLES: BuiltinRole[] = [
 	// ---- chat roles ----
 	{
 		id: "default",
-		zhLabel: "主力模型",
-		description: "会话默认使用的模型，承担主要对话与工具调用",
+		get zhLabel() {
+			return tNow("settingsModels.role_default_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_default_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "smol",
-		zhLabel: "快速模型",
-		description: "轻量任务与快速响应使用的小模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_smol_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_smol_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "slow",
-		zhLabel: "深度模型",
-		description: "需要深入推理时使用的模型，速度较慢但更仔细",
+		get zhLabel() {
+			return tNow("settingsModels.role_slow_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_slow_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "vision",
-		zhLabel: "视觉模型",
-		description: "处理图片、截图等多模态输入的模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_vision_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_vision_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "plan",
-		zhLabel: "规划模型",
-		description: "计划模式与方案设计使用的模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_plan_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_plan_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "commit",
-		zhLabel: "提交信息",
-		description: "生成 git 提交信息时使用的模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_commit_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_commit_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "tiny",
-		zhLabel: "轻量后台",
-		description: "后台轻量工作用的本地小模型，也可以选普通聊天模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_tiny_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_tiny_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "memory",
-		zhLabel: "记忆",
-		description: "提炼和召回记忆所用的模型，可选本地小模型或普通聊天模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_memory_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_memory_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "task",
-		zhLabel: "子代理",
-		description: "子代理和子任务默认使用的模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_task_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_task_desc");
+		},
 		kind: "chat",
 	},
 	{
 		id: "advisor",
-		zhLabel: "顾问",
-		description: "每轮结束后审查会话并给出建议的第二模型，需先在「辅助模型」中开启顾问",
+		get zhLabel() {
+			return tNow("settingsModels.role_advisor_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_advisor_desc");
+		},
 		kind: "chat",
 	},
 	// ---- model-kind roles (service runners) ----
 	{
 		id: "image",
-		zhLabel: "图像生成",
-		description: "生成图片时使用的模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_image_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_image_desc");
+		},
 		kind: "modelKind",
 	},
 	{
 		id: "web",
-		zhLabel: "网络搜索",
-		description: "联网搜索时使用的搜索模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_web_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_web_desc");
+		},
 		kind: "modelKind",
 	},
 	{
 		id: "speech",
-		zhLabel: "语音合成",
-		description: "语音合成（文字转语音）所用的模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_speech_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_speech_desc");
+		},
 		kind: "modelKind",
 	},
 	{
 		id: "dictation",
-		zhLabel: "语音识别",
-		description: "语音识别（语音转文字）所用的模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_dictation_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_dictation_desc");
+		},
 		kind: "modelKind",
 	},
 	{
 		id: "judge",
-		zhLabel: "判断",
-		description: "语义判断所用的模型，可选本地小模型或普通聊天模型",
+		get zhLabel() {
+			return tNow("settingsModels.role_judge_label");
+		},
+		get description() {
+			return tNow("settingsModels.role_judge_desc");
+		},
 		kind: "modelKind",
 	},
 ];
@@ -327,18 +388,18 @@ function entryKind(selector: string): ChainEntryKind {
 /** Plain-language problem with a chain entry, or null when it is well-formed. */
 export function validateChainEntry(entry: string): string | null {
 	const t = entry.trim();
-	if (!t) return "不能为空";
-	if (/\s/.test(t)) return "不能包含空格";
+	if (!t) return tNow("settingsModels.errCannotBeEmpty");
+	if (/\s/.test(t)) return tNow("settingsModels.errCannotContainSpaces");
 	const { selector, level } = splitChainEntry(t);
 	if (selector.startsWith("@")) {
-		return /^@[^/*:@]+$/.test(selector) ? null : "角色别名写成 @角色名，例如 @smol";
+		return /^@[^/*:@]+$/.test(selector) ? null : tNow("settingsModels.errRoleAliasFormat");
 	}
 	if (selector.includes("*")) {
-		if (!parseWildcard(selector)) return "通配符只能写成 供应商/* 或 供应商/前缀/*";
-		return level ? "通配符条目总是沿用当前思考强度，不能加 :强度" : null;
+		if (!parseWildcard(selector)) return tNow("settingsModels.errWildcardFormat");
+		return level ? tNow("settingsModels.errWildcardNoLevel") : null;
 	}
 	const slash = selector.indexOf("/");
-	if (slash <= 0 || slash === selector.length - 1) return "需要写成 供应商/模型，例如 openai/gpt-5";
+	if (slash <= 0 || slash === selector.length - 1) return tNow("settingsModels.errModelFormat");
 	return null;
 }
 
@@ -355,15 +416,15 @@ export function classifyChainKey(key: string): ChainKeyKind {
 
 /** Plain-language problem with a chain key, or null when it is usable. */
 export function validateChainKey(key: string): string | null {
-	if (!key.trim()) return "不能为空";
-	if (key !== key.trim() || /\s/.test(key)) return "不能包含空格";
+	if (!key.trim()) return tNow("settingsModels.errCannotBeEmpty");
+	if (key !== key.trim() || /\s/.test(key)) return tNow("settingsModels.errCannotContainSpaces");
 	if (!key.includes("/")) {
-		return /[*:@]/.test(key) ? "角色名不能包含 * : @" : null;
+		return /[*:@]/.test(key) ? tNow("settingsModels.errRoleNameIllegalChars") : null;
 	}
-	if (key.includes("*")) return parseWildcard(key) ? null : "通配符只能写成 供应商/* 或 供应商/前缀/*";
+	if (key.includes("*")) return parseWildcard(key) ? null : tNow("settingsModels.errWildcardFormat");
 	const slash = key.indexOf("/");
-	if (slash <= 0 || slash === key.length - 1) return "需要写成 供应商/模型";
-	if (splitChainEntry(key).level) return "规则对象不能带 :强度";
+	if (slash <= 0 || slash === key.length - 1) return tNow("settingsModels.errModelFormatShort");
+	if (splitChainEntry(key).level) return tNow("settingsModels.errRuleNoLevel");
 	return null;
 }
 

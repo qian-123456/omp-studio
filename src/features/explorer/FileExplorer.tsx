@@ -21,8 +21,10 @@ import { FileIcon } from "./FileIcon";
 import { FileTreeNode } from "./FileTreeNode";
 import { WorkspaceCard } from "./WorkspaceCard";
 import { claimEscape } from "../../lib/escapeClaim";
+import { useT } from "../../stores/language";
 
 export function FileExplorer() {
+	const { t } = useT();
 	const workspaces = useSessions((s) => s.workspaces);
 	const sessions = useSessions((s) => s.sessions);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
@@ -88,7 +90,7 @@ export function FileExplorer() {
 			setChildrenMap((prev) => ({ ...prev, [path]: entries }));
 			return entries;
 		} catch (err) {
-			toast.error(`读取目录失败: ${String(err)}`);
+			toast.error(t("explorer.readDirFailed", { error: String(err) }));
 			return [];
 		} finally {
 			setLoadingPaths((prev) => {
@@ -116,7 +118,7 @@ export function FileExplorer() {
 				}
 			}
 		} catch (err) {
-			toast.error(`加载工作区文件失败: ${String(err)}`);
+			toast.error(t("explorer.loadWorkspaceFilesFailed", { error: String(err) }));
 			setRootEntries([]);
 		} finally {
 			setIsRootLoading(false);
@@ -137,7 +139,7 @@ export function FileExplorer() {
 				setRootEntries(entries);
 			})
 			.catch((err) => {
-				toast.error(`加载工作区文件失败: ${String(err)}`);
+				toast.error(t("explorer.loadWorkspaceFilesFailed", { error: String(err) }));
 				setRootEntries([]);
 			})
 			.finally(() => {
@@ -181,7 +183,7 @@ export function FileExplorer() {
 		try {
 			await revealItemInDir(currentWorkspace.path);
 		} catch (err) {
-			toast.error(`在访达中打开失败: ${String(err)}`);
+			toast.error(t("explorer.openInFinderFailed", { error: String(err) }));
 		}
 	};
 
@@ -216,7 +218,7 @@ export function FileExplorer() {
 			{/* Top Tool Section: Actions Toolbar matching the reference screenshot */}
 			<div className="flex items-center justify-between border-b border-[var(--border-divider)] px-2 py-1 bg-[var(--bg-active-fill)]">
 				<span className="text-[10.5px] font-semibold uppercase tracking-wider text-neutral-400">
-					文件
+					{t("explorer.files")}
 				</span>
 
 				{/* Toolbar Icons matching the screenshot */}
@@ -241,7 +243,7 @@ export function FileExplorer() {
 								? "bg-[var(--bg-hover)] text-neutral-100"
 								: "text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200",
 						)}
-						title="搜索文件 (Cmd+F)"
+						title={t("explorer.searchFilesTip")}
 					>
 						<Search size={13} />
 					</button>
@@ -251,7 +253,7 @@ export function FileExplorer() {
 						type="button"
 						onClick={handleRevealInFinder}
 						className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
-						title="在访达中显示工作区目录"
+						title={t("explorer.revealWorkspaceTip")}
 					>
 						<FolderUp size={13} />
 					</button>
@@ -260,7 +262,7 @@ export function FileExplorer() {
 						type="button"
 						onClick={handleCollapseAll}
 						className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all"
-						title="全部折叠"
+						title={t("explorer.collapseAllTip")}
 					>
 						<FoldVertical size={13} />
 					</button>
@@ -272,7 +274,7 @@ export function FileExplorer() {
 							"flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-neutral-200 active:scale-95 transition-all",
 							isRootLoading && "animate-spin text-neutral-200",
 						)}
-						title="刷新文件树"
+						title={t("explorer.refreshTreeTip")}
 					>
 						<RefreshCw size={12} />
 					</button>
@@ -286,7 +288,7 @@ export function FileExplorer() {
 						ref={searchInputRef}
 						value={searchQuery}
 						onChange={setSearchQuery}
-						placeholder="输入文件名过滤..."
+						placeholder={t("explorer.searchFilterPlaceholder")}
 						iconSize={12}
 						inputClassName="w-full rounded hairline bg-[var(--well-bg)] py-0.5 pl-6 pr-5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:ring-1 focus:ring-[#0A84FF]/50 focus:outline-none"
 						onKeyDown={(e) => {
@@ -313,12 +315,12 @@ export function FileExplorer() {
 				{searchQuery.trim().length > 0 ? (
 					<div className="space-y-0.5">
 						<div className="px-2 py-0.5 text-[10.5px] text-neutral-500 flex items-center justify-between">
-							<span>搜索结果 ({searchResults.length})</span>
+							<span>{t("explorer.searchResults", { count: searchResults.length })}</span>
 							{isSearchingFiles && <Loader2 size={11} className="animate-spin" />}
 						</div>
 						{searchResults.length === 0 && !isSearchingFiles ? (
 							<div className="py-4 text-center text-xs text-neutral-500">
-								无匹配文件
+								{t("explorer.noMatchingFiles")}
 							</div>
 						) : (
 							<>
@@ -360,7 +362,7 @@ export function FileExplorer() {
 										onClick={() => setSearchLimit((l) => l + 50)}
 										className="w-full py-1 text-center text-[10.5px] text-neutral-400 hover:text-neutral-200 hover:bg-[var(--bg-hover)] rounded transition-colors"
 									>
-										显示更多 (剩余 {searchResults.length - searchLimit} 项)...
+										{t("explorer.showMoreRemaining", { count: searchResults.length - searchLimit })}
 									</button>
 								)}
 							</>
@@ -372,10 +374,10 @@ export function FileExplorer() {
 						{isRootLoading && rootEntries.length === 0 ? (
 							<div className="flex items-center justify-center gap-1.5 py-6 text-neutral-500 text-xs">
 								<Loader2 size={13} className="animate-spin" />
-								<span>加载目录中...</span>
+								<span>{t("explorer.loadingDirectory")}</span>
 							</div>
 						) : rootEntries.length === 0 ? (
-							<EmptyState title="当前工作区暂无文件" />
+							<EmptyState title={t("explorer.noFilesInWorkspace")} />
 						) : (
 							rootEntries.map((entry) => (
 								<FileTreeNode

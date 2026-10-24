@@ -16,13 +16,7 @@ import {
 	type WallpaperPalette,
 	type WallpaperVariant,
 } from "../lib/wallpaperPalette";
-
-const VARIANTS: { key: WallpaperVariant; label: string }[] = [
-	{ key: "mono", label: "纯灰" },
-	{ key: "neutral", label: "中性" },
-	{ key: "soft", label: "轻调" },
-	{ key: "rich", label: "浓郁" },
-];
+import { useT } from "../stores/language";
 
 interface CardData {
 	id: string;
@@ -48,10 +42,17 @@ function readFileAsBase64(file: File): Promise<string> {
 }
 
 function ColorDots({ palette }: { palette: WallpaperPalette }) {
+	const { t } = useT();
 	const state = useWallpaperState();
+	const variants: { key: WallpaperVariant; label: string }[] = [
+		{ key: "mono", label: t("theme.mono") },
+		{ key: "neutral", label: t("theme.neutral") },
+		{ key: "soft", label: t("theme.soft") },
+		{ key: "rich", label: t("theme.rich") },
+	];
 	return (
 		<div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-			{VARIANTS.map((v) => {
+			{variants.map((v) => {
 				const active = state.variant === v.key;
 				return (
 					<button
@@ -75,7 +76,7 @@ function ColorDots({ palette }: { palette: WallpaperPalette }) {
 				);
 			})}
 			<label
-				title="自定义取色"
+				title={t("theme.customColorPicker")}
 				className={`relative flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition ${
 					state.variant === "custom"
 						? "border-[var(--accent,#3b82f6)] bg-[var(--accent,#3b82f6)]/15 text-[var(--accent,#3b82f6)] shadow-xs"
@@ -83,7 +84,7 @@ function ColorDots({ palette }: { palette: WallpaperPalette }) {
 				}`}
 			>
 				<Pipette className="h-3 w-3" />
-				<span>自定义</span>
+				<span>{t("theme.custom")}</span>
 				<input
 					type="color"
 					className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
@@ -96,6 +97,7 @@ function ColorDots({ palette }: { palette: WallpaperPalette }) {
 }
 
 export function WallpaperPicker() {
+	const { t } = useT();
 	const state = useWallpaperState();
 	const customs = useCustomWallpapers();
 	const fileRef = useRef<HTMLInputElement>(null);
@@ -104,7 +106,7 @@ export function WallpaperPicker() {
 	const cards: CardData[] = [
 		...PRESET_WALLPAPERS.map((p) => ({
 			id: p.id,
-			name: p.name,
+			name: t(p.nameKey),
 			url: p.imageUrl,
 			thumb: p.thumbnailUrl,
 			palette: p.palette,
@@ -143,7 +145,7 @@ export function WallpaperPicker() {
 			setWallpaper({ enabled: true, id, url: dataUrl, accentColor: palette.soft, variant: "soft", appearance: app });
 		} catch (err) {
 			console.error("upload wallpaper failed", err);
-			toast.error("壁纸图片解析失败，请尝试其他图片");
+			toast.error(t("theme.wallpaperParseFailed"));
 			setUploading(false);
 		}
 	};
@@ -171,12 +173,12 @@ export function WallpaperPicker() {
 			<div className="flex flex-wrap items-center justify-between gap-2.5">
 				<div className="flex flex-wrap items-center gap-3">
 					<div className="flex items-center gap-1.5">
-						<span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">毛玻璃风格</span>
+						<span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("theme.frostedGlassStyle")}</span>
 						<div className="flex rounded-md border border-black/10 p-0.5 text-xs dark:border-white/10">
 							{(
 								[
-									["dark", "深色黑晶"],
-									["light", "浅色冰晶"],
+									["dark", t("theme.darkCrystal")],
+									["light", t("theme.lightCrystal")],
 								] as const
 							).map(([key, label]) => {
 								const isCurrent = (state.appearance ?? "dark") === key;
@@ -200,14 +202,14 @@ export function WallpaperPicker() {
 					</div>
 
 					<div className="flex items-center gap-1.5">
-						<span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">亮度</span>
+						<span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("theme.brightness")}</span>
 						<div className="flex rounded-md border border-black/10 p-0.5 text-xs dark:border-white/10">
 							{(
 								[
-									[0.85, "微暗 85%"],
-									[1.0, "原画 100%"],
-									[1.15, "提亮 115%"],
-									[1.25, "明艳 125%"],
+									[0.85, t("theme.bright85")],
+									[1.0, t("theme.bright100")],
+									[1.15, t("theme.bright115")],
+									[1.25, t("theme.bright125")],
 								] as const
 							).map(([b, label]) => {
 								const isCurrent = Math.abs((state.brightness ?? 1.0) - b) < 0.04;
@@ -230,13 +232,13 @@ export function WallpaperPicker() {
 					</div>
 
 					<div className="flex items-center gap-1.5">
-						<span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">衬光薄纱</span>
+						<span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("theme.veilOverlay")}</span>
 						<div className="flex rounded-md border border-black/10 p-0.5 text-xs dark:border-white/10">
 							{(
 								[
-									["none", "无"],
-									["white", "白霜 ☀️"],
-									["black", "暗影 🌙"],
+									["none", t("theme.none")],
+									["white", t("theme.whiteFrost")],
+									["black", t("theme.blackShadow")],
 								] as const
 							).map(([v, label]) => {
 								const currentVeil = state.veil ?? (state.appearance === "light" ? "white" : "none");
@@ -264,9 +266,9 @@ export function WallpaperPicker() {
 					<div className="flex rounded-md border border-black/10 p-0.5 text-xs dark:border-white/10">
 						{(
 							[
-								["clear", "高清原画"],
-								["soft", "轻度柔焦"],
-								["blur", "深度虚化"],
+								["clear", t("theme.clearHd")],
+								["soft", t("theme.softFocus")],
+								["blur", t("theme.deepBlur")],
 							] as const
 						).map(([key, label]) => (
 							<button
@@ -286,7 +288,7 @@ export function WallpaperPicker() {
 						onClick={() => fileRef.current?.click()}
 					>
 						<Upload className="h-3.5 w-3.5" />
-						{uploading ? "上传中…" : "上传图片"}
+						{uploading ? t("theme.uploading") : t("theme.uploadImage")}
 					</button>
 					<input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={onFile} />
 				</div>
@@ -299,7 +301,7 @@ export function WallpaperPicker() {
 					onClick={() => setWallpaper({ enabled: false, id: "none" })}
 				>
 					<ImageOff className="h-5 w-5 opacity-40" />
-					<span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">无壁纸 · 纯色</span>
+					<span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">{t("theme.noWallpaperSolid")}</span>
 					{noneActive && <CheckBadge />}
 				</div>
 				{cards.map((c) => {
@@ -325,7 +327,7 @@ export function WallpaperPicker() {
 							{c.custom && (
 								<button
 									type="button"
-									title="删除"
+									title={t("common.delete")}
 									className="absolute top-2 right-2 rounded-full bg-black/60 p-1 text-white/80 hover:bg-red-600 hover:text-white backdrop-blur-sm"
 									onClick={(e) => {
 										e.stopPropagation();
@@ -341,14 +343,14 @@ export function WallpaperPicker() {
 			</div>
 			{cards.length === 0 && (
 				<p className="text-xs text-neutral-500 dark:text-neutral-400">
-					没有内置壁纸。点右上角「上传图片」，用自己的图片作为壁纸。
+					{t("theme.noBuiltinWallpapers")}
 				</p>
 			)}
 			{state.enabled && state.id !== "none" && activeCard && (
 				<div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-black/10 bg-black/[0.03] p-2.5 text-xs dark:border-white/10 dark:bg-white/[0.04]">
 					<div className="flex items-center gap-1.5 font-medium text-neutral-600 dark:text-neutral-300">
-						<span>强调色搭配</span>
-						<span className="text-[11px] text-neutral-400 dark:text-neutral-500">（从壁纸提取）</span>
+						<span>{t("theme.accentColorPalette")}</span>
+						<span className="text-[11px] text-neutral-400 dark:text-neutral-500">{t("theme.extractedFromWallpaper")}</span>
 					</div>
 					<ColorDots palette={activeCard.palette} />
 				</div>

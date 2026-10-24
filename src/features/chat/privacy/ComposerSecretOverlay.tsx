@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { type ClipAction, runClipboardAction } from "./composerClipboard";
 import { ClipboardPaste, Copy, Lock, Scissors, TextSelect } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { useT } from "../../../stores/language";
 import { FloatingLayer } from "../../../components/FloatingLayer";
 import { SelectionBubble } from "../../../components/SelectionBubble";
 import { addMark, type Highlight, type HighlightKind, isReplaced, toggleHighlight } from "./composerPrivacy";
@@ -75,6 +76,7 @@ export function ComposerSecretOverlay({
 	/** First-line indent in px (command chip width) mirrored from the textarea. */
 	indent?: number;
 }) {
+	const { t } = useT();
 	const { highlights } = privacy;
 	const mirrorRef = useRef<HTMLDivElement>(null);
 	const selMirrorRef = useRef<HTMLDivElement>(null);
@@ -237,7 +239,7 @@ export function ComposerSecretOverlay({
 			)}
 			{showPill && selSpan && canMark && (
 				<SelectionBubble anchor={selSpan}>
-					<PillButton icon={<Lock size={11} />} label="标记为隐私" onClick={openMark} />
+					<PillButton icon={<Lock size={11} />} label={t("chatPrivacy.markSecret")} onClick={openMark} />
 				</SelectionBubble>
 			)}
 			{menuAt && (
@@ -248,12 +250,12 @@ export function ComposerSecretOverlay({
 					onDismiss={() => setMenuAt(null)}
 					className="min-w-[140px] rounded-lg border border-[var(--line,var(--border))] bg-[var(--bg-panel)] p-1 text-[12px] shadow-lg"
 				>
-					<MenuItem icon={<Scissors size={12} />} label="剪切" onClick={() => void runAction("cut")} />
-					<MenuItem icon={<Copy size={12} />} label="复制" onClick={() => void runAction("copy")} />
-					<MenuItem icon={<ClipboardPaste size={12} />} label="粘贴" onClick={() => void runAction("paste")} />
-					<MenuItem icon={<TextSelect size={12} />} label="全选" onClick={() => void runAction("selectAll")} />
+					<MenuItem icon={<Scissors size={12} />} label={t("chatPrivacy.cut")} onClick={() => void runAction("cut")} />
+					<MenuItem icon={<Copy size={12} />} label={t("chatPrivacy.copy")} onClick={() => void runAction("copy")} />
+					<MenuItem icon={<ClipboardPaste size={12} />} label={t("chatPrivacy.paste")} onClick={() => void runAction("paste")} />
+					<MenuItem icon={<TextSelect size={12} />} label={t("chatPrivacy.selectAll")} onClick={() => void runAction("selectAll")} />
 					<div className="my-1 border-t border-[var(--border-divider)]" />
-					<MenuItem icon={<Lock size={12} />} label="标记为隐私" disabled={!canMark} onClick={openMark} />
+					<MenuItem icon={<Lock size={12} />} label={t("chatPrivacy.markSecret")} disabled={!canMark} onClick={openMark} />
 				</FloatingLayer>
 			)}
 			{markTarget && (
@@ -300,14 +302,15 @@ export function ComposerSecretOverlay({
 }
 
 function HighlightAction({ highlight, onToggle }: { highlight: Highlight; onToggle: () => void }) {
+	const { t } = useT();
 	const { kind, entry } = highlight;
-	const name = entry.label ?? "隐私内容";
+	const name = entry.label ?? t("chatPrivacy.defaultSecretName");
 	const description = isReplaced(kind)
-		? `发送时替换为 ${entry.placeholder}`
+		? t("chatPrivacy.willReplace", { placeholder: entry.placeholder })
 		: kind === "suggestion"
-			? `⚠ 可能是隐私「${name}」，较短/常见，默认不替换`
-			: "这一处本次发送不替换";
-	const action = isReplaced(kind) ? "撤销" : kind === "suggestion" ? "替换这一处" : "恢复替换";
+			? t("chatPrivacy.suggestionRisk", { name })
+			: t("chatPrivacy.notReplacedThisTime");
+	const action = isReplaced(kind) ? t("chatPrivacy.undo") : kind === "suggestion" ? t("chatPrivacy.replaceThis") : t("chatPrivacy.restoreReplacement");
 	return (
 		<div className="flex items-center gap-2">
 			<span className="min-w-0 flex-1 break-all text-[var(--text-60,var(--text-muted))]">{description}</span>

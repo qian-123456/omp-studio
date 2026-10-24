@@ -10,6 +10,7 @@ import { errMsg } from "../../../lib/dialogs";
 import { isComposing } from "../../../lib/hooks";
 import { rpcUiRespond } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
+import { tNow, useT } from "../../../stores/language";
 import { useLive } from "../../../stores/live";
 import {
 	type AskAnswer,
@@ -107,7 +108,7 @@ export function useAskRouting(sessionId: string, pendingUi: PendingUiRequest[]) 
 			.catch((err) => {
 				driverStates.delete(key);
 				respondedIds.delete(rkey);
-				toast.error(`回答提交失败: ${errMsg(err)}`);
+				toast.error(tNow("ask.submitFailed", { error: errMsg(err) }));
 				setAwaiting(false);
 				bump();
 			});
@@ -120,8 +121,8 @@ export function useAskRouting(sessionId: string, pendingUi: PendingUiRequest[]) 
 			setAwaiting(false);
 			return;
 		}
-		const t = setTimeout(() => setAwaiting(false), 4000);
-		return () => clearTimeout(t);
+		const timer = setTimeout(() => setAwaiting(false), 4000);
+		return () => clearTimeout(timer);
 	}, [awaiting, route]);
 
 	/** Store every drafted answer; replay starts on the pending request and
@@ -150,7 +151,7 @@ export function useAskRouting(sessionId: string, pendingUi: PendingUiRequest[]) 
 			dismissUi(sessionId, id);
 		} catch (err) {
 			respondedIds.delete(respondedKey(sessionId, id));
-			toast.error(`取消失败: ${errMsg(err)}`);
+			toast.error(tNow("ask.cancelFailed", { error: errMsg(err) }));
 		}
 	}, [route, sessionId, dismissUi]);
 
@@ -158,7 +159,6 @@ export function useAskRouting(sessionId: string, pendingUi: PendingUiRequest[]) 
 }
 
 
-const OTHER_LABEL = "其他（自己填写）";
 
 interface Draft extends AskAnswer {
 	cursor: number;
@@ -199,6 +199,7 @@ export function AskPanel({
 	onSubmit: (answers: readonly (AskAnswer | undefined)[]) => void;
 	onCancel: () => void;
 }) {
+	const { t, locale } = useT();
 	const total = spec.questions.length;
 	const [current, setCurrent] = useState(startIndex);
 	// Drafts exist once a question is visited, so an unvisited multi-select
@@ -345,10 +346,10 @@ export function AskPanel({
 				)}
 				{total > 1 && (
 					<span>
-						问题 {current + 1}/{total}
+						{t("ask.questionProgress", { current: current + 1, total })}
 					</span>
 				)}
-				{multi && <span>可多选</span>}
+				{multi && <span>{t("ask.multiSelect")}</span>}
 				{total > 1 && (
 					<span className="ml-auto flex items-center gap-1">
 						{spec.questions.map((q, i) => {
@@ -359,8 +360,8 @@ export function AskPanel({
 									key={q.id}
 									type="button"
 									disabled={busy || i < startIndex}
-									aria-label={`问题 ${i + 1}`}
-									title={`问题 ${i + 1}`}
+									aria-label={t("ask.questionAria", { index: i + 1 })}
+									title={t("ask.questionAria", { index: i + 1 })}
 									onClick={() => goTo(i)}
 									className={`h-1.5 rounded-full transition-all ${i === current ? "w-4 bg-[var(--text)]" : `w-1.5 ${done ? "bg-[var(--text-60)]" : "bg-[var(--line)]"}`}`}
 								/>
@@ -399,7 +400,7 @@ export function AskPanel({
 									{o.label}
 								</span>
 								{i === rec && (
-									<span className="ml-1.5 text-[11px] text-[var(--text-40)]">推荐</span>
+									<span className="ml-1.5 text-[11px] text-[var(--text-40)]">{t("ask.recommended")}</span>
 								)}
 								{o.description && (
 									<span className="block whitespace-pre-wrap text-[12px] text-[var(--text-40)]">
@@ -426,7 +427,7 @@ export function AskPanel({
 						disabled={busy}
 						onFocus={() => update({ cursor: otherIdx })}
 						onChange={(e) => update({ custom: e.target.value })}
-						placeholder={multi ? "补充说明（可选）" : OTHER_LABEL}
+						placeholder={multi ? t("ask.notesOptional") : t("ask.otherLabel")}
 						className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-40)]"
 					/>
 				</div>
@@ -436,11 +437,15 @@ export function AskPanel({
 					className="min-w-0 flex-1 text-[11px] text-[var(--text-40)]"
 				>
 					{isLast && missing.length > 0
-						? `未回答：${missing.map((i) => `问题 ${i + 1}`).join("、")}`
-						: `${multi ? "数字/空格 勾选" : "数字 选择"}${total > 1 ? " · ←→ 切换问题" : ""} · Enter ${isLast ? "提交" : "下一题"} · Esc 取消提问`}
+						? t("ask.unanswered", {
+								questions: missing
+									.map((i) => t("ask.questionAria", { index: i + 1 }))
+									.join(locale === "zh-CN" ? "、" : ", "),
+							})
+						: `${multi ? t("ask.hintMulti") : t("ask.hintSingle")}${total > 1 ? t("ask.hintSwitch") : ""}${t("ask.hintEnter", { action: isLast ? t("ask.hintSubmit") : t("ask.hintNext") })}${t("ask.hintEsc")}`}
 				</span>
 				<button type="button" disabled={busy} onClick={onCancel} className={ghostBtn}>
-					跳过
+					{t("ask.skip")}
 				</button>
 				{total > 1 && (
 					<button
@@ -449,7 +454,7 @@ export function AskPanel({
 						onClick={() => goTo(current - 1)}
 						className={ghostBtn}
 					>
-						上一题
+						{t("ask.prevQuestion")}
 					</button>
 				)}
 				{isLast ? (
@@ -460,11 +465,11 @@ export function AskPanel({
 						className={primaryBtn}
 					>
 						{busy && <Loader2 size={12} className="animate-spin" />}
-						提交
+						{t("ask.submit")}
 					</button>
 				) : (
 					<button type="button" disabled={busy} onClick={() => goTo(current + 1)} className={primaryBtn}>
-						下一题
+						{t("ask.nextQuestion")}
 					</button>
 				)}
 			</div>

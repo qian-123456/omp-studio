@@ -10,19 +10,20 @@ import type { SettingsTarget } from "../../settings/settingsTargets";
 import type { SessionLive } from "../../../stores/live";
 import type { SessionMeta } from "../../../lib/contracts";
 
+/** Stable menu-group id; the label is translated at render (`slash.group.<id>`). */
 export type SlashGroup =
-	| "会话"
-	| "模型"
-	| "状态"
-	| "集成"
-	| "设置"
-	| "技能"
-	| "自定义命令"
-	| "扩展"
-	| "更多 OMP 命令"
-	| "子命令"
-	| "MCP 服务器"
-	| "插件";
+	| "session"
+	| "model"
+	| "status"
+	| "integration"
+	| "settings"
+	| "skill"
+	| "custom"
+	| "extension"
+	| "omp"
+	| "subcommand"
+	| "mcp"
+	| "plugin";
 
 /** Commands the user typed as `/name args`. Executors may throw `SlashAbort`
  * to keep the composer text (usage hints) — any other error is toasted and
@@ -71,15 +72,15 @@ export interface SlashSubcommand {
 export interface SlashCommandDef {
 	name: string;
 	aliases?: string[];
-	/** Short Chinese label shown next to `/name`. */
-	title: string;
-	/** One-line Chinese description. */
-	description: string;
+	/** Short label shown next to `/name`. */
+	readonly title: string;
+	/** One-line description. */
+	readonly description: string;
 	icon: ComponentType<{ size?: number | string; className?: string }>;
-	group: SlashGroup;
+	readonly group: SlashGroup;
 	/** Placeholder for the argument, e.g. "<名称>". Its presence means the
 	 * command takes args: selecting it fills `/name ` instead of running. */
-	argHint?: string;
+	readonly argHint?: string;
 	/** Codex semantics: hidden unless the composer is empty apart from the
 	 * slash token (or the command is being typed alone). */
 	requiresEmptyComposer?: boolean;

@@ -9,10 +9,10 @@
  * - APPEND_SYSTEM.md: project `<cwd>/.omp/APPEND_SYSTEM.md` wins; else global
  *   `~/.omp/agent/APPEND_SYSTEM.md` (only one is used).
  */
+import { tNow } from "../../../stores/language";
 
 export type RuleScope = "global" | "project";
 export type RuleKind = "agents" | "rules" | "rule-file" | "append";
-
 export interface RuleEntry {
 	id: string;
 	/** Short name shown in the list. */
@@ -40,10 +40,6 @@ export function rulesDirPath(scope: RuleScope, home: string | null, cwd: string 
 	return base ? `${base}/rules` : null;
 }
 
-const AGENTS_DESC = "写给 AI 的长期说明（项目约定、常用命令、注意事项），每个新会话都会带上。";
-const RULES_DESC = "始终生效的规则：每次请求都会完整带上，长对话里也不会被冲淡。";
-const APPEND_DESC = "追加到系统提示词末尾的内容。项目里有这个文件时，全局的会被忽略。";
-
 /** The fixed files for a scope, in display order. */
 export function buildRuleEntries(scope: RuleScope, home: string | null, cwd: string | null): RuleEntry[] {
 	const base = ruleBaseDir(scope, home, cwd);
@@ -57,7 +53,7 @@ export function buildRuleEntries(scope: RuleScope, home: string | null, cwd: str
 				label: "AGENTS.md",
 				path: `${root}/AGENTS.md`,
 				kind: "agents",
-				description: `${AGENTS_DESC}放在项目根目录。`,
+				description: tNow("memoryRules.agentsDescRoot"),
 				starter: "# AGENTS.md\n\n",
 			});
 		}
@@ -66,7 +62,7 @@ export function buildRuleEntries(scope: RuleScope, home: string | null, cwd: str
 			label: ".omp/AGENTS.md",
 			path: `${base}/AGENTS.md`,
 			kind: "agents",
-			description: `${AGENTS_DESC}两个位置都有内容时，omp 只读这一个。`,
+			description: tNow("memoryRules.agentsDescNative"),
 			starter: "# AGENTS.md\n\n",
 		});
 	} else {
@@ -75,7 +71,7 @@ export function buildRuleEntries(scope: RuleScope, home: string | null, cwd: str
 			label: "AGENTS.md",
 			path: `${base}/AGENTS.md`,
 			kind: "agents",
-			description: AGENTS_DESC,
+			description: tNow("memoryRules.agentsDescGlobal"),
 			starter: "# AGENTS.md\n\n",
 		});
 	}
@@ -85,7 +81,7 @@ export function buildRuleEntries(scope: RuleScope, home: string | null, cwd: str
 			label: scope === "project" ? ".omp/RULES.md" : "RULES.md",
 			path: `${base}/RULES.md`,
 			kind: "rules",
-			description: scope === "project" ? `${RULES_DESC}项目里只认 .omp/RULES.md。` : RULES_DESC,
+			description: scope === "project" ? tNow("memoryRules.rulesDescProject") : tNow("memoryRules.rulesDescGlobal"),
 			starter: "# RULES\n\n",
 		},
 		{
@@ -93,7 +89,7 @@ export function buildRuleEntries(scope: RuleScope, home: string | null, cwd: str
 			label: scope === "project" ? ".omp/APPEND_SYSTEM.md" : "APPEND_SYSTEM.md",
 			path: `${base}/APPEND_SYSTEM.md`,
 			kind: "append",
-			description: APPEND_DESC,
+			description: tNow("memoryRules.appendDesc"),
 			starter: "",
 		},
 	);
@@ -115,7 +111,7 @@ export function buildRuleFileEntries(dir: string, names: string[]): RuleEntry[] 
 			label: `rules/${name}`,
 			path: `${trimSlash(dir)}/${name}`,
 			kind: "rule-file" as const,
-			description: "按场景触发的规则：写了触发条件（frontmatter）的，会在 AI 输出时实时检查，命中才生效。",
+			description: tNow("memoryRules.ruleFileDesc"),
 			starter: "",
 		}));
 }
@@ -123,23 +119,26 @@ export function buildRuleFileEntries(dir: string, names: string[]): RuleEntry[] 
 /** Per-path content on disk; null = missing. */
 export type RuleContents = Record<string, string | null | undefined>;
 
+export type RuleStatusCode = "loading" | "missing" | "exists";
+
 export interface RuleStatus {
 	exists: boolean;
-	/** 已存在 / 未创建 */
+	code: RuleStatusCode;
+	/** 已存在 / 未创建 / 读取中 */
 	label: string;
 	/** Extra caveat, e.g. shadowed by another file. */
 	note: string | null;
 }
 
-export function ruleStatus(entry: RuleEntry, contents: RuleContents): RuleStatus {
+export function ruleStatus(entry: RuleEntry, contents: RuleContents, tr: (key: string) => string = tNow): RuleStatus {
 	const content = contents[entry.path];
-	if (content === undefined) return { exists: false, label: "读取中", note: null };
-	if (content === null) return { exists: false, label: "未创建", note: null };
+	if (content === undefined) return { exists: false, code: "loading", label: tr("memoryRules.statusLoading"), note: null };
+	if (content === null) return { exists: false, code: "missing", label: tr("memoryRules.statusMissing"), note: null };
 	let note: string | null = null;
-	if (entry.kind !== "append" && content.trim() === "") note = "内容为空，omp 会忽略";
+	if (entry.kind !== "append" && content.trim() === "") note = tr("memoryRules.noteEmpty");
 	if (entry.id === "agents-root") {
 		const native = Object.entries(contents).find(([p]) => p.endsWith("/.omp/AGENTS.md"))?.[1];
-		if (native && native.trim() !== "") note = "被 .omp/AGENTS.md 覆盖，omp 不会读取";
+		if (native && native.trim() !== "") note = tr("memoryRules.noteShadowed");
 	}
-	return { exists: true, label: "已存在", note };
+	return { exists: true, code: "exists", label: tr("memoryRules.statusExists"), note };
 }

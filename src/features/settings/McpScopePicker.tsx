@@ -7,6 +7,7 @@
 import clsx from "clsx";
 import { AlertTriangle, Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useT } from "../../stores/language";
 import type { McpScope } from "../../lib/contracts";
 import { scopeError } from "./mcpProjects";
 
@@ -68,6 +69,7 @@ export function McpScopePicker({
 	copiesHaveSecrets?: boolean;
 	disabled?: boolean;
 }) {
+	const { t } = useT();
 	const [search, setSearch] = useState("");
 	const checked = useMemo(() => new Set(value.projects), [value.projects]);
 	const q = search.trim().toLowerCase();
@@ -103,29 +105,29 @@ export function McpScopePicker({
 
 	return (
 		<div className={clsx("space-y-2", disabled && "pointer-events-none opacity-60")}>
-			<div role="radiogroup" aria-label="使用范围" className="flex flex-wrap gap-2">
+			<div role="radiogroup" aria-label={t("mcp.scopeRadioGroup")} className="flex flex-wrap gap-2">
 				<ModeCard
 					checked={!value.allProjects}
-					title="只在选中的项目"
-					subtitle="没勾选的项目和以后新加的项目都不会加载它"
+					title={t("mcp.onlySelectedTitle")}
+					subtitle={t("mcp.onlySelectedSubtitle")}
 					onSelect={() => setMode(false)}
 				/>
 				<ModeCard
 					checked={value.allProjects}
-					title="所有项目"
-					subtitle="包括以后新加的项目；取消勾选可以让个别项目不用"
+					title={t("mcp.allProjectsTitle")}
+					subtitle={t("mcp.allProjectsSubtitle")}
 					onSelect={() => setMode(true)}
 				/>
 			</div>
 
 			<div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
-				<span>{value.allProjects ? "取消勾选的项目不会使用它" : "勾选要使用它的项目"}</span>
+				<span>{value.allProjects ? t("mcp.hintAllProjects") : t("mcp.hintSelectedProjects")}</span>
 				<span className="flex items-center gap-1.5">
 					<button type="button" className={SMALL_PILL_CLASS} onClick={() => setVisible(true)}>
-						全选
+						{t("mcp.selectAll")}
 					</button>
 					<button type="button" className={SMALL_PILL_CLASS} onClick={() => setVisible(false)}>
-						全不选
+						{t("mcp.unselectAll")}
 					</button>
 				</span>
 			</div>
@@ -136,8 +138,8 @@ export function McpScopePicker({
 					<input
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
-						placeholder="搜索项目名称或路径"
-						aria-label="搜索项目"
+						placeholder={t("mcp.searchPlaceholder")}
+						aria-label={t("mcp.searchAria")}
 						className="w-full bg-transparent text-xs text-[var(--text)] outline-none placeholder:text-[var(--text-dim)]"
 					/>
 				</label>
@@ -145,10 +147,10 @@ export function McpScopePicker({
 
 			<div className="max-h-56 overflow-y-auto rounded-xl hairline">
 				{projects.length === 0 && (
-					<div className="px-3 py-3 text-xs text-[var(--text-dim)]">还没有项目。先在左侧添加一个项目。</div>
+					<div className="px-3 py-3 text-xs text-[var(--text-dim)]">{t("mcp.noProjectsYet")}</div>
 				)}
 				{projects.length > 0 && visible.length === 0 && (
-					<div className="px-3 py-3 text-xs text-[var(--text-dim)]">没有匹配的项目</div>
+					<div className="px-3 py-3 text-xs text-[var(--text-dim)]">{t("mcp.noMatchingProjects")}</div>
 				)}
 				{visible.map((p) => (
 					<label
@@ -167,12 +169,12 @@ export function McpScopePicker({
 								<span className="text-[13px] text-[var(--text)]">{p.name}</span>
 								{p.path === current && (
 									<span className="whitespace-nowrap rounded-full bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] px-1.5 py-px text-[10px] font-medium text-[var(--accent)]">
-										当前项目
+										{t("mcp.currentProjectBadge")}
 									</span>
 								)}
 								{p.worktrees > 0 && (
 									<span className="whitespace-nowrap text-[11px] text-[var(--text-dim)]">
-										含 {p.worktrees} 个工作树
+										{t("mcp.worktreesCount", { count: p.worktrees })}
 									</span>
 								)}
 							</span>
@@ -191,8 +193,7 @@ export function McpScopePicker({
 				<div className="flex items-start gap-1.5 rounded-lg bg-[color-mix(in_srgb,var(--status-warning)_9%,transparent)] px-2.5 py-2 text-[11px] leading-4 text-[var(--text-muted)]">
 					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-[var(--status-warning)]" />
 					<span>
-						这个服务器带有密钥类的环境变量或请求头。选中的项目会各自保存一份配置（含这些密钥）到项目里的
-						.omp/mcp.json，请不要把这个文件提交到 git。
+						{t("mcp.secretWarning")}
 					</span>
 				</div>
 			)}

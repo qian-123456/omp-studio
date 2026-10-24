@@ -6,11 +6,11 @@
  */
 import { confirmDialog } from "../../lib/dialogs";
 import { toast } from "../../lib/toast";
+import { tNow } from "../../stores/language";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { destroyDrawerTerminal, drawerRegistry } from "./drawerRegistry";
 import { type DrawerTab, useDrawerStore } from "./drawerStore";
-
 export const STATUS_DOT: Record<DrawerTab["status"], string> = {
 	opening: "bg-sky-400 animate-pulse",
 	ready: "bg-emerald-400",
@@ -19,10 +19,10 @@ export const STATUS_DOT: Record<DrawerTab["status"], string> = {
 };
 
 export const STATUS_LABEL: Record<DrawerTab["status"], string> = {
-	opening: "正在连接",
-	ready: "已连接",
-	exited: "已退出",
-	error: "启动失败",
+	get opening() { return tNow("terminal.statusOpening"); },
+	get ready() { return tNow("terminal.statusReady"); },
+	get exited() { return tNow("terminal.statusExited"); },
+	get error() { return tNow("terminal.statusError"); },
 };
 
 /** Upper bound on visible terminals; each one is a live shell process. */
@@ -39,15 +39,16 @@ const MAX_VISIBLE_TERMINALS = 10;
 export function addTerminalTab(): string | null {
 	const visible = useDrawerStore.getState().tabs.filter((t) => !t.detached);
 	if (visible.length >= MAX_VISIBLE_TERMINALS) {
-		toast.info(`最多同时打开 ${MAX_VISIBLE_TERMINALS} 个终端，请先关闭或折叠一个`);
+		toast.info(tNow("terminal.maxLimitReached", { max: MAX_VISIBLE_TERMINALS }));
 		return null;
 	}
 	const sessionId = useUi.getState().selectedSessionId;
 	const cwd = (sessionId && useSessions.getState().sessions[sessionId]?.cwd) || "";
 	const titles = new Set(useDrawerStore.getState().tabs.map((t) => t.title));
+	const prefix = tNow("terminal.tabTitlePrefix");
 	let n = 1;
-	while (titles.has(`终端 ${n}`)) n++;
-	return useDrawerStore.getState().addTab(cwd, `终端 ${n}`);
+	while (titles.has(`${prefix} ${n}`)) n++;
+	return useDrawerStore.getState().addTab(cwd, `${prefix} ${n}`);
 }
 
 /**
@@ -57,11 +58,11 @@ export function addTerminalTab(): string | null {
 export function addTerminalTabWithCwd(cwd: string, title?: string): string | null {
 	const visible = useDrawerStore.getState().tabs.filter((t) => !t.detached);
 	if (visible.length >= MAX_VISIBLE_TERMINALS) {
-		toast.info(`最多同时打开 ${MAX_VISIBLE_TERMINALS} 个终端，请先关闭或折叠一个`);
+		toast.info(tNow("terminal.maxLimitReached", { max: MAX_VISIBLE_TERMINALS }));
 		return null;
 	}
 	const titles = new Set(useDrawerStore.getState().tabs.map((t) => t.title));
-	const base = title?.trim() || "终端";
+	const base = title?.trim() || tNow("terminal.tabTitlePrefix");
 	let label = base;
 	for (let n = 2; titles.has(label); n++) label = `${base} ${n}`;
 	return useDrawerStore.getState().addTab(cwd, label);
@@ -74,17 +75,17 @@ export function detachTerminalTab(tabId: string): void {
 	if (!useDrawerStore.getState().tabs.some((t) => !t.detached)) {
 		useUi.getState().closeRightTab("terminal");
 	}
-	toast.success("已折叠为后台服务（可在右侧「服务」面板查看与恢复）");
+	toast.success(tNow("terminal.detachedToast"));
 }
 
 /** Kill a terminal (confirming when it ran something); closes the panel tab with the last one. */
 export async function closeTerminalTab(tabId: string): Promise<void> {
 	const entry = drawerRegistry.get(tabId);
 	if (entry && entry.phase === "ready" && entry.used) {
-		const ok = await confirmDialog("终止此终端中正在运行的进程？", {
+		const ok = await confirmDialog(tNow("terminal.confirmKillMessage"), {
 			danger: true,
-			title: "关闭终端",
-			okLabel: "终止并关闭",
+			title: tNow("terminal.confirmKillTitle"),
+			okLabel: tNow("terminal.confirmKillOk"),
 		});
 		if (!ok) return;
 	}

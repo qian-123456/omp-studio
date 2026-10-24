@@ -26,10 +26,8 @@ import {
 	type SkillEnableConfig,
 } from "../../lib/skillEnablement";
 import { useOmpConfigStore } from "../settings/ompConfigStore";
+import { tNow } from "../../stores/language";
 
-/** Toast when a global write would be a no-op because the project config overrides it. */
-const PROJECT_OVERRIDE_WRITE_BLOCKED =
-	"这个项目的 .omp/config.yml 自带一份停用名单，全局开关在本项目里不起作用，未修改任何配置";
 
 /** Usage scan window surfaced in the UI (触发列标题、吃灰统计). */
 export const USAGE_DAYS = 45;
@@ -275,15 +273,16 @@ async function fetchEffectiveConfig(cwd: string | null | undefined): Promise<Loa
 	const global = configList ? parseSkillConfig(configList) : DEFAULT_SKILL_CONFIG;
 	let layer = EMPTY_PROJECT_LAYER;
 	let notice = project.error
-		? `读取项目配置失败，已只按全局配置显示：${project.error}`
+		? tNow("skills.readProjectConfigFailed", { error: project.error })
 		: null;
 	if (project.file?.exists) {
 		try {
 			layer = parseProjectSkillLayer(project.file.content);
 		} catch (err) {
-			notice = `项目配置 ${project.file.path} 解析失败，已只按全局配置显示：${
-				err instanceof Error ? err.message : String(err)
-			}`;
+			notice = tNow("skills.parseProjectConfigFailed", {
+				path: project.file.path,
+				error: err instanceof Error ? err.message : String(err),
+			});
 		}
 	}
 	const { config, overrides } = mergeSkillConfig(global, layer);
@@ -443,7 +442,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
 	setExtensionEnabled: async (ext, enabled, cwd) => {
 		if (get().skillConfigOverrides.includes("disabledExtensions")) {
-			toast.error(PROJECT_OVERRIDE_WRITE_BLOCKED);
+			toast.error(tNow("skills.projectOverrideWriteBlocked"));
 			return;
 		}
 		const prevConfig = get().skillConfig;
@@ -480,13 +479,17 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 				await get().revalidateCatalog(cwd);
 			}
 			toast.success(
-				enabled ? `已启用扩展 ${ext.name}` : `已禁用扩展 ${ext.name}`,
+				enabled
+					? tNow("skills.extensionEnabledToast", { name: ext.name })
+					: tNow("skills.extensionDisabledToast", { name: ext.name }),
 			);
 		} catch (err) {
 			set({ skillConfig: prevConfig });
 			get().updateExtensionEnabled(ext.path, prevEnabled);
 			toast.error(
-				`更新扩展状态失败: ${err instanceof Error ? err.message : String(err)}`,
+				tNow("skills.updateExtensionFailed", {
+					error: err instanceof Error ? err.message : String(err),
+				}),
 			);
 		}
 	},
@@ -521,7 +524,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 	setSkillEnabled: async (skill, enabled) => {
 		const overrides = get().skillConfigOverrides;
 		if (overrides.includes("disabledExtensions")) {
-			toast.error(PROJECT_OVERRIDE_WRITE_BLOCKED);
+			toast.error(tNow("skills.projectOverrideWriteBlocked"));
 			return;
 		}
 		const prev = get().skillConfig;
@@ -564,14 +567,16 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 			useOmpConfigStore.getState().invalidate();
 			toast.success(
 				enabled
-					? `已启用 ${skill.name}，新会话生效`
-					: `已停用 ${skill.name}，新会话生效`,
+					? tNow("skills.skillEnabledToast", { name: skill.name })
+					: tNow("skills.skillDisabledToast", { name: skill.name }),
 			);
 		} catch (err) {
 			useOmpConfigStore.getState().invalidate();
 			set({ skillConfig: prev });
 			toast.error(
-				`更新技能状态失败: ${err instanceof Error ? err.message : String(err)}`,
+				tNow("skills.updateSkillFailed", {
+					error: err instanceof Error ? err.message : String(err),
+				}),
 			);
 		}
 	},
@@ -581,12 +586,14 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 		set((s) => ({ trashingDirs: [...s.trashingDirs, skill.dir] }));
 		try {
 			await skillsTrash(skill.dir);
-			toast.success(`已将「${skill.name}」移到废纸篓`);
+			toast.success(tNow("skills.trashSkillSuccess", { name: skill.name }));
 			get().closeDrawer();
 			await get().loadCatalog(cwd, true);
 		} catch (err) {
 			toast.error(
-				`移到废纸篓失败: ${err instanceof Error ? err.message : String(err)}`,
+				tNow("skills.trashSkillFailed", {
+					error: err instanceof Error ? err.message : String(err),
+				}),
 			);
 		} finally {
 			set((s) => ({

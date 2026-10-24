@@ -22,7 +22,9 @@ import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { useDrawerStore, type DrawerTab } from "../terminal/drawerStore";
 import { destroyDrawerTerminal } from "../terminal/drawerRegistry";
+import { useT } from "../../stores/language";
 export function ServicesPanel() {
+	const { t } = useT();
 	const [all, setAll] = useState(false);
 	const [rows, setRows] = useState<ServiceInfo[] | null>(null);
 	const sessions = useSessions((s) => s.sessions);
@@ -48,7 +50,7 @@ export function ServicesPanel() {
 		} catch (e) {
 			const msg = errMsg(e);
 			setError(msg);
-			toast.error(`获取服务列表失败: ${msg}`);
+			toast.error(t("services.getListFailed", { error: msg }));
 		} finally {
 			setLoading(false);
 		}
@@ -71,11 +73,11 @@ export function ServicesPanel() {
 
 	const stop = async (s: ServiceInfo) => {
 		const ok = await confirmDialog(
-			`确定停止 ${s.name}（PID ${s.pid}，端口 :${s.port}）吗？`,
+			t("services.stopConfirmMsg", { name: s.name, pid: s.pid, port: s.port }),
 			{
 				danger: true,
-				title: "停止服务",
-				okLabel: "停止",
+				title: t("services.stopConfirmTitle"),
+				okLabel: t("services.stopConfirmOk"),
 			},
 		);
 		if (!ok) return;
@@ -83,12 +85,12 @@ export function ServicesPanel() {
 		setStoppingPids((prev) => new Set(prev).add(s.pid));
 		try {
 			await servicesStop(s.pid);
-			toast.success(`服务 :${s.port} 已停止`);
+			toast.success(t("services.stopSuccess", { port: s.port }));
 			await refresh();
 		} catch (e) {
 			const msg = errMsg(e);
 			setError(msg);
-			toast.error(`停止服务失败: ${msg}`);
+			toast.error(t("services.stopFailed", { error: msg }));
 		} finally {
 			setStoppingPids((prev) => {
 				const next = new Set(prev);
@@ -103,12 +105,12 @@ export function ServicesPanel() {
 		try {
 			await copyText(s.url);
 			setCopiedKey(key);
-			toast.success("已复制服务地址");
+			toast.success(t("services.copySuccess"));
 			setTimeout(() => {
 				setCopiedKey((c) => (c === key ? null : c));
 			}, 1500);
 		} catch (e) {
-			toast.error(`复制失败: ${errMsg(e)}`);
+			toast.error(t("services.copyFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -116,7 +118,7 @@ export function ServicesPanel() {
 		try {
 			await openUrl(url);
 		} catch (e) {
-			toast.error(`在浏览器打开失败: ${errMsg(e)}`);
+			toast.error(t("services.openBrowserFailed", { error: errMsg(e) }));
 		}
 	};
 
@@ -128,7 +130,7 @@ export function ServicesPanel() {
 			try {
 				await openPath(cwd);
 			} catch (e) {
-				toast.error(`在文件管理器中打开失败: ${errMsg(e)}`);
+				toast.error(t("services.openInFileManagerFailed", { error: errMsg(e) }));
 			}
 		}
 	};
@@ -144,11 +146,11 @@ export function ServicesPanel() {
 	const handleCleanOrphans = async () => {
 		if (orphanServices.length === 0) return;
 		const ok = await confirmDialog(
-			`确定停止所有 ${orphanServices.length} 个残留服务吗？这些服务所属的会话已结束。`,
+			t("services.cleanOrphansConfirmMsg", { count: orphanServices.length }),
 			{
 				danger: true,
-				title: "清理残留服务",
-				okLabel: "全部停止",
+				title: t("services.cleanOrphansConfirmTitle"),
+				okLabel: t("services.cleanOrphansConfirmOk"),
 			},
 		);
 		if (!ok) return;
@@ -158,10 +160,10 @@ export function ServicesPanel() {
 			await Promise.allSettled(
 				orphanServices.map((srv) => servicesStop(srv.pid)),
 			);
-			toast.success("已清理残留服务");
+			toast.success(t("services.cleanOrphansSuccess"));
 			await refresh();
 		} catch (e) {
-			toast.error(`清理失败: ${errMsg(e)}`);
+			toast.error(t("services.cleanOrphansFailed", { error: errMsg(e) }));
 		} finally {
 			setCleaningOrphans(false);
 		}
@@ -170,22 +172,22 @@ export function ServicesPanel() {
 		(tabId: string, title: string) => {
 			reattachTab(tabId);
 			useUi.getState().setRightTab("terminal");
-			toast.success(`已恢复终端「${title}」`);
+			toast.success(t("services.terminalReattached", { title }));
 		},
 		[reattachTab],
 	);
 
 	const handleTerminateTerminal = useCallback(
 		async (tab: DrawerTab) => {
-			const ok = await confirmDialog(`确定要结束后台终端「${tab.title}」吗？`, {
+			const ok = await confirmDialog(t("services.terminateConfirmMsg", { title: tab.title }), {
 				danger: true,
-				title: "结束后台终端",
-				okLabel: "结束进程",
+				title: t("services.terminateConfirmTitle"),
+				okLabel: t("services.terminateConfirmOk"),
 			});
 			if (!ok) return;
 			destroyDrawerTerminal(tab.id);
 			removeTab(tab.id);
-			toast.success(`已结束终端「${tab.title}」`);
+			toast.success(t("services.terminalTerminated", { title: tab.title }));
 		},
 		[removeTab],
 	);
@@ -195,7 +197,7 @@ export function ServicesPanel() {
 		<div className="flex h-full flex-col text-xs">
 			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-divider)] px-3 py-2">
 				<span className="flex-1 font-medium text-[var(--text)]">
-					本地服务{" "}
+					{t("services.title")}{" "}
 					{rows && (
 						<span className="font-mono text-neutral-500">({rows.length})</span>
 					)}
@@ -210,11 +212,11 @@ export function ServicesPanel() {
 						}}
 						className="rounded border-[var(--border-divider)] bg-[var(--well-bg)] text-[#0A84FF] focus:ring-0"
 					/>
-					显示全部端口
+					{t("services.showAllPorts")}
 				</label>
 				<button
 					type="button"
-					title="刷新服务列表"
+					title={t("services.refreshTitle")}
 					onClick={refresh}
 					className="rounded-lg p-1.5 text-neutral-400 hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors"
 				>
@@ -227,9 +229,9 @@ export function ServicesPanel() {
 					<div className="mb-2 flex items-center justify-between text-[11px] font-medium text-neutral-300">
 						<span className="flex items-center gap-1.5">
 							<TerminalSquare size={13} className="text-[#0A84FF]" />
-							后台终端 ({detachedTabs.length})
+							{t("services.backgroundTerminals", { count: detachedTabs.length })}
 						</span>
-						<span className="text-[10px] text-neutral-500">已从终端折叠</span>
+						<span className="text-[10px] text-neutral-500">{t("services.collapsedFromTerminal")}</span>
 					</div>
 					<div className="space-y-1.5">
 						{detachedTabs.map((tab) => (
@@ -244,12 +246,12 @@ export function ServicesPanel() {
 										</span>
 										{tab.status === "exited" ? (
 											<span className="rounded border border-neutral-700/60 bg-neutral-800/40 px-1 py-0.2 text-[10px] text-neutral-400">
-												已退出{tab.exitCode !== null ? ` (${tab.exitCode})` : ""}
+												{t("services.terminalExited")}{tab.exitCode !== null ? ` (${tab.exitCode})` : ""}
 											</span>
 										) : (
 											<span className="flex shrink-0 items-center gap-1 rounded border border-emerald-800/50 bg-emerald-950/50 px-1 py-0.2 text-[10px] text-emerald-400">
 												<span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-												运行中
+												{t("services.terminalRunning")}
 											</span>
 										)}
 									</div>
@@ -265,19 +267,19 @@ export function ServicesPanel() {
 										type="button"
 										onClick={() => handleReattachTerminal(tab.id, tab.title)}
 										className="flex items-center gap-1 rounded bg-[#0A84FF] px-2 py-0.5 text-[11px] font-medium text-white hover:bg-[#0A84FF]/90 active:scale-95 transition-all shadow-xs"
-										title="恢复到终端"
+										title={t("services.restoreToTerminal")}
 									>
 										<RotateCcw size={10} />
-										恢复
+										{t("services.restore")}
 									</button>
 									<button
 										type="button"
 										onClick={() => void handleTerminateTerminal(tab)}
 										className="flex items-center gap-1 rounded border border-rose-800/60 bg-rose-950/30 px-2 py-0.5 text-[11px] font-medium text-rose-300 hover:bg-rose-900/50 active:scale-95 transition-all"
-										title="结束终端进程并移除"
+										title={t("services.terminateProcess")}
 									>
 										<Square size={10} />
-										结束
+										{t("services.terminate")}
 									</button>
 								</div>
 							</div>
@@ -292,7 +294,7 @@ export function ServicesPanel() {
 					<div className="flex items-center gap-2 min-w-0">
 						<AlertTriangle size={14} className="shrink-0 text-amber-400" />
 						<span className="truncate">
-							{orphanServices.length} 个残留服务（所属会话已结束）
+							{t("services.orphanBanner", { count: orphanServices.length })}
 						</span>
 					</div>
 					<button
@@ -304,7 +306,7 @@ export function ServicesPanel() {
 						{cleaningOrphans && (
 							<Loader2 size={11} className="animate-spin" />
 						)}
-						一键清理
+						{t("services.cleanOrphans")}
 					</button>
 				</div>
 			)}
@@ -316,7 +318,7 @@ export function ServicesPanel() {
 				<div className="space-y-3 p-3">
 					<div className="flex items-center gap-2 text-neutral-500">
 						<Loader2 size={13} className="animate-spin text-sky-400" />
-						<span>正在扫描本地监听端口与服务…</span>
+						<span>{t("services.scanningPorts")}</span>
 					</div>
 					{[1, 2, 3].map((n) => (
 						<div
@@ -336,9 +338,7 @@ export function ServicesPanel() {
 			{rows?.length === 0 && (
 				<div className="p-8 text-center text-neutral-500 leading-relaxed">
 					<p className="text-xs">
-						{all
-							? "没有检测到监听中的端口"
-							: "没有检测到开发服务（可勾选右上角「显示全部端口」）"}
+						{all ? t("services.emptyAll") : t("services.emptyDev")}
 					</p>
 				</div>
 			)}
@@ -375,24 +375,24 @@ export function ServicesPanel() {
 									</span>
 									{s.startedByApp && (
 										<span className="ml-1.5 rounded bg-emerald-950/50 px-1 py-0.2 text-[10px] text-emerald-400 border border-emerald-800/50">
-											时光机
+											{t("services.badgeTimeMachine")}
 										</span>
 									)}
 									{isOrphan && (
 										<span className="ml-1.5 rounded bg-amber-950/50 px-1 py-0.2 text-[10px] text-amber-400 border border-amber-800/50">
-											残留
+											{t("services.badgeOrphan")}
 										</span>
 									)}
 								</span>
 								<div className="flex shrink-0 items-center gap-0.5">
 									<IconBtn
-										title="在浏览器中打开此服务"
+										title={t("services.openInBrowser")}
 										onClick={() => handleOpenBrowser(s.url)}
 									>
 										<ExternalLink size={12} />
 									</IconBtn>
 									<IconBtn
-										title={isCopied ? "已复制" : "复制服务地址"}
+										title={isCopied ? t("services.copied") : t("services.copyAddress")}
 										onClick={() => copy(s)}
 									>
 										<Copy
@@ -401,7 +401,7 @@ export function ServicesPanel() {
 										/>
 									</IconBtn>
 									<IconBtn
-										title={isStopping ? "正在停止…" : "停止此服务"}
+										title={isStopping ? t("services.stopping") : t("services.stopService")}
 										danger
 										disabled={isStopping}
 										onClick={() => stop(s)}
@@ -431,7 +431,7 @@ export function ServicesPanel() {
 									<button
 										type="button"
 										onClick={() => selectSession(session.id)}
-										title={`切换到关联会话: ${session.label} ${session.title}`}
+										title={t("services.switchToSession", { label: session.label, title: session.title })}
 										className="shrink-0 text-indigo-400 hover:underline hover:text-indigo-300 transition-colors focus:opacity-100"
 									>
 										{session.label} {session.title}
@@ -448,7 +448,7 @@ export function ServicesPanel() {
 							onClick={() => setDisplayLimit((n) => n + 50)}
 							className="text-xs text-[#0A84FF] hover:underline font-medium"
 						>
-							展开更多（还有 {rows.length - displayLimit} 个端口）
+							{t("services.expandMore", { count: rows.length - displayLimit })}
 						</button>
 					</li>
 				)}

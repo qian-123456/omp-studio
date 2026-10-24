@@ -1,6 +1,7 @@
 import type { TranscriptItem } from "../../lib/contracts";
 import type { LiveRequest, SessionLive } from "../../stores/live";
 import { type RequestStat, requestStatFromItem } from "./requestStats";
+import { tNow } from "../../stores/language";
 
 export interface ComputedSessionStats {
 	rounds: number;
@@ -212,19 +213,23 @@ export function computeSessionStats(
 }
 
 export function formatDuration(ms: number): string {
-	if (!ms || ms <= 0) return "0秒";
+	if (!ms || ms <= 0) return tNow("chatView.sessionStats.durationZero");
 	const totalSec = Math.round(ms / 1000);
 	if (totalSec < 60) {
-		return `${totalSec}秒`;
+		return tNow("chatView.sessionStats.durationSecs", { s: totalSec });
 	}
 	const mins = Math.floor(totalSec / 60);
 	const secs = totalSec % 60;
 	if (mins < 60) {
-		return secs > 0 ? `${mins}分${secs}秒` : `${mins}分钟`;
+		return secs > 0
+			? tNow("chatView.sessionStats.durationMinsSecs", { m: mins, s: secs })
+			: tNow("chatView.sessionStats.durationMins", { m: mins });
 	}
 	const hours = Math.floor(mins / 60);
 	const remMins = mins % 60;
-	return remMins > 0 ? `${hours}小时${remMins}分` : `${hours}小时`;
+	return remMins > 0
+		? tNow("chatView.sessionStats.durationHoursMins", { h: hours, m: remMins })
+		: tNow("chatView.sessionStats.durationHours", { h: hours });
 }
 
 export function formatTokens(tokens: number): string {
