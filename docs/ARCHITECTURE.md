@@ -23,7 +23,7 @@ User decisions already made (do not re-ask):
 | Editor | `@uiw/react-codemirror` + `@codemirror/lang-markdown` |
 | Terminal | Rust `portable-pty` + `@xterm/xterm` + `@xterm/addon-fit` |
 | Rust crates | `tokio` (full), `serde`/`serde_json`, `rusqlite` (bundled), `notify` + `notify-debouncer-full`, `anyhow`, `thiserror`, `chrono`, `uuid`, `base64`, `dirs`, `axum`, `qrcode`, `local-ip-address`, `parking_lot`, `regex`, `tracing` |
-| Tauri plugins | `notification`, `global-shortcut`, `dialog`, `opener`, `clipboard-manager` |
+| Tauri plugins | `notification`, `global-shortcut`, `dialog`, `opener`, `clipboard-manager`, `updater`, `process` |
 | Package manager | `pnpm` |
 
 Prefer dependency versions published ≥ 7 days ago; never use floating `latest`/`*`.
