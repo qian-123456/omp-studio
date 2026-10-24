@@ -167,7 +167,7 @@ export function ProviderRowView({ row, expanded, onToggleExpand, onEdit, onSetKe
 				expanded && "hairline border-l-[3px] border-l-[var(--accent)] bg-[var(--well-bg)]",
 			)}
 		>
-			<div className={clsx(ROW_GRID, "min-h-[44px] px-2.5 py-1.5", !expanded && "hover:bg-[var(--bg-hover)]")}>
+			<div className={clsx(ROW_GRID, "min-h-[44px] rounded-lg px-2.5 py-1.5", !expanded && "hover:bg-[var(--bg-hover)]")}>
 				<button
 					type="button"
 					onClick={onToggleExpand}
