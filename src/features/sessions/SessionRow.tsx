@@ -33,6 +33,7 @@ import { isComposing } from "../../lib/hooks";
 import { acceptSession, rpcRestart, updateSessionMeta } from "../../lib/ipc";
 import { ensureLive, isResumeCancelled } from "../../lib/ensureLive";
 import { toast } from "../../lib/toast";
+import { useT } from "../../stores/language";
 import { useSessions } from "../../stores/sessions";
 import { useUi } from "../../stores/ui";
 import { HoverScrollText } from "../../components/HoverScrollText";
@@ -189,6 +190,7 @@ function SessionRowComponent({
 	onRowFocus,
 	onBatchAction,
 }: SessionRowProps) {
+	const { t } = useT();
 	// Re-evaluate relative time on shared minute ticks (R3)
 	useMinuteTick();
 
@@ -893,7 +895,7 @@ function SessionRowComponent({
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 								>
 									<Archive size={13} />
-									批量归档
+									{t("sessionActions.batchArchive")}
 								</button>
 								<button
 									role="menuitem"
@@ -909,7 +911,7 @@ function SessionRowComponent({
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 								>
 									<Pin size={13} />
-									批量置顶 / 取消置顶
+									{t("sessionActions.batchPin")}
 								</button>
 								{batchAllInGlobalArea && (
 									<button
@@ -941,7 +943,7 @@ function SessionRowComponent({
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 text-left transition-colors"
 								>
 									<Trash2 size={13} />
-									批量删除…
+									{t("sessionActions.batchDelete")}
 								</button>
 							</>
 						) : (
@@ -957,7 +959,7 @@ function SessionRowComponent({
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-[var(--bg-hover)] text-left transition-colors"
 								>
 									<Pencil size={13} />
-									重命名
+									{t("sessionActions.rename")}
 								</button>
 
 								<button
@@ -974,7 +976,7 @@ function SessionRowComponent({
 									) : (
 										<Pin size={13} />
 									)}
-									{session.pinned ? "取消置顶" : "置顶会话"}
+									{session.pinned ? t("sessionActions.unpin") : t("sessionActions.pin")}
 								</button>
 
 								<button
@@ -992,7 +994,7 @@ function SessionRowComponent({
 									) : (
 										<Archive size={13} />
 									)}
-									{session.archived ? "取消归档" : "归档会话"}
+									{session.archived ? t("sessionActions.unarchive") : t("sessionActions.archive")}
 								</button>
 
 								{/* R15: Emerald accept color */}
@@ -1007,7 +1009,7 @@ function SessionRowComponent({
 										className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-emerald-400 hover:bg-[var(--bg-hover)] text-left transition-colors"
 									>
 										<CheckCircle2 size={13} />
-										验收并归档
+										{t("sessionActions.acceptAndArchive")}
 									</button>
 								)}
 
@@ -1182,7 +1184,7 @@ function SessionRowComponent({
 									className="press-scale flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40"
 								>
 									<Trash2 size={13} />
-									删除会话…
+									{t("sessionActions.delete")}
 								</button>
 							</>
 						)}

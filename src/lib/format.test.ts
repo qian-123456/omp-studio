@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatBytes, relativeTime, timeAgo } from "./format";
+import { useLanguageStore } from "../stores/language";
 
 const NOW = new Date("2026-06-15T12:00:00").getTime();
 const ago = (ms: number) => NOW - ms;
@@ -10,6 +11,7 @@ const DAY = 24 * HOUR;
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(NOW);
+	useLanguageStore.setState({ locale: "zh-CN" });
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -36,6 +38,13 @@ describe("relativeTime (compact, no 前)", () => {
 		expect(relativeTime(ago(2 * DAY))).toBe("2天");
 		expect(relativeTime(ago(40 * DAY))).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 		expect(relativeTime("not a date")).toBe("");
+	});
+	it("supports en-US compact relative time", () => {
+		useLanguageStore.setState({ locale: "en-US" });
+		expect(relativeTime(ago(10_000))).toBe("just now");
+		expect(relativeTime(ago(5 * MIN))).toBe("5m");
+		expect(relativeTime(ago(3 * HOUR))).toBe("3h");
+		expect(relativeTime(ago(2 * DAY))).toBe("2d");
 	});
 });
 
