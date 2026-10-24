@@ -59,6 +59,17 @@ describe("AnnotationNotePopover", () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
+	it("saves once and closes when the confirm button is clicked", () => {
+		const onClose = mount();
+		fireEvent.change(screen.getByRole("textbox"), { target: { value: "点击确认" } });
+		const btn = screen.getByRole("button", { name: "确认批注" });
+		fireEvent.pointerDown(btn);
+		fireEvent.click(btn);
+		expect(useComposer.getState().annotations.s1[0].comment).toBe("点击确认");
+		expect(useComposer.getState().annotations.s1).toHaveLength(2);
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
 	it("discards on Escape", () => {
 		const onClose = mount();
 		fireEvent.change(screen.getByRole("textbox"), { target: { value: "新的" } });

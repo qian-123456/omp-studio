@@ -190,6 +190,15 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // Isolated instances (`OMPWS_DATA_DIR`) keep images outside the static
+            // `$HOME/.omp-workspace/images` scope in tauri.conf.json; allow the live dir.
+            {
+                use tauri::Manager;
+                let _ = std::fs::create_dir_all(paths::images_dir());
+                let _ = app
+                    .asset_protocol_scope()
+                    .allow_directory(paths::images_dir(), true);
+            }
             let conn = db::open().unwrap_or_else(|e| fatal_startup("无法打开应用数据库", &e));
             db::ensure_global_workspace(&conn)
                 .unwrap_or_else(|e| fatal_startup("无法初始化全局工作区", &e));

@@ -59,3 +59,69 @@ describe("mergeAgents per-dispatch rows", () => {
 		expect(r.rows[0]?.filePath).toBe("/tmp/1-Beta.jsonl");
 	});
 });
+
+describe("mergeAgents attempt isolation", () => {
+	const tasks = [
+		{ id: "Core", task: "do core" },
+		{ id: "Models", task: "do models" },
+	];
+	// The re-dispatch (call-2) spawned these; same prompts as the failed call-1.
+	const redispatched = [
+		summary("0-Core", "Complete assignment thoroughly: do core", "running"),
+		summary("1-Models", "Complete assignment thoroughly: do models", "running"),
+	];
+
+	it("errored dispatch neither leaks the re-dispatch's file state nor keeps pending", () => {
+		const failed = mergeAgents({
+			args: { tasks },
+			details: null,
+			fileList: redispatched,
+			toolCallId: "call-1",
+			callStatus: "error",
+			resultText: "model not allowed",
+		});
+		expect(failed.rows.map((r) => r.status)).toEqual(["failed", "failed"]);
+		expect(failed.rows.every((r) => !r.filePath && r.tokens === undefined)).toBe(true);
+		expect(failed.rows[0]?.error).toBe("model not allowed");
+
+		const second = mergeAgents({
+			args: { tasks },
+			details: null,
+			fileList: redispatched,
+			toolCallId: "call-2",
+			callStatus: "done",
+		});
+		expect(second.rows.map((r) => r.status)).toEqual(["running", "running"]);
+		expect(second.rows[0]?.filePath).toBe("/tmp/0-Core.jsonl");
+	});
+
+	it("errored dispatch keeps a detached child its own live entry proves running", () => {
+		const r = mergeAgents({
+			args: { tasks },
+			details: null,
+			toolCallId: "call-1",
+			callStatus: "error",
+			liveSubagents: {
+				Core: { status: "running", label: "Core", parentToolCallId: "call-1", index: 0 },
+				Other: { status: "running", label: "Other", parentToolCallId: "call-2", index: 0 },
+			},
+		});
+		expect(r.rows.map((x) => [x.id, x.status])).toEqual([
+			["Core", "running"],
+			["Models", "failed"],
+		]);
+	});
+
+	it("a terminal result is never revived by a later running source", () => {
+		const r = mergeAgents({
+			args: { tasks: [{ id: "Core", task: "do core" }] },
+			details: { results: [{ id: "Core", status: "completed" }] } as never,
+			fileList: [summary("0-Core", "do core", "running")],
+			toolCallId: "c",
+			liveSubagents: {
+				Core: { status: "running", label: "Core", parentToolCallId: "c", index: 0 },
+			},
+		});
+		expect(r.rows[0]?.status).toBe("completed");
+	});
+});

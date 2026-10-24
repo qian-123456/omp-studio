@@ -149,8 +149,18 @@ const firstLine = (t?: string): string | undefined =>
 		.map((l) => l.trim())
 		.find(Boolean);
 
+const isTerminalStatus = (s: SubagentStatus | undefined): boolean =>
+	s === "completed" || s === "failed" || s === "aborted";
+
+/** Terminal results are final: a later non-terminal source cannot revive them. */
+function setStatus(row: AgentRow, next: SubagentStatus | undefined) {
+	if (!next) return;
+	if (isTerminalStatus(row.status) && !isTerminalStatus(next)) return;
+	row.status = next;
+}
+
 function applyProgress(row: AgentRow, p: AgentProgress | SingleResult) {
-	row.status = normStatus(p.status) ?? row.status;
+	setStatus(row, normStatus(p.status));
 	row.agent ??= asStr(p.agent);
 	row.agentSource ??= asStr(p.agentSource);
 	row.assignment ??= asStr(p.assignment);
@@ -186,7 +196,7 @@ function applySummary(row: AgentRow, s: SubagentSummary) {
 	// real status, terminal file results resolve stale pending/running rows.
 	// A stale file must NOT downgrade a live/details "running" to "pending".
 	if (row.status === "pending" || s.status !== "pending") {
-		row.status = s.status;
+		setStatus(row, s.status);
 	}
 	row.model ??= s.model ?? undefined;
 	row.thinkingLevel ??= s.thinkingLevel ?? undefined;
@@ -223,7 +233,7 @@ function promptMatches(row: AgentRow, prompt: string | null): boolean {
 }
 
 function applyLive(row: AgentRow, s: SubagentInfo) {
-	row.status = normStatus(s.status) ?? row.status;
+	setStatus(row, normStatus(s.status));
 	row.agent ??= s.agent;
 	row.agentSource ??= s.agentSource;
 	row.assignment ??= s.assignment;
@@ -231,7 +241,7 @@ function applyLive(row: AgentRow, s: SubagentInfo) {
 	row.line ??= s.description ?? firstLine(s.task);
 	if (s.progress) applyProgress(row, s.progress);
 	// Live status (e.g. still running) wins over a file-inferred status.
-	row.status = normStatus(s.status) ?? row.status;
+	setStatus(row, normStatus(s.status));
 	row.filePath ??= s.sessionFile;
 }
 
@@ -245,6 +255,15 @@ export function mergeAgents(input: {
 	fileList?: SubagentSummary[] | null;
 	liveSubagents?: Record<string, SubagentInfo>;
 	toolCallId: string;
+	/**
+	 * Outcome of the dispatching tool call. An `error` call started nothing
+	 * beyond what its own details/live entries prove: file summaries (matched
+	 * by id or prompt, so they can belong to a later re-dispatch) never enrich
+	 * its rows, and rows nothing confirms as running end up failed.
+	 */
+	callStatus?: "running" | "done" | "error" | "called";
+	/** Tool result text, used as the failure reason of settled rows. */
+	resultText?: string;
 }): { context?: string; rows: AgentRow[] } {
 	const { context, items } = parseTaskArgs(input.args);
 	const rows = new Map<string, AgentRow>();
@@ -281,6 +300,7 @@ export function mergeAgents(input: {
 		r.line = it.description ?? firstLine(r.task);
 	});
 
+	const owned = new Set<string>();
 	const progress = input.details?.progress;
 	if (Array.isArray(progress)) {
 		for (const p of progress) {
@@ -288,6 +308,7 @@ export function mergeAgents(input: {
 			if (!id) continue;
 			const idx = asNum(p.index);
 			const r = get(id, idx);
+			owned.add(r.id);
 			if (idx !== undefined) r.index = idx;
 			applyProgress(r, p);
 		}
@@ -299,23 +320,40 @@ export function mergeAgents(input: {
 			if (!id) continue;
 			const idx = asNum(res.index);
 			const r = get(id, idx);
+			owned.add(r.id);
 			if (idx !== undefined) r.index = idx;
 			applyProgress(r, res);
 		}
 	}
 	// The file list holds every subagent of the whole session; it only enriches
 	// rows that already belong to this tool call, never adds rows.
-	const unmatched = [...rows.values()];
+	const failedCall = input.callStatus === "error";
+	const unmatched = [...rows.values()].filter(
+		(r) => !failedCall || owned.has(r.id),
+	);
 	for (const s of input.fileList ?? []) {
+		const byId = rows.get(s.id);
 		const target =
-			rows.get(s.id) ??
+			(byId && (!failedCall || owned.has(s.id)) ? byId : undefined) ??
 			unmatched.find((r) => !r.filePath && promptMatches(r, s.prompt));
 		if (target) applySummary(target, s);
 	}
+	const confirmedLive = new Set<string>();
 	for (const [id, s] of Object.entries(input.liveSubagents ?? {})) {
 		if (s.parentToolCallId !== input.toolCallId) continue;
 		const r = get(id, s.index);
 		applyLive(r, s);
+		if (!isTerminalStatus(normStatus(s.status))) confirmedLive.add(r.id);
+	}
+	if (failedCall) {
+		const why = asStr(input.resultText);
+		for (const r of rows.values()) {
+			if (isTerminalStatus(r.status) || confirmedLive.has(r.id)) continue;
+			r.status = "failed";
+			r.error ??= why;
+			r.currentTool = undefined;
+			r.currentToolDetail = undefined;
+		}
 	}
 
 	const rowsOut = [...rows.values()].sort(

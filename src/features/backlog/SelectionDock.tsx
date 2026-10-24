@@ -19,8 +19,6 @@ export interface SelectionDockProps {
 	onPurge: () => void;
 }
 
-const LINK = "rounded-full px-2 py-1 text-[11px] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]";
-
 /** Floating rounded dock shown at the panel bottom while ≥1 idea is checked. */
 export function SelectionDock(p: SelectionDockProps) {
 	const { t } = useT();
@@ -35,8 +33,8 @@ export function SelectionDock(p: SelectionDockProps) {
 			>
 				<X className="h-3.5 w-3.5" />
 			</button>
-			<span className="text-[11px] font-medium text-[var(--text)]">{t("backlog.selectedCount", { count: p.count })}</span>
-			<button type="button" onClick={p.onToggleAll} className={LINK}>
+			<span className="whitespace-nowrap text-[11px] font-medium text-[var(--text)]">{t("backlog.selectedCount", { count: p.count })}</span>
+			<button type="button" onClick={p.onToggleAll} className={`${PILL_OUTLINE} whitespace-nowrap`}>
 				{p.allSelected ? t("backlog.deselectAll") : t("backlog.selectAll")}
 			</button>
 			<span className="ml-auto flex flex-wrap items-center justify-end gap-1.5">

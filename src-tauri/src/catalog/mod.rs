@@ -10,7 +10,7 @@ pub(crate) mod external;
 pub(crate) mod parse;
 mod scan;
 pub mod search;
-mod status;
+pub(crate) mod status;
 pub(crate) mod store;
 mod tasks;
 pub(crate) mod transcript;

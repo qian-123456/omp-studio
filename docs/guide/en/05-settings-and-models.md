@@ -75,6 +75,8 @@ Under **Settings ▸ Sub-agents**, manage dispatchable expert sub-agents:
 
 - **Bulk Replace**: Open **Settings ▸ Model roles ▸ Bulk replace** to replace all occurrences of a model across global configs, projects, fallback chains, and schedules, complete with a 4-step wizard, impact preview, hot session migration, and full undo history.
 - **Quota Templates**: Save role-to-model presets (e.g., "Performance Mode" vs "Cost-Saver Mode"). Set automated downgrade rules to switch templates when provider quotas exceed a threshold (e.g. 90%).
+  - On the active template, **停用并恢复** (stop using and restore) restores the role values recorded before application. Roles edited by hand afterwards are preserved; the confirmation and result explain this.
+  - In a quota rule, enable **automatic restoration** and choose a recovery threshold. Only switches made by that rule restore automatically; a manually applied template does not acquire a recovery condition. Successful restoration sends a system notification subject to notification settings. If manual role edits block an automatic restore, a throttled notification explains why.
 
 ## Fallback Chains and Retries
 

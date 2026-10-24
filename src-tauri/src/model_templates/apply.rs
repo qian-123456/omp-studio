@@ -738,6 +738,27 @@ pub(crate) async fn undo_switch(state: &AppState, log_id: &str) -> Result<Switch
             drifted.join("、")
         )
     };
+    let scope = super::scope_label(&entry.scope);
+    let (title, body) = if reverted.is_empty() {
+        (
+            format!("模型模板未恢复（{scope}）"),
+            if drifted.is_empty() {
+                format!("{}：该记录没有可恢复的角色", entry.template_name)
+            } else {
+                format!(
+                    "{}：没有角色被恢复；以下角色当前值已变化，已跳过：{}",
+                    entry.template_name,
+                    drifted.join("、")
+                )
+            },
+        )
+    } else {
+        (
+            format!("模型模板已恢复（{scope}）"),
+            format!("{}：{reason}", entry.template_name),
+        )
+    };
+    let _ = crate::notify::send(state, &title, &body, true);
     Ok(SwitchResult {
         log_id: log_id.to_string(),
         status: "undone".to_string(),

@@ -303,6 +303,20 @@ export function subagentTitle(id: string, info: SubagentInfo, row: AgentRow | un
 	);
 }
 
+/**
+ * Dispatcher-assigned job name from a subagent id ("0-I18nSettingsCore" or
+ * "I18nSettingsCore" -> "I18nSettingsCore"). Positional placeholders ("#1")
+ * and a bare agent-type id ("0-Explore" for role "explore") carry no job
+ * identity, so they return "".
+ */
+export function subagentName(id: string, role?: string): string {
+	const leaf = id.slice(id.lastIndexOf(".") + 1);
+	const name = leaf.replace(/^\d+-/, "").trim();
+	if (!name || /^#?\d+$/.test(name)) return "";
+	if (role && name.toLowerCase() === role.trim().toLowerCase()) return "";
+	return name;
+}
+
 export type RoleTone = "scout" | "task" | "reviewer" | "other";
 
 export function roleTone(agent: string | undefined): RoleTone {
