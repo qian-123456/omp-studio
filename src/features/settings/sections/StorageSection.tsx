@@ -1,9 +1,9 @@
 /** Settings ▸ 存储空间 (`storage`): app disk usage, safe cleanups, and omp session cleanup (to the Trash). */
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { ChevronDown, ChevronRight, FolderOpen, RefreshCw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { ArrowUpDown, ChevronDown, ChevronRight, FolderOpen, HardDrive, RefreshCw, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useT } from "../../../stores/language";
-import type { StorageOverview, StorageProjectRow, StorageSessionsOverview } from "../../../lib/contracts";
+import type { StorageOverview, StorageProjectRow, StorageSessionsOverview, StorageStalePreview } from "../../../lib/contracts";
 import { confirmDialog } from "../../../lib/dialogs";
 import { formatBytes, relativeTime } from "../../../lib/format";
 import {
@@ -20,12 +20,15 @@ import {
 import { toast } from "../../../lib/toast";
 import { useComposer } from "../../../stores/composer";
 import {
+	calculateStorageBreakdown,
 	collectDraftTexts,
 	DEFAULT_STALE_DAYS,
 	describeStorageError,
 	parseStaleDays,
+	type ProjectSortOrder,
 	selectableSessions,
 	selectedBytes,
+	sortProjects,
 } from "../storageLogic";
 import { Notice } from "../../../components/Notice";
 import { SectionJumpBar } from "../SectionJumpBar";
@@ -49,6 +52,8 @@ export function StorageSection() {
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [days, setDays] = useState(String(DEFAULT_STALE_DAYS));
+	const [stalePreview, setStalePreview] = useState<StorageStalePreview | null>(null);
+	const [projectOrder, setProjectOrder] = useState<ProjectSortOrder>("bytesDesc");
 	const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
 	const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
 
@@ -62,6 +67,8 @@ export function StorageSection() {
 			// Drop selections that no longer exist.
 			const ids = new Set(s.projects.flatMap((p) => p.sessions.map((x) => x.id)));
 			setSelected((prev) => new Set([...prev].filter((id) => ids.has(id))));
+			const n = parseStaleDays(days);
+			void storageStaleSessionsPreview(n).then(setStalePreview).catch(() => {});
 		} catch (e) {
 			setError(describeStorageError(e));
 		}
@@ -70,6 +77,15 @@ export function StorageSection() {
 	useEffect(() => {
 		void refresh();
 	}, [refresh]);
+	// Debounce stale preview updates when days change.
+	useEffect(() => {
+		const n = parseStaleDays(days);
+		const timer = setTimeout(() => {
+			void storageStaleSessionsPreview(n).then(setStalePreview).catch(() => {});
+		}, 250);
+		return () => clearTimeout(timer);
+	}, [days]);
+
 
 	/** Run one action with a busy flag and a unified error toast. */
 	const run = async (key: string, fn: () => Promise<void>) => {
@@ -145,12 +161,14 @@ export function StorageSection() {
 	const deleteStale = () =>
 		run("stale", async () => {
 			const n = parseStaleDays(days);
-			const preview = await storageStaleSessionsPreview(n);
+			const preview = stalePreview ?? (await storageStaleSessionsPreview(n));
 			if (preview.count === 0) {
 				toast.info(t("settingsSectionsStorage.storage.staleDaysNoOp", { days: n }));
 				return;
 			}
 			await trash(preview.ids, preview.bytes, t("settingsSectionsStorage.storage.staleSessionsWhat", { days: n }));
+			const updated = await storageStaleSessionsPreview(n).catch(() => null);
+			if (updated) setStalePreview(updated);
 		});
 
 	const toggle = (set: ReadonlySet<string>, id: string): Set<string> => {
@@ -163,6 +181,28 @@ export function StorageSection() {
 		void revealItemInDir(path).catch((e) => toast.error(t("settingsSectionsStorage.storage.revealError", { error: describeStorageError(e) })));
 
 	const selectedTotal = sessions ? sessions.projects.reduce((n, p) => n + selectedBytes(p, selected), 0) : 0;
+	const breakdown = useMemo(() => calculateStorageBreakdown(overview, sessions), [overview, sessions]);
+	const sortedProjects = useMemo(() => {
+		if (!sessions) return [];
+		return sortProjects(sessions.projects, projectOrder);
+	}, [sessions, projectOrder]);
+
+	const toggleAllProjects = () => {
+		if (!sessions) return;
+		if (open.size > 0) {
+			setOpen(new Set());
+		} else {
+			setOpen(new Set(sessions.projects.map((p) => p.dir)));
+		}
+	};
+
+	const categoryLabels: Record<string, string> = {
+		sessions: t("settingsSectionsStorage.storage.categorySessions"),
+		images: t("settingsSectionsStorage.storage.categoryImages"),
+		webCache: t("settingsSectionsStorage.storage.categoryWebCache"),
+		db: t("settingsSectionsStorage.storage.categoryDb"),
+		status: t("settingsSectionsStorage.storage.categoryStatus"),
+	};
 
 	return (
 		<div className="space-y-6">
@@ -182,6 +222,44 @@ export function StorageSection() {
 			)}
 
 			<SectionJumpBar />
+			{breakdown && breakdown.totalBytes > 0 && (
+				<div className="rounded-xl hairline bg-[var(--bg-panel)] p-4 shadow-apple-card">
+					<div className="flex items-center justify-between pb-3">
+						<div className="flex items-center gap-2">
+							<HardDrive className="h-4 w-4 text-[var(--accent)]" />
+							<span className="text-[13px] font-semibold text-[var(--text)]">
+								{t("settingsSectionsStorage.storage.storageOverviewCardTitle")}
+							</span>
+						</div>
+						<span className="text-base font-bold tabular-nums text-[var(--text)]">
+							{formatBytes(breakdown.totalBytes)}
+						</span>
+					</div>
+					{/* Visual Storage Distribution Bar */}
+					<div className="flex h-2.5 w-full overflow-hidden rounded-full bg-[var(--bg-hover)]">
+						{breakdown.categories.map((c) => (
+							<div
+								key={c.key}
+								style={{ width: `${Math.max(c.percent, 0.5)}%`, backgroundColor: c.color }}
+								title={`${categoryLabels[c.key] ?? c.key}: ${formatBytes(c.bytes)} (${c.percent.toFixed(1)}%)`}
+								className="transition-all first:rounded-l-full last:rounded-r-full"
+							/>
+						))}
+					</div>
+					{/* Category legend */}
+					<div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+						{breakdown.categories.map((c) => (
+							<div key={c.key} className="flex items-center gap-1.5">
+								<span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
+								<span className="text-[var(--text-muted)]">{categoryLabels[c.key] ?? c.key}</span>
+								<span className="font-medium tabular-nums text-[var(--text)]">{formatBytes(c.bytes)}</span>
+								<span className="text-[11px] text-[var(--text-dim)]">({c.percent.toFixed(1)}%)</span>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
+
 			<SettingsCard
 				jump={t("settingsSectionsStorage.storage.jumpImages")}
 				title={t("settingsSectionsStorage.storage.titleImages")}
@@ -218,7 +296,13 @@ export function StorageSection() {
 				<SettingRow
 					label={t("settingsSectionsStorage.storage.webCacheLabel")}
 					description={t("settingsSectionsStorage.storage.webCacheDesc")}
-					hint={overview ? t("settingsSectionsStorage.storage.usedBytesHint", { bytes: formatBytes(overview.webCacheBytes) }) : t("settingsSectionsStorage.storage.loading")}
+					hint={
+						overview
+							? overview.webCacheBytes > 0
+								? t("settingsSectionsStorage.storage.usedBytesHint", { bytes: formatBytes(overview.webCacheBytes) })
+								: t("settingsSectionsStorage.storage.webCacheEmptyHint")
+							: t("settingsSectionsStorage.storage.loading")
+					}
 					control={
 						<Button
 							loading={busy === "web"}
@@ -234,7 +318,9 @@ export function StorageSection() {
 					description={t("settingsSectionsStorage.storage.expiredStatusDesc")}
 					hint={
 						overview
-							? t("settingsSectionsStorage.storage.expiredStatusHint", { count: overview.status.count, expiredCount: overview.status.expiredCount, bytes: formatBytes(overview.status.expiredBytes) })
+							? overview.status.expiredCount > 0
+								? t("settingsSectionsStorage.storage.expiredStatusHint", { count: overview.status.count, expiredCount: overview.status.expiredCount, bytes: formatBytes(overview.status.expiredBytes) })
+								: t("settingsSectionsStorage.storage.expiredStatusEmptyHint", { count: overview.status.count })
 							: t("settingsSectionsStorage.storage.loading")
 					}
 					control={
@@ -250,7 +336,7 @@ export function StorageSection() {
 				<SettingRow
 					label={t("settingsSectionsStorage.storage.appDbLabel")}
 					description={t("settingsSectionsStorage.storage.appDbDesc")}
-					hint={overview ? t("settingsSectionsStorage.storage.usedBytesHint", { bytes: formatBytes(overview.dbBytes) }) : t("settingsSectionsStorage.storage.loading")}
+					hint={overview ? t("settingsSectionsStorage.storage.dbCompactHint", { bytes: formatBytes(overview.dbBytes) }) : t("settingsSectionsStorage.storage.loading")}
 					control={
 						<Button loading={busy === "db"} disabled={busy !== null || !overview} onClick={() => void compactDb()}>
 							{t("settingsSectionsStorage.storage.compactDbBtn")}
@@ -268,6 +354,13 @@ export function StorageSection() {
 				<SettingRow
 					label={t("settingsSectionsStorage.storage.deleteStaleLabel")}
 					description={t("settingsSectionsStorage.storage.deleteStaleDesc")}
+					hint={
+						stalePreview
+							? stalePreview.count > 0
+								? t("settingsSectionsStorage.storage.staleCleanableHint", { count: stalePreview.count, bytes: formatBytes(stalePreview.bytes) })
+								: t("settingsSectionsStorage.storage.staleNoCleanableHint")
+							: t("settingsSectionsStorage.storage.loading")
+					}
 					control={
 						<div className="flex items-center gap-2">
 							<span className="text-xs text-[var(--text-muted)]">{t("settingsSectionsStorage.storage.daysOver")}</span>
@@ -283,7 +376,7 @@ export function StorageSection() {
 								icon={Trash2}
 								variant="danger"
 								loading={busy === "stale"}
-								disabled={busy !== null || !sessions}
+								disabled={busy !== null || !sessions || !stalePreview || stalePreview.count === 0}
 								onClick={() => void deleteStale()}
 							>
 								{t("settingsSectionsStorage.storage.deleteStaleBtn")}
@@ -307,10 +400,34 @@ export function StorageSection() {
 					jump={t("settingsSectionsStorage.storage.jumpByProject")}
 					title={t("settingsSectionsStorage.storage.titleByProject")}
 					description={t("settingsSectionsStorage.storage.descByProject")}
+					aside={
+						<div className="flex items-center gap-2">
+							<button
+								type="button"
+								onClick={toggleAllProjects}
+								className="text-xs text-[var(--accent)] hover:underline"
+							>
+								{open.size > 0 ? t("settingsSectionsStorage.storage.collapseAll") : t("settingsSectionsStorage.storage.expandAll")}
+							</button>
+							<span className="text-[var(--text-dim)]">·</span>
+							<div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
+								<ArrowUpDown className="h-3 w-3" />
+								<select
+									value={projectOrder}
+									onChange={(e) => setProjectOrder(e.target.value as ProjectSortOrder)}
+									className="rounded bg-transparent text-xs text-[var(--text)] focus:outline-none"
+								>
+									<option value="bytesDesc">{t("settingsSectionsStorage.storage.sortBySize")}</option>
+									<option value="updatedAtDesc">{t("settingsSectionsStorage.storage.sortByRecent")}</option>
+									<option value="nameAsc">{t("settingsSectionsStorage.storage.sortByName")}</option>
+								</select>
+							</div>
+						</div>
+					}
 					footer={
 						selected.size > 0 ? (
-							<span className="flex items-center gap-3">
-								<span>
+							<div className="sticky bottom-2 z-10 -mx-1 flex items-center justify-between rounded-lg bg-[var(--bg-surface)] px-4 py-2.5 shadow-apple-card hairline">
+								<span className="text-xs font-medium text-[var(--text)]">
 									{t("settingsSectionsStorage.storage.selectedCount", { count: selected.size, bytes: formatBytes(selectedTotal) })}
 								</span>
 								<Button
@@ -323,12 +440,12 @@ export function StorageSection() {
 								>
 									{t("settingsSectionsStorage.storage.moveToTrashBtn")}
 								</Button>
-							</span>
+							</div>
 						) : undefined
 					}
 				>
-					{sessions.projects.length === 0 && <div className="px-4 py-3 text-xs text-[var(--text-muted)]">{t("settingsSectionsStorage.storage.noSessions")}</div>}
-					{sessions.projects.map((p) => (
+					{sortedProjects.length === 0 && <div className="px-4 py-3 text-xs text-[var(--text-muted)]">{t("settingsSectionsStorage.storage.noSessions")}</div>}
+					{sortedProjects.map((p) => (
 						<ProjectBlock
 							key={p.dir}
 							project={p}

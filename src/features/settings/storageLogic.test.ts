@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { StorageProjectRow } from "../../lib/contracts";
 import {
+	calculateStorageBreakdown,
 	collectDraftTexts,
 	describeStorageError,
 	parseStaleDays,
 	selectableSessions,
 	selectedBytes,
+	sortProjects,
 } from "./storageLogic";
 
 const project: StorageProjectRow = {
@@ -47,5 +49,23 @@ describe("storageLogic", () => {
 		expect(all).toContain("hi");
 		expect(all).toContain("/a/b.png");
 		expect(all).toContain("x.png");
+	});
+	it("calculates storage breakdown percentages correctly", () => {
+		const breakdown = calculateStorageBreakdown(
+			{ images: { bytes: 200 }, webCacheBytes: 100, dbBytes: 100, status: { bytes: 100 } },
+			{ totalBytes: 500 },
+		);
+		expect(breakdown).not.toBeNull();
+		expect(breakdown?.totalBytes).toBe(1000);
+		expect(breakdown?.categories.find((c) => c.key === "sessions")?.percent).toBe(50);
+		expect(breakdown?.categories.find((c) => c.key === "images")?.percent).toBe(20);
+	});
+	it("sorts projects by bytes descending or name", () => {
+		const p1 = { ...project, bytes: 100, name: "b" };
+		const p2 = { ...project, bytes: 500, name: "a" };
+		const sortedBytes = sortProjects([p1, p2], "bytesDesc");
+		expect(sortedBytes[0].name).toBe("a");
+		const sortedName = sortProjects([p1, p2], "nameAsc");
+		expect(sortedName[0].name).toBe("a");
 	});
 });
