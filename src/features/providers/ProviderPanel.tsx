@@ -13,6 +13,14 @@ import { VAULT_PATH, MODELS_YML_PATH } from "./keyState";
 import { modelEntryId } from "./modelEntry";
 import { OauthLoginDialog } from "./OauthLoginDialog";
 import { ProviderDialog, type ProviderDialogTarget } from "./ProviderDialog";
+import { ProviderGroup } from "./ProviderGroup";
+import {
+	GROUP_DEFAULT_OPEN,
+	GROUP_PAGE_SIZE,
+	groupProviders,
+	PROVIDER_GROUP_ORDER,
+	type ProviderGroupId,
+} from "./providerGroups";
 import { ProviderRowView, ROW_GRID } from "./ProviderRowView";
 import { SetKeyDialog } from "./SetKeyDialog";
 import { useProviders } from "./store";
@@ -39,6 +47,8 @@ export function ProviderPanel() {
 	const [oauthDialog, setOauthDialog] = useState(false);
 	const [query, setQuery] = useState("");
 	const [expandedId, setExpandedId] = useState<string | null>(null);
+	const [groupOpen, setGroupOpen] = useState<Partial<Record<ProviderGroupId, boolean>>>({});
+	const [groupLimit, setGroupLimit] = useState<Partial<Record<ProviderGroupId, number>>>({});
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [encryptingAll, setEncryptingAll] = useState(false);
 	const menuBtnRef = useRef<HTMLButtonElement>(null);
@@ -51,7 +61,11 @@ export function ProviderPanel() {
 	const { focusKey, focusRequest } = useSettingsNav();
 	// biome-ignore lint/correctness/useExhaustiveDependencies: focusRequest re-fires the jump for a repeated key
 	useEffect(() => {
-		if (focusKey?.startsWith("provider:")) setExpandedId(focusKey.slice("provider:".length));
+		if (focusKey?.startsWith("provider:")) {
+			setExpandedId(focusKey.slice("provider:".length));
+			// A deep link must land on a visible row: drop manual fold choices.
+			setGroupOpen({});
+		}
 	}, [focusKey, focusRequest]);
 
 	const sorted = useMemo(
@@ -63,6 +77,7 @@ export function ProviderPanel() {
 		return q ? sorted.filter((r) => matchesQuery(r, q)) : sorted;
 	}, [sorted, query]);
 
+	const grouped = useMemo(() => groupProviders(filtered), [filtered]);
 	const encryptedCount = rows.filter((r) => r.key.kind === "encrypted").length;
 	const plaintextCount = rows.filter((r) => r.key.kind === "plaintext").length;
 	const keyDialogRow = keyDialogId ? rows.find((r) => r.id === keyDialogId) : undefined;
@@ -258,24 +273,46 @@ export function ProviderPanel() {
 			)}
 
 			{!isLoading && !error && filtered.length > 0 && (
-				<div className="space-y-1">
+				<div className="space-y-2">
 					<div className={`${ROW_GRID} px-2.5 text-[11px] text-neutral-500`}>
 						<span>{t("providers.colProviderName")}</span>
 						<span className="whitespace-nowrap">{t("providers.colKeyAction")}</span>
 						<span className="text-right">{t("providers.colEnable")}</span>
 					</div>
-					{filtered.map((row) => (
-						<div key={row.id} data-field-id={`provider:${row.id}`}>
-							<ProviderRowView
-								row={row}
-								expanded={expandedId === row.id}
-								onToggleExpand={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
-								onEdit={() => setDialog({ mode: "edit", row })}
-								onSetKey={() => setKeyDialogId(row.id)}
-								onOauth={() => setOauthDialog(true)}
+					{PROVIDER_GROUP_ORDER.map((gid) => {
+						const groupRows = grouped[gid];
+						if (groupRows.length === 0) return null;
+						const searching = query.trim() !== "";
+						const hasExpanded = expandedId !== null && groupRows.some((r) => r.id === expandedId);
+						return (
+							<ProviderGroup
+								key={gid}
+								id={gid}
+								rows={groupRows}
+								open={searching || (groupOpen[gid] ?? (GROUP_DEFAULT_OPEN[gid] || hasExpanded))}
+								onToggle={() =>
+									setGroupOpen((cur) => ({
+										...cur,
+										[gid]: !(searching || (cur[gid] ?? (GROUP_DEFAULT_OPEN[gid] || hasExpanded))),
+									}))
+								}
+								limit={groupLimit[gid] ?? GROUP_PAGE_SIZE}
+								onSetLimit={(n) => setGroupLimit((cur) => ({ ...cur, [gid]: n }))}
+								pinnedId={expandedId}
+								showAll={searching}
+								renderRow={(row) => (
+									<ProviderRowView
+										row={row}
+										expanded={expandedId === row.id}
+										onToggleExpand={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
+										onEdit={() => setDialog({ mode: "edit", row })}
+										onSetKey={() => setKeyDialogId(row.id)}
+										onOauth={() => setOauthDialog(true)}
+									/>
+								)}
 							/>
-						</div>
-					))}
+						);
+					})}
 				</div>
 			)}
 

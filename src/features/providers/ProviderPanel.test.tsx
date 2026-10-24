@@ -205,6 +205,36 @@ describe("search", () => {
 	});
 });
 
+describe("status groups", () => {
+	it("folds disabled providers by default and reveals them on header click", async () => {
+		await renderPanel([row("live", "plaintext"), row("needs", "missing"), row("off", "plaintext", { enabled: false })]);
+		expect(screen.getByText("live")).toBeTruthy();
+		expect(screen.getByText("needs")).toBeTruthy();
+		expect(screen.queryByText("off")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: /已停用/ }));
+		expect(screen.getByText("off")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: /已停用/ }));
+		expect(screen.queryByText("off")).toBeNull();
+	});
+
+	it("pages a long group 8 rows at a time", async () => {
+		const many = Array.from({ length: 11 }, (_, i) => row(`p${String(i).padStart(2, "0")}`, "plaintext"));
+		await renderPanel(many);
+		expect(screen.getByText("p07")).toBeTruthy();
+		expect(screen.queryByText("p08")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "展开 3 条" }));
+		expect(screen.getByText("p10")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "收起" }));
+		expect(screen.queryByText("p08")).toBeNull();
+	});
+
+	it("search opens folded groups and shows every match", async () => {
+		await renderPanel([row("live", "plaintext"), row("off-one", "plaintext", { enabled: false })]);
+		fireEvent.change(screen.getByLabelText("筛选供应商"), { target: { value: "off-one" } });
+		expect(screen.getByText("off-one")).toBeTruthy();
+	});
+});
+
 describe("add dialog", () => {
 	it("sends provider_upsert with the chosen key mode", async () => {
 		data = [row("existing", "plaintext")];
