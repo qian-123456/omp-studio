@@ -2,7 +2,6 @@
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { Segmented } from "../../../components/Segmented";
 import { ThemePicker } from "../../../components/ThemePicker";
-import { SUPPORTED_LOCALES, type Locale } from "../../../lib/i18n";
 import { useT } from "../../../stores/language";
 import {
 	FONT_SIZES,
@@ -36,7 +35,7 @@ function ResetButton({ visible, onClick, label }: { visible: boolean; onClick: (
 }
 
 export function AppearanceSection() {
-	const { locale, setLocale, t } = useT();
+	const { t } = useT();
 	const fontSize = useFontSize();
 	const uiScale = useUiScale();
 	const { zoom, zoomIn, zoomOut, resetZoom, minZoom, maxZoom } = useZoom();
@@ -79,19 +78,6 @@ export function AppearanceSection() {
 				/>
 			</SettingsCard>
 			<SettingsCard jump={t("settingsSections.appearance.typographyAndLayoutJump")} title={t("settings.appearance.typographyAndLayout")} footer={t("settings.appearance.footerLocalOnly")}>
-				<SettingRow
-					fieldId="language"
-					label={t("settings.language")}
-					description={t("settings.languageDesc")}
-					control={
-						<Segmented
-							aria-label={t("settings.language")}
-							value={locale}
-							onChange={(val) => setLocale(val as Locale)}
-							options={SUPPORTED_LOCALES.map((l) => ({ value: l.value, label: l.nativeLabel }))}
-						/>
-					}
-				/>
 				<SettingRow
 					fieldId="fontSize"
 					label={t("settings.appearance.fontSize")}

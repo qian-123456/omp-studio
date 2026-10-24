@@ -78,7 +78,7 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
 
 	{
 		id: "language",
-		sectionId: "appearance",
+		sectionId: "general",
 		keywords: ["language", "语言", "i18n", "locale", "英文", "中文", "english", "chinese"],
 	},
 	// 外观
