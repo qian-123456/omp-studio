@@ -596,10 +596,15 @@ pub fn logout_credentials_conn(
     }
 
     if matched.is_empty() {
+        // Stored credentials with no identity at all (e.g. devin: the email shown
+        // in the UI comes from the usage API, not from agent.db) cannot be
+        // matched against a filter; they are by definition the one account.
+        let only_unnamed = identities.len() == 1 && identities.contains("unnamed");
         // An explicit account filter that matched nothing must never fall back
-        // to "log out whatever is there": a stale account row would otherwise
-        // sign the user out of a different account.
-        if email.is_some() || account_id.is_some() {
+        // to "log out whatever is there" when the rows do carry an identity: a
+        // stale account row would otherwise sign the user out of a different
+        // account.
+        if (email.is_some() || account_id.is_some()) && !only_unnamed {
             return Err("未找到匹配的授权账号，未退出任何账号".to_string());
         }
         if identities.len() > 1 {
@@ -747,16 +752,11 @@ mod tests {
             [],
         )
         .unwrap();
-        // An explicit filter that matches neither row must not fall back to
-        // "the only account there is": a stale account row would otherwise sign
-        // the user out of a different account.
-        assert!(
-            logout_credentials_conn(&mut conn, "devin", Some("u@x.com"), Some("user-1")).is_err()
-        );
-        assert_eq!(active(&conn), 2);
-        // Without a filter both rows are the same (unnamed) account.
+        // Rows carry no identity, so a filter (the email shown in the UI comes
+        // from the usage API, not agent.db) cannot match; the unnamed rows are
+        // the only possible account and must still be logged out.
         assert_eq!(
-            logout_credentials_conn(&mut conn, "devin", None, None),
+            logout_credentials_conn(&mut conn, "devin", Some("u@x.com"), Some("user-1")),
             Ok(2)
         );
         assert_eq!(active(&conn), 0);
