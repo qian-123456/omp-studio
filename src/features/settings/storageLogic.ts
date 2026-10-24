@@ -80,6 +80,97 @@ export function sortProjects(
 	}
 	return copy;
 }
+export interface StorageWorktreeGroup {
+	key: string;
+	isMain: boolean;
+	worktreeName: string | null;
+	path: string;
+	bytes: number;
+	project: StorageProjectRow;
+}
+
+export interface StorageWorkspaceGroup {
+	rootPath: string;
+	name: string;
+	bytes: number;
+	sessionCount: number;
+	worktrees: StorageWorktreeGroup[];
+}
+
+export function groupProjectsByWorkspace(
+	projects: StorageProjectRow[],
+	knownWorkspaces: Array<{ path: string; name: string }> = [],
+): StorageWorkspaceGroup[] {
+	const groups = new Map<string, { rootPath: string; name: string; worktrees: StorageWorktreeGroup[] }>();
+
+	const getRootAndName = (dir: string, cwd: string | null, name: string): { rootPath: string; name: string; worktreeName: string | null; isMain: boolean } => {
+		const effectivePath = cwd || dir;
+		// 1. Check if effectivePath matches or is inside a known workspace
+		const matchedWs = knownWorkspaces
+			.filter((w) => effectivePath === w.path || effectivePath.startsWith(`${w.path.replace(/\/+$/, "")}/`))
+			.sort((a, b) => b.path.length - a.path.length)[0];
+
+		// 2. Extract worktree name if path contains .worktrees or .cache/wt-
+		const wtMatch =
+			effectivePath.match(/[/\\]\.worktrees[/\\]([^/\\]+)/) ??
+			effectivePath.match(/[/\\]\.cache[/\\](wt-[^/\\]+)/);
+
+		if (matchedWs) {
+			const isMain = effectivePath.replace(/\/+$/, "") === matchedWs.path.replace(/\/+$/, "");
+			const worktreeName = wtMatch ? wtMatch[1] : isMain ? null : effectivePath.split("/").pop() || null;
+			return { rootPath: matchedWs.path, name: matchedWs.name, worktreeName, isMain };
+		}
+
+		if (wtMatch) {
+			const idx = effectivePath.indexOf("/.worktrees/");
+			const winIdx = effectivePath.indexOf("\\.worktrees\\");
+			const root = idx !== -1 ? effectivePath.slice(0, idx) : winIdx !== -1 ? effectivePath.slice(0, winIdx) : effectivePath;
+			const rootName = root.split("/").filter(Boolean).pop() || name;
+			return { rootPath: root, name: rootName, worktreeName: wtMatch[1], isMain: false };
+		}
+
+		const rootName = (cwd || dir).split("/").filter(Boolean).pop() || name;
+		return { rootPath: effectivePath, name: rootName, worktreeName: null, isMain: true };
+	};
+
+	for (const p of projects) {
+		const { rootPath, name, worktreeName, isMain } = getRootAndName(p.dir, p.cwd, p.name);
+		let g = groups.get(rootPath);
+		if (!g) {
+			g = { rootPath, name, worktrees: [] };
+			groups.set(rootPath, g);
+		}
+		g.worktrees.push({
+			key: p.dir,
+			isMain,
+			worktreeName,
+			path: p.cwd || p.dir,
+			bytes: p.bytes,
+			project: p,
+		});
+	}
+
+	const result: StorageWorkspaceGroup[] = [];
+	for (const g of groups.values()) {
+		// Sort worktrees: main first, then by bytes desc
+		g.worktrees.sort((a, b) => {
+			if (a.isMain !== b.isMain) return a.isMain ? -1 : 1;
+			return b.bytes - a.bytes;
+		});
+		const bytes = g.worktrees.reduce((sum, w) => sum + w.bytes, 0);
+		const sessionCount = g.worktrees.reduce((sum, w) => sum + w.project.sessions.length, 0);
+		result.push({
+			rootPath: g.rootPath,
+			name: g.name,
+			bytes,
+			sessionCount,
+			worktrees: g.worktrees,
+		});
+	}
+
+	return result;
+}
+
 
 /**
  * Backend commands added after the user launched the app do not exist until a

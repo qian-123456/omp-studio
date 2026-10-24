@@ -1,6 +1,6 @@
 /** Settings ▸ 存储空间 (`storage`): app disk usage, safe cleanups, and omp session cleanup (to the Trash). */
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { ArrowUpDown, ChevronDown, ChevronRight, FolderOpen, HardDrive, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronRight, Folder, FolderGit2, FolderOpen, GitBranch, HardDrive, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useT } from "../../../stores/language";
 import type { StorageOverview, StorageProjectRow, StorageSessionsOverview, StorageStalePreview } from "../../../lib/contracts";
@@ -19,6 +19,10 @@ import {
 } from "../../../lib/ipc";
 import { toast } from "../../../lib/toast";
 import { useComposer } from "../../../stores/composer";
+import { useSessions } from "../../../stores/sessions";
+import { useHomeDir } from "../../../lib/hooks";
+import { shortPath } from "../../../lib/paths";
+import { getWorkspacePalette } from "../../sessions/SessionSidebar";
 import {
 	calculateStorageBreakdown,
 	collectDraftTexts,
@@ -29,6 +33,9 @@ import {
 	selectableSessions,
 	selectedBytes,
 	sortProjects,
+	groupProjectsByWorkspace,
+	type StorageWorkspaceGroup,
+	type StorageWorktreeGroup,
 } from "../storageLogic";
 import { Notice } from "../../../components/Notice";
 import { SectionJumpBar } from "../SectionJumpBar";
@@ -55,7 +62,10 @@ export function StorageSection() {
 	const [stalePreview, setStalePreview] = useState<StorageStalePreview | null>(null);
 	const [projectOrder, setProjectOrder] = useState<ProjectSortOrder>("bytesDesc");
 	const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+	const [openWorktrees, setOpenWorktrees] = useState<ReadonlySet<string>>(new Set());
 	const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+	const workspaces = useSessions((s) => s.workspaces);
+	const home = useHomeDir();
 
 	const refresh = useCallback(async () => {
 		try {
@@ -182,17 +192,21 @@ export function StorageSection() {
 
 	const selectedTotal = sessions ? sessions.projects.reduce((n, p) => n + selectedBytes(p, selected), 0) : 0;
 	const breakdown = useMemo(() => calculateStorageBreakdown(overview, sessions), [overview, sessions]);
-	const sortedProjects = useMemo(() => {
+
+	const workspaceGroups = useMemo(() => {
 		if (!sessions) return [];
-		return sortProjects(sessions.projects, projectOrder);
-	}, [sessions, projectOrder]);
+		const sorted = sortProjects(sessions.projects, projectOrder);
+		return groupProjectsByWorkspace(sorted, workspaces);
+	}, [sessions, projectOrder, workspaces]);
 
 	const toggleAllProjects = () => {
 		if (!sessions) return;
 		if (open.size > 0) {
 			setOpen(new Set());
+			setOpenWorktrees(new Set());
 		} else {
-			setOpen(new Set(sessions.projects.map((p) => p.dir)));
+			setOpen(new Set(workspaceGroups.map((g) => g.rootPath)));
+			setOpenWorktrees(new Set(sessions.projects.map((p) => p.dir)));
 		}
 	};
 
@@ -444,16 +458,19 @@ export function StorageSection() {
 						) : undefined
 					}
 				>
-					{sortedProjects.length === 0 && <div className="px-4 py-3 text-xs text-[var(--text-muted)]">{t("settingsSectionsStorage.storage.noSessions")}</div>}
-					{sortedProjects.map((p) => (
-						<ProjectBlock
-							key={p.dir}
-							project={p}
-							expanded={open.has(p.dir)}
+					{workspaceGroups.length === 0 && <div className="px-4 py-3 text-xs text-[var(--text-muted)]">{t("settingsSectionsStorage.storage.noSessions")}</div>}
+					{workspaceGroups.map((wg) => (
+						<WorkspaceBlock
+							key={wg.rootPath}
+							group={wg}
+							home={home}
+							expanded={open.has(wg.rootPath)}
+							openWorktrees={openWorktrees}
 							selected={selected}
-							onToggleOpen={() => setOpen((s) => toggle(s, p.dir))}
+							onToggleOpen={() => setOpen((s) => toggle(s, wg.rootPath))}
+							onToggleWorktree={(dir) => setOpenWorktrees((s) => toggle(s, dir))}
 							onToggleSession={(id) => setSelected((s) => toggle(s, id))}
-							onSelectAll={(all) =>
+							onSelectAllProject={(p, all) =>
 								setSelected((s) => {
 									const next = new Set(s);
 									for (const row of selectableSessions(p)) {
@@ -463,7 +480,7 @@ export function StorageSection() {
 									return next;
 								})
 							}
-							onReveal={() => reveal(p.dir)}
+							onReveal={(path) => reveal(path)}
 						/>
 					))}
 				</SettingsCard>
@@ -472,31 +489,39 @@ export function StorageSection() {
 	);
 }
 
-function ProjectBlock({
-	project,
+function WorkspaceBlock({
+	group,
+	home,
 	expanded,
+	openWorktrees,
 	selected,
 	onToggleOpen,
+	onToggleWorktree,
 	onToggleSession,
-	onSelectAll,
+	onSelectAllProject,
 	onReveal,
 }: {
-	project: StorageProjectRow;
+	group: StorageWorkspaceGroup;
+	home: string | null;
 	expanded: boolean;
+	openWorktrees: ReadonlySet<string>;
 	selected: ReadonlySet<string>;
 	onToggleOpen: () => void;
+	onToggleWorktree: (dir: string) => void;
 	onToggleSession: (id: string) => void;
-	onSelectAll: (all: boolean) => void;
-	onReveal: () => void;
+	onSelectAllProject: (project: StorageProjectRow, all: boolean) => void;
+	onReveal: (path: string) => void;
 }) {
 	const { t } = useT();
-	const selectable = selectableSessions(project);
-	const allSelected = selectable.length > 0 && selectable.every((s) => selected.has(s.id));
 	const Chevron = expanded ? ChevronDown : ChevronRight;
-	const label = project.cwd ?? project.name;
+	const palette = getWorkspacePalette(group.name);
+	const hasMultipleWorktrees = group.worktrees.length > 1 || (group.worktrees[0] && !group.worktrees[0].isMain);
+	const displayPath = shortPath(group.rootPath, home);
+
 	return (
-		<div>
-			<div className="flex items-center gap-2 px-4 py-2.5">
+		<div className="border-b last:border-b-0 border-[var(--border-divider)]">
+			{/* Workspace Root Header (Like SessionSidebar Workspace row) */}
+			<div className="flex items-center gap-2 px-4 py-2.5 transition-colors hover:bg-[var(--bg-hover)]/40">
 				<button
 					type="button"
 					onClick={onToggleOpen}
@@ -504,47 +529,182 @@ function ProjectBlock({
 					className="flex min-w-0 flex-1 items-center gap-2 text-left"
 				>
 					<Chevron className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-					<span className="min-w-0 break-all text-[13px] text-[var(--text)]" title={project.dir}>
-						{label}
-					</span>
-				</button>
-				<Chip>{t("settingsSectionsStorage.storage.projectSessionsCount", { count: project.sessions.length })}</Chip>
-				<span className="w-20 shrink-0 text-right text-xs tabular-nums text-[var(--text-muted)]">
-					{formatBytes(project.bytes)}
-				</span>
-				<Button size="sm" icon={FolderOpen} onClick={onReveal}>
-					{t("settingsSectionsStorage.storage.revealInFinder")}
-				</Button>
-			</div>
-			{expanded && (
-				<div className="border-t border-[var(--border-divider)] bg-[var(--bg-hover)]/30">
-					{selectable.length > 0 && (
-						<label className="flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--text-muted)]">
-							<input type="checkbox" checked={allSelected} onChange={(e) => onSelectAll(e.target.checked)} />
-							{t("settingsSectionsStorage.storage.selectAllDeletable")}
-						</label>
+					{expanded ? (
+						<FolderOpen size={15} className={palette.folderColor} />
+					) : (
+						<Folder size={15} className={palette.folderColor} />
 					)}
-					{project.sessions.map((s) => (
-						<label key={s.id} className="flex items-center gap-2 px-4 py-1.5">
-							<input
-								type="checkbox"
-								disabled={s.skipReason !== null}
-								checked={selected.has(s.id)}
-								onChange={() => onToggleSession(s.id)}
-							/>
-							<span className="min-w-0 flex-1 break-all text-xs text-[var(--text)]" title={s.title}>
-								{s.title}
-							</span>
-							{s.skipReason && <Chip tone="warning">{formatSkipReason(s.skipReason, t)}</Chip>}
-							<span className="w-24 shrink-0 text-right text-[11px] text-[var(--text-dim)]">
-								{s.updatedAt ? relativeTime(s.updatedAt) : ""}
-							</span>
-							<span className="w-20 shrink-0 text-right text-xs tabular-nums text-[var(--text-muted)]">
-								{formatBytes(s.bytes)}
-							</span>
-						</label>
-					))}
+					<div className="flex min-w-0 flex-1 items-baseline gap-2">
+						<span className="font-semibold text-[13px] text-[var(--text)] truncate" title={group.name}>
+							{group.name}
+						</span>
+						<span className="text-[11px] text-[var(--text-dim)] truncate" title={group.rootPath}>
+							{displayPath}
+						</span>
+					</div>
+				</button>
+
+				<div className="flex items-center gap-2 shrink-0">
+					{hasMultipleWorktrees && (
+						<Chip>{t("settingsSectionsStorage.storage.worktreeCountChip", { count: group.worktrees.length })}</Chip>
+					)}
+					<Chip>{t("settingsSectionsStorage.storage.projectSessionsCount", { count: group.sessionCount })}</Chip>
+					<span className="w-20 shrink-0 text-right text-xs tabular-nums font-medium text-[var(--text)]">
+						{formatBytes(group.bytes)}
+					</span>
+					<Button size="sm" icon={FolderOpen} onClick={() => onReveal(group.rootPath)}>
+						{t("settingsSectionsStorage.storage.revealInFinder")}
+					</Button>
 				</div>
+			</div>
+
+			{/* Workspace Expanded Body */}
+			{expanded && (
+				<div className="border-t border-[var(--border-divider)] bg-[var(--bg-hover)]/20 pl-4">
+					{hasMultipleWorktrees ? (
+						group.worktrees.map((wt) => (
+							<WorktreeSubBlock
+								key={wt.key}
+								wt={wt}
+								expanded={openWorktrees.has(wt.key)}
+								selected={selected}
+								onToggle={() => onToggleWorktree(wt.key)}
+								onToggleSession={onToggleSession}
+								onSelectAll={(all) => onSelectAllProject(wt.project, all)}
+								onReveal={() => onReveal(wt.project.dir)}
+							/>
+						))
+					) : (
+						<ProjectSessionList
+							project={group.worktrees[0].project}
+							selected={selected}
+							onToggleSession={onToggleSession}
+							onSelectAll={(all) => onSelectAllProject(group.worktrees[0].project, all)}
+						/>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function WorktreeSubBlock({
+	wt,
+	expanded,
+	selected,
+	onToggle,
+	onToggleSession,
+	onSelectAll,
+	onReveal,
+}: {
+	wt: StorageWorktreeGroup;
+	expanded: boolean;
+	selected: ReadonlySet<string>;
+	onToggle: () => void;
+	onToggleSession: (id: string) => void;
+	onSelectAll: (all: boolean) => void;
+	onReveal: () => void;
+}) {
+	const { t } = useT();
+	const Chevron = expanded ? ChevronDown : ChevronRight;
+	const label = wt.isMain
+		? t("settingsSectionsStorage.storage.mainBranch")
+		: wt.worktreeName || wt.project.name;
+
+	return (
+		<div className="border-b last:border-b-0 border-[var(--border-divider)]">
+			<div className="flex items-center gap-2 px-3 py-2 transition-colors hover:bg-[var(--bg-hover)]/40">
+				<button
+					type="button"
+					onClick={onToggle}
+					aria-expanded={expanded}
+					className="flex min-w-0 flex-1 items-center gap-2 text-left"
+				>
+					<Chevron className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+					{wt.isMain ? (
+						<GitBranch size={13} className="text-purple-500 shrink-0" />
+					) : (
+						<FolderGit2 size={13} className="text-indigo-400 shrink-0" />
+					)}
+					<span className="font-medium text-xs text-[var(--text)] truncate">{label}</span>
+					{!wt.isMain && (
+						<span className="text-[10px] px-1 rounded hairline text-[var(--text-dim)] bg-[var(--bg-panel)]">
+							{t("settingsSectionsStorage.storage.worktreeTag")}
+						</span>
+					)}
+				</button>
+
+				<div className="flex items-center gap-2 shrink-0">
+					<Chip>{t("settingsSectionsStorage.storage.projectSessionsCount", { count: wt.project.sessions.length })}</Chip>
+					<span className="w-16 shrink-0 text-right text-xs tabular-nums text-[var(--text-muted)]">
+						{formatBytes(wt.bytes)}
+					</span>
+					<Button size="sm" icon={FolderOpen} onClick={onReveal}>
+						{t("settingsSectionsStorage.storage.revealInFinder")}
+					</Button>
+				</div>
+			</div>
+
+			{expanded && (
+				<div className="border-t border-[var(--border-divider)] bg-[var(--bg-hover)]/30 pl-4">
+					<ProjectSessionList
+						project={wt.project}
+						selected={selected}
+						onToggleSession={onToggleSession}
+						onSelectAll={onSelectAll}
+					/>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function ProjectSessionList({
+	project,
+	selected,
+	onToggleSession,
+	onSelectAll,
+}: {
+	project: StorageProjectRow;
+	selected: ReadonlySet<string>;
+	onToggleSession: (id: string) => void;
+	onSelectAll: (all: boolean) => void;
+}) {
+	const { t } = useT();
+	const selectable = selectableSessions(project);
+	const allSelected = selectable.length > 0 && selectable.every((s) => selected.has(s.id));
+
+	return (
+		<div className="py-1">
+			{selectable.length > 0 && (
+				<label className="flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer">
+					<input type="checkbox" checked={allSelected} onChange={(e) => onSelectAll(e.target.checked)} />
+					{t("settingsSectionsStorage.storage.selectAllDeletable")}
+				</label>
+			)}
+			{project.sessions.length === 0 ? (
+				<div className="px-3 py-1 text-xs text-[var(--text-dim)] italic">{t("settingsSectionsStorage.storage.noSessions")}</div>
+			) : (
+				project.sessions.map((s) => (
+					<label key={s.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]/40 rounded transition-colors cursor-pointer">
+						<input
+							type="checkbox"
+							disabled={s.skipReason !== null}
+							checked={selected.has(s.id)}
+							onChange={() => onToggleSession(s.id)}
+						/>
+						<span className="min-w-0 flex-1 break-all text-xs text-[var(--text)]" title={s.title}>
+							{s.title}
+						</span>
+						{s.skipReason && <Chip tone="warning">{formatSkipReason(s.skipReason, t)}</Chip>}
+						<span className="w-24 shrink-0 text-right text-[11px] text-[var(--text-dim)]">
+							{s.updatedAt ? relativeTime(s.updatedAt) : ""}
+						</span>
+						<span className="w-20 shrink-0 text-right text-xs tabular-nums text-[var(--text-muted)]">
+							{formatBytes(s.bytes)}
+						</span>
+					</label>
+				))
 			)}
 		</div>
 	);
