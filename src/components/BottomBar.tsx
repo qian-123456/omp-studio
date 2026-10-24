@@ -20,8 +20,10 @@ import { getAppMemoryUsage, perfBreakdown, servicesList, type ProcessMemoryInfo 
 import { useDisplayPrefs } from "../stores/displayPrefs";
 import type { PerfBreakdown, ServiceInfo } from "../lib/contracts";
 import { useZoom } from "../lib/zoom";
+import { useT } from "../stores/language";
 
 export function BottomBar() {
+	const { t } = useT();
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
 	const lastSessionId = useUi((s) => s.lastSessionId);
 	const bottomBarVisible = useDisplayPrefs((s) => s.bottomBar);
@@ -246,7 +248,7 @@ export function BottomBar() {
 						<button
 							type="button"
 							onClick={() => openSettings("about")}
-						title={ompUpdateAvailable ? `omp 有新版本 ${ompStatus?.latest ?? ""}` : "omp 版本 — 点击查看版本与更新"}
+						title={ompUpdateAvailable ? t("bottomBar.ompNewVersion", { version: ompStatus?.latest ?? "" }) : t("bottomBar.ompVersionTip")}
 							className="relative flex items-center gap-1 rounded-[6px] px-1 py-0.5 transition-all hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97"
 						>
 							<span className="font-mono text-[10.5px]">omp {ompVersion}</span>
@@ -262,7 +264,7 @@ export function BottomBar() {
 						type="button"
 						onClick={zoomOut}
 						disabled={zoom <= minZoom}
-						title="缩小界面 (-5%)"
+						title={t("bottomBar.zoomOut")}
 						className="rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 disabled:opacity-30 transition-colors"
 					>
 						<Minus size={11} />
@@ -270,7 +272,7 @@ export function BottomBar() {
 					<button
 						type="button"
 						onClick={resetZoom}
-						title="重置缩放为 100%"
+						title={t("bottomBar.resetZoom")}
 						className="font-mono text-[10.5px] hover:text-neutral-200 transition-colors"
 					>
 						{zoom}%
@@ -279,7 +281,7 @@ export function BottomBar() {
 						type="button"
 						onClick={zoomIn}
 						disabled={zoom >= maxZoom}
-						title="放大界面 (+5%)"
+						title={t("bottomBar.zoomIn")}
 						className="rounded p-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 disabled:opacity-30 transition-colors"
 					>
 						<Plus size={11} />
@@ -293,8 +295,8 @@ export function BottomBar() {
 						<button
 							type="button"
 							onClick={handleToggleGit}
-							aria-label="查看 Git 面板"
-							title="查看 Git 面板"
+							aria-label={t("bottomBar.viewGitPanel")}
+							title={t("bottomBar.viewGitPanel")}
 							className={clsx(
 								"flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 text-neutral-400 hover:bg-[var(--bg-active-fill)] hover:text-neutral-200 active:scale-97 transition-all cursor-pointer",
 								rightTab === "git" && rightOpen && "bg-[var(--bg-active-fill)] text-neutral-200",

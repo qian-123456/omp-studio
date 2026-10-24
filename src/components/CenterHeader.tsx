@@ -44,23 +44,27 @@ import { toast } from "../lib/toast";
 import { claimEscape, isEscapeClaimed } from "../lib/escapeClaim";
 import { useTrafficLightsVisible } from "../lib/trafficLights";
 
+import { useT } from "../stores/language";
 
 
 const isMac =
 	typeof navigator !== "undefined" &&
 	/Macintosh|Mac OS X|macOS/i.test(navigator.userAgent);
 
-const STATUS_LABEL: Record<SessionStatus, string> = {
-	working: "运行中",
-	awaiting_approval: "待批准",
-	awaiting_answer: "待回答",
-	review: "待验收",
-	idle: "空闲",
-	error: "出错",
-	interrupted: "已中断",
-	suspended: "已挂起",
-	external: "外部",
-};
+function getStatusLabel(status: SessionStatus, t: (key: string) => string): string {
+	const labels: Record<SessionStatus, string> = {
+		working: t("status.working"),
+		awaiting_approval: t("status.awaitingApproval"),
+		awaiting_answer: t("status.awaitingAnswer"),
+		review: t("status.review"),
+		idle: t("status.idle"),
+		error: t("status.error"),
+		interrupted: t("status.interrupted"),
+		suspended: t("status.suspended"),
+		external: t("status.external"),
+	};
+	return labels[status] ?? status;
+}
 
 const STATUS_DOT: Record<SessionStatus, string> = {
 	working: "bg-emerald-400 animate-pulse",
@@ -102,6 +106,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 	rightOpen,
 	toggleRight,
 }: CenterHeaderProps) {
+	const { t } = useT();
 	const centerView = useUi((s) => s.centerView);
 	const previousCenterView = useUi((s) => s.previousCenterView);
 	const selectedSessionId = useUi((s) => s.selectedSessionId);
@@ -405,7 +410,7 @@ export const CenterHeader = React.memo(function CenterHeader({
 							<span
 								data-tauri-drag-region
 								className={clsx("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[sessionStatus])}
-								title={STATUS_LABEL[sessionStatus]}
+								title={getStatusLabel(sessionStatus, t)}
 							/>
 
 							{/* Double-click rename or display title */}

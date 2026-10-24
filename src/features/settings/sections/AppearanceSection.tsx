@@ -2,6 +2,8 @@
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { Segmented } from "../../../components/Segmented";
 import { ThemePicker } from "../../../components/ThemePicker";
+import { SUPPORTED_LOCALES, type Locale } from "../../../lib/i18n";
+import { useT } from "../../../stores/language";
 import {
 	FONT_SIZES,
 	UI_SCALES,
@@ -33,17 +35,22 @@ function ResetButton({ visible, onClick, label }: { visible: boolean; onClick: (
 }
 
 export function AppearanceSection() {
+	const { locale, setLocale, t } = useT();
 	const fontSize = useFontSize();
 	const uiScale = useUiScale();
 	const { zoom, zoomIn, zoomOut, resetZoom, minZoom, maxZoom } = useZoom();
 	const anyChanged = fontSize !== DEFAULT_FONT_SIZE || uiScale !== DEFAULT_UI_SCALE || zoom !== DEFAULT_ZOOM;
 	const zoomKeys = (["zoom.in", "zoom.out", "zoom.reset"] as const).map((id) => formatAccelerator(acceleratorOf(id)));
-	const zoomHint = `${zoomKeys[0]} 放大，${zoomKeys[1]} 缩小，${zoomKeys[2]} 恢复 100%`;
+	const zoomHint = t("shortcuts.zoomHint", {
+		inKey: zoomKeys[0],
+		outKey: zoomKeys[1],
+		resetKey: zoomKeys[2],
+	});
 	return (
 		<div className="space-y-6">
 			<SectionHeader
-				title="外观"
-				description="主题、字号、界面密度和对话里显示哪些信息"
+				title={t("settings.appearance.title")}
+				description={t("settings.appearance.description")}
 				actions={
 					anyChanged ? (
 						<Button
@@ -61,7 +68,7 @@ export function AppearanceSection() {
 				}
 			/>
 			<SectionJumpBar />
-			<SettingsCard jump="主题" title="主题">
+			<SettingsCard jump="主题" title={t("settings.appearance.theme")}>
 				<SettingRow
 					fieldId="theme"
 					stacked
@@ -70,20 +77,33 @@ export function AppearanceSection() {
 					control={<ThemePicker />}
 				/>
 			</SettingsCard>
-			<SettingsCard jump="文字与布局" title="文字与布局" footer="以上设置只保存在本机，立即生效，不需要重启。">
+			<SettingsCard jump="文字与布局" title={t("settings.appearance.typographyAndLayout")} footer={t("settings.appearance.footerLocalOnly")}>
+				<SettingRow
+					fieldId="language"
+					label={t("settings.language")}
+					description={t("settings.languageDesc")}
+					control={
+						<Segmented
+							aria-label={t("settings.language")}
+							value={locale}
+							onChange={(val) => setLocale(val as Locale)}
+							options={SUPPORTED_LOCALES.map((l) => ({ value: l.value, label: l.nativeLabel }))}
+						/>
+					}
+				/>
 				<SettingRow
 					fieldId="fontSize"
-					label="聊天字号"
-					description="会话消息正文的文字大小"
+					label={t("settings.appearance.fontSize")}
+					description={t("settings.appearance.fontSizeDesc")}
 					control={
 						<div className="flex items-center gap-1.5">
 							<ResetButton
-								label="聊天字号"
+								label={t("settings.appearance.fontSize")}
 								visible={fontSize !== DEFAULT_FONT_SIZE}
 								onClick={() => setFontSize(DEFAULT_FONT_SIZE)}
 							/>
 							<Segmented
-								aria-label="聊天字号"
+								aria-label={t("settings.appearance.fontSize")}
 								value={fontSize}
 								onChange={setFontSize}
 								options={FONT_SIZES.map((fs) => ({ value: fs.id, label: fs.name }))}
@@ -93,17 +113,17 @@ export function AppearanceSection() {
 				/>
 				<SettingRow
 					fieldId="uiDensity"
-					label="界面密度"
-					description="列表、按钮之间的间距疏密"
+					label={t("settings.appearance.uiScale")}
+					description={t("settings.appearance.uiScaleDesc")}
 					control={
 						<div className="flex items-center gap-1.5">
 							<ResetButton
-								label="界面密度"
+								label={t("settings.appearance.uiScale")}
 								visible={uiScale !== DEFAULT_UI_SCALE}
 								onClick={() => setUiScale(DEFAULT_UI_SCALE)}
 							/>
 							<Segmented
-								aria-label="界面密度"
+								aria-label={t("settings.appearance.uiScale")}
 								value={uiScale}
 								onChange={setUiScale}
 								options={UI_SCALES.map((s) => ({ value: s.id, label: s.name }))}
@@ -113,12 +133,12 @@ export function AppearanceSection() {
 				/>
 				<SettingRow
 					fieldId="uiScale"
-					label="界面缩放"
+					label={t("settings.appearance.zoom")}
 					description={`整个窗口的放大比例（${minZoom}%–${maxZoom}%）`}
 					hint={`快捷键：${zoomHint}（可在「快捷键」页查看）`}
 					control={
 						<div className="flex items-center gap-1.5">
-							<ResetButton label="界面缩放" visible={zoom !== DEFAULT_ZOOM} onClick={resetZoom} />
+							<ResetButton label={t("settings.appearance.zoom")} visible={zoom !== DEFAULT_ZOOM} onClick={resetZoom} />
 							<IconButton icon={Minus} label="缩小" onClick={zoomOut} disabled={zoom <= minZoom} />
 							<span
 								className="min-w-14 text-center font-mono text-xs font-medium tabular-nums text-[var(--text)]"

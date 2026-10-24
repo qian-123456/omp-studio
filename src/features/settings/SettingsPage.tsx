@@ -22,6 +22,7 @@ import { SECTION_COMPONENTS } from "./sections";
 import { SettingsNavContext, type SettingsNavValue } from "./settingsNav";
 import { useSettings } from "./store";
 import { Notice } from "../../components/Notice";
+import { useT } from "../../stores/language";
 
 interface SettingsPageProps {
 	onClose?: () => void;
@@ -41,6 +42,7 @@ function resolveSection(id: string | null | undefined): string {
 type NavEntry = NavItem & { hint: string | null };
 
 export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}) {
+	const { t } = useT();
 	const loadSettings = useSettings((s) => s.load);
 	const storeError = useSettings((s) => s.error);
 	const closeSettings = useUi((s) => s.closeSettings);
@@ -274,7 +276,7 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 					<input
 						ref={searchRef}
 						value={navQuery}
-						aria-label="搜索设置"
+						aria-label={t("common.search")}
 						onChange={(e) => setNavQuery(e.target.value)}
 						onKeyDown={(e) => {
 							if (isComposing(e)) return;
@@ -293,14 +295,14 @@ export function SettingsPage({ onClose, initialSection }: SettingsPageProps = {}
 								}
 							}
 						}}
-						placeholder="搜索设置（⌘F）"
+						placeholder={t("settings.searchPlaceholder")}
 						className="w-full bg-transparent text-xs text-neutral-200 outline-none placeholder:text-neutral-500"
 					/>
 					{navQuery && (
 						<button
 							type="button"
-							aria-label="清除搜索"
-							title="清除搜索（Esc）"
+							aria-label={t("common.reset")}
+							title={`${t("common.reset")}（Esc）`}
 							onClick={() => {
 								setNavQuery("");
 								searchRef.current?.focus();
