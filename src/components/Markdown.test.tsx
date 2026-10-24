@@ -113,3 +113,19 @@ describe("Markdown images", () => {
 		expect(out).toContain('src="data:image/png;base64,AAAA"');
 	});
 });
+
+describe("Markdown mermaid fences", () => {
+	it("hands a closed mermaid fence to the diagram block", () => {
+		const out = html("```mermaid\ngraph TD\n  A-->B\n```");
+		expect(out).toContain("正在渲染图表");
+	});
+	it("keeps an unclosed fence a plain code block while streaming", () => {
+		const out = renderToStaticMarkup(<Markdown text={"```mermaid\ngraph TD\n  A-->B"} streaming />);
+		expect(out).not.toContain("正在渲染图表");
+		expect(out).toContain("A--&gt;B");
+	});
+	it("leaves mermaid as code in static image export", () => {
+		const out = renderToStaticMarkup(<Markdown text={"```mermaid\ngraph TD\n  A-->B\n```"} exportMode />);
+		expect(out).not.toContain("正在渲染图表");
+	});
+});
